@@ -1,0 +1,122 @@
+---
+title: "Assigning Habitat via LLM"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Assigning Habitat via LLM}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Purpose
+
+TaxaHabitat assigns habitat types to species and occurrence records using LLM
+(Large Language Model) inference. It produces per-species habitat weight
+vectors and per-point habitat classifications that feed into TaxaExpect for
+biodiversity modelling.
+
+## Quick Start
+
+```{r quickstart}
+library(TaxaHabitat)
+library(TaxaTools)
+
+# Build and submit habitat prompt
+prompt <- build_habitat_prompt(
+  c("Fundulus parvipinnis", "Atherinops affinis", "Mugil cephalus"),
+  geographic_context = "Southern California"
+)
+
+raw_text <- call_anthropic_api(prompt$prompts[[1]])
+habitats <- parse_hierarchical_habitat_response(raw_text, prompt$chunks[[1]], prompt)
+
+# Assign habitat to occurrence points
+occurrences <- assign_habitat_biological(occurrence_data, habitats)
+```
+
+## Detailed Walkthrough
+
+### Step 1: Choose a habitat scheme
+
+```{r scheme}
+# Default: 3-category (Marine / Freshwater / Terrestrial)
+prompt <- build_habitat_prompt(species_list, habitat_scheme = NULL)
+
+# IUCN Level 1 (16 categories)
+prompt <- build_habitat_prompt(species_list, habitat_scheme = "IUCN_L1")
+
+# Custom scheme
+my_scheme <- data.frame(
+  habitat_name = c("Rocky Intertidal", "Sandy Beach", "Kelp Forest", "Estuary"),
+  stringsAsFactors = FALSE
+)
+prompt <- build_habitat_prompt(species_list, habitat_scheme = my_scheme)
+```
+
+### Step 2: Submit to LLM
+
+The prompt is automatically chunked for large species lists.
+
+```{r submit}
+raw_texts <- character(prompt$n_chunks)
+for (i in seq_len(prompt$n_chunks)) {
+  raw_texts[i] <- call_anthropic_api(prompt$prompts[[i]])
+}
+
+# Parse all chunks
+habitats_list <- lapply(seq_len(prompt$n_chunks), function(i) {
+  parse_hierarchical_habitat_response(raw_texts[i], prompt$chunks[[i]], prompt)
+})
+habitats_df <- do.call(rbind, habitats_list)
+```
+
+### Step 3: Assign habitat to points
+
+```{r assign}
+occurrences <- assign_habitat_biological(
+  data        = occurrence_data,
+  habitats_df = habitats_df,
+  threshold   = 0.3
+)
+
+# Check consensus
+table(occurrences$main_habitat, useNA = "always")
+```
+
+### Step 4: Flag spatial inconsistencies
+
+```{r flag}
+occurrences <- flag_habitat_inconsistencies(occurrences)
+# Review flagged points
+table(occurrences$spatial_flag)
+```
+
+## Key Parameters
+
+| Parameter | Default | When to change |
+|---|---|---|
+| `habitat_scheme` | NULL (3-cat) | Use "IUCN_L1" or custom for finer resolution |
+| `geographic_context` | NULL | Always supply for better ecoregion inference |
+| `threshold` | 0.3 | Lower for transitional habitats (estuaries) |
+| `chunk_size` | 60 | Reduce if LLM truncates responses |
+
+## Common Pitfalls
+
+1. **LLM returns unexpected columns:** `parse_hierarchical_habitat_response()`
+   is tolerant of extra columns but requires the scheme's habitat columns.
+   Check `prompt$habitat_cols` against the parsed output.
+
+2. **All habitats "Other":** The species may not fit the scheme. Check
+   `habitats_df$habitat_best_guess` for the LLM's actual suggestion, and
+   consider a finer scheme.
+
+3. **Spatial flags too aggressive:** Coastal species near shore boundaries
+   are often flagged. Increase `coast_buffer_m` in
+   `flag_habitat_inconsistencies()`.

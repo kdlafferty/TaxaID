@@ -1,0 +1,56 @@
+{
+  "package": "TaxaHabitat",
+  "description": "Habitat assignment via LLM, spatial QAQC, consensus habitat",
+  "functions": [
+    {
+      "name": "build_habitat_prompt",
+      "description": "Build hierarchical LLM prompt for habitat assignment of taxa",
+      "inputs": [
+        {"name": "taxon_names", "type": "character_vector", "required": true, "description": "Scientific names to assign habitats"},
+        {"name": "habitat_scheme", "type": "character", "required": false, "description": "Habitat classification scheme name as a string: NULL (default 3-category: Marine/Freshwater/Terrestrial), 'IUCN_L1' (13 categories), or 'IUCN_L2' (detailed). Do NOT pass a data frame."},
+        {"name": "geographic_context", "type": "character", "required": false, "description": "Geographic hint for habitat assignment"}
+      ],
+      "output": {"type": "habitat_prompt", "description": "S3 prompt object for prompt_api()"},
+      "scaling": "linear",
+      "scaling_note": "Instant; string construction"
+    },
+    {
+      "name": "parse_hierarchical_habitat_response",
+      "description": "Parse LLM habitat response into wide data frame with habitat weight columns",
+      "inputs": [
+        {"name": "response", "type": "character", "required": true, "description": "LLM response text from prompt_api()"},
+        {"name": "habitat_prompt", "type": "habitat_prompt", "required": true, "description": "The prompt object used"}
+      ],
+      "output": {"type": "habitats_df", "description": "Wide data frame: one row per taxon, habitat weight columns"},
+      "scaling": "linear",
+      "scaling_note": "Fast; JSON parsing"
+    },
+    {
+      "name": "assign_habitat_biological",
+      "description": "Assign habitat classifications from pre-computed habitat weight table to spatial data",
+      "inputs": [
+        {"name": "data", "type": "data.frame", "required": true, "description": "Spatial data with point_id and taxon columns"},
+        {"name": "habitats_df", "type": "habitats_df", "required": true, "description": "Per-species habitat weights from parse_hierarchical_habitat_response()"},
+        {"name": "habitat_cols", "type": "character_vector", "required": false, "description": "Habitat column names (auto-detected if NULL)"},
+        {"name": "point_id_col", "type": "character", "required": false, "default": "point_id", "description": "Column with spatial point IDs"},
+        {"name": "taxon_col", "type": "character", "required": false, "default": "species", "description": "Column with taxon names"}
+      ],
+      "output": {"type": "data.frame", "description": "Input with main_habitat column added per point"},
+      "scaling": "linear",
+      "scaling_note": "Fast; weighted voting"
+    },
+    {
+      "name": "consensus_habitat",
+      "description": "Assemblage-level consensus habitat from per-species weights",
+      "inputs": [
+        {"name": "habitats_df", "type": "habitats_df", "required": true, "description": "Per-species habitat weight table"},
+        {"name": "habitat_cols", "type": "character_vector", "required": false, "description": "Habitat columns (auto-detected if NULL)"},
+        {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon name column"},
+        {"name": "threshold", "type": "numeric", "required": false, "default": 0.3, "description": "Minimum weight for inclusion"}
+      ],
+      "output": {"type": "consensus_result", "description": "List with main_habitat, ecoregion, habitat_proportions"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    }
+  ]
+}

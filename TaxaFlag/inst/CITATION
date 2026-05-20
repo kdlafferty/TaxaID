@@ -1,0 +1,16 @@
+bibentry(
+  bibtype  = "Manual",
+  title    = "TaxaFlag: Flag Anomalous Detections in Taxonomic Assignments",
+  author   = person("Kevin", "Lafferty"),
+  year     = "2026",
+  note     = "R package version 0.0.0.9000; part of the TaxaID ecosystem",
+  url      = "https://github.com/klafferty/TaxaID"
+)
+
+bibentry(
+  bibtype  = "Manual",
+  title    = "TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment",
+  author   = person("Kevin", "Lafferty"),
+  year     = "2026",
+  note     = "In preparation"
+)

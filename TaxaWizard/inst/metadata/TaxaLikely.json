@@ -1,0 +1,116 @@
+{
+  "package": "TaxaLikely",
+  "description": "Convert match scores to likelihoods using hierarchical Bayesian model; reference QC",
+  "functions": [
+    {
+      "name": "fetch_reference_sequences",
+      "description": "Search NCBI by taxon + barcode marker -> reference_df with taxonomy",
+      "inputs": [
+        {"name": "taxa", "type": "character_vector", "required": true, "description": "Taxon names to search"},
+        {"name": "barcode_term", "type": "character", "required": true, "description": "Barcode marker (e.g., '12S', 'COI')"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks to resolve"},
+        {"name": "cache_dir", "type": "file_path", "required": false, "description": "Directory for resumable cache"},
+        {"name": "max_per_species", "type": "integer", "required": false, "default": 50, "description": "Max sequences per species"},
+        {"name": "priority_taxa", "type": "character_vector", "required": false, "default": null, "description": "Species names from match data to prioritize (fully represented even when subsampling)"},
+        {"name": "max_sequences", "type": "integer", "required": false, "default": 10000, "description": "Total sequence download budget; subsamples proportionally if exceeded"},
+        {"name": "min_per_taxon", "type": "integer", "required": false, "default": 50, "description": "Minimum sequences per taxon when subsampling"}
+      ],
+      "output": {"type": "reference_df", "description": "Data frame with accession, sequence, taxonomy"},
+      "scaling": "api_limited",
+      "scaling_note": "NCBI API limited; ~5-30 min depending on taxon count and rate limits"
+    },
+    {
+      "name": "read_reference_fasta",
+      "description": "Read local FASTA + taxonomy table -> reference_df",
+      "inputs": [
+        {"name": "fasta_path", "type": "file_path", "required": true, "description": "Path to FASTA file"},
+        {"name": "taxonomy", "type": "data.frame", "required": true, "description": "Taxonomy table with accession column"},
+        {"name": "rank_system", "type": "character_vector", "required": true, "description": "Taxonomy ranks in taxonomy table"}
+      ],
+      "output": {"type": "reference_df", "description": "Reference data frame"},
+      "scaling": "linear",
+      "scaling_note": "I/O bound; fast"
+    },
+    {
+      "name": "build_reference_matrix",
+      "description": "Align sequences and compute pairwise distance matrix",
+      "inputs": [
+        {"name": "reference_df", "type": "reference_df", "required": true, "description": "From fetch_reference_sequences() or read_reference_fasta()"},
+        {"name": "rank_system", "type": "character_vector", "required": true, "description": "Taxonomy ranks (coarse-to-fine)"}
+      ],
+      "output": {"type": "reference_matrix", "description": "Pairwise distance matrix with taxonomy"},
+      "scaling": "quadratic",
+      "scaling_note": "Pairwise alignment: O(n^2). ~5 min for 500 sequences, ~20 min for 2000"
+    },
+    {
+      "name": "flag_reference_errors",
+      "description": "Flag mislabeled reference sequences using trained model residuals",
+      "inputs": [
+        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_reference_matrix()"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks"},
+        {"name": "mislabel_threshold", "type": "numeric", "required": false, "default": 3, "description": "Z-score threshold for mislabel detection"}
+      ],
+      "output": {"type": "data.frame", "description": "Error list with accession, error_type, score"},
+      "scaling": "linear",
+      "scaling_note": "Fast; uses model residuals"
+    },
+    {
+      "name": "train_likelihood_model",
+      "description": "Train hierarchical likelihood model from reference matrix",
+      "inputs": [
+        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_reference_matrix()"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (auto-detected if NULL)"},
+        {"name": "anchor_perfect", "type": "logical", "required": false, "default": true, "description": "Inject synthetic perfect-match anchors"},
+        {"name": "mislabel_threshold", "type": "numeric", "required": false, "default": 3, "description": "Z-score threshold for mislabel detection"}
+      ],
+      "output": {"type": "taxa_model_params", "description": "Trained model object with H1/H2/H3 parameters and reference_errors"},
+      "scaling": "linear",
+      "scaling_note": "Fast after matrix is built; ~10 sec"
+    },
+    {
+      "name": "evaluate_likelihoods",
+      "description": "Apply trained model to match scores -> likelihoods per hypothesis",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object"},
+        {"name": "model_params", "type": "taxa_model_params", "required": true, "description": "Trained model"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (auto-detected if NULL)"},
+        {"name": "n_sims", "type": "integer", "required": false, "default": 100, "description": "Monte Carlo simulations"}
+      ],
+      "output": {"type": "likelihoods_list", "description": "List with $likelihoods (data frame) and $unresolved"},
+      "scaling": "linear",
+      "scaling_note": "Fast; ~1 sec per 500 samples"
+    },
+    {
+      "name": "filter_top_hypotheses",
+      "description": "Keep finest-rank candidates per query; drop coarser duplicates",
+      "inputs": [
+        {"name": "likelihoods_df", "type": "data.frame", "required": true, "description": "From evaluate_likelihoods()$likelihoods"}
+      ],
+      "output": {"type": "data.frame", "description": "Filtered likelihoods"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R"
+    },
+    {
+      "name": "remove_flagged_references",
+      "description": "Remove mislabeled accessions from match_df using flag_reference_errors() output",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Match object to clean"},
+        {"name": "reference_errors", "type": "data.frame", "required": true, "description": "From model_params$reference_errors"},
+        {"name": "remove_unverified_singletons", "type": "logical", "required": false, "default": false, "description": "Also remove unverified singletons"}
+      ],
+      "output": {"type": "match_df", "description": "Cleaned match object"},
+      "scaling": "linear",
+      "scaling_note": "Fast; row filtering"
+    },
+    {
+      "name": "interpret_model",
+      "description": "Summarize trained model: species count, diagnostics, per-species profiles",
+      "inputs": [
+        {"name": "model_params", "type": "taxa_model_params", "required": true, "description": "Trained model"}
+      ],
+      "output": {"type": "character", "description": "Formatted model summary"},
+      "scaling": "linear",
+      "scaling_note": "Instant"
+    }
+  ]
+}

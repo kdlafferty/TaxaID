@@ -1,0 +1,42 @@
+{
+  "package": "TaxaExpect",
+  "description": "Estimate prior probabilities from occurrence data, habitat, and spatial modeling",
+  "functions": [
+    {
+      "name": "build_priors",
+      "description": "High-level wrapper: GBIF fetch -> habitat -> grid -> model -> priors -> backbone translation",
+      "inputs": [
+        {"name": "taxa", "type": "data.frame", "required": true, "description": "Data frame with taxonomy rank columns. Column names encode the rank (family, genus, species). IMPORTANT: the prior algorithm estimates sampling effort from multiple species captured by similar methods. A single target species is insufficient — provide a broader group (e.g. data.frame(family = 'Gobiidae') or a multi-species list) so the algorithm can gauge how well-sampled each grid cell is."},
+        {"name": "lat", "type": "numeric", "required": true, "description": "Latitude of study site"},
+        {"name": "lon", "type": "numeric", "required": true, "description": "Longitude of study site"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "default": "c('family', 'genus', 'species')", "description": "Taxonomy ranks"},
+        {"name": "habitat_scheme", "type": "character_or_dataframe", "required": false, "description": "Habitat classification: NULL (default 3-category: Marine/Freshwater/Terrestrial), 'IUCN_L1' (18 IUCN Level 1 groups), or a custom data.frame with an l1_name column listing the habitat categories (e.g. data.frame(l1_name = c('Estuarine', 'Freshwater', 'Rocky Intertidal', 'Sandy Subtidal'))). If the user provides habitat names, construct a custom data frame."},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider for habitat assignment"},
+        {"name": "geographic_context", "type": "character", "required": false, "description": "Geographic hint for habitat LLM"},
+        {"name": "target_backbone_id", "type": "integer", "required": false, "default": 4, "description": "Target backbone for translating prior taxon names (4 = NCBI, 11 = GBIF). Does not affect the GBIF occurrence query itself."},
+        {"name": "year_range", "type": "character", "required": false, "default": "NULL", "description": "GBIF year filter as a comma-separated string, e.g. '2000,2024'. NULL (default) returns all years. Must be a string, NOT a numeric vector."},
+        {"name": "search_radius_deg", "type": "numeric", "required": false, "default": 5, "description": "Radius in degrees around site for GBIF search. Larger values (5-6) provide more grid cells for the spatial model and produce much better species-habitat differentiation. Values below 3 often produce too few grid cells for the model to estimate species-specific habitat slopes."},
+        {"name": "supplemental_occurrences", "type": "data.frame", "required": false, "description": "Additional occurrence data to include"},
+        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
+      ],
+      "output": {"type": "priors_output", "description": "List with $priors (data frame with grid_id, main_habitat, taxon_name, theta) and attributes"},
+      "scaling": "api_limited",
+      "scaling_note": "GBIF + LLM + modeling; 10-60 min depending on taxon count and geographic scope"
+    },
+    {
+      "name": "optimize_grid_size",
+      "description": "Find optimal spatial grid resolution for prior estimation",
+      "inputs": [
+        {"name": "observation_data", "type": "data.frame", "required": true, "description": "Occurrence data with coordinates"},
+        {"name": "n_covariates", "type": "integer", "required": true, "description": "Number of model covariates"},
+        {"name": "lat_col", "type": "character", "required": false, "default": "decimalLatitude", "description": "Latitude column"},
+        {"name": "lon_col", "type": "character", "required": false, "default": "decimalLongitude", "description": "Longitude column"},
+        {"name": "species_col", "type": "character", "required": false, "default": "species", "description": "Species column"},
+        {"name": "habitat_col", "type": "character", "required": false, "default": "main_habitat", "description": "Habitat column"}
+      ],
+      "output": {"type": "numeric", "description": "Recommended grid size in degrees"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    }
+  ]
+}

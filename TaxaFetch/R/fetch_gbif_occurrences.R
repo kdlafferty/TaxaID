@@ -1,0 +1,270 @@
+# ==============================================================================
+# fetch_gbif_occurrences.R
+# TaxaExpect -- Download GBIF occurrence records for a set of taxon keys
+# ==============================================================================
+
+#' Fetch GBIF Occurrence Records for a Set of Taxon Keys
+#'
+#' Downloads occurrence records from GBIF for a vector of taxon usage keys,
+#' processing them in chunks to stay within API rate limits. Returns a single
+#' combined tibble of all records that pass hierarchy validation.
+#'
+#' @param keys Integer or numeric vector. GBIF taxon usage keys. Typically the
+#'   output of \code{\link{get_keys_from_context}} or
+#'   \code{rgbif::name_backbone()}. Duplicates are removed before processing.
+#' @param geometry Character. A WKT polygon string defining the geographic
+#'   search area. Use \code{\link{make_bbox_wkt}} to generate from a centre
+#'   lat/lon and radius.
+#' @param year_range Character. Year range for the GBIF query, formatted as
+#'   \code{"YYYY,YYYY"}, e.g. \code{"2000,2024"}. Passed directly to
+#'   \code{rgbif::occ_data(year = ...)}.
+#' @param limit Integer. Maximum records to return per taxon key. GBIF caps
+#'   this at 100,000; default 10,000 is usually sufficient for regional
+#'   queries.
+#' @param chunk_size Integer. Number of keys per API batch. Default 20.
+#'   Reduce if you experience HTTP 429 rate-limit errors; increase cautiously.
+#' @param pause_seconds Numeric. Seconds to pause between chunks. Default 1.
+#'   Increase to be polite to the API under heavy load.
+#' @param beep Logical. If \code{TRUE} and the \code{beepr} package is
+#'   available, plays a sound on completion. Falls back to a system bell
+#'   character if \code{beepr} is absent. Default \code{FALSE}.
+#'
+#' @return A tibble of occurrence records with GBIF's standard columns.
+#'   Only records where the query key appears somewhere in the returned
+#'   record's taxonomic hierarchy are retained (see Details). Returns an
+#'   empty tibble with a warning if no records pass.
+#'
+#' @details
+#' \strong{Hierarchy validation:} GBIF sometimes returns records for synonyms
+#' or higher-rank ancestors of the queried key. Each returned record is
+#' checked to confirm that the query key appears somewhere in its taxonomic
+#' hierarchy columns (\code{taxonKey}, \code{speciesKey}, \code{genusKey},
+#' \code{familyKey}, \code{orderKey}, \code{classKey}, \code{phylumKey},
+#' \code{kingdomKey}, \code{acceptedTaxonKey}). Records that fail this check
+#' are silently dropped. This prevents off-target taxa from entering the
+#' dataset when searching at family or order level.
+#'
+#' \strong{Rate limiting:} GBIF's occurrence API allows roughly 100 requests
+#' per minute for authenticated users and fewer for anonymous requests.
+#' With \code{chunk_size = 20} and \code{pause_seconds = 1}, a query of 200
+#' keys takes about 10 seconds. If you see HTTP 429 errors, increase
+#' \code{pause_seconds} or reduce \code{chunk_size}.
+#'
+#' \strong{rgbif dependency:} This function requires the \code{rgbif} package,
+#' listed under \code{Suggests} rather than \code{Imports} because downstream
+#' modeling functions do not require it. Install with
+#' \code{install.packages("rgbif")}.
+#'
+#' @seealso \code{\link{make_bbox_wkt}}, \code{\link{get_keys_from_context}},
+#'   \code{\link{filter_gbif_quality}}, \code{\link{stack_occurrences}}
+#'
+#' @importFrom dplyr bind_rows tibble
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Resolve keys first
+#' taxa_df <- data.frame(
+#'   family  = "Gadidae",
+#'   species = "Gadus morhua",
+#'   stringsAsFactors = FALSE
+#' )
+#' keys_df <- get_keys_from_context(taxa_df)
+#' valid_keys <- keys_df$usageKey[!is.na(keys_df$usageKey)]
+#'
+#' # Build a bounding box and fetch
+#' bbox <- make_bbox_wkt(lat = 56.0, lon = 4.0, radius_deg = 2.0)
+#' occ  <- fetch_gbif_occurrences(
+#'   keys       = valid_keys,
+#'   geometry   = bbox,
+#'   year_range = "2010,2024",
+#'   limit      = 10000L
+#' )
+#'
+#' # Quality-filter and continue pipeline
+#' occ_clean <- filter_gbif_quality(occ)
+#' }
+
+fetch_gbif_occurrences <- function(keys,
+                                   geometry,
+                                   year_range    = "2000,2024",
+                                   limit         = 10000L,
+                                   chunk_size    = 20L,
+                                   pause_seconds = 1,
+                                   beep          = FALSE) {
+
+  # --- Dependency check -------------------------------------------------------
+  if (!requireNamespace("rgbif", quietly = TRUE)) {
+    stop(
+      "fetch_gbif_occurrences: package 'rgbif' is required for GBIF downloads.\n",
+      "Install it with: install.packages('rgbif')"
+    )
+  }
+
+  # --- Input checks -----------------------------------------------------------
+  keys <- unique(as.integer(keys))
+  keys <- keys[!is.na(keys)]
+
+  if (length(keys) == 0L) {
+    stop("fetch_gbif_occurrences: 'keys' is empty after removing NAs.")
+  }
+  if (!is.character(geometry) || length(geometry) != 1L) {
+    stop("fetch_gbif_occurrences: 'geometry' must be a single WKT string.")
+  }
+
+  total    <- length(keys)
+  chunks   <- split(keys, ceiling(seq_along(keys) / chunk_size))
+  n_chunks <- length(chunks)
+
+  message(sprintf(
+    "fetch_gbif_occurrences: fetching %d key(s) in %d chunk(s) of up to %d...",
+    total, n_chunks, chunk_size
+  ))
+
+  # --- Fetch chunks -----------------------------------------------------------
+  results    <- vector("list", n_chunks)
+  global_pos <- 0L
+
+  for (i in seq_along(chunks)) {
+    chunk_keys   <- chunks[[i]]
+    chunk_result <- .fetch_chunk(
+      keys_chunk = chunk_keys,
+      geometry   = geometry,
+      year_range = year_range,
+      limit      = limit,
+      global_pos = global_pos,
+      total      = total
+    )
+    if (!is.null(chunk_result) && nrow(chunk_result) > 0L) {
+      results[[i]] <- chunk_result
+    }
+    global_pos <- global_pos + length(chunk_keys)
+    if (i < n_chunks) Sys.sleep(pause_seconds)
+  }
+
+  # --- Combine ----------------------------------------------------------------
+  out <- dplyr::bind_rows(results)
+
+  if (nrow(out) == 0L) {
+    warning(
+      "fetch_gbif_occurrences: no records returned for any key. ",
+      "Check that keys are valid and the geometry intersects known records.",
+      call. = FALSE
+    )
+    return(dplyr::tibble())
+  }
+
+  # --- Add bibliographic citation ---------------------------------------------
+  if (!"bibliographicCitation" %in% names(out))
+    out$bibliographicCitation <- "GBIF.org. GBIF Occurrence Download via rgbif"
+
+  message(sprintf(
+    "fetch_gbif_occurrences: %d records retrieved across %d key(s).",
+    nrow(out), total
+  ))
+
+  # --- Attach report_params for report_fetch() --------------------------------
+  rp <- list(
+    source = "GBIF",
+    n_keys = total,
+    n_records = nrow(out)
+  )
+  if (!is.null(geometry) && nzchar(geometry)) rp$geometry <- geometry
+  if (!is.null(year_range) && nzchar(year_range)) rp$year_range <- year_range
+  attr(out, "report_params") <- rp
+
+  # --- Optional completion beep -----------------------------------------------
+  if (beep) {
+    if (requireNamespace("beepr", quietly = TRUE)) {
+      beepr::beep(sound = 2)
+    } else {
+      cat("\007")
+    }
+  }
+
+  out
+}
+
+
+# ==============================================================================
+# Internal helper
+# ==============================================================================
+
+#' Fetch one chunk of taxon keys from GBIF
+#'
+#' Loops over keys in a single chunk, calls \code{rgbif::occ_data} for each,
+#' validates that the query key appears in the returned record's taxonomic
+#' hierarchy, and returns the combined dataframe for the chunk.
+#'
+#' @param keys_chunk Integer vector of keys for this chunk.
+#' @param geometry WKT string.
+#' @param year_range Character year range e.g. \code{"2000,2024"}.
+#' @param limit Integer per-key record limit.
+#' @param global_pos Integer. Offset into the full key list for progress
+#'   reporting.
+#' @param total Integer. Total number of keys across all chunks.
+#' @return A data frame (possibly empty) of records for this chunk, or
+#'   \code{NULL} if all keys failed.
+#' @noRd
+
+.fetch_chunk <- function(keys_chunk, geometry, year_range, limit,
+                         global_pos, total) {
+
+  hierarchy_cols <- c("taxonKey", "speciesKey", "genusKey", "familyKey",
+                      "orderKey",  "classKey",   "phylumKey", "kingdomKey",
+                      "acceptedTaxonKey")
+
+  per_key_results <- lapply(seq_along(keys_chunk), function(i) {
+
+    key <- keys_chunk[[i]]
+    pos <- global_pos + i
+
+    message(sprintf("  [%d / %d] key %d", pos, total, key))
+
+    tryCatch({
+      resp <- tryCatch(
+        rgbif::occ_data(
+          taxonKey      = key,
+          geometry      = geometry,
+          year          = year_range,
+          limit         = limit,
+          hasCoordinate = TRUE
+        ),
+        error = function(e1) {
+          # Retry once after a brief pause
+          Sys.sleep(2)
+          rgbif::occ_data(
+            taxonKey      = key,
+            geometry      = geometry,
+            year          = year_range,
+            limit         = limit,
+            hasCoordinate = TRUE
+          )
+        }
+      )
+
+      df <- resp$data
+      if (is.null(df) || nrow(df) == 0L) return(NULL)
+
+      # Hierarchy validation: confirm the query key appears somewhere in the
+      # returned record's taxonomic lineage. Drops off-target synonyms.
+      present_cols <- intersect(hierarchy_cols, names(df))
+      if (length(present_cols) == 0L) return(df)   # can't validate; keep all
+
+      # Vectorized: check if key appears in any hierarchy column per row
+      m <- as.matrix(df[present_cols])
+      storage.mode(m) <- "integer"
+      key_found <- rowSums(m == key, na.rm = TRUE) > 0L
+      df[key_found, , drop = FALSE]
+
+    }, error = function(e) {
+      warning(sprintf(
+        "fetch_gbif_occurrences: key %d failed -- %s", key, conditionMessage(e)
+      ), call. = FALSE)
+      NULL
+    })
+  })
+
+  result <- dplyr::bind_rows(per_key_results)
+  if (nrow(result) == 0L) NULL else result
+}

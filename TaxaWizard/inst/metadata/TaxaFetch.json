@@ -1,0 +1,77 @@
+{
+  "package": "TaxaFetch",
+  "description": "Occurrence data acquisition from GBIF, DataONE, PDFs, literature; source combination",
+  "functions": [
+    {
+      "name": "get_keys_from_context",
+      "description": "Look up GBIF taxon keys from taxon names or higher-rank context",
+      "inputs": [
+        {"name": "taxon_names", "type": "character_vector", "required": true, "description": "Scientific names to look up"},
+        {"name": "backbone_id", "type": "integer", "required": false, "default": 11, "description": "Backbone ID (11=GBIF)"}
+      ],
+      "output": {"type": "integer_vector", "description": "GBIF taxon keys"},
+      "scaling": "api_limited",
+      "scaling_note": "GBIF API; fast for small lists"
+    },
+    {
+      "name": "fetch_gbif_occurrences",
+      "description": "Download occurrence records from GBIF for given taxon keys and geometry",
+      "inputs": [
+        {"name": "keys", "type": "integer_vector", "required": true, "description": "GBIF taxon keys"},
+        {"name": "geometry", "type": "character", "required": true, "description": "WKT polygon for spatial filter"},
+        {"name": "year_range", "type": "character", "required": false, "description": "Year range, e.g. '2000,2024'"},
+        {"name": "limit", "type": "integer", "required": false, "default": 10000, "description": "Max records per key"}
+      ],
+      "output": {"type": "occurrences_df", "description": "Occurrence records with coordinates, dates, taxonomy, bibliographicCitation"},
+      "scaling": "api_limited",
+      "scaling_note": "GBIF API; ~1-10 min depending on number of keys and records"
+    },
+    {
+      "name": "make_bbox_wkt",
+      "description": "Create WKT POLYGON string from bounding box coordinates",
+      "inputs": [
+        {"name": "lon_min", "type": "numeric", "required": true, "description": "Minimum longitude"},
+        {"name": "lon_max", "type": "numeric", "required": true, "description": "Maximum longitude"},
+        {"name": "lat_min", "type": "numeric", "required": true, "description": "Minimum latitude"},
+        {"name": "lat_max", "type": "numeric", "required": true, "description": "Maximum latitude"}
+      ],
+      "output": {"type": "character", "description": "WKT POLYGON string"},
+      "scaling": "linear",
+      "scaling_note": "Instant; string construction"
+    },
+    {
+      "name": "filter_gbif_quality",
+      "description": "Filter GBIF records by coordinate quality, basis of record, etc.",
+      "inputs": [
+        {"name": "df", "type": "occurrences_df", "required": true, "description": "GBIF occurrence data frame"},
+        {"name": "max_coord_uncertainty", "type": "numeric", "required": false, "default": 10000, "description": "Max coordinate uncertainty in meters"}
+      ],
+      "output": {"type": "occurrences_df", "description": "Filtered occurrences"},
+      "scaling": "linear",
+      "scaling_note": "Fast; row filtering"
+    },
+    {
+      "name": "stack_occurrences",
+      "description": "Row-bind occurrence data frames from multiple sources; attach report_params with citations",
+      "inputs": [
+        {"name": "...", "type": "occurrences_df", "required": true, "description": "One or more occurrence data frames"},
+        {"name": "lat_col", "type": "character", "required": false, "default": "decimalLatitude", "description": "Latitude column name"},
+        {"name": "lon_col", "type": "character", "required": false, "default": "decimalLongitude", "description": "Longitude column name"}
+      ],
+      "output": {"type": "occurrences_df", "description": "Combined occurrence data frame with citations attribute"},
+      "scaling": "linear",
+      "scaling_note": "Fast; row binding"
+    },
+    {
+      "name": "search_literature",
+      "description": "Search OpenAlex for relevant biodiversity literature by taxa + geography",
+      "inputs": [
+        {"name": "taxon_names", "type": "character_vector", "required": true, "description": "Taxa to search for"},
+        {"name": "geographic_terms", "type": "character_vector", "required": false, "description": "Geographic keywords to include"}
+      ],
+      "output": {"type": "data.frame", "description": "Literature search results with screening columns"},
+      "scaling": "api_limited",
+      "scaling_note": "OpenAlex API; requires OPENALEX_API_KEY"
+    }
+  ]
+}

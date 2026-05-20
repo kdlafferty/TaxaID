@@ -1,0 +1,15 @@
+^renv$
+^renv\.lock$
+^.*\.Rproj$
+^\.Rproj\.user$
+^CLAUDE\.md$
+^\.claude$
+^.*\.rds$
+^openalex_cache$
+^inst/TaxaFetch_workflow copy\.R$
+^\.Rhistory$
+^\.DS_Store$
+^DISCLAIMER\.md$
+^pdfs$
+^taxaid_methods_.*\.md$
+^taxaid_workflow_.*\.R$

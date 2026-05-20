@@ -1,0 +1,73 @@
+{
+  "package": "TaxaMatch",
+  "description": "Sequence input (DADA2/FASTA), BLAST search, match standardization",
+  "functions": [
+    {
+      "name": "read_sequence_table",
+      "description": "Ingest DADA2 seqtab matrix, FASTA file, or DNAStringSet; optional taxonomy join",
+      "inputs": [
+        {"name": "data", "type": "file_path|matrix|DNAStringSet", "required": true, "description": "Sequence table, FASTA path, or DNAStringSet"},
+        {"name": "taxonomy", "type": "data.frame", "required": false, "description": "Taxonomy table to join"},
+        {"name": "id_prefix", "type": "character", "required": false, "default": "ASV", "description": "Prefix for auto-generated sample IDs"}
+      ],
+      "output": {"type": "sequence_df", "description": "Data frame with observation_id, sequence columns"},
+      "scaling": "linear",
+      "scaling_note": "I/O bound; fast for typical eDNA datasets"
+    },
+    {
+      "name": "filter_sequences",
+      "description": "Filter ASVs by length range and minimum abundance",
+      "inputs": [
+        {"name": "seq_df", "type": "sequence_df", "required": true, "description": "From read_sequence_table()"},
+        {"name": "barcode_term", "type": "character", "required": false, "description": "Barcode marker for auto length detection"},
+        {"name": "min_length", "type": "integer", "required": false, "description": "Minimum sequence length"},
+        {"name": "max_length", "type": "integer", "required": false, "description": "Maximum sequence length"},
+        {"name": "min_abundance", "type": "integer", "required": false, "default": 2, "description": "Minimum total reads across samples"}
+      ],
+      "output": {"type": "sequence_df", "description": "Filtered sequence data frame"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R"
+    },
+    {
+      "name": "blast_sequences",
+      "description": "Remote NCBI BLAST or local rBLAST; score window filtering; taxonomy resolution",
+      "inputs": [
+        {"name": "seq_df", "type": "sequence_df", "required": true, "description": "Sequences to BLAST (from read_sequence_table/filter_sequences)"},
+        {"name": "database", "type": "character", "required": false, "default": "nt", "description": "BLAST database"},
+        {"name": "method", "type": "character", "required": false, "default": "remote", "description": "'remote' (NCBI) or 'local' (rBLAST)"},
+        {"name": "score_range", "type": "numeric", "required": false, "default": 5, "description": "Keep hits within this % of top hit per query"},
+        {"name": "barcode_term", "type": "character", "required": false, "description": "Barcode marker for length filtering"},
+        {"name": "resolve_taxonomy", "type": "logical", "required": false, "default": true, "description": "Resolve full taxonomy from NCBI"},
+        {"name": "email", "type": "character", "required": false, "description": "Email for NCBI (required for remote)"}
+      ],
+      "output": {"type": "match_df", "description": "Match data with score, accession, taxonomy"},
+      "scaling": "api_limited",
+      "scaling_note": "Remote BLAST: ~2-5 min per batch of 50 sequences. Local: ~30 sec per 100 sequences"
+    },
+    {
+      "name": "standardize_match_data",
+      "description": "Standardize any match table to the canonical match_df format",
+      "inputs": [
+        {"name": "data", "type": "data.frame", "required": true, "description": "Raw match data with score and taxonomy columns"},
+        {"name": "observation_id_col", "type": "character", "required": true, "description": "Column containing observation/query identifiers"},
+        {"name": "score_col", "type": "character", "required": true, "description": "Column containing match scores"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks to retain"},
+        {"name": "col_map", "type": "named_character", "required": false, "description": "Additional column renames: c(new = 'old')"}
+      ],
+      "output": {"type": "match_df", "description": "Standardized match object with observation_id, score, taxon_name, taxon_name_rank, taxonomy columns"},
+      "scaling": "linear",
+      "scaling_note": "Fast; column rename + type coercion"
+    },
+    {
+      "name": "filter_redundant_hypotheses",
+      "description": "Drop higher-rank rows superseded by finer-rank rows within same lineage + observation_id",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Match object"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Rank order for redundancy detection"}
+      ],
+      "output": {"type": "match_df", "description": "Filtered match object"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R"
+    }
+  ]
+}

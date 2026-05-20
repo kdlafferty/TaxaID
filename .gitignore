@@ -1,0 +1,54 @@
+# ── R build/check artifacts ──────────────────────
+*.Rcheck/
+..Rcheck/
+*.tar.gz
+
+# ── RStudio user files ──────────────────────────
+.Rproj.user/
+
+# ── R session files ─────────────────────────────
+.Rhistory
+.RData
+.Ruserdata
+
+# ── macOS ───────────────────────────────────────
+.DS_Store
+._*
+
+# ── Large data files (cached workflow outputs) ──
+*.rds
+*.RDS
+*.csv
+*.xlsx
+
+# ── renv (lock file IS tracked; library is not) ─
+renv/library/
+renv/staging/
+renv/sandbox/
+
+# ── Rendered output (rebuild from source) ───────
+TaxaID_presentation.html
+TaxaID_presentation_files/
+ecosystem_docs/*.html
+
+# ── TaxaWizard transient state ──────────────────
+.workflow_checkpoints/
+taxaid_workflow_*.R
+*/taxaid_workflow_*.R
+
+# ── Claude Code local settings ──────────────────
+.claude/
+
+# ── One-off scripts with hardcoded user paths ───
+TaxaAssign/inst/demo_for_JV.R
+TaxaAssign/inst/Wrapper_full_workflow.R
+TaxaAssign/inst/TaxaAssign_bayesian_workflow_new.R
+TaxaMatch/inst/Write_text_reports.R
+inst/test_report_workflow.R
+
+# ── PDF data files in TaxaFetch (large) ─────────
+TaxaFetch/pdfs/
+
+# ── IDE ─────────────────────────────────────────
+.vscode/
+.idea/

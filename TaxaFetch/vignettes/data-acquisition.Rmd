@@ -1,0 +1,97 @@
+---
+title: "Fetching Occurrence Data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Fetching Occurrence Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Purpose
+
+TaxaFetch acquires occurrence data from GBIF, DataONE, BioTIME, PDFs, and
+literature searches. It produces standardised occurrence records that feed
+into TaxaHabitat (for habitat assignment) and TaxaExpect (for prior
+construction).
+
+## Quick Start: GBIF
+
+```{r quickstart}
+library(TaxaFetch)
+
+keys <- get_keys_from_context(data.frame(taxon_name = c("Fundulidae", "Gobiidae")))
+bbox <- make_bbox_wkt(lat = 34.4, lon = -119.8, radius_deg = 2)
+
+gbif_raw <- fetch_gbif_occurrences(keys$usageKey, bbox = bbox, year_range = "2015,2025")
+occurrences <- filter_gbif_quality(gbif_raw)
+```
+
+## Data Sources
+
+### GBIF occurrences
+
+```{r gbif}
+# Step 1: Get GBIF taxon keys
+keys <- get_keys_from_context(
+  data.frame(taxon_name = c("Fundulidae", "Atherinopsidae"))
+)
+
+# Step 2: Define bounding box
+bbox <- make_bbox_wkt(lat = 34.4, lon = -119.8, radius_deg = 2)
+
+# Step 3: Fetch and filter
+gbif_raw <- fetch_gbif_occurrences(keys$usageKey, bbox = bbox, limit = 10000)
+occurrences <- filter_gbif_quality(gbif_raw, max_coord_uncertainty = 1000)
+```
+
+### Combining multiple sources
+
+```{r stack}
+# Stack GBIF with local survey data
+combined <- stack_occurrences(gbif_occurrences, local_survey_data)
+```
+
+### DataONE
+
+```{r dataone}
+catalog <- harvest_dataone_catalog(query = "kelp forest fish abundance")
+previewed <- preview_dataone_occurrences(catalog[1, ])
+occurrences <- fetch_dataone_occurrences(catalog[1, ])
+```
+
+### Literature search
+
+```{r literature}
+results <- search_literature(
+  taxa    = c("Fundulus parvipinnis", "Atherinops affinis"),
+  region  = "Southern California"
+)
+```
+
+## Key Parameters
+
+| Parameter | Default | When to change |
+|---|---|---|
+| `radius_deg` | 2 | Increase for data-poor regions (~220 km at equator) |
+| `year_range` | NULL | Filter to recent years: `"2015,2025"` |
+| `limit` | 10000 | Increase for comprehensive coverage |
+| `max_coord_uncertainty` | 1000 | Decrease for higher precision |
+
+## Common Pitfalls
+
+1. **No GBIF records returned:** Check that taxon names match GBIF taxonomy.
+   Use `get_keys_from_context()` to verify keys before fetching.
+
+2. **Rate limiting:** GBIF and DataONE APIs have rate limits. Add pauses
+   between large batch requests.
+
+3. **Column name mismatches:** Use `TaxaTools::rename_cols()` to standardise
+   column names from different sources before stacking.

@@ -1,0 +1,126 @@
+---
+title: "Quality Flagging with TaxaFlag"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Quality Flagging with TaxaFlag}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Overview
+
+TaxaFlag provides three independent flagging mechanisms for identifying
+anomalous detections in taxonomic assignment results:
+
+1. **Contamination flagging** -- compare taxon proportions against control samples
+2. **Handler artifact flagging** -- detect temporal clustering near equipment events
+3. **Expert review** -- LLM-based assessment of assignment plausibility
+
+Each flag function appends categorical columns to your data. You decide how to
+weight and combine them.
+
+## Contamination Flagging
+
+The `flag_contaminant()` function compares read proportions in your samples
+against control samples (lab blanks, field blanks, or positive controls).
+
+```{r contamination-example, eval = FALSE}
+library(TaxaFlag)
+
+# Identify control samples
+controls <- c("blank_1", "blank_2", "blank_3")
+
+# Flag taxa that appear disproportionately in blanks
+flagged <- flag_contaminant(
+  df              = assignments,
+  control_samples = controls,
+  taxon_col       = "consensus_taxon",
+  reads_col       = "n_reads",
+  event_col       = "event_id",
+  contaminant_type = "lab"
+)
+
+# Result adds: flag_lab, flag_lab_reason, flag_lab_score columns
+table(flagged$flag_lab)
+```
+
+Flag values:
+- `"likely"` -- taxon behaves normally (not a contaminant)
+- `"possible"` -- elevated in controls but not conclusive
+- `"unlikely"` -- strong evidence of contamination
+
+## Handler Artifact Flagging
+
+The `flag_handler()` function identifies detections clustered near equipment
+setup, collection, or handling events.
+
+```{r handler-example, eval = FALSE}
+# Flag detections within 30 minutes of sample collection
+flagged <- flag_handler(
+  df               = assignments,
+  datetime_col     = "detection_time",
+  group_col        = "station_id",
+  interval_minutes = 30
+)
+
+# Result adds: flag_handler column
+table(flagged$flag_handler)
+```
+
+## Expert Review (LLM-based)
+
+The `review_assignments()` function submits assignments to an LLM for
+structured expert review across multiple dimensions.
+
+```{r review-example, eval = FALSE}
+# Requires an LLM provider function and a context list
+reviewed <- review_assignments(
+  df        = consensus_df,
+  taxon_col = "consensus_taxon",
+  context   = list(ecoregion = "Southern California Bight",
+                   main_habitat = "Marine"),
+  llm_fn    = TaxaTools::call_anthropic_api
+)
+
+# Adds 8 structured columns:
+# review_habitat, review_geography, review_scope, review_contaminant,
+# review_alternatives, review_lower_hypotheses, review_confidence, review_comment
+```
+
+## Combining Flags
+
+TaxaFlag intentionally does not provide a `combine_flags()` function. The
+appropriate weighting depends on your study design and risk tolerance:
+
+```{r combine-example, eval = FALSE}
+# Example: conservative approach (flag if ANY mechanism triggers)
+flagged$any_flag <- with(flagged,
+  flag_lab == "unlikely" |
+  flag_handler == "unlikely" |
+  review_confidence == "low"
+)
+
+# Example: permissive approach (only flag if multiple mechanisms agree)
+flagged$multi_flag <- with(flagged,
+  (flag_lab == "unlikely") + (flag_handler == "unlikely") >= 2
+)
+```
+
+## Reporting
+
+Generate a structured report section for Methods/Results:
+
+```{r report-example, eval = FALSE}
+sec <- report_flags(flagged)
+print(sec)
+
+# Or assemble with other TaxaID package reports:
+full_report <- TaxaTools::assemble_report(fetch_sec, match_sec, assign_sec, sec)
+```

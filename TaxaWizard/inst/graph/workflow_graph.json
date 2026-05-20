@@ -1,0 +1,322 @@
+{
+  "nodes": {
+    "inputs": [
+      {"id": "sequences",    "label": "Raw Sequences",       "description": "DADA2 sequence table, FASTA file, or DNAStringSet"},
+      {"id": "match_df",     "label": "Match Data",          "description": "CSV/RDS with observation_id, score, and taxonomy columns (e.g. BLAST output)"},
+      {"id": "taxa",         "label": "Taxon List",          "description": "Data frame with taxonomy rank columns (e.g. data.frame(family = 'Gobiidae') or data.frame(species = c('Eucyclogobius newberryi', 'Clevelandia ios'))). Column names encode taxonomic rank for GBIF lookups."},
+      {"id": "consensus_df", "label": "Consensus Table",     "description": "Pre-existing consensus assignments (one row per sample)"},
+      {"id": "reference_df", "label": "Reference Sequences", "description": "FASTA + taxonomy table, or output of fetch_reference_sequences()"},
+      {"id": "occurrences",  "label": "Occurrence Data",     "description": "GBIF download, CSV, or other occurrence records with coordinates"}
+    ],
+    "intermediates": [
+      {"id": "std_occurrences",  "label": "Standardized Occurrences", "description": "Habitat-assigned, spatially cleaned occurrence data"},
+      {"id": "distributions",    "label": "Spatial Distributions",    "description": "Gridded occurrences with grid_id, ready for biodiversity modeling"},
+      {"id": "reference_matrix", "label": "Reference Matrix",         "description": "Pairwise distance matrix from DECIPHER alignment"},
+      {"id": "clean_refs",       "label": "Cleaned References",       "description": "Reference data with mislabeled sequences removed"},
+      {"id": "model_params",     "label": "Likelihood Model",         "description": "Trained taxa_model_params object from TaxaLikely"},
+      {"id": "likelihoods",      "label": "Likelihoods",              "description": "Per-hypothesis likelihood estimates from evaluate_likelihoods()"},
+      {"id": "context_df",       "label": "Ecological Context",       "description": "Site context (ecoregion, main_habitat, date) from build_context()"},
+      {"id": "priors",           "label": "Prior Probabilities",      "description": "Spatial priors from build_priors() or occurrence-based pipeline"},
+      {"id": "posteriors",       "label": "Posterior Probabilities",   "description": "Bayesian posteriors from compute_posterior() or LLM pipeline"}
+    ],
+    "outputs": [
+      {"id": "consensus",  "label": "Consensus Taxonomy",    "description": "One best taxonomic assignment per sample"},
+      {"id": "reviewed",   "label": "Reviewed Consensus",    "description": "Consensus with LLM expert review columns"},
+      {"id": "flagged",    "label": "Flagged Consensus",     "description": "Consensus with contamination/handler flags"},
+      {"id": "ref_gaps",       "label": "Reference Gaps",        "description": "Census of unreferenced species per genus"},
+      {"id": "prior_map",     "label": "Prior Map",             "description": "Spatial prior probabilities as RDS or interactive map"},
+      {"id": "likelihood_df", "label": "Likelihood Table",      "description": "Per-hypothesis likelihood estimates saved as RDS, ready for TaxaAssign or standalone analysis"}
+    ]
+  },
+  "edges": [
+    {
+      "id": "seq_to_match",
+      "from": ["sequences"],
+      "to": "match_df",
+      "label": "BLAST sequences against reference database",
+      "description": "Read sequences, filter by length/abundance, run BLAST, standardize output, remove redundant higher-rank hits",
+      "packages": ["TaxaMatch"],
+      "functions": ["read_sequence_table", "filter_sequences", "blast_sequences", "standardize_match_data", "filter_redundant_hypotheses"],
+      "snippet": "seq_to_match.R",
+      "time_estimate": "10-60 min (depends on BLAST method and number of sequences)"
+    },
+    {
+      "id": "match_to_taxa",
+      "from": ["match_df"],
+      "to": "taxa",
+      "label": "Extract unique taxa from match data",
+      "description": "Auto-detect rank columns, derive taxon_name and taxon_name_rank using create_taxon_names(), then extract unique names",
+      "packages": ["TaxaTools"],
+      "functions": ["create_taxon_names"],
+      "snippet": "match_to_taxa.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "taxa_to_occ",
+      "from": ["taxa"],
+      "to": "occurrences",
+      "label": "Fetch occurrence records from GBIF",
+      "description": "Resolve taxon names to GBIF keys, query occurrences within a bounding box, filter for quality",
+      "packages": ["TaxaFetch"],
+      "functions": ["get_keys_from_context", "fetch_gbif_occurrences", "filter_gbif_quality"],
+      "snippet": "taxa_to_occ.R",
+      "time_estimate": "1-5 min (depends on number of taxa and GBIF response)"
+    },
+    {
+      "id": "occ_to_std",
+      "from": ["occurrences"],
+      "to": "std_occurrences",
+      "label": "Standardize occurrences and assign habitat",
+      "description": "Rename columns to DwC, stack multiple sources, assign habitat via LLM (build_habitat_prompt + parse + assign_habitat_biological), flag spatial inconsistencies",
+      "packages": ["TaxaTools", "TaxaFetch", "TaxaHabitat"],
+      "functions": ["rename_cols", "stack_occurrences", "build_habitat_prompt", "parse_hierarchical_habitat_response", "assign_habitat_biological"],
+      "snippet": "occ_to_std.R",
+      "time_estimate": "1-3 min (LLM call for habitat)"
+    },
+    {
+      "id": "std_to_dist",
+      "from": ["std_occurrences"],
+      "to": "distributions",
+      "label": "Create spatial grid and assign occurrences to grid cells",
+      "description": "Optimize grid size for the data, create grid_id for each occurrence point",
+      "packages": ["TaxaExpect"],
+      "functions": ["optimize_grid_size", "create_sites_from_grid"],
+      "snippet": "std_to_dist.R",
+      "time_estimate": "seconds to 1 min"
+    },
+    {
+      "id": "dist_to_priors",
+      "from": ["distributions"],
+      "to": "priors",
+      "label": "Build priors from spatial distributions (manual path)",
+      "description": "Prepare model data, compute Moran spatial basis, screen formula, train biodiversity model, generate priors, translate backbone",
+      "packages": ["TaxaExpect", "TaxaTools"],
+      "functions": ["prepare_model_dataframe", "compute_moran_basis", "screen_spatial_formula", "train_biodiversity_model", "generate_full_priors", "verify_taxon_names", "change_backbone"],
+      "snippet": "dist_to_priors.R",
+      "time_estimate": "5-30 min (depends on grid size and number of taxa)"
+    },
+    {
+      "id": "taxa_to_priors_wrapper",
+      "from": ["taxa"],
+      "to": "priors",
+      "label": "Build priors via wrapper (recommended)",
+      "description": "Single call that runs GBIF fetch, habitat assignment, spatial gridding, model training, and prior generation. Use when standard defaults are acceptable. IMPORTANT: the prior algorithm estimates sampling effort from multiple species captured by similar methods. A single target species is insufficient — provide a broader taxonomic group (e.g. a family) or a multi-species list.",
+      "packages": ["TaxaExpect"],
+      "functions": ["build_priors"],
+      "wrapper": true,
+      "snippet": "taxa_to_priors_wrapper.R",
+      "time_estimate": "5-30 min"
+    },
+    {
+      "id": "taxa_to_context",
+      "from": ["taxa"],
+      "to": "context_df",
+      "label": "Infer ecological context via LLM",
+      "description": "Send taxon names + geographic hint to LLM to infer ecoregion, main_habitat, and date. Returns a context object for downstream use.",
+      "packages": ["TaxaAssign"],
+      "functions": ["build_context"],
+      "snippet": "taxa_to_context.R",
+      "time_estimate": "30 sec (1-2 LLM calls)"
+    },
+    {
+      "id": "taxa_to_refs",
+      "from": ["taxa"],
+      "to": "reference_df",
+      "label": "Fetch reference sequences from NCBI",
+      "description": "Search NCBI nucleotide by taxon + barcode marker, resolve taxonomy, download FASTA",
+      "packages": ["TaxaLikely"],
+      "functions": ["fetch_reference_sequences"],
+      "snippet": "taxa_to_refs.R",
+      "time_estimate": "5-30 min (depends on number of taxa and NCBI availability)"
+    },
+    {
+      "id": "refs_to_matrix",
+      "from": ["reference_df"],
+      "to": "reference_matrix",
+      "label": "Build pairwise distance matrix",
+      "description": "Align reference sequences with DECIPHER, compute pairwise distances. Requires Bioconductor packages.",
+      "packages": ["TaxaLikely"],
+      "functions": ["build_reference_matrix"],
+      "snippet": "refs_to_matrix.R",
+      "time_estimate": "1-10 min (depends on number of sequences)"
+    },
+    {
+      "id": "matrix_to_clean",
+      "from": ["reference_matrix"],
+      "to": "clean_refs",
+      "label": "Flag and remove mislabeled references",
+      "description": "Identify mislabeled sequences by score distribution anomalies, remove them from the reference",
+      "packages": ["TaxaLikely"],
+      "functions": ["flag_reference_errors", "remove_flagged_references"],
+      "snippet": "matrix_to_clean.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "matrix_to_model",
+      "from": ["reference_matrix"],
+      "to": "model_params",
+      "label": "Train likelihood model",
+      "description": "Fit hierarchical Bayesian model: per-species score distributions with Empirical Bayes shrinkage. Outputs taxa_model_params object.",
+      "packages": ["TaxaLikely"],
+      "functions": ["train_likelihood_model"],
+      "snippet": "matrix_to_model.R",
+      "time_estimate": "seconds to 1 min"
+    },
+    {
+      "id": "model_match_to_lik",
+      "from": ["match_df", "model_params"],
+      "to": "likelihoods",
+      "label": "Evaluate likelihoods from trained model",
+      "description": "Apply model to match data: compute H1/H2/H3 likelihoods per sample x taxon. Optionally filter to top hypotheses.",
+      "packages": ["TaxaLikely"],
+      "functions": ["evaluate_likelihoods", "filter_top_hypotheses"],
+      "snippet": "model_match_to_lik.R",
+      "time_estimate": "seconds to 1 min"
+    },
+    {
+      "id": "lik_prior_to_post",
+      "from": ["likelihoods", "priors"],
+      "to": "posteriors",
+      "label": "Join priors and compute Bayesian posteriors",
+      "description": "Match likelihoods to spatial priors by taxon_name, then compute posterior = likelihood * prior (normalized per sample)",
+      "packages": ["TaxaAssign"],
+      "functions": ["join_priors", "compute_posterior"],
+      "snippet": "lik_prior_to_post.R",
+      "time_estimate": "seconds to 1 min"
+    },
+    {
+      "id": "post_to_consensus",
+      "from": ["posteriors"],
+      "to": "consensus",
+      "label": "Posterior consensus via LCA",
+      "description": "Select most probable taxon per sample using cumulative threshold, then refine via empirical Bayes update",
+      "packages": ["TaxaAssign"],
+      "functions": ["posterior_consensus", "update_prior_from_consensus"],
+      "snippet": "post_to_consensus.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "match_to_consensus_score",
+      "from": ["match_df"],
+      "to": "consensus",
+      "label": "Score-based consensus (simplest, no model/priors)",
+      "description": "Rule-based consensus: minimum score + maximum gap + optional rank thresholds. No training or API calls needed. Auto-creates taxon_name column if missing.",
+      "packages": ["TaxaAssign", "TaxaTools"],
+      "functions": ["score_consensus", "detect_ranks", "create_taxon_names"],
+      "snippet": "match_to_consensus_score.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "match_to_consensus_llm",
+      "from": ["match_df"],
+      "to": "consensus",
+      "label": "LLM-shortcut pipeline (wrapper, recommended for quick results)",
+      "description": "Single call: builds context, assigns via LLM, computes posteriors, runs consensus. Requires API key. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing.",
+      "packages": ["TaxaAssign", "TaxaTools"],
+      "functions": ["run_llm_pipeline", "detect_ranks", "create_taxon_names"],
+      "wrapper": true,
+      "snippet": "match_to_consensus_llm.R",
+      "time_estimate": "2-10 min (LLM calls)"
+    },
+    {
+      "id": "match_to_consensus_bayes",
+      "from": ["match_df", "model_params", "priors"],
+      "to": "consensus",
+      "label": "Full Bayesian pipeline (wrapper)",
+      "description": "Single call: evaluates likelihoods, joins priors, computes posteriors, runs consensus. Requires pre-trained model and priors. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing.",
+      "packages": ["TaxaAssign", "TaxaTools"],
+      "functions": ["run_bayesian_pipeline", "detect_ranks", "create_taxon_names"],
+      "wrapper": true,
+      "snippet": "match_to_consensus_bayes.R",
+      "time_estimate": "1-5 min"
+    },
+    {
+      "id": "consensus_to_reviewed",
+      "from": ["consensus", "context_df"],
+      "to": "reviewed",
+      "label": "LLM expert review of assignments",
+      "description": "Send consensus taxa to LLM for structured review: habitat fit, geographic plausibility, contaminant risk, alternatives",
+      "packages": ["TaxaFlag"],
+      "functions": ["review_assignments"],
+      "snippet": "consensus_to_reviewed.R",
+      "time_estimate": "1-5 min (LLM calls)"
+    },
+    {
+      "id": "consensus_to_flagged",
+      "from": ["consensus"],
+      "to": "flagged",
+      "label": "Flag contamination and handler artifacts",
+      "description": "Compare detections against control samples and/or check temporal proximity to handler presence",
+      "packages": ["TaxaFlag"],
+      "functions": ["flag_contaminant", "flag_handler"],
+      "snippet": "consensus_to_flagged.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "taxa_refs_to_gaps",
+      "from": ["taxa", "reference_df"],
+      "to": "ref_gaps",
+      "label": "Audit reference database coverage",
+      "description": "Check which species are missing from the reference (no barcode sequences). Returns a census per genus.",
+      "packages": ["TaxaLikely"],
+      "functions": ["audit_barcode_coverage"],
+      "snippet": "taxa_refs_to_gaps.R",
+      "time_estimate": "1-10 min (NCBI API queries per genus)"
+    },
+    {
+      "id": "priors_to_map",
+      "from": ["priors"],
+      "to": "prior_map",
+      "label": "Save or visualize prior probability map",
+      "description": "Save priors object as RDS and/or plot interactive leaflet map",
+      "packages": ["TaxaExpect"],
+      "functions": ["plot_theta_map_interactive"],
+      "snippet": "priors_to_map.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "likelihoods_to_save",
+      "from": ["likelihoods"],
+      "to": "likelihood_df",
+      "label": "Save likelihood table",
+      "description": "Save per-hypothesis likelihoods as RDS for downstream TaxaAssign or standalone analysis. Prints summary of hypothesis types and sample coverage.",
+      "packages": ["TaxaLikely"],
+      "functions": [],
+      "snippet": "likelihoods_to_save.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "consensus_df_to_taxa",
+      "from": ["consensus_df"],
+      "to": "taxa",
+      "label": "Extract unique taxa from consensus table",
+      "description": "Pull unique taxon names from an existing consensus assignment table",
+      "packages": ["TaxaTools"],
+      "functions": ["create_taxon_names"],
+      "snippet": "consensus_df_to_taxa.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "consensus_df_to_reviewed",
+      "from": ["consensus_df", "context_df"],
+      "to": "reviewed",
+      "label": "LLM expert review of existing consensus",
+      "description": "Send pre-existing consensus taxa to LLM for structured review: habitat fit, geographic plausibility, contaminant risk, alternatives",
+      "packages": ["TaxaFlag"],
+      "functions": ["review_assignments"],
+      "snippet": "consensus_to_reviewed.R",
+      "time_estimate": "1-5 min (LLM calls)"
+    },
+    {
+      "id": "consensus_df_to_flagged",
+      "from": ["consensus_df"],
+      "to": "flagged",
+      "label": "Flag contamination and handler artifacts in existing consensus",
+      "description": "Compare detections against control samples and/or check temporal proximity to handler presence",
+      "packages": ["TaxaFlag"],
+      "functions": ["flag_contaminant", "flag_handler"],
+      "snippet": "consensus_to_flagged.R",
+      "time_estimate": "seconds"
+    }
+  ]
+}

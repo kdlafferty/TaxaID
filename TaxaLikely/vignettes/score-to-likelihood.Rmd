@@ -1,0 +1,168 @@
+---
+title: "Converting Match Scores to Likelihoods"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Converting Match Scores to Likelihoods}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Purpose
+
+TaxaLikely converts raw match scores (DNA percent identity, image similarity,
+acoustic confidence) into calibrated statistical likelihoods for taxonomic
+assignment. It sits between TaxaMatch (which produces match scores) and
+TaxaAssign (which combines likelihoods with priors to compute posteriors).
+
+**The core idea:** A 98% match to Species A means different things depending on
+the database. If Species A typically matches at 99.5%, a 98% match is
+suspicious. If it typically matches at 96%, a 98% match is excellent. TaxaLikely
+learns these species-specific patterns from a reference database.
+
+## Quick Start
+
+```{r quickstart}
+library(TaxaLikely)
+
+# 1. Build reference alignment matrix
+ref_matrix <- build_reference_matrix(reference_df)
+
+# 2. Train the likelihood model
+model <- train_likelihood_model(ref_matrix)
+
+# 3. Apply to match data
+result <- evaluate_likelihoods(match_df, model_params = model)
+likelihoods <- result$likelihoods
+```
+
+## Detailed Walkthrough
+
+### Step 1: Acquire reference sequences
+
+TaxaLikely provides two ways to build a `reference_df`:
+
+```{r fetch-refs}
+# Option A: Fetch from NCBI by taxon + barcode marker
+reference_df <- fetch_reference_sequences(
+ taxa         = c("Fundulidae", "Atherinopsidae", "Gobiidae"),
+ barcode_term = "12S",
+ max_per_species = 5,
+ cache_dir       = "ncbi_cache"
+)
+
+# Option B: Read from a local FASTA + taxonomy table
+reference_df <- read_reference_fasta(
+ fasta_path  = "my_references.fasta",
+ taxonomy    = taxonomy_table,
+ rank_system = c("family", "genus", "species")
+)
+```
+
+### Step 2: Build the reference matrix
+
+Align all reference sequences against each other to learn the expected score
+distributions.
+
+```{r build-matrix}
+ref_matrix <- build_reference_matrix(reference_df)
+# Returns a data frame with columns: query, subject, p_match, family, genus, species
+```
+
+### Step 3: Check for mislabeled references
+
+Before training, identify potential errors in the reference database.
+
+```{r flag-errors}
+errors <- flag_reference_errors(ref_matrix)
+# Inspect flagged sequences
+print(errors)
+
+# Remove flagged sequences from the match object before evaluation
+match_df_clean <- match_df[!match_df$accession %in% errors$accession, ]
+```
+
+### Step 4: Train the likelihood model
+
+```{r train}
+model <- train_likelihood_model(ref_matrix)
+print(model)  # Summary: n_species, AIC, global parameters
+```
+
+The model learns three hypothesis distributions:
+
+- **H1 (correct species):** Expected score when query truly belongs to this
+  species. Per-species parameters with Empirical Bayes shrinkage.
+- **H2 (unreferenced species):** Expected score when the true species is absent
+  from the reference — a congener exists but the actual species does not.
+- **H3 (unreferenced genus):** Expected score when even the genus is absent.
+
+### Step 5: Evaluate likelihoods
+
+```{r evaluate}
+result <- evaluate_likelihoods(
+ match_df     = match_df,
+ model_params = model,
+ rank_system  = c("family", "genus", "species"),
+ n_sims       = 1000
+)
+
+likelihoods <- result$likelihoods
+unresolved  <- result$unresolved
+# unresolved: observations with no usable likelihoods (retry with coarser rank_system)
+```
+
+### Step 6: Filter and constrain
+
+```{r filter}
+# Keep only the finest-rank candidates per observation
+top <- filter_top_hypotheses(likelihoods, rank_system = c("family", "genus", "species"))
+
+# Audit reference completeness
+coverage <- audit_barcode_coverage(
+ match_df     = match_df,
+ barcode_term = "12S",
+ target_rank  = "genus"
+)
+
+# Suppress unreferenced species for fully-sampled genera
+constrained <- apply_coverage_constraints(top, coverage$census)
+```
+
+The output is ready for TaxaAssign: `expand_unreferenced_hypotheses()` →
+`join_priors()` → `compute_posterior()`.
+
+## Key Parameters
+
+| Parameter | Default | When to change |
+|---|---|---|
+| `n_sims` | 1000 | Set to 0 for point estimates only (faster) |
+| `ratio_threshold` | 0.01 | Lower to retain more marginal hypotheses |
+| `anchor_perfect` | TRUE | Set FALSE if perfect matches are impossible |
+| `barcode_term` | — | Must match your marker: "12S", "COI", "ITS2", etc. |
+| `mislabel_threshold` | — | Lower to flag more borderline references |
+
+## Common Pitfalls
+
+1. **"No usable likelihoods" for some observations:** The `$unresolved` component
+   contains these. Usually caused by all candidates matching only at ranks
+   coarser than `rank_system`. Re-run with a broader rank system.
+
+2. **DECIPHER not installed:** `build_reference_matrix()` requires the
+   Bioconductor package DECIPHER. Install with
+   `BiocManager::install("DECIPHER")`.
+
+3. **Score scale confusion:** Match scores can be 0–100 (percent) or 0–1
+   (proportion). TaxaLikely auto-detects and normalises, but check if results
+   look wrong.
+
+4. **Singleton species:** Species with only one reference sequence get
+   conservative (shrunk-to-global) parameters. This is by design — limited
+   data means more uncertainty.

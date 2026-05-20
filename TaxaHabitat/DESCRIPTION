@@ -1,0 +1,34 @@
+Package: TaxaHabitat
+Type: Package
+Title: Habitat Assignment and Spatial Quality Control for Taxonomic Occurrences
+Version: 0.1.0
+Authors@R: person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
+Description: Assigns habitat classifications to taxonomic occurrence records
+    using LLM prompts and performs spatial quality control. Receives occurrence
+    data from TaxaFetch and produces habitat-annotated, spatially screened
+    records for input to TaxaExpect. Part of the TaxaID ecosystem.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    dplyr,
+    rlang,
+    stats,
+    utils,
+    sf,
+    terra,
+    rnaturalearth,
+    leaflet,
+    leaflet.extras,
+    shiny,
+    miniUI,
+    marmap,
+    TaxaTools
+Suggests:
+    knitr,
+    rmarkdown,
+    rnaturalearthhires,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr

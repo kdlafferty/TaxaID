@@ -1,0 +1,4 @@
+# Methods -- Generated 2026-05-06 by TaxaWorkflow
+
+Taxonomic assignments from the consensus eDNA metabarcoding table (JVB1846, MiFish-U 12S marker) were reviewed using TaxaFlag::review_assignments(). Unique taxa were first extracted from the Species column of the consensus table. Ecological context (ecoregion and dominant habitat type) for the Ventura County Estuary, Southern California was inferred via TaxaAssign::build_context() using the IUCN Level 1 habitat classification scheme and a large language model (Anthropic Claude) conditioned on the detected taxon list. Each taxonomic assignment in the consensus table was then evaluated by the LLM for biological plausibility given the inferred ecological context, the MiFish-U 12S marker, and expected fish diversity for southern California estuarine habitats. The review output includes per-assignment commentary flags for further expert inspection.
+

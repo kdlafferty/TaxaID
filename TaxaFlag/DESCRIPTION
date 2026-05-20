@@ -1,0 +1,28 @@
+Package: TaxaFlag
+Title: Flag Anomalous Detections in Taxonomic Assignments
+Version: 0.0.0.9000
+Authors@R:
+    person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
+Description: Identifies and flags anomalous detections in taxonomic
+    assignment results from biological surveys. Detects laboratory and
+    field contamination by comparing read proportions against control
+    samples, flags handler-related artifacts near equipment setup or
+    collection events, and provides LLM-based expert review of habitat
+    fit, geographic plausibility, contaminant risk, and taxonomic scope.
+    Operates on consensus data frames and appends categorical flag
+    columns for user-driven filtering. Part of the TaxaID ecosystem.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Suggests:
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+Imports:
+    dplyr,
+    jsonlite,
+    stats,
+    TaxaTools

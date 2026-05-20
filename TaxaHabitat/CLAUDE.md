@@ -1,0 +1,83 @@
+# CLAUDE.md — TaxaHabitat
+# Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-04-03 (Session 46 — consensus_habitat() + geographic_context param)
+
+---
+
+## Package Purpose
+Assigns habitat classifications to taxonomic occurrence records using LLM prompts
+and performs spatial quality control. Receives occurrence data from TaxaFetch and
+produces habitat-annotated, spatially screened records for input to TaxaExpect.
+Part of the TaxaID ecosystem.
+
+**Status: All functions passing devtools::check() (0 errors, 0 warnings, 0 notes).**
+
+---
+
+## Dependency Chain
+TaxaTools → TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign/TaxaMatch
+
+TaxaHabitat depends on TaxaTools for LLM provider functions
+(`call_anthropic_api`, `call_gemini_api`, `call_openai_api`, `call_ollama_api`,
+`prompt_api`, `prompt_manual`, `read_llm_response`).
+
+---
+
+## Function Inventory
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `build_habitat_prompt()` | R/build_habitat_prompt.R | Complete | Build habitat assignment prompt object. `geographic_context` param (Session 46) adds geographic hint + `ecoregion_best_guess` column. |
+| `parse_hierarchical_habitat_response()` | R/parse_habitat_response.R | Complete | Parse LLM CSV response into habitat weights table. Protects `ecoregion_best_guess` from numeric detection. |
+| `assign_habitat_biological()` | R/assign_habitat_biological.R | Complete | Join habitat weights to occurrence data (per-point consensus) |
+| `consensus_habitat()` | R/assign_habitat_biological.R | Complete | Assemblage-level consensus habitat from per-species weights; modal ecoregion extraction. Returns one-row data frame. (Session 46) |
+| `flag_habitat_inconsistencies()` | R/flag_habitat_inconsistencies.R | Complete | Flag occurrences inconsistent with habitat |
+| `review_spatial_flags()` | R/review_spatial_flags.R | Complete | Interactive Shiny review of spatial flags |
+| (plot helpers) | R/utils_plot.R | Complete | Internal plotting utilities |
+| `.detect_habitat_cols()` | R/assign_habitat_biological.R | Internal | Shared habitat column detection logic used by `assign_habitat_biological()` and `consensus_habitat()` |
+
+---
+
+## LLM Workflow
+
+The full three-path habitat assignment workflow:
+1. **Path 1 (API auto):** `build_habitat_prompt()` → `prompt_api()` [TaxaTools] → `parse_hierarchical_habitat_response()`
+2. **Path 2 (manual):** `build_habitat_prompt()` → `prompt_manual()` [TaxaTools] → `read_llm_response()` [TaxaTools] → `parse_hierarchical_habitat_response()`
+3. **Path 3 (inline):** build prompt manually → paste response as string → `parse_hierarchical_habitat_response()`
+
+Provider functions (`call_anthropic_api`, `call_gemini_api`, etc.) live in TaxaTools.
+
+---
+
+## Key Design Notes
+- `parse_hierarchical_habitat_response()` returns WIDE WEIGHTED output: one row
+  per species, one numeric column per habitat in the scheme (0-1 weights), plus
+  `Other_weight`, `habitat_best_guess`, and `Habitat` (argmax convenience column).
+- The median-across-references approach for likelihood is intentional in TaxaMatch
+  (not relevant here, but habitat weights follow a similar philosophy).
+- `build_habitat_prompt()` supports both IUCN and custom habitat schemes.
+  The `$habitat_cols` element of the returned prompt object drives column detection
+  in `parse_hierarchical_habitat_response()`.
+- `build_habitat_prompt(geographic_context = "Southern California")` adds a
+  `GEOGRAPHIC CONTEXT:` block to the prompt and requests an `ecoregion_best_guess`
+  column. The column is stored in the returned S3 object as `$geographic_context`.
+- `consensus_habitat()` computes assemblage-level consensus from per-species habitat
+  weights (equal-weight sum → argmax with threshold). Returns `main_habitat`,
+  `ecoregion` (modal `ecoregion_best_guess`), and `habitat_best_guess` in a one-row
+  data frame. `attr(result, "habitat_proportions")` has the full proportion vector.
+- `%||%` is defined internally in `parse_habitat_response.R` and is available
+  throughout the package namespace.
+
+---
+
+## Session 28 Notes (2026-03-26)
+- Package created during TaxaFetch → TaxaTools/TaxaHabitat split
+- All habitat files copied from TaxaFetch/R:
+  - build_habitat_prompt.R, assign_habitat_biological.R,
+    flag_habitat_inconsistencies.R, review_spatial_flags.R, utils_plot.R
+- screen_spatial_formula.R moved to TaxaExpect (Session 29, 2026-03-27) --
+  belongs with biodiversity modelling, not habitat assignment
+- parse_habitat_response.R: habitat parser extracted from TaxaFetch/R/llm_api_utils.R
+- LLM provider functions moved to TaxaTools/R/llm_api_utils.R
+- TODO: Run devtools::document() and devtools::check() on this package
+- TODO: Update @importFrom tags in habitat files to use TaxaTools:: for LLM functions

@@ -1,0 +1,13 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^DISCLAIMER\.md$
+^CLAUDE\.md$
+^\.Rhistory$
+^\.DS_Store$
+^taxaid_workflow.*\.R$
+^taxaid_methods.*\.md$
+^.*\.rds$
+^.*\.csv$
+^workflow_context\.json$
+^REENTRY_PROMPT\.md$

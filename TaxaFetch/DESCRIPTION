@@ -1,0 +1,43 @@
+Package: TaxaFetch
+Type: Package
+Title: Fetch and Prepare Taxonomic Occurrence Data
+Version: 0.1.0
+Authors@R: person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
+Description: Provides tools for acquiring, combining, and preparing taxonomic
+    occurrence data from multiple sources including GBIF and DataONE. The user
+    specifies a spatial area and taxonomic group; TaxaFetch retrieves occurrence
+    records and aligns column naming to DarwinCore conventions. Habitat
+    assignment and spatial quality control are handled by TaxaHabitat.
+    Output is a data frame of taxonomic occurrences at various locations and
+    times. These data feed into TaxaHabitat and then TaxaExpect, which generates
+    spatially explicit predictions of relative occurrence across taxa.
+    Part of the TaxaID ecosystem.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    cli,
+    httr2,
+    dplyr,
+    rlang,
+    stats,
+    utils,
+    stringr,
+    tibble,
+    readr,
+    xml2,
+    TaxaTools
+Suggests:
+    callr,
+    knitr,
+    rmarkdown,
+    rgbif,
+    base64enc,
+    beepr,
+    jsonlite,
+    pdftools,
+    png,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr

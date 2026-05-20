@@ -1,0 +1,56 @@
+{
+  "package": "TaxaFlag",
+  "description": "Post-assignment quality flagging: contamination, handler artifacts, expert review",
+  "functions": [
+    {
+      "name": "flag_contaminant",
+      "description": "Flag taxa disproportionately represented in control samples",
+      "inputs": [
+        {"name": "df", "type": "data.frame", "required": true, "description": "Detection data with observation_id and taxon columns"},
+        {"name": "control_samples", "type": "character_vector", "required": false, "description": "Observation IDs of control samples"},
+        {"name": "event_type_col", "type": "character", "required": false, "description": "Column indicating event type (alternative to control_samples)"},
+        {"name": "event_col", "type": "character", "required": false, "default": "observation_id", "description": "Column with observation identifiers"},
+        {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Column with taxon names"},
+        {"name": "reads_col", "type": "character", "required": false, "description": "Column with read counts (for proportion-based scoring)"},
+        {"name": "contaminant_type", "type": "character", "required": false, "default": "lab", "description": "'lab', 'field', or 'positive'"}
+      ],
+      "output": {"type": "flagged_df", "description": "Input with contaminant_score and contaminant_flag columns added"},
+      "scaling": "linear",
+      "scaling_note": "Fast; proportion-based comparison"
+    },
+    {
+      "name": "flag_handler",
+      "description": "Flag detections temporally proximate to handler presence (camera traps)",
+      "inputs": [
+        {"name": "df", "type": "data.frame", "required": true, "description": "Detection data with datetime column"},
+        {"name": "datetime_col", "type": "character", "required": false, "default": "datetime", "description": "Column with datetime values"},
+        {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon column"},
+        {"name": "group_col", "type": "character", "required": false, "description": "Column for grouping (e.g., camera station)"},
+        {"name": "interval_minutes", "type": "numeric", "required": false, "default": 30, "description": "Minutes before/after handler to flag"},
+        {"name": "handler_taxa", "type": "character_vector", "required": false, "description": "Taxa indicating handler presence (default: Homo sapiens)"}
+      ],
+      "output": {"type": "flagged_df", "description": "Input with handler_flag column added"},
+      "scaling": "linear",
+      "scaling_note": "Fast; temporal proximity check"
+    },
+    {
+      "name": "review_assignments",
+      "description": "LLM expert review of taxonomic assignments for plausibility (habitat fit, geographic range, contaminant risk, alternatives)",
+      "inputs": [
+        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with a taxon column"},
+        {"name": "taxon_col", "type": "character", "required": false, "default": "consensus_taxon", "description": "Column name for the taxon to review"},
+        {"name": "taxon_rank_col", "type": "character", "required": false, "description": "Column for consensus rank; triggers lower_hypotheses when coarser than species"},
+        {"name": "context", "type": "list_or_context_df", "required": true, "description": "Named list or build_context() output with geography/ecoregion and habitat/main_habitat"},
+        {"name": "target_group", "type": "character", "required": false, "description": "Taxonomic target group (e.g., 'fish', 'birds'); triggers scope review"},
+        {"name": "marker", "type": "character", "required": false, "description": "Molecular marker or detection method (e.g., '12S', 'COI', 'camera trap')"},
+        {"name": "llm_fn", "type": "function", "required": false, "default": "TaxaTools::call_anthropic_api", "description": "LLM provider function"},
+        {"name": "taxa_per_call", "type": "integer", "required": false, "default": 30, "description": "Maximum taxa per LLM batch call"},
+        {"name": "pause_seconds", "type": "numeric", "required": false, "default": 1, "description": "Seconds between LLM calls"},
+        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
+      ],
+      "output": {"type": "review_df", "description": "Input df with 8 review columns appended: review_habitat, review_geography, review_scope, review_contaminant, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"},
+      "scaling": "api_limited",
+      "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 30 taxa"
+    }
+  ]
+}

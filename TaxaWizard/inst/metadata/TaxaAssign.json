@@ -1,0 +1,155 @@
+{
+  "package": "TaxaAssign",
+  "description": "Bayesian taxonomic assignment: likelihood x prior -> posterior probabilities",
+  "functions": [
+    {
+      "name": "run_llm_pipeline",
+      "description": "End-to-end LLM-shortcut workflow: auto-context, unreferenced detection, assignment, consensus, report",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object from TaxaMatch"},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function. NULL defaults to TaxaTools::call_anthropic_api"},
+        {"name": "geographic_hint", "type": "character", "required": false, "description": "Geographic region description"},
+        {"name": "date", "type": "character", "required": false, "description": "Sampling date or year"},
+        {"name": "score_threshold", "type": "numeric", "required": false, "default": 80, "description": "Minimum match score (0-100)"},
+        {"name": "detect_unreferenced", "type": "logical", "required": false, "default": true, "description": "Run unreferenced species detection"},
+        {"name": "generate_report", "type": "logical", "required": false, "default": false, "description": "Generate Methods + Results text"},
+        {"name": "reference_errors", "type": "data.frame", "required": false, "description": "From model_params$reference_errors for error filtering"},
+        {"name": "habitat_scheme", "type": "character", "required": false, "description": "Habitat scheme for context building"},
+        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
+      ],
+      "output": {"type": "llm_pipeline_result", "description": "List with $consensus, $result, $context, $unreferenced, $report"},
+      "scaling": "api_limited",
+      "scaling_note": "Dominated by LLM API calls; ~1-2 min per 30 taxa"
+    },
+    {
+      "name": "run_bayesian_pipeline",
+      "description": "End-to-end Bayesian workflow: likelihoods + priors -> posterior -> consensus -> report",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object from TaxaMatch"},
+        {"name": "model_params", "type": "taxa_model_params", "required": true, "description": "Trained likelihood model from TaxaLikely"},
+        {"name": "taxaexpect_priors", "type": "priors_df", "required": true, "description": "Prior probabilities from TaxaExpect (or build_priors() output)"},
+        {"name": "site", "type": "site_spec", "required": true, "description": "Site specification: list(lat, lon) or list(grid_id, main_habitat)"},
+        {"name": "generate_report", "type": "logical", "required": false, "default": false, "description": "Generate report text"},
+        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
+      ],
+      "output": {"type": "bayesian_pipeline_result", "description": "List with $consensus, $result, $report"},
+      "scaling": "linear",
+      "scaling_note": "Fast once model and priors are precomputed; ~10 sec for 500 samples"
+    },
+    {
+      "name": "assign_taxa_llm",
+      "description": "LLM-based assignment: score-derived likelihoods + LLM priors -> posteriors per sample",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object"},
+        {"name": "context", "type": "context_df", "required": false, "description": "Site context from build_context(): ecoregion, main_habitat, date"},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function"},
+        {"name": "score_threshold", "type": "numeric", "required": false, "default": 80, "description": "Minimum match score"},
+        {"name": "context_group", "type": "character", "required": false, "description": "Column for grouping taxa into context-specific batches"},
+        {"name": "unreferenced_taxa", "type": "character_vector", "required": false, "description": "Named unreferenced species to include as hypotheses"},
+        {"name": "known_present", "type": "character_vector", "required": false, "description": "Species known to be present (LLM context only)"},
+        {"name": "known_absent", "type": "character_vector", "required": false, "description": "Species known absent (prior suppression)"},
+        {"name": "n_sims", "type": "integer", "required": false, "default": 1000, "description": "Monte Carlo simulations"},
+        {"name": "verbose", "type": "logical", "required": false, "default": false, "description": "Print progress"}
+      ],
+      "output": {"type": "posterior_df", "description": "Full posterior data frame with all hypotheses per sample"},
+      "scaling": "api_limited",
+      "scaling_note": "LLM calls dominate; batches of 30 taxa per call"
+    },
+    {
+      "name": "build_context",
+      "description": "Auto-infer site context (habitat, ecoregion) from taxon names via LLM",
+      "inputs": [
+        {"name": "taxon_names", "type": "character_vector", "required": true, "description": "Unique scientific names from match_df"},
+        {"name": "geographic_hint", "type": "character", "required": false, "description": "Approximate region"},
+        {"name": "date", "type": "character", "required": false, "description": "Sampling date or year"},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function"},
+        {"name": "habitat_scheme", "type": "character", "required": false, "description": "Habitat scheme name: NULL (default 3-category), 'IUCN_L1', or 'IUCN_L2'. Pass a string, NOT a data frame."}
+      ],
+      "output": {"type": "context_df", "description": "One-row data frame: ecoregion, main_habitat, date"},
+      "scaling": "api_limited",
+      "scaling_note": "2-3 LLM calls regardless of taxon count"
+    },
+    {
+      "name": "score_consensus",
+      "description": "Simple score-based consensus: min_score + gap + rank_thresholds -> LCA. No model/priors needed.",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object"},
+        {"name": "rank_thresholds", "type": "named_numeric", "required": false, "description": "Score thresholds per rank, e.g. c(species=98, genus=95, family=90)"},
+        {"name": "min_score", "type": "numeric", "required": false, "default": 80, "description": "Minimum score to consider"},
+        {"name": "max_gap", "type": "numeric", "required": false, "description": "Maximum score gap for species-level"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Rank order for LCA"}
+      ],
+      "output": {"type": "consensus_df", "description": "One row per observation_id with consensus assignment"},
+      "scaling": "linear",
+      "scaling_note": "Very fast; pure R computation"
+    },
+    {
+      "name": "posterior_consensus",
+      "description": "LCA-based consensus from posterior: plausible hypotheses -> one assignment per sample",
+      "inputs": [
+        {"name": "posterior_df", "type": "posterior_df", "required": true, "description": "Posterior data frame from compute_posterior or assign_taxa_llm"},
+        {"name": "cumulative_threshold", "type": "numeric", "required": false, "default": 0.95, "description": "Cumulative posterior threshold for plausibility"},
+        {"name": "min_posterior", "type": "numeric", "required": false, "default": 0.01, "description": "Minimum individual posterior to include"},
+        {"name": "backbone_id", "type": "integer", "required": false, "description": "Target backbone for taxonomy lookup"},
+        {"name": "species_reference", "type": "data.frame_or_unreferenced_result", "required": false, "description": "For downranking: reference with finer-rank taxa"}
+      ],
+      "output": {"type": "consensus_df", "description": "One row per observation_id with consensus_taxon, consensus_rank, consensus_posterior"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "compute_posterior",
+      "description": "Core Bayes update: likelihood x prior -> posterior for each hypothesis",
+      "inputs": [
+        {"name": "likelihood_w_prior", "type": "data.frame", "required": true, "description": "Data frame with likelihood and prior columns per hypothesis"},
+        {"name": "n_sims", "type": "integer", "required": false, "default": 1000, "description": "Monte Carlo simulations for uncertainty"}
+      ],
+      "output": {"type": "posterior_df", "description": "Data frame with posterior_point_est, posterior_mean, posterior_sd per hypothesis"},
+      "scaling": "linear",
+      "scaling_note": "Fast; ~1 sec per 1000 rows with MC"
+    },
+    {
+      "name": "join_priors",
+      "description": "Join TaxaExpect priors to likelihood table by taxon_name + site",
+      "inputs": [
+        {"name": "likelihoods_df", "type": "data.frame", "required": true, "description": "Likelihood table from evaluate_likelihoods()"},
+        {"name": "priors_df", "type": "data.frame", "required": true, "description": "Prior table from TaxaExpect"},
+        {"name": "grid_id", "type": "character", "required": true, "description": "Grid cell to match"},
+        {"name": "main_habitat", "type": "character", "required": true, "description": "Habitat to match"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks for joining"}
+      ],
+      "output": {"type": "data.frame", "description": "Likelihood table with prior columns added"},
+      "scaling": "linear",
+      "scaling_note": "Fast; merge operation"
+    },
+    {
+      "name": "suggest_unreferenced_species",
+      "description": "LLM-first unreferenced species detection: plausible species per genus not in reference",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Match object (genera extracted automatically)"},
+        {"name": "context", "type": "context_df", "required": false, "description": "Site context for plausibility"},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function"},
+        {"name": "barcode_term", "type": "character", "required": false, "description": "Barcode marker for NCBI verification"},
+        {"name": "expand_to_family", "type": "logical", "required": false, "default": false, "description": "Also check family-level unreferenced taxa"}
+      ],
+      "output": {"type": "unreferenced_species_result", "description": "Character vector of unreferenced species; census and plausible in attributes"},
+      "scaling": "api_limited",
+      "scaling_note": "LLM calls + optional NCBI verification; ~2-5 min"
+    },
+    {
+      "name": "generate_report",
+      "description": "Generate publication-ready Methods + Results text from pipeline outputs",
+      "inputs": [
+        {"name": "result", "type": "posterior_df", "required": false, "description": "Posterior data frame (NULL for score-only)"},
+        {"name": "consensus", "type": "consensus_df", "required": true, "description": "Consensus data frame"},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM for narrative Results (template if NULL)"},
+        {"name": "data_type", "type": "character", "required": false, "description": "e.g. 'eDNA', 'camera trap', 'acoustic'"},
+        {"name": "marker", "type": "character", "required": false, "description": "e.g. '12S MiFish', 'COI'"},
+        {"name": "study_description", "type": "character", "required": false, "description": "Brief study context for report intro"}
+      ],
+      "output": {"type": "character", "description": "Formatted Methods + Results text"},
+      "scaling": "api_limited",
+      "scaling_note": "One LLM call for Results; template-only if llm_fn = NULL"
+    }
+  ]
+}

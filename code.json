@@ -1,0 +1,77 @@
+[
+  {
+    "name": "TaxaID",
+    "organization": "U.S. Geological Survey",
+    "description": "A modular R ecosystem for Bayesian taxonomic assignment of biological observations (eDNA sequences, images, acoustic recordings). Combines match-score likelihoods with spatially-explicit occurrence-based priors to compute posterior probabilities of taxonomic identity.",
+    "version": "0.1.0",
+    "status": "Preliminary",
+    "permissions": {
+      "usageType": "openSource",
+      "licenses": [
+        {
+          "URL": "https://opensource.org/licenses/MIT",
+          "name": "MIT"
+        }
+      ]
+    },
+    "tags": [
+      "taxonomy",
+      "Bayesian",
+      "eDNA",
+      "biodiversity",
+      "species identification",
+      "GBIF",
+      "metabarcoding"
+    ],
+    "laborHours": 0,
+    "languages": ["R"],
+    "contact": {
+      "name": "Kevin Lafferty",
+      "email": "klafferty@usgs.gov"
+    },
+    "date": {
+      "created": "2026-02-01",
+      "lastModified": "2026-05-19"
+    },
+    "repositoryURL": "",
+    "disclaimerURL": "",
+    "relatedCode": [
+      {
+        "name": "TaxaTools",
+        "description": "Taxonomic name standardization and LLM utilities"
+      },
+      {
+        "name": "TaxaFetch",
+        "description": "Occurrence data acquisition from GBIF, DataONE, BioTIME, literature"
+      },
+      {
+        "name": "TaxaMatch",
+        "description": "Biological match data standardization and BLAST search"
+      },
+      {
+        "name": "TaxaLikely",
+        "description": "Convert match scores to likelihoods via hierarchical Bayesian model"
+      },
+      {
+        "name": "TaxaHabitat",
+        "description": "Habitat assignment via LLM biological consensus"
+      },
+      {
+        "name": "TaxaExpect",
+        "description": "Spatially-explicit Bayesian priors from occurrence data"
+      },
+      {
+        "name": "TaxaAssign",
+        "description": "Posterior computation and consensus taxonomy"
+      },
+      {
+        "name": "TaxaFlag",
+        "description": "Post-assignment anomalous detection flagging"
+      },
+      {
+        "name": "TaxaWizard",
+        "description": "Conversational LLM workflow designer"
+      }
+    ]
+  }
+]

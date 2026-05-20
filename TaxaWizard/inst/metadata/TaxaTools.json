@@ -1,0 +1,104 @@
+{
+  "package": "TaxaTools",
+  "description": "Name verification, cleaning, parsing, rank lookup, column standardization; LLM provider functions; report infrastructure",
+  "functions": [
+    {
+      "name": "clean_taxon_names",
+      "description": "Clean and standardize scientific names; length-preserving (invalid -> NA)",
+      "inputs": [
+        {"name": "name_vec", "type": "character_vector", "required": true, "description": "Raw taxon names"}
+      ],
+      "output": {"type": "character_vector", "description": "Cleaned names (same length as input; NA for invalid)"},
+      "scaling": "linear",
+      "scaling_note": "Pure string operations; very fast"
+    },
+    {
+      "name": "verify_taxon_names",
+      "description": "Verify names against Global Names taxonomic backbones",
+      "inputs": [
+        {"name": "name_list", "type": "character_vector", "required": true, "description": "Scientific names to verify"},
+        {"name": "backbone_id", "type": "integer", "required": true, "description": "Backbone ID (4=NCBI, 9=WoRMS, 11=GBIF)"}
+      ],
+      "output": {"type": "verified_names_df", "description": "Data frame with matched_name, classification_path, classification_ranks"},
+      "scaling": "api_limited",
+      "scaling_note": "Global Names API; ~100 names/sec"
+    },
+    {
+      "name": "create_taxon_names",
+      "description": "Derive taxon_name + taxon_name_rank from taxonomy columns",
+      "inputs": [
+        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with taxonomy columns"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Ranks to consider, coarse-to-fine"}
+      ],
+      "output": {"type": "data.frame", "description": "Input with taxon_name and taxon_name_rank columns added"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R"
+    },
+    {
+      "name": "rename_cols",
+      "description": "Rename columns from source-specific names to DwC standard",
+      "inputs": [
+        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with non-standard column names"},
+        {"name": "col_map", "type": "named_character", "required": false, "description": "Named vector: c(old_name = 'new_name'). Names are EXISTING column names, values are DESIRED new names. Example: c('Latitude' = 'decimalLatitude')"},
+        {"name": "strict", "type": "logical", "required": false, "default": false, "description": "Error if old_name not found"}
+      ],
+      "output": {"type": "data.frame", "description": "Data frame with standardized column names"},
+      "scaling": "linear",
+      "scaling_note": "Fast; column rename"
+    },
+    {
+      "name": "call_anthropic_api",
+      "description": "LLM provider: send prompt to Anthropic Claude API and return text response",
+      "inputs": [
+        {"name": "prompt_str", "type": "character", "required": true, "description": "Prompt text"},
+        {"name": "model", "type": "character", "required": false, "default": "claude-opus-4-6", "description": "Model ID"},
+        {"name": "max_tokens", "type": "integer", "required": false, "default": 3000, "description": "Max response tokens"},
+        {"name": "api_key", "type": "character", "required": false, "description": "API key (default from ANTHROPIC_API_KEY env var)"}
+      ],
+      "output": {"type": "character", "description": "LLM response text with model attribute"},
+      "scaling": "api_limited",
+      "scaling_note": "Single API call"
+    },
+    {
+      "name": "call_gemini_api",
+      "description": "LLM provider: send prompt to Google Gemini API",
+      "inputs": [
+        {"name": "prompt_str", "type": "character", "required": true, "description": "Prompt text"}
+      ],
+      "output": {"type": "character", "description": "LLM response text"},
+      "scaling": "api_limited",
+      "scaling_note": "Single API call; free tier available"
+    },
+    {
+      "name": "call_openai_api",
+      "description": "LLM provider: send prompt to OpenAI API",
+      "inputs": [
+        {"name": "prompt_str", "type": "character", "required": true, "description": "Prompt text"}
+      ],
+      "output": {"type": "character", "description": "LLM response text"},
+      "scaling": "api_limited",
+      "scaling_note": "Single API call; paid account required"
+    },
+    {
+      "name": "change_backbone",
+      "description": "Translate taxonomy between backbones (e.g., NCBI to WoRMS)",
+      "inputs": [
+        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with taxonomy columns"},
+        {"name": "target_backbone_id", "type": "integer", "required": true, "description": "Target backbone ID"}
+      ],
+      "output": {"type": "data.frame", "description": "Data frame with translated taxonomy"},
+      "scaling": "api_limited",
+      "scaling_note": "Global Names API calls"
+    },
+    {
+      "name": "find_taxonomy_conflicts",
+      "description": "Detect higher-rank inconsistencies in taxonomy tables",
+      "inputs": [
+        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with taxonomy columns"}
+      ],
+      "output": {"type": "data.frame", "description": "Rows with conflicting higher-rank assignments"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R"
+    }
+  ]
+}
