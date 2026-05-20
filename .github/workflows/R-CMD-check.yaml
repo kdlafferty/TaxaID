@@ -31,6 +31,7 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
       RENV_CONFIG_AUTOLOADER_ENABLED: "false"
       NOT_CRAN: "true"
+      _R_CHECK_FORCE_SUGGESTS_: "false"
 
     steps:
       - uses: actions/checkout@v4
@@ -47,28 +48,48 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev \
             libgdal-dev libgeos-dev libproj-dev libudunits2-dev libharfbuzz-dev \
-            libfribidi-dev pandoc
+            libfribidi-dev libglpk-dev pandoc
 
       - name: Install all dependencies
         shell: Rscript {0}
         run: |
           install.packages(c("remotes", "rcmdcheck"))
 
-          # Install order respects the TaxaID dependency chain
-          all_pkgs <- c("TaxaTools", "TaxaFetch", "TaxaHabitat", "TaxaMatch",
-                        "TaxaLikely", "TaxaExpect", "TaxaAssign", "TaxaFlag",
-                        "TaxaWizard")
+          # Canonical dependency chain (topological order)
+          chain <- c("TaxaTools", "TaxaFetch", "TaxaHabitat", "TaxaMatch",
+                     "TaxaLikely", "TaxaExpect", "TaxaAssign", "TaxaFlag",
+                     "TaxaWizard")
           target <- "${{ matrix.package }}"
 
-          # Find which local packages the target needs
-          desc <- read.dcf(file.path(target, "DESCRIPTION"))
-          fields <- intersect(colnames(desc), c("Imports", "Depends", "Suggests"))
-          all_deps_str <- paste(desc[, fields], collapse = ",")
-          dep_names <- trimws(gsub("\\(.*?\\)", "", unlist(strsplit(all_deps_str, "[,\n]+"))))
-          local_deps <- all_pkgs[all_pkgs %in% dep_names]
+          # Helper: get local TaxaID deps from a DESCRIPTION file
+          get_local_deps <- function(pkg) {
+            desc <- read.dcf(file.path(pkg, "DESCRIPTION"))
+            fields <- intersect(colnames(desc), c("Imports", "Depends", "Suggests"))
+            if (length(fields) == 0L) return(character(0))
+            all_deps_str <- paste(desc[, fields], collapse = ",")
+            dep_names <- trimws(gsub("\\(.*?\\)", "", unlist(strsplit(all_deps_str, "[,\n]+"))))
+            chain[chain %in% dep_names]
+          }
+
+          # Recursively collect all local deps (transitive closure)
+          collect_all <- function(pkg, visited = character(0)) {
+            direct <- get_local_deps(pkg)
+            new_deps <- setdiff(direct, visited)
+            visited <- union(visited, new_deps)
+            for (d in new_deps) {
+              visited <- collect_all(d, visited)
+            }
+            visited
+          }
+
+          all_needed <- collect_all(target)
+          # Sort by position in the canonical chain (topological order)
+          to_install <- chain[chain %in% all_needed]
+          message("Local deps to install for ", target, ": ",
+                  paste(to_install, collapse = " -> "))
 
           # Install each local dep and its CRAN dependencies
-          for (pkg in local_deps) {
+          for (pkg in to_install) {
             message("Installing CRAN deps for: ", pkg)
             remotes::install_deps(pkg, dependencies = TRUE, upgrade = "never")
             message("Installing local package: ", pkg)

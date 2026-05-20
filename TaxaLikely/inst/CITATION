@@ -4,7 +4,7 @@ bibentry(
   author   = person("Kevin", "Lafferty"),
   year     = "2026",
   note     = "R package version 0.0.0.9000; part of the TaxaID ecosystem",
-  url      = "https://github.com/klafferty/TaxaID"
+  url      = "https://github.com/kdlafferty/TaxaID"
 )
 
 bibentry(
