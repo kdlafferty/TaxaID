@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-20 (Session 79 — sample_id → observation_id rename across ecosystem)
+# Last updated: 2026-05-20 (Session 80 — GitHub repo setup, CI)
 
 ---
 
@@ -36,7 +36,7 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 | OS | macOS |
 | R version | R version 4.5.2 (2025-10-31) |
 | Primary IDE | RStudio |
-| Git remotes | Not yet established |
+| Git remotes | `origin` → https://github.com/kdlafferty/TaxaID (public monorepo, Session 80) |
 | R library | `/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/library` — set via `~/.Rprofile` `.libPaths()` call |
 | ANTHROPIC_API_KEY | Set in `~/.Renviron` |
 | GEMINI_API_KEY | Set in `~/.Renviron` — free tier; get key at aistudio.google.com/apikey |
@@ -451,3 +451,4 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-20 | *(Session 79 — breaking)* | `sample_id` column | `observation_id` column | TaxaMatch, TaxaLikely, TaxaAssign, TaxaFlag, TaxaWizard | column rename | L2 identifier (individual sequence/image/sound) renamed to eliminate ambiguity with L1 "sample" (collection event). ~865 occurrences across ~141 files. All R source, tests, vignettes, inst/, README, CLAUDE.md files updated. `sample_id_col` param → `observation_id_col` (TaxaMatch). `sample_col` param → `event_col` (TaxaFlag). `sample_meta` → `event_meta` (TaxaAssign). Safety: `sample_id` never reused, so missed renames produce hard errors. |
 | 2026-05-20 | *(Session 79 — rename)* | `sample_id_col` param | `observation_id_col` | TaxaMatch | `standardize_match_data()` param | Renamed to match column rename. |
 | 2026-05-20 | *(Session 79 — rename)* | `sample_col` param | `event_col` | TaxaFlag | `flag_contaminant()` param | This parameter identifies L1 collection events, not L2 observations. |
+| 2026-05-20 | *(Session 80 — infra)* | GitHub repo created | Ecosystem | infrastructure | Public monorepo at github.com/kdlafferty/TaxaID. Homebrew + `gh` CLI installed. `.gitignore` created. Inner `.git` dirs removed from 4 packages (were causing submodule treatment). GitHub Actions CI: matrix `R CMD check --as-cran` on all 9 packages. |
