@@ -1,0 +1,148 @@
+---
+title: "Building Occurrence-Based Priors"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Building Occurrence-Based Priors}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Purpose
+
+TaxaExpect generates prior probabilities for species occurrence at a given
+location and habitat. These priors feed into TaxaAssign's Bayesian workflow,
+where they are combined with likelihoods from TaxaLikely to produce posterior
+taxonomic assignments.
+
+The core question TaxaExpect answers: *"Before seeing any match data, how
+likely is it that this species occurs at this site?"*
+
+## Quick Start
+
+```{r quickstart}
+library(TaxaExpect)
+
+bp <- build_priors(
+  taxa = c("Fundulidae", "Atherinopsidae", "Gobiidae"),
+  lat = 34.4, lon = -119.8,
+  geographic_context = "Santa Barbara Channel, California"
+)
+
+head(bp$priors)
+print(bp$model)
+```
+
+## Detailed Walkthrough
+
+### Step 1: Fetch GBIF occurrences (TaxaFetch)
+
+```{r fetch}
+library(TaxaFetch)
+
+keys <- get_keys_from_context(data.frame(taxon_name = c("Fundulidae", "Gobiidae")))
+bbox <- make_bbox_wkt(lat = 34.4, lon = -119.8, radius_deg = 2)
+
+gbif_raw <- fetch_gbif_occurrences(keys$usageKey, bbox = bbox)
+occurrences <- filter_gbif_quality(gbif_raw)
+```
+
+### Step 2: Assign habitat (TaxaHabitat)
+
+```{r habitat}
+library(TaxaHabitat)
+
+prompt <- build_habitat_prompt(
+  unique(occurrences$taxon_name),
+  geographic_context = "Southern California"
+)
+
+# Submit to LLM (one chunk at a time)
+raw_text <- llm_fn(prompt$prompts[[1]])
+habitats_df <- parse_hierarchical_habitat_response(raw_text, prompt$chunks[[1]], prompt)
+
+occurrences <- assign_habitat_biological(occurrences, habitats_df)
+```
+
+### Step 3: Spatial gridding
+
+```{r grid}
+grid_result <- optimize_grid_size(occurrences, n_covariates = 2)
+occurrences_gridded <- create_sites_from_grid(occurrences, grid_size = grid_result$best_grid)
+```
+
+### Step 4: Prepare model data
+
+```{r model-data}
+model_data <- prepare_model_dataframe(occurrences_gridded)
+
+basis <- compute_moran_basis(unique(model_data$grid_id), k = 5)
+model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
+```
+
+### Step 5: Train biodiversity model
+
+```{r train}
+model_fit <- screen_spatial_formula(
+  data         = model_data,
+  formula_full = cbind(n_species, n_other) ~ main_habitat +
+    (1 | taxon_name) + diag(main_habitat | taxon_name) +
+    (0 + B1 | taxon_name) + (0 + B2 | taxon_name),
+  sd_threshold = 0.20
+)
+```
+
+### Step 6: Generate priors
+
+```{r priors}
+priors_observed   <- generate_full_priors(model_fit, new_sites = model_data)
+priors_undetected <- generate_undetected_diversity(model_fit)
+priors_combined   <- dplyr::bind_rows(priors_observed, priors_undetected)
+```
+
+### Step 7: Translate to target backbone
+
+```{r translate}
+library(TaxaTools)
+
+ncbi_lookup <- verify_taxon_names(unique(priors_combined$taxon_name), backbone_id = 4) |>
+  change_backbone(input_col = "user_supplied_name")
+
+taxaexpect_priors <- priors_combined |>
+  dplyr::left_join(ncbi_lookup, by = c("taxon_name" = "gbif_name")) |>
+  create_taxon_names(rank_system = c("family", "genus", "species"))
+```
+
+## Key Parameters
+
+| Parameter | Default | When to change |
+|---|---|---|
+| `search_radius_deg` | 2 | Increase for data-poor regions |
+| `moran_k` | 5 | Reduce if model fails to converge |
+| `sd_threshold` | 0.20 | Lower to keep more spatial terms |
+| `target_backbone_id` | 4 (NCBI) | Change to match your reference DB |
+| `habitat_scheme` | NULL (3-cat) | Use "IUCN_L1" for finer classification |
+| `checkpoint_dir` | NULL | Set a path for crash recovery |
+
+## Common Pitfalls
+
+1. **Zero GBIF records:** Increase `search_radius_deg` or add
+   `supplemental_occurrences` from local surveys.
+
+2. **Model convergence failure:** `build_priors()` returns `$model = NULL`
+   with a warning. Common with few species or small spatial extent. Try
+   reducing `moran_k` or using a simpler formula.
+
+3. **glmmTMB/TMB version mismatch:** Reinstall glmmTMB from source:
+   `install.packages("glmmTMB", type = "source")`.
+
+4. **Habitat column mismatch:** TaxaAssign's `join_priors()` joins on
+   `main_habitat`. Ensure the habitat names in priors match your site
+   specification.

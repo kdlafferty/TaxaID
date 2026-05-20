@@ -1,0 +1,451 @@
+---
+title: "TaxaID Ecosystem: End-to-End Taxonomic Assignment"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{TaxaID Ecosystem: End-to-End Taxonomic Assignment}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Overview
+
+The TaxaID ecosystem is a suite of eight R packages that implements Bayesian
+taxonomic assignment for biological observations -- eDNA sequences, camera trap
+images, acoustic recordings, or any data where an observation must be matched to
+a taxon. Given a set of candidate matches (with scores), TaxaID converts those
+scores into likelihoods, estimates priors from occurrence data, computes
+posterior probabilities via Bayes' theorem, and flags anomalous detections.
+
+### Pipeline Diagram
+
+```
+Raw observations
+       |
+   TaxaMatch ........... standardize match data
+       |
+       v
+   TaxaLikely .......... score -> likelihood (hierarchical Bayesian model)
+       |
+       |          TaxaTools .......... name cleaning, verification, utilities
+       |              |
+       |          TaxaFetch .......... fetch GBIF / DataONE occurrences
+       |              |
+       |          TaxaHabitat ........ assign habitat via LLM
+       |              |
+       |          TaxaExpect ......... fit spatial model -> priors
+       |              |
+       v              v
+   TaxaAssign .................. posterior = likelihood x prior
+       |
+       v
+   TaxaFlag ................... flag anomalous detections
+       |
+       v
+   Consensus taxonomy (species, genus, family, etc.)
+```
+
+The left branch (TaxaMatch -> TaxaLikely) handles **likelihoods**: how well does
+the observation match each candidate taxon? The right branch (TaxaFetch ->
+TaxaHabitat -> TaxaExpect) handles **priors**: how likely is each taxon to occur
+at this location? TaxaAssign combines them.
+
+### Two Pathways
+
+TaxaID offers two workflows for taxonomic assignment:
+
+| | Bayesian Pathway | LLM Pathway |
+|---|---|---|
+| **Priors from** | Occurrence data (GBIF) + spatial model | LLM expert knowledge |
+| **Likelihoods from** | Trained hierarchical model (TaxaLikely) | Trained model or LLM scores |
+| **Best for** | Large datasets, reproducible pipelines | Quick exploration, data-poor regions |
+| **Packages used** | All 8 | TaxaMatch + TaxaAssign + TaxaFlag (+ TaxaTools) |
+| **API calls** | GBIF + NCBI | LLM provider (Anthropic, OpenAI, etc.) |
+
+Both pathways end at `TaxaAssign::posterior_consensus()` and can be compared
+with `TaxaAssign::score_consensus()`.
+
+---
+
+## Bayesian Pathway: Full Pipeline
+
+### Step 1: Standardize match data (TaxaMatch)
+
+```{r match}
+library(TaxaMatch)
+
+# Read DADA2 sequence table
+seqs <- read_sequence_table(
+  seqtab_path = "seqtab_nochim.rds",
+  taxonomy_path = "tax_table.rds"
+)
+
+# Filter by length and abundance
+seqs_filtered <- filter_sequences(seqs, barcode_term = "MiFish")
+
+# BLAST against NCBI
+blast_results <- blast_sequences(
+  seqs_filtered,
+  barcode_term = "MiFish",
+  score_range = 5
+)
+
+# Standardize to canonical match object
+match_df <- standardize_match_data(
+  blast_results,
+  rank_system = c("family", "genus", "species")
+)
+
+# Remove higher-rank duplicates
+match_df <- filter_redundant_hypotheses(match_df)
+```
+
+### Step 2: Build reference and train likelihood model (TaxaLikely)
+
+```{r likelihood}
+library(TaxaLikely)
+
+# Fetch reference sequences from NCBI
+reference_df <- fetch_reference_sequences(
+  taxa = unique(match_df$family),
+  barcode_term = "MiFish",
+  max_per_species = 5
+)
+
+# Build alignment matrix
+ref_matrix <- build_reference_matrix(reference_df)
+
+# Flag mislabeled references
+errors <- flag_reference_errors(ref_matrix)
+
+# Train the hierarchical model
+model <- train_likelihood_model(ref_matrix, rank_system = c("family", "genus", "species"))
+
+# Convert match scores to likelihoods
+result <- evaluate_likelihoods(match_df, model)
+likelihoods <- result$likelihoods
+
+# Keep finest-rank candidates
+likelihoods <- filter_top_hypotheses(likelihoods)
+```
+
+### Step 3: Fetch occurrence data (TaxaFetch)
+
+```{r fetch}
+library(TaxaFetch)
+
+keys <- get_keys_from_context(
+  data.frame(taxon_name = unique(match_df$family))
+)
+bbox <- make_bbox_wkt(lat = 34.4, lon = -119.8, radius_deg = 2)
+gbif_raw <- fetch_gbif_occurrences(keys$usageKey, bbox = bbox)
+occurrences <- filter_gbif_quality(gbif_raw)
+```
+
+### Step 4: Assign habitat (TaxaHabitat)
+
+```{r habitat}
+library(TaxaHabitat)
+
+prompt <- build_habitat_prompt(
+  unique(occurrences$species),
+  geographic_context = "Southern California"
+)
+raw_text <- TaxaTools::call_anthropic_api(prompt$prompts[[1]])
+habitats <- parse_hierarchical_habitat_response(raw_text, prompt$chunks[[1]], prompt)
+occurrences <- assign_habitat_biological(occurrences, habitats)
+```
+
+### Step 5: Build priors (TaxaExpect)
+
+```{r priors}
+library(TaxaExpect)
+
+grid <- create_sites_from_grid(occurrences, grid_size = 0.25)
+model_fit <- fit_occupancy_model(grid$data)
+priors <- generate_full_priors(model_fit, grid)
+```
+
+### Step 5 (alternative): One-call wrapper
+
+```{r build_priors}
+# build_priors() wraps Steps 3-5 into a single call
+prior_result <- TaxaExpect::build_priors(
+  taxa = unique(match_df$family),
+  lat = 34.4, lon = -119.8,
+  llm_fn = TaxaTools::call_anthropic_api,
+  verbose = TRUE
+)
+priors <- prior_result$priors
+```
+
+### Step 6: Compute posteriors (TaxaAssign)
+
+```{r posterior}
+library(TaxaAssign)
+
+# Detect unreferenced species
+unreferenced <- suggest_unreferenced_species(
+  match_df,
+  llm_fn = TaxaTools::call_anthropic_api,
+  barcode_term = "MiFish"
+)
+
+# Expand generic unreferenced rows into named species
+likelihoods_expanded <- expand_unreferenced_hypotheses(
+  likelihoods, unreferenced, priors
+)
+
+# Apply coverage constraints (suppress unreferenced for complete genera)
+coverage <- audit_barcode_coverage(
+  match_df, barcode_term = "MiFish"
+)
+likelihoods_final <- apply_coverage_constraints(likelihoods_expanded, coverage)
+
+# Join priors
+joined <- join_priors(likelihoods_final, priors, site = list(main_habitat = "Marine"))
+
+# Compute posterior
+result <- compute_posterior(joined, n_sims = 1000)
+
+# Consensus taxonomy
+consensus <- posterior_consensus(result, cumulative_threshold = 0.95)
+
+# Empirical Bayes refinement
+result_updated <- update_prior_from_consensus(result, consensus)
+consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
+```
+
+### Step 6 (alternative): One-call wrapper
+
+```{r run_bayesian}
+# run_bayesian_pipeline() wraps Step 6 into a single call
+pipeline <- run_bayesian_pipeline(
+  match_df = match_df,
+  model_params = model,
+  taxaexpect_priors = priors,
+  site = list(main_habitat = "Marine"),
+  barcode_term = "MiFish",
+  verbose = TRUE
+)
+consensus_final <- pipeline$consensus
+```
+
+---
+
+## LLM Pathway: Quick Assignment
+
+The LLM pathway skips the occurrence data pipeline entirely. An LLM assigns
+priors based on expert knowledge of species ranges and habitat.
+
+```{r llm_manual}
+library(TaxaAssign)
+library(TaxaTools)
+
+# Build context (auto-populates habitat, ecoregion, date via LLM)
+ctx <- build_context(
+  match_df,
+  llm_fn = call_anthropic_api,
+  geographic_hint = "Southern California estuaries"
+)
+
+# LLM assigns priors + detects unreferenced species in one call
+result <- assign_taxa_llm(
+  match_df, ctx,
+  llm_fn = call_anthropic_api,
+  detect_unreferenced = TRUE,
+  barcode_term = "MiFish"
+)
+
+# Posterior computation and consensus
+posterior <- compute_posterior(result, n_sims = 1000)
+consensus <- posterior_consensus(posterior, cumulative_threshold = 0.95)
+result_updated <- update_prior_from_consensus(posterior, consensus)
+consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
+```
+
+### LLM one-call wrapper
+
+```{r run_llm}
+pipeline <- run_llm_pipeline(
+  match_df = match_df,
+  llm_fn = call_anthropic_api,
+  geographic_hint = "Southern California estuaries",
+  detect_unreferenced = TRUE,
+  barcode_term = "MiFish",
+  generate_report = TRUE,
+  verbose = TRUE
+)
+consensus_final <- pipeline$consensus
+report <- pipeline$report
+```
+
+---
+
+## Comparing Approaches
+
+Both pathways produce posterior-based consensus. You can also run a conventional
+score-based consensus for comparison:
+
+```{r compare}
+# Score-based consensus (no model needed)
+score_cons <- score_consensus(match_df)
+
+# Compare
+comparison <- merge(
+  consensus_final[, c("observation_id", "consensus_taxon", "consensus_rank")],
+  score_cons[, c("observation_id", "consensus_taxon", "consensus_rank")],
+  by = "observation_id", suffixes = c("_posterior", "_score")
+)
+
+# Where do they disagree?
+disagree <- comparison[comparison$consensus_taxon_posterior != comparison$consensus_taxon_score, ]
+```
+
+### When to Use Which
+
+**Use the Bayesian pathway when:**
+
+- You have a well-characterized reference database
+- Occurrence data are available for your study region
+- Reproducibility is critical (no LLM stochasticity)
+- You are processing large datasets (model trains once, applies to all)
+
+**Use the LLM pathway when:**
+
+- You are exploring a new dataset quickly
+- Occurrence data are sparse or unavailable
+- You want expert-level context without building a spatial model
+- You are working in a data-poor region where GBIF coverage is thin
+
+**Use score consensus when:**
+
+- You want a quick baseline with no modeling
+- You need to compare against the traditional approach
+- Your match scores are highly reliable (e.g., 99%+ identity)
+
+---
+
+## Generating a Report
+
+Both pathways support automated report generation:
+
+```{r report}
+report <- generate_report(
+  result = result_updated,
+  consensus = consensus_final,
+  unreferenced_result = unreferenced,
+  data_type = "eDNA",
+  marker = "MiFish 12S",
+  study_description = "Estuarine fish biodiversity survey in Southern California",
+  llm_fn = call_anthropic_api
+)
+
+cat(report$methods)
+cat(report$results)
+```
+
+---
+
+## Quality Flagging (TaxaFlag)
+
+After assignment, screen results for anomalous detections:
+
+```{r flag}
+library(TaxaFlag)
+
+# Flag potential contaminants from lab blanks
+flagged <- flag_contaminant(
+  consensus_final, control_samples = c("blank_1", "blank_2"),
+  taxon_col = "consensus_taxon", reads_col = "n_reads",
+  event_col = "event_id", contaminant_type = "lab"
+)
+
+# LLM expert review of assignment plausibility
+reviewed <- review_assignments(
+  flagged, taxon_col = "consensus_taxon",
+  site_col = "site_name", llm_fn = call_anthropic_api
+)
+```
+
+---
+
+## Assembled Reports
+
+Each package provides a `report_*()` function that captures what it did.
+These can be assembled into a unified Methods + Results document:
+```{r assemble}
+library(TaxaTools)
+
+sections <- list(
+  TaxaMatch::report_match(match_df),
+  report_likelihood(model),
+  report_assign(result_updated, consensus_final),
+  TaxaFlag::report_flags(reviewed)
+)
+
+full_report <- assemble_report(sections)
+cat(format(full_report))
+```
+
+---
+
+## Key Concepts
+
+### Hypothesis Types
+
+Every candidate match generates up to three hypothesis types:
+
+- **specific_candidate**: a taxon present in the reference database (H1)
+- **unreferenced_species**: a described species absent from the reference (H2)
+- **unreferenced_genus**: an undescribed or unsampled genus-level taxon (H3)
+
+The likelihood model assigns different score distributions to each type.
+H2 scores are expected to be lower than H1 (sister species, not exact match);
+H3 scores lower still.
+
+### Prior Sources
+
+- **TaxaExpect priors**: derived from GBIF occurrence data + spatial occupancy model.
+  Quantitative, reproducible, but limited by GBIF coverage.
+- **LLM priors**: assigned by an LLM based on species range, habitat, and
+  geographic context. Flexible, but stochastic and non-reproducible.
+- **Flat priors**: equal probability for all candidates. Used as fallback when
+  no prior information is available.
+
+### Consensus Methods
+
+- **posterior_consensus()**: Bayesian LCA (lowest common ancestor) among
+  hypotheses exceeding a cumulative posterior threshold. Accounts for
+  uncertainty.
+- **score_consensus()**: traditional rank thresholds (e.g., species at 98%,
+  genus at 95%). Deterministic, no model needed.
+- **update_prior_from_consensus()**: empirical Bayes refinement -- confirmed
+  species from resolved samples boost priors in unresolved samples.
+
+---
+
+## Package Versions and Installation
+
+```{r install}
+# Install all TaxaID packages from local source
+pkg_paths <- c(
+  "TaxaTools", "TaxaFetch", "TaxaHabitat",
+  "TaxaMatch", "TaxaLikely", "TaxaExpect", "TaxaAssign", "TaxaFlag"
+)
+for (pkg in pkg_paths) {
+  devtools::install(file.path("path/to/TaxaID", pkg))
+}
+
+# Bioconductor dependencies (for TaxaLikely reference matrix building)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(c("DECIPHER", "Biostrings"))
+```

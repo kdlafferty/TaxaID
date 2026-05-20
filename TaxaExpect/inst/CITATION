@@ -1,0 +1,16 @@
+bibentry(
+  bibtype  = "Manual",
+  title    = "TaxaExpect: Estimate Bayesian Priors for Species Occurrence",
+  author   = person("Kevin", "Lafferty"),
+  year     = "2026",
+  note     = "R package version 0.1.0; part of the TaxaID ecosystem",
+  url      = "https://github.com/klafferty/TaxaID"
+)
+
+bibentry(
+  bibtype  = "Manual",
+  title    = "TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment",
+  author   = person("Kevin", "Lafferty"),
+  year     = "2026",
+  note     = "In preparation"
+)

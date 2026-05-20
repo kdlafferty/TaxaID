@@ -1,0 +1,110 @@
+---
+title: "From Sequences to Standardized Match Data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{From Sequences to Standardized Match Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Purpose
+
+TaxaMatch handles sequence input, BLAST search, and match standardisation.
+It produces the canonical "match object" consumed by TaxaLikely (for
+likelihood modelling) and TaxaAssign (for posterior computation).
+
+## Quick Start
+
+```{r quickstart}
+library(TaxaMatch)
+
+# From DADA2 output
+seqs <- read_sequence_table("seqtab_nochim.rds")
+filtered <- filter_sequences(seqs, barcode_term = "12S")
+blasted <- blast_sequences(filtered, db = "nt", barcode_term = "12S")
+match_df <- standardize_match_data(blasted) |>
+  filter_redundant_hypotheses()
+```
+
+## Detailed Walkthrough
+
+### Step 1: Read sequence data
+
+```{r read}
+# Option A: DADA2 sequence table (matrix: samples x ASVs)
+seqs <- read_sequence_table("seqtab_nochim.rds")
+
+# Option B: FASTA file
+seqs <- read_sequence_table("sequences.fasta")
+
+# Option C: With pre-computed taxonomy
+seqs <- read_sequence_table("seqtab_nochim.rds",
+                             taxonomy = "tax_table.rds")
+```
+
+### Step 2: Filter sequences
+
+```{r filter}
+filtered <- filter_sequences(
+  seqs,
+  barcode_term  = "12S",       # auto-detects length range
+  min_abundance = 2            # drop singletons
+)
+```
+
+### Step 3: BLAST search
+
+```{r blast}
+# Remote NCBI BLAST
+blasted <- blast_sequences(
+  filtered,
+  db           = "nt",
+  barcode_term = "12S",
+  score_range  = 5              # keep hits within 5% of top score
+)
+
+# Local BLAST (requires rBLAST + local database)
+# blasted <- blast_sequences(filtered, db = "local_12S.fasta", remote = FALSE)
+```
+
+### Step 4: Standardize
+
+```{r standardize}
+match_df <- standardize_match_data(
+  blasted,
+  observation_id_col = "ESVId",
+  score_col     = "PercMatch"
+)
+
+# Remove redundant higher-rank hypotheses
+match_df <- filter_redundant_hypotheses(match_df)
+```
+
+## Key Parameters
+
+| Parameter | Default | When to change |
+|---|---|---|
+| `barcode_term` | — | Must match your marker for length filtering |
+| `min_abundance` | 1 | Increase to drop rare/spurious ASVs |
+| `score_range` | 5 | Narrow for stricter hit selection |
+| `rank_system` | kpcofgs | Subset if your data has fewer ranks |
+
+## Common Pitfalls
+
+1. **BLAST timeout:** Remote NCBI BLAST can be slow for many sequences.
+   Use `blast_sequences(..., timeout = 600)` or switch to local BLAST.
+
+2. **DADA2 on Google Drive:** `multithread = TRUE` fails on cloud-synced
+   drives. Copy files locally first.
+
+3. **Score column name varies:** Different BLAST tools use different column
+   names. `standardize_match_data()` auto-detects common names, or specify
+   `score_col` explicitly.

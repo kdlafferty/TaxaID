@@ -1,0 +1,129 @@
+---
+title: "Cleaning and Verifying Taxon Names"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Cleaning and Verifying Taxon Names}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Purpose
+
+TaxaTools provides name verification, cleaning, parsing, and standardisation
+utilities used throughout the TaxaID ecosystem. It also hosts the LLM provider
+functions and text generation tools.
+
+## Quick Start
+
+```{r quickstart}
+library(TaxaTools)
+
+# Clean raw names
+clean <- clean_taxon_names(c("Fundulus parvipinnis (Girard, 1854)",
+                              "Atherinops  affinis", "sp. nov."))
+# "Fundulus parvipinnis", "Atherinops affinis", NA
+
+# Verify against a backbone
+verified <- verify_taxon_names(c("Fundulus parvipinnis", "Atherinops afinis"),
+                                backbone_id = 4)
+```
+
+## Core Functions
+
+### Name cleaning
+
+`clean_taxon_names()` removes authors, subspecies, formatting artifacts, and
+invalid entries. Output is the same length as input; invalid names become `NA`.
+
+```{r clean}
+raw <- c("Fundulus parvipinnis (Girard, 1854)",
+         "Atherinops  affinis",
+         "Uncultured bacterium clone",
+         "Cottus sp.",
+         "")
+clean_taxon_names(raw)
+# "Fundulus parvipinnis", "Atherinops affinis", NA, NA, NA
+```
+
+### Name verification
+
+`verify_taxon_names()` checks names against the Global Names Verifier API.
+
+```{r verify}
+verified <- verify_taxon_names(
+  c("Fundulus parvipinnis", "Atherinops afinis"),  # note typo
+  backbone_id = 4  # NCBI
+)
+# Returns: matched_name, classification_path, match_type, etc.
+```
+
+### Backbone translation
+
+`change_backbone()` translates names between taxonomic backbones (GBIF, NCBI,
+WoRMS, etc.).
+
+```{r backbone}
+translated <- verified |>
+  change_backbone(input_col = "user_supplied_name",
+                  old_backbone_label = "gbif_name",
+                  new_backbone_label = "ncbi_name")
+```
+
+### Creating taxon names from taxonomy columns
+
+```{r create}
+df <- data.frame(family = "Fundulidae", genus = "Fundulus",
+                 species = "Fundulus parvipinnis")
+create_taxon_names(df, rank_system = c("family", "genus", "species"))
+# Adds: taxon_name = "Fundulus parvipinnis", taxon_name_rank = "species"
+```
+
+### Utility functions
+
+```{r utils}
+# Detect rank columns in a data frame
+detect_ranks(match_df)
+
+# Validate species binomials
+is_valid_species_name(c("Cottus asper", "Cottus sp.", "uncultured clone"))
+# TRUE, FALSE, FALSE
+
+# Resolve barcode length ranges
+resolve_barcode_lengths("MiFishU")  # c(100, 600)
+
+# Find taxonomy conflicts
+find_taxonomy_conflicts(taxonomy_df)
+```
+
+## LLM Provider Functions
+
+TaxaTools hosts the `llm_fn` pattern used across the ecosystem:
+
+```{r llm}
+# Default: Anthropic Claude
+result <- call_anthropic_api("What habitat does Fundulus parvipinnis prefer?")
+
+# Alternatives
+result <- call_gemini_api(prompt, model = "gemini-2.0-flash")
+result <- call_openai_api(prompt, model = "gpt-4o-mini")
+result <- call_ollama_api(prompt, model = "llama3.2")
+```
+
+## Common Pitfalls
+
+1. **`clean_taxon_names()` returns NA:** This is intentional for invalid
+   names. Use `na.omit()` to filter: `clean_taxon_names(x) |> na.omit()`.
+
+2. **Backbone ID confusion:** NCBI = 4, GBIF = 11, WoRMS = 9. See
+   `?verify_taxon_names` for the full list.
+
+3. **API key not set:** LLM functions require API keys in `~/.Renviron`
+   (e.g., `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`).

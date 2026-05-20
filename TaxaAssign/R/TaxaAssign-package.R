@@ -1,0 +1,46 @@
+#' @keywords internal
+"_PACKAGE"
+
+#' TaxaAssign: Bayesian Taxonomic Assignment
+#'
+#' Estimates the posterior probability that a biological sample (sequence,
+#' image, sound) was produced by a particular taxon, using Bayes' theorem.
+#' Combines per-taxon likelihoods with spatial priors to compute posteriors,
+#' then determines consensus taxonomy at the appropriate rank.
+#'
+#' @section Posterior computation:
+#' \itemize{
+#'   \item \code{\link{compute_posterior}} -- Bayes' theorem with MC uncertainty
+#'   \item \code{\link{assign_taxa_llm}} -- LLM-shortcut (priors + likelihoods)
+#'   \item \code{\link{join_priors}} -- merge TaxaExpect priors with likelihoods
+#' }
+#'
+#' @section Consensus:
+#' \itemize{
+#'   \item \code{\link{posterior_consensus}} -- LCA from posterior probabilities
+#'   \item \code{\link{score_consensus}} -- conventional score-based consensus
+#'   \item \code{\link{update_prior_from_consensus}} -- empirical Bayes
+#'     refinement
+#' }
+#'
+#' @section Unreferenced species:
+#' \itemize{
+#'   \item \code{\link{suggest_unreferenced_species}} -- LLM-first detection
+#'   \item \code{\link{expand_unreferenced_hypotheses}} -- expand generic rows
+#' }
+#'
+#' @section High-level wrappers:
+#' \itemize{
+#'   \item \code{\link{run_bayesian_pipeline}} -- full Bayesian workflow
+#'   \item \code{\link{run_llm_pipeline}} -- LLM-shortcut workflow
+#' }
+#'
+#' @section Reporting:
+#' \itemize{
+#'   \item \code{\link{generate_report}} -- full publication-ready report
+#'   \item \code{\link{report_assign}} -- lightweight section for assembly
+#' }
+#'
+#' @name TaxaAssign-package
+#' @aliases TaxaAssign
+NULL

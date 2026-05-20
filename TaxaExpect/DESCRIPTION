@@ -1,0 +1,37 @@
+Package: TaxaExpect
+Title: Estimate Bayesian Priors for Species Occurrence Using GBIF Data
+Version: 0.1.0
+Authors@R: person("Kevin", "Lafferty", role = c("aut", "cre"),
+    email = "klafferty@usgs.gov")
+Description: Generates theta priors (occupancy x detectability) for taxonomic
+    assignment from occurrence data (see TaxaFetch). Occurrence data are
+    first summarized at the grid level. At this scale, the user is able to apply
+    spatial models that generate estimates of theta along with expected error.
+    Part of the TaxaID ecosystem.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    dplyr,
+    rlang,
+    glmmTMB,
+    stats,
+    utils,
+    stringr,
+    tibble,
+    tidyr
+Suggests:
+    knitr,
+    leaflet,
+    miniUI,
+    rentrez,
+    rmarkdown,
+    rgbif,
+    shiny,
+    TaxaFetch,
+    TaxaHabitat,
+    TaxaTools,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr

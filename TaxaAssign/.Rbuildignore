@@ -1,0 +1,14 @@
+^TaxaAssign\.Rproj$
+^\.Rproj\.user$
+^dev$
+^README\.Rmd$
+^LICENSE\.md$
+^CLAUDE\.md$
+^\.claude$
+^JV_TAXAID\.csv$
+^JV_TAXAID_plausible\.csv$
+^Wilder_TAXAID\.csv$
+^Wilder_TAXAID_plausible\.csv$
+^\.Rhistory$
+^\.DS_Store$
+^DISCLAIMER\.md$

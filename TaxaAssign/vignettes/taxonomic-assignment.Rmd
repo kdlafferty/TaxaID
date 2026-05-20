@@ -1,0 +1,199 @@
+---
+title: "Bayesian Taxonomic Assignment with TaxaAssign"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Bayesian Taxonomic Assignment with TaxaAssign}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Purpose
+
+TaxaAssign computes posterior probabilities for taxonomic assignments by
+combining likelihoods (from TaxaLikely or LLM-based scores) with priors (from
+TaxaExpect or LLM biogeographic knowledge). It provides two parallel workflows:
+
+1. **Bayesian pipeline** (`run_bayesian_pipeline()`): Full statistical model
+   using trained likelihoods from TaxaLikely and occurrence-based priors from
+   TaxaExpect. Best for publication-quality results.
+
+2. **LLM pipeline** (`run_llm_pipeline()`): Fast approximation using
+   score-weighted likelihoods and LLM-estimated priors. Best for exploratory
+   analysis with well-known taxa.
+
+Both workflows produce posterior probabilities, consensus taxonomy, and
+optional empirical Bayes refinement.
+
+## Quick Start: Bayesian Pipeline
+
+```{r quickstart-bayes}
+library(TaxaAssign)
+
+out <- run_bayesian_pipeline(
+  match_df          = match_obj,
+  model_params      = trained_model,
+  taxaexpect_priors = priors,
+  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+)
+
+head(out$consensus)
+```
+
+## Quick Start: LLM Pipeline
+
+```{r quickstart-llm}
+out <- run_llm_pipeline(
+  match_df        = match_obj,
+  geographic_hint = "Southern California",
+  barcode_term    = "12S"
+)
+
+head(out$consensus)
+```
+
+## Detailed Walkthrough: Step-by-Step Bayesian
+
+### Step 1: Evaluate likelihoods (TaxaLikely)
+
+```{r step1}
+library(TaxaLikely)
+
+lik_result <- evaluate_likelihoods(match_df, model_params = trained_model)
+top_lik    <- filter_top_hypotheses(lik_result$likelihoods)
+```
+
+### Step 2: Handle unreferenced species
+
+Unreferenced species — described taxa with no barcode reference — can never
+appear as named matches. Expand generic H2/H3 rows into named species.
+
+```{r step2}
+# Detect unreferenced species from coverage audit
+coverage <- TaxaLikely::audit_barcode_coverage(
+  match_df, barcode_term = "12S", target_rank = "genus"
+)
+
+# Build unreferenced data frame from TaxaExpect priors
+unreferenced_df <- taxaexpect_priors |>
+  dplyr::filter(taxon_name %in% coverage$unreferenced) |>
+  dplyr::rename(species = taxon_name)
+
+# Expand generic rows into named species
+expanded <- expand_unreferenced_hypotheses(top_lik, unreferenced_df)
+
+# Apply coverage constraints (suppress for fully-sampled genera)
+constrained <- TaxaLikely::apply_coverage_constraints(expanded, coverage$census)
+```
+
+### Step 3: Join priors
+
+```{r step3}
+ready <- join_priors(
+  likelihoods       = constrained,
+  taxaexpect_priors = taxaexpect_priors,
+  site              = list(grid_id = "Grid_34p1_m119p1",
+                           main_habitat = "Estuarine Bay")
+)
+```
+
+### Step 4: Compute posteriors
+
+```{r step4}
+result <- compute_posterior(ready, n_sims = 1000)
+```
+
+### Step 5: Consensus + empirical Bayes refinement
+
+```{r step5}
+consensus <- posterior_consensus(result, cumulative_threshold = 0.90)
+
+result_updated <- update_prior_from_consensus(
+  result, consensus, presence_multiplier = 5
+)
+
+consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.90)
+```
+
+## Detailed Walkthrough: LLM Pipeline
+
+```{r llm-detail}
+# Auto-build context from taxon names
+ctx <- build_context(
+  taxon_names     = unique(match_df$taxon_name[match_df$score >= 95]),
+  geographic_hint = "Southern California",
+  date            = "2025"
+)
+
+# Detect unreferenced species via LLM
+unreferenced <- suggest_unreferenced_species(
+  match_df, context = ctx, barcode_term = "12S",
+  expand_to_family = TRUE
+)
+
+# Run LLM assignment
+result <- assign_taxa_llm(
+  match_df, context = ctx,
+  unreferenced_taxa = unreferenced,
+  score_threshold = 80, n_sims = 1000
+)
+
+# Consensus + refinement
+consensus <- posterior_consensus(result, cumulative_threshold = 0.90)
+result_updated <- update_prior_from_consensus(result, consensus)
+consensus_final <- posterior_consensus(result_updated)
+```
+
+## Key Parameters
+
+| Parameter | Default | When to change |
+|---|---|---|
+| `cumulative_threshold` | 0.90 | Lower for more liberal assignments |
+| `min_posterior` | 0.05 | Raise to exclude weak hypotheses |
+| `presence_multiplier` | 5 | Higher = stronger EB boost for confirmed species |
+| `n_sims` | 1000 | 0 for point estimates only |
+| `score_sharpness` | 0.1 | LLM only: higher makes scores dominate |
+| `prior_phi` | c(high=50, moderate=10, low=3) | LLM only: controls prior tightness |
+
+## Comparing Approaches
+
+Use `score_consensus()` for a conventional (non-Bayesian) comparison:
+
+```{r compare}
+score_con <- score_consensus(
+  match_df, min_score = 80, max_gap = 2,
+  rank_thresholds = c(species = 98, genus = 95, family = 90)
+)
+
+# Compare
+comparison <- dplyr::left_join(
+  consensus_final[, c("observation_id", "consensus_taxon", "consensus_rank")],
+  score_con[, c("observation_id", "consensus_taxon", "consensus_rank")],
+  by = "observation_id", suffix = c("_bayesian", "_score")
+)
+```
+
+## Common Pitfalls
+
+1. **All posteriors near-uniform:** Priors may be uninformative. Check that
+   `join_priors()` found matching priors (look for dark-diversity fallback
+   warnings).
+
+2. **"unknown_species" wins:** The LLM pipeline includes a catch-all
+   hypothesis. If it dominates, the true species may not be in the candidate
+   list. Check `score_threshold` and `unreferenced_taxa`.
+
+3. **TaxaMatch not installed:** `join_priors()` uses
+   `TaxaMatch::filter_redundant_hypotheses()` for cleanup. Install TaxaMatch
+   or suppress the warning.
+
+4. **NCBI lookup fails in consensus:** `posterior_consensus()` with
+   `lookup_missing_taxonomy = TRUE` makes NCBI API calls. Set to `FALSE` for
+   offline use.

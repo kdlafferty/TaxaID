@@ -1,0 +1,9 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^CLAUDE\.md$
+^\.claude$
+^.*\.csv$
+^.*\.rds$
+^\.Rhistory$
+^\.DS_Store$
+^DISCLAIMER\.md$

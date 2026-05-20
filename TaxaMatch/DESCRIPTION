@@ -1,0 +1,31 @@
+Package: TaxaMatch
+Title: Store and Standardize Biological Match Data
+Version: 0.0.0.9000
+Authors@R: person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
+Description: Stores and standardizes raw match data produced by external tools that
+    compare biological observations (eDNA sequences, images, acoustic recordings) against
+    reference databases. Outputs a canonical match object (one row per sample x reference
+    match, with standard column names) for input to TaxaLikely. Match data sources include
+    DNA barcode programs (e.g. MiFish), image classifiers, and acoustic recognizers.
+    Score-to-likelihood conversion and reference quality assessment live in TaxaLikely.
+    Part of the TaxaID ecosystem.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    utils,
+    tools,
+    stats,
+    httr2,
+    rentrez,
+    xml2,
+    TaxaTools
+Suggests:
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0),
+    Biostrings,
+    rBLAST
+Config/testthat/edition: 3
+VignetteBuilder: knitr

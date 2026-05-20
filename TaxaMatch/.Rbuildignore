@@ -1,0 +1,12 @@
+^TaxaMatch\.Rproj$
+^\.Rproj\.user$
+^dev$
+^README\.Rmd$
+^LICENSE\.md$
+^CLAUDE\.md$
+^\.claude$
+^match_obj\.rds$
+^seqtab_nochim\.rds$
+^\.Rhistory$
+^\.DS_Store$
+^DISCLAIMER\.md$

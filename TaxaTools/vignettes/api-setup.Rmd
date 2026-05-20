@@ -1,0 +1,219 @@
+---
+title: "Setting Up API Keys for the TaxaID Ecosystem"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Setting Up API Keys for the TaxaID Ecosystem}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Overview
+
+The TaxaID ecosystem uses several external APIs for taxonomic verification,
+occurrence data retrieval, habitat assignment, and LLM-powered analysis. This
+vignette explains which API keys are needed, where to get them, and how to
+configure them.
+
+**Not all keys are required.** Most users only need 2--3, depending on which
+packages and workflows they use.
+
+## Quick Reference
+
+| Key | Required by | Free? | Where to get it |
+|---|---|---|---|
+| `ENTREZ_KEY` | TaxaTools, TaxaLikely, TaxaMatch | Yes | <https://www.ncbi.nlm.nih.gov/account/settings/> |
+| `ANTHROPIC_API_KEY` | TaxaTools (LLM functions) | Paid | <https://console.anthropic.com/settings/keys> |
+| `GBIF_USER` / `GBIF_PWD` / `GBIF_EMAIL` | TaxaFetch | Yes | <https://www.gbif.org/user/profile> |
+| `OPENALEX_API_KEY` | TaxaFetch (literature search) | Yes | <https://openalex.org/settings/api> |
+| `GEMINI_API_KEY` | TaxaTools (optional LLM) | Free tier | <https://aistudio.google.com/apikey> |
+| `OPENAI_API_KEY` | TaxaTools (optional LLM) | Paid | <https://platform.openai.com/api-keys> |
+
+## Setting Keys in ~/.Renviron
+
+R reads environment variables from `~/.Renviron` at startup. Open it with:
+
+```{r}
+usethis::edit_r_environ()
+```
+
+Add one key per line (no quotes, no spaces around `=`):
+
+```
+ENTREZ_KEY=your_ncbi_api_key_here
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+GBIF_USER=your_gbif_username
+GBIF_PWD=your_gbif_password
+GBIF_EMAIL=you@example.com
+OPENALEX_API_KEY=your_openalex_key_here
+GEMINI_API_KEY=your_gemini_key_here
+OPENAI_API_KEY=sk-your-openai-key-here
+```
+
+**Restart R after editing** (`Session > Restart R` in RStudio, or quit and
+relaunch). Environment variables are only read at startup.
+
+## Verifying Your Keys
+
+After restarting R, verify each key is visible:
+
+```{r}
+# Check that keys are set (should print the key value, not "")
+Sys.getenv("ENTREZ_KEY")
+Sys.getenv("ANTHROPIC_API_KEY")
+Sys.getenv("GBIF_USER")
+```
+
+### Test an LLM call
+
+```{r}
+library(TaxaTools)
+call_anthropic_api("Reply with just the word 'connected'.")
+# Should return "connected" (or similar)
+```
+
+### Test NCBI access
+
+```{r}
+# With ENTREZ_KEY set, NCBI allows 10 requests/second (vs 3 without)
+rentrez::entrez_search(db = "taxonomy", term = "Fundulus parvipinnis")
+```
+
+### Test GBIF access
+
+```{r}
+# GBIF credentials are used by rgbif for download requests
+rgbif::occ_search(scientificName = "Fundulus parvipinnis", limit = 5)
+```
+
+## Key Details
+
+### NCBI Entrez API Key (ENTREZ_KEY)
+
+**Used by:** `verify_taxon_names()` (backbone_id = 4), `fetch_reference_sequences()`,
+`audit_barcode_coverage()`, `blast_sequences()`
+
+**Why:** NCBI rate-limits unauthenticated requests to 3/second. With a key, the
+limit increases to 10/second. For large taxonomic queries, this makes a significant
+difference.
+
+**Get it:**
+
+1. Create an NCBI account at <https://www.ncbi.nlm.nih.gov/account/>
+2. Go to Settings (<https://www.ncbi.nlm.nih.gov/account/settings/>)
+3. Scroll to "API Key Management" and click "Create an API Key"
+4. Copy the key into `~/.Renviron` as `ENTREZ_KEY=...`
+
+The `rentrez` package reads `ENTREZ_KEY` automatically.
+
+### Anthropic API Key (ANTHROPIC_API_KEY)
+
+**Used by:** `call_anthropic_api()` and any function that accepts `llm_fn`
+(habitat assignment, LLM-based taxonomic assignment, text generation, expert
+review)
+
+**Why:** Claude is the default LLM provider across the TaxaID ecosystem. It
+powers habitat assignment (TaxaHabitat), taxonomic priors (TaxaAssign), expert
+review (TaxaFlag), and text generation (TaxaTools).
+
+**Get it:**
+
+1. Create an account at <https://console.anthropic.com/>
+2. Go to API Keys (<https://console.anthropic.com/settings/keys>)
+3. Create a new key and copy it into `~/.Renviron` as `ANTHROPIC_API_KEY=...`
+
+**Cost:** Pay-per-use. Typical TaxaID workflows (habitat assignment for ~100
+taxa, taxonomic review) cost under $1 per run with Claude Sonnet.
+
+### GBIF Credentials (GBIF_USER, GBIF_PWD, GBIF_EMAIL)
+
+**Used by:** `fetch_gbif_occurrences()` in TaxaFetch, `build_priors()` in
+TaxaExpect
+
+**Why:** GBIF requires authentication for occurrence download requests. Searches
+work without credentials, but bulk downloads (which TaxaFetch uses) need a
+registered account.
+
+**Get it:**
+
+1. Register at <https://www.gbif.org/user/profile>
+2. Add all three variables to `~/.Renviron`
+
+### OpenAlex API Key (OPENALEX_API_KEY)
+
+**Used by:** `search_literature()` in TaxaFetch
+
+**Why:** OpenAlex provides open scholarly metadata. The API works without a key,
+but authenticated requests have higher rate limits and are polled. Required since
+February 2026.
+
+**Get it:**
+
+1. Visit <https://openalex.org/settings/api>
+2. Register for a free key
+3. Add to `~/.Renviron` as `OPENALEX_API_KEY=...`
+
+### Alternative LLM Providers (Optional)
+
+TaxaID's `llm_fn` pattern lets you swap LLM providers. These are optional --
+only set them if you want to use an alternative to Anthropic.
+
+**Google Gemini (`GEMINI_API_KEY`):**
+
+- Free tier available at <https://aistudio.google.com/apikey>
+- Use: `call_gemini_api(prompt, model = "gemini-2.0-flash")`
+
+**OpenAI (`OPENAI_API_KEY`):**
+
+- Paid account at <https://platform.openai.com/api-keys>
+- Use: `call_openai_api(prompt, model = "gpt-4o-mini")`
+
+**Ollama (no key needed):**
+
+- Local LLM server: <https://ollama.com/>
+- Install Ollama, pull a model (`ollama pull llama3.2`), then:
+- Use: `call_ollama_api(prompt, model = "llama3.2")`
+- No API key or internet connection needed
+
+### Passing Alternative Providers to TaxaID Functions
+
+Any TaxaID function with an `llm_fn` parameter accepts a provider swap:
+
+```{r}
+# Use Gemini instead of Anthropic for habitat assignment
+library(TaxaHabitat)
+result <- assign_habitat_biological(
+  taxa_df,
+  llm_fn = TaxaTools::call_gemini_api
+)
+
+# Use a local Ollama model (free, private, offline)
+result <- assign_habitat_biological(
+  taxa_df,
+  llm_fn = function(prompt) TaxaTools::call_ollama_api(prompt, model = "llama3.2")
+)
+```
+
+## Troubleshooting
+
+**"Error: API key not found"** -- The key is not in your environment. Check
+`Sys.getenv("KEY_NAME")`. If empty, edit `~/.Renviron` and restart R.
+
+**"Error: 401 Unauthorized"** -- The key is set but invalid. Regenerate it at
+the provider's website.
+
+**"Error: 429 Too Many Requests"** -- Rate limited. Wait a moment and retry.
+For NCBI, ensure `ENTREZ_KEY` is set (increases limit from 3 to 10 req/sec).
+
+**LLM responses are truncated** -- Some providers have low default `max_tokens`.
+Pass a higher value: `call_anthropic_api(prompt, max_tokens = 4096)`.
+
+**Ollama connection refused** -- Ensure the Ollama server is running
+(`ollama serve` in a terminal).
