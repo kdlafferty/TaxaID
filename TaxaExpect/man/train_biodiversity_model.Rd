@@ -159,6 +159,23 @@ print(model_fit)
 }
 
 }
+\references{
+Brooks, M.E., Kristensen, K., van Benthem, K.J., Magnusson, A., Berg, C.W.,
+Nielsen, A., Skaug, H.J., Maechler, M. and Bolker, B.M. (2017). glmmTMB
+balances speed and flexibility among packages for zero-inflated generalized
+linear mixed modeling. \emph{The R Journal}, 9(2), 378--400.
+\doi{10.32614/RJ-2017-066}
+
+Warton, D.I., Blanchet, F.G., O'Hara, R.B., Ovaskainen, O., Taskinen, S.,
+Walker, S.C. and Hui, F.K.C. (2015). So many variables: joint modeling in
+community ecology. \emph{Trends in Ecology & Evolution}, 30(12), 766--779.
+\doi{10.1016/j.tree.2015.09.007}
+
+MacKenzie, D.I., Nichols, J.D., Lachman, G.B., Droege, S., Royle, J.A. and
+Langtimm, C.A. (2002). Estimating site occupancy rates when detection
+probabilities are less than one. \emph{Ecology}, 83(8), 2248--2255.
+\doi{10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2}
+}
 \seealso{
 \code{\link{prepare_model_dataframe}},
 \code{\link{generate_undetected_diversity}},

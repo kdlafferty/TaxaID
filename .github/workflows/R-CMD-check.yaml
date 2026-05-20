@@ -30,6 +30,7 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       RENV_CONFIG_AUTOLOADER_ENABLED: "false"
+      NOT_CRAN: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -41,55 +42,49 @@ jobs:
         with:
           use-public-rspm: true
 
-      # Install local TaxaID dependencies BEFORE setup-r-dependencies,
-      # then temporarily remove them from DESCRIPTION so pak doesn't
-      # try to find them on CRAN.
-      - name: Install local TaxaID dependencies and patch DESCRIPTION
+      - name: Install system dependencies (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev \
+            libgdal-dev libgeos-dev libproj-dev libudunits2-dev libharfbuzz-dev \
+            libfribidi-dev pandoc
+
+      - name: Install all dependencies
         shell: Rscript {0}
         run: |
+          install.packages(c("remotes", "rcmdcheck"))
+
+          # Install order respects the TaxaID dependency chain
           all_pkgs <- c("TaxaTools", "TaxaFetch", "TaxaHabitat", "TaxaMatch",
                         "TaxaLikely", "TaxaExpect", "TaxaAssign", "TaxaFlag",
                         "TaxaWizard")
           target <- "${{ matrix.package }}"
 
-          # Read DESCRIPTION to find local deps
-          desc_path <- file.path(target, "DESCRIPTION")
-          desc <- read.dcf(desc_path)
+          # Find which local packages the target needs
+          desc <- read.dcf(file.path(target, "DESCRIPTION"))
           fields <- intersect(colnames(desc), c("Imports", "Depends", "Suggests"))
           all_deps_str <- paste(desc[, fields], collapse = ",")
           dep_names <- trimws(gsub("\\(.*?\\)", "", unlist(strsplit(all_deps_str, "[,\n]+"))))
           local_deps <- all_pkgs[all_pkgs %in% dep_names]
 
-          if (length(local_deps) > 0) {
-            # Install CRAN deps of local packages first (recursively)
-            install.packages("remotes")
-            for (pkg in local_deps) {
-              message("Installing CRAN deps for: ", pkg)
-              remotes::install_deps(pkg, dependencies = TRUE, upgrade = "never")
-            }
-            # Install local packages in order
-            for (pkg in local_deps) {
-              message("Installing local package: ", pkg)
-              install.packages(pkg, repos = NULL, type = "source")
-            }
-
-            # Patch DESCRIPTION: remove local packages from Imports/Suggests
-            # so setup-r-dependencies won't try to resolve them from CRAN
-            desc_text <- readLines(desc_path)
-            for (lp in local_deps) {
-              # Remove lines that are just the package name (with optional comma)
-              desc_text <- desc_text[!grepl(paste0("^\\s*", lp, "\\s*(,|$)"), desc_text)]
-            }
-            writeLines(desc_text, desc_path)
+          # Install each local dep and its CRAN dependencies
+          for (pkg in local_deps) {
+            message("Installing CRAN deps for: ", pkg)
+            remotes::install_deps(pkg, dependencies = TRUE, upgrade = "never")
+            message("Installing local package: ", pkg)
+            install.packages(pkg, repos = NULL, type = "source")
           }
 
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          working-directory: ${{ matrix.package }}
-          extra-packages: any::rcmdcheck
+          # Install the target package's own CRAN deps
+          message("Installing CRAN deps for target: ", target)
+          remotes::install_deps(target, dependencies = TRUE, upgrade = "never")
 
-      - uses: r-lib/actions/check-r-package@v2
-        with:
-          working-directory: ${{ matrix.package }}
-          error-on: '"error"'
-          args: 'c("--no-manual", "--as-cran")'
+      - name: Check package
+        shell: Rscript {0}
+        run: |
+          rcmdcheck::rcmdcheck(
+            path = "${{ matrix.package }}",
+            args = c("--no-manual", "--as-cran"),
+            build_args = "--no-manual",
+            error_on = "error"
+          )

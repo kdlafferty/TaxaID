@@ -9,10 +9,11 @@ intended as a manuscript-ready methods reference for the TaxaID ecosystem.*
 
 ## 1. Problem Statement
 
-Traditional DNA barcoding relies on "top hit" approaches (e.g., BLAST), which
-assign taxonomy based strictly on the highest percentage match. This approach
-fails in the context of **open-set recognition** — the scenario where the true
-species or genus of the query sequence is absent from the reference database.
+Traditional DNA barcoding relies on "top hit" approaches (e.g., BLAST; Hebert
+et al. 2003), which assign taxonomy based strictly on the highest percentage
+match. This approach fails in the context of **open-set recognition** (Scheirer
+et al. 2013) — the scenario where the true species or genus of the query
+sequence is absent from the reference database.
 
 For example, a 91% match to *Luciogobius* could imply a poor-quality sequence of
 a known species, a novel species within *Luciogobius*, or a novel genus entirely.
@@ -20,18 +21,22 @@ Distinguishing these scenarios requires a probabilistic framework that evaluates
 not just the magnitude of the match, but the distribution of matches expected at
 each taxonomic rank.
 
-TaxaLikely addresses this by training a generative model on reference-vs-reference
-pairwise distances (`build_reference_matrix()` + `train_likelihood_model()`) and
-then applying that model to convert per-query match scores into calibrated
-likelihoods (`evaluate_likelihoods()`).
+Previous work on probabilistic taxonomic assignment (Somervuo et al. 2017;
+Axtner et al. 2019; Zito et al. 2023) has addressed the open-set problem by
+placing prior probabilities over both known and unknown taxa. TaxaLikely extends
+this approach by explicitly separating the likelihood estimation from the prior,
+training a generative model on reference-vs-reference pairwise distances
+(`build_reference_matrix()` + `train_likelihood_model()`) and then applying that
+model to convert per-query match scores into calibrated likelihoods
+(`evaluate_likelihoods()`). Priors are estimated independently by TaxaExpect.
 
 ---
 
 ## 2. Statistical Framework: Generative vs. Discriminative
 
 While discriminative models (e.g., logistic regression, random forests) quantify
-the boundary between classes, they inherently incorporate the class imbalance of
-the training data as an implicit prior. This biases assignments toward species
+the boundary between classes (Ng & Jordan 2001), they inherently incorporate the
+class imbalance of the training data as an implicit prior. This biases assignments toward species
 that are commonly represented in the reference library, rather than species that
 are ecologically plausible at the sample location.
 
@@ -161,7 +166,8 @@ strategies:
 
 ### 5A. Empirical Bayes Shrinkage
 
-Per-species parameters are shrunk toward the global mean with weight inversely
+Per-species parameters are shrunk toward the global mean using a James–Stein /
+Empirical Bayes estimator (Efron & Morris 1973), with weight inversely
 proportional to sample size:
 
     w = N_obs / (N_obs + prior_weight)
@@ -202,7 +208,7 @@ positive gaps.
 
 To capture the interaction between score and gap (e.g., a small gap is more
 tolerable if the score is extremely high), TaxaLikely models the joint
-distribution using a **bivariate normal density**:
+distribution using a **bivariate normal density** (Genz et al. 2023):
 
     L(H) = P(score, gap | mu_H, Sigma_H)
 
@@ -359,3 +365,46 @@ TaxaAssign
     |-- compute_posterior()
     |-- posterior_consensus()
 ```
+
+---
+
+## References
+
+Axtner, J., Crampton-Platt, A., Hoerig, L.A., Mohamed, A., Xu, C.C.Y.,
+Yu, D.W. and Wilting, A. (2019). An efficient and robust laboratory workflow
+and target capture method for species identification from environmental DNA.
+*Molecular Ecology Resources*, 19(2), 524–541.
+doi:10.1111/1755-0998.12969
+
+Efron, B. and Morris, C. (1973). Stein's estimation rule and its
+competitors — an empirical Bayes approach. *Journal of the American
+Statistical Association*, 68(341), 117–130.
+doi:10.1080/01621459.1973.10481350
+
+Genz, A., Bretz, F., Miwa, T., Mi, X., Leisch, F., Scheipl, F. and
+Hothorn, T. (2023). *mvtnorm: Multivariate Normal and t Distributions*.
+R package. doi:10.5281/zenodo.10021696
+
+Hebert, P.D.N., Cywinska, A., Ball, S.L. and deWaard, J.R. (2003).
+Biological identifications through DNA barcodes. *Proceedings of the
+Royal Society of London B*, 270(1512), 313–321.
+doi:10.1098/rspb.2002.2218
+
+Ng, A.Y. and Jordan, M.I. (2001). On discriminative vs. generative
+classifiers: a comparison of logistic regression and naive Bayes.
+*Advances in Neural Information Processing Systems*, 14, 841–848.
+
+Scheirer, W.J., de Rezende Rocha, A., Sapkota, A. and Boult, T.E. (2013).
+Toward open set recognition. *IEEE Transactions on Pattern Analysis and
+Machine Intelligence*, 35(7), 1757–1772.
+doi:10.1109/TPAMI.2012.256
+
+Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
+(2017). Unbiased probabilistic taxonomic classification for DNA barcoding
+and DNA metabarcoding. *Bioinformatics*, 33(19), 2997–3005.
+doi:10.1093/bioinformatics/btx369
+
+Zito, A., Rigon, T., Ovaskainen, O. and Dunson, D.B. (2023). Bayesian
+nonparametric modelling of sequential discoveries. *Methods in Ecology
+and Evolution*, 14(6), 1373–1385.
+doi:10.1111/2041-210X.14009

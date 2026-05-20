@@ -141,6 +141,17 @@ nrow(result$unresolved)
 }
 
 }
+\references{
+Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
+(2017). Unbiased probabilistic taxonomic classification for DNA barcoding.
+\emph{Bioinformatics}, 33(19), 2997--3005.
+\doi{10.1093/bioinformatics/btx369}
+
+Efron, B. and Morris, C. (1973). Stein's estimation rule and its
+competitors -- an empirical Bayes approach. \emph{Journal of the American
+Statistical Association}, 68(341), 117--130.
+\doi{10.1080/01621459.1973.10481350}
+}
 \seealso{
 \code{\link[=train_likelihood_model]{train_likelihood_model()}}, \code{\link[=filter_top_hypotheses]{filter_top_hypotheses()}}
 }

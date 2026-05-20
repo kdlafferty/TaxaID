@@ -137,6 +137,14 @@ head(priors)
 }
 
 }
+\references{
+Jeffreys, H. (1946). An invariant form for the prior probability in
+estimation problems. \emph{Proceedings of the Royal Society of London A},
+186(1007), 453--461. \doi{10.1098/rspa.1946.0056}
+
+Gelman, A., Carlin, J.B., Stern, H.S., Dunson, D.B., Vehtari, A. and
+Rubin, D.B. (2013). \emph{Bayesian Data Analysis}. 3rd edn. CRC Press.
+}
 \seealso{
 \code{train_biodiversity_model()},
 \code{generate_undetected_diversity()}

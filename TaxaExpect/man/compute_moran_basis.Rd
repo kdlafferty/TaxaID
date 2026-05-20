@@ -84,6 +84,16 @@ model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
 }
 
 }
+\references{
+Dray, S., Legendre, P. and Peres-Neto, P.R. (2006). Spatial modelling: a
+comprehensive framework for principal coordinate analysis of neighbour
+matrices (PCNM). \emph{Ecological Modelling}, 196(3--4), 483--493.
+\doi{10.1016/j.ecolmodel.2006.02.015}
+
+Griffith, D.A. and Peres-Neto, P.R. (2006). Spatial modeling in ecology:
+the flexibility of eigenfunction spatial analyses. \emph{Ecology}, 87(10),
+2603--2613. \doi{10.1890/0012-9658(2006)87[2603:SMIETF]2.0.CO;2}
+}
 \seealso{
 \code{\link{prepare_model_dataframe}}, \code{\link{train_biodiversity_model}}
 }

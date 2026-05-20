@@ -85,6 +85,71 @@ TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 TaxaWizard (standalone; generates scripts that call the other packages)
 ```
 
+## Related Software
+
+Several R packages and standalone tools address taxonomic assignment
+from DNA barcoding data. TaxaID differs from these in its explicit
+separation of likelihood and prior, spatially explicit priors built
+from occurrence data, and multi-data-type support (DNA, image,
+acoustic).
+
+**Table 0.** Comparison of TaxaID with related taxonomic assignment
+tools.
+
+| Tool | Approach | Posterior probabilities | Spatial priors | Unreferenced taxa | Multi-data-type |
+|---|---|---|---|---|---|
+| **TaxaID** | Generative Bayesian (MVN score + gap) | Yes (full distribution) | Yes (GBIF + habitat) | Yes (NCBI census + LLM) | Yes |
+| PROTAX (Somervuo et al. 2017) | Bayesian with taxonomy-tree prior | Yes | No | Yes (tree-based) | No (DNA only) |
+| BayesANT (Zito et al. 2023) | Bayesian nonparametric (kmer) | Yes | No | Yes (Pitman-Yor) | No (DNA only) |
+| IdTaxa / DECIPHER (Murali et al. 2018) | Phylogenetic ML | Bootstrap confidence | No | No | No (DNA only) |
+| insect (Wilkinson et al. 2018) | Profile HMM + classification tree | Akaike weights | No | No | No (DNA only) |
+| SINTAX (Edgar 2016) | Kmer + bootstrap | Bootstrap confidence | No | No | No (DNA only) |
+| RDP Classifier (Wang et al. 2007) | Naive Bayes (8-mer) | Bootstrap confidence | No | No | No (DNA only) |
+| DADA2 `assignTaxonomy` (Callahan et al. 2016) | Naive Bayes (kmer) | Bootstrap confidence | No | No | No (DNA only) |
+
+TaxaID is complementary to several of these tools rather than a
+replacement. DADA2 or OBITools handle upstream sequence processing;
+TaxaMatch ingests their output. DECIPHER is used internally by
+TaxaLikely for reference sequence alignment. The key innovation of
+TaxaID is that the same likelihood model can be combined with
+different spatial priors at different sites, and that the framework
+extends to image and acoustic data via TaxaMatch score
+standardization.
+
+For contamination detection, the R package decontam (Davis et al.
+2018) uses DNA concentration and prevalence to identify contaminants
+at the ASV level before taxonomic assignment. TaxaFlag operates after
+assignment, flagging implausible taxonomic identities using
+proportion-based control comparison, temporal proximity analysis, and
+LLM expert review.
+
+### References for Table 0
+
+-   Callahan, B.J. et al. (2016). DADA2: High-resolution sample
+    inference from Illumina amplicon data. *Nature Methods*, 13(7),
+    581--583.
+-   Davis, N.M. et al. (2018). Simple statistical identification and
+    removal of contaminant sequences in marker-gene and metagenomics
+    data. *Microbiome*, 6, 226.
+-   Edgar, R.C. (2016). SINTAX: a simple non-Bayesian taxonomy
+    classifier for 16S and ITS sequences. *bioRxiv*, 074161.
+-   Murali, A., Bhargava, A. and Wright, E.S. (2018). IDTAXA: a novel
+    approach for accurate taxonomic classification of microbiome
+    sequences. *Microbiome*, 6, 140.
+-   Somervuo, P. et al. (2017). Unbiased probabilistic taxonomic
+    classification for DNA barcoding. *Bioinformatics*, 33(19),
+    2997--3005.
+-   Wang, Q. et al. (2007). Naive Bayesian classifier for rapid
+    assignment of rRNA sequences into the new bacterial taxonomy.
+    *Applied and Environmental Microbiology*, 73(16), 5261--5267.
+-   Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018).
+    Characterising taxonomic assignment quality in environmental DNA
+    metabarcoding data with the insect R package. *Methods in Ecology
+    and Evolution*, 11, 1457--1468.
+-   Zito, A. et al. (2023). Bayesian nonparametric modelling of
+    sequential discoveries. *Methods in Ecology and Evolution*, 14(6),
+    1373--1385.
+
 ## Citation
 
 Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
