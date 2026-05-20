@@ -1,0 +1,77 @@
+name: R-CMD-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - TaxaTools
+          - TaxaFetch
+          - TaxaHabitat
+          - TaxaMatch
+          - TaxaLikely
+          - TaxaExpect
+          - TaxaAssign
+          - TaxaFlag
+          - TaxaWizard
+
+    name: Check ${{ matrix.package }}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: ${{ matrix.package }}
+          extra-packages: any::rcmdcheck
+
+      # Install local TaxaID dependencies in order before checking
+      - name: Install local TaxaID dependencies
+        shell: Rscript {0}
+        run: |
+          # Define the install order (respects dependency chain)
+          all_pkgs <- c("TaxaTools", "TaxaFetch", "TaxaHabitat", "TaxaMatch",
+                        "TaxaLikely", "TaxaExpect", "TaxaAssign", "TaxaFlag",
+                        "TaxaWizard")
+          target <- "${{ matrix.package }}"
+
+          # Read the target's DESCRIPTION to find which local packages it needs
+          desc <- read.dcf(file.path(target, "DESCRIPTION"))
+          all_deps <- paste(
+            desc[, intersect(colnames(desc), c("Imports", "Depends", "Suggests"))],
+            collapse = ","
+          )
+          dep_names <- trimws(gsub("\\(.*?\\)", "", unlist(strsplit(all_deps, "[,\n]+"))))
+
+          # Install only the local TaxaID packages that this package depends on
+          local_deps <- intersect(all_pkgs, dep_names)
+          # Ensure correct order
+          local_deps <- all_pkgs[all_pkgs %in% local_deps]
+
+          for (pkg in local_deps) {
+            message("Installing local dependency: ", pkg)
+            install.packages(pkg, repos = NULL, type = "source")
+          }
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: ${{ matrix.package }}
+          error-on: '"error"'
+          args: 'c("--no-manual", "--as-cran")'
