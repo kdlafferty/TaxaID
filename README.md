@@ -286,6 +286,23 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 BiocManager::install("DECIPHER")
 ```
 
+After installation, load the packages:
+
+``` r
+library(TaxaTools)    # Name cleaning, LLM providers (auto-detects API keys)
+library(TaxaFetch)    # Occurrence data acquisition
+library(TaxaHabitat)  # Habitat assignment
+library(TaxaMatch)    # Match standardization
+library(TaxaLikely)   # Score-to-likelihood conversion
+library(TaxaExpect)   # Spatially explicit priors
+library(TaxaAssign)   # Posterior computation and consensus
+library(TaxaFlag)     # Post-assignment quality flagging
+library(TaxaWizard)   # Interactive workflow designer
+```
+
+Not all packages are needed for every workflow. At minimum, load
+TaxaTools (always required) plus the packages for your workflow.
+
 # Instructions for Using Software
 
 ## Packages
