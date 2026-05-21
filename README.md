@@ -1,4 +1,4 @@
-<img src="USGS_logo_green.png" alt="USGS logo" width="200"/>
+<img src="USGS_logo_green.png" alt="" width="200"/>
 
 # TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment
 
