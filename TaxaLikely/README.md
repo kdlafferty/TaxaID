@@ -134,7 +134,7 @@ hypothesis type:
 For a detailed treatment of the statistical framework, feature
 engineering, hypothesis definitions, parameter estimation, and
 reference quality control, see
-[`inst/methods_background.md`](inst/methods_background.md).
+[`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md).
 
 ## Vignettes
 

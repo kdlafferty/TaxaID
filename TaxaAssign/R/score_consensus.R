@@ -27,7 +27,7 @@ utils::globalVariables(c("score_val"))
 #' 1. **Score filter:** discard hits below `min_score`.
 #' 2. **Gap filter:** among remaining hits, keep only those within `max_gap` of
 #'    the top score (per sample).
-#' 3. **LCA:** compute the least common ancestor (LCA) of the retained hits.
+#' 3. **LCA:** compute the lowest common ancestor (LCA) of the retained hits.
 #' 4. **Rank threshold cap:** if `rank_thresholds` is supplied, cap the
 #'    consensus at the finest rank whose minimum score the top hit meets.
 #' 5. **Whitelist upranking:** if `whitelist` is supplied, verify the consensus

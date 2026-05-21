@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-20 (Session 80 — GitHub repo setup, CI)
+# Last updated: 2026-05-21 (Session 81 — methods docs, LCA terminology, supplemental methods rename)
 
 ---
 
@@ -455,3 +455,8 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-21 | *(Session 81 — rename)* | `habitat_observed_elsewhere` | `observed_in_habitat` | TaxaExpect | column + flag | Renamed for clarity: TRUE = species recorded in this habitat type during training; FALSE = habitat extrapolation. 43 occurrences across 9 files. |
 | 2026-05-21 | *(Session 81 — new)* | `moran_k = 0` support | TaxaExpect | `build_priors()` | Moran eigenvectors now skippable by setting `moran_k = 0`. Default remains 5 (recommended). |
 | 2026-05-21 | *(Session 81 — docs)* | `inst/methods_background.md` | TaxaAssign + TaxaExpect | documentation | TaxaAssign: new 10-section statistical methods background. TaxaExpect: uncertainty contrast argument, site/grid glossary, Moran default clarification, `observed_in_habitat` rename. |
+| 2026-05-21 | *(Session 81 — rename)* | `least common ancestor` | `lowest common ancestor` | TaxaAssign + ecosystem | terminology | Standardized to conventional bioinformatics term (MEGAN, Kraken). 10 occurrences across 7 files: R source, workflows, README, jargon audit, statistical review, presentation. |
+| 2026-05-21 | *(Session 81 — docs)* | Section 4.4 expanded | TaxaAssign | `inst/methods_background.md` | "Known-Absent Species Suppression" → "Incorporating Local Knowledge": documents `known_absent` (math suppression) and `known_present` (LLM context only) params with usage details. |
+| 2026-05-21 | *(Session 81 — docs)* | Downranking clarification | TaxaAssign | `inst/methods_background.md` | Explains what `species_reference` is (unreferenced_species_result or data.frame), how lookup works, and why it's needed. |
+| 2026-05-21 | *(Session 81 — rename)* | `inst/methods_background.md` | `inst/<Package>_supplemental_methods.md` | TaxaLikely, TaxaExpect, TaxaAssign | file rename | Package-prefixed names to distinguish tabs in editor. All cross-references updated (READMEs, CLAUDE.md, TODO_PUBLICATION.md). |
+| 2026-05-21 | *(Session 81 — docs)* | Methods sections added to READMEs | TaxaHabitat, TaxaFlag | README.md | TaxaHabitat: habitat weights, site assignment, spatial QC. TaxaFlag: contamination scoring formula, handler detection, LLM expert review. |

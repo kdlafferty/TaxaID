@@ -88,7 +88,7 @@ These terms are used consistently but lack clear definitions accessible to a new
 
 | Term | Where used | Current documentation | What's missing |
 |---|---|---|---|
-| **H1 / H2 / H3** | TaxaLikely (everywhere) | CLAUDE.md, methods_background.md | No roxygen-level plain-English explanation visible to `?evaluate_likelihoods` user |
+| **H1 / H2 / H3** | TaxaLikely (everywhere) | CLAUDE.md, TaxaLikely_supplemental_methods.md | No roxygen-level plain-English explanation visible to `?evaluate_likelihoods` user |
 | **score_logit / gap_logit** | TaxaLikely train.R, evaluate.R | Inline code comments | No user-facing explanation of what logit transform does and why it matters |
 | **taxonomy_code_a** | TaxaLikely train.R | None | Cryptic internal name from UBC source; rename to `finest_rank_col` or similar |
 | **shrinkage / prior_weight** | TaxaLikely train.R | Brief roxygen | Need `@details` explaining Empirical Bayes shrinkage concept for non-statisticians |
@@ -260,7 +260,7 @@ Organized by domain. ~150 terms across 7 packages.
 | `score_consensus` | Score-based consensus (no Bayesian model): min_score + max_gap + rank_thresholds | TaxaAssign |
 | `consensus_taxon` / `consensus_rank` | Output: consensus name and rank | TaxaAssign |
 | `is_resolved` | Logical: consensus at finest rank in rank_system | TaxaAssign |
-| `LCA` | Least Common Ancestor: finest rank at which all plausible hypotheses agree | TaxaAssign |
+| `LCA` | Lowest Common Ancestor: finest rank at which all plausible hypotheses agree | TaxaAssign |
 | `cumulative_threshold` | Fraction of posterior mass for plausible set (default 0.9) | TaxaAssign |
 | `plausible` / `plausible_taxa` | Top hypotheses summing to cumulative_threshold of posterior | TaxaAssign |
 | `downranking` | Narrowing coarse consensus when reference has exactly one finer taxon | TaxaAssign |

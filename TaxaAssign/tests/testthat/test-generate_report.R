@@ -178,7 +178,7 @@ test_that(".build_methods_text produces LLM workflow methods", {
   expect_true(grepl("exponential weighting", text))
   expect_true(grepl("large language model", text))
   expect_true(grepl("Monte Carlo", text))
-  expect_true(grepl("least common ancestor", text))
+  expect_true(grepl("lowest common ancestor", text))
   expect_true(grepl("unreferenced", text))
   expect_true(grepl("specified by the analyst", text))
   expect_false(grepl("family level", text))  # no family expansion

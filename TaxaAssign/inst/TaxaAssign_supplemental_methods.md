@@ -137,8 +137,8 @@ probabilities bounded on $[0, 1]$ (Jeffreys 1946). Key relationships:
 -   **Variance**: $\sigma^2 = \mu(1 - \mu) / (\phi + 1)$
 
 The full Bayesian workflow receives $\alpha$ and $\beta$ directly from
-TaxaExpect's moment-matching procedure (see TaxaExpect
-`inst/methods_background.md`). The LLM-shortcut workflow constructs them
+TaxaExpect's moment-matching procedure (see
+`TaxaExpect/inst/TaxaExpect_supplemental_methods.md`). The LLM-shortcut workflow constructs them
 from `prior_mean × phi` and `(1 - prior_mean) × phi`, where $\phi$ is
 determined by the LLM's `information_quality` rating (see Section 4.3).
 
@@ -154,7 +154,7 @@ proceeds through these stages:
 
 TaxaLikely's `evaluate_likelihoods()` converts raw match scores into
 calibrated likelihoods using a trained hierarchical model (see
-TaxaLikely `inst/methods_background.md`). For each observation, three
+`TaxaLikely/inst/TaxaLikely_supplemental_methods.md`). For each observation, three
 hypothesis types are considered:
 
 -   **H1 (specific_candidate)**: the matched species is in the reference
@@ -360,20 +360,45 @@ weight can still be overridden by strong likelihood evidence (low $\phi$
 → wide Beta → large MC variance), while a well-studied taxon requires
 stronger evidence to shift its posterior away from the prior.
 
-### 4.4 Known-Absent Species Suppression
+### 4.4 Incorporating Local Knowledge
 
-The LLM may have blind spots and the user may choose to tip the scales
-based on local knowledge. In particular, when candidate species are
-known to be absent at the sampling site, their priors are mathematically
-suppressed:
+The LLM may have blind spots, and users often have local knowledge
+that can improve priors. `assign_taxa_llm()` provides two parameters
+for injecting this knowledge:
+
+#### Known-absent species
+
+The `known_absent` parameter accepts a character vector of taxon names
+or a data.frame with `taxon_name` and `detection_prob` columns. For
+each known-absent taxon found among the candidates, the prior is
+mathematically suppressed:
 
 $$\pi'_i = \pi_i \times (1 - p_{\text{det}})$$
 
 where $p_{\text{det}}$ is the estimated detection probability (default
-0.80). This is applied after LLM prior estimation but before posterior
+0.80 for a character vector; user-specified per taxon in the data.frame
+form). This is applied after LLM prior estimation but before posterior
 computation. The suppression is ecologically motivated: if a species was
 not detected despite adequate survey effort, its prior should be reduced
 by the complement of the detection probability.
+
+#### Known-present species
+
+The `known_present` parameter accepts a character vector of taxon names
+confirmed to occur at the site (e.g., from visual surveys, prior eDNA
+studies, or expert knowledge). These names are passed to the LLM as
+ecological context, allowing it to make more informed `range_status` and
+`habitat_fit` judgments. However, `known_present` does not
+mathematically elevate priors -- the LLM integrates this information
+qualitatively when setting `prior_weight`.
+
+Mathematical prior elevation for known-present species is handled
+separately by `update_prior_from_consensus()` (Section 6), which boosts
+priors for species confirmed by the data itself across multiple
+observations. Direct user-specified elevation (analogous to the
+`known_absent` suppression formula) is not currently implemented, as it
+would risk double-counting when the LLM has already incorporated
+presence information into its weights.
 
 ### 4.5 The Unknown Species Hypothesis
 
@@ -598,9 +623,19 @@ Within TaxaAssign:
     user can determine which subset of species a higher rank most likely
     refers to.
 
--   **Downranking requires a reference**: downranking only fires when a
-    `species_reference` is available. Without it, genuinely
-    monotypic-at-site genera are reported at genus level.
+-   **Downranking requires a reference**: downranking only fires when
+    a `species_reference` is supplied to `posterior_consensus()`. This
+    reference is a lookup table of plausible species at the study site
+    -- typically an `unreferenced_species_result` object (from
+    `suggest_unreferenced_species()`) or a data.frame with species,
+    genus, and family columns (e.g., from a GBIF census). When a
+    consensus resolves to a coarse rank (say genus *Fundulus*), the
+    function checks the reference for finer-rank taxa under that
+    group; if exactly one species of *Fundulus* is plausible at the
+    site, the consensus is downranked to that species. Without a
+    reference, the function cannot distinguish a genuinely ambiguous
+    genus from one that contains only a single plausible species, so
+    it conservatively reports the coarser rank.
 
 ### Dark diversity assumptions
 

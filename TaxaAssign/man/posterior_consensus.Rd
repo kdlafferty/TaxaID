@@ -131,7 +131,7 @@ non-\code{NULL}. \code{FALSE} for all rows that were not downranked.}
 For each \code{observation_id}, identifies the minimal set of top-ranked hypotheses
 that together account for \code{cumulative_threshold} of the named-taxon posterior
 mass (after excluding hypotheses below \code{min_posterior}), then returns their
-least common ancestor (LCA) as the consensus taxonomic assignment.
+lowest common ancestor (LCA) as the consensus taxonomic assignment.
 }
 \details{
 \strong{Which hypotheses are included:} All named hypotheses contribute to the
@@ -169,7 +169,7 @@ assignments (more upranking to genus/family); decrease to 0.8 for more
 aggressive species-level calls.
 
 \strong{LCA method:}
-Least Common Ancestor is the standard conservative consensus method in
+Lowest Common Ancestor is the standard conservative consensus method in
 molecular systematics (Huson et al., 2007, MEGAN). The implementation
 walks from finest to coarsest rank and stops at the first rank where all
 plausible hypotheses agree.

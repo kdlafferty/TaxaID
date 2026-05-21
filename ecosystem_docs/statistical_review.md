@@ -417,7 +417,7 @@ This is a simulation-based analogue of the "posterior probability of being the b
 
 **Assessment: Well-grounded — LCA is the standard conservative consensus method.**
 
-Least Common Ancestor is the standard approach in molecular systematics for assigning taxonomy to ambiguous matches (Huson et al., 2007; MEGAN). The implementation walks from finest to coarsest rank and stops at the first rank where all plausible hypotheses agree.
+Lowest Common Ancestor is the standard approach in molecular systematics for assigning taxonomy to ambiguous matches (Huson et al., 2007; MEGAN). The implementation walks from finest to coarsest rank and stops at the first rank where all plausible hypotheses agree.
 
 **No change needed.**
 

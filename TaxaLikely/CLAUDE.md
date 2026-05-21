@@ -167,7 +167,7 @@ before evaluating likelihoods (no dedicated function needed).
 | File | Purpose |
 |---|---|
 | `inst/plot_likelihood_landscape.R` | Standalone two-panel visualization of H1/H2 density surfaces with example points (A/B/U). For presentations and manuscripts; not an exported function. |
-| `inst/methods_background.md` | Statistical methods background document adapted from early design docs; 10 sections covering the generative Bayesian framework, feature engineering, hypotheses, anchoring, and visualization. Future manuscript seed. |
+| `inst/TaxaLikely_supplemental_methods.md` | Statistical methods background document adapted from early design docs; 10 sections covering the generative Bayesian framework, feature engineering, hypotheses, anchoring, and visualization. Future manuscript seed. |
 
 ---
 
@@ -407,7 +407,7 @@ non-zero likelihoods that bypass the constraint. Correct order:
   of H1/H2 density surfaces with three example points (A = correct species, B = wrong
   species, U = unreferenced). Previously was an exported function in R/interpret.R;
   moved to inst/ because it is for presentations/manuscripts, not programmatic use.
-- `inst/methods_background.md` created: 10-section statistical methods document adapted
+- `inst/TaxaLikely_supplemental_methods.md` created: 10-section statistical methods document adapted
   from `Match_to_Likelihoods_Text.docx`, updated to TaxaLikely/TaxaID terminology.
   Covers: problem statement, statistical framework, feature engineering, three hypotheses,
   hierarchical parameter estimation (including anchoring), likelihood calculation,

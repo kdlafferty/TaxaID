@@ -228,7 +228,7 @@ cat("Samples where unknown_species has the highest posterior:",
 # =============================================================================
 # SECTION 5: CONSENSUS TAXONOMY + EMPIRICAL BAYES REFINEMENT
 # =============================================================================
-# Collapse posteriors to one row per observation_id via LCA (Least Common Ancestor).
+# Collapse posteriors to one row per observation_id via LCA (Lowest Common Ancestor).
 # The LCA is the finest taxonomic rank at which all "plausible" hypotheses agree.
 #
 # Plausible set: hypotheses that together account for >= cumulative_threshold of

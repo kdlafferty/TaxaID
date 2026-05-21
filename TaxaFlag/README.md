@@ -42,6 +42,58 @@ upstream statistical assignment: contamination, handler artifacts,
 allochthonous transport (e.g., eDNA carried by currents from outside
 the sampling area), and other ecologically implausible detections.
 
+## Methods
+
+### Contamination Scoring
+
+`flag_contaminant()` compares the relative abundance of each taxon in
+field samples versus control samples. Within each sample, read counts
+are first converted to proportions (reads for taxon / total reads),
+normalizing for sequencing depth. Proportions are then averaged across
+field and control replicates, and a score is computed:
+
+    score = mean_prop_field / (mean_prop_field + mean_prop_control)
+
+Scores range from 0 (taxon found only in controls) to 1 (taxon found
+only in field samples). Taxa absent from controls receive a score of
+1.0; taxa absent from field samples receive 0.0. Default thresholds
+classify scores as "unlikely" (score <= 0.5, probable contaminant),
+"possible" (0.5 < score <= 0.9, ambiguous), or "likely" (score > 0.9,
+valid detection). For positive controls, the interpretation inverts:
+taxa from positive controls appearing in field samples indicate
+cross-contamination.
+
+### Handler Artifact Detection
+
+`flag_handler()` identifies observations that fall within a time buffer
+of camera setup or retrieval, when human activity is expected. For each
+group (e.g., camera station), the function identifies the earliest and
+latest timestamps as the sampling-period edges. Each observation
+receives a linear score based on its proximity to the nearest edge:
+
+    handler_score = minutes_to_nearest_edge / interval_minutes
+
+clamped to [0, 1]. The default interval is 30 minutes. Observations
+outside the interval score 1.0 (valid); those at the exact edge score
+0.0 (probable artifact). When `handler_taxa` is specified (e.g.,
+"Homo sapiens"), only those taxa are scored for temporal proximity --
+other species detected near edges are assumed legitimate.
+
+### LLM Expert Review
+
+`review_assignments()` submits each unique taxon (in batches of 15) to
+an LLM for structured assessment across eight dimensions: habitat fit,
+geographic plausibility, taxonomic scope, contamination risk, plausible
+alternatives, finer-rank hypotheses, confidence, and a free-text
+comment. The LLM returns a JSON array with controlled vocabularies
+(e.g., "expected" / "occasional" / "unlikely" for habitat and
+geography). The function includes truncation recovery: if an LLM
+response is cut off mid-JSON, it walks backward to find the last
+complete object and parses what is available. Taxa omitted by the LLM
+are filled with NA. This review is intended as a structured second
+opinion, not an automated filter -- users should treat the flags as
+candidates for closer inspection.
+
 ## Installation
 
 ``` r

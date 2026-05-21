@@ -2,7 +2,7 @@
 # TaxaAssign package
 #
 # Derives a consensus taxonomic assignment from a posterior dataframe.
-# Returns one row per observation_id: the least common ancestor (LCA) among the
+# Returns one row per observation_id: the lowest common ancestor (LCA) among the
 # minimal set of top-ranked hypotheses that collectively account for a
 # user-defined fraction of the named-taxon posterior probability.
 #
@@ -27,7 +27,7 @@
 #' For each `observation_id`, identifies the minimal set of top-ranked hypotheses
 #' that together account for `cumulative_threshold` of the named-taxon posterior
 #' mass (after excluding hypotheses below `min_posterior`), then returns their
-#' least common ancestor (LCA) as the consensus taxonomic assignment.
+#' lowest common ancestor (LCA) as the consensus taxonomic assignment.
 #'
 #' **Which hypotheses are included:** All named hypotheses contribute to the
 #' LCA — `"specific_candidate"`, `"unreferenced_species"` (congener without reference
@@ -122,7 +122,7 @@
 #' aggressive species-level calls.
 #'
 #' \strong{LCA method:}
-#' Least Common Ancestor is the standard conservative consensus method in
+#' Lowest Common Ancestor is the standard conservative consensus method in
 #' molecular systematics (Huson et al., 2007, MEGAN). The implementation
 #' walks from finest to coarsest rank and stops at the first rank where all
 #' plausible hypotheses agree.

@@ -23,7 +23,7 @@ occurrence records (potential invaders or rare species). After
 normalization and Monte Carlo simulation, each candidate receives a
 posterior probability. If a single candidate has strong support, it is
 assigned as the consensus taxon; otherwise, a coarser rank (genus,
-family, etc.) is assigned via least common ancestor. All competing
+family, etc.) is assigned via lowest common ancestor. All competing
 hypotheses and their probabilities are retained in the output. The
 user can also update priors iteratively: if one observation strongly
 supports species A, that evidence can sharpen the prior for species A
@@ -154,7 +154,7 @@ LLM estimation).
     data
 
 For the full statistical derivation, assumptions, and references,
-see [`inst/methods_background.md`](inst/methods_background.md).
+see [`inst/TaxaAssign_supplemental_methods.md`](inst/TaxaAssign_supplemental_methods.md).
 
 ## Vignettes
 

@@ -137,7 +137,7 @@ spatial autocorrelation beyond the latitude/longitude gradients and
 are included by default in `build_priors()` (`moran_k = 5`).
 
 For the full statistical derivation, assumptions, and references,
-see [`inst/methods_background.md`](inst/methods_background.md).
+see [`inst/TaxaExpect_supplemental_methods.md`](inst/TaxaExpect_supplemental_methods.md).
 
 ## Vignettes
 

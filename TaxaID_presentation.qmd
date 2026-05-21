@@ -26,7 +26,7 @@ The conventional approach:
 3. Select references with the **top matching score(s)**
 4. Assign a consensus taxon
     - (optional) uprank by **% identity threshold** (e.g., >98% = species rank)
-    - If >1 species, uprank to Least Common Ancestor
+    - If >1 species, uprank to Lowest Common Ancestor
 
  ![](SeqMatch2.png){width=20%}     
  

@@ -712,7 +712,7 @@ generate_report <- function(result,
   cons_text <- sprintf(
     paste0(
       "A consensus taxonomic assignment was determined for each observation using a ",
-      "least common ancestor (LCA) algorithm. Candidate taxa with individual ",
+      "lowest common ancestor (LCA) algorithm. Candidate taxa with individual ",
       "posterior probabilities below %s were excluded. Among the remaining ",
       "candidates, hypotheses were accumulated in decreasing order of posterior ",
       "probability until their cumulative sum reached %s. The consensus was set ",

@@ -92,7 +92,7 @@ consensus taxonomic assignment.  The algorithm:
 \item \strong{Score filter:} discard hits below \code{min_score}.
 \item \strong{Gap filter:} among remaining hits, keep only those within \code{max_gap} of
 the top score (per sample).
-\item \strong{LCA:} compute the least common ancestor (LCA) of the retained hits.
+\item \strong{LCA:} compute the lowest common ancestor (LCA) of the retained hits.
 \item \strong{Rank threshold cap:} if \code{rank_thresholds} is supplied, cap the
 consensus at the finest rank whose minimum score the top hit meets.
 \item \strong{Whitelist upranking:} if \code{whitelist} is supplied, verify the consensus

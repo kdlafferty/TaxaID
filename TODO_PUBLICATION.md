@@ -25,7 +25,7 @@ Target journal: Methods in Ecology and Evolution ("Application" format, ~3000-50
 
 - [ ] **Introduction** — Taxonomic assignment problem; why Bayesian; gap in tools
 - [ ] **Overview** — 7-package pipeline; two workflows; design philosophy
-- [ ] **Statistical methods** — Adapt from `TaxaLikely/inst/methods_background.md`
+- [ ] **Statistical methods** — Adapt from `TaxaLikely/inst/TaxaLikely_supplemental_methods.md`
   - Hierarchical likelihood model (H1/H2/H3)
   - Prior construction from occurrence data
   - Posterior computation + consensus
@@ -46,7 +46,9 @@ Target journal: Methods in Ecology and Evolution ("Application" format, ~3000-50
 
 ### Existing manuscript seeds
 
-- `TaxaLikely/inst/methods_background.md` — 10-section statistical methods
+- `TaxaLikely/inst/TaxaLikely_supplemental_methods.md` — 10-section statistical methods
+- `TaxaExpect/inst/TaxaExpect_supplemental_methods.md` — spatial GLMM prior estimation
+- `TaxaAssign/inst/TaxaAssign_supplemental_methods.md` — Bayesian posterior + consensus
 - `TaxaTools::draft_methods_text()` — LLM-assisted methods drafting
 - `TaxaTools::draft_results_text()` — LLM-assisted results drafting
 - `TaxaAssign::generate_report()` — Automated methods + results text
