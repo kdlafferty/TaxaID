@@ -14,7 +14,8 @@
 #'   taxonomic ranks from broadest to most specific, e.g.
 #'   \code{c("kingdom", "phylum", "class", "order", "family", "genus", "species")}.
 #'   The function walks this vector from right to left and returns the first
-#'   non-empty value.
+#'   non-empty value. If \code{NULL} (the default), auto-detected from column
+#'   names via \code{\link{detect_ranks}}.
 #'
 #' @return The input data frame with two columns appended:
 #' \describe{
@@ -36,12 +37,22 @@
 #'   genus   = "Homo",
 #'   species = NA_character_
 #' )
-#' create_taxon_names(df, c("kingdom", "genus", "species"))
+#' create_taxon_names(df)  # auto-detects rank_system
 #' # taxon_name = "Homo", taxon_name_rank = "genus"
-create_taxon_names <- function(df, rank_system) {
+#'
+#' # Or specify explicitly:
+#' create_taxon_names(df, c("kingdom", "genus", "species"))
+create_taxon_names <- function(df, rank_system = NULL) {
 
   # --- Input validation ---
   if (!is.data.frame(df)) stop("`df` must be a data frame.")
+  if (is.null(rank_system)) {
+    rank_system <- detect_ranks(df)
+    if (length(rank_system) == 0L) {
+      stop("No recognised rank columns found in `df`. ",
+           "Supply `rank_system` explicitly.")
+    }
+  }
   if (!is.character(rank_system) || length(rank_system) == 0) {
     stop("`rank_system` must be a non-empty character vector of column names.")
   }

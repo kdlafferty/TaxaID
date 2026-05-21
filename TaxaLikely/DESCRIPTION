@@ -9,7 +9,7 @@ Description: Trains a hierarchical Bayesian model on reference-vs-reference matc
     taxa - the columns required by TaxaAssign. Also provides reference database quality
     tools: detecting mislabeled references and auditing taxonomic completeness.
     Part of the TaxaID ecosystem.
-License: MIT + file LICENSE
+License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

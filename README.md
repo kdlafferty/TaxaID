@@ -1,14 +1,8 @@
----
-editor_options: 
-  markdown: 
-    wrap: 72
----
-
-<img src="usgs_logo.png" alt="USGS logo" width="200"/>
+<img src="USGS_logo_green.png" alt="USGS logo" width="200"/>
 
 # TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment
 
-## Project Overview and Purpose
+# Project Overview and Purpose
 
 Biologists increasingly measure biodiversity from sequence, sound,
 and image data, yet current pipelines can have high false-positive and
@@ -35,7 +29,7 @@ The ecosystem supports three workflows, ranging from simple to
 comprehensive:
 
 -   **Traditional workflow** -- Select a consensus taxon using score
-    thresholds and/or a least-common ancestor.
+    thresholds and/or a lowest common ancestor.
 -   **LLM-shortcut workflow** -- Use large language models (Anthropic
     Claude, Google Gemini, OpenAI, or local Ollama) to rapidly estimate
     priors and generate consensus assignments.
@@ -157,13 +151,37 @@ most of these error types post-assignment.*
 
 ### Dependency Chain
 
-```         
+```
 TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
 TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 TaxaWizard (standalone; generates scripts that call the other packages)
 ```
 
-## Related Software
+# Citation
+
+Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
+taxonomic assignment: U.S. Geological Survey software release,
+<https://doi.org/10.5066/xxxxxx>.
+
+Kevin D. Lafferty
+[![ORCID](https://img.shields.io/badge/ORCID-0000--0001--7583--4593-green)](https://orcid.org/0000-0001-7583-4593)
+
+# Larger Citation
+
+_Associated Manuscript:_ Lafferty, K.D. In prep. TaxaID: A modular R
+ecosystem for Bayesian taxonomic assignment from sequence, image, and
+acoustic data.
+
+# Licensing
+
+Creative Commons 1.0 Universal (CC0 1.0;
+<https://creativecommons.org/publicdomain/zero/1.0/>)
+
+See [LICENSE.md](LICENSE.md) for details. TaxaExpect depends on glmmTMB
+(GPL >= 3); the TaxaExpect source code itself is CC0, but binary
+distributions that bundle glmmTMB may be subject to GPL terms.
+
+# Related Software
 
 Several R packages and standalone tools address taxonomic assignment
 from DNA barcoding data. TaxaID differs from these in its explicit
@@ -201,36 +219,13 @@ assignment, flagging implausible taxonomic identities using
 proportion-based control comparison, temporal proximity analysis, and
 LLM expert review.
 
-## Citation
-
-Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
-taxonomic assignment: U.S. Geological Survey software release,
-<https://doi.org/10.5066/xxxxxx>.
-
-Kevin D. Lafferty
-[![ORCID](https://img.shields.io/badge/ORCID-0000--0001--7583--4593-green)](https://orcid.org/0000-0001-7583-4593)
-
-## Packages
-
-| Package | Purpose | License |
-|------------------------|------------------------|------------------------|
-| [TaxaTools](TaxaTools/) | Name verification, cleaning, parsing, rank lookup, column standardization; LLM provider functions; GBIF backbone census | MIT |
-| [TaxaFetch](TaxaFetch/) | Occurrence data acquisition (GBIF, DataONE, PDF, literature search), source combination | MIT |
-| [TaxaHabitat](TaxaHabitat/) | Habitat assignment via LLM biological consensus; spatial QAQC | MIT |
-| [TaxaMatch](TaxaMatch/) | Match standardization. Sequence input (DADA2/FASTA), BLAST search. | MIT |
-| [TaxaLikely](TaxaLikely/) | Convert match scores to likelihoods using hierarchical Bayesian model; reference QC | MIT |
-| [TaxaExpect](TaxaExpect/) | Spatially explicit Bayesian priors from occurrence and habitat data | GPL (\>= 3) |
-| [TaxaAssign](TaxaAssign/) | Posterior computation, consensus taxonomy, report generation | MIT |
-| [TaxaFlag](TaxaFlag/) | Post-assignment anomalous detection flagging (contamination, transport, scope) | MIT |
-| [TaxaWizard](TaxaWizard/) | Conversational LLM workflow designer: guided interview to .R script, .md methods, or Shiny app | MIT |
-
-## Data and Hardware Requirements
+# Data and Hardware Requirements
 
 -   **Internet access** is required for GBIF queries, NCBI BLAST, and
     LLM API calls. Offline operation is possible when using cached data
     and local Ollama models.
 -   **No specialized hardware** is required. All packages run on
-    standard desktop hardware (macOS, Linux, or Windows) with R \>=
+    standard desktop hardware (macOS, Linux, or Windows) with R >=
     4.1.0.
 -   **Input data** varies by entry point:
     -   *eDNA workflow*: DADA2 sequence table or FASTA file, plus sample
@@ -240,15 +235,15 @@ Kevin D. Lafferty
     -   *Name-only workflow*: a list of taxonomic names and site
         coordinates.
 
-## Software Requirements
+# Software Requirements
 
 **Table 2.** Software dependencies required for the TaxaID ecosystem.
 
-| Software | Version | Notes |
-|------------------------|------------------------|------------------------|
-| R | \>= 4.1.0 | Required for native pipe `\|>` support |
-| Bioconductor (DECIPHER, Biostrings) | \>= 3.17 | Required only for `TaxaLikely::build_reference_matrix()` |
-| rBLAST | \>= 0.99 | Optional; required only for local BLAST in TaxaMatch |
+| Software | Version | OS bit | Reference |
+|---|---|---|---|
+| R | >= 4.1.0 | 64 | R Core Team. 2025. R: A Language and Environment for Statistical Computing. V.4.5.2. <https://www.r-project.org>. |
+| Bioconductor (DECIPHER, Biostrings) | >= 3.17 | 64 | Gentleman et al. 2004. Bioconductor. <https://www.bioconductor.org>. Required only for `TaxaLikely::build_reference_matrix()`. |
+| rBLAST | >= 0.99 | 64 | Hahsler and Nagar. 2019. rBLAST. <https://github.com/mhahsler/rBLAST>. Optional; required only for local BLAST in TaxaMatch. |
 
 All other R package dependencies are declared in each package's
 DESCRIPTION file and will be installed automatically by
@@ -261,7 +256,7 @@ or an API key provided by an LLM service (set in `~/.Renviron`). A user
 could use a different LLM by modifying one of the existing LLM calls.
 
 | Key | Required By | How to Obtain |
-|------------------------|------------------------|------------------------|
+|---|---|---|
 | `ANTHROPIC_API_KEY` | TaxaTools (LLM calls) | <https://console.anthropic.com/> |
 | `GEMINI_API_KEY` | TaxaTools (LLM calls) | <https://aistudio.google.com/apikey> (free tier) |
 | `OPENAI_API_KEY` | TaxaTools (LLM calls) | <https://platform.openai.com/> (paid) |
@@ -271,17 +266,18 @@ No API key is needed for GBIF or NCBI queries. At least one LLM provider
 key is needed for the LLM-shortcut workflow, TaxaHabitat habitat
 assignment, and TaxaWizard.
 
-## Software Installation
+# Software Installation
 
 ``` r
-# Install all packages from a local clone of this repository
+# Install from GitHub
+install.packages("remotes")
+
 packages <- c("TaxaTools", "TaxaFetch", "TaxaHabitat", "TaxaMatch",
                "TaxaLikely", "TaxaExpect", "TaxaAssign", "TaxaFlag",
                "TaxaWizard")
 
-# Install in dependency order
 for (pkg in packages) {
-  devtools::install(file.path("path/to/TaxaID", pkg))
+  remotes::install_github("kdlafferty/TaxaID", subdir = pkg)
 }
 
 # Bioconductor dependency (needed for TaxaLikely reference matrix building)
@@ -290,9 +286,23 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 BiocManager::install("DECIPHER")
 ```
 
-## Instructions for Using Software
+# Instructions for Using Software
 
-### Getting Started
+## Packages
+
+| Package | Purpose | License |
+|---|---|---|
+| [TaxaTools](TaxaTools/) | Name verification, cleaning, parsing, rank lookup, column standardization; LLM provider functions; GBIF backbone census | CC0 |
+| [TaxaFetch](TaxaFetch/) | Occurrence data acquisition (GBIF, DataONE, PDF, literature search), source combination | CC0 |
+| [TaxaHabitat](TaxaHabitat/) | Habitat assignment via LLM biological consensus; spatial QAQC | CC0 |
+| [TaxaMatch](TaxaMatch/) | Match standardization. Sequence input (DADA2/FASTA), BLAST search. | CC0 |
+| [TaxaLikely](TaxaLikely/) | Convert match scores to likelihoods using hierarchical Bayesian model; reference QC | CC0 |
+| [TaxaExpect](TaxaExpect/) | Spatially explicit Bayesian priors from occurrence and habitat data | CC0 |
+| [TaxaAssign](TaxaAssign/) | Posterior computation, consensus taxonomy, report generation | CC0 |
+| [TaxaFlag](TaxaFlag/) | Post-assignment anomalous detection flagging (contamination, transport, scope) | CC0 |
+| [TaxaWizard](TaxaWizard/) | Conversational LLM workflow designer: guided interview to .R script, .md methods, or Shiny app | CC0 |
+
+## Getting Started
 
 Each package includes a vignette with a worked example:
 
@@ -301,24 +311,23 @@ Each package includes a vignette with a worked example:
 vignette("taxaid-ecosystem", package = "TaxaAssign")
 
 # Individual package vignettes
-vignette("taxatools", package = "TaxaTools")
-vignette("taxafetch", package = "TaxaFetch")
-vignette("taxahabitat", package = "TaxaHabitat")
-vignette("taxamatch", package = "TaxaMatch")
-vignette("taxalikely", package = "TaxaLikely")
-vignette("taxaexpect", package = "TaxaExpect")
-vignette("taxaassign", package = "TaxaAssign")
+vignette("name-cleaning", package = "TaxaTools")
+vignette("data-acquisition", package = "TaxaFetch")
+vignette("habitat-assignment", package = "TaxaHabitat")
+vignette("match-standardization", package = "TaxaMatch")
+vignette("score-to-likelihood", package = "TaxaLikely")
+vignette("building-priors", package = "TaxaExpect")
+vignette("taxonomic-assignment", package = "TaxaAssign")
 vignette("quality-flagging", package = "TaxaFlag")
-vignette("taxawizard", package = "TaxaWizard")
 ```
 
-### Workflow Scripts
+## Workflow Scripts
 
 Detailed, runnable workflow scripts are provided in each package's
 `inst/` or `inst/workflows/` directory:
 
 | Workflow | Package | Script |
-|------------------------|------------------------|------------------------|
+|---|---|---|
 | FASTQ to match data | TaxaMatch | `inst/workflow_fastq_to_match.R` |
 | Fetch reference sequences | TaxaLikely | `inst/workflows/1_fetch_references_workflow.R` |
 | Flag reference errors | TaxaLikely | `inst/workflows/2_flag_errors_workflow.R` |
@@ -332,7 +341,7 @@ Detailed, runnable workflow scripts are provided in each package's
 | Bayesian assignment | TaxaAssign | `inst/TaxaAssign_bayesian_workflow.R` |
 | Consensus | TaxaAssign | `inst/TaxaAssign_consensus_workflow.R` |
 
-### High-Level Wrappers
+## High-Level Wrappers
 
 For users who prefer a single-function interface:
 
@@ -346,7 +355,7 @@ result <- run_bayesian_pipeline(match_df, model, site = list(lat = 34.4, lon = -
 result <- run_llm_pipeline(match_df, site = list(lat = 34.4, lon = -119.8, main_habitat = "Marine"))
 ```
 
-### Interactive Workflow Designer
+## Interactive Workflow Designer
 
 TaxaWizard provides a guided, conversational interface:
 
@@ -358,7 +367,7 @@ library(TaxaWizard)
 workflow_create()
 ```
 
-## Data Outputs and Results
+# Data Outputs and Results
 
 The TaxaID ecosystem produces outputs at each stage of the pipeline:
 
@@ -425,7 +434,7 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
     report sections that assemble into a unified document
     (`generate_report()`, `assemble_report()`).
 
-## Software Inventory
+# Software Inventory
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
@@ -439,19 +448,7 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
 | TaxaFlag    | 4                  | 4          | Yes      |
 | TaxaWizard  | 5                  | 3          | Yes      |
 
-## Licensing
-
-Unless otherwise noted, this software is in the public domain in the
-United States because it contains materials that originally came from
-the U.S. Geological Survey, an agency of the United States Department of
-Interior. For more information, see the [official USGS copyright
-policy](https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits).
-
-Individual packages are released under the MIT License, with the
-exception of TaxaExpect which uses GPL (\>= 3) due to its glmmTMB
-dependency. See [LICENSE.md](LICENSE.md) for details.
-
-## U.S. Geological Survey Disclaimer
+# U.S. Geological Survey Disclaimer
 
 This software is preliminary or provisional and is subject to revision.
 It is being provided to meet the need for timely best science. The
@@ -467,7 +464,7 @@ authorized or unauthorized use of the software.
 firm, or product names is for descriptive purposes only and does not
 imply endorsement by the U.S. Government.
 
-## References
+# References
 
 Callahan, B.J., McMurdie, P.J., Rosen, M.J., Han, A.W., Johnson,
 A.J.A. and Holmes, S.P. (2016). DADA2: High-resolution sample
@@ -496,6 +493,14 @@ De Barba, M., Gielly, L., Lopes, C.M., Boyer, F., Pompanon, F.,
 Raye, G. and Taberlet, P. (2015). Replication levels, false presences
 and the estimation of the presence/absence from eDNA metabarcoding
 data. *Molecular Ecology Resources*, 15(3), 543--556.
+
+Gentleman, R.C., Carey, V.J., Bates, D.M., Bolstad, B., Dettling, M.,
+Dudoit, S., Ellis, B., Gautier, L., Ge, Y., Gentry, J., Hornik, K.,
+Hothorn, T., Huber, W., Iacus, S., Irizarry, R., Leisch, F., Li, C.,
+Maechler, M., Rossini, A.J., Sawitzki, G., Smith, C., Smyth, G.,
+Tierney, L., Yang, J.Y.H. and Zhang, J. (2004). Bioconductor: open
+software development for computational biology and bioinformatics.
+*Genome Biology*, 5, R80.
 
 Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,

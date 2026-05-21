@@ -8,7 +8,7 @@ Description: Generates theta priors (occupancy x detectability) for taxonomic
     first summarized at the grid level. At this scale, the user is able to apply
     spatial models that generate estimates of theta along with expected error.
     Part of the TaxaID ecosystem.
-License: GPL (>= 3)
+License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

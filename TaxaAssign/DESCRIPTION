@@ -11,7 +11,7 @@ Description: Estimates the posterior probability that a biological sample
     assignment at the appropriate rank (species, genus, family, etc.),
     empirical Bayes prior refinement, score-based consensus for comparison,
     and automated report generation. Part of the TaxaID ecosystem.
-License: MIT + file LICENSE
+License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

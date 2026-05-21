@@ -12,7 +12,7 @@ Description: Provides tools for acquiring, combining, and preparing taxonomic
     times. These data feed into TaxaHabitat and then TaxaExpect, which generates
     spatially explicit predictions of relative occurrence across taxa.
     Part of the TaxaID ecosystem.
-License: MIT + file LICENSE
+License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

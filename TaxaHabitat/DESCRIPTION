@@ -7,7 +7,7 @@ Description: Assigns habitat classifications to taxonomic occurrence records
     using LLM prompts and performs spatial quality control. Receives occurrence
     data from TaxaFetch and produces habitat-annotated, spatially screened
     records for input to TaxaExpect. Part of the TaxaID ecosystem.
-License: MIT + file LICENSE
+License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

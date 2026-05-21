@@ -72,7 +72,7 @@ TaxaWizard: no TaxaID dependencies (uses metadata JSON files as interface)
 - Session 60: TaxaFlag created for post-assignment anomalous detection flagging
 - Session 68: TaxaWizard created for conversational workflow design (outside dependency chain)
 
-**Licensing:** All packages use MIT except TaxaExpect (GPL >= 3, required by glmmTMB dependency). Since TaxaExpect is only in Suggests (never Imports) for downstream packages, this does not propagate the GPL obligation to other TaxaID packages.
+**Licensing:** All packages use CC0 1.0 (public domain, per USGS policy). TaxaExpect depends on glmmTMB (GPL >= 3); source is CC0 but binary distributions bundling glmmTMB may be subject to GPL terms.
 
 ---
 

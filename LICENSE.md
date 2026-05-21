@@ -1,37 +1,24 @@
 # License
 
-Unless otherwise noted, this project is in the public domain in the United
-States because it contains materials that originally came from the
-U.S. Geological Survey, an agency of the United States Department of Interior.
-For more information, see the official USGS copyright policy at
-https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits.
+This software is in the public domain in the United States because it
+contains materials that originally came from the U.S. Geological Survey,
+an agency of the United States Department of Interior. For more
+information, see the
+[official USGS copyright policy](https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits).
 
-## Individual Package Licenses
+## CC0 1.0 Universal
 
-Most packages in this ecosystem are released under the MIT License:
+Creative Commons 1.0 Universal (CC0 1.0)
+<https://creativecommons.org/publicdomain/zero/1.0/>
 
-> MIT License
->
-> Copyright (c) 2026 Kevin D. Lafferty, U.S. Geological Survey
->
-> Permission is hereby granted, free of charge, to any person obtaining a copy
-> of this software and associated documentation files (the "Software"), to deal
-> in the Software without restriction, including without limitation the rights
-> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-> copies of the Software, and to permit persons to whom the Software is
-> furnished to do so, subject to the following conditions:
->
-> The above copyright notice and this permission notice shall be included in all
-> copies or substantial portions of the Software.
->
-> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-> SOFTWARE.
+To the extent possible under law, the U.S. Geological Survey has waived
+all copyright and related or neighboring rights to this software. This
+work is published from the United States.
 
-**Exception:** TaxaExpect is released under GPL (>= 3) due to its dependency on
-glmmTMB. Since TaxaExpect is only in Suggests (never Imports) for downstream
-packages, this does not propagate the GPL obligation to other TaxaID packages.
+## Note on Dependencies
+
+TaxaExpect depends on glmmTMB, which is licensed under GPL (>= 3). The
+TaxaExpect source code itself is CC0, but binary distributions that
+bundle glmmTMB may be subject to GPL terms. Since downstream TaxaID
+packages list TaxaExpect in Suggests (never Imports), this does not
+affect the licensing of other packages in the ecosystem.

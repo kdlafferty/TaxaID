@@ -9,7 +9,7 @@ Description: Stores and standardizes raw match data produced by external tools t
     DNA barcode programs (e.g. MiFish), image classifiers, and acoustic recognizers.
     Score-to-likelihood conversion and reference quality assessment live in TaxaLikely.
     Part of the TaxaID ecosystem.
-License: MIT + file LICENSE
+License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
