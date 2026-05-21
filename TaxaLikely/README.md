@@ -105,13 +105,36 @@ section for `assemble_report()`
 
 ## Statistical Design
 
--   Scores are logit-transformed and modelled as bivariate normal
-    (score + gap)
--   Empirical Bayes shrinkage toward global mean for species-specific
-    parameters
--   H2/H3 distributions shifted by learned delta offsets from H1
--   Perfect-match anchoring prevents penalizing 100% matches
--   Monte Carlo sampling provides `likelihood_mean` and `likelihood_sd`
+TaxaLikely models the joint distribution of two features -- the
+logit-transformed match score (absolute fit) and the gap to the best
+alternative (relative uniqueness) -- as a bivariate normal for each
+hypothesis type:
+
+-   **Score + gap features:** Raw scores are logit-transformed to an
+    unbounded domain; the gap is computed in logit space so that
+    differences near 100% are amplified appropriately
+-   **Bivariate normal likelihood:** The joint (score, gap) density
+    captures interactions -- a small gap is more tolerable when the
+    score is very high
+-   **Empirical Bayes shrinkage:** Per-species parameters are shrunk
+    toward the global mean (Efron and Morris 1973), with weight
+    inversely proportional to sample size, preventing poorly sampled
+    species from having unreliable estimates
+-   **H2/H3 offset distributions:** Unreferenced species and genus
+    hypotheses use the H1 distribution shifted left by learned delta
+    offsets, estimated from cross-species match scores in training
+    data
+-   **Perfect-match anchoring:** Synthetic 100% match pseudo-data
+    prevent the "perfection penalty" where the Gaussian density peaks
+    below 100%
+-   **Monte Carlo uncertainty:** Score perturbation across simulations
+    yields `likelihood_mean` and `likelihood_sd`, measuring sensitivity
+    to measurement noise
+
+For a detailed treatment of the statistical framework, feature
+engineering, hypothesis definitions, parameter estimation, and
+reference quality control, see
+[`inst/methods_background.md`](inst/methods_background.md).
 
 ## Vignettes
 

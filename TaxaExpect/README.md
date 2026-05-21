@@ -104,6 +104,41 @@ diversity priors (Tier 3)
 interactive Leaflet map of priors - `report_priors()` -- generate report
 section for `assemble_report()`
 
+## Statistical Methods
+
+TaxaExpect fits a binomial generalized linear mixed model (GLMM) via
+glmmTMB (Brooks et al. 2017). The response is the count of species *s*
+at site *g* out of the total community count, modelled on the logit
+scale with:
+
+-   **Fixed habitat effects** capturing baseline differences across
+    habitat types (Marine, Freshwater, Terrestrial, or IUCN L1
+    categories)
+-   **Random species intercepts** allowing each species its own
+    baseline rarity, shrunk toward the global mean
+-   **Random habitat slopes** (screened for data sufficiency) giving
+    each species its own habitat preference
+-   **Random spatial gradients** (latitude, longitude) per species,
+    capturing geographic range trends
+-   **Species x grid deviations** capturing local departures from the
+    spatial surface; the variance of this term provides the principled
+    ceiling for prior concentration
+
+Model predictions are back-transformed via the delta method and
+converted to Beta(alpha, beta) priors through moment-matching. A phi
+cap (from the grid-level variance) prevents astronomically tight
+priors near boundary theta values, while a phi floor (default 2)
+prevents modelled priors from becoming less informative than dark
+diversity fallbacks. For undetected species, singleton mirrors and a
+global floor prior Beta(1, N-1) provide Tier 3 coverage.
+
+Optional Moran eigenvector maps (Dray et al. 2006) can capture
+fine-scale spatial autocorrelation beyond the latitude/longitude
+gradients.
+
+For the full statistical derivation, assumptions, and references,
+see [`inst/methods_background.md`](inst/methods_background.md).
+
 ## Vignettes
 
 -   [Building Priors](vignettes/building-priors.Rmd) -- full workflow
