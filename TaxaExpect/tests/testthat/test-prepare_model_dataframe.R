@@ -8,7 +8,7 @@
 #
 # Output: zero-filled species x site-habitat tibble with:
 #   n_species, n_other, n_total_at_site, is_present,
-#   habitat_observed_elsewhere, <covariate>_s, scale_params attribute.
+#   observed_in_habitat, <covariate>_s, scale_params attribute.
 #
 # Key design choices tested:
 #   - Scaled suffix is _s (not _scaled)
@@ -127,7 +127,7 @@ test_that("output contains required columns", {
   out      <- prepare_model_dataframe(input)
   required <- c("taxon_name", "grid_id", "main_habitat",
                 "n_species", "n_total_at_site", "n_other",
-                "is_present", "habitat_observed_elsewhere")
+                "is_present", "observed_in_habitat")
   for (col in required) {
     expect_true(col %in% names(out), info = paste("Missing column:", col))
   }
@@ -271,21 +271,21 @@ test_that("lat_r and lon_r in default input do not trigger correlation warning",
 })
 
 # =============================================================================
-# habitat_observed_elsewhere flag
+# observed_in_habitat flag
 # =============================================================================
 
-test_that("habitat_observed_elsewhere is logical", {
+test_that("observed_in_habitat is logical", {
   input <- .make_model_input()
   out   <- prepare_model_dataframe(input)
-  expect_type(out$habitat_observed_elsewhere, "logical")
+  expect_type(out$observed_in_habitat, "logical")
 })
 
-test_that("rows with detections have habitat_observed_elsewhere = TRUE", {
+test_that("rows with detections have observed_in_habitat = TRUE", {
   input        <- .make_model_input(n_total_per_site = 20)
   out          <- prepare_model_dataframe(input)
   present_rows <- out[out$n_species > 0, ]
-  expect_true(all(present_rows$habitat_observed_elsewhere),
-              info = "Detected rows must have habitat_observed_elsewhere = TRUE")
+  expect_true(all(present_rows$observed_in_habitat),
+              info = "Detected rows must have observed_in_habitat = TRUE")
 })
 
 # =============================================================================

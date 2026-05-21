@@ -105,7 +105,7 @@ These terms are used consistently but lack clear definitions accessible to a new
 |---|---|---|
 | **theta** | TaxaExpect (central concept) | Needs plain-English definition in roxygen: "the probability that a randomly sampled individual from the community at a site belongs to species X" |
 | **Tier 1 / Tier 2 / Tier 3** | TaxaExpect train_biodiversity_model.R | Well-defined internally but not in ecosystem CLAUDE.md; users who start with TaxaAssign won't know what tiers mean when they see `undetected_type` |
-| **habitat_observed_elsewhere** | TaxaExpect prepare_model_dataframe.R | Needs clearer user-facing warning about habitat extrapolation |
+| **observed_in_habitat** | TaxaExpect prepare_model_dataframe.R | Renamed from `habitat_observed_elsewhere` (Session 81). TRUE = species recorded in this habitat type during training; FALSE = habitat extrapolation |
 | **physical_zone** | TaxaHabitat flag_habitat_inconsistencies.R | Internal derived column; explain derivation logic for users reviewing spatial flags |
 | **realm** | TaxaHabitat | IUCN ecological realm; explain valid values and how they're used |
 
@@ -243,7 +243,7 @@ Organized by domain. ~150 terms across 7 packages.
 | `dark_diversity` | Fallback prior for species without occurrence prediction | TaxaAssign |
 | `singleton_mirror` | Tier 3 proxy inheriting singleton's theta | TaxaExpect |
 | `global_floor` | Tier 3 proxy: Beta(1, N_total-1) baseline | TaxaExpect |
-| `habitat_observed_elsewhere` | Flag: was this species-habitat combo seen in training data? | TaxaExpect |
+| `observed_in_habitat` | Flag: was this species-habitat combo seen in training data? | TaxaExpect |
 | `effort_threshold` | Minimum community count for cell to enter likelihood | TaxaExpect |
 | `biofreq_model` | S3 class for fitted TaxaExpect model | TaxaExpect |
 | `scale_params` | Stored covariate scaling (center, scale) for prediction | TaxaExpect |

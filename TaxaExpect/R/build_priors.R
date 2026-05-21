@@ -47,8 +47,10 @@
 #'   priors. Prevents modelled priors from becoming so diffuse that Monte Carlo
 #'   posterior estimates are unstable. Default \code{2}. See
 #'   \code{\link{generate_full_priors}} for details.
-#' @param moran_k Integer. Number of Moran eigenvectors for spatial basis.
-#'   Default \code{5L}.
+#' @param moran_k Integer. Number of Moran eigenvectors for spatial
+#'   autocorrelation. Default \code{5L}. Moran eigenvectors are
+#'   inexpensive to compute and generally improve model fit; set to
+#'   \code{0} to disable them entirely.
 #' @param sd_threshold Numeric. VarCorr SD cutoff for formula screening.
 #'   Default 0.20.
 #' @param rank_system Character vector of taxonomy ranks, coarse to fine.
@@ -528,17 +530,23 @@ build_priors <- function(
 
   model_data <- prepare_model_dataframe(occurrences_gridded)
 
-  basis <- compute_moran_basis(
-    grid_ids = unique(model_data$grid_id),
-    k        = moran_k
-  )
-  model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
-
-  .msg(sprintf("  %d rows, %d species, %d sites, %d Moran eigenvectors.",
-               nrow(model_data),
-               dplyr::n_distinct(model_data$taxon_name),
-               dplyr::n_distinct(model_data$grid_id),
-               moran_k))
+  if (moran_k > 0L) {
+    basis <- compute_moran_basis(
+      grid_ids = unique(model_data$grid_id),
+      k        = moran_k
+    )
+    model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
+    .msg(sprintf("  %d rows, %d species, %d sites, %d Moran eigenvectors.",
+                 nrow(model_data),
+                 dplyr::n_distinct(model_data$taxon_name),
+                 dplyr::n_distinct(model_data$grid_id),
+                 moran_k))
+  } else {
+    .msg(sprintf("  %d rows, %d species, %d sites, Moran eigenvectors disabled.",
+                 nrow(model_data),
+                 dplyr::n_distinct(model_data$taxon_name),
+                 dplyr::n_distinct(model_data$grid_id)))
+  }
 
   # =========================================================================
   # Stage 5: Train biodiversity model
@@ -546,14 +554,24 @@ build_priors <- function(
   .msg("build_priors [5/7]: Training biodiversity model...")
 
   # Build formula dynamically based on moran_k
-  basis_terms <- paste0("(0 + B", seq_len(moran_k), " | taxon_name)", collapse = " + ")
-  formula_str <- paste0(
-    "cbind(n_species, n_other) ~ main_habitat + ",
-    "(1 | taxon_name) + diag(main_habitat | taxon_name) + ",
-    basis_terms, " + ",
-    "(0 + lat_r_s | taxon_name) + (0 + lon_r_s | taxon_name) + ",
-    "(1 | taxon_name:grid_id)"
-  )
+  if (moran_k > 0L) {
+    basis_terms <- paste0("(0 + B", seq_len(moran_k), " | taxon_name)",
+                          collapse = " + ")
+    formula_str <- paste0(
+      "cbind(n_species, n_other) ~ main_habitat + ",
+      "(1 | taxon_name) + diag(main_habitat | taxon_name) + ",
+      basis_terms, " + ",
+      "(0 + lat_r_s | taxon_name) + (0 + lon_r_s | taxon_name) + ",
+      "(1 | taxon_name:grid_id)"
+    )
+  } else {
+    formula_str <- paste0(
+      "cbind(n_species, n_other) ~ main_habitat + ",
+      "(1 | taxon_name) + diag(main_habitat | taxon_name) + ",
+      "(0 + lat_r_s | taxon_name) + (0 + lon_r_s | taxon_name) + ",
+      "(1 | taxon_name:grid_id)"
+    )
+  }
   model_formula <- stats::as.formula(formula_str)
 
   model_fit <- tryCatch({

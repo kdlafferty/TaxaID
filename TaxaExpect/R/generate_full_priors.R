@@ -1,7 +1,7 @@
 utils::globalVariables(c(
   ".habitat", "grid_id", "taxon_name", "alpha", "beta",
   "theta_mean", "theta_sd", "n_obs", "model_tier", "effort_flag",
-  "habitat_observed_elsewhere", "extrapolation_warning",
+  "observed_in_habitat", "extrapolation_warning",
   "undetected_type", "jeffreys_fallback", "n_total_at_site",
   "taxon_name"
 ))
@@ -57,7 +57,7 @@ utils::globalVariables(c(
 #'     \item{model_tier}{"tier1", "tier2", or "tier3_undetected".}
 #'     \item{effort_flag}{Logical: was N below the training effort threshold?
 #'       NA if n_total_at_site was not supplied in new_sites.}
-#'     \item{habitat_observed_elsewhere}{Logical: was this taxon_name ever
+#'     \item{observed_in_habitat}{Logical: was this taxon_name ever
 #'       recorded in this habitat in the training data? FALSE indicates a
 #'       habitat extrapolation.}
 #'     \item{extrapolation_warning}{Logical: does this site fall outside the
@@ -306,7 +306,7 @@ generate_full_priors <- function(model_obj,
   }
 
   # ---------------------------------------------------------------------------
-  # Helper: habitat_observed_elsewhere lookup
+  # Helper: observed_in_habitat lookup
   # Extract from tier2_empirical (reliable) and tier1 model frame (best effort)
   # ---------------------------------------------------------------------------
   observed_combos <- tryCatch({
@@ -325,14 +325,14 @@ generate_full_priors <- function(model_obj,
       dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym)
     dplyr::bind_rows(t1_obs, t2_obs) |>
       dplyr::distinct() |>
-      dplyr::mutate(habitat_observed_elsewhere = TRUE)
+      dplyr::mutate(observed_in_habitat = TRUE)
   }, error = function(e) {
     # Fallback: tier2_empirical only
     model_obj$tier2_empirical |>
       dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
       dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym) |>
       dplyr::distinct() |>
-      dplyr::mutate(habitat_observed_elsewhere = TRUE)
+      dplyr::mutate(observed_in_habitat = TRUE)
   })
 
   # ---------------------------------------------------------------------------
@@ -473,8 +473,8 @@ generate_full_priors <- function(model_obj,
     dplyr::left_join(observed_combos,
                      by = c("taxon_name", ".habitat")) |>
     dplyr::mutate(
-      habitat_observed_elsewhere = tidyr::replace_na(
-        habitat_observed_elsewhere, FALSE)
+      observed_in_habitat = tidyr::replace_na(
+        observed_in_habitat, FALSE)
     ) |>
     dplyr::rename(!!habitat_col := .habitat)
 
@@ -495,7 +495,7 @@ generate_full_priors <- function(model_obj,
       taxon_name, grid_id, !!rlang::sym(habitat_col),
       alpha, beta, theta_mean, theta_sd,
       n_obs, model_tier, effort_flag,
-      habitat_observed_elsewhere,
+      observed_in_habitat,
       extrapolation_warning,
       undetected_type,
       jeffreys_fallback
@@ -508,7 +508,7 @@ generate_full_priors <- function(model_obj,
     undetected_out <- undetected |>
       dplyr::mutate(
         effort_flag               = FALSE,
-        habitat_observed_elsewhere = FALSE,
+        observed_in_habitat = FALSE,
         extrapolation_warning     = FALSE,
         jeffreys_fallback         = FALSE
       ) |>
@@ -516,7 +516,7 @@ generate_full_priors <- function(model_obj,
         taxon_name, grid_id, !!rlang::sym(habitat_col),
         alpha, beta, theta_mean, theta_sd,
         n_obs, model_tier, effort_flag,
-        habitat_observed_elsewhere,
+        observed_in_habitat,
         extrapolation_warning,
         undetected_type,
         jeffreys_fallback

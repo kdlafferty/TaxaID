@@ -38,7 +38,7 @@ A tibble with one row per species \eqn{\times} site-habitat
 combination (including implicit zeros). Columns are ordered as:
 \code{grid_id}, \code{lat_r}, \code{lon_r}, \code{<habitat_col>},
 \code{taxon_name}, \code{n_species}, \code{n_total_at_site},
-\code{n_other}, \code{is_present}, \code{habitat_observed_elsewhere},
+\code{n_other}, \code{is_present}, \code{observed_in_habitat},
 scaled covariate columns (\code{<cov>_s}), then all remaining columns.
 
 The attribute \code{scale_params} is a named list — one entry per
@@ -55,16 +55,16 @@ Converts raw occurrence records into the format required by
 \code{cor_threshold}.
 \item Aggregates records to species \eqn{\times} site-habitat counts and
 fills implicit zeros for species not observed at a site.
-\item Computes the \code{habitat_observed_elsewhere} flag — \code{TRUE}
+\item Computes the \code{observed_in_habitat} flag — \code{TRUE}
 if the species has been recorded in that habitat type at any site.
 \item Scales all covariate columns to zero mean / unit SD, storing the
 scaling parameters as an attribute for use at prediction time.
 }
 }
 \details{
-\strong{habitat_observed_elsewhere:} computed from positive detections only,
+\strong{observed_in_habitat:} computed from positive detections only,
 before zero-filling. If a species is predicted with non-trivial theta at a
-site where \code{habitat_observed_elsewhere} is \code{FALSE}, that
+site where \code{observed_in_habitat} is \code{FALSE}, that
 prediction is a habitat extrapolation and should be treated with caution.
 
 \strong{Extra covariates:} any covariate beyond \code{lat_r} / \code{lon_r}

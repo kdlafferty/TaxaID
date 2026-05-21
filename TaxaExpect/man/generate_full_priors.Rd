@@ -53,7 +53,7 @@ uncertainty at this site, not sampling effort.}
 \item{model_tier}{"tier1", "tier2", or "tier3_undetected".}
 \item{effort_flag}{Logical: was N below the training effort threshold?
 NA if n_total_at_site was not supplied in new_sites.}
-\item{habitat_observed_elsewhere}{Logical: was this taxon_name ever
+\item{observed_in_habitat}{Logical: was this taxon_name ever
 recorded in this habitat in the training data? FALSE indicates a
 habitat extrapolation.}
 \item{extrapolation_warning}{Logical: does this site fall outside the

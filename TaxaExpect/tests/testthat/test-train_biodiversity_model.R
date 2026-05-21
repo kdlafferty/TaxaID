@@ -4,7 +4,7 @@
 # Expects zero-filled output from prepare_model_dataframe():
 #   one row per taxon x site-habitat with columns:
 #   n_species, n_other, n_total_at_site, is_present,
-#   habitat_observed_elsewhere, lat_r_s, lon_r_s
+#   observed_in_habitat, lat_r_s, lon_r_s
 #   AND the scale_params attribute.
 #
 # Key behaviors tested:
@@ -55,7 +55,7 @@ library(dplyr)
       n_species                = n_det,
       n_other                  = 15L - n_det,
       is_present               = as.integer(n_det > 0),
-      habitat_observed_elsewhere = TRUE
+      observed_in_habitat = TRUE
     )
   })
 
@@ -70,7 +70,7 @@ library(dplyr)
       n_species                = n_det,
       n_other                  = 15L - n_det,
       is_present               = as.integer(n_det > 0),
-      habitat_observed_elsewhere = TRUE
+      observed_in_habitat = TRUE
     )
   })
 
@@ -110,7 +110,7 @@ library(dplyr)
       n_species                = n_det,
       n_other                  = 10L - n_det,
       is_present               = as.integer(n_det > 0),
-      habitat_observed_elsewhere = TRUE
+      observed_in_habitat = TRUE
     )
   })
 

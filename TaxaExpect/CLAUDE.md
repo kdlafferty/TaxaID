@@ -61,7 +61,7 @@ and prior generation only.
 
 ### `prepare_model_dataframe(data, covariates = c("lat_r", "lon_r"), habitat_col = "main_habitat", cor_threshold = 0.7)`
 - Requires: `grid_id`, `lat_r`, `lon_r`, `habitat_col`, `taxon_name`.
-- Returns tibble with: `grid_id`, `lat_r`, `lon_r`, `<habitat_col>`, `taxon_name`, `n_species`, `n_total_at_site`, `n_other`, `is_present`, `habitat_observed_elsewhere`, `<cov>_s` columns.
+- Returns tibble with: `grid_id`, `lat_r`, `lon_r`, `<habitat_col>`, `taxon_name`, `n_species`, `n_total_at_site`, `n_other`, `is_present`, `observed_in_habitat`, `<cov>_s` columns.
 - Attaches `scale_params` as attribute (list of center/scale per covariate) for use at prediction time.
 - Warns on multicollinearity > `cor_threshold`; suggests `add_pca_covariates()`.
 
@@ -153,7 +153,7 @@ Tibble, one row per taxon × site × habitat (plus Tier 3 proxies):
 | `n_obs` | integer | `n_total_at_site` if supplied in `new_sites`, else NA |
 | `model_tier` | character | `"tier1"`, `"tier2"`, or `"tier3_undetected"` |
 | `effort_flag` | logical | TRUE if N < `effort_threshold`; NA if N not supplied |
-| `habitat_observed_elsewhere` | logical | TRUE if taxon ever recorded in this habitat in training data |
+| `observed_in_habitat` | logical | TRUE if taxon ever recorded in this habitat in training data |
 | `extrapolation_warning` | logical | TRUE if any covariate |z| > 3 at this site |
 | `undetected_type` | character | NA (modelled); `"singleton_mirror"`; `"global_floor"` |
 | `jeffreys_fallback` | logical | TRUE if Jeffreys Beta(0.5, 0.5) used (variance too large) |
@@ -208,7 +208,7 @@ plot_theta_map_interactive(priors, occurrences)
 
 ## Key Design Notes
 - `grid_id` encodes **location only** — habitat is never part of the identifier
-- `habitat_observed_elsewhere` is computed from positive detections only, before zero-filling
+- `observed_in_habitat` is computed from positive detections only, before zero-filling
 - **Phi cap + floor:** `generate_full_priors()` caps phi at `1 / grid_var` (the model's own estimate of grid-level uncertainty) and floors at `min_phi` (default 2). The cap prevents overconfidence; the floor prevents MC instability when grid variance is high.
 - **`search_rank`** in `build_priors()`: controls what taxonomic rank GBIF queries are made at (default "family"). Species-level names are still verified against GBIF backbone first to resolve cross-backbone disagreements (e.g. Girellidae→Kyphosidae), then collapsed to unique families for querying.
 - **`max_coord_uncertainty`** in `build_priors()`: passed to `filter_gbif_quality()` (default 500m). Endangered species often have intentionally degraded coordinates (~28km); a species purge warning is emitted when taxa lose ≥80% or 100% of records.

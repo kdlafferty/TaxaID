@@ -132,9 +132,9 @@ prevents modelled priors from becoming less informative than dark
 diversity fallbacks. For undetected species, singleton mirrors and a
 global floor prior Beta(1, N-1) provide Tier 3 coverage.
 
-Optional Moran eigenvector maps (Dray et al. 2006) can capture
-fine-scale spatial autocorrelation beyond the latitude/longitude
-gradients.
+Moran eigenvector maps (Dray et al. 2006) capture fine-scale
+spatial autocorrelation beyond the latitude/longitude gradients and
+are included by default in `build_priors()` (`moran_k = 5`).
 
 For the full statistical derivation, assumptions, and references,
 see [`inst/methods_background.md`](inst/methods_background.md).

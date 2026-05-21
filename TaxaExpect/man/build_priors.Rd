@@ -77,8 +77,10 @@ priors. Prevents modelled priors from becoming so diffuse that Monte Carlo
 posterior estimates are unstable. Default \code{2}. See
 \code{\link{generate_full_priors}} for details.}
 
-\item{moran_k}{Integer. Number of Moran eigenvectors for spatial basis.
-Default \code{5L}.}
+\item{moran_k}{Integer. Number of Moran eigenvectors for spatial
+autocorrelation. Default \code{5L}. Moran eigenvectors are
+inexpensive to compute and generally improve model fit; set to
+\code{0} to disable them entirely.}
 
 \item{sd_threshold}{Numeric. VarCorr SD cutoff for formula screening.
 Default 0.20.}

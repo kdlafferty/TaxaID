@@ -1,7 +1,7 @@
 utils::globalVariables(c(
   "grid_id", "lat_r", "lon_r", ".habitat", "taxon_name",
   "n_species", "n_total_at_site", "n_other", "is_present",
-  "habitat_observed_elsewhere"
+  "observed_in_habitat"
 ))
 
 #' Prepare Data for Biodiversity Modeling
@@ -13,7 +13,7 @@ utils::globalVariables(c(
 #'     \code{cor_threshold}.
 #'   \item Aggregates records to species \eqn{\times} site-habitat counts and
 #'     fills implicit zeros for species not observed at a site.
-#'   \item Computes the \code{habitat_observed_elsewhere} flag — \code{TRUE}
+#'   \item Computes the \code{observed_in_habitat} flag — \code{TRUE}
 #'     if the species has been recorded in that habitat type at any site.
 #'   \item Scales all covariate columns to zero mean / unit SD, storing the
 #'     scaling parameters as an attribute for use at prediction time.
@@ -41,7 +41,7 @@ utils::globalVariables(c(
 #'   combination (including implicit zeros). Columns are ordered as:
 #'   \code{grid_id}, \code{lat_r}, \code{lon_r}, \code{<habitat_col>},
 #'   \code{taxon_name}, \code{n_species}, \code{n_total_at_site},
-#'   \code{n_other}, \code{is_present}, \code{habitat_observed_elsewhere},
+#'   \code{n_other}, \code{is_present}, \code{observed_in_habitat},
 #'   scaled covariate columns (\code{<cov>_s}), then all remaining columns.
 #'
 #'   The attribute \code{scale_params} is a named list — one entry per
@@ -51,9 +51,9 @@ utils::globalVariables(c(
 #'   prediction time.
 #'
 #' @details
-#' \strong{habitat_observed_elsewhere:} computed from positive detections only,
+#' \strong{observed_in_habitat:} computed from positive detections only,
 #' before zero-filling. If a species is predicted with non-trivial theta at a
-#' site where \code{habitat_observed_elsewhere} is \code{FALSE}, that
+#' site where \code{observed_in_habitat} is \code{FALSE}, that
 #' prediction is a habitat extrapolation and should be treated with caution.
 #'
 #' \strong{Extra covariates:} any covariate beyond \code{lat_r} / \code{lon_r}
@@ -194,14 +194,14 @@ prepare_model_dataframe <- function(data,
     )
   }
 
-  # --- habitat_observed_elsewhere flag ----------------------------------------
+  # --- observed_in_habitat flag ----------------------------------------
   habitat_presence <- dplyr::mutate(
     dplyr::distinct(dplyr::filter(model_df, n_species > 0), taxon_name, .habitat),
-    habitat_observed_elsewhere = TRUE
+    observed_in_habitat = TRUE
   )
   model_df <- dplyr::mutate(
     dplyr::left_join(model_df, habitat_presence, by = c("taxon_name", ".habitat")),
-    habitat_observed_elsewhere = tidyr::replace_na(habitat_observed_elsewhere, FALSE)
+    observed_in_habitat = tidyr::replace_na(observed_in_habitat, FALSE)
   )
 
   # --- Scale covariates -------------------------------------------------------
@@ -226,7 +226,7 @@ prepare_model_dataframe <- function(data,
     dplyr::rename(model_df, !!habitat_col := .habitat),
     grid_id, lat_r, lon_r, !!habitat_col, taxon_name,
     n_species, n_total_at_site, n_other, is_present,
-    habitat_observed_elsewhere,
+    observed_in_habitat,
     dplyr::ends_with("_s"),
     dplyr::everything()
   )

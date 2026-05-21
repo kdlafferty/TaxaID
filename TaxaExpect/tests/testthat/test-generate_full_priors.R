@@ -126,7 +126,7 @@ test_that("output contains all documented columns", {
   out      <- generate_full_priors(mod, new_sites = sites)
   required <- c("taxon_name", "grid_id", "main_habitat", "alpha", "beta",
                 "theta_mean", "theta_sd", "n_obs", "model_tier",
-                "effort_flag", "habitat_observed_elsewhere",
+                "effort_flag", "observed_in_habitat",
                 "extrapolation_warning", "undetected_type")
   for (col in required) {
     expect_true(col %in% names(out), info = paste("Missing column:", col))
