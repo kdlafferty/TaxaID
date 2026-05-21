@@ -201,33 +201,6 @@ assignment, flagging implausible taxonomic identities using
 proportion-based control comparison, temporal proximity analysis, and
 LLM expert review.
 
-### References for Table 1
-
--   Callahan, B.J. et al. (2016). DADA2: High-resolution sample
-    inference from Illumina amplicon data. *Nature Methods*, 13(7),
-    581--583.
--   Davis, N.M. et al. (2018). Simple statistical identification and
-    removal of contaminant sequences in marker-gene and metagenomics
-    data. *Microbiome*, 6, 226.
--   Edgar, R.C. (2016). SINTAX: a simple non-Bayesian taxonomy
-    classifier for 16S and ITS sequences. *bioRxiv*, 074161.
--   Murali, A., Bhargava, A. and Wright, E.S. (2018). IDTAXA: a novel
-    approach for accurate taxonomic classification of microbiome
-    sequences. *Microbiome*, 6, 140.
--   Somervuo, P. et al. (2017). Unbiased probabilistic taxonomic
-    classification for DNA barcoding. *Bioinformatics*, 33(19),
-    2997--3005.
--   Wang, Q. et al. (2007). Naive Bayesian classifier for rapid
-    assignment of rRNA sequences into the new bacterial taxonomy.
-    *Applied and Environmental Microbiology*, 73(16), 5261--5267.
--   Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018).
-    Characterising taxonomic assignment quality in environmental DNA
-    metabarcoding data with the insect R package. *Methods in Ecology
-    and Evolution*, 11, 1457--1468.
--   Zito, A. et al. (2023). Bayesian nonparametric modelling of
-    sequential discoveries. *Methods in Ecology and Evolution*, 14(6),
-    1373--1385.
-
 ## Citation
 
 Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
@@ -496,10 +469,23 @@ imply endorsement by the U.S. Government.
 
 ## References
 
+Callahan, B.J., McMurdie, P.J., Rosen, M.J., Han, A.W., Johnson,
+A.J.A. and Holmes, S.P. (2016). DADA2: High-resolution sample
+inference from Illumina amplicon data. *Nature Methods*, 13(7),
+581--583.
+
+Davis, N.M., Proctor, D.M., Holmes, S.P., Relman, D.A. and Callahan,
+B.J. (2018). Simple statistical identification and removal of
+contaminant sequences in marker-gene and metagenomics data.
+*Microbiome*, 6, 226.
+
 Dussert, G., Chamaille-Jammes, S., Dray, S. and Miele, V. (2025).
 Being confident in confidence scores: calibration in deep learning
 models for camera trap image sequences. *Remote Sensing in Ecology and
 Conservation*, 11(1), 88--99.
+
+Edgar, R.C. (2016). SINTAX: a simple non-Bayesian taxonomy classifier
+for 16S and ITS sequences. *bioRxiv*, 074161.
 
 Fairbairn, A.J., Burmeister, J.S., Weisser, W.W. and Meyer, S.T.
 (2025). BirdNET can be as good as experts for acoustic bird monitoring
@@ -521,10 +507,32 @@ GAPeDNA: assessing and mapping global species gaps in genetic databases
 for eDNA metabarcoding. *Diversity and Distributions*, 27(10),
 1880--1892.
 
+Murali, A., Bhargava, A. and Wright, E.S. (2018). IDTAXA: a novel
+approach for accurate taxonomic classification of microbiome sequences.
+*Microbiome*, 6, 140.
+
 Shea, M.M. and Boehm, A.B. (2024). Environmental DNA metabarcoding
 differentiates between micro-habitats within the rocky intertidal.
 *Environmental DNA*, 6(2), e521.
 
+Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and
+Ovaskainen, O. (2017). Unbiased probabilistic taxonomic classification
+for DNA barcoding. *Bioinformatics*, 33(19), 2997--3005.
+
 Thompson, W.L., Kahl, S. and Mathevon, N. (2025). A post-processing
 framework for assessing BirdNET identification accuracy and community
 composition. *Ibis*, 167(1), 213--229.
+
+Wang, Q., Garrity, G.M., Tiedje, J.M. and Cole, J.R. (2007). Naive
+Bayesian classifier for rapid assignment of rRNA sequences into the new
+bacterial taxonomy. *Applied and Environmental Microbiology*, 73(16),
+5261--5267.
+
+Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018).
+Characterising taxonomic assignment quality in environmental DNA
+metabarcoding data with the insect R package. *Methods in Ecology and
+Evolution*, 11, 1457--1468.
+
+Zito, A., Rigon, T., Ovaskainen, O. and Dunson, D.B. (2023). Bayesian
+nonparametric modelling of sequential discoveries. *Methods in Ecology
+and Evolution*, 14(6), 1373--1385.
