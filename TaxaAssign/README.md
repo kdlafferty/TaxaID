@@ -117,6 +117,45 @@ context from taxon names - `generate_report()` -- publication-ready
 Methods + Results text - `report_assign()` -- lightweight section for
 `assemble_report()`
 
+## Statistical Methods
+
+TaxaAssign computes Bayesian posterior probabilities for each
+candidate taxonomic assignment:
+
+$$P(H_i \mid D) = \frac{L(D \mid H_i) \times \pi(H_i)}{\sum_j L(D \mid H_j) \times \pi(H_j)}$$
+
+where $L$ is the likelihood (from TaxaLikely or an exponential
+score-weighting proxy) and $\pi$ is the prior (from TaxaExpect or
+LLM estimation).
+
+-   **Monte Carlo uncertainty propagation**: priors are modelled as
+    Beta($\alpha$, $\beta$) distributions and likelihoods as
+    Normal(mean, sd); 1000 simulations (default) propagate both
+    sources of uncertainty into posterior means, SDs, and
+    confidence scores (fraction of simulations won)
+-   **Two workflows**: the full Bayesian workflow uses calibrated
+    likelihoods from TaxaLikely's hierarchical model and
+    spatially-explicit priors from TaxaExpect's GLMM; the
+    LLM-shortcut workflow uses exponential score weighting
+    ($L_i = e^{\lambda s_i}$) and LLM-estimated priors with
+    information-quality-driven Beta concentration
+-   **Posterior consensus**: the smallest set of hypotheses capturing
+    $\geq$95% of posterior mass is identified; if multiple taxa
+    remain, the lowest common ancestor (LCA) determines the consensus
+    rank; downranking refines coarse assignments when only one
+    finer-rank taxon exists at the study site
+-   **Empirical Bayes refinement**: species confidently identified in
+    one observation receive boosted priors in unresolved observations
+    from the same study, analogous to shrinkage estimators (Efron and
+    Morris 1973)
+-   **Dark diversity fallback**: species absent from TaxaExpect's
+    spatial model receive priors from Tier 3 (undetected species)
+    estimates, preventing false negatives from incomplete occurrence
+    data
+
+For the full statistical derivation, assumptions, and references,
+see [`inst/methods_background.md`](inst/methods_background.md).
+
 ## Vignettes
 
 -   [Taxonomic Assignment](vignettes/taxonomic-assignment.Rmd) -- full
