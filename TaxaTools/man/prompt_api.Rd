@@ -6,7 +6,7 @@
 \usage{
 prompt_api(
   prompt,
-  llm_fn = call_anthropic_api,
+  llm_fn = getOption("TaxaID.llm_fn", call_anthropic_api),
   pause_seconds = 1,
   verbose = TRUE
 )

@@ -10,7 +10,7 @@ draft_results_text(
   context = NULL,
   audience = "journal",
   code = NULL,
-  llm_fn = call_anthropic_api,
+  llm_fn = getOption("TaxaID.llm_fn", call_anthropic_api),
   max_rows = 20L,
   verbose = FALSE
 )

@@ -221,7 +221,7 @@ call_anthropic_api <- function(prompt_str,
 #' }
 
 prompt_api <- function(prompt,
-                       llm_fn        = call_anthropic_api,
+                       llm_fn        = getOption("TaxaID.llm_fn", call_anthropic_api),
                        pause_seconds = 1,
                        verbose       = TRUE) {
 

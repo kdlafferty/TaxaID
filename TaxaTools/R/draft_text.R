@@ -270,7 +270,7 @@ draft_methods_text <- function(code,
                                description    = NULL,
                                context        = NULL,
                                audience       = "journal",
-                               llm_fn         = call_anthropic_api,
+                               llm_fn         = getOption("TaxaID.llm_fn", call_anthropic_api),
                                max_code_lines = 300L,
                                verbose        = FALSE) {
 
@@ -393,7 +393,7 @@ draft_results_text <- function(...,
                                context     = NULL,
                                audience    = "journal",
                                code        = NULL,
-                               llm_fn      = call_anthropic_api,
+                               llm_fn      = getOption("TaxaID.llm_fn", call_anthropic_api),
                                max_rows    = 20L,
                                verbose     = FALSE) {
 

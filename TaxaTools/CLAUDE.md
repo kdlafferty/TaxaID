@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-19 (Session 77 — census_genus_species for GBIF backbone species enumeration)
+# Last updated: 2026-05-21 (Session 82 — LLM provider auto-detection via .onAttach)
 
 ---
 
@@ -46,10 +46,23 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `call_gemini_api()` | Submit one prompt string to Google Gemini (free tier available) | Complete | R/llm_api_utils.R |
 | `call_openai_api()` | Submit one prompt string to OpenAI ChatGPT | Complete | R/llm_api_utils.R |
 | `call_ollama_api()` | Submit one prompt string to a local Ollama model (no API key) | Complete | R/llm_api_utils.R |
-| `prompt_api()` | Multi-chunk llm_prompt dispatcher; llm_fn param selects provider | Complete | R/llm_api_utils.R |
+| `prompt_api()` | Multi-chunk llm_prompt dispatcher; default `llm_fn` from `getOption("TaxaID.llm_fn")` | Complete | R/llm_api_utils.R |
 | `prompt_manual()` | Write prompt files for manual web interface submission | Complete | R/llm_api_utils.R |
 | `read_llm_response()` | Read and concatenate saved LLM response files | Complete | R/llm_api_utils.R |
 | `%||%` | Null-coalescing operator; exported for use by downstream packages via `@importFrom` | Complete | R/llm_api_utils.R |
+
+### LLM provider auto-detection (Session 82)
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `.onAttach()` | On `library(TaxaTools)`: scans `~/.Renviron` for API keys, sets `options(TaxaID.llm_fn)` to the detected provider function. Priority: Anthropic > Gemini > OpenAI. Skips in non-interactive sessions; respects pre-set option. | Complete | R/zzz.R |
+| `.detect_llm_provider()` | Internal: returns list of available providers (key present in env vars) | Complete | R/zzz.R |
+
+**Behaviour:**
+- **0 keys found:** startup message with setup instructions (including Ollama as local option)
+- **1 key found:** auto-sets `options(TaxaID.llm_fn = <provider>)`, prints provider name
+- **2+ keys found:** auto-selects first by priority, prints all available + how to switch
+- All `llm_fn` defaults across the ecosystem use `getOption("TaxaID.llm_fn", <fallback>)`
 
 ### GBIF backbone census (Session 77)
 

@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-21 (Session 81 — methods docs, LCA terminology, supplemental methods rename)
+# Last updated: 2026-05-21 (Session 82 — LLM provider auto-detection via .onAttach)
 
 ---
 
@@ -460,3 +460,7 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-21 | *(Session 81 — docs)* | Downranking clarification | TaxaAssign | `inst/methods_background.md` | Explains what `species_reference` is (unreferenced_species_result or data.frame), how lookup works, and why it's needed. |
 | 2026-05-21 | *(Session 81 — rename)* | `inst/methods_background.md` | `inst/<Package>_supplemental_methods.md` | TaxaLikely, TaxaExpect, TaxaAssign | file rename | Package-prefixed names to distinguish tabs in editor. All cross-references updated (READMEs, CLAUDE.md, TODO_PUBLICATION.md). |
 | 2026-05-21 | *(Session 81 — docs)* | Methods sections added to READMEs | TaxaHabitat, TaxaFlag | README.md | TaxaHabitat: habitat weights, site assignment, spatial QC. TaxaFlag: contamination scoring formula, handler detection, LLM expert review. |
+| 2026-05-21 | *(Session 82 — new)* | `.onAttach()` LLM provider auto-detection | TaxaTools | `R/zzz.R` | On `library(TaxaTools)`: scans env vars for API keys, sets `options(TaxaID.llm_fn)`. Priority: Anthropic > Gemini > OpenAI. 0 keys → setup message; 1 key → auto-set; 2+ keys → auto-select + how to switch. |
+| 2026-05-21 | *(Session 82 — new)* | `options(TaxaID.llm_fn)` | Ecosystem | global option | New R option holding the auto-detected LLM provider function. All `llm_fn` defaults across 5 packages now use `getOption("TaxaID.llm_fn", <fallback>)`. |
+| 2026-05-21 | *(Session 82 — enhancement)* | `llm_fn` defaults use `getOption()` | TaxaTools, TaxaExpect, TaxaFlag, TaxaFetch | function defaults | `prompt_api()`, `draft_methods_text()`, `draft_results_text()`, `build_priors()`, `review_assignments()`, `screen_pdf_structure()`: default changed from hardcoded `call_anthropic_api` to `getOption("TaxaID.llm_fn", call_anthropic_api)`. |
+| 2026-05-21 | *(Session 82 — enhancement)* | `.resolve_llm_fn()` checks option | TaxaAssign | `R/site_utils.R` | Now checks `getOption("TaxaID.llm_fn")` before falling back to `TaxaTools::call_anthropic_api`. Covers `assign_taxa_llm()`, `run_llm_pipeline()`, `build_context()`, `suggest_unreferenced_species()`. |

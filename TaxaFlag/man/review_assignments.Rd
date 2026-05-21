@@ -11,7 +11,7 @@ review_assignments(
   context,
   target_group = NULL,
   marker = NULL,
-  llm_fn = TaxaTools::call_anthropic_api,
+  llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api),
   taxa_per_call = 15L,
   pause_seconds = 1,
   verbose = TRUE

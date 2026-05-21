@@ -9,7 +9,7 @@ draft_methods_text(
   description = NULL,
   context = NULL,
   audience = "journal",
-  llm_fn = call_anthropic_api,
+  llm_fn = getOption("TaxaID.llm_fn", call_anthropic_api),
   max_code_lines = 300L,
   verbose = FALSE
 )

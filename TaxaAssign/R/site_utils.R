@@ -5,6 +5,12 @@
 #' @noRd
 .resolve_llm_fn <- function(llm_fn, caller = "this function") {
   if (!is.null(llm_fn)) return(llm_fn)
+
+  # Check TaxaTools auto-detected provider (set by TaxaTools .onAttach)
+  opt <- getOption("TaxaID.llm_fn")
+  if (!is.null(opt) && is.function(opt)) return(opt)
+
+  # Fall back to Anthropic if TaxaTools is available
   if (!requireNamespace("TaxaTools", quietly = TRUE)) {
     stop(sprintf(
       "%s: 'llm_fn' is NULL (default) and TaxaTools is not installed.\n",
