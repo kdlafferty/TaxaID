@@ -37,7 +37,10 @@ post-hoc checks:
 
 Each method is independent -- use one, two, or all three depending on
 your data type and available metadata. Flags are additive columns, not
-filters.
+filters. Together, these checks target false positives that survive
+upstream statistical assignment: contamination, handler artifacts,
+allochthonous transport (e.g., eDNA carried by currents from outside
+the sampling area), and other ecologically implausible detections.
 
 ## Installation
 

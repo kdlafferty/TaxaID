@@ -7,11 +7,12 @@ editor_options:
 # TaxaFetch
 
 Taxonomic assignments are more accurate when they consider which
-species are plausible at the sampling location. TaxaFetch compiles
-species occurrence records from multiple sources -- GBIF, DataONE,
-BioTIME, and published literature -- and combines them into a
-standardized format for downstream habitat assignment (TaxaHabitat)
-and prior estimation (TaxaExpect).
+species are plausible at the sampling location. Without this context,
+classifiers frequently assign detections to ecologically implausible
+taxa. TaxaFetch compiles species occurrence records from multiple
+sources -- GBIF, DataONE, BioTIME, and published literature -- and
+combines them into a standardized format for downstream habitat
+assignment (TaxaHabitat) and prior estimation (TaxaExpect).
 
 ## Data Sources
 

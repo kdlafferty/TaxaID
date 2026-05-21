@@ -15,7 +15,9 @@ standardizing taxonomic information. The taxize package was long the
 standard tool for this, but it is no longer maintained. TaxaTools
 replaces and extends that functionality: it cleans, verifies, and
 standardizes taxonomic names across multiple backbones (GBIF, NCBI,
-WoRMS, Catalogue of Life). TaxaTools also provides a unified
+WoRMS, Catalogue of Life). Nomenclature inconsistencies between data
+sources can cause false negatives when priors and likelihoods fail to
+join on mismatched names. TaxaTools also provides a unified
 interface for calling large language models (LLMs) from R, with
 support for Anthropic Claude, Google Gemini, OpenAI, and local Ollama
 models. LLM-assisted functions can draft Methods and Results text for

@@ -50,6 +50,84 @@ Many TaxaID functions can use large language models (LLMs), though
 most have non-LLM alternatives. LLM integration requires an API key
 (see below).
 
+### Common Errors in Taxonomic Assignment
+
+Automated classifiers for DNA, sound, and image data produce taxonomic
+assignments with systematic errors that are often difficult to detect.
+In a replicated eDNA study from the California rocky intertidal, 28% of
+metazoan sequences matched taxa not present on the Pacific Coast (Shea
+and Boehm 2024). Camera trap false positive rates can exceed 40% for
+rare species (Thompson et al. 2025), and acoustic classifier precision
+is highly sensitive to confidence threshold settings (Fairbairn et al.
+2025). Raw classifier scores mimic probabilities but are uncalibrated
+--- a 0.95 score does not mean 95% confidence (Dussert et al. 2025),
+and the same match percentage can be diagnostic for one taxon group but
+ambiguous for another (Ficetola et al. 2015). These errors fall into
+three categories: false positives (wrong taxon assigned), false
+negatives (correct taxon missed), and combined errors where one taxon's
+false positive is another's false negative.
+
+#### Reference quality
+
+**Reference mislabeling** (FP) — Mislabeled sequences or images in the
+reference database produce confident wrong assignments that propagate to
+every query matching that reference. *TaxaLikely detects mislabels
+before model training and removes them from match data.*
+
+**Missing reference redirect** (FP + FN) — When the true species is
+absent from the reference library, its detections are assigned to the
+closest relative — a false positive for that relative and a false
+negative for the true species. Reference library gaps are geographically
+biased, systematically affecting some regions and taxa more than others
+(Marques et al. 2021). *TaxaLikely models the expected score
+profile of unreferenced taxa, and TaxaAssign identifies and names
+plausible missing species.*
+
+#### Score interpretation
+
+**Overconfident species assignment** (FP + FN) — Uncalibrated raw scores
+are taken at face value; even a 100% match may be ambiguous at species
+rank if competing candidates score nearly as well. *TaxaLikely's
+calibrated likelihoods reveal that a high score with a small gap to
+alternatives has low species-level likelihood, regardless of the raw
+score.*
+
+**Overly strict thresholds** (FN) — Conservative score cutoffs discard
+correct assignments that fall just below arbitrary thresholds. *TaxaID's
+probabilistic framework replaces binary thresholds with continuous
+likelihoods and posteriors.*
+
+#### Ecological context
+
+**Defensive upranking** (FN) — When multiple similar species produce
+near-identical scores, conventional systems uprank to genus to avoid a
+false positive, sacrificing species-level resolution. *Spatial priors
+from TaxaExpect can break ties: if only one candidate species is
+expected at the site, its posterior can support species-level assignment
+even when scores alone cannot. Dynamic Bayesian updating further
+sharpens priors within a sample after high-confidence detections.*
+
+**Ecologically implausible assignment** (FP) — A species is assigned
+that doesn't plausibly occur at the sampling location, season, or
+habitat. *Spatially explicit priors from TaxaExpect down-weight
+implausible taxa. Dynamic updating within a sample reinforces
+ecologically consistent assignments.*
+
+#### Field and lab artifacts
+
+**Contamination or artifact** (FP) — Lab or field contamination, handler
+artifacts (camera traps), or equipment carryover introduces real
+detections of taxa not present in the environment. *TaxaFlag detects
+proportion-based and temporal-proximity artifacts.*
+
+**Allochthonous transport** (FP) — Detections originate from outside the
+sampling area: eDNA carried by runoff or currents, sounds from playback
+devices or captive animals. *Spatial priors inherently down-weight
+species outside their expected habitat.*
+
+*Additionally, TaxaFlag provides LLM-based expert review that can flag
+most of these error types post-assignment.*
+
 ### Ecosystem Packages
 
 1.  **TaxaTools** cleans and standardizes taxonomic names across
@@ -93,7 +171,7 @@ separation of likelihood and prior, spatially explicit priors built
 from occurrence data, and multi-data-type support (DNA, image,
 acoustic).
 
-**Table 0.** Comparison of TaxaID with related taxonomic assignment
+**Table 1.** Comparison of TaxaID with related taxonomic assignment
 tools.
 
 | Tool | Approach | Posterior probabilities | Spatial priors | Unreferenced taxa | Multi-data-type |
@@ -123,7 +201,7 @@ assignment, flagging implausible taxonomic identities using
 proportion-based control comparison, temporal proximity analysis, and
 LLM expert review.
 
-### References for Table 0
+### References for Table 1
 
 -   Callahan, B.J. et al. (2016). DADA2: High-resolution sample
     inference from Illumina amplicon data. *Nature Methods*, 13(7),
@@ -191,7 +269,7 @@ Kevin D. Lafferty
 
 ## Software Requirements
 
-**Table 1.** Software dependencies required for the TaxaID ecosystem.
+**Table 2.** Software dependencies required for the TaxaID ecosystem.
 
 | Software | Version | Notes |
 |------------------------|------------------------|------------------------|
@@ -418,6 +496,35 @@ imply endorsement by the U.S. Government.
 
 ## References
 
+Dussert, G., Chamaille-Jammes, S., Dray, S. and Miele, V. (2025).
+Being confident in confidence scores: calibration in deep learning
+models for camera trap image sequences. *Remote Sensing in Ecology and
+Conservation*, 11(1), 88--99.
+
+Fairbairn, A.J., Burmeister, J.S., Weisser, W.W. and Meyer, S.T.
+(2025). BirdNET can be as good as experts for acoustic bird monitoring
+in a European city. *PLoS One*, 20(9), e0330836.
+
+Ficetola, G.F., Pansu, J., Bonin, A., Coissac, E., Giguet-Covex, C.,
+De Barba, M., Gielly, L., Lopes, C.M., Boyer, F., Pompanon, F.,
+Raye, G. and Taberlet, P. (2015). Replication levels, false presences
+and the estimation of the presence/absence from eDNA metabarcoding
+data. *Molecular Ecology Resources*, 15(3), 543--556.
+
 Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
+
+Marques, V., Milhau, T., Albouy, C., Troussellier, M., Dejean, T.,
+Valentini, A., Manel, S., Mouillot, D. and Pellissier, L. (2021).
+GAPeDNA: assessing and mapping global species gaps in genetic databases
+for eDNA metabarcoding. *Diversity and Distributions*, 27(10),
+1880--1892.
+
+Shea, M.M. and Boehm, A.B. (2024). Environmental DNA metabarcoding
+differentiates between micro-habitats within the rocky intertidal.
+*Environmental DNA*, 6(2), e521.
+
+Thompson, W.L., Kahl, S. and Mathevon, N. (2025). A post-processing
+framework for assessing BirdNET identification accuracy and community
+composition. *Ibis*, 167(1), 213--229.

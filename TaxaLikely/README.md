@@ -16,10 +16,14 @@ to likelihoods. TaxaLikely does this by fitting statistical models
 that compare within-species scores to between-species scores in a
 reference library. This process can also flag mislabeled references
 (e.g., a sequence that matches other species better than its own).
-Removing such errors improves assignment accuracy. Calibrated
-likelihoods can then be multiplied by priors (see TaxaExpect) to
-generate Bayesian posterior probabilities for each hypothesized
-assignment. Part of the
+Removing such errors improves assignment accuracy. TaxaLikely also
+models the expected score profile of species absent from the reference
+library, reducing false positives caused by missing references. By
+replacing arbitrary score thresholds with continuous likelihoods,
+TaxaLikely avoids both overconfident assignments and unnecessary loss
+of taxonomic resolution. Calibrated likelihoods can then be multiplied
+by priors (see TaxaExpect) to generate Bayesian posterior probabilities
+for each hypothesized assignment. Part of the
 [TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
 
 ## Overview

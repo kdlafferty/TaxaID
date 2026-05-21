@@ -27,7 +27,11 @@ family, etc.) is assigned via least common ancestor. All competing
 hypotheses and their probabilities are retained in the output. The
 user can also update priors iteratively: if one observation strongly
 supports species A, that evidence can sharpen the prior for species A
-in other observations from the same sample.
+in other observations from the same sample. By naming plausible species
+missing from the reference library and assigning them likelihoods,
+TaxaAssign reduces the false positives that occur when detections of
+unreferenced species are incorrectly attributed to their closest
+referenced relative.
 
 Two workflows:
 

@@ -16,7 +16,10 @@ The main input to TaxaID is a table where each row pairs an
 observation (sequence, image, or sound recording) with a candidate
 taxon from a reference database and a match score indicating their
 similarity. TaxaMatch standardizes column names and taxonomy so that
-downstream packages can interpret this table.
+downstream packages can interpret this table. Standardization is a
+prerequisite for calibrating scores into likelihoods -- without it,
+raw scores may be mistaken for probabilities, leading to overconfident
+or inconsistent assignments.
 
 TaxaMatch can also produce match tables from raw sequence data via
 NCBI BLAST, though most users will start from an existing

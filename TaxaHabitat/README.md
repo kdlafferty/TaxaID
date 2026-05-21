@@ -12,9 +12,11 @@ species into habitat categories using LLM-based biological consensus,
 assigns habitats to sampling sites, and flags spatial outliers.
 
 Habitat is a key predictor of which species are plausible at a
-sampling location. Ideally, a knowledgeable user assigns each taxon to
-its habitat. When the species list is long, LLMs can do a reasonable
-job of classifying species into habitat categories. As with any LLM
+sampling location. Incorrect habitat classification leads to false
+positives when species from the wrong habitat receive inflated priors.
+Ideally, a knowledgeable user assigns each taxon to its habitat. When
+the species list is long, LLMs can do a reasonable job of classifying
+species into habitat categories. As with any LLM
 output, users should review the results.
 `flag_habitat_inconsistencies()` provides an interactive map that
 makes errant classifications easy to spot and correct.

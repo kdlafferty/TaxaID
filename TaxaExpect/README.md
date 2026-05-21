@@ -23,7 +23,11 @@ for habitat type and spatial autocorrelation. The model can also
 incorporate environmental covariates such as temperature or altitude,
 and it adjusts confidence based on sampling effort at each site.
 For taxa never reported in the study area, TaxaExpect generates "dark
-diversity" priors based on singleton observations elsewhere.
+diversity" priors based on singleton observations elsewhere. Spatial
+priors reduce false positives from ecologically implausible assignments
+and can break ties between similar-scoring species, rescuing
+species-level resolution that would otherwise be lost to defensive
+upranking.
 
 ## Overview
 
