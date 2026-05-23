@@ -6,8 +6,10 @@
 \usage{
 call_openai_api(
   prompt_str,
-  model = "gpt-4o-mini",
+  model = NULL,
+  tier = c("mid", "fast", "top"),
   max_tokens = 3000L,
+  base_url = "https://api.openai.com",
   api_key = Sys.getenv("OPENAI_API_KEY")
 )
 }
@@ -15,19 +17,29 @@ call_openai_api(
 \item{prompt_str}{Character. A length-1 string containing the complete
 prompt to submit.}
 
-\item{model}{Character. OpenAI model identifier.
-Default \code{"gpt-4o-mini"} (cost-efficient capable option as of 2026).
-Other options: \code{"gpt-4o"}, \code{"gpt-4.1"}.
-See \url{https://platform.openai.com/docs/models} for the full list.}
+\item{model}{Character. Exact OpenAI model identifier, e.g.
+\code{"gpt-4o-mini"}. Default \code{NULL} resolves to the latest model
+for \code{tier} via \code{\link{list_models}}. Specify an exact model to
+pin a version for reproducibility.}
+
+\item{tier}{Character. Capability tier used when \code{model = NULL}:
+\code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
+\code{"top"} (most capable). Ignored when \code{model} is specified.}
 
 \item{max_tokens}{Integer. Maximum tokens in the response (default 3000).
 Sufficient for most taxonomy and habitat prompts. Increase for longer
 outputs (e.g., large species lists). Higher values increase API cost.}
 
-\item{api_key}{Character. OpenAI API key. Defaults to the
-\code{OPENAI_API_KEY} environment variable. Get a key at
-\url{https://platform.openai.com/api-keys} and add
-\code{OPENAI_API_KEY=sk-...} to \code{~/.Renviron}.}
+\item{base_url}{Character. Base URL of the API endpoint. Default
+\code{"https://api.openai.com"} (OpenAI). Any OpenAI-compatible API can
+be used by changing this URL -- see Details. When using a non-default
+URL, register the provider with \code{\link{register_provider}} to enable
+automatic tier resolution, or specify \code{model} explicitly.}
+
+\item{api_key}{Character. API key for the provider. Defaults to the
+\code{OPENAI_API_KEY} environment variable for the standard OpenAI
+endpoint. For alternative providers, pass the key directly or via
+\code{Sys.getenv("MY_KEY_VAR")} in a closure.}
 }
 \value{
 A length-1 character string containing the model's response text.
@@ -44,6 +56,31 @@ to any function that accepts one.
 \strong{Pricing note:} OpenAI requires a paid account (or expiring $5 trial
 credits for new accounts). There is no ongoing free API tier.
 \code{gpt-4o-mini} is the most economical capable model.
+
+\strong{OpenAI-compatible providers:}
+Many providers implement the OpenAI Chat Completions API. Use \code{base_url}
+to reach them with a single function. Always specify \code{model} or register
+the provider first so tier resolution works correctly:
+\preformatted{
+# xAI Grok -- specify model explicitly
+Sys.setenv(XAI_API_KEY = "xai-...")
+my_grok <- function(p, ...) call_openai_api(p,
+  model    = "grok-3-mini",
+  base_url = "https://api.x.ai",
+  api_key  = Sys.getenv("XAI_API_KEY")
+)
+options(TaxaID.llm_fn = my_grok)
+
+# Or register the provider for automatic tier resolution:
+register_provider("xai", "XAI_API_KEY", "https://api.x.ai",
+  fallback_models = list(fast = "grok-3-mini", mid = "grok-3", top = "grok-3")
+)
+call_openai_api("What phylum do sea urchins belong to?",
+  tier     = "mid",
+  base_url = "https://api.x.ai",
+  api_key  = Sys.getenv("XAI_API_KEY")
+)
+}
 
 \strong{llm_fn usage:}
 \preformatted{
@@ -65,5 +102,6 @@ cat(answer)
 }
 \seealso{
 \code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-\code{\link{call_ollama_api}}, \code{\link{prompt_api}}
+\code{\link{call_ollama_api}}, \code{\link{call_azure_api}},
+\code{\link{prompt_api}}
 }

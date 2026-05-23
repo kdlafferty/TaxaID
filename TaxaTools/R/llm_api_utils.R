@@ -7,6 +7,7 @@
 #   call_gemini_api()       Provider: Google Gemini — one prompt string -> one response string
 #   call_openai_api()       Provider: OpenAI — one prompt string -> one response string
 #   call_ollama_api()       Provider: Ollama (local) — one prompt string -> one response string
+#   call_azure_api()        Provider: Azure OpenAI (DOI) — one prompt string -> one response string
 #   prompt_api()            Multi-chunk llm_prompt dispatcher; llm_fn param selects provider
 #   prompt_manual()         Manual file handoff (any provider)
 #   read_llm_response()     Read saved response file(s)
@@ -22,10 +23,12 @@
 #   geo_prompt carry this class, so both work without any changes here.
 #
 # Provider API keys (set in ~/.Renviron):
-#   ANTHROPIC_API_KEY  — required for call_anthropic_api() (no free tier)
-#   GEMINI_API_KEY     — required for call_gemini_api() (free tier available)
-#   OPENAI_API_KEY     — required for call_openai_api() (no ongoing free tier)
-#   (none)             — call_ollama_api() needs no key; runs models locally
+#   ANTHROPIC_API_KEY       — required for call_anthropic_api() (no free tier)
+#   GEMINI_API_KEY          — required for call_gemini_api() (free tier available)
+#   OPENAI_API_KEY          — required for call_openai_api() (no ongoing free tier)
+#   (none)                  — call_ollama_api() needs no key; runs models locally
+#   AZURE_OPENAI_API_KEY    — required for call_azure_api() (DOI employees only;
+#                             requires connection to a DOI computer system or DOI VPN)
 # ==============================================================================
 
 
@@ -48,8 +51,13 @@
 #'
 #' @param prompt_str Character. A length-1 string containing the complete
 #'   prompt to submit.
-#' @param model Character. Anthropic model identifier.
-#'   Default \code{"claude-opus-4-6"}.
+#' @param model Character. Exact Anthropic model identifier, e.g.
+#'   \code{"claude-sonnet-4-5"}. Default \code{NULL} resolves to the latest
+#'   model for \code{tier} via \code{\link{list_models}}. Specify an exact
+#'   model to pin a version for reproducibility.
+#' @param tier Character. Capability tier used when \code{model = NULL}:
+#'   \code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
+#'   \code{"top"} (most capable). Ignored when \code{model} is specified.
 #' @param max_tokens Integer. Maximum tokens in the response (default 3000).
 #'   Sufficient for most taxonomy and habitat prompts. Increase for longer
 #'   outputs (e.g., large species lists). Higher values increase API cost.
@@ -62,7 +70,8 @@
 #' @seealso \code{\link{prompt_api}} for multi-chunk
 #'   \code{llm_prompt} submission.
 #'   \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-#'   \code{\link{call_ollama_api}} for alternative providers.
+#'   \code{\link{call_ollama_api}}, \code{\link{call_azure_api}} for
+#'   alternative providers.
 #'
 #' @importFrom httr2 request req_headers req_body_json req_error req_perform
 #'   resp_status resp_body_json
@@ -76,9 +85,13 @@
 #' }
 
 call_anthropic_api <- function(prompt_str,
-                               model      = "claude-opus-4-6",
+                               model      = NULL,
+                               tier       = c("mid", "fast", "top"),
                                max_tokens = 3000L,
                                api_key    = Sys.getenv("ANTHROPIC_API_KEY")) {
+
+  tier  <- match.arg(tier)
+  model <- model %||% .resolve_model("anthropic", tier)
 
   if (!is.character(prompt_str) || length(prompt_str) != 1L) {
     stop("call_anthropic_api: 'prompt_str' must be a length-1 character string.")
@@ -158,7 +171,7 @@ call_anthropic_api <- function(prompt_str,
 #'   \code{\link{call_openai_api}}, \code{\link{call_ollama_api}}.
 #'   To use a non-default model or API key, pass a closure:
 #'   \preformatted{
-#'   my_gemini <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash")
+#'   my_gemini <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash-lite")
 #'   raw_text  <- prompt_api(prompt, llm_fn = my_gemini)
 #'   }
 #' @param pause_seconds Numeric. Seconds to pause between chunks to avoid
@@ -191,7 +204,7 @@ call_anthropic_api <- function(prompt_str,
 #' my_fn <- function(p, ...) call_anthropic_api(p, model = "claude-haiku-4-5-20251001")
 #'
 #' # Gemini free tier
-#' my_fn <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash")
+#' my_fn <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash-lite")
 #'
 #' # Local Ollama model
 #' my_fn <- function(p, ...) call_ollama_api(p, model = "qwen2.5:14b")
@@ -201,7 +214,7 @@ call_anthropic_api <- function(prompt_str,
 #'
 #' @seealso \code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
 #'   \code{\link{call_openai_api}}, \code{\link{call_ollama_api}},
-#'   \code{\link{prompt_manual}}
+#'   \code{\link{call_azure_api}}, \code{\link{prompt_manual}}
 #'
 #' @export
 #'
@@ -218,6 +231,9 @@ call_anthropic_api <- function(prompt_str,
 #'
 #' # Local Ollama
 #' raw_text <- prompt_api(prompt, llm_fn = call_ollama_api)
+#'
+#' # Azure OpenAI (DOI employees; requires DOI network or VPN)
+#' raw_text <- prompt_api(prompt, llm_fn = call_azure_api)
 #' }
 
 prompt_api <- function(prompt,
@@ -549,11 +565,13 @@ read_llm_response <- function(files) {
 #'
 #' @param prompt_str Character. A length-1 string containing the complete
 #'   prompt to submit.
-#' @param model Character. Gemini model identifier.
-#'   Default \code{"gemini-2.0-flash"} (free tier as of 2026).
-#'   Other free-tier options: \code{"gemini-2.5-flash-lite"},
-#'   \code{"gemini-2.5-flash"}.
-#'   See \url{https://ai.google.dev/gemini-api/docs/models} for the full list.
+#' @param model Character. Exact Gemini model identifier, e.g.
+#'   \code{"gemini-2.5-flash"}. Default \code{NULL} resolves to the latest
+#'   model for \code{tier} via \code{\link{list_models}}. Specify an exact
+#'   model to pin a version for reproducibility.
+#' @param tier Character. Capability tier used when \code{model = NULL}:
+#'   \code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
+#'   \code{"top"} (most capable). Ignored when \code{model} is specified.
 #' @param max_tokens Integer. Maximum tokens in the response (default 3000).
 #'   Sufficient for most taxonomy and habitat prompts. Increase for longer
 #'   outputs (e.g., large species lists). Higher values increase API cost.
@@ -583,7 +601,8 @@ read_llm_response <- function(files) {
 #' }
 #'
 #' @seealso \code{\link{call_anthropic_api}}, \code{\link{call_openai_api}},
-#'   \code{\link{call_ollama_api}}, \code{\link{prompt_api}}
+#'   \code{\link{call_ollama_api}}, \code{\link{call_azure_api}},
+#'   \code{\link{prompt_api}}
 #'
 #' @importFrom httr2 request req_url_query req_headers req_body_json req_error
 #'   req_perform resp_status resp_body_json
@@ -597,9 +616,13 @@ read_llm_response <- function(files) {
 #' }
 
 call_gemini_api <- function(prompt_str,
-                            model      = "gemini-2.0-flash",
+                            model      = NULL,
+                            tier       = c("mid", "fast", "top"),
                             max_tokens = 3000L,
                             api_key    = Sys.getenv("GEMINI_API_KEY")) {
+
+  tier  <- match.arg(tier)
+  model <- model %||% .resolve_model("gemini", tier)
 
   if (!is.character(prompt_str) || length(prompt_str) != 1L) {
     stop("call_gemini_api: 'prompt_str' must be a length-1 character string.")
@@ -685,17 +708,25 @@ call_gemini_api <- function(prompt_str,
 #'
 #' @param prompt_str Character. A length-1 string containing the complete
 #'   prompt to submit.
-#' @param model Character. OpenAI model identifier.
-#'   Default \code{"gpt-4o-mini"} (cost-efficient capable option as of 2026).
-#'   Other options: \code{"gpt-4o"}, \code{"gpt-4.1"}.
-#'   See \url{https://platform.openai.com/docs/models} for the full list.
+#' @param model Character. Exact OpenAI model identifier, e.g.
+#'   \code{"gpt-4o-mini"}. Default \code{NULL} resolves to the latest model
+#'   for \code{tier} via \code{\link{list_models}}. Specify an exact model to
+#'   pin a version for reproducibility.
+#' @param tier Character. Capability tier used when \code{model = NULL}:
+#'   \code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
+#'   \code{"top"} (most capable). Ignored when \code{model} is specified.
 #' @param max_tokens Integer. Maximum tokens in the response (default 3000).
 #'   Sufficient for most taxonomy and habitat prompts. Increase for longer
 #'   outputs (e.g., large species lists). Higher values increase API cost.
-#' @param api_key Character. OpenAI API key. Defaults to the
-#'   \code{OPENAI_API_KEY} environment variable. Get a key at
-#'   \url{https://platform.openai.com/api-keys} and add
-#'   \code{OPENAI_API_KEY=sk-...} to \code{~/.Renviron}.
+#' @param base_url Character. Base URL of the API endpoint. Default
+#'   \code{"https://api.openai.com"} (OpenAI). Any OpenAI-compatible API can
+#'   be used by changing this URL -- see Details. When using a non-default
+#'   URL, register the provider with \code{\link{register_provider}} to enable
+#'   automatic tier resolution, or specify \code{model} explicitly.
+#' @param api_key Character. API key for the provider. Defaults to the
+#'   \code{OPENAI_API_KEY} environment variable for the standard OpenAI
+#'   endpoint. For alternative providers, pass the key directly or via
+#'   \code{Sys.getenv("MY_KEY_VAR")} in a closure.
 #'
 #' @return A length-1 character string containing the model's response text.
 #'   Stops on any non-200 HTTP status.
@@ -704,6 +735,31 @@ call_gemini_api <- function(prompt_str,
 #' \strong{Pricing note:} OpenAI requires a paid account (or expiring $5 trial
 #' credits for new accounts). There is no ongoing free API tier.
 #' \code{gpt-4o-mini} is the most economical capable model.
+#'
+#' \strong{OpenAI-compatible providers:}
+#' Many providers implement the OpenAI Chat Completions API. Use \code{base_url}
+#' to reach them with a single function. Always specify \code{model} or register
+#' the provider first so tier resolution works correctly:
+#' \preformatted{
+#' # xAI Grok -- specify model explicitly
+#' Sys.setenv(XAI_API_KEY = "xai-...")
+#' my_grok <- function(p, ...) call_openai_api(p,
+#'   model    = "grok-3-mini",
+#'   base_url = "https://api.x.ai",
+#'   api_key  = Sys.getenv("XAI_API_KEY")
+#' )
+#' options(TaxaID.llm_fn = my_grok)
+#'
+#' # Or register the provider for automatic tier resolution:
+#' register_provider("xai", "XAI_API_KEY", "https://api.x.ai",
+#'   fallback_models = list(fast = "grok-3-mini", mid = "grok-3", top = "grok-3")
+#' )
+#' call_openai_api("What phylum do sea urchins belong to?",
+#'   tier     = "mid",
+#'   base_url = "https://api.x.ai",
+#'   api_key  = Sys.getenv("XAI_API_KEY")
+#' )
+#' }
 #'
 #' \strong{llm_fn usage:}
 #' \preformatted{
@@ -717,7 +773,8 @@ call_gemini_api <- function(prompt_str,
 #' }
 #'
 #' @seealso \code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-#'   \code{\link{call_ollama_api}}, \code{\link{prompt_api}}
+#'   \code{\link{call_ollama_api}}, \code{\link{call_azure_api}},
+#'   \code{\link{prompt_api}}
 #'
 #' @importFrom httr2 request req_headers req_body_json req_error req_perform
 #'   resp_status resp_body_json
@@ -731,9 +788,40 @@ call_gemini_api <- function(prompt_str,
 #' }
 
 call_openai_api <- function(prompt_str,
-                            model      = "gpt-4o-mini",
+                            model      = NULL,
+                            tier       = c("mid", "fast", "top"),
                             max_tokens = 3000L,
+                            base_url   = "https://api.openai.com",
                             api_key    = Sys.getenv("OPENAI_API_KEY")) {
+
+  tier <- match.arg(tier)
+  if (is.null(model)) {
+    base_clean <- gsub("/$", "", base_url)
+    if (grepl("api\\.openai\\.com", base_clean, fixed = FALSE)) {
+      model <- .resolve_model("openai", tier)
+    } else {
+      # Check if a registered provider matches this base_url
+      reg        <- .get_registry()
+      prov_match <- NULL
+      for (prov in names(reg$providers)) {
+        prov_base <- gsub("/$", "", reg$providers[[prov]]$base_url %||% "")
+        if (nzchar(prov_base) && identical(base_clean, prov_base)) {
+          prov_match <- prov
+          break
+        }
+      }
+      if (!is.null(prov_match)) {
+        model <- .resolve_model(prov_match, tier)
+      } else {
+        stop(paste0(
+          "call_openai_api: 'model' must be specified when using a custom base_url.\n",
+          "Register the provider with register_provider() to enable tier resolution,\n",
+          "or pass model explicitly: call_openai_api(p, model = 'model-name', ",
+          "base_url = '", base_url, "')"
+        ))
+      }
+    }
+  }
 
   if (!is.character(prompt_str) || length(prompt_str) != 1L) {
     stop("call_openai_api: 'prompt_str' must be a length-1 character string.")
@@ -757,7 +845,8 @@ call_openai_api <- function(prompt_str,
     messages   = list(list(role = "user", content = prompt_str))
   )
 
-  resp <- httr2::request("https://api.openai.com/v1/chat/completions") |>
+  chat_url <- paste0(gsub("/$", "", base_url), "/v1/chat/completions")
+  resp <- httr2::request(chat_url) |>
     httr2::req_headers(
       "Authorization" = paste("Bearer", api_key),
       "Content-Type"  = "application/json"
@@ -794,6 +883,172 @@ call_openai_api <- function(prompt_str,
   }
 
   attr(content, "model") <- model
+  content
+}
+
+
+# ==============================================================================
+# Azure OpenAI API (U.S. Department of the Interior employees only)
+# ==============================================================================
+
+#' Call the Azure OpenAI API with a Single Prompt String
+#'
+#' Low-level provider function: submits one plain character string to an
+#' Azure OpenAI Chat Completions endpoint and returns the model's response
+#' as a plain character string. Drop-in replacement for
+#' \code{\link{call_anthropic_api}} when used as the \code{llm_fn} argument
+#' to any function that accepts one.
+#'
+#' @section Department of the Interior (DOI) employees only:
+#' The default endpoint (\code{api-dev.ai.doi.net}) is an internal DOI
+#' service. \strong{Access requires an active connection to a DOI computer
+#' system or the DOI VPN.} Calls from outside the DOI network will fail with
+#' a connection error. The \code{AZURE_OPENAI_API_KEY} must be obtained
+#' through DOI IT channels.
+#'
+#' @param prompt_str Character. A length-1 string containing the complete
+#'   prompt to submit.
+#' @param model Character. Azure deployment name, e.g. \code{"gpt-5.1"}.
+#'   Default \code{NULL} resolves to the latest available deployment for
+#'   \code{tier} via \code{\link{list_models}} (or the registry fallback when
+#'   not on DOI network). Specify an exact name to pin for reproducibility.
+#' @param tier Character. Capability tier used when \code{model = NULL}:
+#'   \code{"fast"}, \code{"mid"} (default), or \code{"top"}. For Azure, all
+#'   tiers currently map to the same DOI deployment; the param is accepted for
+#'   interface consistency.
+#' @param endpoint Character. Full deployment URL override. When \code{NULL}
+#'   (default), the URL is built from the registry endpoint template and the
+#'   resolved \code{model} name. Provide a complete URL to bypass both model
+#'   resolution and the template entirely (backward-compatible escape hatch).
+#' @param max_completion_tokens Integer. Maximum tokens in the response
+#'   (default 3000). Sufficient for most taxonomy and habitat prompts.
+#'   Increase for longer outputs (e.g., large species lists).
+#' @param api_key Character. Azure OpenAI API key. Defaults to the
+#'   \code{AZURE_OPENAI_API_KEY} environment variable. Add
+#'   \code{AZURE_OPENAI_API_KEY=...} to \code{~/.Renviron}.
+#'
+#' @return A length-1 character string containing the model's response text.
+#'   The \code{"model"} attribute is set to the deployment name parsed from
+#'   the endpoint URL (e.g., \code{"gpt-5.1"}). The \code{"endpoint"}
+#'   attribute contains the full endpoint URL.
+#'   Stops on any non-200 HTTP status.
+#'
+#' @details
+#' \strong{llm_fn usage:}
+#' \preformatted{
+#' # Direct use (default DOI endpoint)
+#' screen_pdf_structure(pdf_content, llm_fn = call_azure_api)
+#' prompt_api(prompt,      llm_fn = call_azure_api)
+#'
+#' # Non-default endpoint via closure
+#' my_azure <- function(p, ...) call_azure_api(p, endpoint = "https://...")
+#' prompt_api(prompt, llm_fn = my_azure)
+#' }
+#'
+#' @seealso \code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
+#'   \code{\link{call_openai_api}}, \code{\link{call_ollama_api}},
+#'   \code{\link{prompt_api}}
+#'
+#' @importFrom httr2 request req_headers req_body_json req_error req_perform
+#'   resp_status resp_body_json
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Requires DOI network or DOI VPN connection
+#' Sys.setenv(AZURE_OPENAI_API_KEY = "...")
+#' answer <- call_azure_api("What phylum do sea urchins belong to?")
+#' cat(answer)
+#' }
+
+call_azure_api <- function(
+    prompt_str,
+    model                 = NULL,
+    tier                  = c("mid", "fast", "top"),
+    endpoint              = NULL,
+    max_completion_tokens = 3000L,
+    api_key               = Sys.getenv("AZURE_OPENAI_API_KEY")
+) {
+
+  if (!is.null(endpoint)) {
+    # Backward-compatible: full endpoint provided — extract model name from URL
+    model <- model %||% sub(".*/deployments/([^/?]+).*", "\\1", endpoint)
+  } else {
+    # New path: resolve model from tier registry, build endpoint from template
+    tier  <- match.arg(tier)
+    model <- model %||% .resolve_model("azure", tier)
+
+    registry <- .get_registry()
+    tpl      <- registry$providers$azure$endpoint_template %||% paste0(
+      "https://api-dev.ai.doi.net/openai/deployments/{model}/",
+      "chat/completions?api-version=2025-03-01-preview"
+    )
+    endpoint <- gsub("\\{model\\}", model, tpl, fixed = FALSE)
+  }
+
+  if (!is.character(prompt_str) || length(prompt_str) != 1L) {
+    stop("call_azure_api: 'prompt_str' must be a length-1 character string.")
+  }
+  if (!requireNamespace("httr2", quietly = TRUE)) {
+    stop("call_azure_api: package 'httr2' is required. ",
+         "Install with: install.packages('httr2')")
+  }
+  if (!nzchar(api_key)) {
+    stop(
+      "call_azure_api: no API key found.\n",
+      "Set it with:\n",
+      "  Sys.setenv(AZURE_OPENAI_API_KEY = '...')\n",
+      "or add AZURE_OPENAI_API_KEY=... to your ~/.Renviron\n",
+      "NOTE: This API is available to U.S. Department of the Interior employees only.\n",
+      "Access requires connection to a DOI computer system or DOI VPN."
+    )
+  }
+
+  body <- list(
+    max_completion_tokens = as.integer(max_completion_tokens),
+    messages              = list(list(role = "user", content = prompt_str))
+  )
+
+  resp <- httr2::request(endpoint) |>
+    httr2::req_headers(
+      `api-key`      = api_key,
+      `Content-Type` = "application/json"
+    ) |>
+    httr2::req_body_json(body) |>
+    httr2::req_timeout(120) |>
+    httr2::req_error(is_error = function(resp) FALSE) |>
+    httr2::req_perform()
+
+  status <- httr2::resp_status(resp)
+  if (status != 200L) {
+    body_err <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
+    stop(sprintf(
+      "call_azure_api: HTTP %d: %s",
+      status,
+      body_err$error$message %||% "(no message)"
+    ))
+  }
+
+  parsed  <- httr2::resp_body_json(resp)
+  choices <- parsed$choices
+
+  if (is.null(choices) || length(choices) == 0L) {
+    stop("call_azure_api: API response contained no choices.")
+  }
+
+  content <- choices[[1]]$message$content
+  if (is.null(content) || !nzchar(trimws(content))) {
+    finish_reason <- choices[[1]]$finish_reason %||% "unknown"
+    stop(sprintf(
+      "call_azure_api: response content is empty (finish_reason: %s).",
+      finish_reason
+    ))
+  }
+
+  # Extract deployment name from endpoint URL for ecosystem compatibility
+  deployment <- sub(".*/deployments/([^/?]+).*", "\\1", endpoint)
+  attr(content, "model")    <- deployment
+  attr(content, "endpoint") <- endpoint
   content
 }
 
@@ -857,7 +1112,8 @@ call_openai_api <- function(prompt_str,
 #' }
 #'
 #' @seealso \code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-#'   \code{\link{call_openai_api}}, \code{\link{prompt_api}}
+#'   \code{\link{call_openai_api}}, \code{\link{call_azure_api}},
+#'   \code{\link{prompt_api}}
 #'
 #' @importFrom httr2 request req_headers req_body_json req_error req_perform
 #'   resp_status resp_body_json
