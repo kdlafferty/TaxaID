@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-21 (Session 82 — LLM provider auto-detection via .onAttach)
+# Last updated: 2026-05-22 (Session 84 -- base_url in call_openai_api; register_provider for custom/unknown providers)
 
 ---
 
@@ -42,6 +42,7 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 | GEMINI_API_KEY | Set in `~/.Renviron` — free tier; get key at aistudio.google.com/apikey |
 | OPENAI_API_KEY | Set in `~/.Renviron` — paid account required |
 | OPENALEX_API_KEY | Set in `~/.Renviron` — required since February 2026; free at openalex.org/settings/api |
+| AZURE_OPENAI_API_KEY | Set in `~/.Renviron` — DOI employees only; requires DOI network or VPN |
 
 ---
 
@@ -460,6 +461,12 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-21 | *(Session 81 — docs)* | Downranking clarification | TaxaAssign | `inst/methods_background.md` | Explains what `species_reference` is (unreferenced_species_result or data.frame), how lookup works, and why it's needed. |
 | 2026-05-21 | *(Session 81 — rename)* | `inst/methods_background.md` | `inst/<Package>_supplemental_methods.md` | TaxaLikely, TaxaExpect, TaxaAssign | file rename | Package-prefixed names to distinguish tabs in editor. All cross-references updated (READMEs, CLAUDE.md, TODO_PUBLICATION.md). |
 | 2026-05-21 | *(Session 81 — docs)* | Methods sections added to READMEs | TaxaHabitat, TaxaFlag | README.md | TaxaHabitat: habitat weights, site assignment, spatial QC. TaxaFlag: contamination scoring formula, handler detection, LLM expert review. |
+| 2026-05-21 | *(Session 83 -- new)* | `R/model_registry.R` + `inst/model_tiers.json` | TaxaTools | module | Tier-based model discovery: `list_models()`, `refresh_models()`, `set_model()`, `model_cache_info()`. Tier patterns (fast/mid/top) in bundled JSON; provider `/models` endpoints queried live and cached in `~/.cache/R/TaxaTools/model_cache.json`. Patterns always from bundled JSON; local cache stores only discovered model names. `model=NULL` + `tier` param added to all 5 `call_*_api()` functions. Azure uses endpoint template in registry. Git tag `pre-model-registry` preserves pre-refactor state. |
+| 2026-05-21 | *(Session 83 -- fix)* | `call_gemini_api()` default model | TaxaTools | function | `"gemini-2.0-flash"` -> `"gemini-2.5-flash"` (2.0-flash discontinued for new users). |
+| 2026-05-21 | *(Session 83 — new)* | `call_azure_api()` | TaxaTools | function | Azure OpenAI provider for DOI employees; default endpoint `api-dev.ai.doi.net` (DOI network/VPN required); `AZURE_OPENAI_API_KEY` env var; added to `.onAttach()` auto-detection at lowest priority (after OpenAI). |
+| 2026-05-21 | *(Session 83 — new)* | `inst/test_api_keys.R` | TaxaTools | script | Standalone script to validate all configured API keys; tests each set provider with a minimal prompt; reports OK/FAIL/SKIP per provider. Run via `source(system.file("test_api_keys.R", package = "TaxaTools"))`. |
+| 2026-05-22 | *(Session 84 — new)* | `base_url` param | `call_openai_api()` | TaxaTools | param | Enables any OpenAI-compatible API (Grok/xAI, Groq, Mistral, etc.) via base URL swap. Default `"https://api.openai.com"` unchanged. For non-default URLs: requires `model` specified explicitly OR provider registered via `register_provider()`. |
+| 2026-05-22 | *(Session 84 — new)* | `register_provider()` | TaxaTools | function | Session-only registration of custom OpenAI-compatible providers. Params: `name`, `api_key_var`, `base_url`, `fallback_models`, `tier_patterns`. Registered providers appear in `list_models()`, `refresh_models()`, `set_model()`, and trigger automatic tier resolution in `call_openai_api()` when `base_url` matches. `key_vars` in `list_models()`/`refresh_models()` and `valid_providers` in `set_model()` now built dynamically from registry. |
 | 2026-05-21 | *(Session 82 — new)* | `.onAttach()` LLM provider auto-detection | TaxaTools | `R/zzz.R` | On `library(TaxaTools)`: scans env vars for API keys, sets `options(TaxaID.llm_fn)`. Priority: Anthropic > Gemini > OpenAI. 0 keys → setup message; 1 key → auto-set; 2+ keys → auto-select + how to switch. |
 | 2026-05-21 | *(Session 82 — new)* | `options(TaxaID.llm_fn)` | Ecosystem | global option | New R option holding the auto-detected LLM provider function. All `llm_fn` defaults across 5 packages now use `getOption("TaxaID.llm_fn", <fallback>)`. |
 | 2026-05-21 | *(Session 82 — enhancement)* | `llm_fn` defaults use `getOption()` | TaxaTools, TaxaExpect, TaxaFlag, TaxaFetch | function defaults | `prompt_api()`, `draft_methods_text()`, `draft_results_text()`, `build_priors()`, `review_assignments()`, `screen_pdf_structure()`: default changed from hardcoded `call_anthropic_api` to `getOption("TaxaID.llm_fn", call_anthropic_api)`. |
