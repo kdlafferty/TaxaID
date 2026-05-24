@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-23 (Session 85 -- call_api() generic dispatcher; thin wrappers; TaxaID.provider option)
+# Last updated: 2026-05-23 (Session 86 -- WERC peer review integration; ecosystem_docs cleanup; renv removal)
 
 ---
 
@@ -474,6 +474,14 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-23 | *(Session 85 — enhancement)* | `prompt_api()`, `draft_methods_text()`, `draft_results_text()` defaults | TaxaTools | function defaults | `llm_fn` default changed from `getOption("TaxaID.llm_fn", call_anthropic_api)` to `getOption("TaxaID.llm_fn", call_api)`. |
 | 2026-05-23 | *(Session 85 — TODO)* | `call_anthropic_api_pdf()` generic | TaxaFetch | planned | Multimodal/PDF call function; cannot be trivially unified with `call_api` (base64 encoding, multipart). Deferred. |
 | 2026-05-23 | *(Session 85 — TODO)* | `llm_fn` defaults in downstream packages | TaxaFetch, TaxaHabitat, TaxaExpect, TaxaFlag, TaxaAssign | planned | Fallback in `getOption("TaxaID.llm_fn", call_anthropic_api)` should become `call_api`. Low urgency: the option is set to `call_api` by `.onAttach()` so the fallback is never reached in practice. Update when doing next sweep of each package. |
+| 2026-05-23 | *(Session 86 — review)* | WERC peer review integrated | Ecosystem | docs/metadata | `code.json`: CC0 license (was MIT), `repositoryURL`, `lastModified` corrected. DOI placeholder (`10.5066/xxxxxx`) remains pending USGS assignment. |
+| 2026-05-23 | *(Session 86 — delete)* | `ecosystem_docs/INTRO.md` | Ecosystem | doc deleted | Outdated (described 4 packages; had PLACEHOLDER sections). Covered by README. |
+| 2026-05-23 | *(Session 86 — delete)* | `ecosystem_docs/PACKAGE_SETUP.md` | Ecosystem | doc deleted | Outdated internal dev setup guide (pre-git workflow). |
+| 2026-05-23 | *(Session 86 — delete)* | `ecosystem_docs/TaxaID_Git_Setup.md` | Ecosystem | doc deleted | Internal reviewer-facing doc; pipeline content already in ECOSYSTEM_WORKFLOW.md and README. |
+| 2026-05-23 | *(Session 86 — delete)* | `inst/CLAUDE_ATTRIBUTION.md`, `inst/GITA functions_24.R` | Ecosystem | files deleted | Internal dev artifacts with no user value. |
+| 2026-05-23 | *(Session 86 — gitignore)* | `TaxaID_presentation.qmd` + 8 image files | Ecosystem | `.gitignore` | Presentation assets (Disagree.png, HabitatScreen.png, LikelihoodVscore.png, heatmap.png, errors.png, Score v Correct.png, SeqMatch1.png, SeqMatch2.png) excluded from repo. |
+| 2026-05-23 | *(Session 86 — delete)* | `renv/` + `renv.lock` | Ecosystem | removed | Not needed for USGS software release; each package has its own DESCRIPTION. |
+| 2026-05-23 | *(Session 86 — docs)* | ECOSYSTEM_WORKFLOW.md link added to README | Ecosystem | README.md | Link inserted after Workflow Scripts table: "For a step-by-step map of the full pipeline… see ECOSYSTEM_WORKFLOW.md". |
 | 2026-05-22 | *(Session 84 — new)* | `base_url` param | `call_openai_api()` | TaxaTools | param | Enables any OpenAI-compatible API (Grok/xAI, Groq, Mistral, etc.) via base URL swap. Default `"https://api.openai.com"` unchanged. For non-default URLs: requires `model` specified explicitly OR provider registered via `register_provider()`. |
 | 2026-05-22 | *(Session 84 — new)* | `register_provider()` | TaxaTools | function | Session-only registration of custom OpenAI-compatible providers. Params: `name`, `api_key_var`, `base_url`, `fallback_models`, `tier_patterns`. Registered providers appear in `list_models()`, `refresh_models()`, `set_model()`, and trigger automatic tier resolution in `call_openai_api()` when `base_url` matches. `key_vars` in `list_models()`/`refresh_models()` and `valid_providers` in `set_model()` now built dynamically from registry. |
 | 2026-05-21 | *(Session 82 — new)* | `.onAttach()` LLM provider auto-detection | TaxaTools | `R/zzz.R` | On `library(TaxaTools)`: scans env vars for API keys, sets `options(TaxaID.llm_fn)`. Priority: Anthropic > Gemini > OpenAI. 0 keys → setup message; 1 key → auto-set; 2+ keys → auto-select + how to switch. |
