@@ -832,7 +832,7 @@ Respond with only the JSON object.',
 
 screen_pdf_structure <- function(pdf_content,
                                  use_llm    = TRUE,
-                                 llm_fn     = getOption("TaxaID.llm_fn", call_anthropic_api),
+                                 llm_fn     = getOption("TaxaID.llm_fn", TaxaTools::call_api),
                                  model      = "claude-sonnet-4-6",
                                  max_tokens = 400L,
                                  api_key    = Sys.getenv("ANTHROPIC_API_KEY"),

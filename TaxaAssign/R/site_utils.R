@@ -1,7 +1,7 @@
 # Internal helpers for resolving `site` parameter and shared utilities
 
 
-#' Resolve llm_fn default: NULL → TaxaTools::call_anthropic_api with clear error
+#' Resolve llm_fn default: NULL → TaxaTools::call_api with clear error
 #' @noRd
 .resolve_llm_fn <- function(llm_fn, caller = "this function") {
   if (!is.null(llm_fn)) return(llm_fn)
@@ -19,7 +19,7 @@
     "Install with: devtools::install('<path_to_TaxaTools>')",
     call. = FALSE)
   }
-  TaxaTools::call_anthropic_api
+  TaxaTools::call_api
 }
 
 
