@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-23 (Session 86 -- WERC peer review integration; ecosystem_docs cleanup; renv removal)
+# Last updated: 2026-05-23 (Session 86 -- WERC review; license cleanup; llm_fn defaults sweep)
 
 ---
 
@@ -482,6 +482,9 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-23 | *(Session 86 — gitignore)* | `TaxaID_presentation.qmd` + 8 image files | Ecosystem | `.gitignore` | Presentation assets (Disagree.png, HabitatScreen.png, LikelihoodVscore.png, heatmap.png, errors.png, Score v Correct.png, SeqMatch1.png, SeqMatch2.png) excluded from repo. |
 | 2026-05-23 | *(Session 86 — delete)* | `renv/` + `renv.lock` | Ecosystem | removed | Not needed for USGS software release; each package has its own DESCRIPTION. |
 | 2026-05-23 | *(Session 86 — docs)* | ECOSYSTEM_WORKFLOW.md link added to README | Ecosystem | README.md | Link inserted after Workflow Scripts table: "For a step-by-step map of the full pipeline… see ECOSYSTEM_WORKFLOW.md". |
+| 2026-05-23 | *(Session 86 — delete)* | `LICENSE.md` + `DISCLAIMER.md` from all 9 packages | Ecosystem | files deleted | Per WERC reviewer: centralise at repo root only (TaxaID/LICENSE.md + TaxaID/DISCLAIMER.md). Reduces maintenance burden and revision points at publication. |
+| 2026-05-23 | *(Session 86 — cleanup)* | Disclaimer section removed from all 9 package READMEs | Ecosystem | README.md × 9 | "## U.S. Geological Survey Disclaimer" block (16 lines) stripped from each package README. Covered by root-level DISCLAIMER.md. |
+| 2026-05-23 | *(Session 86 — fix)* | `llm_fn` fallbacks updated to `call_api` | TaxaFetch, TaxaExpect, TaxaFlag, TaxaAssign | function defaults | `getOption("TaxaID.llm_fn", call_anthropic_api)` → `getOption("TaxaID.llm_fn", TaxaTools::call_api)` in `screen_pdf_structure()`, `build_priors()`, `review_assignments()`. `.resolve_llm_fn()` fallback updated to `TaxaTools::call_api`. Clears TODO from Sessions 82/85. |
 | 2026-05-22 | *(Session 84 — new)* | `base_url` param | `call_openai_api()` | TaxaTools | param | Enables any OpenAI-compatible API (Grok/xAI, Groq, Mistral, etc.) via base URL swap. Default `"https://api.openai.com"` unchanged. For non-default URLs: requires `model` specified explicitly OR provider registered via `register_provider()`. |
 | 2026-05-22 | *(Session 84 — new)* | `register_provider()` | TaxaTools | function | Session-only registration of custom OpenAI-compatible providers. Params: `name`, `api_key_var`, `base_url`, `fallback_models`, `tier_patterns`. Registered providers appear in `list_models()`, `refresh_models()`, `set_model()`, and trigger automatic tier resolution in `call_openai_api()` when `base_url` matches. `key_vars` in `list_models()`/`refresh_models()` and `valid_providers` in `set_model()` now built dynamically from registry. |
 | 2026-05-21 | *(Session 82 — new)* | `.onAttach()` LLM provider auto-detection | TaxaTools | `R/zzz.R` | On `library(TaxaTools)`: scans env vars for API keys, sets `options(TaxaID.llm_fn)`. Priority: Anthropic > Gemini > OpenAI. 0 keys → setup message; 1 key → auto-set; 2+ keys → auto-select + how to switch. |
