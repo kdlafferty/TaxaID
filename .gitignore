@@ -21,10 +21,6 @@
 *.csv
 *.xlsx
 
-# ── renv (lock file IS tracked; library is not) ─
-renv/library/
-renv/staging/
-renv/sandbox/
 
 # ── Rendered output (rebuild from source) ───────
 TaxaID_presentation.html
