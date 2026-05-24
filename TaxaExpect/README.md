@@ -9,25 +9,26 @@ editor_options:
 Estimate spatially-explicit Bayesian priors for species occurrence. Part
 of the [TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
 
-Bayes' Theorem improves taxonomic assignment by considering the
-prior probability that a hypothesized taxon occurs at the sampling
-location. TaxaExpect estimates these priors from occurrence records
-(from TaxaFetch or user-supplied data). Although occurrence data are
-often sparse and biased, they are usually sufficient to distinguish
-among taxa with similar match scores but very different geographic
-ranges.
+Bayes' Theorem improves taxonomic assignment by considering the prior
+probability that a hypothesized taxon occurs at the sampling location.
+TaxaExpect estimates these priors from occurrence records (from
+TaxaFetch or user-supplied data). Although occurrence data are often
+sparse and biased, they are usually sufficient to distinguish among taxa
+with similar match scores but very different geographic ranges.
 
-TaxaExpect places occurrence data on a spatial grid (whose resolution
-is optimized automatically) and fits a hierarchical model that accounts
-for habitat type and spatial autocorrelation. The model can also
-incorporate environmental covariates such as temperature or altitude,
-and it adjusts confidence based on sampling effort at each site.
-For taxa never reported in the study area, TaxaExpect generates "dark
-diversity" priors based on singleton observations elsewhere. Spatial
-priors reduce false positives from ecologically implausible assignments
-and can break ties between similar-scoring species, rescuing
-species-level resolution that would otherwise be lost to defensive
-upranking.
+TaxaExpect places occurrence data on a spatial grid (whose resolution is
+optimized automatically) and fits a hierarchical model that accounts for
+habitat type and spatial autocorrelation. These grid-based priors can be
+mapped over occurrences using
+(`plot_theta_map_interactive()) so that TaxaExpect becomes a full species distribution model.`
+The model can also incorporate environmental covariates such as
+temperature or altitude, and it adjusts confidence based on sampling
+effort at each site. For taxa never reported in the study area,
+TaxaExpect generates "dark diversity" priors based on singleton
+observations elsewhere. Spatial priors reduce false positives from
+ecologically implausible assignments and can break ties between
+similar-scoring species, rescuing species-level resolution that would
+otherwise be lost to defensive upranking.
 
 ## Overview
 
@@ -39,7 +40,7 @@ incorporating habitat type and geographic distance effects.
 Three model tiers: - **Tier 1** -- species observed at the site (direct
 estimate) - **Tier 2** -- species observed nearby (spatial
 interpolation) - **Tier 3** -- species expected but unobserved (dark
-diversity)
+diversity).
 
 ## Installation
 
@@ -114,8 +115,8 @@ scale with:
 -   **Fixed habitat effects** capturing baseline differences across
     habitat types (Marine, Freshwater, Terrestrial, or IUCN L1
     categories)
--   **Random species intercepts** allowing each species its own
-    baseline rarity, shrunk toward the global mean
+-   **Random species intercepts** allowing each species its own baseline
+    rarity, shrunk toward the global mean
 -   **Random habitat slopes** (screened for data sufficiency) giving
     each species its own habitat preference
 -   **Random spatial gradients** (latitude, longitude) per species,
@@ -125,19 +126,19 @@ scale with:
     ceiling for prior concentration
 
 Model predictions are back-transformed via the delta method and
-converted to Beta(alpha, beta) priors through moment-matching. A phi
-cap (from the grid-level variance) prevents astronomically tight
-priors near boundary theta values, while a phi floor (default 2)
-prevents modelled priors from becoming less informative than dark
-diversity fallbacks. For undetected species, singleton mirrors and a
-global floor prior Beta(1, N-1) provide Tier 3 coverage.
+converted to Beta(alpha, beta) priors through moment-matching. A phi cap
+(from the grid-level variance) prevents astronomically tight priors near
+boundary theta values, while a phi floor (default 2) prevents modelled
+priors from becoming less informative than dark diversity fallbacks. For
+undetected species, singleton mirrors and a global floor prior Beta(1,
+N-1) provide Tier 3 coverage.
 
-Moran eigenvector maps (Dray et al. 2006) capture fine-scale
-spatial autocorrelation beyond the latitude/longitude gradients and
-are included by default in `build_priors()` (`moran_k = 5`).
+Moran eigenvector maps (Dray et al. 2006) capture fine-scale spatial
+autocorrelation beyond the latitude/longitude gradients and are included
+by default in `build_priors()` (`moran_k = 5`).
 
-For the full statistical derivation, assumptions, and references,
-see [`inst/TaxaExpect_supplemental_methods.md`](inst/TaxaExpect_supplemental_methods.md).
+For the full statistical derivation, assumptions, and references, see
+[`inst/TaxaExpect_supplemental_methods.md`](inst/TaxaExpect_supplemental_methods.md).
 
 ## Vignettes
 

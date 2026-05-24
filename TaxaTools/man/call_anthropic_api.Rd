@@ -6,7 +6,8 @@
 \usage{
 call_anthropic_api(
   prompt_str,
-  model = "claude-opus-4-6",
+  model = NULL,
+  tier = c("mid", "fast", "top"),
   max_tokens = 3000L,
   api_key = Sys.getenv("ANTHROPIC_API_KEY")
 )
@@ -15,8 +16,14 @@ call_anthropic_api(
 \item{prompt_str}{Character. A length-1 string containing the complete
 prompt to submit.}
 
-\item{model}{Character. Anthropic model identifier.
-Default \code{"claude-opus-4-6"}.}
+\item{model}{Character. Exact Anthropic model identifier, e.g.
+\code{"claude-sonnet-4-6"}. Default \code{NULL} resolves to the latest
+model for \code{tier} via \code{\link{list_models}}. Specify an exact
+model to pin a version for reproducibility.}
+
+\item{tier}{Character. Capability tier used when \code{model = NULL}:
+\code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
+\code{"top"} (most capable). Ignored when \code{model} is specified.}
 
 \item{max_tokens}{Integer. Maximum tokens in the response (default 3000).
 Sufficient for most taxonomy and habitat prompts. Increase for longer
@@ -33,7 +40,7 @@ Stops on any non-200 HTTP status.
 Low-level generic function: submits one plain character string to the
 Anthropic Messages API and returns the model's response as a plain
 character string. No chunking, no S3 class requirements, no
-domain-specific logic.
+domain-specific logic. Thin wrapper around \code{\link{call_api}}.
 }
 \details{
 Use this directly when you have already built your own prompt string
@@ -50,8 +57,9 @@ cat(answer)
 }
 }
 \seealso{
-\code{\link{prompt_api}} for multi-chunk
-\code{llm_prompt} submission.
+\code{\link{call_api}} for the generic dispatcher.
+\code{\link{prompt_api}} for multi-chunk \code{llm_prompt} submission.
 \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-\code{\link{call_ollama_api}} for alternative providers.
+\code{\link{call_ollama_api}}, \code{\link{call_azure_api}} for
+alternative providers.
 }

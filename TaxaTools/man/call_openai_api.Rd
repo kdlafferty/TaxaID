@@ -48,9 +48,9 @@ Stops on any non-200 HTTP status.
 \description{
 Low-level provider function: submits one plain character string to the
 OpenAI Chat Completions API and returns the model's response as a plain
-character string. Drop-in replacement for
-\code{\link{call_anthropic_api}} when used as the \code{llm_fn} argument
-to any function that accepts one.
+character string. Drop-in replacement for \code{\link{call_api}} when
+used as the \code{llm_fn} argument to any function that accepts one.
+Thin wrapper around \code{\link{call_api}}.
 }
 \details{
 \strong{Pricing note:} OpenAI requires a paid account (or expiring $5 trial
@@ -59,8 +59,8 @@ credits for new accounts). There is no ongoing free API tier.
 
 \strong{OpenAI-compatible providers:}
 Many providers implement the OpenAI Chat Completions API. Use \code{base_url}
-to reach them with a single function. Always specify \code{model} or register
-the provider first so tier resolution works correctly:
+to reach them with a single function, or use \code{\link{register_provider}}
+for automatic tier resolution:
 \preformatted{
 # xAI Grok -- specify model explicitly
 Sys.setenv(XAI_API_KEY = "xai-...")
@@ -71,14 +71,9 @@ my_grok <- function(p, ...) call_openai_api(p,
 )
 options(TaxaID.llm_fn = my_grok)
 
-# Or register the provider for automatic tier resolution:
+# Or register for automatic tier resolution:
 register_provider("xai", "XAI_API_KEY", "https://api.x.ai",
   fallback_models = list(fast = "grok-3-mini", mid = "grok-3", top = "grok-3")
-)
-call_openai_api("What phylum do sea urchins belong to?",
-  tier     = "mid",
-  base_url = "https://api.x.ai",
-  api_key  = Sys.getenv("XAI_API_KEY")
 )
 }
 
@@ -101,7 +96,7 @@ cat(answer)
 }
 }
 \seealso{
-\code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-\code{\link{call_ollama_api}}, \code{\link{call_azure_api}},
-\code{\link{prompt_api}}
+\code{\link{call_api}}, \code{\link{call_anthropic_api}},
+\code{\link{call_gemini_api}}, \code{\link{call_ollama_api}},
+\code{\link{call_azure_api}}, \code{\link{prompt_api}}
 }

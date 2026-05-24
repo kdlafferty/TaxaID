@@ -23,9 +23,7 @@ Capable options for Apple Silicon: \code{"llama3.1:8b"},
 \code{"mistral"}, \code{"gemma3:12b"}, \code{"qwen2.5:14b"}.}
 
 \item{max_tokens}{Integer. Maximum tokens in the response (default 3000).
-Sufficient for most taxonomy and habitat prompts. Increase for longer
-outputs (e.g., large species lists). Higher values increase API cost.
-Note: behaviour is model-dependent; some models may ignore this setting.}
+Behaviour is model-dependent; some models may ignore this setting.}
 
 \item{base_url}{Character. Base URL of the Ollama server.
 Default \code{"http://localhost:11434"}. Change only if running Ollama
@@ -39,10 +37,10 @@ not been pulled.
 \description{
 Low-level provider function: submits one plain character string to a locally
 running Ollama instance and returns the model's response as a plain
-character string. Drop-in replacement for
-\code{\link{call_anthropic_api}} when used as the \code{llm_fn} argument
-to any function that accepts one. Completely free — no API key
-or internet connection required after model download.
+character string. Drop-in replacement for \code{\link{call_api}} when used
+as the \code{llm_fn} argument to any function that accepts one. Completely
+free -- no API key or internet connection required after model download.
+Thin wrapper around \code{\link{call_api}}.
 }
 \details{
 \strong{One-time setup:}
@@ -51,12 +49,13 @@ or internet connection required after model download.
 \item In Terminal: \code{ollama pull llama3.2}
 \item Confirm with: \code{ollama list}
 }
-Ollama starts automatically on macOS after installation; no manual server
-start is needed.
+Ollama starts automatically on macOS after installation.
 
-\strong{Performance on Apple Silicon:} 7B-14B parameter models run well
-via Metal GPU acceleration on arm64 Macs. Larger models require more RAM.
-Expect slower throughput than cloud APIs for equivalent capability.
+\strong{Output quality:} Local open-weight models vary substantially in
+their ability to produce the structured JSON and CSV output that TaxaID
+functions expect. Results are less reliable than cloud providers, especially
+for obscure taxa. Recommended minimum for TaxaID tasks: \code{qwen2.5:14b}.
+A warning is emitted automatically.
 
 \strong{llm_fn usage:}
 \preformatted{
@@ -82,6 +81,7 @@ answer <- call_ollama_api("What phylum do sea urchins belong to?",
 }
 }
 \seealso{
-\code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-\code{\link{call_openai_api}}, \code{\link{prompt_api}}
+\code{\link{call_api}}, \code{\link{call_anthropic_api}},
+\code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
+\code{\link{call_azure_api}}, \code{\link{prompt_api}}
 }

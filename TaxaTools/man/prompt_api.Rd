@@ -6,7 +6,7 @@
 \usage{
 prompt_api(
   prompt,
-  llm_fn = getOption("TaxaID.llm_fn", call_anthropic_api),
+  llm_fn = getOption("TaxaID.llm_fn", call_api),
   pause_seconds = 1,
   verbose = TRUE
 )
@@ -17,12 +17,13 @@ prompt_api(
 
 \item{llm_fn}{Function. A provider function that accepts a single character
 string (the prompt) and returns a single character string (the response).
-Default: \code{\link{call_anthropic_api}}.
-Built-in alternatives: \code{\link{call_gemini_api}},
-\code{\link{call_openai_api}}, \code{\link{call_ollama_api}}.
+Default: \code{\link{call_api}} (uses \code{options("TaxaID.provider")}).
+Built-in alternatives: \code{\link{call_anthropic_api}},
+\code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
+\code{\link{call_ollama_api}}.
 To use a non-default model or API key, pass a closure:
 \preformatted{
-  my_gemini <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash")
+  my_gemini <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash-lite")
   raw_text  <- prompt_api(prompt, llm_fn = my_gemini)
   }}
 
@@ -38,7 +39,7 @@ text from all chunks.
 \description{
 Submits an \code{llm_prompt} object to an LLM provider,
 handling multi-chunk prompts automatically. Provider is selected via the
-\code{llm_fn} argument, which defaults to \code{\link{call_anthropic_api}}
+\code{llm_fn} argument, which defaults to \code{\link{call_api}}
 but accepts any function with the signature
 \code{function(prompt_str, ...) -> character(1)}.
 }
@@ -55,7 +56,7 @@ created by domain functions (e.g., \code{build_habitat_prompt()} in
 TaxaHabitat). Contains chunked prompts, metadata, and taxa lists.
 Used by \code{prompt_api()} and \code{prompt_manual()}.
 \item \strong{Plain character string}: A single text prompt passed
-directly to provider functions (\code{call_anthropic_api()}, etc.)
+directly to provider functions (\code{call_api()}, \code{call_anthropic_api()}, etc.)
 or to \code{draft_methods_text()} / \code{draft_results_text()}.
 }
 \code{prompt_api()} requires the S3 object; the individual provider
@@ -65,11 +66,11 @@ functions accept plain strings.
 model names, token limits) belong inside the \code{llm_fn} function.
 Use a closure to fix non-default parameters for any provider:
 \preformatted{
+# Specific provider and tier via call_api
+my_fn <- function(p, ...) call_api(p, provider = "gemini", tier = "fast")
+
 # Anthropic with a non-default model
 my_fn <- function(p, ...) call_anthropic_api(p, model = "claude-haiku-4-5-20251001")
-
-# Gemini free tier
-my_fn <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash")
 
 # Local Ollama model
 my_fn <- function(p, ...) call_ollama_api(p, model = "qwen2.5:14b")
@@ -82,7 +83,7 @@ raw_text <- prompt_api(prompt, llm_fn = my_fn)
 # With TaxaHabitat
 prompt <- TaxaHabitat::build_habitat_prompt(c("Gadus morhua", "Sebastes mystinus"))
 
-# Anthropic (default)
+# Auto-detected provider (default)
 raw_text <- prompt_api(prompt)
 
 # Gemini free tier
@@ -90,10 +91,14 @@ raw_text <- prompt_api(prompt, llm_fn = call_gemini_api)
 
 # Local Ollama
 raw_text <- prompt_api(prompt, llm_fn = call_ollama_api)
+
+# Azure OpenAI (DOI employees; requires DOI network or VPN)
+raw_text <- prompt_api(prompt, llm_fn = call_azure_api)
 }
 }
 \seealso{
-\code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-\code{\link{call_openai_api}}, \code{\link{call_ollama_api}},
+\code{\link{call_api}}, \code{\link{call_anthropic_api}},
+\code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
+\code{\link{call_ollama_api}}, \code{\link{call_azure_api}},
 \code{\link{prompt_manual}}
 }

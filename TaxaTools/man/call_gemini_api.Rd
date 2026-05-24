@@ -6,7 +6,8 @@
 \usage{
 call_gemini_api(
   prompt_str,
-  model = "gemini-2.0-flash",
+  model = NULL,
+  tier = c("mid", "fast", "top"),
   max_tokens = 3000L,
   api_key = Sys.getenv("GEMINI_API_KEY")
 )
@@ -15,11 +16,14 @@ call_gemini_api(
 \item{prompt_str}{Character. A length-1 string containing the complete
 prompt to submit.}
 
-\item{model}{Character. Gemini model identifier.
-Default \code{"gemini-2.0-flash"} (free tier as of 2026).
-Other free-tier options: \code{"gemini-2.5-flash-lite"},
-\code{"gemini-2.5-flash"}.
-See \url{https://ai.google.dev/gemini-api/docs/models} for the full list.}
+\item{model}{Character. Exact Gemini model identifier, e.g.
+\code{"gemini-2.5-flash"}. Default \code{NULL} resolves to the latest
+model for \code{tier} via \code{\link{list_models}}. Specify an exact
+model to pin a version for reproducibility.}
+
+\item{tier}{Character. Capability tier used when \code{model = NULL}:
+\code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
+\code{"top"} (most capable). Ignored when \code{model} is specified.}
 
 \item{max_tokens}{Integer. Maximum tokens in the response (default 3000).
 Sufficient for most taxonomy and habitat prompts. Increase for longer
@@ -38,8 +42,8 @@ Stops on any non-200 HTTP status or safety block.
 Low-level provider function: submits one plain character string to the
 Google Gemini generateContent API and returns the model's response as a
 plain character string. Drop-in replacement for
-\code{\link{call_anthropic_api}} when used as the \code{llm_fn} argument
-to any function that accepts one.
+\code{\link{call_api}} when used as the \code{llm_fn} argument
+to any function that accepts one. Thin wrapper around \code{\link{call_api}}.
 }
 \details{
 \strong{Free tier:} The Gemini API offers a genuinely free tier through
@@ -66,6 +70,7 @@ cat(answer)
 }
 }
 \seealso{
-\code{\link{call_anthropic_api}}, \code{\link{call_openai_api}},
-\code{\link{call_ollama_api}}, \code{\link{prompt_api}}
+\code{\link{call_api}}, \code{\link{call_anthropic_api}},
+\code{\link{call_openai_api}}, \code{\link{call_ollama_api}},
+\code{\link{call_azure_api}}, \code{\link{prompt_api}}
 }

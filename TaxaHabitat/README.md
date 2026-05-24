@@ -11,15 +11,22 @@ Habitat assignment and spatial quality control for the
 species into habitat categories using LLM-based biological consensus,
 assigns habitats to sampling sites, and flags spatial outliers.
 
-Habitat is a key predictor of which species are plausible at a
-sampling location. Incorrect habitat classification leads to false
-positives when species from the wrong habitat receive inflated priors.
-Ideally, a knowledgeable user assigns each taxon to its habitat. When
-the species list is long, LLMs can do a reasonable job of classifying
-species into habitat categories. As with any LLM
-output, users should review the results.
-`flag_habitat_inconsistencies()` provides an interactive map that
-makes errant classifications easy to spot and correct.
+Habitat is a key predictor of which species are plausible at a sampling
+location. Incorrect habitat classification leads to false positives when
+species from the wrong habitat receive inflated priors. Ideally, a
+knowledgeable user assigns each taxon to its habitat. When the species
+list is long, LLMs can do a reasonable job of classifying species into
+habitat categories. As with any LLM output, users should review the
+results. `flag_habitat_inconsistencies()` provides an interactive map
+that makes errant classifications easy to spot and correct.
+
+A key feature of TaxaHabitat is the ability to review and proof
+occupancy data. Even well-curated data like GBIF have a high frequency
+of location errors. By mapping points by habitat type, users can easily
+view which observations have incorrect coordinates. The function
+review_spatial_flags(occurrences_flagged) is designed to flag errant
+points for removal before model building begins. TaxaHabitat thus can be
+a standalone database QAQC for biodiversity databases.
 
 ## Habitat Schemes
 
@@ -94,10 +101,9 @@ Leaflet map for manual review
 Rather than assign each species to a single habitat, TaxaHabitat asks
 the LLM to distribute habitat affinity as continuous weights across all
 habitat categories (e.g., Marine 0.85, Freshwater 0.15, Terrestrial
-0.0), summing to 1.0 per species. This captures habitat generalism --
-an estuarine fish contributes partial signal to both Marine and
-Freshwater -- and avoids the information loss of a categorical
-assignment.
+0.0), summing to 1.0 per species. This captures habitat generalism -- an
+estuarine fish contributes partial signal to both Marine and Freshwater
+-- and avoids the information loss of a categorical assignment.
 
 Prompts are constructed by `build_habitat_prompt()` and sent to an LLM
 provider via TaxaTools. For large species lists, taxa are chunked
@@ -105,18 +111,18 @@ provider via TaxaTools. For large species lists, taxa are chunked
 with numeric weights per habitat plus an `Other_weight` column and
 free-text `habitat_best_guess` for species that do not fit the scheme.
 `parse_hierarchical_habitat_response()` validates that row sums are
-within tolerance (warns if deviation > 0.05 from 1.0) and folds
+within tolerance (warns if deviation \> 0.05 from 1.0) and folds
 unrecognized habitat columns into `Other_weight`.
 
 ### Site Habitat Assignment
 
 `assign_habitat_biological()` assigns a habitat to each sampling
 location based on the species observed there. For each point, the
-function joins occurrence records to species-level habitat weights,
-sums weight vectors across species, normalizes to proportions, and
-assigns the habitat with the highest proportion if it exceeds a
-threshold (default 0.3). The threshold is lower than a simple majority
-(0.5) because generalist species spread weight across multiple habitats,
+function joins occurrence records to species-level habitat weights, sums
+weight vectors across species, normalizes to proportions, and assigns
+the habitat with the highest proportion if it exceeds a threshold
+(default 0.3). The threshold is lower than a simple majority (0.5)
+because generalist species spread weight across multiple habitats,
 diluting any single category.
 
 By default, each species counts equally regardless of how many times it
@@ -139,21 +145,21 @@ is spatially consistent with its assigned habitat using vector polygons
 (Natural Earth land/ocean boundaries) and raster bathymetry (GEBCO).
 Each record is classified into a physical zone:
 
-| Zone | Definition |
-|------|-----------|
-| inland | Inside land polygon, > 1 km from coast |
-| coastal | Within 1 km of coastline (either side) |
+| Zone           | Definition                                |
+|----------------|-------------------------------------------|
+| inland         | Inside land polygon, \> 1 km from coast   |
+| coastal        | Within 1 km of coastline (either side)    |
 | marine_shallow | Ocean, 0--200 m depth (continental shelf) |
-| marine_deep | Ocean, 200--4000 m depth (bathyal) |
-| marine_abyssal | Ocean, > 4000 m depth |
+| marine_deep    | Ocean, 200--4000 m depth (bathyal)        |
+| marine_abyssal | Ocean, \> 4000 m depth                    |
 
 Records are then cross-referenced against the habitat's expected realm
 (marine, freshwater, terrestrial) and flagged at three levels: "likely"
-(consistent), "questionable" (borderline, e.g., marine species very
-near shore), or "unlikely" (clear mismatch, e.g., terrestrial species
-in open ocean). The 1 km coastal buffer accounts for GPS uncertainty and
-tidal gradients. `review_spatial_flags()` provides an interactive
-Leaflet map for manual inspection and correction.
+(consistent), "questionable" (borderline, e.g., marine species very near
+shore), or "unlikely" (clear mismatch, e.g., terrestrial species in open
+ocean). The 1 km coastal buffer accounts for GPS uncertainty and tidal
+gradients. `review_spatial_flags()` provides an interactive Leaflet map
+for manual inspection and correction.
 
 ## LLM Integration
 
