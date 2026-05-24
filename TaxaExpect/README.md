@@ -19,8 +19,8 @@ with similar match scores but very different geographic ranges.
 TaxaExpect places occurrence data on a spatial grid (whose resolution is
 optimized automatically) and fits a hierarchical model that accounts for
 habitat type and spatial autocorrelation. These grid-based priors can be
-mapped over occurrences using
-(`plot_theta_map_interactive()) so that TaxaExpect becomes a full species distribution model.`
+mapped over occurrences using `plot_theta_map_interactive()`, so that
+TaxaExpect becomes a full species distribution model.
 The model can also incorporate environmental covariates such as
 temperature or altitude, and it adjusts confidence based on sampling
 effort at each site. For taxa never reported in the study area,
