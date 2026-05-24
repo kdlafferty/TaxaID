@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-20 (Session 79 -- sample_id → observation_id in snippets + metadata)
+# Last updated: 2026-05-23 (Session 86 — no package changes; CC0 license Session 82)
 
 ---
 
@@ -473,3 +473,13 @@ contain quotes, backslashes, etc.
 - `sample_id` → `observation_id` rename in all snippets, metadata JSON, prompts, R source, tests
 - `sample_id_col` → `observation_id_col` in `seq_to_match.R` snippet and `TaxaMatch.json` metadata
 - Debug subsetting in `R/output.R` and `R/trial.R` updated to use `observation_id`
+
+**Session 80 (2026-05-20)**
+- GitHub public monorepo created at github.com/kdlafferty/TaxaID; no package-specific changes.
+
+**Session 82 (2026-05-21)**
+- License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
+
+**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+- No TaxaWizard-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools), WERC
+  review integration. See TaxaID/CLAUDE.md for full log.

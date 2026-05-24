@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-21 (Session 82 — LLM provider auto-detection via .onAttach)
+# Last updated: 2026-05-23 (Session 86 — no package changes; call_api() refactor in Sessions 83-85)
 
 ---
 
@@ -197,3 +197,52 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
   now accepts and coerces character vectors to numeric.
 - 41 tests in `test-census_genus_species.R` (all mocked GBIF responses for offline testing).
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes
+
+**Session 79 (2026-05-20)**
+- No TaxaTools-specific changes. `sample_id` → `observation_id` ecosystem rename did not
+  affect TaxaTools (package does not use that column).
+
+**Session 80 (2026-05-20)**
+- GitHub public monorepo created at github.com/kdlafferty/TaxaID; no package-specific changes.
+
+**Session 82 (2026-05-21)**
+- License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
+- `.onAttach()` added to `R/zzz.R`: scans env vars for API keys on `library(TaxaTools)`;
+  sets `options(TaxaID.llm_fn)`. Priority: Anthropic > Gemini > OpenAI > Azure.
+  0 keys → setup message; 1 key → auto-set; 2+ keys → auto-select + how to switch.
+- `options(TaxaID.llm_fn)` new ecosystem-wide R option; all `llm_fn` defaults updated to
+  `getOption("TaxaID.llm_fn", call_anthropic_api)` in `prompt_api()`, `draft_methods_text()`,
+  `draft_results_text()`.
+- `rank_system` default NULL in `create_taxon_names()`; auto-detects via `detect_ranks()`.
+
+**Session 83 (2026-05-21)**
+- `R/model_registry.R` created: `list_models()`, `refresh_models()`, `set_model()`,
+  `model_cache_info()`. Tier patterns (fast/mid/top) in `inst/model_tiers.json`;
+  provider `/models` endpoints queried live and cached in `~/.cache/R/TaxaTools/model_cache.json`.
+- `call_azure_api()` added: Azure OpenAI provider for DOI employees; default endpoint
+  `api-dev.ai.doi.net`; `AZURE_OPENAI_API_KEY` env var.
+- `inst/test_api_keys.R` added: standalone script to validate all configured API keys.
+- `model = NULL` + `tier` param added to all 5 `call_*_api()` functions.
+
+**Session 84 (2026-05-22)**
+- `base_url` param added to `call_openai_api()`: enables any OpenAI-compatible API
+  (Grok/xAI, Groq, Mistral, etc.) via base URL swap. Default unchanged.
+- `register_provider()` added: session-only registration of custom OpenAI-compatible
+  providers. Registered providers appear in `list_models()`, `refresh_models()`,
+  `set_model()`, and trigger automatic tier resolution in `call_openai_api()`.
+
+**Session 85 (2026-05-23)**
+- `call_api()` added to `R/call_api.R`: generic LLM dispatcher. Three handler families:
+  `anthropic`, `gemini`, `openai_compat`. Data-driven via `inst/model_tiers.json`.
+  Attaches `model` + `provider` attributes to response.
+- All five `call_*_api()` functions converted to thin wrappers around `call_api()`.
+  Same signatures; HTTP logic now lives in `call_api.R`. Kept for backward compatibility.
+- `options(TaxaID.provider)` new R option storing active provider name string.
+  `.onAttach()` now sets both `TaxaID.provider` and `TaxaID.llm_fn = call_api`.
+- `type = "openai_compatible"` → `handler_family = "openai_compat"` in `register_provider()`.
+- `prompt_api()`, `draft_methods_text()`, `draft_results_text()` defaults updated to `call_api`.
+- `devtools::check()`: 0 errors, 0 warnings, 0 notes (with pre-existing WARN on test-llm_utils.R)
+
+**Session 86 (2026-05-23)**
+- No package-specific changes. WERC peer review integration (ecosystem docs, code.json,
+  renv removal). See TaxaID/CLAUDE.md.

@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaHabitat
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-04-03 (Session 46 — consensus_habitat() + geographic_context param)
+# Last updated: 2026-05-23 (Session 86 — README updated; last package code changes Session 82)
 
 ---
 
@@ -79,5 +79,60 @@ Provider functions (`call_anthropic_api`, `call_gemini_api`, etc.) live in TaxaT
   belongs with biodiversity modelling, not habitat assignment
 - parse_habitat_response.R: habitat parser extracted from TaxaFetch/R/llm_api_utils.R
 - LLM provider functions moved to TaxaTools/R/llm_api_utils.R
-- TODO: Run devtools::document() and devtools::check() on this package
-- TODO: Update @importFrom tags in habitat files to use TaxaTools:: for LLM functions
+- TODO: ~~Run devtools::document() and devtools::check() on this package~~ — completed Session 46
+- TODO: ~~Update @importFrom tags in habitat files to use TaxaTools:: for LLM functions~~ — completed Session 46
+
+**Session 37 (2026-03-30)**
+- `Main_Habitat` column → `main_habitat` (snake_case consistency; 145 occurrences across 20 files).
+- `ctx$habitat` → `ctx$main_habitat` recognised context field in TaxaAssign.
+
+**Session 46 (2026-04-03)**
+- `geographic_context` param added to `build_habitat_prompt()`: optional geographic hint;
+  adds `GEOGRAPHIC CONTEXT:` block to prompt and requests `ecoregion_best_guess` column.
+- `consensus_habitat()` added to `R/assign_habitat_biological.R`: assemblage-level consensus
+  from per-species weights; modal ecoregion extraction. `.detect_habitat_cols()` internal
+  shared with `assign_habitat_biological()`.
+- `ecoregion_best_guess` protected from numeric detection in `parse_hierarchical_habitat_response()`.
+- `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 57 (2026-04-15)**
+- Duplicate `%||%` definition removed from `R/parse_habitat_response.R`; now imported from
+  TaxaTools via `@importFrom TaxaTools %||%`.
+- Empty `utils::globalVariables(character(0))` removed.
+
+**Session 59 (2026-04-17)**
+- `test-assign_habitat_biological.R` added (new test file, expanded coverage).
+- Vignette added. `knitr` + `rmarkdown` added to Suggests; `VignetteBuilder: knitr` in DESCRIPTION.
+- `.Rbuildignore` updated (`.Rhistory`, `.DS_Store`).
+- `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 65 (2026-05-02)**
+- `report_habitat()` added: generates `report_section` summarizing habitat assignment
+  (scheme, n_taxa, dominant habitat). For `TaxaTools::assemble_report()`.
+
+**Session 66 (2026-05-03)**
+- Dead code cleanup; stale `@seealso` refs updated.
+
+**Session 67 (2026-05-04)**
+- `llm_fn` default in `build_habitat_prompt()` updated to
+  `getOption("TaxaID.llm_fn", call_anthropic_api)`.
+
+**Session 79 (2026-05-20)**
+- `sample_id` → `observation_id` ecosystem rename: TaxaHabitat does not use this column;
+  no source changes required.
+
+**Session 80 (2026-05-20)**
+- GitHub public monorepo created at github.com/kdlafferty/TaxaID; no package-specific changes.
+
+**Session 81 (2026-05-21)**
+- Methods sections added to README: habitat weights, site assignment, spatial QAQC.
+
+**Session 82 (2026-05-21)**
+- License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
+- `llm_fn` defaults updated across all LLM-calling functions to
+  `getOption("TaxaID.llm_fn", call_anthropic_api)`.
+
+**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+- No TaxaHabitat-specific code changes. Session 86: README expanded with spatial QAQC
+  paragraph (user edit committed). Ecosystem: `call_api()` dispatcher (TaxaTools), WERC
+  review integration. See TaxaID/CLAUDE.md for full log.

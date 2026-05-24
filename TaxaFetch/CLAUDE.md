@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-01 (Session 64 — PDF pipeline crash fix; subprocess rendering; ReefCheck/RLS resolved)
+# Last updated: 2026-05-23 (Session 86 — no package changes; last package changes Session 72)
 
 ---
 
@@ -224,3 +224,49 @@ mechanism; `report_fetch()` extracts and formats it.
 - ~~Data source citation capture~~ — implemented Session 63 via `bibliographicCitation` column
 - ~~ReefCheck + Reef Life Survey~~ — resolved Session 64 (both already in GBIF)
 - ~~PDF pipeline crash~~ — fixed Session 64 (subprocess rendering + pdf_path propagation)
+- ~~Distributed report architecture~~ — implemented Session 65 via `report_fetch()` (see below)
+
+---
+
+## Session Notes (Sessions 65–86)
+
+**Session 65 (2026-05-02)**
+- `report_fetch()` added to `R/report_fetch.R`: summarizes data acquisition (sources, bbox,
+  year range, citations from `bibliographicCitation` column). Returns `report_section` S3
+  object for `TaxaTools::assemble_report()`.
+- `report_params` attribute added to `stack_occurrences()` output: attaches `citations`
+  (unique `bibliographicCitation`), `n_records`, `n_sources`.
+- `report_params` attribute added to `fetch_gbif_occurrences()` output: attaches `source`,
+  `n_keys`, `n_records`, `geometry` (WKT), `year_range`.
+
+**Session 66 (2026-05-03)**
+- LaTeX `\$` fix in `search_literature.Rd` (escaped dollar in roxygen source).
+- Dead code removed; stale `@seealso` refs updated.
+
+**Session 67 (2026-05-04)**
+- `llm_fn` default in `screen_pdf_structure()` updated to
+  `getOption("TaxaID.llm_fn", call_anthropic_api)`.
+
+**Session 72 (2026-05-11)**
+- `.recover_higherrank()` internal function added: when `name_backbone()` returns HIGHERRANK
+  with rank jump >1 level, falls back to `name_lookup()` with rank constraint. Rank-agnostic.
+
+**Session 79 (2026-05-20)**
+- `sample_id` → `observation_id` ecosystem rename: TaxaFetch does not use this column;
+  no source changes required.
+
+**Session 80 (2026-05-20)**
+- GitHub public monorepo created at github.com/kdlafferty/TaxaID; no package-specific changes.
+
+**Session 82 (2026-05-21)**
+- License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
+- `combine_occurrence_sources()` dead code deleted (superseded by `rename_cols()` +
+  `stack_occurrences()` since Session 19). File + Rd deleted; `@seealso` refs updated.
+- 5 stale inst/ files deleted: `TaxaFetch_workflow copy.R`, `migrate_prompt_api.R`,
+  `habitat_scheme_workflow.R`.
+
+**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+- No TaxaFetch-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools),
+  WERC review integration. Deferred: `call_anthropic_api_pdf()` generic (multimodal/PDF
+  call cannot be trivially unified with `call_api`; tracked as TODO in TaxaID/CLAUDE.md).
+  See TaxaID/CLAUDE.md for full log.

@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-19 (Session 77 — census_genera param in build_priors; GBIF genus census attribute)
+# Last updated: 2026-05-23 (Session 86 — no package changes; last package changes Session 81)
 
 ---
 
@@ -281,6 +281,30 @@ is a malformed filename in `tests/testthat/` — investigate and rename before r
 - No additional GBIF API calls for key resolution — `genusKey` is free in occurrence records.
 - Census enables three-tier H2 phantom suppression in `TaxaAssign::run_bayesian_pipeline()`.
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 79 (2026-05-20)**
+- `sample_id` → `observation_id` ecosystem rename: TaxaExpect does not use this column
+  directly; no source changes required.
+
+**Session 80 (2026-05-20)**
+- GitHub public monorepo created at github.com/kdlafferty/TaxaID; no package-specific changes.
+
+**Session 81 (2026-05-21)**
+- `habitat_observed_elsewhere` column → `observed_in_habitat` (43 occurrences across 9 files).
+  TRUE = species recorded in this habitat type during training; FALSE = habitat extrapolation.
+- `moran_k = 0` support added to `build_priors()`: skips Moran eigenvector computation entirely.
+  Default remains 5. Useful for non-spatial data or debugging.
+- `inst/TaxaExpect_supplemental_methods.md` renamed from `inst/methods_background.md`.
+
+**Session 82 (2026-05-21)**
+- License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
+- `llm_fn` defaults updated to `getOption("TaxaID.llm_fn", call_anthropic_api)` in `build_priors()`.
+- `leaflet`, `shiny`, `miniUI` moved from Imports to Suggests (only used in
+  `plot_theta_map_interactive()` which already had `requireNamespace()` guards).
+
+**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+- No TaxaExpect-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools),
+  WERC review integration. See TaxaID/CLAUDE.md for full log.
 
 **Session 73 (2026-05-14)**
 - `generate_full_priors()`: added `min_phi` parameter (default 2). Phi floor applied after

@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-20 (Session 79 — sample_id → observation_id rename; event_meta replaces sample_meta)
+# Last updated: 2026-05-23 (Session 86 — no package changes; CC0 license Session 82)
 
 ---
 
@@ -721,3 +721,13 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 - `generate_report.R`: prose changed from "samples" to "observations" in `.build_results_template()`
 - Required reinstalling TaxaMatch, TaxaLikely, TaxaFlag for cross-package `filter_redundant_hypotheses()` calls
 - 412 tests passing (4 warnings, 1 skip — pre-existing)
+
+**Session 80 (2026-05-20)**
+- GitHub public monorepo created at github.com/kdlafferty/TaxaID; no package-specific changes.
+
+**Session 82 (2026-05-21)**
+- License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
+
+**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+- No TaxaAssign-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools), model
+  registry enhancements, WERC peer review integration. See TaxaID/CLAUDE.md for full log.
