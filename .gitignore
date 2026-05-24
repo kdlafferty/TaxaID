@@ -31,6 +31,17 @@ TaxaID_presentation.html
 TaxaID_presentation_files/
 ecosystem_docs/*.html
 
+# ── Presentation source and assets ──────────────
+TaxaID_presentation.qmd
+Disagree.png
+HabitatScreen.png
+LikelihoodVscore.png
+heatmap.png
+errors.png
+Score v Correct.png
+SeqMatch1.png
+SeqMatch2.png
+
 # ── TaxaWizard transient state ──────────────────
 .workflow_checkpoints/
 taxaid_workflow_*.R
@@ -44,7 +55,6 @@ TaxaAssign/inst/demo_for_JV.R
 TaxaAssign/inst/Wrapper_full_workflow.R
 TaxaAssign/inst/TaxaAssign_bayesian_workflow_new.R
 TaxaMatch/inst/Write_text_reports.R
-inst/test_report_workflow.R
 
 # ── PDF data files in TaxaFetch (large) ─────────
 TaxaFetch/pdfs/

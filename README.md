@@ -358,6 +358,10 @@ Detailed, runnable workflow scripts are provided in each package's
 | Bayesian assignment | TaxaAssign | `inst/TaxaAssign_bayesian_workflow.R` |
 | Consensus | TaxaAssign | `inst/TaxaAssign_consensus_workflow.R` |
 
+For a step-by-step map of the full pipeline — inputs, outputs, and save
+conventions across all packages — see
+[ECOSYSTEM_WORKFLOW.md](ecosystem_docs/ECOSYSTEM_WORKFLOW.md).
+
 ## High-Level Wrappers
 
 For users who prefer a single-function interface:
