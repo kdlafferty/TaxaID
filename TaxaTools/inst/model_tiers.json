@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "version": "2026-05-23",
+    "description": "TaxaTools LLM provider registry. Defines handler families, endpoints, auth types, tier patterns, and fallback model names. Update this file or run refresh_models() when provider model families change.",
+    "github_url": "https://raw.githubusercontent.com/kdlafferty/TaxaID/main/TaxaTools/inst/model_tiers.json"
+  },
+  "providers": {
+    "anthropic": {
+      "handler_family":    "anthropic",
+      "chat_endpoint":     "https://api.anthropic.com/v1/messages",
+      "models_endpoint":   "https://api.anthropic.com/v1/models",
+      "auth_type":         "x-api-key",
+      "api_version_header": "2023-06-01",
+      "tier_patterns": {
+        "fast": { "include": "haiku",  "exclude": null },
+        "mid":  { "include": "sonnet", "exclude": null },
+        "top":  { "include": "opus",   "exclude": null }
+      },
+      "fallback_models": {
+        "fast": "claude-haiku-4-5-20251001",
+        "mid":  "claude-sonnet-4-6",
+        "top":  "claude-opus-4-7"
+      }
+    },
+    "gemini": {
+      "handler_family":           "gemini",
+      "chat_endpoint_template":   "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+      "models_endpoint":          "https://generativelanguage.googleapis.com/v1beta/models",
+      "auth_type":                "query",
+      "tier_patterns": {
+        "fast": { "include": "flash-lite|flash-8b",  "exclude": null },
+        "mid":  { "include": "flash",  "exclude": "flash-lite|flash-8b|thinking|preview|exp" },
+        "top":  { "include": "-pro",   "exclude": "flash|preview|exp" }
+      },
+      "fallback_models": {
+        "fast": "gemini-2.5-flash-lite",
+        "mid":  "gemini-2.5-flash",
+        "top":  "gemini-2.5-pro"
+      }
+    },
+    "openai": {
+      "handler_family":  "openai_compat",
+      "chat_endpoint":   "https://api.openai.com/v1/chat/completions",
+      "models_endpoint": "https://api.openai.com/v1/models",
+      "auth_type":       "bearer",
+      "tier_patterns": {
+        "fast": { "include": "mini|nano",  "exclude": null },
+        "mid":  { "include": "gpt-4",      "exclude": "mini|nano|tts|transcribe|diarize|search|turbo-20|0613" },
+        "top":  { "include": "^o[0-9]",    "exclude": "mini" }
+      },
+      "fallback_models": {
+        "fast": "gpt-4o-mini",
+        "mid":  "gpt-4.1",
+        "top":  "o3"
+      }
+    },
+    "azure": {
+      "handler_family":          "openai_compat",
+      "chat_endpoint_template":  "https://api-dev.ai.doi.net/openai/deployments/{model}/chat/completions?api-version=2025-03-01-preview",
+      "endpoint_template":       "https://api-dev.ai.doi.net/openai/deployments/{model}/chat/completions?api-version=2025-03-01-preview",
+      "models_endpoint_template":"https://api-dev.ai.doi.net/openai/models?api-version=2025-03-01-preview",
+      "auth_type":               "x-api-key",
+      "body_max_tokens_key":     "max_completion_tokens",
+      "note": "DOI employees only. Requires DOI network or VPN. Tier is cosmetic -- all tiers map to the active deployment.",
+      "tier_patterns": null,
+      "fallback_models": {
+        "fast": "gpt-5.1",
+        "mid":  "gpt-5.1",
+        "top":  "gpt-5.1"
+      }
+    },
+    "ollama": {
+      "handler_family":          "openai_compat",
+      "chat_endpoint_template":  "{base_url}/v1/chat/completions",
+      "auth_type":               "none",
+      "note": "Local models only. No API key required. Output quality for structured tasks varies significantly by model size. Recommended minimum: qwen2.5:14b.",
+      "tier_patterns": null,
+      "fallback_models": {
+        "fast": "llama3.2",
+        "mid":  "llama3.1:8b",
+        "top":  "llama3.3:70b"
+      }
+    }
+  }
+}

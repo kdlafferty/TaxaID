@@ -58,7 +58,7 @@ test_that("register_provider adds provider to session registry", {
   expect_equal(reg$providers$testprov$base_url, "https://api.test.example.com")
   expect_equal(reg$providers$testprov$models_endpoint,
                "https://api.test.example.com/v1/models")
-  expect_equal(reg$providers$testprov$type, "openai_compatible")
+  expect_equal(reg$providers$testprov$handler_family, "openai_compat")
   expect_equal(reg$providers$testprov$fallback_models$mid, "test-std")
 })
 

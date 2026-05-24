@@ -385,7 +385,7 @@
       endpoint_tpl <- prov_reg$endpoint_template %||% ""
 
       model_ids <- tryCatch({
-        if (identical(prov_reg$type, "openai_compatible")) {
+        if (identical(prov_reg$handler_family, "openai_compat")) {
           ep <- prov_reg$models_endpoint %||% ""
           if (nzchar(ep)) .fetch_openai_compat_models(api_key, ep) else character(0)
         } else {
@@ -858,7 +858,7 @@ register_provider <- function(
     auth_type       = "bearer",
     tier_patterns   = tier_patterns,
     fallback_models = as.list(fallback_models),
-    type            = "openai_compatible"
+    handler_family  = "openai_compat"
   )
   .registry_env$registry        <- reg
   .registry_env$discovered[[name]] <- NULL  # clear any stale entry
