@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — no package changes; last package changes Session 81)
+# Last updated: 2026-05-23 (Session 86 — llm_fn fallback updated; license cleanup)
 
 ---
 
@@ -302,9 +302,15 @@ is a malformed filename in `tests/testthat/` — investigate and rename before r
 - `leaflet`, `shiny`, `miniUI` moved from Imports to Suggests (only used in
   `plot_theta_map_interactive()` which already had `requireNamespace()` guards).
 
-**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+**Sessions 83–85 (2026-05-21 to 2026-05-23)**
 - No TaxaExpect-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools),
   WERC review integration. See TaxaID/CLAUDE.md for full log.
+
+**Session 86 (2026-05-23)**
+- `build_priors()`: `llm_fn` fallback updated from `TaxaTools::call_anthropic_api` to
+  `TaxaTools::call_api`. Clears TODO from Sessions 82/85.
+- `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
+- Disclaimer section removed from `README.md`.
 
 **Session 73 (2026-05-14)**
 - `generate_full_priors()`: added `min_phi` parameter (default 2). Phi floor applied after

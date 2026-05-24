@@ -132,7 +132,11 @@ Provider functions (`call_anthropic_api`, `call_gemini_api`, etc.) live in TaxaT
 - `llm_fn` defaults updated across all LLM-calling functions to
   `getOption("TaxaID.llm_fn", call_anthropic_api)`.
 
-**Sessions 83–86 (2026-05-21 to 2026-05-23)**
-- No TaxaHabitat-specific code changes. Session 86: README expanded with spatial QAQC
+**Sessions 83–85 (2026-05-21 to 2026-05-23)**
+- No TaxaHabitat-specific code changes. Session 85: README expanded with spatial QAQC
   paragraph (user edit committed). Ecosystem: `call_api()` dispatcher (TaxaTools), WERC
-  review integration. See TaxaID/CLAUDE.md for full log.
+  review integration.
+
+**Session 86 (2026-05-23)**
+- No code changes. `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at
+  TaxaID/ root). Disclaimer section removed from `README.md`.

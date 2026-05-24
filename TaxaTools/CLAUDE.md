@@ -244,5 +244,6 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes (with pre-existing WARN on test-llm_utils.R)
 
 **Session 86 (2026-05-23)**
-- No package-specific changes. WERC peer review integration (ecosystem docs, code.json,
-  renv removal). See TaxaID/CLAUDE.md.
+- No code changes. WERC peer review integration (ecosystem docs, code.json, renv removal).
+- `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
+- Disclaimer section removed from `README.md`. See TaxaID/CLAUDE.md for full log.

@@ -480,6 +480,10 @@ contain quotes, backslashes, etc.
 **Session 82 (2026-05-21)**
 - License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
 
-**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+**Sessions 83–85 (2026-05-21 to 2026-05-23)**
 - No TaxaWizard-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools), WERC
-  review integration. See TaxaID/CLAUDE.md for full log.
+  review integration.
+
+**Session 86 (2026-05-23)**
+- No code changes. `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at
+  TaxaID/ root). Disclaimer section removed from `README.md`.

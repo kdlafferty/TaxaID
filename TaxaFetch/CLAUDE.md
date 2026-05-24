@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — no package changes; last package changes Session 72)
+# Last updated: 2026-05-23 (Session 86 — llm_fn fallback updated; license cleanup)
 
 ---
 
@@ -265,8 +265,12 @@ mechanism; `report_fetch()` extracts and formats it.
 - 5 stale inst/ files deleted: `TaxaFetch_workflow copy.R`, `migrate_prompt_api.R`,
   `habitat_scheme_workflow.R`.
 
-**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+**Sessions 83–85 (2026-05-21 to 2026-05-23)**
 - No TaxaFetch-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools),
   WERC review integration. Deferred: `call_anthropic_api_pdf()` generic (multimodal/PDF
   call cannot be trivially unified with `call_api`; tracked as TODO in TaxaID/CLAUDE.md).
-  See TaxaID/CLAUDE.md for full log.
+
+**Session 86 (2026-05-23)**
+- `screen_pdf_structure()`: `llm_fn` fallback updated from `call_anthropic_api` to
+  `TaxaTools::call_api`. Clears TODO from Sessions 82/85.
+- `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).

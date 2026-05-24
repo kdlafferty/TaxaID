@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — no package changes; CC0 license Session 82)
+# Last updated: 2026-05-23 (Session 86 — .resolve_llm_fn() fallback updated; license cleanup)
 
 ---
 
@@ -728,6 +728,13 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 **Session 82 (2026-05-21)**
 - License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
 
-**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+**Sessions 83–85 (2026-05-21 to 2026-05-23)**
 - No TaxaAssign-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools), model
   registry enhancements, WERC peer review integration. See TaxaID/CLAUDE.md for full log.
+
+**Session 86 (2026-05-23)**
+- `.resolve_llm_fn()` in `R/site_utils.R`: fallback updated from `TaxaTools::call_anthropic_api`
+  to `TaxaTools::call_api`. Covers `assign_taxa_llm()`, `run_llm_pipeline()`, `build_context()`,
+  `suggest_unreferenced_species()`. Clears TODO from Sessions 82/85.
+- `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
+- Disclaimer section removed from `README.md`.

@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — no package changes; CC0 license Session 82)
+# Last updated: 2026-05-23 (Session 86 — llm_fn fallback updated; license cleanup)
 
 ---
 
@@ -214,6 +214,12 @@ frustrating than helpful; workflow scripts are more transparent.
 - TaxaTools moved from Suggests to Imports (used unconditionally by `report_flags()` and
   as default in `review_assignments()`).
 
-**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+**Sessions 83–85 (2026-05-21 to 2026-05-23)**
 - No TaxaFlag-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools), WERC
   review integration. See TaxaID/CLAUDE.md for full log.
+
+**Session 86 (2026-05-23)**
+- `review_assignments()`: `llm_fn` fallback updated from `TaxaTools::call_anthropic_api` to
+  `TaxaTools::call_api`. Clears TODO from Sessions 82/85.
+- `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
+- Disclaimer section removed from `README.md`.
