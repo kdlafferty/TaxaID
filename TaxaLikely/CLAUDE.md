@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-20 (Session 79 -- sample_id → observation_id rename)
+# Last updated: 2026-05-23 (Session 86 -- no package changes; CC0 license Session 82)
 
 ---
 
@@ -462,6 +462,17 @@ non-zero likelihoods that bypass the constraint. Correct order:
 - `globalVariables("sample_id")` → `globalVariables("observation_id")` in `R/evaluate.R`
 - Match Object Interface and Likelihood Object Interface docs updated in CLAUDE.md
 - 143 tests passing; `devtools::check()` clean after reinstall
+
+**Session 80 (2026-05-20)**
+- GitHub public monorepo created at github.com/kdlafferty/TaxaID; no package-specific changes.
+
+**Session 82 (2026-05-21)**
+- License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.
+
+**Sessions 83–86 (2026-05-21 to 2026-05-23)**
+- No TaxaLikely-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools), model
+  registry enhancements, WERC peer review integration, ecosystem_docs cleanup, renv removal.
+  See TaxaID/CLAUDE.md for full log.
 
 ---
 
