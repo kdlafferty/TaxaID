@@ -129,17 +129,23 @@
 # call_anthropic_api_pdf()
 # ==============================================================================
 
-#' Send Selected PDF Pages to the Anthropic API
+#' Send Selected PDF Pages to an LLM Vision API
 #'
-#' Renders selected pages of a PDF as PNG images and sends them to the
-#' Anthropic API together with a text prompt. Returns the model's response
-#' as a single character string, exactly as \code{\link[TaxaTools]{call_anthropic_api}}
-#' does for text-only requests.
+#' Renders selected pages of a PDF as PNG images and sends them to a
+#' vision-capable LLM together with a text prompt. Returns the model's
+#' response as a single character string, compatible with all downstream
+#' parse functions.
 #'
 #' This is the Stage 3 engine for the PDF occurrence pipeline. Stages 1 and 2
 #' use \code{\link{extract_pdf_text}} (text only, no API call). Stage 3 uses
 #' this function to send the methods and results pages as images, giving the
 #' model full visual fidelity on tables and layout.
+#'
+#' Dispatches via \code{\link[TaxaTools]{call_api}}, so the provider is
+#' resolved from \code{options("TaxaID.provider")} by default. Any
+#' vision-capable provider works: Anthropic (Claude Sonnet/Opus), Gemini
+#' (2.5 Flash/Pro), OpenAI (GPT-4o), or a local Ollama vision model such as
+#' \code{llava-llama3}.
 #'
 #' @param prompt Character string. The extraction or characterization prompt
 #'   to send along with the page images. This is the text part of the
@@ -158,18 +164,32 @@
 #'   \code{150L}. Increase to \code{200L} or \code{300L} for PDFs with
 #'   small table fonts; decrease to \code{100L} to reduce token cost when
 #'   tables are large-print.
-#' @param model Character. Anthropic model identifier. Default
-#'   \code{"claude-sonnet-4-20250514"}.
+#' @param provider Character. LLM provider name: \code{"anthropic"},
+#'   \code{"gemini"}, \code{"openai"}, \code{"ollama"}, or any provider
+#'   registered with \code{\link[TaxaTools]{register_provider}}. Default
+#'   \code{NULL} reads \code{options("TaxaID.provider")}, set automatically
+#'   by \code{library(TaxaTools)}.
+#' @param tier Character. Model capability tier when \code{model = NULL}:
+#'   \code{"fast"}, \code{"mid"} (default), or \code{"top"}. For vision
+#'   tasks, \code{"mid"} or \code{"top"} is recommended.
+#' @param model Character. Exact model identifier. Overrides \code{tier}
+#'   resolution. Use to pin a specific version, e.g.
+#'   \code{"claude-sonnet-4-6"} or \code{"gpt-4o"}.
 #' @param max_tokens Integer. Maximum response tokens. Default \code{4000L}.
 #'   Increase for papers with many species-locality records.
-#' @param api_key Character. Anthropic API key. Default reads from
-#'   \code{Sys.getenv("ANTHROPIC_API_KEY")}.
+#' @param api_key Character. API key override. Default \code{NULL} reads
+#'   the key from the environment variable for the resolved provider
+#'   (e.g. \code{ANTHROPIC_API_KEY}). Keyless providers (Ollama) ignore this.
+#' @param base_url Character. Base URL override for OpenAI-compatible
+#'   providers (Ollama, custom proxies). Default \code{NULL}.
 #' @param verbose Logical. Report page counts and section selection.
 #'   Default \code{TRUE}.
 #'
 #' @return Character string. The raw text response from the model, suitable
 #'   for passing directly to \code{\link{parse_pdf_extract_response}} or
-#'   \code{\link{screen_pdf_structure}}.
+#'   \code{\link{screen_pdf_structure}}. The \code{"model"} and
+#'   \code{"provider"} attributes from \code{\link[TaxaTools]{call_api}} are
+#'   preserved on the return value.
 #'
 #' @details
 #' \strong{Page selection:} Only pages belonging to the requested sections
@@ -188,13 +208,14 @@
 #' approximately 1,500-2,000 input tokens. A 5-page targeted send costs
 #' roughly 8,000-10,000 input tokens plus the prompt.
 #'
-#' \strong{Relationship to call_anthropic_api():}
-#' \code{call_anthropic_api()} sends a single text string and returns a
-#' text string. This function extends that pattern to accept PDF pages
-#' as additional content blocks in the same message. Both return a raw
-#' character string; all downstream parse functions work with either.
+#' \strong{Provider and model selection:}
+#' The function dispatches through \code{\link[TaxaTools]{call_api}}, so
+#' provider resolution, model tier lookup, and API key reading follow the
+#' same rules as all other TaxaID LLM calls. Set
+#' \code{options(TaxaID.provider = "gemini")} to switch providers
+#' session-wide, or pass \code{provider} explicitly for a single call.
 #'
-#' @seealso \code{\link[TaxaTools]{call_anthropic_api}},
+#' @seealso \code{\link[TaxaTools]{call_api}},
 #'   \code{\link{extract_pdf_text}},
 #'   \code{\link{build_pdf_extract_prompt}},
 #'   \code{\link{screen_pdf_structure}}
@@ -235,9 +256,12 @@ call_anthropic_api_pdf <- function(prompt,
                                                   "appendix"),
                                    page_map   = NULL,
                                    dpi        = 150L,
-                                   model      = "claude-sonnet-4-20250514",
+                                   provider   = NULL,
+                                   tier       = c("mid", "fast", "top"),
+                                   model      = NULL,
                                    max_tokens = 4000L,
-                                   api_key    = Sys.getenv("ANTHROPIC_API_KEY"),
+                                   api_key    = NULL,
+                                   base_url   = NULL,
                                    verbose    = TRUE) {
 
   # ---- input checks ----------------------------------------------------------
@@ -258,32 +282,9 @@ call_anthropic_api_pdf <- function(prompt,
   if (!is.null(page_map) && !is.list(page_map)) {
     stop("call_anthropic_api_pdf: 'page_map' must be a named list or NULL.")
   }
+  tier       <- match.arg(tier)
   dpi        <- as.integer(dpi)
   max_tokens <- as.integer(max_tokens)
-  if (!nzchar(api_key)) {
-    stop(
-      "call_anthropic_api_pdf: ANTHROPIC_API_KEY not set.\n",
-      "Add it to your .Renviron file: ANTHROPIC_API_KEY=sk-ant-..."
-    )
-  }
-  if (!requireNamespace("pdftools", quietly = TRUE)) {
-    stop(
-      "call_anthropic_api_pdf: the 'pdftools' package is required.\n",
-      "Install it with: install.packages(\"pdftools\")"
-    )
-  }
-  if (!requireNamespace("png", quietly = TRUE)) {
-    stop(
-      "call_anthropic_api_pdf: the 'png' package is required.\n",
-      "Install it with: install.packages(\"png\")"
-    )
-  }
-  if (!requireNamespace("base64enc", quietly = TRUE)) {
-    stop(
-      "call_anthropic_api_pdf: the 'base64enc' package is required.\n",
-      "Install it with: install.packages(\"base64enc\")"
-    )
-  }
 
   # ---- build page_map if not supplied ----------------------------------------
   if (is.null(page_map)) {
@@ -354,82 +355,20 @@ call_anthropic_api_pdf <- function(prompt,
     ))
   }
 
-  # ---- build message content blocks -----------------------------------------
-  # Structure: [text prompt] + [image block per page]
-  # This matches the Anthropic API multi-modal message format.
-
-  content_blocks <- vector("list", 1L + length(page_images))
-
-  # Text prompt block
-  content_blocks[[1L]] <- list(
-    type = "text",
-    text = prompt
-  )
-
-  # Image blocks — one per rendered page, in document order
-  for (i in seq_along(page_images)) {
-    content_blocks[[1L + i]] <- list(
-      type   = "image",
-      source = list(
-        type       = "base64",
-        media_type = "image/png",
-        data       = page_images[[i]]
-      )
-    )
-  }
-
-  # ---- build request body ----------------------------------------------------
-  body <- list(
+  # ---- dispatch via call_api with vision images ------------------------------
+  # page_images is a named list of base64 PNG strings (names = page numbers).
+  # call_api() formats them for each provider family:
+  #   anthropic     -> image content blocks (type/source/base64)
+  #   gemini        -> inlineData parts (mimeType/data)
+  #   openai_compat -> image_url blocks  (data:image/png;base64,...)
+  TaxaTools::call_api(
+    prompt_str = prompt,
+    provider   = provider,
+    tier       = tier,
     model      = model,
     max_tokens = max_tokens,
-    messages   = list(
-      list(
-        role    = "user",
-        content = content_blocks
-      )
-    )
+    api_key    = api_key,
+    base_url   = base_url,
+    images     = page_images
   )
-
-  # ---- make API call ---------------------------------------------------------
-  response <- tryCatch(
-    httr2::request("https://api.anthropic.com/v1/messages") |>
-      httr2::req_headers(
-        "Content-Type"      = "application/json",
-        "x-api-key"         = api_key,
-        "anthropic-version" = "2023-06-01"
-      ) |>
-      httr2::req_body_json(body) |>
-      httr2::req_timeout(120L) |>
-      httr2::req_perform(),
-    error = function(e) {
-      stop(sprintf(
-        "call_anthropic_api_pdf: API request failed.\n  Error: %s",
-        conditionMessage(e)
-      ))
-    }
-  )
-
-  # ---- parse response --------------------------------------------------------
-  resp_body <- httr2::resp_body_json(response)
-
-  if (!is.null(resp_body$error)) {
-    stop(sprintf(
-      "call_anthropic_api_pdf: API returned an error.\n  Type: %s\n  Message: %s",
-      resp_body$error$type %||% "unknown",
-      resp_body$error$message %||% "no message"
-    ))
-  }
-
-  # Extract text from content blocks (same pattern as call_anthropic_api)
-  text_blocks <- Filter(function(b) identical(b$type, "text"),
-                        resp_body$content)
-
-  if (length(text_blocks) == 0L) {
-    warning("call_anthropic_api_pdf: API response contained no text blocks.",
-            call. = FALSE)
-    return("")
-  }
-
-  paste(vapply(text_blocks, function(b) b$text %||% "", character(1L)),
-        collapse = "\n")
 }

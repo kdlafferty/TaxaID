@@ -2,7 +2,7 @@
 % Please edit documentation in R/pdf_api.R
 \name{call_anthropic_api_pdf}
 \alias{call_anthropic_api_pdf}
-\title{Send Selected PDF Pages to the Anthropic API}
+\title{Send Selected PDF Pages to an LLM Vision API}
 \usage{
 call_anthropic_api_pdf(
   prompt,
@@ -10,9 +10,12 @@ call_anthropic_api_pdf(
   sections = c("methods", "results", "appendix"),
   page_map = NULL,
   dpi = 150L,
-  model = "claude-sonnet-4-20250514",
+  provider = NULL,
+  tier = c("mid", "fast", "top"),
+  model = NULL,
   max_tokens = 4000L,
-  api_key = Sys.getenv("ANTHROPIC_API_KEY"),
+  api_key = NULL,
+  base_url = NULL,
   verbose = TRUE
 )
 }
@@ -39,14 +42,29 @@ already run.}
 small table fonts; decrease to \code{100L} to reduce token cost when
 tables are large-print.}
 
-\item{model}{Character. Anthropic model identifier. Default
-\code{"claude-sonnet-4-20250514"}.}
+\item{provider}{Character. LLM provider name: \code{"anthropic"},
+\code{"gemini"}, \code{"openai"}, \code{"ollama"}, or any provider
+registered with \code{\link[TaxaTools]{register_provider}}. Default
+\code{NULL} reads \code{options("TaxaID.provider")}, set automatically
+by \code{library(TaxaTools)}.}
+
+\item{tier}{Character. Model capability tier when \code{model = NULL}:
+\code{"fast"}, \code{"mid"} (default), or \code{"top"}. For vision
+tasks, \code{"mid"} or \code{"top"} is recommended.}
+
+\item{model}{Character. Exact model identifier. Overrides \code{tier}
+resolution. Use to pin a specific version, e.g.
+\code{"claude-sonnet-4-6"} or \code{"gpt-4o"}.}
 
 \item{max_tokens}{Integer. Maximum response tokens. Default \code{4000L}.
 Increase for papers with many species-locality records.}
 
-\item{api_key}{Character. Anthropic API key. Default reads from
-\code{Sys.getenv("ANTHROPIC_API_KEY")}.}
+\item{api_key}{Character. API key override. Default \code{NULL} reads
+the key from the environment variable for the resolved provider
+(e.g. \code{ANTHROPIC_API_KEY}). Keyless providers (Ollama) ignore this.}
+
+\item{base_url}{Character. Base URL override for OpenAI-compatible
+providers (Ollama, custom proxies). Default \code{NULL}.}
 
 \item{verbose}{Logical. Report page counts and section selection.
 Default \code{TRUE}.}
@@ -54,19 +72,27 @@ Default \code{TRUE}.}
 \value{
 Character string. The raw text response from the model, suitable
 for passing directly to \code{\link{parse_pdf_extract_response}} or
-\code{\link{screen_pdf_structure}}.
+\code{\link{screen_pdf_structure}}. The \code{"model"} and
+\code{"provider"} attributes from \code{\link[TaxaTools]{call_api}} are
+preserved on the return value.
 }
 \description{
-Renders selected pages of a PDF as PNG images and sends them to the
-Anthropic API together with a text prompt. Returns the model's response
-as a single character string, exactly as \code{\link[TaxaTools]{call_anthropic_api}}
-does for text-only requests.
+Renders selected pages of a PDF as PNG images and sends them to a
+vision-capable LLM together with a text prompt. Returns the model's
+response as a single character string, compatible with all downstream
+parse functions.
 }
 \details{
 This is the Stage 3 engine for the PDF occurrence pipeline. Stages 1 and 2
 use \code{\link{extract_pdf_text}} (text only, no API call). Stage 3 uses
 this function to send the methods and results pages as images, giving the
 model full visual fidelity on tables and layout.
+
+Dispatches via \code{\link[TaxaTools]{call_api}}, so the provider is
+resolved from \code{options("TaxaID.provider")} by default. Any
+vision-capable provider works: Anthropic (Claude Sonnet/Opus), Gemini
+(2.5 Flash/Pro), OpenAI (GPT-4o), or a local Ollama vision model such as
+\code{llava-llama3}.
 
 \strong{Page selection:} Only pages belonging to the requested sections
 (as determined by \code{.detect_pdf_sections}) are rendered and sent.
@@ -84,11 +110,12 @@ section order, so the model sees a coherent reading sequence.
 approximately 1,500-2,000 input tokens. A 5-page targeted send costs
 roughly 8,000-10,000 input tokens plus the prompt.
 
-\strong{Relationship to call_anthropic_api():}
-\code{call_anthropic_api()} sends a single text string and returns a
-text string. This function extends that pattern to accept PDF pages
-as additional content blocks in the same message. Both return a raw
-character string; all downstream parse functions work with either.
+\strong{Provider and model selection:}
+The function dispatches through \code{\link[TaxaTools]{call_api}}, so
+provider resolution, model tier lookup, and API key reading follow the
+same rules as all other TaxaID LLM calls. Set
+\code{options(TaxaID.provider = "gemini")} to switch providers
+session-wide, or pass \code{provider} explicitly for a single call.
 }
 \examples{
 \dontrun{
@@ -119,7 +146,7 @@ raw_response <- call_anthropic_api_pdf(
 }
 }
 \seealso{
-\code{\link[TaxaTools]{call_anthropic_api}},
+\code{\link[TaxaTools]{call_api}},
 \code{\link{extract_pdf_text}},
 \code{\link{build_pdf_extract_prompt}},
 \code{\link{screen_pdf_structure}}

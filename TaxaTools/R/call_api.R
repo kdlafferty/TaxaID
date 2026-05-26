@@ -160,7 +160,22 @@
 
 #' @noRd
 .build_anthropic_request <- function(endpoint, model, prompt_str,
-                                     max_tokens, api_key, prov_reg) {
+                                     max_tokens, api_key, prov_reg,
+                                     images = NULL) {
+  # Multi-modal: text block + one image block per base64 PNG string.
+  # Text-only: content is just the prompt string (saves a JSON nesting level).
+  if (!is.null(images) && length(images) > 0L) {
+    content <- c(
+      list(list(type = "text", text = prompt_str)),
+      lapply(unname(images), function(b64) list(
+        type   = "image",
+        source = list(type = "base64", media_type = "image/png", data = b64)
+      ))
+    )
+  } else {
+    content <- prompt_str
+  }
+
   httr2::request(endpoint) |>
     httr2::req_headers(
       "x-api-key"         = api_key,
@@ -171,7 +186,7 @@
     httr2::req_body_json(list(
       model      = model,
       max_tokens = as.integer(max_tokens),
-      messages   = list(list(role = "user", content = prompt_str))
+      messages   = list(list(role = "user", content = content))
     )) |>
     httr2::req_timeout(120) |>
     httr2::req_error(is_error = function(resp) FALSE)
@@ -180,13 +195,26 @@
 
 #' @noRd
 .build_gemini_request <- function(endpoint, model, prompt_str,
-                                  max_tokens, api_key, prov_reg) {
+                                  max_tokens, api_key, prov_reg,
+                                  images = NULL) {
+  # Multi-modal: text part + one inlineData part per base64 PNG string.
+  if (!is.null(images) && length(images) > 0L) {
+    parts <- c(
+      list(list(text = prompt_str)),
+      lapply(unname(images), function(b64) list(
+        inlineData = list(mimeType = "image/png", data = b64)
+      ))
+    )
+  } else {
+    parts <- list(list(text = prompt_str))
+  }
+
   # Gemini auth: API key as query param (auth_type = "query")
   httr2::request(endpoint) |>
     httr2::req_url_query(key = api_key) |>
     httr2::req_headers("Content-Type" = "application/json") |>
     httr2::req_body_json(list(
-      contents         = list(list(parts = list(list(text = prompt_str)))),
+      contents         = list(list(parts = parts)),
       generationConfig = list(maxOutputTokens = as.integer(max_tokens))
     )) |>
     httr2::req_timeout(120) |>
@@ -196,16 +224,30 @@
 
 #' @noRd
 .build_openai_compat_request <- function(endpoint, model, prompt_str,
-                                         max_tokens, api_key, prov_reg) {
+                                         max_tokens, api_key, prov_reg,
+                                         images = NULL) {
   # Body max_tokens field name varies by provider:
   #   - Most providers:  "max_tokens"
   #   - Azure o-series:  "max_completion_tokens" (set in registry)
   # The correct key is stored in prov_reg$body_max_tokens_key.
   max_tokens_key <- prov_reg$body_max_tokens_key %||% "max_tokens"
 
+  # Multi-modal: text block + one image_url block per base64 PNG string.
+  if (!is.null(images) && length(images) > 0L) {
+    content <- c(
+      list(list(type = "text", text = prompt_str)),
+      lapply(unname(images), function(b64) list(
+        type      = "image_url",
+        image_url = list(url = paste0("data:image/png;base64,", b64))
+      ))
+    )
+  } else {
+    content <- prompt_str
+  }
+
   body <- list(
     model    = model,
-    messages = list(list(role = "user", content = prompt_str))
+    messages = list(list(role = "user", content = content))
   )
   body[[max_tokens_key]] <- as.integer(max_tokens)
 
@@ -367,6 +409,13 @@
 #'     \item For Azure: replaces the host in the endpoint template while
 #'       preserving the deployment path and API version.
 #'   }
+#' @param images Named list of base64-encoded PNG strings, as returned by
+#'   \code{.render_pdf_pages()} in the TaxaFetch PDF pipeline. Default
+#'   \code{NULL} (text-only call). When supplied, the prompt and images are
+#'   sent as a multi-modal message using the provider's vision format:
+#'   Anthropic image content blocks, Gemini \code{inlineData} parts, or
+#'   OpenAI \code{image_url} blocks. Requires a vision-capable model
+#'   (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o).
 #'
 #' @return A length-1 character string containing the model's response text.
 #'   The following attributes are attached:
@@ -438,7 +487,8 @@ call_api <- function(prompt_str,
                      model      = NULL,
                      max_tokens = 3000L,
                      api_key    = NULL,
-                     base_url   = NULL) {
+                     base_url   = NULL,
+                     images     = NULL) {
 
   tier <- match.arg(tier)
 
@@ -478,9 +528,9 @@ call_api <- function(prompt_str,
 
   # Build the provider-appropriate HTTP request
   req <- switch(family,
-    anthropic     = .build_anthropic_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg),
-    gemini        = .build_gemini_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg),
-    openai_compat = .build_openai_compat_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg),
+    anthropic     = .build_anthropic_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
+    gemini        = .build_gemini_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
+    openai_compat = .build_openai_compat_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
     stop(sprintf(
       "call_api: unknown handler_family '%s' for provider '%s'. Check inst/model_tiers.json.",
       family, provider

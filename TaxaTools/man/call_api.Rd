@@ -11,7 +11,8 @@ call_api(
   model = NULL,
   max_tokens = 3000L,
   api_key = NULL,
-  base_url = NULL
+  base_url = NULL,
+  images = NULL
 )
 }
 \arguments{
@@ -52,6 +53,14 @@ uses the provider's registered endpoint.
 \item For Azure: replaces the host in the endpoint template while
 preserving the deployment path and API version.
 }}
+
+\item{images}{Named list of base64-encoded PNG strings, as returned by
+\code{.render_pdf_pages()} in the TaxaFetch PDF pipeline. Default
+\code{NULL} (text-only call). When supplied, the prompt and images are
+sent as a multi-modal message using the provider's vision format:
+Anthropic image content blocks, Gemini \code{inlineData} parts, or
+OpenAI \code{image_url} blocks. Requires a vision-capable model
+(e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o).}
 }
 \value{
 A length-1 character string containing the model's response text.
