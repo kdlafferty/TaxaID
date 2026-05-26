@@ -17,7 +17,7 @@
 # Position in the PDF pipeline:
 #   Stage 1 -- abstract screen  (build_pdf_screen_prompt / parse_pdf_screen_response)
 #   Stage 2 -- THIS FILE        (screen_pdf_structure)
-#   Stage 3 -- extraction       (build_pdf_extract_prompt / call_anthropic_api_pdf)
+#   Stage 3 -- extraction       (build_pdf_extract_prompt / call_api_pdf)
 #
 # Token management:
 #   This function makes ONE cheap text-only LLM call using the already-extracted
@@ -791,7 +791,7 @@ Respond with only the JSON object.',
 #'
 #' @seealso \code{\link{extract_pdf_text}},
 #'   \code{\link{build_pdf_extract_prompt}},
-#'   \code{\link{call_anthropic_api_pdf}},
+#'   \code{\link{call_api_pdf}},
 #'   \code{\link[TaxaTools]{call_anthropic_api}}
 #'
 #' @note \strong{Future task -- multi-provider support:} All LLM-calling

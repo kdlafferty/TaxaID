@@ -14,7 +14,7 @@
 #   Stage 8  — screen_pdf_structure()         five-axis characterisation
 #   Stage 9  — Inspect structures; drop non-extractable paper types
 #   Stage 10 — build_pdf_extract_prompt()     configure extraction prompt
-#   Stage 11 — API call(s) — extraction       call_anthropic_api_pdf()
+#   Stage 11 — API call(s) — extraction       call_api_pdf()
 #   Stage 12 — parse_pdf_extract_response()   DwC tibble per paper
 #   Stage 13 — stack_occurrences()            combine all papers
 #
@@ -511,7 +511,7 @@ pdf_raw_responses <- lapply(
       page_map_j <- list(selected = ep$page_chunks[[j]])
       attr(page_map_j, "has_headers") <- TRUE
       tryCatch(
-        call_anthropic_api_pdf(
+        call_api_pdf(
           prompt   = ep$prompts[[j]],
           pdf_path = ps$pdf_path,
           sections = "all",

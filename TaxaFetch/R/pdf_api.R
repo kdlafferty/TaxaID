@@ -3,7 +3,7 @@
 # TaxaFetch — Send PDF page images to the Anthropic API
 #
 # Exported functions:
-#   call_anthropic_api_pdf()    Send selected PDF pages as images to API
+#   call_api_pdf()    Send selected PDF pages as images to API
 #
 # Internal helpers (@noRd):
 #   .render_pdf_pages()         Render page numbers to base64 PNG images
@@ -126,7 +126,7 @@
 
 
 # ==============================================================================
-# call_anthropic_api_pdf()
+# call_api_pdf()
 # ==============================================================================
 
 #' Send Selected PDF Pages to an LLM Vision API
@@ -233,7 +233,7 @@
 #'   bbox        = c(-122, -117, 32, 35)
 #' )
 #'
-#' raw_response <- call_anthropic_api_pdf(
+#' raw_response <- call_api_pdf(
 #'   prompt   = prompt,
 #'   pdf_path = "Swift_et_al_1993.pdf",
 #'   page_map = pdf_content$page_map
@@ -242,7 +242,7 @@
 #' occurrences <- parse_pdf_extract_response(raw_response)
 #'
 #' # Higher resolution for a paper with dense tables:
-#' raw_response <- call_anthropic_api_pdf(
+#' raw_response <- call_api_pdf(
 #'   prompt   = prompt,
 #'   pdf_path = "dense_tables_paper.pdf",
 #'   page_map = pdf_content$page_map,
@@ -250,7 +250,7 @@
 #' )
 #' }
 
-call_anthropic_api_pdf <- function(prompt,
+call_api_pdf <- function(prompt,
                                    pdf_path,
                                    sections   = c("methods", "results",
                                                   "appendix"),
@@ -267,20 +267,20 @@ call_anthropic_api_pdf <- function(prompt,
   # ---- input checks ----------------------------------------------------------
   if (!is.character(prompt) || length(prompt) != 1L ||
       is.na(prompt) || !nzchar(trimws(prompt))) {
-    stop("call_anthropic_api_pdf: 'prompt' must be a non-empty character string.")
+    stop("call_api_pdf: 'prompt' must be a non-empty character string.")
   }
   if (!is.character(pdf_path) || length(pdf_path) != 1L ||
       is.na(pdf_path) || !nzchar(trimws(pdf_path))) {
-    stop("call_anthropic_api_pdf: 'pdf_path' must be a non-empty character string.")
+    stop("call_api_pdf: 'pdf_path' must be a non-empty character string.")
   }
   if (!file.exists(pdf_path)) {
-    stop(sprintf("call_anthropic_api_pdf: file not found: %s", pdf_path))
+    stop(sprintf("call_api_pdf: file not found: %s", pdf_path))
   }
   if (!is.character(sections) || length(sections) == 0L) {
-    stop("call_anthropic_api_pdf: 'sections' must be a non-empty character vector or \"all\".")
+    stop("call_api_pdf: 'sections' must be a non-empty character vector or \"all\".")
   }
   if (!is.null(page_map) && !is.list(page_map)) {
-    stop("call_anthropic_api_pdf: 'page_map' must be a named list or NULL.")
+    stop("call_api_pdf: 'page_map' must be a named list or NULL.")
   }
   tier       <- match.arg(tier)
   dpi        <- as.integer(dpi)
@@ -289,7 +289,7 @@ call_anthropic_api_pdf <- function(prompt,
   # ---- build page_map if not supplied ----------------------------------------
   if (is.null(page_map)) {
     if (verbose) {
-      message("call_anthropic_api_pdf: no page_map supplied -- running extract_pdf_text() internally.")
+      message("call_api_pdf: no page_map supplied -- running extract_pdf_text() internally.")
     }
     pdf_content <- extract_pdf_text(pdf_path, sections = "all",
                                     verbose = verbose)
@@ -301,7 +301,7 @@ call_anthropic_api_pdf <- function(prompt,
   # ---- select pages ----------------------------------------------------------
   if (!has_headers) {
     warning(
-      "call_anthropic_api_pdf: no section headers detected in PDF -- sending all pages.",
+      "call_api_pdf: no section headers detected in PDF -- sending all pages.",
       call. = FALSE
     )
     selected_pages <- sort(unique(unlist(page_map)))
@@ -312,7 +312,7 @@ call_anthropic_api_pdf <- function(prompt,
     if (length(available) == 0L) {
       warning(
         sprintf(
-          "call_anthropic_api_pdf: none of the requested sections (%s) were detected -- sending all pages.",
+          "call_api_pdf: none of the requested sections (%s) were detected -- sending all pages.",
           paste(sections, collapse = ", ")
         ),
         call. = FALSE
@@ -323,7 +323,7 @@ call_anthropic_api_pdf <- function(prompt,
       if (verbose) {
         skipped <- setdiff(sections, names(page_map))
         message(sprintf(
-          "call_anthropic_api_pdf: sending %d page(s) from sections: %s%s",
+          "call_api_pdf: sending %d page(s) from sections: %s%s",
           length(selected_pages),
           paste(available, collapse = ", "),
           if (length(skipped) > 0L)
@@ -337,7 +337,7 @@ call_anthropic_api_pdf <- function(prompt,
   # ---- render pages to base64 PNG --------------------------------------------
   if (verbose) {
     message(sprintf(
-      "call_anthropic_api_pdf: rendering %d page(s) at %d dpi...",
+      "call_api_pdf: rendering %d page(s) at %d dpi...",
       length(selected_pages), dpi
     ))
   }
@@ -345,12 +345,12 @@ call_anthropic_api_pdf <- function(prompt,
   page_images <- .render_pdf_pages(pdf_path, selected_pages, dpi = dpi)
 
   if (length(page_images) == 0L) {
-    stop("call_anthropic_api_pdf: no pages could be rendered. Check that the PDF is not encrypted or corrupted.")
+    stop("call_api_pdf: no pages could be rendered. Check that the PDF is not encrypted or corrupted.")
   }
 
   if (verbose) {
     message(sprintf(
-      "call_anthropic_api_pdf: %d page(s) rendered successfully.",
+      "call_api_pdf: %d page(s) rendered successfully.",
       length(page_images)
     ))
   }

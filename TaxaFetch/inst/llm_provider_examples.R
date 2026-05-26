@@ -228,8 +228,8 @@ pdf_structure <- screen_pdf_structure(pdf_content, llm_fn = call_gemini_api)
 pdf_structure <- screen_pdf_structure(pdf_content, llm_fn = call_ollama_api)
 
 # Then use a more capable cloud model for the expensive extraction step
-# (call_anthropic_api_pdf is Anthropic-only — vision API)
-raw_responses <- call_anthropic_api_pdf(pdf_structure, build_pdf_extract_prompt(pdf_structure))
+# (call_api_pdf supports any vision-capable provider: anthropic, gemini, openai, ollama)
+raw_responses <- call_api_pdf(pdf_structure, build_pdf_extract_prompt(pdf_structure))
 
 
 # =============================================================================
@@ -254,5 +254,5 @@ LLM_output <- prompt_api(prompt, llm_fn = call_gemini_api)
 
 # Step 4: PDF extraction — Anthropic only (vision API)
 extract_prompt <- build_pdf_extract_prompt(pdf_structure)
-raw_response   <- call_anthropic_api_pdf(pdf_structure, extract_prompt)
+raw_response   <- call_api_pdf(pdf_structure, extract_prompt)
 occurrences    <- parse_pdf_extract_response(raw_response, pdf_structure)

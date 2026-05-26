@@ -310,7 +310,7 @@ utils::globalVariables(c(
 #' extraction prompt that instructs the LLM to produce a Darwin Core CSV table
 #' of occurrence records from the targeted PDF page images.
 #'
-#' The returned S3 object is passed directly to \code{call_anthropic_api_pdf()}.
+#' The returned S3 object is passed directly to \code{call_api_pdf()}.
 #'
 #' @param pdf_structure A \code{pdf_structure} object from
 #'   \code{screen_pdf_structure()}.
@@ -585,7 +585,7 @@ print.pdf_extract_prompt <- function(x, ...) {
 #' Parse a raw LLM extraction response to a Darwin Core tibble
 #'
 #' @description
-#' Parses the raw text returned by \code{call_anthropic_api_pdf()} into a tidy
+#' Parses the raw text returned by \code{call_api_pdf()} into a tidy
 #' Darwin Core tibble compatible with \code{stack_occurrences()}.
 #'
 #' The function:
@@ -606,7 +606,7 @@ print.pdf_extract_prompt <- function(x, ...) {
 #' }
 #'
 #' @param raw_text Character string. Raw response from
-#'   \code{call_anthropic_api_pdf()}.  When chunked extraction was used, pass
+#'   \code{call_api_pdf()}.  When chunked extraction was used, pass
 #'   the concatenated responses as a single string before calling this function:
 #'   \code{paste(responses, collapse = "\n")}.
 #' @param extract_prompt A \code{pdf_extract_prompt} object from

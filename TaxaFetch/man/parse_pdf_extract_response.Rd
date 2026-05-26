@@ -8,7 +8,7 @@ parse_pdf_extract_response(raw_text, extract_prompt)
 }
 \arguments{
 \item{raw_text}{Character string. Raw response from
-\code{call_anthropic_api_pdf()}.  When chunked extraction was used, pass
+\code{call_api_pdf()}.  When chunked extraction was used, pass
 the concatenated responses as a single string before calling this function:
 \code{paste(responses, collapse = "\n")}.}
 
@@ -20,7 +20,7 @@ A tibble with Darwin Core columns. Returns \code{NULL} invisibly
 (with a warning) if parsing fails.
 }
 \description{
-Parses the raw text returned by \code{call_anthropic_api_pdf()} into a tidy
+Parses the raw text returned by \code{call_api_pdf()} into a tidy
 Darwin Core tibble compatible with \code{stack_occurrences()}.
 
 The function:

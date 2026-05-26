@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-26 (Session 87 -- call_api() vision/images param; call_anthropic_api_pdf() generalized)
+# Last updated: 2026-05-26 (Session 87 -- call_api() vision/images param; call_api_pdf() generalized)
 
 ---
 
@@ -350,7 +350,7 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-04-30 | *(Session 63 — new)* | `review_assignments()` + 3 internal helpers | TaxaFlag | function | LLM expert review: 8 structured columns (habitat, geography, scope, contaminant, alternatives, lower_hypotheses, confidence, comment). Batched calls; graceful fallback. |
 | 2026-04-30 | *(Session 63 — dropped)* | `combine_flags()` | TaxaFlag | function | Users should weight flags themselves; dropped as low-value. |
 | 2026-04-30 | *(Session 63 — dropped)* | `flag_detections()` | TaxaFlag | function | Convenience wrapper dropped; workflow scripts are more transparent. |
-| 2026-05-01 | *(Session 64 — fix)* | `pdf_path` added to `pdf_structure` return | TaxaFetch | `screen_pdf_structure()` | Was missing; downstream `call_anthropic_api_pdf()` received NULL, failing validation. |
+| 2026-05-01 | *(Session 64 — fix)* | `pdf_path` added to `pdf_structure` return | TaxaFetch | `screen_pdf_structure()` | Was missing; downstream `call_api_pdf()` received NULL, failing validation. |
 | 2026-05-01 | *(Session 64 — fix)* | subprocess PDF rendering via `callr` | TaxaFetch | `.render_pdf_pages()` | Corrupt PDF pages segfault poppler/pdftools at C level; `callr::r()` isolates each page render so crashes skip the page instead of killing R. `callr` added to Suggests. |
 | 2026-05-01 | *(Session 64 — resolved)* | ReefCheck + Reef Life Survey | TaxaFetch | investigation | Both already in GBIF (RLS global reef fish, RCCA, Reef Check Taiwan); no separate fetch functions needed. |
 | 2026-05-01 | *(Session 64 — planned)* | Distributed report architecture | Ecosystem | design | Per-package `report_*()` functions + `report_params` attributes; citations captured at TaxaFetch/TaxaExpect level before aggregation. Planned for Session 65. |
@@ -472,7 +472,7 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-23 | *(Session 85 — enhancement)* | `.onAttach()` sets `TaxaID.llm_fn = call_api` | TaxaTools | `R/zzz.R` | Previously set `TaxaID.llm_fn` to the provider-specific function (e.g. `call_anthropic_api`). Now always sets it to `call_api`; provider selection is via `TaxaID.provider`. Startup "Change with:" message updated to show `options(TaxaID.provider = "gemini")` syntax. |
 | 2026-05-23 | *(Session 85 — rename)* | `type = "openai_compatible"` | `handler_family = "openai_compat"` | TaxaTools | `register_provider()` + `model_registry.R` | Field renamed for consistency with `inst/model_tiers.json`. Existing code that reads `prov_reg$type` now uses `prov_reg$handler_family`. |
 | 2026-05-23 | *(Session 85 — enhancement)* | `prompt_api()`, `draft_methods_text()`, `draft_results_text()` defaults | TaxaTools | function defaults | `llm_fn` default changed from `getOption("TaxaID.llm_fn", call_anthropic_api)` to `getOption("TaxaID.llm_fn", call_api)`. |
-| 2026-05-23 | *(Session 85 — TODO)* | `call_anthropic_api_pdf()` generic | TaxaFetch | planned | Multimodal/PDF call function; cannot be trivially unified with `call_api` (base64 encoding, multipart). Deferred. |
+| 2026-05-23 | *(Session 85 — TODO)* | `call_api_pdf()` generic | TaxaFetch | planned | Multimodal/PDF call function; cannot be trivially unified with `call_api` (base64 encoding, multipart). Deferred. |
 | 2026-05-23 | *(Session 85 — TODO)* | `llm_fn` defaults in downstream packages | TaxaFetch, TaxaHabitat, TaxaExpect, TaxaFlag, TaxaAssign | planned | Fallback in `getOption("TaxaID.llm_fn", call_anthropic_api)` should become `call_api`. Low urgency: the option is set to `call_api` by `.onAttach()` so the fallback is never reached in practice. Update when doing next sweep of each package. |
 | 2026-05-23 | *(Session 86 — review)* | WERC peer review integrated | Ecosystem | docs/metadata | `code.json`: CC0 license (was MIT), `repositoryURL`, `lastModified` corrected. DOI placeholder (`10.5066/xxxxxx`) remains pending USGS assignment. |
 | 2026-05-23 | *(Session 86 — delete)* | `ecosystem_docs/INTRO.md` | Ecosystem | doc deleted | Outdated (described 4 packages; had PLACEHOLDER sections). Covered by README. |
@@ -495,4 +495,4 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-21 | *(Session 82 — license)* | MIT / GPL → CC0 | All 9 packages | DESCRIPTION + LICENSE files | Per USGS policy. Per-package LICENSE stub files removed. TaxaExpect CC0 with glmmTMB GPL dependency note. |
 | 2026-05-21 | *(Session 82 — docs)* | README restructured to WERC template | Ecosystem | README.md | Headings match USGS WERC template; USGS green logo; install via `remotes::install_github()`; Software Requirements table with OS bit + Reference columns. |
 | 2026-05-26 | *(Session 87 — new param)* | `images` param | `call_api()` | TaxaTools | param | Named list of base64 PNG strings; formats as provider-native vision blocks (anthropic: image content blocks; gemini: inlineData parts; openai_compat: image_url blocks). NULL = text-only (default). |
-| 2026-05-26 | *(Session 87 — generalize)* | `call_anthropic_api_pdf()` | `call_anthropic_api_pdf()` | TaxaFetch | function | Replaces hardcoded Anthropic HTTP with `TaxaTools::call_api(images=)`. New params: `provider`, `tier`, `base_url`; `model`/`api_key` default NULL (resolved by `call_api()`). Works with any vision-capable provider: Anthropic, Gemini, OpenAI, Ollama llava. |
+| 2026-05-26 | *(Session 87 — rename + generalize)* | `call_anthropic_api_pdf()` | `call_api_pdf()` | TaxaFetch | function rename | Replaces hardcoded Anthropic HTTP with `TaxaTools::call_api(images=)`. New params: `provider`, `tier`, `base_url`; `model`/`api_key` default NULL (resolved by `call_api()`). Works with any vision-capable provider: Anthropic, Gemini, OpenAI, Ollama llava. |

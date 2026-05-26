@@ -59,7 +59,7 @@ Uses the five-axis classification in \code{pdf_structure} to configure an
 extraction prompt that instructs the LLM to produce a Darwin Core CSV table
 of occurrence records from the targeted PDF page images.
 
-The returned S3 object is passed directly to \code{call_anthropic_api_pdf()}.
+The returned S3 object is passed directly to \code{call_api_pdf()}.
 }
 \examples{
 \dontrun{

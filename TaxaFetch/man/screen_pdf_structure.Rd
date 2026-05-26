@@ -176,6 +176,6 @@ structure <- screen_pdf_structure(pdf_content, llm_fn = my_llm)
 \seealso{
 \code{\link{extract_pdf_text}},
 \code{\link{build_pdf_extract_prompt}},
-\code{\link{call_anthropic_api_pdf}},
+\code{\link{call_api_pdf}},
 \code{\link[TaxaTools]{call_anthropic_api}}
 }

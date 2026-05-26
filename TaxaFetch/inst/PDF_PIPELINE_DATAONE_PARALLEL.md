@@ -199,7 +199,7 @@ The parser receives the raw response string and the prompt object for validation
 - `$single_site_coords` — list with `lat`/`lon` if `single_site_rule = TRUE`, else `NULL`
 - `$abbreviation_inventory` — named vector for expansion post-parse
 
-The prompt object is passed to `call_anthropic_api_pdf()` (not
+The prompt object is passed to `call_api_pdf()` (not
 `prompt_anthropic_api()` — the PDF function handles image blocks).
 
 ### `llm_fn` parameter
@@ -243,7 +243,7 @@ Stage 2  — screen_pdf_structure() for each PDF     → pdf_structures list + c
 Stage 3  — [optional] build_pdf_screen_prompt() abstract screen  → screened list
 Stage 4  — Inspect structures; drop analytical_modelling, lab papers
 Stage 5  — build_pdf_extract_prompt() for each PDF → extract_prompts list
-Stage 6  — call_anthropic_api_pdf() for each PDF   → raw responses list + checkpoint
+Stage 6  — call_api_pdf() for each PDF   → raw responses list + checkpoint
 Stage 7  — parse_pdf_extract_response() for each   → pdf_occ (list of tibbles)
 Stage 8  — stack_occurrences(pdf_occ)              → all_pdf_occ
 Stage 9  — Merge with DataONE / GBIF via stack_occurrences() + rename_cols()

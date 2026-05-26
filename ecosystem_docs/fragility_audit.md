@@ -183,7 +183,7 @@ Cosmetic, unlikely edge cases, or minor usability improvements. Listed for compl
 - `combine_occurrence_sources()`: NA coordinates → `point_id = "NA_NA"` (TaxaFetch)
 - `screen_eml_columns()`: Hardcoded `pause_seconds` even when not needed (TaxaFetch)
 - `filter_gbif_quality()`: Decimal place cap at 10 (TaxaFetch)
-- `call_anthropic_api_pdf()`: Token estimates inaccurate if many PDF pages fail (TaxaFetch)
+- `call_api_pdf()`: Token estimates inaccurate if many PDF pages fail (TaxaFetch)
 - `read_biotime_study()`: Non-interactive mode error message unhelpful (TaxaFetch)
 
 ---

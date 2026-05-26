@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-26 (Session 87 — call_anthropic_api_pdf() generalized to all vision providers)
+# Last updated: 2026-05-26 (Session 87 — call_api_pdf() generalized to all vision providers)
 
 ---
 
@@ -49,7 +49,7 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `extract_pdf_text()` | Extract text by section; returns `$sections`, `$page_map`, `$has_headers`, `$n_pages`, `$pdf_path` | Complete | R/pdf_text.R |
-| `call_anthropic_api_pdf()` | Send selected PDF pages as images to Anthropic API (Anthropic-only) | Complete | R/pdf_api.R |
+| `call_api_pdf()` | Send selected PDF pages as images to Anthropic API (Anthropic-only) | Complete | R/pdf_api.R |
 | `screen_pdf_structure()` | Five-axis characterisation; `llm_fn` param | Complete | R/pdf_characterize.R |
 | `print.pdf_structure()` | S3 print method | Complete | R/pdf_characterize.R |
 | `build_pdf_extract_prompt()` | Configure extraction prompt; `dpi` param (default 150L); `chunk_pages` param | Complete | R/pdf_extract.R |
@@ -96,7 +96,7 @@ make_bbox_wkt() → get_keys_from_context() → fetch_gbif_occurrences() → fil
 ```
 search_literature() → build_taxon_screen_prompt(geo_scope=...) [optional]
   → download_literature_pdfs() → extract_pdf_text() → screen_pdf_structure()
-  → build_pdf_extract_prompt() → call_anthropic_api_pdf() → parse_pdf_extract_response()
+  → build_pdf_extract_prompt() → call_api_pdf() → parse_pdf_extract_response()
   → stack_occurrences()
 ```
 
@@ -125,7 +125,7 @@ my_fn <- function(p, ...) TaxaTools::call_gemini_api(p, model = "gemini-2.5-flas
 screen_pdf_structure(pdf_content, llm_fn = my_fn)
 ```
 
-`call_anthropic_api_pdf()` is Anthropic-only (vision API); provider-neutral image upload is future work.
+`call_api_pdf()` is Anthropic-only (vision API); provider-neutral image upload is future work.
 
 ---
 
@@ -149,7 +149,7 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 - HTTP 403 on publisher PDF downloads: manual download path in workflow
 - Section assignment imperfect for two-column layouts (cosmetic only)
 - `build_geo_prompt()` not usable on OpenAlex catalog (DataONE-specific columns)
-- `call_anthropic_api_pdf()` is Anthropic-only; provider-neutral image upload is future work
+- `call_api_pdf()` is Anthropic-only; provider-neutral image upload is future work
 
 ---
 
@@ -267,7 +267,7 @@ mechanism; `report_fetch()` extracts and formats it.
 
 **Sessions 83–85 (2026-05-21 to 2026-05-23)**
 - No TaxaFetch-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools),
-  WERC review integration. Deferred: `call_anthropic_api_pdf()` generic (multimodal/PDF
+  WERC review integration. Deferred: `call_api_pdf()` generic (multimodal/PDF
   call cannot be trivially unified with `call_api`; tracked as TODO in TaxaID/CLAUDE.md).
 
 **Session 86 (2026-05-23)**
@@ -276,7 +276,7 @@ mechanism; `report_fetch()` extracts and formats it.
 - `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
 
 **Session 87 (2026-05-26)**
-- `call_anthropic_api_pdf()` generalized to support any vision-capable LLM provider.
+- `call_api_pdf()` generalized to support any vision-capable LLM provider.
   Replaces hardcoded Anthropic HTTP block with `TaxaTools::call_api(images = page_images)`.
   New params: `provider`, `tier`, `base_url`; `model` and `api_key` now default NULL
   (resolved by `call_api()`). Clears TODO from Sessions 83-85.

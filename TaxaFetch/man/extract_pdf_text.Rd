@@ -66,7 +66,7 @@ pipeline, before committing to more expensive API image calls.
 \strong{Token management:} This function performs no API calls. It is
 designed to be called once per PDF; its output is passed to
 \code{screen_pdf_structure()}
-(Stage 2), and \code{call_anthropic_api_pdf()} (Stage 3) so the PDF is
+(Stage 2), and \code{call_api_pdf()} (Stage 3) so the PDF is
 parsed only once.
 
 \strong{No headers fallback:} If no section headers are detected the
@@ -110,6 +110,6 @@ pdf_content <- extract_pdf_text("my_paper.pdf", patterns = custom_patterns)
 }
 \seealso{
 \code{\link{screen_pdf_structure}},
-\code{\link{call_anthropic_api_pdf}},
+\code{\link{call_api_pdf}},
 \code{\link{build_pdf_extract_prompt}}
 }
