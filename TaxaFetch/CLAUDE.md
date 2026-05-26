@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — llm_fn fallback updated; license cleanup)
+# Last updated: 2026-05-26 (Session 87 — call_anthropic_api_pdf() generalized to all vision providers)
 
 ---
 
@@ -274,3 +274,12 @@ mechanism; `report_fetch()` extracts and formats it.
 - `screen_pdf_structure()`: `llm_fn` fallback updated from `call_anthropic_api` to
   `TaxaTools::call_api`. Clears TODO from Sessions 82/85.
 - `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
+
+**Session 87 (2026-05-26)**
+- `call_anthropic_api_pdf()` generalized to support any vision-capable LLM provider.
+  Replaces hardcoded Anthropic HTTP block with `TaxaTools::call_api(images = page_images)`.
+  New params: `provider`, `tier`, `base_url`; `model` and `api_key` now default NULL
+  (resolved by `call_api()`). Clears TODO from Sessions 83-85.
+  Providers: Anthropic (claude-sonnet-4-6), Gemini (2.5 Flash/Pro), OpenAI (GPT-4o),
+  Ollama vision models (llava-llama3). PDF rendering (.render_pdf_pages) unchanged.
+- `devtools::check()`: 0 errors, 0 warnings, 0 notes.

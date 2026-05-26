@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — no package changes; call_api() refactor in Sessions 83-85)
+# Last updated: 2026-05-26 (Session 87 — call_api() gains images param for vision/multimodal calls)
 
 ---
 
@@ -247,3 +247,11 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
 - No code changes. WERC peer review integration (ecosystem docs, code.json, renv removal).
 - `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
 - Disclaimer section removed from `README.md`. See TaxaID/CLAUDE.md for full log.
+
+**Session 87 (2026-05-26)**
+- `call_api()`: `images` param added (named list of base64 PNG strings, as produced by
+  `.render_pdf_pages()` in TaxaFetch). Each handler family formats images in its native
+  vision block format: anthropic → image content blocks (`type/source/base64`),
+  gemini → `inlineData` parts (`mimeType/data`), openai_compat → `image_url` blocks
+  (`data:image/png;base64,...`). Text-only calls (images = NULL) unchanged.
+- `devtools::check()`: 0 errors, 0 warnings, 0 notes.

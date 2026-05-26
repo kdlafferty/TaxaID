@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-23 (Session 86 -- WERC review; license cleanup; llm_fn defaults sweep)
+# Last updated: 2026-05-26 (Session 87 -- call_api() vision/images param; call_anthropic_api_pdf() generalized)
 
 ---
 
@@ -494,3 +494,5 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-21 | *(Session 82 — enhancement)* | `rank_system` default NULL | TaxaTools | `create_taxon_names()` param | Auto-detects rank columns via `detect_ranks()` when `rank_system` not supplied. Existing explicit usage unchanged. |
 | 2026-05-21 | *(Session 82 — license)* | MIT / GPL → CC0 | All 9 packages | DESCRIPTION + LICENSE files | Per USGS policy. Per-package LICENSE stub files removed. TaxaExpect CC0 with glmmTMB GPL dependency note. |
 | 2026-05-21 | *(Session 82 — docs)* | README restructured to WERC template | Ecosystem | README.md | Headings match USGS WERC template; USGS green logo; install via `remotes::install_github()`; Software Requirements table with OS bit + Reference columns. |
+| 2026-05-26 | *(Session 87 — new param)* | `images` param | `call_api()` | TaxaTools | param | Named list of base64 PNG strings; formats as provider-native vision blocks (anthropic: image content blocks; gemini: inlineData parts; openai_compat: image_url blocks). NULL = text-only (default). |
+| 2026-05-26 | *(Session 87 — generalize)* | `call_anthropic_api_pdf()` | `call_anthropic_api_pdf()` | TaxaFetch | function | Replaces hardcoded Anthropic HTTP with `TaxaTools::call_api(images=)`. New params: `provider`, `tier`, `base_url`; `model`/`api_key` default NULL (resolved by `call_api()`). Works with any vision-capable provider: Anthropic, Gemini, OpenAI, Ollama llava. |
