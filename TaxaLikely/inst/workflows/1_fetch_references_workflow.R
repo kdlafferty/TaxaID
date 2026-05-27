@@ -1,6 +1,12 @@
 # ==============================================================================
 # WORKFLOW 1: BUILD A REFERENCE SEQUENCE DATABASE
 # ==============================================================================
+# DATA TYPE SCOPE: DNA sequences only.
+#   For acoustic (bird sound) reference data, see Workflow 3b
+#   (3b_acoustic_reference_workflow.R) -- it fetches from Xeno-canto, not NCBI.
+#   For image (camera trap) reference data, see read_animl_output() once
+#   implemented.
+#
 # Purpose: Assemble a reference_df of DNA sequences + taxonomy for model
 #   building. This is the starting point for Workflows 2-4.
 #

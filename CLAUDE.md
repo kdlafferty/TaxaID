@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-26 (Session 88 -- build_sequence_matrix rename; build_acoustic_reference; empty BirdNET CSV fix; acoustic workflow 3b)
+# Last updated: 2026-05-27 (Session 89 -- data-type generalization audit + Session B implementation)
 
 ---
 
@@ -505,3 +505,11 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-21 | *(Session 82 — docs)* | README restructured to WERC template | Ecosystem | README.md | Headings match USGS WERC template; USGS green logo; install via `remotes::install_github()`; Software Requirements table with OS bit + Reference columns. |
 | 2026-05-26 | *(Session 87 — new param)* | `images` param | `call_api()` | TaxaTools | param | Named list of base64 PNG strings; formats as provider-native vision blocks (anthropic: image content blocks; gemini: inlineData parts; openai_compat: image_url blocks). NULL = text-only (default). |
 | 2026-05-26 | *(Session 87 — rename + generalize)* | `call_anthropic_api_pdf()` | `call_api_pdf()` | TaxaFetch | function rename | Replaces hardcoded Anthropic HTTP with `TaxaTools::call_api(images=)`. New params: `provider`, `tier`, `base_url`; `model`/`api_key` default NULL (resolved by `call_api()`). Works with any vision-capable provider: Anthropic, Gemini, OpenAI, Ollama llava. |
+| 2026-05-27 | *(Session 89 — new)* | `read_animl_output()` | TaxaMatch | function | Ingest Animl (MegaDetector + SpeciesNet) camera trap CSV into match object format. Configurable column names (`file_col`, `species_col`, `score_col`). Long format (default) or wide format (`n_candidates`). `observation_id` = image filename stem. `min_confidence` + `top_n` filters. 15 tests. |
+| 2026-05-27 | *(Session 89 — new)* | `audit_acoustic_coverage()` | TaxaLikely | function | Acoustic analog of `audit_barcode_coverage()`. Simple set-membership check: which plausible species are absent from classifier's known species list (BirdNET list or custom model)? No NCBI API calls. `match_df` param annotates in_match_data. Returns `list(census, unreferenced)`. 10 tests. |
+| 2026-05-27 | *(Session 89 — new params)* | `data_type` + `reference_species` params | TaxaAssign | `suggest_unreferenced_species()` | `data_type = "eDNA"` (default) / `"acoustic"` / `"image"`. eDNA path: NCBI nucleotide count queries (existing). Acoustic/image path: set-membership check against `reference_species`. LLM prompt `ref_filter_note` switches accordingly. |
+| 2026-05-27 | *(Session 89 — new param)* | `data_type` param | TaxaFlag | `review_assignments()` | `data_type = "eDNA"` (default) / `"acoustic"` / `"image"`. LLM contaminant guidance switches: eDNA (common lab contaminants), acoustic (human vocalizations + handler noise), image (handler during setup). |
+| 2026-05-27 | *(Session 89 — docs)* | `@section Scope:` notes added | TaxaLikely | `flag_reference_errors()`, `remove_flagged_references()`, `audit_reference_coverage()` | Clarify DNA-only scope; point to Xeno-canto quality-grade filter for acoustic; TBD for image. |
+| 2026-05-27 | *(Session 89 — docs)* | Workflow scope headers added | TaxaLikely | `1_fetch_references_workflow.R`, `2_flag_errors_workflow.R` | DNA-only scope notices pointing to Workflow 3b for acoustic. |
+| 2026-05-27 | *(Session 89 — enhancement)* | Family-rank extension section | TaxaLikely | `3b_acoustic_reference_workflow.R` | Optional section: verify_taxon_names() → extract family → retrain with rank_system = c("family","genus","species"). |
+| 2026-05-27 | *(Session 89 — enhancement)* | TaxaWizard prompt updates | TaxaWizard | `phase_classify.md`, `phase_parameterize.md` | `phase_classify`: match_df input type now mentions BirdNET + image classifiers. `phase_parameterize`: `barcode_term` marked DNA-only; new `rank_system` guidance for acoustic/image. |

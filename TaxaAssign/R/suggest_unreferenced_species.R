@@ -39,7 +39,7 @@
 
 #' Build a plausible-species prompt for one batch of genera
 #' @noRd
-.build_plausible_prompt <- function(genera, ctx) {
+.build_plausible_prompt <- function(genera, ctx, data_type = "eDNA") {
   ctx_fields   <- c("ecoregion", "lat", "lon", "date", "habitat")
   header_parts <- character(0L)
   for (fld in ctx_fields) {
@@ -78,6 +78,25 @@
     )
   }
 
+  ref_filter_note <- switch(data_type,
+    eDNA     = paste0(
+      "A separate NCBI sequence-availability check will filter species that have no\n",
+      "barcode sequences -- do not pre-filter based on sequence availability.\n\n"
+    ),
+    acoustic = paste0(
+      "A reference species list check will filter species absent from the acoustic\n",
+      "reference model training set -- do not pre-filter based on detection ability.\n\n"
+    ),
+    image    = paste0(
+      "A reference species list check will filter species absent from the image\n",
+      "classifier training set -- do not pre-filter based on visual detectability.\n\n"
+    ),
+    paste0(
+      "A reference species list check will filter species absent from the reference\n",
+      "model -- do not pre-filter in advance.\n\n"
+    )
+  )
+
   paste0(
     "OUTPUT REQUIREMENT: Your ENTIRE response must be ONE valid JSON array.\n",
     "Do not include any text before or after the JSON array.\n",
@@ -92,8 +111,7 @@
     "EXCLUDE a species ONLY if it is biogeographically impossible at this location\n",
     "  (e.g., wrong continent, wrong realm, freshwater genus at marine site).\n\n",
     "IMPORTANT: Include ALL plausible species, even if rare or seldom recorded.\n",
-    "A separate NCBI sequence-availability check will filter species that have no\n",
-    "barcode sequences -- do not pre-filter based on sequence availability.\n\n",
+    ref_filter_note,
     "Use full binomial names (\"Fundulus parvipinnis\", not \"F. parvipinnis\").\n",
     "Use an empty array [] for a genus with no plausible local species.\n\n",
     "Required output format:\n",
@@ -165,7 +183,7 @@
 
 #' Build a plausible-species prompt for one family (excluding known genera)
 #' @noRd
-.build_family_prompt <- function(family, exclude_genera, ctx) {
+.build_family_prompt <- function(family, exclude_genera, ctx, data_type = "eDNA") {
   ctx_fields   <- c("ecoregion", "lat", "lon", "date", "habitat")
   header_parts <- character(0L)
   for (fld in ctx_fields) {
@@ -182,6 +200,13 @@
     paste0("Context:\n", paste0("  ", header_parts, collapse = "\n"), "\n\n")
   else
     ""
+
+  ref_filter_note <- switch(data_type,
+    eDNA     = "A separate NCBI sequence check will filter species lacking barcode sequences.\nDo not pre-filter based on sequence availability.\n\n",
+    acoustic = "A reference species list check will filter species absent from the acoustic reference model.\nDo not pre-filter based on detection ability.\n\n",
+    image    = "A reference species list check will filter species absent from the image classifier training set.\nDo not pre-filter based on visual detectability.\n\n",
+    "A reference species list check will filter species absent from the reference model.\nDo not pre-filter in advance.\n\n"
+  )
 
   paste0(
     "OUTPUT REQUIREMENT: Your ENTIRE response must be ONE valid JSON array.\n",
@@ -202,8 +227,7 @@
     "  \"uncertain\"            -- insufficient information to assess range\n\n",
     "ALSO EXCLUDE:\n",
     "  - any species from the genera listed above\n\n",
-    "A separate NCBI sequence check will filter species lacking barcode sequences.\n",
-    "Do not pre-filter based on sequence availability.\n\n",
+    ref_filter_note,
     "Use full binomial names (\"Lucania parva\", not \"L. parva\").\n",
     "Return an empty array [] if no other genera in this family are plausible here.\n\n",
     "Required output format:\n",
@@ -381,7 +405,9 @@ print.unreferenced_species_result <- function(x, ...) {
 #' A fast, LLM-first alternative to [TaxaLikely::audit_barcode_coverage()] for
 #' unreferenced species detection.  An **unreferenced species** is a described taxon
 #' that shares a genus (or family, with `expand_to_family = TRUE`) with a scored
-#' reference match candidate but has **no barcode sequence** for the target marker in NCBI.
+#' reference match candidate but is absent from the reference dataset.  The
+#' definition of "absent" depends on `data_type`: no NCBI barcode sequence (eDNA),
+#' or not in the model's training species list (acoustic / image).
 #'
 #' ## Algorithm
 #' \enumerate{
@@ -453,6 +479,19 @@ print.unreferenced_species_result <- function(x, ...) {
 #' @param ncbi_api_key Optional NCBI API key.  Raises rate limit from 3 to 10
 #'   requests per second.  Can also be set via the `ENTREZ_KEY` environment
 #'   variable.
+#' @param data_type Character. One of `"eDNA"` (default), `"acoustic"`, or
+#'   `"image"`. Controls how "unreferenced" is defined: \cr
+#'   - `"eDNA"`: unreferenced = no NCBI barcode sequence for the target marker.
+#'     Uses NCBI nucleotide count queries. \cr
+#'   - `"acoustic"`: unreferenced = absent from the acoustic model training set
+#'     (e.g., not in BirdNET's species list). Requires `reference_species`. \cr
+#'   - `"image"`: unreferenced = absent from the image classifier training set.
+#'     Requires `reference_species`.
+#' @param reference_species Character vector or NULL. Required when
+#'   `data_type` is `"acoustic"` or `"image"`. The known-species list for the
+#'   acoustic or image model (e.g., the BirdNET species list). Species absent
+#'   from this vector are classified as unreferenced. Ignored when
+#'   `data_type = "eDNA"`. Default NULL.
 #' @param verbose Logical.  If `TRUE`, prints each prompt and raw LLM response.
 #'   Default `FALSE`.
 #'
@@ -502,17 +541,19 @@ print.unreferenced_species_result <- function(x, ...) {
 #' result <- assign_taxa_llm(match_df, context = ctx, unreferenced_taxa = unref_names)
 #' }
 suggest_unreferenced_species <- function(match_df,
-                                      context          = NULL,
-                                      barcode_term     = "COI",
-                                      llm_fn           = NULL,
-                                      expand_to_family = FALSE,
-                                      max_date         = NULL,
-                                      min_len          = NULL,
-                                      max_len          = NULL,
-                                      taxa_per_call    = 30L,
-                                      pause_seconds    = 1,
-                                      ncbi_api_key     = NULL,
-                                      verbose          = FALSE) {
+                                      context           = NULL,
+                                      barcode_term      = "COI",
+                                      llm_fn            = NULL,
+                                      data_type         = "eDNA",
+                                      reference_species = NULL,
+                                      expand_to_family  = FALSE,
+                                      max_date          = NULL,
+                                      min_len           = NULL,
+                                      max_len           = NULL,
+                                      taxa_per_call     = 30L,
+                                      pause_seconds     = 1,
+                                      ncbi_api_key      = NULL,
+                                      verbose           = FALSE) {
 
   # ---- Resolve llm_fn default --------------------------------------------------
   llm_fn <- .resolve_llm_fn(llm_fn, "suggest_unreferenced_species")
@@ -522,21 +563,38 @@ suggest_unreferenced_species <- function(match_df,
     cli::cli_abort("{.arg match_df} must be a data frame.")
   if (!"taxon_name" %in% names(match_df))
     cli::cli_abort("{.arg match_df} must have a {.field taxon_name} column.")
-  if (!is.character(barcode_term) || length(barcode_term) == 0L ||
-      any(is.na(barcode_term)) || any(!nzchar(trimws(barcode_term))))
-    cli::cli_abort(
-      "{.arg barcode_term} must be a non-empty character vector with no NA values."
-    )
-  if (!is.null(max_date)) {
-    if (!is.character(max_date) || length(max_date) != 1L || is.na(max_date))
-      cli::cli_abort("{.arg max_date} must be a single character string or NULL.")
-    if (!grepl("^\\d{4}(/\\d{2}(/\\d{2})?)?$", trimws(max_date)))
-      cli::cli_abort(
-        "{.arg max_date} must be in YYYY, YYYY/MM, or YYYY/MM/DD format."
-      )
-  }
   if (!is.function(llm_fn))
     cli::cli_abort("{.arg llm_fn} must be a function.")
+
+  valid_types <- c("eDNA", "acoustic", "image")
+  if (!is.character(data_type) || length(data_type) != 1L ||
+      !data_type %in% valid_types)
+    cli::cli_abort(
+      "{.arg data_type} must be one of {.val {valid_types}}. Got: {.val {data_type}}"
+    )
+  if (data_type != "eDNA" && !is.null(reference_species) &&
+      !is.character(reference_species))
+    cli::cli_abort("{.arg reference_species} must be a character vector or NULL.")
+
+  if (data_type == "eDNA") {
+    if (!is.character(barcode_term) || length(barcode_term) == 0L ||
+        any(is.na(barcode_term)) || any(!nzchar(trimws(barcode_term))))
+      cli::cli_abort(
+        "{.arg barcode_term} must be a non-empty character vector with no NA values."
+      )
+  }
+
+  if (data_type == "eDNA") {
+    if (!is.null(max_date)) {
+      if (!is.character(max_date) || length(max_date) != 1L || is.na(max_date))
+        cli::cli_abort("{.arg max_date} must be a single character string or NULL.")
+      if (!grepl("^\\d{4}(/\\d{2}(/\\d{2})?)?$", trimws(max_date)))
+        cli::cli_abort(
+          "{.arg max_date} must be in YYYY, YYYY/MM, or YYYY/MM/DD format."
+        )
+    }
+  }
+
   if (!is.logical(expand_to_family) || length(expand_to_family) != 1L ||
       is.na(expand_to_family))
     cli::cli_abort("{.arg expand_to_family} must be TRUE or FALSE.")
@@ -549,11 +607,13 @@ suggest_unreferenced_species <- function(match_df,
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose))
     cli::cli_abort("{.arg verbose} must be TRUE or FALSE.")
 
-  if (!requireNamespace("rentrez", quietly = TRUE))
-    cli::cli_abort(
-      "Package {.pkg rentrez} is required. \\
-      Install with: {.code install.packages('rentrez')}"
-    )
+  if (data_type == "eDNA") {
+    if (!requireNamespace("rentrez", quietly = TRUE))
+      cli::cli_abort(
+        "Package {.pkg rentrez} is required. \\
+        Install with: {.code install.packages('rentrez')}"
+      )
+  }
 
   # ---- Extract genera and build skip-list ------------------------------------
   if ("genus" %in% names(match_df)) {
@@ -616,7 +676,7 @@ suggest_unreferenced_species <- function(match_df,
     else
       "all"
 
-    prompt <- .build_plausible_prompt(batch_genera, ctx)
+    prompt <- .build_plausible_prompt(batch_genera, ctx, data_type)
 
     if (verbose) {
       cli::cli_inform(
@@ -661,80 +721,95 @@ suggest_unreferenced_species <- function(match_df,
   # ---- Step 3: Remove skip-list ----------------------------------------------
   candidates <- all_plausible_flat[!all_plausible_flat %in% skip_list]
 
-  # ---- Step 4: NCBI setup (shared by genus and family loops) -----------------
-  # Determine whether any NCBI queries are needed before setting up
+  # ---- Step 4: Reference-check setup (shared by genus and family loops) ------
   empty_genera_for_family <- if (isTRUE(expand_to_family))
     genera[vapply(all_plausible_list, length, integer(1L)) == 0L]
   else
     character(0L)
 
-  needs_ncbi <- length(candidates) > 0L || length(empty_genera_for_family) > 0L
-
-  if (needs_ncbi) {
-    if (!is.null(ncbi_api_key))
-      rentrez::set_entrez_key(ncbi_api_key)
-
-    len_range <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
-
-    barcode_clause <- if (length(barcode_term) == 1L) {
-      sprintf("%s[All Fields]", barcode_term)
-    } else {
-      sprintf("(%s)",
-              paste(sprintf("%s[All Fields]", barcode_term), collapse = " OR "))
+  if (data_type == "eDNA") {
+    needs_ncbi <- length(candidates) > 0L || length(empty_genera_for_family) > 0L
+    if (needs_ncbi) {
+      if (!is.null(ncbi_api_key))
+        rentrez::set_entrez_key(ncbi_api_key)
+      len_range <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
+      barcode_clause <- if (length(barcode_term) == 1L) {
+        sprintf("%s[All Fields]", barcode_term)
+      } else {
+        sprintf("(%s)",
+                paste(sprintf("%s[All Fields]", barcode_term), collapse = " OR "))
+      }
+      date_clause <- if (!is.null(max_date)) {
+        sprintf(" AND (1985[PDAT] : %s[PDAT])", trimws(max_date))
+      } else ""
     }
-
-    date_clause <- if (!is.null(max_date)) {
-      sprintf(" AND (1985[PDAT] : %s[PDAT])", trimws(max_date))
-    } else ""
+  } else {
+    # acoustic / image: reference check is a simple set membership test
+    ref_set <- if (!is.null(reference_species)) unique(reference_species) else character(0L)
   }
 
-  # ---- Step 5: Genus-level NCBI barcode count --------------------------------
+  # ---- Step 5: Reference check (genus-level) ---------------------------------
   unref_vec    <- character(0L)
   has_seqs_vec <- character(0L)
   n_failed     <- 0L
 
-  if (length(candidates) > 0L) {
-    n_cands  <- length(candidates)
-    term_str <- paste(barcode_term, collapse = "/")
-
-    cli::cli_inform(
-      "Checking NCBI barcode counts for {n_cands} plausible species \\
-      (barcode: '{term_str}', {len_range[1]}-{len_range[2]} bp)..."
-    )
-
-    pb_ncbi <- cli::cli_progress_bar(
-      total  = n_cands,
-      format = "  {cli::pb_bar} {cli::pb_current}/{cli::pb_total} NCBI queries"
-    )
-
-    for (k in seq_len(n_cands)) {
-      sp    <- candidates[k]
-      count <- .count_barcode_seqs(sp, barcode_clause, len_range, date_clause)
-
-      if (is.na(count)) {
-        n_failed  <- n_failed + 1L
-        unref_vec <- c(unref_vec, sp)
-      } else if (count == 0L) {
-        unref_vec <- c(unref_vec, sp)
-      } else {
-        has_seqs_vec <- c(has_seqs_vec, sp)
-      }
-
-      cli::cli_progress_update(id = pb_ncbi)
-      if (k %% 3L == 0L) Sys.sleep(0.35)
-    }
-
-    cli::cli_progress_done(id = pb_ncbi)
-
-    if (n_failed > 0L)
-      cli::cli_warn(
-        "{n_failed} NCBI barcode {?query/queries} failed after 3 attempts \\
-        (treated conservatively as unreferenced{?/})."
+  if (data_type == "eDNA") {
+    if (length(candidates) > 0L) {
+      n_cands  <- length(candidates)
+      term_str <- paste(barcode_term, collapse = "/")
+      cli::cli_inform(
+        "Checking NCBI barcode counts for {n_cands} plausible species \\
+        (barcode: '{term_str}', {len_range[1]}-{len_range[2]} bp)..."
       )
-  } else if (!isTRUE(expand_to_family)) {
-    cli::cli_inform(
-      "All LLM-suggested species are already in the reference. No genus-level unreferenced species."
-    )
+      pb_ncbi <- cli::cli_progress_bar(
+        total  = n_cands,
+        format = "  {cli::pb_bar} {cli::pb_current}/{cli::pb_total} NCBI queries"
+      )
+      for (k in seq_len(n_cands)) {
+        sp    <- candidates[k]
+        count <- .count_barcode_seqs(sp, barcode_clause, len_range, date_clause)
+        if (is.na(count)) {
+          n_failed  <- n_failed + 1L
+          unref_vec <- c(unref_vec, sp)
+        } else if (count == 0L) {
+          unref_vec <- c(unref_vec, sp)
+        } else {
+          has_seqs_vec <- c(has_seqs_vec, sp)
+        }
+        cli::cli_progress_update(id = pb_ncbi)
+        if (k %% 3L == 0L) Sys.sleep(0.35)
+      }
+      cli::cli_progress_done(id = pb_ncbi)
+      if (n_failed > 0L)
+        cli::cli_warn(
+          "{n_failed} NCBI barcode {?query/queries} failed after 3 attempts \\
+          (treated conservatively as unreferenced{?/})."
+        )
+    } else if (!isTRUE(expand_to_family)) {
+      cli::cli_inform(
+        "All LLM-suggested species are already in the reference. No genus-level unreferenced species."
+      )
+    }
+  } else {
+    # acoustic / image: reference check via set membership
+    if (length(candidates) > 0L) {
+      type_label <- switch(data_type, acoustic = "acoustic model", image = "image classifier", "reference model")
+      cli::cli_inform(
+        "Checking {length(candidates)} plausible species against {type_label} training set \\
+        ({length(ref_set)} known species)..."
+      )
+      for (sp in candidates) {
+        if (sp %in% ref_set) {
+          has_seqs_vec <- c(has_seqs_vec, sp)
+        } else {
+          unref_vec <- c(unref_vec, sp)
+        }
+      }
+    } else if (!isTRUE(expand_to_family)) {
+      cli::cli_inform(
+        "All LLM-suggested species are already in the detection data. No genus-level unreferenced species."
+      )
+    }
   }
 
   # ---- Step 6: Build genus census --------------------------------------------
@@ -795,7 +870,7 @@ suggest_unreferenced_species <- function(match_df,
                            !is.na(match_df$genus)]
         )
 
-        prompt_fam <- .build_family_prompt(fam, exclude_genera, ctx)
+        prompt_fam <- .build_family_prompt(fam, exclude_genera, ctx, data_type)
 
         if (verbose) {
           cli::cli_inform(
@@ -833,29 +908,35 @@ suggest_unreferenced_species <- function(match_df,
           cli::cli_inform(
             "  Family {.val {fam}}: checking {n_fam_cands} candidate(s)..."
           )
-          n_fam_failed <- 0L
-
-          for (k in seq_len(n_fam_cands)) {
-            sp    <- fam_candidates[k]
-            count <- .count_barcode_seqs(sp, barcode_clause, len_range, date_clause)
-
-            if (is.na(count)) {
-              n_fam_failed         <- n_fam_failed + 1L
-              all_fam_unref_vec    <- c(all_fam_unref_vec, sp)
-            } else if (count == 0L) {
-              all_fam_unref_vec    <- c(all_fam_unref_vec, sp)
-            } else {
-              all_fam_has_seqs_vec <- c(all_fam_has_seqs_vec, sp)
+          if (data_type == "eDNA") {
+            n_fam_failed <- 0L
+            for (k in seq_len(n_fam_cands)) {
+              sp    <- fam_candidates[k]
+              count <- .count_barcode_seqs(sp, barcode_clause, len_range, date_clause)
+              if (is.na(count)) {
+                n_fam_failed         <- n_fam_failed + 1L
+                all_fam_unref_vec    <- c(all_fam_unref_vec, sp)
+              } else if (count == 0L) {
+                all_fam_unref_vec    <- c(all_fam_unref_vec, sp)
+              } else {
+                all_fam_has_seqs_vec <- c(all_fam_has_seqs_vec, sp)
+              }
+              if (k %% 3L == 0L) Sys.sleep(0.35)
             }
-
-            if (k %% 3L == 0L) Sys.sleep(0.35)
+            if (n_fam_failed > 0L)
+              cli::cli_warn(
+                "{n_fam_failed} NCBI {?query/queries} failed for family \\
+                {.val {fam}} (treated as unreferenced{?/})."
+              )
+          } else {
+            for (sp in fam_candidates) {
+              if (sp %in% ref_set) {
+                all_fam_has_seqs_vec <- c(all_fam_has_seqs_vec, sp)
+              } else {
+                all_fam_unref_vec <- c(all_fam_unref_vec, sp)
+              }
+            }
           }
-
-          if (n_fam_failed > 0L)
-            cli::cli_warn(
-              "{n_fam_failed} NCBI {?query/queries} failed for family \\
-              {.val {fam}} (treated as unreferenced{?/})."
-            )
         }
 
         cli::cli_progress_update(id = pb_fam)
@@ -906,10 +987,16 @@ suggest_unreferenced_species <- function(match_df,
     sum(family_census_df$unreferenced_count, na.rm = TRUE)
   else 0L
 
+  in_ref_label <- switch(data_type,
+    eDNA     = "with barcode sequences but absent from user reference",
+    acoustic = "in acoustic model but not yet detected",
+    image    = "in image classifier but not yet detected",
+    "in reference model but not yet detected"
+  )
   cli::cli_inform(
     "Total unreferenced species: {length(unref_vec)} \\
     ({n_genus_unref} congener, {n_fam_unref} family-level; \\
-    {n_seqgap} with barcode sequences but absent from reference)."
+    {n_seqgap} {in_ref_label})."
   )
 
   .new_unreferenced_species_result(unref_vec, all_plausible_flat, census_df,

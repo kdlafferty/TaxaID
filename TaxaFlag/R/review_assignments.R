@@ -28,6 +28,12 @@
 #' @param marker Character or \code{NULL}. Molecular marker or detection
 #'   method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
 #'   Provides contaminant context. Default \code{NULL}.
+#' @param data_type Character. Detection method. One of \code{"eDNA"} (default),
+#'   \code{"acoustic"}, or \code{"image"}. Controls the contaminant assessment
+#'   guidance in the LLM prompt: \cr
+#'   - \code{"eDNA"}: highlights PCR/lab contaminants (Homo sapiens, Bos taurus, etc.) \cr
+#'   - \code{"acoustic"}: highlights false positives from handler noise and domestic animals \cr
+#'   - \code{"image"}: highlights handler presence during camera setup/teardown events
 #' @param llm_fn Function. LLM provider function with signature
 #'   \code{function(prompt_str, ...)}. Default
 #'   \code{TaxaTools::call_anthropic_api}.
@@ -84,6 +90,7 @@ review_assignments <- function(df,
                                context,
                                target_group   = NULL,
                                marker         = NULL,
+                               data_type      = "eDNA",
                                llm_fn         = getOption("TaxaID.llm_fn", TaxaTools::call_api),
                                taxa_per_call  = 15L,
                                pause_seconds  = 1,
@@ -100,6 +107,12 @@ review_assignments <- function(df,
 
   if (missing(context) || is.null(context))
     stop("'context' is required. Supply a named list or build_context() output.",
+         call. = FALSE)
+
+  valid_types <- c("eDNA", "acoustic", "image")
+  if (!is.character(data_type) || length(data_type) != 1L ||
+      !data_type %in% valid_types)
+    stop(sprintf("'data_type' must be one of: %s", paste(valid_types, collapse = ", ")),
          call. = FALSE)
 
   # --- Normalise context ---
@@ -148,7 +161,7 @@ review_assignments <- function(df,
       message(sprintf("  Calling LLM (batch %d/%d, %d taxa)...",
                       b, n_batches, nrow(taxa_batch)))
 
-    prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker)
+    prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker, data_type)
 
     raw <- tryCatch(
       llm_fn(prompt),
@@ -245,7 +258,7 @@ review_assignments <- function(df,
 #' @param marker Character or NULL.
 #' @return Character string (the prompt).
 #' @noRd
-.build_review_prompt <- function(taxa_batch, ctx, target_group, marker) {
+.build_review_prompt <- function(taxa_batch, ctx, target_group, marker, data_type = "eDNA") {
 
   # --- Context block ---
   context_lines <- character(0)
@@ -298,42 +311,67 @@ review_assignments <- function(df,
     '  "review_lower_hypotheses": null (no rank information provided),'
   }
 
+  # --- Data-type-specific contaminant guidance ---
+  contaminant_guideline <- switch(data_type,
+    eDNA     = paste0(
+      "For contaminant assessment, consider: Homo sapiens and domestic animals are common ",
+      "contaminants in molecular studies. Common lab contaminants include Bos taurus, ",
+      "Sus scrofa, Gallus gallus, and other food-source species."
+    ),
+    acoustic = paste0(
+      "For contaminant assessment, consider: human vocalizations and handler noise near ",
+      "recording equipment are common false positives. Domestic animals (dogs, livestock) ",
+      "and vehicles can produce false species matches."
+    ),
+    image    = paste0(
+      "For contaminant assessment, consider: handler presence during camera setup/teardown ",
+      "events and domestic animals are common false positives in camera trap data."
+    ),
+    paste0(
+      "For contaminant assessment, consider taxon-specific false positive sources ",
+      "appropriate for the detection method used."
+    )
+  )
+
+  example_comment <- switch(data_type,
+    eDNA     = "Common lab contaminant in eDNA studies",
+    acoustic = "Human vocalization detected near recording equipment",
+    image    = "Handler detected during camera setup event",
+    "Common false positive for this detection method"
+  )
+
   # --- Build full prompt ---
-  prompt <- sprintf(
-    'You are an expert wildlife biologist, biogeographer, and taxonomist.
-
-STUDY CONTEXT:
-%s
-
-TASK: Review each taxon below and assess whether it is a plausible detection given the study context. Return your assessment as a valid JSON array with one object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation before or after.
-
-Each object must have these fields:
-  "taxon_name": the exact taxon name as provided,
-  "review_habitat": one of "expected", "occasional", "unlikely" (does this taxon live in this habitat type?),
-  "review_geography": one of "expected", "occasional", "unlikely" (is this taxon found in this geographic region?),
-%s
-  "review_contaminant": one of "unlikely", "possible", "likely" (is this a common lab or field contaminant, or a human-associated taxon that commonly appears as contamination?),
-  "review_alternatives": comma-separated string of plausible alternative taxa at the same rank that better fit the geography and habitat, or null if the taxon is plausible,
-%s
-  "review_confidence": one of "high", "moderate", "low" (your overall confidence in these assessments),
-  "review_comment": a brief free-text note with any additional context, or null
-
-GUIDELINES:
-- "review_alternatives" means "you might have the wrong taxon" -- suggest relatives that better fit the context. Most useful when habitat or geography is "unlikely".
-- "review_lower_hypotheses" means "you have the right group but could narrow it down" -- suggest species expected at this location when the consensus is at genus or family level.
-- For contaminant assessment, consider: Homo sapiens and domestic animals are common contaminants in molecular studies. Common lab contaminants include Bos taurus, Sus scrofa, Gallus gallus, and other food-source species.
-- Be conservative with "unlikely" -- only use it when you are reasonably confident the taxon does not belong.
-- If you are uncertain, use "occasional" or "moderate" rather than making a strong claim.
-
-EXAMPLE OUTPUT FORMAT:
-[
-  {"taxon_name": "Gobiidae", "review_habitat": "expected", "review_geography": "expected", "review_scope": "in_scope", "review_contaminant": "unlikely", "review_alternatives": null, "review_lower_hypotheses": "Clevelandia ios, Gillichthys mirabilis", "review_confidence": "high", "review_comment": null},
-  {"taxon_name": "Homo sapiens", "review_habitat": "unlikely", "review_geography": "expected", "review_scope": "out_of_scope", "review_contaminant": "likely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"}
-]
-
-TAXA TO REVIEW:
-%s',
-    context_block, scope_instruction, lower_instruction, taxa_block
+  prompt <- paste0(
+    'You are an expert wildlife biologist, biogeographer, and taxonomist.\n\n',
+    'STUDY CONTEXT:\n',
+    context_block, '\n\n',
+    'TASK: Review each taxon below and assess whether it is a plausible detection ',
+    'given the study context. Return your assessment as a valid JSON array with one ',
+    'object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation ',
+    'before or after.\n\n',
+    'Each object must have these fields:\n',
+    '  "taxon_name": the exact taxon name as provided,\n',
+    '  "review_habitat": one of "expected", "occasional", "unlikely" (does this taxon live in this habitat type?),\n',
+    '  "review_geography": one of "expected", "occasional", "unlikely" (is this taxon found in this geographic region?),\n',
+    scope_instruction, '\n',
+    '  "review_contaminant": one of "unlikely", "possible", "likely" (is this a common lab or field contaminant, or a human-associated taxon that commonly appears as contamination?),\n',
+    '  "review_alternatives": comma-separated string of plausible alternative taxa at the same rank that better fit the geography and habitat, or null if the taxon is plausible,\n',
+    lower_instruction, '\n',
+    '  "review_confidence": one of "high", "moderate", "low" (your overall confidence in these assessments),\n',
+    '  "review_comment": a brief free-text note with any additional context, or null\n\n',
+    'GUIDELINES:\n',
+    '- "review_alternatives" means "you might have the wrong taxon" -- suggest relatives that better fit the context. Most useful when habitat or geography is "unlikely".\n',
+    '- "review_lower_hypotheses" means "you have the right group but could narrow it down" -- suggest species expected at this location when the consensus is at genus or family level.\n',
+    '- ', contaminant_guideline, '\n',
+    '- Be conservative with "unlikely" -- only use it when you are reasonably confident the taxon does not belong.\n',
+    '- If you are uncertain, use "occasional" or "moderate" rather than making a strong claim.\n\n',
+    'EXAMPLE OUTPUT FORMAT:\n',
+    '[\n',
+    '  {"taxon_name": "Gobiidae", "review_habitat": "expected", "review_geography": "expected", "review_scope": "in_scope", "review_contaminant": "unlikely", "review_alternatives": null, "review_lower_hypotheses": "Clevelandia ios, Gillichthys mirabilis", "review_confidence": "high", "review_comment": null},\n',
+    '  {"taxon_name": "Homo sapiens", "review_habitat": "unlikely", "review_geography": "expected", "review_scope": "out_of_scope", "review_contaminant": "likely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "', example_comment, '"}\n',
+    ']\n\n',
+    'TAXA TO REVIEW:\n',
+    taxa_block
   )
 
   prompt

@@ -31,7 +31,7 @@ bioinformatics pipeline.
 |------------------------|------------------------|------------------------|
 | **DNA sequences** | DADA2 seqtab, FASTA, DNAStringSet | `read_sequence_table()` |
 | **BLAST results** | Remote NCBI or local rBLAST | `blast_sequences()` |
-| **Images** | Animl CSV export | Planned |
+| **Images** | Animl CSV export | `read_animl_output()` |
 | **Acoustics** | BirdNET-Analyzer CSV | `read_birdnet_output()` |
 
 ## Installation
@@ -79,6 +79,9 @@ match_df <- filter_redundant_hypotheses(match_df)
 -   `read_birdnet_output()` -- ingest BirdNET-Analyzer CSV files;
     `observation_id` encodes recording + time window
     (`"{stem}_{start_s}-{end_s}"`); `score` is BirdNET confidence (0--1)
+-   `read_animl_output()` -- ingest Animl (MegaDetector + SpeciesNet)
+    camera trap CSV; `observation_id` = image filename stem; configurable
+    column names; supports long and wide (`n_candidates`) formats
 -   `standardize_match_data()` -- canonical column names, taxonomy
     derivation via `TaxaTools::create_taxon_names()`
 -   `filter_redundant_hypotheses()` -- drop coarser-rank rows superseded
@@ -149,6 +152,52 @@ Xeno-canto with `TaxaLikely::fetch_reference_recordings()`, run
 BirdNET-Analyzer on the downloaded audio, then join detections back to
 the known species via `source_file` to label H1/H2/H3 training
 examples.
+
+## Camera Trap Image Workflow
+
+Animl (MegaDetector + SpeciesNet) is an R package on CRAN that
+classifies camera trap images. Install it with
+`install.packages("animl")` (requires Python ≥ 3.12 via `reticulate`).
+
+**Read Animl results into match object format:**
+
+``` r
+library(TaxaMatch)
+
+# Long-format Animl CSV (one row per image x candidate species)
+match_df <- read_animl_output(
+  "animl_results/",        # directory of Animl export CSVs
+  min_confidence = 0.5     # drop low-confidence detections
+) |>
+  # Remove non-wildlife detections before standardizing
+  subset(!species %in% c("empty", "human", "vehicle"))
+
+# Wide-format output (pred1/score1, pred2/score2, pred3/score3 per row)
+match_df_wide <- read_animl_output(
+  "animl_results/wide.csv",
+  species_col  = "pred",
+  score_col    = "score",
+  n_candidates = 3L
+)
+
+# Standardize and pass to TaxaLikely
+match_df <- standardize_match_data(match_df,
+                                   observation_id_col = "observation_id",
+                                   score_col          = "score")
+```
+
+**Expected Animl output format (long):** one or more CSV files with
+columns `FileName`, `prediction`, `confidence`. `FileName` is the image
+path; `prediction` is the species label (scientific name, `"empty"`,
+`"human"`, or `"vehicle"`); `confidence` is the classifier posterior
+(0--1). Column names are configurable via `file_col`, `species_col`, and
+`score_col`.
+
+**Coverage audit:** Check which expected species are absent from the
+classifier's known list with
+`TaxaLikely::audit_acoustic_coverage(plausible_species, reference_species)`.
+Pass the result's `$unreferenced` vector to
+`TaxaAssign::suggest_unreferenced_species()` as `unreferenced_taxa`.
 
 ## Match Object Output
 

@@ -9,6 +9,8 @@ suggest_unreferenced_species(
   context = NULL,
   barcode_term = "COI",
   llm_fn = NULL,
+  data_type = "eDNA",
+  reference_species = NULL,
   expand_to_family = FALSE,
   max_date = NULL,
   min_len = NULL,
@@ -37,6 +39,23 @@ Default \code{"COI"}.}
 \code{llm_fn} pattern: accepts a single character string prompt and returns a
 single character string response.  Default NULL resolves to
 \code{TaxaTools::call_anthropic_api} (requires TaxaTools).}
+
+\item{data_type}{Character. One of \code{"eDNA"} (default), \code{"acoustic"}, or
+\code{"image"}. Controls how "unreferenced" is defined: \cr
+\itemize{
+\item \code{"eDNA"}: unreferenced = no NCBI barcode sequence for the target marker.
+Uses NCBI nucleotide count queries. \cr
+\item \code{"acoustic"}: unreferenced = absent from the acoustic model training set
+(e.g., not in BirdNET's species list). Requires \code{reference_species}. \cr
+\item \code{"image"}: unreferenced = absent from the image classifier training set.
+Requires \code{reference_species}.
+}}
+
+\item{reference_species}{Character vector or NULL. Required when
+\code{data_type} is \code{"acoustic"} or \code{"image"}. The known-species list for the
+acoustic or image model (e.g., the BirdNET species list). Species absent
+from this vector are classified as unreferenced. Ignored when
+\code{data_type = "eDNA"}. Default NULL.}
 
 \item{expand_to_family}{Logical.  If \code{TRUE}, genera for which the LLM
 returned zero plausible species trigger a second LLM call asking for
@@ -76,7 +95,9 @@ unreferenced species (congener + family-level combined).  Pass directly to
 A fast, LLM-first alternative to \code{\link[TaxaLikely:audit_barcode_coverage]{TaxaLikely::audit_barcode_coverage()}} for
 unreferenced species detection.  An \strong{unreferenced species} is a described taxon
 that shares a genus (or family, with \code{expand_to_family = TRUE}) with a scored
-reference match candidate but has \strong{no barcode sequence} for the target marker in NCBI.
+reference match candidate but is absent from the reference dataset.  The
+definition of "absent" depends on \code{data_type}: no NCBI barcode sequence (eDNA),
+or not in the model's training species list (acoustic / image).
 }
 \details{
 \subsection{Algorithm}{

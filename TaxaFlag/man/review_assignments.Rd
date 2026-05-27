@@ -11,7 +11,8 @@ review_assignments(
   context,
   target_group = NULL,
   marker = NULL,
-  llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api),
+  data_type = "eDNA",
+  llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   taxa_per_call = 15L,
   pause_seconds = 1,
   verbose = TRUE
@@ -41,6 +42,15 @@ populates \code{review_scope}. Default \code{NULL}.}
 \item{marker}{Character or \code{NULL}. Molecular marker or detection
 method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
 Provides contaminant context. Default \code{NULL}.}
+
+\item{data_type}{Character. Detection method. One of \code{"eDNA"} (default),
+\code{"acoustic"}, or \code{"image"}. Controls the contaminant assessment
+guidance in the LLM prompt: \cr
+\itemize{
+\item \code{"eDNA"}: highlights PCR/lab contaminants (Homo sapiens, Bos taurus, etc.) \cr
+\item \code{"acoustic"}: highlights false positives from handler noise and domestic animals \cr
+\item \code{"image"}: highlights handler presence during camera setup/teardown events
+}}
 
 \item{llm_fn}{Function. LLM provider function with signature
 \code{function(prompt_str, ...)}. Default

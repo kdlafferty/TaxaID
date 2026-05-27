@@ -100,14 +100,28 @@ likelihoods - `filter_top_hypotheses()` -- keep finest-rank candidates
 per query
 
 **Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
-species (no barcode sequence) - `audit_reference_coverage()` --
-taxonomic completeness check - `apply_coverage_constraints()` --
-suppress H2 for fully-sampled genera - `remove_flagged_references()` --
-clean match data using error flags
+species (no barcode sequence; eDNA/DNA only) - `audit_acoustic_coverage()` --
+find plausible species absent from classifier's known list (acoustic/image) -
+`audit_reference_coverage()` -- taxonomic completeness check -
+`apply_coverage_constraints()` -- suppress H2 for fully-sampled genera -
+`remove_flagged_references()` -- clean match data using error flags (DNA only;
+see `@section Scope:` in docs for acoustic/image guidance)
 
 **Diagnostics and reporting:** - `interpret_model()` -- summarize
 trained model parameters - `report_likelihood()` -- generate report
 section for `assemble_report()`
+
+## When to use `flag_reference_errors()`
+
+`flag_reference_errors()` detects mislabeled sequences in a DNA reference
+matrix. The function's applicability depends on the data source:
+
+| Reference source | Use `flag_reference_errors()`? | Notes |
+|---|---|---|
+| **NCBI nucleotide** (via `fetch_reference_sequences()`) | **Yes — recommended** | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. Use routinely. |
+| **Curated libraries** (CRUX, custom expert-built FASTA) | **Optional** | Lower mislabeling rate than NCBI, but flagging is still worth running. If your library has a quality column, use that filter instead. |
+| **Xeno-canto bird sounds** (acoustic) | **No** | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Use `quality = c("A", "B")` in `fetch_reference_recordings()` instead. Hard-case recordings flagged by the mislabel detector may be legitimate. |
+| **Camera trap images** (Animl/SpeciesNet) | **TBD** | Applicability is unknown. Camera trap ground-truth labeling has different error modes (occlusion, motion blur, multiple animals). Guidance will be added once image reference training workflows mature. |
 
 ## Statistical Design
 

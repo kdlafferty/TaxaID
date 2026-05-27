@@ -16,7 +16,7 @@ utils::globalVariables(c(
 # MODULE G: REFERENCE COVERAGE AUDIT
 # ==============================================================================
 
-#' Audit reference database taxonomic completeness
+#' Audit reference database taxonomic completeness via NCBI taxonomy
 #'
 #' For each group at `target_rank` (e.g., each genus) in the reference
 #' database, queries the NCBI taxonomy database to count how many accepted
@@ -28,6 +28,14 @@ utils::globalVariables(c(
 #' with many unreferenced species have higher H2 probability mass.  Fully-sampled
 #' genera can have their H2
 #' hypothesis suppressed via [apply_coverage_constraints()].
+#'
+#' @section Scope:
+#' This function is designed for DNA sequence reference databases and queries
+#' NCBI taxonomy to enumerate described species. It is not appropriate for
+#' acoustic or image reference data, where coverage is determined by whether a
+#' species appears in the model training set rather than in NCBI.
+#' For barcode-specific coverage (checking NCBI nucleotide for sequence
+#' availability), use [audit_barcode_coverage()] instead.
 #'
 #' @param reference_df Data frame containing at least two columns: one named
 #'   `target_rank` (e.g., `"genus"`) and one named `"species"`.
@@ -565,6 +573,138 @@ audit_barcode_coverage <- function(match_df,
   names(all_unreferenced) <- NULL
 
   list(census = census_df, unreferenced = all_unreferenced)
+}
+
+
+# ==============================================================================
+# audit_acoustic_coverage()
+# ==============================================================================
+
+#' Audit Acoustic Reference Coverage for a Species List
+#'
+#' Checks which plausible species at a site are absent from an acoustic
+#' classifier's known species list (e.g., BirdNET's built-in list or a
+#' custom Xeno-canto model).  A species absent from the reference can never
+#' appear as a scored candidate — it is an **unreferenced species** in the
+#' acoustic context.
+#'
+#' This is the acoustic analog of [audit_barcode_coverage()], but far simpler:
+#' no NCBI API calls are needed.  Coverage is determined by a plain set
+#' membership check against `reference_species`.
+#'
+#' @section Scope:
+#' Designed for acoustic (bird sound) and image (camera trap) data where the
+#' classifier has a fixed known species list.  For DNA eDNA data, use
+#' [audit_barcode_coverage()] instead (barcode sequence availability in NCBI
+#' is the relevant coverage concept, not presence in a classifier list).
+#'
+#' @param plausible_species Character vector. Species expected to occur at the
+#'   sampling site (e.g., from an LLM call, GBIF query, or expert list).
+#'   Should be binomial scientific names.
+#' @param reference_species Character vector. Species in the classifier's known
+#'   list (e.g., the BirdNET species list, or the set of species used to train
+#'   a custom Xeno-canto model).  Names are matched case-insensitively after
+#'   trimming whitespace.
+#' @param match_df Data frame or `NULL`. Optional.  If supplied, species already
+#'   present in the match data (i.e., confirmed candidates from the classifier)
+#'   are annotated as `in_match_data = TRUE` in the census output.  Use
+#'   `TaxaMatch::standardize_match_data()` output or raw
+#'   `TaxaMatch::read_birdnet_output()` output.
+#'   The species column is auto-detected from `"species"` or `"taxon_name"`.
+#'   Default `NULL`.
+#'
+#' @return A named list with two components:
+#'   \describe{
+#'     \item{`census`}{Data frame with one row per entry in `plausible_species`:
+#'       \describe{
+#'         \item{`species`}{Species name (from `plausible_species`).}
+#'         \item{`in_reference`}{Logical. `TRUE` if the species is in
+#'           `reference_species`.}
+#'         \item{`unreferenced`}{Logical. `TRUE` if the species is absent from
+#'           `reference_species` (can never appear as a candidate detection).}
+#'         \item{`in_match_data`}{Logical.  `TRUE` if the species appeared in
+#'           `match_df`.  `NA` when `match_df = NULL`.}
+#'       }}
+#'     \item{`unreferenced`}{Character vector of species names absent from
+#'       `reference_species`.  Pass to `TaxaAssign::suggest_unreferenced_species()`
+#'       as `unreferenced_taxa` to build H2 hypotheses for these species.}
+#'   }
+#'
+#' @seealso [audit_barcode_coverage()], [apply_coverage_constraints()],
+#'   [fetch_reference_recordings()]
+#'
+#' @examples
+#' plausible <- c("Turdus migratorius", "Setophaga petechia",
+#'                "Limosa fedoa", "Selasphorus calliope")
+#' birdnet_list <- c("Turdus migratorius", "Setophaga petechia",
+#'                   "Turdus merula", "Corvus brachyrhynchos")
+#'
+#' result <- audit_acoustic_coverage(plausible, birdnet_list)
+#' result$census
+#' result$unreferenced  # c("Limosa fedoa", "Selasphorus calliope")
+#'
+#' @export
+audit_acoustic_coverage <- function(plausible_species,
+                                    reference_species,
+                                    match_df = NULL) {
+
+  # ---- validate inputs -------------------------------------------------------
+  if (!is.character(plausible_species) || length(plausible_species) == 0L)
+    stop("audit_acoustic_coverage: 'plausible_species' must be a non-empty character vector.",
+         call. = FALSE)
+  if (!is.character(reference_species) || length(reference_species) == 0L)
+    stop("audit_acoustic_coverage: 'reference_species' must be a non-empty character vector.",
+         call. = FALSE)
+
+  # ---- normalise for matching (trim + lowercase) -----------------------------
+  plausible_norm  <- trimws(plausible_species)
+  reference_norm  <- trimws(tolower(reference_species))
+
+  in_ref <- tolower(plausible_norm) %in% reference_norm
+
+  # ---- match_df annotation ---------------------------------------------------
+  in_match <- rep(NA, length(plausible_norm))
+  if (!is.null(match_df)) {
+    if (!is.data.frame(match_df))
+      stop("audit_acoustic_coverage: 'match_df' must be a data frame or NULL.",
+           call. = FALSE)
+    sp_col <- if ("taxon_name" %in% names(match_df)) "taxon_name" else
+              if ("species"    %in% names(match_df)) "species"    else NULL
+    if (is.null(sp_col)) {
+      warning("audit_acoustic_coverage: 'match_df' has no 'taxon_name' or 'species' ",
+              "column -- 'in_match_data' will be NA.", call. = FALSE)
+    } else {
+      match_sp <- trimws(tolower(unique(match_df[[sp_col]])))
+      in_match <- as.logical(tolower(plausible_norm) %in% match_sp)
+    }
+  }
+
+  # ---- build census data frame -----------------------------------------------
+  census_df <- data.frame(
+    species       = plausible_norm,
+    in_reference  = in_ref,
+    unreferenced  = !in_ref,
+    in_match_data = in_match,
+    stringsAsFactors = FALSE
+  )
+
+  unreferenced_sp <- plausible_norm[!in_ref]
+
+  n_plausible    <- length(plausible_norm)
+  n_in_ref       <- sum(in_ref)
+  n_unreferenced <- sum(!in_ref)
+
+  message(sprintf(
+    paste0(
+      "audit_acoustic_coverage: %d plausible species checked; ",
+      "%d in reference (%.0f%%), %d unreferenced."
+    ),
+    n_plausible, n_in_ref,
+    100 * n_in_ref / n_plausible,
+    n_unreferenced
+  ))
+
+  list(census = census_df, unreferenced = unreferenced_sp)
 }
 
 

@@ -41,7 +41,15 @@ Examines a pairwise distance matrix (output of \code{build_sequence_matrix()})
 and flags sequences whose best match is to a \emph{different} species than their
 own label -- a pattern consistent with mislabeling or contamination.
 }
-\details{
+\section{Scope}{
+
+This function applies to DNA sequence reference databases only. For
+Xeno-canto acoustic data, use quality grade filtering
+(\code{quality = c("A", "B")} in \code{\link[=fetch_reference_recordings]{fetch_reference_recordings()}}) instead --
+Xeno-canto is expert-curated and mislabeling is rare. For camera trap image
+data, applicability is to be determined when \code{read_animl_output()} is
+implemented.
+
 Two error types are returned:
 \itemize{
 \item \strong{\code{"likely_mislabeled"}} -- the sequence's median within-species match is
@@ -51,6 +59,7 @@ neighbours yet matches a foreign species at >= 0.98; it may be mislabeled or
 simply the only representative of its species.
 }
 }
+
 \examples{
 \dontrun{
 ref_matrix <- build_sequence_matrix(reference_df,

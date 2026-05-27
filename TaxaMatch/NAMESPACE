@@ -3,6 +3,7 @@
 export(blast_sequences)
 export(filter_redundant_hypotheses)
 export(filter_sequences)
+export(read_animl_output)
 export(read_birdnet_output)
 export(read_sequence_table)
 export(report_match)

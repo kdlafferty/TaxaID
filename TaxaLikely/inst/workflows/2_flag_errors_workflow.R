@@ -1,6 +1,13 @@
 # ==============================================================================
 # WORKFLOW 2: FLAG REFERENCE DATABASE ERRORS
 # ==============================================================================
+# DATA TYPE SCOPE: DNA sequences only.
+#   For Xeno-canto acoustic data, use quality grade filtering in Workflow 3b
+#   (quality = c("A", "B") in fetch_reference_recordings()) instead of this
+#   workflow. Xeno-canto is expert-curated; mislabeling is rare, and flagging
+#   would remove legitimate hard-case recordings.
+#   For image (camera trap) data, guidance is TBD pending read_animl_output().
+#
 # Purpose: Identify mislabeled or suspect sequences in a reference database.
 #   Mislabeled references corrupt model training and produce misleading
 #   likelihood estimates. Finding them is an important QC step.

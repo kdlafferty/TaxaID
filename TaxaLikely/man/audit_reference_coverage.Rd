@@ -2,7 +2,7 @@
 % Please edit documentation in R/coverage.R
 \name{audit_reference_coverage}
 \alias{audit_reference_coverage}
-\title{Audit reference database taxonomic completeness}
+\title{Audit reference database taxonomic completeness via NCBI taxonomy}
 \usage{
 audit_reference_coverage(
   reference_df,
@@ -49,6 +49,16 @@ Requires an internet connection and the \code{rentrez} package.  NCBI
 enforces rate limits (3 req/s without an API key; 10 req/s with one).
 Wrap the call in \code{tryCatch()} for batch processing of large databases.
 }
+\section{Scope}{
+
+This function is designed for DNA sequence reference databases and queries
+NCBI taxonomy to enumerate described species. It is not appropriate for
+acoustic or image reference data, where coverage is determined by whether a
+species appears in the model training set rather than in NCBI.
+For barcode-specific coverage (checking NCBI nucleotide for sequence
+availability), use \code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}} instead.
+}
+
 \examples{
 \dontrun{
 cov <- audit_reference_coverage(reference_df, target_rank = "genus")

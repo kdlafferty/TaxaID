@@ -33,7 +33,13 @@ sequences flagged by \code{\link{flag_reference_errors}}. This produces a
 cleaned match object suitable for downstream use in TaxaAssign (both
 Bayesian and LLM workflows).
 }
-\details{
+\section{Scope}{
+
+Designed for DNA workflows where flagging is based on accession IDs from
+\code{build_sequence_matrix()}. For Xeno-canto acoustic data, use quality
+grade filtering in \code{fetch_reference_recordings()} instead of this
+function. For camera trap image data, guidance is TBD.
+
 Only sequences flagged as \code{"likely_mislabeled"} are removed by default.
 Sequences flagged as \code{"unverified_singleton_high_match"} are ambiguous
 (may be correctly labeled singletons) and are retained unless
@@ -44,6 +50,7 @@ before matching, so \code{flag_reference_errors()} output (which uses
 version-free IDs from \code{build_sequence_matrix()}) matches correctly
 against \code{match_df$accession} values that may include versions.
 }
+
 \examples{
 \dontrun{
 ref_matrix <- build_sequence_matrix(reference_df,

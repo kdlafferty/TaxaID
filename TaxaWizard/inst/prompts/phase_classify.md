@@ -43,5 +43,5 @@ Respond with a single JSON object. No text outside the JSON.
 
 **match_df vs consensus_df:** The key question is whether the user has raw match scores (multiple candidate taxa per sample with scores) or already-resolved single assignments (one taxon per sample).
 
-- input_type = "match_df" when: BLAST output, percent identity scores, multiple candidates per sample.
+- input_type = "match_df" when: BLAST output (percent identity scores), BirdNET acoustic detections (confidence scores), image classifier results (confidence scores), or any other source with **multiple scored candidates per sample**.
 - input_type = "consensus_df" when: pre-existing species ID table, one assignment per sample, no match scores.

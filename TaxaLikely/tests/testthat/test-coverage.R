@@ -101,3 +101,97 @@ test_that("apply_coverage_constraints: non-data-frame likelihood_df errors", {
     "must be a data frame"
   )
 })
+
+
+# ==============================================================================
+# audit_acoustic_coverage() tests
+# ==============================================================================
+
+test_that("audit_acoustic_coverage: identifies in-reference and unreferenced species", {
+  plausible  <- c("Turdus migratorius", "Setophaga petechia", "Limosa fedoa")
+  reference  <- c("Turdus migratorius", "Setophaga petechia", "Corvus brachyrhynchos")
+
+  result <- suppressMessages(audit_acoustic_coverage(plausible, reference))
+
+  expect_named(result, c("census", "unreferenced"))
+  expect_s3_class(result$census, "data.frame")
+  expect_equal(nrow(result$census), 3L)
+  expect_true(result$census$in_reference[result$census$species == "Turdus migratorius"])
+  expect_false(result$census$in_reference[result$census$species == "Limosa fedoa"])
+  expect_equal(result$unreferenced, "Limosa fedoa")
+})
+
+test_that("audit_acoustic_coverage: case-insensitive matching", {
+  plausible <- "Turdus migratorius"
+  reference <- "TURDUS MIGRATORIUS"
+
+  result <- suppressMessages(audit_acoustic_coverage(plausible, reference))
+  expect_true(result$census$in_reference)
+  expect_length(result$unreferenced, 0L)
+})
+
+test_that("audit_acoustic_coverage: all in reference returns empty unreferenced", {
+  sp        <- c("Turdus migratorius", "Setophaga petechia")
+  result    <- suppressMessages(audit_acoustic_coverage(sp, sp))
+  expect_length(result$unreferenced, 0L)
+  expect_true(all(result$census$in_reference))
+})
+
+test_that("audit_acoustic_coverage: all unreferenced when reference is disjoint", {
+  plausible <- c("Limosa fedoa", "Numenius americanus")
+  reference <- c("Turdus migratorius")
+
+  result <- suppressMessages(audit_acoustic_coverage(plausible, reference))
+  expect_equal(sort(result$unreferenced), sort(plausible))
+  expect_true(all(result$census$unreferenced))
+})
+
+test_that("audit_acoustic_coverage: match_df annotates in_match_data", {
+  plausible <- c("Turdus migratorius", "Setophaga petechia", "Limosa fedoa")
+  reference <- c("Turdus migratorius", "Setophaga petechia")
+  mdf <- data.frame(species = c("Turdus migratorius"), stringsAsFactors = FALSE)
+
+  result <- suppressMessages(audit_acoustic_coverage(plausible, reference, match_df = mdf))
+  expect_true(result$census$in_match_data[result$census$species == "Turdus migratorius"])
+  expect_false(result$census$in_match_data[result$census$species == "Setophaga petechia"])
+  expect_false(result$census$in_match_data[result$census$species == "Limosa fedoa"])
+})
+
+test_that("audit_acoustic_coverage: match_df with taxon_name column works", {
+  plausible <- c("Turdus migratorius", "Setophaga petechia")
+  reference <- c("Turdus migratorius", "Setophaga petechia")
+  mdf <- data.frame(taxon_name = "Turdus migratorius", stringsAsFactors = FALSE)
+
+  result <- suppressMessages(audit_acoustic_coverage(plausible, reference, match_df = mdf))
+  expect_true(result$census$in_match_data[result$census$species == "Turdus migratorius"])
+  expect_false(result$census$in_match_data[result$census$species == "Setophaga petechia"])
+})
+
+test_that("audit_acoustic_coverage: match_df = NULL gives NA in_match_data", {
+  plausible <- c("Turdus migratorius")
+  reference <- c("Turdus migratorius")
+
+  result <- suppressMessages(audit_acoustic_coverage(plausible, reference))
+  expect_true(is.na(result$census$in_match_data))
+})
+
+test_that("audit_acoustic_coverage: errors on empty plausible_species", {
+  expect_error(audit_acoustic_coverage(character(0), "Turdus migratorius"),
+               "non-empty character vector")
+})
+
+test_that("audit_acoustic_coverage: errors on non-character reference_species", {
+  expect_error(audit_acoustic_coverage("Turdus migratorius", 1:3),
+               "non-empty character vector")
+})
+
+test_that("audit_acoustic_coverage: match_df without species or taxon_name warns", {
+  plausible <- "Turdus migratorius"
+  reference <- "Turdus migratorius"
+  mdf <- data.frame(conf = 0.9, stringsAsFactors = FALSE)
+
+  expect_warning(
+    suppressMessages(audit_acoustic_coverage(plausible, reference, match_df = mdf)),
+    "no 'taxon_name' or 'species' column"
+  )
+})

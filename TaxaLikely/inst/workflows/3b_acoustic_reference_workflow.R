@@ -512,11 +512,119 @@ if (nrow(top_h1) > 0L) {
   }
 }
 
+# ---- (Optional) Add family ranks for richer H2/H3 discrimination ------------
+#
+# The genus+species model above is a good first pass. Adding family gives a more
+# nuanced H3: the model can distinguish "wrong genus, same family" (H2.5) from
+# "completely wrong family" (H3). This matters when acoustically similar species
+# span multiple genera within a family (e.g., Parulidae warblers).
+#
+# Family is also needed in the match_df passed to TaxaAssign for LCA /
+# posterior_consensus() -- even if the likelihood model stays at genus+species,
+# TaxaAssign needs the family column for consensus taxonomy. You can add family
+# at the standardize_match_data() step in Workflow 4 without retraining.
+#
+# --- Step A: Resolve family for BirdNET detections ---------------------------
+# verify_taxon_names() resolves full taxonomy from species binomials. Use NCBI
+# (backbone_id = 4) for the best species-level accuracy.
+
+library(TaxaTools)
+
+# Get unique species names from birdnet detections
+species_in_birdnet <- unique(birdnet_song$species)
+
+# Look up family (and class, order) via NCBI taxonomy
+taxonomy_resolved <- verify_taxon_names(
+  name_list   = species_in_birdnet,
+  backbone_id = 4L   # NCBI direct bypass
+)
+
+# Parse to extract family from classification_path
+# verify_taxon_names() returns pipe-delimited classification_path and
+# classification_ranks columns. Extract the family rank.
+family_lookup <- do.call(rbind, lapply(seq_len(nrow(taxonomy_resolved)), function(i) {
+  paths <- strsplit(taxonomy_resolved$classification_path[i], "\\|")[[1]]
+  ranks <- strsplit(taxonomy_resolved$classification_ranks[i], "\\|")[[1]]
+  fam   <- if (any(ranks == "family")) paths[ranks == "family"][1L] else NA_character_
+  data.frame(
+    species_in = taxonomy_resolved$user_supplied_name[i],
+    family     = fam,
+    stringsAsFactors = FALSE
+  )
+}))
+
+# Join family back to birdnet_song
+birdnet_song_fam <- merge(
+  birdnet_song,
+  family_lookup,
+  by.x = "species", by.y = "species_in",
+  all.x = TRUE
+)
+
+# Check for unresolved species
+n_no_family <- sum(is.na(birdnet_song_fam$family))
+if (n_no_family > 0L)
+  message(n_no_family, " detection rows have no family resolved; ",
+          "they will produce NA family in the reference pairs.")
+
+# --- Step B: Add family to Xeno-canto metadata --------------------------------
+# recs_song also needs family for the .x columns in build_acoustic_reference().
+species_in_recs <- unique(recs_song$species)
+taxonomy_recs   <- verify_taxon_names(name_list = species_in_recs, backbone_id = 4L)
+
+family_lookup_recs <- do.call(rbind, lapply(seq_len(nrow(taxonomy_recs)), function(i) {
+  paths <- strsplit(taxonomy_recs$classification_path[i], "\\|")[[1]]
+  ranks <- strsplit(taxonomy_recs$classification_ranks[i], "\\|")[[1]]
+  fam   <- if (any(ranks == "family")) paths[ranks == "family"][1L] else NA_character_
+  data.frame(
+    species_in = taxonomy_recs$user_supplied_name[i],
+    family     = fam,
+    stringsAsFactors = FALSE
+  )
+}))
+
+recs_song_fam <- merge(
+  recs_song,
+  family_lookup_recs,
+  by.x = "species", by.y = "species_in",
+  all.x = TRUE
+)
+
+# --- Step C: Rebuild acoustic reference pairs with family rank ---------------
+ref_pairs_song_fam <- build_acoustic_reference(
+  birdnet_df         = birdnet_song_fam,
+  recordings_meta    = recs_song_fam,
+  rank_system        = c("family", "genus", "species"),
+  min_confidence     = 0.0,
+  exclude_background = TRUE
+)
+
+# --- Step D: Retrain model with family rank ----------------------------------
+song_pairs_fam <- subset(ref_pairs_song_fam, testid == "song")
+
+model_song_fam <- train_likelihood_model(
+  raw_df        = song_pairs_fam,
+  rank_system   = c("family", "genus", "species"),
+  prior_weight  = 10.0,
+  use_hierarchy = TRUE
+)
+
+interpret_model(model_song_fam)
+
+saveRDS(model_song_fam,
+        file.path(.taxa_root, "TaxaLikely/model_song_family.rds"))
+message("Saved: TaxaLikely/model_song_family.rds")
+
 # ---- Next step --------------------------------------------------------------
 # For field recordings, run Workflow 4 directly.
 # Pass match_df (built from your field BirdNET output) and model_song.
 # Skip Section 2 of Workflow 4 (remove_flagged_references -- DNA only).
-# Use rank_system = c("genus", "species") throughout.
+# Use rank_system = c("genus", "species") throughout, or
+# c("family", "genus", "species") if you trained the family-rank model above.
+#
+# Note: even without retraining at family rank, add the family column to
+# your field match_df before calling TaxaAssign -- posterior_consensus() LCA
+# uses family for higher-rank consensus when species/genus are ambiguous.
 
 message("\nWorkflow 3b complete.")
 message("Next: Workflow 4 (convert BirdNET scores to likelihoods for field data)")
