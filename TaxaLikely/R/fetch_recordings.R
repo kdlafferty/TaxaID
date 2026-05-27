@@ -207,13 +207,7 @@ fetch_reference_recordings <- function(species,
     }
     recs_list <- Filter(Negate(is.null), grade_recs)
     recs <- if (length(recs_list) > 0L) {
-      # Reset row names on each grade result before combining: the column
-      # reorder in .xc_standardize_cols() converts NULL row names to
-      # character "1","2",... which causes rbind to fail on duplicates.
-      recs_list <- lapply(recs_list, function(x) { rownames(x) <- NULL; x })
-      out_r <- do.call(rbind, recs_list)
-      rownames(out_r) <- NULL
-      out_r
+      .xc_rbind(recs_list)
     } else NULL
 
     if (is.null(recs) || nrow(recs) == 0L) {
@@ -242,7 +236,7 @@ fetch_reference_recordings <- function(species,
     all_rows[[i]] <- recs
   }
 
-  out <- do.call(rbind, Filter(Negate(is.null), all_rows))
+  out <- .xc_rbind(Filter(Negate(is.null), all_rows))
 
   if (is.null(out) || nrow(out) == 0L) {
     if (verbose) message("fetch_reference_recordings: no recordings found.")
@@ -288,6 +282,32 @@ fetch_reference_recordings <- function(species,
 # Internal helpers
 # ==============================================================================
 
+#' rbind a list of data frames, guaranteeing unique row names at every step.
+#'
+#' R's rbind.data.frame collects row.names() from each component (which
+#' returns character "1":"n" even for compact-integer row names) and fails
+#' when two data frames have overlapping sequences.  This helper assigns
+#' non-overlapping integer row names before combining.
+#' @noRd
+.xc_rbind <- function(dfs) {
+  dfs <- Filter(Negate(is.null), dfs)
+  if (length(dfs) == 0L) return(data.frame())
+  if (length(dfs) == 1L) {
+    row.names(dfs[[1L]]) <- NULL
+    return(dfs[[1L]])
+  }
+  offset <- 0L
+  for (k in seq_along(dfs)) {
+    n <- nrow(dfs[[k]])
+    row.names(dfs[[k]]) <- offset + seq_len(n)   # unique across all frames
+    offset <- offset + n
+  }
+  result <- do.call(rbind, dfs)
+  row.names(result) <- NULL
+  result
+}
+
+
 #' Paginate through all Xeno-canto results for a query string
 #' @noRd
 .xc_query_all <- function(query_str, api_key) {
@@ -320,15 +340,16 @@ fetch_reference_recordings <- function(species,
 
     if (!is.null(recs) && length(recs) > 0L) {
       if (!is.data.frame(recs)) {
-        recs <- do.call(rbind, lapply(recs, function(r) {
+        recs <- .xc_rbind(lapply(recs, function(r) {
           as.data.frame(lapply(r, function(v) {
             if (length(v) == 0L) NA_character_
             else if (length(v) > 1L) paste(v, collapse = ", ")
             else as.character(v)
           }), stringsAsFactors = FALSE)
         }))
+      } else {
+        row.names(recs) <- NULL
       }
-      rownames(recs) <- NULL
       all_recs[[page]] <- recs
     }
 
@@ -338,10 +359,7 @@ fetch_reference_recordings <- function(species,
   }
 
   if (length(all_recs) == 0L) return(data.frame())
-
-  combined <- do.call(rbind, all_recs)
-  rownames(combined) <- NULL
-  .xc_standardize_cols(combined)
+  .xc_standardize_cols(.xc_rbind(all_recs))
 }
 
 
