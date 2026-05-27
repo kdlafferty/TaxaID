@@ -181,13 +181,19 @@ fetch_reference_recordings <- function(species,
       i, length(species), sp
     ))
 
-    # Build Xeno-canto query string
-    # Quality clause: "q:A OR q:B" selects exact grades
+    # Build Xeno-canto v3 query string using structured search tags.
+    # v3 requires tags (gen:/sp:) rather than free-text species names.
+    words <- strsplit(trimws(sp), "\\s+")[[1L]]
+    sp_tags <- if (length(words) >= 2L) {
+      paste0("gen:", words[1L], " sp:", words[2L])
+    } else {
+      paste0("gen:", words[1L])   # genus-only query
+    }
     q_clause <- paste(paste0("q:", quality), collapse = " OR ")
     query_str <- paste0(
-      sp,
+      sp_tags,
       if (!is.null(type)) paste0(' type:"', type, '"') else "",
-      " (", q_clause, ")"
+      " ", q_clause
     )
 
     recs <- tryCatch(
