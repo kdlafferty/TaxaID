@@ -4,32 +4,47 @@
 # Purpose: Apply a trained model to a match object (from TaxaMatch or
 #   user-supplied) to produce per-hypothesis likelihoods for TaxaAssign.
 #
-# This is the workflow most users will run routinely. It takes:
-#   1. A match_df (one row per observation_id x reference accession match)
-#   2. A trained model (from Workflow 3)
-#   3. Optionally, a reference error list (from Workflow 2)
-# And produces likelihoods for three hypothesis types:
-#   H1 (specific_candidate) -- the matching species is correct
-#   H2 (unreferenced_species) -- the true species is absent from the reference
-#   H3 (unreferenced_genus) -- the true genus is absent from the reference
+# Accepts output from:
+#   Workflow 3  (DNA sequences) -- match_df from BLAST via standardize_match_data()
+#   Workflow 3b (acoustic)      -- match_df from read_birdnet_output() via
+#                                  standardize_match_data()
+#
+# Data-type differences are noted inline. The core evaluate_likelihoods()
+# call is identical regardless of data type.
 #
 # Output goes to TaxaAssign for posterior probability calculation.
 # ==============================================================================
 
 library(TaxaLikely)
+library(TaxaMatch)
 library(dplyr)
+
+# Auto-detect TaxaID root (works whether wd is TaxaID/ or TaxaLikely/)
+.taxa_root <- normalizePath(
+  if (basename(getwd()) == "TaxaLikely") ".." else ".",
+  mustWork = FALSE
+)
+
 # ---- 1. Load inputs ----------------------------------------------------------
 
 # Match object: one row per observation_id x reference hit.
 # Required columns: observation_id, score, taxon_name, taxon_name_rank
 # Plus taxonomy columns matching your rank_system (e.g., genus, species)
-# Can come from TaxaMatch::standardize_match_data() or user-supplied.
+#
+# DNA (Workflow 3):   build from BLAST output via standardize_match_data()
+# Acoustic (Wf 3b):  build from birdnet_song via standardize_match_data()
+#   (see end of Workflow 3b for the standardize_match_data() call)
 match_df <- readRDS(file.choose())  # select your match data file (.rds)
 
-# Trained model from Workflow 3
-model <- readRDS("trained_model.rds")
+# Trained model
+# DNA:      readRDS(file.path(.taxa_root, "TaxaLikely/model_dna.rds"))
+# Acoustic: readRDS(file.path(.taxa_root, "TaxaLikely/model_song.rds"))
+model <- readRDS(file.path(.taxa_root, "TaxaLikely/model_song.rds"))
 
-rank_system <- c("family", "genus", "species")
+# rank_system must match what was used in Workflow 3 / 3b
+# DNA:      c("family", "genus", "species")
+# Acoustic: c("genus", "species")   -- BirdNET does not report family
+rank_system <- c("genus", "species")
 
 # Confirm required columns exist
 stopifnot(all(c("observation_id", "score", "taxon_name", "taxon_name_rank")
@@ -37,18 +52,19 @@ stopifnot(all(c("observation_id", "score", "taxon_name", "taxon_name_rank")
 cat("Match object:", nrow(match_df), "rows,",
     length(unique(match_df$observation_id)), "unique queries\n")
 
-# ---- 2. Remove flagged reference errors --------------------------------------
-# If you ran Workflow 2 or 3, mislabeled accessions should be removed from
-# the match object before evaluating likelihoods. train_likelihood_model()
-# stores the error list in model_params$reference_errors, so you can use it
-# directly. Alternatively, load errors saved by Workflow 2.
+# ---- 2. Remove flagged reference errors (DNA only) --------------------------
+# SKIP THIS SECTION FOR ACOUSTIC DATA.
 #
-# remove_flagged_references() handles version suffix stripping automatically.
-
-errors <- model_params$reference_errors  # from train_likelihood_model()
-# Or: errors <- readRDS("reference_errors.rds")  # from Workflow 2
-
-match_df <- remove_flagged_references(match_df, errors)
+# DNA sequences from NCBI may include mislabeled accessions. train_likelihood_model()
+# stores detected errors in model$reference_errors; remove them before evaluating.
+# For acoustic (Xeno-canto) data, rely on quality grade filtering in Workflow 3b
+# instead -- curation quality is high and "flagged" recordings are usually just
+# noisy, not mislabeled.
+#
+# Uncomment for DNA workflows:
+# errors  <- model$reference_errors        # stored by train_likelihood_model()
+# # Or: errors <- readRDS("reference_errors.rds")  # from Workflow 2
+# match_df <- remove_flagged_references(match_df, errors)
 
 # ---- 3. Evaluate likelihoods ------------------------------------------------
 # evaluate_likelihoods() does the heavy lifting:

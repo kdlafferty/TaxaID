@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-26 (Session 87 — read_birdnet_output() implemented)
+# Last updated: 2026-05-26 (Session 88 — empty BirdNET file bug fix)
 
 ---
 
@@ -321,3 +321,14 @@ inside `filter_redundant_hypotheses()` via `match()`.
 - 9 offline tests in `tests/testthat/test-read_acoustic.R` (synthetic `tempfile()` + `write.csv()`
   BirdNET data — no real recordings needed).
 - `devtools::check()`: 0 errors, 0 notes (2 pre-existing vignette warnings).
+
+**Session 88 (2026-05-26)**
+- Bug fix: `.parse_birdnet_file()` crashed with `"arguments imply differing number of rows: 1, 0"`
+  when a BirdNET CSV contained only a header row and no detections (e.g., BirdNET found nothing
+  above the confidence threshold in a short or quiet recording). Root cause: `source_file = basename(f)`
+  has length 1 but all other columns (`start_vals`, `end_vals`, etc.) are `numeric(0)` / `character(0)`.
+  Fix: added early return for `nrow(df) == 0L` that produces a correctly typed 0-row data frame
+  and emits an informational message naming the empty file.
+- 2 new tests in `test-read_acoustic.R` (total now 11): empty CSV returns 0-row data frame with
+  correct columns; mix of empty + non-empty files returns only rows from non-empty file.
+- `devtools::check()`: 0 errors, 0 warnings, 0 notes.

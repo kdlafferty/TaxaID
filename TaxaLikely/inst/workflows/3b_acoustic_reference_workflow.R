@@ -64,10 +64,10 @@
 #
 # --- WORKING DIRECTORY ---
 #
-# Run this workflow from the TaxaID root directory (the parent of TaxaLikely),
-# not from within TaxaLikely. All paths below are relative to TaxaID/.
-# Set your working directory before starting:
-#   setwd("/path/to/TaxaID")   # adjust to your actual path
+# All paths below are relative to TaxaID/ (the monorepo root).
+# The script auto-detects whether you are running from TaxaID/ or from
+# TaxaLikely/ and sets .taxa_root accordingly. You do not need to change
+# your working directory manually.
 #
 # --- PYTHON SETUP (one-time) ---
 #
@@ -83,8 +83,11 @@
 library(TaxaLikely)
 library(TaxaMatch)
 
-# Set working directory to TaxaID root (adjust path as needed)
-# setwd("/Users/lafferty/My Drive/Rscripts/projects/TaxaID")
+# Auto-detect TaxaID root (works whether wd is TaxaID/ or TaxaLikely/)
+.taxa_root <- normalizePath(
+  if (basename(getwd()) == "TaxaLikely") ".." else ".",
+  mustWork = FALSE
+)
 
 # ---- STEP 1: Fetch reference recordings from Xeno-canto ---------------------
 # Requires a free API key from xeno-canto.org/account.
@@ -100,7 +103,7 @@ recs_song <- fetch_reference_recordings(
   type            = "song",
   max_per_species = 30L,
   download        = FALSE,
-  download_dir    = "TaxaLikely/reference_audio/song/"
+  download_dir    = file.path(.taxa_root, "TaxaLikely/reference_audio/song/")
 )
 
 cat("Song recordings found:", nrow(recs_song), "\n")
@@ -117,7 +120,7 @@ recs_song <- fetch_reference_recordings(
   type            = "song",
   max_per_species = 30L,
   download        = TRUE,
-  download_dir    = "TaxaLikely/reference_audio/song/"
+  download_dir    = file.path(.taxa_root, "TaxaLikely/reference_audio/song/")
 )
 
 # Drop recordings where the download failed (NA local_path).
@@ -130,7 +133,7 @@ if (n_failed > 0L) {
 }
 
 cat("Downloaded:", nrow(recs_song), "recordings\n")
-saveRDS(recs_song, "TaxaLikely/recs_song.rds")
+saveRDS(recs_song, file.path(.taxa_root, "TaxaLikely/recs_song.rds"))
 
 # ---- STEP 3: Run BirdNET-Analyzer (Python, in Terminal) ---------------------
 # BirdNET-Analyzer processes audio files and outputs one CSV per file with
@@ -172,13 +175,14 @@ writeLines(
     '                        d["confidence"]])',
     'print("Done.")'
   ),
-  "run_birdnet.py"   # written to TaxaID root (current working directory)
+  file.path(.taxa_root, "run_birdnet.py")
 )
-message("run_birdnet.py written. Now open a Terminal, cd to TaxaID, and run:")
+message("run_birdnet.py written to: ", .taxa_root)
+message("Now open a Terminal, cd to that directory, and run:")
 message("  python3 run_birdnet.py")
 
 # Step 3b: Run in Terminal (not from R):
-#   cd "/path/to/TaxaID"
+#   cd "/path/to/TaxaID"   # the .taxa_root path printed above
 #   python3 run_birdnet.py
 #
 # The script prints progress ([1/120], [2/120], ...) and takes a few minutes.
@@ -187,23 +191,24 @@ message("  python3 run_birdnet.py")
 # ---- STORAGE NOTE: delete audio files after BirdNET processing --------------
 # Once BirdNET has processed the audio, the .mp3 files are no longer needed.
 # Verify the CSV output is complete first:
-# length(list.files("TaxaLikely/birdnet_results/song/", pattern = "\\.csv$"))
+# length(list.files(file.path(.taxa_root, "TaxaLikely/birdnet_results/song/"),
+#                   pattern = "\\.csv$"))
 #
 # Then delete:
-# audio_files <- list.files("TaxaLikely/reference_audio/song/",
+# audio_files <- list.files(file.path(.taxa_root, "TaxaLikely/reference_audio/song/"),
 #                            full.names = TRUE,
 #                            pattern = "\\.(mp3|wav|flac|ogg)$")
 # file.remove(audio_files)
 # message("Deleted ", length(audio_files), " audio files.")
 #
-# Keep TaxaLikely/recs_song.rds -- build_acoustic_reference() uses only the
-# file stem as the join key, so stale local_path values are not a problem.
+# Keep recs_song.rds -- build_acoustic_reference() uses only the file stem as
+# the join key, so stale local_path values are not a problem.
 
 # ---- STEP 4: Read BirdNET detections into R ---------------------------------
 # top_n >= 2 is required for gap computation in train_likelihood_model().
 
 birdnet_song <- read_birdnet_output(
-  "TaxaLikely/birdnet_results/song/",
+  file.path(.taxa_root, "TaxaLikely/birdnet_results/song/"),
   min_confidence = 0.0,
   top_n          = 3L
 )
@@ -242,7 +247,7 @@ cat("H2/H3 (wrong species):", nrow(ref_pairs_song) - n_h1, "\n")
 cat("\nRecording type breakdown:\n")
 print(sort(table(ref_pairs_song$testid), decreasing = TRUE))
 
-saveRDS(ref_pairs_song, "TaxaLikely/ref_pairs_song.rds")
+saveRDS(ref_pairs_song, file.path(.taxa_root, "TaxaLikely/ref_pairs_song.rds"))
 
 # ---- STEP 6: Train one model per recording type -----------------------------
 # Filter to exact type matches before training. This keeps the within-species
@@ -296,8 +301,8 @@ if (nrow(low_quality) > 0L) {
   print(low_quality[, c("lookup_key", "mu_score", "mu_gap")])
 }
 
-saveRDS(model_song, "TaxaLikely/model_song.rds")
-message("Saved TaxaLikely/model_song.rds")
+saveRDS(model_song, file.path(.taxa_root, "TaxaLikely/model_song.rds"))
+message("Saved ", file.path(.taxa_root, "TaxaLikely/model_song.rds"))
 
 # ---- (Optional) Additional type models --------------------------------------
 # Repeat Steps 6-7 for other types if needed. For example, to train a
@@ -309,36 +314,209 @@ message("Saved TaxaLikely/model_song.rds")
 #   rank_system   = c("genus", "species"),
 #   prior_weight  = 10.0
 # )
-# saveRDS(model_mixed, "TaxaLikely/model_mixed.rds")
+# saveRDS(model_mixed, file.path(.taxa_root, "TaxaLikely/model_mixed.rds"))
 
-# ---- STEP 8: Apply to field recordings --------------------------------------
-# Once trained, apply the song model to real field recordings via Workflow 4.
+# ---- STEP 8: Validate model on reference detections -------------------------
+# Apply the trained model back to the same recordings used for training.
+# This is an optimistic (in-sample) sanity check, not a held-out test. Its
+# purpose is to confirm that the model has learned a sensible score-likelihood
+# mapping before applying it to field data.
 #
-#   1. Run BirdNET-Analyzer on your field audio (same Python script, different
-#      audio_dir and result_dir).
+# What good results look like:
+#   - Blue points (correct detections) rise steeply with BirdNET confidence
+#     and cluster above the 0.90 likelihood threshold.
+#   - Red points (wrong detections) stay below 0.50 or at most scatter in the
+#     0.50-0.90 band. A few red points above 0.90 are expected for acoustically
+#     similar species that BirdNET cannot reliably separate.
+#   - Point size (1 - CV) should be largest for blue high-likelihood points,
+#     indicating confident assignments. Small points anywhere indicate that the
+#     Monte Carlo simulations disagreed -- usually near decision thresholds.
 #
-#   2. Read results:
-#      field_birdnet <- TaxaMatch::read_birdnet_output(
-#        "field_birdnet_results/",
-#        min_confidence = 0.1,
-#        top_n          = 3L
-#      )
+# The confusion heatmap (Plot 2) reveals which species pairs drive errors.
+# Columns are ordered by total confusion frequency, so the worst offenders
+# appear on the left. A cell value of 0.30 means 30% of true-species detections
+# were misidentified as the column species.
 #
-#   3. Standardize:
-#      field_match <- TaxaMatch::standardize_match_data(
-#        field_birdnet,
-#        observation_id_col = "observation_id",
-#        score_col          = "score"
-#      )
-#
-#   4. Evaluate likelihoods:
-#      result <- evaluate_likelihoods(
-#        match_df     = field_match,
-#        model_params = model_song
-#      )
-#      likelihoods <- result$likelihoods
-#
-# See inst/workflows/4_score_to_likelihood_workflow.R for the full Workflow 4.
+# This is NOT the field-data workflow -- see Workflow 4 for that.
+# For field recordings: run BirdNET on your audio, feed the output through
+# read_birdnet_output() + standardize_match_data(), then use Workflow 4.
+
+library(TaxaMatch)
+library(ggplot2)
+
+match_df <- standardize_match_data(
+  birdnet_song,
+  observation_id_col = "observation_id",
+  score_col          = "score",
+  rank_system        = c("genus", "species")
+)
+
+model <- readRDS(file.path(.taxa_root, "TaxaLikely/model_song.rds"))
+
+lik_result <- evaluate_likelihoods(
+  match_df     = match_df,
+  model_params = model,
+  rank_system  = c("genus", "species"),
+  n_sims       = 200L
+)
+
+likelihoods <- lik_result$likelihoods
+cat("Likelihood rows:", nrow(likelihoods), "\n")
+cat("Hypothesis types:\n")
+print(table(likelihoods$hypothesis_type))
+
+# Score-vs-likelihood plot: H1 likelihoods should rise with BirdNET score.
+# Points are coloured by whether BirdNET detected the correct species (blue)
+# or a wrong species for that recording (red). Red points with high score AND
+# high likelihood indicate species pairs BirdNET routinely confuses.
+
+# Join likelihoods to BirdNET scores
+top_h1 <- likelihoods[likelihoods$hypothesis_type == "specific_candidate", ]
+top_h1 <- merge(top_h1, match_df[, c("observation_id", "taxon_name", "score")],
+                by = c("observation_id", "taxon_name"))
+
+# Recover ground-truth species for each observation window.
+# ref_pairs_song uses id_x for the window ID and species.x for the
+# Xeno-canto ground-truth label; rename to match top_h1 columns.
+gt <- unique(ref_pairs_song[, c("id_x", "species.x")])
+names(gt) <- c("observation_id", "true_species")
+top_h1 <- merge(top_h1, gt, by = "observation_id", all.x = TRUE)
+
+# Flag detections where BirdNET's candidate != true species
+top_h1$correct <- !is.na(top_h1$true_species) &
+                  (top_h1$taxon_name == top_h1$true_species)
+
+if (nrow(top_h1) > 0L) {
+
+  lik_hi <- 0.90    # high-confidence threshold
+  lik_lo <- 0.50    # decision boundary
+
+  # Pre-transform: asin(x) stretches both ends while keeping the middle linear.
+  # Bounded at pi/2 (~1.57), so perfect matches stay on the plot.
+  ticks_raw  <- c(0, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
+  ticks_tr   <- asin(ticks_raw)
+  top_h1$lik_tr   <- asin(top_h1$likelihood_mean)
+  top_h1$score_tr <- asin(top_h1$score)
+  # Confidence = 1 - CV (coefficient of variation). High mean + low SD -> near 1.
+  # Clamped to [0,1]: CV can exceed 1 when mean is near 0.
+  top_h1$conf <- pmax(0, 1 - top_h1$likelihood_sd /
+                           pmax(top_h1$likelihood_mean, 0.01))
+  top_h1$label  <- factor(
+    ifelse(is.na(top_h1$correct), "Unknown",
+           ifelse(top_h1$correct, "Correct", "Wrong")),
+    levels = c("Correct", "Wrong", "Unknown"))
+
+  # ---- Plot 1: score vs H1 likelihood ----------------------------------------
+  p1 <- ggplot(top_h1,
+               aes(x = score_tr, y = lik_tr,
+                   colour = label, size = conf)) +
+    geom_point(shape = 21, fill = NA, alpha = 0.85) +
+    geom_hline(yintercept = asin(lik_hi), linetype = "dashed",
+               colour = "grey35", linewidth = 0.6) +
+    geom_hline(yintercept = asin(lik_lo), linetype = "dotted",
+               colour = "grey55") +
+    annotate("text", x = Inf, y = asin(lik_hi), label = " 0.90",
+             hjust = 1, vjust = -0.4, size = 3, colour = "grey35") +
+    annotate("text", x = Inf, y = asin(lik_lo), label = " 0.50",
+             hjust = 1, vjust = -0.4, size = 3, colour = "grey55") +
+    scale_colour_manual(
+      values = c("Correct" = "steelblue", "Wrong" = "red2",
+                 "Unknown" = "grey70"),
+      name = NULL) +
+    scale_size_continuous(range = c(0.4, 4),
+                          name  = "Confidence\n(1 \u2212 CV)") +
+    scale_y_continuous(breaks = ticks_tr, labels = ticks_raw,
+                       name = "H1 likelihood (mean)") +
+    scale_x_continuous(breaks = ticks_tr, labels = ticks_raw,
+                       name = "BirdNET confidence (arcsine scale)") +
+    labs(title    = "Score vs H1 likelihood",
+         subtitle = "Point size = confidence (1 \u2212 CV); both axes on arcsine scale") +
+    theme_bw(base_size = 11) +
+    theme(legend.position = "right")
+  print(p1)
+
+  # Threshold summary
+  n_hi_tot   <- sum(top_h1$likelihood_mean >= lik_hi, na.rm = TRUE)
+  n_hi_wrong <- sum(top_h1$label == "Wrong" &
+                    top_h1$likelihood_mean >= lik_hi, na.rm = TRUE)
+  cat(sprintf(
+    "\nAbove %.0f%% likelihood: %d detections, %d wrong (%.1f%%)\n",
+    lik_hi * 100, n_hi_tot, n_hi_wrong,
+    if (n_hi_tot > 0L) 100 * n_hi_wrong / n_hi_tot else 0))
+  if (n_hi_wrong > 0L)
+    cat("  Red points above 0.90 are acoustically confusable pairs;\n",
+        "  the model cannot distinguish them from correct H1 detections.\n")
+
+  # ---- Confusion table -------------------------------------------------------
+  n_correct <- sum(top_h1$correct,  na.rm = TRUE)
+  n_wrong   <- sum(!top_h1$correct, na.rm = TRUE)
+  cat(sprintf("\nDetections: %d correct, %d wrong (%.1f%% error rate)\n",
+              n_correct, n_wrong,
+              100 * n_wrong / max(n_correct + n_wrong, 1L)))
+
+  if (n_wrong > 0L) {
+    has_gt     <- !is.na(top_h1$true_species)
+    conf_mat   <- table(true     = top_h1$true_species[has_gt],
+                        detected = top_h1$taxon_name[  has_gt])
+    row_totals <- rowSums(conf_mat)
+    conf_prop  <- conf_mat / row_totals
+
+    wrong <- top_h1[top_h1$label == "Wrong" & !is.na(top_h1$label), ]
+    tbl   <- as.data.frame(sort(
+               table(paste0(wrong$true_species, " -> ", wrong$taxon_name)),
+               decreasing = TRUE))
+    names(tbl) <- c("confusion_pair", "n")
+    tbl$true_sp     <- sub(" -> .*", "", tbl$confusion_pair)
+    tbl$n_true      <- row_totals[tbl$true_sp]
+    tbl$pct_of_true <- round(100 * tbl$n / tbl$n_true, 1L)
+    cat("\nConfusion summary (wrong detections only):\n")
+    print(tbl[, c("confusion_pair", "n", "n_true", "pct_of_true")],
+          row.names = FALSE)
+
+    sp_both   <- intersect(rownames(conf_prop), colnames(conf_prop))
+    diag_vals <- diag(conf_prop[sp_both, sp_both, drop = FALSE])
+
+    # ---- Plot 2: off-diagonal confusion heatmap ------------------------------
+    off_mat        <- conf_prop
+    diag(off_mat)  <- 0
+    col_ord        <- order(colSums(off_mat), decreasing = TRUE)
+    off_plot       <- off_mat[, col_ord, drop = FALSE]
+
+    if (any(off_plot > 0)) {
+      off_long <- as.data.frame(as.table(off_plot))
+      names(off_long) <- c("true_species", "detected", "proportion")
+      off_long$proportion <- as.numeric(off_long$proportion)
+      off_long$detected   <- factor(off_long$detected,
+                                    levels = colnames(off_plot))
+
+      p2 <- ggplot(off_long,
+                    aes(x = detected, y = true_species, fill = proportion)) +
+        geom_tile(colour = "grey85", linewidth = 0.3) +
+        geom_text(data  = subset(off_long, proportion > 0.01),
+                  aes(label  = sprintf("%.2f", proportion),
+                      colour = proportion > 0.15),
+                  size = 3, show.legend = FALSE) +
+        scale_fill_gradient(low = "white", high = "#b2182b",
+                            name = "Proportion", na.value = "white") +
+        scale_colour_manual(values = c("TRUE"  = "white",
+                                       "FALSE" = "grey25")) +
+        labs(x        = "Falsely detected as",
+             y        = "True species",
+             title    = "Off-diagonal confusion",
+             subtitle = "Columns ordered by confusion frequency") +
+        theme_bw(base_size = 11) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+              axis.text.y = element_text(size = 9))
+      print(p2)
+    }
+  }
+}
+
+# ---- Next step --------------------------------------------------------------
+# For field recordings, run Workflow 4 directly.
+# Pass match_df (built from your field BirdNET output) and model_song.
+# Skip Section 2 of Workflow 4 (remove_flagged_references -- DNA only).
+# Use rank_system = c("genus", "species") throughout.
 
 message("\nWorkflow 3b complete.")
 message("Next: Workflow 4 (convert BirdNET scores to likelihoods for field data)")
