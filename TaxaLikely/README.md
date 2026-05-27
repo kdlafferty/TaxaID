@@ -89,9 +89,11 @@ training; returns metadata table with `file_url` for audio download
 `XC_API_KEY` in `~/.Renviron`)
 
 **Model training:** - `build_sequence_matrix()` -- pairwise distance
-matrix via DECIPHER - `flag_reference_errors()` -- detect mislabeled
-references - `train_likelihood_model()` -- fit hierarchical Bayesian
-model
+matrix via DECIPHER (DNA sequences) - `build_acoustic_reference()` --
+join BirdNET detections to Xeno-canto ground truth, label H1/H2/H3,
+produce pair format for `train_likelihood_model()` (acoustic) -
+`flag_reference_errors()` -- detect mislabeled references -
+`train_likelihood_model()` -- fit hierarchical Bayesian model
 
 **Inference:** - `evaluate_likelihoods()` -- convert match scores to
 likelihoods - `filter_top_hypotheses()` -- keep finest-rank candidates

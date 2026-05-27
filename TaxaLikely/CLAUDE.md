@@ -501,5 +501,30 @@ non-zero likelihoods that bypass the constraint. Correct order:
   4. Label H1/H2/H3 → `train_likelihood_model()`
 - `devtools::check()`: 0 errors, 0 notes (2 pre-existing vignette warnings).
 
+**Session 88 (2026-05-26)**
+- **`duplicate 'row.names' are not allowed` bug fixed** in `fetch_reference_recordings()` when
+  querying multiple quality grades (e.g. `quality = c("A", "B")`). Root cause: `httr2::resp_body_json(simplifyVector = TRUE)`
+  delegated to jsonlite which internally calls `.rowNamesDF<-` when building a data frame from
+  the `also` field (variable-length JSON arrays per recording). Fix: switched to `simplifyVector = FALSE`
+  so recordings are always returned as a list-of-lists; added `.xc_rbind()` internal helper with
+  offset-based unique row names for all combine operations.
+- `build_reference_matrix()` renamed to `build_sequence_matrix()` (file `R/build.R` → `R/build_sequence.R`).
+  Rationale: the function is DNA-sequence-specific; the generic name conflicted as the ecosystem
+  expanded to acoustic observations. Batch sed rename across 36 files. `devtools::document()` regenerated
+  NAMESPACE + Rd. Backward-incompatible: callers must update to `build_sequence_matrix()`.
+- `build_acoustic_reference()` added to new `R/build_acoustic.R` — acoustic analog of
+  `build_sequence_matrix()`. Joins `read_birdnet_output()` results to Xeno-canto ground-truth
+  labels and produces pair format compatible with `train_likelihood_model()`. Key design:
+  - Join key: `sub(".BirdNET.results.csv", "", source_file)` → `tools::file_path_sans_ext(basename(local_path))`
+  - `merge(gt_lookup, birdnet_df, by = "file_stem")` — ground truth in `.x`, BirdNET detection in `.y`
+  - Detection rank within window: `sequence(rle(observation_id)$lengths)` after sort by score desc
+  - `testid = recordings_meta$type` (Xeno-canto recording type: "song", "call", etc.)
+  - Recording type is the acoustic analog of `testid` (barcode marker) in eDNA; train one model per type
+  - `exclude_background` param: drops detections of species in `recordings_meta$also_species`
+  - 25 tests in `tests/testthat/test-build-acoustic.R` (all offline)
+- TaxaMatch and TaxaLikely READMEs updated with real BirdNET-Analyzer installation instructions,
+  Python analysis script example, expected CSV format, and reference training workflow sections.
+- `devtools::check(vignettes = FALSE)`: 0 errors, 0 warnings, 0 notes.
+
 ---
 
