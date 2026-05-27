@@ -24,6 +24,7 @@ Imports:
 Suggests:
     DECIPHER,
     Biostrings,
+    httr2,
     knitr,
     lme4,
     rentrez,

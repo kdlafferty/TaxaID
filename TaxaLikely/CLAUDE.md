@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 -- no package changes; CC0 license Session 82)
+# Last updated: 2026-05-26 (Session 87 -- fetch_reference_recordings() for acoustic reference data)
 
 ---
 
@@ -86,6 +86,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 |---|---|---|---|
 | `fetch_reference_sequences()` | `R/fetch.R` | Written | Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tempdir()`). Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. |
 | `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + user-supplied taxonomy table → `reference_df`. For CRUX, GenBank dumps, custom databases. |
+| `fetch_reference_recordings()` | `R/fetch_recordings.R` | Written | Fetch bird sound recordings from Xeno-canto API v3. Returns metadata table for acoustic reference training. `api_key` required (read from `XC_API_KEY` env var). `quality` A-E filter; `max_per_species` cap; optional `download = TRUE`. Internals: `.xc_query_all()`, `.xc_standardize_cols()`, `.parse_xc_duration()`. |
 
 ### Training (fit model on reference database)
 
@@ -476,6 +477,28 @@ non-zero likelihoods that bypass the constraint. Correct order:
 **Session 86 (2026-05-23)**
 - No code changes. `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at
   TaxaID/ root). Disclaimer section removed from `README.md`.
+
+**Session 87 (2026-05-26)**
+- `fetch_reference_recordings()` added to `R/fetch_recordings.R` — fetch bird sound recordings
+  from Xeno-canto for acoustic likelihood model training. Xeno-canto is the NCBI analog for
+  bird acoustics: public reference database with ground-truth species labels + quality grades.
+- **API v3 upgrade**: Xeno-canto retired the public v2 API (now returns 404). v3 requires an
+  API key (registered XC members only). `api_key = Sys.getenv("XC_API_KEY")` param added;
+  clear error with registration URL when key is missing. Endpoint updated to
+  `https://xeno-canto.org/api/3/recordings`; `per_page = 500L` maximises results per page.
+- `httr2` added to Suggests (requireNamespace guard at function entry).
+- Internal helpers: `.xc_query_all()` (pagination + key passing), `.xc_standardize_cols()`
+  (field rename + species column build + duration parse), `.parse_xc_duration()` ("m:ss" → s).
+- Returns: `recording_id` (XC-prefixed), `species`, `genus`, `common_name`, `quality`,
+  `type`, `country`, `location`, `lat`, `lng`, `duration_s`, `date`, `license`, `file_url`,
+  `also_species`, `local_path`. `attr(result, "xc_query")` stores the original species arg.
+- Offline validation tests + API-key-guarded online tests in `test-fetch_recordings.R`.
+- Acoustic reference training workflow:
+  1. `fetch_reference_recordings()` → download audio
+  2. Run BirdNET-Analyzer on audio
+  3. `TaxaMatch::read_birdnet_output()` → join back to ground-truth species by `source_file`
+  4. Label H1/H2/H3 → `train_likelihood_model()`
+- `devtools::check()`: 0 errors, 0 notes (2 pre-existing vignette warnings).
 
 ---
 

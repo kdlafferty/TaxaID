@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — no package changes; CC0 license Session 82)
+# Last updated: 2026-05-26 (Session 87 — read_birdnet_output() implemented)
 
 ---
 
@@ -105,12 +105,12 @@ likelihood output downstream — it is NOT part of the match object.
 |---|---|---|---|
 | `blast_sequences()` | R/blast.R | Written | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution |
 
-### Image and acoustic input (PLANNED)
+### Image and acoustic input
 
 | Function | File | Status | Description |
 |---|---|---|---|
 | `read_animl_output()` | R/image_input.R | Planned | Ingest Animl CSV export (MegaDetector + species classifier); map confidence + taxonomy to match object |
-| `read_birdnet_output()` | R/acoustic_input.R | Planned | Ingest BirdNET CSV (detections × species × confidence); map to match object |
+| `read_birdnet_output()` | R/read_acoustic.R | Complete | Ingest BirdNET-Analyzer CSV (detections × species × confidence); map to match object. Accepts file vector or directory path. `observation_id = "{file_stem}_{start_s}-{end_s}"`. `min_confidence` and `top_n` filters. |
 
 ### Standardization (original)
 
@@ -310,3 +310,14 @@ inside `filter_redundant_hypotheses()` via `match()`.
 **Session 86 (2026-05-23)**
 - No code changes. `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at
   TaxaID/ root). Disclaimer section removed from `README.md`.
+
+**Session 87 (2026-05-26)**
+- `read_birdnet_output()` implemented in `R/read_acoustic.R` (was Planned since Session 55).
+  Reads BirdNET-Analyzer CSV output (one file per recording). Accepts file vector or directory.
+  `observation_id = "{file_stem}_{start_s}-{end_s}"`. `score` = Confidence (0-1). `genus` derived
+  from first word of Scientific name. `min_confidence` and `top_n` filters. `source_file` column
+  for ground-truth join back to Xeno-canto reference metadata.
+  Internal helper `.parse_birdnet_file()` validates required BirdNET columns.
+- 9 offline tests in `tests/testthat/test-read_acoustic.R` (synthetic `tempfile()` + `write.csv()`
+  BirdNET data — no real recordings needed).
+- `devtools::check()`: 0 errors, 0 notes (2 pre-existing vignette warnings).
