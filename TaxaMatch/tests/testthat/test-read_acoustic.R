@@ -139,6 +139,57 @@ test_that("read_birdnet_output() errors on empty directory", {
   expect_error(read_birdnet_output(dir), "no \\*\\.BirdNET")
 })
 
+test_that("read_birdnet_output() handles empty CSV (header only, no detections)", {
+  tmp <- tempfile(fileext = ".BirdNET.results.csv")
+  write.csv(data.frame(
+    "Start (s)"       = numeric(0),
+    "End (s)"         = numeric(0),
+    "Scientific name" = character(0),
+    "Common name"     = character(0),
+    "Confidence"      = numeric(0),
+    check.names = FALSE, stringsAsFactors = FALSE
+  ), tmp, row.names = FALSE)
+  on.exit(unlink(tmp))
+
+  # Should emit a message and return a 0-row data frame with correct columns
+  expect_message(read_birdnet_output(tmp), "no detections")
+  out <- suppressMessages(read_birdnet_output(tmp))
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 0L)
+  expect_true(all(c("observation_id", "score", "species", "genus",
+                    "common_name", "start_s", "end_s", "source_file") %in%
+                    names(out)))
+})
+
+test_that("read_birdnet_output() handles mix of empty and non-empty files", {
+  tmp_empty <- tempfile(fileext = ".BirdNET.results.csv")
+  tmp_data  <- tempfile(fileext = ".BirdNET.results.csv")
+
+  write.csv(data.frame(
+    "Start (s)"       = numeric(0),
+    "End (s)"         = numeric(0),
+    "Scientific name" = character(0),
+    "Common name"     = character(0),
+    "Confidence"      = numeric(0),
+    check.names = FALSE, stringsAsFactors = FALSE
+  ), tmp_empty, row.names = FALSE)
+
+  write.csv(data.frame(
+    "Start (s)"       = 0.0,
+    "End (s)"         = 3.0,
+    "Scientific name" = "Turdus migratorius",
+    "Common name"     = "American Robin",
+    "Confidence"      = 0.88,
+    check.names = FALSE, stringsAsFactors = FALSE
+  ), tmp_data, row.names = FALSE)
+
+  on.exit(unlink(c(tmp_empty, tmp_data)))
+
+  out <- suppressMessages(read_birdnet_output(c(tmp_empty, tmp_data)))
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$species, "Turdus migratorius")
+})
+
 test_that("read_birdnet_output() derives genus correctly for multi-word names", {
   tmp <- tempfile(fileext = ".BirdNET.results.csv")
   write.csv(data.frame(
