@@ -149,18 +149,22 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 ## Workflow Scripts
 
-Five self-contained workflow scripts in `inst/workflows/`, replacing the old
+Six self-contained workflow scripts in `inst/workflows/`, replacing the old
 monolithic `inst/TaxaLikely_workflow.R` (retained for reference but superseded).
 
 | # | File | Purpose | Key functions |
 |---|---|---|---|
 | 1 | `1_fetch_references_workflow.R` | Build `reference_df` from NCBI or local FASTA | `fetch_reference_sequences()`, `read_reference_fasta()` |
 | 2 | `2_flag_errors_workflow.R` | Find mislabeled references; explore/tabulate/report | `build_sequence_matrix()` → `flag_reference_errors()` |
-| 3 | `3_train_model_workflow.R` | Train likelihood model from reference matrix | `build_sequence_matrix()` → `train_likelihood_model()` → `interpret_model()` |
+| 3 | `3_train_model_workflow.R` | Train likelihood model from DNA reference matrix | `build_sequence_matrix()` → `train_likelihood_model()` → `interpret_model()` |
+| 3b | `3b_acoustic_reference_workflow.R` | **Acoustic:** Xeno-canto → BirdNET → train one model per recording type | `fetch_reference_recordings()` → BirdNET (Python) → `read_birdnet_output()` → `build_acoustic_reference()` → `train_likelihood_model()` |
 | 4 | `4_score_to_likelihood_workflow.R` | Convert match scores to likelihoods for TaxaAssign | `evaluate_likelihoods()` → `filter_top_hypotheses()` |
 | 5 | `5_audit_coverage_workflow.R` | Audit reference completeness; constrain likelihoods | `audit_barcode_coverage()` / `audit_reference_coverage()` → `apply_coverage_constraints()` |
 
 Workflows 2 and 3 share `build_sequence_matrix()` — build once, reuse.
+Workflow 3b is the acoustic analog: Xeno-canto recordings replace NCBI sequences;
+`build_acoustic_reference()` replaces `build_sequence_matrix()`. Train one model
+per recording type (song, call) exactly as DNA trains one model per barcode marker.
 Workflow 4 includes a one-liner to remove flagged errors from the match object
 before evaluating likelihoods (no dedicated function needed).
 
