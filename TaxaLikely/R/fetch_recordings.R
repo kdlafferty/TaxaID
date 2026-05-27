@@ -334,22 +334,22 @@ fetch_reference_recordings <- function(species,
       ))
     }
 
-    parsed    <- httr2::resp_body_json(resp, simplifyVector = TRUE)
-    num_pages <- as.integer(parsed$numPages %||% 1L)
-    recs      <- parsed$recordings
+    # Use simplifyVector = FALSE so jsonlite always returns a list of lists,
+    # never a data.frame.  jsonlite's data.frame construction calls
+    # .rowNamesDF<- internally and can fail on duplicate row names when
+    # the 'also' field has inconsistent array lengths across recordings.
+    parsed    <- httr2::resp_body_json(resp, simplifyVector = FALSE)
+    num_pages <- as.integer(parsed[["numPages"]] %||% 1L)
+    recs_raw  <- parsed[["recordings"]]
 
-    if (!is.null(recs) && length(recs) > 0L) {
-      if (!is.data.frame(recs)) {
-        recs <- .xc_rbind(lapply(recs, function(r) {
-          as.data.frame(lapply(r, function(v) {
-            if (length(v) == 0L) NA_character_
-            else if (length(v) > 1L) paste(v, collapse = ", ")
-            else as.character(v)
-          }), stringsAsFactors = FALSE)
-        }))
-      } else {
-        row.names(recs) <- NULL
-      }
+    if (!is.null(recs_raw) && length(recs_raw) > 0L) {
+      recs <- .xc_rbind(lapply(recs_raw, function(r) {
+        as.data.frame(lapply(r, function(v) {
+          if (length(v) == 0L) NA_character_
+          else if (length(v) > 1L) paste(as.character(unlist(v)), collapse = ", ")
+          else as.character(v[[1L]])
+        }), stringsAsFactors = FALSE)
+      }))
       all_recs[[page]] <- recs
     }
 
