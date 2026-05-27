@@ -2,13 +2,10 @@
 
 ## Documentation
 
-- [ ] Write README.md for each package (7 files)
-  - Purpose, installation, quick example, link to vignette
-- [ ] Write ecosystem-level README.md for TaxaID/
-  - Pipeline diagram, package table, installation order, link to MEE paper
-- [ ] Review/edit Claude Code attribution (`inst/CLAUDE_ATTRIBUTION.md`)
-  - Add one-liner to each package README.md
-  - Include in MEE manuscript methods section
+- [x] Write README.md for each package (all 9 packages complete, 106–564 lines each)
+- [x] Write ecosystem-level README.md for TaxaID/ (564 lines, WERC template, Session 82)
+- [x] Claude Code attribution one-liner added to all 9 package READMEs (Session 90)
+- [ ] Include Claude Code attribution in MEE manuscript methods section
 
 ## Workflow testing and debugging
 
@@ -55,11 +52,10 @@ Target journal: Methods in Ecology and Evolution ("Application" format, ~3000-50
 
 ## CRAN preparation (deferred from polishing roadmap)
 
-- [ ] Convert `\dontrun{}` to runnable examples for pure-computation functions
-  - Priority: `clean_taxon_names()`, `compute_posterior()`, `score_consensus()`,
-    `is_valid_species_name()`, `resolve_barcode_lengths()`
-- [ ] Bump versions from 0.0.0.9000 to >= 0.1.0
-- [ ] Set up GitHub repos
+- [x] `clean_taxon_names()` and `is_valid_species_name()` already have runnable examples; remaining `\dontrun{}` blocks are legitimately network-dependent
+- [ ] Convert `\dontrun{}` to runnable examples for `compute_posterior()` and `score_consensus()` (pure-computation; just need toy data fixtures)
+- [x] Bump versions to 0.1.0 — all 9 packages now at 0.1.0 (Session 90)
+- [x] Set up GitHub repos (Session 80)
 - [ ] Optional: pkgdown site for each package or unified ecosystem site
 - [ ] Submit to CRAN in dependency order:
   TaxaTools → TaxaFetch → TaxaHabitat → TaxaMatch → TaxaLikely → TaxaExpect → TaxaAssign

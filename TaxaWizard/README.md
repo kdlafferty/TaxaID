@@ -104,3 +104,5 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
+
+Developed with [Claude Code](https://claude.ai/code) (Anthropic).

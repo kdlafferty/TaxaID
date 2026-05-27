@@ -1,6 +1,6 @@
 Package: TaxaMatch
 Title: Store and Standardize Biological Match Data
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
 Description: Stores and standardizes raw match data produced by external tools that
     compare biological observations (eDNA sequences, images, acoustic recordings) against

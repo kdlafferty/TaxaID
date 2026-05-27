@@ -1,6 +1,6 @@
 Package: TaxaAssign
 Title: Bayesian Taxonomic Assignment from Match Scores and Priors
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: 
     person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
 Description: Estimates the posterior probability that a biological sample
