@@ -190,6 +190,26 @@ message("Downloaded ", nrow(recs_song), " song recordings.")
 # Alternatively, use BirdNET-GUI (desktop app) or the BirdNET command-line
 # tool; any tool that produces the standard .BirdNET.results.csv format works.
 
+# ---- STORAGE NOTE: delete audio files after BirdNET processing --------------
+# Reference audio files can be large (~5-15 MB each). Once BirdNET has
+# processed them and written the .BirdNET.results.csv files, the audio is no
+# longer needed by R or by TaxaLikely. Delete it to recover disk space.
+#
+# Verify the CSV output directory is populated first:
+# length(list.files("birdnet_results/song/", pattern = "\\.csv$"))
+#
+# Then delete the audio:
+# audio_files <- list.files("reference_audio/song/", full.names = TRUE,
+#                            pattern = "\\.(mp3|wav|flac|ogg)$")
+# file.remove(audio_files)
+# message("Deleted ", length(audio_files), " audio files.")
+#
+# Keep recs_song.rds -- it holds the Xeno-canto metadata (species, quality,
+# type, local_path, also_species) needed by build_acoustic_reference().
+# The local_path values in recs_song will become stale after deletion, but
+# build_acoustic_reference() uses only the file stem (not the path itself)
+# as the join key, so the join still works correctly.
+
 # ---- STEP 4: Read BirdNET detections into R ---------------------------------
 # read_birdnet_output() reads one or more BirdNET CSV files and returns a
 # standardised data frame with columns:
