@@ -105,8 +105,9 @@ consensus - `update_prior_from_consensus()` -- empirical Bayes
 refinement
 
 **Unreferenced species:** - `suggest_unreferenced_species()` --
-LLM-first detection of missing taxa - `expand_unreferenced_hypotheses()`
--- name generic H2/H3 rows
+LLM-first detection of missing taxa (supports eDNA, acoustic, and image
+data via `data_type` param) - `expand_unreferenced_hypotheses()` -- name
+generic H2/H3 rows
 
 **High-level wrappers:** - `run_bayesian_pipeline()` -- full Bayesian
 (TaxaLikely + TaxaExpect -\> posteriors) - `run_llm_pipeline()` --

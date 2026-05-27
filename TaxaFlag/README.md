@@ -90,9 +90,11 @@ comment. The LLM returns a JSON array with controlled vocabularies
 geography). The function includes truncation recovery: if an LLM
 response is cut off mid-JSON, it walks backward to find the last
 complete object and parses what is available. Taxa omitted by the LLM
-are filled with NA. This review is intended as a structured second
-opinion, not an automated filter -- users should treat the flags as
-candidates for closer inspection.
+are filled with NA. Supports eDNA, acoustic, and image data via the
+`data_type` param, which switches the contaminant guidance text in the
+LLM prompt. This review is intended as a structured second opinion, not
+an automated filter -- users should treat the flags as candidates for
+closer inspection.
 
 ## Installation
 

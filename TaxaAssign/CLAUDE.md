@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — .resolve_llm_fn() fallback updated; license cleanup)
+# Last updated: 2026-05-27 (Session 89 — suggest_unreferenced_species data_type + reference_species params)
 
 ---
 
@@ -29,7 +29,7 @@ or be user-supplied from outside the ecosystem.
 |---|---|---|---|
 | `compute_posterior()` | Core Bayes update: likelihood × prior → posterior | Complete | R/compute_posterior.R |
 | `expand_unreferenced_hypotheses()` | Replace generic H2/H3 rows from TaxaLikely with named unreferenced species; bridges TaxaLikely likelihoods to TaxaExpect priors | Complete | R/expand_unreferenced.R |
-| `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → NCBI barcode count → unreferenced vector; optional family expansion | Complete | R/suggest_unreferenced_species.R |
+| `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → reference-check → unreferenced vector; optional family expansion. data_type param ("eDNA"/"acoustic"/"image") routes to NCBI queries (eDNA) or set-membership check vs reference_species (acoustic/image). | Complete | R/suggest_unreferenced_species.R |
 | `assign_taxa_llm()` | LLM-shortcut pipeline: score-based likelihoods + LLM priors → posteriors | Complete | R/assign_taxa_llm.R |
 | `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id` | Complete | R/posterior_consensus.R |
 | `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id` | Complete | R/score_consensus.R |
@@ -738,3 +738,6 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
   `suggest_unreferenced_species()`. Clears TODO from Sessions 82/85.
 - `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
 - Disclaimer section removed from `README.md`.
+
+**Session 89 (2026-05-27)**
+- `suggest_unreferenced_species()`: `data_type` param added (`"eDNA"` default / `"acoustic"` / `"image"`). eDNA path: existing NCBI nucleotide count queries. Acoustic/image path: set-membership check against `reference_species` (character vector of classifier's known species list). LLM prompt `ref_filter_note` switches text accordingly via `switch(data_type, ...)`. `barcode_term`, `max_date`, and `rentrez` requireNamespace guard now all wrapped in `if (data_type == "eDNA")`. `reference_species` param added (required for acoustic/image; ignored for eDNA).

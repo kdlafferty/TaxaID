@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — no package changes; CC0 license Session 82)
+# Last updated: 2026-05-27 (Session 89 — phase_classify + phase_parameterize prompt updates for acoustic/image)
 
 ---
 
@@ -487,3 +487,7 @@ contain quotes, backslashes, etc.
 **Session 86 (2026-05-23)**
 - No code changes. `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at
   TaxaID/ root). Disclaimer section removed from `README.md`.
+
+**Session 89 (2026-05-27)**
+- `phase_classify.md`: `match_df` input type description now mentions BirdNET acoustic detections and image classifier results alongside BLAST output — "multiple scored candidates per sample" is the common pattern.
+- `phase_parameterize.md`: `barcode_term` bullet explicitly marked as DNA/eDNA only; new `rank_system` bullet for acoustic/image: BirdNET typically uses `c("genus","species")`; image classifiers use whatever taxonomy columns are returned.

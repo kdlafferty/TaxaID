@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — llm_fn fallback updated; license cleanup)
+# Last updated: 2026-05-27 (Session 89 — review_assignments data_type param)
 
 ---
 
@@ -56,7 +56,7 @@ Consistent with TaxaHabitat's `spatial_flag` / `spatial_flag_reason` pattern.
 | `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control |
 | `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts |
 | `.parse_datetimes()` | `R/flag_handler.R` | Written | Internal: auto-detect datetime format |
-| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. |
+| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. |
 | `.normalise_context()` | `R/review_assignments.R` | Written | Internal: normalise build_context() or named list to standard fields |
 | `.build_review_prompt()` | `R/review_assignments.R` | Written | Internal: construct structured LLM prompt |
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
@@ -223,3 +223,6 @@ frustrating than helpful; workflow scripts are more transparent.
   `TaxaTools::call_api`. Clears TODO from Sessions 82/85.
 - `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
 - Disclaimer section removed from `README.md`.
+
+**Session 89 (2026-05-27)**
+- `review_assignments()`: `data_type` param added (`"eDNA"` default / `"acoustic"` / `"image"`). Controls contaminant guidance text in the LLM prompt: eDNA (common lab contaminants: Homo sapiens, Bos taurus, etc.), acoustic (human vocalizations + handler noise near recording equipment), image (handler presence during camera setup/teardown). Also switches the JSON example `comment` value to match the data type. Implemented in `.build_review_prompt()` via `switch(data_type, ...)`.
