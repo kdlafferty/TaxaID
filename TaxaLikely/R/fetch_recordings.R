@@ -181,31 +181,40 @@ fetch_reference_recordings <- function(species,
       i, length(species), sp
     ))
 
-    # Build Xeno-canto v3 query string using structured search tags.
-    # v3 requires tags (gen:/sp:) rather than free-text species names.
+    # Build Xeno-canto v3 species tags (gen:/sp:); free-text not supported.
     words <- strsplit(trimws(sp), "\\s+")[[1L]]
     sp_tags <- if (length(words) >= 2L) {
       paste0("gen:", words[1L], " sp:", words[2L])
     } else {
       paste0("gen:", words[1L])   # genus-only query
     }
-    q_clause <- paste(paste0("q:", quality), collapse = " OR ")
-    query_str <- paste0(
-      sp_tags,
-      if (!is.null(type)) paste0(' type:"', type, '"') else "",
-      " ", q_clause
-    )
+    type_tag <- if (!is.null(type)) paste0(' type:"', type, '"') else ""
 
-    recs <- tryCatch(
-      .xc_query_all(query_str, api_key = api_key),
-      error = function(e) {
-        warning(sprintf(
-          "fetch_reference_recordings: query for '%s' failed: %s",
-          sp, conditionMessage(e)
-        ), call. = FALSE)
-        NULL
-      }
-    )
+    # v3 does not support OR in quality filters: query once per grade, combine.
+    grade_recs <- vector("list", length(quality))
+    for (qi in seq_along(quality)) {
+      query_str <- paste0(sp_tags, type_tag, " q:", quality[qi])
+      grade_recs[[qi]] <- tryCatch(
+        .xc_query_all(query_str, api_key = api_key),
+        error = function(e) {
+          warning(sprintf(
+            "fetch_reference_recordings: query for '%s' q:%s failed: %s",
+            sp, quality[qi], conditionMessage(e)
+          ), call. = FALSE)
+          NULL
+        }
+      )
+    }
+    recs_list <- Filter(Negate(is.null), grade_recs)
+    recs <- if (length(recs_list) > 0L) {
+      # Reset row names on each grade result before combining: the column
+      # reorder in .xc_standardize_cols() converts NULL row names to
+      # character "1","2",... which causes rbind to fail on duplicates.
+      recs_list <- lapply(recs_list, function(x) { rownames(x) <- NULL; x })
+      out_r <- do.call(rbind, recs_list)
+      rownames(out_r) <- NULL
+      out_r
+    } else NULL
 
     if (is.null(recs) || nrow(recs) == 0L) {
       if (verbose) message(sprintf(
@@ -214,10 +223,10 @@ fetch_reference_recordings <- function(species,
       next
     }
 
-    # Filter to exact quality grades requested (API OR may over-fetch)
-    recs <- recs[recs$quality %in% quality, , drop = FALSE]
+    # Remove any duplicate recording_ids (shouldn't occur but guard anyway)
+    recs <- recs[!duplicated(recs$recording_id), , drop = FALSE]
 
-    # Sort by quality grade (A best) then apply cap
+    # Sort by quality grade (A best) then apply cap per species
     grade_rank    <- match(recs$quality, c("A", "B", "C", "D", "E"))
     recs          <- recs[order(grade_rank), , drop = FALSE]
     if (nrow(recs) > max_per_species) {
@@ -229,6 +238,7 @@ fetch_reference_recordings <- function(species,
       nrow(recs), sp
     ))
 
+    rownames(recs) <- NULL
     all_rows[[i]] <- recs
   }
 
@@ -318,6 +328,7 @@ fetch_reference_recordings <- function(species,
           }), stringsAsFactors = FALSE)
         }))
       }
+      rownames(recs) <- NULL
       all_recs[[page]] <- recs
     }
 
@@ -328,7 +339,9 @@ fetch_reference_recordings <- function(species,
 
   if (length(all_recs) == 0L) return(data.frame())
 
-  .xc_standardize_cols(do.call(rbind, all_recs))
+  combined <- do.call(rbind, all_recs)
+  rownames(combined) <- NULL
+  .xc_standardize_cols(combined)
 }
 
 
@@ -405,7 +418,9 @@ fetch_reference_recordings <- function(species,
   core <- c("recording_id", "species", "genus", "common_name", "quality",
             "type", "country", "location", "lat", "lng", "duration_s",
             "date", "license", "file_url", "also_species")
-  df[, intersect(c(core, setdiff(names(df), core)), names(df)), drop = FALSE]
+  out <- df[, intersect(c(core, setdiff(names(df), core)), names(df)), drop = FALSE]
+  rownames(out) <- NULL
+  out
 }
 
 
