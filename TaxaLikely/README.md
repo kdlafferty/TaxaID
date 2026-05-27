@@ -82,7 +82,11 @@ likelihoods <- result$likelihoods
 
 **Reference acquisition:** - `fetch_reference_sequences()` -- download
 from NCBI by taxon + barcode marker - `read_reference_fasta()` -- load
-local FASTA + taxonomy table
+local FASTA + taxonomy table - `fetch_reference_recordings()` -- fetch
+bird sound recordings from Xeno-canto API v3 for acoustic model
+training; returns metadata table with `file_url` for audio download
+(requires free API key from `xeno-canto.org/account`, stored as
+`XC_API_KEY` in `~/.Renviron`)
 
 **Model training:** - `build_reference_matrix()` -- pairwise distance
 matrix via DECIPHER - `flag_reference_errors()` -- detect mislabeled
@@ -136,6 +140,38 @@ engineering, hypothesis definitions, parameter estimation, and
 reference quality control, see
 [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md).
 
+## Acoustic Workflow
+
+For bird acoustic data, TaxaLikely integrates with BirdNET-Analyzer
+via `TaxaMatch::read_birdnet_output()`. The reference training workflow
+uses Xeno-canto recordings as ground-truth labels:
+
+``` r
+library(TaxaLikely)
+library(TaxaMatch)
+
+# 1. Fetch reference recordings from Xeno-canto (requires XC_API_KEY)
+recs <- fetch_reference_recordings(
+  species         = c("Turdus migratorius", "Setophaga petechia"),
+  quality         = c("A", "B"),
+  max_per_species = 30L,
+  download        = TRUE,
+  download_dir    = "reference_audio/"
+)
+
+# 2. Run BirdNET-Analyzer on reference_audio/ (Python, outside R):
+#    pip3 install birdnetlib
+#    See TaxaMatch README for the analysis script.
+
+# 3. Read BirdNET detections
+birdnet_df <- read_birdnet_output("birdnet_results/", min_confidence = 0.1)
+
+# 4. Join back to Xeno-canto ground truth via source_file → local_path
+#    to label H1 (BirdNET detected correct species), H2 (wrong species,
+#    same genus), H3 (wrong genus), then train the likelihood model:
+# train_likelihood_model(labeled_df, rank_system = c("genus", "species"))
+```
+
 ## Vignettes
 
 -   [Score to Likelihood](vignettes/score-to-likelihood.Rmd) -- full
@@ -164,6 +200,10 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   DECIPHER and Biostrings (Bioconductor; required for
     `build_reference_matrix()` only)
 -   rentrez and xml2 (for NCBI reference fetching and coverage auditing)
+-   httr2 (for `fetch_reference_recordings()`; Xeno-canto API v3)
+-   Xeno-canto API key for `fetch_reference_recordings()` (free
+    registration at `xeno-canto.org/account`; set `XC_API_KEY` in
+    `~/.Renviron`)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.

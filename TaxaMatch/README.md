@@ -32,7 +32,7 @@ bioinformatics pipeline.
 | **DNA sequences** | DADA2 seqtab, FASTA, DNAStringSet | `read_sequence_table()` |
 | **BLAST results** | Remote NCBI or local rBLAST | `blast_sequences()` |
 | **Images** | Animl CSV export | Planned |
-| **Acoustics** | BirdNET CSV | Planned |
+| **Acoustics** | BirdNET-Analyzer CSV | `read_birdnet_output()` |
 
 ## Installation
 
@@ -76,11 +76,79 @@ match_df <- filter_redundant_hypotheses(match_df)
     abundance
 -   `blast_sequences()` -- remote NCBI BLAST or local rBLAST with score
     window filtering and taxonomy resolution
+-   `read_birdnet_output()` -- ingest BirdNET-Analyzer CSV files;
+    `observation_id` encodes recording + time window
+    (`"{stem}_{start_s}-{end_s}"`); `score` is BirdNET confidence (0--1)
 -   `standardize_match_data()` -- canonical column names, taxonomy
     derivation via `TaxaTools::create_taxon_names()`
 -   `filter_redundant_hypotheses()` -- drop coarser-rank rows superseded
     by finer-rank rows within the same lineage and observation
 -   `report_match()` -- summarize matching for `assemble_report()`
+
+## Acoustic Workflow
+
+BirdNET-Analyzer is a free Python tool from the Cornell Lab of
+Ornithology that classifies bird vocalizations in audio files.
+
+**Install BirdNET-Analyzer** (requires Python 3.9+, \~100 MB model
+download):
+
+``` bash
+pip3 install birdnetlib
+```
+
+**Analyze audio files and read results into R:**
+
+``` r
+library(TaxaMatch)
+
+# Run BirdNET-Analyzer on a directory of audio files
+script <- '
+from birdnetlib import Recording
+from birdnetlib.analyzer import Analyzer
+import os, csv
+
+os.makedirs("birdnet_results", exist_ok=True)
+analyzer = Analyzer()
+for fname in os.listdir("reference_audio/"):
+    if not fname.endswith(".mp3"):
+        continue
+    rec = Recording(analyzer, os.path.join("reference_audio/", fname),
+                    lat=37.5, lon=-122.0, min_conf=0.1)
+    rec.analyze()
+    out = os.path.join("birdnet_results", fname.replace(".mp3", ".BirdNET.results.csv"))
+    with open(out, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Start (s)", "End (s)", "Scientific name", "Common name", "Confidence"])
+        for d in rec.detections:
+            w.writerow([d["start_time"], d["end_time"],
+                        d["scientific_name"], d["common_name"], d["confidence"]])
+'
+writeLines(script, "/tmp/run_birdnet.py")
+system("python3 /tmp/run_birdnet.py")
+
+# Read results into match object format
+match_df <- read_birdnet_output("birdnet_results/",
+                                min_confidence = 0.1,
+                                top_n          = 3L)
+
+# Standardize and pass to TaxaLikely
+match_df <- standardize_match_data(match_df,
+                                   observation_id_col = "observation_id",
+                                   score_col          = "score")
+```
+
+**Expected BirdNET output format:** one CSV per audio file, named
+`recording.BirdNET.results.csv`, with columns `Start (s)`, `End (s)`,
+`Scientific name`, `Common name`, `Confidence`. The BirdNET-Analyzer
+default produces up to 3 detections per 3-second window. Use
+`top_n = 1` to keep only the best candidate per window.
+
+**Reference training workflow:** Download ground-truth recordings from
+Xeno-canto with `TaxaLikely::fetch_reference_recordings()`, run
+BirdNET-Analyzer on the downloaded audio, then join detections back to
+the known species via `source_file` to label H1/H2/H3 training
+examples.
 
 ## Match Object Output
 
@@ -122,6 +190,8 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   TaxaTools (foundation package, installed first)
 -   httr2 and rentrez (for remote NCBI BLAST)
 -   Biostrings and rBLAST (optional; for local BLAST)
+-   Python 3.9+ and birdnetlib (`pip3 install birdnetlib`; optional,
+    for acoustic analysis via BirdNET-Analyzer)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
