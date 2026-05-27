@@ -17,7 +17,7 @@ utils::globalVariables(c(
 
 #' Flag mislabeled sequences in the reference database
 #'
-#' Examines a pairwise distance matrix (output of `build_reference_matrix()`)
+#' Examines a pairwise distance matrix (output of `build_sequence_matrix()`)
 #' and flags sequences whose best match is to a *different* species than their
 #' own label -- a pattern consistent with mislabeling or contamination.
 #'
@@ -29,7 +29,7 @@ utils::globalVariables(c(
 #'   simply the only representative of its species.
 #'
 #' @param raw_df Data frame of pairwise match scores, as returned by
-#'   `build_reference_matrix()`.  Must contain columns `id_x`, `id_y`,
+#'   `build_sequence_matrix()`.  Must contain columns `id_x`, `id_y`,
 #'   `species.x`, `species.y`, and `p_match` (raw scores on the 0-100 or 0-1
 #'   scale used consistently within the matrix).
 #' @param mislabel_threshold Numeric scalar (default `0.02`).  A reference
@@ -54,11 +54,11 @@ utils::globalVariables(c(
 #'       or `"clean"`.}
 #'   }
 #'
-#' @seealso [build_reference_matrix()], [train_likelihood_model()]
+#' @seealso [build_sequence_matrix()], [train_likelihood_model()]
 #'
 #' @examples
 #' \dontrun{
-#' ref_matrix <- build_reference_matrix(reference_df,
+#' ref_matrix <- build_sequence_matrix(reference_df,
 #'                                      rank_system = c("family", "genus", "species"))
 #' flagged <- flag_reference_errors(ref_matrix, mislabel_threshold = 0.02)
 #' table(flagged$flag)
@@ -127,7 +127,7 @@ flag_reference_errors <- function(raw_df,
 
 #' Prepare within-species training pairs from a pairwise distance matrix
 #'
-#' Takes the output of `build_reference_matrix()` and produces the H1 training
+#' Takes the output of `build_sequence_matrix()` and produces the H1 training
 #' data set used by `train_likelihood_model()`.  For each reference sequence the
 #' function:
 #' \enumerate{
@@ -146,7 +146,7 @@ flag_reference_errors <- function(raw_df,
 #' `rank_system`).
 #'
 #' @param raw_df Data frame of pairwise match scores from
-#'   `build_reference_matrix()`.  Must contain `id_x`, `id_y`, and either
+#'   `build_sequence_matrix()`.  Must contain `id_x`, `id_y`, and either
 #'   `p_match` or `raw_score`, plus taxonomy columns for each rank in
 #'   `rank_system` with `.x` and `.y` suffixes (e.g., `species.x`, `genus.x`).
 #' @param rank_system Character vector of rank names ordered **coarse to fine**
@@ -188,7 +188,7 @@ flag_reference_errors <- function(raw_df,
   names(raw_df) <- tolower(names(raw_df))
   rank_system   <- tolower(rank_system)
 
-  # Validate rank columns exist (with .x/.y suffixes from build_reference_matrix)
+  # Validate rank columns exist (with .x/.y suffixes from build_sequence_matrix)
   x_cols <- paste0(rank_system, ".x")
   missing_x <- setdiff(x_cols, names(raw_df))
   if (length(missing_x) > 0L) {
@@ -335,7 +335,7 @@ flag_reference_errors <- function(raw_df,
 #' Train the hierarchical likelihood model on reference-vs-reference scores
 #'
 #' Fits an Empirical Bayes model using pairwise within-species match scores
-#' (from `build_reference_matrix()`) to learn species-specific score
+#' (from `build_sequence_matrix()`) to learn species-specific score
 #' distributions.  Per-species parameters are shrunk toward a global mean,
 #' with shrinkage strength inversely proportional to the number of observations
 #' for that species.  Optionally uses `lme4` random intercepts per taxonomic
@@ -363,7 +363,7 @@ flag_reference_errors <- function(raw_df,
 #' data.
 #'
 #' @param raw_df Data frame of pairwise match scores, as returned by
-#'   `build_reference_matrix()`.  Passed through `.prep_training_data()`.
+#'   `build_sequence_matrix()`.  Passed through `.prep_training_data()`.
 #' @param rank_system Character vector of rank names, **coarse to fine**
 #'   (e.g., `c("family", "genus", "species")`). Default `NULL` auto-detects
 #'   from the `.x`-suffixed columns in `raw_df`.
@@ -440,7 +440,7 @@ flag_reference_errors <- function(raw_df,
 #'
 #' @examples
 #' \dontrun{
-#' ref_matrix <- build_reference_matrix(reference_df,
+#' ref_matrix <- build_sequence_matrix(reference_df,
 #'                                      rank_system = c("family", "genus", "species"))
 #' model <- train_likelihood_model(ref_matrix,
 #'                                 rank_system = c("family", "genus", "species"))

@@ -122,7 +122,7 @@ Confusing error messages, undocumented edge cases, or fragile-but-usually-works 
 | 2 | `.resolve_code_input()` | TaxaTools | `readLines()` without tryCatch on unreadable files. |
 | 3 | `rename_cols()` | TaxaTools | Column index from pattern matching could contain duplicates or out-of-bounds. |
 | 4 | `filter_sequences()` | TaxaMatch | `sequence` column exists but contains NA → `nchar()` fails. |
-| 5 | `build_reference_matrix()` | TaxaLikely | No check that rank_system is non-empty before processing. Lowercased rank columns not validated for existence. |
+| 5 | `build_sequence_matrix()` | TaxaLikely | No check that rank_system is non-empty before processing. Lowercased rank columns not validated for existence. |
 | 6 | `flag_reference_errors()` | TaxaLikely | No explicit check that `species.x` and `species.y` exist in `raw_df`. |
 | 7 | `apply_coverage_constraints()` | TaxaLikely | `census_result` column names not validated helpfully; error message is generic. |
 | 8 | `interpret_model()` | TaxaLikely | Assumes `H1_Global_Mu` has named elements. Manually constructed model breaks. |
@@ -158,7 +158,7 @@ Confusing error messages, undocumented edge cases, or fragile-but-usually-works 
 | 2 | `blast_sequences()` | TaxaMatch | Merge with duplicate column names → `.x`/`.y` suffixes silently created. |
 | 3 | `.blast_remote()` | TaxaMatch | `asv_id` with newline or `>` character breaks FASTA format. |
 | 4 | `.parse_blast_xml()` | TaxaMatch | Empty XML node text → `as.numeric("")` → NA silently. |
-| 5 | `build_reference_matrix()` | TaxaLikely | `as.data.frame()` on distance matrix may have NaN/Inf values not checked. |
+| 5 | `build_sequence_matrix()` | TaxaLikely | `as.data.frame()` on distance matrix may have NaN/Inf values not checked. |
 | 6 | `apply_coverage_constraints()` | TaxaLikely | `tolower()` on non-character columns silently coerces. |
 | 7 | `combine_occurrence_sources()` | TaxaFetch | `suppressWarnings(as.numeric())` silently coerces unparseable coords to NA. |
 | 8 | `filter_gbif_quality()` | TaxaFetch | eDNA keyword filter pastes numeric columns into strings for grepl. |

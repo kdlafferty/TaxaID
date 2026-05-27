@@ -16,7 +16,7 @@
 #'
 #' @section Model training:
 #' \itemize{
-#'   \item \code{\link{build_reference_matrix}} -- pairwise distance matrix
+#'   \item \code{\link{build_sequence_matrix}} -- pairwise distance matrix
 #'   \item \code{\link{flag_reference_errors}} -- detect mislabeled references
 #'   \item \code{\link{train_likelihood_model}} -- fit hierarchical model
 #' }

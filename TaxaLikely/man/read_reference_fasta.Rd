@@ -21,11 +21,11 @@ Used to validate that all rank columns are present in \code{taxonomy}.}
 \value{
 A data frame (\code{reference_df}) with columns \code{composite_id},
 \code{sequence}, and one column per rank.
-Ready for input to \code{\link[=build_reference_matrix]{build_reference_matrix()}}.
+Ready for input to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.
 }
 \description{
 Reads a FASTA file and joins it to a user-supplied taxonomy table to produce
-a \code{reference_df} suitable for \code{\link[=build_reference_matrix]{build_reference_matrix()}}.
+a \code{reference_df} suitable for \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.
 }
 \details{
 This is the local-file alternative to \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}.
@@ -63,5 +63,5 @@ ref <- read_reference_fasta("my_references.fasta", tax,
 }
 \seealso{
 \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}} for downloading from NCBI,
-\code{\link[=build_reference_matrix]{build_reference_matrix()}}
+\code{\link[=build_sequence_matrix]{build_sequence_matrix()}}
 }

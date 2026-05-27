@@ -41,12 +41,12 @@ Sequences flagged as \code{"unverified_singleton_high_match"} are ambiguous
 
 Accession version suffixes (e.g. \code{".1"}, \code{".2"}) are stripped
 before matching, so \code{flag_reference_errors()} output (which uses
-version-free IDs from \code{build_reference_matrix()}) matches correctly
+version-free IDs from \code{build_sequence_matrix()}) matches correctly
 against \code{match_df$accession} values that may include versions.
 }
 \examples{
 \dontrun{
-ref_matrix <- build_reference_matrix(reference_df,
+ref_matrix <- build_sequence_matrix(reference_df,
                                      rank_system = c("family", "genus", "species"))
 errors <- flag_reference_errors(ref_matrix)
 match_obj <- remove_flagged_references(match_obj, errors)

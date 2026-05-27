@@ -136,7 +136,7 @@
       "label": "Build pairwise distance matrix",
       "description": "Align reference sequences with DECIPHER, compute pairwise distances. Requires Bioconductor packages.",
       "packages": ["TaxaLikely"],
-      "functions": ["build_reference_matrix"],
+      "functions": ["build_sequence_matrix"],
       "snippet": "refs_to_matrix.R",
       "time_estimate": "1-10 min (depends on number of sequences)"
     },

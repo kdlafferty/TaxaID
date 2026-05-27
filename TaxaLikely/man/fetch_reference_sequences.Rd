@@ -102,13 +102,13 @@ A data frame (\code{reference_df}) with columns:
 \item{rank columns}{One column per rank in \code{rank_system}
 (e.g., \code{family}, \code{genus}, \code{species}).}
 }
-Ready for input to \code{\link[=build_reference_matrix]{build_reference_matrix()}}.
+Ready for input to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.
 }
 \description{
 Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
 taxonomy via the NCBI taxonomy database, filters by sequence length and
 quality, optionally downsamples, and returns a \code{reference_df} ready for
-\code{\link[=build_reference_matrix]{build_reference_matrix()}}.
+\code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.
 }
 \details{
 The function performs a \strong{count-first estimation} before downloading.
@@ -148,5 +148,5 @@ head(ref)
 }
 \seealso{
 \code{\link[=read_reference_fasta]{read_reference_fasta()}} for loading a local FASTA file,
-\code{\link[=build_reference_matrix]{build_reference_matrix()}} for the next step
+\code{\link[=build_sequence_matrix]{build_sequence_matrix()}} for the next step
 }

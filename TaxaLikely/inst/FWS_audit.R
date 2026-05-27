@@ -94,7 +94,7 @@ reference_df%>%filter(composite_id=="MZ005793")
 ##NEXT lets create a sequence matrix so we can compare within and among taxa.
 rank_system <- c("family", "genus", "species")
 
-ref_matrix <- build_reference_matrix(
+ref_matrix <- build_sequence_matrix(
   reference_df = reference_df,
   rank_system  = rank_system,
   max_dist = 1,    # pairs above 25% divergence are dropped (default)

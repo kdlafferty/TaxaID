@@ -107,9 +107,9 @@ These are shared by TaxaLikely coverage functions and TaxaMatch sequence filteri
 
 | Value | Function | File:Line | Class | Documentation | Recommended Action |
 |---|---|---|---|---|---|
-| `0.25` | `build_reference_matrix()` max_dist | build.R:51 | Conventional | Documented as param | Document: 25% distance = 75% identity; standard threshold for including distantly related taxa |
-| `100` | `build_reference_matrix()` min_seq_len | build.R:52 | Conventional | Documented as param | Document: minimum viable barcode length |
-| `2000` | `build_reference_matrix()` max_seq_len | build.R:53 | Conventional | Documented as param | Document: excludes full genes mistakenly retrieved |
+| `0.25` | `build_sequence_matrix()` max_dist | build.R:51 | Conventional | Documented as param | Document: 25% distance = 75% identity; standard threshold for including distantly related taxa |
+| `100` | `build_sequence_matrix()` min_seq_len | build.R:52 | Conventional | Documented as param | Document: minimum viable barcode length |
+| `2000` | `build_sequence_matrix()` max_seq_len | build.R:53 | Conventional | Documented as param | Document: excludes full genes mistakenly retrieved |
 | `5` | `fetch_reference_sequences()` max_per_species | fetch.R:284 | Arbitrary | Documented as param | Document: stratified downsampling; 5 captures intra-species variation without overwhelming model |
 | `10000` | `fetch_reference_sequences()` max_sequences | fetch.R:286 | Arbitrary | Documented as param | Document: safety valve to prevent accidental bulk download |
 | `200` | `.fetch_summaries_batched()` batch_size | fetch.R:42 | Conventional | Undocumented internal | Document: NCBI API batch limit; 200 is conservative |

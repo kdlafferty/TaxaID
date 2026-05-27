@@ -120,7 +120,7 @@ reference_df <- fetch_reference_sequences(
 )
 
 # Build alignment matrix
-ref_matrix <- build_reference_matrix(reference_df)
+ref_matrix <- build_sequence_matrix(reference_df)
 
 # Flag mislabeled references
 errors <- flag_reference_errors(ref_matrix)

@@ -33,7 +33,7 @@ learns these species-specific patterns from a reference database.
 library(TaxaLikely)
 
 # 1. Build reference alignment matrix
-ref_matrix <- build_reference_matrix(reference_df)
+ref_matrix <- build_sequence_matrix(reference_df)
 
 # 2. Train the likelihood model
 model <- train_likelihood_model(ref_matrix)
@@ -72,7 +72,7 @@ Align all reference sequences against each other to learn the expected score
 distributions.
 
 ```{r build-matrix}
-ref_matrix <- build_reference_matrix(reference_df)
+ref_matrix <- build_sequence_matrix(reference_df)
 # Returns a data frame with columns: query, subject, p_match, family, genus, species
 ```
 
@@ -155,7 +155,7 @@ The output is ready for TaxaAssign: `expand_unreferenced_hypotheses()` →
    contains these. Usually caused by all candidates matching only at ranks
    coarser than `rank_system`. Re-run with a broader rank system.
 
-2. **DECIPHER not installed:** `build_reference_matrix()` requires the
+2. **DECIPHER not installed:** `build_sequence_matrix()` requires the
    Bioconductor package DECIPHER. Install with
    `BiocManager::install("DECIPHER")`.
 

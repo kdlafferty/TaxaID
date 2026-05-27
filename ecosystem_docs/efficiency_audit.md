@@ -15,11 +15,11 @@ changes that would noticeably improve user experience, not micro-optimizations.
 
 ## High-Impact Issues
 
-### E1. Distance matrix expansion — `build_reference_matrix()`
+### E1. Distance matrix expansion — `build_sequence_matrix()`
 
 | | |
 |---|---|
-| **Function** | `build_reference_matrix()` |
+| **Function** | `build_sequence_matrix()` |
 | **File** | `TaxaLikely/R/build.R:113` |
 | **Impact** | **High** |
 
@@ -94,11 +94,11 @@ cli::cli_progress_done(id = pb)
 
 ---
 
-### E4. No progress bar — `build_reference_matrix()`
+### E4. No progress bar — `build_sequence_matrix()`
 
 | | |
 |---|---|
-| **Function** | `build_reference_matrix()` |
+| **Function** | `build_sequence_matrix()` |
 | **File** | `TaxaLikely/R/build.R:100-112` |
 | **Impact** | **Medium** (UX) |
 
@@ -343,7 +343,7 @@ if (nrow(coords) > 5000) cli::cli_warn("Large grid ({nrow(coords)} cells) ...")
 
 | Function | Package | Typical duration | Has progress bar? | Recommendation |
 |---|---|---|---|---|
-| `build_reference_matrix()` | TaxaLikely | 30s - 10min | No (messages only) | **Add timing info** |
+| `build_sequence_matrix()` | TaxaLikely | 30s - 10min | No (messages only) | **Add timing info** |
 | `evaluate_likelihoods()` | TaxaLikely | 5s - 5min | **No** | **Add progress bar** |
 | `train_likelihood_model()` | TaxaLikely | 1-10s | No (fast enough) | OK as-is |
 | `fetch_reference_sequences()` | TaxaLikely | 1-30min | Messages per batch | Consider progress bar for download phase |
@@ -359,7 +359,7 @@ if (nrow(coords) > 5000) cli::cli_warn("Large grid ({nrow(coords)} cells) ...")
 | `fetch_dataone_occurrences()` | TaxaFetch | 20-60s | No | **Add progress bar** |
 
 **Functions needing progress bars:** `evaluate_likelihoods()`, `audit_barcode_coverage()`, `fetch_dataone_occurrences()`, `train_biodiversity_model()`, `generate_full_priors()`
-**Functions needing timing info:** `build_reference_matrix()`
+**Functions needing timing info:** `build_sequence_matrix()`
 
 ---
 
@@ -370,7 +370,7 @@ if (nrow(coords) > 5000) cli::cli_warn("Large grid ({nrow(coords)} cells) ...")
 | **High** | E1: Distance matrix expansion | Memory ~95% reduction | 30 min |
 | **High** | E2: MC simulation vectorization | CPU ~5-10× speedup | 1-2 hrs |
 | **Medium** | E3: Progress bar for `evaluate_likelihoods()` | UX | 15 min |
-| **Medium** | E4: Timing info for `build_reference_matrix()` | UX | 10 min |
+| **Medium** | E4: Timing info for `build_sequence_matrix()` | UX | 10 min |
 | **Medium** | E5: NCBI API batching | API time ~2-5× reduction | 1-2 hrs |
 | **Medium** | E11: Row-wise apply in GBIF fetch | CPU | 20 min |
 | **Medium** | E12: crossing() before filtering | Memory | 20 min |

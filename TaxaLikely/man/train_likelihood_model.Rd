@@ -19,7 +19,7 @@ train_likelihood_model(
 }
 \arguments{
 \item{raw_df}{Data frame of pairwise match scores, as returned by
-\code{build_reference_matrix()}.  Passed through \code{.prep_training_data()}.}
+\code{build_sequence_matrix()}.  Passed through \code{.prep_training_data()}.}
 
 \item{rank_system}{Character vector of rank names, \strong{coarse to fine}
 (e.g., \code{c("family", "genus", "species")}). Default \code{NULL} auto-detects
@@ -84,7 +84,7 @@ hypothesis.}
 }
 \description{
 Fits an Empirical Bayes model using pairwise within-species match scores
-(from \code{build_reference_matrix()}) to learn species-specific score
+(from \code{build_sequence_matrix()}) to learn species-specific score
 distributions.  Per-species parameters are shrunk toward a global mean,
 with shrinkage strength inversely proportional to the number of observations
 for that species.  Optionally uses \code{lme4} random intercepts per taxonomic
@@ -119,7 +119,7 @@ data.
 
 \examples{
 \dontrun{
-ref_matrix <- build_reference_matrix(reference_df,
+ref_matrix <- build_sequence_matrix(reference_df,
                                      rank_system = c("family", "genus", "species"))
 model <- train_likelihood_model(ref_matrix,
                                 rank_system = c("family", "genus", "species"))

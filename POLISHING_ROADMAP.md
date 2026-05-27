@@ -268,7 +268,7 @@ Save as `ecosystem_docs/redundancy_audit.md`.
 - **Model:** Opus
 - **Output:** `ecosystem_docs/efficiency_audit.md`
 - **Completed:** 2026-04-13 (Session 56)
-- **Notes:** 16 issues found: 2 high, 7 medium, 7 low. Top findings: (1) `build_reference_matrix()` expands N×N distance matrix to N² rows — ~95% memory reduction with `which(arr.ind=TRUE)`; (2) MC simulation vectorization for ~5-10× CPU speedup; (3) 5 functions need progress bars (evaluate_likelihoods, audit_barcode_coverage, fetch_dataone_occurrences, train_biodiversity_model, generate_full_priors); (4) BLAST XML parsing should batch with xml_find_all; (5) row-wise apply in GBIF fetch vectorizable. Total effort for high+medium: 6-7 hours.
+- **Notes:** 16 issues found: 2 high, 7 medium, 7 low. Top findings: (1) `build_sequence_matrix()` expands N×N distance matrix to N² rows — ~95% memory reduction with `which(arr.ind=TRUE)`; (2) MC simulation vectorization for ~5-10× CPU speedup; (3) 5 functions need progress bars (evaluate_likelihoods, audit_barcode_coverage, fetch_dataone_occurrences, train_biodiversity_model, generate_full_priors); (4) BLAST XML parsing should batch with xml_find_all; (5) row-wise apply in GBIF fetch vectorizable. Total effort for high+medium: 6-7 hours.
 
 The code was not written with efficiency as the primary goal, but users will
 become frustrated if it is slow or memory-hungry. Scan for areas where there
@@ -503,7 +503,7 @@ the coupling cost. Run `devtools::check()` on every affected package afterward.
 - **Depends on:** Prompt 7
 - **Input:** `ecosystem_docs/efficiency_audit.md`
 - **Completed:** 2026-04-16 (Session 57)
-- **Notes:** E1 (sparse dist matrix), E2 (vectorized MC), E3 (progress bar evaluate_likelihoods), E4 (timing build_reference_matrix), E5 (NCBI API key rate awareness), E11 (vectorized GBIF key validation), E12 (filter before crossing), E14 (batch XML parsing), E15 (progress bars DataONE/TaxaExpect), E16 (lmer early exit). All 4 packages pass check.
+- **Notes:** E1 (sparse dist matrix), E2 (vectorized MC), E3 (progress bar evaluate_likelihoods), E4 (timing build_sequence_matrix), E5 (NCBI API key rate awareness), E11 (vectorized GBIF key validation), E12 (filter before crossing), E14 (batch XML parsing), E15 (progress bars DataONE/TaxaExpect), E16 (lmer early exit). All 4 packages pass check.
 
 Using `ecosystem_docs/efficiency_audit.md`, implement the high and medium
 impact improvements:

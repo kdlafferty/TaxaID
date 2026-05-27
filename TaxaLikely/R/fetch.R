@@ -250,7 +250,7 @@ utils::globalVariables(c(
 #' Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
 #' taxonomy via the NCBI taxonomy database, filters by sequence length and
 #' quality, optionally downsamples, and returns a `reference_df` ready for
-#' [build_reference_matrix()].
+#' [build_sequence_matrix()].
 #'
 #' The function performs a **count-first estimation** before downloading.
 #' If the total exceeds `max_sequences`, sequences are subsampled
@@ -336,10 +336,10 @@ utils::globalVariables(c(
 #'     \item{rank columns}{One column per rank in `rank_system`
 #'       (e.g., `family`, `genus`, `species`).}
 #'   }
-#'   Ready for input to [build_reference_matrix()].
+#'   Ready for input to [build_sequence_matrix()].
 #'
 #' @seealso [read_reference_fasta()] for loading a local FASTA file,
-#'   [build_reference_matrix()] for the next step
+#'   [build_sequence_matrix()] for the next step
 #'
 #' @examples
 #' \dontrun{
@@ -810,7 +810,7 @@ fetch_reference_sequences <- function(taxa,
 #' Read a local FASTA file into a reference data frame
 #'
 #' Reads a FASTA file and joins it to a user-supplied taxonomy table to produce
-#' a `reference_df` suitable for [build_reference_matrix()].
+#' a `reference_df` suitable for [build_sequence_matrix()].
 #'
 #' This is the local-file alternative to [fetch_reference_sequences()].
 #' Use it when you already have a reference database on disk (e.g., a CRUX
@@ -841,10 +841,10 @@ fetch_reference_sequences <- function(taxa,
 #'
 #' @return A data frame (`reference_df`) with columns `composite_id`,
 #'   `sequence`, and one column per rank.
-#'   Ready for input to [build_reference_matrix()].
+#'   Ready for input to [build_sequence_matrix()].
 #'
 #' @seealso [fetch_reference_sequences()] for downloading from NCBI,
-#'   [build_reference_matrix()]
+#'   [build_sequence_matrix()]
 #'
 #' @examples
 #' \dontrun{

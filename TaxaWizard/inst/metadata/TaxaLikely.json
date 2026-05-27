@@ -32,7 +32,7 @@
       "scaling_note": "I/O bound; fast"
     },
     {
-      "name": "build_reference_matrix",
+      "name": "build_sequence_matrix",
       "description": "Align sequences and compute pairwise distance matrix",
       "inputs": [
         {"name": "reference_df", "type": "reference_df", "required": true, "description": "From fetch_reference_sequences() or read_reference_fasta()"},
@@ -46,7 +46,7 @@
       "name": "flag_reference_errors",
       "description": "Flag mislabeled reference sequences using trained model residuals",
       "inputs": [
-        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_reference_matrix()"},
+        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_sequence_matrix()"},
         {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks"},
         {"name": "mislabel_threshold", "type": "numeric", "required": false, "default": 3, "description": "Z-score threshold for mislabel detection"}
       ],
@@ -58,7 +58,7 @@
       "name": "train_likelihood_model",
       "description": "Train hierarchical likelihood model from reference matrix",
       "inputs": [
-        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_reference_matrix()"},
+        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_sequence_matrix()"},
         {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (auto-detected if NULL)"},
         {"name": "anchor_perfect", "type": "logical", "required": false, "default": true, "description": "Inject synthetic perfect-match anchors"},
         {"name": "mislabel_threshold", "type": "numeric", "required": false, "default": 3, "description": "Z-score threshold for mislabel detection"}

@@ -13,7 +13,7 @@ library(DECIPHER)
 # ==============================================================================
 # STAGE A: TOY DATA -- verify everything runs without real sequences
 # ==============================================================================
-# We skip build_reference_matrix() (needs DECIPHER) and instead hand-craft
+# We skip build_sequence_matrix() (needs DECIPHER) and instead hand-craft
 # a minimal pairwise distance matrix of the kind it would produce.
 # p_match is on 0-1 scale (= 1 - DECIPHER distance).
 
@@ -190,7 +190,7 @@ if (file.exists(real_matrix_path)) {
 
   # Build pairwise distance matrix (requires DECIPHER; ~minutes for 100+ seqs)
   message("Building reference matrix with DECIPHER alignment...")
-  real_matrix <- build_reference_matrix(
+  real_matrix <- build_sequence_matrix(
     reference_df = reference_df,
     rank_system  = c("family", "genus", "species")
   )

@@ -1,5 +1,5 @@
 # Minimal pairwise distance matrix for testing.
-# p_match is on 0-1 scale (consistent with build_reference_matrix output).
+# p_match is on 0-1 scale (consistent with build_sequence_matrix output).
 # 3 sequences: A1, A2 (same species "Aa"), B1 (species "Bb")
 .make_raw_df <- function() {
   data.frame(

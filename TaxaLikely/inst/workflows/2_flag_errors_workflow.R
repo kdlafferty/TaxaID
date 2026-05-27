@@ -21,7 +21,7 @@
 #     (Workflow 4 shows this step)
 #   - Optionally report them to the database maintainer
 #
-# Requires: DECIPHER and Biostrings (for build_reference_matrix)
+# Requires: DECIPHER and Biostrings (for build_sequence_matrix)
 #   Install with: BiocManager::install("DECIPHER")
 # ==============================================================================
 
@@ -40,7 +40,7 @@ cat("reference_df:", nrow(reference_df), "sequences,",
 
 rank_system <- c("family", "genus", "species")
 
-ref_matrix <- build_reference_matrix(
+ref_matrix <- build_sequence_matrix(
   reference_df = reference_df,
   rank_system  = rank_system
   # max_dist = 0.25    # pairs above 25% divergence are dropped (default)

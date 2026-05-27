@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-26 (Session 87 -- fetch_reference_recordings() for acoustic reference data)
+# Last updated: 2026-05-26 (Session 88 -- build_sequence_matrix rename; build_acoustic_reference new function)
 
 ---
 
@@ -92,7 +92,8 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `build_reference_matrix()` | `R/build.R` | Written | Align sequences (DECIPHER), compute pairwise distance matrix |
+| `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Renamed from `build_reference_matrix()` Session 88. |
+| `build_acoustic_reference()` | `R/build_acoustic.R` | Written | Acoustic analog of `build_sequence_matrix()`. Joins BirdNET detections to Xeno-canto ground truth; labels H1/H2/H3; maps `type` → `testid`. Returns same `.x`/`.y` pair format. Train one model per `testid` type (song, call) as eDNA trains per marker. |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
 | `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations |
 
@@ -154,12 +155,12 @@ monolithic `inst/TaxaLikely_workflow.R` (retained for reference but superseded).
 | # | File | Purpose | Key functions |
 |---|---|---|---|
 | 1 | `1_fetch_references_workflow.R` | Build `reference_df` from NCBI or local FASTA | `fetch_reference_sequences()`, `read_reference_fasta()` |
-| 2 | `2_flag_errors_workflow.R` | Find mislabeled references; explore/tabulate/report | `build_reference_matrix()` → `flag_reference_errors()` |
-| 3 | `3_train_model_workflow.R` | Train likelihood model from reference matrix | `build_reference_matrix()` → `train_likelihood_model()` → `interpret_model()` |
+| 2 | `2_flag_errors_workflow.R` | Find mislabeled references; explore/tabulate/report | `build_sequence_matrix()` → `flag_reference_errors()` |
+| 3 | `3_train_model_workflow.R` | Train likelihood model from reference matrix | `build_sequence_matrix()` → `train_likelihood_model()` → `interpret_model()` |
 | 4 | `4_score_to_likelihood_workflow.R` | Convert match scores to likelihoods for TaxaAssign | `evaluate_likelihoods()` → `filter_top_hypotheses()` |
 | 5 | `5_audit_coverage_workflow.R` | Audit reference completeness; constrain likelihoods | `audit_barcode_coverage()` / `audit_reference_coverage()` → `apply_coverage_constraints()` |
 
-Workflows 2 and 3 share `build_reference_matrix()` — build once, reuse.
+Workflows 2 and 3 share `build_sequence_matrix()` — build once, reuse.
 Workflow 4 includes a one-liner to remove flagged errors from the match object
 before evaluating likelihoods (no dedicated function needed).
 
@@ -196,7 +197,7 @@ The last element (finest rank) maps to `rank_code_a` internally.
 This matches the order of taxonomy columns in the match object.
 
 ### p_match scale
-`build_reference_matrix()` outputs `p_match = 1 - distance` where distance is
+`build_sequence_matrix()` outputs `p_match = 1 - distance` where distance is
 from DECIPHER (0-1 scale). All downstream functions (`flag_reference_errors()`,
 `.prep_training_data()`) expect **p_match on 0-1 scale**.
 The `score` column in the match object (input to `evaluate_likelihoods()`) can
@@ -257,7 +258,7 @@ Must be installed; it is in Imports.
 is not installed (e.g., in test environments), tests that call `evaluate_likelihoods()`
 will fail. Guard with `skip_if_not_installed("TaxaTools")`.
 
-### build_reference_matrix() needs DECIPHER + Biostrings (Suggests)
+### build_sequence_matrix() needs DECIPHER + Biostrings (Suggests)
 These are Bioconductor packages. Install with `BiocManager::install("DECIPHER")`.
 They are in Suggests, not Imports -- not loaded at package startup.
 The function checks for them at runtime.

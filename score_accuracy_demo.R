@@ -10,7 +10,7 @@
 # both score AND gap to evaluate likelihoods under competing hypotheses.
 #
 # Adapted from: accuracy_from_match_Mifish2.R
-# Uses: TaxaLikely (build_reference_matrix), TaxaTools (clean_taxon_names)
+# Uses: TaxaLikely (build_sequence_matrix), TaxaTools (clean_taxon_names)
 # ==============================================================================
 
 library(dplyr)
@@ -76,10 +76,10 @@ message(sprintf(
 # ==============================================================================
 # 2. BUILD PAIRWISE MATCH MATRIX
 # ==============================================================================
-# TaxaLikely::build_reference_matrix() handles alignment, distance computation,
+# TaxaLikely::build_sequence_matrix() handles alignment, distance computation,
 # and taxonomy joining in one call.
 
-ref_matrix <- TaxaLikely::build_reference_matrix(
+ref_matrix <- TaxaLikely::build_sequence_matrix(
   reference_df = reference_df,
   rank_system  = rank_system,
   max_dist     = 0.50   # keep pairs up to 50% divergence for the accuracy demo

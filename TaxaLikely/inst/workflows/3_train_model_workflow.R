@@ -7,7 +7,7 @@
 # Input: reference_df from Workflow 1 (or a pre-built ref_matrix from Workflow 2)
 # Output: A trained model object (class taxa_model_params) for Workflow 4
 #
-# Requires: DECIPHER and Biostrings (for build_reference_matrix)
+# Requires: DECIPHER and Biostrings (for build_sequence_matrix)
 #   Install with: BiocManager::install("DECIPHER")
 #
 # --- BACKGROUND: WHY THREE HYPOTHESES? ---
@@ -123,7 +123,7 @@ rank_system <- c("family", "genus", "species")
 # If you already ran Workflow 2 and saved ref_matrix.rds, load it above
 # and skip this step -- it's the most time-consuming part.
 
-ref_matrix <- build_reference_matrix(
+ref_matrix <- build_sequence_matrix(
   reference_df = reference_df,
   rank_system  = rank_system
 )

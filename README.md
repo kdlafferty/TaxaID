@@ -242,7 +242,7 @@ LLM expert review.
 | Software | Version | OS bit | Reference |
 |---|---|---|---|
 | R | >= 4.1.0 | 64 | R Core Team. 2025. R: A Language and Environment for Statistical Computing. V.4.5.2. <https://www.r-project.org>. |
-| Bioconductor (DECIPHER, Biostrings) | >= 3.17 | 64 | Gentleman et al. 2004. Bioconductor. <https://www.bioconductor.org>. Required only for `TaxaLikely::build_reference_matrix()`. |
+| Bioconductor (DECIPHER, Biostrings) | >= 3.17 | 64 | Gentleman et al. 2004. Bioconductor. <https://www.bioconductor.org>. Required only for `TaxaLikely::build_sequence_matrix()`. |
 | rBLAST | >= 0.99 | 64 | Hahsler and Nagar. 2019. rBLAST. <https://github.com/mhahsler/rBLAST>. Optional; required only for local BLAST in TaxaMatch. |
 
 All other R package dependencies are declared in each package's

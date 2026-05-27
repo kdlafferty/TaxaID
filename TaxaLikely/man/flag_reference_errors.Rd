@@ -8,7 +8,7 @@ flag_reference_errors(raw_df, mislabel_threshold = 0.02, return_all = FALSE)
 }
 \arguments{
 \item{raw_df}{Data frame of pairwise match scores, as returned by
-\code{build_reference_matrix()}.  Must contain columns \code{id_x}, \code{id_y},
+\code{build_sequence_matrix()}.  Must contain columns \code{id_x}, \code{id_y},
 \code{species.x}, \code{species.y}, and \code{p_match} (raw scores on the 0-100 or 0-1
 scale used consistently within the matrix).}
 
@@ -37,7 +37,7 @@ or \code{"clean"}.}
 }
 }
 \description{
-Examines a pairwise distance matrix (output of \code{build_reference_matrix()})
+Examines a pairwise distance matrix (output of \code{build_sequence_matrix()})
 and flags sequences whose best match is to a \emph{different} species than their
 own label -- a pattern consistent with mislabeling or contamination.
 }
@@ -53,7 +53,7 @@ simply the only representative of its species.
 }
 \examples{
 \dontrun{
-ref_matrix <- build_reference_matrix(reference_df,
+ref_matrix <- build_sequence_matrix(reference_df,
                                      rank_system = c("family", "genus", "species"))
 flagged <- flag_reference_errors(ref_matrix, mislabel_threshold = 0.02)
 table(flagged$flag)
@@ -61,5 +61,5 @@ table(flagged$flag)
 
 }
 \seealso{
-\code{\link[=build_reference_matrix]{build_reference_matrix()}}, \code{\link[=train_likelihood_model]{train_likelihood_model()}}
+\code{\link[=build_sequence_matrix]{build_sequence_matrix()}}, \code{\link[=train_likelihood_model]{train_likelihood_model()}}
 }

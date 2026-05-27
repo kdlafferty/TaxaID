@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-26 (Session 87 -- acoustic support: read_birdnet_output, fetch_reference_recordings; call_api_pdf generalization)
+# Last updated: 2026-05-26 (Session 88 -- build_sequence_matrix rename; build_acoustic_reference new function)
 
 ---
 
@@ -490,6 +490,8 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-26 | *(Session 87 — breaking)* | Xeno-canto API v2 → v3 | TaxaLikely | `fetch_reference_recordings()` | v2 endpoint retired (404). v3 endpoint (`/api/3/recordings`) requires API key. `api_key` param added; `per_page = 500L`; 401 handled with clear registration message. Online tests guarded by `skip_if(nchar(Sys.getenv("XC_API_KEY")) == 0L)`. |
 | 2026-05-26 | *(Session 87 — new)* | `call_api_pdf()` (formerly `call_anthropic_api_pdf`) | TaxaFetch | function | Renamed and generalized to support all vision-capable providers via `call_api(images=)`. `provider`, `tier`, `base_url` params added. |
 | 2026-05-26 | *(Session 87 — new)* | `images` param | TaxaTools | `call_api()` | Multi-provider vision/image support. Named list of base64 PNG strings; each handler family formats differently (Anthropic/Gemini/OpenAI-compat). Enables `call_api_pdf()` generalization. |
+| 2026-05-26 | *(Session 88 — rename)* | `build_reference_matrix` | `build_sequence_matrix` | TaxaLikely | function | Renamed for observation-type specificity: function is DNA-sequence-specific (uses DECIPHER alignment). `R/build.R` → `R/build_sequence.R`. 36 files updated across ecosystem. |
+| 2026-05-26 | *(Session 88 — new)* | `build_acoustic_reference()` | TaxaLikely | function | Acoustic analog of `build_sequence_matrix()`. Joins BirdNET-Analyzer detections to Xeno-canto ground-truth labels; labels H1 (correct species), H2 (wrong species same genus), H3 (wrong genus); maps `type` → `testid`. Returns pair-format data frame (`.x`/`.y` suffixes, `p_match`) accepted by `train_likelihood_model()`. Train one model per `testid` type (song, call, etc.) exactly as eDNA trains one model per barcode marker. |
 | 2026-05-22 | *(Session 84 — new)* | `base_url` param | `call_openai_api()` | TaxaTools | param | Enables any OpenAI-compatible API (Grok/xAI, Groq, Mistral, etc.) via base URL swap. Default `"https://api.openai.com"` unchanged. For non-default URLs: requires `model` specified explicitly OR provider registered via `register_provider()`. |
 | 2026-05-22 | *(Session 84 — new)* | `register_provider()` | TaxaTools | function | Session-only registration of custom OpenAI-compatible providers. Params: `name`, `api_key_var`, `base_url`, `fallback_models`, `tier_patterns`. Registered providers appear in `list_models()`, `refresh_models()`, `set_model()`, and trigger automatic tier resolution in `call_openai_api()` when `base_url` matches. `key_vars` in `list_models()`/`refresh_models()` and `valid_providers` in `set_model()` now built dynamically from registry. |
 | 2026-05-21 | *(Session 82 — new)* | `.onAttach()` LLM provider auto-detection | TaxaTools | `R/zzz.R` | On `library(TaxaTools)`: scans env vars for API keys, sets `options(TaxaID.llm_fn)`. Priority: Anthropic > Gemini > OpenAI. 0 keys → setup message; 1 key → auto-set; 2+ keys → auto-select + how to switch. |

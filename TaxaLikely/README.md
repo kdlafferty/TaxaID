@@ -63,7 +63,7 @@ reference_df <- fetch_reference_sequences(
 )
 
 # 2. Build pairwise distance matrix
-ref_matrix <- build_reference_matrix(reference_df)
+ref_matrix <- build_sequence_matrix(reference_df)
 
 # 3. Flag mislabeled references
 errors <- flag_reference_errors(ref_matrix)
@@ -88,7 +88,7 @@ training; returns metadata table with `file_url` for audio download
 (requires free API key from `xeno-canto.org/account`, stored as
 `XC_API_KEY` in `~/.Renviron`)
 
-**Model training:** - `build_reference_matrix()` -- pairwise distance
+**Model training:** - `build_sequence_matrix()` -- pairwise distance
 matrix via DECIPHER - `flag_reference_errors()` -- detect mislabeled
 references - `train_likelihood_model()` -- fit hierarchical Bayesian
 model
@@ -198,7 +198,7 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   R (\>= 4.1.0)
 -   TaxaTools (foundation package, installed first)
 -   DECIPHER and Biostrings (Bioconductor; required for
-    `build_reference_matrix()` only)
+    `build_sequence_matrix()` only)
 -   rentrez and xml2 (for NCBI reference fetching and coverage auditing)
 -   httr2 (for `fetch_reference_recordings()`; Xeno-canto API v3)
 -   Xeno-canto API key for `fetch_reference_recordings()` (free

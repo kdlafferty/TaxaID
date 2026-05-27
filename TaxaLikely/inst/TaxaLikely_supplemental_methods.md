@@ -26,7 +26,7 @@ Axtner et al. 2019; Zito et al. 2023) has addressed the open-set problem by
 placing prior probabilities over both known and unknown taxa. TaxaLikely extends
 this approach by explicitly separating the likelihood estimation from the prior,
 training a generative model on reference-vs-reference pairwise distances
-(`build_reference_matrix()` + `train_likelihood_model()`) and then applying that
+(`build_sequence_matrix()` + `train_likelihood_model()`) and then applying that
 model to convert per-query match scores into calibrated likelihoods
 (`evaluate_likelihoods()`). Priors are estimated independently by TaxaExpect.
 
@@ -336,7 +336,7 @@ reference.
 |----------|-----------------|
 | `fetch_reference_sequences()` | Acquire reference sequences from NCBI |
 | `read_reference_fasta()` | Load local reference FASTA + taxonomy |
-| `build_reference_matrix()` | Align sequences, compute pairwise distance matrix |
+| `build_sequence_matrix()` | Align sequences, compute pairwise distance matrix |
 | `flag_reference_errors()` | Detect mislabeled references |
 | `train_likelihood_model()` | Fit hierarchical model, produce `taxa_model_params` |
 | `interpret_model()` | Summarize model parameters in human-readable form |

@@ -51,7 +51,7 @@ utils::globalVariables(c(
 #' @examples
 #' \dontrun{
 #' # Requires DECIPHER + Biostrings (Bioconductor)
-#' ref_matrix <- build_reference_matrix(
+#' ref_matrix <- build_sequence_matrix(
 #'   reference_df,
 #'   rank_system = c("family", "genus", "species")
 #' )
@@ -60,7 +60,7 @@ utils::globalVariables(c(
 #'
 #' @importFrom dplyr all_of distinct filter left_join mutate rename_with select
 #' @export
-build_reference_matrix <- function(reference_df,
+build_sequence_matrix <- function(reference_df,
                                    rank_system = NULL,
                                    max_dist    = 0.25,
                                    min_seq_len = 100L,
@@ -91,7 +91,7 @@ build_reference_matrix <- function(reference_df,
     }
     if (length(rank_system) == 0L)
       stop("rank_system could not be auto-detected. reference_df has no recognized taxonomy columns.")
-    message("build_reference_matrix: auto-detected rank_system: ",
+    message("build_sequence_matrix: auto-detected rank_system: ",
             paste(rank_system, collapse = ", "))
   }
 

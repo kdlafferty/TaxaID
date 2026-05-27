@@ -246,7 +246,7 @@ See also: `TaxaFetch/inst/PDF_PIPELINE_DATAONE_PARALLEL.md` for parallel DataOne
 | Stage | Functions | Output | Saved to |
 |---|---|---|---|
 | A | Toy data — verify functions run | (no save needed) | — |
-| B1 | `build_reference_matrix()` | `real_matrix` | `TaxaLikely/inst/real_matrix.rds` ✓ |
+| B1 | `build_sequence_matrix()` | `real_matrix` | `TaxaLikely/inst/real_matrix.rds` ✓ |
 | B2 | `train_likelihood_model()` | `real_model` | *(add `saveRDS` → `TaxaLikely/inst/real_model.rds`)* |
 | B3 | `evaluate_likelihoods()` | `real_likelihoods` | `TaxaLikely/inst/real_likelihoods.rds` ✓ |
 | C | `audit_barcode_coverage()` | `coverage` | *(optional; not passed to TaxaAssign directly)* |
