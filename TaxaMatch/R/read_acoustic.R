@@ -213,6 +213,22 @@ read_birdnet_output <- function(files,
   )
   stem <- sub("\\.BirdNET$", "", stem)
 
+  if (nrow(df) == 0L) {
+    message(sprintf("read_birdnet_output: '%s' has no detections (empty file).",
+                    basename(f)))
+    return(data.frame(
+      observation_id = character(0),
+      score          = numeric(0),
+      species        = character(0),
+      genus          = character(0),
+      common_name    = character(0),
+      start_s        = numeric(0),
+      end_s          = numeric(0),
+      source_file    = character(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+
   start_vals <- as.numeric(df[["Start (s)"]])
   end_vals   <- as.numeric(df[["End (s)"]])
 
