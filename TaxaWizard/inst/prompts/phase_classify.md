@@ -41,20 +41,20 @@ Respond with a single JSON object. No text outside the JSON.
 - input_type = "occurrences" ONLY when the user says they already have downloaded occurrence records, a CSV with lat/lon coordinates, or pre-existing GBIF data files on disk.
 - Mentioning "GBIF" does NOT mean input_type is "occurrences". A user saying "map species X using GBIF" means: start from taxa, the system fetches from GBIF.
 
+**birdnet_detections vs match_df:** The user has BirdNET CSV files on disk. This is NOT match_df yet — it must be read into R first.
+
+- input_type = **"birdnet_detections"** when: the user says they have BirdNET-Analyzer CSV files, BirdNET output, or BirdNET results — regardless of whether they have read them into R yet. The workflow will call `read_birdnet_output()` to convert them. This is the correct type for "I have BirdNET CSV output", "I ran BirdNET on my recordings", "I have BirdNET results".
+- input_type = "match_df" ONLY when the user explicitly says the BirdNET data is ALREADY in a standardized R data frame with `observation_id` / `score` / `species` columns.
+
+**image_classifier_output vs match_df:** The user has camera trap classifier output files. This is NOT match_df yet.
+
+- input_type = **"image_classifier_output"** when: the user has raw output files from Animl (CSV), iNaturalist CV (JSON files), or Wildlife Insights/SpeciesNet (batch predictions JSON). The workflow will call the appropriate reader function (`read_animl_output()`, `read_inaturalist_cv_output()`, `read_wildlife_insights_output()`).
+- input_type = "match_df" ONLY when the classifier data has ALREADY been read into R and is in the standardized format.
+
 **match_df vs consensus_df:** The key question is whether the user has raw match scores (multiple candidate taxa per sample with scores) or already-resolved single assignments (one taxon per sample).
 
-- input_type = "match_df" when: BLAST output (percent identity scores), BirdNET acoustic detections (confidence scores), image classifier results (confidence scores), or any other source with **multiple scored candidates per sample**.
+- input_type = "match_df" when: BLAST output (percent identity scores) or any standardized table already in R with **multiple scored candidates per sample**. Do NOT use this for raw BirdNET CSV or raw image classifier files — use "birdnet_detections" or "image_classifier_output" instead.
 - input_type = "consensus_df" when: pre-existing species ID table, one assignment per sample, no match scores.
-
-**birdnet_detections vs match_df:** Both are acoustic data, but they represent different stages.
-
-- input_type = "birdnet_detections" when: the user has raw BirdNET-Analyzer CSV files that have NOT yet been read into R. They will be converted to match_df via `read_birdnet_output()`.
-- input_type = "match_df" when: BirdNET data has ALREADY been read into R with `read_birdnet_output()`, or is already in the standard observation_id/score/species format.
-
-**image_classifier_output vs match_df:** Same staging distinction for image data.
-
-- input_type = "image_classifier_output" when: the user has raw output files from Animl (CSV), iNaturalist CV (JSON files), or Wildlife Insights/SpeciesNet (batch predictions JSON) that have NOT yet been read into R. The workflow will call the appropriate reader function based on which classifier was used.
-- input_type = "match_df" when: image classifier data has ALREADY been read into R and is in the standard format.
 
 **local_fasta vs fetching from NCBI:** For building a sequence reference library.
 
