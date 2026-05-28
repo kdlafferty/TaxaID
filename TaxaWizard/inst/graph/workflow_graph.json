@@ -2,7 +2,7 @@
   "nodes": {
     "inputs": [
       {"id": "sequences",               "label": "Raw Sequences",              "description": "DADA2 sequence table, FASTA file, or DNAStringSet"},
-      {"id": "match_df",               "label": "Match Data",                 "description": "CSV/RDS with observation_id, score, and taxonomy columns (e.g. BLAST output, standardized BirdNET or image classifier output)"},
+      {"id": "match_df",               "label": "Match Data",                 "description": "Standardized R data frame already in memory with observation_id, score, and taxonomy columns. Use this ONLY if data is already read into R. Raw BirdNET CSV files = birdnet_detections. Raw image classifier files = image_classifier_output."},
       {"id": "taxa",                   "label": "Taxon List",                 "description": "Data frame with taxonomy rank columns (e.g. data.frame(family = 'Gobiidae') or data.frame(species = c('Eucyclogobius newberryi', 'Clevelandia ios'))). Column names encode taxonomic rank for GBIF lookups."},
       {"id": "consensus_df",           "label": "Consensus Table",            "description": "Pre-existing consensus assignments (one row per sample)"},
       {"id": "reference_df",           "label": "Reference Sequences",        "description": "FASTA + taxonomy table, output of fetch_reference_sequences(), read_crabs_output(), or read_reference_fasta()"},
