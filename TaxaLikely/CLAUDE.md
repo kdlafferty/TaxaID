@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 93 -- build_image_reference; 3c image workflow)
+# Last updated: 2026-05-28 (Session 94 -- write_reference_fasta, build_site_reference)
 
 ---
 
@@ -123,11 +123,13 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `calibrate_coverage_filter()` | `R/calibrate.R` | Written | Sweep a grid of coverage thresholds over `build_sequence_matrix()` or `build_acoustic_reference()` output; return per-threshold breadth + H1/H2 discrimination metrics. Key columns: `breadth`, `h1_retention`, `h2_retention`, `youden_j` (primary — maximised at Pareto-optimal threshold), `discrimination` (ratio form), `mean_h1_score`. Detects categorical coverage (≤10 unique values, e.g. acoustic grades) and messages that J will be near-flat. Auto-detects finest rank from `.x`/`.y` column pairs via `.detect_finest_rank_col()`. |
 | `coverage_threshold()` | `R/calibrate.R` | Written | Quantile-based shortcut: returns the coverage value at the `(1 − keep_frac)` quantile so that `keep_frac` of pairs are retained (default 0.95). For categorical coverage, snaps to the nearest unique value with a message showing the achieved retention fraction. |
 
-### Match object cleaning
+### Match object cleaning and export
 
 | Function | File | Status | Description |
 |---|---|---|---|
 | `remove_flagged_references()` | `R/clean.R` | Written | Remove mislabeled accessions from match_df using `flag_reference_errors()` output. Handles version suffix stripping. `remove_unverified_singletons` param (default FALSE). |
+| `write_reference_fasta()` | `R/write_fasta.R` | Written | Export `reference_df` to FASTA + optional companion taxonomy TSV. FASTA header: `>{composite_id} {rank vals}` (NA ranks omitted). TSV is positional format compatible with `read_reference_fasta(taxonomy_file=)`. `rank_system` auto-detected when NULL. |
+| `build_site_reference()` | `R/build_site_reference.R` | Written | High-level site-specific reference builder (DNA only). taxa list → `fetch_reference_sequences()` → optional `flag_reference_errors()` → `audit_barcode_coverage()` → `write_reference_fasta()`. Returns `list($reference_df, $errors, $census, $unreferenced)`. `output_dir` param writes `reference.fasta` + `reference_taxonomy.tsv`. |
 
 ### Diagnostics
 
@@ -620,6 +622,24 @@ non-zero likelihoods that bypass the constraint. Correct order:
 - README: "Reference training for images" section updated — `build_image_reference()` now implemented,
   manual pair construction example replaced with real function call.
 - `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
+
+**Session 94 (2026-05-28)**
+- `write_reference_fasta()` added to `R/write_fasta.R`. Exports `reference_df` to FASTA with
+  header `>{composite_id} {rank vals}` (NA ranks omitted) + optional companion taxonomy TSV in
+  positional format compatible with `read_reference_fasta(taxonomy_file=)`. `rank_system` auto-detected
+  from all non-id columns when NULL. 22 offline tests.
+- `build_site_reference()` added to `R/build_site_reference.R`. High-level DNA-only wrapper:
+  taxa list → NCBI fetch → optional mislabel flagging → barcode coverage audit → FASTA export.
+  Parameters: `taxa`, `barcode_term`, `rank_system`, `output_dir`, `flag_errors` (default FALSE;
+  requires DECIPHER), `audit_coverage` (default TRUE), `max_sequences` (5000), `max_per_species`
+  (5), `species_list`, `max_date`, `ncbi_api_key`, `cache_dir`. Returns
+  `list($reference_df, $errors, $census, $unreferenced)`. `output_dir` writes
+  `reference.fasta` + `reference_taxonomy.tsv`.
+- README: new "Building a Site-Specific Reference Library" section with `build_site_reference()`
+  example; Key Functions updated to include `write_reference_fasta()` and `build_site_reference()`.
+- CLAUDE.md: "Match object cleaning" section renamed "Match object cleaning and export";
+  two new function rows added.
+- `devtools::check()`: 0 errors, 0 warnings, 2 notes (pre-existing).
 
 ---
 

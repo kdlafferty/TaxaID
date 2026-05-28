@@ -146,9 +146,60 @@ ref <- read_reference_fasta(
 )
 ```
 
+## Building a Site-Specific Reference Library
+
+`build_site_reference()` is a one-call wrapper for building a curated local
+reference matched to your site's expected taxa. Starting from a list of
+genera or families (e.g., from `TaxaExpect::build_priors()`), it fetches
+sequences from NCBI, audits which described species have no barcode sequences
+at all (the unreferenced gap list), and exports a FASTA + taxonomy TSV ready
+for BLAST or QIIME 2.
+
+``` r
+library(TaxaLikely)
+
+# Genera expected at your site (from TaxaExpect or user-supplied)
+site_genera <- c("Fundulus", "Gambusia", "Lepomis", "Micropterus")
+
+lib <- build_site_reference(
+  taxa         = site_genera,
+  barcode_term = "MiFishU",
+  output_dir   = "site_reference/",    # writes reference.fasta + taxonomy TSV
+  max_date     = "2024/12/31"          # reproducible: fix GenBank state
+)
+
+lib$unreferenced   # species with NO barcode in NCBI -- cannot be detected
+lib$census         # per-genus completeness summary
+
+# Pass gap list to TaxaAssign for ghost hypothesis handling
+unreferenced_result <- TaxaAssign::suggest_unreferenced_species(
+  match_df          = match_data,
+  unreferenced_taxa = lib$unreferenced
+)
+
+# Train model on the curated reference
+model <- train_likelihood_model(
+  build_sequence_matrix(lib$reference_df)
+)
+```
+
+To export any `reference_df` to FASTA without the full download pipeline:
+
+``` r
+write_reference_fasta(
+  reference_df,
+  file          = "my_reference.fasta",
+  taxonomy_file = "my_taxonomy.tsv"    # QIIME2-compatible; reload with read_reference_fasta()
+)
+```
+
 ## Key Functions
 
-**Reference acquisition:** - `read_crabs_output()` -- load a CRABS
+**Reference acquisition and export:** - `build_site_reference()` --
+one-call site-specific reference builder: taxa list → NCBI fetch →
+coverage audit → FASTA export - `write_reference_fasta()` -- export
+any `reference_df` to FASTA + optional taxonomy TSV (round-trippable
+with `read_reference_fasta()`) - `read_crabs_output()` -- load a CRABS
 internal-format database (taxonomy embedded; no separate file needed) -
 `fetch_reference_sequences()` -- download
 from NCBI by taxon + barcode marker - `read_reference_fasta()` -- load
