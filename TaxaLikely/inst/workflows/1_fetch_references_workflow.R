@@ -4,15 +4,31 @@
 # DATA TYPE SCOPE: DNA sequences only.
 #   For acoustic (bird sound) reference data, see Workflow 3b
 #   (3b_acoustic_reference_workflow.R) -- it fetches from Xeno-canto, not NCBI.
-#   For image (camera trap) reference data, see read_animl_output() once
-#   implemented.
+#   For image (camera trap) reference data, see Workflow 3c
+#   (3c_image_reference_workflow.R) -- classifier output + ground-truth labels.
 #
 # Purpose: Assemble a reference_df of DNA sequences + taxonomy for model
 #   building. This is the starting point for Workflows 2-4.
 #
-# Two paths:
-#   A. Fetch sequences from NCBI (most users)
-#   B. Load a local FASTA file (if you already have a reference database)
+# QUICK PATH: build_site_reference()
+#   If you have a list of expected taxa (e.g., from TaxaExpect::build_priors()),
+#   build_site_reference() wraps Paths A + B + coverage audit in one call:
+#
+#   lib <- build_site_reference(
+#     taxa         = c("Fundulus", "Gambusia", "Lepomis"),
+#     barcode_term = "MiFishU",
+#     output_dir   = "site_reference/",  # writes reference.fasta + taxonomy TSV
+#     max_date     = "2024/12/31"
+#   )
+#   lib$unreferenced  # species with no barcode in NCBI
+#   lib$reference_df  # ready for build_sequence_matrix()
+#
+#   See also: inst/test_local_reference.R for an interactive test script.
+#
+# MANUAL PATH (this workflow):
+#   Two paths:
+#     A. Fetch sequences from NCBI
+#     B. Load a local FASTA file (if you already have a reference database)
 #
 # Output: reference_df -- a data frame with columns:
 #   composite_id  (accession or sequence ID)

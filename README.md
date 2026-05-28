@@ -424,11 +424,15 @@ Detailed, runnable workflow scripts are provided in each package's
 | Workflow | Package | Script |
 |---|---|---|
 | FASTQ to match data | TaxaMatch | `inst/workflow_fastq_to_match.R` |
+| **Test: image reader functions** | TaxaMatch | `inst/test_image_functions.R` |
 | Fetch reference sequences | TaxaLikely | `inst/workflows/1_fetch_references_workflow.R` |
 | Flag reference errors | TaxaLikely | `inst/workflows/2_flag_errors_workflow.R` |
-| Train likelihood model | TaxaLikely | `inst/workflows/3_train_model_workflow.R` |
+| Train likelihood model (DNA) | TaxaLikely | `inst/workflows/3_train_model_workflow.R` |
+| Train model (acoustic) | TaxaLikely | `inst/workflows/3b_acoustic_reference_workflow.R` |
+| Train model (image) | TaxaLikely | `inst/workflows/3c_image_reference_workflow.R` |
 | Score to likelihood | TaxaLikely | `inst/workflows/4_score_to_likelihood_workflow.R` |
 | Audit coverage | TaxaLikely | `inst/workflows/5_audit_coverage_workflow.R` |
+| **Test: local reference library** | TaxaLikely | `inst/test_local_reference.R` |
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
 | Assign habitats | TaxaHabitat | `inst/Habitat_assign_workflow.R` |
 | Build priors | TaxaExpect | `inst/TaxaExpect_workflow.R` |

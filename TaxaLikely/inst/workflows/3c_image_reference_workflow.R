@@ -5,6 +5,13 @@
 #   classifier output, then train a likelihood model for converting classifier
 #   confidence scores into calibrated likelihoods.
 #
+# QUICK TEST (offline, no real images):
+#   Before running this workflow on real data, try the interactive test script:
+#   TaxaMatch::system.file("test_image_functions.R", package = "TaxaMatch")
+#   -- or source it directly from the TaxaMatch inst/ directory.
+#   It creates synthetic camera trap data and runs all reader functions +
+#   build_image_reference() without internet access or actual images.
+#
 # This is the image analog of Workflow 3b (acoustic). The core idea is the
 # same: compare within-species scores to cross-species scores to learn what a
 # "correct classification" looks like vs. a "wrong classification" or an
