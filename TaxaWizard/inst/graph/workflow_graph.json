@@ -1,19 +1,25 @@
 {
   "nodes": {
     "inputs": [
-      {"id": "sequences",    "label": "Raw Sequences",       "description": "DADA2 sequence table, FASTA file, or DNAStringSet"},
-      {"id": "match_df",     "label": "Match Data",          "description": "CSV/RDS with observation_id, score, and taxonomy columns (e.g. BLAST output)"},
-      {"id": "taxa",         "label": "Taxon List",          "description": "Data frame with taxonomy rank columns (e.g. data.frame(family = 'Gobiidae') or data.frame(species = c('Eucyclogobius newberryi', 'Clevelandia ios'))). Column names encode taxonomic rank for GBIF lookups."},
-      {"id": "consensus_df", "label": "Consensus Table",     "description": "Pre-existing consensus assignments (one row per sample)"},
-      {"id": "reference_df", "label": "Reference Sequences", "description": "FASTA + taxonomy table, or output of fetch_reference_sequences()"},
-      {"id": "occurrences",  "label": "Occurrence Data",     "description": "GBIF download, CSV, or other occurrence records with coordinates"}
+      {"id": "sequences",               "label": "Raw Sequences",              "description": "DADA2 sequence table, FASTA file, or DNAStringSet"},
+      {"id": "match_df",               "label": "Match Data",                 "description": "CSV/RDS with observation_id, score, and taxonomy columns (e.g. BLAST output, standardized BirdNET or image classifier output)"},
+      {"id": "taxa",                   "label": "Taxon List",                 "description": "Data frame with taxonomy rank columns (e.g. data.frame(family = 'Gobiidae') or data.frame(species = c('Eucyclogobius newberryi', 'Clevelandia ios'))). Column names encode taxonomic rank for GBIF lookups."},
+      {"id": "consensus_df",           "label": "Consensus Table",            "description": "Pre-existing consensus assignments (one row per sample)"},
+      {"id": "reference_df",           "label": "Reference Sequences",        "description": "FASTA + taxonomy table, output of fetch_reference_sequences(), read_crabs_output(), or read_reference_fasta()"},
+      {"id": "occurrences",            "label": "Occurrence Data",            "description": "GBIF download, CSV, or other occurrence records with coordinates"},
+      {"id": "birdnet_detections",     "label": "BirdNET Detections",         "description": "Raw BirdNET-Analyzer CSV output files (directory path, single file, or file vector). Contains species, confidence, start/end time per detection clip."},
+      {"id": "image_classifier_output","label": "Image Classifier Output",    "description": "Camera trap image classifier results: Animl CSV, iNaturalist CV per-image JSON files, or Wildlife Insights / SpeciesNet batch predictions JSON."},
+      {"id": "local_fasta",            "label": "Local Reference Database",   "description": "User-supplied sequence database: CRABS internal-format TSV, or a FASTA file with a companion taxonomy TSV (QIIME2 / SILVA / prefix-style)."},
+      {"id": "images_meta",            "label": "Reference Image Labels",     "description": "Ground-truth labels for reference images: data frame with image_path + taxonomy columns (genus, species). Used to build an image likelihood model."}
     ],
     "intermediates": [
       {"id": "std_occurrences",  "label": "Standardized Occurrences", "description": "Habitat-assigned, spatially cleaned occurrence data"},
       {"id": "distributions",    "label": "Spatial Distributions",    "description": "Gridded occurrences with grid_id, ready for biodiversity modeling"},
-      {"id": "reference_matrix", "label": "Reference Matrix",         "description": "Pairwise distance matrix from DECIPHER alignment"},
+      {"id": "reference_matrix", "label": "Reference Matrix (DNA)",   "description": "Pairwise distance matrix from DECIPHER alignment of DNA sequences"},
+      {"id": "acoustic_matrix",  "label": "Acoustic Reference Matrix","description": "Pairwise score matrix from build_acoustic_reference(): BirdNET detections on Xeno-canto reference recordings, labelled H1/H2/H3"},
+      {"id": "image_matrix",     "label": "Image Reference Matrix",   "description": "Pairwise score matrix from build_image_reference(): classifier output on reference images with ground-truth labels, labelled H1/H2/H3"},
       {"id": "clean_refs",       "label": "Cleaned References",       "description": "Reference data with mislabeled sequences removed"},
-      {"id": "model_params",     "label": "Likelihood Model",         "description": "Trained taxa_model_params object from TaxaLikely"},
+      {"id": "model_params",     "label": "Likelihood Model",         "description": "Trained taxa_model_params object from TaxaLikely; works for DNA, acoustic, and image data"},
       {"id": "likelihoods",      "label": "Likelihoods",              "description": "Per-hypothesis likelihood estimates from evaluate_likelihoods()"},
       {"id": "context_df",       "label": "Ecological Context",       "description": "Site context (ecoregion, main_habitat, date) from build_context()"},
       {"id": "priors",           "label": "Prior Probabilities",      "description": "Spatial priors from build_priors() or occurrence-based pipeline"},
@@ -316,6 +322,95 @@
       "packages": ["TaxaFlag"],
       "functions": ["flag_contaminant", "flag_handler"],
       "snippet": "consensus_to_flagged.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "birdnet_to_match",
+      "from": ["birdnet_detections"],
+      "to": "match_df",
+      "label": "Standardize BirdNET detections to match format",
+      "description": "Read BirdNET CSV output files, apply confidence threshold, standardize to canonical match_df format with observation_id, score, and taxonomy columns",
+      "packages": ["TaxaMatch", "TaxaTools"],
+      "functions": ["read_birdnet_output", "standardize_match_data", "filter_redundant_hypotheses"],
+      "snippet": "birdnet_to_match.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "image_to_match",
+      "from": ["image_classifier_output"],
+      "to": "match_df",
+      "label": "Standardize image classifier output to match format",
+      "description": "Read Animl, iNaturalist CV, or Wildlife Insights output; apply confidence threshold; standardize to canonical match_df format",
+      "packages": ["TaxaMatch", "TaxaTools"],
+      "functions": ["read_animl_output", "read_inaturalist_cv_output", "read_wildlife_insights_output", "standardize_match_data", "filter_redundant_hypotheses"],
+      "snippet": "image_to_match.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "local_fasta_to_refs",
+      "from": ["local_fasta"],
+      "to": "reference_df",
+      "label": "Load local reference database (CRABS or FASTA)",
+      "description": "Read a user-supplied CRABS internal-format database or a FASTA + taxonomy TSV into reference_df, ready for build_sequence_matrix()",
+      "packages": ["TaxaLikely"],
+      "functions": ["read_crabs_output", "read_reference_fasta"],
+      "snippet": "local_fasta_to_refs.R",
+      "time_estimate": "seconds to 1 min (I/O bound)"
+    },
+    {
+      "id": "taxa_to_site_refs",
+      "from": ["taxa"],
+      "to": "reference_df",
+      "label": "Build site-specific reference library (wrapper, recommended for eDNA)",
+      "description": "Single call: fetch sequences from NCBI + audit barcode coverage + export FASTA. Best when taxa list comes from TaxaExpect. DNA / eDNA only.",
+      "packages": ["TaxaLikely"],
+      "functions": ["build_site_reference"],
+      "wrapper": true,
+      "snippet": "taxa_to_site_refs.R",
+      "time_estimate": "5-30 min (NCBI fetch + coverage audit)"
+    },
+    {
+      "id": "taxa_to_acoustic_matrix",
+      "from": ["taxa"],
+      "to": "acoustic_matrix",
+      "label": "Build acoustic reference matrix (Xeno-canto + BirdNET)",
+      "description": "Fetch reference recordings from Xeno-canto, run BirdNET externally (Python), read results, and build H1/H2/H3 labelled acoustic pair matrix. Stage 2 (BirdNET) is an external Python step documented in the generated script.",
+      "packages": ["TaxaLikely", "TaxaMatch"],
+      "functions": ["fetch_reference_recordings", "read_birdnet_output", "build_acoustic_reference"],
+      "snippet": "taxa_to_acoustic_matrix.R",
+      "time_estimate": "30+ min (download + BirdNET inference)"
+    },
+    {
+      "id": "image_refs_to_matrix",
+      "from": ["images_meta", "image_classifier_output"],
+      "to": "image_matrix",
+      "label": "Build image reference matrix from ground-truth labels",
+      "description": "Join image classifier output on reference images with user-supplied ground-truth taxonomy labels; produce H1/H2/H3 labelled pair matrix for train_likelihood_model()",
+      "packages": ["TaxaLikely", "TaxaMatch"],
+      "functions": ["read_animl_output", "read_inaturalist_cv_output", "read_wildlife_insights_output", "build_image_reference"],
+      "snippet": "image_refs_to_matrix.R",
+      "time_estimate": "seconds to 1 min"
+    },
+    {
+      "id": "acoustic_matrix_to_model",
+      "from": ["acoustic_matrix"],
+      "to": "model_params",
+      "label": "Train likelihood model from acoustic reference matrix",
+      "description": "Fit hierarchical Bayesian score model on BirdNET confidence distribution. Train one model per recording type (song, call). Uses same train_likelihood_model() as DNA.",
+      "packages": ["TaxaLikely"],
+      "functions": ["train_likelihood_model"],
+      "snippet": "matrix_to_model.R",
+      "time_estimate": "seconds"
+    },
+    {
+      "id": "image_matrix_to_model",
+      "from": ["image_matrix"],
+      "to": "model_params",
+      "label": "Train likelihood model from image reference matrix",
+      "description": "Fit hierarchical Bayesian score model on image classifier confidence distribution. Train one model per testid (classifier type, camera model). Uses same train_likelihood_model() as DNA.",
+      "packages": ["TaxaLikely"],
+      "functions": ["train_likelihood_model"],
+      "snippet": "matrix_to_model.R",
       "time_estimate": "seconds"
     }
   ]

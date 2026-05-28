@@ -45,3 +45,23 @@ Respond with a single JSON object. No text outside the JSON.
 
 - input_type = "match_df" when: BLAST output (percent identity scores), BirdNET acoustic detections (confidence scores), image classifier results (confidence scores), or any other source with **multiple scored candidates per sample**.
 - input_type = "consensus_df" when: pre-existing species ID table, one assignment per sample, no match scores.
+
+**birdnet_detections vs match_df:** Both are acoustic data, but they represent different stages.
+
+- input_type = "birdnet_detections" when: the user has raw BirdNET-Analyzer CSV files that have NOT yet been read into R. They will be converted to match_df via `read_birdnet_output()`.
+- input_type = "match_df" when: BirdNET data has ALREADY been read into R with `read_birdnet_output()`, or is already in the standard observation_id/score/species format.
+
+**image_classifier_output vs match_df:** Same staging distinction for image data.
+
+- input_type = "image_classifier_output" when: the user has raw output files from Animl (CSV), iNaturalist CV (JSON files), or Wildlife Insights/SpeciesNet (batch predictions JSON) that have NOT yet been read into R. The workflow will call the appropriate reader function based on which classifier was used.
+- input_type = "match_df" when: image classifier data has ALREADY been read into R and is in the standard format.
+
+**local_fasta vs fetching from NCBI:** For building a sequence reference library.
+
+- input_type = "local_fasta" when: the user already has a local sequence database — either a CRABS internal-format TSV, or a FASTA file with an accompanying taxonomy TSV (QIIME2/SILVA/MIDORI2 format). The workflow reads it directly without any NCBI API calls.
+- input_type = "taxa" + output_type = "reference_df" when: the user has species names and wants to fetch sequences from NCBI automatically (via `build_site_reference()` or `fetch_reference_sequences()`).
+
+**images_meta:** This is a special input used ONLY for building an image reference model — it is NOT a workflow input for field image classification.
+
+- input_type = "images_meta" when: the user has a collection of LABELED reference images (ground-truth species IDs) and wants to train a likelihood model from them. Required columns: `image_path` + taxonomy rank columns. This is the image analog of Xeno-canto recordings for acoustic or NCBI sequences for eDNA.
+- Do NOT use "images_meta" when the user wants to classify NEW (unknown) images — that is input_type = "image_classifier_output" or "match_df".

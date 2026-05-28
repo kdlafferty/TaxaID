@@ -68,6 +68,60 @@
       "output": {"type": "match_df", "description": "Filtered match object"},
       "scaling": "linear",
       "scaling_note": "Fast; pure R"
+    },
+    {
+      "name": "read_birdnet_output",
+      "description": "Ingest BirdNET-Analyzer CSV results into match object format. observation_id = '{file_stem}_{start_s}-{end_s}'",
+      "inputs": [
+        {"name": "data", "type": "file_path|character_vector", "required": true, "description": "Path to BirdNET CSV file, directory of CSVs, or character vector of paths"},
+        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
+        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N detections per observation_id by confidence"}
+      ],
+      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, source_file columns"},
+      "scaling": "linear",
+      "scaling_note": "Fast; CSV parsing only"
+    },
+    {
+      "name": "read_animl_output",
+      "description": "Ingest Animl (MegaDetector + SpeciesNet) camera trap CSV into match object format. observation_id = image filename stem",
+      "inputs": [
+        {"name": "data", "type": "file_path|data.frame", "required": true, "description": "Path to Animl CSV file or data frame"},
+        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
+        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N detections per image by confidence"},
+        {"name": "file_col", "type": "character", "required": false, "default": "FilePath", "description": "Column containing image file paths"},
+        {"name": "species_col", "type": "character", "required": false, "default": "PredictedValue", "description": "Column containing predicted species"},
+        {"name": "score_col", "type": "character", "required": false, "default": "Confidence", "description": "Column containing confidence scores"}
+      ],
+      "output": {"type": "match_df", "description": "Match object with observation_id (image stem), score, species, genus columns"},
+      "scaling": "linear",
+      "scaling_note": "Fast; CSV parsing only"
+    },
+    {
+      "name": "read_inaturalist_cv_output",
+      "description": "Read per-image JSON files from the iNaturalist CV API into match object format",
+      "inputs": [
+        {"name": "data", "type": "file_path|character_vector", "required": true, "description": "Path to JSON file or directory of JSON files"},
+        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
+        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N predictions per image"},
+        {"name": "score_type", "type": "character", "required": false, "default": "combined_score", "description": "'combined_score' or 'score'"}
+      ],
+      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, common_name, taxon_rank columns"},
+      "scaling": "linear",
+      "scaling_note": "Fast; JSON parsing only"
+    },
+    {
+      "name": "read_wildlife_insights_output",
+      "description": "Read SpeciesNet / Wildlife Insights batch predictions JSON into match object format",
+      "inputs": [
+        {"name": "data", "type": "file_path", "required": true, "description": "Path to Wildlife Insights batch predictions JSON file"},
+        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
+        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N predictions per image"},
+        {"name": "label_col", "type": "character", "required": false, "default": "label", "description": "Key for species label in predictions"},
+        {"name": "score_col", "type": "character", "required": false, "default": "score", "description": "Key for confidence score in predictions"}
+      ],
+      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, category columns"},
+      "scaling": "linear",
+      "scaling_note": "Fast; JSON parsing only"
     }
   ]
 }

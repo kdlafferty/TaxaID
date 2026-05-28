@@ -21,13 +21,135 @@
     },
     {
       "name": "read_reference_fasta",
-      "description": "Read local FASTA + taxonomy table -> reference_df",
+      "description": "Read local FASTA + taxonomy -> reference_df. Supply either a data frame (taxonomy) or a 2-column TSV file (taxonomy_file, QIIME2/SILVA/MIDORI2 prefix or positional format)",
       "inputs": [
         {"name": "fasta_path", "type": "file_path", "required": true, "description": "Path to FASTA file"},
-        {"name": "taxonomy", "type": "data.frame", "required": true, "description": "Taxonomy table with accession column"},
-        {"name": "rank_system", "type": "character_vector", "required": true, "description": "Taxonomy ranks in taxonomy table"}
+        {"name": "taxonomy", "type": "data.frame", "required": false, "description": "Taxonomy data frame with accession column (mutually exclusive with taxonomy_file)"},
+        {"name": "taxonomy_file", "type": "file_path", "required": false, "description": "Path to 2-column taxonomy TSV (ID + semicolon-delimited ranks); QIIME2/RESCRIPt/SILVA/MIDORI2 prefix-style or positional (mutually exclusive with taxonomy)"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks to retain (auto-detected when NULL)"}
       ],
       "output": {"type": "reference_df", "description": "Reference data frame"},
+      "scaling": "linear",
+      "scaling_note": "I/O bound; fast"
+    },
+    {
+      "name": "read_crabs_output",
+      "description": "Read CRABS internal-format database (headerless 11-column TSV) -> reference_df. Complements flag_reference_errors(): CRABS handles bulk QC, TaxaLikely catches mislabeling",
+      "inputs": [
+        {"name": "file", "type": "file_path", "required": true, "description": "Path to CRABS .tsv database file"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks to retain (NULL = auto-detect from populated columns)"},
+        {"name": "max_n_bases", "type": "integer", "required": false, "default": null, "description": "Drop sequences longer than N bases"},
+        {"name": "require_species", "type": "logical", "required": false, "default": true, "description": "Drop rows without valid binomial species name (rejects sp., cf., uncultured)"},
+        {"name": "dereplicate", "type": "logical", "required": false, "default": true, "description": "Collapse exact-duplicate sequences within the same species"}
+      ],
+      "output": {"type": "reference_df", "description": "Reference data frame with accession, sequence, taxonomy columns"},
+      "scaling": "linear",
+      "scaling_note": "I/O bound; fast"
+    },
+    {
+      "name": "build_site_reference",
+      "description": "High-level site-specific DNA reference builder (recommended). taxa list -> NCBI fetch -> optional mislabel flagging -> barcode coverage audit -> FASTA export. DNA/eDNA only",
+      "inputs": [
+        {"name": "taxa", "type": "character_vector", "required": true, "description": "Taxon names (from TaxaExpect species list or user-supplied)"},
+        {"name": "barcode_term", "type": "character", "required": true, "description": "Barcode marker (e.g., '12S', 'COI', 'MiFishU')"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (auto-detected if NULL)"},
+        {"name": "output_dir", "type": "file_path", "required": false, "default": null, "description": "Write reference.fasta + reference_taxonomy.tsv here"},
+        {"name": "max_sequences", "type": "integer", "required": false, "default": 5000, "description": "Total sequence download budget"},
+        {"name": "max_per_species", "type": "integer", "required": false, "default": 5, "description": "Maximum sequences per species"},
+        {"name": "max_date", "type": "character", "required": false, "default": null, "description": "Restrict to sequences available by this date (YYYY/MM/DD)"},
+        {"name": "ncbi_api_key", "type": "character", "required": false, "default": null, "description": "NCBI API key for higher rate limits"},
+        {"name": "flag_errors", "type": "logical", "required": false, "default": false, "description": "Run flag_reference_errors() after fetch (requires DECIPHER)"},
+        {"name": "audit_coverage", "type": "logical", "required": false, "default": true, "description": "Run audit_barcode_coverage() to identify unreferenced species"}
+      ],
+      "output": {"type": "list", "description": "List with $reference_df, $errors, $census, $unreferenced"},
+      "scaling": "api_limited",
+      "scaling_note": "NCBI API limited; ~5-30 min depending on taxon count"
+    },
+    {
+      "name": "fetch_reference_recordings",
+      "description": "Fetch bird sound recordings from Xeno-canto API v3 for acoustic reference model training. Acoustic analog of fetch_reference_sequences()",
+      "inputs": [
+        {"name": "species", "type": "character_vector", "required": true, "description": "Bird species names to search"},
+        {"name": "quality", "type": "character_vector", "required": false, "default": ["A", "B"], "description": "Xeno-canto quality grades to accept (A=best, E=worst)"},
+        {"name": "max_per_species", "type": "integer", "required": false, "default": 20, "description": "Maximum recordings per species"},
+        {"name": "download", "type": "logical", "required": false, "default": false, "description": "Download audio files to download_dir"},
+        {"name": "download_dir", "type": "file_path", "required": false, "default": null, "description": "Directory to save downloaded audio files"},
+        {"name": "api_key", "type": "character", "required": true, "description": "Xeno-canto API key (reads XC_API_KEY env var by default)"}
+      ],
+      "output": {"type": "data.frame", "description": "Recording metadata with species, quality, type, local_path, file_url columns"},
+      "scaling": "api_limited",
+      "scaling_note": "Xeno-canto API; ~1-5 min for typical species lists"
+    },
+    {
+      "name": "build_acoustic_reference",
+      "description": "Acoustic analog of build_sequence_matrix(). Joins BirdNET-Analyzer detections to Xeno-canto ground-truth labels; labels H1/H2/H3. Train one model per recording type (song, call)",
+      "inputs": [
+        {"name": "recordings_meta", "type": "data.frame", "required": true, "description": "Xeno-canto metadata from fetch_reference_recordings()"},
+        {"name": "birdnet_df", "type": "match_df", "required": true, "description": "BirdNET output from read_birdnet_output()"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (coarse-to-fine)"},
+        {"name": "exclude_background", "type": "logical", "required": false, "default": true, "description": "Drop detections of species listed in also_species (background species)"}
+      ],
+      "output": {"type": "reference_matrix", "description": "Pair-format data frame (.x/.y suffixes, p_match, coverage, testid) for train_likelihood_model()"},
+      "scaling": "linear",
+      "scaling_note": "Fast; join + labeling only"
+    },
+    {
+      "name": "build_image_reference",
+      "description": "Image analog of build_acoustic_reference(). Joins image classifier detections to user-supplied ground-truth image labels; labels H1/H2/H3. Train one model per testid (classifier/camera type)",
+      "inputs": [
+        {"name": "image_df", "type": "match_df", "required": true, "description": "Image classifier output from read_animl_output(), read_inaturalist_cv_output(), or read_wildlife_insights_output()"},
+        {"name": "images_meta", "type": "data.frame", "required": true, "description": "Ground-truth labels: requires image_path + taxonomy rank columns. Optional: testid (classifier/camera type), quality (0-1)"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (coarse-to-fine)"}
+      ],
+      "output": {"type": "reference_matrix", "description": "Pair-format data frame (.x/.y suffixes, p_match, coverage, testid) for train_likelihood_model()"},
+      "scaling": "linear",
+      "scaling_note": "Fast; join + labeling only"
+    },
+    {
+      "name": "audit_acoustic_coverage",
+      "description": "Acoustic/image analog of audit_barcode_coverage(). Which plausible species are absent from the classifier's known species list? Simple set-membership check — no NCBI API calls",
+      "inputs": [
+        {"name": "taxa", "type": "character_vector", "required": true, "description": "Plausible species names (from TaxaExpect or LLM suggest)"},
+        {"name": "classifier_species", "type": "character_vector", "required": true, "description": "Species names known to the classifier (e.g., BirdNET's built-in list)"},
+        {"name": "match_df", "type": "match_df", "required": false, "default": null, "description": "Optional: annotates census with in_match_data column"}
+      ],
+      "output": {"type": "list", "description": "List with $census (data frame) and $unreferenced (character vector of species absent from classifier)"},
+      "scaling": "linear",
+      "scaling_note": "Instant; set operations only"
+    },
+    {
+      "name": "calibrate_coverage_filter",
+      "description": "Sweep coverage thresholds over reference pairs; return H1/H2 discrimination metrics. Youden's J (youden_j) identifies the Pareto-optimal threshold",
+      "inputs": [
+        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_sequence_matrix() or build_acoustic_reference()"},
+        {"name": "thresholds", "type": "numeric_vector", "required": false, "description": "Coverage thresholds to test (default seq(0, 0.99, by=0.05))"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (auto-detected if NULL)"}
+      ],
+      "output": {"type": "data.frame", "description": "Per-threshold metrics: threshold, breadth, h1_retention, h2_retention, youden_j, discrimination"},
+      "scaling": "linear",
+      "scaling_note": "Fast; sweeps thresholds over existing data"
+    },
+    {
+      "name": "coverage_threshold",
+      "description": "Quantile shortcut for coverage filtering: keep_frac=0.95 returns threshold at 5th percentile of coverage distribution",
+      "inputs": [
+        {"name": "raw_df", "type": "reference_matrix", "required": true, "description": "From build_sequence_matrix() or build_acoustic_reference()"},
+        {"name": "keep_frac", "type": "numeric", "required": false, "default": 0.95, "description": "Fraction of pairs to retain (0-1); higher = more lenient"}
+      ],
+      "output": {"type": "numeric", "description": "Coverage threshold value; use as: raw_df[raw_df$coverage >= threshold, ]"},
+      "scaling": "linear",
+      "scaling_note": "Instant"
+    },
+    {
+      "name": "write_reference_fasta",
+      "description": "Export reference_df to FASTA + optional companion taxonomy TSV. TSV is positional format compatible with read_reference_fasta(taxonomy_file=)",
+      "inputs": [
+        {"name": "reference_df", "type": "reference_df", "required": true, "description": "Reference data frame to export"},
+        {"name": "fasta_path", "type": "file_path", "required": true, "description": "Output FASTA file path"},
+        {"name": "taxonomy_file", "type": "file_path", "required": false, "default": null, "description": "Output taxonomy TSV path (NULL = skip)"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (auto-detected from non-id columns if NULL)"}
+      ],
+      "output": {"type": "invisible(reference_df)", "description": "Returns reference_df invisibly; side effect is writing files to disk"},
       "scaling": "linear",
       "scaling_note": "I/O bound; fast"
     },
