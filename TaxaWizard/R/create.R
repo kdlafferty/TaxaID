@@ -194,6 +194,16 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
           next
         }
 
+        # Classify phase completion: input_type + output_type set, no path, no dag.
+        # This is expected — the user just confirmed their input/output types.
+        # Wait for their confirmation reply; .detect_phase() will then move to path_select.
+        has_classify_complete <- !is.null(result$input_type) &&
+          nzchar(result$input_type %||% "") &&
+          !is.null(result$output_type) &&
+          nzchar(result$output_type %||% "") &&
+          (is.null(result$selected_path) || length(result$selected_path) == 0L)
+        if (has_classify_complete) next
+
         # Parameterize phase returned empty DAG
         cat("Warning: The workflow DAG is empty (no steps).\n")
         cat("DAG structure received: ", paste(names(dag), collapse = ", "), "\n")
