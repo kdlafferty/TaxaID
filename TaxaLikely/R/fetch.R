@@ -807,6 +807,115 @@ fetch_reference_sequences <- function(taxa,
 }
 
 
+# --- Internal helpers for taxonomy_file parsing in read_reference_fasta() ----
+
+#' Standard 7-level hierarchy used for positional taxonomy-string parsing
+#' @noRd
+.crabs_std_hierarchy <- c("kingdom", "phylum", "class", "order",
+                          "family", "genus", "species")
+
+#' Parse one semicolon-delimited taxonomy string into named rank values
+#'
+#' Supports two formats:
+#' \itemize{
+#'   \item Prefix-style: \code{k__Kingdom;p__Phylum;...} (QIIME2 / RESCRIPt /
+#'     SILVA). Also accepts \code{d__} (domain) as an alias for kingdom.
+#'   \item Positional (no prefix): \code{Kingdom;Phylum;Class;Order;Family;Genus;Species}
+#'     (MIDORI2, plain SILVA). Levels are matched left-to-right against
+#'     \code{.crabs_std_hierarchy}.
+#' }
+#' @noRd
+.parse_tax_string <- function(tax_string, rank_system) {
+  parts <- strsplit(trimws(tax_string), ";", fixed = TRUE)[[1L]]
+  parts <- trimws(parts)
+  # Treat empty, bare "NA", and unclassified entries as missing
+  parts[parts == "" | parts == "NA" |
+        grepl("^unclassified$|^uncultured$", parts, ignore.case = TRUE)] <-
+    NA_character_
+
+  result <- stats::setNames(rep(NA_character_, length(rank_system)), rank_system)
+
+  # Detect prefix-style by looking for pattern like "k__" or "d__" in any part
+  non_na    <- parts[!is.na(parts)]
+  has_prefix <- length(non_na) > 0L && any(grepl("^[a-z]__", non_na))
+
+  if (has_prefix) {
+    # Map single-letter prefix to canonical rank name
+    prefix_map <- c(k = "kingdom", d = "kingdom", p = "phylum", c = "class",
+                    o = "order",   f = "family",   g = "genus", s = "species")
+    for (p in non_na) {
+      m <- regmatches(p, regexpr("^([a-z])__(.+)$", p, perl = TRUE))
+      if (length(m) == 0L || !nzchar(m)) next
+      prefix <- substr(p, 1L, 1L)
+      val    <- sub("^[a-z]__", "", p)
+      if (!nzchar(val)) next
+      rank <- prefix_map[prefix]
+      if (!is.na(rank) && rank %in% rank_system)
+        result[[rank]] <- val
+    }
+  } else {
+    # Positional mapping against standard 7-level hierarchy
+    for (k in seq_along(parts)) {
+      if (k > length(.crabs_std_hierarchy)) break
+      rank <- .crabs_std_hierarchy[k]
+      if (rank %in% rank_system && !is.na(parts[k]))
+        result[[rank]] <- parts[k]
+    }
+  }
+  result
+}
+
+#' Parse a 2-column taxonomy TSV file (QIIME2, RESCRIPt, SILVA, MIDORI2)
+#'
+#' Column 1: sequence ID. Column 2: semicolon-separated taxonomy string.
+#' Header rows whose first token starts with "Feature" or "feature" or
+#' "seq_id" are detected and skipped automatically.
+#' @noRd
+.parse_taxonomy_tsv <- function(taxonomy_file, rank_system) {
+  raw <- tryCatch(
+    utils::read.table(
+      taxonomy_file, sep = "\t", header = FALSE,
+      col.names      = c("seq_id", "tax_string"),
+      quote          = "",  comment.char = "",
+      stringsAsFactors = FALSE, fill = TRUE
+    ),
+    error = function(e)
+      stop(sprintf("Failed to read taxonomy file '%s': %s",
+                   basename(taxonomy_file), conditionMessage(e)))
+  )
+
+  if (nrow(raw) == 0L)
+    stop(sprintf("Taxonomy file is empty: %s", basename(taxonomy_file)))
+
+  # Skip header rows: first field starts with "Feature", "feature", or "seq_id"
+  if (grepl("^[Ff]eature|^seq.?id|^#", raw[1L, 1L])) raw <- raw[-1L, , drop = FALSE]
+
+  if (nrow(raw) == 0L)
+    stop(sprintf("Taxonomy file contained only a header row: %s",
+                 basename(taxonomy_file)))
+
+  # Strip version suffixes from IDs for consistent matching with FASTA headers
+  raw$seq_id <- sub("\\.[0-9]+$", "", trimws(raw$seq_id))
+
+  # Parse unique taxonomy strings (many rows share the same string -- parse once)
+  unique_strings <- unique(raw$tax_string)
+  parsed_map     <- lapply(unique_strings, .parse_tax_string, rank_system = rank_system)
+  names(parsed_map) <- unique_strings
+
+  # Build result data frame
+  result_list <- lapply(seq_len(nrow(raw)), function(i) {
+    row <- parsed_map[[raw$tax_string[i]]]
+    c(composite_id = raw$seq_id[i], row)
+  })
+
+  out <- do.call(rbind, lapply(result_list, function(x) as.data.frame(
+    as.list(x), stringsAsFactors = FALSE
+  )))
+  row.names(out) <- NULL
+  out
+}
+
+
 #' Read a local FASTA file into a reference data frame
 #'
 #' Reads a FASTA file and joins it to a user-supplied taxonomy table to produce
@@ -815,6 +924,11 @@ fetch_reference_sequences <- function(taxa,
 #' This is the local-file alternative to [fetch_reference_sequences()].
 #' Use it when you already have a reference database on disk (e.g., a CRUX
 #' database, a GenBank download, or a custom curated FASTA).
+#'
+#' @section CRABS databases:
+#' If your FASTA was produced by CRABS, use [read_crabs_output()] on the
+#' CRABS internal-format file instead.  It reads the taxonomy embedded
+#' directly in that file without requiring a separate taxonomy table.
 #'
 #' @section Taxonomy table format:
 #' The taxonomy table must contain a `composite_id` column that matches the
@@ -830,24 +944,45 @@ fetch_reference_sequences <- function(taxa,
 #'   NC_012361,     Fundulidae,   Fundulus,    Fundulus parvipinnis
 #' }
 #'
+#' @section Taxonomy file format (QIIME2 / RESCRIPt / SILVA / MIDORI2):
+#' Supply `taxonomy_file` instead of `taxonomy` when your taxonomy lives in a
+#' 2-column tab-delimited file where column 1 is the sequence ID and column 2
+#' is a semicolon-delimited taxonomy string.  Two sub-formats are supported:
+#' \itemize{
+#'   \item \strong{Prefix-style} (QIIME2, RESCRIPt, SILVA):
+#'     \code{k__Kingdom;p__Phylum;c__Class;o__Order;f__Family;g__Genus;s__Species}
+#'   \item \strong{Positional} (MIDORI2, plain SILVA):
+#'     \code{Kingdom;Phylum;Class;Order;Family;Genus;Species}
+#' }
+#' A single header row starting with \code{Feature} or \code{feature} is
+#' automatically detected and skipped.
+#'
 #' @param fasta_path Character scalar.
 #'   Path to a FASTA file (`.fasta`, `.fa`, `.fna`).
 #' @param taxonomy Data frame with a `composite_id` column and one column per
 #'   rank in your rank system.
 #'   `composite_id` values must match the accessions parsed from FASTA headers.
+#'   Supply either `taxonomy` or `taxonomy_file`, not both.
 #' @param rank_system Character vector of rank names, **coarse to fine**
 #'   (e.g., `c("family", "genus", "species")`).
-#'   Used to validate that all rank columns are present in `taxonomy`.
+#'   Used to validate that all rank columns are present in `taxonomy`, or to
+#'   determine which ranks to extract from `taxonomy_file`.
+#' @param taxonomy_file Character scalar or \code{NULL} (default).
+#'   Path to a 2-column taxonomy TSV file (see section above).
+#'   Supply either `taxonomy_file` or `taxonomy`, not both.
+#'   Requires `rank_system` to be specified explicitly.
 #'
 #' @return A data frame (`reference_df`) with columns `composite_id`,
 #'   `sequence`, and one column per rank.
 #'   Ready for input to [build_sequence_matrix()].
 #'
-#' @seealso [fetch_reference_sequences()] for downloading from NCBI,
+#' @seealso [read_crabs_output()] for CRABS internal-format files,
+#'   [fetch_reference_sequences()] for downloading from NCBI,
 #'   [build_sequence_matrix()]
 #'
 #' @examples
 #' \dontrun{
+#' # Option A: data frame taxonomy (existing behaviour)
 #' tax <- data.frame(
 #'   composite_id = c("ACC001", "ACC002"),
 #'   family = c("Fundulidae", "Atherinopsidae"),
@@ -856,20 +991,44 @@ fetch_reference_sequences <- function(taxa,
 #' )
 #' ref <- read_reference_fasta("my_references.fasta", tax,
 #'                             rank_system = c("family", "genus", "species"))
+#'
+#' # Option B: QIIME2/RESCRIPt taxonomy file (prefix-style)
+#' ref <- read_reference_fasta(
+#'   "sequences.fasta",
+#'   rank_system   = c("family", "genus", "species"),
+#'   taxonomy_file = "taxonomy.tsv"
+#' )
 #' }
 #'
 #' @export
-read_reference_fasta <- function(fasta_path, taxonomy, rank_system) {
+read_reference_fasta <- function(fasta_path, taxonomy = NULL, rank_system,
+                                 taxonomy_file = NULL) {
   if (!is.character(fasta_path) || length(fasta_path) != 1L)
     stop("fasta_path must be a single file path")
   if (!file.exists(fasta_path))
     stop(sprintf("File not found: %s", fasta_path))
   if (file.info(fasta_path)$size == 0L)
     stop(sprintf("FASTA file is empty (0 bytes): %s", fasta_path))
+  if (!is.null(taxonomy) && !is.null(taxonomy_file))
+    stop("Supply either 'taxonomy' or 'taxonomy_file', not both")
+  if (is.null(taxonomy) && is.null(taxonomy_file))
+    stop("One of 'taxonomy' or 'taxonomy_file' must be supplied")
+
+  rank_cols <- tolower(rank_system)
+
+  # --- Resolve taxonomy -------------------------------------------------------
+  if (!is.null(taxonomy_file)) {
+    # Parse taxonomy from a TSV file (QIIME2 / RESCRIPt / SILVA / MIDORI2)
+    if (!is.character(taxonomy_file) || length(taxonomy_file) != 1L)
+      stop("taxonomy_file must be a single file path")
+    if (!file.exists(taxonomy_file))
+      stop(sprintf("taxonomy_file not found: %s", taxonomy_file))
+    taxonomy <- .parse_taxonomy_tsv(taxonomy_file, rank_cols)
+  }
+
   if (!is.data.frame(taxonomy))
     stop("taxonomy must be a data frame")
 
-  rank_cols <- tolower(rank_system)
   names(taxonomy) <- tolower(names(taxonomy))
 
   needed <- c("composite_id", rank_cols)

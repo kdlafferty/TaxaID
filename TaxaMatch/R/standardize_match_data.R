@@ -35,6 +35,13 @@
 #'   Column matching is case-insensitive. When `NULL` (default), rank columns
 #'   are auto-detected by matching column names against a built-in list of
 #'   standard rank names (`domain` through `form`).
+#' @param coverage_col Character or `NULL`. Name of a column containing an
+#'   alignment or detection quality fraction (0--1 or 0--100 scale, e.g.
+#'   `"qcovs"` for BLAST query coverage).  When supplied, the column is renamed
+#'   to `coverage` in the canonical output.  TaxaLikely's
+#'   `evaluate_likelihoods()` accepts `min_coverage` to pre-filter candidates
+#'   whose `coverage` falls below a threshold before likelihood calculation.
+#'   Default `NULL` (no coverage column).
 #' @param col_map Optional named character vector of additional column renames
 #'   applied before the core standardisation step, via
 #'   [TaxaTools::rename_cols()]. Format: `c("OldName" = "new_name")`. Useful
@@ -75,6 +82,7 @@ standardize_match_data <- function(data             = NULL,
                                    observation_id_col,
                                    score_col,
                                    rank_system   = NULL,
+                                   coverage_col     = NULL,
                                    col_map          = NULL,
                                    lowercase_names  = TRUE) {
 
@@ -134,6 +142,23 @@ standardize_match_data <- function(data             = NULL,
   core_map <- core_map[names(core_map) != unname(core_map)]
   if (length(core_map) > 0L) {
     data <- TaxaTools::rename_cols(data, col_map = core_map)
+  }
+
+  # --- 4b. Rename coverage column (optional) ---------------------------------
+  if (!is.null(coverage_col)) {
+    if (!is.character(coverage_col) || length(coverage_col) != 1L || !nzchar(coverage_col))
+      stop("`coverage_col` must be a single non-empty character string or NULL.")
+    if (!coverage_col %in% names(data))
+      stop(sprintf("`coverage_col` '%s' not found in data.\n  Available columns: %s",
+                   coverage_col, paste(names(data), collapse = ", ")))
+    if (coverage_col != "coverage") {
+      if ("coverage" %in% names(data))
+        stop(sprintf(
+          "Cannot rename '%s' to 'coverage': a column named 'coverage' already exists.",
+          coverage_col
+        ))
+      names(data)[names(data) == coverage_col] <- "coverage"
+    }
   }
 
   # --- 5. Detect or validate taxonomy rank columns ---------------------------

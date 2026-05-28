@@ -43,6 +43,10 @@ utils::globalVariables(c(
 #' @param max_gap_ceiling Gap cap (default `5.0`).  Caps gap at 5 logit units
 #'   (roughly the gap between 99.3% and 50% identity) to prevent extreme
 #'   outliers from dominating model estimates.
+#' @param min_coverage Numeric or `NULL`.  When not `NULL` and a `coverage`
+#'   column is present in `candidate_df`, candidate rows whose coverage is
+#'   below this threshold are dropped before score aggregation.  See
+#'   [evaluate_likelihoods()] for details.
 #'
 #' @return A data frame with columns `hypothesis_type`, `taxon_name`,
 #'   `taxon_name_rank`, `likelihood_point_est`, `likelihood_mean`,
@@ -59,6 +63,7 @@ utils::globalVariables(c(
                                 score_bounds        = NULL,
                                 logit_epsilon       = 1e-4,
                                 max_gap_ceiling     = 5.0,
+                                min_coverage        = NULL,
                                 verbose             = FALSE) {
 
   names(candidate_df) <- tolower(names(candidate_df))
@@ -67,6 +72,23 @@ utils::globalVariables(c(
   score_col <- if ("p_match" %in% names(candidate_df)) "p_match" else
     if ("score"   %in% names(candidate_df)) "score" else
       stop("candidate_df must have a 'score' or 'p_match' column")
+
+  # ---- 0. COVERAGE FILTER (optional) ----------------------------------------
+  # Drop candidates whose alignment/detection coverage is below min_coverage.
+  # This implements the qcovs pre-filter for DNA (analogous to galaxy-tool-lca),
+  # and the bbox-area pre-filter for images, without changing the model itself.
+  # NA coverage is treated as fully covered (1.0) -- no penalty for missing data.
+  if (!is.null(min_coverage) && "coverage" %in% names(candidate_df)) {
+    cov_vals <- candidate_df[["coverage"]]
+    keep <- is.na(cov_vals) | cov_vals >= min_coverage
+    n_dropped <- sum(!keep)
+    if (n_dropped > 0L) {
+      candidate_df <- candidate_df[keep, , drop = FALSE]
+      if (verbose)
+        message(sprintf("  Coverage filter (>= %.2f): dropped %d candidate row(s)",
+                        min_coverage, n_dropped))
+    }
+  }
 
   # Extract model parameters
   global_mu     <- as.numeric(model_params$H1_Global_Mu)   # [score_logit, gap_logit]
@@ -391,6 +413,18 @@ utils::globalVariables(c(
 #' @param max_gap_ceiling Gap cap (default `5.0`).  Caps gap at 5 logit units
 #'   (roughly the gap between 99.3% and 50% identity) to prevent extreme
 #'   outliers from dominating model estimates.
+#' @param min_coverage Numeric or `NULL` (default `NULL`).  When not `NULL`
+#'   and the match object contains a `coverage` column (e.g., BLAST `qcovs`
+#'   divided by 100, or bounding-box area from
+#'   `TaxaMatch::read_animl_output(bbox_cols=)`), candidate rows below this
+#'   threshold are dropped **before** per-taxon score aggregation.  A
+#'   `coverage` column can be added to any match object via the `coverage_col`
+#'   parameter of `TaxaMatch::standardize_match_data()`.
+#'
+#'   Typical values: `0.8` (80\% query coverage) for DNA BLAST results.
+#'   `NA` coverage values are always retained (treated as fully covered).
+#'   When `coverage` is absent from `match_df`, this parameter is silently
+#'   ignored.
 #' @param verbose Logical (default `FALSE`). When `TRUE`, prints a message
 #'   each time a species falls back to global parameters (no species-specific
 #'   lookup entry found).
@@ -488,6 +522,7 @@ evaluate_likelihoods <- function(match_df,
                                  score_bounds        = NULL,
                                  logit_epsilon       = 1e-4,
                                  max_gap_ceiling     = 5.0,
+                                 min_coverage        = NULL,
                                  verbose             = FALSE) {
   if (!is.data.frame(match_df))
     stop("match_df must be a data frame")
@@ -545,6 +580,7 @@ evaluate_likelihoods <- function(match_df,
         score_bounds        = score_bounds,
         logit_epsilon       = logit_epsilon,
         max_gap_ceiling     = max_gap_ceiling,
+        min_coverage        = min_coverage,
         verbose             = verbose
       ),
       error = function(e) {

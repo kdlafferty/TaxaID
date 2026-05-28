@@ -108,12 +108,25 @@ find_taxonomy_conflicts(taxonomy_df)
 TaxaTools hosts the `llm_fn` pattern used across the ecosystem:
 
 ```{r llm}
-# Default: Anthropic Claude
-result <- call_anthropic_api("What habitat does Fundulus parvipinnis prefer?")
+# call_api() auto-selects the provider from your API keys (set at library load)
+result <- call_api("What habitat does Fundulus parvipinnis prefer?")
 
-# Alternatives
-result <- call_gemini_api(prompt, model = "gemini-2.0-flash")
-result <- call_openai_api(prompt, model = "gpt-4o-mini")
+# Inspect token usage
+attr(result, "tokens")  # list(input = N, output = N)
+
+# Print token counts inline (useful during prompt development)
+result <- call_api("What habitat does Fundulus parvipinnis prefer?",
+                   show_tokens = TRUE)
+
+# Guard against large prompts before making the HTTP call
+result <- call_api(big_prompt, max_input_tokens = 5000)
+
+# Explicit provider or tier
+result <- call_api(prompt, provider = "gemini", tier = "fast")
+result <- call_api(prompt, provider = "openai", model = "gpt-4o-mini")
+
+# Provider wrapper functions are still available for explicit control
+result <- call_anthropic_api(prompt)
 result <- call_ollama_api(prompt, model = "llama3.2")
 ```
 

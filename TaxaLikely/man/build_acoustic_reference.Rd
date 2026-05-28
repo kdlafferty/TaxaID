@@ -44,6 +44,13 @@ pair, containing:
 \item{\code{p_match}}{BirdNET confidence (0--1).}
 \item{\verb{\{rank\}.x}}{Ground-truth taxonomy from \code{recordings_meta}.}
 \item{\verb{\{rank\}.y}}{BirdNET-detected taxonomy from \code{birdnet_df}.}
+\item{\code{coverage}}{Numeric recording quality on a 0 to 1 scale, derived
+from the Xeno-canto quality grade of the source recording:
+A → 1.0, B → 0.8, C → 0.5, D → 0.3, E → 0.1.  \code{NA} when the
+\code{quality} column is absent from \code{recordings_meta}.  Every pair from
+the same recording shares the same value; use \code{\link[=coverage_threshold]{coverage_threshold()}}
+or \code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}} to select which quality grades to
+include before calling \code{\link[=train_likelihood_model]{train_likelihood_model()}}.}
 \item{\code{testid}}{Xeno-canto recording type (e.g. \code{"song"}, \code{"call"});
 \code{NA} if absent.  Filter on this column to train type-specific models.}
 \item{\code{recording_id}}{Xeno-canto recording ID for traceability.}

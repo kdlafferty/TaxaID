@@ -75,8 +75,11 @@ Sys.getenv("GBIF_USER")
 
 ```{r}
 library(TaxaTools)
-call_anthropic_api("Reply with just the word 'connected'.")
+# call_api() auto-detects the provider from your API keys
+answer <- call_api("Reply with just the word 'connected'.")
+answer
 # Should return "connected" (or similar)
+attr(answer, "tokens")  # input/output token counts from the provider
 ```
 
 ### Test NCBI access
@@ -115,7 +118,7 @@ The `rentrez` package reads `ENTREZ_KEY` automatically.
 
 ### Anthropic API Key (ANTHROPIC_API_KEY)
 
-**Used by:** `call_anthropic_api()` and any function that accepts `llm_fn`
+**Used by:** `call_api()` (default provider), `call_anthropic_api()`, and any function that accepts `llm_fn`
 (habitat assignment, LLM-based taxonomic assignment, text generation, expert
 review)
 
@@ -213,7 +216,11 @@ the provider's website.
 For NCBI, ensure `ENTREZ_KEY` is set (increases limit from 3 to 10 req/sec).
 
 **LLM responses are truncated** -- Some providers have low default `max_tokens`.
-Pass a higher value: `call_anthropic_api(prompt, max_tokens = 4096)`.
+Pass a higher value: `call_api(prompt, max_tokens = 4096)`.
+
+**Prompt unexpectedly large** -- Use `max_input_tokens` to catch oversized prompts
+before the API call: `call_api(prompt, max_input_tokens = 5000)` stops with a clear
+error if the estimated token count (characters / 3.5) exceeds the limit.
 
 **Ollama connection refused** -- Ensure the Ollama server is running
 (`ollama serve` in a terminal).

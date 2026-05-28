@@ -71,6 +71,13 @@
 #'     \item{`p_match`}{BirdNET confidence (0--1).}
 #'     \item{`{rank}.x`}{Ground-truth taxonomy from `recordings_meta`.}
 #'     \item{`{rank}.y`}{BirdNET-detected taxonomy from `birdnet_df`.}
+#'     \item{`coverage`}{Numeric recording quality on a 0 to 1 scale, derived
+#'       from the Xeno-canto quality grade of the source recording:
+#'       A → 1.0, B → 0.8, C → 0.5, D → 0.3, E → 0.1.  `NA` when the
+#'       `quality` column is absent from `recordings_meta`.  Every pair from
+#'       the same recording shares the same value; use [coverage_threshold()]
+#'       or [calibrate_coverage_filter()] to select which quality grades to
+#'       include before calling [train_likelihood_model()].}
 #'     \item{`testid`}{Xeno-canto recording type (e.g. `"song"`, `"call"`);
 #'       `NA` if absent.  Filter on this column to train type-specific models.}
 #'     \item{`recording_id`}{Xeno-canto recording ID for traceability.}
@@ -227,10 +234,12 @@ build_acoustic_reference <- function(birdnet_df,
 
   # ---- prepare ground-truth lookup --------------------------------------------
   rank_cols_meta <- intersect(rank_system, names(recordings_meta))
-  has_type       <- "type" %in% names(recordings_meta)
+  has_type       <- "type"    %in% names(recordings_meta)
+  has_quality    <- "quality" %in% names(recordings_meta)
 
   meta_keep <- c("file_stem", "recording_id", rank_cols_meta,
-                 if (has_type) "type")
+                 if (has_type)    "type",
+                 if (has_quality) "quality")
   gt_lookup <- recordings_meta[, meta_keep, drop = FALSE]
   # Remove duplicate file stems (guard against multiple downloads)
   gt_lookup <- gt_lookup[!duplicated(gt_lookup$file_stem), , drop = FALSE]
@@ -273,6 +282,21 @@ build_acoustic_reference <- function(birdnet_df,
     }
   }
 
+  # ---- map quality grade to numeric coverage ----------------------------------
+  # Xeno-canto quality grades (A-E) reflect expert assessment of recording
+  # conditions: signal clarity, background noise, and distance from subject.
+  # They are mapped to a [0, 1] numeric scale so that calibrate_coverage_filter()
+  # and coverage_threshold() can treat acoustic recording quality and DNA
+  # alignment coverage on a common scale.  Because grade is a property of the
+  # recording, every pair from the same recording (H1 and H2/H3 alike) carries
+  # the same coverage value.
+  quality_map <- c(A = 1.0, B = 0.8, C = 0.5, D = 0.3, E = 0.1)
+  if (has_quality && "quality" %in% names(merged)) {
+    merged$coverage <- unname(quality_map[toupper(as.character(merged$quality))])
+  } else {
+    merged$coverage <- NA_real_
+  }
+
   # ---- sort detections within each window by confidence (desc) ---------------
   merged <- merged[order(merged$observation_id, -merged$score), , drop = FALSE]
   row.names(merged) <- NULL
@@ -293,7 +317,7 @@ build_acoustic_reference <- function(birdnet_df,
                                    grep("\\.y$", names(merged), value = TRUE))),
                          ".y")
 
-  keep_cols <- c("id_x", "id_y", "p_match",
+  keep_cols <- c("id_x", "id_y", "p_match", "coverage",
                  rank_x_cols, rank_y_cols,
                  "testid", "recording_id",
                  if ("start_s" %in% names(merged)) "start_s",

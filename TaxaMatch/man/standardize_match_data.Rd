@@ -9,6 +9,7 @@ standardize_match_data(
   observation_id_col,
   score_col,
   rank_system = NULL,
+  coverage_col = NULL,
   col_map = NULL,
   lowercase_names = TRUE
 )
@@ -32,6 +33,14 @@ listed broadest to finest (e.g.
 Column matching is case-insensitive. When \code{NULL} (default), rank columns
 are auto-detected by matching column names against a built-in list of
 standard rank names (\code{domain} through \code{form}).}
+
+\item{coverage_col}{Character or \code{NULL}. Name of a column containing an
+alignment or detection quality fraction (0--1 or 0--100 scale, e.g.
+\code{"qcovs"} for BLAST query coverage).  When supplied, the column is renamed
+to \code{coverage} in the canonical output.  TaxaLikely's
+\code{evaluate_likelihoods()} accepts \code{min_coverage} to pre-filter candidates
+whose \code{coverage} falls below a threshold before likelihood calculation.
+Default \code{NULL} (no coverage column).}
 
 \item{col_map}{Optional named character vector of additional column renames
 applied before the core standardisation step, via

@@ -15,6 +15,7 @@ evaluate_likelihoods(
   score_bounds = NULL,
   logit_epsilon = 1e-04,
   max_gap_ceiling = 5,
+  min_coverage = NULL,
   verbose = FALSE
 )
 }
@@ -54,6 +55,19 @@ estimate only).}
 \item{max_gap_ceiling}{Gap cap (default \code{5.0}).  Caps gap at 5 logit units
 (roughly the gap between 99.3\% and 50\% identity) to prevent extreme
 outliers from dominating model estimates.}
+
+\item{min_coverage}{Numeric or \code{NULL} (default \code{NULL}).  When not \code{NULL}
+and the match object contains a \code{coverage} column (e.g., BLAST \code{qcovs}
+divided by 100, or bounding-box area from
+\code{TaxaMatch::read_animl_output(bbox_cols=)}), candidate rows below this
+threshold are dropped \strong{before} per-taxon score aggregation.  A
+\code{coverage} column can be added to any match object via the \code{coverage_col}
+parameter of \code{TaxaMatch::standardize_match_data()}.
+
+Typical values: \code{0.8} (80\\% query coverage) for DNA BLAST results.
+\code{NA} coverage values are always retained (treated as fully covered).
+When \code{coverage} is absent from \code{match_df}, this parameter is silently
+ignored.}
 
 \item{verbose}{Logical (default \code{FALSE}). When \code{TRUE}, prints a message
 each time a species falls back to global parameters (no species-specific

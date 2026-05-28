@@ -43,6 +43,13 @@ utils::globalVariables(c(
 #'   \describe{
 #'     \item{`id_x`, `id_y`}{`composite_id` values for each pair member.}
 #'     \item{`p_match`}{Match score (1 − distance), range (0, 1].}
+#'     \item{`coverage`}{Alignment coverage: number of positions where both
+#'       sequences contribute a non-gap character, divided by the shorter
+#'       unaligned sequence length.  Range (0, 1].  Values near 1.0 indicate
+#'       nearly complete overlap; values near 0.0 indicate highly gappy or
+#'       partial alignments that produce unreliable match scores.  Use
+#'       [calibrate_coverage_filter()] or [coverage_threshold()] to select a
+#'       minimum coverage threshold before calling [train_likelihood_model()].}
 #'     \item{`{rank}.x`, `{rank}.y`}{Taxonomy columns for each pair member.}
 #'   }
 #'
@@ -150,10 +157,39 @@ build_sequence_matrix <- function(reference_df,
 
   # Sparse extraction: only materialise pairs within max_dist (avoids N² intermediate)
   idx <- which(dist_m < max_dist & row(dist_m) != col(dist_m), arr.ind = TRUE)
+
+  # ---- 3b. PAIRWISE ALIGNMENT COVERAGE ---------------------------------------
+  # Coverage = number of positions where both sequences contribute a non-gap
+  # character, divided by the shorter unaligned sequence length.  A score
+  # computed over a short overlap is unreliable even when the matched bases are
+  # identical.  Pre-computing per-sequence gap masks (O(n × aln_width)) and
+  # looking up per sparse pair (O(pairs × aln_width)) is cheaper than
+  # re-parsing the alignment string for every pair individually.
+  aln_str     <- as.character(aligned)     # named char vec of aligned sequences
+  gap_masks   <- lapply(
+    aln_str,
+    function(s) strsplit(s, "", fixed = TRUE)[[1L]] != "-"
+  )
+  orig_widths <- vapply(
+    aln_str,
+    function(s) nchar(gsub("-", "", s, fixed = TRUE)),
+    integer(1L)
+  )
+  seq_names   <- names(aligned)
+
+  coverage_vals <- vapply(seq_len(nrow(idx)), function(k) {
+    nm_i    <- seq_names[idx[k, 1L]]
+    nm_j    <- seq_names[idx[k, 2L]]
+    overlap <- sum(gap_masks[[nm_i]] & gap_masks[[nm_j]])
+    min_len <- min(orig_widths[[nm_i]], orig_widths[[nm_j]])
+    if (min_len == 0L) NA_real_ else as.double(overlap) / min_len
+  }, numeric(1L))
+
   dist_tbl <- data.frame(
-    id_x    = rownames(dist_m)[idx[, 1L]],
-    id_y    = colnames(dist_m)[idx[, 2L]],
-    p_match = 1 - dist_m[idx],
+    id_x     = rownames(dist_m)[idx[, 1L]],
+    id_y     = colnames(dist_m)[idx[, 2L]],
+    p_match  = 1 - dist_m[idx],
+    coverage = coverage_vals,
     stringsAsFactors = FALSE
   )
 

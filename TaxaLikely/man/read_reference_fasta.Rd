@@ -4,7 +4,12 @@
 \alias{read_reference_fasta}
 \title{Read a local FASTA file into a reference data frame}
 \usage{
-read_reference_fasta(fasta_path, taxonomy, rank_system)
+read_reference_fasta(
+  fasta_path,
+  taxonomy = NULL,
+  rank_system,
+  taxonomy_file = NULL
+)
 }
 \arguments{
 \item{fasta_path}{Character scalar.
@@ -12,11 +17,18 @@ Path to a FASTA file (\code{.fasta}, \code{.fa}, \code{.fna}).}
 
 \item{taxonomy}{Data frame with a \code{composite_id} column and one column per
 rank in your rank system.
-\code{composite_id} values must match the accessions parsed from FASTA headers.}
+\code{composite_id} values must match the accessions parsed from FASTA headers.
+Supply either \code{taxonomy} or \code{taxonomy_file}, not both.}
 
 \item{rank_system}{Character vector of rank names, \strong{coarse to fine}
 (e.g., \code{c("family", "genus", "species")}).
-Used to validate that all rank columns are present in \code{taxonomy}.}
+Used to validate that all rank columns are present in \code{taxonomy}, or to
+determine which ranks to extract from \code{taxonomy_file}.}
+
+\item{taxonomy_file}{Character scalar or \code{NULL} (default).
+Path to a 2-column taxonomy TSV file (see section above).
+Supply either \code{taxonomy_file} or \code{taxonomy}, not both.
+Requires \code{rank_system} to be specified explicitly.}
 }
 \value{
 A data frame (\code{reference_df}) with columns \code{composite_id},
@@ -32,6 +44,13 @@ This is the local-file alternative to \code{\link[=fetch_reference_sequences]{fe
 Use it when you already have a reference database on disk (e.g., a CRUX
 database, a GenBank download, or a custom curated FASTA).
 }
+\section{CRABS databases}{
+
+If your FASTA was produced by CRABS, use \code{\link[=read_crabs_output]{read_crabs_output()}} on the
+CRABS internal-format file instead.  It reads the taxonomy embedded
+directly in that file without requiring a separate taxonomy table.
+}
+
 \section{Taxonomy table format}{
 
 The taxonomy table must contain a \code{composite_id} column that matches the
@@ -48,8 +67,24 @@ Example:
 }
 }
 
+\section{Taxonomy file format (QIIME2 / RESCRIPt / SILVA / MIDORI2)}{
+
+Supply \code{taxonomy_file} instead of \code{taxonomy} when your taxonomy lives in a
+2-column tab-delimited file where column 1 is the sequence ID and column 2
+is a semicolon-delimited taxonomy string.  Two sub-formats are supported:
+\itemize{
+\item \strong{Prefix-style} (QIIME2, RESCRIPt, SILVA):
+\code{k__Kingdom;p__Phylum;c__Class;o__Order;f__Family;g__Genus;s__Species}
+\item \strong{Positional} (MIDORI2, plain SILVA):
+\code{Kingdom;Phylum;Class;Order;Family;Genus;Species}
+}
+A single header row starting with \code{Feature} or \code{feature} is
+automatically detected and skipped.
+}
+
 \examples{
 \dontrun{
+# Option A: data frame taxonomy (existing behaviour)
 tax <- data.frame(
   composite_id = c("ACC001", "ACC002"),
   family = c("Fundulidae", "Atherinopsidae"),
@@ -58,10 +93,18 @@ tax <- data.frame(
 )
 ref <- read_reference_fasta("my_references.fasta", tax,
                             rank_system = c("family", "genus", "species"))
+
+# Option B: QIIME2/RESCRIPt taxonomy file (prefix-style)
+ref <- read_reference_fasta(
+  "sequences.fasta",
+  rank_system   = c("family", "genus", "species"),
+  taxonomy_file = "taxonomy.tsv"
+)
 }
 
 }
 \seealso{
+\code{\link[=read_crabs_output]{read_crabs_output()}} for CRABS internal-format files,
 \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}} for downloading from NCBI,
 \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}
 }

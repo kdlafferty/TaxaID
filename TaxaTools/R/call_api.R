@@ -29,9 +29,9 @@
 #   .build_openai_compat_request() OpenAI-compatible chat completions request
 #
 # Internal response parsers (@noRd):
-#   .parse_anthropic_response()
-#   .parse_gemini_response()
-#   .parse_openai_compat_response()
+#   .parse_anthropic_response()    returns list(text, tokens)
+#   .parse_gemini_response()       returns list(text, tokens)
+#   .parse_openai_compat_response() returns list(text, tokens)
 # ==============================================================================
 
 
@@ -284,7 +284,9 @@
 
 # ==============================================================================
 # Response parsers  (one per handler family)
-# Each takes the raw httr2 response and provider name; returns a character string.
+# Each takes the raw httr2 response and provider name; returns a list:
+#   list(text = "<response string>", tokens = list(input = N, output = N))
+# Token counts are NA_integer_ when the provider does not report them.
 # ==============================================================================
 
 #' @noRd
@@ -302,7 +304,13 @@
     stop(sprintf("call_api (%s): response contained no text blocks.", provider),
          call. = FALSE)
   }
-  text_blocks[[1L]]$text
+  list(
+    text   = text_blocks[[1L]]$text,
+    tokens = list(
+      input  = body$usage$input_tokens  %||% NA_integer_,
+      output = body$usage$output_tokens %||% NA_integer_
+    )
+  )
 }
 
 
@@ -332,7 +340,14 @@
          call. = FALSE)
   }
   # Concatenate all text parts (Gemini can split a long response)
-  paste(vapply(parts, function(p) p$text %||% "", character(1)), collapse = "")
+  text <- paste(vapply(parts, function(p) p$text %||% "", character(1)), collapse = "")
+  list(
+    text   = text,
+    tokens = list(
+      input  = parsed$usageMetadata$promptTokenCount     %||% NA_integer_,
+      output = parsed$usageMetadata$candidatesTokenCount %||% NA_integer_
+    )
+  )
 }
 
 
@@ -357,7 +372,13 @@
     stop(sprintf("call_api (%s): empty response (finish_reason: %s).",
                  provider, finish_reason), call. = FALSE)
   }
-  content
+  list(
+    text   = content,
+    tokens = list(
+      input  = parsed$usage$prompt_tokens     %||% NA_integer_,
+      output = parsed$usage$completion_tokens %||% NA_integer_
+    )
+  )
 }
 
 
@@ -416,12 +437,28 @@
 #'   Anthropic image content blocks, Gemini \code{inlineData} parts, or
 #'   OpenAI \code{image_url} blocks. Requires a vision-capable model
 #'   (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o).
+#' @param show_tokens Logical. When \code{TRUE}, prints a message after each
+#'   call reporting input and output token counts (e.g.
+#'   \code{"Tokens used — input: 312, output: 87"}). Default \code{FALSE} to
+#'   avoid output in non-interactive workflows. Token counts are retrieved from
+#'   the provider's response body; \code{NA} is reported when a provider does
+#'   not return usage information.
+#' @param max_input_tokens Integer or \code{NULL}. When non-\code{NULL},
+#'   estimates the prompt length as \code{ceiling(nchar(prompt_str) / 3.5)}
+#'   (a conservative characters-per-token heuristic) and stops with an
+#'   informative error before making the HTTP request if the estimate exceeds
+#'   the limit. Use this as a pre-flight guard against accidentally sending very
+#'   large prompts. Default \code{NULL} (no check performed).
 #'
 #' @return A length-1 character string containing the model's response text.
 #'   The following attributes are attached:
 #'   \describe{
 #'     \item{\code{"model"}}{The resolved model identifier.}
 #'     \item{\code{"provider"}}{The provider name used.}
+#'     \item{\code{"tokens"}}{A named list with elements \code{input} and
+#'       \code{output} (integers) giving the token counts reported by the
+#'       provider. Both are \code{NA_integer_} when the provider does not
+#'       return usage information.}
 #'   }
 #'   Stops on any non-200 HTTP status with a provider-specific error message.
 #'
@@ -482,13 +519,15 @@
 #'                    provider = "xai")
 #' }
 call_api <- function(prompt_str,
-                     provider   = NULL,
-                     tier       = c("mid", "fast", "top"),
-                     model      = NULL,
-                     max_tokens = 3000L,
-                     api_key    = NULL,
-                     base_url   = NULL,
-                     images     = NULL) {
+                     provider         = NULL,
+                     tier             = c("mid", "fast", "top"),
+                     model            = NULL,
+                     max_tokens       = 3000L,
+                     api_key          = NULL,
+                     base_url         = NULL,
+                     images           = NULL,
+                     show_tokens      = FALSE,
+                     max_input_tokens = NULL) {
 
   tier <- match.arg(tier)
 
@@ -498,6 +537,18 @@ call_api <- function(prompt_str,
   if (!requireNamespace("httr2", quietly = TRUE)) {
     stop("call_api: package 'httr2' is required. ",
          "Install with: install.packages('httr2')", call. = FALSE)
+  }
+
+  # Pre-flight token size guard (before any HTTP call)
+  if (!is.null(max_input_tokens)) {
+    estimated_tokens <- ceiling(nchar(prompt_str) / 3.5)
+    if (estimated_tokens > max_input_tokens) {
+      stop(sprintf(
+        "call_api: estimated prompt size (%d tokens) exceeds max_input_tokens (%d).\n%s",
+        estimated_tokens, max_input_tokens,
+        "Shorten the prompt or increase max_input_tokens to proceed."
+      ), call. = FALSE)
+    }
   }
 
   provider <- .resolve_provider(provider)
@@ -563,15 +614,25 @@ call_api <- function(prompt_str,
     }
   )
 
-  # Parse the provider-appropriate response
-  text <- switch(family,
+  # Parse the provider-appropriate response (returns list(text, tokens))
+  parsed <- switch(family,
     anthropic     = .parse_anthropic_response(resp, provider),
     gemini        = .parse_gemini_response(resp, provider),
     openai_compat = .parse_openai_compat_response(resp, provider),
     stop(sprintf("call_api: unknown handler_family '%s'.", family), call. = FALSE)
   )
 
+  text   <- parsed$text
+  tokens <- parsed$tokens
+
+  if (isTRUE(show_tokens)) {
+    message(sprintf("Tokens used \u2014 input: %s, output: %s",
+                    if (is.na(tokens$input))  "NA" else as.character(tokens$input),
+                    if (is.na(tokens$output)) "NA" else as.character(tokens$output)))
+  }
+
   attr(text, "model")    <- model
   attr(text, "provider") <- provider
+  attr(text, "tokens")   <- tokens
   text
 }

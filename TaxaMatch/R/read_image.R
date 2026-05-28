@@ -46,6 +46,14 @@
 #'   Default `0` (keep all).
 #' @param top_n Integer or `NULL`. If supplied, only the top `n` candidates
 #'   (by confidence) within each image are retained. Default `NULL` (keep all).
+#' @param bbox_cols Character vector of length 2 or `NULL`. Names of the
+#'   bounding-box **width** and **height** columns (normalized 0--1, as output
+#'   by MegaDetector).  Supply as a named vector
+#'   `c(w = "bbox_w", h = "bbox_h")` or positionally `c("bbox_w", "bbox_h")`.
+#'   When provided, `coverage = bbox_w * bbox_h` is computed and added to the
+#'   output; this area fraction serves as an image-quality analog to BLAST
+#'   `qcovs` and is accepted by `TaxaLikely::evaluate_likelihoods(min_coverage=)`.
+#'   Default `NULL` (no coverage column).
 #'
 #' @return A data frame with one row per image × candidate species, containing:
 #'   \describe{
@@ -133,7 +141,8 @@ read_animl_output <- function(files,
                                common_name_col = NULL,
                                n_candidates    = NULL,
                                min_confidence  = 0,
-                               top_n           = NULL) {
+                               top_n           = NULL,
+                               bbox_cols       = NULL) {
 
   # ---- validate inputs -------------------------------------------------------
   if (!is.character(files) || length(files) == 0L) {
@@ -164,6 +173,10 @@ read_animl_output <- function(files,
     if (is.na(top_n) || top_n < 1L)
       stop("read_animl_output: 'top_n' must be a positive integer or NULL.")
   }
+  if (!is.null(bbox_cols)) {
+    if (!is.character(bbox_cols) || length(bbox_cols) != 2L)
+      stop("read_animl_output: 'bbox_cols' must be a length-2 character vector, e.g. c(w = 'bbox_w', h = 'bbox_h').")
+  }
 
   # ---- resolve directory vs file list ----------------------------------------
   if (length(files) == 1L && dir.exists(files)) {
@@ -192,7 +205,8 @@ read_animl_output <- function(files,
       species_col     = species_col,
       score_col       = score_col,
       common_name_col = common_name_col,
-      n_candidates    = n_candidates
+      n_candidates    = n_candidates,
+      bbox_cols       = bbox_cols
     )
   }
   out <- do.call(rbind, rows)
@@ -218,12 +232,13 @@ read_animl_output <- function(files,
 
 #' Parse a single Animl result CSV into a match-ready data frame
 #' @param f Character. Path to a single Animl CSV file.
-#' @param file_col,species_col,score_col,common_name_col,n_candidates
+#' @param file_col,species_col,score_col,common_name_col,n_candidates,bbox_cols
 #'   Forwarded from [read_animl_output()].
 #' @return Data frame with canonical match columns.
 #' @noRd
 .parse_animl_file <- function(f, file_col, species_col, score_col,
-                               common_name_col, n_candidates) {
+                               common_name_col, n_candidates,
+                               bbox_cols = NULL) {
 
   df <- tryCatch(
     utils::read.csv(f, check.names = FALSE, stringsAsFactors = FALSE),
@@ -309,7 +324,29 @@ read_animl_output <- function(files,
     NA_character_
   )
 
-  data.frame(
+  # Compute coverage from bounding box area (optional) -------------------------
+  # bbox_w * bbox_h gives the fractional area of the image occupied by the
+  # detection crop (0-1).  A small fraction = distant/partial animal = weaker
+  # classification evidence.  Analogous to BLAST qcovs for DNA sequences.
+  coverage_vals <- if (!is.null(bbox_cols)) {
+    w_col <- if (!is.null(names(bbox_cols)) && "w" %in% names(bbox_cols))
+      bbox_cols[["w"]] else bbox_cols[[1L]]
+    h_col <- if (!is.null(names(bbox_cols)) && "h" %in% names(bbox_cols))
+      bbox_cols[["h"]] else bbox_cols[[2L]]
+    if (!w_col %in% names(df) || !h_col %in% names(df)) {
+      warning(sprintf(
+        "read_animl_output: bbox_cols '%s'/'%s' not found in '%s'; coverage set to NA.",
+        w_col, h_col, basename(f)
+      ), call. = FALSE)
+      rep(NA_real_, nrow(df))
+    } else {
+      suppressWarnings(as.numeric(df[[w_col]]) * as.numeric(df[[h_col]]))
+    }
+  } else {
+    NULL
+  }
+
+  out_df <- data.frame(
     observation_id = img_stem,
     score          = score_vals,
     species        = species_vals,
@@ -318,6 +355,8 @@ read_animl_output <- function(files,
     source_file    = basename(f),
     stringsAsFactors = FALSE
   )
+  if (!is.null(coverage_vals)) out_df$coverage <- coverage_vals
+  out_df
 }
 
 

@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-27 (Session 89 -- data-type generalization audit + Session B implementation)
+# Last updated: 2026-05-27 (Session 92 -- call_api() token usage reporting: show_tokens, max_input_tokens, attr tokens)
 
 ---
 
@@ -513,3 +513,11 @@ fences were never parsed, causing all-NA `range_status` and uniform priors.
 | 2026-05-27 | *(Session 89 — docs)* | Workflow scope headers added | TaxaLikely | `1_fetch_references_workflow.R`, `2_flag_errors_workflow.R` | DNA-only scope notices pointing to Workflow 3b for acoustic. |
 | 2026-05-27 | *(Session 89 — enhancement)* | Family-rank extension section | TaxaLikely | `3b_acoustic_reference_workflow.R` | Optional section: verify_taxon_names() → extract family → retrain with rank_system = c("family","genus","species"). |
 | 2026-05-27 | *(Session 89 — enhancement)* | TaxaWizard prompt updates | TaxaWizard | `phase_classify.md`, `phase_parameterize.md` | `phase_classify`: match_df input type now mentions BirdNET + image classifiers. `phase_parameterize`: `barcode_term` marked DNA-only; new `rank_system` guidance for acoustic/image. |
+| 2026-05-27 | *(Session 90 — new)* | `coverage` column | `build_sequence_matrix()` | TaxaLikely | Per-pair alignment coverage: positions where both sequences are non-gap / shorter unaligned length. Pre-computes gap masks once per sequence for efficiency. |
+| 2026-05-27 | *(Session 90 — new)* | `coverage` column | `build_acoustic_reference()` | TaxaLikely | Xeno-canto quality grade mapped to numeric 0–1: A→1.0, B→0.8, C→0.5, D→0.3, E→0.1. Places acoustic quality on the same scale as DNA alignment coverage. |
+| 2026-05-27 | *(Session 90 — new)* | `calibrate_coverage_filter()` | TaxaLikely | function | Sweeps coverage threshold grid; returns breadth + H1/H2 metrics per threshold including `youden_j` (primary Pareto signal, bounded −1 to 1) and `discrimination` (ratio form). Detects categorical coverage and messages acoustic data caveat. |
+| 2026-05-27 | *(Session 90 — new)* | `coverage_threshold()` | TaxaLikely | function | Quantile shortcut: `keep_frac = 0.95` → threshold at 5th percentile of coverage distribution. Snaps to nearest unique value for categorical (acoustic) coverage with message showing achieved vs requested retention. |
+| 2026-05-27 | *(Session 91 — new)* | `read_crabs_output()` | TaxaLikely | function | Read CRABS internal-format database (headerless 11-column TSV: accession…species…sequence) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`. File: `R/read_crabs.R`. |
+| 2026-05-27 | *(Session 91 — enhancement)* | `taxonomy_file` param added | `read_reference_fasta()` | TaxaLikely | New optional param accepts a 2-column TSV (QIIME2/RESCRIPt/SILVA prefix-style `k__Kingdom;...` or positional `Kingdom;...`). `taxonomy` param changed from required to `NULL`-default; exactly one of `taxonomy` or `taxonomy_file` must be supplied. Internals: `.parse_taxonomy_tsv()`, `.parse_tax_string()`. |
+| 2026-05-27 | *(Session 92 — new params)* | `show_tokens` + `max_input_tokens` | `call_api()` | TaxaTools | params | `show_tokens = FALSE`: prints input/output token counts via `message()` after each call. `max_input_tokens = NULL`: pre-flight guard stops before HTTP request when estimated tokens (chars/3.5) exceed limit. Provider wrappers unchanged (route through `call_api()`). |
+| 2026-05-27 | *(Session 92 — new attr)* | `attr(result, "tokens")` | `call_api()` | TaxaTools | interface | Named list `list(input = N, output = N)` always attached to returned string. Sourced from provider response bodies: Anthropic `body$usage$*_tokens`; Gemini `usageMetadata$*TokenCount`; OpenAI-compat `usage$prompt_tokens`/`completion_tokens`. `NA_integer_` when provider does not report usage. |

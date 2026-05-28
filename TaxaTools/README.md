@@ -80,8 +80,23 @@ df <- data.frame(
 )
 create_taxon_names(df, rank_system = c("family", "genus", "species"))
 
-# Call an LLM
-call_anthropic_api("What habitat does Fundulus parvipinnis prefer?")
+# Call an LLM (provider auto-detected from API keys on library load)
+answer <- call_api("What habitat does Fundulus parvipinnis prefer?")
+
+# See how many tokens were used
+attr(answer, "tokens")
+#> $input
+#> [1] 12
+#> $output
+#> [1] 87
+
+# Print token counts inline (useful during prompt development)
+answer <- call_api("Summarise the diet of Atherinops affinis.",
+                   show_tokens = TRUE)
+#> Tokens used — input: 14, output: 63
+
+# Guard against accidentally sending a very large prompt
+answer <- call_api(big_prompt, max_input_tokens = 5000)
 ```
 
 ## Taxonomic Backbone IDs

@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 89 -- audit_acoustic_coverage new function; data-type scope notes)
+# Last updated: 2026-05-27 (Session 91 -- read_crabs_output; taxonomy_file param in read_reference_fasta)
 
 ---
 
@@ -85,15 +85,16 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | Function | File | Status | Description |
 |---|---|---|---|
 | `fetch_reference_sequences()` | `R/fetch.R` | Written | Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tempdir()`). Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. |
-| `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + user-supplied taxonomy table → `reference_df`. For CRUX, GenBank dumps, custom databases. |
+| `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
+| `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + taxonomy → `reference_df`. For CRUX, GenBank dumps, custom databases. `taxonomy` param accepts a data frame; new `taxonomy_file` param accepts a 2-column TSV (QIIME2/RESCRIPt/SILVA/MIDORI2 prefix-style `k__Kingdom;...` or positional `Kingdom;...`). Exactly one of `taxonomy` or `taxonomy_file` must be supplied (previously `taxonomy` was required). Internals: `.parse_taxonomy_tsv()`, `.parse_tax_string()`. |
 | `fetch_reference_recordings()` | `R/fetch_recordings.R` | Written | Fetch bird sound recordings from Xeno-canto API v3. Returns metadata table for acoustic reference training. `api_key` required (read from `XC_API_KEY` env var). `quality` A-E filter; `max_per_species` cap; optional `download = TRUE`. Internals: `.xc_query_all()`, `.xc_standardize_cols()`, `.parse_xc_duration()`. |
 
 ### Training (fit model on reference database)
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Renamed from `build_reference_matrix()` Session 88. |
-| `build_acoustic_reference()` | `R/build_acoustic.R` | Written | Acoustic analog of `build_sequence_matrix()`. Joins BirdNET detections to Xeno-canto ground truth; labels H1/H2/H3; maps `type` → `testid`. Returns same `.x`/`.y` pair format. Train one model per `testid` type (song, call) as eDNA trains per marker. |
+| `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output now includes `coverage` column (positions where both sequences are non-gap / shorter unaligned length). Renamed from `build_reference_matrix()` Session 88. |
+| `build_acoustic_reference()` | `R/build_acoustic.R` | Written | Acoustic analog of `build_sequence_matrix()`. Joins BirdNET detections to Xeno-canto ground truth; labels H1/H2/H3; maps `type` → `testid`. Output now includes `coverage` column (Xeno-canto quality grade mapped A→1.0, B→0.8, C→0.5, D→0.3, E→0.1). Returns same `.x`/`.y` pair format. Train one model per `testid` type (song, call) as eDNA trains per marker. |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
 | `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations |
 
@@ -113,6 +114,13 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates in_match_data. Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
 | `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress "unreferenced_species" for fully-sampled genera |
 | `expand_unreferenced_hypotheses()` | moved to TaxaAssign | — | Requires both TaxaLikely and TaxaExpect outputs; belongs at the convergence point. See `TaxaAssign/R/expand_unreferenced.R`. |
+
+### Coverage quality calibration
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `calibrate_coverage_filter()` | `R/calibrate.R` | Written | Sweep a grid of coverage thresholds over `build_sequence_matrix()` or `build_acoustic_reference()` output; return per-threshold breadth + H1/H2 discrimination metrics. Key columns: `breadth`, `h1_retention`, `h2_retention`, `youden_j` (primary — maximised at Pareto-optimal threshold), `discrimination` (ratio form), `mean_h1_score`. Detects categorical coverage (≤10 unique values, e.g. acoustic grades) and messages that J will be near-flat. Auto-detects finest rank from `.x`/`.y` column pairs via `.detect_finest_rank_col()`. |
+| `coverage_threshold()` | `R/calibrate.R` | Written | Quantile-based shortcut: returns the coverage value at the `(1 − keep_frac)` quantile so that `keep_frac` of pairs are retained (default 0.95). For categorical coverage, snaps to the nearest unique value with a message showing the achieved retention fraction. |
 
 ### Match object cleaning
 
@@ -140,11 +148,15 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `.prep_training_data()` | `R/train.R` | Logit-transform, compute within-species pairs + gap |
 | `.evaluate_one_query()` | `R/evaluate.R` | Per-query H1/H2/H3 likelihood calculation |
 | *(removed — Session 57)* | `R/coverage.R` | `.barcode_length_defaults`, `.resolve_barcode_lengths()`, `.is_valid_species_name()` moved to TaxaTools as exports; now called as `TaxaTools::resolve_barcode_lengths()` and `TaxaTools::is_valid_species_name()` |
+| `.detect_finest_rank_col()` | `R/calibrate.R` | Auto-detect finest rank from paired `.x`/`.y` columns using `TaxaTools::standard_ranks`; used by `calibrate_coverage_filter()` |
 | `.build_search_term()` | `R/fetch.R` | Construct NCBI nucleotide search query from taxon + barcode_term + dates |
 | `.fetch_summaries_batched()` | `R/fetch.R` | Batched NCBI summary retrieval (accession, taxid, length); exponential backoff |
 | `.fetch_taxonomy_map()` | `R/fetch.R` | Batched NCBI taxonomy XML → full lineage lookup table |
 | `.fetch_fasta_batched()` | `R/fetch.R` | Batched FASTA download from NCBI nucleotide |
 | `.parse_fasta_text()` | `R/fetch.R` | Parse FASTA text into data.frame(composite_id, sequence) |
+| `.parse_taxonomy_tsv()` | `R/fetch.R` | Parse 2-column taxonomy TSV (QIIME2/RESCRIPt/SILVA/MIDORI2) → data frame for `read_reference_fasta(taxonomy_file=)`. Skips header rows; calls `.parse_tax_string()` on unique strings only (efficient for large files). |
+| `.parse_tax_string()` | `R/fetch.R` | Parse one semicolon-delimited taxonomy string; auto-detects prefix-style (`k__`, `d__`, etc.) vs positional format; maps to user-supplied `rank_system`. |
+| `.crabs_std_hierarchy` | `R/fetch.R` | Character constant: standard 7-level CRABS/NCBI rank order used for positional taxonomy-string parsing. |
 
 ---
 
@@ -530,6 +542,60 @@ non-zero likelihoods that bypass the constraint. Correct order:
 - TaxaMatch and TaxaLikely READMEs updated with real BirdNET-Analyzer installation instructions,
   Python analysis script example, expected CSV format, and reference training workflow sections.
 - `devtools::check(vignettes = FALSE)`: 0 errors, 0 warnings, 0 notes.
+
+**Session 90 (2026-05-27)**
+- `coverage` column added to `build_sequence_matrix()` output. Computed as the number of
+  MSA positions where both sequences are non-gap, divided by the shorter unaligned sequence
+  length. Pre-computes per-sequence gap masks once (O(n × alignment_width)) before looping
+  over sparse pairs. Documented in `@return`.
+- `coverage` column added to `build_acoustic_reference()` output. Derived from
+  `recordings_meta$quality`: A→1.0, B→0.8, C→0.5, D→0.3, E→0.1. Placed on the same [0,1]
+  scale as DNA alignment coverage for common downstream handling. `has_quality` guard added
+  so the function still works when the quality column is absent (coverage = NA).
+- `calibrate_coverage_filter()` added to `R/calibrate.R`. Sweeps `thresholds` (default
+  `seq(0, 0.99, by = 0.05)`) and returns a 10-column data frame: `threshold`, `n_queries`,
+  `breadth`, `h1_pairs`, `h2_pairs`, `h1_retention`, `h2_retention`, `youden_j`,
+  `discrimination`, `mean_h1_score`. H1/H2 classification auto-detected via finest rank
+  in `.x`/`.y` column pairs. Categorical coverage detection (≤10 unique values) triggers
+  an informational message that J/discrimination will be near-flat for acoustic data.
+- `coverage_threshold()` added to `R/calibrate.R`. `keep_frac = 0.95` → threshold at
+  `quantile(coverage, 0.05)`. Categorical snapping: nearest unique value with a message
+  reporting the achieved vs requested retention fraction.
+- `.detect_finest_rank_col()` internal helper added to `R/calibrate.R`.
+- README: new "Reference Coverage Quality Filtering" section with motivation, data-type
+  comparison, metric table (Youden's J explanation + acoustic caveat), and code examples
+  for both `calibrate_coverage_filter()` and `coverage_threshold()`.
+- `devtools::check(vignettes = FALSE)`: 0 errors, 0 warnings, 1 note (pre-existing stale top-level files).
+
+**Session 91 (2026-05-27)**
+- `read_crabs_output()` added to new `R/read_crabs.R` — reads CRABS internal-format database
+  (headerless 11-column tab-delimited TSV) directly into `reference_df`. Params:
+  - `rank_system`: NULL auto-detects by checking which of the 7 CRABS taxonomy columns have
+    ≥1 non-NA value; otherwise takes a user-supplied coarse-to-fine vector.
+  - `max_n_bases`: drop sequences longer than N bases (chimera / assembly-error filter).
+  - `require_species`: default TRUE; uses `TaxaTools::is_valid_species_name()` to reject
+    `sp.`, `cf.`, `aff.`, `uncultured` names.
+  - `dereplicate`: collapse exact-duplicate sequences within the same species (first accession
+    retained). Complementary to CRABS built-in dereplication (which works on primer-trimmed seqs).
+  - Literal "NA" strings in taxonomy columns are converted to `NA` (CRABS convention for missing ranks).
+  - Accession version suffix (`.1`, `.2`) stripped to match FASTA convention.
+  - 16 offline tests in `tests/testthat/test-read-crabs.R`.
+- `read_reference_fasta()` in `R/fetch.R` — `taxonomy_file` parameter added (Tier 2):
+  - Accepts a 2-column tab-delimited TSV (column 1: sequence ID, column 2: semicolon-separated
+    taxonomy string) in QIIME2/RESCRIPt/SILVA prefix-style (`k__Kingdom;p__Phylum;...`) or
+    positional (MIDORI2/plain SILVA: `Kingdom;Phylum;...`). Auto-detects format.
+  - Header rows beginning with "Feature", "feature", or "#" are skipped automatically.
+  - `taxonomy` param changed from required to `NULL`-default; exactly one of `taxonomy` or
+    `taxonomy_file` must be supplied (error if both or neither).
+  - Internal helpers added to `R/fetch.R`: `.parse_taxonomy_tsv()` (reads TSV, deduplicates
+    strings before parsing for efficiency), `.parse_tax_string()` (single-string parser),
+    `.crabs_std_hierarchy` (constant for positional mapping).
+  - 7 tests for taxonomy_file path in `tests/testthat/test-read-crabs.R`.
+- README: new "Loading Pre-built Reference Databases" section before Key Functions; covers
+  CRABS (with complementary pitch), FASTA+data frame, and FASTA+taxonomy_file formats.
+- CLAUDE.md Function Inventory updated (read_crabs_output + read_reference_fasta row);
+  internal helpers table updated.
+- `devtools::check()`: run after implementation (target: 0 errors, 0 warnings).
 
 ---
 

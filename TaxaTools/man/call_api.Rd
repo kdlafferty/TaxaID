@@ -12,7 +12,9 @@ call_api(
   max_tokens = 3000L,
   api_key = NULL,
   base_url = NULL,
-  images = NULL
+  images = NULL,
+  show_tokens = FALSE,
+  max_input_tokens = NULL
 )
 }
 \arguments{
@@ -61,6 +63,20 @@ sent as a multi-modal message using the provider's vision format:
 Anthropic image content blocks, Gemini \code{inlineData} parts, or
 OpenAI \code{image_url} blocks. Requires a vision-capable model
 (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o).}
+
+\item{show_tokens}{Logical. When \code{TRUE}, prints a message after each
+call reporting input and output token counts (e.g.
+\code{"Tokens used — input: 312, output: 87"}). Default \code{FALSE} to
+avoid output in non-interactive workflows. Token counts are retrieved from
+the provider's response body; \code{NA} is reported when a provider does
+not return usage information.}
+
+\item{max_input_tokens}{Integer or \code{NULL}. When non-\code{NULL},
+estimates the prompt length as \code{ceiling(nchar(prompt_str) / 3.5)}
+(a conservative characters-per-token heuristic) and stops with an
+informative error before making the HTTP request if the estimate exceeds
+the limit. Use this as a pre-flight guard against accidentally sending very
+large prompts. Default \code{NULL} (no check performed).}
 }
 \value{
 A length-1 character string containing the model's response text.
@@ -68,6 +84,10 @@ The following attributes are attached:
 \describe{
 \item{\code{"model"}}{The resolved model identifier.}
 \item{\code{"provider"}}{The provider name used.}
+\item{\code{"tokens"}}{A named list with elements \code{input} and
+\code{output} (integers) giving the token counts reported by the
+provider. Both are \code{NA_integer_} when the provider does not
+return usage information.}
 }
 Stops on any non-200 HTTP status with a provider-specific error message.
 }

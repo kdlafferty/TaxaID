@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-26 (Session 87 — call_api() gains images param for vision/multimodal calls)
+# Last updated: 2026-05-27 (Session 92 — call_api() gains show_tokens + max_input_tokens params; token usage attached as attr)
 
 ---
 
@@ -254,4 +254,24 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
   vision block format: anthropic → image content blocks (`type/source/base64`),
   gemini → `inlineData` parts (`mimeType/data`), openai_compat → `image_url` blocks
   (`data:image/png;base64,...`). Text-only calls (images = NULL) unchanged.
+- `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 92 (2026-05-27)**
+- `call_api()`: two new params + token usage reporting:
+  - `show_tokens = FALSE`: when TRUE, prints `"Tokens used — input: N, output: N"` after
+    each call via `message()`. Default FALSE to avoid output in batch workflows.
+  - `max_input_tokens = NULL`: pre-flight guard — estimates prompt tokens as
+    `ceiling(nchar(prompt_str) / 3.5)` and stops before the HTTP call if over limit.
+    Provides a substitute for interactive cancellation in long-running batch loops.
+  - `attr(result, "tokens")`: new attribute always attached to the returned string.
+    Named list `list(input = N, output = N)` with integers from the provider's response
+    body. `NA_integer_` when the provider does not report usage.
+  - Internal parsers `.parse_anthropic_response()`, `.parse_gemini_response()`,
+    `.parse_openai_compat_response()` now return `list(text, tokens)` instead of a bare
+    string. Token field names: Anthropic `body$usage$input_tokens`/`output_tokens`;
+    Gemini `usageMetadata$promptTokenCount`/`candidatesTokenCount`; OpenAI-compat
+    `usage$prompt_tokens`/`completion_tokens`.
+  - Provider wrapper functions (`call_anthropic_api()` etc.) unchanged — they route
+    through `call_api()` and pass `...` so users can access `show_tokens`/`max_input_tokens`
+    by calling `call_api()` directly.
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes.

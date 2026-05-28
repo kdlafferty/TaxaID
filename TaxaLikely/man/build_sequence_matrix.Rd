@@ -42,6 +42,13 @@ A data frame with one row per sequence pair within \code{max_dist}:
 \describe{
 \item{\code{id_x}, \code{id_y}}{\code{composite_id} values for each pair member.}
 \item{\code{p_match}}{Match score (1 − distance), range (0, 1].}
+\item{\code{coverage}}{Alignment coverage: number of positions where both
+sequences contribute a non-gap character, divided by the shorter
+unaligned sequence length.  Range (0, 1].  Values near 1.0 indicate
+nearly complete overlap; values near 0.0 indicate highly gappy or
+partial alignments that produce unreliable match scores.  Use
+\code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}} or \code{\link[=coverage_threshold]{coverage_threshold()}} to select a
+minimum coverage threshold before calling \code{\link[=train_likelihood_model]{train_likelihood_model()}}.}
 \item{\verb{\{rank\}.x}, \verb{\{rank\}.y}}{Taxonomy columns for each pair member.}
 }
 }

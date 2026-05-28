@@ -12,7 +12,8 @@ read_animl_output(
   common_name_col = NULL,
   n_candidates = NULL,
   min_confidence = 0,
-  top_n = NULL
+  top_n = NULL,
+  bbox_cols = NULL
 )
 }
 \arguments{
@@ -48,6 +49,15 @@ Default \code{0} (keep all).}
 
 \item{top_n}{Integer or \code{NULL}. If supplied, only the top \code{n} candidates
 (by confidence) within each image are retained. Default \code{NULL} (keep all).}
+
+\item{bbox_cols}{Character vector of length 2 or \code{NULL}. Names of the
+bounding-box \strong{width} and \strong{height} columns (normalized 0--1, as output
+by MegaDetector).  Supply as a named vector
+\code{c(w = "bbox_w", h = "bbox_h")} or positionally \code{c("bbox_w", "bbox_h")}.
+When provided, \code{coverage = bbox_w * bbox_h} is computed and added to the
+output; this area fraction serves as an image-quality analog to BLAST
+\code{qcovs} and is accepted by \code{TaxaLikely::evaluate_likelihoods(min_coverage=)}.
+Default \code{NULL} (no coverage column).}
 }
 \value{
 A data frame with one row per image × candidate species, containing:

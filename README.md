@@ -202,6 +202,7 @@ tools.
 | SINTAX (Edgar 2016) | Kmer + bootstrap | Bootstrap confidence | No | No | No (DNA only) |
 | RDP Classifier (Wang et al. 2007) | Naive Bayes (8-mer) | Bootstrap confidence | No | No | No (DNA only) |
 | DADA2 `assignTaxonomy` (Callahan et al. 2016) | Naive Bayes (kmer) | Bootstrap confidence | No | No | No (DNA only) |
+| galaxy-tool-lca (Beentjes et al. 2019) | Score-threshold + LCA (deterministic) | No | No | No (upranked) | No (BLAST/DNA only) |
 
 TaxaID is complementary to several of these tools rather than a
 replacement. DADA2 or OBITools handle upstream sequence processing;
@@ -211,6 +212,30 @@ TaxaID is that the same likelihood model can be combined with
 different spatial priors at different sites, and that the framework
 extends to image and acoustic data via TaxaMatch score
 standardization.
+
+The galaxy-tool-lca tool (Beentjes et al. 2019;
+<https://github.com/naturalis/galaxy-tool-lca>) is a widely used
+Python tool for LCA-based taxonomic assignment from BLAST results,
+particularly for freshwater macroinvertebrate eDNA and fungal ITS
+metabarcoding. Its core algorithm — filtering BLAST hits by identity,
+bitscore, and query coverage, then finding the lowest common ancestor
+among passing hits — is conceptually similar to TaxaID's
+`score_consensus()`. A notable strength of galaxy-tool-lca is its
+explicit use of **query coverage** (the fraction of the query sequence
+that aligns to each reference hit) as a mandatory quality filter,
+alongside percent identity and bitscore. A 98% identity match that
+covers only half the amplicon is weaker evidence than one spanning the
+full amplicon, and coverage is already available as a BLAST output
+column (`qcovs`). TaxaID's likelihood model currently uses score
+(percent identity) and the gap to the second-best candidate as its
+primary signals but does not incorporate alignment coverage. Users can
+partially address this upstream by filtering on coverage in TaxaMatch
+before passing match data to TaxaLikely; incorporating coverage as a
+third dimension in the likelihood model is a potential future
+enhancement. The analogous quality signal for acoustic reference data
+is the Xeno-canto quality grade (A–E per recording), which
+`TaxaLikely::fetch_reference_recordings()` already uses to filter
+reference recordings before model training.
 
 For contamination detection, the R package decontam (Davis et al.
 2018) uses DNA concentration and prevalence to identify contaminants
@@ -486,6 +511,11 @@ firm, or product names is for descriptive purposes only and does not
 imply endorsement by the U.S. Government.
 
 # References
+
+Beentjes, K.K., Speksnijder, A.G.C.L., Schilthuizen, M., Hoogeveen,
+M. and van der Hoorn, B.B. (2019). The effects of spatial scale and
+habitat on the composition of the aquatic macroinvertebrate community
+as determined by eDNA metabarcoding. *PLOS ONE*, 14(2), e0211143.
 
 Callahan, B.J., McMurdie, P.J., Rosen, M.J., Han, A.W., Johnson,
 A.J.A. and Holmes, S.P. (2016). DADA2: High-resolution sample
