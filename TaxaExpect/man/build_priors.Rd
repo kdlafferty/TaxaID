@@ -13,7 +13,7 @@ build_priors(
   gbif_limit = 10000L,
   habitat_scheme = NULL,
   max_coord_uncertainty = 500,
-  llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api),
+  llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   habitat_threshold = 0.5,
   geographic_context = NULL,
   min_phi = 2,
