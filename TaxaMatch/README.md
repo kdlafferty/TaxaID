@@ -199,6 +199,69 @@ classifier's known list with
 Pass the result's `$unreferenced` vector to
 `TaxaAssign::suggest_unreferenced_species()` as `unreferenced_taxa`.
 
+**Coverage column:** `read_animl_output()` can retain the bounding box
+area (width × height, normalised 0--1) as a `coverage` column when
+`bbox_cols` are specified. Smaller bounding boxes indicate a partially
+visible or distant animal — lower evidence per detection, directly
+analogous to DNA alignment coverage and acoustic recording quality.
+Use `TaxaLikely::coverage_threshold()` or
+`TaxaLikely::calibrate_coverage_filter()` to choose a filter cutoff
+before model training.
+
+## Other Image Classifiers
+
+The match object format is classifier-agnostic. Three dedicated reader
+functions are available; any other tool that returns a species label
+and a confidence score per image can be adapted manually.
+
+**iNaturalist computer vision** returns a ranked list of up to 10
+candidate taxa (species, genus, or family) with softmax confidence
+scores (0--1) via the public API (`https://api.inaturalist.org/v2/`).
+Its 108,000+ taxon training set covers general wildlife globally.
+Use `read_inaturalist_cv_output()` on saved JSON response files:
+
+``` r
+# Save API response as JSON (one file per image), then:
+inat_df <- read_inaturalist_cv_output(
+  "inat_results/",        # directory of per-image JSON files
+  score_type     = "combined_score",
+  min_confidence = 0.05,
+  top_n          = 5L
+) |> subset(taxon_rank == "species")
+```
+
+**Wildlife Insights / SpeciesNet** (Google/WCS) processes camera trap
+images with the open-source SpeciesNet Python model. Use
+`read_wildlife_insights_output()` on the batch predictions JSON:
+
+``` r
+# Run SpeciesNet: python -m speciesnet.scripts.run_model \
+#   --folders images/ --predictions_json speciesnet_output.json
+wi_df <- read_wildlife_insights_output(
+  "speciesnet_output.json",
+  min_confidence = 0.3
+) |> subset(!species %in% c("blank", "human", "vehicle"))
+```
+
+**InsectNet** (He et al. 2025; <https://insectapp.las.iastate.edu>)
+targets insects (2,526 species, 17 orders) with 96.4% top-1 accuracy.
+Unlike the classifiers above, it returns *conformal prediction sets*
+rather than a single ranked-confidence list — a set of species
+guaranteed to contain the true species with ≥97.5% probability. It
+also flags out-of-distribution images with an energy-based OOD score.
+The conformal output format is not currently compatible with the
+score-based likelihood model in TaxaLikely without access to the
+underlying softmax scores. A web interface is available; programmatic
+access to model weights is described in the paper but no public API
+exists at time of writing.
+
+| Classifier | Reader function | Score type | R package |
+|---|---|---|---|
+| Animl / SpeciesNet | `read_animl_output()` | Confidence 0--1 | `animl` (CRAN) |
+| iNaturalist CV | `read_inaturalist_cv_output()` | Softmax 0--1 | `rinat` (indirect) |
+| Wildlife Insights / SpeciesNet | `read_wildlife_insights_output()` | Confidence 0--1 | Python `speciesnet` |
+| InsectNet | *(not yet compatible)* | Conformal sets | Web app only |
+
 ## Match Object Output
 
 The canonical match object has one row per `observation_id` x reference

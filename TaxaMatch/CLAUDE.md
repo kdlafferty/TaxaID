@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-26 (Session 88 — empty BirdNET file bug fix)
+# Last updated: 2026-05-27 (Session 93 — read_inaturalist_cv_output, read_wildlife_insights_output)
 
 ---
 
@@ -110,6 +110,8 @@ likelihood output downstream — it is NOT part of the match object.
 | Function | File | Status | Description |
 |---|---|---|---|
 | `read_animl_output()` | R/read_image.R | Complete | Ingest Animl CSV export (MegaDetector + SpeciesNet); map confidence + taxonomy to match object. Accepts long format (default) or wide format via `n_candidates`. Configurable column names via `file_col`, `species_col`, `score_col`. `observation_id` = image filename stem. `min_confidence` and `top_n` filters. |
+| `read_inaturalist_cv_output()` | R/read_image.R | Complete | Ingest saved iNaturalist CV API JSON response files (one JSON per image). `score_type` = `"combined_score"` (default) or `"score"`. Returns `observation_id`, `score`, `species`, `genus`, `common_name`, `taxon_rank`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
+| `read_wildlife_insights_output()` | R/read_image.R | Complete | Ingest SpeciesNet / Wildlife Insights batch predictions JSON (one JSON may cover many images). `label_col = "label"`, `score_col = "score"` (configurable for older formats). Returns `observation_id`, `score`, `species`, `genus`, `category`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
 | `read_birdnet_output()` | R/read_acoustic.R | Complete | Ingest BirdNET-Analyzer CSV (detections × species × confidence); map to match object. Accepts file vector or directory path. `observation_id = "{file_stem}_{start_s}-{end_s}"`. `min_confidence` and `top_n` filters. |
 
 ### Standardization (original)
@@ -332,3 +334,18 @@ inside `filter_redundant_hypotheses()` via `match()`.
 - 2 new tests in `test-read_acoustic.R` (total now 11): empty CSV returns 0-row data frame with
   correct columns; mix of empty + non-empty files returns only rows from non-empty file.
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 93 (2026-05-27)**
+- `read_inaturalist_cv_output()` added to `R/read_image.R`. Reads per-image JSON files saved from the
+  iNaturalist computer vision API. `score_type = "combined_score"` (default) or `"score"`. Returns
+  `observation_id`, `score`, `species`, `genus`, `common_name`, `taxon_rank`, `source_file`. Accepts
+  directory of JSON files or a file vector. `min_confidence` and `top_n` filters. 8 offline tests.
+- `read_wildlife_insights_output()` added to `R/read_image.R`. Reads SpeciesNet / Wildlife Insights
+  batch predictions JSON (top-level `"predictions"` dict keyed by image filename). `label_col = "label"`,
+  `score_col = "score"` configurable. Returns `observation_id`, `score`, `species`, `genus`, `category`,
+  `source_file`. `min_confidence`, `top_n` filters. 8 offline tests.
+- `jsonlite` added to DESCRIPTION Imports (required by both new reader functions; `requireNamespace`
+  guard allows graceful error if not installed).
+- README "Other Image Classifiers" section updated: dedicated reader functions shown with example code;
+  classifier comparison table updated.
+- `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).

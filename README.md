@@ -237,6 +237,59 @@ is the Xeno-canto quality grade (A–E per recording), which
 `TaxaLikely::fetch_reference_recordings()` already uses to filter
 reference recordings before model training.
 
+**Table 1b.** Comparison of TaxaID (image path) with standalone image
+classifiers. TaxaID converts raw classifier confidence scores into
+calibrated likelihoods via a reference training set with known species
+identity, then multiplies those likelihoods by spatially explicit
+priors; the tools below produce the raw scores that TaxaMatch and
+TaxaLikely process.
+
+| Tool | Taxa scope | Score output | Spatial priors | Unreferenced taxa | R access |
+|---|---|---|---|---|---|
+| **TaxaID (image path)** | Any (classifier-agnostic) | Calibrated likelihoods → Bayesian posteriors | Yes (GBIF + habitat) | Yes (coverage audit) | Native |
+| animl / SpeciesNet (Tabak et al. 2019; Wildlife Insights) | Camera trap mammals | Confidence (0--1), top-5; rollup ensemble | No | No | `animl` R package |
+| iNaturalist computer vision | General wildlife (108,000+ taxa) | Softmax (0--1), top-10; genus/family fallback | Limited (app UI only) | No | `rinat` (indirect) |
+| InsectNet (He et al. 2025) | Insects (2,526 spp, 17 orders) | Conformal prediction sets; OOD energy score | No | Limited (OOD flag) | Web app only |
+| Seek / iNaturalist mobile | General wildlife | Community consensus | No | No | None |
+| Wildlife Insights (WCS/Google) | Camera trap wildlife | Confidence (0--1), rollup ensemble | No | No | None (web platform) |
+
+TaxaID is downstream of, not competing with, these classifiers. The
+key point is that raw confidence scores from neural networks are
+uncalibrated softmax outputs — a 90% confidence score does not mean a
+90% chance the identification is correct. TaxaLikely addresses this by
+fitting a generative model to a labeled reference set of images with
+known species identity, capturing the full score distribution for
+correct matches (H1), wrong-species matches (H2), and absent-species
+responses (H3). Animl results are read directly by
+`TaxaMatch::read_animl_output()`; iNaturalist CV and Wildlife Insights
+JSON outputs can be adapted to the canonical match object format. A
+dedicated `build_image_reference()` function (the image analog of
+`TaxaLikely::build_acoustic_reference()`) is the next planned addition
+to the image workflow.
+
+InsectNet (He et al. 2025) is a notable recent advance for
+invertebrate specialists. Its two-stage self-supervised pretraining
+pipeline — general visual features from 3.6 billion Instagram images,
+followed by domain-specific pretraining on 12 million unlabeled insect
+images, then supervised fine-tuning on iNaturalist labels — achieves
+96.4% top-1 accuracy across 2,526 species in 17 insect orders. The
+standout methodological innovation is replacing point confidence scores
+with **conformal prediction sets**: rather than returning a single
+species estimate, the model returns a set of candidate species
+guaranteed to contain the true species with ≥97.5% probability, with
+the set expanding as uncertainty grows. An energy-based
+out-of-distribution (OOD) score flags images outside the training
+distribution before classification is attempted. The conformal
+guarantee is conceptually related to TaxaID's H1/H2/H3 framework —
+the true species is either in the candidate set (H1/H2) or flagged
+as OOD (H3 analog) — but the outputs are not directly compatible with
+`train_likelihood_model()` without access to the underlying softmax
+scores, which are not currently exposed via a public API. InsectNet
+also supports global-to-local fine-tuning with as few as k=10 images
+per new species, making regional deployment feasible for
+under-represented invertebrate groups. A web interface is available at
+<https://insectapp.las.iastate.edu>.
+
 For contamination detection, the R package decontam (Davis et al.
 2018) uses DNA concentration and prevalence to identify contaminants
 at the ASV level before taxonomic assignment. TaxaFlag operates after
@@ -532,6 +585,11 @@ Being confident in confidence scores: calibration in deep learning
 models for camera trap image sequences. *Remote Sensing in Ecology and
 Conservation*, 11(1), 88--99.
 
+He, S., Li, Y., Wang, Y., Galloway, B., Li, H., Liu, S., Huang, C.,
+Hart, T.J. and Zhao, Z. (2025). InsectNet: automated insect
+identification from around the world. *PNAS Nexus*, 4(1), pgae575.
+<https://doi.org/10.1093/pnasnexus/pgae575>
+
 Edgar, R.C. (2016). SINTAX: a simple non-Bayesian taxonomy classifier
 for 16S and ITS sequences. *bioRxiv*, 074161.
 
@@ -574,6 +632,15 @@ differentiates between micro-habitats within the rocky intertidal.
 Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and
 Ovaskainen, O. (2017). Unbiased probabilistic taxonomic classification
 for DNA barcoding. *Bioinformatics*, 33(19), 2997--3005.
+
+Tabak, M.A., Norouzzadeh, M.S., Wolfson, D.W., Sweeney, S.J.,
+Vercauteren, K.C., Snow, N.P., Halseth, J.M., Di Salvo, P.A.,
+Lewis, J.S., White, M.D., Teton, B., Beasley, J.C., Schlichting,
+P.E., Boughton, R.K., Wight, B., Newkirk, E.S., Ivan, J.S.,
+Odell, E.A., Brook, R.K., Lukacs, P.M., Moeller, A.K., Mandeville,
+E.G., Clune, J. and Miller, R.S. (2019). Machine learning to classify
+animal species in camera trap images: applications in ecology.
+*Methods in Ecology and Evolution*, 10(4), 585--590.
 
 Thompson, W.L., Kahl, S. and Mathevon, N. (2025). A post-processing
 framework for assessing BirdNET identification accuracy and community

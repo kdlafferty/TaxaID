@@ -200,7 +200,7 @@ matrix. The function's applicability depends on the data source:
 | **NCBI nucleotide** (via `fetch_reference_sequences()`) | **Yes — recommended** | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. Use routinely. |
 | **Curated libraries** (CRUX, custom expert-built FASTA) | **Optional** | Lower mislabeling rate than NCBI, but flagging is still worth running. If your library has a quality column, use that filter instead. |
 | **Xeno-canto bird sounds** (acoustic) | **No** | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Use `quality = c("A", "B")` in `fetch_reference_recordings()` instead. Hard-case recordings flagged by the mislabel detector may be legitimate. |
-| **Camera trap images** (Animl/SpeciesNet) | **TBD** | Applicability is unknown. Camera trap ground-truth labeling has different error modes (occlusion, motion blur, multiple animals). Guidance will be added once image reference training workflows mature. |
+| **Camera trap images** (Animl/SpeciesNet) | **Untested — potentially useful** | Camera trap ground-truth labeling has different error modes from DNA (occlusion, blur, multiple animals, handler setup). The score-distribution mislabel signal should still be informative in principle — a consistently low-scoring "within-species" pair is suspect regardless of data type — but systematic evaluation has not been done. See the Image Workflow section below. |
 
 ## Reference Coverage Quality Filtering
 
@@ -359,6 +359,112 @@ birdnet_df <- read_birdnet_output("birdnet_results/", min_confidence = 0.1)
 #    same genus), H3 (wrong genus), then train the likelihood model:
 # train_likelihood_model(labeled_df, rank_system = c("genus", "species"))
 ```
+
+## Image Workflow
+
+For camera trap and other image data, TaxaLikely integrates with
+image classifiers via `TaxaMatch::read_animl_output()`. The workflow
+is structurally identical to the acoustic workflow: run an external
+classifier, read the output into the match format, optionally train a
+likelihood model on a labeled reference set, then evaluate likelihoods.
+
+``` r
+library(TaxaLikely)
+library(TaxaMatch)
+
+# 1. Read Animl / SpeciesNet results (from camera trap images)
+match_df <- read_animl_output(
+  "animl_results/",
+  min_confidence = 0.3
+) |>
+  subset(!species %in% c("empty", "human", "vehicle"))
+
+# 2. Standardize to canonical match object
+match_df <- standardize_match_data(match_df)
+
+# 3. If you have a trained image likelihood model, evaluate directly
+result <- evaluate_likelihoods(match_df, image_model)
+likelihoods <- result$likelihoods
+
+# 4. Check coverage: which plausible species are absent from the
+#    classifier's known species list?
+census <- audit_acoustic_coverage(
+  plausible_species = c("Ursus americanus", "Puma concolor", "Cervus canadensis"),
+  reference_species = speciesnet_species_list  # vector of known species names
+)
+census$unreferenced  # species the classifier has never seen
+```
+
+### Reference training for images
+
+A calibrated image likelihood model requires a labeled reference set:
+images with known ground-truth species identity, run through the same
+classifier. `build_image_reference()` joins classifier detections to a
+user-supplied ground-truth table and produces the pairwise format
+that `train_likelihood_model()` expects — exactly as
+`build_acoustic_reference()` does for BirdNET + Xeno-canto.
+
+``` r
+# Ground-truth reference image labels
+images_meta <- data.frame(
+  image_path = c("ref/img_deer_001.jpg", "ref/img_rabbit_001.jpg"),
+  species    = c("Odocoileus virginianus", "Sylvilagus floridanus"),
+  genus      = c("Odocoileus", "Sylvilagus"),
+  testid     = "camera_trap"
+)
+
+# Run Animl/SpeciesNet on ref/ (or use any classifier reader)
+animl_df <- read_animl_output(
+  "animl_ref_results.csv",
+  top_n     = 3L,
+  bbox_cols = c(w = "bbox_w", h = "bbox_h")
+) |> subset(!species %in% c("empty", "human", "vehicle"))
+
+# Build pairwise training dataset
+ref_pairs <- build_image_reference(
+  image_df    = animl_df,
+  images_meta = images_meta,
+  rank_system = c("genus", "species")
+)
+
+# Train model (one per testid/image-type)
+model <- train_likelihood_model(
+  subset(ref_pairs, testid == "camera_trap"),
+  rank_system = c("genus", "species")
+)
+```
+
+See `inst/workflows/3c_image_reference_workflow.R` for the complete
+step-by-step workflow including validation plots.
+
+### Coverage for images
+
+`read_animl_output()` can attach a `coverage` column derived from
+the bounding box area (`bbox_w × bbox_h`, normalised 0--1). A small
+bounding box indicates a partially visible or distant animal — lower
+information per detection, directly analogous to DNA alignment
+coverage and Xeno-canto recording quality grade. All three data types
+therefore share the same [0, 1] coverage scale and can use
+`calibrate_coverage_filter()` and `coverage_threshold()` identically:
+
+| Data type | Coverage source | Scale |
+|---|---|---|
+| DNA sequences | Alignment non-gap fraction | 0--1 continuous |
+| Acoustic (BirdNET) | Xeno-canto quality grade (A--E) | 0.1, 0.3, 0.5, 0.8, 1.0 |
+| Images (Animl) | Bounding box area (width × height) | 0--1 continuous |
+
+### `flag_reference_errors()` for images
+
+The applicability of `flag_reference_errors()` to image reference
+data is unknown. Camera trap ground-truth labeling has different
+error modes from DNA (occlusion, motion blur, multiple animals in
+frame, handler setup) rather than GenBank sequencing/annotation
+errors. The mislabel detector (based on within-species vs.
+between-species score distributions) should still be informative in
+principle — a consistently low-scoring "within-species" pair is
+suspect regardless of data type — but systematic evaluation on image
+data has not yet been performed. Guidance will be added once image
+reference training workflows mature.
 
 ## Vignettes
 

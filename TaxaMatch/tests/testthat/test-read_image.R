@@ -245,3 +245,283 @@ test_that("read_animl_output() wide-format errors on missing pred/score columns"
     "missing column"
   )
 })
+
+
+# ==============================================================================
+# Tests: read_inaturalist_cv_output()
+# ==============================================================================
+
+# ---- helper: write a minimal iNat CV JSON file ------------------------------
+write_inat_json <- function(path, obs_id = "IMG_001",
+                             scores = c(0.87, 0.07),
+                             species = c("Danaus plexippus", "Limenitis archippus"),
+                             ranks   = c("species", "species"),
+                             common  = c("Monarch", "Viceroy")) {
+  results <- lapply(seq_along(scores), function(i) {
+    list(
+      combined_score = scores[i],
+      score          = scores[i],
+      taxon          = list(
+        name                   = species[i],
+        rank                   = ranks[i],
+        preferred_common_name  = common[i]
+      )
+    )
+  })
+  writeLines(
+    jsonlite::toJSON(list(results = results), auto_unbox = TRUE),
+    path
+  )
+  invisible(path)
+}
+
+test_that("read_inaturalist_cv_output: parses single JSON file", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_inat_json(tmp)
+  on.exit(unlink(tmp))
+
+  out <- read_inaturalist_cv_output(tmp)
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 2L)
+  expect_true(all(c("observation_id", "score", "species", "genus",
+                    "common_name", "taxon_rank", "source_file") %in% names(out)))
+})
+
+test_that("read_inaturalist_cv_output: observation_id is JSON file stem", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_inat_json(tmp)
+  on.exit(unlink(tmp))
+
+  out <- read_inaturalist_cv_output(tmp)
+  expected_id <- tools::file_path_sans_ext(basename(tmp))
+  expect_true(all(out$observation_id == expected_id))
+})
+
+test_that("read_inaturalist_cv_output: scores match JSON values", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_inat_json(tmp, scores = c(0.91, 0.06))
+  on.exit(unlink(tmp))
+
+  out <- read_inaturalist_cv_output(tmp, score_type = "score")
+  expect_equal(out$score, c(0.91, 0.06))
+})
+
+test_that("read_inaturalist_cv_output: combined_score is default", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_inat_json(tmp, scores = c(0.87, 0.07))
+  on.exit(unlink(tmp))
+
+  out <- read_inaturalist_cv_output(tmp, score_type = "combined_score")
+  expect_equal(out$score, c(0.87, 0.07))
+})
+
+test_that("read_inaturalist_cv_output: genus derived from binomial", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_inat_json(tmp, species = c("Danaus plexippus", "Lepidoptera"))
+  on.exit(unlink(tmp))
+
+  out <- read_inaturalist_cv_output(tmp)
+  expect_equal(out$genus[out$species == "Danaus plexippus"], "Danaus")
+  expect_true(is.na(out$genus[out$species == "Lepidoptera"]))
+})
+
+test_that("read_inaturalist_cv_output: min_confidence filter works", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_inat_json(tmp, scores = c(0.87, 0.07))
+  on.exit(unlink(tmp))
+
+  out <- read_inaturalist_cv_output(tmp, min_confidence = 0.50)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$score, 0.87)
+})
+
+test_that("read_inaturalist_cv_output: top_n filter works", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_inat_json(tmp, scores = c(0.87, 0.07))
+  on.exit(unlink(tmp))
+
+  out <- read_inaturalist_cv_output(tmp, top_n = 1L)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$score, 0.87)
+})
+
+test_that("read_inaturalist_cv_output: reads directory of JSON files", {
+  skip_if_not_installed("jsonlite")
+  dir <- tempdir()
+  f1 <- file.path(dir, "img_a.json")
+  f2 <- file.path(dir, "img_b.json")
+  write_inat_json(f1, scores = c(0.9))
+  write_inat_json(f2, scores = c(0.8))
+  on.exit({ unlink(f1); unlink(f2) })
+
+  out <- read_inaturalist_cv_output(c(f1, f2))
+  expect_equal(length(unique(out$observation_id)), 2L)
+})
+
+test_that("read_inaturalist_cv_output: errors on missing file", {
+  skip_if_not_installed("jsonlite")
+  expect_error(
+    read_inaturalist_cv_output("/nonexistent/path.json"),
+    "not found"
+  )
+})
+
+test_that("read_inaturalist_cv_output: invalid score_type errors", {
+  skip_if_not_installed("jsonlite")
+  expect_error(
+    read_inaturalist_cv_output(tempfile(), score_type = "bad_score"),
+    "should be one of"
+  )
+})
+
+
+# ==============================================================================
+# Tests: read_wildlife_insights_output()
+# ==============================================================================
+
+# ---- helper: write a minimal SpeciesNet JSON file ---------------------------
+write_speciesnet_json <- function(path,
+                                  img_names = c("IMG_001.jpg", "IMG_002.jpg"),
+                                  species   = c("Odocoileus virginianus", "blank"),
+                                  scores    = c(0.94, 0.99),
+                                  cats      = c("animal", "blank")) {
+  preds <- stats::setNames(
+    lapply(seq_along(img_names), function(i)
+      list(list(label    = species[i],
+                score    = scores[i],
+                category = cats[i]))),
+    img_names
+  )
+  writeLines(
+    jsonlite::toJSON(list(predictions = preds), auto_unbox = TRUE),
+    path
+  )
+  invisible(path)
+}
+
+test_that("read_wildlife_insights_output: parses single JSON file", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_speciesnet_json(tmp)
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp)
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 2L)
+  expect_true(all(c("observation_id", "score", "species", "genus",
+                    "category", "source_file") %in% names(out)))
+})
+
+test_that("read_wildlife_insights_output: observation_id is image file stem", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_speciesnet_json(tmp, img_names = c("some/path/IMG_001.jpg"))
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp)
+  expect_equal(out$observation_id, "IMG_001")
+})
+
+test_that("read_wildlife_insights_output: genus derived from binomial species", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_speciesnet_json(tmp,
+    img_names = "img.jpg",
+    species   = "Odocoileus virginianus",
+    scores    = 0.94, cats = "animal")
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp)
+  expect_equal(out$genus, "Odocoileus")
+})
+
+test_that("read_wildlife_insights_output: genus is NA for non-binomial labels", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_speciesnet_json(tmp,
+    img_names = "img.jpg",
+    species   = "blank", scores = 0.99, cats = "blank")
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp)
+  expect_true(is.na(out$genus))
+})
+
+test_that("read_wildlife_insights_output: min_confidence filter works", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_speciesnet_json(tmp,
+    img_names = c("a.jpg", "b.jpg"),
+    species   = c("Odocoileus virginianus", "blank"),
+    scores    = c(0.94, 0.30),
+    cats      = c("animal", "blank"))
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp, min_confidence = 0.50)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$score, 0.94)
+})
+
+test_that("read_wildlife_insights_output: top_n filter works", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  # Two candidates for the same image
+  preds <- list(
+    list(list(label = "Odocoileus virginianus", score = 0.94, category = "animal"),
+         list(label = "Cervus canadensis",      score = 0.04, category = "animal"))
+  )
+  preds <- stats::setNames(preds, "IMG_001.jpg")
+  writeLines(
+    jsonlite::toJSON(list(predictions = preds), auto_unbox = TRUE),
+    tmp
+  )
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp, top_n = 1L)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$score, 0.94)
+})
+
+test_that("read_wildlife_insights_output: category column present", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  write_speciesnet_json(tmp)
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp)
+  expect_true("category" %in% names(out))
+  expect_true("animal" %in% out$category)
+})
+
+test_that("read_wildlife_insights_output: errors on missing file", {
+  skip_if_not_installed("jsonlite")
+  expect_error(
+    read_wildlife_insights_output("/nonexistent/path.json"),
+    "not found"
+  )
+})
+
+test_that("read_wildlife_insights_output: custom label_col works", {
+  skip_if_not_installed("jsonlite")
+  tmp <- tempfile(fileext = ".json")
+  # Use 'species' instead of 'label'
+  preds <- list(
+    list(list(species = "Odocoileus virginianus", score = 0.94, category = "animal"))
+  )
+  preds <- stats::setNames(preds, "IMG_001.jpg")
+  writeLines(
+    jsonlite::toJSON(list(predictions = preds), auto_unbox = TRUE),
+    tmp
+  )
+  on.exit(unlink(tmp))
+
+  out <- read_wildlife_insights_output(tmp, label_col = "species")
+  expect_equal(out$species, "Odocoileus virginianus")
+})

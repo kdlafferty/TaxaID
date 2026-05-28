@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 91 -- read_crabs_output; taxonomy_file param in read_reference_fasta)
+# Last updated: 2026-05-27 (Session 93 -- build_image_reference; 3c image workflow)
 
 ---
 
@@ -95,6 +95,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 |---|---|---|---|
 | `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output now includes `coverage` column (positions where both sequences are non-gap / shorter unaligned length). Renamed from `build_reference_matrix()` Session 88. |
 | `build_acoustic_reference()` | `R/build_acoustic.R` | Written | Acoustic analog of `build_sequence_matrix()`. Joins BirdNET detections to Xeno-canto ground truth; labels H1/H2/H3; maps `type` → `testid`. Output now includes `coverage` column (Xeno-canto quality grade mapped A→1.0, B→0.8, C→0.5, D→0.3, E→0.1). Returns same `.x`/`.y` pair format. Train one model per `testid` type (song, call) as eDNA trains per marker. |
+| `build_image_reference()` | `R/build_image.R` | Written | Image analog of `build_acoustic_reference()`. Joins any image classifier output (Animl, iNaturalist CV, SpeciesNet) to user-supplied ground-truth image labels; labels H1/H2/H3; `testid` from `images_meta$testid`. `coverage` sourced from `image_df$coverage` (bbox area) or `images_meta$quality`. Join key: `observation_id` (image file stem) matches `file_path_sans_ext(basename(image_path))`. Train one model per testid (image type / classifier). |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
 | `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations |
 
@@ -171,6 +172,7 @@ monolithic `inst/TaxaLikely_workflow.R` (retained for reference but superseded).
 | 2 | `2_flag_errors_workflow.R` | Find mislabeled references; explore/tabulate/report | `build_sequence_matrix()` → `flag_reference_errors()` |
 | 3 | `3_train_model_workflow.R` | Train likelihood model from DNA reference matrix | `build_sequence_matrix()` → `train_likelihood_model()` → `interpret_model()` |
 | 3b | `3b_acoustic_reference_workflow.R` | **Acoustic:** Xeno-canto → BirdNET → train one model per recording type | `fetch_reference_recordings()` → BirdNET (Python) → `read_birdnet_output()` → `build_acoustic_reference()` → `train_likelihood_model()` |
+| 3c | `3c_image_reference_workflow.R` | **Image:** labeled reference images → Animl/SpeciesNet → train one model per image type | user-supplied `images_meta` → classifier (R/Python) → `read_animl_output()` → `build_image_reference()` → `train_likelihood_model()` |
 | 4 | `4_score_to_likelihood_workflow.R` | Convert match scores to likelihoods for TaxaAssign | `evaluate_likelihoods()` → `filter_top_hypotheses()` |
 | 5 | `5_audit_coverage_workflow.R` | Audit reference completeness; constrain likelihoods | `audit_barcode_coverage()` / `audit_reference_coverage()` → `apply_coverage_constraints()` |
 
@@ -596,6 +598,28 @@ non-zero likelihoods that bypass the constraint. Correct order:
 - CLAUDE.md Function Inventory updated (read_crabs_output + read_reference_fasta row);
   internal helpers table updated.
 - `devtools::check()`: run after implementation (target: 0 errors, 0 warnings).
+
+**Session 93 (2026-05-27)**
+- `build_image_reference()` added to new `R/build_image.R` — image analog of `build_acoustic_reference()`.
+  - Joins any image classifier output to user-supplied ground-truth `images_meta` data frame.
+  - `images_meta` requires: `image_path` (file stem used as join key), plus rank columns from `rank_system`.
+  - Join key: `image_df$observation_id` (already a file stem from reader functions) matched to
+    `tools::file_path_sans_ext(basename(image_path))` from `images_meta`.
+  - `coverage`: sourced from `image_df$coverage` (bbox area, per-detection) if present; falls back to
+    `images_meta$quality` (per-image numeric 0--1); else NA. Priority order mirrors the acoustic analog.
+  - `testid`: from `images_meta$testid` (classifier name, camera model, etc.); NA if absent.
+  - 27 offline tests in `tests/testthat/test-build-image.R`.
+- `inst/workflows/3c_image_reference_workflow.R` added — 9-step image reference training workflow.
+  - Mirrors Workflow 3b (acoustic) structure exactly.
+  - Covers: reference image acquisition options (iNaturalist, GBIF multimedia, CamtrapDP, custom),
+    classifier options (Animl, SpeciesNet Python), ground-truth metadata preparation,
+    `build_image_reference()` call, optional coverage calibration, model training per testid,
+    in-sample validation plots, optional family-rank extension.
+- TaxaMatch: `read_inaturalist_cv_output()` and `read_wildlife_insights_output()` added to
+  `R/read_image.R`. See TaxaMatch CLAUDE.md for details. `jsonlite` added to TaxaMatch Imports.
+- README: "Reference training for images" section updated — `build_image_reference()` now implemented,
+  manual pair construction example replaced with real function call.
+- `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
 
 ---
 
