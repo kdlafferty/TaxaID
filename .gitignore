@@ -34,6 +34,20 @@ ecosystem_docs/*.html
 
 # ── Presentation source and assets ──────────────
 TaxaID_presentation.qmd
+
+# ── GL Presentation (not for public repo) ────────
+TaxaID_GL_presentation.qmd
+TaxaID_GL_presentation.html
+TaxaID_GL_presentation_files/
+
+# ── Generated GL figures ──────────────────────────
+GL_*.png
+
+# ── Presentation analysis scripts and outputs ────
+presentation_analyses/
+
+# ── Burns Harbor demo app ────────────────────────
+taxaid_burns_harbor_app/
 Disagree.png
 HabitatScreen.png
 LikelihoodVscore.png
