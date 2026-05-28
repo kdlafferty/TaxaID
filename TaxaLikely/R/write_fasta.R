@@ -13,8 +13,11 @@
 #'
 #' The optional taxonomy TSV is a 2-column tab-delimited file (no header):
 #' column 1 = `composite_id`, column 2 = semicolon-separated taxonomy values
-#' in `rank_system` order. This file can be passed directly to
-#' [read_reference_fasta()] to reload the reference.
+#' in prefix-style format (e.g. `f__Fundulidae;g__Fundulus;s__Fundulus heteroclitus`).
+#' Prefix-style is used rather than positional format because positional parsing
+#' assumes a full 7-rank hierarchy from kingdom; any subset of ranks would
+#' map to the wrong positions. This file can be passed directly to
+#' [read_reference_fasta()] as `taxonomy_file` to reload the reference.
 #'
 #' @param reference_df Data frame with columns `composite_id`, `sequence`, and
 #'   at least one taxonomy column from `rank_system`.
@@ -104,20 +107,35 @@ write_reference_fasta <- function(reference_df,
   writeLines(lines, file)
   message(sprintf("Wrote %d sequences to %s", n, file))
 
-  # Optionally write taxonomy TSV (positional format; readable by
-  # read_reference_fasta(taxonomy_file=))
+  # Optionally write taxonomy TSV (prefix-style format; readable by
+  # read_reference_fasta(taxonomy_file=)).
+  #
+  # Prefix-style (e.g. "f__Fundulidae;g__Fundulus;s__Fundulus heteroclitus")
+  # rather than positional, because positional format assumes a full
+  # 7-rank hierarchy starting at kingdom -- any subset of ranks would map
+  # to the wrong ranks.  Prefix-style is rank-agnostic and round-trips
+  # correctly for any rank_system.
   if (!is.null(taxonomy_file)) {
     if (!is.character(taxonomy_file) || length(taxonomy_file) != 1L ||
         !nzchar(taxonomy_file))
       stop("taxonomy_file must be a single non-empty character path.",
            call. = FALSE)
 
+    # Single-letter prefixes that .parse_tax_string() recognises
+    rank_to_prefix <- c(kingdom = "k", phylum = "p", class = "c",
+                        order   = "o", family = "f", genus  = "g",
+                        species = "s")
+
     tax_strings <- vapply(seq_len(n), function(i) {
-      vals <- vapply(rank_system, function(col) {
+      parts <- vapply(rank_system, function(col) {
         v <- reference_df[[col]][i]
-        if (is.na(v)) "" else trimws(v)
+        if (is.na(v) || !nzchar(trimws(v))) return("")
+        prefix <- rank_to_prefix[col]
+        # For standard ranks, write "x__value"; for unrecognised ranks,
+        # fall back to bare value (readable only if rank is in rank_system order)
+        if (!is.na(prefix)) paste0(prefix, "__", trimws(v)) else trimws(v)
       }, character(1L))
-      paste(vals, collapse = ";")
+      paste(parts[nchar(parts) > 0L], collapse = ";")
     }, character(1L))
 
     tsv_lines <- paste(reference_df$composite_id, tax_strings, sep = "\t")

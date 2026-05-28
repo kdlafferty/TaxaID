@@ -71,7 +71,10 @@ cat("\nReloaded reference_df:\n")
 print(ref_reload[, c("composite_id", "family", "genus", "species")])
 
 stopifnot(nrow(ref_reload) == nrow(ref_df))
-stopifnot(all(ref_reload$species == ref_df$species))
+# Sort both by composite_id before comparing (read_reference_fasta may reorder rows)
+ref_reload_sorted <- ref_reload[order(ref_reload$composite_id), ]
+ref_df_sorted     <- ref_df[order(ref_df$composite_id), ]
+stopifnot(all(ref_reload_sorted$species == ref_df_sorted$species))
 cat("  PASS: round-trip write → read produces identical species column\n")
 
 # ---- 1c. auto-detect rank_system from columns --------------------------------
@@ -157,6 +160,8 @@ ref2 <- read_reference_fasta(
   rank_system   = c("family", "genus", "species")
 )
 stopifnot(nrow(ref2) == nrow(lib$reference_df))
+# Verify species sets match (order may differ after reload)
+stopifnot(setequal(ref2$species, lib$reference_df$species))
 cat(sprintf("  PASS: reloaded %d sequences from FASTA\n", nrow(ref2)))
 
 # ---- Sequence length distribution -------------------------------------------

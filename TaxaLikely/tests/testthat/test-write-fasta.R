@@ -76,8 +76,12 @@ test_that("write_reference_fasta: writes taxonomy TSV companion", {
   tsv_lines <- readLines(tsv_file)
   expect_equal(length(tsv_lines), 2L)
   expect_true(startsWith(tsv_lines[1], "acc1\t"))
-  expect_true(grepl("Fundulidae;Fundulus;Fundulus parvipinnis", tsv_lines[1]))
-  expect_true(grepl("Poeciliidae;Gambusia;Gambusia affinis", tsv_lines[2]))
+  # Prefix-style format: f__Family;g__Genus;s__Species
+  expect_true(grepl("f__Fundulidae", tsv_lines[1]))
+  expect_true(grepl("g__Fundulus",   tsv_lines[1]))
+  expect_true(grepl("s__Fundulus parvipinnis", tsv_lines[1]))
+  expect_true(grepl("f__Poeciliidae", tsv_lines[2]))
+  expect_true(grepl("s__Gambusia affinis", tsv_lines[2]))
 })
 
 test_that("write_reference_fasta: auto-detects rank_system from columns", {
