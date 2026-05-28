@@ -10,6 +10,7 @@
 .Rhistory
 .RData
 .Ruserdata
+.Rapp.history
 
 # ── macOS ───────────────────────────────────────
 .DS_Store
@@ -21,6 +22,10 @@
 *.csv
 *.xlsx
 
+
+# ── Stray plot/output files ──────────────────────
+Rplots.pdf
+**/Rplots.pdf
 
 # ── Rendered output (rebuild from source) ───────
 TaxaID_presentation.html
@@ -41,7 +46,9 @@ SeqMatch2.png
 # ── TaxaWizard transient state ──────────────────
 .workflow_checkpoints/
 taxaid_workflow_*.R
+taxaid_methods_*.md
 */taxaid_workflow_*.R
+*/taxaid_methods_*.md
 
 # ── Claude Code local settings ──────────────────
 .claude/
@@ -49,11 +56,16 @@ taxaid_workflow_*.R
 # ── One-off scripts with hardcoded user paths ───
 TaxaAssign/inst/demo_for_JV.R
 TaxaAssign/inst/Wrapper_full_workflow.R
-TaxaAssign/inst/TaxaAssign_bayesian_workflow_new.R
 TaxaMatch/inst/Write_text_reports.R
 
 # ── PDF data files in TaxaFetch (large) ─────────
 TaxaFetch/pdfs/
+
+# ── Reference audio and classifier output (large; regenerable) ──
+reference_audio/
+**/reference_audio/
+birdnet_results/
+**/birdnet_results/
 
 # ── IDE ─────────────────────────────────────────
 .vscode/

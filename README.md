@@ -433,6 +433,7 @@ Detailed, runnable workflow scripts are provided in each package's
 | Score to likelihood | TaxaLikely | `inst/workflows/4_score_to_likelihood_workflow.R` |
 | Audit coverage | TaxaLikely | `inst/workflows/5_audit_coverage_workflow.R` |
 | **Test: local reference library** | TaxaLikely | `inst/test_local_reference.R` |
+| **Test: coverage calibration** | TaxaLikely | `inst/test_calibrate_coverage.R` |
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
 | Assign habitats | TaxaHabitat | `inst/Habitat_assign_workflow.R` |
 | Build priors | TaxaExpect | `inst/TaxaExpect_workflow.R` |

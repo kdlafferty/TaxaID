@@ -1,4 +1,0 @@
-# Methods -- Generated 2026-05-15 by TaxaWizard
-
-Consensus taxonomic assignments were evaluated for ecological plausibility using a large language model (Anthropic Claude) via TaxaFlag::review_assignments(). First, unique consensus taxa were extracted from the score-based consensus table. Ecological context was inferred for the sampled taxa using TaxaAssign::build_context(), anchored to Point Conception, California (coastal marine, 2023), with a custom habitat scheme emphasizing subtidal, rocky intertidal, kelp forest, pelagic, and soft-bottom habitats characteristic of the southern California Bight. The LLM reviewer evaluated each consensus assignment against this context, the MiFish 12S marker, and general fish biogeography expectations for the region, producing plausibility flags and confidence scores for each assignment.
-

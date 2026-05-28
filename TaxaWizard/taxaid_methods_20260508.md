@@ -1,4 +1,0 @@
-# Methods -- Generated 2026-05-08 by TaxaWizard
-
-Taxonomic likelihood scores were computed using the TaxaLikely R package. Unique taxon names were extracted from BLAST match results using TaxaTools::create_taxon_names(), with rank columns auto-detected via TaxaTools::detect_ranks(). Reference sequences for all matched families were retrieved from NCBI using TaxaLikely::fetch_reference_sequences() with the MiFish (12S) barcode marker. A pairwise percent-identity distance matrix was constructed from the reference sequences using TaxaLikely::build_sequence_matrix(), and a likelihood model was trained on this matrix using TaxaLikely::train_likelihood_model() with perfect-match anchoring (anchor_perfect = TRUE). Per-sample taxonomic likelihoods were evaluated using TaxaLikely::evaluate_likelihoods() with 200 Monte Carlo simulations, and top hypotheses were selected using TaxaLikely::filter_top_hypotheses(). Results were saved as an RDS file for downstream analysis.
-
