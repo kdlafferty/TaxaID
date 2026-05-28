@@ -194,15 +194,17 @@ test_that("priors_to_map edge is reachable from taxa", {
 
 test_that("taxa_refs_to_gaps edge requires both taxa and reference_df", {
   .graph_env$graph <- NULL
-  # From taxa alone, ref_gaps requires reference_df (via taxa_to_refs)
+  # From taxa alone, ref_gaps requires reference_df (via taxa_to_refs or taxa_to_site_refs)
   paths <- .compute_paths("taxa", "ref_gaps")
   expect_true(length(paths) >= 1, info = "taxa -> refs -> ref_gaps should work")
 
-  # Each path should include taxa_to_refs and taxa_refs_to_gaps
+  # All paths must go through taxa_refs_to_gaps (the final step)
   for (p in paths) {
     expect_true("taxa_refs_to_gaps" %in% p$edges)
-    expect_true("taxa_to_refs" %in% p$edges)
   }
+  # At least one path should use taxa_to_refs (direct NCBI fetch)
+  has_taxa_to_refs <- vapply(paths, function(p) "taxa_to_refs" %in% p$edges, FALSE)
+  expect_true(any(has_taxa_to_refs), info = "At least one path should use taxa_to_refs")
 })
 
 test_that("multi-input edges produce full Bayesian path", {
@@ -213,11 +215,14 @@ test_that("multi-input edges produce full Bayesian path", {
   has_bayes <- vapply(paths, function(p) "match_to_consensus_bayes" %in% p$edges, FALSE)
   expect_true(any(has_bayes), info = "Full Bayesian wrapper path should be found")
 
-  # Bayesian path should include model training AND prior building
+  # At least one Bayesian path should include DNA model training AND prior building
   bayes_paths <- paths[has_bayes]
-  for (p in bayes_paths) {
+  has_dna_model <- vapply(bayes_paths, function(p) "matrix_to_model" %in% p$edges, FALSE)
+  expect_true(any(has_dna_model),
+    info = "At least one Bayesian path should train a DNA likelihood model")
+  dna_bayes <- bayes_paths[has_dna_model]
+  for (p in dna_bayes) {
     expect_true("seq_to_match" %in% p$edges)
-    expect_true("matrix_to_model" %in% p$edges)
     # Priors via wrapper or manual
     has_priors <- "taxa_to_priors_wrapper" %in% p$edges ||
                   "dist_to_priors" %in% p$edges
