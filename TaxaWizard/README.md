@@ -43,9 +43,27 @@ workflow_create(mode = "console")   # readline in terminal
 workflow_create(mode = "viewer")    # RStudio Viewer pane
 ```
 
-The assistant will ask about your data type (eDNA, camera trap,
-acoustic), available inputs, and analysis goals. When finished, it
-generates:
+The assistant asks about your data type, available inputs, and analysis
+goals, then generates a script tailored to your path through the TaxaID
+pipeline. Supported workflow paths include:
+
+-   **eDNA / metabarcoding** — DADA2 seqtab or FASTA → BLAST →
+    likelihood model → Bayesian or LLM assignment
+-   **Acoustic** — BirdNET-Analyzer CSV output → match data; or
+    Xeno-canto reference recordings + BirdNET → acoustic likelihood
+    model
+-   **Camera trap / image** — Animl, iNaturalist CV, or Wildlife Insights
+    output → match data; or labeled reference images → image likelihood
+    model
+-   **Reference library building** — taxa names (from TaxaExpect or
+    user-supplied) → site-specific NCBI reference library; or load a
+    local CRABS or FASTA database
+-   **Occurrence-based priors** — taxa + location → GBIF occurrences →
+    habitat → spatially explicit priors
+-   **Assignment convergence** — any combination of the above →
+    likelihoods + priors → posteriors → consensus → report
+
+When the interview is complete, TaxaWizard generates:
 
 -   **R script** with checkpoint/resume, error recovery, and debug mode
 -   **Methods text** summarizing the workflow for manuscripts

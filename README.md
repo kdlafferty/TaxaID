@@ -261,11 +261,13 @@ fitting a generative model to a labeled reference set of images with
 known species identity, capturing the full score distribution for
 correct matches (H1), wrong-species matches (H2), and absent-species
 responses (H3). Animl results are read directly by
-`TaxaMatch::read_animl_output()`; iNaturalist CV and Wildlife Insights
-JSON outputs can be adapted to the canonical match object format. A
-dedicated `build_image_reference()` function (the image analog of
-`TaxaLikely::build_acoustic_reference()`) is the next planned addition
-to the image workflow.
+`TaxaMatch::read_animl_output()`; iNaturalist CV JSON output is read by
+`TaxaMatch::read_inaturalist_cv_output()`; Wildlife Insights / SpeciesNet
+batch predictions are read by `TaxaMatch::read_wildlife_insights_output()`.
+`TaxaLikely::build_image_reference()` (the image analog of
+`build_acoustic_reference()`) joins classifier output to ground-truth
+labeled reference images and produces a pair matrix for
+`train_likelihood_model()`.
 
 InsectNet (He et al. 2025) is a notable recent advance for
 invertebrate specialists. Its two-stage self-supervised pretraining
@@ -397,6 +399,48 @@ TaxaTools (always required) plus the packages for your workflow.
 | [TaxaFlag](TaxaFlag/) | Post-assignment anomalous detection flagging (contamination, transport, scope) | CC0 |
 | [TaxaWizard](TaxaWizard/) | Conversational LLM workflow designer: guided interview to .R script, .md methods, or Shiny app | CC0 |
 
+## Pipeline Overview
+
+The diagram below shows the full set of supported workflow paths. Every
+path converges at the assignment step; users can start from whichever
+inputs they have.
+
+```mermaid
+flowchart TD
+    %% Field data inputs → match_df
+    F1["seqtab / FASTA\n(eDNA / metabarcoding)"] -->|TaxaMatch| MD
+    F2["BirdNET CSVs\n(acoustic)"] -->|read_birdnet_output| MD
+    F3["camera trap classifier output\nAniml · iNat CV · Wildlife Insights"] -->|read_animl/inat/wi_output| MD
+    MD(["match_df"])
+
+    %% Reference library building → model_params
+    R1["taxa names"] -->|build_site_reference| RD
+    R2["CRABS / local FASTA"] -->|"read_crabs_output
+read_reference_fasta"| RD
+    RD(["reference_df"]) -->|build_sequence_matrix| RMAT(["DNA matrix"])
+    R3["Xeno-canto recordings\n+ BirdNET on audio"] -->|build_acoustic_reference| AMAT(["acoustic matrix"])
+    R4["labeled reference\nimages + classifier"] -->|build_image_reference| IMAT(["image matrix"])
+    RMAT -->|train_likelihood_model| MP
+    AMAT -->|train_likelihood_model| MP
+    IMAT -->|train_likelihood_model| MP
+    MP(["model_params"])
+
+    %% Priors
+    TL["taxa + location"] -->|"TaxaFetch + TaxaHabitat
++ build_priors"| PR(["prior_df"])
+
+    %% Assignment convergence
+    MD -->|evaluate_likelihoods| LK(["likelihoods"])
+    MP -->|evaluate_likelihoods| LK
+    LK -->|compute_posterior| PO(["posteriors"])
+    PR -->|compute_posterior| PO
+    PO -->|"consensus_taxonomy
++ generate_report"| OUT["consensus assignment\n+ methods report"]
+```
+
+*TaxaWizard can generate a complete R script for any of the paths above
+via a guided interview: `workflow_create()`.*
+
 ## Getting Started
 
 Each package includes a vignette with a worked example:
@@ -423,15 +467,16 @@ Detailed, runnable workflow scripts are provided in each package's
 
 | Workflow | Package | Script |
 |---|---|---|
-| FASTQ to match data | TaxaMatch | `inst/workflow_fastq_to_match.R` |
+| FASTQ to match data (eDNA) | TaxaMatch | `inst/workflow_fastq_to_match.R` |
+| Acoustic BirdNET workflow | TaxaMatch | `inst/workflow_acoustics.R` |
 | **Test: image reader functions** | TaxaMatch | `inst/test_image_functions.R` |
-| Fetch reference sequences | TaxaLikely | `inst/workflows/1_fetch_references_workflow.R` |
+| Fetch reference sequences (DNA) | TaxaLikely | `inst/workflows/1_fetch_references_workflow.R` |
 | Flag reference errors | TaxaLikely | `inst/workflows/2_flag_errors_workflow.R` |
 | Train likelihood model (DNA) | TaxaLikely | `inst/workflows/3_train_model_workflow.R` |
 | Train model (acoustic) | TaxaLikely | `inst/workflows/3b_acoustic_reference_workflow.R` |
 | Train model (image) | TaxaLikely | `inst/workflows/3c_image_reference_workflow.R` |
 | Score to likelihood | TaxaLikely | `inst/workflows/4_score_to_likelihood_workflow.R` |
-| Audit coverage | TaxaLikely | `inst/workflows/5_audit_coverage_workflow.R` |
+| Audit reference coverage | TaxaLikely | `inst/workflows/5_audit_coverage_workflow.R` |
 | **Test: local reference library** | TaxaLikely | `inst/test_local_reference.R` |
 | **Test: coverage calibration** | TaxaLikely | `inst/test_calibrate_coverage.R` |
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
@@ -542,15 +587,15 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 22                 | 12         | Yes      |
-| TaxaFetch   | 14                 | 15         | Yes      |
-| TaxaHabitat | 7                  | 5          | Yes      |
-| TaxaMatch   | 5                  | 5          | Yes      |
-| TaxaLikely  | 11                 | 9          | Yes      |
-| TaxaExpect  | 10                 | 9          | Yes      |
+| TaxaTools   | 36                 | 13         | Yes      |
+| TaxaFetch   | 29                 | 15         | Yes      |
+| TaxaHabitat | 13                 | 5          | Yes      |
+| TaxaMatch   | 10                 | 7          | Yes      |
+| TaxaLikely  | 22                 | 14         | Yes      |
+| TaxaExpect  | 13                 | 9          | Yes      |
 | TaxaAssign  | 14                 | 13         | Yes      |
 | TaxaFlag    | 4                  | 4          | Yes      |
-| TaxaWizard  | 5                  | 3          | Yes      |
+| TaxaWizard  | 7                  | 3          | Yes      |
 
 # U.S. Geological Survey Disclaimer
 
