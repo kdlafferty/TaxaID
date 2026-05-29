@@ -43,7 +43,7 @@
         {"name": "context", "type": "list_or_context_df", "required": true, "description": "Named list or build_context() output with geography/ecoregion and habitat/main_habitat"},
         {"name": "target_group", "type": "character", "required": false, "description": "Taxonomic target group (e.g., 'fish', 'birds'); triggers scope review"},
         {"name": "marker", "type": "character", "required": false, "description": "Molecular marker or detection method (e.g., '12S', 'COI', 'camera trap')"},
-        {"name": "llm_fn", "type": "function", "required": false, "default": "TaxaTools::call_anthropic_api", "description": "LLM provider function"},
+        {"name": "llm_fn", "type": "function", "required": false, "default": "TaxaTools::call_api", "description": "LLM provider function. Use TaxaTools::call_api (auto-selects provider). Valid names: call_api, call_anthropic_api, call_gemini_api, call_openai_api, call_azure_api, call_ollama_api. Do NOT invent other names."},
         {"name": "taxa_per_call", "type": "integer", "required": false, "default": 30, "description": "Maximum taxa per LLM batch call"},
         {"name": "pause_seconds", "type": "numeric", "required": false, "default": 1, "description": "Seconds between LLM calls"},
         {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}

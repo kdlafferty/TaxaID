@@ -109,7 +109,7 @@ Before returning any DAG, mentally verify EACH function call against the FUNCTIO
 3. **Parameter TYPES**: Pay attention to types in the registry:
    - `habitat_scheme` is a CHARACTER STRING ("IUCN_L1", "IUCN_L2", or NULL). Do NOT try to load it as a data frame or object.
    - `context` for `review_assignments()` is the output of `build_context()` -- pass the result object directly.
-   - `llm_fn` is a FUNCTION reference like `TaxaTools::call_anthropic_api`, not a string.
+   - `llm_fn` is a FUNCTION reference like `TaxaTools::call_api`, not a string. Valid options: `TaxaTools::call_api` (recommended — auto-selects provider), `TaxaTools::call_anthropic_api`, `TaxaTools::call_gemini_api`, `TaxaTools::call_openai_api`, `TaxaTools::call_azure_api`, `TaxaTools::call_ollama_api`. Do NOT invent other names.
 
 4. **If a function doesn't do what you need**: Use base R instead. For example, to rename a column, use `names(df)[names(df) == "old"] <- "new"` rather than inventing parameters for `rename_cols()`.
 

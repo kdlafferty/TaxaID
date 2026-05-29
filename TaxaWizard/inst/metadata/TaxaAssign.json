@@ -7,7 +7,7 @@
       "description": "End-to-end LLM-shortcut workflow: auto-context, unreferenced detection, assignment, consensus, report",
       "inputs": [
         {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object from TaxaMatch"},
-        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function. NULL defaults to TaxaTools::call_anthropic_api"},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function. Use TaxaTools::call_api (auto-selects provider). Valid names: call_api, call_anthropic_api, call_gemini_api, call_openai_api, call_azure_api, call_ollama_api. Do NOT invent other names."},
         {"name": "geographic_hint", "type": "character", "required": false, "description": "Geographic region description"},
         {"name": "date", "type": "character", "required": false, "description": "Sampling date or year"},
         {"name": "score_threshold", "type": "numeric", "required": false, "default": 80, "description": "Minimum match score (0-100)"},
