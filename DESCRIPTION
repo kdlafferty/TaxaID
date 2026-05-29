@@ -1,0 +1,32 @@
+Package: TaxaID
+Type: Package
+Title: Probabilistic Taxonomic Assignment for eDNA, Acoustic, and Image Data
+Version: 0.1.0
+Authors@R: person("Kevin", "Lafferty", email = "klafferty@usgs.gov",
+    role = c("aut", "cre"))
+Description: Meta-package that installs the full TaxaID ecosystem.
+    Provides probabilistic taxonomic assignment via likelihood, prior, and
+    posterior probability for eDNA metabarcoding, acoustic detection, and
+    image classification data.
+License: CC0
+Encoding: UTF-8
+Imports:
+    TaxaTools,
+    TaxaFetch,
+    TaxaHabitat,
+    TaxaMatch,
+    TaxaLikely,
+    TaxaExpect,
+    TaxaAssign,
+    TaxaFlag,
+    TaxaWizard
+Remotes:
+    kdlafferty/TaxaID/TaxaTools,
+    kdlafferty/TaxaID/TaxaFetch,
+    kdlafferty/TaxaID/TaxaHabitat,
+    kdlafferty/TaxaID/TaxaMatch,
+    kdlafferty/TaxaID/TaxaLikely,
+    kdlafferty/TaxaID/TaxaExpect,
+    kdlafferty/TaxaID/TaxaAssign,
+    kdlafferty/TaxaID/TaxaFlag,
+    kdlafferty/TaxaID/TaxaWizard
