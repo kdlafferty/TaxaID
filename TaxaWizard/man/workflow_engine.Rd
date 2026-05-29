@@ -9,6 +9,7 @@ workflow_engine(
   metadata = NULL,
   model = "claude-opus-4-6",
   api_key = NULL,
+  llm_fn = NULL,
   system_prompt = NULL
 )
 }
@@ -24,7 +25,12 @@ available TaxaID package metadata automatically.}
 
 \item{model}{Character. LLM model ID. Default \code{"claude-opus-4-6"}.}
 
-\item{api_key}{Character or NULL. Anthropic API key.}
+\item{api_key}{Character or NULL. Anthropic API key. Ignored when
+\code{llm_fn} is supplied.}
+
+\item{llm_fn}{Function or NULL. Custom LLM caller for non-Anthropic
+providers (Azure, OpenAI, Gemini, …). See \code{\link{workflow_create}}
+for the required function signature.}
 
 \item{system_prompt}{Character or NULL. Custom system prompt override.
 When \code{NULL} (default), builds phase-specific prompt automatically.}

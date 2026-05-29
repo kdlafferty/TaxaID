@@ -22,6 +22,7 @@
 #' }
 workflow_gadget <- function(model      = "claude-sonnet-4-6",
                             api_key    = NULL,
+                            llm_fn     = NULL,
                             output_dir = ".",
                             trial      = FALSE) {
 
@@ -31,6 +32,7 @@ workflow_gadget <- function(model      = "claude-sonnet-4-6",
     output_dir = output_dir,
     model      = model,
     api_key    = api_key,
+    llm_fn     = llm_fn,
     trial      = trial
   )
 }

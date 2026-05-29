@@ -23,7 +23,11 @@
 #'   \code{.load_metadata()}. When \code{NULL} (default), loads all
 #'   available TaxaID package metadata automatically.
 #' @param model Character. LLM model ID. Default \code{"claude-opus-4-6"}.
-#' @param api_key Character or NULL. Anthropic API key.
+#' @param api_key Character or NULL. Anthropic API key. Ignored when
+#'   \code{llm_fn} is supplied.
+#' @param llm_fn Function or NULL. Custom LLM caller for non-Anthropic
+#'   providers (Azure, OpenAI, Gemini, …). See \code{\link{workflow_create}}
+#'   for the required function signature.
 #' @param system_prompt Character or NULL. Custom system prompt override.
 #'   When \code{NULL} (default), builds phase-specific prompt automatically.
 #'
@@ -58,17 +62,19 @@ workflow_engine <- function(history,
                             metadata      = NULL,
                             model         = "claude-opus-4-6",
                             api_key       = NULL,
+                            llm_fn        = NULL,
                             system_prompt = NULL) {
 
   # Wrap the engine body in a tryCatch so that any unexpected
 
   # NULL/NA-in-if errors produce a recoverable response instead of crashing.
   tryCatch(
-    .workflow_engine_impl(history, metadata, model, api_key, system_prompt),
+    .workflow_engine_impl(history, metadata, model, api_key, llm_fn,
+                          system_prompt),
     error = function(e) {
       msg <- conditionMessage(e)
       # Re-throw API and configuration errors as-is
-      if (grepl("API|ANTHROPIC_API_KEY|Prompt template", msg)) stop(e)
+      if (grepl("API|ANTHROPIC_API_KEY|llm_fn|Prompt template", msg)) stop(e)
       # Wrap unexpected errors (e.g. NA-in-if from LLM response parsing)
       warning("workflow_engine internal error: ", msg, call. = FALSE)
       list(
@@ -86,7 +92,7 @@ workflow_engine <- function(history,
 
 #' Internal engine implementation
 #' @noRd
-.workflow_engine_impl <- function(history, metadata, model, api_key,
+.workflow_engine_impl <- function(history, metadata, model, api_key, llm_fn,
                                    system_prompt) {
 
   # --- Load metadata ---
@@ -124,7 +130,8 @@ workflow_engine <- function(history,
     messages      = api_history,
     system_prompt = system_prompt,
     model         = model,
-    api_key       = api_key
+    api_key       = api_key,
+    llm_fn        = llm_fn
   )
 
   # --- Sanitize response ---

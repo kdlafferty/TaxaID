@@ -20,7 +20,23 @@
 #'   Default \code{"."} (current working directory).
 #' @param model Character. LLM model ID. Default \code{"claude-sonnet-4-6"}.
 #' @param api_key Character or NULL. Anthropic API key. When \code{NULL},
-#'   uses the \code{ANTHROPIC_API_KEY} environment variable.
+#'   uses the \code{ANTHROPIC_API_KEY} environment variable. Ignored when
+#'   \code{llm_fn} is supplied.
+#' @param llm_fn Function or NULL. Custom LLM caller for non-Anthropic
+#'   providers (Azure, OpenAI, Gemini, …). When non-NULL, \code{api_key} and
+#'   the built-in Anthropic HTTP logic are bypassed entirely. The function
+#'   must accept four named arguments and return a single character string:
+#'   \itemize{
+#'     \item \code{messages} — list of \code{list(role, content)} objects
+#'       (the conversation history + current user turn).
+#'     \item \code{system_prompt} — character string (the phase prompt).
+#'     \item \code{model} — character string (passed from the \code{model}
+#'       argument; ignore if your provider uses a fixed model).
+#'     \item \code{max_tokens} — integer (default 16384).
+#'   }
+#'   The return value should be the raw LLM response text (plain or JSON).
+#'   For Azure OpenAI the caller must assemble the chat-completion request
+#'   using \code{messages} + \code{system_prompt} — see the example below.
 #' @param trial Logical. When \code{TRUE}, generated scripts include
 #'   trial-mode subsetting for performance estimation. Default \code{FALSE}.
 #'
@@ -48,6 +64,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
                             output_dir = ".",
                             model      = "claude-sonnet-4-6",
                             api_key    = NULL,
+                            llm_fn     = NULL,
                             trial      = FALSE) {
 
   mode <- match.arg(mode)
@@ -79,11 +96,11 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
     }
     message("When finished, press the Stop button in the R console to exit the chat.")
     message("Then source the generated script to run your workflow.")
-    .create_viewer(model = model, api_key = api_key,
+    .create_viewer(model = model, api_key = api_key, llm_fn = llm_fn,
                    output_dir = output_dir, trial = trial,
                    use_browser = identical(mode, "browser"))
   } else {
-    .create_console(model = model, api_key = api_key,
+    .create_console(model = model, api_key = api_key, llm_fn = llm_fn,
                     output_dir = output_dir, trial = trial)
   }
 }
@@ -105,7 +122,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 # =========================================================================
 
 #' @noRd
-.create_console <- function(model, api_key, output_dir, trial) {
+.create_console <- function(model, api_key, llm_fn, output_dir, trial) {
 
   metadata <- .load_metadata()
   history  <- list()
@@ -155,7 +172,8 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         history  = history,
         metadata = metadata,
         model    = model,
-        api_key  = api_key
+        api_key  = api_key,
+        llm_fn   = llm_fn
       ),
       error = function(e) {
         list(status = "error", message = paste("Error:", conditionMessage(e)))
@@ -243,7 +261,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         for (f in generated) cat(sprintf("  %s\n", f))
 
         # Save conversation state for workflow_fix()
-        .save_session(history, metadata, model, api_key, output_dir, trial)
+        .save_session(history, metadata, model, api_key, llm_fn, output_dir, trial)
         if (is_extension) {
           cat("\nNew steps appended to the existing script.\n")
           cat("Re-source it to run the full pipeline (earlier steps load from cache).\n")
@@ -270,7 +288,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 # =========================================================================
 
 #' @noRd
-.create_viewer <- function(model, api_key, output_dir, trial,
+.create_viewer <- function(model, api_key, llm_fn, output_dir, trial,
                            use_browser = FALSE) {
 
   metadata <- .load_metadata()
@@ -409,7 +427,8 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
           history  = hist,
           metadata = metadata,
           model    = model,
-          api_key  = api_key
+          api_key  = api_key,
+          llm_fn   = llm_fn
         ),
         error = function(e) {
           list(status = "error",
@@ -451,7 +470,8 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
             history  = hist,
             metadata = metadata,
             model    = model,
-            api_key  = api_key
+            api_key  = api_key,
+            llm_fn   = llm_fn
           ),
           error = function(e) {
             list(status = "error",
@@ -488,7 +508,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         )
 
         # Save session for workflow_fix()
-        .save_session(hist, metadata, model, api_key, output_dir, trial)
+        .save_session(hist, metadata, model, api_key, llm_fn, output_dir, trial)
 
         file_list <- paste(generated, collapse = "\n  ")
         is_extension <- isTRUE(attr(generated, "appended"))

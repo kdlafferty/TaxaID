@@ -6,27 +6,56 @@ NULL
 #'
 #' Low-level wrapper around httr2 that sends the conversation history
 #' and system prompt to the LLM API and returns the parsed JSON response.
+#' When \code{llm_fn} is supplied it is called instead of the built-in
+#' Anthropic HTTP logic, allowing any provider (Azure, OpenAI, Gemini, …).
 #'
 #' @param messages List of message objects (role + content).
 #' @param system_prompt Character. The system prompt enforcing JSON schema.
 #' @param model Character. Model ID. Default \code{"claude-opus-4-6"}.
 #' @param api_key Character or NULL. Anthropic API key. Default reads
-#'   \code{ANTHROPIC_API_KEY} from environment.
+#'   \code{ANTHROPIC_API_KEY} from environment. Ignored when \code{llm_fn}
+#'   is supplied.
 #' @param max_tokens Integer. Maximum response tokens. Default 16384.
+#' @param llm_fn Function or NULL. Custom LLM caller. When non-NULL, called as
+#'   \code{llm_fn(messages, system_prompt, model, max_tokens)} and must return
+#'   a character string containing the raw LLM response (plain text or JSON).
+#'   \code{messages} is a list of \code{list(role, content)} objects;
+#'   \code{system_prompt} is a single character string.
 #'
 #' @return Parsed list from the LLM's JSON response.
 #' @noRd
 .call_llm <- function(messages,
                       system_prompt,
-                      model     = "claude-opus-4-6",
-                      api_key   = NULL,
-                      max_tokens = 16384L) {
+                      model      = "claude-opus-4-6",
+                      api_key    = NULL,
+                      max_tokens = 16384L,
+                      llm_fn     = NULL) {
 
+  # --- Custom provider path ---
+  if (!is.null(llm_fn)) {
+    raw_text <- llm_fn(
+      messages      = messages,
+      system_prompt = system_prompt,
+      model         = model,
+      max_tokens    = max_tokens
+    )
+    if (!is.character(raw_text) || length(raw_text) != 1L) {
+      stop(
+        "llm_fn must return a single character string. Got: ",
+        paste(class(raw_text), collapse = "/"),
+        call. = FALSE
+      )
+    }
+    return(.parse_engine_response(raw_text))
+  }
+
+  # --- Built-in Anthropic path ---
   api_key <- api_key %||% Sys.getenv("ANTHROPIC_API_KEY", unset = "")
   if (!nzchar(api_key)) {
     stop(
       ".call_llm: ANTHROPIC_API_KEY not found in environment.\n",
-      "Set it in ~/.Renviron or pass api_key= directly.",
+      "Set it in ~/.Renviron or pass api_key= directly.\n",
+      "For other providers (Azure, OpenAI, Gemini), pass llm_fn= instead.",
       call. = FALSE
     )
   }

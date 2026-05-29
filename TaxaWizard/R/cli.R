@@ -22,6 +22,7 @@
 #' }
 workflow_chat <- function(model      = "claude-sonnet-4-6",
                           api_key    = NULL,
+                          llm_fn     = NULL,
                           output_dir = ".",
                           trial      = FALSE) {
 
@@ -31,6 +32,7 @@ workflow_chat <- function(model      = "claude-sonnet-4-6",
     output_dir = output_dir,
     model      = model,
     api_key    = api_key,
+    llm_fn     = llm_fn,
     trial      = trial
   )
 }
@@ -151,6 +153,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
       metadata      = session$metadata,
       model         = session$model,
       api_key       = session$api_key,
+      llm_fn        = session$llm_fn,
       system_prompt = error_prompt
     ),
     error = function(e) {
@@ -215,7 +218,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 
   # Save updated state
   .save_session(history, session$metadata, session$model,
-                session$api_key, session$output_dir, session$trial)
+                session$api_key, session$llm_fn, session$output_dir, session$trial)
 
   # Return script path in auto mode for re-sourcing
   if (auto) return(invisible(script_path))
@@ -277,13 +280,14 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 
 #' Save Conversation State
 #' @noRd
-.save_session <- function(history, metadata, model, api_key,
+.save_session <- function(history, metadata, model, api_key, llm_fn,
                           output_dir, trial) {
   session <- list(
     history    = history,
     metadata   = metadata,
     model      = model,
     api_key    = api_key,
+    llm_fn     = llm_fn,
     output_dir = output_dir,
     trial      = trial,
     timestamp  = Sys.time()
