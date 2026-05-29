@@ -1,13 +1,14 @@
 # Edge: consensus + context_df -> reviewed
 # Source: TaxaFlag/inst/review_assignments_workflow.R
-# NOTE: posterior_consensus() and run_llm_pipeline()$consensus produce
-#   consensus_taxon (not taxon_name) and consensus_rank (not taxon_name_rank).
-#   score_consensus() also uses consensus_taxon / consensus_rank.
+# NOTE: When data comes from posterior_consensus(), run_llm_pipeline(), or
+#   score_consensus(), the taxon column is "consensus_taxon" and rank column
+#   is "consensus_rank". For external data (e.g. user-supplied CSV), use the
+#   actual column names from the data.
 
 reviewed <- TaxaFlag::review_assignments(
   df             = {{consensus_var}},
-  taxon_col      = "consensus_taxon",
-  taxon_rank_col = "consensus_rank",
+  taxon_col      = {{taxon_col}},
+  taxon_rank_col = {{taxon_rank_col}},
   context        = {{context_var}},
   target_group   = {{target_group}},
   marker         = {{marker}},
