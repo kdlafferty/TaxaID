@@ -32,13 +32,17 @@ NULL
                       llm_fn     = NULL) {
 
   # --- Auto-detect TaxaTools provider when no explicit llm_fn or api_key ---
-  # If TaxaTools has set options(TaxaID.provider) (e.g. "azure") and no
-  # Anthropic key is available, build a bridge automatically so that
-  # workflow_create() works on non-Anthropic machines without any manual
-  # llm_fn= argument.
+  # If TaxaID.provider is set (by TaxaTools or TaxaWizard's .onAttach) and the
+  # provider is not Anthropic, build a bridge so workflow_create() works on
+  # non-Anthropic machines without any manual llm_fn= argument.
   if (is.null(llm_fn) && is.null(api_key)) {
     opt_provider <- getOption("TaxaID.provider")
     opt_fn       <- getOption("TaxaID.llm_fn")
+    # Fall back to TaxaTools::call_api directly if llm_fn option not yet set
+    if (is.null(opt_fn) && !is.null(opt_provider) &&
+        requireNamespace("TaxaTools", quietly = TRUE)) {
+      opt_fn <- TaxaTools::call_api
+    }
     if (!is.null(opt_provider) && !identical(opt_provider, "anthropic") &&
         is.function(opt_fn)) {
       # Flatten system_prompt + conversation into one prompt string.
