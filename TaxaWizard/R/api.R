@@ -31,6 +31,33 @@ NULL
                       max_tokens = 16384L,
                       llm_fn     = NULL) {
 
+  # --- Auto-detect TaxaTools provider when no explicit llm_fn or api_key ---
+  # If TaxaTools has set options(TaxaID.provider) (e.g. "azure") and no
+  # Anthropic key is available, build a bridge automatically so that
+  # workflow_create() works on non-Anthropic machines without any manual
+  # llm_fn= argument.
+  if (is.null(llm_fn) && is.null(api_key)) {
+    opt_provider <- getOption("TaxaID.provider")
+    opt_fn       <- getOption("TaxaID.llm_fn")
+    if (!is.null(opt_provider) && !identical(opt_provider, "anthropic") &&
+        is.function(opt_fn)) {
+      # Flatten system_prompt + conversation into one prompt string.
+      # call_api() (TaxaTools) takes a single prompt_str; the full context
+      # is preserved so the model sees all prior turns.
+      llm_fn <- function(messages, system_prompt, model, max_tokens) {
+        history_text <- paste(
+          vapply(messages, function(m) {
+            role <- if (identical(m$role, "user")) "User" else "Assistant"
+            paste0(role, ": ", m$content)
+          }, character(1L)),
+          collapse = "\n\n"
+        )
+        combined <- paste0(system_prompt, "\n\n---\n\n", history_text)
+        opt_fn(combined, max_tokens = max_tokens)
+      }
+    }
+  }
+
   # --- Custom provider path ---
   if (!is.null(llm_fn)) {
     raw_text <- llm_fn(
@@ -53,9 +80,12 @@ NULL
   api_key <- api_key %||% Sys.getenv("ANTHROPIC_API_KEY", unset = "")
   if (!nzchar(api_key)) {
     stop(
-      ".call_llm: ANTHROPIC_API_KEY not found in environment.\n",
-      "Set it in ~/.Renviron or pass api_key= directly.\n",
-      "For other providers (Azure, OpenAI, Gemini), pass llm_fn= instead.",
+      ".call_llm: no LLM provider available for TaxaWizard.\n",
+      "Options:\n",
+      "  1. Set ANTHROPIC_API_KEY in ~/.Renviron\n",
+      "  2. Load TaxaTools first: library(TaxaTools)  ",
+      "(auto-detects Azure, Gemini, OpenAI)\n",
+      "  3. Pass llm_fn= explicitly to workflow_create()",
       call. = FALSE
     )
   }
