@@ -1039,13 +1039,17 @@ annotate_script <- function(script_path,
 #' Generate app header with library calls
 #' @noRd
 .app_header <- function(libs) {
+  # Always include TaxaTools so .onAttach() runs and sets options(TaxaID.provider).
+  # Workflow scripts use TaxaTools:: notation (not library calls), so TaxaTools
+  # would otherwise be absent from libs and call_api() would default to Anthropic.
+  all_libs <- unique(c("TaxaTools", libs))
   c(
     "# =============================================================================",
     sprintf("# TaxaID Workflow App -- Generated %s by TaxaWizard", Sys.Date()),
     "# =============================================================================",
     "",
     "library(shiny)",
-    vapply(libs, function(l) sprintf("library(%s)", l), character(1))
+    vapply(all_libs, function(l) sprintf("library(%s)", l), character(1))
   )
 }
 
@@ -1308,7 +1312,7 @@ annotate_script <- function(script_path,
       )
     },
     function_ref = sprintf(
-      'shiny::selectInput("%s", "%s", choices = c("Anthropic Claude" = "TaxaTools::call_anthropic_api", "OpenAI GPT" = "TaxaTools::call_openai_api", "Google Gemini" = "TaxaTools::call_gemini_api", "Ollama (local)" = "TaxaTools::call_ollama_api"), selected = "%s"),',
+      'shiny::selectInput("%s", "%s", choices = c("Auto-detect" = "TaxaTools::call_api", "Anthropic Claude" = "TaxaTools::call_anthropic_api", "Azure OpenAI (DOI)" = "TaxaTools::call_azure_api", "OpenAI GPT" = "TaxaTools::call_openai_api", "Google Gemini" = "TaxaTools::call_gemini_api", "Ollama (local)" = "TaxaTools::call_ollama_api"), selected = "%s"),',
       input_id, label, param$default
     ),
     null_param = sprintf(
