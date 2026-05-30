@@ -48,8 +48,30 @@
   opt <- getOption("TaxaID.provider")
   if (!is.null(opt) && nzchar(opt)) return(opt)
 
+  # Check if an API key is present but options haven't been set —
+  # this means .onAttach() hasn't run (package loaded via :: not library()).
+  key_map <- c(
+    anthropic = "ANTHROPIC_API_KEY",
+    gemini    = "GEMINI_API_KEY",
+    openai    = "OPENAI_API_KEY",
+    azure     = "AZURE_OPENAI_API_KEY"
+  )
+  detected <- names(Filter(nzchar, vapply(key_map, Sys.getenv, character(1))))
+
+  library_hint <- if (length(detected) > 0L) {
+    paste0(
+      "NOTE: Your ", paste(toupper(key_map[detected]), collapse = " / "),
+      " key(s) are set but no provider is active.\n",
+      "This usually means TaxaTools was called via :: without loading the package.\n",
+      "Fix: add  library(TaxaTools)  (or library(TaxaWizard)) before calling call_api().\n\n"
+    )
+  } else {
+    ""
+  }
+
   stop(paste0(
     "call_api: no LLM provider configured.\n",
+    library_hint,
     "Add an API key to ~/.Renviron and restart R, or specify a provider:\n",
     "  call_api(prompt, provider = 'anthropic')  # or 'gemini', 'openai', 'azure'\n",
     "  call_api(prompt, provider = 'ollama')      # local models, no key needed\n",
