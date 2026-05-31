@@ -35,7 +35,8 @@ consensus.
 -   **Column standardization** -- rename columns to DarwinCore
     conventions (`rename_cols()`)
 -   **LLM providers** -- unified interface to Anthropic Claude, Google
-    Gemini, OpenAI, and local Ollama models
+    Gemini, OpenAI, Azure OpenAI (DOI network/VPN required), and local
+    Ollama models
 -   **Text generation** -- LLM-assisted drafting of Methods and Results
     sections (`draft_methods_text()`, `draft_results_text()`)
 -   **Report assembly** -- combine per-package report sections into a
@@ -127,6 +128,7 @@ configure them in `~/.Renviron`.
 | `ANTHROPIC_API_KEY` | Claude LLM (default provider) | Paid |
 | `GBIF_USER` / `GBIF_PWD` / `GBIF_EMAIL` | GBIF occurrence downloads | Yes |
 | `GEMINI_API_KEY` | Google Gemini (optional) | Free tier |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI — DOI employees only; requires connection to a DOI computer system or DOI VPN | DOI only |
 
 ## Vignettes
 
