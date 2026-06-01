@@ -38,7 +38,7 @@
 #' Calibrate a coverage filter for reference pairs
 #'
 #' Sweeps a grid of coverage thresholds over the pairwise reference dataset
-#' produced by [build_sequence_matrix()] or [build_acoustic_reference()] and
+#' produced by [build_sequence_matrix()] and
 #' returns per-threshold metrics quantifying the trade-off between retaining
 #' query breadth and discriminating H1 (within-species) pairs from H2/H3
 #' (cross-species) noise.
@@ -53,8 +53,7 @@
 #' less information than the same score from a quiet, close-range recording.
 #'
 #' The `coverage` column added by [build_sequence_matrix()] (pairwise alignment
-#' overlap fraction) and [build_acoustic_reference()] (Xeno-canto quality grade
-#' mapped to 0–1) places both data types on a common scale.  Removing low-coverage
+#' overlap fraction, 0--1) places sequences on a common scale.  Removing low-coverage
 #' pairs before model training filters out low-information observations that can
 #' blur the H1/H2 boundary and inflate model variance.
 #'
@@ -96,10 +95,9 @@
 #' include.  The function detects categorical coverage (≤ 10 unique values)
 #' and emits a message in this case.
 #'
-#' @param ref_pairs Data frame.  Output of [build_sequence_matrix()] or
-#'   [build_acoustic_reference()].  Must contain columns `coverage`, `p_match`,
-#'   `id_x`, and paired `{rank}.x` / `{rank}.y` columns for H1/H2
-#'   classification.
+#' @param ref_pairs Data frame.  Output of [build_sequence_matrix()].  Must
+#'   contain columns `coverage`, `p_match`, `id_x`, and paired `{rank}.x` /
+#'   `{rank}.y` columns for H1/H2 classification.
 #' @param rank_system Character vector of rank names coarse-to-fine
 #'   (e.g., `c("genus", "species")`), used to identify the finest rank column
 #'   for H1 vs H2/H3 classification.  Default `NULL` auto-detects from paired
@@ -126,7 +124,7 @@
 #'       no H1 pairs survive or H1/H2 classification is unavailable.}
 #'   }
 #'
-#' @seealso [build_sequence_matrix()], [build_acoustic_reference()],
+#' @seealso [build_sequence_matrix()],
 #'   [coverage_threshold()], [train_likelihood_model()], [evaluate_likelihoods()]
 #'
 #' @examples
@@ -164,7 +162,7 @@ calibrate_coverage_filter <- function(ref_pairs,
   if (!"coverage" %in% names(ref_pairs))
     stop(paste0(
       "calibrate_coverage_filter: 'ref_pairs' must contain a 'coverage' column. ",
-      "Build ref_pairs with build_sequence_matrix() or build_acoustic_reference()."
+      "Build ref_pairs with build_sequence_matrix()."
     ))
   if (!"p_match" %in% names(ref_pairs))
     stop("calibrate_coverage_filter: 'ref_pairs' must contain a 'p_match' column.")
@@ -303,8 +301,8 @@ calibrate_coverage_filter <- function(ref_pairs,
 #' coverage than cross-species pairs — prefer [calibrate_coverage_filter()] and
 #' select the threshold that maximises `youden_j`.
 #'
-#' @param ref_pairs Data frame.  Output of [build_sequence_matrix()] or
-#'   [build_acoustic_reference()].  Must contain a `coverage` column.
+#' @param ref_pairs Data frame.  Output of [build_sequence_matrix()].  Must
+#'   contain a `coverage` column.
 #' @param keep_frac Numeric scalar in (0, 1).  Target fraction of pairs to
 #'   retain (default `0.95`).  The threshold is set at the
 #'   `(1 − keep_frac)` quantile so that approximately `keep_frac` of pairs
@@ -318,8 +316,7 @@ calibrate_coverage_filter <- function(ref_pairs,
 #'   model        <- train_likelihood_model(ref_filtered)
 #'   ```
 #'
-#' @seealso [calibrate_coverage_filter()], [build_sequence_matrix()],
-#'   [build_acoustic_reference()]
+#' @seealso [calibrate_coverage_filter()], [build_sequence_matrix()]
 #'
 #' @examples
 #' \dontrun{
@@ -344,7 +341,7 @@ coverage_threshold <- function(ref_pairs, keep_frac = 0.95) {
   if (!"coverage" %in% names(ref_pairs))
     stop(paste0(
       "coverage_threshold: 'ref_pairs' must contain a 'coverage' column. ",
-      "Build ref_pairs with build_sequence_matrix() or build_acoustic_reference()."
+      "Build ref_pairs with build_sequence_matrix()."
     ))
   if (!is.numeric(keep_frac) || length(keep_frac) != 1L || is.na(keep_frac) ||
       keep_frac <= 0 || keep_frac >= 1)

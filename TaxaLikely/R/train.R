@@ -22,12 +22,10 @@ utils::globalVariables(c(
 #' own label -- a pattern consistent with mislabeling or contamination.
 #'
 #' @section Scope:
-#' This function applies to DNA sequence reference databases only. For
-#' Xeno-canto acoustic data, use quality grade filtering
-#' (`quality = c("A", "B")` in [fetch_reference_recordings()]) instead --
-#' Xeno-canto is expert-curated and mislabeling is rare. For camera trap image
-#' data, applicability is to be determined when `read_animl_output()` is
-#' implemented.
+#' This function applies to DNA sequence reference databases only.  For
+#' acoustic and image data, users bring pre-classified candidate outputs
+#' (classifier confidence scores); mislabel detection via score distributions
+#' is not applicable in that context.
 #'
 #' Two error types are returned:
 #' * **`"likely_mislabeled"`** -- the sequence's median within-species match is

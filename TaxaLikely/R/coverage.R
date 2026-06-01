@@ -630,8 +630,7 @@ audit_barcode_coverage <- function(match_df,
 #'       as `unreferenced_taxa` to build H2 hypotheses for these species.}
 #'   }
 #'
-#' @seealso [audit_barcode_coverage()], [apply_coverage_constraints()],
-#'   [fetch_reference_recordings()]
+#' @seealso [audit_barcode_coverage()], [apply_coverage_constraints()]
 #'
 #' @examples
 #' plausible <- c("Turdus migratorius", "Setophaga petechia",

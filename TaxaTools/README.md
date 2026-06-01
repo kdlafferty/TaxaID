@@ -17,12 +17,11 @@ replaces and extends that functionality: it cleans, verifies, and
 standardizes taxonomic names across multiple backbones (GBIF, NCBI,
 WoRMS, Catalogue of Life). Nomenclature inconsistencies between data
 sources can cause false negatives when priors and likelihoods fail to
-join on mismatched names. TaxaTools also provides a unified
-interface for calling large language models (LLMs) from R, with
-support for Anthropic Claude, Google Gemini, OpenAI, and local Ollama
-models. LLM-assisted functions can draft Methods and Results text for
-scientific papers describing how a user arrived at a particular
-consensus.
+join on mismatched names. TaxaTools also provides a unified interface
+for calling large language models (LLMs) from R, with support for
+Anthropic Claude, Google Gemini, OpenAI, and local Ollama models.
+LLM-assisted functions can draft Methods and Results text for scientific
+papers describing how a user arrived at a particular consensus.
 
 ## Features
 
@@ -30,6 +29,10 @@ consensus.
     (`clean_taxon_names()`)
 -   **Name verification** -- check spelling and resolve against GBIF,
     NCBI, WoRMS, or Catalogue of Life (`verify_taxon_names()`)
+-   **Common name lookup** -- LLM-assisted conversion of common names to
+    scientific names with optional backbone verification
+    (`common_to_scientific()`); useful when classifier output lacks
+    scientific names
 -   **Backbone translation** -- move names between taxonomic backbones
     (`change_backbone()`)
 -   **Column standardization** -- rename columns to DarwinCore
@@ -43,6 +46,8 @@ consensus.
     unified document (`assemble_report()`)
 -   **GBIF census** -- enumerate described species per genus from the
     GBIF backbone (`census_genus_species()`)
+-   **FAIRe export** -- convert TaxaID output tables to FAIRe eDNA
+    checklist format (`to_faire()`)
 
 ## Installation
 
@@ -136,6 +141,42 @@ configure them in `~/.Renviron`.
     core taxonomy workflow
 -   [Setting Up API Keys](vignettes/api-setup.Rmd) -- ecosystem-wide API
     configuration guide
+
+## FAIRe Compatibility (eDNA standard terminology)
+
+TaxaID outputs are compatible with the **`taxaRaw` and `taxaFinal`
+classes** of the [FAIRe eDNA metadata
+checklist](https://github.com/FAIR-eDNA/FAIRe_checklist) (Takahashi et
+al. 2025,
+[doi:[10.1002/edn3.70100](doi:%5B10.1002/edn3.70100){.uri}](<https://doi.org/10.1002/edn3.70100>)).
+
+Use `to_faire()` to convert any TaxaID match, likelihood, or posterior
+data frame to FAIRe-compatible column names before export or submission:
+
+``` r
+faire_df <- to_faire(posterior_df, table_type = "taxaFinal")
+```
+
+**Field mapping (TaxaID → FAIRe):**
+
+| TaxaID column         | FAIRe field              | FAIRe class         |
+|-----------------------|--------------------------|---------------------|
+| `observation_id`      | `seq_id`                 | taxaRaw / taxaFinal |
+| `taxon_name`          | `scientificName`         | taxaRaw / taxaFinal |
+| `taxon_name_rank`     | `taxonRank`              | taxaRaw / taxaFinal |
+| `score`               | `percent_match`          | taxaRaw / taxaFinal |
+| `coverage`            | `percent_query_cover`    | taxaRaw / taxaFinal |
+| `accession`           | `accession_id`           | taxaRaw / taxaFinal |
+| `testid`              | `assay_name`             | taxaRaw / taxaFinal |
+| `kingdom` … `species` | unchanged (Darwin Core)  | taxaRaw / taxaFinal |
+| *(constructed)*       | `verbatimIdentification` | taxaRaw / taxaFinal |
+| *(constructed)*       | `specificEpithet`        | taxaRaw / taxaFinal |
+| *(added)*             | `checkls_ver`            | projectMetadata     |
+
+`to_faire()` covers the bioinformatics assignment tables only.
+Sample-level metadata (`samp_name`, `eventDate`, `decimalLatitude`,
+`env_broad_scale`, etc.) must be joined from field records before
+submission.
 
 ## Part of TaxaID
 

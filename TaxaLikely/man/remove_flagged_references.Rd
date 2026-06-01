@@ -36,9 +36,9 @@ Bayesian and LLM workflows).
 \section{Scope}{
 
 Designed for DNA workflows where flagging is based on accession IDs from
-\code{build_sequence_matrix()}. For Xeno-canto acoustic data, use quality
-grade filtering in \code{fetch_reference_recordings()} instead of this
-function. For camera trap image data, guidance is TBD.
+\code{build_sequence_matrix()}.  For acoustic and image data, users bring
+pre-classified candidate outputs; mislabel removal via accession IDs is
+not applicable in those workflows.
 
 Only sequences flagged as \code{"likely_mislabeled"} are removed by default.
 Sequences flagged as \code{"unverified_singleton_high_match"} are ambiguous

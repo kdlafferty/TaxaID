@@ -1,6 +1,21 @@
 # TaxaLikely Session Notes Archive
 # Sessions 30–88. Current sessions (90+) live in TaxaLikely/CLAUDE.md.
 
+**Session 97 (2026-06-01)**
+- Acoustic/image workflow redesigned: TaxaLikely now operates as a post-classifier layer only
+- Removed: `build_acoustic_reference()`, `build_image_reference()`, `fetch_reference_recordings()`
+- Removed: workflow scripts `3b_acoustic_reference_workflow.R`, `3c_image_reference_workflow.R`
+- Modified: `expand_consensus_candidates()` gains optional `score_col` param
+  - No score → all likelihoods = 1.0 (existing behavior)
+  - With score → L(H1) = score; L(all other candidates) = 1 − score
+  - Covers BirdNET top-1 use case (single candidate with classifier confidence)
+- Added to TaxaTools: `common_to_scientific()` — LLM-assisted common name → scientific name
+  with optional backbone verification via `verify_taxon_names()`; needed for classifiers
+  that output common names rather than scientific names
+- Three match scenarios now handled: (A) multiple candidates + scores → `evaluate_likelihoods()`;
+  (B) single candidate + score → `expand_consensus_candidates(score_col=)`;
+  (C) single candidate no score → `expand_consensus_candidates()` (uniform likelihoods)
+
 **Session 30 (2026-03-27)**
 - Package scaffold created
 - Source file: `~/Rscripts/eDNA/Bayesian  Workflow/Universal_Biological_Classifier_Working_2.R`
@@ -119,3 +134,57 @@
   - `exclude_background` param: drops detections of background species
   - 25 tests in `tests/testthat/test-build-acoustic.R`
 - `devtools::check(vignettes = FALSE)`: 0 errors, 0 warnings, 0 notes.
+
+**Session 90 (2026-05-27)**
+- `coverage` column added to `build_sequence_matrix()` output. Computed as the number of
+  MSA positions where both sequences are non-gap, divided by the shorter unaligned sequence
+  length. Pre-computes per-sequence gap masks once (O(n × alignment_width)) before looping
+  over sparse pairs. Documented in `@return`.
+- `coverage` column added to `build_acoustic_reference()` output. Derived from
+  `recordings_meta$quality`: A→1.0, B→0.8, C→0.5, D→0.3, E→0.1. Placed on the same [0,1]
+  scale as DNA alignment coverage for common downstream handling. `has_quality` guard added
+  so the function still works when the quality column is absent (coverage = NA).
+- `calibrate_coverage_filter()` added to `R/calibrate.R`. Sweeps `thresholds` (default
+  `seq(0, 0.99, by = 0.05)`) and returns a 10-column data frame: `threshold`, `n_queries`,
+  `breadth`, `h1_pairs`, `h2_pairs`, `h1_retention`, `h2_retention`, `youden_j`,
+  `discrimination`, `mean_h1_score`. H1/H2 classification auto-detected via finest rank
+  in `.x`/`.y` column pairs. Categorical coverage detection (≤10 unique values) triggers
+  an informational message that J/discrimination will be near-flat for acoustic data.
+- `coverage_threshold()` added to `R/calibrate.R`. `keep_frac = 0.95` → threshold at
+  `quantile(coverage, 0.05)`. Categorical snapping: nearest unique value with a message
+  reporting the achieved vs requested retention fraction.
+- `.detect_finest_rank_col()` internal helper added to `R/calibrate.R`.
+- README: new "Reference Coverage Quality Filtering" section.
+- `devtools::check(vignettes = FALSE)`: 0 errors, 0 warnings, 1 note (pre-existing stale top-level files).
+
+**Session 91 (2026-05-27)**
+- `read_crabs_output()` added to new `R/read_crabs.R` — reads CRABS internal-format database
+  (headerless 11-column tab-delimited TSV) directly into `reference_df`. Params:
+  `rank_system` (NULL auto-detects), `max_n_bases`, `require_species` (default TRUE),
+  `dereplicate`. Literal "NA" strings converted to NA. Accession version suffix stripped.
+  16 offline tests in `tests/testthat/test-read-crabs.R`.
+- `read_reference_fasta()` — `taxonomy_file` parameter added. Accepts 2-column TSV in
+  QIIME2/RESCRIPt/SILVA prefix-style or positional format. `taxonomy` param now NULL-default;
+  exactly one of `taxonomy` or `taxonomy_file` must be supplied.
+  Internal helpers: `.parse_taxonomy_tsv()`, `.parse_tax_string()`, `.crabs_std_hierarchy`.
+  7 tests in `tests/testthat/test-read-crabs.R`.
+- README: new "Loading Pre-built Reference Databases" section.
+
+**Session 93 (2026-05-27)**
+- `build_image_reference()` added to new `R/build_image.R` — image analog of `build_acoustic_reference()`.
+  Joins image classifier output to user-supplied ground-truth `images_meta`. `coverage` from
+  `image_df$coverage` (bbox area) or `images_meta$quality`; `testid` from `images_meta$testid`.
+  27 offline tests in `tests/testthat/test-build-image.R`.
+- `inst/workflows/3c_image_reference_workflow.R` added.
+- `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
+
+**Session 94 (2026-05-28)**
+- `write_reference_fasta()` added to `R/write_fasta.R`. Exports `reference_df` to FASTA +
+  optional companion taxonomy TSV in positional format compatible with
+  `read_reference_fasta(taxonomy_file=)`. `rank_system` auto-detected when NULL. 22 offline tests.
+- `build_site_reference()` added to `R/build_site_reference.R`. High-level DNA-only wrapper:
+  taxa list → NCBI fetch → optional mislabel flagging → barcode coverage audit → FASTA export.
+  Returns `list($reference_df, $errors, $census, $unreferenced)`. `output_dir` writes
+  `reference.fasta` + `reference_taxonomy.tsv`.
+- README: new "Building a Site-Specific Reference Library" section.
+- `devtools::check()`: 0 errors, 0 warnings, 2 notes (pre-existing).

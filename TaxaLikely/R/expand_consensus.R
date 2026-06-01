@@ -4,13 +4,19 @@
 
 #' Expand a consensus taxon assignment to a full prior-based candidate set
 #'
-#' For observations where no match scores are available (e.g., morphology-based
-#' identifications, upranked consensus outputs, or legacy databases), constructs
-#' a degenerate likelihood object with uniform likelihoods (1.0) for all
-#' candidate taxa drawn from a TaxaExpect priors data frame.  The result is
+#' For observations where match scores are unavailable or limited (e.g.,
+#' morphology-based identifications, upranked consensus outputs, single-candidate
+#' classifier outputs such as BirdNET, or legacy databases), constructs a
+#' likelihood object from a TaxaExpect priors data frame.  The result is
 #' structurally identical to the output of [evaluate_likelihoods()] and feeds
-#' directly into `TaxaAssign::compute_posterior()`, where posteriors will be
-#' proportional to priors.
+#' directly into `TaxaAssign::compute_posterior()`.
+#'
+#' When \code{score_col} is \code{NULL} (default), all likelihoods are 1.0
+#' (degenerate/uniform) and posteriors are proportional to priors.  When a
+#' score column is supplied, the consensus species receives
+#' \code{likelihood = score} and all other candidates receive
+#' \code{likelihood = 1 - score}, so the score informs how strongly the
+#' named candidate dominates competing hypotheses before priors are applied.
 #'
 #' @details
 #' Candidate construction differs by the rank of the consensus taxon:
@@ -38,7 +44,9 @@
 #' @param consensus_df Data frame with one row per observation.  Required
 #'   columns: \code{observation_id} (character), \code{taxon_name} (character),
 #'   \code{taxon_name_rank} (character; must be one of \code{"species"},
-#'   \code{"genus"}, or \code{"family"}).
+#'   \code{"genus"}, or \code{"family"}).  If \code{score_col} is supplied, the
+#'   named column must also be present and contain numeric values in \eqn{[0,
+#'   1]}.
 #' @param priors_df Data frame from TaxaExpect containing candidate species.
 #'   Must contain a \code{"species"} column of binomial names plus taxonomy
 #'   columns used for filtering: \code{"genus"} for species- and genus-level
@@ -49,6 +57,12 @@
 #'   "species"} rows to exclude congeners that would have competed via match
 #'   scores.  If \code{NULL} and any species-level rows are present, a warning
 #'   is issued and all congeners in \code{priors_df} are included.
+#' @param score_col Character string naming the column in \code{consensus_df}
+#'   that contains a classifier confidence score (0--1 scale).  When supplied,
+#'   the consensus species receives \code{likelihood = score} and all other
+#'   candidates receive \code{likelihood = 1 - score}.  When \code{NULL}
+#'   (default), all candidates receive \code{likelihood = 1.0} (uniform).
+#'   Appropriate for single-best-candidate classifiers such as BirdNET.
 #' @param max_candidates Positive integer (default \code{50L}).  Maximum number
 #'   of candidates per observation for family-level inputs.  Observations
 #'   exceeding this limit are returned in \code{$unresolved} with a warning.
@@ -60,8 +74,10 @@
 #'       \code{observation_id} x candidate species: \code{observation_id},
 #'       \code{taxon_name}, \code{taxon_name_rank} (\code{"species"}),
 #'       \code{hypothesis_type} (\code{"specific_candidate"}),
-#'       \code{likelihood_point_est} (1.0), \code{likelihood_mean} (1.0),
-#'       \code{likelihood_sd} (0.0).}
+#'       \code{likelihood_point_est} (1.0 when no score; \code{score} for
+#'       consensus species and \code{1 - score} for others when
+#'       \code{score_col} is supplied), \code{likelihood_mean} (same as
+#'       point estimate), \code{likelihood_sd} (0.0).}
 #'     \item{\code{$unresolved}}{Rows from \code{consensus_df} for observations
 #'       where no candidates were found in \code{priors_df}, or where the
 #'       family-level candidate count exceeded \code{max_candidates}.  Empty
@@ -72,7 +88,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Morphology-based IDs with no match scores
+#' # Morphology-based IDs with no match scores (uniform likelihoods)
 #' consensus <- data.frame(
 #'   observation_id  = c("obs1", "obs2", "obs3"),
 #'   taxon_name      = c("Salmo salar", "Salvelinus", "Salmonidae"),
@@ -85,7 +101,26 @@
 #'   referenced_species = reference_df$species
 #' )
 #' head(result$likelihoods)
-#' nrow(result$unresolved)
+#'
+#' # BirdNET top-1 output: single candidate with classifier confidence score.
+#' # Consensus species gets likelihood = score; congeners get 1 - score.
+#' birdnet <- data.frame(
+#'   observation_id  = c("clip_001", "clip_002"),
+#'   taxon_name      = c("Melospiza melodia", "Turdus migratorius"),
+#'   taxon_name_rank = c("species", "species"),
+#'   confidence      = c(0.87, 0.43)
+#' )
+#'
+#' result2 <- expand_consensus_candidates(
+#'   consensus_df       = birdnet,
+#'   priors_df          = my_priors,
+#'   referenced_species = NULL,
+#'   score_col          = "confidence"
+#' )
+#' head(result2$likelihoods)
+#' # observation_id  taxon_name           likelihood_point_est
+#' # clip_001        Melospiza melodia    0.87   <- score
+#' # clip_001        Melospiza lincolnii  0.13   <- 1 - score
 #' }
 #'
 #' @importFrom dplyr bind_rows n_distinct
@@ -93,6 +128,7 @@
 expand_consensus_candidates <- function(consensus_df,
                                         priors_df,
                                         referenced_species = NULL,
+                                        score_col          = NULL,
                                         max_candidates     = 50L) {
 
   # ---- input validation -------------------------------------------------------
@@ -109,6 +145,18 @@ expand_consensus_candidates <- function(consensus_df,
     stop("priors_df must contain a 'species' column", call. = FALSE)
   if (!is.null(referenced_species) && !is.character(referenced_species))
     stop("referenced_species must be a character vector or NULL", call. = FALSE)
+  if (!is.null(score_col)) {
+    if (!is.character(score_col) || length(score_col) != 1L || !nzchar(score_col))
+      stop("score_col must be a single non-empty character string or NULL", call. = FALSE)
+    if (!score_col %in% names(consensus_df))
+      stop(sprintf("score_col '%s' not found in consensus_df", score_col), call. = FALSE)
+    score_vals <- consensus_df[[score_col]]
+    if (!is.numeric(score_vals))
+      stop(sprintf("consensus_df$%s must be numeric", score_col), call. = FALSE)
+    out_of_range <- !is.na(score_vals) & (score_vals < 0 | score_vals > 1)
+    if (any(out_of_range))
+      stop(sprintf("consensus_df$%s contains values outside [0, 1]", score_col), call. = FALSE)
+  }
   if (!is.numeric(max_candidates) || length(max_candidates) != 1L ||
       is.na(max_candidates) || max_candidates < 1L)
     stop("max_candidates must be a single positive integer", call. = FALSE)
@@ -257,14 +305,22 @@ expand_consensus_candidates <- function(consensus_df,
       next
     }
 
-    # ---- build degenerate likelihood rows ------------------------------------
+    # ---- compute likelihoods -------------------------------------------------
+    if (!is.null(score_col) && !is.na(row[[score_col]])) {
+      sv     <- row[[score_col]]
+      likes  <- ifelse(tolower(cand_species) == tolower(tname), sv, 1 - sv)
+    } else {
+      likes  <- rep(1.0, length(cand_species))
+    }
+
+    # ---- build likelihood rows -----------------------------------------------
     results[[i]] <- data.frame(
       observation_id       = oid,
       taxon_name           = cand_species,
       taxon_name_rank      = "species",
       hypothesis_type      = "specific_candidate",
-      likelihood_point_est = 1.0,
-      likelihood_mean      = 1.0,
+      likelihood_point_est = likes,
+      likelihood_mean      = likes,
       likelihood_sd        = 0.0,
       stringsAsFactors     = FALSE
     )

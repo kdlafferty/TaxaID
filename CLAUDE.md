@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-05-28 (Session 95 -- TaxaWizard acoustic/image/local-reference expansion; monorepo cleanup)
+# Last updated: 2026-06-01 (Session 97 -- acoustic/image workflow simplified; expand_consensus_candidates score_col; common_to_scientific in TaxaTools)
 
 ---
 
@@ -50,7 +50,7 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 
 | Package | Purpose | Status |
 |---|---|---|
-| TaxaTools | Name verification, cleaning, parsing, rank lookup, column standardisation; **LLM provider functions** (call_api, call_anthropic_api etc.); **LLM text generation** (draft_methods_text, draft_results_text); **GBIF backbone census** (census_genus_species) | In development |
+| TaxaTools | Name verification, cleaning, parsing, rank lookup, column standardisation; **LLM provider functions** (call_api, call_anthropic_api etc.); **LLM text generation** (draft_methods_text, draft_results_text); **GBIF backbone census** (census_genus_species); **Common name lookup** (common_to_scientific) | In development |
 | TaxaFetch | Occurrence data acquisition (GBIF, DataONE, PDF, literature search), source combination | In development |
 | TaxaHabitat | Habitat assignment via LLM, spatial QAQC; depends on TaxaTools for LLM calls | New (Session 28) |
 | TaxaMatch | Sequence input (DADA2/FASTA), BLAST search, match standardization; BirdNET/image classifier ingestion | In development |
@@ -62,7 +62,7 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 
 **Ecosystem logic (scored pathway):** TaxaTools cleans names → TaxaFetch fetches occurrence data → TaxaHabitat assigns habitats → TaxaMatch standardizes match data → TaxaLikely converts scores to likelihoods → TaxaExpect builds priors → TaxaAssign computes posteriors → TaxaFlag flags anomalous detections. TaxaWizard sits outside the dependency chain (generates scripts that call the other packages).
 
-**Ecosystem logic (no-score pathway):** When match scores are unavailable (morphology IDs, upranked consensus outputs, legacy databases), TaxaMatch and the likelihood model are bypassed. A consensus taxon + TaxaExpect priors feed directly into `TaxaLikely::expand_consensus_candidates()`, which constructs a degenerate likelihood object (uniform likelihoods = 1.0) and expands the candidate set to include unreferenced congeners with priors. Output feeds TaxaAssign normally; posteriors are proportional to priors.
+**Ecosystem logic (no-score pathway):** When match scores are unavailable or a single best candidate is returned, TaxaMatch and the likelihood model are bypassed. Three sub-cases handled by `TaxaLikely::expand_consensus_candidates()`: (1) no score — uniform likelihoods = 1.0, posteriors proportional to priors; (2) single candidate with score (e.g. BirdNET top-1) — `score_col` param sets L(H1)=score, L(others)=1−score; (3) upranked consensus — same as (1). Output feeds TaxaAssign normally.
 
 **Dependency chain:** TaxaTools → TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign → TaxaFlag
 TaxaMatch → TaxaLikely → TaxaAssign → TaxaFlag
@@ -204,3 +204,6 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 87 | Xeno-canto API v2 → v3 | TaxaLikely | Requires `XC_API_KEY` env var; `fetch_reference_recordings()` updated |
 | 88 | `build_reference_matrix()` → `build_sequence_matrix()` | TaxaLikely | File `R/build.R` → `R/build_sequence.R`; 36 files updated |
 | 91 | `read_reference_fasta()` `taxonomy` param → NULL-default | TaxaLikely | Must supply exactly one of `taxonomy` (data frame) or `taxonomy_file` (TSV) |
+| 97 | `build_acoustic_reference()`, `build_image_reference()`, `fetch_reference_recordings()` removed | TaxaLikely | Acoustic/image workflows simplified to post-classifier only; no reference download step |
+| 97 | `expand_consensus_candidates()` gains `score_col` param | TaxaLikely | L(H1)=score, L(others)=1−score when score supplied (BirdNET top-1 use case) |
+| 97 | `common_to_scientific()` added | TaxaTools | LLM-assisted common name → scientific name with optional backbone verification |

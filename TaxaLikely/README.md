@@ -146,6 +146,72 @@ ref <- read_reference_fasta(
 )
 ```
 
+## Reference Databases at a Glance
+
+The table below summarises the databases commonly used with TaxaLikely,
+the data types they cover, and the recommended loading path.
+
+| Database | Focus | Typical size | Loading path | Notes |
+|---|---|---|---|---|
+| **NCBI GenBank** | Universal | API (no local file) | `fetch_reference_sequences()` | Per-taxon API query; best for targeted eDNA marker retrieval |
+| **CRABS output** | eDNA amplicons | Varies | `read_crabs_output()` | CRABS handles bulk QC; TaxaLikely adds mislabel detection |
+| **SILVA SSU** | 16S / 18S / 23S rRNA | ~1.3 GB | `subset_local_database()` | Primary database for microbial amplicon eDNA; ~510 k sequences |
+| **MIDORI2** | COI + nuclear markers | ~4.4 GB (COI) | `subset_local_database()` | Best for metazoan COI and nuclear eDNA markers |
+| **GTDB** | Bacterial / archaeal 16S | ~500 MB (16S subset) | `subset_local_database()` | Phylogenomic taxonomy; differs from NCBI; export via QIIME 2 |
+| **Greengenes2** | 16S rRNA | ~1.2 GB | `subset_local_database()` | 2022 release; GTDB-derived taxonomy; export from QIIME 2 |
+| **RDP** | 16S / 28S rRNA | ~200 MB | `read_reference_fasta()` | Smaller than SILVA; reformat lineage file to 2-col TSV first |
+
+SILVA, MIDORI2, GTDB, and Greengenes2 are distributed as bulk downloads
+(multi-gigabyte FASTA + taxonomy files). `subset_local_database()` streams
+these files rather than loading them into memory, so filtering to the genera
+or families relevant to your site is fast regardless of total database size.
+CRABS can also download from SILVA and BOLD directly and produce its own
+internal format, which `read_crabs_output()` handles. For NCBI, use
+`fetch_reference_sequences()` or `build_site_reference()` to fetch only the
+taxa you need.
+
+## Subsetting a Large Local Database
+
+`subset_local_database()` filters any large FASTA + taxonomy file to a
+user-supplied taxon list.  The taxonomy file is parsed first to identify
+matching sequence IDs; the FASTA is then streamed, so peak memory scales
+with the number of matching sequences rather than the total database size.
+
+``` r
+library(TaxaLikely)
+
+# --- SILVA SSU example: filter to two fish families --------------------------
+ref <- subset_local_database(
+  fasta_path    = "SILVA_138.1_SSURef_NR99.fasta.gz",
+  taxa          = c("Fundulidae", "Gobiidae"),
+  rank          = "family",
+  rank_system   = c("family", "genus", "species"),
+  taxonomy_file = "silva_taxonomy.tsv"
+)
+
+# --- MIDORI2 COI example: filter to a genus; discard sequences > 700 bp -----
+ref <- subset_local_database(
+  fasta_path      = "MIDORI2_UNIQ_NUC_GB260_COI_QIIME.fasta",
+  taxa            = "Thunnus",
+  rank            = "genus",
+  rank_system     = c("family", "genus", "species"),
+  taxonomy_file   = "MIDORI2_UNIQ_NUC_GB260_COI_QIIME_taxon.tsv",
+  max_n_bases     = 700L,
+  require_species = TRUE
+)
+
+# Both return a reference_df — continue with the standard workflow:
+ref_matrix <- build_sequence_matrix(ref)
+errors     <- flag_reference_errors(ref_matrix)
+model      <- train_likelihood_model(ref_matrix)
+```
+
+`subset_local_database()` accepts plain-text and `.gz`-compressed FASTA
+files.  Taxonomy strings in SILVA, MIDORI2, GTDB, and Greengenes2 prefix
+(`d__`, `p__`, ...) or positional (no-prefix semicolon) formats are both
+auto-detected.  For GTDB or Greengenes2 sources, export the FASTA + taxonomy
+TSV from QIIME 2 with `qiime tools export` before calling the function.
+
 ## Building a Site-Specific Reference Library
 
 `build_site_reference()` is a one-call wrapper for building a curated local
@@ -195,27 +261,24 @@ write_reference_fasta(
 
 ## Key Functions
 
-**Reference acquisition and export:** - `build_site_reference()` --
+**Reference acquisition and export (DNA):** - `build_site_reference()` --
 one-call site-specific reference builder: taxa list → NCBI fetch →
-coverage audit → FASTA export - `write_reference_fasta()` -- export
+coverage audit → FASTA export - `subset_local_database()` -- stream
+a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB, Greengenes2)
+and extract sequences for a user-supplied taxon list; memory scales with
+matches, not database size - `write_reference_fasta()` -- export
 any `reference_df` to FASTA + optional taxonomy TSV (round-trippable
 with `read_reference_fasta()`) - `read_crabs_output()` -- load a CRABS
 internal-format database (taxonomy embedded; no separate file needed) -
 `fetch_reference_sequences()` -- download
 from NCBI by taxon + barcode marker - `read_reference_fasta()` -- load
 local FASTA + data-frame taxonomy (or `taxonomy_file` TSV for
-QIIME2/RESCRIPt/MIDORI2) - `fetch_reference_recordings()` -- fetch
-bird sound recordings from Xeno-canto API v3 for acoustic model
-training; returns metadata table with `file_url` for audio download
-(requires free API key from `xeno-canto.org/account`, stored as
-`XC_API_KEY` in `~/.Renviron`)
+QIIME2/RESCRIPt/MIDORI2)
 
-**Model training:** - `build_sequence_matrix()` -- pairwise distance
-matrix via DECIPHER (DNA sequences) - `build_acoustic_reference()` --
-join BirdNET detections to Xeno-canto ground truth, label H1/H2/H3,
-produce pair format for `train_likelihood_model()` (acoustic) -
-`flag_reference_errors()` -- detect mislabeled references -
-`train_likelihood_model()` -- fit hierarchical Bayesian model
+**Model training (DNA):** - `build_sequence_matrix()` -- pairwise distance
+matrix via DECIPHER; required for `flag_reference_errors()` and
+`train_likelihood_model()` - `flag_reference_errors()` -- detect mislabeled
+references - `train_likelihood_model()` -- fit hierarchical Bayesian model
 
 **Inference:** - `evaluate_likelihoods()` -- convert match scores to
 likelihoods - `filter_top_hypotheses()` -- keep finest-rank candidates
@@ -381,143 +444,95 @@ engineering, hypothesis definitions, parameter estimation, and
 reference quality control, see
 [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md).
 
-## Acoustic Workflow
+## Acoustic and Image Workflows
 
-For bird acoustic data, TaxaLikely integrates with BirdNET-Analyzer
-via `TaxaMatch::read_birdnet_output()`. The reference training workflow
-uses Xeno-canto recordings as ground-truth labels:
+For acoustic (BirdNET) and image (SpeciesNet, Animl, iNaturalist CV)
+data, TaxaLikely works as a **post-classifier** layer. Users bring
+classifier output files that already contain candidates and confidence
+scores — TaxaLikely converts those scores to likelihoods and expands
+the candidate set using TaxaExpect priors.
 
-``` r
-library(TaxaLikely)
-library(TaxaMatch)
+There are two entry points depending on how many candidates the
+classifier provides per observation:
 
-# 1. Fetch reference recordings from Xeno-canto (requires XC_API_KEY)
-recs <- fetch_reference_recordings(
-  species         = c("Turdus migratorius", "Setophaga petechia"),
-  quality         = c("A", "B"),
-  max_per_species = 30L,
-  download        = TRUE,
-  download_dir    = "reference_audio/"
-)
+### Multiple candidates per observation (e.g., SpeciesNet top-k)
 
-# 2. Run BirdNET-Analyzer on reference_audio/ (Python, outside R):
-#    pip3 install birdnetlib
-#    See TaxaMatch README for the analysis script.
-
-# 3. Read BirdNET detections
-birdnet_df <- read_birdnet_output("birdnet_results/", min_confidence = 0.1)
-
-# 4. Join back to Xeno-canto ground truth via source_file → local_path
-#    to label H1 (BirdNET detected correct species), H2 (wrong species,
-#    same genus), H3 (wrong genus), then train the likelihood model:
-# train_likelihood_model(labeled_df, rank_system = c("genus", "species"))
-```
-
-## Image Workflow
-
-For camera trap and other image data, TaxaLikely integrates with
-image classifiers via `TaxaMatch::read_animl_output()`. The workflow
-is structurally identical to the acoustic workflow: run an external
-classifier, read the output into the match format, optionally train a
-likelihood model on a labeled reference set, then evaluate likelihoods.
+When the classifier returns ranked candidate lists (top-k species
+with scores), the match data maps directly to the scored pathway.
+Use `evaluate_likelihoods()` exactly as in the DNA workflow:
 
 ``` r
 library(TaxaLikely)
 library(TaxaMatch)
 
-# 1. Read Animl / SpeciesNet results (from camera trap images)
-match_df <- read_animl_output(
-  "animl_results/",
-  min_confidence = 0.3
-) |>
+# Read SpeciesNet / Animl top-k output → canonical match object
+# (scientific names required; use TaxaTools::common_to_scientific()
+#  if your classifier outputs common names)
+match_df <- read_animl_output("animl_results/", min_confidence = 0.3) |>
   subset(!species %in% c("empty", "human", "vehicle"))
 
-# 2. Standardize to canonical match object
-match_df <- standardize_match_data(match_df)
-
-# 3. If you have a trained image likelihood model, evaluate directly
-result <- evaluate_likelihoods(match_df, image_model)
-likelihoods <- result$likelihoods
-
-# 4. Check coverage: which plausible species are absent from the
-#    classifier's known species list?
+# Check coverage: which plausible species are absent from classifier's
+# known species list?
 census <- audit_acoustic_coverage(
   plausible_species = c("Ursus americanus", "Puma concolor", "Cervus canadensis"),
-  reference_species = speciesnet_species_list  # vector of known species names
+  reference_species = speciesnet_species_list
 )
 census$unreferenced  # species the classifier has never seen
+
+# Evaluate likelihoods (requires a trained model or use no-score pathway)
+result     <- evaluate_likelihoods(match_df, image_model)
+likelihoods <- result$likelihoods
 ```
 
-### Reference training for images
+### Single best candidate with a score (e.g., BirdNET top-1)
 
-A calibrated image likelihood model requires a labeled reference set:
-images with known ground-truth species identity, run through the same
-classifier. `build_image_reference()` joins classifier detections to a
-user-supplied ground-truth table and produces the pairwise format
-that `train_likelihood_model()` expects — exactly as
-`build_acoustic_reference()` does for BirdNET + Xeno-canto.
+BirdNET's default output provides one candidate per time segment plus
+a confidence score. Use `expand_consensus_candidates()` with
+`score_col`: the consensus species receives `likelihood = score` and
+unreferenced congeners receive `likelihood = 1 − score`. Posteriors
+are then proportional to priors, modulated by the classifier's
+confidence.
 
 ``` r
-# Ground-truth reference image labels
-images_meta <- data.frame(
-  image_path = c("ref/img_deer_001.jpg", "ref/img_rabbit_001.jpg"),
-  species    = c("Odocoileus virginianus", "Sylvilagus floridanus"),
-  genus      = c("Odocoileus", "Sylvilagus"),
-  testid     = "camera_trap"
+library(TaxaLikely)
+
+# BirdNET output standardized to consensus format
+# (taxon_name must be scientific name; use TaxaTools::common_to_scientific()
+#  if needed)
+birdnet_df <- data.frame(
+  observation_id  = c("clip_001", "clip_002"),
+  taxon_name      = c("Melospiza melodia", "Turdus migratorius"),
+  taxon_name_rank = c("species", "species"),
+  confidence      = c(0.87, 0.43)
 )
 
-# Run Animl/SpeciesNet on ref/ (or use any classifier reader)
-animl_df <- read_animl_output(
-  "animl_ref_results.csv",
-  top_n     = 3L,
-  bbox_cols = c(w = "bbox_w", h = "bbox_h")
-) |> subset(!species %in% c("empty", "human", "vehicle"))
-
-# Build pairwise training dataset
-ref_pairs <- build_image_reference(
-  image_df    = animl_df,
-  images_meta = images_meta,
-  rank_system = c("genus", "species")
+result <- expand_consensus_candidates(
+  consensus_df       = birdnet_df,
+  priors_df          = my_priors,          # from TaxaExpect
+  referenced_species = NULL,               # BirdNET has no external reference db
+  score_col          = "confidence"        # L(H1) = score; L(others) = 1 - score
 )
 
-# Train model (one per testid/image-type)
-model <- train_likelihood_model(
-  subset(ref_pairs, testid == "camera_trap"),
-  rank_system = c("genus", "species")
-)
+# Output is structurally identical to evaluate_likelihoods()
+# Feed directly to TaxaAssign:
+posteriors <- TaxaAssign::compute_posterior(result$likelihoods, priors_df = my_priors)
 ```
 
-See `inst/workflows/3c_image_reference_workflow.R` for the complete
-step-by-step workflow including validation plots.
+### Common names in classifier output
 
-### Coverage for images
+If your classifier outputs common names rather than scientific names,
+convert them first with `TaxaTools::common_to_scientific()`:
 
-`read_animl_output()` can attach a `coverage` column derived from
-the bounding box area (`bbox_w × bbox_h`, normalised 0--1). A small
-bounding box indicates a partially visible or distant animal — lower
-information per detection, directly analogous to DNA alignment
-coverage and Xeno-canto recording quality grade. All three data types
-therefore share the same [0, 1] coverage scale and can use
-`calibrate_coverage_filter()` and `coverage_threshold()` identically:
+``` r
+library(TaxaTools)
 
-| Data type | Coverage source | Scale |
-|---|---|---|
-| DNA sequences | Alignment non-gap fraction | 0--1 continuous |
-| Acoustic (BirdNET) | Xeno-canto quality grade (A--E) | 0.1, 0.3, 0.5, 0.8, 1.0 |
-| Images (Animl) | Bounding box area (width × height) | 0--1 continuous |
-
-### `flag_reference_errors()` for images
-
-The applicability of `flag_reference_errors()` to image reference
-data is unknown. Camera trap ground-truth labeling has different
-error modes from DNA (occlusion, motion blur, multiple animals in
-frame, handler setup) rather than GenBank sequencing/annotation
-errors. The mislabel detector (based on within-species vs.
-between-species score distributions) should still be informative in
-principle — a consistently low-scoring "within-species" pair is
-suspect regardless of data type — but systematic evaluation on image
-data has not yet been performed. Guidance will be added once image
-reference training workflows mature.
+sci <- common_to_scientific(
+  common_names = c("White-tailed Deer", "Raccoon", "Wild Turkey"),
+  taxon_group  = "mammals and birds",
+  location     = "Eastern USA"
+)
+sci[, c("common_name", "scientific_name_verified", "verified")]
+```
 
 ## No-Score Pathway
 
@@ -527,11 +542,13 @@ source that yields a taxon name but no similarity score —
 `expand_consensus_candidates()` provides an alternative entry point
 that bypasses `TaxaMatch` and `evaluate_likelihoods()` entirely.
 
-The function builds a **degenerate likelihood object** (all likelihoods
-= 1.0) and expands the candidate set based on the rank of the input
-consensus. With uniform likelihoods, posteriors computed by
-`TaxaAssign::compute_posterior()` are proportional to TaxaExpect
-priors — the priors do all the work.
+The function builds a likelihood object and expands the candidate set
+based on the rank of the input consensus. With no score supplied
+(default), all likelihoods are 1.0 (uniform) and posteriors are
+proportional to TaxaExpect priors. When a `score_col` is supplied
+(single-candidate classifiers such as BirdNET), the consensus species
+receives `likelihood = score` and competing hypotheses receive
+`likelihood = 1 − score`.
 
 ### What it does by rank
 
@@ -623,10 +640,6 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   DECIPHER and Biostrings (Bioconductor; required for
     `build_sequence_matrix()` only)
 -   rentrez and xml2 (for NCBI reference fetching and coverage auditing)
--   httr2 (for `fetch_reference_recordings()`; Xeno-canto API v3)
--   Xeno-canto API key for `fetch_reference_recordings()` (free
-    registration at `xeno-canto.org/account`; set `XC_API_KEY` in
-    `~/.Renviron`)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.

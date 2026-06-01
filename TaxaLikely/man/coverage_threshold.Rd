@@ -7,8 +7,8 @@
 coverage_threshold(ref_pairs, keep_frac = 0.95)
 }
 \arguments{
-\item{ref_pairs}{Data frame.  Output of \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} or
-\code{\link[=build_acoustic_reference]{build_acoustic_reference()}}.  Must contain a \code{coverage} column.}
+\item{ref_pairs}{Data frame.  Output of \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.  Must
+contain a \code{coverage} column.}
 
 \item{keep_frac}{Numeric scalar in (0, 1).  Target fraction of pairs to
 retain (default \code{0.95}).  The threshold is set at the
@@ -72,6 +72,5 @@ thresh <- coverage_threshold(ref_acoustic, keep_frac = 0.80)
 
 }
 \seealso{
-\code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}}, \code{\link[=build_sequence_matrix]{build_sequence_matrix()}},
-\code{\link[=build_acoustic_reference]{build_acoustic_reference()}}
+\code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}}, \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}
 }

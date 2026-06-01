@@ -74,6 +74,5 @@ result$unreferenced  # c("Limosa fedoa", "Selasphorus calliope")
 
 }
 \seealso{
-\code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}, \code{\link[=apply_coverage_constraints]{apply_coverage_constraints()}},
-\code{\link[=fetch_reference_recordings]{fetch_reference_recordings()}}
+\code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}, \code{\link[=apply_coverage_constraints]{apply_coverage_constraints()}}
 }

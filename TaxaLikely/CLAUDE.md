@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-31 (Session 95 -- expand_consensus_candidates)
+# Last updated: 2026-06-01 (Session 97 -- acoustic/image workflow simplification; expand_consensus_candidates score_col; remove build_acoustic_reference, build_image_reference, fetch_reference_recordings)
 
 ---
 
@@ -87,15 +87,13 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `fetch_reference_sequences()` | `R/fetch.R` | Written | Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tempdir()`). Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. |
 | `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
 | `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + taxonomy → `reference_df`. For CRUX, GenBank dumps, custom databases. `taxonomy` param accepts a data frame; new `taxonomy_file` param accepts a 2-column TSV (QIIME2/RESCRIPt/SILVA/MIDORI2 prefix-style `k__Kingdom;...` or positional `Kingdom;...`). Exactly one of `taxonomy` or `taxonomy_file` must be supplied (previously `taxonomy` was required). Internals: `.parse_taxonomy_tsv()`, `.parse_tax_string()`. |
-| `fetch_reference_recordings()` | `R/fetch_recordings.R` | Written | Fetch bird sound recordings from Xeno-canto API v3. Returns metadata table for acoustic reference training. `api_key` required (read from `XC_API_KEY` env var). `quality` A-E filter; `max_per_species` cap; optional `download = TRUE`. Internals: `.xc_query_all()`, `.xc_standardize_cols()`, `.parse_xc_duration()`. |
+| `subset_local_database()` | `R/subset_db.R` | Written | Filter a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB, Greengenes2, RDP) to a user-supplied taxon list. Parses taxonomy first → O(1) ID lookup via environment hash → streams FASTA in chunks; peak memory scales with matching sequences, not total database size. Supports `.gz`-compressed FASTA. Optional `max_n_bases` and `require_species` filters. Returns `reference_df`. Reuses `.parse_taxonomy_tsv()` internal. |
 
 ### Training (fit model on reference database)
 
 | Function | File | Status | Description |
 |---|---|---|---|
 | `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output now includes `coverage` column (positions where both sequences are non-gap / shorter unaligned length). Renamed from `build_reference_matrix()` Session 88. |
-| `build_acoustic_reference()` | `R/build_acoustic.R` | Written | Acoustic analog of `build_sequence_matrix()`. Joins BirdNET detections to Xeno-canto ground truth; labels H1/H2/H3; maps `type` → `testid`. Output now includes `coverage` column (Xeno-canto quality grade mapped A→1.0, B→0.8, C→0.5, D→0.3, E→0.1). Returns same `.x`/`.y` pair format. Train one model per `testid` type (song, call) as eDNA trains per marker. |
-| `build_image_reference()` | `R/build_image.R` | Written | Image analog of `build_acoustic_reference()`. Joins any image classifier output (Animl, iNaturalist CV, SpeciesNet) to user-supplied ground-truth image labels; labels H1/H2/H3; `testid` from `images_meta$testid`. `coverage` sourced from `image_df$coverage` (bbox area) or `images_meta$quality`. Join key: `observation_id` (image file stem) matches `file_path_sans_ext(basename(image_path))`. Train one model per testid (image type / classifier). |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
 | `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations |
 
@@ -120,14 +118,14 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `calibrate_coverage_filter()` | `R/calibrate.R` | Written | Sweep a grid of coverage thresholds over `build_sequence_matrix()` or `build_acoustic_reference()` output; return per-threshold breadth + H1/H2 discrimination metrics. Key columns: `breadth`, `h1_retention`, `h2_retention`, `youden_j` (primary — maximised at Pareto-optimal threshold), `discrimination` (ratio form), `mean_h1_score`. Detects categorical coverage (≤10 unique values, e.g. acoustic grades) and messages that J will be near-flat. Auto-detects finest rank from `.x`/`.y` column pairs via `.detect_finest_rank_col()`. |
+| `calibrate_coverage_filter()` | `R/calibrate.R` | Written | Sweep a grid of coverage thresholds over `build_sequence_matrix()` output; return per-threshold breadth + H1/H2 discrimination metrics. Key columns: `breadth`, `h1_retention`, `h2_retention`, `youden_j` (primary — maximised at Pareto-optimal threshold), `discrimination` (ratio form), `mean_h1_score`. Detects categorical coverage (≤10 unique values) and messages that J will be near-flat. Auto-detects finest rank from `.x`/`.y` column pairs via `.detect_finest_rank_col()`. |
 | `coverage_threshold()` | `R/calibrate.R` | Written | Quantile-based shortcut: returns the coverage value at the `(1 − keep_frac)` quantile so that `keep_frac` of pairs are retained (default 0.95). For categorical coverage, snaps to the nearest unique value with a message showing the achieved retention fraction. |
 
 ### No-score (prior-only) pathway
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `expand_consensus_candidates()` | `R/expand_consensus.R` | Written | For observations with no match scores (morphology IDs, upranked consensus), builds a degenerate likelihood object (all likelihoods = 1.0) from a TaxaExpect priors df. Candidate construction by rank: species → consensus + unreferenced congeners (priors without reference seqs); genus/family → all species with priors in the group. Returns `list($likelihoods, $unresolved)` identical in structure to `evaluate_likelihoods()` output. Skip `filter_top_hypotheses()` and `apply_coverage_constraints()` in this pathway; posteriors from `compute_posterior()` will be proportional to priors. |
+| `expand_consensus_candidates()` | `R/expand_consensus.R` | Written | Handles observations with a single candidate (with or without a score). No-score pathway: all likelihoods = 1.0; posteriors proportional to priors. With `score_col`: consensus species gets `likelihood = score`, competing hypotheses get `likelihood = 1 - score`. Candidate construction by rank: species → consensus + unreferenced congeners; genus/family → all species with priors in the group. Returns `list($likelihoods, $unresolved)` identical in structure to `evaluate_likelihoods()`. Covers three use cases: morphology IDs (no score), upranked consensus (no score), BirdNET top-1 (score). |
 
 ### Match object cleaning and export
 
@@ -178,15 +176,13 @@ monolithic `inst/TaxaLikely_workflow.R` (retained for reference but superseded).
 | 1 | `1_fetch_references_workflow.R` | Build `reference_df` from NCBI or local FASTA | `fetch_reference_sequences()`, `read_reference_fasta()` |
 | 2 | `2_flag_errors_workflow.R` | Find mislabeled references; explore/tabulate/report | `build_sequence_matrix()` → `flag_reference_errors()` |
 | 3 | `3_train_model_workflow.R` | Train likelihood model from DNA reference matrix | `build_sequence_matrix()` → `train_likelihood_model()` → `interpret_model()` |
-| 3b | `3b_acoustic_reference_workflow.R` | **Acoustic:** Xeno-canto → BirdNET → train one model per recording type | `fetch_reference_recordings()` → BirdNET (Python) → `read_birdnet_output()` → `build_acoustic_reference()` → `train_likelihood_model()` |
-| 3c | `3c_image_reference_workflow.R` | **Image:** labeled reference images → Animl/SpeciesNet → train one model per image type | user-supplied `images_meta` → classifier (R/Python) → `read_animl_output()` → `build_image_reference()` → `train_likelihood_model()` |
 | 4 | `4_score_to_likelihood_workflow.R` | Convert match scores to likelihoods for TaxaAssign | `evaluate_likelihoods()` → `filter_top_hypotheses()` |
 | 5 | `5_audit_coverage_workflow.R` | Audit reference completeness; constrain likelihoods | `audit_barcode_coverage()` / `audit_reference_coverage()` → `apply_coverage_constraints()` |
 
 Workflows 2 and 3 share `build_sequence_matrix()` — build once, reuse.
-Workflow 3b is the acoustic analog: Xeno-canto recordings replace NCBI sequences;
-`build_acoustic_reference()` replaces `build_sequence_matrix()`. Train one model
-per recording type (song, call) exactly as DNA trains one model per barcode marker.
+Acoustic and image data use `expand_consensus_candidates()` (with optional `score_col`)
+rather than a training workflow — classifiers are pre-trained; TaxaLikely acts as a
+post-classifier calibration layer.
 Workflow 4 includes a one-liner to remove flagged errors from the match object
 before evaluating likelihoods (no dedicated function needed).
 

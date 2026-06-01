@@ -11,10 +11,9 @@ calibrate_coverage_filter(
 )
 }
 \arguments{
-\item{ref_pairs}{Data frame.  Output of \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} or
-\code{\link[=build_acoustic_reference]{build_acoustic_reference()}}.  Must contain columns \code{coverage}, \code{p_match},
-\code{id_x}, and paired \verb{\{rank\}.x} / \verb{\{rank\}.y} columns for H1/H2
-classification.}
+\item{ref_pairs}{Data frame.  Output of \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.  Must
+contain columns \code{coverage}, \code{p_match}, \code{id_x}, and paired \verb{\{rank\}.x} /
+\verb{\{rank\}.y} columns for H1/H2 classification.}
 
 \item{rank_system}{Character vector of rank names coarse-to-fine
 (e.g., \code{c("genus", "species")}), used to identify the finest rank column
@@ -46,7 +45,7 @@ no H1 pairs survive or H1/H2 classification is unavailable.}
 }
 \description{
 Sweeps a grid of coverage thresholds over the pairwise reference dataset
-produced by \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} or \code{\link[=build_acoustic_reference]{build_acoustic_reference()}} and
+produced by \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} and
 returns per-threshold metrics quantifying the trade-off between retaining
 query breadth and discriminating H1 (within-species) pairs from H2/H3
 (cross-species) noise.
@@ -62,8 +61,7 @@ BirdNET confidence from a rain-soaked recording of a distant bird carries
 less information than the same score from a quiet, close-range recording.
 
 The \code{coverage} column added by \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} (pairwise alignment
-overlap fraction) and \code{\link[=build_acoustic_reference]{build_acoustic_reference()}} (Xeno-canto quality grade
-mapped to 0–1) places both data types on a common scale.  Removing low-coverage
+overlap fraction, 0--1) places sequences on a common scale.  Removing low-coverage
 pairs before model training filters out low-information observations that can
 blur the H1/H2 boundary and inflate model variance.
 
@@ -136,6 +134,6 @@ model <- train_likelihood_model(ref_filtered)
 
 }
 \seealso{
-\code{\link[=build_sequence_matrix]{build_sequence_matrix()}}, \code{\link[=build_acoustic_reference]{build_acoustic_reference()}},
+\code{\link[=build_sequence_matrix]{build_sequence_matrix()}},
 \code{\link[=coverage_threshold]{coverage_threshold()}}, \code{\link[=train_likelihood_model]{train_likelihood_model()}}, \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}
 }
