@@ -60,10 +60,13 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 | TaxaFlag | Flag anomalous detections: contamination (lab/field blanks), allochthonous transport, taxonomic scope, handler artifacts | New (Session 60) |
 | TaxaWizard | Conversational workflow designer: LLM-powered interview → .R script, .md methods, or Shiny app | New (Session 68) |
 
-**Ecosystem logic:** TaxaTools cleans names → TaxaFetch fetches occurrence data → TaxaHabitat assigns habitats → TaxaMatch standardizes match data → TaxaLikely converts scores to likelihoods → TaxaExpect builds priors → TaxaAssign computes posteriors → TaxaFlag flags anomalous detections. TaxaWizard sits outside the dependency chain (generates scripts that call the other packages).
+**Ecosystem logic (scored pathway):** TaxaTools cleans names → TaxaFetch fetches occurrence data → TaxaHabitat assigns habitats → TaxaMatch standardizes match data → TaxaLikely converts scores to likelihoods → TaxaExpect builds priors → TaxaAssign computes posteriors → TaxaFlag flags anomalous detections. TaxaWizard sits outside the dependency chain (generates scripts that call the other packages).
+
+**Ecosystem logic (no-score pathway):** When match scores are unavailable (morphology IDs, upranked consensus outputs, legacy databases), TaxaMatch and the likelihood model are bypassed. A consensus taxon + TaxaExpect priors feed directly into `TaxaLikely::expand_consensus_candidates()`, which constructs a degenerate likelihood object (uniform likelihoods = 1.0) and expands the candidate set to include unreferenced congeners with priors. Output feeds TaxaAssign normally; posteriors are proportional to priors.
 
 **Dependency chain:** TaxaTools → TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign → TaxaFlag
 TaxaMatch → TaxaLikely → TaxaAssign → TaxaFlag
+consensus df + TaxaExpect priors → TaxaLikely (expand_consensus_candidates) → TaxaAssign → TaxaFlag
 TaxaWizard: no TaxaID dependencies (uses metadata JSON files as interface)
 
 **Package split notes:**

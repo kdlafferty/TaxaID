@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-28 (Session 94 -- write_reference_fasta, build_site_reference)
+# Last updated: 2026-05-31 (Session 95 -- expand_consensus_candidates)
 
 ---
 
@@ -122,6 +122,12 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 |---|---|---|---|
 | `calibrate_coverage_filter()` | `R/calibrate.R` | Written | Sweep a grid of coverage thresholds over `build_sequence_matrix()` or `build_acoustic_reference()` output; return per-threshold breadth + H1/H2 discrimination metrics. Key columns: `breadth`, `h1_retention`, `h2_retention`, `youden_j` (primary — maximised at Pareto-optimal threshold), `discrimination` (ratio form), `mean_h1_score`. Detects categorical coverage (≤10 unique values, e.g. acoustic grades) and messages that J will be near-flat. Auto-detects finest rank from `.x`/`.y` column pairs via `.detect_finest_rank_col()`. |
 | `coverage_threshold()` | `R/calibrate.R` | Written | Quantile-based shortcut: returns the coverage value at the `(1 − keep_frac)` quantile so that `keep_frac` of pairs are retained (default 0.95). For categorical coverage, snaps to the nearest unique value with a message showing the achieved retention fraction. |
+
+### No-score (prior-only) pathway
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `expand_consensus_candidates()` | `R/expand_consensus.R` | Written | For observations with no match scores (morphology IDs, upranked consensus), builds a degenerate likelihood object (all likelihoods = 1.0) from a TaxaExpect priors df. Candidate construction by rank: species → consensus + unreferenced congeners (priors without reference seqs); genus/family → all species with priors in the group. Returns `list($likelihoods, $unresolved)` identical in structure to `evaluate_likelihoods()` output. Skip `filter_top_hypotheses()` and `apply_coverage_constraints()` in this pathway; posteriors from `compute_posterior()` will be proportional to priors. |
 
 ### Match object cleaning and export
 
@@ -300,79 +306,4 @@ non-zero likelihoods that bypass the constraint. Correct order:
 
 ## Session Notes
 
-Sessions 30–88 archived in `ecosystem_docs/session_notes/TaxaLikely_sessions.md`.
-
-**Session 90 (2026-05-27)**
-- `coverage` column added to `build_sequence_matrix()` output. Computed as the number of
-  MSA positions where both sequences are non-gap, divided by the shorter unaligned sequence
-  length. Pre-computes per-sequence gap masks once (O(n × alignment_width)) before looping
-  over sparse pairs. Documented in `@return`.
-- `coverage` column added to `build_acoustic_reference()` output. Derived from
-  `recordings_meta$quality`: A→1.0, B→0.8, C→0.5, D→0.3, E→0.1. Placed on the same [0,1]
-  scale as DNA alignment coverage for common downstream handling. `has_quality` guard added
-  so the function still works when the quality column is absent (coverage = NA).
-- `calibrate_coverage_filter()` added to `R/calibrate.R`. Sweeps `thresholds` (default
-  `seq(0, 0.99, by = 0.05)`) and returns a 10-column data frame: `threshold`, `n_queries`,
-  `breadth`, `h1_pairs`, `h2_pairs`, `h1_retention`, `h2_retention`, `youden_j`,
-  `discrimination`, `mean_h1_score`. H1/H2 classification auto-detected via finest rank
-  in `.x`/`.y` column pairs. Categorical coverage detection (≤10 unique values) triggers
-  an informational message that J/discrimination will be near-flat for acoustic data.
-- `coverage_threshold()` added to `R/calibrate.R`. `keep_frac = 0.95` → threshold at
-  `quantile(coverage, 0.05)`. Categorical snapping: nearest unique value with a message
-  reporting the achieved vs requested retention fraction.
-- `.detect_finest_rank_col()` internal helper added to `R/calibrate.R`.
-- README: new "Reference Coverage Quality Filtering" section with motivation, data-type
-  comparison, metric table (Youden's J explanation + acoustic caveat), and code examples
-  for both `calibrate_coverage_filter()` and `coverage_threshold()`.
-- `devtools::check(vignettes = FALSE)`: 0 errors, 0 warnings, 1 note (pre-existing stale top-level files).
-
-**Session 91 (2026-05-27)**
-- `read_crabs_output()` added to new `R/read_crabs.R` — reads CRABS internal-format database
-  (headerless 11-column tab-delimited TSV) directly into `reference_df`. Params:
-  - `rank_system`: NULL auto-detects by checking which of the 7 CRABS taxonomy columns have
-    ≥1 non-NA value; otherwise takes a user-supplied coarse-to-fine vector.
-  - `max_n_bases`: drop sequences longer than N bases (chimera / assembly-error filter).
-  - `require_species`: default TRUE; uses `TaxaTools::is_valid_species_name()` to reject
-    `sp.`, `cf.`, `aff.`, `uncultured` names.
-  - `dereplicate`: collapse exact-duplicate sequences within the same species (first accession
-    retained). Complementary to CRABS built-in dereplication (which works on primer-trimmed seqs).
-  - Literal "NA" strings in taxonomy columns are converted to `NA` (CRABS convention for missing ranks).
-  - Accession version suffix (`.1`, `.2`) stripped to match FASTA convention.
-  - 16 offline tests in `tests/testthat/test-read-crabs.R`.
-- `read_reference_fasta()` in `R/fetch.R` — `taxonomy_file` parameter added (Tier 2):
-  - Accepts a 2-column tab-delimited TSV in QIIME2/RESCRIPt/SILVA prefix-style or positional format.
-  - Header rows beginning with "Feature", "feature", or "#" are skipped automatically.
-  - `taxonomy` param changed from required to `NULL`-default; exactly one of `taxonomy` or
-    `taxonomy_file` must be supplied (error if both or neither).
-  - Internal helpers: `.parse_taxonomy_tsv()`, `.parse_tax_string()`, `.crabs_std_hierarchy`.
-  - 7 tests for taxonomy_file path in `tests/testthat/test-read-crabs.R`.
-- README: new "Loading Pre-built Reference Databases" section.
-- `devtools::check()`: run after implementation (target: 0 errors, 0 warnings).
-
-**Session 93 (2026-05-27)**
-- `build_image_reference()` added to new `R/build_image.R` — image analog of `build_acoustic_reference()`.
-  - Joins any image classifier output to user-supplied ground-truth `images_meta` data frame.
-  - `images_meta` requires: `image_path` (file stem used as join key), plus rank columns from `rank_system`.
-  - `coverage`: sourced from `image_df$coverage` (bbox area) if present; falls back to
-    `images_meta$quality` (per-image numeric 0--1); else NA.
-  - `testid`: from `images_meta$testid` (classifier name, camera model, etc.); NA if absent.
-  - 27 offline tests in `tests/testthat/test-build-image.R`.
-- `inst/workflows/3c_image_reference_workflow.R` added — 9-step image reference training workflow.
-- `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
-
-**Session 94 (2026-05-28)**
-- `write_reference_fasta()` added to `R/write_fasta.R`. Exports `reference_df` to FASTA with
-  header `>{composite_id} {rank vals}` (NA ranks omitted) + optional companion taxonomy TSV in
-  positional format compatible with `read_reference_fasta(taxonomy_file=)`. `rank_system` auto-detected
-  from all non-id columns when NULL. 22 offline tests.
-- `build_site_reference()` added to `R/build_site_reference.R`. High-level DNA-only wrapper:
-  taxa list → NCBI fetch → optional mislabel flagging → barcode coverage audit → FASTA export.
-  Parameters: `taxa`, `barcode_term`, `rank_system`, `output_dir`, `flag_errors` (default FALSE;
-  requires DECIPHER), `audit_coverage` (default TRUE), `max_sequences` (5000), `max_per_species`
-  (5), `species_list`, `max_date`, `ncbi_api_key`, `cache_dir`. Returns
-  `list($reference_df, $errors, $census, $unreferenced)`. `output_dir` writes
-  `reference.fasta` + `reference_taxonomy.tsv`.
-- README: new "Building a Site-Specific Reference Library" section.
-- `devtools::check()`: 0 errors, 0 warnings, 2 notes (pre-existing).
-
----
+Sessions 30–94 archived in `ecosystem_docs/session_notes/TaxaLikely_sessions.md`.

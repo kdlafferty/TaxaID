@@ -219,7 +219,9 @@ produce pair format for `train_likelihood_model()` (acoustic) -
 
 **Inference:** - `evaluate_likelihoods()` -- convert match scores to
 likelihoods - `filter_top_hypotheses()` -- keep finest-rank candidates
-per query
+per query - `expand_consensus_candidates()` -- no-score pathway: build
+degenerate likelihood object from a consensus taxon + TaxaExpect priors
+(bypasses match scoring entirely)
 
 **Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
 species (no barcode sequence; eDNA/DNA only) - `audit_acoustic_coverage()` --
@@ -516,6 +518,82 @@ principle — a consistently low-scoring "within-species" pair is
 suspect regardless of data type — but systematic evaluation on image
 data has not yet been performed. Guidance will be added once image
 reference training workflows mature.
+
+## No-Score Pathway
+
+When match scores are unavailable — morphology-based identifications,
+expert IDs, upranked consensus outputs from a previous run, or any
+source that yields a taxon name but no similarity score —
+`expand_consensus_candidates()` provides an alternative entry point
+that bypasses `TaxaMatch` and `evaluate_likelihoods()` entirely.
+
+The function builds a **degenerate likelihood object** (all likelihoods
+= 1.0) and expands the candidate set based on the rank of the input
+consensus. With uniform likelihoods, posteriors computed by
+`TaxaAssign::compute_posterior()` are proportional to TaxaExpect
+priors — the priors do all the work.
+
+### What it does by rank
+
+| Input rank | Candidates included |
+|---|---|
+| **Species** | Consensus species + unreferenced congeners (in `priors_df` but not in `referenced_species`) |
+| **Genus** | All species in that genus present in `priors_df` |
+| **Family** | All species in that family present in `priors_df` (guarded by `max_candidates`) |
+
+Referenced congeners are excluded at the species level because they
+would have competed via match scores had scores been available.
+At genus and family level they are included — the upranked consensus
+means score-based discrimination failed, so all species with priors
+are legitimate candidates.
+
+``` r
+library(TaxaLikely)
+
+# Consensus taxon assignments with no match scores
+consensus_df <- data.frame(
+  observation_id  = c("obs1", "obs2", "obs3"),
+  taxon_name      = c("Salmo salar", "Salvelinus", "Salmonidae"),
+  taxon_name_rank = c("species",     "genus",      "family")
+)
+
+# priors_df from TaxaExpect::build_priors() — species + taxonomy + prior columns
+result <- expand_consensus_candidates(
+  consensus_df       = consensus_df,
+  priors_df          = my_priors,          # from TaxaExpect
+  referenced_species = reference_df$species  # species with barcode sequences
+)
+
+# Output is structurally identical to evaluate_likelihoods()
+head(result$likelihoods)
+# observation_id  taxon_name           taxon_name_rank  hypothesis_type     likelihood_point_est
+# obs1            Salmo salar          species          specific_candidate  1
+# obs1            Salmo obtusirostris  species          specific_candidate  1
+# obs2            Salvelinus alpinus   species          specific_candidate  1
+# ...
+
+# Skip filter_top_hypotheses() and apply_coverage_constraints() --
+# likelihoods are uniform and all candidates are specific_candidate.
+# Feed directly to TaxaAssign:
+posteriors <- TaxaAssign::compute_posterior(
+  result$likelihoods,
+  priors_df = my_priors
+)
+```
+
+### When to use this pathway
+
+- Morphology or expert IDs that have no match scores
+- Consensus outputs upranked to genus or family (score discrimination
+  failed; use priors to probe which species is most likely)
+- Stability checks: does an unreferenced congener have a higher prior
+  than the consensus species? If so, flag for review.
+- Mixed datasets: run `evaluate_likelihoods()` on scored observations
+  and `expand_consensus_candidates()` on unscored ones, then
+  `dplyr::bind_rows()` the `$likelihoods` outputs before calling
+  `compute_posterior()`.
+
+See `inst/workflows/6_no_score_pathway_workflow.R` for a full example.
 
 ## Vignettes
 
