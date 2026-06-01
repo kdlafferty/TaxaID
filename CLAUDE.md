@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-01 (Session 97 -- acoustic/image workflow simplified; expand_consensus_candidates score_col; common_to_scientific in TaxaTools)
+# Last updated: 2026-06-01 (Session 98 -- cross-package test cleanup; no function changes)
 
 ---
 

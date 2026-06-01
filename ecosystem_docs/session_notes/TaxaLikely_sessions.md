@@ -1,6 +1,16 @@
 # TaxaLikely Session Notes Archive
 # Sessions 30–88. Current sessions (90+) live in TaxaLikely/CLAUDE.md.
 
+**Session 98 (2026-06-01)**
+- Cross-package test cleanup (no function changes):
+  - TaxaHabitat `test-assign_habitat_biological.R`: replaced 4 skeletal tests with TaxaFetch's
+    comprehensive 542-line version (Parts A-J); 143 tests now passing in TaxaHabitat.
+  - TaxaHabitat `test-build_habitat_prompt.R`: replaced 5 geographic_context-only tests with
+    merged file combining TaxaFetch's comprehensive Parts A-G + geographic_context as Part H.
+  - TaxaFetch: deleted both orphaned test files (functions live in TaxaHabitat).
+  - TaxaExpect: deleted `inst/6_prior_wrapper.R` (9-line stub with undefined variable;
+    superseded by `run_bayesian_pipeline()`).
+
 **Session 97 (2026-06-01)**
 - Acoustic/image workflow redesigned: TaxaLikely now operates as a post-classifier layer only
 - Removed: `build_acoustic_reference()`, `build_image_reference()`, `fetch_reference_recordings()`
