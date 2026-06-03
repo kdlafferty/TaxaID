@@ -104,3 +104,9 @@
 | 2026-05-27 | *(Session 91)* | `read_reference_fasta()` `taxonomy` param | now NULL-default | TaxaLikely | **Breaking.** Must supply exactly one of `taxonomy` (data frame) or `taxonomy_file` (TSV path). |
 | 2026-05-27 | *(Session 92)* | `show_tokens` + `max_input_tokens` params | `call_api()` | TaxaTools | Token logging + pre-flight guard. `attr(result, "tokens")` always attached. |
 | 2026-05-28 | *(Session 95)* | TaxaWizard acoustic/image/local-reference | TaxaWizard | graph + metadata | 4 new input nodes, 2 new intermediate nodes, 8 new edges, 6 new snippets. |
+| 2026-06-02 | *(Session 99)* | `score` → `score_original` in match object | TaxaMatch | column | `standardize_match_data()` output; `.evaluate_one_query()` updated; `assign_taxa_llm()` updated. |
+| 2026-06-02 | *(Session 99)* | `likelihood_point_est` → `score_likelihood` | TaxaLikely, TaxaAssign | column | All functions, tests, workflows, docs updated. |
+| 2026-06-02 | *(Session 99)* | `likelihood_mean` → `score_likelihood_mean` | TaxaLikely, TaxaAssign | column | All functions, tests, workflows, docs updated. |
+| 2026-06-02 | *(Session 99)* | `likelihood_sd` → `score_likelihood_sd` | TaxaLikely, TaxaAssign | column | All functions, tests, workflows, docs updated. |
+| 2026-06-02 | *(Session 99)* | `"unknown_species"` → `NA` / `"unreferenced_family"` | TaxaAssign | `taxon_name` / `hypothesis_type` | Catch-all row in `assign_taxa_llm()` output; `posterior_consensus.R` filter updated. |
+| 2026-06-02 | *(Session 99)* | `unreferenced_candidates()`, `assign_scores()`, `model_likelihoods()`, `compute_likelihoods()` added | TaxaLikely | functions | Unified modular pipeline; `expand_consensus_candidates()` deprecated. |

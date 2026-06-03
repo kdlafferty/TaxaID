@@ -5,7 +5,7 @@
 
 mock_match_df <- data.frame(
   observation_id       = c("s1", "s1", "s2"),
-  score           = c(99, 85, 92),
+  score_original           = c(99, 85, 92),
   taxon_name      = c("Sp A", "Sp B", "Sp A"),
   taxon_name_rank = c("species", "species", "species"),
   family          = c("Fam1", "Fam1", "Fam1"),
@@ -37,7 +37,7 @@ test_that("run_bayesian_pipeline: rejects match_df with too few rank columns", {
   # Only one rank column (species) — needs at least 2
   narrow_df <- data.frame(
     observation_id       = "s1",
-    score           = 99,
+    score_original = 99,
     taxon_name      = "Sp A",
     taxon_name_rank = "species",
     species         = "Sp A",

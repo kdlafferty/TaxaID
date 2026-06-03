@@ -247,7 +247,7 @@ score_con <- score_consensus(
   max_gap         = 1,
   rank_thresholds = c(species = 98, genus = 95, family = 90, order = 85),
   whitelist       = NULL,
-  score_col       = "score",
+  score_col       = "score_original",
   rank_system     = c("family", "genus", "species")
 )
 

@@ -34,9 +34,9 @@
 # Already-canonical names (no rename needed)
 .already_named <- data.frame(
   observation_id = "S1",
-  score     = 95.0,
-  genus     = "Homo",
-  species   = "Homo sapiens",
+  score_original = 95.0,
+  genus          = "Homo",
+  species        = "Homo sapiens",
   stringsAsFactors = FALSE
 )
 
@@ -81,12 +81,12 @@ test_that("conflict with existing observation_id column raises an error", {
   )
 })
 
-test_that("conflict with existing score column raises an error", {
+test_that("conflict with existing score_original column raises an error", {
   df <- .mifish
-  df$score <- 0
+  df$score_original <- 0
   expect_error(
     standardize_match_data(df, observation_id_col = "ESVId", score_col = "PercMatch"),
-    regexp = "score.*already exists"
+    regexp = "score_original.*already exists"
   )
 })
 
@@ -111,30 +111,30 @@ test_that("output has required canonical columns", {
     score_col      = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
-  expect_true(all(c("observation_id", "score", "taxon_name", "taxon_name_rank") %in% names(result)))
+  expect_true(all(c("observation_id", "score_original", "taxon_name", "taxon_name_rank") %in% names(result)))
 })
 
-test_that("ESVId is renamed to observation_id and PercMatch to score", {
+test_that("ESVId is renamed to observation_id and PercMatch to score_original", {
   result <- standardize_match_data(
     .mifish,
     observation_id_col  = "ESVId",
     score_col      = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
-  expect_true("observation_id" %in% names(result))
-  expect_true("score"     %in% names(result))
-  expect_false("ESVId"    %in% names(result))
-  expect_false("PercMatch" %in% names(result))
+  expect_true("observation_id"  %in% names(result))
+  expect_true("score_original"  %in% names(result))
+  expect_false("ESVId"          %in% names(result))
+  expect_false("PercMatch"      %in% names(result))
 })
 
-test_that("score values are preserved correctly", {
+test_that("score values are preserved correctly in score_original", {
   result <- standardize_match_data(
     .mifish,
     observation_id_col  = "ESVId",
     score_col      = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
-  expect_equal(result$score, .mifish$PercMatch)
+  expect_equal(result$score_original, .mifish$PercMatch)
 })
 
 test_that("row count is unchanged", {
@@ -224,15 +224,15 @@ test_that("auto-detection raises an error when no rank columns present", {
 # Already-canonical column names (identity renames)
 # ===========================================================================
 
-test_that("already-canonical names (observation_id, score) work without error", {
+test_that("already-canonical names (observation_id, score_original) work without error", {
   result <- standardize_match_data(
     .already_named,
     observation_id_col  = "observation_id",
-    score_col      = "score",
+    score_col      = "score_original",
     rank_system = c("genus", "species")
   )
   expect_equal(result$observation_id, "S1")
-  expect_equal(result$score, 95.0)
+  expect_equal(result$score_original, 95.0)
   expect_equal(result$taxon_name, "Homo sapiens")
 })
 
@@ -249,8 +249,8 @@ test_that("col_map renames non-standard columns before core processing", {
     score_col      = "PERC_ID",
     rank_system = c("genus", "species")
   )
-  expect_true("score" %in% names(result))
-  expect_equal(result$score, c(97.5, 85.0))
+  expect_true("score_original" %in% names(result))
+  expect_equal(result$score_original, c(97.5, 85.0))
 })
 
 # ===========================================================================

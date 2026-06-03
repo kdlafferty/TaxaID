@@ -1,6 +1,6 @@
 # Edge: match_df + model_params + priors -> consensus (Bayesian wrapper)
 # Source: TaxaAssign run_bayesian_pipeline()
-# Prerequisite: match_df must have observation_id, score, taxon_name, taxon_name_rank
+# Prerequisite: match_df must have observation_id, score_original, taxon_name, taxon_name_rank
 
 # Standardize common column name variations
 if (!"observation_id" %in% names({{match_var}})) {
@@ -10,11 +10,11 @@ if (!"observation_id" %in% names({{match_var}})) {
     names({{match_var}})[sid_match] <- "observation_id"
   }
 }
-if (!"score" %in% names({{match_var}})) {
-  sc_match <- match(TRUE, tolower(names({{match_var}})) %in% c("percmatch", "perc_match", "pident", "percent_identity", "similarity"))
+if (!"score_original" %in% names({{match_var}})) {
+  sc_match <- match(TRUE, tolower(names({{match_var}})) %in% c("score", "percmatch", "perc_match", "pident", "percent_identity", "similarity"))
   if (!is.na(sc_match)) {
-    message("Renaming '", names({{match_var}})[sc_match], "' -> 'score'")
-    names({{match_var}})[sc_match] <- "score"
+    message("Renaming '", names({{match_var}})[sc_match], "' -> 'score_original'")
+    names({{match_var}})[sc_match] <- "score_original"
   }
 }
 

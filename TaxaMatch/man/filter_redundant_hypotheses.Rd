@@ -50,7 +50,7 @@ df <- data.frame(
   species         = c("Gobius paganellus", NA, NA),
   taxon_name      = c("Gobius paganellus", "Gobius", "Acanthogobius"),
   taxon_name_rank = c("species", "genus", "genus"),
-  score           = c(99, 95, 88),
+  score_original  = c(99, 95, 88),
   stringsAsFactors = FALSE
 )
 filter_redundant_hypotheses(df)

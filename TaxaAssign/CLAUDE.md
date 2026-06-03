@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 89 — suggest_unreferenced_species data_type + reference_species params)
+# Last updated: 2026-06-02 (Session 99 — Phase 3: score→score_original; unknown_species→NA/unreferenced_family throughout)
 
 ---
 
@@ -61,9 +61,9 @@ or be user-supplied from outside the ecosystem.
 | Column | Type | Description |
 |---|---|---|
 | `observation_id` | any | Groups competing hypotheses; one unique value per observation |
-| `likelihood_point_est` | numeric | Point estimate of likelihood for this hypothesis |
-| `likelihood_mean` | numeric | Mean of likelihood distribution |
-| `likelihood_sd` | numeric | SD of likelihood distribution (NA → replaced with 0 + warning) |
+| `score_likelihood` | numeric | Point estimate of likelihood for this hypothesis |
+| `score_likelihood_mean` | numeric | Mean of likelihood distribution |
+| `score_likelihood_sd` | numeric | SD of likelihood distribution (NA → replaced with 0 + warning) |
 | `prior_mean` | numeric | Prior probability for this hypothesis |
 | `prior_alpha` | numeric | Beta shape1 parameter (optional; enables Beta-distributed prior sampling) |
 | `prior_beta` | numeric | Beta shape2 parameter (optional; must accompany `prior_alpha`) |
@@ -82,8 +82,8 @@ Any additional columns (e.g. `taxon_name`, `rank`, `hypothesis_type`) are passed
 | `confidence_score` | Fraction of simulations in which this hypothesis had the highest posterior |
 
 **Two computation paths:**
-- **Point estimate path** — always runs; uses `likelihood_point_est` and `prior_mean`
-- **Monte Carlo path** — runs only when `n_sims > 0` AND at least one source of uncertainty exists (non-zero `likelihood_sd`, or `prior_alpha`/`prior_beta` present). Likelihoods sampled from `Normal(mean, sd)` floored at 0; priors sampled from `Beta(alpha, beta)`.
+- **Point estimate path** — always runs; uses `score_likelihood` and `prior_mean`
+- **Monte Carlo path** — runs only when `n_sims > 0` AND at least one source of uncertainty exists (non-zero `score_likelihood_sd`, or `prior_alpha`/`prior_beta` present). Likelihoods sampled from `Normal(mean, sd)` floored at 0; priors sampled from `Beta(alpha, beta)`.
 
 **Internal helper:** `normalize_vec(x)` — normalizes vector to sum to 1; returns uniform distribution if all zeros (prevents division by zero).
 
@@ -115,12 +115,12 @@ assign_taxa_llm(match_df,
 
 **Output columns** (all input columns preserved + posterior columns):
 `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`, `range_status`,
-`habitat_fit`, `information_quality`, `likelihood_point_est`, `likelihood_mean`, `likelihood_sd`,
+`habitat_fit`, `information_quality`, `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`,
 `prior_mean`, `prior_alpha`, `prior_beta`, `posterior_point_est`, `posterior_mean`, `posterior_sd`,
 `confidence_score`. Taxonomy columns from `match_df` (e.g. `family`, `genus`, `species`)
 are carried through via `rank_system` detection and used by `consensus_taxonomy()`.
 `hypothesis_type` values: `"specific_candidate"`, `"unreferenced_species"` (congener without barcode reference),
-`"unreferenced_genus"` (family-level unreferenced taxon or uncharacterised diversity).
+`"unreferenced_genus"` (family-level unreferenced taxon), `"unreferenced_family"` (catch-all; `taxon_name = NA`).
 `prior_alpha`/`prior_beta` present when `prior_phi` is non-NULL.
 
 **Key parameters:**
@@ -180,7 +180,7 @@ When `result2` from `update_prior_from_consensus()` is passed as input, also add
 When `species_reference` is non-NULL, also adds: `downranked` (logical).
 
 **LCA logic:** all named hypotheses contribute (`specific_candidate`, `unreferenced_species`,
-`unreferenced_genus`); only `unknown_species` catch-all is excluded. Plausible set = top
+`unreferenced_genus`); only `unreferenced_family` catch-all (NA taxon_name) is excluded. Plausible set = top
 hypotheses summing to `cumulative_threshold` of named-taxon mass, after dropping any below
 `min_posterior`. Genus is derived from binomial when explicit column has NA (e.g. unreferenced rows).
 `lookup_missing_taxonomy = TRUE` calls `TaxaTools::verify_taxon_names()` + `change_backbone()`
@@ -210,7 +210,7 @@ score_consensus(match_df,
                 max_gap         = Inf,
                 rank_thresholds = NULL,
                 whitelist       = NULL,
-                score_col       = "score",
+                score_col       = "score_original",
                 rank_system     = NULL)
 ```
 
@@ -295,9 +295,9 @@ TaxaMatch must produce these columns; TaxaExpect prior output maps as noted.
 | Column | Type | Notes |
 |---|---|---|
 | `observation_id` | character | Unique observation identifier |
-| `likelihood_point_est` | numeric | Point estimate likelihood |
-| `likelihood_mean` | numeric | Mean of likelihood distribution |
-| `likelihood_sd` | numeric | SD of likelihood distribution |
+| `score_likelihood` | numeric | Point estimate likelihood |
+| `score_likelihood_mean` | numeric | Mean of likelihood distribution |
+| `score_likelihood_sd` | numeric | SD of likelihood distribution |
 
 ### Prior Object (from TaxaExpect `generate_full_priors()`)
 
@@ -375,9 +375,9 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 | `calculate_final_posteriors` | `compute_posterior` | 2026-02-19 | — |
 | `prior_df` | `likelihood_w_prior` | 2026-02-19 | Input dataframe |
 | `Query_ID` | `observation_id` | 2026-02-19 | — |
-| `LR_PointEst` | `likelihood_point_est` | 2026-02-19 | — |
-| `LR_Mean` | `likelihood_mean` | 2026-02-19 | — |
-| `LR_SD` | `likelihood_sd` | 2026-02-19 | — |
+| `LR_PointEst` | `score_likelihood` | 2026-02-19 | — |
+| `LR_Mean` | `score_likelihood_mean` | 2026-02-19 | — |
+| `LR_SD` | `score_likelihood_sd` | 2026-02-19 | — |
 | `Prior_Prob` | `prior_mean` | 2026-02-19 | — |
 | `Posterior_Mean` | `posterior_mean` | 2026-02-19 | — |
 | `Posterior_SD` | `posterior_sd` | 2026-02-19 | — |

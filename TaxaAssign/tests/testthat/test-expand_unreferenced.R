@@ -8,9 +8,9 @@
     taxon_name_rank      = c("species", "species", "genus", "family"),
     hypothesis_type      = c("specific_candidate", "specific_candidate",
                              "unreferenced_species", "unreferenced_genus"),
-    likelihood_point_est = c(0.95, 0.38, 0.31, 0.04),
-    likelihood_mean      = c(0.95, 0.38, 0.31, 0.04),
-    likelihood_sd        = c(0, 0, 0, 0),
+    score_likelihood = c(0.95, 0.38, 0.31, 0.04),
+    score_likelihood_mean      = c(0.95, 0.38, 0.31, 0.04),
+    score_likelihood_sd        = c(0, 0, 0, 0),
     stringsAsFactors     = FALSE
   )
 }
@@ -30,7 +30,7 @@ test_that("expand_unreferenced_hypotheses: H2 generic row replaced with named sp
   expect_equal(sort(h2$taxon_name),
                sort(c("Fundulus parvipinnis", "Fundulus zebrinus")))
   expect_true(all(h2$taxon_name_rank == "species"))
-  expect_true(all(h2$likelihood_point_est == 0.31))
+  expect_true(all(h2$score_likelihood == 0.31))
   expect_false("Fundulus" %in% out$taxon_name)
 })
 
@@ -39,7 +39,7 @@ test_that("expand_unreferenced_hypotheses: H3 generic row replaced with named sp
   h3  <- out[out$hypothesis_type == "unreferenced_genus", ]
   expect_equal(h3$taxon_name, "Lucania parva")
   expect_equal(h3$taxon_name_rank, "species")
-  expect_equal(h3$likelihood_point_est, 0.04)
+  expect_equal(h3$score_likelihood, 0.04)
   expect_false("Fundulidae" %in% out$taxon_name)
 })
 
@@ -60,7 +60,7 @@ test_that("expand_unreferenced_hypotheses: H1 rows passed through unchanged", {
   out <- expand_unreferenced_hypotheses(.make_expand_lik(), .make_unref_df())
   h1  <- out[out$hypothesis_type == "specific_candidate", ]
   expect_equal(sort(h1$taxon_name), sort(c("Fundulus lima", "Fundulus diaphanus")))
-  expect_equal(h1$likelihood_point_est[h1$taxon_name == "Fundulus lima"], 0.95)
+  expect_equal(h1$score_likelihood[h1$taxon_name == "Fundulus lima"], 0.95)
 })
 
 test_that("expand_unreferenced_hypotheses: generic H2 dropped when no genus match", {

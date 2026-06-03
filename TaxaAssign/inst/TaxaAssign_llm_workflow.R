@@ -53,7 +53,7 @@ filter_redundant_hypotheses()
 cat("Match object:", nrow(match_df), "rows x", ncol(match_df), "cols\n")
 cat("Samples:", n_distinct(match_df$observation_id), "\n")
 cat("Taxon names:", n_distinct(match_df$taxon_name), "\n")
-cat("Score range:", paste(range(match_df$score), collapse = " - "), "\n")
+cat("Score range:", paste(range(match_df$score_original), collapse = " - "), "\n")
 cat("Marker(s):", paste(unique(match_df$testid), collapse = ", "), "\n\n")
 
 # =============================================================================
@@ -85,7 +85,7 @@ llm_fn <- TaxaTools::call_anthropic_api
 
 # Option A: Auto-populate context from taxon names (requires TaxaHabitat)
 ctx <- build_context(
-  taxon_names     = unique(match_df$taxon_name[match_df$score == 100]),# short list of the best matches
+  taxon_names     = unique(match_df$taxon_name[match_df$score_original == 100]),# short list of the best matches
   geographic_hint = "Southern California NOT Gulf of California Estuary and Coastal Lagoon",
   date            = "2025",
   habitat_scheme  = "IUCN_L1",# better to enter a custom list.
@@ -195,7 +195,7 @@ result <- assign_taxa_llm(
   score_threshold      = 80,      # drop candidates below this score
   top_n                = 10,      # max candidates per sample in the taxon list
   score_sharpness      = 0.1,     # exponential weight sharpness (0 = uniform lik)
-  unknown_lik_weight   = 0.05,    # likelihood and prior weight for "unknown_species"
+  unknown_lik_weight   = 0.05,    # likelihood and prior weight for the unreferenced_family catch-all row
   unreferenced_taxa    = unreferenced_species,
   taxa_per_call        = 30,      # taxa per LLM call (batches large taxon lists)
   pause_seconds        = 1,       # delay between calls (rate limit buffer)
@@ -211,15 +211,15 @@ result <- assign_taxa_llm(
 cat("Posteriors computed for", n_distinct(result$observation_id), "samples\n")
 cat("Total rows (sample x hypothesis):", nrow(result), "\n")
 
-# ---- 4b. Inspect unknown_species posterior -----------------------------------
-# Flag samples where unknown_species beats every named candidate
+# ---- 4b. Inspect unreferenced_family posterior -------------------------------
+# Flag samples where the catch-all unreferenced_family row beats every named candidate
 ambiguous <- result |>
   group_by(observation_id) |>
   filter(posterior_point_est == max(posterior_point_est)) |>
-  filter(taxon_name == "unknown_species") |>
+  filter(hypothesis_type == "unreferenced_family") |>
   ungroup()
 
-cat("Samples where unknown_species has the highest posterior:",
+cat("Samples where unreferenced_family has the highest posterior:",
     nrow(ambiguous), "\n")
 
 # saveRDS(result, file.choose(new = TRUE))  # choose where to save llm_posteriors.rds
@@ -233,7 +233,7 @@ cat("Samples where unknown_species has the highest posterior:",
 #
 # Plausible set: hypotheses that together account for >= cumulative_threshold of
 # the named-taxon posterior mass, after excluding any below min_posterior.
-# (unknown_species rows are always excluded from LCA.)
+# (unreferenced_family rows, which have NA taxon_name, are always excluded from LCA.)
 
 consensus <- posterior_consensus(
   result,
@@ -306,7 +306,7 @@ score_con_wilder <- score_consensus(
   max_gap         = 0,        # include all hits within 1% of best score for LCA
   rank_thresholds = NULL,
   whitelist       = NULL,     # set to a plausible taxon list if available
-  score_col       = "score",
+  score_col       = "score_original",
   rank_system     = c("family", "genus", "species")
 )
 
@@ -316,7 +316,7 @@ score_con_thresholds <- score_consensus(
   max_gap         = 0,        # include all hits within 1% of best score for LCA
   rank_thresholds = c(species = 98, genus = 95, family = 90, order = 85),
   whitelist       = NULL,     # set to a plausible taxon list if available
-  score_col       = "score",
+  score_col       = "score_original",
   rank_system     = c("family", "genus", "species")
 )
 
@@ -326,7 +326,7 @@ score_con_JV <- score_consensus(
   max_gap         = 1,        # include all hits within 1% of best score for LCA
   rank_thresholds = NULL,
   whitelist       = NULL,     # set to a plausible taxon list if available
-  score_col       = "score",
+  score_col       = "score_original",
   rank_system     = c("order","family", "genus", "species")
 )
 
@@ -463,7 +463,7 @@ library(TaxaMatch)    # report_match()
 library(TaxaHabitat)  # report_habitat()
 
 # match_obj should have report_params from blast_sequences()
-match_sec <- TaxaMatch::report_match(match_obj, data_type = "eDNA")
+match_sec <- TaxaMatch::report_match(match_df, data_type = "eDNA")
 
 # If you have occurrence data (from TaxaFetch), include it:
 # fetch_sec <- TaxaFetch::report_fetch(occurrences, study_area = "Santa Barbara Channel")

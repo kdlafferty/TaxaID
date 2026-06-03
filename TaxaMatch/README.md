@@ -270,7 +270,7 @@ match:
 | Column | Description |
 |----|----|
 | `observation_id` | Query identifier (ESV/ASV ID) |
-| `score` | Match score (0--100 for BLAST percent identity) |
+| `score_original` | Raw match score (original scale, never modified) |
 | `taxon_name` | Best taxon label at finest available rank |
 | `taxon_name_rank` | Rank of `taxon_name` (species, genus, etc.) |
 | `family`, `genus`, `species`, ... | Taxonomy columns |

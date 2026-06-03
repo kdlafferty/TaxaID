@@ -8,8 +8,8 @@ compute_posterior(likelihood_w_prior, n_sims = 1000)
 }
 \arguments{
 \item{likelihood_w_prior}{Dataframe. One row per hypothesis per observation.
-Must contain columns: \code{observation_id}, \code{likelihood_point_est}, \code{likelihood_mean},
-\code{likelihood_sd}, \code{prior_mean}.
+Must contain columns: \code{observation_id}, \code{score_likelihood}, \code{score_likelihood_mean},
+\code{score_likelihood_sd}, \code{prior_mean}.
 Optional columns: \code{prior_alpha} and \code{prior_beta} (Beta distribution parameters).
 When present, Monte Carlo simulation samples priors from Beta(alpha, beta).
 When absent, priors are treated as fixed (no prior uncertainty).}
@@ -34,14 +34,14 @@ so all existing columns (e.g., taxon name, hypothesis type, rank) are preserved.
 \details{
 Two computation paths are available:
 \itemize{
-\item \strong{Point estimate path} (fast): uses \code{likelihood_point_est} and \code{prior_mean}
+\item \strong{Point estimate path} (fast): uses \code{score_likelihood} and \code{prior_mean}
 directly. Always computed.
 \item \strong{Monte Carlo path} (robust): samples from prior and likelihood distributions,
 propagating uncertainty into the posterior. Likelihoods are sampled from
 Normal(mean, sd). Priors are sampled from Beta(alpha, beta) when \code{prior_alpha}
 and \code{prior_beta} columns are present, correctly bounded on [0, 1].
 Only runs when \code{n_sims > 0} AND at least one source of uncertainty exists
-(non-zero \code{likelihood_sd}, or \code{prior_alpha}/\code{prior_beta} columns present).
+(non-zero \code{score_likelihood_sd}, or \code{prior_alpha}/\code{prior_beta} columns present).
 }
 
 Within each \code{observation_id}, likelihoods and posteriors are normalized to sum to 1

@@ -31,7 +31,7 @@ census_result <- dplyr::mutate(
 }\if{html}{\out{</div>}}}
 
 \item{penalty_factor}{Numeric in [0, 1] (default \code{0.0}).  Multiplier
-applied to \code{likelihood_point_est} and \code{likelihood_mean} for constrained
+applied to \code{score_likelihood} and \code{score_likelihood_mean} for constrained
 hypotheses when \code{constraint_behavior = "zero"}.  Ignored when
 \code{constraint_behavior = "relabel"}.}
 
@@ -42,7 +42,7 @@ hypotheses when \code{constraint_behavior = "zero"}.  Ignored when
 \code{likelihood_df} with an added \code{constraint_applied} column and
 updated likelihood and/or \code{hypothesis_type} columns:
 \describe{
-\item{\code{"zero"} mode}{\code{likelihood_point_est} and \code{likelihood_mean}
+\item{\code{"zero"} mode}{\code{score_likelihood} and \code{score_likelihood_mean}
 multiplied by \code{penalty_factor}; \code{constraint_applied} set to
 \code{"census_closed_genus"}.}
 \item{\code{"relabel"} mode}{\code{hypothesis_type} changed to

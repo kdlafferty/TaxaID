@@ -46,7 +46,7 @@ test_that(".evaluate_one_query: returns required columns", {
     .make_match_df(), params, c("family", "genus", "species")
   )
   expect_true(all(c("hypothesis_type", "taxon_name", "taxon_name_rank",
-                     "likelihood_point_est", "likelihood_mean", "likelihood_sd")
+                     "score_likelihood", "score_likelihood_mean", "score_likelihood_sd")
                   %in% names(out)))
 })
 
@@ -63,13 +63,13 @@ test_that(".evaluate_one_query: includes all three hypothesis types when ratio_t
   expect_true("unreferenced_genus"      %in% out$hypothesis_type)
 })
 
-test_that(".evaluate_one_query: likelihood_point_est in [0, 1]", {
+test_that(".evaluate_one_query: score_likelihood in [0, 1]", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
   out <- TaxaLikely:::.evaluate_one_query(
     .make_match_df(), params, c("family", "genus", "species")
   )
-  expect_true(all(out$likelihood_point_est >= 0 & out$likelihood_point_est <= 1))
+  expect_true(all(out$score_likelihood >= 0 & out$score_likelihood <= 1))
 })
 
 test_that(".evaluate_one_query: singleton uses 1D (no error)", {
@@ -92,7 +92,7 @@ test_that(".evaluate_one_query: n_sims > 0 produces non-zero sd", {
   )
   spec <- out[out$hypothesis_type == "specific_candidate", ]
   # At least one specific candidate should have non-zero sd from simulation
-  expect_true(any(spec$likelihood_sd > 0))
+  expect_true(any(spec$score_likelihood_sd > 0))
 })
 
 test_that(".evaluate_one_query: min_match_threshold filters low scores", {
@@ -127,8 +127,8 @@ test_that("evaluate_likelihoods: $likelihoods has required columns", {
   liks   <- evaluate_likelihoods(.make_match_df(), params,
                                  c("family", "genus", "species"))$likelihoods
   expect_true(all(c("observation_id","taxon_name","taxon_name_rank",
-                     "hypothesis_type","likelihood_point_est",
-                     "likelihood_mean","likelihood_sd") %in% names(liks)))
+                     "hypothesis_type","score_likelihood",
+                     "score_likelihood_mean","score_likelihood_sd") %in% names(liks)))
 })
 
 test_that("evaluate_likelihoods: processes multiple observation_ids", {
@@ -180,9 +180,9 @@ test_that("filter_top_hypotheses: removes coarser specific candidates", {
     taxon_name           = c("Hybognathus nuchalis", "Hybognathus", "NA"),
     taxon_name_rank      = c("species", "genus", NA_character_),
     hypothesis_type      = c("specific_candidate", "specific_candidate", "unreferenced_species"),
-    likelihood_point_est = c(1.0, 0.9, 0.5),
-    likelihood_mean      = c(1.0, 0.9, 0.5),
-    likelihood_sd        = 0
+    score_likelihood = c(1.0, 0.9, 0.5),
+    score_likelihood_mean      = c(1.0, 0.9, 0.5),
+    score_likelihood_sd        = 0
   )
   out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   spec <- out[out$hypothesis_type == "specific_candidate", ]
@@ -197,9 +197,9 @@ test_that("filter_top_hypotheses: unreferenced_species/genus rows always kept", 
     taxon_name           = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
     taxon_name_rank      = c("species", "genus", "family"),
     hypothesis_type      = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
-    likelihood_point_est = c(1.0, 0.5, 0.1),
-    likelihood_mean      = c(1.0, 0.5, 0.1),
-    likelihood_sd        = 0
+    score_likelihood = c(1.0, 0.5, 0.1),
+    score_likelihood_mean      = c(1.0, 0.5, 0.1),
+    score_likelihood_sd        = 0
   )
   out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   expect_true("unreferenced_species" %in% out$hypothesis_type)

@@ -35,8 +35,8 @@
 #' adequate in practice.
 #'
 #' @param result Dataframe. Output of [assign_taxa_llm()] or [compute_posterior()].
-#'   Must contain: `observation_id`, `taxon_name`, `likelihood_point_est`,
-#'   `likelihood_mean`, `likelihood_sd`, `prior_mean`.
+#'   Must contain: `observation_id`, `taxon_name`, `score_likelihood`,
+#'   `score_likelihood_mean`, `score_likelihood_sd`, `prior_mean`.
 #' @param consensus Dataframe. Output of [posterior_consensus()] run on `result`.
 #'   Must contain: `observation_id`, `consensus_taxon`, `is_resolved`.
 #' @param presence_multiplier Numeric > 1. Factor by which `prior_mean` is
@@ -73,8 +73,8 @@ update_prior_from_consensus <- function(result,
                                          n_sims              = 0) {
 
   # --- Input validation -------------------------------------------------------
-  required_result <- c("observation_id", "taxon_name", "likelihood_point_est",
-                        "likelihood_mean", "likelihood_sd", "prior_mean")
+  required_result <- c("observation_id", "taxon_name", "score_likelihood",
+                        "score_likelihood_mean", "score_likelihood_sd", "prior_mean")
   missing_result <- setdiff(required_result, names(result))
   if (length(missing_result) > 0)
     cli::cli_abort("result missing required column(s): {.field {missing_result}}")

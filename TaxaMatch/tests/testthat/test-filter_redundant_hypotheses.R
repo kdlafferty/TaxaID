@@ -15,7 +15,7 @@
     genus           = vapply(rows, `[[`, character(1), "genus"),
     species         = vapply(rows, `[[`, character(1), "species"),
     taxon_name_rank = vapply(rows, `[[`, character(1), "rank"),
-    score           = vapply(rows, `[[`, numeric(1),   "score"),
+    score_original  = vapply(rows, `[[`, numeric(1),   "score"),
     stringsAsFactors = FALSE
   )
 }

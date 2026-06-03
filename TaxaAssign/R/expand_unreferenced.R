@@ -13,7 +13,7 @@ utils::globalVariables(c("hypothesis_type"))
 #' \enumerate{
 #'   \item The `"unreferenced_species"` (H2) row carries a genus label.
 #'     Unreferenced species whose genus matches that label receive the H2
-#'     `likelihood_point_est` / `likelihood_mean` / `likelihood_sd`.
+#'     `score_likelihood` / `score_likelihood_mean` / `score_likelihood_sd`.
 #'   \item The `"unreferenced_genus"` (H3) row carries a family label.
 #'     Unreferenced species whose family matches that label \emph{and} whose
 #'     genus differs from the H2 genus receive the H3 likelihood values.
@@ -51,7 +51,7 @@ utils::globalVariables(c("hypothesis_type"))
 #' @param likelihood_df Data frame -- the `$likelihoods` component returned by
 #'   [TaxaLikely::evaluate_likelihoods()].  Must contain `observation_id`,
 #'   `taxon_name`, `taxon_name_rank`, `hypothesis_type`,
-#'   `likelihood_point_est`, `likelihood_mean`, `likelihood_sd`.
+#'   `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`.
 #' @param unreferenced_df Data frame of unreferenced but plausible species.
 #'   Must contain columns `species` (binomial name), `genus`, and `family`.
 #'   Built from TaxaExpect rows confirmed as unreferenced by
@@ -82,8 +82,8 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   if (!is.data.frame(likelihood_df))
     stop("likelihood_df must be a data frame")
   needed_lik <- c("observation_id", "taxon_name", "taxon_name_rank",
-                  "hypothesis_type", "likelihood_point_est",
-                  "likelihood_mean", "likelihood_sd")
+                  "hypothesis_type", "score_likelihood",
+                  "score_likelihood_mean", "score_likelihood_sd")
   miss_lik <- setdiff(needed_lik, names(likelihood_df))
   if (length(miss_lik) > 0L)
     stop(sprintf("likelihood_df is missing required columns: %s",
@@ -146,9 +146,9 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
           taxon_name           = genus_sp$species,
           taxon_name_rank      = "species",
           hypothesis_type      = "unreferenced_species",
-          likelihood_point_est = h2$likelihood_point_est[1L],
-          likelihood_mean      = h2$likelihood_mean[1L],
-          likelihood_sd        = h2$likelihood_sd[1L],
+          score_likelihood = h2$score_likelihood[1L],
+          score_likelihood_mean      = h2$score_likelihood_mean[1L],
+          score_likelihood_sd        = h2$score_likelihood_sd[1L],
           stringsAsFactors     = FALSE
         )
         n_h2_species <- n_h2_species + nrow(genus_sp)
@@ -172,9 +172,9 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
           taxon_name           = family_sp$species,
           taxon_name_rank      = "species",
           hypothesis_type      = "unreferenced_genus",
-          likelihood_point_est = h3$likelihood_point_est[1L],
-          likelihood_mean      = h3$likelihood_mean[1L],
-          likelihood_sd        = h3$likelihood_sd[1L],
+          score_likelihood = h3$score_likelihood[1L],
+          score_likelihood_mean      = h3$score_likelihood_mean[1L],
+          score_likelihood_sd        = h3$score_likelihood_sd[1L],
           stringsAsFactors     = FALSE
         )
         n_h3_species <- n_h3_species + nrow(family_sp)

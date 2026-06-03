@@ -31,7 +31,7 @@ assign_taxa_llm(
 }
 \arguments{
 \item{match_df}{Data frame. Canonical match object from TaxaMatch (or equivalent).
-Required columns: \code{observation_id}, \code{score}, \code{taxon_name}, \code{taxon_name_rank}.
+Required columns: \code{observation_id}, \code{score_original}, \code{taxon_name}, \code{taxon_name_rank}.
 Optional but recommended: \code{testid} (marker type).}
 
 \item{context}{Optional data frame with location/habitat context. Either a
@@ -161,8 +161,8 @@ each group call. Default \code{FALSE}.}
 \value{
 A data frame (the output of \code{compute_posterior()}) with columns:
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type}, \code{range_status},
-\code{habitat_fit}, \code{information_quality}, \code{likelihood_point_est}, \code{likelihood_mean},
-\code{likelihood_sd}, \code{prior_mean}, \code{prior_alpha}, \code{prior_beta},
+\code{habitat_fit}, \code{information_quality}, \code{score_likelihood}, \code{score_likelihood_mean},
+\code{score_likelihood_sd}, \code{prior_mean}, \code{prior_alpha}, \code{prior_beta},
 \code{posterior_point_est}, \code{posterior_mean}, \code{posterior_sd}, \code{confidence_score}.
 \code{prior_alpha}/\code{prior_beta} are present when \code{prior_phi} is non-NULL;
 \code{compute_posterior()} uses them for Beta-distributed prior sampling.

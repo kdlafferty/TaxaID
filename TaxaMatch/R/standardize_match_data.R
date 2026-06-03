@@ -10,7 +10,7 @@
 #' Standardize Raw Match Data to Canonical Match Object
 #'
 #' Reads raw match data (from a data frame or file), renames the observation
-#' identifier and score columns to canonical names (`observation_id` and `score`),
+#' identifier and score columns to canonical names (`observation_id` and `score_original`),
 #' auto-detects or validates taxonomic rank columns, and derives `taxon_name`
 #' and `taxon_name_rank` via [TaxaTools::create_taxon_names()].
 #'
@@ -55,7 +55,7 @@
 #' @return A data frame with at minimum:
 #' \describe{
 #'   \item{`observation_id`}{Unique query identifier (renamed from `observation_id_col`).}
-#'   \item{`score`}{Raw match score (renamed from `score_col`).}
+#'   \item{`score_original`}{Raw match score (renamed from `score_col`). Preserved unchanged throughout the pipeline; downstream functions add `score_norm`, `score_softmax`, and `score_likelihood` columns as transformations are applied.}
 #'   \item{`taxon_name`}{Most specific non-NA taxon name (derived).}
 #'   \item{`taxon_name_rank`}{Rank of `taxon_name`, lowercase (derived).}
 #' }
@@ -130,14 +130,14 @@ standardize_match_data <- function(data             = NULL,
       observation_id_col
     ))
   }
-  if (score_col != "score" && "score" %in% names(data)) {
+  if (score_col != "score_original" && "score_original" %in% names(data)) {
     stop(sprintf(
-      "Cannot rename '%s' to 'score': a column named 'score' already exists.",
+      "Cannot rename '%s' to 'score_original': a column named 'score_original' already exists.",
       score_col
     ))
   }
 
-  core_map <- stats::setNames(c("observation_id", "score"), c(observation_id_col, score_col))
+  core_map <- stats::setNames(c("observation_id", "score_original"), c(observation_id_col, score_col))
   # Drop identity renames to avoid spurious rename_cols warnings
   core_map <- core_map[names(core_map) != unname(core_map)]
   if (length(core_map) > 0L) {
@@ -230,7 +230,7 @@ standardize_match_data <- function(data             = NULL,
 #'   species         = c("Gobius paganellus", NA, NA),
 #'   taxon_name      = c("Gobius paganellus", "Gobius", "Acanthogobius"),
 #'   taxon_name_rank = c("species", "genus", "genus"),
-#'   score           = c(99, 95, 88),
+#'   score_original  = c(99, 95, 88),
 #'   stringsAsFactors = FALSE
 #' )
 #' filter_redundant_hypotheses(df)

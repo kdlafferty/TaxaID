@@ -74,10 +74,10 @@
 #'       \code{observation_id} x candidate species: \code{observation_id},
 #'       \code{taxon_name}, \code{taxon_name_rank} (\code{"species"}),
 #'       \code{hypothesis_type} (\code{"specific_candidate"}),
-#'       \code{likelihood_point_est} (1.0 when no score; \code{score} for
+#'       \code{score_likelihood} (1.0 when no score; \code{score} for
 #'       consensus species and \code{1 - score} for others when
-#'       \code{score_col} is supplied), \code{likelihood_mean} (same as
-#'       point estimate), \code{likelihood_sd} (0.0).}
+#'       \code{score_col} is supplied), \code{score_likelihood_mean} (same as
+#'       point estimate), \code{score_likelihood_sd} (0.0).}
 #'     \item{\code{$unresolved}}{Rows from \code{consensus_df} for observations
 #'       where no candidates were found in \code{priors_df}, or where the
 #'       family-level candidate count exceeded \code{max_candidates}.  Empty
@@ -118,7 +118,7 @@
 #'   score_col          = "confidence"
 #' )
 #' head(result2$likelihoods)
-#' # observation_id  taxon_name           likelihood_point_est
+#' # observation_id  taxon_name           score_likelihood
 #' # clip_001        Melospiza melodia    0.87   <- score
 #' # clip_001        Melospiza lincolnii  0.13   <- 1 - score
 #' }
@@ -130,6 +130,14 @@ expand_consensus_candidates <- function(consensus_df,
                                         referenced_species = NULL,
                                         score_col          = NULL,
                                         max_candidates     = 50L) {
+
+  .Deprecated(
+    msg = paste0(
+      "expand_consensus_candidates() is deprecated. ",
+      "Use unreferenced_candidates() + assign_scores() instead ",
+      "(score_type = \"none\" or score_type = \"probability\")."
+    )
+  )
 
   # ---- input validation -------------------------------------------------------
   if (!is.data.frame(consensus_df))
@@ -319,9 +327,9 @@ expand_consensus_candidates <- function(consensus_df,
       taxon_name           = cand_species,
       taxon_name_rank      = "species",
       hypothesis_type      = "specific_candidate",
-      likelihood_point_est = likes,
-      likelihood_mean      = likes,
-      likelihood_sd        = 0.0,
+      score_likelihood = likes,
+      score_likelihood_mean      = likes,
+      score_likelihood_sd        = 0.0,
       stringsAsFactors     = FALSE
     )
   }

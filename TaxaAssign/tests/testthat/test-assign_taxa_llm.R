@@ -4,7 +4,7 @@
 make_match_df <- function() {
   data.frame(
     observation_id        = c("S1","S1","S1","S2","S2","S2"),
-    score            = c(99, 93, 85,   100, 88, 82),
+    score_original   = c(99, 93, 85,   100, 88, 82),
     taxon_name       = c("Eucyclogobius newberryi", "Quietula y-cauda",
                          "Gillichthys mirabilis",
                          "Eucyclogobius newberryi", "Clevelandia ios",
@@ -46,7 +46,7 @@ test_that("returns a data frame with required columns", {
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
   expect_s3_class(result, "data.frame")
   expected_cols <- c("observation_id", "taxon_name", "taxon_name_rank",
-                     "likelihood_point_est", "likelihood_mean", "likelihood_sd",
+                     "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
                      "prior_mean",
                      "posterior_point_est", "posterior_mean", "posterior_sd",
                      "confidence_score")
@@ -59,9 +59,9 @@ test_that("posteriors per observation_id sum to 1", {
   expect_equal(as.vector(totals), c(1, 1), tolerance = 1e-9)
 })
 
-test_that("unknown_species row is present for each observation_id", {
+test_that("unreferenced_family row is present for each observation_id", {
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
-  unk <- result[result$taxon_name == "unknown_species", ]
+  unk <- result[result$hypothesis_type == "unreferenced_family", ]
   expect_equal(nrow(unk), 2)
 })
 
@@ -77,8 +77,8 @@ test_that("score_sharpness = 0 gives uniform likelihoods for named candidates", 
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm,
                              score_sharpness = 0, score_threshold = 0,
                              pause_seconds = 0)
-  s1 <- result[result$observation_id == "S1" & result$taxon_name != "unknown_species", ]
-  expect_equal(length(unique(round(s1$likelihood_point_est, 10))), 1)
+  s1 <- result[result$observation_id == "S1" & !is.na(result$taxon_name), ]
+  expect_equal(length(unique(round(s1$score_likelihood, 10))), 1)
 })
 
 # ---- LLM call count ---------------------------------------------------------
@@ -179,8 +179,8 @@ test_that("broken JSON falls back to uniform prior with warning", {
                                pause_seconds = 0),
     regexp = "uniform prior|Failed to parse"
   )
-  # Named taxa should all have equal prior (unknown_species is fixed separately)
-  s1_named <- result[result$observation_id == "S1" & result$taxon_name != "unknown_species", ]
+  # Named taxa should all have equal prior (unreferenced_family is fixed separately)
+  s1_named <- result[result$observation_id == "S1" & !is.na(result$taxon_name), ]
   expect_equal(length(unique(round(s1_named$prior_mean, 10))), 1)
 })
 
@@ -222,10 +222,10 @@ test_that("range_status column is present in output", {
 
 test_that("range_status is populated for taxa the LLM returned", {
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
-  named_filled <- result[result$taxon_name != "unknown_species" &
+  named_filled <- result[!is.na(result$taxon_name) &
                            !is.na(result$range_status), ]
   expect_true(all(named_filled$range_status == "native"))
-  unk <- result[result$taxon_name == "unknown_species", ]
+  unk <- result[result$hypothesis_type == "unreferenced_family", ]
   expect_true(all(unk$range_status == "unknown"))
 })
 
@@ -233,7 +233,7 @@ test_that("range_status is NA for named taxa when LLM falls back to uniform prio
   result <- suppressWarnings(
     assign_taxa_llm(make_match_df(), llm_fn = broken_llm, pause_seconds = 0)
   )
-  named_rows <- result[result$taxon_name != "unknown_species", ]
+  named_rows <- result[!is.na(result$taxon_name), ]
   expect_true(all(is.na(named_rows$range_status)))
 })
 
@@ -246,7 +246,7 @@ test_that("invalid match_df raises informative error", {
 
 test_that("all-equal scores do not trigger NaN from exp overflow", {
   df <- make_match_df()
-  df$score <- 100
+  df$score_original <- 100
   expect_no_error(assign_taxa_llm(df, llm_fn = stub_llm, pause_seconds = 0))
 })
 
@@ -256,7 +256,8 @@ test_that("unreferenced congener appears in output and is marked unreferenced_sp
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm,
                              unreferenced_taxa = "Eucyclogobius pattersoni",
                              pause_seconds = 0)
-  unref_rows <- result[result$taxon_name == "Eucyclogobius pattersoni", ]
+  unref_rows <- result[!is.na(result$taxon_name) &
+                         result$taxon_name == "Eucyclogobius pattersoni", ]
   expect_equal(nrow(unref_rows), 2)
   expect_true(all(unref_rows$hypothesis_type == "unreferenced_species"))
 })
@@ -282,9 +283,9 @@ test_that("unreferenced species likelihood equals median of referenced congener 
                              pause_seconds = 0)
   # Eucyclogobius newberryi is the only referenced Eucyclogobius --
   # unreferenced species gets the same pre-normalization exp-score, so equal likelihood
-  s1 <- result[result$observation_id == "S1" & result$taxon_name != "unknown_species", ]
-  unref_lik <- s1$likelihood_point_est[s1$taxon_name == "Eucyclogobius pattersoni"]
-  newb_lik  <- s1$likelihood_point_est[s1$taxon_name == "Eucyclogobius newberryi"]
+  s1 <- result[result$observation_id == "S1" & !is.na(result$taxon_name), ]
+  unref_lik <- s1$score_likelihood[s1$taxon_name == "Eucyclogobius pattersoni"]
+  newb_lik  <- s1$score_likelihood[s1$taxon_name == "Eucyclogobius newberryi"]
   expect_equal(unref_lik, newb_lik, tolerance = 1e-9)
 })
 
@@ -293,6 +294,7 @@ test_that("unreferenced species already in candidates is not duplicated", {
                              unreferenced_taxa = "Eucyclogobius newberryi",
                              pause_seconds = 0)
   n_rows <- sum(result$observation_id == "S1" &
+                  !is.na(result$taxon_name) &
                   result$taxon_name == "Eucyclogobius newberryi")
   expect_equal(n_rows, 1L)
 })
@@ -312,7 +314,7 @@ test_that("prompt contains [no reference sequence] label for unreferenced specie
 make_match_df_taxon <- function() {
   data.frame(
     observation_id       = c("S1", "S1", "S1"),
-    score           = c(99, 93, 85),
+    score_original  = c(99, 93, 85),
     taxon_name      = c("Eucyclogobius newberryi", "Quietula y-cauda",
                         "Gillichthys mirabilis"),
     taxon_name_rank = rep("species", 3),
@@ -341,7 +343,8 @@ test_that("family-level unreferenced taxon (genus absent, family present) appear
   unreferenced_taxa <- make_fam_unref("Gobioides broussonnetii", "Gobiidae")
   result <- assign_taxa_llm(make_match_df_taxon(), llm_fn = stub_llm,
                              unreferenced_taxa = unreferenced_taxa, pause_seconds = 0)
-  unref_rows <- result[result$taxon_name == "Gobioides broussonnetii", ]
+  unref_rows <- result[!is.na(result$taxon_name) &
+                         result$taxon_name == "Gobioides broussonnetii", ]
   expect_equal(nrow(unref_rows), 1L)
   expect_true(all(unref_rows$hypothesis_type == "unreferenced_genus"))
 })
@@ -367,7 +370,8 @@ test_that("unreferenced species with genus in ref_genera is congener (unreferenc
   unreferenced_taxa <- make_fam_unref("Eucyclogobius pattersoni", "Gobiidae")
   result <- assign_taxa_llm(make_match_df_taxon(), llm_fn = stub_llm,
                              unreferenced_taxa = unreferenced_taxa, pause_seconds = 0)
-  unref_rows <- result[result$taxon_name == "Eucyclogobius pattersoni", ]
+  unref_rows <- result[!is.na(result$taxon_name) &
+                         result$taxon_name == "Eucyclogobius pattersoni", ]
   expect_equal(nrow(unref_rows), 1L)
   expect_true(all(unref_rows$hypothesis_type == "unreferenced_species"))
 })
@@ -425,8 +429,10 @@ test_that("absent species prior is suppressed by (1 - detection_prob)", {
                                      ),
                                      pause_seconds = 0)
   s1_plain  <- result_plain[result_plain$observation_id  == "S1" &
+                              !is.na(result_plain$taxon_name) &
                               result_plain$taxon_name == "Gillichthys mirabilis", ]
   s1_absent <- result_absent[result_absent$observation_id  == "S1" &
+                               !is.na(result_absent$taxon_name) &
                                result_absent$taxon_name == "Gillichthys mirabilis", ]
   expect_lt(s1_absent$prior_mean, s1_plain$prior_mean)
 })
@@ -441,10 +447,10 @@ test_that("absent species prior suppression scales with detection_prob", {
   r50 <- make_result(0.50)
   r90 <- make_result(0.90)
   # higher detection_prob -> stronger suppression -> lower prior
-  p50 <- r50[r50$observation_id == "S1" & r50$taxon_name == "Gillichthys mirabilis",
-             "prior_mean"]
-  p90 <- r90[r90$observation_id == "S1" & r90$taxon_name == "Gillichthys mirabilis",
-             "prior_mean"]
+  p50 <- r50[r50$observation_id == "S1" & !is.na(r50$taxon_name) &
+               r50$taxon_name == "Gillichthys mirabilis", "prior_mean"]
+  p90 <- r90[r90$observation_id == "S1" & !is.na(r90$taxon_name) &
+               r90$taxon_name == "Gillichthys mirabilis", "prior_mean"]
   expect_gt(p50, p90)
 })
 

@@ -13,7 +13,7 @@ library(TaxaAssign)
 make_spg_match_df <- function() {
   data.frame(
     observation_id       = c("S1", "S1", "S2", "S2"),
-    score           = c(99, 88, 97, 85),
+    score_original = c(99, 88, 97, 85),
     taxon_name      = c("Fundulus lima", "Fundulus zebrinus",
                         "Gambusia affinis", "Gambusia holbrooki"),
     taxon_name_rank = rep("species", 4L),
@@ -332,7 +332,7 @@ test_that("suggest_unreferenced_species() handles erroring llm_fn with warning",
 test_that("suggest_unreferenced_species() derives genus from taxon_name when genus col absent", {
   match_df <- data.frame(
     observation_id       = "S1",
-    score           = 99,
+    score_original = 99,
     taxon_name      = "Fundulus lima",
     taxon_name_rank = "species",
     stringsAsFactors = FALSE

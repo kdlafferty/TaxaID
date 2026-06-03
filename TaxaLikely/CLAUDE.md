@@ -1,14 +1,14 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-01 (Session 97 -- acoustic/image workflow simplification; expand_consensus_candidates score_col; remove build_acoustic_reference, build_image_reference, fetch_reference_recordings)
+# Last updated: 2026-06-02 (Session 99 -- Phase 1 column renames; Phase 2 unified pipeline: unreferenced_candidates, assign_scores, model_likelihoods, compute_likelihoods; expand_consensus_candidates() deprecated)
 
 ---
 
 ## Package Purpose
 Converts match scores (DNA percent identity, image similarity, acoustic scores) into
 likelihoods for taxonomic assignment. Takes a standardized match object (from TaxaMatch
-or user-supplied) and produces per-hypothesis `likelihood_point_est`, `likelihood_mean`,
-`likelihood_sd` columns required by TaxaAssign.
+or user-supplied) and produces per-hypothesis `score_likelihood`, `score_likelihood_mean`,
+`score_likelihood_sd` columns required by TaxaAssign.
 
 Also provides reference database quality tools:
 - Detecting mislabeled reference sequences
@@ -64,9 +64,9 @@ to likelihood output downstream -- it is NOT part of the match object.
 | `taxon_name` | character | Hypothesized taxon (never NA) |
 | `taxon_name_rank` | character | Rank of hypothesis |
 | `hypothesis_type` | character | "specific_candidate", "unreferenced_species", "unreferenced_genus" |
-| `likelihood_point_est` | numeric | Point estimate (deterministic) |
-| `likelihood_mean` | numeric | Mean across Monte Carlo simulations |
-| `likelihood_sd` | numeric | SD across simulations (0 if n_sims = 0) |
+| `score_likelihood` | numeric | Point estimate (deterministic) |
+| `score_likelihood_mean` | numeric | Mean across Monte Carlo simulations |
+| `score_likelihood_sd` | numeric | SD across simulations (0 if n_sims = 0) |
 
 **`$unresolved`** -- rows from the original `match_df` for any `observation_id` that
 produced no usable likelihoods (e.g., all candidates matched only at a rank
@@ -97,6 +97,15 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
 | `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations |
 
+### Unified likelihood pipeline (new — Session 99)
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `unreferenced_candidates()` | `R/unreferenced_candidates.R` | Written | Expand match_df with H2/H3/(H4) placeholder rows. Auto-detects `rank_system`. `include_unreferenced_family` param (default FALSE) adds H4 catch-all. Anchor = best-scoring taxon per observation. |
+| `assign_scores()` | `R/assign_scores.R` | Written | Convert raw scores to `score_likelihood`. `score_type`: `"none"` (all rows = 1.0 uniform, including H4), `"probability"` (ratio-normalize H1; H2/H3 anchored at median same-genus/same-family H1 likelihood; H4 fixed at 0.05), `"similarity_softmax"` (exp-weighted, same H2/H3/H4 anchoring), `"similarity"` (adds `score_norm` only — pass to `model_likelihoods()`). **Single-H1 caveat**: for top-1 classifier output (one H1 row per observation), H2/H3 anchor = median(H1) = 1.0; score has no discriminating effect. Use multi-candidate output + `"probability"` to modulate likelihoods. |
+| `model_likelihoods()` | `R/compute_likelihoods.R` | Written | Apply bivariate-normal model to a `scored_df` from `assign_scores(score_type="similarity")`. Thin wrapper around `evaluate_likelihoods()`; adds `score_method = "bivariate_normal"`. |
+| `compute_likelihoods()` | `R/compute_likelihoods.R` | Written | Orchestrating wrapper: `unreferenced_candidates()` → `assign_scores()` → `model_likelihoods()` (similarity only). Recommended high-level entry point. Returns `list($likelihoods, $unresolved)`. |
+
 ### Inference (apply model to query observations)
 
 | Function | File | Status | Description |
@@ -125,7 +134,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `expand_consensus_candidates()` | `R/expand_consensus.R` | Written | Handles observations with a single candidate (with or without a score). No-score pathway: all likelihoods = 1.0; posteriors proportional to priors. With `score_col`: consensus species gets `likelihood = score`, competing hypotheses get `likelihood = 1 - score`. Candidate construction by rank: species → consensus + unreferenced congeners; genus/family → all species with priors in the group. Returns `list($likelihoods, $unresolved)` identical in structure to `evaluate_likelihoods()`. Covers three use cases: morphology IDs (no score), upranked consensus (no score), BirdNET top-1 (score). |
+| `expand_consensus_candidates()` | `R/expand_consensus.R` | **Deprecated (Session 99)** | Use `unreferenced_candidates()` + `assign_scores()` instead. Deprecated with `.Deprecated()` notice in function body. |
 
 ### Match object cleaning and export
 
@@ -178,11 +187,11 @@ monolithic `inst/TaxaLikely_workflow.R` (retained for reference but superseded).
 | 3 | `3_train_model_workflow.R` | Train likelihood model from DNA reference matrix | `build_sequence_matrix()` → `train_likelihood_model()` → `interpret_model()` |
 | 4 | `4_score_to_likelihood_workflow.R` | Convert match scores to likelihoods for TaxaAssign | `evaluate_likelihoods()` → `filter_top_hypotheses()` |
 | 5 | `5_audit_coverage_workflow.R` | Audit reference completeness; constrain likelihoods | `audit_barcode_coverage()` / `audit_reference_coverage()` → `apply_coverage_constraints()` |
+| 6 | `6_no_score_pathway_workflow.R` | No-score pathway: build uniform likelihoods from consensus assignments | `unreferenced_candidates()` → `assign_scores(score_type = "none")` |
 
 Workflows 2 and 3 share `build_sequence_matrix()` — build once, reuse.
-Acoustic and image data use `expand_consensus_candidates()` (with optional `score_col`)
-rather than a training workflow — classifiers are pre-trained; TaxaLikely acts as a
-post-classifier calibration layer.
+Acoustic and image data use `unreferenced_candidates()` + `assign_scores()` (no training
+step — classifiers are pre-trained; TaxaLikely acts as a post-classifier calibration layer).
 Workflow 4 includes a one-liner to remove flagged errors from the match object
 before evaluating likelihoods (no dedicated function needed).
 
@@ -267,9 +276,10 @@ Must be installed; it is in Imports.
   from H1_Lookup (no per-species parameters for "ANCHOR_PERFECT"). Count = max(5, 10% of data).
 - **Shrinkage:** `w = N / (N + prior_weight)`; per-species variance + gap mean shrunk
   toward global. Default `prior_weight = 10.0`.
-- **Monte Carlo:** n_sims samples from score distribution -> `likelihood_mean` + `likelihood_sd`
-- **Median-across-references** approach: `evaluate_likelihoods()` takes max score per taxon_name,
-  summarising across multiple accessions before likelihood calculation.
+- **Monte Carlo:** n_sims samples from score distribution -> `score_likelihood_mean` + `score_likelihood_sd`
+- **Median-across-references** approach: `evaluate_likelihoods()` takes the **median** score per taxon_name
+  across multiple reference accessions before likelihood calculation. Robust to outlier accessions and
+  sample-size bias. H2/H3 are then anchored at the best (highest) median score across all candidate taxa.
 
 ---
 
@@ -289,6 +299,17 @@ The function checks for them at runtime.
 `train_likelihood_model(use_hierarchy = TRUE)` requires enough taxonomic levels
 (>= 2 rank columns in training data) and sufficient variance across ranks for
 lme4 to converge. Falls back gracefully to global mean with a message.
+
+### Single H2/H3 anchor — non-best genera get no unreferenced hypothesis
+`.evaluate_one_query()` generates exactly one H2 row (unreferenced species in the
+best candidate's genus) and one H3 row (unreferenced genus in the best candidate's
+family), both anchored at the single globally best-scoring candidate. This is
+intentional: when one genus clearly dominates, its unreferenced congeners are the
+relevant alternative hypotheses, and the gap feature already signals ambiguity when
+genera are nearly tied. The implicit assumption is that near-tied multi-genus
+observations are routed through the consensus/upranking pathway (uniform likelihoods)
+rather than `evaluate_likelihoods()`. Known limitation: near-tied multi-genus queries
+that bypass upranking will not receive unreferenced hypotheses for the non-best genus.
 
 ### expand_unreferenced_hypotheses() workflow order
 `expand_unreferenced_hypotheses()` must run **before** `apply_coverage_constraints()`.

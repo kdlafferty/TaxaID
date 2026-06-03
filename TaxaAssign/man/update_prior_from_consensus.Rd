@@ -13,8 +13,8 @@ update_prior_from_consensus(
 }
 \arguments{
 \item{result}{Dataframe. Output of \code{\link[=assign_taxa_llm]{assign_taxa_llm()}} or \code{\link[=compute_posterior]{compute_posterior()}}.
-Must contain: \code{observation_id}, \code{taxon_name}, \code{likelihood_point_est},
-\code{likelihood_mean}, \code{likelihood_sd}, \code{prior_mean}.}
+Must contain: \code{observation_id}, \code{taxon_name}, \code{score_likelihood},
+\code{score_likelihood_mean}, \code{score_likelihood_sd}, \code{prior_mean}.}
 
 \item{consensus}{Dataframe. Output of \code{\link[=posterior_consensus]{posterior_consensus()}} run on \code{result}.
 Must contain: \code{observation_id}, \code{consensus_taxon}, \code{is_resolved}.}

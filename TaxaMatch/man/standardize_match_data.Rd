@@ -57,7 +57,7 @@ to preserve original column name casing.}
 A data frame with at minimum:
 \describe{
 \item{\code{observation_id}}{Unique query identifier (renamed from \code{observation_id_col}).}
-\item{\code{score}}{Raw match score (renamed from \code{score_col}).}
+\item{\code{score_original}}{Raw match score (renamed from \code{score_col}). Preserved unchanged throughout the pipeline; downstream functions add \code{score_norm}, \code{score_softmax}, and \code{score_likelihood} columns as transformations are applied.}
 \item{\code{taxon_name}}{Most specific non-NA taxon name (derived).}
 \item{\code{taxon_name_rank}}{Rank of \code{taxon_name}, lowercase (derived).}
 }
@@ -65,7 +65,7 @@ All other input columns are retained unchanged.
 }
 \description{
 Reads raw match data (from a data frame or file), renames the observation
-identifier and score columns to canonical names (\code{observation_id} and \code{score}),
+identifier and score columns to canonical names (\code{observation_id} and \code{score_original}),
 auto-detects or validates taxonomic rank columns, and derives \code{taxon_name}
 and \code{taxon_name_rank} via \code{\link[TaxaTools:create_taxon_names]{TaxaTools::create_taxon_names()}}.
 }

@@ -94,7 +94,7 @@ lik_result <- evaluate_likelihoods(
   n_sims       = 100L    # Monte Carlo for credible intervals
 )
 print(lik_result$likelihoods)
-# Expect: Leuciscus cephalus with high likelihood_point_est
+# Expect: Leuciscus cephalus with high score_likelihood
 
 # Check for unresolved queries (family-level-only matches)
 if (nrow(lik_result$unresolved) > 0L) {
@@ -115,8 +115,17 @@ print(filtered)
 
 match_obj <- readRDS("~/My Drive/Rscripts/projects/TaxaID/TaxaMatch/inst/match_obj.rds")
 
+# Normalize legacy column names (pre-Session 79/99 saved files)
+if (!"observation_id" %in% names(match_obj)) {
+  old <- intersect(c("sample_id", "esvid", "esv_id", "asvid", "asv_id"), names(match_obj))[1]
+  if (!is.na(old)) { message("Renaming '", old, "' -> 'observation_id'"); names(match_obj)[names(match_obj) == old] <- "observation_id" }
+}
+if (!"score_original" %in% names(match_obj) && "score" %in% names(match_obj)) {
+  message("Renaming 'score' -> 'score_original'"); names(match_obj)[names(match_obj) == "score"] <- "score_original"
+}
+
 # Confirm columns
-stopifnot(all(c("observation_id", "score", "taxon_name", "taxon_name_rank") %in% names(match_obj)))
+stopifnot(all(c("observation_id", "score_original", "taxon_name", "taxon_name_rank") %in% names(match_obj)))
 cat("match_obj rows:", nrow(match_obj), "| unique accessions:", dplyr::n_distinct(match_obj$accession), "\n")
 
 # ---- B1. Build real_matrix (or load cached copy) ----------------------------

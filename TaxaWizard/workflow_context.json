@@ -1,66 +1,48 @@
 {
   "parameters": [
     {
-      "name": "input_file",
-      "value": "\"/Users/lafferty/My Drive/Stats and Data/PtConceptionEDNA/Preliminary2023/JVB2844-MiFishU-esv-data.csv\"",
-      "description": "Path to eDNA match data CSV",
+      "name": "input_path",
+      "value": "\"~/data/birdnet.csv\"",
+      "description": "Path to BirdNET CSV file(s)",
       "source": "user"
+    },
+    {
+      "name": "min_confidence",
+      "value": "0.1",
+      "description": "Minimum BirdNET confidence score to retain a detection",
+      "source": "default"
+    },
+    {
+      "name": "top_n",
+      "value": "NULL",
+      "description": "Number of top-scoring candidates to retain per clip (NULL = keep all)",
+      "source": "default"
+    },
+    {
+      "name": "rank_system",
+      "value": "c(\"genus\", \"species\")",
+      "description": "Taxonomic rank columns expected in BirdNET output",
+      "source": "default"
     },
     {
       "name": "min_score",
-      "value": "97",
-      "description": "Minimum percent identity score for consensus assignment",
-      "source": "user"
+      "value": "0.1",
+      "description": "Minimum score to include a detection in consensus",
+      "source": "default"
     },
     {
       "name": "max_gap",
-      "value": "2",
-      "description": "Maximum score gap allowed between top hits before collapsing to higher rank",
-      "source": "user"
+      "value": "10",
+      "description": "Minimum score gap between top two candidates to declare a clip resolved",
+      "source": "default"
     },
     {
       "name": "rank_thresholds",
-      "value": "c(species = 98, genus = 95, family = 90)",
-      "description": "Minimum score required to assign at each taxonomic rank",
-      "source": "default"
-    },
-    {
-      "name": "geographic_hint",
-      "value": "\"Point Conception, California, coastal marine\"",
-      "description": "Geographic context for LLM ecological inference",
-      "source": "user"
-    },
-    {
-      "name": "date",
-      "value": "\"2023\"",
-      "description": "Sampling year for ecological context",
-      "source": "user"
-    },
-    {
-      "name": "habitat_scheme",
       "value": "NULL",
-      "description": "Habitat classification scheme; NULL uses default 3-category scheme (Marine/Freshwater/Terrestrial)",
+      "description": "Named vector of minimum scores per rank (NULL = no rank-specific thresholds)",
       "source": "default"
-    },
-    {
-      "name": "target_group",
-      "value": "\"fish\"",
-      "description": "Taxonomic target group for LLM review",
-      "source": "user"
-    },
-    {
-      "name": "marker",
-      "value": "\"MiFish\"",
-      "description": "Barcode marker used for sequencing",
-      "source": "user"
-    },
-    {
-      "name": "llm_fn",
-      "value": "TaxaTools::call_anthropic_api",
-      "description": "LLM function reference for API calls",
-      "source": "user"
     }
   ],
   "outputs": "script",
-  "timestamp": "2026-05-18 14:16:52"
+  "timestamp": "2026-05-28 13:47:35"
 }

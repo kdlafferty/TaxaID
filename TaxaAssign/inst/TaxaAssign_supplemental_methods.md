@@ -92,7 +92,7 @@ effectively returning the prior-weighted allocation.
 ### 2.3 Monte Carlo Path
 
 When uncertainty information is available -- either non-zero
-`likelihood_sd` from TaxaLikely's simulation or `prior_alpha`/
+`score_likelihood_sd` from TaxaLikely's simulation or `prior_alpha`/
 `prior_beta` from Beta-distributed priors -- a Monte Carlo simulation
 propagates that uncertainty into the posterior.
 
@@ -277,8 +277,8 @@ For each observation, scores are aggregated to one value per taxon_name
 $$\hat{L}_i = (1 - w_u) \times \frac{\exp(\lambda \times s_i)}{\sum_j \exp(\lambda \times s_j)}$$
 
 where $w_u$ is the `unknown_lik_weight` (default 0.05), reserved for an
-explicit "unknown_species" hypothesis that captures the probability that
-the true taxon is not among any of the candidates.
+`unreferenced_family` hypothesis (NA `taxon_name`) that captures the
+probability that the true taxon is not among any of the candidates.
 
 ### 4.2 Unreferenced Species Insertion
 
@@ -400,11 +400,12 @@ observations. Direct user-specified elevation (analogous to the
 would risk double-counting when the LLM has already incorporated
 presence information into its weights.
 
-### 4.5 The Unknown Species Hypothesis
+### 4.5 The Unreferenced-Family Hypothesis
 
-Both workflows include an explicit "unknown_species" hypothesis that
-captures the probability that the observation belongs to a taxon not
-represented by any named candidate. This makes it possible to discover
+Both workflows include an explicit `unreferenced_family` hypothesis
+(Session 99+; formerly `"unknown_species"`) that captures the
+probability that the observation belongs to a taxon not represented by
+any named candidate. This makes it possible to discover
 range expansions and newly introduced species. In the LLM-shortcut
 workflow:
 
@@ -431,7 +432,7 @@ finest taxonomic rank at which assignment is confident:
 
 1.  **Candidate filtering**: retain hypotheses with
     `posterior_mean ≥ min_posterior` (default 0.01). Drop
-    `unknown_species` rows (not assignable to a named taxon).
+    `unreferenced_family` rows, identified by `is.na(taxon_name)` (not assignable to a named taxon).
 
 2.  **Cumulative probability**: sort candidates by descending
     `posterior_mean` and accumulate until the running sum exceeds
@@ -548,10 +549,10 @@ statistical treatment:
 | `specific_candidate` | TaxaLikely H1 or score-based | Species in the reference database | TaxaExpect Tier 1/2 or LLM |
 | `unreferenced_species` | TaxaLikely H2 or LLM | Congener absent from reference | TaxaExpect Tier 3 or LLM |
 | `unreferenced_genus` | TaxaLikely H3 or LLM | Family-level unreferenced taxon | TaxaExpect Tier 3 or LLM |
-| `unknown_species` | assign_taxa_llm() | Uncharacterised diversity | Fixed weight |
+| `unreferenced_family` | assign_taxa_llm() | Uncharacterised diversity (NA taxon_name) | Fixed weight |
 | `unresolved_species` | apply_coverage_constraints() | Ambiguous among referenced genus members | Inherited from genus |
 
-The `unknown_species` hypothesis is excluded from consensus (it
+The `unreferenced_family` hypothesis is excluded from consensus (it
 represents the possibility that no named hypothesis is correct, but does
 not itself name a taxon). All other types participate in LCA
 computation.

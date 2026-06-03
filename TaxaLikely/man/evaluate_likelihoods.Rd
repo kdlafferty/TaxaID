@@ -22,7 +22,8 @@ evaluate_likelihoods(
 \arguments{
 \item{match_df}{Data frame in the canonical match-object format (output of
 \code{TaxaMatch::standardize_match_data()} or user-supplied).  Must contain
-\code{observation_id}, \code{score} (or \code{p_match}), \code{taxon_name}, \code{taxon_name_rank},
+\code{observation_id}, \code{score_original} (or \code{p_match}; legacy \code{score} also
+accepted), \code{taxon_name}, \code{taxon_name_rank},
 and taxonomy columns matching \code{rank_system}.}
 
 \item{model_params}{Object of class \code{"taxa_model_params"} from
@@ -80,7 +81,7 @@ A named list with two components:
 hypothesis, suitable for input to \code{TaxaAssign::compute_posterior()}:
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type}
 (\code{"specific_candidate"}, \code{"unreferenced_species"}, or \code{"unreferenced_genus"}),
-\code{likelihood_point_est}, \code{likelihood_mean}, \code{likelihood_sd}.  Rows
+\code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd}.  Rows
 where \code{taxon_name} resolved to \code{NA} are excluded.}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
 produced no usable likelihoods (empty data frame if none).  Pass to

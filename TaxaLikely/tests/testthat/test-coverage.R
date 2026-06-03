@@ -33,9 +33,9 @@ test_that("audit_reference_coverage: empty groups returns empty census + unrefer
     taxon_name           = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
     taxon_name_rank      = c("species", "genus", "family"),
     hypothesis_type      = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
-    likelihood_point_est = c(1.0, 0.5, 0.1),
-    likelihood_mean      = c(1.0, 0.5, 0.1),
-    likelihood_sd        = c(0, 0, 0)
+    score_likelihood = c(1.0, 0.5, 0.1),
+    score_likelihood_mean      = c(1.0, 0.5, 0.1),
+    score_likelihood_sd        = c(0, 0, 0)
   )
 }
 
@@ -51,15 +51,15 @@ test_that("audit_reference_coverage: empty groups returns empty census + unrefer
 test_that("apply_coverage_constraints: suppresses unreferenced_species for complete genus", {
   out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result())
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
-  expect_equal(h2_row$likelihood_point_est, 0)
-  expect_equal(h2_row$likelihood_mean, 0)
+  expect_equal(h2_row$score_likelihood, 0)
+  expect_equal(h2_row$score_likelihood_mean, 0)
   expect_equal(h2_row$constraint_applied, "census_closed_genus")
 })
 
 test_that("apply_coverage_constraints: leaves other hypotheses unchanged", {
   out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result())
   h1_row <- out[out$hypothesis_type == "specific_candidate", ]
-  expect_equal(h1_row$likelihood_point_est, 1.0)
+  expect_equal(h1_row$score_likelihood, 1.0)
   expect_true(is.na(h1_row$constraint_applied))
 })
 
@@ -67,7 +67,7 @@ test_that("apply_coverage_constraints: soft penalty factor applied", {
   out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result(),
                                     penalty_factor = 0.5)
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
-  expect_equal(h2_row$likelihood_point_est, 0.25)
+  expect_equal(h2_row$score_likelihood, 0.25)
 })
 
 test_that("apply_coverage_constraints: incomplete genus not constrained", {
@@ -77,7 +77,7 @@ test_that("apply_coverage_constraints: incomplete genus not constrained", {
   out <- apply_coverage_constraints(.make_likelihood_df(), census_incomplete)
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_true(is.na(h2_row$constraint_applied))
-  expect_equal(h2_row$likelihood_point_est, 0.5)
+  expect_equal(h2_row$score_likelihood, 0.5)
 })
 
 test_that("apply_coverage_constraints: missing census columns errors", {

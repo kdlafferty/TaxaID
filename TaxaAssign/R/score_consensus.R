@@ -66,7 +66,7 @@ utils::globalVariables(c("score_val"))
 #'   whitelist member agrees with the retained candidates.  Default `NULL`
 #'   (no whitelist filtering).
 #' @param score_col Character.  Column name containing match scores.
-#'   Default `"score"`.
+#'   Default `"score_original"`.
 #' @param rank_system Character vector of taxonomy column names, coarse to
 #'   fine (e.g. `c("family", "genus", "species")`).  If `NULL` (default),
 #'   standard columns present in `match_df` are detected automatically.
@@ -120,7 +120,7 @@ score_consensus <- function(match_df,
                             max_gap         = Inf,
                             rank_thresholds = NULL,
                             whitelist       = NULL,
-                            score_col       = "score",
+                            score_col       = "score_original",
                             rank_system     = NULL) {
 
   # --- Input validation -------------------------------------------------------

@@ -10,9 +10,9 @@ library(dplyr)
     taxon_name           = c("Fundulus parvipinnis", "Fundulus lima", "Fundulidae"),
     taxon_name_rank      = c("species", "species", "family"),
     hypothesis_type      = c("specific_candidate", "specific_candidate", "unreferenced_genus"),
-    likelihood_point_est = c(0.8, 0.3, 0.1),
-    likelihood_mean      = c(0.8, 0.3, 0.1),
-    likelihood_sd        = c(0.05, 0.04, 0.02),
+    score_likelihood = c(0.8, 0.3, 0.1),
+    score_likelihood_mean      = c(0.8, 0.3, 0.1),
+    score_likelihood_sd        = c(0.05, 0.04, 0.02),
     genus                = c("Fundulus", "Fundulus", NA),
     family               = c("Fundulidae", "Fundulidae", "Fundulidae"),
     species              = c("Fundulus parvipinnis", "Fundulus lima", NA)

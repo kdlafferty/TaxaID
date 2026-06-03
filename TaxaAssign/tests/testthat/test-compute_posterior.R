@@ -17,9 +17,9 @@ make_test_df <- function() {
       taxon_name           = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
       hypothesis_type      = c("specific_candidate", "specific_candidate",
                                "unreferenced_species"),
-      likelihood_point_est = c(0.85, 0.30, 0.10),
-      likelihood_mean      = c(0.83, 0.31, 0.10),
-      likelihood_sd        = c(0.05, 0.04, 0.02),
+      score_likelihood = c(0.85, 0.30, 0.10),
+      score_likelihood_mean      = c(0.83, 0.31, 0.10),
+      score_likelihood_sd        = c(0.05, 0.04, 0.02),
       prior_mean           = c(0.60, 0.30, 0.10),
       prior_alpha          = c(30.0, 15.0, 5.0),
       prior_beta           = c(20.0, 35.0, 45.0)
@@ -31,9 +31,9 @@ make_test_df <- function() {
       taxon_name           = c("Salmo salar", "Salmo trutta", "Salmo"),
       hypothesis_type      = c("specific_candidate", "specific_candidate",
                                "unreferenced_species"),
-      likelihood_point_est = c(0.70, 0.65, 0.10),
-      likelihood_mean      = c(0.68, 0.64, 0.10),
-      likelihood_sd        = c(0.08, 0.08, 0.02),
+      score_likelihood = c(0.70, 0.65, 0.10),
+      score_likelihood_mean      = c(0.68, 0.64, 0.10),
+      score_likelihood_sd        = c(0.08, 0.08, 0.02),
       prior_mean           = c(0.50, 0.40, 0.10),
       prior_alpha          = c(5.0, 4.0, 1.0),
       prior_beta           = c(5.0, 6.0, 9.0)
@@ -46,9 +46,9 @@ make_test_df <- function() {
                                "Thunnus obesus", "Thunnus", "Scombridae"),
       hypothesis_type      = c(rep("specific_candidate", 3),
                                "unreferenced_species", "unreferenced_genus"),
-      likelihood_point_est = c(0.90, 0.40, 0.20, 0.05, 0.02),
-      likelihood_mean      = c(0.88, 0.41, 0.21, 0.05, 0.02),
-      likelihood_sd        = c(0.06, 0.05, 0.04, 0.01, 0.01),
+      score_likelihood = c(0.90, 0.40, 0.20, 0.05, 0.02),
+      score_likelihood_mean      = c(0.88, 0.41, 0.21, 0.05, 0.02),
+      score_likelihood_sd        = c(0.06, 0.05, 0.04, 0.01, 0.01),
       prior_mean           = c(0.50, 0.25, 0.15, 0.07, 0.03),
       prior_alpha          = c(25.0, 12.5, 7.5, 3.5, 1.5),
       prior_beta           = c(25.0, 37.5, 42.5, 46.5, 48.5)
@@ -113,8 +113,8 @@ test_that("Beta priors propagate uncertainty into posterior_sd", {
 test_that("compute_posterior with no alpha/beta treats priors as fixed", {
   df     <- make_test_df() |> dplyr::select(-prior_alpha, -prior_beta)
 
-  # Also set likelihood_sd to 0 so there's no uncertainty at all
-  df$likelihood_sd <- 0
+  # Also set score_likelihood_sd to 0 so there's no uncertainty at all
+  df$score_likelihood_sd <- 0
   result <- suppressMessages(compute_posterior(df, n_sims = 1000L))
 
   expect_true(all(abs(result$posterior_mean - result$posterior_point_est) < 1e-10))
@@ -122,7 +122,7 @@ test_that("compute_posterior with no alpha/beta treats priors as fixed", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 4: No alpha/beta but nonzero likelihood_sd — MC still runs for likelihoods
+# Test 4: No alpha/beta but nonzero score_likelihood_sd — MC still runs for likelihoods
 # ---------------------------------------------------------------------------
 
 test_that("MC runs for likelihood uncertainty even without Beta priors", {
@@ -158,24 +158,24 @@ test_that("compute_posterior with n_sims = 0 uses point estimate path only", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior errors informatively on missing required columns", {
-  df_bad <- make_test_df() |> dplyr::select(-likelihood_sd, -prior_mean)
+  df_bad <- make_test_df() |> dplyr::select(-score_likelihood_sd, -prior_mean)
 
-  expect_error(compute_posterior(df_bad), regexp = "likelihood_sd|prior_mean")
+  expect_error(compute_posterior(df_bad), regexp = "score_likelihood_sd|prior_mean")
 })
 
 # ---------------------------------------------------------------------------
-# Test 7: NA values in likelihood_sd — replaced with 0, warning emitted
+# Test 7: NA values in score_likelihood_sd — replaced with 0, warning emitted
 # ---------------------------------------------------------------------------
 
-test_that("compute_posterior replaces NA likelihood_sd with 0 and warns", {
+test_that("compute_posterior replaces NA score_likelihood_sd with 0 and warns", {
   df        <- make_test_df()
-  df$likelihood_sd[c(1L, 4L)] <- NA
+  df$score_likelihood_sd[c(1L, 4L)] <- NA
 
   expect_warning(
     result <- compute_posterior(df, n_sims = 0L),
     regexp = "NA"
   )
-  expect_false(anyNA(result$likelihood_sd))
+  expect_false(anyNA(result$score_likelihood_sd))
 })
 
 # ---------------------------------------------------------------------------
@@ -187,9 +187,9 @@ test_that("compute_posterior assigns posterior = 1 when only one hypothesis", {
     observation_id            = "Solo",
     taxon_name           = "Gadus morhua",
     hypothesis_type      = "specific_candidate",
-    likelihood_point_est = 0.75,
-    likelihood_mean      = 0.75,
-    likelihood_sd        = 0.0,
+    score_likelihood = 0.75,
+    score_likelihood_mean      = 0.75,
+    score_likelihood_sd        = 0.0,
     prior_mean           = 0.5
   )
   result <- suppressMessages(compute_posterior(df, n_sims = 0L))
@@ -251,9 +251,9 @@ test_that("higher phi produces lower posterior_sd than lower phi", {
     observation_id            = rep("S1", 2),
     taxon_name           = c("Sp_A", "Sp_B"),
     hypothesis_type      = "specific_candidate",
-    likelihood_point_est = c(0.6, 0.4),
-    likelihood_mean      = c(0.6, 0.4),
-    likelihood_sd        = c(0.05, 0.05),
+    score_likelihood = c(0.6, 0.4),
+    score_likelihood_mean      = c(0.6, 0.4),
+    score_likelihood_sd        = c(0.05, 0.05),
     prior_mean           = c(0.7, 0.3),
     prior_alpha          = c(70, 30),
     prior_beta           = c(30, 70)
@@ -264,9 +264,9 @@ test_that("higher phi produces lower posterior_sd than lower phi", {
     observation_id            = rep("S1", 2),
     taxon_name           = c("Sp_A", "Sp_B"),
     hypothesis_type      = "specific_candidate",
-    likelihood_point_est = c(0.6, 0.4),
-    likelihood_mean      = c(0.6, 0.4),
-    likelihood_sd        = c(0.05, 0.05),
+    score_likelihood = c(0.6, 0.4),
+    score_likelihood_mean      = c(0.6, 0.4),
+    score_likelihood_sd        = c(0.05, 0.05),
     prior_mean           = c(0.7, 0.3),
     prior_alpha          = c(2.1, 0.9),
     prior_beta           = c(0.9, 2.1)

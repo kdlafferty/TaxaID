@@ -10,7 +10,7 @@ expand_unreferenced_hypotheses(likelihood_df, unreferenced_df)
 \item{likelihood_df}{Data frame -- the \verb{$likelihoods} component returned by
 \code{\link[TaxaLikely:evaluate_likelihoods]{TaxaLikely::evaluate_likelihoods()}}.  Must contain \code{observation_id},
 \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type},
-\code{likelihood_point_est}, \code{likelihood_mean}, \code{likelihood_sd}.}
+\code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd}.}
 
 \item{unreferenced_df}{Data frame of unreferenced but plausible species.
 Must contain columns \code{species} (binomial name), \code{genus}, and \code{family}.
@@ -37,7 +37,7 @@ them directly to species-level priors from TaxaExpect.
 \enumerate{
 \item The \code{"unreferenced_species"} (H2) row carries a genus label.
 Unreferenced species whose genus matches that label receive the H2
-\code{likelihood_point_est} / \code{likelihood_mean} / \code{likelihood_sd}.
+\code{score_likelihood} / \code{score_likelihood_mean} / \code{score_likelihood_sd}.
 \item The \code{"unreferenced_genus"} (H3) row carries a family label.
 Unreferenced species whose family matches that label \emph{and} whose
 genus differs from the H2 genus receive the H3 likelihood values.

@@ -12,12 +12,12 @@ if (!"observation_id" %in% names({{match_var}})) {
     names({{match_var}})[sid_match] <- "observation_id"
   }
 }
-if (!"score" %in% names({{match_var}})) {
+if (!"score_original" %in% names({{match_var}})) {
   sc_match <- match(TRUE, tolower(names({{match_var}})) %in%
-    c("percmatch", "perc_match", "pident", "percent_identity", "similarity"))
+    c("score", "percmatch", "perc_match", "pident", "percent_identity", "similarity"))
   if (!is.na(sc_match)) {
-    message("Renaming '", names({{match_var}})[sc_match], "' -> 'score'")
-    names({{match_var}})[sc_match] <- "score"
+    message("Renaming '", names({{match_var}})[sc_match], "' -> 'score_original'")
+    names({{match_var}})[sc_match] <- "score_original"
   }
 }
 

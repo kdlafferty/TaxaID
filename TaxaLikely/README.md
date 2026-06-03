@@ -75,7 +75,7 @@ model <- train_likelihood_model(ref_matrix)
 result <- evaluate_likelihoods(match_df, model)
 likelihoods <- result$likelihoods
 # Columns: observation_id, taxon_name, hypothesis_type,
-#           likelihood_point_est, likelihood_mean, likelihood_sd
+#           score_likelihood, score_likelihood_mean, score_likelihood_sd
 ```
 
 ## Loading Pre-built Reference Databases
@@ -281,10 +281,15 @@ matrix via DECIPHER; required for `flag_reference_errors()` and
 references - `train_likelihood_model()` -- fit hierarchical Bayesian model
 
 **Inference:** - `evaluate_likelihoods()` -- convert match scores to
-likelihoods - `filter_top_hypotheses()` -- keep finest-rank candidates
-per query - `expand_consensus_candidates()` -- no-score pathway: build
-degenerate likelihood object from a consensus taxon + TaxaExpect priors
-(bypasses match scoring entirely)
+likelihoods using a trained model - `filter_top_hypotheses()` -- keep
+finest-rank candidates per query - `unreferenced_candidates()` -- expand
+a consensus assignment with H2/H3 placeholder rows (no model required;
+used in no-score and acoustic/image pathways) - `assign_scores()` -- set
+`score_likelihood` values: uniform (`"none"`), ratio-normalised
+(`"probability"`), softmax (`"similarity_softmax"`), or prepare for the
+bivariate-normal model (`"similarity"`) - `compute_likelihoods()` --
+high-level wrapper: `unreferenced_candidates()` → `assign_scores()` →
+`model_likelihoods()` (DNA scored pathway)
 
 **Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
 species (no barcode sequence; eDNA/DNA only) - `audit_acoustic_coverage()` --
@@ -328,18 +333,11 @@ overlap — yet both produce the same score.  Similarly, a high BirdNET
 confidence from a poor-quality recording (heavy rain, distant call) carries
 less information than the same score from a quiet, close-range recording.
 
-Both build functions now attach a `coverage` column to their output,
-placing DNA and acoustic reference data on a common [0, 1] scale:
-
-- **`build_sequence_matrix()`** computes *alignment coverage*: the
-  number of positions where both sequences contribute a non-gap character,
-  divided by the shorter unaligned sequence length.  Values near 1.0
-  indicate nearly complete overlap; values near 0.0 indicate highly gappy
-  or partial alignments.
-
-- **`build_acoustic_reference()`** maps Xeno-canto quality grades to a
-  numeric scale: A → 1.0, B → 0.8, C → 0.5, D → 0.3, E → 0.1.  Grade
-  reflects expert assessment of signal clarity and background noise.
+`build_sequence_matrix()` attaches a `coverage` column to its output:
+*alignment coverage* is the number of positions where both sequences
+contribute a non-gap character, divided by the shorter unaligned
+sequence length.  Values near 1.0 indicate nearly complete overlap;
+values near 0.0 indicate highly gappy or partial alignments.
 
 ### Choosing a threshold: `calibrate_coverage_filter()`
 
@@ -436,7 +434,7 @@ hypothesis type:
     prevent the "perfection penalty" where the Gaussian density peaks
     below 100%
 -   **Monte Carlo uncertainty:** Score perturbation across simulations
-    yields `likelihood_mean` and `likelihood_sd`, measuring sensitivity
+    yields `score_likelihood_mean` and `score_likelihood_sd`, measuring sensitivity
     to measurement noise
 
 For a detailed treatment of the statistical framework, feature
@@ -486,37 +484,44 @@ likelihoods <- result$likelihoods
 
 ### Single best candidate with a score (e.g., BirdNET top-1)
 
-BirdNET's default output provides one candidate per time segment plus
-a confidence score. Use `expand_consensus_candidates()` with
-`score_col`: the consensus species receives `likelihood = score` and
-unreferenced congeners receive `likelihood = 1 − score`. Posteriors
-are then proportional to priors, modulated by the classifier's
-confidence.
+`assign_scores()` anchors H2/H3 likelihoods at the **median H1 likelihood
+across all candidates for that observation**. With only one H1 row per
+observation (top-1 output), that median is always 1.0 — so the confidence
+score has no effect and all three rows receive `score_likelihood = 1.0`.
+
+**Recommendation: keep BirdNET's full ranked output** (multiple candidates
+per segment) and use `score_type = "probability"`. BirdNET's default
+output already includes ranked species with confidence scores:
 
 ``` r
 library(TaxaLikely)
 
-# BirdNET output standardized to consensus format
-# (taxon_name must be scientific name; use TaxaTools::common_to_scientific()
-#  if needed)
+# BirdNET full output — multiple candidates per clip, each with confidence
+# (use TaxaTools::common_to_scientific() first if output has common names)
 birdnet_df <- data.frame(
-  observation_id  = c("clip_001", "clip_002"),
-  taxon_name      = c("Melospiza melodia", "Turdus migratorius"),
-  taxon_name_rank = c("species", "species"),
-  confidence      = c(0.87, 0.43)
+  observation_id  = c("clip_001", "clip_001", "clip_001"),
+  taxon_name      = c("Melospiza melodia", "Passerella iliaca", "Junco hyemalis"),
+  taxon_name_rank = c("species",           "species",           "species"),
+  family          = c("Passerellidae",     "Passerellidae",     "Passerellidae"),
+  genus           = c("Melospiza",         "Passerella",        "Junco"),
+  species         = c("Melospiza melodia", "Passerella iliaca", "Junco hyemalis"),
+  score_original  = c(0.87, 0.09, 0.04)   # BirdNET confidence scores
 )
 
-result <- expand_consensus_candidates(
-  consensus_df       = birdnet_df,
-  priors_df          = my_priors,          # from TaxaExpect
-  referenced_species = NULL,               # BirdNET has no external reference db
-  score_col          = "confidence"        # L(H1) = score; L(others) = 1 - score
-)
+# Step 1: add H2/H3 placeholder rows
+hyp_df <- unreferenced_candidates(birdnet_df,
+            rank_system = c("family", "genus", "species"))
 
-# Output is structurally identical to evaluate_likelihoods()
+# Step 2: ratio-normalise; top candidate = 1.0, lower ones proportionally less
+likelihoods <- assign_scores(hyp_df, score_type = "probability")
+
 # Feed directly to TaxaAssign:
-posteriors <- TaxaAssign::compute_posterior(result$likelihoods, priors_df = my_priors)
+posteriors <- TaxaAssign::compute_posterior(likelihoods, priors_df = my_priors)
 ```
+
+If you only have top-1 BirdNET output and cannot recover the full ranked
+list, use `score_type = "none"` — posteriors will be proportional to
+TaxaExpect priors alone (the confidence score is ignored).
 
 ### Common names in classifier output
 
@@ -539,30 +544,19 @@ sci[, c("common_name", "scientific_name_verified", "verified")]
 When match scores are unavailable — morphology-based identifications,
 expert IDs, upranked consensus outputs from a previous run, or any
 source that yields a taxon name but no similarity score —
-`expand_consensus_candidates()` provides an alternative entry point
-that bypasses `TaxaMatch` and `evaluate_likelihoods()` entirely.
+`unreferenced_candidates()` + `assign_scores(score_type = "none")`
+builds a degenerate likelihood object that bypasses `TaxaMatch` and
+`evaluate_likelihoods()` entirely.
 
-The function builds a likelihood object and expands the candidate set
-based on the rank of the input consensus. With no score supplied
-(default), all likelihoods are 1.0 (uniform) and posteriors are
-proportional to TaxaExpect priors. When a `score_col` is supplied
-(single-candidate classifiers such as BirdNET), the consensus species
-receives `likelihood = score` and competing hypotheses receive
-`likelihood = 1 − score`.
+Two placeholder rows are added per observation:
+- **H2 (unreferenced_species)** — a placeholder for any species in the
+  same genus not in the reference database
+- **H3 (unreferenced_genus)** — a placeholder for any genus in the same
+  family not in the reference database
 
-### What it does by rank
-
-| Input rank | Candidates included |
-|---|---|
-| **Species** | Consensus species + unreferenced congeners (in `priors_df` but not in `referenced_species`) |
-| **Genus** | All species in that genus present in `priors_df` |
-| **Family** | All species in that family present in `priors_df` (guarded by `max_candidates`) |
-
-Referenced congeners are excluded at the species level because they
-would have competed via match scores had scores been available.
-At genus and family level they are included — the upranked consensus
-means score-based discrimination failed, so all species with priors
-are legitimate candidates.
+All `score_likelihood` values are set to 1.0 (uniform), so posteriors
+are proportional to TaxaExpect priors. No `priors_df` is needed at this
+stage — priors are joined later by `TaxaAssign::join_priors()`.
 
 ``` r
 library(TaxaLikely)
@@ -570,32 +564,25 @@ library(TaxaLikely)
 # Consensus taxon assignments with no match scores
 consensus_df <- data.frame(
   observation_id  = c("obs1", "obs2", "obs3"),
-  taxon_name      = c("Salmo salar", "Salvelinus", "Salmonidae"),
-  taxon_name_rank = c("species",     "genus",      "family")
+  taxon_name      = c("Salmo salar", "Salvelinus", "Cyprinus carpio"),
+  taxon_name_rank = c("species",     "genus",      "species"),
+  family          = c("Salmonidae",  "Salmonidae",  "Cyprinidae"),
+  genus           = c("Salmo",       "Salvelinus",  "Cyprinus"),
+  species         = c("Salmo salar", NA_character_, "Cyprinus carpio")
 )
 
-# priors_df from TaxaExpect::build_priors() — species + taxonomy + prior columns
-result <- expand_consensus_candidates(
-  consensus_df       = consensus_df,
-  priors_df          = my_priors,          # from TaxaExpect
-  referenced_species = reference_df$species  # species with barcode sequences
+# Step 1: add H2/H3 placeholder rows
+hyp_df <- unreferenced_candidates(
+  match_df    = consensus_df,
+  rank_system = c("family", "genus", "species")
 )
 
-# Output is structurally identical to evaluate_likelihoods()
-head(result$likelihoods)
-# observation_id  taxon_name           taxon_name_rank  hypothesis_type     likelihood_point_est
-# obs1            Salmo salar          species          specific_candidate  1
-# obs1            Salmo obtusirostris  species          specific_candidate  1
-# obs2            Salvelinus alpinus   species          specific_candidate  1
-# ...
+# Step 2: set all score_likelihood = 1.0
+likelihoods <- assign_scores(hyp_df, score_type = "none")
 
-# Skip filter_top_hypotheses() and apply_coverage_constraints() --
-# likelihoods are uniform and all candidates are specific_candidate.
-# Feed directly to TaxaAssign:
-posteriors <- TaxaAssign::compute_posterior(
-  result$likelihoods,
-  priors_df = my_priors
-)
+# Three rows per observation (H1 + H2 + H3); all score_likelihood = 1.0.
+# Feed directly to TaxaAssign; posteriors will be proportional to priors:
+posteriors <- TaxaAssign::compute_posterior(likelihoods, priors_df = my_priors)
 ```
 
 ### When to use this pathway
@@ -606,8 +593,8 @@ posteriors <- TaxaAssign::compute_posterior(
 - Stability checks: does an unreferenced congener have a higher prior
   than the consensus species? If so, flag for review.
 - Mixed datasets: run `evaluate_likelihoods()` on scored observations
-  and `expand_consensus_candidates()` on unscored ones, then
-  `dplyr::bind_rows()` the `$likelihoods` outputs before calling
+  and `unreferenced_candidates()` + `assign_scores()` on unscored ones,
+  then `dplyr::bind_rows()` the outputs before calling
   `compute_posterior()`.
 
 See `inst/workflows/6_no_score_pathway_workflow.R` for a full example.

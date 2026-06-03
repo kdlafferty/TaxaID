@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-01 (Session 98 -- cross-package test cleanup; no function changes)
+# Last updated: 2026-06-02 (Session 99 -- Phase 1 column renames; Phase 2 unified likelihood pipeline in TaxaLikely)
 
 ---
 
@@ -62,11 +62,11 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 
 **Ecosystem logic (scored pathway):** TaxaTools cleans names → TaxaFetch fetches occurrence data → TaxaHabitat assigns habitats → TaxaMatch standardizes match data → TaxaLikely converts scores to likelihoods → TaxaExpect builds priors → TaxaAssign computes posteriors → TaxaFlag flags anomalous detections. TaxaWizard sits outside the dependency chain (generates scripts that call the other packages).
 
-**Ecosystem logic (no-score pathway):** When match scores are unavailable or a single best candidate is returned, TaxaMatch and the likelihood model are bypassed. Three sub-cases handled by `TaxaLikely::expand_consensus_candidates()`: (1) no score — uniform likelihoods = 1.0, posteriors proportional to priors; (2) single candidate with score (e.g. BirdNET top-1) — `score_col` param sets L(H1)=score, L(others)=1−score; (3) upranked consensus — same as (1). Output feeds TaxaAssign normally.
+**Ecosystem logic (no-score pathway):** When match scores are unavailable or a single best candidate is returned, TaxaMatch and the likelihood model are bypassed. `TaxaLikely::unreferenced_candidates()` adds H2/H3 placeholder rows; `TaxaLikely::assign_scores()` sets likelihoods: (1) `score_type = "none"` — uniform likelihoods = 1.0, posteriors proportional to priors (morphology / expert IDs); (2) `score_type = "similarity_softmax"` — for single-score classifiers (e.g. BirdNET top-1), modulates likelihoods by classifier confidence; (3) upranked consensus — same as (1). `expand_consensus_candidates()` is deprecated (Session 99). Output feeds TaxaAssign normally.
 
 **Dependency chain:** TaxaTools → TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign → TaxaFlag
 TaxaMatch → TaxaLikely → TaxaAssign → TaxaFlag
-consensus df + TaxaExpect priors → TaxaLikely (expand_consensus_candidates) → TaxaAssign → TaxaFlag
+consensus df → TaxaLikely (unreferenced_candidates + assign_scores) → TaxaAssign → TaxaFlag
 TaxaWizard: no TaxaID dependencies (uses metadata JSON files as interface)
 
 **Package split notes:**
@@ -207,3 +207,7 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 97 | `build_acoustic_reference()`, `build_image_reference()`, `fetch_reference_recordings()` removed | TaxaLikely | Acoustic/image workflows simplified to post-classifier only; no reference download step |
 | 97 | `expand_consensus_candidates()` gains `score_col` param | TaxaLikely | L(H1)=score, L(others)=1−score when score supplied (BirdNET top-1 use case) |
 | 97 | `common_to_scientific()` added | TaxaTools | LLM-assisted common name → scientific name with optional backbone verification |
+| 99 | `score` → `score_original` in TaxaMatch output | TaxaMatch | `standardize_match_data()` now outputs `score_original`; `.evaluate_one_query()` updated to accept it |
+| 99 | `likelihood_point_est`/`_mean`/`_sd` → `score_likelihood`/`_mean`/`_sd` | TaxaLikely, TaxaAssign | Column rename across all functions, tests, workflows, docs |
+| 99 | `unreferenced_candidates()`, `assign_scores()`, `model_likelihoods()`, `compute_likelihoods()` added | TaxaLikely | Unified modular pipeline; replaces separate eDNA and no-score entry points |
+| 99 | `expand_consensus_candidates()` deprecated | TaxaLikely | `.Deprecated()` notice; use `unreferenced_candidates()` + `assign_scores()` |

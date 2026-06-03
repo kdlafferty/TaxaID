@@ -10,7 +10,7 @@ make_match <- function(observation_id, taxon_name, taxon_name_rank, score,
     observation_id       = observation_id,
     taxon_name      = taxon_name,
     taxon_name_rank = taxon_name_rank,
-    score           = score,
+    score_original = score,
     stringsAsFactors = FALSE
   )
   if (!is.null(genus))   df$genus   <- genus
@@ -243,7 +243,7 @@ test_that("missing required columns errors", {
 
 test_that("non-numeric score errors", {
   df <- data.frame(observation_id = "s1", taxon_name = "A",
-                   taxon_name_rank = "species", score = "high",
+                   taxon_name_rank = "species", score_original = "high",
                    stringsAsFactors = FALSE)
   expect_error(score_consensus(df), "must be numeric")
 })

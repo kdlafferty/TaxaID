@@ -112,7 +112,7 @@ constrained <- apply_coverage_constraints(likelihoods, census_result)
 # How many H2 rows were suppressed?
 n_suppressed <- sum(
   constrained$hypothesis_type == "unreferenced_species" &
-  constrained$likelihood_point_est == 0,
+  constrained$score_likelihood == 0,
   na.rm = TRUE
 )
 cat("\nH2 rows suppressed (complete genera):", n_suppressed, "\n")

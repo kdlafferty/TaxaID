@@ -78,7 +78,7 @@ One row per `observation_id` × reference accession match.
 | Column | Renamed from | Required | Notes |
 |---|---|---|---|
 | `observation_id` | `ESVId` (DNA) | Yes | Unique query identifier |
-| `score` | `PercMatch` (DNA) | Yes | Raw match score |
+| `score_original` | `PercMatch` (DNA) | Yes | Raw match score — preserved unchanged; downstream packages add `score_norm`, `score_softmax`, `score_likelihood` |
 | `taxon_name` | derived | Yes | Best taxon from `create_taxon_names()` |
 | `taxon_name_rank` | derived | Yes | Rank of `taxon_name` |
 | taxonomy cols | `Kingdom`…`Species` | Yes | Kept as-is from source |

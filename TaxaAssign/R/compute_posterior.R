@@ -5,9 +5,9 @@
 #   2026-02-19: calculate_final_posteriors() -> compute_posterior()
 #   2026-02-19: prior_df        -> likelihood_w_prior  (input dataframe)
 #   2026-02-19: Query_ID        -> observation_id
-#   2026-02-19: LR_PointEst     -> likelihood_point_est
-#   2026-02-19: LR_Mean         -> likelihood_mean
-#   2026-02-19: LR_SD           -> likelihood_sd
+#   2026-02-19: LR_PointEst     -> score_likelihood
+#   2026-02-19: LR_Mean         -> score_likelihood_mean
+#   2026-02-19: LR_SD           -> score_likelihood_sd
 #   2026-02-19: Prior_Prob      -> prior_mean
 #   2026-02-19: (new)           -> prior_sd  (optional, defaults to 0) [removed 2026-04-04]
 #   2026-02-19: Posterior_Mean  -> posterior_mean
@@ -23,21 +23,21 @@
 #' so all existing columns (e.g., taxon name, hypothesis type, rank) are preserved.
 #'
 #' Two computation paths are available:
-#' - **Point estimate path** (fast): uses `likelihood_point_est` and `prior_mean`
+#' - **Point estimate path** (fast): uses `score_likelihood` and `prior_mean`
 #'   directly. Always computed.
 #' - **Monte Carlo path** (robust): samples from prior and likelihood distributions,
 #'   propagating uncertainty into the posterior. Likelihoods are sampled from
 #'   Normal(mean, sd). Priors are sampled from Beta(alpha, beta) when `prior_alpha`
 #'   and `prior_beta` columns are present, correctly bounded on \[0, 1\].
 #'   Only runs when `n_sims > 0` AND at least one source of uncertainty exists
-#'   (non-zero `likelihood_sd`, or `prior_alpha`/`prior_beta` columns present).
+#'   (non-zero `score_likelihood_sd`, or `prior_alpha`/`prior_beta` columns present).
 #'
 #' Within each `observation_id`, likelihoods and posteriors are normalized to sum to 1
 #' across all competing hypotheses.
 #'
 #' @param likelihood_w_prior Dataframe. One row per hypothesis per observation.
-#'   Must contain columns: `observation_id`, `likelihood_point_est`, `likelihood_mean`,
-#'   `likelihood_sd`, `prior_mean`.
+#'   Must contain columns: `observation_id`, `score_likelihood`, `score_likelihood_mean`,
+#'   `score_likelihood_sd`, `prior_mean`.
 #'   Optional columns: `prior_alpha` and `prior_beta` (Beta distribution parameters).
 #'   When present, Monte Carlo simulation samples priors from Beta(alpha, beta).
 #'   When absent, priors are treated as fixed (no prior uncertainty).
@@ -93,8 +93,8 @@
 compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
 
   # --- Input validation ---
-  required_cols <- c("observation_id", "likelihood_point_est", "likelihood_mean",
-                     "likelihood_sd", "prior_mean")
+  required_cols <- c("observation_id", "score_likelihood", "score_likelihood_mean",
+                     "score_likelihood_sd", "prior_mean")
   missing_cols <- setdiff(required_cols, names(likelihood_w_prior))
   if (length(missing_cols) > 0) {
     cli::cli_abort(
@@ -133,14 +133,14 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   }
 
   # Replace any NA likelihood SDs with 0 and warn the user
-  na_lik_sd <- sum(is.na(likelihood_w_prior$likelihood_sd))
+  na_lik_sd <- sum(is.na(likelihood_w_prior$score_likelihood_sd))
   if (na_lik_sd > 0) {
-    cli::cli_warn("{na_lik_sd} NA value(s) in {.field likelihood_sd} replaced with 0.")
-    likelihood_w_prior$likelihood_sd[is.na(likelihood_w_prior$likelihood_sd)] <- 0
+    cli::cli_warn("{na_lik_sd} NA value(s) in {.field score_likelihood_sd} replaced with 0.")
+    likelihood_w_prior$score_likelihood_sd[is.na(likelihood_w_prior$score_likelihood_sd)] <- 0
   }
 
   # Decide whether MC simulation will add any information
-  any_lik_uncertainty   <- any(likelihood_w_prior$likelihood_sd > 0)
+  any_lik_uncertainty   <- any(likelihood_w_prior$score_likelihood_sd > 0)
   any_prior_uncertainty <- use_beta_prior
   run_sims <- n_sims > 0 && (any_lik_uncertainty || any_prior_uncertainty)
 
@@ -170,7 +170,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
 
       # --- Point estimate path ---
       # Normalize likelihoods first, then multiply by prior, then normalize again
-      norm_lik  <- normalize_vec(chunk$likelihood_point_est)
+      norm_lik  <- normalize_vec(chunk$score_likelihood)
       raw_post  <- norm_lik * chunk$prior_mean
       chunk$posterior_point_est <- normalize_vec(raw_post)
 
@@ -179,7 +179,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
 
         # Sample likelihoods: Normal(mean, sd), floor at 0
         sim_lik <- matrix(
-          rnorm(n_rows * n_sims, mean = chunk$likelihood_mean, sd = chunk$likelihood_sd),
+          rnorm(n_rows * n_sims, mean = chunk$score_likelihood_mean, sd = chunk$score_likelihood_sd),
           nrow = n_rows
         )
         sim_lik[sim_lik < 0] <- 0

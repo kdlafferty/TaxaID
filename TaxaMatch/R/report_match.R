@@ -68,12 +68,12 @@ report_match <- function(match_data,
   }
 
   score_stats <- NULL
-  if ("score" %in% names(match_data)) {
-    scores <- match_data$score[!is.na(match_data$score)]
+  if ("score_original" %in% names(match_data)) {
+    scores <- match_data$score_original[!is.na(match_data$score_original)]
     if (length(scores) > 0L) {
       # Top score per observation
       if ("observation_id" %in% names(match_data)) {
-        top_scores <- tapply(match_data$score, match_data$observation_id, max,
+        top_scores <- tapply(match_data$score_original, match_data$observation_id, max,
                              na.rm = TRUE)
       } else {
         top_scores <- scores

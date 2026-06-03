@@ -1,6 +1,6 @@
 utils::globalVariables(c(
   "p_med", "p_b", "score_logit", "gap_logit", "p_norm",
-  "raw_likelihood", "likelihood_point_est", "likelihood_mean", "likelihood_sd",
+  "raw_likelihood", "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
   "hypothesis_type", "taxon_name", "taxon_name_rank",
   "observation_id", "Query_ID",
   ".data", "rank_score", "best_rank_score"
@@ -37,7 +37,7 @@ utils::globalVariables(c(
 #' @param alpha Numeric (default `1e-6`).  Mahalanobis p-value cutoff: candidates
 #'   with smaller p-values are treated as outliers and receive likelihood 0.
 #' @param n_sims Integer (default `0`).  Number of Monte Carlo simulations for
-#'   `likelihood_mean` and `likelihood_sd`.  `0` = deterministic only.
+#'   `score_likelihood_mean` and `score_likelihood_sd`.  `0` = deterministic only.
 #' @param score_bounds Optional `c(min, max)` for score normalization.
 #' @param logit_epsilon Logit clipping value (default `1e-4`).
 #' @param max_gap_ceiling Gap cap (default `5.0`).  Caps gap at 5 logit units
@@ -49,8 +49,8 @@ utils::globalVariables(c(
 #'   [evaluate_likelihoods()] for details.
 #'
 #' @return A data frame with columns `hypothesis_type`, `taxon_name`,
-#'   `taxon_name_rank`, `likelihood_point_est`, `likelihood_mean`,
-#'   `likelihood_sd`, sorted by `likelihood_mean` descending.
+#'   `taxon_name_rank`, `score_likelihood`, `score_likelihood_mean`,
+#'   `score_likelihood_sd`, sorted by `score_likelihood_mean` descending.
 #'
 #' @noRd
 .evaluate_one_query <- function(candidate_df,
@@ -69,9 +69,10 @@ utils::globalVariables(c(
   names(candidate_df) <- tolower(names(candidate_df))
   rank_cols <- tolower(rank_system)    # coarse to fine
 
-  score_col <- if ("p_match" %in% names(candidate_df)) "p_match" else
-    if ("score"   %in% names(candidate_df)) "score" else
-      stop("candidate_df must have a 'score' or 'p_match' column")
+  score_col <- if ("p_match"        %in% names(candidate_df)) "p_match" else
+    if ("score_original" %in% names(candidate_df)) "score_original" else
+    if ("score"          %in% names(candidate_df)) "score" else
+      stop("candidate_df must have a 'score_original', 'score', or 'p_match' column")
 
   # ---- 0. COVERAGE FILTER (optional) ----------------------------------------
   # Drop candidates whose alignment/detection coverage is below min_coverage.
@@ -124,9 +125,9 @@ utils::globalVariables(c(
       hypothesis_type      = character(0),
       taxon_name           = character(0),
       taxon_name_rank      = character(0),
-      likelihood_point_est = numeric(0),
-      likelihood_mean      = numeric(0),
-      likelihood_sd        = numeric(0),
+      score_likelihood = numeric(0),
+      score_likelihood_mean      = numeric(0),
+      score_likelihood_sd        = numeric(0),
       stringsAsFactors     = FALSE
     ))
   }
@@ -287,9 +288,9 @@ utils::globalVariables(c(
   if (max_lik == 0 || is.na(max_lik)) max_lik <- 1
 
   res_agg <- res_agg |>
-    dplyr::mutate(likelihood_point_est = raw_likelihood / max_lik) |>
+    dplyr::mutate(score_likelihood = raw_likelihood / max_lik) |>
     dplyr::filter(
-      likelihood_point_est >= ratio_threshold |
+      score_likelihood >= ratio_threshold |
         hypothesis_type != "specific_candidate"
     )
 
@@ -353,20 +354,20 @@ utils::globalVariables(c(
       sim_mat[, sim_i] <- iter_liks / iter_max
     }
 
-    res_agg$likelihood_mean <- rowMeans(sim_mat, na.rm = TRUE)
-    res_agg$likelihood_sd   <- apply(sim_mat, 1L, stats::sd, na.rm = TRUE)
+    res_agg$score_likelihood_mean <- rowMeans(sim_mat, na.rm = TRUE)
+    res_agg$score_likelihood_sd   <- apply(sim_mat, 1L, stats::sd, na.rm = TRUE)
   } else {
-    res_agg$likelihood_mean <- res_agg$likelihood_point_est
-    res_agg$likelihood_sd   <- 0
+    res_agg$score_likelihood_mean <- res_agg$score_likelihood
+    res_agg$score_likelihood_sd   <- 0
   }
 
   # Final filter on mean (after simulation)
-  res_agg <- dplyr::filter(res_agg, likelihood_mean >= ratio_threshold)
+  res_agg <- dplyr::filter(res_agg, score_likelihood_mean >= ratio_threshold)
 
   res_agg |>
     dplyr::select(hypothesis_type, taxon_name, taxon_name_rank,
-                  likelihood_point_est, likelihood_mean, likelihood_sd) |>
-    dplyr::arrange(dplyr::desc(likelihood_mean))
+                  score_likelihood, score_likelihood_mean, score_likelihood_sd) |>
+    dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
 
 
@@ -389,7 +390,8 @@ utils::globalVariables(c(
 #'
 #' @param match_df Data frame in the canonical match-object format (output of
 #'   `TaxaMatch::standardize_match_data()` or user-supplied).  Must contain
-#'   `observation_id`, `score` (or `p_match`), `taxon_name`, `taxon_name_rank`,
+#'   `observation_id`, `score_original` (or `p_match`; legacy `score` also
+#'   accepted), `taxon_name`, `taxon_name_rank`,
 #'   and taxonomy columns matching `rank_system`.
 #' @param model_params Object of class `"taxa_model_params"` from
 #'   [train_likelihood_model()].
@@ -435,7 +437,7 @@ utils::globalVariables(c(
 #'       hypothesis, suitable for input to `TaxaAssign::compute_posterior()`:
 #'       `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`
 #'       (`"specific_candidate"`, `"unreferenced_species"`, or `"unreferenced_genus"`),
-#'       `likelihood_point_est`, `likelihood_mean`, `likelihood_sd`.  Rows
+#'       `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`.  Rows
 #'       where `taxon_name` resolved to `NA` are excluded.}
 #'     \item{`$unresolved`}{Rows from `match_df` for any `observation_id` that
 #'       produced no usable likelihoods (empty data frame if none).  Pass to
@@ -645,8 +647,8 @@ evaluate_likelihoods <- function(match_df,
   }
 
   likelihoods <- dplyr::select(out, observation_id, taxon_name, taxon_name_rank,
-                               hypothesis_type, likelihood_point_est,
-                               likelihood_mean, likelihood_sd)
+                               hypothesis_type, score_likelihood,
+                               score_likelihood_mean, score_likelihood_sd)
 
   list(likelihoods = likelihoods, unresolved = unresolved)
 }

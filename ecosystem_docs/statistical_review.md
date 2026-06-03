@@ -185,7 +185,7 @@ In `evaluate.R:244-253`, MC simulation perturbs scores by sampling from a Normal
 
 **Simplification:** The SD used is the global model SD (`sqrt(global_sigma[1,1])`), not the species-specific SD. This is computationally convenient but slightly underestimates uncertainty for high-variance species and overestimates it for low-variance species.
 
-**Practical impact:** MC is primarily used for posterior uncertainty propagation in `compute_posterior()`. The global-vs-species SD choice affects `likelihood_sd` but not `likelihood_point_est`. Since TaxaAssign's Beta prior system provides independent uncertainty propagation, the MC impact is secondary.
+**Practical impact:** MC is primarily used for posterior uncertainty propagation in `compute_posterior()`. The global-vs-species SD choice affects `score_likelihood_sd` but not `score_likelihood`. Since TaxaAssign's Beta prior system provides independent uncertainty propagation, the MC impact is secondary.
 
 **Recommendation:** Add comment at `evaluate.R:247`: "Uses global model SD for computational efficiency. Species-specific SD could be used but adds complexity with minimal impact on posterior uncertainty, which is dominated by prior uncertainty from `prior_alpha`/`prior_beta`."
 
@@ -367,7 +367,7 @@ The 7 range-status × habitat-fit combinations provide the LLM with guidance on 
 
 `compute_posterior.R:136-138`:
 ```r
-norm_lik <- normalize_vec(chunk$likelihood_point_est)
+norm_lik <- normalize_vec(chunk$score_likelihood)
 raw_post <- norm_lik * chunk$prior_mean
 posterior <- normalize_vec(raw_post)
 ```

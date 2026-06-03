@@ -230,6 +230,44 @@ The best hypothesis always has a likelihood ratio of 1.0; weaker hypotheses have
 ratios less than 1.0. Candidates below `ratio_threshold` (default 0.01) are
 dropped — TaxaAssign treats absent rows as likelihood = 0.
 
+### Closed-World Assumption and Posterior Inflation
+
+Any step that reduces the hypothesis set before posterior computation introduces
+a **closed-world assumption**: the model implicitly treats the retained candidates
+as an exhaustive partition of the possibility space. Because TaxaAssign normalizes
+posteriors by summing likelihood × prior over retained hypotheses only, removing
+low-scoring candidates from the denominator inflates the posteriors of all
+remaining hypotheses relative to what a full-denominator calculation would yield.
+The normalized posteriors still sum to 1.0, but that 1.0 now means "probability
+of being correct, *given that the true taxon is among the retained candidates*"
+— not "unconditional probability of being correct."
+
+This is a general property of truncated hypothesis-space classifiers and is not
+unique to TaxaLikely. The same inflation arises in BLAST top-hit approaches, RDP
+Naive Bayes (Wang et al. 2007), and any classifier that filters before
+normalization. It is worth noting explicitly because it means posterior values
+near 1.0 should be interpreted with some caution: they indicate strong evidence
+*among the evaluated hypotheses*, not necessarily strong evidence in an absolute
+sense.
+
+Two structural features of TaxaID partially mitigate this inflation:
+
+1. **H2 and H3 catch-all hypotheses.** `evaluate_likelihoods()` always generates
+   an unreferenced-species (H2) and unreferenced-genus (H3) row for each query.
+   These act as a continuous "none of the above" probability sink — when the
+   observed (score, gap) pattern is more consistent with an absent taxon than with
+   any referenced species, H2/H3 absorbs probability mass and suppresses the H1
+   posteriors accordingly.
+
+2. **Unreferenced-species expansion.** `TaxaAssign::expand_unreferenced_hypotheses()`
+   and `TaxaLikely::unreferenced_candidates()` widen the denominator by adding
+   placeholder rows for unreferenced congeners before posterior
+   computation, further limiting the inflation from a short H1 list.
+
+For applications where conservative posteriors are preferred, users can set
+`ratio_threshold = 0` (retain all candidates, including very weak ones) to
+maximize denominator coverage, at the cost of a larger likelihood object.
+
 ---
 
 ## 7. Multi-Candidate Evaluation
@@ -261,7 +299,7 @@ the model via Monte Carlo simulation. In each iteration:
    relative ranking).
 3. Likelihoods are recalculated and normalized.
 
-The result is `likelihood_mean` and `likelihood_sd` across simulations, providing
+The result is `score_likelihood_mean` and `score_likelihood_sd` across simulations, providing
 a measure of how sensitive the likelihood ratios are to measurement uncertainty
 in the match scores.
 
@@ -403,6 +441,11 @@ Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
 (2017). Unbiased probabilistic taxonomic classification for DNA barcoding
 and DNA metabarcoding. *Bioinformatics*, 33(19), 2997–3005.
 doi:10.1093/bioinformatics/btx369
+
+Wang, Q., Garrity, G.M., Tiedje, J.M. and Cole, J.R. (2007). Naïve Bayesian
+classifier for rapid assignment of rRNA sequences into the new bacterial
+taxonomy. *Applied and Environmental Microbiology*, 73(16), 5261–5267.
+doi:10.1128/AEM.00062-07
 
 Zito, A., Rigon, T., Ovaskainen, O. and Dunson, D.B. (2023). Bayesian
 nonparametric modelling of sequential discoveries. *Methods in Ecology

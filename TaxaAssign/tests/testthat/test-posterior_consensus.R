@@ -197,12 +197,12 @@ test_that("all hypotheses below min_posterior → empty row", {
 # Hypothesis type filtering
 # ==============================================================================
 
-test_that("unknown_species rows are excluded from LCA", {
+test_that("unreferenced_family rows are excluded from LCA", {
   df <- rbind(
     make_posterior("s1", "Fundulus parvipinnis", "species",
                     "specific_candidate", 0.6),
-    make_posterior("s1", "unknown_species", "species",
-                    "unreferenced_genus", 0.4)
+    make_posterior("s1", NA_character_, NA_character_,
+                    "unreferenced_family", 0.4)
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   # Only Fundulus parvipinnis contributes → single species resolved
@@ -259,9 +259,9 @@ test_that("unreferenced_species rows are included in LCA", {
 # No named hypotheses → empty row
 # ==============================================================================
 
-test_that("sample with only unknown_species → empty row", {
-  df <- make_posterior("s1", "unknown_species", "species",
-                        "unreferenced_genus", 1.0)
+test_that("sample with only unreferenced_family → empty row", {
+  df <- make_posterior("s1", NA_character_, NA_character_,
+                        "unreferenced_family", 1.0)
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(out$n_plausible, 0L)
   expect_true(is.na(out$consensus_taxon))

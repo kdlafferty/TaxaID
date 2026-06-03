@@ -36,9 +36,9 @@ test_that("no-score pathway: all likelihoods are 1.0", {
     suppressMessages(expand_consensus_candidates(make_consensus(), make_priors()))
   )
   lk <- result$likelihoods
-  expect_true(all(lk$likelihood_point_est == 1.0))
-  expect_true(all(lk$likelihood_mean      == 1.0))
-  expect_true(all(lk$likelihood_sd        == 0.0))
+  expect_true(all(lk$score_likelihood == 1.0))
+  expect_true(all(lk$score_likelihood_mean      == 1.0))
+  expect_true(all(lk$score_likelihood_sd        == 0.0))
 })
 
 test_that("no-score pathway: output columns match evaluate_likelihoods() schema", {
@@ -46,8 +46,8 @@ test_that("no-score pathway: output columns match evaluate_likelihoods() schema"
     suppressMessages(expand_consensus_candidates(make_consensus(), make_priors()))
   )
   expected_cols <- c("observation_id", "taxon_name", "taxon_name_rank",
-                     "hypothesis_type", "likelihood_point_est",
-                     "likelihood_mean", "likelihood_sd")
+                     "hypothesis_type", "score_likelihood",
+                     "score_likelihood_mean", "score_likelihood_sd")
   expect_true(all(expected_cols %in% names(result$likelihoods)))
 })
 
@@ -98,8 +98,8 @@ test_that("score_col: consensus species gets likelihood = score", {
   )
   lk <- result$likelihoods
   consensus_row <- lk[tolower(lk$taxon_name) == "salmo salar", ]
-  expect_equal(consensus_row$likelihood_point_est, 0.87)
-  expect_equal(consensus_row$likelihood_mean,      0.87)
+  expect_equal(consensus_row$score_likelihood, 0.87)
+  expect_equal(consensus_row$score_likelihood_mean,      0.87)
 })
 
 test_that("score_col: non-consensus species get likelihood = 1 - score", {
@@ -113,11 +113,11 @@ test_that("score_col: non-consensus species get likelihood = 1 - score", {
   lk <- result$likelihoods
   other_rows <- lk[tolower(lk$taxon_name) != "salmo salar", ]
   expect_true(nrow(other_rows) > 0L)
-  expect_true(all(other_rows$likelihood_point_est == 0.13))
-  expect_true(all(other_rows$likelihood_mean      == 0.13))
+  expect_true(all(other_rows$score_likelihood == 0.13))
+  expect_true(all(other_rows$score_likelihood_mean      == 0.13))
 })
 
-test_that("score_col: likelihood_sd is still 0.0 for all rows", {
+test_that("score_col: score_likelihood_sd is still 0.0 for all rows", {
   result <- suppressWarnings(
     suppressMessages(
       expand_consensus_candidates(
@@ -125,7 +125,7 @@ test_that("score_col: likelihood_sd is still 0.0 for all rows", {
       )
     )
   )
-  expect_true(all(result$likelihoods$likelihood_sd == 0.0))
+  expect_true(all(result$likelihoods$score_likelihood_sd == 0.0))
 })
 
 test_that("score_col: score = 0.5 gives equal likelihoods to H1 and others", {
@@ -137,7 +137,7 @@ test_that("score_col: score = 0.5 gives equal likelihoods to H1 and others", {
     )
   )
   lk <- result$likelihoods
-  expect_true(all(lk$likelihood_point_est == 0.5))
+  expect_true(all(lk$score_likelihood == 0.5))
 })
 
 test_that("score_col: score = 1.0 gives 1.0 to consensus and 0.0 to others", {
@@ -151,8 +151,8 @@ test_that("score_col: score = 1.0 gives 1.0 to consensus and 0.0 to others", {
   lk <- result$likelihoods
   consensus_row <- lk[tolower(lk$taxon_name) == "salmo salar", ]
   other_rows    <- lk[tolower(lk$taxon_name) != "salmo salar", ]
-  expect_equal(consensus_row$likelihood_point_est, 1.0)
-  expect_true(all(other_rows$likelihood_point_est == 0.0))
+  expect_equal(consensus_row$score_likelihood, 1.0)
+  expect_true(all(other_rows$score_likelihood == 0.0))
 })
 
 test_that("score_col = NULL gives same output as not supplying score_col", {
@@ -164,8 +164,8 @@ test_that("score_col = NULL gives same output as not supplying score_col", {
   r_omit  <- suppressWarnings(suppressMessages(
     expand_consensus_candidates(cons, priors)
   ))
-  expect_equal(r_null$likelihoods$likelihood_point_est,
-               r_omit$likelihoods$likelihood_point_est)
+  expect_equal(r_null$likelihoods$score_likelihood,
+               r_omit$likelihoods$score_likelihood)
 })
 
 

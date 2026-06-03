@@ -1,8 +1,8 @@
-utils::globalVariables(c("observation_id", "score", "taxon_name", "taxon_name_rank",
+utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxon_name_rank",
                           "prior_mean", "prior_alpha", "prior_beta",
                           "range_status", "habitat_fit", "information_quality",
-                          "hypothesis_type", "likelihood_point_est", "likelihood_mean",
-                          "likelihood_sd"))
+                          "hypothesis_type", "score_likelihood", "score_likelihood_mean",
+                          "score_likelihood_sd"))
 
 # assign_taxa_llm.R
 # TaxaAssign package
@@ -67,7 +67,7 @@ utils::globalVariables(c("observation_id", "score", "taxon_name", "taxon_name_ra
 #' footing. They appear in the prompt labelled `[no reference sequence]`.
 #'
 #' @param match_df Data frame. Canonical match object from TaxaMatch (or equivalent).
-#'   Required columns: `observation_id`, `score`, `taxon_name`, `taxon_name_rank`.
+#'   Required columns: `observation_id`, `score_original`, `taxon_name`, `taxon_name_rank`.
 #'   Optional but recommended: `testid` (marker type).
 #' @param context Optional data frame with location/habitat context. Either a
 #'   single row (broadcast to all observations) or one row per `observation_id`. Recognised
@@ -180,8 +180,8 @@ utils::globalVariables(c("observation_id", "score", "taxon_name", "taxon_name_ra
 #'
 #' @return A data frame (the output of `compute_posterior()`) with columns:
 #'   `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`, `range_status`,
-#'   `habitat_fit`, `information_quality`, `likelihood_point_est`, `likelihood_mean`,
-#'   `likelihood_sd`, `prior_mean`, `prior_alpha`, `prior_beta`,
+#'   `habitat_fit`, `information_quality`, `score_likelihood`, `score_likelihood_mean`,
+#'   `score_likelihood_sd`, `prior_mean`, `prior_alpha`, `prior_beta`,
 #'   `posterior_point_est`, `posterior_mean`, `posterior_sd`, `confidence_score`.
 #'   `prior_alpha`/`prior_beta` are present when `prior_phi` is non-NULL;
 #'   `compute_posterior()` uses them for Beta-distributed prior sampling.
@@ -257,7 +257,7 @@ assign_taxa_llm <- function(match_df,
   llm_fn <- .resolve_llm_fn(llm_fn, "assign_taxa_llm")
 
   # --- Input validation -------------------------------------------------------
-  required_cols <- c("observation_id", "score", "taxon_name", "taxon_name_rank")
+  required_cols <- c("observation_id", "score_original", "taxon_name", "taxon_name_rank")
   missing_cols  <- setdiff(required_cols, names(match_df))
   if (length(missing_cols) > 0)
     cli::cli_abort("match_df is missing required column(s): {.field {missing_cols}}")
@@ -345,10 +345,10 @@ assign_taxa_llm <- function(match_df,
 
   # --- Filter candidates and compute likelihoods ------------------------------
   candidates <- match_df |>
-    dplyr::filter(.data$score >= score_threshold) |>
-    dplyr::arrange(.data$observation_id, dplyr::desc(.data$score)) |>
+    dplyr::filter(.data$score_original >= score_threshold) |>
+    dplyr::arrange(.data$observation_id, dplyr::desc(.data$score_original)) |>
     dplyr::group_by(.data$observation_id) |>
-    dplyr::slice_max(order_by = .data$score, n = top_n, with_ties = FALSE) |>
+    dplyr::slice_max(order_by = .data$score_original, n = top_n, with_ties = FALSE) |>
     dplyr::ungroup()
 
   n_dropped <- dplyr::n_distinct(match_df$observation_id) -
@@ -473,10 +473,19 @@ assign_taxa_llm <- function(match_df,
     lik_df   <- lik_list[[sid]]
     prior_df <- prior_tables[[grp]]
 
-    merged <- dplyr::left_join(lik_df, prior_df, by = "taxon_name")
+    # Drop columns from prior_df that also exist in lik_df (other than the join key)
+    # to prevent dplyr from creating .x / .y suffixed duplicates.
+    prior_cols_to_drop <- intersect(
+      c("hypothesis_type", "taxon_name_rank"),
+      names(prior_df)
+    )
+    prior_df_clean <- prior_df[, setdiff(names(prior_df), prior_cols_to_drop),
+                                drop = FALSE]
 
-    # unknown_species prior: fixed at unknown_lik_weight (not LLM-assigned)
-    unk_idx <- merged$taxon_name == "unknown_species"
+    merged <- dplyr::left_join(lik_df, prior_df_clean, by = "taxon_name")
+
+    # unreferenced_family prior: identified by NA taxon_name (fixed weight, not LLM-assigned)
+    unk_idx <- is.na(merged$taxon_name)
     merged$prior_mean[unk_idx]            <- 0   # placeholder; set after rescaling
     merged$range_status[unk_idx]          <- "unknown"
     merged$habitat_fit[unk_idx]           <- NA_character_
@@ -510,7 +519,7 @@ assign_taxa_llm <- function(match_df,
 
     # Mathematical absence suppression: P(present | not detected) ∝ (1 - p_det) × prior
     # Applied after NA-fill so unreferenced taxon fallback priors are also suppressed where appropriate.
-    # Skips unknown_species row (prior is set as a fixed weight, not LLM-assigned).
+    # Skips unreferenced_family row (prior is set as a fixed weight, not LLM-assigned).
     if (nrow(known_absent_df) > 0) {
       for (ka_i in seq_len(nrow(known_absent_df))) {
         sp  <- known_absent_df$taxon_name[[ka_i]]
@@ -521,7 +530,7 @@ assign_taxa_llm <- function(match_df,
       }
     }
 
-    # Rescale named taxa priors to (1 - unknown_lik_weight); set unknown_species
+    # Rescale named taxa priors to (1 - unknown_lik_weight); set unreferenced_family
     named_sum <- sum(merged$prior_mean[!unk_idx], na.rm = TRUE)
     if (named_sum > 0) {
       merged$prior_mean[!unk_idx] <-
@@ -585,9 +594,9 @@ assign_taxa_llm <- function(match_df,
 
   agg <- chunk |>
     dplyr::group_by(.data$taxon_name, .data$taxon_name_rank) |>
-    dplyr::summarise(score = stats::median(.data$score), .groups = "drop")
+    dplyr::summarise(score_original = stats::median(.data$score_original), .groups = "drop")
 
-  exp_scores <- exp(sharpness * agg$score)
+  exp_scores <- exp(sharpness * agg$score_original)
   ref_genera <- sub(" .*", "", agg$taxon_name)
 
   # Unreferenced taxa: congeners not already in candidates
@@ -670,19 +679,19 @@ assign_taxa_llm <- function(match_df,
       taxon_name           = all_names,
       taxon_name_rank      = all_ranks,
       hypothesis_type      = all_hyp_type,
-      likelihood_point_est = lik,
-      likelihood_mean      = lik,
-      likelihood_sd        = 0,
+      score_likelihood = lik,
+      score_likelihood_mean      = lik,
+      score_likelihood_sd        = 0,
       stringsAsFactors     = FALSE
     ),
     data.frame(
       observation_id            = sid,
-      taxon_name           = "unknown_species",
-      taxon_name_rank      = "unknown",
-      hypothesis_type      = "unreferenced_genus",
-      likelihood_point_est = unknown_lik_weight,
-      likelihood_mean      = unknown_lik_weight,
-      likelihood_sd        = 0,
+      taxon_name           = NA_character_,
+      taxon_name_rank      = NA_character_,
+      hypothesis_type      = "unreferenced_family",
+      score_likelihood = unknown_lik_weight,
+      score_likelihood_mean      = unknown_lik_weight,
+      score_likelihood_sd        = 0,
       stringsAsFactors     = FALSE
     )
   )
@@ -739,7 +748,7 @@ assign_taxa_llm <- function(match_df,
 #' @noRd
 .collect_unique_taxa <- function(lik_list) {
   all_rows <- dplyr::bind_rows(lik_list)
-  all_rows <- all_rows[all_rows$taxon_name != "unknown_species", ]
+  all_rows <- all_rows[!is.na(all_rows$taxon_name), ]
   dedup    <- !duplicated(all_rows$taxon_name)
   out      <- all_rows[dedup, c("taxon_name", "taxon_name_rank", "hypothesis_type"),
                        drop = FALSE]

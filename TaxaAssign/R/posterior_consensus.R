@@ -320,10 +320,10 @@ posterior_consensus <- function(posterior_df,
                                    cumulative_threshold, min_posterior,
                                    posterior_col) {
 
-  # All named hypotheses contribute to LCA; only the unknown_species catch-all
-  # is excluded (it represents uncharacterised diversity with no specific name).
+  # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
+  # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
   # named_all is kept before any filtering for consensus_posterior computation.
-  named_all       <- chunk[chunk$taxon_name != "unknown_species", ]
+  named_all       <- chunk[!is.na(chunk$taxon_name), ]
   named_total_all <- sum(named_all[[posterior_col]], na.rm = TRUE)
 
   prior_updated_flag <- if ("prior_updated" %in% names(chunk))
@@ -346,7 +346,7 @@ posterior_consensus <- function(posterior_df,
 
   if (nrow(named_all) == 0L) {
     warning(sprintf(
-      "posterior_consensus: observation_id '%s' has no named hypotheses (all rows are 'unknown_species' or similar). Consensus is NA.", sid
+      "posterior_consensus: observation_id '%s' has no named hypotheses (all rows have NA taxon_name or are unreferenced_family). Consensus is NA.", sid
     ), call. = FALSE)
     return(.empty_flagged())
   }

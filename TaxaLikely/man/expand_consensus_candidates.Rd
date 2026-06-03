@@ -51,10 +51,10 @@ A named list with two components matching the structure of
 \code{observation_id} x candidate species: \code{observation_id},
 \code{taxon_name}, \code{taxon_name_rank} (\code{"species"}),
 \code{hypothesis_type} (\code{"specific_candidate"}),
-\code{likelihood_point_est} (1.0 when no score; \code{score} for
+\code{score_likelihood} (1.0 when no score; \code{score} for
 consensus species and \code{1 - score} for others when
-\code{score_col} is supplied), \code{likelihood_mean} (same as
-point estimate), \code{likelihood_sd} (0.0).}
+\code{score_col} is supplied), \code{score_likelihood_mean} (same as
+point estimate), \code{score_likelihood_sd} (0.0).}
 \item{\code{$unresolved}}{Rows from \code{consensus_df} for observations
 where no candidates were found in \code{priors_df}, or where the
 family-level candidate count exceeded \code{max_candidates}.  Empty
@@ -131,7 +131,7 @@ result2 <- expand_consensus_candidates(
   score_col          = "confidence"
 )
 head(result2$likelihoods)
-# observation_id  taxon_name           likelihood_point_est
+# observation_id  taxon_name           score_likelihood
 # clip_001        Melospiza melodia    0.87   <- score
 # clip_001        Melospiza lincolnii  0.13   <- 1 - score
 }

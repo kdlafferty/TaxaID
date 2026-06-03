@@ -47,8 +47,11 @@ This is the most widely compatible header format for downstream tools.
 
 The optional taxonomy TSV is a 2-column tab-delimited file (no header):
 column 1 = \code{composite_id}, column 2 = semicolon-separated taxonomy values
-in \code{rank_system} order. This file can be passed directly to
-\code{\link[=read_reference_fasta]{read_reference_fasta()}} to reload the reference.
+in prefix-style format (e.g. \verb{f__Fundulidae;g__Fundulus;s__Fundulus heteroclitus}).
+Prefix-style is used rather than positional format because positional parsing
+assumes a full 7-rank hierarchy from kingdom; any subset of ranks would
+map to the wrong positions. This file can be passed directly to
+\code{\link[=read_reference_fasta]{read_reference_fasta()}} as \code{taxonomy_file} to reload the reference.
 }
 \examples{
 \dontrun{

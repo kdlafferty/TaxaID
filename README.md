@@ -264,10 +264,11 @@ responses (H3). Animl results are read directly by
 `TaxaMatch::read_animl_output()`; iNaturalist CV JSON output is read by
 `TaxaMatch::read_inaturalist_cv_output()`; Wildlife Insights / SpeciesNet
 batch predictions are read by `TaxaMatch::read_wildlife_insights_output()`.
-`TaxaLikely::build_image_reference()` (the image analog of
-`build_acoustic_reference()`) joins classifier output to ground-truth
-labeled reference images and produces a pair matrix for
-`train_likelihood_model()`.
+For acoustic and image data, TaxaLikely acts as a post-classifier
+calibration layer: classifier output is standardized to `match_df`
+by TaxaMatch, then `unreferenced_candidates()` + `assign_scores()`
+convert classifier confidence scores to likelihoods (no separate
+reference-building step required).
 
 InsectNet (He et al. 2025) is a notable recent advance for
 invertebrate specialists. Its two-stage self-supervised pretraining
@@ -413,28 +414,27 @@ flowchart TD
     F3["camera trap classifier output\nAniml · iNat CV · Wildlife Insights"] -->|read_animl/inat/wi_output| MD
     MD(["match_df"])
 
-    %% Reference library building → model_params
+    %% Reference library building → model_params (DNA only)
     R1["taxa names"] -->|build_site_reference| RD
     R2["CRABS / local FASTA"] -->|"read_crabs_output
 read_reference_fasta"| RD
     RD(["reference_df"]) -->|build_sequence_matrix| RMAT(["DNA matrix"])
-    R3["Xeno-canto recordings\n+ BirdNET on audio"] -->|build_acoustic_reference| AMAT(["acoustic matrix"])
-    R4["labeled reference\nimages + classifier"] -->|build_image_reference| IMAT(["image matrix"])
-    RMAT -->|train_likelihood_model| MP
-    AMAT -->|train_likelihood_model| MP
-    IMAT -->|train_likelihood_model| MP
-    MP(["model_params"])
+    RMAT -->|train_likelihood_model| MP(["model_params"])
 
     %% Priors
     TL["taxa + location"] -->|"TaxaFetch + TaxaHabitat
-+ build_priors"| PR(["prior_df"])
++ TaxaExpect"| PR(["prior_df"])
 
-    %% Assignment convergence
-    MD -->|evaluate_likelihoods| LK(["likelihoods"])
-    MP -->|evaluate_likelihoods| LK
-    LK -->|compute_posterior| PO(["posteriors"])
+    %% Likelihoods — three entry points
+    MD & MP -->|"compute_likelihoods\n(DNA: uses model_params)"| LK
+    MD -->|"assign_scores\n(acoustic / image: no model)"| LK
+    CON["consensus_df\n(morphology / expert IDs)"] -->|"unreferenced_candidates\n+ assign_scores"| LK
+    LK(["likelihoods"])
+
+    %% Assignment
+    LK -->|compute_posterior| PO
     PR -->|compute_posterior| PO
-    PO -->|"consensus_taxonomy
+    PO(["posteriors"]) -->|"posterior_consensus
 + generate_report"| OUT["consensus assignment\n+ methods report"]
 ```
 

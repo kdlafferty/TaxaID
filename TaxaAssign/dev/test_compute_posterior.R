@@ -19,7 +19,7 @@ set.seed(42)
 # =============================================================================
 # Simulates realistic output from evaluate_candidates():
 # - observation_id: unique observation ID
-# - likelihood_point_est, likelihood_mean, likelihood_sd: from TaxaMatch
+# - score_likelihood, score_likelihood_mean, score_likelihood_sd: from TaxaMatch
 # - prior_mean: from TaxaExpect
 # - taxon_name, Hypothesis_Type: extra columns that should pass through unchanged
 
@@ -30,9 +30,9 @@ test1 <- dplyr::bind_rows(
     observation_id             = "Sample_A",
     taxon_name            = c("Gadus morhua", "Gadus chalcogrammus", "Missing_Species"),
     Hypothesis_Type       = c("Specific_Candidate", "Specific_Candidate", "Missing_Species"),
-    likelihood_point_est  = c(0.85, 0.30, 0.10),
-    likelihood_mean       = c(0.83, 0.31, 0.10),
-    likelihood_sd         = c(0.05, 0.04, 0.02),
+    score_likelihood  = c(0.85, 0.30, 0.10),
+    score_likelihood_mean       = c(0.83, 0.31, 0.10),
+    score_likelihood_sd         = c(0.05, 0.04, 0.02),
     prior_mean            = c(0.60, 0.30, 0.10),
     prior_sd              = c(0.05, 0.05, 0.02)
   ),
@@ -42,9 +42,9 @@ test1 <- dplyr::bind_rows(
     observation_id             = "Sample_B",
     taxon_name            = c("Salmo salar", "Salmo trutta", "Missing_Species"),
     Hypothesis_Type       = c("Specific_Candidate", "Specific_Candidate", "Missing_Species"),
-    likelihood_point_est  = c(0.70, 0.65, 0.10),
-    likelihood_mean       = c(0.68, 0.64, 0.10),
-    likelihood_sd         = c(0.08, 0.08, 0.02),
+    score_likelihood  = c(0.70, 0.65, 0.10),
+    score_likelihood_mean       = c(0.68, 0.64, 0.10),
+    score_likelihood_sd         = c(0.08, 0.08, 0.02),
     prior_mean            = c(0.50, 0.40, 0.10),
     prior_sd              = c(0.06, 0.06, 0.02)
   ),
@@ -55,9 +55,9 @@ test1 <- dplyr::bind_rows(
     taxon_name            = c("Thunnus thynnus", "Thunnus albacares",
                               "Thunnus obesus", "Missing_Species", "Missing_Genus"),
     Hypothesis_Type       = c(rep("Specific_Candidate", 3), "Missing_Species", "Missing_Genus"),
-    likelihood_point_est  = c(0.90, 0.40, 0.20, 0.05, 0.02),
-    likelihood_mean       = c(0.88, 0.41, 0.21, 0.05, 0.02),
-    likelihood_sd         = c(0.06, 0.05, 0.04, 0.01, 0.01),
+    score_likelihood  = c(0.90, 0.40, 0.20, 0.05, 0.02),
+    score_likelihood_mean       = c(0.88, 0.41, 0.21, 0.05, 0.02),
+    score_likelihood_sd         = c(0.06, 0.05, 0.04, 0.01, 0.01),
     prior_mean            = c(0.50, 0.25, 0.15, 0.07, 0.03),
     prior_sd              = c(0.05, 0.04, 0.03, 0.01, 0.01)
   )
@@ -80,7 +80,7 @@ result1 %>%
 # TEST CASE 2: No SDs — should skip simulation and warn user
 # =============================================================================
 test2 <- test1 %>%
-  dplyr::mutate(likelihood_sd = 0, prior_sd = 0)
+  dplyr::mutate(score_likelihood_sd = 0, prior_sd = 0)
 
 cat("\n--- Test 2: All SDs = 0 (should skip simulation) ---\n")
 result2 <- compute_posterior(test2, n_sims = 1000)
@@ -107,7 +107,7 @@ cat("prior_sd column present in output:", "prior_sd" %in% names(result4), "\n")
 # =============================================================================
 # TEST CASE 5: Missing required column — should error cleanly
 # =============================================================================
-test5 <- test1 %>% dplyr::select(-likelihood_sd, -prior_mean)
+test5 <- test1 %>% dplyr::select(-score_likelihood_sd, -prior_mean)
 
 cat("\n--- Test 5: Missing required columns (should error with informative message) ---\n")
 tryCatch(
@@ -119,8 +119,8 @@ tryCatch(
 # TEST CASE 6: NA values in SD columns — should replace with 0 and warn
 # =============================================================================
 test6 <- test1
-test6$likelihood_sd[c(1, 4)] <- NA
+test6$score_likelihood_sd[c(1, 4)] <- NA
 
-cat("\n--- Test 6: NA values in likelihood_sd (should warn and replace with 0) ---\n")
+cat("\n--- Test 6: NA values in score_likelihood_sd (should warn and replace with 0) ---\n")
 result6 <- compute_posterior(test6, n_sims = 1000)
 cat("Completed without error.\n")

@@ -1,7 +1,7 @@
 utils::globalVariables(c(
   "group", "total", "in_reference", "has_seqs_not_in_ref", "unreferenced", "is_complete",
   "constraint_applied", "is_forbidden", "join_name", "join_rank", "join_status",
-  "likelihood_point_est", "likelihood_mean"
+  "score_likelihood", "score_likelihood_mean"
 ))
 
 # Internal helper: normalise species strings to "Genus species" (first 2 words)
@@ -748,7 +748,7 @@ audit_acoustic_coverage <- function(plausible_species,
 #'   ```
 #'
 #' @param penalty_factor Numeric in \[0, 1\] (default `0.0`).  Multiplier
-#'   applied to `likelihood_point_est` and `likelihood_mean` for constrained
+#'   applied to `score_likelihood` and `score_likelihood_mean` for constrained
 #'   hypotheses when `constraint_behavior = "zero"`.  Ignored when
 #'   `constraint_behavior = "relabel"`.
 #' @param constraint_behavior Character scalar: `"zero"` (default) or
@@ -757,7 +757,7 @@ audit_acoustic_coverage <- function(plausible_species,
 #' @return `likelihood_df` with an added `constraint_applied` column and
 #'   updated likelihood and/or `hypothesis_type` columns:
 #'   \describe{
-#'     \item{`"zero"` mode}{`likelihood_point_est` and `likelihood_mean`
+#'     \item{`"zero"` mode}{`score_likelihood` and `score_likelihood_mean`
 #'       multiplied by `penalty_factor`; `constraint_applied` set to
 #'       `"census_closed_genus"`.}
 #'     \item{`"relabel"` mode}{`hypothesis_type` changed to
@@ -800,7 +800,7 @@ apply_coverage_constraints <- function(likelihood_df,
     stop("penalty_factor must be a single numeric value in [0, 1]")
 
   needed_lik <- c("hypothesis_type", "taxon_name", "taxon_name_rank",
-                  "likelihood_point_est", "likelihood_mean")
+                  "score_likelihood", "score_likelihood_mean")
   missing_lik <- setdiff(needed_lik, names(likelihood_df))
   if (length(missing_lik) > 0L)
     stop(sprintf("likelihood_df is missing required columns: %s",
@@ -838,12 +838,12 @@ apply_coverage_constraints <- function(likelihood_df,
       dplyr::mutate(
         is_forbidden         = hypothesis_type == "unreferenced_species" &
           !is.na(join_status) & join_status %in% c("complete", "closed"),
-        likelihood_point_est = ifelse(is_forbidden,
-                                      likelihood_point_est * penalty_factor,
-                                      likelihood_point_est),
-        likelihood_mean      = ifelse(is_forbidden,
-                                      likelihood_mean * penalty_factor,
-                                      likelihood_mean),
+        score_likelihood = ifelse(is_forbidden,
+                                      score_likelihood * penalty_factor,
+                                      score_likelihood),
+        score_likelihood_mean      = ifelse(is_forbidden,
+                                      score_likelihood_mean * penalty_factor,
+                                      score_likelihood_mean),
         constraint_applied   = ifelse(is_forbidden,
                                       "census_closed_genus", NA_character_)
       ) |>

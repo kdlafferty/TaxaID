@@ -47,7 +47,7 @@ model <- readRDS(file.path(.taxa_root, "TaxaLikely/model_song.rds"))
 rank_system <- c("genus", "species")
 
 # Confirm required columns exist
-stopifnot(all(c("observation_id", "score", "taxon_name", "taxon_name_rank")
+stopifnot(all(c("observation_id", "score_original", "taxon_name", "taxon_name_rank")
               %in% names(match_df)))
 cat("Match object:", nrow(match_df), "rows,",
     length(unique(match_df$observation_id)), "unique queries\n")
@@ -72,7 +72,7 @@ cat("Match object:", nrow(match_df), "rows,",
 #   - Logit-transforms and computes the gap (best vs runner-up)
 #   - Looks up species-specific model parameters (with global fallback)
 #   - Evaluates H1/H2/H3 likelihoods for each query
-#   - Runs Monte Carlo for uncertainty estimates (likelihood_mean, likelihood_sd)
+#   - Runs Monte Carlo for uncertainty estimates (score_likelihood_mean, score_likelihood_sd)
 #
 # The output contains three types of hypotheses per query:
 #
@@ -107,11 +107,11 @@ cat("Hypothesis types:\n")
 print(table(likelihoods$hypothesis_type))
 likeli_score_table <- likelihoods |>
   left_join(match_df) |>
-  select(observation_id, taxon_name, likelihood_mean, score) |>
+  select(observation_id, taxon_name, score_likelihood_mean, score_original) |>
   unique() |>
   na.omit()
 
-plot(likeli_score_table$score,likeli_score_table$likelihood_mean)
+plot(likeli_score_table$score_original, likeli_score_table$score_likelihood_mean)
 # ---- 4. Handle unresolved queries --------------------------------------------
 # Some observation_ids may produce no usable likelihoods -- typically because all
 # candidates matched only at a rank coarser than the finest in rank_system.
@@ -150,21 +150,21 @@ if (length(lost) > 0) cat("Queries dropped:", length(lost), "\n")
 # Top candidate per query
 top_per_query <- filtered |>
   dplyr::group_by(observation_id) |>
-  dplyr::slice_max(likelihood_point_est, n = 1, with_ties = FALSE) |>
+  dplyr::slice_max(score_likelihood, n = 1, with_ties = FALSE) |>
   dplyr::ungroup()
 
 cat("\nTop candidate per query (first 10):\n")
 print(head(top_per_query[, c("observation_id", "taxon_name", "hypothesis_type",
-                              "likelihood_point_est", "likelihood_sd")], 10))
+                              "score_likelihood", "score_likelihood_sd")], 10))
 
 # How confident are the assignments?
 cat("\nLikelihood point estimate distribution (top candidates):\n")
-print(summary(top_per_query$likelihood_point_est))
+print(summary(top_per_query$score_likelihood))
 
 # Which queries have high uncertainty?
-if (any(top_per_query$likelihood_sd > 0)) {
-  uncertain <- top_per_query[top_per_query$likelihood_sd >
-                             stats::quantile(top_per_query$likelihood_sd, 0.9,
+if (any(top_per_query$score_likelihood_sd > 0)) {
+  uncertain <- top_per_query[top_per_query$score_likelihood_sd >
+                             stats::quantile(top_per_query$score_likelihood_sd, 0.9,
                                              na.rm = TRUE), ]
   cat("\nHigh-uncertainty queries (top 10% by SD):", nrow(uncertain), "\n")
 }

@@ -10,7 +10,7 @@ score_consensus(
   max_gap = Inf,
   rank_thresholds = NULL,
   whitelist = NULL,
-  score_col = "score",
+  score_col = "score_original",
   rank_system = NULL
 )
 }
@@ -48,7 +48,7 @@ whitelist member agrees with the retained candidates.  Default \code{NULL}
 (no whitelist filtering).}
 
 \item{score_col}{Character.  Column name containing match scores.
-Default \code{"score"}.}
+Default \code{"score_original"}.}
 
 \item{rank_system}{Character vector of taxonomy column names, coarse to
 fine (e.g. \code{c("family", "genus", "species")}).  If \code{NULL} (default),

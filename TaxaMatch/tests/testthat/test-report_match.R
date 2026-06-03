@@ -4,7 +4,7 @@
 test_that("report_match returns report_section with score stats", {
   df <- data.frame(
     observation_id = rep(paste0("S", 1:5), each = 2),
-    score = c(99, 95, 98, 93, 100, 97, 96, 92, 99, 94),
+    score_original = c(99, 95, 98, 93, 100, 97, 96, 92, 99, 94),
     taxon_name = rep(c("Sp A", "Sp B"), 5),
     stringsAsFactors = FALSE
   )
@@ -21,7 +21,7 @@ test_that("report_match returns report_section with score stats", {
 test_that("report_match computes top score per sample", {
   df <- data.frame(
     observation_id = c("S1", "S1", "S2", "S2"),
-    score = c(99, 95, 100, 90),
+    score_original = c(99, 95, 100, 90),
     stringsAsFactors = FALSE
   )
 
@@ -33,7 +33,7 @@ test_that("report_match computes top score per sample", {
 test_that("report_match detects eDNA data type from columns", {
   df <- data.frame(
     observation_id = "S1",
-    score = 99,
+    score_original = 99,
     accession = "NC_123456",
     stringsAsFactors = FALSE
   )
@@ -43,7 +43,7 @@ test_that("report_match detects eDNA data type from columns", {
 })
 
 test_that("report_match uses explicit data_type", {
-  df <- data.frame(observation_id = "S1", score = 99, stringsAsFactors = FALSE)
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
 
   sec <- report_match(df, data_type = "image")
   expect_true(grepl("image detections", sec$methods))
@@ -52,7 +52,7 @@ test_that("report_match uses explicit data_type", {
 test_that("report_match detects marker from testid", {
   df <- data.frame(
     observation_id = c("S1", "S2"),
-    score = c(99, 98),
+    score_original = c(99, 98),
     testid = c("MiFishU", "MiFishU"),
     stringsAsFactors = FALSE
   )
@@ -63,7 +63,7 @@ test_that("report_match detects marker from testid", {
 })
 
 test_that("report_match reads report_params attribute", {
-  df <- data.frame(observation_id = "S1", score = 99, stringsAsFactors = FALSE)
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
   attr(df, "report_params") <- list(
     method = "local BLAST", database = "custom_db", min_score = 95
   )
