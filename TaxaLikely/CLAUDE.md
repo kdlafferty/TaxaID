@@ -258,6 +258,32 @@ Must be installed; it is in Imports.
 
 ---
 
+## Test Coverage
+
+All tests are fully offline (no NCBI, no DECIPHER, no external files) except `test-build.R`
+which is skipped when DECIPHER/Biostrings are not installed.
+
+| File | Functions covered | Notes |
+|---|---|---|
+| test-assign-scores.R | `assign_scores()` | Covers all score_type values, H2/H3 anchoring, H4 behavior, single-H1 caveat |
+| test-build.R | `build_sequence_matrix()` | Skipped when DECIPHER not installed (Bioconductor Suggests) |
+| test-clean.R | `remove_flagged_references()` | Fully offline |
+| test-compute-likelihoods.R | `compute_likelihoods()`, `model_likelihoods()` | Fully offline with minimal model_params fixture |
+| test-coverage.R | `audit_reference_coverage()`, `audit_acoustic_coverage()`, `apply_coverage_constraints()`, `calibrate_coverage_filter()`, `coverage_threshold()` | Fully offline |
+| test-evaluate.R | `evaluate_likelihoods()`, `filter_top_hypotheses()` | Fully offline with minimal model_params fixture |
+| test-expand-consensus.R | `expand_consensus_candidates()` (deprecated) | Fully offline; confirms deprecation warning fires |
+| test-fetch.R | `read_reference_fasta()`, `.parse_taxonomy_tsv()`, `.parse_tax_string()` | Fully offline; NCBI fetch tests skipped |
+| test-interpret.R | `interpret_model()` | Fully offline with minimal model_params fixture |
+| test-normalize.R | `.normalize_scores()` | Fully offline |
+| test-read-crabs.R | `read_crabs_output()`, `read_reference_fasta(taxonomy_file=)` | Fully offline; 16 + 7 tests |
+| test-report_likelihood.R | `report_likelihood()` | Fully offline |
+| test-subset-local-database.R | `subset_local_database()` | Fully offline; 25 tests; gz FASTA, pre-parsed taxonomy df, filters |
+| test-train.R | `train_likelihood_model()`, `flag_reference_errors()` | Fully offline with synthetic distance matrix |
+| test-unreferenced-candidates.R | `unreferenced_candidates()` | Fully offline |
+| test-write-fasta.R | `write_reference_fasta()` | Fully offline |
+
+---
+
 ## Statistical Design Notes
 
 - **Score metric:** any raw match score; normalised to (0,1) then logit-transformed

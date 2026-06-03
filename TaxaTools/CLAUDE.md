@@ -108,6 +108,16 @@ rename_cols()           # align column names to DarwinCore
 | test-clean_taxon_names.R | `clean_taxon_names()` | Fully offline |
 | test-change_backbone.R | `change_backbone()` | Fully offline; uses mock verified tibbles |
 | test-rename_cols.R | `rename_cols()` | Fully offline |
+| test-to_faire.R | `to_faire()` | Fully offline; 52 tests covering renames, constructed columns, attribute, missing-column handling, validation |
+| test-common-names.R | `common_to_scientific()` | Offline unit tests; LLM/backbone calls skipped |
+| test-rank_utils.R | `standard_ranks`, `extended_ranks`, `detect_ranks()` | Fully offline |
+| test-barcode_utils.R | `barcode_length_defaults`, `resolve_barcode_lengths()` | Fully offline |
+| test-null_coalesce.R | `%\|\|%` | Fully offline |
+| test-llm_utils.R | `call_anthropic_api()` and other provider functions | Online tests skipped; pre-existing WARN in check |
+| test-census_genus_species.R | `census_genus_species()` | Online (GBIF) tests skipped offline |
+| test-draft_text.R | `build_report_context()`, `draft_methods_text()`, `draft_results_text()` | LLM calls skipped offline |
+| test-model_registry.R | Model registry internals | Fully offline |
+| test-report_section.R | Report section helpers | Fully offline |
 
 **Testing rules:** All tests use small inline data. No external files. No API calls except
 the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
