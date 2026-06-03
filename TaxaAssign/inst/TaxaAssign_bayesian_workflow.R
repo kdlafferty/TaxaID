@@ -48,11 +48,13 @@ library(dplyr)
 #   lik_result        — from TaxaLikely::evaluate_likelihoods()
 #   taxaexpect_priors — from TaxaExpect::generate_full_priors()
 
+
 match_obj  <- readRDS(file.choose())  # select match_obj.rds from TaxaMatch/inst/
 lik_result <- readRDS(file.choose())  # select real_likelihoods.rds from TaxaLikely/inst/
 taxaexpect_priors <- readRDS(file.choose())  # select taxaexpect_priors.rds from TaxaExpect/inst/
 
-match_obj  <-match_obj[1:20,]
+#if TaxaAssign_llm_workflow.R has been run, AND this matches lik_result and taxaexpect_priors.
+match_obj  <-match_df[1:20,]
 
 cat("Likelihood rows:", nrow(lik_result$likelihoods), "\n")
 if (nrow(lik_result$unresolved) > 0L) {

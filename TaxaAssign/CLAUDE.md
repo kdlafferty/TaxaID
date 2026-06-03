@@ -423,6 +423,26 @@ Sessions 29–77 archived in ecosystem_docs/session_notes/TaxaAssign_sessions.md
 - `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
 - Disclaimer section removed from `README.md`.
 
+**Session 99 (2026-06-02)**
+- Column renames (breaking — ecosystem-wide):
+  - `score` → `score_original`: `score_consensus()` default `score_col` updated; all tests and
+    workflows updated; `TaxaAssign_llm_workflow.R` had 3 missed `$score` / `score_col="score"`
+    references fixed during workflow testing
+  - `likelihood_point_est`/`_mean`/`_sd` → `score_likelihood`/`_mean`/`_sd`: all R source,
+    tests, inst/ files updated
+  - `"unknown_species"` hypothesis_type → `"unreferenced_family"` with `NA` `taxon_name`:
+    `assign_taxa_llm.R` updated; `posterior_consensus.R` filter changed from
+    `taxon_name == "unknown_species"` to `is.na(taxon_name)`;
+    `TaxaAssign_supplemental_methods.md` updated throughout
+- `assign_taxa_llm.R` bug fix: column collision guard added before `dplyr::left_join()`
+  (prior_df columns `hypothesis_type`/`taxon_name_rank` caused `.x`/`.y` split, making
+  `merged$hypothesis_type` NULL); `unk_idx` changed from
+  `merged$hypothesis_type == "unreferenced_family"` to `is.na(merged$taxon_name)` (more robust)
+- Test fixes: 6 assertions in `test-assign_taxa_llm.R` gained `!is.na(result$taxon_name) &`
+  guards (NA comparison `NA == "..."` returns NA, not FALSE, causing spurious row inclusion)
+- Workflows: `TaxaAssign_bayesian_workflow.R` and `TaxaAssign_llm_workflow.R` updated for
+  all column renames; workflow testing confirmed all stages pass with real data
+
 **Session 89 (2026-05-27)**
 - `suggest_unreferenced_species()`: `data_type` param added (`"eDNA"` default / `"acoustic"` / `"image"`). eDNA path: existing NCBI nucleotide count queries. Acoustic/image path: set-membership check against `reference_species` (character vector of classifier's known species list). LLM prompt `ref_filter_note` switches text accordingly via `switch(data_type, ...)`. `barcode_term`, `max_date`, and `rentrez` requireNamespace guard now all wrapped in `if (data_type == "eDNA")`. `reference_species` param added (required for acoustic/image; ignored for eDNA).
 

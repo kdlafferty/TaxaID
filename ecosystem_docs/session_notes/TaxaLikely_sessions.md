@@ -1,6 +1,35 @@
 # TaxaLikely Session Notes Archive
 # Sessions 30–88. Current sessions (90+) live in TaxaLikely/CLAUDE.md.
 
+**Session 99 (2026-06-02)**
+- Phase 1 — column renames (ecosystem-wide):
+  - `score` → `score_original` in TaxaMatch output and all TaxaLikely/TaxaAssign consumers
+  - `likelihood_point_est`/`_mean`/`_sd` → `score_likelihood`/`_mean`/`_sd`
+- Phase 2 — unified modular likelihood pipeline (new functions):
+  - `unreferenced_candidates()`: adds H2 (unreferenced_species) and H3 (unreferenced_genus)
+    placeholder rows per observation; auto-detects rank_system; optional H4 (unreferenced_family)
+    via `include_unreferenced_family = TRUE`
+  - `assign_scores()`: sets `score_likelihood` by `score_type`:
+    - `"none"` — all rows = 1.0 (morphology / expert IDs / upranked consensus)
+    - `"probability"` — ratio-normalize multi-candidate softmax scores (iNat CV, BirdNET full output)
+    - `"similarity_softmax"` — exp-weighted for similarity scores without a trained model
+    - `"similarity"` — adds `score_norm` only; pass to `model_likelihoods()` for bivariate-normal
+    - H2/H3 anchored at median same-genus/same-family H1 likelihood; H4 fixed at 0.05
+    - **Single-H1 caveat**: for top-1 classifier output, H2/H3 anchor = 1.0; confidence score
+      has no discriminating effect — use multi-candidate output + `"probability"` instead
+  - `model_likelihoods()`: thin wrapper applying bivariate-normal model to `score_type="similarity"` output
+  - `compute_likelihoods()`: orchestrating wrapper — `unreferenced_candidates()` → `assign_scores()` →
+    `model_likelihoods()`; recommended high-level entry point for DNA scored pathway
+- `expand_consensus_candidates()` deprecated with `.Deprecated()` notice; function retained in
+  `R/expand_consensus.R` for backward compatibility
+- Workflow 6 (`6_no_score_pathway_workflow.R`) rewritten for new API; now includes auto taxonomy
+  join block for `posterior_consensus()` output (which lacks family/genus/species columns)
+- `expand_consensus_demo.R` rewritten for new API (3 demos replacing 7 old test cases)
+- `inst/test_session99.R` added: 22-assertion smoke test covering all new pipeline entry points
+- DAG/README updates: main TaxaID README flowchart updated (removed build_acoustic/image_reference,
+  added no-score pathway node, fixed consensus_taxonomy label); TaxaLikely README inference
+  section, BirdNET section, and No-Score Pathway section rewritten
+
 **Session 98 (2026-06-01)**
 - Cross-package test cleanup (no function changes):
   - TaxaHabitat `test-assign_habitat_biological.R`: replaced 4 skeletal tests with TaxaFetch's
