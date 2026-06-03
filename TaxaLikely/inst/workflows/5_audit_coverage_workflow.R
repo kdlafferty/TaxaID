@@ -141,3 +141,84 @@ saveRDS(constrained, "likelihoods_constrained.rds")
 
 message("\nWorkflow 5 complete.")
 message("Constrained likelihoods saved. Next: TaxaAssign for posterior assignment.")
+
+
+# ==============================================================================
+# PATH C: ACOUSTIC / IMAGE COVERAGE (classifier-based data)
+# ==============================================================================
+# Use when your detections come from a fixed-species classifier (BirdNET,
+# camera-trap model) rather than DNA barcoding.
+#
+# audit_acoustic_coverage() answers: which plausible species at your site
+# are ABSENT from the classifier's known species list? These cannot appear
+# as candidates regardless of how common they are — they are unreferenced
+# in the acoustic/image sense.
+#
+# No internet access required (pure set-membership check).
+#
+# Inputs:
+#   plausible_species  -- species expected at your site (LLM / GBIF / expert list)
+#   reference_species  -- classifier's known species list (BirdNET, custom model)
+#   match_df           -- (optional) classifier output; annotates census with
+#                         in_match_data = TRUE for species that actually appeared
+
+# ---- C1. Supply your plausible species and classifier species list -----------
+# plausible_species: species expected at this site, from TaxaExpect or expert list
+plausible_species <- c(
+  "Turdus migratorius",
+  "Setophaga petechia",
+  "Limosa fedoa",
+  "Selasphorus calliope"
+  # ... add your site-specific species list
+)
+
+# reference_species: the classifier's built-in known species list
+# For BirdNET: read from the BirdNET_GLOBAL_6K_V2.4_Labels.txt file
+# reference_species <- readLines("BirdNET_GLOBAL_6K_V2.4_Labels.txt")
+reference_species <- c(
+  "Turdus migratorius",
+  "Setophaga petechia",
+  "Turdus merula",
+  "Corvus brachyrhynchos"
+  # ... your classifier's full species list
+)
+
+# ---- C2. Run acoustic coverage audit ----------------------------------------
+coverage_c <- audit_acoustic_coverage(
+  plausible_species = plausible_species,
+  reference_species = reference_species
+  # match_df = birdnet_match_df   # optional: annotate with in_match_data
+)
+
+cat("\nAcoustic coverage census:\n")
+print(coverage_c$census)
+
+cat("\nUnreferenced species (absent from classifier):\n")
+print(coverage_c$unreferenced)
+cat("Total unreferenced:", length(coverage_c$unreferenced), "\n")
+
+# ---- C3. (Optional) Load match data and annotate census with detections ------
+# If you have classifier output loaded, pass it to annotate the census with
+# which unreferenced species actually appeared as detections:
+#
+# birdnet_match_df <- TaxaMatch::read_birdnet_output("BirdNET_results/")
+# coverage_c_annotated <- audit_acoustic_coverage(
+#   plausible_species = plausible_species,
+#   reference_species = reference_species,
+#   match_df          = birdnet_match_df
+# )
+# print(coverage_c_annotated$census)
+
+# ---- C4. Pass unreferenced species to TaxaAssign ----------------------------
+# Acoustic data uses unreferenced_candidates() + assign_scores() for
+# likelihoods (see Workflow 6). The unreferenced species list from this audit
+# informs suggest_unreferenced_species() in TaxaAssign, which builds additional
+# H2 hypotheses for species that cannot appear as classifier candidates.
+#
+# unreferenced_result <- TaxaAssign::suggest_unreferenced_species(
+#   match_df          = birdnet_match_df,
+#   unreferenced_taxa = coverage_c$unreferenced
+# )
+
+message("\nWorkflow 5C complete.")
+message("Next: Workflow 6 (no-score pathway) for acoustic likelihoods, then TaxaAssign.")

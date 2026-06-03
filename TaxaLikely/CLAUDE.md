@@ -267,6 +267,7 @@ which is skipped when DECIPHER/Biostrings are not installed.
 |---|---|---|
 | test-assign-scores.R | `assign_scores()` | Covers all score_type values, H2/H3 anchoring, H4 behavior, single-H1 caveat |
 | test-build.R | `build_sequence_matrix()` | Skipped when DECIPHER not installed (Bioconductor Suggests) |
+| test-build-site-reference.R | `build_site_reference()` | Offline via `local_mocked_bindings()`; 17 tests + 1 skip (DECIPHER present) |
 | test-clean.R | `remove_flagged_references()` | Fully offline |
 | test-compute-likelihoods.R | `compute_likelihoods()`, `model_likelihoods()` | Fully offline with minimal model_params fixture |
 | test-coverage.R | `audit_reference_coverage()`, `audit_acoustic_coverage()`, `apply_coverage_constraints()`, `calibrate_coverage_filter()`, `coverage_threshold()` | Fully offline |
