@@ -24,6 +24,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `rename_cols()` | Rename data frame columns using an explicit `col_map` or built-in case-insensitive regex patterns for common DarwinCore alternatives; `strict` arg controls missing-key behaviour | Complete | R/rename_cols.R |
 | `find_taxonomy_conflicts()` | Detect higher-rank inconsistencies in taxonomy data frames; returns `taxon_name`, `taxon_rank`, `parent_rank`, `parent_values`, `n_values` | Complete | R/find_taxonomy_conflicts.R |
 | `is_valid_species_name()` | Filter out "sp.", "cf.", "aff.", uncultured, environmental, and non-binomial names; vectorised logical return | Complete | R/is_valid_species_name.R |
+| `to_faire()` | Export a TaxaID data frame (match/likelihood/posterior object) to FAIRe checklist column conventions (`taxaRaw` / `taxaFinal`). Renames `observation_id` → `seq_id`, `taxon_name` → `scientificName`, etc.; constructs `verbatimIdentification`, `specificEpithet`, `checkls_ver`. Columns not in the FAIRe mapping are retained unchanged. Attaches `faire_table` attribute. | Complete | R/to_faire.R |
 | `format_dwc()` | Apply per-column DarwinCore formatting rules | Planned | — |
 | `validate_dwc()` | Read-only QC after formatting | Planned | — |
 | `dwc_map()` | Compare input column names against full DarwinCore term list; propose `col_map` via fuzzy matching or LLM API | Planned | — |
@@ -69,6 +70,12 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `census_genus_species()` | Enumerate described species per genus (or higher rank) via GBIF backbone `name_usage(children)`. `match_species` param computes reference completeness: "complete" / "singleton_missing" / "incomplete". Higher-rank recursion (family → genera → species). `rgbif` in Suggests. | Complete | R/census_genus_species.R |
+
+### Common name utilities (Session 97)
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `common_to_scientific()` | Convert a character vector of common names to scientific names via LLM, with optional backbone verification via `verify_taxon_names()`. Params: `taxonomic_group`, `location`, `verify`, `backbone_id`, `llm_fn`. Returns data frame with `common_name`, `scientific_name`, `verified`, `matched_name`. | Complete | R/common_names.R |
 
 ### LLM text generation functions (Session 55)
 
