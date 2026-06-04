@@ -349,3 +349,30 @@ non-zero likelihoods that bypass the constraint. Correct order:
 ## Session Notes
 
 Sessions 30–94 archived in `ecosystem_docs/session_notes/TaxaLikely_sessions.md`.
+
+**Session 100 (2026-06-03/04): Trivariate revert; coverage sigma-inflation (score_likelihood_cov)**
+
+Trivariate coverage model (rejected): explored making coverage a third dimension of the
+bivariate normal, but premise validation on `build_sequence_matrix()` output showed H1
+(within-species) training pairs are nearly all coverage ≈ 1 (mean 0.991, var 0.002) while
+H2 cross-species pairs are much more variable (mean 0.908, var 0.041). Because there is
+no within-H1 coverage variation, the model cannot estimate a coverage–score relationship.
+Trivariate approach reverted; coverage remains a hard filter only via `min_coverage`.
+
+New: `score_likelihood_cov` column added to `evaluate_likelihoods()` output. Applies a
+post-hoc sigma inflation at inference time using a prior (binomial SE argument):
+σ_eff = σ / sqrt(coverage). Only the [1,1] element of H1_Sigma is inflated; H2/H3 sigmas
+are global fixed parameters and are not modified. Key behavior: for scores near the H1
+mean (good within-species matches), widening sigma lowers the peak density → negative
+delta (primary intended effect — penalises good matches observed at low coverage). For
+scores far below the H1 mean (cross-species matches), widening sigma fattens the left
+tail → positive delta (secondary, low-relevance effect). Crossover at exactly ±1 sigma
+from the H1 mean. Column added as a parallel output only (non-breaking); `score_likelihood`
+is unchanged and remains the default for TaxaAssign unless the user switches.
+
+Other changes this session: Workflow 3 fully rewritten (removed stale trivariate
+references; added coverage-by-hypothesis-type diagnostic; added demo of
+score_likelihood_cov using within-species pairs with coverage < 0.99). README updated
+with `score_likelihood_cov` in the Quick Start output and a Statistical Design bullet
+explaining the formula, direction of effect, and why coverage is not a model dimension.
+`train.R` minor cleanup (roxygen, h2_sigma_mat moved outside conditional).
