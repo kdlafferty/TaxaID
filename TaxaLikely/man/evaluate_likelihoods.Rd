@@ -81,8 +81,9 @@ A named list with two components:
 hypothesis, suitable for input to \code{TaxaAssign::compute_posterior()}:
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type}
 (\code{"specific_candidate"}, \code{"unreferenced_species"}, or \code{"unreferenced_genus"}),
-\code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd}.  Rows
-where \code{taxon_name} resolved to \code{NA} are excluded.}
+\code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd},
+\code{score_likelihood_cov}.  Rows where \code{taxon_name} resolved to \code{NA} are
+excluded.  See Details for \code{score_likelihood_cov}.}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
 produced no usable likelihoods (empty data frame if none).  Pass to
 a second call of \code{evaluate_likelihoods()} with a coarser
@@ -132,6 +133,20 @@ top candidate is much better than any alternative -- strong evidence for
 that identification. When only one candidate taxon exists, the gap is
 not computed (1D model used instead).
 }
+
+\strong{Coverage-adjusted likelihood (\code{score_likelihood_cov}):}
+When the match object contains a \code{coverage} column (e.g., BLAST \code{qcovs / 100}
+or bounding-box area), a parallel point estimate \code{score_likelihood_cov} is
+computed alongside \code{score_likelihood}.  For each specific candidate, the H1
+\code{sigma_score} is widened by \eqn{1 / \text{coverage}} before evaluating the
+likelihood -- grounded in binomial sampling theory where
+\eqn{Var(\text{logit}(\hat{p})) \propto 1 / N_{\text{aligned}}} and
+\eqn{N_{\text{aligned}} = \text{coverage} \times N_{\text{total}}}.  H2 and
+H3 sigmas are global fixed parameters and are not inflated.  When coverage is
+absent or equals 1 for all candidates, \code{score_likelihood_cov} is identical to
+\code{score_likelihood}.  Pass to \code{TaxaAssign::compute_posterior()} instead of
+\code{score_likelihood} to apply the coverage adjustment; compare the two columns
+to identify queries where coverage meaningfully shifts the likelihood ratios.
 
 \strong{hypothesis_type values in output:}
 \itemize{

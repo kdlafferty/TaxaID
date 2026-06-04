@@ -46,7 +46,8 @@ test_that(".evaluate_one_query: returns required columns", {
     .make_match_df(), params, c("family", "genus", "species")
   )
   expect_true(all(c("hypothesis_type", "taxon_name", "taxon_name_rank",
-                     "score_likelihood", "score_likelihood_mean", "score_likelihood_sd")
+                     "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
+                     "score_likelihood_cov")
                   %in% names(out)))
 })
 
@@ -128,7 +129,8 @@ test_that("evaluate_likelihoods: $likelihoods has required columns", {
                                  c("family", "genus", "species"))$likelihoods
   expect_true(all(c("observation_id","taxon_name","taxon_name_rank",
                      "hypothesis_type","score_likelihood",
-                     "score_likelihood_mean","score_likelihood_sd") %in% names(liks)))
+                     "score_likelihood_mean","score_likelihood_sd",
+                     "score_likelihood_cov") %in% names(liks)))
 })
 
 test_that("evaluate_likelihoods: processes multiple observation_ids", {
@@ -170,6 +172,35 @@ test_that("evaluate_likelihoods: all-NA observation_id warns and appears in $unr
   )
   expect_true(nrow(out$unresolved) > 0L)
   expect_equal(nrow(out$likelihoods), 0L)
+})
+
+# (trivariate coverage path removed — coverage used as filter only)
+
+# ---- score_likelihood_cov ---------------------------------------------------
+
+test_that("score_likelihood_cov equals score_likelihood when no coverage column", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  out    <- evaluate_likelihoods(.make_match_df(), params,
+                                 c("family", "genus", "species"))$likelihoods
+  # No coverage column in match_df -> no inflation -> columns must be identical
+  expect_equal(out$score_likelihood_cov, out$score_likelihood)
+})
+
+test_that("score_likelihood_cov differs from score_likelihood for low-coverage H1", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  df_cov <- .make_match_df()
+  # First candidate (best H1) gets very low coverage; others at full coverage
+  df_cov$coverage <- c(0.3, 1.0, 1.0)
+  out <- evaluate_likelihoods(df_cov, params,
+                              c("family", "genus", "species"))$likelihoods
+  h1_rows <- out[out$hypothesis_type == "specific_candidate", ]
+  # At least the best H1 candidate should be penalised (cov value differs from 1)
+  expect_false(isTRUE(all.equal(h1_rows$score_likelihood_cov,
+                                h1_rows$score_likelihood)))
+  # score_likelihood_cov in [0, 1]
+  expect_true(all(out$score_likelihood_cov >= 0 & out$score_likelihood_cov <= 1))
 })
 
 # ---- filter_top_hypotheses --------------------------------------------------

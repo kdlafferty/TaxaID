@@ -1,9 +1,12 @@
 utils::globalVariables(c(
   "p_med", "p_b", "score_logit", "gap_logit", "p_norm",
-  "raw_likelihood", "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
+  "raw_likelihood", "raw_likelihood_cov",
+  "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
+  "score_likelihood_cov",
   "hypothesis_type", "taxon_name", "taxon_name_rank",
   "observation_id", "Query_ID",
-  ".data", "rank_score", "best_rank_score"
+  ".data", "rank_score", "best_rank_score",
+  "coverage"
 ))
 
 # ==============================================================================
@@ -91,16 +94,17 @@ utils::globalVariables(c(
     }
   }
 
-  # Extract model parameters
-  global_mu     <- as.numeric(model_params$H1_Global_Mu)   # [score_logit, gap_logit]
-  global_sigma  <- as.matrix(model_params$H1_Sigma)
-  rownames(global_sigma) <- colnames(global_sigma) <- c("score_logit", "gap_logit")
+  global_mu    <- as.numeric(model_params$H1_Global_Mu)
+  global_sigma <- as.matrix(model_params$H1_Sigma)
+  dimnames(global_sigma) <- list(c("score_logit","gap_logit"), c("score_logit","gap_logit"))
   model_sd_score <- sqrt(global_sigma[1L, 1L])
 
-  h2_delta  <- model_params$H2$delta
-  h3_delta  <- model_params$H3$delta
-  h2_sigma  <- as.matrix(model_params$H2$sigma)
-  h3_sigma  <- as.matrix(model_params$H3$sigma)
+  h2_delta <- model_params$H2$delta
+  h3_delta <- model_params$H3$delta
+  h2_sigma <- as.matrix(model_params$H2$sigma)
+  h3_sigma <- as.matrix(model_params$H3$sigma)
+  dimnames(h2_sigma) <- list(c("score_logit","gap_logit"), c("score_logit","gap_logit"))
+  dimnames(h3_sigma) <- list(c("score_logit","gap_logit"), c("score_logit","gap_logit"))
 
   # ---- 1. FEATURE PREP: median score per taxon_name --------------------------
   existing_rank_cols <- intersect(rank_cols, names(candidate_df))
@@ -112,6 +116,8 @@ utils::globalVariables(c(
     dplyr::group_by(taxon_name) |>
     dplyr::summarise(
       p_med = stats::median(p_norm, na.rm = TRUE),
+      dplyr::across(dplyr::any_of("coverage"),
+                    ~ stats::median(.x, na.rm = TRUE)),
       dplyr::across(dplyr::any_of(existing_rank_cols), dplyr::first),
       .groups = "drop"
     ) |>
@@ -122,13 +128,14 @@ utils::globalVariables(c(
 
   if (nrow(cand) == 0L) {
     return(data.frame(
-      hypothesis_type      = character(0),
-      taxon_name           = character(0),
-      taxon_name_rank      = character(0),
-      score_likelihood = numeric(0),
-      score_likelihood_mean      = numeric(0),
-      score_likelihood_sd        = numeric(0),
-      stringsAsFactors     = FALSE
+      hypothesis_type       = character(0),
+      taxon_name            = character(0),
+      taxon_name_rank       = character(0),
+      score_likelihood      = numeric(0),
+      score_likelihood_mean = numeric(0),
+      score_likelihood_sd   = numeric(0),
+      score_likelihood_cov  = numeric(0),
+      stringsAsFactors      = FALSE
     ))
   }
 
@@ -165,7 +172,8 @@ utils::globalVariables(c(
     data.frame(matrix(NA_character_, nrow = nrow(cand), ncol = 1L))
 
   # ---- 4. LIKELIHOOD CALCULATOR (shared by point-estimate and MC sims) ------
-  .calc_likelihoods <- function(s_vec, g_vec, p_raw, taxa_names, use_1d) {
+  .calc_likelihoods <- function(s_vec, g_vec, p_raw, taxa_names, use_1d,
+                                cov_vec = NULL) {
     h1_vals <- numeric(length(s_vec))
     has_lookup <- !is.null(model_params$H1_Lookup) &&
       nrow(model_params$H1_Lookup) > 0L
@@ -187,14 +195,24 @@ utils::globalVariables(c(
           }
         }
         if (!is.na(idx)) {
-          use_mu <- c(model_params$H1_Lookup$mu_score[idx],
-                      model_params$H1_Lookup$mu_gap[idx])
-          sp_var <- model_params$H1_Lookup$sigma_score[idx]
+          sp_score <- model_params$H1_Lookup$mu_score[idx]
+          sp_gap   <- model_params$H1_Lookup$mu_gap[idx]
+          sp_var   <- model_params$H1_Lookup$sigma_score[idx]
+          use_mu <- c(sp_score, sp_gap)
           if (!is.na(sp_var) && sp_var > 0) use_sigma[1L, 1L] <- sp_var
         } else if (verbose) {
           message(sprintf("  Taxon '%s': no species-specific params; using global mean",
                           taxa_names[i]))
         }
+      }
+
+      # Coverage inflation: widen sigma_score for low-coverage candidates.
+      # Grounded in binomial sampling: SE(logit(score)) ∝ 1/sqrt(N_aligned)
+      # and N_aligned = coverage × N_total, so σ_eff = σ / sqrt(coverage).
+      # Only activates when coverage < 1; does not affect H2/H3 sigmas.
+      if (!is.null(cov_vec) && !is.na(cov_vec[i]) &&
+          cov_vec[i] > 0 && cov_vec[i] < 1) {
+        use_sigma[1L, 1L] <- use_sigma[1L, 1L] / sqrt(cov_vec[i])
       }
 
       if (use_1d) {
@@ -215,7 +233,6 @@ utils::globalVariables(c(
       }
     }
 
-    # H2 / H3 from the best-scoring candidate
     best_i <- which.max(s_vec)
     if (length(best_i) == 0L || all(s_vec == 0)) {
       return(list(h1 = h1_vals, h2 = 0, h3 = 0))
@@ -224,7 +241,6 @@ utils::globalVariables(c(
     best_pt <- c(s_vec[best_i], g_vec[best_i])
     h2_mu   <- c(global_mu[1L] - h2_delta, 0)
     h3_mu   <- c(global_mu[1L] - h3_delta, 0)
-
     if (use_1d) {
       h2_val <- stats::dnorm(best_pt[1L], mean = h2_mu[1L],
                              sd = sqrt(h2_sigma[1L, 1L]))
@@ -243,10 +259,20 @@ utils::globalVariables(c(
                                cand$p_med, cand$taxon_name,
                                use_1d = is_singleton)
 
+  # Coverage-adjusted point estimate: inflate sigma_score by 1/coverage for
+  # each candidate taxon. When coverage is absent or all = 1, identical to
+  # primary. H2/H3 sigmas are global fixed parameters and are not inflated.
+  has_coverage <- "coverage" %in% names(cand)
+  primary_cov  <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
+                                    cand$p_med, cand$taxon_name,
+                                    use_1d = is_singleton,
+                                    cov_vec = if (has_coverage) cand$coverage else NULL)
+
   # Build result rows for H1
   df_h1 <- cand |>
-    dplyr::mutate(hypothesis_type = "specific_candidate",
-                  raw_likelihood  = primary$h1)
+    dplyr::mutate(hypothesis_type    = "specific_candidate",
+                  raw_likelihood     = primary$h1,
+                  raw_likelihood_cov = primary_cov$h1)
 
   # Build H2/H3 rows from the best candidate
   best_i   <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
@@ -261,8 +287,9 @@ utils::globalVariables(c(
   if (!is.null(finest) && finest %in% names(row_h2))
     row_h2[[finest]] <- NA_character_
   row_h2 <- TaxaTools::create_taxon_names(row_h2, rank_cols)
-  row_h2$hypothesis_type <- "unreferenced_species"
-  row_h2$raw_likelihood  <- primary$h2
+  row_h2$hypothesis_type    <- "unreferenced_species"
+  row_h2$raw_likelihood     <- primary$h2
+  row_h2$raw_likelihood_cov <- primary$h2   # H2 sigma is global fixed; no inflation
 
   row_h3 <- best_row
   if (!is.null(finest) && finest %in% names(row_h3))
@@ -270,8 +297,9 @@ utils::globalVariables(c(
   if (!is.null(second) && second %in% names(row_h3))
     row_h3[[second]] <- NA_character_
   row_h3 <- TaxaTools::create_taxon_names(row_h3, rank_cols)
-  row_h3$hypothesis_type <- "unreferenced_genus"
-  row_h3$raw_likelihood  <- primary$h3
+  row_h3$hypothesis_type    <- "unreferenced_genus"
+  row_h3$raw_likelihood     <- primary$h3
+  row_h3$raw_likelihood_cov <- primary$h3   # H3 sigma is global fixed; no inflation
 
   res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
 
@@ -280,15 +308,21 @@ utils::globalVariables(c(
 
   res_agg <- res |>
     dplyr::group_by(hypothesis_type, taxon_name, taxon_name_rank) |>
-    dplyr::summarise(raw_likelihood = max(raw_likelihood, na.rm = TRUE),
+    dplyr::summarise(raw_likelihood     = max(raw_likelihood,     na.rm = TRUE),
+                     raw_likelihood_cov = max(raw_likelihood_cov, na.rm = TRUE),
                      .groups = "drop")
 
   # ---- 6. NORMALISE TO LIKELIHOOD RATIOS ------------------------------------
-  max_lik <- max(res_agg$raw_likelihood, na.rm = TRUE)
-  if (max_lik == 0 || is.na(max_lik)) max_lik <- 1
+  max_lik     <- max(res_agg$raw_likelihood,     na.rm = TRUE)
+  max_lik_cov <- max(res_agg$raw_likelihood_cov, na.rm = TRUE)
+  if (max_lik     == 0 || is.na(max_lik))     max_lik     <- 1
+  if (max_lik_cov == 0 || is.na(max_lik_cov)) max_lik_cov <- 1
 
   res_agg <- res_agg |>
-    dplyr::mutate(score_likelihood = raw_likelihood / max_lik) |>
+    dplyr::mutate(
+      score_likelihood     = raw_likelihood     / max_lik,
+      score_likelihood_cov = raw_likelihood_cov / max_lik_cov
+    ) |>
     dplyr::filter(
       score_likelihood >= ratio_threshold |
         hypothesis_type != "specific_candidate"
@@ -366,7 +400,8 @@ utils::globalVariables(c(
 
   res_agg |>
     dplyr::select(hypothesis_type, taxon_name, taxon_name_rank,
-                  score_likelihood, score_likelihood_mean, score_likelihood_sd) |>
+                  score_likelihood, score_likelihood_mean, score_likelihood_sd,
+                  score_likelihood_cov) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
 
@@ -437,8 +472,9 @@ utils::globalVariables(c(
 #'       hypothesis, suitable for input to `TaxaAssign::compute_posterior()`:
 #'       `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`
 #'       (`"specific_candidate"`, `"unreferenced_species"`, or `"unreferenced_genus"`),
-#'       `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`.  Rows
-#'       where `taxon_name` resolved to `NA` are excluded.}
+#'       `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`,
+#'       `score_likelihood_cov`.  Rows where `taxon_name` resolved to `NA` are
+#'       excluded.  See Details for `score_likelihood_cov`.}
 #'     \item{`$unresolved`}{Rows from `match_df` for any `observation_id` that
 #'       produced no usable likelihoods (empty data frame if none).  Pass to
 #'       a second call of `evaluate_likelihoods()` with a coarser
@@ -472,6 +508,20 @@ utils::globalVariables(c(
 #'     that identification. When only one candidate taxon exists, the gap is
 #'     not computed (1D model used instead).
 #' }
+#'
+#' \strong{Coverage-adjusted likelihood (`score_likelihood_cov`):}
+#' When the match object contains a `coverage` column (e.g., BLAST `qcovs / 100`
+#' or bounding-box area), a parallel point estimate `score_likelihood_cov` is
+#' computed alongside `score_likelihood`.  For each specific candidate, the H1
+#' `sigma_score` is widened by \eqn{1 / \sqrt{\text{coverage}}} before
+#' evaluating the likelihood -- grounded in binomial sampling theory where
+#' \eqn{SE(\text{logit}(\hat{p})) \propto 1 / \sqrt{N_{\text{aligned}}}} and
+#' \eqn{N_{\text{aligned}} = \text{coverage} \times N_{\text{total}}}.  H2 and
+#' H3 sigmas are global fixed parameters and are not inflated.  When coverage is
+#' absent or equals 1 for all candidates, `score_likelihood_cov` is identical to
+#' `score_likelihood`.  Pass to `TaxaAssign::compute_posterior()` instead of
+#' `score_likelihood` to apply the coverage adjustment; compare the two columns
+#' to identify queries where coverage meaningfully shifts the likelihood ratios.
 #'
 #' \strong{hypothesis_type values in output:}
 #' \itemize{
@@ -648,7 +698,8 @@ evaluate_likelihoods <- function(match_df,
 
   likelihoods <- dplyr::select(out, observation_id, taxon_name, taxon_name_rank,
                                hypothesis_type, score_likelihood,
-                               score_likelihood_mean, score_likelihood_sd)
+                               score_likelihood_mean, score_likelihood_sd,
+                               score_likelihood_cov)
 
   list(likelihoods = likelihoods, unresolved = unresolved)
 }

@@ -75,7 +75,8 @@ model <- train_likelihood_model(ref_matrix)
 result <- evaluate_likelihoods(match_df, model)
 likelihoods <- result$likelihoods
 # Columns: observation_id, taxon_name, hypothesis_type,
-#           score_likelihood, score_likelihood_mean, score_likelihood_sd
+#           score_likelihood, score_likelihood_mean, score_likelihood_sd,
+#           score_likelihood_cov
 ```
 
 ## Loading Pre-built Reference Databases
@@ -436,6 +437,69 @@ hypothesis type:
 -   **Monte Carlo uncertainty:** Score perturbation across simulations
     yields `score_likelihood_mean` and `score_likelihood_sd`, measuring sensitivity
     to measurement noise
+-   **Alignment coverage filter (optional):** A `min_coverage` threshold
+    can be passed to `evaluate_likelihoods()` to drop low-coverage candidates
+    before scoring.  Use `calibrate_coverage_filter()` on the training matrix
+    to find the Pareto-optimal threshold (maximises Youden's J: H1 retention
+    minus H2 retention).  Acoustic and image data can supply a categorical
+    quality column (e.g. Xeno-canto grade) encoded as an integer for the same
+    pre-filter.
+-   **Coverage-adjusted likelihood (`score_likelihood_cov`):** When the
+    match object contains a `coverage` column, `evaluate_likelihoods()`
+    produces a second point-estimate column `score_likelihood_cov` alongside
+    the standard `score_likelihood`.  For each H1 candidate the model sigma
+    is widened by `1 / sqrt(coverage)` before the likelihood is evaluated —
+    grounded in binomial sampling theory: the standard error of a proportion
+    estimated from `N` aligned positions scales as `1 / sqrt(N)`, and
+    `N_aligned = coverage × N_total`.  H2 and H3 sigmas are global fixed
+    parameters and are not inflated.
+
+    Widening sigma changes the **point estimate** of the likelihood (not its
+    SD), because it changes the density value returned by the bivariate normal
+    at the observed score.  The direction of the change depends on where the
+    observed score falls relative to the H1 mean:
+
+    - **Score near the H1 mean (good match):** the density at the peak
+      decreases as the distribution flattens →
+      `score_likelihood_cov` < `score_likelihood`.  This is the primary
+      intended effect: a 98% match at 60% coverage is penalised relative to
+      the same score at full coverage, reducing overconfidence in partial
+      alignments.
+    - **Score far below the H1 mean (poor cross-species match):** the
+      distribution flattens into a wider tail, increasing the density at that
+      low score → `score_likelihood_cov` > `score_likelihood`.  This is a
+      secondary effect: the model is saying "with low coverage I cannot rule
+      out H1 as strongly."  These candidates are already ranked low and the
+      effect rarely changes downstream assignments.
+
+    The crossover is at exactly ±1 sigma from the mean — a useful check is
+    whether the best H1 candidate is a good match (expect negative delta) or
+    a poor match (expect positive delta).
+
+    **Why this is not a model parameter:** Reference-vs-reference training
+    pairs (from `build_sequence_matrix()`) are nearly always full-length
+    alignments — same-species sequences share the same amplicon and align
+    completely.  There is therefore no within-H1 coverage variation in the
+    training data from which to estimate a coverage-score relationship.  The
+    `1 / sqrt(coverage)` inflation is applied as a principled prior at
+    inference time rather than a fitted parameter.
+
+    **How to use it:** Pass `score_likelihood_cov` to
+    `TaxaAssign::compute_posterior()` instead of `score_likelihood` to apply
+    the adjustment.  Compare the two columns to find queries where coverage
+    meaningfully shifts the likelihood ratios:
+
+    ```r
+    likelihoods |>
+      dplyr::filter(
+        hypothesis_type == "specific_candidate",
+        abs(score_likelihood_cov - score_likelihood) > 0.05
+      ) |>
+      dplyr::arrange(dplyr::desc(abs(score_likelihood_cov - score_likelihood)))
+    ```
+
+    When coverage is absent from the match object or equals 1 for all
+    candidates, `score_likelihood_cov` is identical to `score_likelihood`.
 
 For a detailed treatment of the statistical framework, feature
 engineering, hypothesis definitions, parameter estimation, and

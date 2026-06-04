@@ -66,6 +66,29 @@ cat("Match object:", nrow(match_df), "rows,",
 # # Or: errors <- readRDS("reference_errors.rds")  # from Workflow 2
 # match_df <- remove_flagged_references(match_df, errors)
 
+# ---- 2b. Coverage filter (optional) -----------------------------------------
+# If the match object has a 'coverage' column (e.g. BLAST qcovs, Xeno-canto
+# grade), pass the threshold saved by Workflow 3 as min_coverage below.
+# Candidates below the threshold are dropped before score aggregation,
+# keeping inference data within the range the model was trained on.
+#
+# DNA (BLAST): ensure match_df has a 'coverage' column (qcovs from BLAST
+# tabular output, 0-100 scale -- evaluate_likelihoods() auto-rescales).
+# Acoustic (Xeno-canto quality grades A-E): encode as integer (A=5...E=1)
+# and set min_cov to the minimum acceptable grade (e.g., 4L = B or better).
+#
+#   match_df <- match_df |>
+#     dplyr::mutate(coverage = as.integer(factor(xc_quality,
+#                                                levels = c("E","D","C","B","A"))))
+#   min_cov <- 4L   # B or better
+
+if (file.exists("coverage_threshold.rds")) {
+  min_cov <- readRDS("coverage_threshold.rds")
+  cat(sprintf("Coverage threshold (from Workflow 3): %.3f\n", min_cov))
+} else {
+  min_cov <- NULL   # no filter
+}
+
 # ---- 3. Evaluate likelihoods ------------------------------------------------
 # evaluate_likelihoods() does the heavy lifting:
 #   - Groups candidates by taxon_name, takes max score per taxon
@@ -95,9 +118,17 @@ lik_result <- evaluate_likelihoods(
   match_df     = match_df,
   model_params = model,
   rank_system  = rank_system,
-  n_sims       = 200L          # Monte Carlo iterations (0 = point estimate only)
-  # ratio_threshold = 0.001    # drop hypotheses with ratio below this (default)
+  n_sims       = 200L,             # Monte Carlo iterations (0 = point estimate only)
+  min_coverage = min_cov           # NULL (no filter) or threshold from Workflow 3
+  # ratio_threshold = 0.001        # drop hypotheses with ratio below this (default)
+  # verbose = TRUE                 # prints message when trivariate fallback is used
 )
+
+# Coverage note: if the model is trivariate AND match_df has a continuous
+# 'coverage' column with >10 unique values, evaluate_likelihoods() automatically
+# uses the trivariate normal for H1/H2/H3 calculation. If coverage is absent
+# or categorical (<=10 unique values), it falls back to bivariate silently
+# (or with a message when verbose = TRUE).
 
 
 

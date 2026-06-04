@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-02 (Session 99 -- Phase 1 column renames; Phase 2 unified pipeline: unreferenced_candidates, assign_scores, model_likelihoods, compute_likelihoods; expand_consensus_candidates() deprecated)
+# Last updated: 2026-06-04 (Session 100 -- coverage-adjusted likelihood column added: score_likelihood_cov)
 
 ---
 
@@ -67,6 +67,7 @@ to likelihood output downstream -- it is NOT part of the match object.
 | `score_likelihood` | numeric | Point estimate (deterministic) |
 | `score_likelihood_mean` | numeric | Mean across Monte Carlo simulations |
 | `score_likelihood_sd` | numeric | SD across simulations (0 if n_sims = 0) |
+| `score_likelihood_cov` | numeric | Coverage-adjusted point estimate: H1 sigma inflated by `1/sqrt(coverage)`; equals `score_likelihood` when coverage absent or = 1 |
 
 **`$unresolved`** -- rows from the original `match_df` for any `observation_id` that
 produced no usable likelihoods (e.g., all candidates matched only at a rank
@@ -95,7 +96,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 |---|---|---|---|
 | `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output now includes `coverage` column (positions where both sequences are non-gap / shorter unaligned length). Renamed from `build_reference_matrix()` Session 88. |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
-| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations |
+| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. |
 
 ### Unified likelihood pipeline (new — Session 99)
 
@@ -110,7 +111,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. |
+| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. Output includes `score_likelihood_cov`: coverage-adjusted point estimate inflating H1 sigma by `1/sqrt(coverage)` per candidate taxon (binomial SE prior); equals `score_likelihood` when coverage column is absent or all 1. |
 | `filter_top_hypotheses()` | `R/evaluate.R` | Written | Keep finest-rank candidates per query |
 
 ### Reference coverage
@@ -211,11 +212,11 @@ Output of `train_likelihood_model()`.
 | Slot | Type | Description |
 |---|---|---|
 | `H1_Lookup` | data.frame | Per-species `lookup_key`, `rank`, `mu_score`, `mu_gap`, `sigma_score` (shrunk) |
-| `H1_Global_Mu` | named numeric | Global fallback mean: `score_logit`, `gap_logit` |
-| `H1_Sigma` | 2x2 matrix | Global covariance (dimnames: `score_logit`, `gap_logit`) |
-| `H2` | list | Missing-species params: `delta` (logit offset from H1 mean), `sigma` (2x2 matrix) |
-| `H3` | list | Missing-genus params: `delta`, `sigma` (2x2 matrix) |
-| `Stats` | list | Diagnostics: `AIC_Score`, `n_species`, `n_singletons`, `n_anchors` |
+| `H1_Global_Mu` | named numeric | Global fallback mean: `c(score_logit, gap_logit)`. |
+| `H1_Sigma` | matrix | 2×2 global covariance over `(score_logit, gap_logit)`. |
+| `H2` | list | Missing-species params: `delta` (logit offset from H1 mean), `sigma` (2×2). |
+| `H3` | list | Missing-genus params: `delta`, `sigma` (2×2). |
+| `Stats` | list | Diagnostics: `AIC_Score`, `n_species`, `n_singletons`, `n_anchors`. |
 | `reference_errors` | data.frame | Output of `flag_reference_errors()` (mislabeled + singleton flags). Use with `remove_flagged_references()` to clean match objects. Auto-used by `run_bayesian_pipeline()`. |
 
 ---
@@ -235,9 +236,8 @@ The `score` column in the match object (input to `evaluate_likelihoods()`) can
 be on either 0-1 or 0-100 scale -- `.normalize_scores()` auto-detects.
 
 ### H2/H3 sigma slots
-Both `H2$sigma` and `H3$sigma` are **2x2 matrices** (not scalars) with
-dimnames `c("score_logit", "gap_logit")`. This matches the `dmvnorm()` call
-signature in `.evaluate_one_query()`.
+`H2$sigma` and `H3$sigma` are **2×2 matrices** matching `H1_Sigma`. Dimnames:
+`c("score_logit", "gap_logit")`.
 
 ### H2/H3 filtering
 H2 and H3 hypotheses CAN be filtered out by `ratio_threshold` when scores
@@ -271,7 +271,7 @@ which is skipped when DECIPHER/Biostrings are not installed.
 | test-clean.R | `remove_flagged_references()` | Fully offline |
 | test-compute-likelihoods.R | `compute_likelihoods()`, `model_likelihoods()` | Fully offline with minimal model_params fixture |
 | test-coverage.R | `audit_reference_coverage()`, `audit_acoustic_coverage()`, `apply_coverage_constraints()`, `calibrate_coverage_filter()`, `coverage_threshold()` | Fully offline |
-| test-evaluate.R | `evaluate_likelihoods()`, `filter_top_hypotheses()` | Fully offline with minimal model_params fixture |
+| test-evaluate.R | `evaluate_likelihoods()`, `filter_top_hypotheses()` | Fully offline |
 | test-expand-consensus.R | `expand_consensus_candidates()` (deprecated) | Fully offline; confirms deprecation warning fires |
 | test-fetch.R | `read_reference_fasta()`, `.parse_taxonomy_tsv()`, `.parse_tax_string()` | Fully offline; NCBI fetch tests skipped |
 | test-interpret.R | `interpret_model()` | Fully offline with minimal model_params fixture |
@@ -279,7 +279,7 @@ which is skipped when DECIPHER/Biostrings are not installed.
 | test-read-crabs.R | `read_crabs_output()`, `read_reference_fasta(taxonomy_file=)` | Fully offline; 16 + 7 tests |
 | test-report_likelihood.R | `report_likelihood()` | Fully offline |
 | test-subset-local-database.R | `subset_local_database()` | Fully offline; 25 tests; gz FASTA, pre-parsed taxonomy df, filters |
-| test-train.R | `train_likelihood_model()`, `flag_reference_errors()` | Fully offline with synthetic distance matrix |
+| test-train.R | `train_likelihood_model()`, `flag_reference_errors()` | Fully offline |
 | test-unreferenced-candidates.R | `unreferenced_candidates()` | Fully offline |
 | test-write-fasta.R | `write_reference_fasta()` | Fully offline |
 
@@ -289,24 +289,22 @@ which is skipped when DECIPHER/Biostrings are not installed.
 
 - **Score metric:** any raw match score; normalised to (0,1) then logit-transformed
 - **Gap metric:** best-match logit score minus second-best logit score -- key discriminator
-- **H1 (Known Species):** 2D multivariate normal in (score_logit, gap_logit); species-specific
-  params with Empirical Bayes shrinkage toward global mean
-- **H2 (Missing Species):** same distribution shifted left by `H2$delta` -- score expected ~3
-  logit units below H1 mean (sister species). Delta computed from observed foreign-match
-  distribution in training data (default 3.0 if insufficient data).
+- **H1 (Known Species):** bivariate normal over `(score_logit, gap_logit)`.
+  Species-specific score + gap means with Empirical Bayes shrinkage toward global mean.
+- **H2 (Missing Species):** H1 distribution shifted left by `H2$delta` on score axis.
 - **H3 (Missing Genus):** shifted further left by `H3$delta` = `H2$delta + 2.0`
-- **Singleton queries:** 1D normal (score only) when only one candidate taxon
+- **Singleton queries:** 1D normal (score only) when only one candidate exists (gap uninformative).
 - **Pseudo-data anchoring:** `anchor_perfect = TRUE` (default) injects synthetic
   perfect-match rows (score = logit(1-ε), gap = 95th percentile of real positive gaps)
-  into training data. Prevents the "perfection penalty" where a 100% match scores lower
-  than a 99% match because the model has never seen a perfect score. Anchors are excluded
-  from H1_Lookup (no per-species parameters for "ANCHOR_PERFECT"). Count = max(5, 10% of data).
-- **Shrinkage:** `w = N / (N + prior_weight)`; per-species variance + gap mean shrunk
+  into training data. Prevents the "perfection penalty". Count = max(5, 10% of data).
+- **Shrinkage:** `w = N / (N + prior_weight)`; per-species score variance + gap mean shrunk
   toward global. Default `prior_weight = 10.0`.
-- **Monte Carlo:** n_sims samples from score distribution -> `score_likelihood_mean` + `score_likelihood_sd`
-- **Median-across-references** approach: `evaluate_likelihoods()` takes the **median** score per taxon_name
-  across multiple reference accessions before likelihood calculation. Robust to outlier accessions and
-  sample-size bias. H2/H3 are then anchored at the best (highest) median score across all candidate taxa.
+- **Monte Carlo:** n_sims perturbations of score_logit → `score_likelihood_mean` + `score_likelihood_sd`.
+- **Median-across-references:** `evaluate_likelihoods()` takes the **median** score
+  per taxon_name across multiple reference accessions before likelihood calculation.
+- **Coverage filter (not a model dimension):** pass `min_coverage` to `evaluate_likelihoods()`
+  to pre-filter candidates below an alignment/detection quality threshold. Use
+  `calibrate_coverage_filter()` on the training matrix to find the Pareto-optimal threshold.
 
 ---
 
