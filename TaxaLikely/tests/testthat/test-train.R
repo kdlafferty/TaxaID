@@ -123,3 +123,5 @@ test_that("train_likelihood_model: prior_weight validation", {
     "positive"
   )
 })
+
+# (trivariate coverage path removed — coverage used as filter only)

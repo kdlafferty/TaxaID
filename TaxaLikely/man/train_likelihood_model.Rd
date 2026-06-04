@@ -68,8 +68,7 @@ A named list (class \code{"taxa_model_params"}) with slots:
 \describe{
 \item{\code{H1_Lookup}}{Data frame with per-species parameters: \code{lookup_key},
 \code{rank}, \code{mu_score}, \code{mu_gap}, \code{sigma_score}.}
-\item{\code{H1_Global_Mu}}{Named numeric vector: \code{score_logit}, \code{gap_logit}
-(global fallback means).}
+\item{\code{H1_Global_Mu}}{Named numeric vector: \code{score_logit}, \code{gap_logit}.}
 \item{\code{H1_Sigma}}{2x2 covariance matrix for the global H1 distribution.}
 \item{\code{H2}}{List with \code{delta} and \code{sigma} for the missing-species
 hypothesis.}

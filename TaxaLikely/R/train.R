@@ -167,7 +167,6 @@ flag_reference_errors <- function(raw_df,
 #'   corresponds roughly to the gap between 99.3% and 50% identity --
 #'   differences larger than this are capped to prevent extreme outliers from
 #'   dominating model estimates.
-#'
 #' @return A data frame with one row per query sequence containing:
 #'   \describe{
 #'     \item{`id_x`}{Query sequence identifier.}
@@ -408,8 +407,7 @@ flag_reference_errors <- function(raw_df,
 #'   \describe{
 #'     \item{`H1_Lookup`}{Data frame with per-species parameters: `lookup_key`,
 #'       `rank`, `mu_score`, `mu_gap`, `sigma_score`.}
-#'     \item{`H1_Global_Mu`}{Named numeric vector: `score_logit`, `gap_logit`
-#'       (global fallback means).}
+#'     \item{`H1_Global_Mu`}{Named numeric vector: `score_logit`, `gap_logit`.}
 #'     \item{`H1_Sigma`}{2x2 covariance matrix for the global H1 distribution.}
 #'     \item{`H2`}{List with `delta` and `sigma` for the missing-species
 #'       hypothesis.}
@@ -680,9 +678,8 @@ train_likelihood_model <- function(raw_df,
   # a reasonable default for typical barcode markers (COI, 12S). Marker-specific
   # tuning is handled automatically when sufficient foreign-match data exists
   # (see empirical override below).
-  h2_delta_val  <- 3.0
-  h2_sigma_mat  <- diag(2)
-  rownames(h2_sigma_mat) <- colnames(h2_sigma_mat) <- c("score_logit", "gap_logit")
+  h2_delta_val <- 3.0
+  h2_var       <- 1.0   # default before empirical override
 
   if (nrow(h1_data) > 5L && "max_foreign_score" %in% names(train_df)) {
     # Filters extreme foreign-match scores below logit(0.007); prevents
@@ -697,14 +694,12 @@ train_likelihood_model <- function(raw_df,
       h2_delta_val <- max(0.5, mu_score_global - mean(h2_scores, na.rm = TRUE))
       # Minimum H2 variance of 0.1 prevents degenerate zero-variance
       # estimates when few foreign matches exist.
-      h2_var        <- max(stats::var(h2_scores, na.rm = TRUE), 0.1)
-      # Fixed gap variance of 1.0 for H2: when the true species is absent,
-      # no candidate has a clear advantage, so gap is uninformative.
-      h2_sigma_mat  <- matrix(c(h2_var, 0, 0, 1.0), ncol = 2L)
-      rownames(h2_sigma_mat) <- colnames(h2_sigma_mat) <- c("score_logit", "gap_logit")
+      h2_var <- max(stats::var(h2_scores, na.rm = TRUE), 0.1)
     }
   }
 
+  h2_sigma_mat <- matrix(c(h2_var, 0, 0, 1.0), ncol = 2L)
+  rownames(h2_sigma_mat) <- colnames(h2_sigma_mat) <- c("score_logit", "gap_logit")
   h3_sigma_mat <- diag(2)
   rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
 
@@ -722,13 +717,12 @@ train_likelihood_model <- function(raw_df,
 
   structure(
     list(
-      H1_Lookup   = H1_Lookup,
-      H1_Global_Mu = c(score_logit = mu_score_global,
-                       gap_logit   = mu_gap_global),
-      H1_Sigma    = global_cov,
-      H2          = H2,
-      H3          = H3,
-      Stats       = list(
+      H1_Lookup    = H1_Lookup,
+      H1_Global_Mu = c(score_logit = mu_score_global, gap_logit = mu_gap_global),
+      H1_Sigma     = global_cov,
+      H2           = H2,
+      H3           = H3,
+      Stats        = list(
         AIC_Score    = aic_score,
         n_species    = n_species,
         n_singletons = n_singletons,
