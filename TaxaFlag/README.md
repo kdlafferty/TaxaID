@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -57,11 +57,11 @@ field and control replicates, and a score is computed:
 Scores range from 0 (taxon found only in controls) to 1 (taxon found
 only in field samples). Taxa absent from controls receive a score of
 1.0; taxa absent from field samples receive 0.0. Default thresholds
-classify scores as "unlikely" (score <= 0.5, probable contaminant),
-"possible" (0.5 < score <= 0.9, ambiguous), or "likely" (score > 0.9,
-valid detection). For positive controls, the interpretation inverts:
-taxa from positive controls appearing in field samples indicate
-cross-contamination.
+classify scores as `"high"` risk (score ≤ 0.5, probable contaminant),
+`"moderate"` risk (0.5 < score ≤ 0.9, ambiguous), or `"low"` risk
+(score > 0.9, likely genuine detection). For positive controls, the
+interpretation inverts: taxa from positive controls appearing in field
+samples indicate cross-contamination.
 
 ### Handler Artifact Detection
 
@@ -85,16 +85,16 @@ other species detected near edges are assumed legitimate.
 an LLM for structured assessment across eight dimensions: habitat fit,
 geographic plausibility, taxonomic scope, contamination risk, plausible
 alternatives, finer-rank hypotheses, confidence, and a free-text
-comment. The LLM returns a JSON array with controlled vocabularies
-(e.g., "expected" / "occasional" / "unlikely" for habitat and
-geography). The function includes truncation recovery: if an LLM
-response is cut off mid-JSON, it walks backward to find the last
-complete object and parses what is available. Taxa omitted by the LLM
-are filled with NA. Supports eDNA, acoustic, and image data via the
-`data_type` param, which switches the contaminant guidance text in the
-LLM prompt. This review is intended as a structured second opinion, not
-an automated filter -- users should treat the flags as candidates for
-closer inspection.
+comment. Plausibility columns use a consistent vocabulary:
+`"likely"` / `"possible"` / `"unlikely"` (higher = more plausible
+genuine detection). Contamination risk uses `"low"` / `"moderate"` /
+`"high"` (higher = more contamination risk). The function includes
+truncation recovery: if an LLM response is cut off mid-JSON, it walks
+backward to find the last complete object and parses what is available.
+Taxa omitted by the LLM are filled with NA. Supports eDNA, acoustic,
+and image data via the `data_type` param. This review is intended as a
+structured second opinion, not an automated filter -- users should treat
+the flags as candidates for closer inspection.
 
 ## Installation
 
@@ -112,25 +112,26 @@ devtools::install("path/to/TaxaFlag")
 library(TaxaFlag)
 
 flagged <- flag_contaminant(
-  df              = assignments,
-  taxon_col       = "consensus_taxon",
-  reads_col       = "reads",
-  event_col       = "event_id",
-  control_samples = c("Blank_1", "Blank_2"),
-  contaminant_type = "lab_blank"
+  df               = reads_long,
+  taxon_col        = "taxon_name",
+  reads_col        = "n_reads",
+  event_col        = "event_id",
+  control_samples  = c("Blank_1", "Blank_2"),
+  contaminant_type = "lab_contaminant"
 )
 
-# Inspect flagged taxa
-flagged[flagged$flag_contaminant == TRUE, ]
+# Output adds: lab_contaminant_risk, lab_contaminant_score, lab_contaminant_reason
+# Filter to high-risk taxa (probable contaminants)
+flagged[flagged$lab_contaminant_risk == "high", ]
 ```
 
 ### Flag handler artifacts (camera traps)
 
 ``` r
 flagged <- flag_handler(
-  df              = camera_detections,
-  datetime_col    = "datetime",
-  group_col       = "camera_id",
+  df               = camera_detections,
+  datetime_col     = "datetime",
+  group_col        = "camera_id",
   interval_minutes = 30
 )
 ```
@@ -141,11 +142,16 @@ flagged <- flag_handler(
 reviewed <- review_assignments(
   df         = consensus_results,
   taxon_col  = "consensus_taxon",
-  context    = list(main_habitat = "Marine", region = "Southern California")
+  context    = list(geography = "Southern California", habitat = "Marine"),
+  target_group = "fish"
 )
-# Returns 8 structured columns: habitat_fit, geographic_plausibility,
-# scope_flag, contaminant_flag, alternatives, lower_hypotheses,
-# confidence, comment
+# Returns 8 structured columns:
+# habitat_plausibility, geographic_plausibility, scope_plausibility,
+# contamination_risk, review_alternatives, review_lower_hypotheses,
+# review_confidence, review_comment
+
+# Filter to contamination concerns
+reviewed[reviewed$contamination_risk %in% c("high", "moderate"), ]
 ```
 
 ## Reporting

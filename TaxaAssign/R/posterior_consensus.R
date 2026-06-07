@@ -172,6 +172,19 @@
 #'       coarser than the final `consensus_rank` due to downranking via
 #'       `species_reference`. Only present when `species_reference` is
 #'       non-`NULL`. `FALSE` for all rows that were not downranked.}
+#'     \item{`winner_prior`}{Prior probability (`prior_mean`) of the
+#'       consensus taxon, taken from the highest-posterior hypothesis in the
+#'       plausible set. Use with `winner_likelihood` / `winner_likelihood_cov`
+#'       to detect implausible winners (e.g. a low-prior taxon winning due to
+#'       a reference error). `NA` when `prior_mean` is absent from
+#'       `posterior_df` (e.g. input from [assign_taxa_llm()]) or when
+#'       `consensus_taxon` is `NA`.}
+#'     \item{`winner_likelihood`}{Point-estimate sequence-match likelihood
+#'       (`score_likelihood`) of the consensus taxon. `NA` when absent from
+#'       `posterior_df` or when `consensus_taxon` is `NA`.}
+#'     \item{`winner_likelihood_cov`}{Coverage-adjusted sequence-match
+#'       likelihood (`score_likelihood_cov`) of the consensus taxon. `NA`
+#'       when absent from `posterior_df` or when `consensus_taxon` is `NA`.}
 #'   }
 #'
 #' @seealso [assign_taxa_llm()], [compute_posterior()],
@@ -375,6 +388,14 @@ posterior_consensus <- function(posterior_df,
 
   plausible <- named[seq_len(n_include), ]
 
+  # Winner diagnostics: first row of plausible = highest-posterior hypothesis.
+  # Extract prior and likelihood values; NA when the source column is absent
+  # (e.g. when posterior_df comes from assign_taxa_llm() rather than compute_posterior()).
+  winner_row            <- plausible[1L, ]
+  winner_prior          <- if ("prior_mean"           %in% names(winner_row)) winner_row$prior_mean[[1L]]           else NA_real_
+  winner_likelihood     <- if ("score_likelihood"     %in% names(winner_row)) winner_row$score_likelihood[[1L]]     else NA_real_
+  winner_likelihood_cov <- if ("score_likelihood_cov" %in% names(winner_row)) winner_row$score_likelihood_cov[[1L]] else NA_real_
+
   # LCA among plausible hypotheses
   lca         <- .find_lca(plausible, rank_system)
   finest_rank <- rank_system[length(rank_system)]
@@ -414,7 +435,7 @@ posterior_consensus <- function(posterior_df,
   }
 
   out <- data.frame(
-    observation_id                  = sid,
+    observation_id             = sid,
     consensus_taxon            = lca$taxon,
     consensus_rank             = lca$rank,
     consensus_reason           = consensus_reason,
@@ -422,6 +443,9 @@ posterior_consensus <- function(posterior_df,
     consensus_posterior        = consensus_posterior,
     consensus_confidence_score = consensus_confidence_score,
     n_plausible                = n_include,
+    winner_prior               = winner_prior,
+    winner_likelihood          = winner_likelihood,
+    winner_likelihood_cov      = winner_likelihood_cov,
     plausible_taxa       = I(list(plausible$taxon_name)),
     plausible_posteriors = I(list(stats::setNames(
       plausible[[posterior_col]], plausible$taxon_name
@@ -515,7 +539,7 @@ posterior_consensus <- function(posterior_df,
 #' @noRd
 .empty_consensus_row <- function(sid) {
   data.frame(
-    observation_id                  = sid,
+    observation_id             = sid,
     consensus_taxon            = NA_character_,
     consensus_rank             = NA_character_,
     consensus_reason           = NA_character_,
@@ -523,6 +547,9 @@ posterior_consensus <- function(posterior_df,
     consensus_posterior        = NA_real_,
     consensus_confidence_score = NA_real_,
     n_plausible                = 0L,
+    winner_prior               = NA_real_,
+    winner_likelihood          = NA_real_,
+    winner_likelihood_cov      = NA_real_,
     plausible_taxa       = I(list(character(0))),
     plausible_posteriors = I(list(stats::setNames(numeric(0), character(0)))),
     stringsAsFactors     = FALSE

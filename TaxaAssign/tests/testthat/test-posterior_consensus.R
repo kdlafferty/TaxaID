@@ -317,6 +317,77 @@ test_that("explicit genus column takes precedence over binomial derivation", {
 # Input validation
 # ==============================================================================
 
+# ==============================================================================
+# winner_prior / winner_likelihood / winner_likelihood_cov
+# ==============================================================================
+
+test_that("winner columns present and NA when source columns absent", {
+  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
+                        "specific_candidate", 0.9)
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  expect_true(all(c("winner_prior", "winner_likelihood",
+                    "winner_likelihood_cov") %in% names(out)))
+  expect_true(is.na(out$winner_prior))
+  expect_true(is.na(out$winner_likelihood))
+  expect_true(is.na(out$winner_likelihood_cov))
+})
+
+test_that("winner columns carry values from highest-posterior row", {
+  df <- make_posterior(
+    observation_id  = c("s1", "s1"),
+    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("specific_candidate", 2),
+    posterior_mean  = c(0.7, 0.3)
+  )
+  df$prior_mean           <- c(0.12, 0.05)
+  df$score_likelihood     <- c(0.88, 0.60)
+  df$score_likelihood_cov <- c(0.80, 0.55)
+
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  # Winner is Fundulus parvipinnis (posterior_mean = 0.7)
+  expect_equal(out$winner_prior,          0.12)
+  expect_equal(out$winner_likelihood,     0.88)
+  expect_equal(out$winner_likelihood_cov, 0.80)
+})
+
+test_that("winner columns reflect actual winner, not highest likelihood", {
+  # Ensure the winner is determined by posterior, not by likelihood
+  df <- make_posterior(
+    observation_id  = c("s1", "s1"),
+    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("specific_candidate", 2),
+    posterior_mean  = c(0.3, 0.7)   # Fundulus catus wins
+  )
+  df$prior_mean           <- c(0.12, 0.05)
+  df$score_likelihood     <- c(0.88, 0.60)
+  df$score_likelihood_cov <- c(0.80, 0.55)
+
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  # Fundulus catus has higher posterior despite lower prior/likelihood
+  expect_equal(out$winner_prior,          0.05)
+  expect_equal(out$winner_likelihood,     0.60)
+  expect_equal(out$winner_likelihood_cov, 0.55)
+})
+
+test_that("winner columns are NA_real_ in empty consensus rows", {
+  # All hypotheses below min_posterior -> empty row
+  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
+                        "specific_candidate", 0.01)
+  df$prior_mean           <- 0.10
+  df$score_likelihood     <- 0.80
+  df$score_likelihood_cov <- 0.75
+  expect_warning(
+    out <- posterior_consensus(df, rank_system = c("genus", "species"),
+                               min_posterior = 0.05),
+    "no hypotheses above min_posterior"
+  )
+  expect_true(is.na(out$winner_prior))
+  expect_true(is.na(out$winner_likelihood))
+  expect_true(is.na(out$winner_likelihood_cov))
+})
+
 test_that("missing required columns raises error", {
   df <- data.frame(observation_id = "s1", taxon_name = "Foo",
                     stringsAsFactors = FALSE)

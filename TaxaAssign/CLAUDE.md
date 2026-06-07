@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-02 (Session 99 — Phase 3: score→score_original; unknown_species→NA/unreferenced_family throughout)
+# Last updated: 2026-06-06 (Session 101 — winner_prior/winner_likelihood/winner_likelihood_cov added to posterior_consensus() output)
 
 ---
 
@@ -172,9 +172,15 @@ posterior_consensus(posterior_df,
 
 **Output:** one row per `observation_id` with columns: `consensus_taxon`, `consensus_rank`,
 `consensus_reason`, `is_resolved`, `consensus_posterior`, `consensus_confidence_score`,
-`n_plausible`, `plausible_taxa` (list), `plausible_posteriors` (list).
+`n_plausible`, `winner_prior`, `winner_likelihood`, `winner_likelihood_cov`,
+`plausible_taxa` (list), `plausible_posteriors` (list).
 `consensus_reason` values: `"unanimous"` (all plausible agree at finest rank), `"single"`
 (only one plausible hypothesis), `"lca"` (multiple plausible, LCA at coarser rank), or `NA`.
+`winner_prior` = `prior_mean` of highest-posterior hypothesis; `winner_likelihood` =
+`score_likelihood`; `winner_likelihood_cov` = `score_likelihood_cov`. All three are `NA`
+when the source column is absent (e.g. `assign_taxa_llm()` input) or consensus is `NA`.
+Use these columns with `TaxaFlag::flag_prior_mismatch()` to detect implausible winners
+(e.g. a low-prior taxon winning due to a reference error or sequencer 100%-rule artefact).
 When `result2` from `update_prior_from_consensus()` is passed as input, also adds:
 `prior_updated`, `consensus_taxon_v1`, `consensus_rank_v1`, `taxon_changed`.
 When `species_reference` is non-NULL, also adds: `downranked` (logical).

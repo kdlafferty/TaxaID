@@ -37,7 +37,7 @@ Recognised fields: \code{geography} (or \code{ecoregion}),
 
 \item{target_group}{Character or \code{NULL}. Taxonomic target group
 (e.g., \code{"fish"}, \code{"birds"}). When supplied, the LLM
-populates \code{review_scope}. Default \code{NULL}.}
+populates \code{scope_plausibility}. Default \code{NULL}.}
 
 \item{marker}{Character or \code{NULL}. Molecular marker or detection
 method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
@@ -68,16 +68,24 @@ Default \code{1}.}
 \value{
 The input data frame with 8 columns appended:
 \describe{
-\item{\code{review_habitat}}{expected / occasional / unlikely}
-\item{\code{review_geography}}{expected / occasional / unlikely}
-\item{\code{review_scope}}{in_scope / marginal / out_of_scope (NA if
-\code{target_group} not supplied)}
-\item{\code{review_contaminant}}{unlikely / possible / likely}
+\item{\code{habitat_plausibility}}{likely / possible / unlikely --
+plausibility that this taxon lives in the study habitat.
+Higher = more plausible genuine detection.}
+\item{\code{geographic_plausibility}}{likely / possible / unlikely --
+plausibility that this taxon occurs in the study region.
+Higher = more plausible genuine detection.}
+\item{\code{scope_plausibility}}{likely / possible / unlikely --
+plausibility that this taxon belongs to the target group.
+\code{NA} if \code{target_group} not supplied.}
+\item{\code{contamination_risk}}{high / moderate / low --
+LLM-assessed risk that this taxon is a contaminant or false positive.
+Higher = more likely to be a contaminant.}
 \item{\code{review_alternatives}}{Comma-separated plausible alternatives
 at the same rank, or NA}
 \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa
 expected at this location, or NA}
-\item{\code{review_confidence}}{high / moderate / low}
+\item{\code{review_confidence}}{high / moderate / low (LLM confidence in
+its own assessment)}
 \item{\code{review_comment}}{Free-text note, or NA}
 }
 }

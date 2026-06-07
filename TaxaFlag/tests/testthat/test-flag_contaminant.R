@@ -52,16 +52,16 @@ test_that("flag_contaminant returns one row per taxon", {
    verbose         = FALSE
  )
 
- expect_true("flag_lab_contaminant" %in% names(result))
- expect_true("flag_lab_contaminant_score" %in% names(result))
- expect_true("flag_lab_contaminant_reason" %in% names(result))
+ expect_true("lab_contaminant_risk" %in% names(result))
+ expect_true("lab_contaminant_score" %in% names(result))
+ expect_true("lab_contaminant_reason" %in% names(result))
  expect_true("mean_prop_field" %in% names(result))
  expect_true("mean_prop_control" %in% names(result))
  # 5 unique taxa with non-zero reads
  expect_equal(nrow(result), 5L)
 })
 
-test_that("TaxonA (only in field) gets score 1.0 and flag 'likely'", {
+test_that("TaxonA (only in field) gets score 1.0 and risk 'low'", {
  result <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
@@ -69,19 +69,19 @@ test_that("TaxonA (only in field) gets score 1.0 and flag 'likely'", {
  )
  a_row <- result[result$taxon_name == "TaxonA", ]
  expect_equal(nrow(a_row), 1L)
- expect_equal(a_row$flag_lab_contaminant_score, 1.0)
- expect_equal(a_row$flag_lab_contaminant, "likely")
+ expect_equal(a_row$lab_contaminant_score, 1.0)
+ expect_equal(a_row$lab_contaminant_risk, "low")
 })
 
-test_that("TaxonD (only in controls) gets score 0.0 and flag 'unlikely'", {
+test_that("TaxonD (only in controls) gets score 0.0 and risk 'high'", {
  result <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
  d_row <- result[result$taxon_name == "TaxonD", ]
- expect_equal(d_row$flag_lab_contaminant_score, 0.0)
- expect_equal(d_row$flag_lab_contaminant, "unlikely")
+ expect_equal(d_row$lab_contaminant_score, 0.0)
+ expect_equal(d_row$lab_contaminant_risk, "high")
 })
 
 test_that("TaxonB (high in controls, low in field) gets low score", {
@@ -92,8 +92,8 @@ test_that("TaxonB (high in controls, low in field) gets low score", {
  )
  b_row <- result[result$taxon_name == "TaxonB", ]
  # B: field prop ~ 0.005-0.01, control prop ~ 0.5+
- expect_true(b_row$flag_lab_contaminant_score < 0.5)
- expect_equal(b_row$flag_lab_contaminant, "unlikely")
+ expect_true(b_row$lab_contaminant_score < 0.5)
+ expect_equal(b_row$lab_contaminant_risk, "high")
 })
 
 test_that("result is sorted by score (contaminants first)", {
@@ -102,7 +102,7 @@ test_that("result is sorted by score (contaminants first)", {
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
- scores <- result$flag_lab_contaminant_score
+ scores <- result$lab_contaminant_score
  expect_true(all(diff(scores) >= 0))
 })
 
@@ -112,8 +112,8 @@ test_that("scores are between 0 and 1", {
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
- expect_true(all(result$flag_lab_contaminant_score >= 0 &
-                 result$flag_lab_contaminant_score <= 1))
+ expect_true(all(result$lab_contaminant_score >= 0 &
+                 result$lab_contaminant_score <= 1))
 })
 
 
@@ -134,9 +134,9 @@ test_that("flag_contaminant works with sample_type_col", {
    verbose         = FALSE
  )
 
- expect_true("flag_lab_contaminant" %in% names(result))
+ expect_true("lab_contaminant_risk" %in% names(result))
  a_row <- result[result$taxon_name == "TaxonA", ]
- expect_equal(a_row$flag_lab_contaminant, "likely")
+ expect_equal(a_row$lab_contaminant_risk, "low")
 })
 
 
@@ -152,10 +152,10 @@ test_that("contaminant_type controls output column names", {
    verbose          = FALSE
  )
 
- expect_true("flag_field_contaminant" %in% names(result))
- expect_true("flag_field_contaminant_score" %in% names(result))
- expect_true("flag_field_contaminant_reason" %in% names(result))
- expect_false("flag_lab_contaminant" %in% names(result))
+ expect_true("field_contaminant_risk" %in% names(result))
+ expect_true("field_contaminant_score" %in% names(result))
+ expect_true("field_contaminant_reason" %in% names(result))
+ expect_false("lab_contaminant_risk" %in% names(result))
 })
 
 test_that("positive_control type works", {
@@ -166,7 +166,7 @@ test_that("positive_control type works", {
    verbose          = FALSE
  )
 
- expect_true("flag_positive_control" %in% names(result))
+ expect_true("positive_control_risk" %in% names(result))
 })
 
 
@@ -194,7 +194,7 @@ test_that("exclude_samples removes samples from proportion calculation", {
  e_one  <- result_one[result_one$taxon_name == "TaxonE", ]
 
  # TaxonE should have higher score when blank_2 (where it appears) is excluded
- expect_true(e_one$flag_lab_contaminant_score > e_both$flag_lab_contaminant_score)
+ expect_true(e_one$lab_contaminant_score > e_both$lab_contaminant_score)
 })
 
 
@@ -202,8 +202,8 @@ test_that("exclude_samples removes samples from proportion calculation", {
 # Custom score thresholds
 # ===========================================================================
 
-test_that("custom score_thresholds change flag assignments", {
- # With very strict thresholds, more taxa become "unlikely"
+test_that("custom score_thresholds change risk assignments", {
+ # With very strict thresholds, more taxa become "high" risk
  result_strict <- flag_contaminant(
    df               = mock_long,
    control_samples  = c("blank_1", "blank_2"),
@@ -217,9 +217,9 @@ test_that("custom score_thresholds change flag assignments", {
    verbose         = FALSE
  )
 
- n_unlikely_strict  <- sum(result_strict$flag_lab_contaminant == "unlikely")
- n_unlikely_default <- sum(result_default$flag_lab_contaminant == "unlikely")
- expect_true(n_unlikely_strict >= n_unlikely_default)
+ n_high_strict  <- sum(result_strict$lab_contaminant_risk == "high")
+ n_high_default <- sum(result_default$lab_contaminant_risk == "high")
+ expect_true(n_high_strict >= n_high_default)
 })
 
 
@@ -234,7 +234,7 @@ test_that("reason strings contain expected information", {
    verbose         = FALSE
  )
 
- reasons <- result$flag_lab_contaminant_reason
+ reasons <- result$lab_contaminant_reason
  expect_true(all(grepl("field proportion", reasons)))
  expect_true(all(grepl("control proportion", reasons)))
  expect_true(all(grepl("detected in", reasons)))

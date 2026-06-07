@@ -125,6 +125,19 @@ posterior values for plausible taxa (names = taxon_name).}
 coarser than the final \code{consensus_rank} due to downranking via
 \code{species_reference}. Only present when \code{species_reference} is
 non-\code{NULL}. \code{FALSE} for all rows that were not downranked.}
+\item{\code{winner_prior}}{Prior probability (\code{prior_mean}) of the
+consensus taxon, taken from the highest-posterior hypothesis in the
+plausible set. Use with \code{winner_likelihood} / \code{winner_likelihood_cov}
+to detect implausible winners (e.g. a low-prior taxon winning due to
+a reference error). \code{NA} when \code{prior_mean} is absent from
+\code{posterior_df} (e.g. input from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}) or when
+\code{consensus_taxon} is \code{NA}.}
+\item{\code{winner_likelihood}}{Point-estimate sequence-match likelihood
+(\code{score_likelihood}) of the consensus taxon. \code{NA} when absent from
+\code{posterior_df} or when \code{consensus_taxon} is \code{NA}.}
+\item{\code{winner_likelihood_cov}}{Coverage-adjusted sequence-match
+likelihood (\code{score_likelihood_cov}) of the consensus taxon. \code{NA}
+when absent from \code{posterior_df} or when \code{consensus_taxon} is \code{NA}.}
 }
 }
 \description{

@@ -50,16 +50,16 @@ when analysing PCR controls, or vice versa. Default \code{NULL}.}
 
 \item{contaminant_type}{Character. Label for the type of contamination
 being assessed. Controls output column names:
-\code{flag_{contaminant_type}}, \code{flag_{contaminant_type}_score},
-\code{flag_{contaminant_type}_reason}. Common values: \code{"lab_contaminant"},
+\code{{contaminant_type}_risk}, \code{{contaminant_type}_score},
+\code{{contaminant_type}_reason}. Common values: \code{"lab_contaminant"},
 \code{"field_contaminant"}, \code{"positive_control"}. Default
 \code{"lab_contaminant"}.}
 
 \item{score_thresholds}{Numeric vector of length 2. Thresholds for
-converting scores to flag values. Scores at or below the first value
-are \code{"unlikely"} (probable contaminant); scores at or below the
-second are \code{"possible"}; higher scores are \code{"likely"} (valid
-detection). Default \code{c(0.5, 0.9)}.}
+converting scores to risk values. Scores at or below the first value
+are \code{"high"} risk (probable contaminant); scores at or below the
+second are \code{"moderate"} risk; higher scores are \code{"low"} risk
+(likely a genuine detection). Default \code{c(0.5, 0.9)}.}
 
 \item{verbose}{Logical. Print summary messages. Default \code{TRUE}.}
 }
@@ -71,8 +71,9 @@ likely contaminants first). Columns:
 \item{\code{flag_{contaminant_type}_score}}{Numeric 0--1. Ratio of
 field proportion to total (field + control) proportion. Higher = more
 likely a real detection. 1.0 for taxa absent from controls.}
-\item{\code{flag_{contaminant_type}}}{Character. \code{"likely"},
-\code{"possible"}, or \code{"unlikely"}.}
+\item{\code{{contaminant_type}_risk}}{Character. \code{"high"} (probable
+contaminant), \code{"moderate"} (uncertain), or \code{"low"} (likely
+genuine detection). Higher = more contamination risk.}
 \item{\code{flag_{contaminant_type}_reason}}{Character. Plain-English
 explanation including proportions and control detection counts.}
 \item{\code{mean_prop_field}}{Mean within-sample proportion in field

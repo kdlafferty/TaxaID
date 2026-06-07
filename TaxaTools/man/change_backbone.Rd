@@ -8,7 +8,8 @@ change_backbone(
   df,
   input_col,
   old_backbone_label = "source_name",
-  new_backbone_label = "translated_name"
+  new_backbone_label = "translated_name",
+  keep_unmatched = TRUE
 )
 }
 \arguments{
@@ -26,12 +27,22 @@ Default is \code{"source_name"}.}
 \item{new_backbone_label}{Character. The label to assign to the translated-name
 column in the output (e.g., \code{"GBIF"} or \code{"NCBI"}).
 Default is \code{"translated_name"}.}
+
+\item{keep_unmatched}{Logical. When \code{TRUE} (the default), names for which
+the target backbone returns no match are retained by copying the original
+source name into the translated-name column rather than leaving it \code{NA}.
+Set to \code{FALSE} to keep \code{NA} for unmatched names (original behaviour).}
 }
 \value{
 A dataframe with:
 \describe{
 \item{\code{<old_backbone_label>}}{Original names (renamed from \code{input_col}).}
 \item{\code{<new_backbone_label>}}{Translated names (renamed from \code{matched_name}).}
+\item{\code{backbone_matched}}{Logical. \code{TRUE} when the target backbone
+returned a genuine match; \code{FALSE} when no match was found (the source
+name was retained due to \code{keep_unmatched = TRUE}, or left \code{NA}
+when \code{keep_unmatched = FALSE}). Always \code{TRUE} when
+\code{keep_unmatched = FALSE} and the backbone matched.}
 \item{\code{score}}{Match confidence score from \code{verify_taxon_names}.
 Review rows with low scores before using the translation downstream.}
 \item{\code{verified}}{Logical API-success flag from \code{verify_taxon_names}.}
@@ -57,6 +68,16 @@ only reshapes and labels the result. The backbone ID passed to
 \code{verify_taxon_names()} determines which backbone the names are translated
 \emph{into}; \code{old_backbone_label} and \code{new_backbone_label} are
 purely descriptive column labels in the output.
+
+When \code{keep_unmatched = TRUE} (the default), names that have no match in
+the target backbone (\code{matched_name} is \code{NA}) are retained by copying
+the original source name into the translated-name column. This prevents
+downstream data loss when a backbone does not recognise a valid taxon (e.g.,
+a recently synonymised name, a hybrid, or a regional name absent from NCBI).
+A message reports how many names were retained this way. Rank columns for
+unmatched rows remain \code{NA} -- callers that need a rank label for these
+rows (e.g., for \code{taxon_name_rank}) should coalesce with an appropriate
+fallback after the join.
 
 \strong{Typical two-step usage:}
 \preformatted{

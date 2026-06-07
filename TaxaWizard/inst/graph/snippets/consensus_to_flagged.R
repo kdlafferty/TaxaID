@@ -11,6 +11,6 @@ flagged <- TaxaFlag::flag_contaminant(
   reads_col       = {{reads_col}},
   contaminant_type = {{contaminant_type}}
 )
-message("Flagged ", sum(flagged$contaminant_flag == "likely", na.rm = TRUE),
-        " likely contaminants")
+message("Flagged ", sum(flagged[[paste0({{contaminant_type}}, "_risk")]] == "high", na.rm = TRUE),
+        " high-risk contaminants")
 flagged

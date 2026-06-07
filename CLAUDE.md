@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-02 (Session 99 -- Phase 1 column renames; Phase 2 unified likelihood pipeline in TaxaLikely)
+# Last updated: 2026-06-07 (Session 101 -- TaxaFlag vocabulary unified; posterior_consensus winner columns)
 
 ---
 
@@ -211,3 +211,7 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 99 | `likelihood_point_est`/`_mean`/`_sd` → `score_likelihood`/`_mean`/`_sd` | TaxaLikely, TaxaAssign | Column rename across all functions, tests, workflows, docs |
 | 99 | `unreferenced_candidates()`, `assign_scores()`, `model_likelihoods()`, `compute_likelihoods()` added | TaxaLikely | Unified modular pipeline; replaces separate eDNA and no-score entry points |
 | 99 | `expand_consensus_candidates()` deprecated | TaxaLikely | `.Deprecated()` notice; use `unreferenced_candidates()` + `assign_scores()` |
+| 100 | `score_likelihood_cov` added to `evaluate_likelihoods()` output | TaxaLikely | Coverage-adjusted point estimate: σ inflated by `1/sqrt(coverage)`; equals `score_likelihood` when coverage absent or = 1 |
+| 101 | `review_assignments()` output columns renamed | TaxaFlag | `review_habitat`→`habitat_plausibility`, `review_geography`→`geographic_plausibility`, `review_scope`→`scope_plausibility`, `review_contaminant`→`contamination_risk`; values unified to `likely/possible/unlikely` (plausibility) and `low/moderate/high` (risk) |
+| 101 | `flag_contaminant()` output columns renamed | TaxaFlag | `flag_{type}`→`{type}_risk`, `flag_{type}_score`→`{type}_score`, `flag_{type}_reason`→`{type}_reason`; values `"likely"`→`"low"`, `"possible"`→`"moderate"`, `"unlikely"`→`"high"` |
+| 101 | `posterior_consensus()` gains winner columns | TaxaAssign | `winner_prior`, `winner_likelihood`, `winner_likelihood_cov` added to output; winner = highest-posterior hypothesis in plausible set; enables TaxaFlag to detect low-prior winners (100%-rule artifacts) |

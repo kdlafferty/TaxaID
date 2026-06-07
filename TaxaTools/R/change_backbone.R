@@ -22,6 +22,16 @@ utils::globalVariables(c(
 #' \emph{into}; \code{old_backbone_label} and \code{new_backbone_label} are
 #' purely descriptive column labels in the output.
 #'
+#' When \code{keep_unmatched = TRUE} (the default), names that have no match in
+#' the target backbone (\code{matched_name} is \code{NA}) are retained by copying
+#' the original source name into the translated-name column. This prevents
+#' downstream data loss when a backbone does not recognise a valid taxon (e.g.,
+#' a recently synonymised name, a hybrid, or a regional name absent from NCBI).
+#' A message reports how many names were retained this way. Rank columns for
+#' unmatched rows remain \code{NA} -- callers that need a rank label for these
+#' rows (e.g., for \code{taxon_name_rank}) should coalesce with an appropriate
+#' fallback after the join.
+#'
 #' \strong{Typical two-step usage:}
 #' \preformatted{
 #' # Step 1: verify_taxon_names() does the translation (backbone_id = 11 is GBIF).
@@ -52,11 +62,20 @@ utils::globalVariables(c(
 #' @param new_backbone_label Character. The label to assign to the translated-name
 #'   column in the output (e.g., \code{"GBIF"} or \code{"NCBI"}).
 #'   Default is \code{"translated_name"}.
+#' @param keep_unmatched Logical. When \code{TRUE} (the default), names for which
+#'   the target backbone returns no match are retained by copying the original
+#'   source name into the translated-name column rather than leaving it \code{NA}.
+#'   Set to \code{FALSE} to keep \code{NA} for unmatched names (original behaviour).
 #'
 #' @return A dataframe with:
 #' \describe{
 #'   \item{\code{<old_backbone_label>}}{Original names (renamed from \code{input_col}).}
 #'   \item{\code{<new_backbone_label>}}{Translated names (renamed from \code{matched_name}).}
+#'   \item{\code{backbone_matched}}{Logical. \code{TRUE} when the target backbone
+#'     returned a genuine match; \code{FALSE} when no match was found (the source
+#'     name was retained due to \code{keep_unmatched = TRUE}, or left \code{NA}
+#'     when \code{keep_unmatched = FALSE}). Always \code{TRUE} when
+#'     \code{keep_unmatched = FALSE} and the backbone matched.}
 #'   \item{\code{score}}{Match confidence score from \code{verify_taxon_names}.
 #'     Review rows with low scores before using the translation downstream.}
 #'   \item{\code{verified}}{Logical API-success flag from \code{verify_taxon_names}.}
@@ -93,7 +112,8 @@ utils::globalVariables(c(
 change_backbone <- function(df,
                              input_col,
                              old_backbone_label = "source_name",
-                             new_backbone_label = "translated_name") {
+                             new_backbone_label = "translated_name",
+                             keep_unmatched     = TRUE) {
 
   # --- Input validation ---
   if (!is.data.frame(df)) stop("`df` must be a data frame.")
@@ -105,6 +125,9 @@ change_backbone <- function(df,
   }
   if (!is.character(new_backbone_label) || length(new_backbone_label) != 1) {
     stop("`new_backbone_label` must be a single string.")
+  }
+  if (!is.logical(keep_unmatched) || length(keep_unmatched) != 1L || is.na(keep_unmatched)) {
+    stop("`keep_unmatched` must be TRUE or FALSE.")
   }
 
   if (nrow(df) == 0L) {
@@ -123,9 +146,14 @@ change_backbone <- function(df,
     )
   }
 
+  # --- Track which names genuinely matched BEFORE keep_unmatched fills gaps ---
+  # matched_name is NA when the backbone found no match. Record this now so
+  # backbone_matched reflects true match status regardless of keep_unmatched.
+  genuine_match <- !is.na(df[["matched_name"]])
+
   # --- Rename source and translated name columns ---
   # !!sym() on both sides avoids bare-name R CMD check warnings.
-  df |>
+  result <- df |>
     dplyr::rename(
       !!rlang::sym(old_backbone_label) := !!rlang::sym(input_col),
       !!rlang::sym(new_backbone_label) := !!rlang::sym("matched_name")
@@ -161,4 +189,26 @@ change_backbone <- function(df,
     # --- Expand the named-vector list column into one column per rank ---
     # Ranks absent for a given row become NA automatically.
     tidyr::unnest_wider(tax_list)
+
+  # --- Add backbone_matched column (true match status, before any fallback) ---
+  result[["backbone_matched"]] <- genuine_match
+
+  # --- Retain unmatched names when keep_unmatched = TRUE ---
+  if (keep_unmatched) {
+    n_unmatched <- sum(!genuine_match)
+    if (n_unmatched > 0L) {
+      message(sprintf(
+        "change_backbone: %d name(s) had no match in the target backbone; ",
+        n_unmatched
+      ), "original name retained in '", new_backbone_label,
+      "' column (keep_unmatched = TRUE). ",
+      "Rank columns for these rows remain NA.")
+      result[[new_backbone_label]] <- dplyr::coalesce(
+        result[[new_backbone_label]],
+        result[[old_backbone_label]]
+      )
+    }
+  }
+
+  result
 }

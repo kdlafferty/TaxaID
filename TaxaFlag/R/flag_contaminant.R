@@ -41,15 +41,15 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #'   when analysing PCR controls, or vice versa. Default \code{NULL}.
 #' @param contaminant_type Character. Label for the type of contamination
 #'   being assessed. Controls output column names:
-#'   \code{flag_{contaminant_type}}, \code{flag_{contaminant_type}_score},
-#'   \code{flag_{contaminant_type}_reason}. Common values: \code{"lab_contaminant"},
+#'   \code{{contaminant_type}_risk}, \code{{contaminant_type}_score},
+#'   \code{{contaminant_type}_reason}. Common values: \code{"lab_contaminant"},
 #'   \code{"field_contaminant"}, \code{"positive_control"}. Default
 #'   \code{"lab_contaminant"}.
 #' @param score_thresholds Numeric vector of length 2. Thresholds for
-#'   converting scores to flag values. Scores at or below the first value
-#'   are \code{"unlikely"} (probable contaminant); scores at or below the
-#'   second are \code{"possible"}; higher scores are \code{"likely"} (valid
-#'   detection). Default \code{c(0.5, 0.9)}.
+#'   converting scores to risk values. Scores at or below the first value
+#'   are \code{"high"} risk (probable contaminant); scores at or below the
+#'   second are \code{"moderate"} risk; higher scores are \code{"low"} risk
+#'   (likely a genuine detection). Default \code{c(0.5, 0.9)}.
 #' @param verbose Logical. Print summary messages. Default \code{TRUE}.
 #'
 #' @return A data frame with one row per taxon, sorted by score (most
@@ -59,8 +59,9 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #'   \item{\code{flag_{contaminant_type}_score}}{Numeric 0--1. Ratio of
 #'     field proportion to total (field + control) proportion. Higher = more
 #'     likely a real detection. 1.0 for taxa absent from controls.}
-#'   \item{\code{flag_{contaminant_type}}}{Character. \code{"likely"},
-#'     \code{"possible"}, or \code{"unlikely"}.}
+#'   \item{\code{{contaminant_type}_risk}}{Character. \code{"high"} (probable
+#'     contaminant), \code{"moderate"} (uncertain), or \code{"low"} (likely
+#'     genuine detection). Higher = more contamination risk.}
 #'   \item{\code{flag_{contaminant_type}_reason}}{Character. Plain-English
 #'     explanation including proportions and control detection counts.}
 #'   \item{\code{mean_prop_field}}{Mean within-sample proportion in field
@@ -188,11 +189,12 @@ flag_contaminant <- function(df,
     field_ids  = field_ids
   )
 
-  # --- Apply thresholds to get flags ---
+  # --- Apply thresholds to get risk levels ---
+  # score = field / (field + control); low score = probable contaminant = high risk
   scores$flag <- dplyr::case_when(
-    scores$contaminant_score <= score_thresholds[1] ~ "unlikely",
-    scores$contaminant_score <= score_thresholds[2] ~ "possible",
-    TRUE ~ "likely"
+    scores$contaminant_score <= score_thresholds[1] ~ "high",
+    scores$contaminant_score <= score_thresholds[2] ~ "moderate",
+    TRUE ~ "low"
   )
 
   # --- Build reason strings ---
@@ -203,9 +205,9 @@ flag_contaminant <- function(df,
   )
 
   # --- Build per-taxon result ---
-  flag_col    <- paste0("flag_", contaminant_type)
-  score_col   <- paste0("flag_", contaminant_type, "_score")
-  reason_col  <- paste0("flag_", contaminant_type, "_reason")
+  flag_col    <- paste0(contaminant_type, "_risk")
+  score_col   <- paste0(contaminant_type, "_score")
+  reason_col  <- paste0(contaminant_type, "_reason")
 
   result <- data.frame(
     taxon            = scores$taxon,
@@ -227,11 +229,11 @@ flag_contaminant <- function(df,
   rownames(result) <- NULL
 
   if (verbose) {
-    n_unlikely <- sum(result[[flag_col]] == "unlikely")
-    n_possible <- sum(result[[flag_col]] == "possible")
-    n_likely   <- sum(result[[flag_col]] == "likely")
-    message(sprintf("  %d taxa scored: %d unlikely, %d possible, %d likely.",
-                    nrow(result), n_unlikely, n_possible, n_likely))
+    n_high     <- sum(result[[flag_col]] == "high")
+    n_moderate <- sum(result[[flag_col]] == "moderate")
+    n_low      <- sum(result[[flag_col]] == "low")
+    message(sprintf("  %d taxa scored: %d high risk, %d moderate risk, %d low risk.",
+                    nrow(result), n_high, n_moderate, n_low))
   }
 
   result

@@ -39,22 +39,22 @@ controls <- c("blank_1", "blank_2", "blank_3")
 
 # Flag taxa that appear disproportionately in blanks
 flagged <- flag_contaminant(
-  df              = assignments,
-  control_samples = controls,
-  taxon_col       = "consensus_taxon",
-  reads_col       = "n_reads",
-  event_col       = "event_id",
-  contaminant_type = "lab"
+  df               = reads_long,
+  control_samples  = controls,
+  taxon_col        = "taxon_name",
+  reads_col        = "n_reads",
+  event_col        = "event_id",
+  contaminant_type = "lab_contaminant"
 )
 
-# Result adds: flag_lab, flag_lab_reason, flag_lab_score columns
-table(flagged$flag_lab)
+# Output adds: lab_contaminant_risk, lab_contaminant_score, lab_contaminant_reason
+table(flagged$lab_contaminant_risk)
 ```
 
-Flag values:
-- `"likely"` -- taxon behaves normally (not a contaminant)
-- `"possible"` -- elevated in controls but not conclusive
-- `"unlikely"` -- strong evidence of contamination
+Risk values:
+- `"low"` -- taxon found mainly in field samples (likely genuine detection)
+- `"moderate"` -- elevated in controls but not conclusive
+- `"high"` -- strong evidence of contamination (found mainly in controls)
 
 ## Handler Artifact Flagging
 
@@ -84,15 +84,23 @@ structured expert review across multiple dimensions.
 reviewed <- review_assignments(
   df        = consensus_df,
   taxon_col = "consensus_taxon",
-  context   = list(ecoregion = "Southern California Bight",
-                   main_habitat = "Marine"),
-  llm_fn    = TaxaTools::call_anthropic_api
+  context   = list(geography = "Southern California Bight",
+                   habitat   = "Marine"),
+  target_group = "fish",
+  llm_fn    = TaxaTools::call_api
 )
 
 # Adds 8 structured columns:
-# review_habitat, review_geography, review_scope, review_contaminant,
+# habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk,
 # review_alternatives, review_lower_hypotheses, review_confidence, review_comment
 ```
+
+Plausibility columns (`habitat_plausibility`, `geographic_plausibility`,
+`scope_plausibility`) use `"likely"` / `"possible"` / `"unlikely"` — higher
+means more plausible as a genuine detection.
+
+`contamination_risk` uses `"low"` / `"moderate"` / `"high"` — higher means
+more concern about contamination.
 
 ## Combining Flags
 
@@ -102,14 +110,16 @@ appropriate weighting depends on your study design and risk tolerance:
 ```{r combine-example, eval = FALSE}
 # Example: conservative approach (flag if ANY mechanism triggers)
 flagged$any_flag <- with(flagged,
-  flag_lab == "unlikely" |
-  flag_handler == "unlikely" |
-  review_confidence == "low"
+  lab_contaminant_risk == "high" |
+  flag_handler         == "unlikely" |
+  contamination_risk   %in% c("high", "moderate") |
+  review_confidence    == "low"
 )
 
 # Example: permissive approach (only flag if multiple mechanisms agree)
 flagged$multi_flag <- with(flagged,
-  (flag_lab == "unlikely") + (flag_handler == "unlikely") >= 2
+  (lab_contaminant_risk == "high") +
+  (contamination_risk %in% c("high", "moderate")) >= 2
 )
 ```
 

@@ -48,7 +48,7 @@
         {"name": "pause_seconds", "type": "numeric", "required": false, "default": 1, "description": "Seconds between LLM calls"},
         {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
       ],
-      "output": {"type": "review_df", "description": "Input df with 8 review columns appended: review_habitat, review_geography, review_scope, review_contaminant, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"},
+      "output": {"type": "review_df", "description": "Input df with 8 review columns appended: habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"},
       "scaling": "api_limited",
       "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 30 taxa"
     }

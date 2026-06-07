@@ -4,11 +4,11 @@
 mock_llm_fn <- function(prompt_str, ...) {
   # Return a realistic JSON response for Palmyra Atoll reef taxa
   '[
-    {"taxon_name": "Carcharhinus melanopterus", "review_habitat": "expected", "review_geography": "expected", "review_scope": "in_scope", "review_contaminant": "unlikely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Blacktip reef shark, common on Pacific coral reefs"},
-    {"taxon_name": "Homo sapiens", "review_habitat": "unlikely", "review_geography": "expected", "review_scope": "out_of_scope", "review_contaminant": "likely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"},
-    {"taxon_name": "Gobiidae", "review_habitat": "expected", "review_geography": "expected", "review_scope": "in_scope", "review_contaminant": "unlikely", "review_alternatives": null, "review_lower_hypotheses": "Eviota sp., Trimma sp.", "review_confidence": "moderate", "review_comment": "Diverse family on coral reefs; many cryptic species"},
-    {"taxon_name": "Salmo salar", "review_habitat": "unlikely", "review_geography": "unlikely", "review_scope": "in_scope", "review_contaminant": "possible", "review_alternatives": "Lutjanus bohar, Lutjanus kasmira", "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Atlantic salmon; not found in central Pacific. Possible food-source contaminant"},
-    {"taxon_name": "Bos taurus", "review_habitat": "unlikely", "review_geography": "unlikely", "review_scope": "out_of_scope", "review_contaminant": "likely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Domestic cattle; common food-source contaminant"}
+    {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Blacktip reef shark, common on Pacific coral reefs"},
+    {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"},
+    {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": "Eviota sp., Trimma sp.", "review_confidence": "moderate", "review_comment": "Diverse family on coral reefs; many cryptic species"},
+    {"taxon_name": "Salmo salar", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": "likely", "contamination_risk": "moderate", "review_alternatives": "Lutjanus bohar, Lutjanus kasmira", "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Atlantic salmon; not found in central Pacific. Possible food-source contaminant"},
+    {"taxon_name": "Bos taurus", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Domestic cattle; common food-source contaminant"}
   ]'
 }
 
@@ -42,10 +42,10 @@ test_that("review_assignments adds 8 columns", {
     verbose      = FALSE
   )
 
-  expect_true("review_habitat" %in% names(result))
-  expect_true("review_geography" %in% names(result))
-  expect_true("review_scope" %in% names(result))
-  expect_true("review_contaminant" %in% names(result))
+  expect_true("habitat_plausibility" %in% names(result))
+  expect_true("geographic_plausibility" %in% names(result))
+  expect_true("scope_plausibility" %in% names(result))
+  expect_true("contamination_risk" %in% names(result))
   expect_true("review_alternatives" %in% names(result))
   expect_true("review_lower_hypotheses" %in% names(result))
   expect_true("review_confidence" %in% names(result))
@@ -65,14 +65,14 @@ test_that("review values are correct for known taxa", {
 
   # Homo sapiens should be flagged as contaminant
   hs <- result[result$consensus_taxon == "Homo sapiens", ]
-  expect_equal(hs$review_contaminant, "likely")
-  expect_equal(hs$review_scope, "out_of_scope")
+  expect_equal(hs$contamination_risk, "high")
+  expect_equal(hs$scope_plausibility, "unlikely")
 
   # Carcharhinus melanopterus should be expected
   cm <- result[result$consensus_taxon == "Carcharhinus melanopterus", ]
-  expect_equal(cm$review_habitat, "expected")
-  expect_equal(cm$review_geography, "expected")
-  expect_equal(cm$review_contaminant, "unlikely")
+  expect_equal(cm$habitat_plausibility, "likely")
+  expect_equal(cm$geographic_plausibility, "likely")
+  expect_equal(cm$contamination_risk, "low")
 })
 
 test_that("alternatives populated for implausible taxa", {
@@ -126,10 +126,10 @@ test_that("review_lower_hypotheses is NA when taxon_rank_col not supplied", {
 
 
 # ===========================================================================
-# target_group controls review_scope
+# target_group controls scope_plausibility
 # ===========================================================================
 
-test_that("review_scope is NA when target_group not supplied", {
+test_that("scope_plausibility is NA when target_group not supplied", {
   result <- review_assignments(
     df       = mock_consensus,
     taxon_col = "consensus_taxon",
@@ -138,7 +138,7 @@ test_that("review_scope is NA when target_group not supplied", {
     verbose  = FALSE
   )
 
-  expect_true(all(is.na(result$review_scope)))
+  expect_true(all(is.na(result$scope_plausibility)))
 })
 
 
@@ -186,7 +186,7 @@ test_that("graceful handling of LLM failure", {
 
   # Should still return all rows with NA review columns
   expect_equal(nrow(result), nrow(mock_consensus))
-  expect_true(all(is.na(result$review_habitat)))
+  expect_true(all(is.na(result$habitat_plausibility)))
 })
 
 test_that("graceful handling of invalid JSON response", {
@@ -204,15 +204,15 @@ test_that("graceful handling of invalid JSON response", {
   )
 
   expect_equal(nrow(result), nrow(mock_consensus))
-  expect_true(all(is.na(result$review_habitat)))
+  expect_true(all(is.na(result$habitat_plausibility)))
 })
 
 test_that("graceful handling of partial LLM response", {
   # Returns only 2 of 5 taxa
   partial_fn <- function(prompt_str, ...) {
     '[
-      {"taxon_name": "Carcharhinus melanopterus", "review_habitat": "expected", "review_geography": "expected", "review_scope": null, "review_contaminant": "unlikely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
-      {"taxon_name": "Homo sapiens", "review_habitat": "unlikely", "review_geography": "expected", "review_scope": null, "review_contaminant": "likely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
+      {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
+      {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
     ]'
   }
 
@@ -231,10 +231,10 @@ test_that("graceful handling of partial LLM response", {
   expect_equal(nrow(result), nrow(mock_consensus))
   # The two returned taxa should have values
   cm <- result[result$consensus_taxon == "Carcharhinus melanopterus", ]
-  expect_equal(cm$review_habitat, "expected")
+  expect_equal(cm$habitat_plausibility, "likely")
   # The missing taxa should have NA
   bt <- result[result$consensus_taxon == "Bos taurus", ]
-  expect_true(is.na(bt$review_habitat))
+  expect_true(is.na(bt$habitat_plausibility))
 })
 
 

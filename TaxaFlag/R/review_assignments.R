@@ -24,7 +24,7 @@
 #'   \code{geography} and \code{habitat}.
 #' @param target_group Character or \code{NULL}. Taxonomic target group
 #'   (e.g., \code{"fish"}, \code{"birds"}). When supplied, the LLM
-#'   populates \code{review_scope}. Default \code{NULL}.
+#'   populates \code{scope_plausibility}. Default \code{NULL}.
 #' @param marker Character or \code{NULL}. Molecular marker or detection
 #'   method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
 #'   Provides contaminant context. Default \code{NULL}.
@@ -46,16 +46,24 @@
 #'
 #' @return The input data frame with 8 columns appended:
 #' \describe{
-#'   \item{\code{review_habitat}}{expected / occasional / unlikely}
-#'   \item{\code{review_geography}}{expected / occasional / unlikely}
-#'   \item{\code{review_scope}}{in_scope / marginal / out_of_scope (NA if
-#'     \code{target_group} not supplied)}
-#'   \item{\code{review_contaminant}}{unlikely / possible / likely}
+#'   \item{\code{habitat_plausibility}}{likely / possible / unlikely --
+#'     plausibility that this taxon lives in the study habitat.
+#'     Higher = more plausible genuine detection.}
+#'   \item{\code{geographic_plausibility}}{likely / possible / unlikely --
+#'     plausibility that this taxon occurs in the study region.
+#'     Higher = more plausible genuine detection.}
+#'   \item{\code{scope_plausibility}}{likely / possible / unlikely --
+#'     plausibility that this taxon belongs to the target group.
+#'     \code{NA} if \code{target_group} not supplied.}
+#'   \item{\code{contamination_risk}}{high / moderate / low --
+#'     LLM-assessed risk that this taxon is a contaminant or false positive.
+#'     Higher = more likely to be a contaminant.}
 #'   \item{\code{review_alternatives}}{Comma-separated plausible alternatives
 #'     at the same rank, or NA}
 #'   \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa
 #'     expected at this location, or NA}
-#'   \item{\code{review_confidence}}{high / moderate / low}
+#'   \item{\code{review_confidence}}{high / moderate / low (LLM confidence in
+#'     its own assessment)}
 #'   \item{\code{review_comment}}{Free-text note, or NA}
 #' }
 #'
@@ -189,11 +197,11 @@ review_assignments <- function(df,
   # --- Join back to input ---
   # Rename taxon_name to match the user's column name for merging
   merge_key <- data.frame(
-    key        = review_df$taxon_name,
-    review_habitat          = review_df$review_habitat,
-    review_geography        = review_df$review_geography,
-    review_scope            = review_df$review_scope,
-    review_contaminant      = review_df$review_contaminant,
+    key                     = review_df$taxon_name,
+    habitat_plausibility    = review_df$habitat_plausibility,
+    geographic_plausibility = review_df$geographic_plausibility,
+    scope_plausibility      = review_df$scope_plausibility,
+    contamination_risk      = review_df$contamination_risk,
     review_alternatives     = review_df$review_alternatives,
     review_lower_hypotheses = review_df$review_lower_hypotheses,
     review_confidence       = review_df$review_confidence,
@@ -296,11 +304,11 @@ review_assignments <- function(df,
   # --- Scope instructions ---
   scope_instruction <- if (!is.null(target_group)) {
     sprintf(
-      '  "review_scope": one of "in_scope", "marginal", "out_of_scope" (does this taxon belong to the target group: %s?),',
+      '  "scope_plausibility": one of "likely" (clearly in scope), "possible" (borderline), "unlikely" (out of scope) (does this taxon belong to the target group: %s?),',
       target_group
     )
   } else {
-    '  "review_scope": null (no target group specified),'
+    '  "scope_plausibility": null (no target group specified),'
   }
 
   # --- Lower hypotheses instructions ---
@@ -308,7 +316,7 @@ review_assignments <- function(df,
   lower_instruction <- if (has_ranks) {
     '  "review_lower_hypotheses": comma-separated string of finer-rank taxa (e.g., likely species within a genus) expected at this location and habitat, or null if taxon is already at species level or you cannot suggest any,'
   } else {
-    '  "review_lower_hypotheses": null (no rank information provided),'
+    '  "review_lower_hypotheses": null (no rank information provided),'   # field name unchanged
   }
 
   # --- Data-type-specific contaminant guidance ---
@@ -351,24 +359,24 @@ review_assignments <- function(df,
     'before or after.\n\n',
     'Each object must have these fields:\n',
     '  "taxon_name": the exact taxon name as provided,\n',
-    '  "review_habitat": one of "expected", "occasional", "unlikely" (does this taxon live in this habitat type?),\n',
-    '  "review_geography": one of "expected", "occasional", "unlikely" (is this taxon found in this geographic region?),\n',
+    '  "habitat_plausibility": one of "likely", "possible", "unlikely" (does this taxon live in this habitat type?),\n',
+    '  "geographic_plausibility": one of "likely", "possible", "unlikely" (is this taxon found in this geographic region?),\n',
     scope_instruction, '\n',
-    '  "review_contaminant": one of "unlikely", "possible", "likely" (is this a common lab or field contaminant, or a human-associated taxon that commonly appears as contamination?),\n',
+    '  "contamination_risk": one of "low", "moderate", "high" (risk that this is a contaminant or false positive; "high" = strong contamination evidence, "low" = genuine detection),\n',
     '  "review_alternatives": comma-separated string of plausible alternative taxa at the same rank that better fit the geography and habitat, or null if the taxon is plausible,\n',
     lower_instruction, '\n',
     '  "review_confidence": one of "high", "moderate", "low" (your overall confidence in these assessments),\n',
     '  "review_comment": a brief free-text note with any additional context, or null\n\n',
     'GUIDELINES:\n',
-    '- "review_alternatives" means "you might have the wrong taxon" -- suggest relatives that better fit the context. Most useful when habitat or geography is "unlikely".\n',
+    '- "review_alternatives" means "you might have the wrong taxon" -- suggest relatives that better fit the context. Most useful when habitat_plausibility or geographic_plausibility is "unlikely".\n',
     '- "review_lower_hypotheses" means "you have the right group but could narrow it down" -- suggest species expected at this location when the consensus is at genus or family level.\n',
     '- ', contaminant_guideline, '\n',
     '- Be conservative with "unlikely" -- only use it when you are reasonably confident the taxon does not belong.\n',
-    '- If you are uncertain, use "occasional" or "moderate" rather than making a strong claim.\n\n',
+    '- If you are uncertain, use "possible" or "moderate" rather than making a strong claim.\n\n',
     'EXAMPLE OUTPUT FORMAT:\n',
     '[\n',
-    '  {"taxon_name": "Gobiidae", "review_habitat": "expected", "review_geography": "expected", "review_scope": "in_scope", "review_contaminant": "unlikely", "review_alternatives": null, "review_lower_hypotheses": "Clevelandia ios, Gillichthys mirabilis", "review_confidence": "high", "review_comment": null},\n',
-    '  {"taxon_name": "Homo sapiens", "review_habitat": "unlikely", "review_geography": "expected", "review_scope": "out_of_scope", "review_contaminant": "likely", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "', example_comment, '"}\n',
+    '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": "Clevelandia ios, Gillichthys mirabilis", "review_confidence": "high", "review_comment": null},\n',
+    '  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "', example_comment, '"}\n',
     ']\n\n',
     'TAXA TO REVIEW:\n',
     taxa_block
@@ -395,10 +403,10 @@ review_assignments <- function(df,
   make_default <- function() {
     data.frame(
       taxon_name              = expected_taxa,
-      review_habitat          = NA_character_,
-      review_geography        = NA_character_,
-      review_scope            = NA_character_,
-      review_contaminant      = NA_character_,
+      habitat_plausibility    = NA_character_,
+      geographic_plausibility = NA_character_,
+      scope_plausibility      = NA_character_,
+      contamination_risk      = NA_character_,
       review_alternatives     = NA_character_,
       review_lower_hypotheses = NA_character_,
       review_confidence       = NA_character_,
@@ -485,10 +493,10 @@ review_assignments <- function(df,
 
   result <- data.frame(
     taxon_name              = as.character(parsed$taxon_name),
-    review_habitat          = .safe_col("review_habitat"),
-    review_geography        = .safe_col("review_geography"),
-    review_scope            = .safe_col("review_scope"),
-    review_contaminant      = .safe_col("review_contaminant"),
+    habitat_plausibility    = .safe_col("habitat_plausibility"),
+    geographic_plausibility = .safe_col("geographic_plausibility"),
+    scope_plausibility      = .safe_col("scope_plausibility"),
+    contamination_risk      = .safe_col("contamination_risk"),
     review_alternatives     = .safe_col("review_alternatives"),
     review_lower_hypotheses = .safe_col("review_lower_hypotheses"),
     review_confidence       = .safe_col("review_confidence"),
@@ -496,9 +504,9 @@ review_assignments <- function(df,
     stringsAsFactors = FALSE
   )
 
-  # Nullify review_scope if target_group was not supplied
+  # Nullify scope_plausibility if target_group was not supplied
   if (is.null(target_group))
-    result$review_scope <- NA_character_
+    result$scope_plausibility <- NA_character_
 
   # Nullify review_lower_hypotheses if rank info was not supplied
   if (is.null(taxon_rank_col))
@@ -511,10 +519,10 @@ review_assignments <- function(df,
                     length(missing_taxa)), call. = FALSE)
     missing_rows <- data.frame(
       taxon_name              = missing_taxa,
-      review_habitat          = NA_character_,
-      review_geography        = NA_character_,
-      review_scope            = NA_character_,
-      review_contaminant      = NA_character_,
+      habitat_plausibility    = NA_character_,
+      geographic_plausibility = NA_character_,
+      scope_plausibility      = NA_character_,
+      contamination_risk      = NA_character_,
       review_alternatives     = NA_character_,
       review_lower_hypotheses = NA_character_,
       review_confidence       = NA_character_,

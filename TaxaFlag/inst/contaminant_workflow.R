@@ -42,7 +42,7 @@ lab_flags <- flag_contaminant(
   contaminant_type = "lab_contaminant"
 )
 
-lab_flags |> filter(flag_lab_contaminant != "likely")
+lab_flags |> filter(lab_contaminant_risk != "low")
 
 # --- 4. Flag PCR contaminants (PCR blanks) -----------------------------------
 
@@ -55,7 +55,7 @@ pcr_flags <- flag_contaminant(
   contaminant_type = "lab_contaminant"
 )
 
-pcr_flags |> filter(flag_lab_contaminant != "likely")
+pcr_flags |> filter(lab_contaminant_risk != "low")
 
 # --- 5. Flag positive control leakage ---------------------------------------
 
@@ -68,24 +68,24 @@ pos_flags <- flag_contaminant(
   contaminant_type = "positive_control"
 )
 
-pos_flags |> filter(flag_positive_control != "likely")
+pos_flags |> filter(positive_control_risk != "low")
 
 # --- 6. Combine results -----------------------------------------------------
 # Join all flag sets by taxon_name for a complete picture
 
 all_flags <- lab_flags |>
-  select(taxon_name, flag_lab_contaminant, flag_lab_contaminant_score) |>
+  select(taxon_name, lab_contaminant_risk, lab_contaminant_score) |>
   full_join(
-    pcr_flags |> select(taxon_name, flag_pcr = flag_lab_contaminant,
-                        flag_pcr_score = flag_lab_contaminant_score),
+    pcr_flags |> select(taxon_name, pcr_risk = lab_contaminant_risk,
+                        pcr_score = lab_contaminant_score),
     by = "taxon_name"
   ) |>
   full_join(
-    pos_flags |> select(taxon_name, flag_positive_control,
-                        flag_positive_control_score),
+    pos_flags |> select(taxon_name, positive_control_risk,
+                        positive_control_score),
     by = "taxon_name"
   ) |>
-  arrange(pmin(flag_lab_contaminant_score, flag_pcr_score,
-               flag_positive_control_score, na.rm = TRUE))
+  arrange(pmin(lab_contaminant_score, pcr_score,
+               positive_control_score, na.rm = TRUE))
 
 all_flags

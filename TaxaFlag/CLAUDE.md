@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 89 — review_assignments data_type param)
+# Last updated: 2026-06-06 (Session 101 — unified flag vocabulary; column renames)
 
 ---
 
@@ -37,12 +37,18 @@ TaxaFlag depends on:
 
 ## Flag Column Convention
 
-Data-driven flaggers (`flag_contaminant`, `flag_handler`) add a triplet:
-- `flag_{type}` -- character: "likely" (valid detection) / "possible" (uncertain) / "unlikely" (probable artifact)
-- `flag_{type}_score` -- numeric: interpretable ratio or confidence (0-1)
-- `flag_{type}_reason` -- character: plain-English explanation
+**Vocabulary design:** All columns use a consistent direction — higher value = worse for the taxon's credibility as a real detection.
 
-Consistent with TaxaHabitat's `spatial_flag` / `spatial_flag_reason` pattern.
+**Data-driven risk columns** (`flag_contaminant`, `flag_handler`) add a triplet:
+- `{type}_risk` -- character: `"high"` (probable artifact) / `"moderate"` (uncertain) / `"low"` (likely genuine)
+- `{type}_score` -- numeric: interpretable ratio or confidence (0–1; higher = more likely genuine)
+- `{type}_reason` -- character: plain-English explanation
+
+**LLM plausibility columns** (`review_assignments`):
+- `habitat_plausibility`, `geographic_plausibility`, `scope_plausibility` -- `"likely"` / `"possible"` / `"unlikely"` (higher = more plausible genuine detection)
+- `contamination_risk` -- `"high"` / `"moderate"` / `"low"` (higher = more contamination risk)
+
+Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (character). Score 1.0 = low risk (real detection); score 0.0 = high risk (contaminant). This asymmetry is intentional: scores are intermediate outputs for threshold-tuning; risk labels are the user-facing result.
 
 `review_assignments()` adds 8 structured LLM assessment columns (see below).
 
@@ -82,7 +88,7 @@ frustrating than helpful; workflow scripts are more transparent.
 - `control_samples` -- character vector of event IDs that are controls (blanks or positive controls)
 - `sample_type_col` / `control_types` -- alternative: identify controls via a column
 - `exclude_samples` -- remove samples from both control and field calculations
-- `contaminant_type` -- controls output column names (`flag_{contaminant_type}`)
+- `contaminant_type` -- controls output column names (`{contaminant_type}_risk`, `{contaminant_type}_score`, `{contaminant_type}_reason`)
 - `score_thresholds` -- numeric(2), default `c(0.5, 0.9)`
 
 **Algorithm:** `.compute_contaminant_scores()`:
@@ -112,10 +118,10 @@ frustrating than helpful; workflow scripts are more transparent.
 
 | Column | Type | Values | What it captures |
 |--------|------|--------|-----------------|
-| `review_habitat` | character | expected / occasional / unlikely | Does this taxon live in this habitat? |
-| `review_geography` | character | expected / occasional / unlikely | Is this taxon found in this region? |
-| `review_scope` | character | in_scope / marginal / out_of_scope | Target group match (only if `target_group` supplied) |
-| `review_contaminant` | character | unlikely / possible / likely | Common lab/field contaminant? |
+| `habitat_plausibility` | character | likely / possible / unlikely | Does this taxon live in this habitat? |
+| `geographic_plausibility` | character | likely / possible / unlikely | Is this taxon found in this region? |
+| `scope_plausibility` | character | likely / possible / unlikely | Target group match (only if `target_group` supplied) |
+| `contamination_risk` | character | low / moderate / high | Common lab/field contaminant? |
 | `review_alternatives` | character | comma-separated | Plausible alternatives at same rank (when taxon is implausible) |
 | `review_lower_hypotheses` | character | comma-separated | Finer-rank taxa expected here (when consensus is coarse-ranked) |
 | `review_confidence` | character | high / moderate / low | LLM's overall confidence |
@@ -169,3 +175,9 @@ Sessions 60–74 archived in ecosystem_docs/session_notes/TaxaFlag_sessions.md.
 
 **Session 89 (2026-05-27)**
 - `review_assignments()`: `data_type` param added (`"eDNA"` default / `"acoustic"` / `"image"`). Controls contaminant guidance text in the LLM prompt: eDNA (common lab contaminants: Homo sapiens, Bos taurus, etc.), acoustic (human vocalizations + handler noise near recording equipment), image (handler presence during camera setup/teardown). Also switches the JSON example `comment` value to match the data type. Implemented in `.build_review_prompt()` via `switch(data_type, ...)`.
+
+**Session 101 (2026-06-06): Unified flag vocabulary**
+- Renamed `review_assignments()` output columns: `review_habitat` → `habitat_plausibility`, `review_geography` → `geographic_plausibility`, `review_scope` → `scope_plausibility`, `review_contaminant` → `contamination_risk`.
+- Updated values: plausibility columns use `"likely"/"possible"/"unlikely"` (positive = plausible genuine detection); `contamination_risk` uses `"low"/"moderate"/"high"` (positive = more risk).
+- Renamed `flag_contaminant()` output columns: `flag_{type}` → `{type}_risk`, `flag_{type}_score` → `{type}_score`, `flag_{type}_reason` → `{type}_reason`. Values changed: `"likely"` → `"low"`, `"possible"` → `"moderate"`, `"unlikely"` → `"high"` (direction flipped — old "likely" meant real detection; new "low" risk means real detection; both mean same thing).
+- Updated Flag Column Convention in CLAUDE.md; updated workflows, tests, and prompts throughout.
