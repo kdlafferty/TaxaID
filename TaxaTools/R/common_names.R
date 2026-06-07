@@ -1,9 +1,14 @@
 # ==============================================================================
 # common_names.R
-# TaxaTools -- LLM-assisted common name -> scientific name lookup
+# TaxaTools -- Common name <-> scientific name lookups
 #
 # Exported:
 #   common_to_scientific()
+#   scientific_to_common()
+# Internal:
+#   .gbif_common_names()
+#   .itis_common_names()
+#   .llm_common_names()
 # ==============================================================================
 
 
@@ -234,6 +239,311 @@ common_to_scientific <- function(common_names,
     backbone_id              = as.integer(backbone_id),
     verified                 = is_verified,
     notes                    = notes_ordered,
+    stringsAsFactors         = FALSE
+  )
+}
+
+
+# ==============================================================================
+# scientific_to_common() -- internal helpers
+# ==============================================================================
+
+# Returns list(primary = character(1), alternatives = character(1) or NA)
+# or NULL when nothing found.
+#' @noRd
+.gbif_common_names <- function(name) {
+  if (!requireNamespace("rgbif", quietly = TRUE))
+    stop("Package 'rgbif' is required for backbone_id = 11. ",
+         "Install with: install.packages('rgbif')", call. = FALSE)
+  bb <- tryCatch(
+    rgbif::name_backbone(name = name, strict = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(bb) || identical(bb$matchType, "NONE")) return(NULL)
+  # Use speciesKey when available; fall back to usageKey for higher ranks
+  key <- if (!is.null(bb$speciesKey) && !is.na(bb$speciesKey)) bb$speciesKey
+         else bb$usageKey
+  if (is.null(key) || is.na(key)) return(NULL)
+  vn <- tryCatch(
+    rgbif::name_usage(key = key, data = "vernacularNames"),
+    error = function(e) NULL
+  )
+  if (is.null(vn) || is.null(vn$data) || nrow(vn$data) == 0L) return(NULL)
+  eng <- vn$data[!is.na(vn$data$language) & vn$data$language == "eng",
+                 "vernacularName", drop = TRUE]
+  eng <- unique(trimws(as.character(eng)))
+  eng <- eng[nzchar(eng)]
+  if (length(eng) == 0L) return(NULL)
+  list(
+    primary      = eng[[1L]],
+    alternatives = if (length(eng) > 1L) paste(eng[-1L], collapse = "; ")
+                   else NA_character_
+  )
+}
+
+#' @noRd
+.itis_common_names <- function(name) {
+  if (!requireNamespace("taxize", quietly = TRUE))
+    stop("Package 'taxize' is required for backbone_id = 3. ",
+         "Install with: install.packages('taxize')", call. = FALSE)
+  tsn <- tryCatch(
+    suppressMessages(
+      taxize::get_tsn(name, accepted = TRUE, ask = FALSE, messages = FALSE)
+    ),
+    error = function(e) NA_character_
+  )
+  if (length(tsn) == 0L || is.na(tsn[[1L]])) return(NULL)
+  rec <- tryCatch(
+    taxize::itis_getrecord(tsn[[1L]]),
+    error = function(e) NULL
+  )
+  if (is.null(rec)) return(NULL)
+  cn <- tryCatch(rec$commonNameList$commonNames, error = function(e) NULL)
+  if (is.null(cn) || nrow(cn) == 0L) return(NULL)
+  eng <- cn[tolower(cn$language) == "english", "commonName", drop = TRUE]
+  eng <- unique(trimws(as.character(eng)))
+  eng <- eng[nzchar(eng)]
+  if (length(eng) == 0L) return(NULL)
+  list(
+    primary      = eng[[1L]],
+    alternatives = if (length(eng) > 1L) paste(eng[-1L], collapse = "; ")
+                   else NA_character_
+  )
+}
+
+# Batch LLM lookup for a character vector of scientific names.
+# Returns a data frame with columns: scientific_name, common_name,
+# common_name_alternatives (may be NA).
+#' @noRd
+.llm_common_names <- function(names, llm_fn, ...) {
+  names_block <- paste(
+    vapply(seq_along(names), function(i)
+      sprintf('  %d. "%s"', i, names[[i]]), character(1L)),
+    collapse = "\n"
+  )
+  prompt <- paste0(
+    "You are a taxonomist. Provide English common names for the following ",
+    "scientific names.\n\nScientific names:\n", names_block,
+    "\n\nRespond with a JSON array only -- no markdown, no extra text. ",
+    "Each element must have exactly these keys:\n",
+    '  "scientific_name"           : the input scientific name (string)\n',
+    '  "common_name"               : primary English common name, or null if none\n',
+    '  "common_name_alternatives"  : comma-separated list of other English common ',
+    'names as a single string, or null if none\n',
+    "\nReturn exactly ", length(names), " elements in the same order as the input list."
+  )
+  raw <- llm_fn(prompt, ...)
+  json_text <- gsub("(?s)^```(?:json)?\\s*", "", raw,  perl = TRUE)
+  json_text <- gsub("(?s)\\s*```$",           "", json_text, perl = TRUE)
+  json_text <- trimws(json_text)
+  parsed <- tryCatch(
+    jsonlite::fromJSON(json_text, simplifyDataFrame = TRUE),
+    error = function(e) NULL
+  )
+  if (is.null(parsed) || !is.data.frame(parsed) ||
+      !"scientific_name" %in% names(parsed)) {
+    warning("Could not parse LLM response as JSON for common name lookup.",
+            call. = FALSE)
+    return(data.frame(
+      scientific_name          = names,
+      common_name              = NA_character_,
+      common_name_alternatives = NA_character_,
+      stringsAsFactors         = FALSE
+    ))
+  }
+  llm_sci  <- as.character(parsed$scientific_name)
+  llm_cn   <- if ("common_name" %in% names(parsed))
+                as.character(parsed$common_name) else rep(NA_character_, nrow(parsed))
+  llm_alt  <- if ("common_name_alternatives" %in% names(parsed))
+                as.character(parsed$common_name_alternatives)
+              else rep(NA_character_, nrow(parsed))
+  # Coerce JSON nulls
+  llm_cn[llm_cn  %in% c("NULL", "null", "NA")] <- NA_character_
+  llm_alt[llm_alt %in% c("NULL", "null", "NA")] <- NA_character_
+  # Align to input order
+  idx     <- match(tolower(trimws(names)), tolower(trimws(llm_sci)))
+  data.frame(
+    scientific_name          = names,
+    common_name              = ifelse(is.na(idx), NA_character_, llm_cn[idx]),
+    common_name_alternatives = ifelse(is.na(idx), NA_character_, llm_alt[idx]),
+    stringsAsFactors         = FALSE
+  )
+}
+
+
+# ==============================================================================
+# scientific_to_common()
+# ==============================================================================
+
+#' Convert Scientific Names to Common Names
+#'
+#' Looks up English common names for a character vector of scientific names.
+#' By default queries the GBIF vernacular names database (\code{backbone_id = 11})
+#' or ITIS (\code{backbone_id = 3}), falling back to an LLM when a backbone
+#' returns no results (\code{use_llm = TRUE}, the default).  Set
+#' \code{backbone_id = NULL} to use the LLM for all names without a backbone
+#' query.
+#'
+#' @details
+#' Backbone sources return structured, curated common names and are preferred
+#' when available.  GBIF filters to vernacular names with \code{language = "eng"};
+#' ITIS filters to \code{language = "English"}.  The first name returned becomes
+#' \code{common_name}; remaining names become \code{common_name_alternatives}
+#' (semicolon-delimited).
+#'
+#' When \code{backbone_id} is not \code{3} or \code{11} (or is \code{NULL}),
+#' only the LLM is used.  A warning is issued for unsupported backbone IDs.
+#' When a backbone package is required but not installed, an error is thrown
+#' with installation instructions.
+#'
+#' @param scientific_names Character vector of scientific names to look up.
+#' @param backbone_id Integer or \code{NULL}.  Backbone for structured lookup:
+#'   \code{11} = GBIF (default, uses \pkg{rgbif}), \code{3} = ITIS (uses
+#'   \pkg{taxize}).  Other values trigger a warning and fall through to the LLM.
+#'   \code{NULL} skips backbone lookup entirely.
+#' @param use_llm Logical.  If \code{TRUE} (default), taxa with no backbone
+#'   result are sent to the LLM in a single batched call.  Set \code{FALSE} to
+#'   return \code{NA} for unresolved taxa instead.
+#' @param llm_fn Function with signature \code{function(prompt, ...) ->
+#'   character(1)}.  Required when \code{use_llm = TRUE} or
+#'   \code{backbone_id} is unsupported / \code{NULL}.  Default
+#'   \code{getOption("TaxaID.llm_fn")}.
+#' @param ... Additional arguments passed to \code{llm_fn}.
+#'
+#' @return A data frame with one row per element of \code{scientific_names}:
+#'   \describe{
+#'     \item{\code{scientific_name}}{Input scientific name (character).}
+#'     \item{\code{common_name}}{Primary English common name, or \code{NA}.}
+#'     \item{\code{common_name_alternatives}}{Semicolon-delimited additional
+#'       English common names, or \code{NA}.}
+#'     \item{\code{source}}{One of \code{"gbif"}, \code{"itis"}, \code{"llm"},
+#'       or \code{"none"}.}
+#'     \item{\code{backbone_id}}{Integer backbone ID used, or \code{NA} for LLM
+#'       or no-result rows.}
+#'   }
+#'
+#' @seealso \code{\link{common_to_scientific}}, \code{\link{verify_taxon_names}}
+#'
+#' @examples
+#' \dontrun{
+#' library(TaxaTools)
+#'
+#' # GBIF backbone (default)
+#' result <- scientific_to_common(
+#'   c("Oncorhynchus mykiss", "Salmo salar")
+#' )
+#' result[, c("scientific_name", "common_name", "source")]
+#'
+#' # ITIS backbone
+#' result2 <- scientific_to_common(
+#'   c("Oncorhynchus mykiss", "Salmo salar"),
+#'   backbone_id = 3L
+#' )
+#'
+#' # LLM only (no backbone query)
+#' result3 <- scientific_to_common(
+#'   c("Oncorhynchus mykiss", "Salmo salar"),
+#'   backbone_id = NULL
+#' )
+#'
+#' # Backbone with LLM fallback disabled (return NA when backbone finds nothing)
+#' result4 <- scientific_to_common(
+#'   c("Oncorhynchus mykiss", "Rare taxon sp."),
+#'   use_llm = FALSE
+#' )
+#' }
+#'
+#' @export
+scientific_to_common <- function(scientific_names,
+                                 backbone_id = 11L,
+                                 use_llm     = TRUE,
+                                 llm_fn      = getOption("TaxaID.llm_fn"),
+                                 ...) {
+
+  # ---- input validation -------------------------------------------------------
+  if (!is.character(scientific_names) || length(scientific_names) == 0L)
+    stop("scientific_names must be a non-empty character vector", call. = FALSE)
+  if (!is.null(backbone_id)) {
+    backbone_id <- as.integer(backbone_id)
+    if (!backbone_id %in% c(3L, 11L)) {
+      warning(sprintf(
+        "backbone_id %d is not supported for common name lookup (use 3 = ITIS or 11 = GBIF). Falling back to LLM.",
+        backbone_id), call. = FALSE)
+      backbone_id <- NULL
+    }
+  }
+  if (!is.logical(use_llm) || length(use_llm) != 1L || is.na(use_llm))
+    stop("use_llm must be TRUE or FALSE", call. = FALSE)
+  llm_needed <- is.null(backbone_id) || use_llm
+  if (llm_needed && is.null(llm_fn))
+    stop(
+      "No LLM function configured. Load TaxaTools with library(TaxaTools) to ",
+      "auto-detect a provider, or supply llm_fn explicitly. ",
+      "To use backbone-only lookup without LLM fallback, set use_llm = FALSE.",
+      call. = FALSE
+    )
+  if (!is.null(llm_fn) && !is.function(llm_fn))
+    stop("llm_fn must be a function", call. = FALSE)
+
+  # ---- initialise output vectors ----------------------------------------------
+  n             <- length(scientific_names)
+  out_cn        <- rep(NA_character_, n)
+  out_alt       <- rep(NA_character_, n)
+  out_source    <- rep("none", n)
+  out_backbone  <- rep(NA_integer_,  n)
+
+  # ---- backbone lookup (per-taxon) --------------------------------------------
+  if (!is.null(backbone_id)) {
+    lookup_fn <- if (backbone_id == 11L) .gbif_common_names else .itis_common_names
+    for (i in seq_len(n)) {
+      res <- tryCatch(lookup_fn(scientific_names[[i]]), error = function(e) {
+        warning(sprintf("Backbone lookup failed for '%s': %s",
+                        scientific_names[[i]], conditionMessage(e)),
+                call. = FALSE)
+        NULL
+      })
+      if (!is.null(res)) {
+        out_cn[[i]]       <- res$primary
+        out_alt[[i]]      <- res$alternatives
+        out_source[[i]]   <- if (backbone_id == 11L) "gbif" else "itis"
+        out_backbone[[i]] <- backbone_id
+      }
+    }
+  }
+
+  # ---- LLM fallback for unresolved taxa ---------------------------------------
+  needs_llm <- out_source == "none"
+  if (use_llm && any(needs_llm) && !is.null(llm_fn)) {
+    llm_names <- scientific_names[needs_llm]
+    llm_res   <- .llm_common_names(llm_names, llm_fn, ...)
+    llm_idx   <- which(needs_llm)
+    for (j in seq_along(llm_idx)) {
+      i <- llm_idx[[j]]
+      if (!is.na(llm_res$common_name[[j]])) {
+        out_cn[[i]]     <- llm_res$common_name[[j]]
+        out_alt[[i]]    <- llm_res$common_name_alternatives[[j]]
+        out_source[[i]] <- "llm"
+      }
+    }
+  } else if (is.null(backbone_id) && !is.null(llm_fn)) {
+    # backbone_id = NULL: pure LLM path for all names
+    llm_res <- .llm_common_names(scientific_names, llm_fn, ...)
+    for (i in seq_len(n)) {
+      if (!is.na(llm_res$common_name[[i]])) {
+        out_cn[[i]]     <- llm_res$common_name[[i]]
+        out_alt[[i]]    <- llm_res$common_name_alternatives[[i]]
+        out_source[[i]] <- "llm"
+      }
+    }
+  }
+
+  # ---- assemble output --------------------------------------------------------
+  data.frame(
+    scientific_name          = scientific_names,
+    common_name              = out_cn,
+    common_name_alternatives = out_alt,
+    source                   = out_source,
+    backbone_id              = out_backbone,
     stringsAsFactors         = FALSE
   )
 }

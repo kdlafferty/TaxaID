@@ -139,3 +139,177 @@ test_that("backbone_id is integer in output", {
   expect_type(result$backbone_id, "integer")
   expect_equal(result$backbone_id, 11L)
 })
+
+
+# ==============================================================================
+# Tests for scientific_to_common()
+# ==============================================================================
+
+# ---- input validation --------------------------------------------------------
+
+test_that("non-character scientific_names raises error", {
+  expect_error(
+    scientific_to_common(123, use_llm = FALSE),
+    "non-empty character vector"
+  )
+})
+
+test_that("empty scientific_names raises error", {
+  expect_error(
+    scientific_to_common(character(0), use_llm = FALSE),
+    "non-empty character vector"
+  )
+})
+
+test_that("unsupported backbone_id warns and falls through to LLM", {
+  mock_llm <- function(prompt, ...) {
+    '[{"scientific_name":"Homo sapiens","common_name":"human","common_name_alternatives":null}]'
+  }
+  expect_warning(
+    scientific_to_common("Homo sapiens", backbone_id = 9L, llm_fn = mock_llm),
+    "not supported"
+  )
+})
+
+test_that("NULL llm_fn with use_llm = TRUE raises error", {
+  expect_error(
+    scientific_to_common("Homo sapiens", backbone_id = NULL,
+                         use_llm = TRUE, llm_fn = NULL),
+    "No LLM function configured"
+  )
+})
+
+test_that("non-logical use_llm raises error", {
+  expect_error(
+    scientific_to_common("Homo sapiens", use_llm = "yes", llm_fn = NULL),
+    "TRUE or FALSE"
+  )
+})
+
+test_that("non-function llm_fn raises error", {
+  expect_error(
+    scientific_to_common("Homo sapiens", backbone_id = NULL,
+                         llm_fn = "not_a_function"),
+    "must be a function"
+  )
+})
+
+
+# ---- output structure (mocked backbone + LLM) --------------------------------
+
+.mock_gbif <- function(name) {
+  list(primary = "rainbow trout", alternatives = "steelhead; redband trout")
+}
+
+.mock_llm_s2c <- function(prompt, ...) {
+  '[{"scientific_name":"Salmo salar","common_name":"Atlantic salmon","common_name_alternatives":"salmon"}]'
+}
+
+test_that("output is a data frame with expected columns", {
+  local_mocked_bindings(.gbif_common_names = .mock_gbif, .package = "TaxaTools")
+  result <- scientific_to_common("Oncorhynchus mykiss", backbone_id = 11L,
+                                 use_llm = FALSE, llm_fn = NULL)
+  expect_s3_class(result, "data.frame")
+  expect_true(all(c("scientific_name", "common_name",
+                    "common_name_alternatives", "source",
+                    "backbone_id") %in% names(result)))
+})
+
+test_that("output has one row per input name", {
+  local_mocked_bindings(.gbif_common_names = .mock_gbif, .package = "TaxaTools")
+  result <- scientific_to_common(c("Oncorhynchus mykiss", "Oncorhynchus nerka"),
+                                 backbone_id = 11L, use_llm = FALSE, llm_fn = NULL)
+  expect_equal(nrow(result), 2L)
+})
+
+test_that("backbone hit sets source to 'gbif' and backbone_id to 11", {
+  local_mocked_bindings(.gbif_common_names = .mock_gbif, .package = "TaxaTools")
+  result <- scientific_to_common("Oncorhynchus mykiss", backbone_id = 11L,
+                                 use_llm = FALSE, llm_fn = NULL)
+  expect_equal(result$source,      "gbif")
+  expect_equal(result$backbone_id, 11L)
+  expect_equal(result$common_name, "rainbow trout")
+  expect_equal(result$common_name_alternatives, "steelhead; redband trout")
+})
+
+test_that("backbone hit sets source to 'itis' and backbone_id to 3", {
+  local_mocked_bindings(.itis_common_names = .mock_gbif, .package = "TaxaTools")
+  result <- scientific_to_common("Oncorhynchus mykiss", backbone_id = 3L,
+                                 use_llm = FALSE, llm_fn = NULL)
+  expect_equal(result$source,      "itis")
+  expect_equal(result$backbone_id, 3L)
+})
+
+test_that("backbone miss with use_llm = TRUE falls back to LLM", {
+  local_mocked_bindings(.gbif_common_names = function(name) NULL,
+                        .package = "TaxaTools")
+  result <- scientific_to_common("Salmo salar", backbone_id = 11L,
+                                 use_llm = TRUE, llm_fn = .mock_llm_s2c)
+  expect_equal(result$source,      "llm")
+  expect_equal(result$common_name, "Atlantic salmon")
+})
+
+test_that("backbone miss with use_llm = FALSE returns source 'none' and NA common_name", {
+  local_mocked_bindings(.gbif_common_names = function(name) NULL,
+                        .package = "TaxaTools")
+  result <- scientific_to_common("Rare taxon sp.", backbone_id = 11L,
+                                 use_llm = FALSE, llm_fn = NULL)
+  expect_equal(result$source,      "none")
+  expect_true(is.na(result$common_name))
+})
+
+test_that("backbone_id = NULL goes straight to LLM for all names", {
+  result <- scientific_to_common("Salmo salar", backbone_id = NULL,
+                                 llm_fn = .mock_llm_s2c)
+  expect_equal(result$source,      "llm")
+  expect_equal(result$common_name, "Atlantic salmon")
+  expect_true(is.na(result$backbone_id))
+})
+
+test_that("LLM null common_name returns NA and source 'none'", {
+  null_llm <- function(prompt, ...) {
+    '[{"scientific_name":"Obscura sp.","common_name":null,"common_name_alternatives":null}]'
+  }
+  result <- scientific_to_common("Obscura sp.", backbone_id = NULL,
+                                 llm_fn = null_llm)
+  expect_true(is.na(result$common_name))
+  expect_equal(result$source, "none")
+})
+
+test_that("malformed LLM response warns and returns NA common_name", {
+  bad_llm <- function(prompt, ...) "not json"
+  result <- suppressWarnings(
+    scientific_to_common("Salmo salar", backbone_id = NULL, llm_fn = bad_llm)
+  )
+  expect_true(is.na(result$common_name))
+})
+
+test_that("LLM response wrapped in markdown fences is parsed correctly", {
+  fenced_llm <- function(prompt, ...) {
+    '```json\n[{"scientific_name":"Salmo salar","common_name":"Atlantic salmon","common_name_alternatives":null}]\n```'
+  }
+  result <- scientific_to_common("Salmo salar", backbone_id = NULL,
+                                 llm_fn = fenced_llm)
+  expect_equal(result$common_name, "Atlantic salmon")
+})
+
+test_that("backbone_id is integer NA for llm-sourced rows", {
+  result <- scientific_to_common("Salmo salar", backbone_id = NULL,
+                                 llm_fn = .mock_llm_s2c)
+  expect_type(result$backbone_id, "integer")
+  expect_true(is.na(result$backbone_id))
+})
+
+test_that("mixed batch: backbone hit for first, LLM fallback for second", {
+  local_mocked_bindings(
+    .gbif_common_names = function(name) {
+      if (name == "Oncorhynchus mykiss") .mock_gbif(name) else NULL
+    },
+    .package = "TaxaTools"
+  )
+  result <- scientific_to_common(c("Oncorhynchus mykiss", "Salmo salar"),
+                                 backbone_id = 11L, use_llm = TRUE,
+                                 llm_fn = .mock_llm_s2c)
+  expect_equal(result$source,      c("gbif", "llm"))
+  expect_equal(result$common_name, c("rainbow trout", "Atlantic salmon"))
+})
