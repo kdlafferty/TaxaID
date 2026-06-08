@@ -647,6 +647,17 @@ call_api <- function(prompt_str,
   text   <- parsed$text
   tokens <- parsed$tokens
 
+  # Accumulate in session ledger (non-NA calls only)
+  if (!is.na(tokens$input) || !is.na(tokens$output)) {
+    .append_token_record(
+      caller   = .get_llm_caller(),
+      provider = provider,
+      model    = model %||% "",
+      input    = tokens$input  %||% NA_integer_,
+      output   = tokens$output %||% NA_integer_
+    )
+  }
+
   if (isTRUE(show_tokens)) {
     message(sprintf("Tokens used \u2014 input: %s, output: %s",
                     if (is.na(tokens$input))  "NA" else as.character(tokens$input),
