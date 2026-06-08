@@ -504,7 +504,7 @@ read_llm_response <- function(files) {
 #' # "default"
 #' "value" %||% "default"
 #' # "value"
-#' @name null-coalesce
+#' @name op-null-default
 #' @export
 `%||%` <- function(x, y) if (!is.null(x) && length(x) > 0) x else y
 
