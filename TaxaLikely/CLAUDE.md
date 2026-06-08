@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-04 (Session 100 -- coverage-adjusted likelihood column added: score_likelihood_cov)
+# Last updated: 2026-06-08 (Session 103 -- detect_score_collapse, restore_suppressed_candidates)
 
 ---
 
@@ -136,6 +136,15 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | Function | File | Status | Description |
 |---|---|---|---|
 | `expand_consensus_candidates()` | `R/expand_consensus.R` | **Deprecated (Session 99)** | Use `unreferenced_candidates()` + `assign_scores()` instead. Deprecated with `.Deprecated()` notice in function body. |
+
+### Score-collapse detection and restoration
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `detect_score_collapse()` | `R/score_collapse.R` | Written | Diagnose whether a match object shows evidence of a top-hit pipeline rule. Two patterns: `"perfect_only"` (singleton at max score — 100% rule) and `"max_score_ties"` (multiple candidates all at same max score). Returns rule_detected, type, n/fraction affected, example_observations. `min_fraction` param (default 0.05) prevents single-observation artefacts from triggering. |
+| `restore_suppressed_candidates()` | `R/score_collapse.R` | Written | For singleton observations at the perfect threshold, look up same-genus congeners in `reference_df` and append them as `hypothesis_type = "suppressed_candidate"` rows. `score_rule = "sub_max"` (default) imputes score as H1 score − delta (1.0 on 0–100 scale; 0.01 on 0–1 scale). `perfect_only = TRUE` restricts to perfect-score singletons. `max_per_obs = 10L` caps large genera. Returns match_obj with `is_restored` column. Pass result directly to `evaluate_likelihoods()`. |
+
+**Motivation:** When BLAST uses a 100% rule (drop all sub-perfect hits when a perfect match exists), referenced congeners are silently suppressed. `evaluate_likelihoods()` sees only one H1 candidate (singleton mode — gap uninformative) and generates only generic `unreferenced_species` H2/H3 rows. `restore_suppressed_candidates()` replaces those generic placeholders with real referenced alternatives, enabling full bivariate-normal evaluation. See *Girella simplicidens* case (Session 101/103).
 
 ### Match object cleaning and export
 
@@ -282,6 +291,7 @@ which is skipped when DECIPHER/Biostrings are not installed.
 | test-train.R | `train_likelihood_model()`, `flag_reference_errors()` | Fully offline |
 | test-unreferenced-candidates.R | `unreferenced_candidates()` | Fully offline |
 | test-write-fasta.R | `write_reference_fasta()` | Fully offline |
+| test-score-collapse.R | `detect_score_collapse()`, `restore_suppressed_candidates()` | 44 tests; fully offline |
 
 ---
 
