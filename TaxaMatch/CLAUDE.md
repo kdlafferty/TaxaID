@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 93 — read_inaturalist_cv_output, read_wildlife_insights_output)
+# Last updated: 2026-06-08 (Session 103 — mark read_animl_output, read_birdnet_output as Complete)
 
 ---
 
@@ -41,24 +41,24 @@ Also depends on `httr2` (remote BLAST API), `rentrez` + `xml2` (taxonomy resolut
 
 Raw column names vary by source — `standardize_match_data()` handles the rename.
 
-### Image classifier details (Animl — PLANNED)
+### Image classifier details (Animl — Complete)
 
 - **R package:** `animl` on CRAN (wraps Python backend; requires Python >= 3.12)
 - **Pipeline:** `detect()` (MegaDetector bounding boxes) → `classify()` (species prediction) → `sequence_classification()` (temporal refinement)
 - **Output:** CSV with species, confidence, bounding boxes; multi-level taxonomy fallback (species → genus → family when confidence is low)
 - **Export formats:** CSV, COCO JSON, Timelapse CSV, folder organization
 - **Score interpretation:** CNN confidence (0-1); NOT comparable to BLAST % identity — requires separate likelihood model calibration in TaxaLikely
-- **Planned ingest function:** `read_animl_output()` — thin wrapper to read Animl CSV export into match object format
+- **Ingest function:** `read_animl_output()` — implemented in `R/read_image.R` (Session 93)
 - **Reference:** https://docs.animl.camera/
 
-### Acoustic recognizer details (BirdNET — PLANNED)
+### Acoustic recognizer details (BirdNET — Complete)
 
 - **Tool:** BirdNET (Cornell Lab of Ornithology); CNN-based acoustic classifier
 - **Output:** CSV with start_time, end_time, scientific_name, common_name, confidence (0-1); top-N candidates per detection
 - **Score interpretation:** CNN confidence (0-1); same calibration caveat as image classifiers
 - **Species coverage:** ~6,000+ bird species; species list is queryable (reference DB equivalent for completeness audits)
 - **R interfaces:** BirdNET-R, warbleR (acoustic analysis), or direct Python CLI
-- **Planned ingest function:** `read_birdnet_output()` — thin wrapper to read BirdNET CSV into match object format
+- **Ingest function:** `read_birdnet_output()` — implemented in `R/read_acoustic.R` (Session 93)
 - **Reference:** https://birdnet.cornell.edu/
 
 ### Design notes for non-sequence data types
