@@ -266,6 +266,27 @@ test_that("backbone_id = NULL goes straight to LLM for all names", {
   expect_true(is.na(result$backbone_id))
 })
 
+test_that("location param is accepted and passed to LLM without error", {
+  captured <- NULL
+  capture_llm <- function(prompt, ...) {
+    captured <<- prompt
+    '[{"scientific_name":"Salmo salar","common_name":"Atlantic salmon","common_name_alternatives":null}]'
+  }
+  result <- scientific_to_common("Salmo salar", backbone_id = NULL,
+                                 location = "Pacific Northwest, USA",
+                                 llm_fn = capture_llm)
+  expect_equal(result$common_name, "Atlantic salmon")
+  expect_true(grepl("Pacific Northwest", captured))
+})
+
+test_that("non-scalar location raises error", {
+  expect_error(
+    scientific_to_common("Salmo salar", location = c("USA", "UK"),
+                         backbone_id = NULL, llm_fn = .mock_llm_s2c),
+    "single character string"
+  )
+})
+
 test_that("LLM null common_name returns NA and source 'none'", {
   null_llm <- function(prompt, ...) {
     '[{"scientific_name":"Obscura sp.","common_name":null,"common_name_alternatives":null}]'

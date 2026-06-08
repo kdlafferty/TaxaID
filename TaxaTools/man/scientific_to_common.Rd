@@ -7,6 +7,7 @@
 scientific_to_common(
   scientific_names,
   backbone_id = 11L,
+  location = NULL,
   use_llm = TRUE,
   llm_fn = getOption("TaxaID.llm_fn"),
   ...
@@ -19,6 +20,11 @@ scientific_to_common(
 \code{11} = GBIF (default, uses \pkg{rgbif}), \code{3} = ITIS (uses
 \pkg{taxize}).  Other values trigger a warning and fall through to the LLM.
 \code{NULL} skips backbone lookup entirely.}
+
+\item{location}{Character string providing geographic context for the LLM
+(e.g., \code{"Southern California Bight"}, \code{"Pacific Northwest, USA"}).
+Biases the LLM toward regionally appropriate common names.  Has no effect
+on backbone-sourced results.  Default \code{NULL}.}
 
 \item{use_llm}{Logical.  If \code{TRUE} (default), taxa with no backbone
 result are sent to the LLM in a single batched call.  Set \code{FALSE} to
@@ -63,6 +69,12 @@ When \code{backbone_id} is not \code{3} or \code{11} (or is \code{NULL}),
 only the LLM is used.  A warning is issued for unsupported backbone IDs.
 When a backbone package is required but not installed, an error is thrown
 with installation instructions.
+
+The \code{location} parameter is passed to the LLM and biases name
+selection toward regionally appropriate common names (e.g., Pacific vs.
+Atlantic range variants, locally used vernacular names).  It has no effect
+on backbone-sourced results.  To apply geographic context to all names,
+set \code{backbone_id = NULL} so the LLM handles the full lookup.
 }
 \examples{
 \dontrun{
@@ -80,10 +92,11 @@ result2 <- scientific_to_common(
   backbone_id = 3L
 )
 
-# LLM only (no backbone query)
+# LLM only with geographic context
 result3 <- scientific_to_common(
-  c("Oncorhynchus mykiss", "Salmo salar"),
-  backbone_id = NULL
+  c("Eschrichtius robustus", "Oncorhynchus mykiss"),
+  backbone_id = NULL,
+  location    = "Southern California Bight, Pacific Ocean"
 )
 
 # Backbone with LLM fallback disabled (return NA when backbone finds nothing)

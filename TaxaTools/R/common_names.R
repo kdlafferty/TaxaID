@@ -315,15 +315,20 @@ common_to_scientific <- function(common_names,
 # Returns a data frame with columns: scientific_name, common_name,
 # common_name_alternatives (may be NA).
 #' @noRd
-.llm_common_names <- function(names, llm_fn, ...) {
+.llm_common_names <- function(names, llm_fn, location = NULL, ...) {
   names_block <- paste(
     vapply(seq_along(names), function(i)
       sprintf('  %d. "%s"', i, names[[i]]), character(1L)),
     collapse = "\n"
   )
+  location_line <- if (!is.null(location))
+    sprintf("\nGeographic context: %s. Prefer common names in use for this region.\n", location)
+  else
+    ""
   prompt <- paste0(
     "You are a taxonomist. Provide English common names for the following ",
-    "scientific names.\n\nScientific names:\n", names_block,
+    "scientific names.", location_line,
+    "\nScientific names:\n", names_block,
     "\n\nRespond with a JSON array only -- no markdown, no extra text. ",
     "Each element must have exactly these keys:\n",
     '  "scientific_name"           : the input scientific name (string)\n',
@@ -396,11 +401,21 @@ common_to_scientific <- function(common_names,
 #' When a backbone package is required but not installed, an error is thrown
 #' with installation instructions.
 #'
+#' The \code{location} parameter is passed to the LLM and biases name
+#' selection toward regionally appropriate common names (e.g., Pacific vs.
+#' Atlantic range variants, locally used vernacular names).  It has no effect
+#' on backbone-sourced results.  To apply geographic context to all names,
+#' set \code{backbone_id = NULL} so the LLM handles the full lookup.
+#'
 #' @param scientific_names Character vector of scientific names to look up.
 #' @param backbone_id Integer or \code{NULL}.  Backbone for structured lookup:
 #'   \code{11} = GBIF (default, uses \pkg{rgbif}), \code{3} = ITIS (uses
 #'   \pkg{taxize}).  Other values trigger a warning and fall through to the LLM.
 #'   \code{NULL} skips backbone lookup entirely.
+#' @param location Character string providing geographic context for the LLM
+#'   (e.g., \code{"Southern California Bight"}, \code{"Pacific Northwest, USA"}).
+#'   Biases the LLM toward regionally appropriate common names.  Has no effect
+#'   on backbone-sourced results.  Default \code{NULL}.
 #' @param use_llm Logical.  If \code{TRUE} (default), taxa with no backbone
 #'   result are sent to the LLM in a single batched call.  Set \code{FALSE} to
 #'   return \code{NA} for unresolved taxa instead.
@@ -440,10 +455,11 @@ common_to_scientific <- function(common_names,
 #'   backbone_id = 3L
 #' )
 #'
-#' # LLM only (no backbone query)
+#' # LLM only with geographic context
 #' result3 <- scientific_to_common(
-#'   c("Oncorhynchus mykiss", "Salmo salar"),
-#'   backbone_id = NULL
+#'   c("Eschrichtius robustus", "Oncorhynchus mykiss"),
+#'   backbone_id = NULL,
+#'   location    = "Southern California Bight, Pacific Ocean"
 #' )
 #'
 #' # Backbone with LLM fallback disabled (return NA when backbone finds nothing)
@@ -456,6 +472,7 @@ common_to_scientific <- function(common_names,
 #' @export
 scientific_to_common <- function(scientific_names,
                                  backbone_id = 11L,
+                                 location    = NULL,
                                  use_llm     = TRUE,
                                  llm_fn      = getOption("TaxaID.llm_fn"),
                                  ...) {
@@ -463,6 +480,8 @@ scientific_to_common <- function(scientific_names,
   # ---- input validation -------------------------------------------------------
   if (!is.character(scientific_names) || length(scientific_names) == 0L)
     stop("scientific_names must be a non-empty character vector", call. = FALSE)
+  if (!is.null(location) && (!is.character(location) || length(location) != 1L))
+    stop("location must be a single character string or NULL", call. = FALSE)
   if (!is.null(backbone_id)) {
     backbone_id <- as.integer(backbone_id)
     if (!backbone_id %in% c(3L, 11L)) {
@@ -515,7 +534,7 @@ scientific_to_common <- function(scientific_names,
   needs_llm <- out_source == "none"
   if (use_llm && any(needs_llm) && !is.null(llm_fn)) {
     llm_names <- scientific_names[needs_llm]
-    llm_res   <- .llm_common_names(llm_names, llm_fn, ...)
+    llm_res   <- .llm_common_names(llm_names, llm_fn, location = location, ...)
     llm_idx   <- which(needs_llm)
     for (j in seq_along(llm_idx)) {
       i <- llm_idx[[j]]
@@ -527,7 +546,7 @@ scientific_to_common <- function(scientific_names,
     }
   } else if (is.null(backbone_id) && !is.null(llm_fn)) {
     # backbone_id = NULL: pure LLM path for all names
-    llm_res <- .llm_common_names(scientific_names, llm_fn, ...)
+    llm_res <- .llm_common_names(scientific_names, llm_fn, location = location, ...)
     for (i in seq_len(n)) {
       if (!is.na(llm_res$common_name[[i]])) {
         out_cn[[i]]     <- llm_res$common_name[[i]]
