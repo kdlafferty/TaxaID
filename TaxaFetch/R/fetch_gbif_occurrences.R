@@ -23,8 +23,13 @@
 #'   queries.
 #' @param chunk_size Integer. Number of keys per API batch. Default 20.
 #'   Reduce if you experience HTTP 429 rate-limit errors; increase cautiously.
-#' @param pause_seconds Numeric. Seconds to pause between chunks. Default 1.
+#' @param pause_seconds Numeric. Seconds to pause between chunks. Default 2.
 #'   Increase to be polite to the API under heavy load.
+#' @param pause_between_keys Numeric. Seconds to pause between individual key
+#'   requests within a chunk. Default 0.5. Increase if 429 errors persist.
+#' @param max_retries Integer. Maximum number of retry attempts per key on
+#'   rate-limit (429) errors, using exponential backoff starting at 30 seconds.
+#'   Default 4 (waits up to ~4 minutes total per key before giving up).
 #' @param beep Logical. If \code{TRUE} and the \code{beepr} package is
 #'   available, plays a sound on completion. Falls back to a system bell
 #'   character if \code{beepr} is absent. Default \code{FALSE}.
@@ -87,11 +92,13 @@
 
 fetch_gbif_occurrences <- function(keys,
                                    geometry,
-                                   year_range    = "2000,2024",
-                                   limit         = 10000L,
-                                   chunk_size    = 20L,
-                                   pause_seconds = 1,
-                                   beep          = FALSE) {
+                                   year_range         = "2000,2024",
+                                   limit              = 10000L,
+                                   chunk_size         = 20L,
+                                   pause_seconds      = 2,
+                                   pause_between_keys = 0.5,
+                                   max_retries        = 4L,
+                                   beep               = FALSE) {
 
   # --- Dependency check -------------------------------------------------------
   if (!requireNamespace("rgbif", quietly = TRUE)) {
@@ -128,12 +135,14 @@ fetch_gbif_occurrences <- function(keys,
   for (i in seq_along(chunks)) {
     chunk_keys   <- chunks[[i]]
     chunk_result <- .fetch_chunk(
-      keys_chunk = chunk_keys,
-      geometry   = geometry,
-      year_range = year_range,
-      limit      = limit,
-      global_pos = global_pos,
-      total      = total
+      keys_chunk         = chunk_keys,
+      geometry           = geometry,
+      year_range         = year_range,
+      limit              = limit,
+      global_pos         = global_pos,
+      total              = total,
+      pause_between_keys = pause_between_keys,
+      max_retries        = max_retries
     )
     if (!is.null(chunk_result) && nrow(chunk_result) > 0L) {
       results[[i]] <- chunk_result
@@ -208,61 +217,68 @@ fetch_gbif_occurrences <- function(keys,
 #' @noRd
 
 .fetch_chunk <- function(keys_chunk, geometry, year_range, limit,
-                         global_pos, total) {
+                         global_pos, total,
+                         pause_between_keys = 0.5,
+                         max_retries        = 4L) {
 
   hierarchy_cols <- c("taxonKey", "speciesKey", "genusKey", "familyKey",
                       "orderKey",  "classKey",   "phylumKey", "kingdomKey",
                       "acceptedTaxonKey")
 
+  .is_rate_limit <- function(e) {
+    grepl("429|Too many requests|rate.limit", conditionMessage(e),
+          ignore.case = TRUE)
+  }
+
+  .fetch_one_key <- function(key) {
+    rgbif::occ_data(
+      taxonKey      = key,
+      geometry      = geometry,
+      year          = year_range,
+      limit         = limit,
+      hasCoordinate = TRUE
+    )
+  }
+
   per_key_results <- lapply(seq_along(keys_chunk), function(i) {
 
     key <- keys_chunk[[i]]
     pos <- global_pos + i
-
+    if (i > 1L) Sys.sleep(pause_between_keys)
     message(sprintf("  [%d / %d] key %d", pos, total, key))
 
-    tryCatch({
-      resp <- tryCatch(
-        rgbif::occ_data(
-          taxonKey      = key,
-          geometry      = geometry,
-          year          = year_range,
-          limit         = limit,
-          hasCoordinate = TRUE
-        ),
-        error = function(e1) {
-          # Retry once after a brief pause
-          Sys.sleep(2)
-          rgbif::occ_data(
-            taxonKey      = key,
-            geometry      = geometry,
-            year          = year_range,
-            limit         = limit,
-            hasCoordinate = TRUE
-          )
-        }
-      )
+    resp <- NULL
+    attempt <- 0L
+    repeat {
+      resp <- tryCatch(.fetch_one_key(key), error = function(e) e)
+      if (!inherits(resp, "error")) break
+      attempt <- attempt + 1L
+      if (.is_rate_limit(resp) && attempt <= max_retries) {
+        wait <- 30 * 2^(attempt - 1L)   # 30, 60, 120, 240 sec
+        message(sprintf(
+          "  Rate limit hit for key %d (attempt %d/%d). Waiting %d sec...",
+          key, attempt, max_retries, wait))
+        Sys.sleep(wait)
+      } else {
+        warning(sprintf(
+          "fetch_gbif_occurrences: key %d failed -- %s", key,
+          conditionMessage(resp)), call. = FALSE)
+        return(NULL)
+      }
+    }
 
-      df <- resp$data
-      if (is.null(df) || nrow(df) == 0L) return(NULL)
+    df <- resp$data
+    if (is.null(df) || nrow(df) == 0L) return(NULL)
 
-      # Hierarchy validation: confirm the query key appears somewhere in the
-      # returned record's taxonomic lineage. Drops off-target synonyms.
-      present_cols <- intersect(hierarchy_cols, names(df))
-      if (length(present_cols) == 0L) return(df)   # can't validate; keep all
+    # Hierarchy validation: confirm the query key appears somewhere in the
+    # returned record's taxonomic lineage. Drops off-target synonyms.
+    present_cols <- intersect(hierarchy_cols, names(df))
+    if (length(present_cols) == 0L) return(df)   # can't validate; keep all
 
-      # Vectorized: check if key appears in any hierarchy column per row
-      m <- as.matrix(df[present_cols])
-      storage.mode(m) <- "integer"
-      key_found <- rowSums(m == key, na.rm = TRUE) > 0L
-      df[key_found, , drop = FALSE]
-
-    }, error = function(e) {
-      warning(sprintf(
-        "fetch_gbif_occurrences: key %d failed -- %s", key, conditionMessage(e)
-      ), call. = FALSE)
-      NULL
-    })
+    m <- as.matrix(df[present_cols])
+    storage.mode(m) <- "integer"
+    key_found <- rowSums(m == key, na.rm = TRUE) > 0L
+    df[key_found, , drop = FALSE]
   })
 
   result <- dplyr::bind_rows(per_key_results)

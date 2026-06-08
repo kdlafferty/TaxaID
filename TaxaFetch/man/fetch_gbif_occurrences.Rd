@@ -10,7 +10,9 @@ fetch_gbif_occurrences(
   year_range = "2000,2024",
   limit = 10000L,
   chunk_size = 20L,
-  pause_seconds = 1,
+  pause_seconds = 2,
+  pause_between_keys = 0.5,
+  max_retries = 4L,
   beep = FALSE
 )
 }
@@ -34,8 +36,15 @@ queries.}
 \item{chunk_size}{Integer. Number of keys per API batch. Default 20.
 Reduce if you experience HTTP 429 rate-limit errors; increase cautiously.}
 
-\item{pause_seconds}{Numeric. Seconds to pause between chunks. Default 1.
+\item{pause_seconds}{Numeric. Seconds to pause between chunks. Default 2.
 Increase to be polite to the API under heavy load.}
+
+\item{pause_between_keys}{Numeric. Seconds to pause between individual key
+requests within a chunk. Default 0.5. Increase if 429 errors persist.}
+
+\item{max_retries}{Integer. Maximum number of retry attempts per key on
+rate-limit (429) errors, using exponential backoff starting at 30 seconds.
+Default 4 (waits up to ~4 minutes total per key before giving up).}
 
 \item{beep}{Logical. If \code{TRUE} and the \code{beepr} package is
 available, plays a sound on completion. Falls back to a system bell
