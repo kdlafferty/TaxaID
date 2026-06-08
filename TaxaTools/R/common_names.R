@@ -315,64 +315,78 @@ common_to_scientific <- function(common_names,
 # Returns a data frame with columns: scientific_name, common_name,
 # common_name_alternatives (may be NA).
 #' @noRd
-.llm_common_names <- function(names, llm_fn, location = NULL, ...) {
-  names_block <- paste(
-    vapply(seq_along(names), function(i)
-      sprintf('  %d. "%s"', i, names[[i]]), character(1L)),
-    collapse = "\n"
-  )
+.llm_common_names <- function(names, llm_fn, location = NULL,
+                              batch_size = 20L, ...) {
   location_line <- if (!is.null(location))
     sprintf("\nGeographic context: %s. Prefer common names in use for this region.\n", location)
   else
     ""
-  prompt <- paste0(
-    "You are a taxonomist. Provide English common names for the following ",
-    "scientific names.", location_line,
-    "\nScientific names:\n", names_block,
-    "\n\nRespond with a JSON array only -- no markdown, no extra text. ",
-    "Each element must have exactly these keys:\n",
-    '  "scientific_name"           : the input scientific name (string)\n',
-    '  "common_name"               : primary English common name, or null if none\n',
-    '  "common_name_alternatives"  : comma-separated list of other English common ',
-    'names as a single string, or null if none\n',
-    "\nReturn exactly ", length(names), " elements in the same order as the input list."
-  )
-  raw <- llm_fn(prompt, ...)
-  json_text <- gsub("(?s)^```(?:json)?\\s*", "", raw,  perl = TRUE)
-  json_text <- gsub("(?s)\\s*```$",           "", json_text, perl = TRUE)
-  json_text <- trimws(json_text)
-  parsed <- tryCatch(
-    jsonlite::fromJSON(json_text, simplifyDataFrame = TRUE),
-    error = function(e) NULL
-  )
-  if (is.null(parsed) || !is.data.frame(parsed) ||
-      !"scientific_name" %in% names(parsed)) {
-    warning("Could not parse LLM response as JSON for common name lookup.",
-            call. = FALSE)
-    return(data.frame(
-      scientific_name          = names,
-      common_name              = NA_character_,
-      common_name_alternatives = NA_character_,
+
+  .parse_one_batch <- function(batch_names) {
+    names_block <- paste(
+      vapply(seq_along(batch_names), function(i)
+        sprintf('  %d. "%s"', i, batch_names[[i]]), character(1L)),
+      collapse = "\n"
+    )
+    prompt <- paste0(
+      "You are a taxonomist. Provide English common names for the following ",
+      "scientific names.", location_line,
+      "\nScientific names:\n", names_block,
+      "\n\nRespond with a JSON array only -- no markdown, no extra text. ",
+      "Each element must have exactly these keys:\n",
+      '  "scientific_name"           : the input scientific name (string)\n',
+      '  "common_name"               : primary English common name, or null if none\n',
+      '  "common_name_alternatives"  : comma-separated list of other English common ',
+      'names as a single string, or null if none\n',
+      "\nReturn exactly ", length(batch_names),
+      " elements in the same order as the input list."
+    )
+    raw       <- llm_fn(prompt, ...)
+    json_text <- gsub("(?s)^```(?:json)?\\s*", "", raw,  perl = TRUE)
+    json_text <- gsub("(?s)\\s*```$",           "", json_text, perl = TRUE)
+    json_text <- trimws(json_text)
+    parsed <- tryCatch(
+      jsonlite::fromJSON(json_text, simplifyDataFrame = TRUE),
+      error = function(e) NULL
+    )
+    if (is.null(parsed) || !is.data.frame(parsed) ||
+        !"scientific_name" %in% names(parsed)) {
+      warning(sprintf(
+        "Could not parse LLM response as JSON for batch starting with '%s'.",
+        batch_names[[1L]]), call. = FALSE)
+      return(data.frame(
+        scientific_name          = batch_names,
+        common_name              = NA_character_,
+        common_name_alternatives = NA_character_,
+        stringsAsFactors         = FALSE
+      ))
+    }
+    llm_sci <- as.character(parsed$scientific_name)
+    llm_cn  <- if ("common_name" %in% names(parsed))
+                 as.character(parsed$common_name)
+               else rep(NA_character_, nrow(parsed))
+    llm_alt <- if ("common_name_alternatives" %in% names(parsed))
+                 as.character(parsed$common_name_alternatives)
+               else rep(NA_character_, nrow(parsed))
+    llm_cn[llm_cn   %in% c("NULL", "null", "NA")] <- NA_character_
+    llm_alt[llm_alt %in% c("NULL", "null", "NA")] <- NA_character_
+    idx <- match(tolower(trimws(batch_names)), tolower(trimws(llm_sci)))
+    data.frame(
+      scientific_name          = batch_names,
+      common_name              = ifelse(is.na(idx), NA_character_, llm_cn[idx]),
+      common_name_alternatives = ifelse(is.na(idx), NA_character_, llm_alt[idx]),
       stringsAsFactors         = FALSE
-    ))
+    )
   }
-  llm_sci  <- as.character(parsed$scientific_name)
-  llm_cn   <- if ("common_name" %in% names(parsed))
-                as.character(parsed$common_name) else rep(NA_character_, nrow(parsed))
-  llm_alt  <- if ("common_name_alternatives" %in% names(parsed))
-                as.character(parsed$common_name_alternatives)
-              else rep(NA_character_, nrow(parsed))
-  # Coerce JSON nulls
-  llm_cn[llm_cn  %in% c("NULL", "null", "NA")] <- NA_character_
-  llm_alt[llm_alt %in% c("NULL", "null", "NA")] <- NA_character_
-  # Align to input order
-  idx     <- match(tolower(trimws(names)), tolower(trimws(llm_sci)))
-  data.frame(
-    scientific_name          = names,
-    common_name              = ifelse(is.na(idx), NA_character_, llm_cn[idx]),
-    common_name_alternatives = ifelse(is.na(idx), NA_character_, llm_alt[idx]),
-    stringsAsFactors         = FALSE
-  )
+
+  # Split into batches and combine
+  n_batches <- ceiling(length(names) / batch_size)
+  batches   <- vector("list", n_batches)
+  for (b in seq_len(n_batches)) {
+    idx        <- ((b - 1L) * batch_size + 1L):min(b * batch_size, length(names))
+    batches[[b]] <- .parse_one_batch(names[idx])
+  }
+  do.call(rbind, batches)
 }
 
 
