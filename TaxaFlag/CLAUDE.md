@@ -144,6 +144,17 @@ frustrating than helpful; workflow scripts are more transparent.
 
 ---
 
+## Test Coverage
+
+| File | Functions covered | Notes |
+|---|---|---|
+| test-flag_contaminant.R | `flag_contaminant()` | Fully offline; covers all risk levels, custom thresholds, positive controls; uses Session 101 vocabulary (low/moderate/high) |
+| test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
+| test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
+| test-report_flags.R | `report_flags()` | Fully offline |
+
+---
+
 ## Session Notes
 
 Sessions 60–74 archived in ecosystem_docs/session_notes/TaxaFlag_sessions.md.

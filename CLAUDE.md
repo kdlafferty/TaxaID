@@ -126,21 +126,26 @@ devtools::install()    # required before using library(Package) from another pro
 switching to another project that calls the package.
 
 **⚠️ Claude Code instruction: whenever you make changes that require reinstall,**
-**end your response with an explicit block like this — do not assume the user knows:**
+**end your response with an explicit "To apply these changes" block using this exact pattern:**
 
+**If only TaxaTools changed:**
+```r
+.rs.restartR()
+devtools::install("~/My Drive/Rscripts/projects/TaxaID/TaxaTools")
+.rs.restartR()
 ```
-## To apply these changes
-1. Restart R (Session → Restart R, or Cmd+Shift+F10)
-2. In the TaxaTools project: `devtools::install()`
-3. [any additional packages in order]
-4. Then: `library(TaxaTools)` — confirm no errors before continuing
+
+**If multiple packages changed, or if unsure which downstream packages are affected:**
+```r
+.rs.restartR()
+source("~/My Drive/Rscripts/projects/TaxaID/ecosystem_docs/install_all.R")
+.rs.restartR()
 ```
 
-**If only one package changed, list only that one. If a downstream package depends**
-**on the changed package (e.g., TaxaHabitat imports TaxaTools), list both in order.**
-
-**Quick multi-package reinstall:** `source("~/My Drive/Rscripts/projects/TaxaID/ecosystem_docs/install_all.R")`
-(installs all packages in dependency order; see that file for per-package selective installs)
+**Always include two `.rs.restartR()` calls** — the first clears the stale session before
+installing, the second ensures the freshly installed packages are loaded cleanly.
+The `source()` line installs all packages in dependency order without opening each project.
+Do not tell the user to use Session → Restart R or Cmd+Shift+F10 (does not work on this machine).
 
 ---
 

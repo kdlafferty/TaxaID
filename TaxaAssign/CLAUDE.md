@@ -353,10 +353,21 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 
 ## Test Coverage
 
-| File | Status |
-|---|---|
-| `tests/testthat/test-compute_posterior.R` | 12 tests: Beta prior structure, uncertainty propagation, fixed-prior fallback, MC with likelihood-only uncertainty, n_sims=0, missing columns, NA handling, single-hypothesis, sort order, alpha/beta validation, high-vs-low phi |
-| `dev/test_compute_posterior.R` | 6 legacy manual tests (pre-Beta refactor; not wired into testthat) |
+| File | Functions covered | Notes |
+|---|---|---|
+| test-compute_posterior.R | `compute_posterior()` | 12 tests: Beta prior, uncertainty propagation, MC, n_sims=0, NA handling, sort order |
+| test-assign_taxa_llm.R | `assign_taxa_llm()` | LLM calls mocked |
+| test-build_context.R | `build_context()` | Fully offline |
+| test-expand_unreferenced.R | `expand_unreferenced_hypotheses()` | Fully offline |
+| test-generate_report.R | `generate_report()` | Fully offline |
+| test-integration.R | Full pipeline integration | Uses minimal fixtures |
+| test-join_priors.R | `join_priors()` | Fully offline |
+| test-posterior_consensus.R | `posterior_consensus()` | Includes winner_prior/winner_likelihood/winner_likelihood_cov columns (Session 101) |
+| test-report_assign.R | `report_assign()` | Fully offline |
+| test-run_pipelines.R | `run_bayesian_pipeline()`, `run_llm_pipeline()` | Mocked LLM |
+| test-score_consensus.R | `score_consensus()` | Fully offline |
+| test-suggest_unreferenced_species.R | `suggest_unreferenced_species()` | LLM mocked |
+| test-update_prior.R | `update_prior_from_consensus()` | Fully offline |
 
 ---
 

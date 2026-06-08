@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 92 — call_api() gains show_tokens + max_input_tokens params; token usage attached as attr)
+# Last updated: 2026-06-08 (Session 102 — scientific_to_common(); token_usage()/reset_token_usage(); %||% Rd fix)
 
 ---
 
@@ -76,11 +76,14 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `common_to_scientific()` | Convert a character vector of common names to scientific names via LLM, with optional backbone verification via `verify_taxon_names()`. Params: `taxonomic_group`, `location`, `verify`, `backbone_id`, `llm_fn`. Returns data frame with `common_name`, `scientific_name`, `verified`, `matched_name`. | Complete | R/common_names.R |
+| `scientific_to_common()` | Convert scientific names to English common names. Backbone sources: GBIF (backbone_id=11, via rgbif) or ITIS (backbone_id=3, via taxize). LLM fallback when backbone returns nothing or backbone_id=NULL. `location` param biases LLM toward regionally appropriate names. Batches LLM calls (20/batch). Returns `scientific_name`, `common_name`, `common_name_alternatives` (semicolon-delimited), `source` ("gbif"/"itis"/"llm"/"none"), `backbone_id`. | Complete | R/common_names.R |
 
 ### LLM text generation functions (Session 55)
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
+| `token_usage()` | Return accumulated LLM token records as data frame. `by` param: "call" (per-call detail), "function" (totals per caller), "provider", "session" (grand total). Optional `cost_per_1k_input`/`cost_per_1k_output` adds `cost_usd` column. Auto-populated by `call_api()` — no changes needed in downstream packages. | Complete | R/token_usage.R |
+| `reset_token_usage()` | Clear the session token ledger. Call before a workflow step for per-step accounting. | Complete | R/token_usage.R |
 | `build_report_context()` | Domain-agnostic S3 context object with verified facts for grounding LLM output | Complete | R/draft_text.R |
 | `draft_methods_text()` | Read R code and draft Methods section via LLM; context-aware; audience param | Complete | R/draft_text.R |
 | `draft_results_text()` | Read R objects and draft Results section via LLM; context-aware; audience param | Complete | R/draft_text.R |
@@ -109,7 +112,8 @@ rename_cols()           # align column names to DarwinCore
 | test-change_backbone.R | `change_backbone()` | Fully offline; uses mock verified tibbles |
 | test-rename_cols.R | `rename_cols()` | Fully offline |
 | test-to_faire.R | `to_faire()` | Fully offline; 52 tests covering renames, constructed columns, attribute, missing-column handling, validation |
-| test-common-names.R | `common_to_scientific()` | Offline unit tests; LLM/backbone calls skipped |
+| test-common-names.R | `common_to_scientific()`, `scientific_to_common()` | Offline; backbone calls mocked via `local_mocked_bindings()`; location param verified via prompt capture; 52 tests |
+| test-token_usage.R | `token_usage()`, `reset_token_usage()` | Fully offline; mocks `.token_ledger` directly |
 | test-rank_utils.R | `standard_ranks`, `extended_ranks`, `detect_ranks()` | Fully offline |
 | test-barcode_utils.R | `barcode_length_defaults`, `resolve_barcode_lengths()` | Fully offline |
 | test-null_coalesce.R | `%\|\|%` | Fully offline |

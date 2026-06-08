@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-26 (Session 87 — call_api_pdf() generalized to all vision providers)
+# Last updated: 2026-06-08 (Session 102 — fetch_gbif_occurrences() exponential backoff; missing functions added)
 
 ---
 
@@ -22,7 +22,9 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
-| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys | Complete | R/fetch_gbif_occurrences.R |
+| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys. `pause_between_keys` (default 0.5s) pauses between individual key calls within a chunk; `max_retries` (default 4) applies exponential backoff (30/60/120/240s) on HTTP 429 rate-limit errors. | Complete | R/fetch_gbif_occurrences.R |
+| `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
+| `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble | Complete | R/biotime_fetch.R |
 | `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained | Complete | R/filter_gbif_quality.R |
 | `screen_eml_columns()` | Fetch EML; check bbox overlap; detect lat/lon columns | Complete | R/dataone_eml_screen.R |
 | `preview_dataone_occurrences()` | Pre-download scout; `dataone_preview` S3 class | Complete | R/dataone_preview.R |
@@ -161,6 +163,26 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 4. ~~GITA multi-table functions~~ — dropped: `rename_cols()` + `stack_occurrences()` cover the same use case (Session 63)
 5. ~~Data source citation capture~~ — implemented (Session 63): `bibliographicCitation` column added to `fetch_gbif_occurrences()`, `standardize_dataone_occurrences()`, `read_biotime_study()`; PDF pipeline already had it via `search_literature()`
 6. ~~ReefCheck + Reef Life Survey~~ — resolved (Session 64): both already in GBIF (RLS global reef fish dataset, RCCA rocky reef dataset, Reef Check Taiwan). No separate fetch functions needed.
+
+---
+
+## Test Coverage
+
+| File | Functions covered | Notes |
+|---|---|---|
+| test-fetch_gbif_occurrences.R | `fetch_gbif_occurrences()` | Mocked rgbif; covers 429 retry/backoff |
+| test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline |
+| test-get_keys_from_context.R | `get_keys_from_context()` | Mocked rgbif |
+| test-make_bbox_wkt.R | `make_bbox_wkt()` | Fully offline |
+| test-stack_occurrences.R | `stack_occurrences()` | 22 tests; fully offline |
+| test-report_fetch.R | `report_fetch()` | Fully offline |
+| test-biotime_fetch.R | `read_biotime_study()` | Fully offline |
+| test-dataone_standardize.R | `fetch_dataone_occurrences()` | Mocked DataONE API |
+| test-dataone_taxon_screening_geo.R | `build_taxon_screen_prompt()`, `parse_taxon_screening_response()`, `build_geo_prompt()`, `parse_geo_screening_response()` | LLM mocked |
+| test-literature_search.R | `search_literature()`, `download_literature_pdfs()` | OpenAlex calls mocked |
+| test-llm_api_utils.R | legacy — functions now in TaxaTools | Skipped or stale |
+| test-parse_hierarchical_habitat_response.R | legacy — function now in TaxaHabitat | Skipped or stale |
+| test-build_iucn_scheme.R | legacy — function now in TaxaHabitat | Skipped or stale |
 
 ---
 

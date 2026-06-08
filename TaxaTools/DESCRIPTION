@@ -13,6 +13,7 @@ Description: Provides helper functions for cleaning, verifying, and
     drafting methods and results sections. Part of the TaxaID ecosystem.
 License: CC0
 Encoding: UTF-8
+Depends: R (>= 4.1.0)
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests:
@@ -22,6 +23,7 @@ Suggests:
     rmarkdown,
     taxize,
     testthat (>= 3.0.0),
+    withr,
     xml2
 Config/testthat/edition: 3
 Imports:
