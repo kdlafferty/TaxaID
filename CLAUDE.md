@@ -125,6 +125,23 @@ devtools::install()    # required before using library(Package) from another pro
 **Rule:** `document()` alone for in-package editing/testing; add `install()` when
 switching to another project that calls the package.
 
+**⚠️ Claude Code instruction: whenever you make changes that require reinstall,**
+**end your response with an explicit block like this — do not assume the user knows:**
+
+```
+## To apply these changes
+1. Restart R (Session → Restart R, or Cmd+Shift+F10)
+2. In the TaxaTools project: `devtools::install()`
+3. [any additional packages in order]
+4. Then: `library(TaxaTools)` — confirm no errors before continuing
+```
+
+**If only one package changed, list only that one. If a downstream package depends**
+**on the changed package (e.g., TaxaHabitat imports TaxaTools), list both in order.**
+
+**Quick multi-package reinstall:** `source("~/My Drive/Rscripts/projects/TaxaID/ecosystem_docs/install_all.R")`
+(installs all packages in dependency order; see that file for per-package selective installs)
+
 ---
 
 ## Coding Conventions
