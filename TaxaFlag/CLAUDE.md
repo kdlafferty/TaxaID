@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-09 (Session 104 — flag_prior_mismatch())
+# Last updated: 2026-06-09 (Session 104 — add_posthoc_assessment())
 
 ---
 
@@ -68,7 +68,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
 | `.recover_truncated_json()` | `R/review_assignments.R` | Written | Internal: salvage complete JSON objects from truncated LLM response |
 
-| `flag_prior_mismatch()` | `R/flag_prior_mismatch.R` | Written | Flag assignments where winner is driven by prior rather than likelihood. Two patterns: `"prior_driven"` (winner_likelihood low) and `"unexpected_winner"` (winner_prior low + adequate likelihood). Adds `prior_mismatch_risk`/`_score`/`_reason`. Uses `winner_prior`/`winner_likelihood` columns from `posterior_consensus()`. |
+| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Seven categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`. Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. |
 
 **Dropped (Session 62):** `flag_allochthonous()` and `flag_taxonomic_scope()` -- absorbed
 into `review_assignments()`. One LLM call covers habitat, geography, scope, contaminant
@@ -154,7 +154,7 @@ frustrating than helpful; workflow scripts are more transparent.
 | test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
 | test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
 | test-report_flags.R | `report_flags()` | Fully offline |
-| test-flag_prior_mismatch.R | `flag_prior_mismatch()` | Fully offline; 27 tests; covers risk levels, unexpected winner, NA handling, missing prior col, custom thresholds |
+| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 26 tests; covers all 7 categories, tier3, boundary threshold, custom columns, NA handling, validation |
 
 ---
 
