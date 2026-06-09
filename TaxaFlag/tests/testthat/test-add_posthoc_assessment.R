@@ -58,6 +58,15 @@ test_that("non-species rank -> vague_rank", {
   expect_equal(out$posthoc_assessment[out$observation_id == "obs6"], "vague_rank")
 })
 
+test_that("NA consensus_rank -> vague_rank (not suspect)", {
+  cons <- .make_cons()
+  cons$consensus_rank[cons$observation_id == "obs7"] <- NA
+  cons$consensus_taxon[cons$observation_id == "obs7"] <- NA
+  cons$winner_likelihood[cons$observation_id == "obs7"] <- 0.10
+  out <- add_posthoc_assessment(cons, .make_tiers())
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs7"], "vague_rank")
+})
+
 test_that("NA winner_likelihood -> modeled", {
   out <- add_posthoc_assessment(.make_cons(), .make_tiers())
   expect_equal(out$posthoc_assessment[out$observation_id == "obs7"], "modeled")

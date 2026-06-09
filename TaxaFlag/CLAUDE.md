@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-09 (Session 104 — add_posthoc_assessment())
+# Last updated: 2026-06-08 (Session 104 — add_posthoc_assessment(); NA-rank vague_rank bug fix)
 
 ---
 
@@ -154,7 +154,7 @@ frustrating than helpful; workflow scripts are more transparent.
 | test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
 | test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
 | test-report_flags.R | `report_flags()` | Fully offline |
-| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 26 tests; covers all 7 categories, tier3, boundary threshold, custom columns, NA handling, validation |
+| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 27 tests; covers all 7 categories, tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank) |
 
 ---
 
@@ -195,3 +195,9 @@ Sessions 60–74 archived in ecosystem_docs/session_notes/TaxaFlag_sessions.md.
 - Updated values: plausibility columns use `"likely"/"possible"/"unlikely"` (positive = plausible genuine detection); `contamination_risk` uses `"low"/"moderate"/"high"` (positive = more risk).
 - Renamed `flag_contaminant()` output columns: `flag_{type}` → `{type}_risk`, `flag_{type}_score` → `{type}_score`, `flag_{type}_reason` → `{type}_reason`. Values changed: `"likely"` → `"low"`, `"possible"` → `"moderate"`, `"unlikely"` → `"high"` (direction flipped — old "likely" meant real detection; new "low" risk means real detection; both mean same thing).
 - Updated Flag Column Convention in CLAUDE.md; updated workflows, tests, and prompts throughout.
+
+**Session 104 (2026-06-08): add_posthoc_assessment() + NA-rank bug fix**
+- `add_posthoc_assessment()` added: single categorical column `posthoc_assessment` combining tier × likelihood into 7 categories (`sensible`, `limited_evidence`, `unexpected`, `suspect`, `unprecedented`, `vague_rank`, `modeled`). Replaces rejected `flag_prior_mismatch()` design.
+- Bug fix: `vague_rank` mask was `!is.na(rank) & rank != finest_rank`; NA rank fell through to active path, getting treated as tier2 → "suspect". Fixed to `is.na(rank) | rank != finest_rank` so NA-rank rows correctly receive "vague_rank".
+- `flag_prior_mismatch.R` and associated man/tests deleted.
+- PtConceptionWorkflow_12S.R and _18S.R updated to use `add_posthoc_assessment()`.

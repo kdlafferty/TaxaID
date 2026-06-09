@@ -140,8 +140,8 @@ add_posthoc_assessment <- function(
   # ---- classify ----------------------------------------------------------------
   assessment <- character(n)
 
-  # Step 1: vague_rank — non-species (or NA) consensus rank
-  vague_mask <- !is.na(rank) & rank != finest_rank
+  # Step 1: vague_rank — NA or non-species consensus rank
+  vague_mask <- is.na(rank) | rank != finest_rank
   assessment[vague_mask] <- "vague_rank"
 
   # Step 2: modeled — NA likelihood (not already vague_rank)
