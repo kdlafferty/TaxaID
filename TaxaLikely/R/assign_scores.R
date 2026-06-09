@@ -24,6 +24,11 @@ utils::globalVariables(c("score_norm", "score_softmax",
 #'   \item{\code{"none"}}{No score column available.  All rows receive
 #'     \code{score_likelihood = 1.0} (uniform / degenerate likelihoods).
 #'     Posteriors are proportional to priors.}
+#'   \item{\code{"direct"}}{Passes \code{score_col} through unchanged as
+#'     \code{score_likelihood}.  Rows with \code{NA} scores receive
+#'     \code{score_likelihood = 1.0}.  Intended for use after
+#'     [restore_suppressed_candidates()], which pre-imputes scores for
+#'     restored rows.  No per-observation aggregation is performed.}
 #'   \item{\code{"probability"}}{Neural-net softmax outputs (e.g., BirdNET
 #'     multi-candidate output, iNaturalist CV scores) already on a 0–1 scale.
 #'     H1 scores are ratio-normalized (\eqn{/} max) so the best candidate
@@ -56,7 +61,7 @@ utils::globalVariables(c("score_norm", "score_softmax",
 #'   Must contain \code{observation_id} and \code{hypothesis_type}.  For all
 #'   \code{score_type} values except \code{"none"}, must also contain the
 #'   column named by \code{score_col} for \code{"specific_candidate"} rows.
-#' @param score_type Character scalar. One of \code{"none"},
+#' @param score_type Character scalar. One of \code{"none"}, \code{"direct"},
 #'   \code{"probability"}, \code{"similarity_softmax"}, or
 #'   \code{"similarity"}.
 #' @param score_col Character. Name of the raw score column in
@@ -103,7 +108,7 @@ assign_scores <- function(hypotheses_df,
   # ---- validate ---------------------------------------------------------------
   if (!is.data.frame(hypotheses_df))
     stop("`hypotheses_df` must be a data frame.", call. = FALSE)
-  valid_types <- c("none", "probability", "similarity_softmax", "similarity")
+  valid_types <- c("none", "direct", "probability", "similarity_softmax", "similarity")
   if (!is.character(score_type) || length(score_type) != 1L ||
       !score_type %in% valid_types)
     stop(sprintf("`score_type` must be one of: %s.",
@@ -138,6 +143,23 @@ assign_scores <- function(hypotheses_df,
     hypotheses_df$score_likelihood_mean <- 1.0
     hypotheses_df$score_likelihood_sd   <- 0.0
     hypotheses_df$score_method          <- "none"
+    return(hypotheses_df)
+  }
+
+  # ---- "direct" pathway -------------------------------------------------------
+  # Passes the score column through unchanged as score_likelihood.
+  # NA rows receive 1.0 (non-discriminating).
+  # Intended for use after restore_suppressed_candidates(), where original rows
+  # carry their real scores and restored rows carry pre-imputed scores.
+  if (score_type == "direct") {
+    if (!score_col %in% names(hypotheses_df))
+      stop(sprintf("`score_col` '%s' not found in `hypotheses_df`.", score_col),
+           call. = FALSE)
+    sc <- hypotheses_df[[score_col]]
+    hypotheses_df$score_likelihood      <- ifelse(is.na(sc), 1.0, sc)
+    hypotheses_df$score_likelihood_mean <- hypotheses_df$score_likelihood
+    hypotheses_df$score_likelihood_sd   <- 0.0
+    hypotheses_df$score_method          <- "direct"
     return(hypotheses_df)
   }
 

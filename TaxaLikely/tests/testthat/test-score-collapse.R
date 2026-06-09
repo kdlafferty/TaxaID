@@ -1,36 +1,36 @@
-# Tests for detect_score_collapse() and restore_suppressed_candidates()
+# Tests for detect_suppressed_candidates() and restore_suppressed_candidates()
 # All tests are fully offline.
 
-# ---- detect_score_collapse() -------------------------------------------------
+# ---- detect_suppressed_candidates() ------------------------------------------
 
-test_that("detect_score_collapse detects perfect_only rule (0-100 scale)", {
+test_that("detect_suppressed_candidates detects perfect_only rule (0-100 scale)", {
+  # obs1, obs2: singletons at 100; obs3: two rows below 100
   m <- data.frame(
     observation_id = c("obs1", "obs2", "obs3", "obs3"),
     score_original = c(100, 100, 98, 97),
     taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
-  res <- detect_score_collapse(m)
+  res <- detect_suppressed_candidates(m)
   expect_true(res$rule_detected)
-  expect_equal(res$type, "perfect_only")
-  expect_equal(res$n_perfect_only, 2L)
-  expect_equal(res$n_ties_only, 0L)
-  expect_equal(res$n_total, 3L)
+  expect_true(res$perfect_only)
+  expect_false(res$max_score_ties)
+  expect_equal(res$n_perfect_obs, 2L)
+  expect_equal(res$purity_perfect, 1.0)
 })
 
-test_that("detect_score_collapse detects perfect_only rule (0-1 scale)", {
+test_that("detect_suppressed_candidates detects perfect_only rule (0-1 scale)", {
   m <- data.frame(
     observation_id = c("obs1", "obs2", "obs3", "obs3"),
     score_original = c(1.0, 1.0, 0.97, 0.95),
     taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
-  res <- detect_score_collapse(m)
-  expect_true(res$rule_detected)
-  expect_equal(res$type, "perfect_only")
+  res <- detect_suppressed_candidates(m, perfect_threshold = 1.0)
+  expect_true(res$perfect_only)
 })
 
-test_that("detect_score_collapse detects max_score_ties rule", {
+test_that("detect_suppressed_candidates detects max_score_ties rule", {
   # obs1: two candidates at same score (ties); obs2: singleton below perfect
   m <- data.frame(
     observation_id = c("obs1", "obs1", "obs2"),
@@ -38,78 +38,132 @@ test_that("detect_score_collapse detects max_score_ties rule", {
     taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
     stringsAsFactors = FALSE
   )
-  res <- detect_score_collapse(m)
+  res <- detect_suppressed_candidates(m)
   expect_true(res$rule_detected)
-  expect_equal(res$type, "max_score_ties")
-  expect_equal(res$n_ties_only, 1L)
-  expect_equal(res$n_perfect_only, 0L)
+  expect_true(res$max_score_ties)
+  expect_false(res$perfect_only)
+  expect_equal(res$n_multi_obs, 1L)
+  expect_equal(res$purity_ties, 1.0)
 })
 
-test_that("detect_score_collapse returns 'both' when both patterns present", {
+test_that("detect_suppressed_candidates detects best_only rule", {
+  # All observations have exactly one row
   m <- data.frame(
-    observation_id = c("obs1", "obs2", "obs2", "obs3", "obs3"),
-    score_original = c(100,   98,    98,    97,    93),
-    taxon_name     = c("A",   "B",   "C",   "D",   "E"),
+    observation_id = c("obs1", "obs2", "obs3"),
+    score_original = c(98, 97, 95),
+    taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
     stringsAsFactors = FALSE
   )
-  # obs1: singleton at 100 -> perfect_only
-  # obs2: two candidates at same score -> ties_only
-  # obs3: two candidates at different scores -> neither
-  res <- detect_score_collapse(m)
-  expect_true(res$rule_detected)
-  expect_equal(res$type, "both")
+  res <- detect_suppressed_candidates(m)
+  expect_true(res$best_only)
+  expect_equal(res$frac_singleton, 1.0)
 })
 
-test_that("detect_score_collapse returns none for normal multi-candidate data", {
+test_that("detect_suppressed_candidates detects both perfect_only and max_score_ties", {
+  # obs1: singleton at 100 -> perfect_only
+  # obs2, obs3: two candidates at tied scores -> max_score_ties (purity = 2/2 = 1.0)
+  m <- data.frame(
+    observation_id = c("obs1", "obs2", "obs2", "obs3", "obs3"),
+    score_original = c(100,    98,    98,    97,    97),
+    taxon_name     = c("A",    "B",   "C",   "D",   "E"),
+    stringsAsFactors = FALSE
+  )
+  res <- detect_suppressed_candidates(m)
+  expect_true(res$perfect_only)
+  expect_true(res$max_score_ties)
+  expect_true(res$rule_detected)
+  expect_equal(sort(res$rules), sort(c("perfect_only", "max_score_ties")))
+})
+
+test_that("detect_suppressed_candidates returns no rules for normal multi-candidate data", {
   m <- data.frame(
     observation_id = c("obs1", "obs1", "obs2", "obs2"),
     score_original = c(98, 95, 97, 93),
     taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
-  res <- detect_score_collapse(m)
+  res <- detect_suppressed_candidates(m)
   expect_false(res$rule_detected)
-  expect_equal(res$type, "none")
+  expect_false(res$perfect_only)
+  expect_false(res$max_score_ties)
+  expect_false(res$best_only)
+  expect_equal(res$rules, character(0L))
 })
 
-test_that("detect_score_collapse respects min_fraction threshold", {
-  # obs1 is singleton at 100; obs2..obs25 each have 2 candidates at different scores
-  # fraction_perfect_only = 1/25 = 0.04
-  obs_ids <- c("obs1", rep(paste0("obs", 2:25), each = 2L))
-  scores  <- c(100, rep(c(98, 95), 24L))
+test_that("detect_suppressed_candidates respects purity_threshold for Rule 1", {
+  # obs1: singleton at 100 (pure); obs2: 100 + 97 (impure — has sub-threshold row)
   m <- data.frame(
-    observation_id = obs_ids,
-    score_original = scores,
-    taxon_name     = paste0("Sp_", seq_along(obs_ids)),
+    observation_id = c("obs1", "obs2", "obs2"),
+    score_original = c(100,    100,   97),
+    taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
     stringsAsFactors = FALSE
   )
-  # 0.04 < 0.05 -> not detected at default threshold
-  res <- detect_score_collapse(m, min_fraction = 0.05)
-  expect_false(res$rule_detected)
-
-  # 0.04 > 0.03 -> detected at relaxed threshold
-  res2 <- detect_score_collapse(m, min_fraction = 0.03)
-  expect_true(res2$rule_detected)
+  # purity_perfect = 1/2 = 0.50; threshold 0.50 -> detect
+  res50 <- detect_suppressed_candidates(m, purity_threshold = 0.50)
+  expect_true(res50$perfect_only)
+  # threshold 0.60 -> do not detect
+  res60 <- detect_suppressed_candidates(m, purity_threshold = 0.60)
+  expect_false(res60$perfect_only)
 })
 
-test_that("detect_score_collapse errors on missing score column", {
-  m <- data.frame(observation_id = "obs1", taxon_name = "Sp_A")
-  expect_error(detect_score_collapse(m), "score column")
+test_that("detect_suppressed_candidates respects purity_threshold for Rule 2", {
+  # obs1: tied; obs2: not tied (different scores)
+  m <- data.frame(
+    observation_id = c("obs1", "obs1", "obs2", "obs2"),
+    score_original = c(98,     98,    97,    93),
+    taxon_name     = c("A",    "B",   "C",   "D"),
+    stringsAsFactors = FALSE
+  )
+  # purity_ties = 1/2 = 0.50; threshold 0.50 -> detect
+  res50 <- detect_suppressed_candidates(m, purity_threshold = 0.50)
+  expect_true(res50$max_score_ties)
+  # threshold 0.60 -> do not detect
+  res60 <- detect_suppressed_candidates(m, purity_threshold = 0.60)
+  expect_false(res60$max_score_ties)
 })
 
-test_that("detect_score_collapse errors on missing observation_id column", {
+test_that("detect_suppressed_candidates respects user-supplied perfect_threshold", {
+  # obs1: score = 97 (below default 100, but above custom threshold 95)
+  m <- data.frame(
+    observation_id = c("obs1", "obs2"),
+    score_original = c(97, 96),
+    taxon_name     = c("Sp_A", "Sp_B"),
+    stringsAsFactors = FALSE
+  )
+  # default threshold 100: no perfect obs -> perfect_only = FALSE
+  res_default <- detect_suppressed_candidates(m)
+  expect_false(res_default$perfect_only)
+  # custom threshold 95: both obs are "perfect"
+  res_custom <- detect_suppressed_candidates(m, perfect_threshold = 95)
+  expect_true(res_custom$perfect_only)
+})
+
+test_that("detect_suppressed_candidates handles absent score column (best_only only)", {
+  m <- data.frame(observation_id = c("obs1", "obs2", "obs3"),
+                  taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
+                  stringsAsFactors = FALSE)
+  res <- detect_suppressed_candidates(m)
+  expect_false(res$has_score_col)
+  expect_false(res$perfect_only)
+  expect_false(res$max_score_ties)
+  # best_only: all three are singletons -> frac = 1.0 -> TRUE
+  expect_true(res$best_only)
+})
+
+test_that("detect_suppressed_candidates errors on missing observation_id column", {
   m <- data.frame(score_original = 100, taxon_name = "Sp_A")
-  expect_error(detect_score_collapse(m), "observation ID column")
+  expect_error(detect_suppressed_candidates(m), "observation_id")
 })
 
-test_that("detect_score_collapse example_observations contains affected IDs", {
+test_that("detect_suppressed_candidates example_observations contains affected IDs", {
   m <- data.frame(
     observation_id = c("ESV001", "ESV002", "ESV003", "ESV003"),
     score_original = c(100, 100, 98, 95),
     taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
-  res <- detect_score_collapse(m)
+  res <- detect_suppressed_candidates(m)
+  # ESV001 and ESV002 are pure-perfect singletons
   expect_true(all(res$example_observations %in% c("ESV001", "ESV002")))
 })
 
@@ -148,7 +202,7 @@ test_that("restore_suppressed_candidates adds congeners from reference", {
   )
   expect_equal(nrow(result), 3L)  # 1 original + 2 restored
   expect_true(any(result$is_restored))
-  expect_setequal(result$taxon_name,
+  expect_setequal(result$species,
                   c("simplicidens", "nigricans", "laevifrons"))
 })
 
@@ -173,36 +227,26 @@ test_that("restore_suppressed_candidates marks hypothesis_type = suppressed_cand
   expect_true(all(restored$hypothesis_type == "suppressed_candidate"))
 })
 
-test_that("restore_suppressed_candidates imputes sub_max score on 0-100 scale", {
+test_that("restore_suppressed_candidates imputes score using delta (0-100 scale)", {
   result <- restore_suppressed_candidates(
     make_match(score = 100), make_ref(),
     rank_system = c("family", "genus", "species"),
-    score_rule = "sub_max", verbose = FALSE
+    delta = 0.5, verbose = FALSE
   )
   restored <- result[result$is_restored, ]
-  expect_true(all(restored$score_original == 99))
+  expect_true(all(abs(restored$score_original - 99.5) < 1e-9))
 })
 
-test_that("restore_suppressed_candidates imputes sub_max score on 0-1 scale", {
+test_that("restore_suppressed_candidates imputes score using delta (0-1 scale)", {
   m <- make_match(score = 1.0)
-  m$score_original <- 1.0
   result <- restore_suppressed_candidates(
     m, make_ref(),
     rank_system = c("family", "genus", "species"),
-    score_rule = "sub_max", verbose = FALSE
+    delta = 0.5, verbose = FALSE
   )
   restored <- result[result$is_restored, ]
-  expect_true(all(abs(restored$score_original - 0.99) < 1e-9))
-})
-
-test_that("restore_suppressed_candidates accepts fixed numeric score_rule", {
-  result <- restore_suppressed_candidates(
-    make_match(), make_ref(),
-    rank_system = c("family", "genus", "species"),
-    score_rule = 97.5, verbose = FALSE
-  )
-  restored <- result[result$is_restored, ]
-  expect_true(all(restored$score_original == 97.5))
+  # delta/100 = 0.005; imputed = 1.0 - 0.005 = 0.995
+  expect_true(all(abs(restored$score_original - 0.995) < 1e-9))
 })
 
 test_that("restore_suppressed_candidates respects max_per_obs", {
@@ -212,7 +256,6 @@ test_that("restore_suppressed_candidates respects max_per_obs", {
     rank_system = c("family", "genus", "species"),
     max_per_obs = 4L, verbose = FALSE
   )
-  # original + 4 restored (cap applied; Sp_A excluded as H1)
   expect_equal(sum(result$is_restored), 4L)
 })
 
@@ -230,7 +273,8 @@ test_that("restore_suppressed_candidates skips when no congeners in reference", 
   expect_false(any(result$is_restored))
 })
 
-test_that("restore_suppressed_candidates does nothing when no singletons", {
+test_that("restore_suppressed_candidates does nothing when no rule detected", {
+  # Two rows at different scores -> no rule detected
   m <- rbind(make_match("obs1", 100, "Girella", "simplicidens"),
              make_match("obs1", 98,  "Girella", "nigricans"))
   result <- restore_suppressed_candidates(
@@ -242,32 +286,24 @@ test_that("restore_suppressed_candidates does nothing when no singletons", {
   expect_false(any(result$is_restored))
 })
 
-test_that("restore_suppressed_candidates perfect_only=FALSE restores sub-perfect singletons", {
-  m <- make_match(score = 97)  # below perfect threshold (100)
-  result_default <- restore_suppressed_candidates(
-    m, make_ref(),
-    rank_system = c("family", "genus", "species"),
-    perfect_only = TRUE, verbose = FALSE
+test_that("restore_suppressed_candidates targets all obs for best_only rule", {
+  # best_only: three singletons at sub-perfect scores
+  m <- rbind(
+    make_match("obs1", 97, "Girella", "simplicidens"),
+    make_match("obs2", 96, "Girella", "nigricans"),
+    make_match("obs3", 95, "Girella", "laevifrons")
   )
-  result_all <- restore_suppressed_candidates(
-    m, make_ref(),
-    rank_system = c("family", "genus", "species"),
-    perfect_only = FALSE, verbose = FALSE
-  )
-  expect_equal(nrow(result_default), 1L)   # no restoration (perfect_only default)
-  expect_equal(nrow(result_all), 3L)       # 1 + 2 restored
-})
-
-test_that("restore_suppressed_candidates respects min_score floor", {
   result <- restore_suppressed_candidates(
-    make_match(score = 100), make_ref(),
+    m, make_ref(),
     rank_system = c("family", "genus", "species"),
-    score_rule = "sub_max",   # imputed = 99
-    min_score  = 99.5,        # 99 < 99.5 -> nothing added
     verbose = FALSE
   )
-  expect_equal(nrow(result), 1L)
-  expect_false(any(result$is_restored))
+  # Each obs gains congeners that were not its own species; laevifrons for obs1/obs2,
+  # nigricans for obs1/obs3, simplicidens for obs2/obs3.
+  expect_true(sum(result$is_restored) > 0L)
+  # All 3 original observations should have restored rows
+  obs_with_restored <- unique(result[[1]][result$is_restored])
+  expect_equal(length(obs_with_restored), 3L)
 })
 
 test_that("restore_suppressed_candidates handles accession column", {
@@ -298,20 +334,17 @@ test_that("restore_suppressed_candidates clears coverage for restored rows", {
   expect_equal(result$coverage[!result$is_restored], 0.98)
 })
 
-test_that("restore_suppressed_candidates errors on missing score column", {
-  expect_error(
-    restore_suppressed_candidates(make_match(), make_ref(),
-                                   score_col = "no_such_col",
-                                   rank_system = c("family", "genus", "species")),
-    "score column"
+test_that("restore_suppressed_candidates no-score path creates synthetic scores", {
+  m <- make_match()
+  m$score_original <- NULL  # remove score column
+  result <- restore_suppressed_candidates(
+    m, make_ref(),
+    rank_system = c("family", "genus", "species"),
+    delta = 0.5, verbose = FALSE
   )
-})
-
-test_that("restore_suppressed_candidates errors on invalid score_rule", {
-  expect_error(
-    restore_suppressed_candidates(make_match(), make_ref(),
-                                   rank_system = c("family", "genus", "species"),
-                                   score_rule = "h1_mean"),
-    "score_rule"
-  )
+  expect_true("score_original" %in% names(result))
+  # Original rows: H1 score = 1.0
+  expect_equal(result$score_original[!result$is_restored], 1.0)
+  # Restored rows: 1.0 - delta/100 = 0.995
+  expect_true(all(abs(result$score_original[result$is_restored] - 0.995) < 1e-9))
 })

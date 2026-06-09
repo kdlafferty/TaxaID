@@ -7,13 +7,14 @@
 restore_suppressed_candidates(
   match_obj,
   reference_df,
+  detected = NULL,
   rank_system = NULL,
   score_col = "score_original",
   observation_id_col = "observation_id",
-  score_rule = "sub_max",
-  perfect_only = TRUE,
-  perfect_threshold = NULL,
-  min_score = NULL,
+  perfect_threshold = 100,
+  purity_threshold = 0.99,
+  singleton_threshold = 0.98,
+  delta = 0.5,
   max_per_obs = 10L,
   verbose = TRUE
 )
@@ -23,12 +24,17 @@ restore_suppressed_candidates(
 
 \item{reference_df}{Data frame. Reference database (output of
 \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}, \code{\link[=read_reference_fasta]{read_reference_fasta()}}, or
-\code{\link[=read_crabs_output]{read_crabs_output()}}).  Must contain genus and species columns matching
-\code{rank_system}.}
+\code{\link[=read_crabs_output]{read_crabs_output()}}).  Must contain the same genus/species columns as
+\code{match_obj}.}
 
-\item{rank_system}{Character vector or \code{NULL}. Taxonomic rank columns
-coarse-to-fine (e.g. \code{c("family","genus","species")}).  Auto-detected
-from \code{match_obj} when \code{NULL}.}
+\item{detected}{List or \code{NULL}. Output of
+\code{\link[=detect_suppressed_candidates]{detect_suppressed_candidates()}}.  When \code{NULL} (default),
+detection is run internally using \code{perfect_threshold},
+\code{purity_threshold}, and \code{singleton_threshold}.}
+
+\item{rank_system}{Character vector or \code{NULL}. Rank columns
+coarse-to-fine (e.g. \code{c("family","genus","species")}).
+Auto-detected when \code{NULL}.}
 
 \item{score_col}{Character. Score column name (default
 \code{"score_original"}).}
@@ -36,62 +42,76 @@ from \code{match_obj} when \code{NULL}.}
 \item{observation_id_col}{Character. Observation ID column name (default
 \code{"observation_id"}).}
 
-\item{score_rule}{Numeric or \code{"sub_max"}.  Score to assign restored
-candidates.  \code{"sub_max"} (default) sets the imputed score to the H1
-candidate's score minus a small delta (1.0 on a 0--100 scale; 0.01 on a
-0--1 scale).  Pass a fixed numeric to override.}
+\item{perfect_threshold}{Numeric. Passed to \code{\link[=detect_suppressed_candidates]{detect_suppressed_candidates()}}
+when \code{detected = NULL} (default \code{100}).}
 
-\item{perfect_only}{Logical (default \code{TRUE}).  When \code{TRUE}, only
-singleton observations whose score equals the perfect threshold are
-restored.  Set to \code{FALSE} to restore all singleton observations.}
+\item{purity_threshold}{Numeric. Passed to detection when \code{detected =
+NULL} (default \code{0.99}).}
 
-\item{perfect_threshold}{Numeric or \code{NULL}.  Auto-detected when
-\code{NULL} (100 for 0--100 scale; 1.0 for 0--1 scale).}
+\item{singleton_threshold}{Numeric. Passed to detection when \code{detected
+= NULL} (default \code{0.98}).}
 
-\item{min_score}{Numeric or \code{NULL}. Restored rows whose imputed score
-falls below this value are dropped.  Default \code{NULL} (no floor).}
+\item{delta}{Numeric. Score gap between H1 score and imputed score for
+restored candidates (default \code{0.5}, on the 0-100 scale).
+Auto-scaled to 0-1 when scores are on the 0-1 scale.  Also used as
+\code{delta / 100} for the synthetic score in the no-score pathway.}
 
 \item{max_per_obs}{Integer. Maximum restored candidates per observation
-(default \code{10L}).  Prevents large genera from inflating the data frame.}
+(default \code{10L}).}
 
-\item{verbose}{Logical. Emit a summary message (default \code{TRUE}).}
+\item{verbose}{Logical. Emit summary messages (default \code{TRUE}).}
 }
 \value{
-The input \code{match_obj} with additional rows for suppressed
-congeners.  A logical column \code{is_restored} is added (\code{FALSE}
-for original rows, \code{TRUE} for restored rows).
+\code{match_obj} with additional rows for suppressed congeners.
+New columns added:
+\describe{
+\item{\code{is_restored}}{\code{FALSE} for original rows, \code{TRUE} for
+restored rows.}
+\item{\code{score_original}}{Created (synthetic) when the no-score pathway
+is triggered and the column was absent.}
+}
 }
 \description{
-When an upstream tool (e.g. BLAST with a 100\\% rule) returns only the
-single highest-scoring candidate, other species sharing that genus in the
-reference database are silently suppressed.  This function identifies
-affected observations and appends rows for missing same-genus congeners so
-that \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} can evaluate them as real alternatives rather
-than as generic unreferenced hypotheses.
+For observations affected by a score-suppression pipeline rule (detected by
+\code{\link[=detect_suppressed_candidates]{detect_suppressed_candidates()}}), finds same-genus congeners in
+\code{reference_df} and appends them as \code{hypothesis_type =
+"suppressed_candidate"} rows so that \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} or
+\code{\link[=assign_scores]{assign_scores()}} can evaluate them as real alternatives.
 }
 \details{
-Restored rows receive:
+\strong{Which observations are targeted:}
 \itemize{
-\item An imputed score derived from \code{score_rule}.
-\item \code{hypothesis_type = "suppressed_candidate"}.
-\item \code{accession} prefixed with \code{"RESTORED_"} (when present).
-\item All taxonomy columns populated from \code{reference_df}.
-\item \code{coverage = NA} (when present in \code{match_obj}).
+\item \strong{Rule 1 (perfect_only) only}: observations where all scores
+>= \code{perfect_threshold}.
+\item \strong{Rule 2 (max_score_ties) or Rule 3 (best_only)}: all
+observations, since even singletons may have had candidates suppressed.
 }
 
-Use \code{\link[=detect_score_collapse]{detect_score_collapse()}} first to confirm that a collapse rule is
-present before calling this function.
+\strong{Score imputation:}
+\itemize{
+\item When a score column is present: restored rows receive
+\code{max_score_in_obs - delta} (auto-scaled: \code{delta} on the
+0-100 scale, \code{delta / 100} on the 0-1 scale).
+\item When no score column exists (Rule 3, no-score pathway): a synthetic
+\code{score_original} column is created.  Original rows receive
+\code{1.0}; restored rows receive \code{1.0 - delta / 100}.  Pass the
+result to \code{assign_scores(score_type = "direct")} rather than the
+bivariate-normal pipeline.
+}
 }
 \examples{
 \dontrun{
-collapse <- detect_score_collapse(match_obj)
-if (collapse$rule_detected) {
-  match_obj <- restore_suppressed_candidates(match_obj, reference_df)
+detected <- detect_suppressed_candidates(match_obj)
+if (detected$rule_detected) {
+  match_obj <- restore_suppressed_candidates(match_obj, reference_df,
+                                              detected = detected)
 }
-lik_result <- evaluate_likelihoods(match_obj, model_params = lik_model)
+# With scores: continue to evaluate_likelihoods()
+# No-score:    continue to assign_scores(score_type = "direct")
 }
 
 }
 \seealso{
-\code{\link[=detect_score_collapse]{detect_score_collapse()}}, \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}
+\code{\link[=detect_suppressed_candidates]{detect_suppressed_candidates()}}, \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}},
+\code{\link[=assign_scores]{assign_scores()}}
 }

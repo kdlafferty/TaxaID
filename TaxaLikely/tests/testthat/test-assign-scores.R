@@ -234,3 +234,45 @@ test_that("stops when score_col missing for non-none types", {
   expect_error(assign_scores(df, score_type = "probability"),
                "not found")
 })
+
+
+# ---- score_type = "direct" ---------------------------------------------------
+
+test_that("assign_scores direct passes scores through as score_likelihood", {
+  df <- .make_hyp_df(n_obs = 1L)
+  out <- assign_scores(df, score_type = "direct")
+  h1  <- out[out$hypothesis_type == "specific_candidate", ]
+  expect_equal(h1$score_likelihood, h1$score_original)
+})
+
+test_that("assign_scores direct sets NA scores to 1.0", {
+  df <- .make_hyp_df(n_obs = 1L)
+  # H2 / H3 rows have NA score_original
+  out <- assign_scores(df, score_type = "direct")
+  na_rows <- out[is.na(df$score_original), ]
+  expect_true(all(na_rows$score_likelihood == 1.0))
+})
+
+test_that("assign_scores direct sets score_likelihood_sd to 0", {
+  df  <- .make_hyp_df(n_obs = 1L)
+  out <- assign_scores(df, score_type = "direct")
+  expect_true(all(out$score_likelihood_sd == 0.0))
+})
+
+test_that("assign_scores direct sets score_method to 'direct'", {
+  df  <- .make_hyp_df(n_obs = 1L)
+  out <- assign_scores(df, score_type = "direct")
+  expect_true(all(out$score_method == "direct"))
+})
+
+test_that("assign_scores direct score_likelihood_mean equals score_likelihood", {
+  df  <- .make_hyp_df(n_obs = 1L)
+  out <- assign_scores(df, score_type = "direct")
+  expect_equal(out$score_likelihood_mean, out$score_likelihood)
+})
+
+test_that("assign_scores direct errors when score_col missing", {
+  df <- .make_hyp_df(n_obs = 1L)
+  df$score_original <- NULL
+  expect_error(assign_scores(df, score_type = "direct"), "not found")
+})

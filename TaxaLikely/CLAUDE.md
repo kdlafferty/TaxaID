@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-08 (Session 103 -- detect_score_collapse, restore_suppressed_candidates)
+# Last updated: 2026-06-08 (Session 103 -- detect_suppressed_candidates, restore_suppressed_candidates, assign_scores score_type="direct")
 
 ---
 
@@ -103,7 +103,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | Function | File | Status | Description |
 |---|---|---|---|
 | `unreferenced_candidates()` | `R/unreferenced_candidates.R` | Written | Expand match_df with H2/H3/(H4) placeholder rows. Auto-detects `rank_system`. `include_unreferenced_family` param (default FALSE) adds H4 catch-all. Anchor = best-scoring taxon per observation. |
-| `assign_scores()` | `R/assign_scores.R` | Written | Convert raw scores to `score_likelihood`. `score_type`: `"none"` (all rows = 1.0 uniform, including H4), `"probability"` (ratio-normalize H1; H2/H3 anchored at median same-genus/same-family H1 likelihood; H4 fixed at 0.05), `"similarity_softmax"` (exp-weighted, same H2/H3/H4 anchoring), `"similarity"` (adds `score_norm` only — pass to `model_likelihoods()`). **Single-H1 caveat**: for top-1 classifier output (one H1 row per observation), H2/H3 anchor = median(H1) = 1.0; score has no discriminating effect. Use multi-candidate output + `"probability"` to modulate likelihoods. |
+| `assign_scores()` | `R/assign_scores.R` | Written | Convert raw scores to `score_likelihood`. `score_type`: `"none"` (all rows = 1.0 uniform), `"direct"` (pass score column through unchanged; NA → 1.0; use after `restore_suppressed_candidates()` no-score path), `"probability"` (ratio-normalize H1; H2/H3 anchored at median same-genus/same-family H1 likelihood; H4 fixed at 0.05), `"similarity_softmax"` (exp-weighted, same H2/H3/H4 anchoring), `"similarity"` (adds `score_norm` only — pass to `model_likelihoods()`). **Single-H1 caveat**: for top-1 classifier output (one H1 row per observation), H2/H3 anchor = median(H1) = 1.0; score has no discriminating effect. Use multi-candidate output + `"probability"` to modulate likelihoods. |
 | `model_likelihoods()` | `R/compute_likelihoods.R` | Written | Apply bivariate-normal model to a `scored_df` from `assign_scores(score_type="similarity")`. Thin wrapper around `evaluate_likelihoods()`; adds `score_method = "bivariate_normal"`. |
 | `compute_likelihoods()` | `R/compute_likelihoods.R` | Written | Orchestrating wrapper: `unreferenced_candidates()` → `assign_scores()` → `model_likelihoods()` (similarity only). Recommended high-level entry point. Returns `list($likelihoods, $unresolved)`. |
 
@@ -141,10 +141,10 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `detect_score_collapse()` | `R/score_collapse.R` | Written | Diagnose whether a match object shows evidence of a top-hit pipeline rule. Two patterns: `"perfect_only"` (singleton at max score — 100% rule) and `"max_score_ties"` (multiple candidates all at same max score). Returns rule_detected, type, n/fraction affected, example_observations. `min_fraction` param (default 0.05) prevents single-observation artefacts from triggering. |
-| `restore_suppressed_candidates()` | `R/score_collapse.R` | Written | For singleton observations at the perfect threshold, look up same-genus congeners in `reference_df` and append them as `hypothesis_type = "suppressed_candidate"` rows. `score_rule = "sub_max"` (default) imputes score as H1 score − delta (1.0 on 0–100 scale; 0.01 on 0–1 scale). `perfect_only = TRUE` restricts to perfect-score singletons. `max_per_obs = 10L` caps large genera. Returns match_obj with `is_restored` column. Pass result directly to `evaluate_likelihoods()`. |
+| `detect_suppressed_candidates()` | `R/score_collapse.R` | Written | Diagnose which pipeline suppression rule(s) are active. Three rules: `"perfect_only"` (purity_threshold fraction of qualifying obs have only scores ≥ perfect_threshold); `"max_score_ties"` (multi-row obs all show uniform score); `"best_only"` (singleton_threshold fraction of obs have exactly 1 row). `purity_threshold` (default 0.99) and `perfect_threshold` (default 100) user-settable. Returns list: rule_detected, rules, individual logicals, diagnostic counts, example_observations. |
+| `restore_suppressed_candidates()` | `R/score_collapse.R` | Written | Append same-genus congeners from `reference_df` as `hypothesis_type = "suppressed_candidate"` rows. Targeting: Rules 2/3 → all observations; Rule 1 only → observations where all scores ≥ perfect_threshold. Score imputation: `delta` (default 0.5, auto-scaled 0–100 vs 0–1) subtracted from per-obs max score. No-score path: creates synthetic `score_original` column (H1 = 1.0, restored = 1.0 − delta/100); pass to `assign_scores(score_type = "direct")`. Returns match_obj with `is_restored` column. |
 
-**Motivation:** When BLAST uses a 100% rule (drop all sub-perfect hits when a perfect match exists), referenced congeners are silently suppressed. `evaluate_likelihoods()` sees only one H1 candidate (singleton mode — gap uninformative) and generates only generic `unreferenced_species` H2/H3 rows. `restore_suppressed_candidates()` replaces those generic placeholders with real referenced alternatives, enabling full bivariate-normal evaluation. See *Girella simplicidens* case (Session 101/103).
+**Motivation:** When BLAST uses a 100-percent rule (drop all sub-perfect hits when a perfect match exists), referenced congeners are silently suppressed. `evaluate_likelihoods()` sees only one H1 candidate (singleton mode — gap uninformative) and generates only generic `unreferenced_species` H2/H3 rows. `restore_suppressed_candidates()` replaces those generic placeholders with real referenced alternatives, enabling full bivariate-normal evaluation. See *Girella simplicidens* case (Session 101/103).
 
 ### Match object cleaning and export
 
@@ -274,7 +274,7 @@ which is skipped when DECIPHER/Biostrings are not installed.
 
 | File | Functions covered | Notes |
 |---|---|---|
-| test-assign-scores.R | `assign_scores()` | Covers all score_type values, H2/H3 anchoring, H4 behavior, single-H1 caveat |
+| test-assign-scores.R | `assign_scores()` | Covers all score_type values including `"direct"`, H2/H3 anchoring, H4 behavior, single-H1 caveat |
 | test-build.R | `build_sequence_matrix()` | Skipped when DECIPHER not installed (Bioconductor Suggests) |
 | test-build-site-reference.R | `build_site_reference()` | Offline via `local_mocked_bindings()`; 17 tests + 1 skip (DECIPHER present) |
 | test-clean.R | `remove_flagged_references()` | Fully offline |
@@ -291,7 +291,7 @@ which is skipped when DECIPHER/Biostrings are not installed.
 | test-train.R | `train_likelihood_model()`, `flag_reference_errors()` | Fully offline |
 | test-unreferenced-candidates.R | `unreferenced_candidates()` | Fully offline |
 | test-write-fasta.R | `write_reference_fasta()` | Fully offline |
-| test-score-collapse.R | `detect_score_collapse()`, `restore_suppressed_candidates()` | 44 tests; fully offline |
+| test-score-collapse.R | `detect_suppressed_candidates()`, `restore_suppressed_candidates()` | 24 test_that blocks; fully offline; covers all 3 rules, purity_threshold, perfect_threshold, no-score path |
 
 ---
 

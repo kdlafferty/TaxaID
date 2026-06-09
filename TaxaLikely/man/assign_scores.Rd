@@ -17,7 +17,7 @@ Must contain \code{observation_id} and \code{hypothesis_type}.  For all
 \code{score_type} values except \code{"none"}, must also contain the
 column named by \code{score_col} for \code{"specific_candidate"} rows.}
 
-\item{score_type}{Character scalar. One of \code{"none"},
+\item{score_type}{Character scalar. One of \code{"none"}, \code{"direct"},
 \code{"probability"}, \code{"similarity_softmax"}, or
 \code{"similarity"}.}
 
@@ -53,6 +53,11 @@ Works on the expanded hypotheses data frame produced by
 \item{\code{"none"}}{No score column available.  All rows receive
 \code{score_likelihood = 1.0} (uniform / degenerate likelihoods).
 Posteriors are proportional to priors.}
+\item{\code{"direct"}}{Passes \code{score_col} through unchanged as
+\code{score_likelihood}.  Rows with \code{NA} scores receive
+\code{score_likelihood = 1.0}.  Intended for use after
+\code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}}, which pre-imputes scores for
+restored rows.  No per-observation aggregation is performed.}
 \item{\code{"probability"}}{Neural-net softmax outputs (e.g., BirdNET
 multi-candidate output, iNaturalist CV scores) already on a 0–1 scale.
 H1 scores are ratio-normalized (\eqn{/} max) so the best candidate

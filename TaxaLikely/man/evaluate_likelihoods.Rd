@@ -138,9 +138,9 @@ not computed (1D model used instead).
 When the match object contains a \code{coverage} column (e.g., BLAST \code{qcovs / 100}
 or bounding-box area), a parallel point estimate \code{score_likelihood_cov} is
 computed alongside \code{score_likelihood}.  For each specific candidate, the H1
-\code{sigma_score} is widened by \eqn{1 / \text{coverage}} before evaluating the
-likelihood -- grounded in binomial sampling theory where
-\eqn{Var(\text{logit}(\hat{p})) \propto 1 / N_{\text{aligned}}} and
+\code{sigma_score} is widened by \eqn{1 / \sqrt{\text{coverage}}} before
+evaluating the likelihood -- grounded in binomial sampling theory where
+\eqn{SE(\text{logit}(\hat{p})) \propto 1 / \sqrt{N_{\text{aligned}}}} and
 \eqn{N_{\text{aligned}} = \text{coverage} \times N_{\text{total}}}.  H2 and
 H3 sigmas are global fixed parameters and are not inflated.  When coverage is
 absent or equals 1 for all candidates, \code{score_likelihood_cov} is identical to
