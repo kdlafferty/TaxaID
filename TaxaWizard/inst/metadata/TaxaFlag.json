@@ -1,56 +1,73 @@
 {
   "package": "TaxaFlag",
-  "description": "Post-assignment quality flagging: contamination, handler artifacts, expert review",
+  "description": "Post-assignment quality flagging: contamination, handler artifacts, expert review, post-hoc plausibility assessment",
   "functions": [
     {
       "name": "flag_contaminant",
-      "description": "Flag taxa disproportionately represented in control samples",
+      "description": "Flag taxa disproportionately represented in control samples (lab blanks, field blanks, or positive controls)",
       "inputs": [
-        {"name": "df", "type": "data.frame", "required": true, "description": "Detection data with observation_id and taxon columns"},
-        {"name": "control_samples", "type": "character_vector", "required": false, "description": "Observation IDs of control samples"},
-        {"name": "event_type_col", "type": "character", "required": false, "description": "Column indicating event type (alternative to control_samples)"},
-        {"name": "event_col", "type": "character", "required": false, "default": "observation_id", "description": "Column with observation identifiers"},
+        {"name": "df", "type": "data.frame", "required": true, "description": "Long-format detection data with read counts; one row per event x taxon"},
+        {"name": "control_samples", "type": "character_vector", "required": false, "description": "Character vector of event_id values identifying control samples"},
+        {"name": "sample_type_col", "type": "character", "required": false, "description": "Column indicating event type (alternative to control_samples; use with control_types)"},
+        {"name": "control_types", "type": "character_vector", "required": false, "description": "Values in sample_type_col that identify controls"},
+        {"name": "event_col", "type": "character", "required": false, "default": "event_id", "description": "Column identifying L1 collection events (not observation_id)"},
         {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Column with taxon names"},
-        {"name": "reads_col", "type": "character", "required": false, "description": "Column with read counts (for proportion-based scoring)"},
-        {"name": "contaminant_type", "type": "character", "required": false, "default": "lab", "description": "'lab', 'field', or 'positive'"}
+        {"name": "reads_col", "type": "character", "required": false, "description": "Column with read counts for proportion-based scoring"},
+        {"name": "contaminant_type", "type": "character", "required": false, "default": "lab", "description": "'lab', 'field', or 'positive' — controls output column prefix ({type}_risk, {type}_score, {type}_reason)"},
+        {"name": "score_thresholds", "type": "numeric", "required": false, "default": "c(0.5, 0.9)", "description": "Two-element vector defining moderate/low risk boundaries"}
       ],
-      "output": {"type": "flagged_df", "description": "Input with contaminant_score and contaminant_flag columns added"},
+      "output": {"type": "flagged_df", "description": "Per-taxon summary with {type}_risk (high/moderate/low), {type}_score (0-1; higher = more likely genuine), and {type}_reason columns"},
       "scaling": "linear",
       "scaling_note": "Fast; proportion-based comparison"
     },
     {
       "name": "flag_handler",
-      "description": "Flag detections temporally proximate to handler presence (camera traps)",
+      "description": "Flag detections temporally proximate to handler presence (camera traps, acoustic recorders)",
       "inputs": [
         {"name": "df", "type": "data.frame", "required": true, "description": "Detection data with datetime column"},
-        {"name": "datetime_col", "type": "character", "required": false, "default": "datetime", "description": "Column with datetime values"},
+        {"name": "datetime_col", "type": "character", "required": false, "default": "datetime", "description": "Column with datetime values (auto-parsed)"},
         {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon column"},
-        {"name": "group_col", "type": "character", "required": false, "description": "Column for grouping (e.g., camera station)"},
-        {"name": "interval_minutes", "type": "numeric", "required": false, "default": 30, "description": "Minutes before/after handler to flag"},
+        {"name": "group_col", "type": "character", "required": false, "description": "Column for grouping (e.g., camera station); min/max computed per group"},
+        {"name": "interval_minutes", "type": "numeric", "required": false, "default": 30, "description": "Minutes before/after session edges to flag"},
         {"name": "handler_taxa", "type": "character_vector", "required": false, "description": "Taxa indicating handler presence (default: Homo sapiens)"}
       ],
-      "output": {"type": "flagged_df", "description": "Input with handler_flag column added"},
+      "output": {"type": "flagged_df", "description": "Input with handler_risk, handler_score, and handler_reason columns added"},
       "scaling": "linear",
       "scaling_note": "Fast; temporal proximity check"
     },
     {
       "name": "review_assignments",
-      "description": "LLM expert review of taxonomic assignments for plausibility (habitat fit, geographic range, contaminant risk, alternatives)",
+      "description": "LLM expert review of taxonomic assignments for ecological plausibility (habitat fit, geographic range, scope, contaminant risk, alternatives)",
       "inputs": [
-        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with a taxon column"},
+        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with a taxon column; typically filtered to flagged rows (suspect, unexpected, etc.)"},
         {"name": "taxon_col", "type": "character", "required": false, "default": "consensus_taxon", "description": "Column name for the taxon to review"},
         {"name": "taxon_rank_col", "type": "character", "required": false, "description": "Column for consensus rank; triggers lower_hypotheses when coarser than species"},
         {"name": "context", "type": "list_or_context_df", "required": true, "description": "Named list or build_context() output with geography/ecoregion and habitat/main_habitat"},
         {"name": "target_group", "type": "character", "required": false, "description": "Taxonomic target group (e.g., 'fish', 'birds'); triggers scope review"},
         {"name": "marker", "type": "character", "required": false, "description": "Molecular marker or detection method (e.g., '12S', 'COI', 'camera trap')"},
+        {"name": "data_type", "type": "character", "required": false, "default": "eDNA", "description": "'eDNA', 'acoustic', or 'image' — switches contaminant guidance in the LLM prompt"},
         {"name": "llm_fn", "type": "function", "required": false, "default": "TaxaTools::call_api", "description": "LLM provider function. Use TaxaTools::call_api (auto-selects provider). Valid names: call_api, call_anthropic_api, call_gemini_api, call_openai_api, call_azure_api, call_ollama_api. Do NOT invent other names."},
-        {"name": "taxa_per_call", "type": "integer", "required": false, "default": 30, "description": "Maximum taxa per LLM batch call"},
+        {"name": "taxa_per_call", "type": "integer", "required": false, "default": 15, "description": "Maximum taxa per LLM batch call (default 15 to avoid response truncation)"},
         {"name": "pause_seconds", "type": "numeric", "required": false, "default": 1, "description": "Seconds between LLM calls"},
         {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
       ],
-      "output": {"type": "review_df", "description": "Input df with 8 review columns appended: habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"},
+      "output": {"type": "review_df", "description": "Input df with 8 review columns: habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"},
       "scaling": "api_limited",
-      "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 30 taxa"
+      "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 15 taxa"
+    },
+    {
+      "name": "add_posthoc_assessment",
+      "description": "Classify each consensus assignment by prior tier × sequence-match evidence into a single posthoc_assessment column. Requires winner_likelihood from posterior_consensus() and tiers from priors_combined. Run before review_assignments() to identify which rows need expert review.",
+      "inputs": [
+        {"name": "consensus_df", "type": "consensus_df", "required": true, "description": "Output of posterior_consensus() with winner_likelihood, consensus_taxon, and consensus_rank columns"},
+        {"name": "tiers", "type": "data.frame", "required": true, "description": "Taxon-tier lookup; typically bind_rows(priors_observed, priors_undetected) from TaxaExpect; tier3_undetected rows come from generate_undetected_diversity()"},
+        {"name": "winner_likelihood_col", "type": "character", "required": false, "default": "winner_likelihood", "description": "Column holding the winner's ratio-normalised likelihood; pass 'winner_likelihood_cov' for coverage-adjusted value"},
+        {"name": "likelihood_threshold", "type": "numeric", "required": false, "default": 0.5, "description": "Threshold for 'supported' vs 'limited' evidence; below this, winner had < half the sequence density of the best hypothesis"},
+        {"name": "finest_rank", "type": "character", "required": false, "default": "species", "description": "Rank at which tier lookups are valid; rows with coarser or NA rank receive vague_rank"}
+      ],
+      "output": {"type": "consensus_df", "description": "Input with posthoc_assessment column appended. Values: sensible (tier1+supported), limited_evidence (tier1+limited), unexpected (tier2+supported), suspect (tier2+limited OR not-in-tiers+limited), unprecedented (tier3+supported), vague_rank (non-species rank), modeled (NA likelihood)"},
+      "scaling": "linear",
+      "scaling_note": "Fast; vectorised lookup — runs on full consensus_df before filtering for review"
     }
   ]
 }

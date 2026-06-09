@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-27 (Session 89 — phase_classify + phase_parameterize prompt updates for acoustic/image)
+# Last updated: 2026-06-08 (Session 104 — TaxaFlag metadata updated: add_posthoc_assessment added; stale column names fixed)
 
 ---
 
@@ -326,3 +326,7 @@ Sessions 68–80 archived in ecosystem_docs/session_notes/TaxaWizard_sessions.md
 **Session 89 (2026-05-27)**
 - `phase_classify.md`: `match_df` input type description now mentions BirdNET acoustic detections and image classifier results alongside BLAST output — "multiple scored candidates per sample" is the common pattern.
 - `phase_parameterize.md`: `barcode_term` bullet explicitly marked as DNA/eDNA only; new `rank_system` bullet for acoustic/image: BirdNET typically uses `c("genus","species")`; image classifiers use whatever taxonomy columns are returned.
+
+**Session 104 (2026-06-08): TaxaFlag metadata update**
+- `TaxaFlag.json` updated: `add_posthoc_assessment()` added; `flag_contaminant` column names corrected to Session 101 vocabulary (`{type}_risk`/`{type}_score`/`{type}_reason`); `event_col` default fixed from `"observation_id"` → `"event_id"`; `review_assignments` `taxa_per_call` default corrected from 30 → 15; `data_type` param added.
+- No workflow graph changes: `add_posthoc_assessment()` is a post-hoc annotation step (not a pipeline transformation), so it is not added as a graph edge.
