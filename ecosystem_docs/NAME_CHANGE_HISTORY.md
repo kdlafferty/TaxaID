@@ -110,3 +110,4 @@
 | 2026-06-02 | *(Session 99)* | `likelihood_sd` → `score_likelihood_sd` | TaxaLikely, TaxaAssign | column | All functions, tests, workflows, docs updated. |
 | 2026-06-02 | *(Session 99)* | `"unknown_species"` → `NA` / `"unreferenced_family"` | TaxaAssign | `taxon_name` / `hypothesis_type` | Catch-all row in `assign_taxa_llm()` output; `posterior_consensus.R` filter updated. |
 | 2026-06-02 | *(Session 99)* | `unreferenced_candidates()`, `assign_scores()`, `model_likelihoods()`, `compute_likelihoods()` added | TaxaLikely | functions | Unified modular pipeline; `expand_consensus_candidates()` deprecated. |
+| 2026-06-09 | *(Session 103)* | `detect_score_collapse()` | `detect_suppressed_candidates()` | TaxaLikely | function rename + rewrite | Full rewrite; old function removed. Returns named list (rule_detected, rules, perfect_only, max_score_ties, best_only, diagnostics). |

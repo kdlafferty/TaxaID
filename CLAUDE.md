@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-07 (Session 101 -- TaxaFlag vocabulary unified; posterior_consensus winner columns)
+# Last updated: 2026-06-09 (Session 103 -- detect_suppressed_candidates, restore_suppressed_candidates, assign_scores direct)
 
 ---
 
@@ -237,3 +237,6 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 101 | `review_assignments()` output columns renamed | TaxaFlag | `review_habitat`→`habitat_plausibility`, `review_geography`→`geographic_plausibility`, `review_scope`→`scope_plausibility`, `review_contaminant`→`contamination_risk`; values unified to `likely/possible/unlikely` (plausibility) and `low/moderate/high` (risk) |
 | 101 | `flag_contaminant()` output columns renamed | TaxaFlag | `flag_{type}`→`{type}_risk`, `flag_{type}_score`→`{type}_score`, `flag_{type}_reason`→`{type}_reason`; values `"likely"`→`"low"`, `"possible"`→`"moderate"`, `"unlikely"`→`"high"` |
 | 101 | `posterior_consensus()` gains winner columns | TaxaAssign | `winner_prior`, `winner_likelihood`, `winner_likelihood_cov` added to output; winner = highest-posterior hypothesis in plausible set; enables TaxaFlag to detect low-prior winners (100%-rule artifacts) |
+| 103 | `detect_score_collapse()` → `detect_suppressed_candidates()` | TaxaLikely | Full rewrite; three rules (`perfect_only`, `max_score_ties`, `best_only`); `purity_threshold`/`perfect_threshold`/`singleton_threshold` user-settable; returns named diagnostic list |
+| 103 | `restore_suppressed_candidates()` added | TaxaLikely | Appends same-genus congeners from `reference_df` as `suppressed_candidate` rows; score imputed at `max_obs_score - delta`; no-score pathway creates synthetic `score_original` |
+| 103 | `assign_scores(score_type = "direct")` added | TaxaLikely | Passes score column through unchanged as `score_likelihood`; NA → 1.0; intended for post-restore no-score pathway |
