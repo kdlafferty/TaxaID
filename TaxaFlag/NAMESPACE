@@ -2,5 +2,6 @@
 
 export(flag_contaminant)
 export(flag_handler)
+export(flag_prior_mismatch)
 export(report_flags)
 export(review_assignments)
