@@ -367,7 +367,7 @@ fetch_reference_sequences <- function(taxa,
                                       blacklist_regex = "uncultured|environmental|predicted|vector|synthetic|unverified",
                                       min_date        = NULL,
                                       max_date        = NULL,
-                                      cache_dir       = tempdir(),
+                                      cache_dir       = tools::R_user_dir("TaxaLikely", "cache"),
                                       ncbi_api_key    = NULL) {
 
   # --- Validate inputs --------------------------------------------------------
@@ -546,8 +546,13 @@ fetch_reference_sequences <- function(taxa,
       if (!is.null(cache_dir)) {
         safe_name <- gsub("[^A-Za-z0-9]", "_", sp)
         safe_bc   <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
+        date_sfx     <- gsub("[^0-9]", "", paste0(
+                               if (is.null(min_date)) "X" else min_date, "_",
+                               if (is.null(max_date)) "X" else max_date))
         p_cache_file <- file.path(cache_dir,
-                                  paste0("priority_", safe_name, "_", safe_bc, "_meta.rds"))
+                                  paste0("priority_", safe_name, "_", safe_bc,
+                                         "_l", eff_min_len, "_", eff_max_len,
+                                         "_d", date_sfx, "_meta.rds"))
         if (file.exists(p_cache_file)) {
           message(sprintf("  %s: loading from cache", sp))
           priority_meta[[sp]] <- readRDS(p_cache_file)
@@ -588,7 +593,13 @@ fetch_reference_sequences <- function(taxa,
     if (!is.null(cache_dir)) {
       safe_name  <- gsub("[^A-Za-z0-9]", "_", taxa[i])
       safe_bc    <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
-      cache_file <- file.path(cache_dir, paste0(safe_name, "_", safe_bc, "_meta.rds"))
+      date_sfx2  <- gsub("[^0-9]", "", paste0(
+                              if (is.null(min_date)) "X" else min_date, "_",
+                              if (is.null(max_date)) "X" else max_date))
+      cache_file <- file.path(cache_dir,
+                              paste0(safe_name, "_", safe_bc,
+                                     "_l", eff_min_len, "_", eff_max_len,
+                                     "_d", date_sfx2, "_meta.rds"))
       if (file.exists(cache_file)) {
         message(sprintf("  %s: loading from cache", taxa[i]))
         all_meta[[i]] <- readRDS(cache_file)

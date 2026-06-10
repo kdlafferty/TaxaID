@@ -18,7 +18,7 @@ fetch_reference_sequences(
   blacklist_regex = "uncultured|environmental|predicted|vector|synthetic|unverified",
   min_date = NULL,
   max_date = NULL,
-  cache_dir = tempdir(),
+  cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
   ncbi_api_key = NULL
 )
 }

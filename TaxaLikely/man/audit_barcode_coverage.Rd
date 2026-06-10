@@ -12,6 +12,7 @@ audit_barcode_coverage(
   max_len = NULL,
   max_date = NULL,
   target_rank = "genus",
+  cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
   ncbi_api_key = NULL
 )
 }
@@ -44,6 +45,12 @@ match the build date of your reference library.}
 
 \item{target_rank}{Character scalar.  Rank column in \code{match_df} (default
 \code{"genus"}).}
+
+\item{cache_dir}{Directory for per-genus checkpoints.  Default:
+\code{tools::R_user_dir("TaxaLikely", "cache")}.  Pass \code{NULL} to disable
+checkpointing.  If a checkpoint from a previous interrupted run is found
+(matched by call signature), processing resumes automatically from where
+it stopped.  The checkpoint is deleted on clean completion.}
 
 \item{ncbi_api_key}{Optional NCBI API key.  Raises the rate limit from 3
 to 10 requests per second.  Can also be set via \code{ENTREZ_KEY} environment

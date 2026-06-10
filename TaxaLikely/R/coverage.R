@@ -11,6 +11,23 @@ utils::globalVariables(c(
   }, character(1L))
 }
 
+# Internal helper: build deterministic checkpoint path for audit_barcode_coverage()
+# Signature encodes genera (count + sum of nchar), barcode_term, len_range, max_date,
+# and target_rank so that changed parameters start fresh without collisions.
+#' @noRd
+.coverage_checkpoint_path <- function(genera, barcode_term, len_range,
+                                       max_date, target_rank, cache_dir) {
+  safe_bc  <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
+  date_sfx <- gsub("[^0-9A-Za-z]", "", if (is.null(max_date)) "X" else max_date)
+  n_gen    <- length(genera)
+  gen_sum  <- sum(nchar(genera))
+  file.path(cache_dir,
+            sprintf("coverage_%s_%s_d%s_n%d_s%d_l%d_%d_ckpt.rds",
+                    target_rank, safe_bc, date_sfx,
+                    n_gen, gen_sum,
+                    len_range[1L], len_range[2L]))
+}
+
 
 # ==============================================================================
 # MODULE G: REFERENCE COVERAGE AUDIT
@@ -246,6 +263,11 @@ audit_reference_coverage <- function(reference_df,
 #'   match the build date of your reference library.
 #' @param target_rank Character scalar.  Rank column in `match_df` (default
 #'   `"genus"`).
+#' @param cache_dir Directory for per-genus checkpoints.  Default:
+#'   `tools::R_user_dir("TaxaLikely", "cache")`.  Pass `NULL` to disable
+#'   checkpointing.  If a checkpoint from a previous interrupted run is found
+#'   (matched by call signature), processing resumes automatically from where
+#'   it stopped.  The checkpoint is deleted on clean completion.
 #' @param ncbi_api_key Optional NCBI API key.  Raises the rate limit from 3
 #'   to 10 requests per second.  Can also be set via `ENTREZ_KEY` environment
 #'   variable (`Sys.setenv(ENTREZ_KEY = "your_key")`; confirm with
@@ -330,6 +352,7 @@ audit_barcode_coverage <- function(match_df,
                                    max_len       = NULL,
                                    max_date      = NULL,
                                    target_rank   = "genus",
+                                   cache_dir     = tools::R_user_dir("TaxaLikely", "cache"),
                                    ncbi_api_key  = NULL) {
 
   # ---- Input validation -------------------------------------------------------
@@ -401,6 +424,22 @@ audit_barcode_coverage <- function(match_df,
     ))
   }
 
+  # ---- Checkpoint setup -------------------------------------------------------
+  checkpoint_path <- NULL
+  prior_census    <- list()
+  if (!is.null(cache_dir)) {
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    checkpoint_path <- .coverage_checkpoint_path(
+      genera, barcode_term, len_range, max_date, target_rank, cache_dir)
+    if (file.exists(checkpoint_path)) {
+      prior_census <- readRDS(checkpoint_path)
+      n_done <- sum(genera %in% names(prior_census))
+      message(sprintf(
+        "  Resuming from checkpoint: %d/%d %s(s) already done.",
+        n_done, length(genera), target_rank))
+    }
+  }
+
   message(sprintf(
     "Auditing %d %s(s) (barcode: '%s', length: %d-%d bp%s)...",
     length(genera), target_rank, term_label, len_range[1L], len_range[2L],
@@ -432,6 +471,13 @@ audit_barcode_coverage <- function(match_df,
   for (i in seq_along(genera)) {
     cli::cli_progress_update(id = pb)
     grp <- genera[i]
+
+    # Resume from checkpoint
+    if (grp %in% names(prior_census)) {
+      full_census[[i]] <- prior_census[[grp]]
+      next
+    }
+
     rec <- list(
       group               = grp,
       total               = NA_integer_,
@@ -496,6 +542,10 @@ audit_barcode_coverage <- function(match_df,
 
     if (length(all_sp) == 0L) {
       full_census[[i]] <- rec
+      if (!is.null(checkpoint_path)) {
+        prior_census[[grp]] <- rec
+        saveRDS(prior_census, checkpoint_path)
+      }
       if (i < length(genera)) Sys.sleep(.ncbi_delay())
       next
     }
@@ -548,9 +598,17 @@ audit_barcode_coverage <- function(match_df,
     )
 
     full_census[[i]] <- rec
+    if (!is.null(checkpoint_path)) {
+      prior_census[[grp]] <- rec
+      saveRDS(prior_census, checkpoint_path)
+    }
     if (i < length(genera)) Sys.sleep(.ncbi_delay())
   }
   cli::cli_progress_done(id = pb)
+
+  # Delete checkpoint on clean completion
+  if (!is.null(checkpoint_path) && file.exists(checkpoint_path))
+    file.remove(checkpoint_path)
 
   # ---- Assemble output -------------------------------------------------------
   census_df <- dplyr::bind_rows(lapply(full_census, function(x) {
