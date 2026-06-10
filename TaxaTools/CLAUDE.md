@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-08 (Session 102 — scientific_to_common(); token_usage()/reset_token_usage(); %||% Rd fix)
+# Last updated: 2026-06-09 (Session 105 — test coverage table completed: find_taxonomy_conflicts, call_api, is_valid_species_name)
 
 ---
 
@@ -117,6 +117,9 @@ rename_cols()           # align column names to DarwinCore
 | test-rank_utils.R | `standard_ranks`, `extended_ranks`, `detect_ranks()` | Fully offline |
 | test-barcode_utils.R | `barcode_length_defaults`, `resolve_barcode_lengths()` | Fully offline |
 | test-null_coalesce.R | `%\|\|%` | Fully offline |
+| test-call_api.R | `call_api()` | 21 tests; fully offline; covers input validation, `max_input_tokens` pre-flight guard, no-provider error, mocked anthropic/gemini/openai_compat response parsers, token attribute, `show_tokens` |
+| test-find_taxonomy_conflicts.R | `find_taxonomy_conflicts()` | 13 tests; fully offline; covers clean data, known genus-family conflict, explicit and auto-detected rank_system, NA row skipping, multi-level conflict, output column types |
+| test-is_valid_species_name.R | `is_valid_species_name()` | 14 tests; fully offline; covers well-formed binomials, lowercase genus, genus-only, sp./cf./aff. suffixes, uncultured/environmental/metagenome names, vectorisation, NA |
 | test-llm_utils.R | `call_anthropic_api()` and other provider functions | Online tests skipped; pre-existing WARN in check |
 | test-census_genus_species.R | `census_genus_species()` | Online (GBIF) tests skipped offline |
 | test-draft_text.R | `build_report_context()`, `draft_methods_text()`, `draft_results_text()` | LLM calls skipped offline |
