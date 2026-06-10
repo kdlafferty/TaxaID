@@ -13,6 +13,7 @@ fetch_gbif_occurrences(
   pause_seconds = 2,
   pause_between_keys = 0.5,
   max_retries = 4L,
+  cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   beep = FALSE
 )
 }
@@ -43,8 +44,14 @@ Increase to be polite to the API under heavy load.}
 requests within a chunk. Default 0.5. Increase if 429 errors persist.}
 
 \item{max_retries}{Integer. Maximum number of retry attempts per key on
-rate-limit (429) errors, using exponential backoff starting at 30 seconds.
-Default 4 (waits up to ~4 minutes total per key before giving up).}
+transient errors (429 or 503), using exponential backoff. Default 4.}
+
+\item{cache_dir}{Character or \code{NULL}. Directory for checkpoint files.
+Defaults to a persistent user-level cache directory
+(\code{tools::R_user_dir("TaxaFetch", "cache")}). If a fetch is
+interrupted by a transient error, progress is saved as a checkpoint and
+re-running with the same arguments resumes from where it stopped. Set to
+\code{NULL} to disable checkpointing.}
 
 \item{beep}{Logical. If \code{TRUE} and the \code{beepr} package is
 available, plays a sound on completion. Falls back to a system bell
@@ -71,11 +78,23 @@ hierarchy columns (\code{taxonKey}, \code{speciesKey}, \code{genusKey},
 are silently dropped. This prevents off-target taxa from entering the
 dataset when searching at family or order level.
 
-\strong{Rate limiting:} GBIF's occurrence API allows roughly 100 requests
-per minute for authenticated users and fewer for anonymous requests.
-With \code{chunk_size = 20} and \code{pause_seconds = 1}, a query of 200
-keys takes about 10 seconds. If you see HTTP 429 errors, increase
-\code{pause_seconds} or reduce \code{chunk_size}.
+\strong{Rate limiting and transient errors:} HTTP 429 (rate limit) errors
+trigger exponential backoff with waits of 30, 60, 120, and 240 seconds per
+key. HTTP 503 (Service Unavailable) errors are retried with shorter waits
+(5, 10, 20, 40 seconds). If any key exhausts all retries, the function
+stops immediately to avoid returning an incomplete, session-inconsistent
+result. To test your connection interactively, run
+\code{rgbif::occ_data(taxonKey = 1, limit = 1)}.
+If you see HTTP 429 errors frequently, increase \code{pause_seconds} or
+reduce \code{chunk_size}.
+
+\strong{Checkpoint / resume:} Progress is saved after each completed chunk
+to \code{cache_dir}. The checkpoint file name encodes the call signature
+(number of keys, key sum, geometry length, year range, limit), so changing
+any parameter automatically starts a fresh fetch rather than loading a
+stale checkpoint. To force a fresh fetch with the same parameters, delete
+the checkpoint file (path is printed when a fetch is interrupted) or set
+\code{cache_dir = NULL}.
 
 \strong{rgbif dependency:} This function requires the \code{rgbif} package,
 listed under \code{Suggests} rather than \code{Imports} because downstream
@@ -93,7 +112,7 @@ taxa_df <- data.frame(
 keys_df <- get_keys_from_context(taxa_df)
 valid_keys <- keys_df$usageKey[!is.na(keys_df$usageKey)]
 
-# Build a bounding box and fetch
+# Build a bounding box and fetch (checkpoint saved automatically)
 bbox <- make_bbox_wkt(lat = 56.0, lon = 4.0, radius_deg = 2.0)
 occ  <- fetch_gbif_occurrences(
   keys       = valid_keys,

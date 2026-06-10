@@ -185,7 +185,8 @@ test_that("hierarchy validation retains records where query key is in lineage", 
     global_pos = 0L,
     total      = 1L
   )
-  expect_equal(nrow(out), 4L)
+  expect_equal(nrow(out$records), 4L)
+  expect_false(out$aborted)
 })
 
 test_that("hierarchy validation drops records where query key is absent from lineage", {
@@ -204,7 +205,8 @@ test_that("hierarchy validation drops records where query key is absent from lin
     global_pos = 0L,
     total      = 1L
   )
-  expect_true(is.null(out) || nrow(out) == 0L)
+  expect_true(is.null(out$records) || nrow(out$records) == 0L)
+  expect_false(out$aborted)
 })
 
 test_that("records kept when no hierarchy columns are present (can't validate)", {
@@ -227,14 +229,15 @@ test_that("records kept when no hierarchy columns are present (can't validate)",
     global_pos = 0L,
     total      = 1L
   )
-  expect_equal(nrow(out), 2L)
+  expect_equal(nrow(out$records), 2L)
+  expect_false(out$aborted)
 })
 
 # =============================================================================
-# Error resilience -- one key failing does not abort the run
+# Error handling -- exhausted retries abort the run (no silent skipping)
 # =============================================================================
 
-test_that("a failing key produces a warning but other keys still return data", {
+test_that("a failing key aborts the run with an error (no silent partial results)", {
   skip_if_not_installed("rgbif")
   local_mocked_bindings(
     occ_data = function(taxonKey, ...) {
@@ -243,12 +246,13 @@ test_that("a failing key produces a warning but other keys still return data", {
     },
     .package = "rgbif"
   )
-  expect_warning(
-    out <- fetch_gbif_occurrences(keys = c(1L, 999L, 2L), geometry = .bbox,
-                                  pause_seconds = 0),
-    regexp = "failed"
+  # Key 999 fails immediately (non-transient error, no retry) -> abort
+  # cache_dir = NULL so checkpoint is not written during the test
+  expect_error(
+    fetch_gbif_occurrences(keys = c(1L, 999L, 2L), geometry = .bbox,
+                           pause_seconds = 0, cache_dir = NULL),
+    regexp = "aborted"
   )
-  expect_gt(nrow(out), 0L)   # keys 1 and 2 still returned data
 })
 
 # =============================================================================

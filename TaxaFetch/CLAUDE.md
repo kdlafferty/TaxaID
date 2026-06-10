@@ -22,7 +22,7 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
-| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys. `pause_between_keys` (default 0.5s) pauses between key calls within a chunk; `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). After 3 consecutive per-key failures, stops early and prints a connectivity diagnostic message. | Complete | R/fetch_gbif_occurrences.R |
+| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. Checkpoint filename encodes call signature so changed parameters start fresh. | Complete | R/fetch_gbif_occurrences.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
 | `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble | Complete | R/biotime_fetch.R |
 | `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained | Complete | R/filter_gbif_quality.R |
@@ -237,3 +237,25 @@ Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
   Providers: Anthropic (claude-sonnet-4-6), Gemini (2.5 Flash/Pro), OpenAI (GPT-4o),
   Ollama vision models (llava-llama3). PDF rendering (.render_pdf_pages) unchanged.
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 105 (2026-06-10)**
+- `fetch_gbif_occurrences()`: HTTP 503 "Service Unavailable" errors now retried with
+  exponential backoff (5/10/20/40 sec) in addition to existing 429 retry (30/60/120/240 sec).
+  Previously 503s were silently skipped, causing all keys to fail during an outage.
+- **Abort-on-exhaustion policy**: any key that exhausts all retries now causes an
+  immediate `stop()` rather than silently skipping. Skipping would produce
+  session-inconsistent results (different keys processed on different runs).
+- **Checkpoint / resume**: `cache_dir` parameter added (default:
+  `tools::R_user_dir("TaxaFetch", "cache")`). Progress saved after each completed
+  chunk. On abort, re-running with the same arguments resumes automatically.
+  Checkpoint filename encodes the call signature (key count, key sum, geometry
+  length, year range, limit) so changed parameters start fresh without collisions.
+  `.gbif_checkpoint_path()` internal helper builds the deterministic path.
+- `.fetch_chunk()` return value changed from bare data.frame/NULL to
+  `list(records, aborted)` to propagate abort signal to the outer loop cleanly.
+- Diagnosis: GBIF API returned `"HTTP 503 Backend fetch failed"` (request XID in
+  response body) for all keys during a confirmed infrastructure outage; confirmed
+  by raw `curl` to the GBIF occurrence search endpoint.
+- `devtools::test()` (test-fetch_gbif_occurrences.R): 18 pass, 0 fail, 2 skip.
+  Tests updated to use `out$records`, and resilience test updated to expect
+  `stop()` (not warning + partial results) on key failure.
