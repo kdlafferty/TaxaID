@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-08 (Session 103 -- detect_suppressed_candidates, restore_suppressed_candidates, assign_scores score_type="direct")
+# Last updated: 2026-06-10 (Session 105 -- fetch_reference_sequences cache key fix + audit_barcode_coverage checkpoint/resume)
 
 ---
 
@@ -85,7 +85,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `fetch_reference_sequences()` | `R/fetch.R` | Written | Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tempdir()`). Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. |
+| `fetch_reference_sequences()` | `R/fetch.R` | Written | Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. |
 | `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
 | `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + taxonomy → `reference_df`. For CRUX, GenBank dumps, custom databases. `taxonomy` param accepts a data frame; new `taxonomy_file` param accepts a 2-column TSV (QIIME2/RESCRIPt/SILVA/MIDORI2 prefix-style `k__Kingdom;...` or positional `Kingdom;...`). Exactly one of `taxonomy` or `taxonomy_file` must be supplied (previously `taxonomy` was required). Internals: `.parse_taxonomy_tsv()`, `.parse_tax_string()`. |
 | `subset_local_database()` | `R/subset_db.R` | Written | Filter a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB, Greengenes2, RDP) to a user-supplied taxon list. Parses taxonomy first → O(1) ID lookup via environment hash → streams FASTA in chunks; peak memory scales with matching sequences, not total database size. Supports `.gz`-compressed FASTA. Optional `max_n_bases` and `require_species` filters. Returns `reference_df`. Reuses `.parse_taxonomy_tsv()` internal. |
@@ -118,7 +118,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `audit_barcode_coverage()` | `R/coverage.R` | Written *(planned deprecation)* | **Preferred for eDNA/barcode data.** Unreferenced = described species with NO barcode sequence (cannot appear as reference match). Per-species `retmax=0` NCBI nucleotide count queries; taxonomy-first species list. Census: `in_reference`, `has_seqs_not_in_ref`, `unreferenced`, `is_complete`. Params: `barcode_term` (vector ok), `max_date`, `min_len`, `max_len`, `species_list`. **Slow for species-rich genera** -- will be superseded by `suggest_unreferenced_species()` (LLM-first). |
+| `audit_barcode_coverage()` | `R/coverage.R` | Written *(planned deprecation)* | **Preferred for eDNA/barcode data.** Unreferenced = described species with NO barcode sequence (cannot appear as reference match). Per-species `retmax=0` NCBI nucleotide count queries; taxonomy-first species list. Census: `in_reference`, `has_seqs_not_in_ref`, `unreferenced`, `is_complete`. Params: `barcode_term` (vector ok), `max_date`, `min_len`, `max_len`, `species_list`, `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Checkpoint/resume: progress saved per genus; interrupted runs resume automatically. **Slow for species-rich genera** -- will be superseded by `suggest_unreferenced_species()` (LLM-first). |
 | `audit_reference_coverage()` | `R/coverage.R` | Written | Queries NCBI taxonomy tree (all described species). Use for non-barcode libraries (images, sounds) where barcode availability is irrelevant. |
 | `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates in_match_data. Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
 | `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress "unreferenced_species" for fully-sampled genera |
@@ -386,3 +386,23 @@ score_likelihood_cov using within-species pairs with coverage < 0.99). README up
 with `score_likelihood_cov` in the Quick Start output and a Statistical Design bullet
 explaining the formula, direction of effect, and why coverage is not a model dimension.
 `train.R` minor cleanup (roxygen, h2_sigma_mat moved outside conditional).
+
+**Session 105 (2026-06-10): fetch_reference_sequences() cache key fix + audit_barcode_coverage() checkpoint/resume**
+
+`fetch_reference_sequences()`:
+- `cache_dir` default changed from `tempdir()` to `tools::R_user_dir("TaxaLikely", "cache")`
+  for cross-session persistence.
+- Per-taxon cache keys now include `eff_min_len`, `eff_max_len`, and `max_date` in the
+  filename. Previously changing these parameters returned stale cached data. Both the
+  priority-species key (`priority_{name}_{bc}_l{min}_{max}_d{date}_meta.rds`) and
+  the broader-taxa key (`{name}_{bc}_l{min}_{max}_d{date}_meta.rds`) updated.
+
+`audit_barcode_coverage()`:
+- `cache_dir` param added (default `tools::R_user_dir("TaxaLikely", "cache")`; NULL disables).
+- `.coverage_checkpoint_path()` internal helper: deterministic path from genera count/nchar-sum,
+  barcode_term, len_range, max_date, target_rank. Changed parameters auto-start fresh.
+- Checkpoint (named list of completed genus records) saved after each genus — both the
+  early-exit (no species found) and normal completion paths.
+- On resume, already-completed genera are loaded from checkpoint and skipped.
+- Checkpoint deleted on clean completion.
+
