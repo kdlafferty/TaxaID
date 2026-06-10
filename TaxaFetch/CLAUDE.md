@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-08 (Session 102 — fetch_gbif_occurrences() exponential backoff; missing functions added)
+# Last updated: 2026-06-10 (Session 105 — fetch_gbif_occurrences() 503 retry + connectivity warning)
 
 ---
 
@@ -22,7 +22,7 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
-| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys. `pause_between_keys` (default 0.5s) pauses between individual key calls within a chunk; `max_retries` (default 4) applies exponential backoff (30/60/120/240s) on HTTP 429 rate-limit errors. | Complete | R/fetch_gbif_occurrences.R |
+| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys. `pause_between_keys` (default 0.5s) pauses between key calls within a chunk; `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). After 3 consecutive per-key failures, stops early and prints a connectivity diagnostic message. | Complete | R/fetch_gbif_occurrences.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
 | `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble | Complete | R/biotime_fetch.R |
 | `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained | Complete | R/filter_gbif_quality.R |

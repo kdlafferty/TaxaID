@@ -49,11 +49,17 @@
 #' are silently dropped. This prevents off-target taxa from entering the
 #' dataset when searching at family or order level.
 #'
-#' \strong{Rate limiting:} GBIF's occurrence API allows roughly 100 requests
-#' per minute for authenticated users and fewer for anonymous requests.
-#' With \code{chunk_size = 20} and \code{pause_seconds = 1}, a query of 200
-#' keys takes about 10 seconds. If you see HTTP 429 errors, increase
-#' \code{pause_seconds} or reduce \code{chunk_size}.
+#' \strong{Rate limiting and transient errors:} GBIF's occurrence API allows
+#' roughly 100 requests per minute for authenticated users and fewer for
+#' anonymous requests. HTTP 429 (rate limit) errors trigger exponential backoff
+#' with waits of 30, 60, 120, and 240 seconds per key before giving up.
+#' HTTP 503 (Service Unavailable) errors are also retried automatically with
+#' shorter waits (5, 10, 20, 40 seconds). If three or more consecutive keys
+#' fail after all retries, the function stops early and prints a connectivity
+#' diagnostic message. To test your connection interactively, run
+#' \code{rgbif::occ_data(taxonKey = 1, limit = 1)}.
+#' If you see HTTP 429 errors frequently, increase \code{pause_seconds} or
+#' reduce \code{chunk_size}.
 #'
 #' \strong{rgbif dependency:} This function requires the \code{rgbif} package,
 #' listed under \code{Suggests} rather than \code{Imports} because downstream
@@ -225,8 +231,15 @@ fetch_gbif_occurrences <- function(keys,
                       "orderKey",  "classKey",   "phylumKey", "kingdomKey",
                       "acceptedTaxonKey")
 
+  # 429 = rate limit: longer waits (30, 60, 120, 240 sec)
   .is_rate_limit <- function(e) {
     grepl("429|Too many requests|rate.limit", conditionMessage(e),
+          ignore.case = TRUE)
+  }
+
+  # 503 = server temporarily unavailable: shorter waits (5, 10, 20, 40 sec)
+  .is_service_unavailable <- function(e) {
+    grepl("503|Service Unavailable", conditionMessage(e),
           ignore.case = TRUE)
   }
 
@@ -240,14 +253,17 @@ fetch_gbif_occurrences <- function(keys,
     )
   }
 
-  per_key_results <- lapply(seq_along(keys_chunk), function(i) {
+  consecutive_failures <- 0L
+  per_key_results      <- vector("list", length(keys_chunk))
+
+  for (i in seq_along(keys_chunk)) {
 
     key <- keys_chunk[[i]]
     pos <- global_pos + i
     if (i > 1L) Sys.sleep(pause_between_keys)
     message(sprintf("  [%d / %d] key %d", pos, total, key))
 
-    resp <- NULL
+    resp    <- NULL
     attempt <- 0L
     repeat {
       resp <- tryCatch(.fetch_one_key(key), error = function(e) e)
@@ -256,30 +272,59 @@ fetch_gbif_occurrences <- function(keys,
       if (.is_rate_limit(resp) && attempt <= max_retries) {
         wait <- 30 * 2^(attempt - 1L)   # 30, 60, 120, 240 sec
         message(sprintf(
-          "  Rate limit hit for key %d (attempt %d/%d). Waiting %d sec...",
+          "  Rate limit (429) for key %d (attempt %d/%d). Waiting %d sec...",
+          key, attempt, max_retries, wait))
+        Sys.sleep(wait)
+      } else if (.is_service_unavailable(resp) && attempt <= max_retries) {
+        wait <- 5 * 2^(attempt - 1L)    # 5, 10, 20, 40 sec
+        message(sprintf(
+          "  GBIF service unavailable (503) for key %d (attempt %d/%d). Waiting %d sec...",
           key, attempt, max_retries, wait))
         Sys.sleep(wait)
       } else {
         warning(sprintf(
           "fetch_gbif_occurrences: key %d failed -- %s", key,
           conditionMessage(resp)), call. = FALSE)
-        return(NULL)
+        consecutive_failures <- consecutive_failures + 1L
+        if (consecutive_failures >= 3L) {
+          message(
+            "\n  fetch_gbif_occurrences: ", consecutive_failures,
+            " consecutive key failures -- this looks like a connectivity or",
+            "\n  GBIF availability issue, not a per-key problem.",
+            "\n  Stopping early to avoid further wasted requests.",
+            "\n",
+            "\n  To diagnose, run this interactively:",
+            "\n    rgbif::occ_data(taxonKey = 1, limit = 1)",
+            "\n  If that also fails, check your internet connection.",
+            "\n  You can also check GBIF service status at gbif.org."
+          )
+          break
+        }
+        resp <- NULL  # mark as failed; skip to next key
+        break
       }
     }
 
+    if (is.null(resp) || inherits(resp, "error")) next
+
+    consecutive_failures <- 0L  # reset on success
+
     df <- resp$data
-    if (is.null(df) || nrow(df) == 0L) return(NULL)
+    if (is.null(df) || nrow(df) == 0L) next
 
     # Hierarchy validation: confirm the query key appears somewhere in the
     # returned record's taxonomic lineage. Drops off-target synonyms.
     present_cols <- intersect(hierarchy_cols, names(df))
-    if (length(present_cols) == 0L) return(df)   # can't validate; keep all
+    if (length(present_cols) == 0L) {
+      per_key_results[[i]] <- df
+      next
+    }
 
     m <- as.matrix(df[present_cols])
     storage.mode(m) <- "integer"
     key_found <- rowSums(m == key, na.rm = TRUE) > 0L
-    df[key_found, , drop = FALSE]
-  })
+    per_key_results[[i]] <- df[key_found, , drop = FALSE]
+  }
 
   result <- dplyr::bind_rows(per_key_results)
   if (nrow(result) == 0L) NULL else result
