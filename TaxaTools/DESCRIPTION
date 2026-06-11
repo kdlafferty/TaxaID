@@ -35,5 +35,6 @@ Imports:
     rlang,
     stats,
     stringr,
+    tibble,
     tidyr
 VignetteBuilder: knitr

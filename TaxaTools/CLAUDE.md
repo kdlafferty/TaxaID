@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-09 (Session 105 — test coverage table completed: find_taxonomy_conflicts, call_api, is_valid_species_name)
+# Last updated: 2026-06-10 (Session 106 — fill_higher_ranks())
 
 ---
 
@@ -76,6 +76,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `common_to_scientific()` | Convert a character vector of common names to scientific names via LLM, with optional backbone verification via `verify_taxon_names()`. Params: `taxonomic_group`, `location`, `verify`, `backbone_id`, `llm_fn`. Returns data frame with `common_name`, `scientific_name`, `verified`, `matched_name`. | Complete | R/common_names.R |
+| `fill_higher_ranks()` | Given a character vector of taxon names (typically species binomials), extract `genus` and look up `family` via a priority chain: (1) local data frames (`local_sources`), (2) primary backbone via `verify_taxon_names()` at genus level (`backbone_id = 4L`), (3) fallback backbone (`fallback_backbone_id = 11L`). Returns tibble with `taxon_name`, `genus`, `family`; warns for unresolved taxa. Internal helpers: `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_rank_from_classification()`. | Complete | R/fill_higher_ranks.R |
 | `scientific_to_common()` | Convert scientific names to English common names. Backbone sources: GBIF (backbone_id=11, via rgbif) or ITIS (backbone_id=3, via taxize). LLM fallback when backbone returns nothing or backbone_id=NULL. `location` param biases LLM toward regionally appropriate names. Batches LLM calls (20/batch). Returns `scientific_name`, `common_name`, `common_name_alternatives` (semicolon-delimited), `source` ("gbif"/"itis"/"llm"/"none"), `backbone_id`. | Complete | R/common_names.R |
 
 ### LLM text generation functions (Session 55)
@@ -113,6 +114,7 @@ rename_cols()           # align column names to DarwinCore
 | test-rename_cols.R | `rename_cols()` | Fully offline |
 | test-to_faire.R | `to_faire()` | Fully offline; 52 tests covering renames, constructed columns, attribute, missing-column handling, validation |
 | test-common-names.R | `common_to_scientific()`, `scientific_to_common()` | Offline; backbone calls mocked via `local_mocked_bindings()`; location param verified via prompt capture; 52 tests |
+| test-fill_higher_ranks.R | `fill_higher_ranks()`, `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_rank_from_classification()` | Fully offline (API mocked); 35 tests |
 | test-token_usage.R | `token_usage()`, `reset_token_usage()` | Fully offline; mocks `.token_ledger` directly |
 | test-rank_utils.R | `standard_ranks`, `extended_ranks`, `detect_ranks()` | Fully offline |
 | test-barcode_utils.R | `barcode_length_defaults`, `resolve_barcode_lengths()` | Fully offline |
