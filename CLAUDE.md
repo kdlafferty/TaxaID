@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-09 (Session 104 -- flag_prior_mismatch)
+# Last updated: 2026-06-10 (Session 106 — fill_higher_ranks, parse_classification_path, add_pca_covariates)
 
 ---
 
@@ -241,3 +241,6 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 103 | `restore_suppressed_candidates()` added | TaxaLikely | Appends same-genus congeners from `reference_df` as `suppressed_candidate` rows; score imputed at `max_obs_score - delta`; no-score pathway creates synthetic `score_original` |
 | 103 | `assign_scores(score_type = "direct")` added | TaxaLikely | Passes score column through unchanged as `score_likelihood`; NA → 1.0; intended for post-restore no-score pathway |
 | 104 | `add_posthoc_assessment()` added | TaxaFlag | Single categorical column `posthoc_assessment`: 7 values (`sensible`, `limited_evidence`, `unexpected`, `unprecedented`, `suspect`, `vague_rank`, `modeled`) from 3-tier prior × likelihood supported/limited 3×2 table; requires `tiers` df from `priors_combined` |
+| 106 | `fill_higher_ranks()` added | TaxaTools | Extracts genus from binomial + looks up family via priority chain: local sources → `verify_taxon_names()` at genus level (NCBI) → GBIF fallback. Genus-level querying resolves species absent as synonyms. Returns tibble(`taxon_name`, `genus`, `family`). |
+| 106 | `parse_classification_path()` added | TaxaTools | Exported parser for pipe-delimited `classification_path` / `classification_ranks` columns from `verify_taxon_names()`. Extracts one rank value. Use with `mapply()` for column-level parsing. |
+| 106 | `add_pca_covariates()` + `apply_pca_transform()` added | TaxaExpect | Replaces correlated `_s` covariate columns with orthogonal PCA scores (`prcomp(center=TRUE)`); stores `pca_rotation` attribute for prediction-time use by `apply_pca_transform()`. |
