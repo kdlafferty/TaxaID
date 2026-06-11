@@ -53,7 +53,7 @@ utils::globalVariables(c("taxon_name", "genus", "family", "family.local",
 #' **Column name conflicts in local sources** (e.g. a source has both `genus`
 #' and `Genus`) are handled by `tolower(names(...))` before joining.
 #'
-#' @seealso [verify_taxon_names()]
+#' @seealso [verify_taxon_names()], [parse_classification_path()]
 #'
 #' @examples
 #' \dontrun{
@@ -181,6 +181,64 @@ fill_higher_ranks <- function(taxon_names,
   out$family[!valid_mask] <- NA_character_
 
   out
+}
+
+
+# ==============================================================================
+# Exported helper: parse_classification_path()
+# ==============================================================================
+
+#' Parse a Rank Value from a Pipe-Delimited Classification Path
+#'
+#' @description
+#' Extracts a single rank value from the `classification_path` and
+#' `classification_ranks` columns returned by [verify_taxon_names()].
+#' Both columns use `|` as a delimiter and are positionally aligned.
+#'
+#' @param path Character scalar.  Pipe-delimited taxon names, e.g.
+#'   `"Animalia|Chordata|Cottidae|Cottus"`.
+#' @param ranks Character scalar.  Pipe-delimited rank labels aligned
+#'   with `path`, e.g. `"kingdom|phylum|family|genus"`.
+#' @param target_rank Character scalar.  The rank to extract, e.g.
+#'   `"family"` or `"order"`.
+#'
+#' @return The matched taxon name string, or `NA_character_` if
+#'   `target_rank` is not present in `ranks` or inputs are `NA`.
+#'
+#' @details
+#' This function is vectorised over `path` and `ranks` via [mapply()].
+#' To parse an entire column from [verify_taxon_names()] output use:
+#'
+#' ```r
+#' verified <- verify_taxon_names(stringr::word(species_names, 1))
+#' families <- mapply(
+#'   parse_classification_path,
+#'   verified$classification_path,
+#'   verified$classification_ranks,
+#'   MoreArgs = list(target_rank = "family")
+#' )
+#' ```
+#'
+#' @seealso [verify_taxon_names()], [fill_higher_ranks()]
+#'
+#' @examples
+#' parse_classification_path(
+#'   path        = "Animalia|Chordata|Cottidae|Cottus",
+#'   ranks       = "kingdom|phylum|family|genus",
+#'   target_rank = "family"
+#' )
+#' # [1] "Cottidae"
+#'
+#' parse_classification_path(
+#'   path        = "Animalia|Chordata|Cottidae|Cottus",
+#'   ranks       = "kingdom|phylum|family|genus",
+#'   target_rank = "order"
+#' )
+#' # [1] NA
+#'
+#' @export
+parse_classification_path <- function(path, ranks, target_rank) {
+  .extract_rank_from_classification(path, ranks, target_rank)
 }
 
 

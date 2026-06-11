@@ -81,5 +81,5 @@ unreferenced_df <- dplyr::rename(unreferenced_df, species = taxon_name)
 
 }
 \seealso{
-\code{\link[=verify_taxon_names]{verify_taxon_names()}}
+\code{\link[=verify_taxon_names]{verify_taxon_names()}}, \code{\link[=parse_classification_path]{parse_classification_path()}}
 }

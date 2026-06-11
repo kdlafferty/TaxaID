@@ -325,3 +325,47 @@ test_that(".build_genus_family_lookup returns empty tibble for empty list", {
   expect_s3_class(result, "tbl_df")
   expect_equal(nrow(result), 0L)
 })
+
+# =============================================================================
+# parse_classification_path() — exported wrapper
+# =============================================================================
+
+test_that("parse_classification_path extracts family correctly", {
+  expect_equal(
+    parse_classification_path(
+      "Animalia|Chordata|Cottidae|Cottus",
+      "kingdom|phylum|family|genus",
+      "family"
+    ),
+    "Cottidae"
+  )
+})
+
+test_that("parse_classification_path extracts genus correctly", {
+  expect_equal(
+    parse_classification_path(
+      "Animalia|Chordata|Cottidae|Cottus",
+      "kingdom|phylum|family|genus",
+      "genus"
+    ),
+    "Cottus"
+  )
+})
+
+test_that("parse_classification_path returns NA for absent rank", {
+  expect_identical(
+    parse_classification_path(
+      "Animalia|Chordata|Cottidae|Cottus",
+      "kingdom|phylum|family|genus",
+      "order"
+    ),
+    NA_character_
+  )
+})
+
+test_that("parse_classification_path returns NA for NA inputs", {
+  expect_identical(
+    parse_classification_path(NA, NA, "family"),
+    NA_character_
+  )
+})
