@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — llm_fn fallback updated; license cleanup)
+# Last updated: 2026-06-10 (Session 106 — add_pca_covariates + apply_pca_transform)
 
 ---
 
@@ -38,6 +38,8 @@ and prior generation only.
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
+| `add_pca_covariates()` | Replace correlated `_s` covariate columns with orthogonal PCA scores; returns same structure as `prepare_model_dataframe()` output; stores `pca_rotation` attribute for prediction-time use | Complete | R/add_pca_covariates.R |
+| `apply_pca_transform()` | Apply stored PCA rotation to scaled new-site data before `generate_full_priors()` | Complete | R/add_pca_covariates.R |
 | `optimize_grid_size()` | Score grid resolutions on coverage, quality, stability; return best size + fallback | Complete | R/optimize_grid_size.R |
 | `compute_moran_basis()` | Build Moran Eigenvector Maps (MEM) for spatial autocorrelation covariates | Complete | R/compute_moran_basis.R |
 | `screen_spatial_formula()` | Fit full spatial model, screen Moran/gradient slopes by VarCorr SD, select parsimonious formula by AIC | Complete | R/screen_spatial_formula.R |
@@ -63,7 +65,20 @@ and prior generation only.
 - Requires: `grid_id`, `lat_r`, `lon_r`, `habitat_col`, `taxon_name`.
 - Returns tibble with: `grid_id`, `lat_r`, `lon_r`, `<habitat_col>`, `taxon_name`, `n_species`, `n_total_at_site`, `n_other`, `is_present`, `observed_in_habitat`, `<cov>_s` columns.
 - Attaches `scale_params` as attribute (list of center/scale per covariate) for use at prediction time.
-- Warns on multicollinearity > `cor_threshold`; suggests `add_pca_covariates()`.
+- Warns on multicollinearity > `cor_threshold`; call `add_pca_covariates()` on the result to fix.
+
+### `add_pca_covariates(model_df, cor_threshold = 0.7, prefix = "PC")`
+- Input: output of `prepare_model_dataframe()` (must have `_s` columns and `scale_params` attribute).
+- Finds all `_s` column pairs with `|r| > cor_threshold`; applies PCA to all involved columns.
+- Replaces involved `_s` columns with `<prefix>N_s` PC score columns (orthogonal by construction).
+- Returns the same tibble structure suitable for `train_biodiversity_model()`.
+- Attributes on output: `scale_params` (unchanged, original covariate entries); `pca_rotation` (list: `source_cols`, `pc_cols`, `rotation`, `center`, `prefix`).
+- Returns input unchanged (with message) if no pairs exceed threshold.
+
+### `apply_pca_transform(new_sites, pca_rotation)`
+- Input: scaled new-site data frame (has `pca_rotation$source_cols` columns) + `pca_rotation` from `add_pca_covariates()` output attribute or `model_obj$pca_rotation`.
+- Subtracts training center, applies rotation, replaces source columns with PC columns.
+- Use before `generate_full_priors()` when model was trained with PCA covariates.
 
 ### `train_biodiversity_model(data, formula, taxon_col = "taxon_name", habitat_col = "main_habitat", response = c("theta", "psi"), min_obs_threshold = 5L, effort_threshold = 10L, min_positive_rows = 50L, full_data = NULL)`
 - **Tier 1** (>= `min_obs_threshold` detections): full user-supplied formula with habitat screening.
@@ -213,7 +228,7 @@ plot_theta_map_interactive(priors, occurrences)
 - **`search_rank`** in `build_priors()`: controls what taxonomic rank GBIF queries are made at (default "family"). Species-level names are still verified against GBIF backbone first to resolve cross-backbone disagreements (e.g. Girellidae→Kyphosidae), then collapsed to unique families for querying.
 - **`max_coord_uncertainty`** in `build_priors()`: passed to `filter_gbif_quality()` (default 500m). Endangered species often have intentionally degraded coordinates (~28km); a species purge warning is emitted when taxa lose ≥80% or 100% of records.
 - **`search_center` attribute:** `build_priors()` attaches `attr(out, "search_center") <- list(lat, lon)` to both the return list and the `$priors` data frame. Used by `TaxaAssign::join_priors()` as the default site when `site = NULL`.
-- `add_pca_covariates()` is referenced in warnings but **not yet implemented** in this package
+- `add_pca_covariates()` and `apply_pca_transform()` implemented in Session 106 (see Supporting functions above)
 - `assign_habitat_to_points()` and `assign_habitat_biological()` are now in **TaxaHabitat**, not TaxaExpect
 
 ---
