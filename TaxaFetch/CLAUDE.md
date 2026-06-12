@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-10 (Session 105 — fetch_gbif_occurrences() 503 retry + connectivity warning)
+# Last updated: 2026-06-11 (Session 107 — download_gbif_occurrences() + filter_gbif_quality require_species)
 
 ---
 
@@ -22,10 +22,11 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
-| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. Checkpoint filename encodes call signature so changed parameters start fresh. | Complete | R/fetch_gbif_occurrences.R |
+| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. | Complete | R/fetch_gbif_occurrences.R |
+| `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility; (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). | Complete | R/download_gbif_occurrences.R |
+| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). | Complete | R/filter_gbif_quality.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
 | `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble | Complete | R/biotime_fetch.R |
-| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained | Complete | R/filter_gbif_quality.R |
 | `screen_eml_columns()` | Fetch EML; check bbox overlap; detect lat/lon columns | Complete | R/dataone_eml_screen.R |
 | `preview_dataone_occurrences()` | Pre-download scout; `dataone_preview` S3 class | Complete | R/dataone_preview.R |
 | `print.dataone_preview()` | S3 print method | Complete | R/dataone_preview.R |
@@ -91,7 +92,9 @@ harvest_dataone_catalog() → build_geo_prompt() → build_taxon_screen_prompt()
 
 ### GBIF pipeline
 ```
-make_bbox_wkt() → get_keys_from_context() → fetch_gbif_occurrences() → filter_gbif_quality()
+make_bbox_wkt() → get_keys_from_context() → fetch_gbif_occurrences()        [≤~50 keys, no account]
+                                           → download_gbif_occurrences()    [100s–1000s keys, account required]
+                                           → filter_gbif_quality()
 ```
 
 ### Literature + PDF pipeline
@@ -193,6 +196,7 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | TaxaTools | LLM provider functions, taxonomy helpers | Imports |
 | httr2 | API calls (PASTA Solr, OpenAlex, Nominatim) | Imports |
 | rgbif | GBIF backbone + occurrence download | Suggests |
+| data.table | Fast TSV import for `download_gbif_occurrences()` | Suggests |
 | dplyr | Data manipulation | Imports |
 | stringr | String operations | Imports |
 | tibble | Tibble construction | Imports |
@@ -259,3 +263,19 @@ Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
 - `devtools::test()` (test-fetch_gbif_occurrences.R): 18 pass, 0 fail, 2 skip.
   Tests updated to use `out$records`, and resilience test updated to expect
   `stop()` (not warning + partial results) on key failure.
+
+**Session 107 (2026-06-11)**
+- `download_gbif_occurrences()` added: async GBIF bulk download for large key sets (100s–1000s).
+  Root cause of existing 429 rate limits: `fetch_gbif_occurrences()` hit key 511/1598 before abort.
+- Critical bug fixed during development: GBIF download API `taxonKey` predicate is exact-match only
+  (not hierarchical like `occ_data()`). Fix: `pred_or(pred_in("familyKey",...), pred_in("genusKey",...),
+  pred_in("speciesKey",...), pred_in("taxonKey",...))`. Without this, family-level queries returned
+  only family-rank-identified records (no species data).
+- SIMPLE_CSV format notes: `issue` (singular) column renamed to `issues` post-import; `familyKey`,
+  `genusKey` etc. are DWCA-only and absent from SIMPLE_CSV — hierarchy validation removed.
+- `filter_gbif_quality()`: `require_species` parameter added (filter 7). Needed because GBIF returns
+  all ranks within a queried family/genus, including genus-only records with no species value.
+- `data.table` added to DESCRIPTION Suggests; `quote=""` in fread suppresses spurious quoting
+  warnings on GBIF TSV data.
+- User-facing messaging improved: cache directory printed at start; "still working" message after
+  rgbif "succeeded" output (which misleadingly appears before import completes).

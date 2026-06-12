@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-10 (Session 106 — fill_higher_ranks, parse_classification_path, add_pca_covariates)
+# Last updated: 2026-06-11 (Session 107 — download_gbif_occurrences, filter_gbif_quality require_species)
 
 ---
 
@@ -244,3 +244,5 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 106 | `fill_higher_ranks()` added | TaxaTools | Extracts genus from binomial + looks up family via priority chain: local sources → `verify_taxon_names()` at genus level (NCBI) → GBIF fallback. Genus-level querying resolves species absent as synonyms. Returns tibble(`taxon_name`, `genus`, `family`). |
 | 106 | `parse_classification_path()` added | TaxaTools | Exported parser for pipe-delimited `classification_path` / `classification_ranks` columns from `verify_taxon_names()`. Extracts one rank value. Use with `mapply()` for column-level parsing. |
 | 106 | `add_pca_covariates()` + `apply_pca_transform()` added | TaxaExpect | Replaces correlated `_s` covariate columns with orthogonal PCA scores (`prcomp(center=TRUE)`); stores `pca_rotation` attribute for prediction-time use by `apply_pca_transform()`. |
+| 107 | `download_gbif_occurrences()` added | TaxaFetch | Async GBIF bulk download for large key sets; avoids HTTP 429 rate limits that abort `fetch_gbif_occurrences()` on 500+ keys. Requires GBIF account. Uses rank-specific OR predicate (download API `taxonKey` is exact-match only). Signature-based cache; `select_cols` subsetting at fread time. |
+| 107 | `filter_gbif_quality()` gains `require_species` | TaxaFetch | New param (default FALSE). Set TRUE when querying GBIF by family/genus key — GBIF returns all ranks within the queried taxon, including genus-only records with no species value. |
