@@ -1,6 +1,6 @@
 utils::globalVariables(c(
   "basisOfRecord", "coordinateUncertaintyInMeters", "decimalLatitude",
-  "decimalLongitude", "issues"
+  "decimalLongitude", "issues", "species"
 ))
 
 # ==============================================================================
@@ -42,6 +42,14 @@ utils::globalVariables(c(
 #'   \code{coordinateUncertaintyInMeters} is \code{NA} are retained
 #'   (uncertainty not reported is not the same as uncertainty being large).
 #'   If the column is absent the filter is skipped with a message.
+#' @param require_species Logical. If \code{TRUE}, records where the
+#'   \code{species} column is \code{NA} or empty are removed. Default
+#'   \code{FALSE}. Set to \code{TRUE} when querying GBIF by family or genus
+#'   key: GBIF returns records at all taxonomic ranks within the queried
+#'   taxon, including observations identified only to family or genus level.
+#'   Those coarse-rank records lack a \code{species} value and are unusable
+#'   downstream in TaxaAssign. If the \code{species} column is absent, this
+#'   filter is skipped with a message.
 #' @param max_coord_decimal_places Integer or \code{NULL}. Minimum number
 #'   of decimal places required in \emph{at least one} coordinate
 #'   (latitude or longitude). Records where both coordinates are rounded to
@@ -78,6 +86,7 @@ utils::globalVariables(c(
 #' rounded while the other is precise.
 #'
 #' @seealso \code{\link{fetch_gbif_occurrences}},
+#'   \code{\link{download_gbif_occurrences}},
 #'   \code{\link{stack_occurrences}}
 #'
 #' @importFrom dplyr filter
@@ -111,7 +120,8 @@ filter_gbif_quality <- function(
                                "ZERO_COORDINATE",
                                "COORDINATE_PRECISION_INVALID"),
     max_coord_uncertainty  = 500,
-    max_coord_decimal_places = NULL
+    max_coord_decimal_places = NULL,
+    require_species        = FALSE
 ) {
 
   # --- Input checks -----------------------------------------------------------
@@ -242,6 +252,22 @@ filter_gbif_quality <- function(
       if (n_after < n_current) {
         message(sprintf("  Removed %d eDNA/metabarcoding records.",
                         n_current - n_after))
+      }
+    }
+  }
+
+  # --- 7. Species-level requirement -------------------------------------------
+  if (require_species) {
+    if (!"species" %in% names(data)) {
+      message("filter_gbif_quality: 'species' column not found -- skipping require_species filter.")
+    } else {
+      data    <- dplyr::filter(data, !is.na(species) & nzchar(species))
+      n_after <- nrow(data)
+      if (n_after < n_current) {
+        message(sprintf(
+          "  Removed %d records with no species-level identification.",
+          n_current - n_after
+        ))
       }
     }
   }

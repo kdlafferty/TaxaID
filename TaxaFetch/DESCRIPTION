@@ -30,6 +30,7 @@ Imports:
     TaxaTools
 Suggests:
     callr,
+    data.table,
     knitr,
     rmarkdown,
     rgbif,

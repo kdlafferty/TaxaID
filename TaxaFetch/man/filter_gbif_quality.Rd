@@ -12,7 +12,8 @@ filter_gbif_quality(
   bad_issues = c("COORDINATE_OUT_OF_RANGE", "COUNTRY_COORDINATE_MISMATCH",
     "COORDINATE_INVALID", "ZERO_COORDINATE", "COORDINATE_PRECISION_INVALID"),
   max_coord_uncertainty = 500,
-  max_coord_decimal_places = NULL
+  max_coord_decimal_places = NULL,
+  require_species = FALSE
 )
 }
 \arguments{
@@ -58,6 +59,15 @@ imprecise. \code{NULL} (default) disables this filter.
 }
 Recommended: \code{2} or \code{3} for habitat grids on the order of
 a few hundred metres to a kilometre.}
+
+\item{require_species}{Logical. If \code{TRUE}, records where the
+\code{species} column is \code{NA} or empty are removed. Default
+\code{FALSE}. Set to \code{TRUE} when querying GBIF by family or genus
+key: GBIF returns records at all taxonomic ranks within the queried
+taxon, including observations identified only to family or genus level.
+Those coarse-rank records lack a \code{species} value and are unusable
+downstream in TaxaAssign. If the \code{species} column is absent, this
+filter is skipped with a message.}
 }
 \value{
 The input data frame with low-quality rows removed. Column
@@ -109,5 +119,6 @@ nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = Inf))
 }
 \seealso{
 \code{\link{fetch_gbif_occurrences}},
+\code{\link{download_gbif_occurrences}},
 \code{\link{stack_occurrences}}
 }

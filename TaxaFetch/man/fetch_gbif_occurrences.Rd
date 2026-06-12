@@ -78,15 +78,28 @@ hierarchy columns (\code{taxonKey}, \code{speciesKey}, \code{genusKey},
 are silently dropped. This prevents off-target taxa from entering the
 dataset when searching at family or order level.
 
+\strong{When to use this function vs \code{download_gbif_occurrences}:}
+\itemize{
+\item Use \code{fetch_gbif_occurrences} for small exploratory queries
+(fewer than roughly 50 keys), when you want immediate per-key progress
+feedback, or when you do not have a GBIF account.
+\item Use \code{\link{download_gbif_occurrences}} for large taxon lists
+(roughly 50 or more keys), when completeness matters (no per-key record
+cap), or when this function hits HTTP 429 rate-limit errors. The async
+download API processes requests server-side with no per-key rate limits.
+A free GBIF account is required.
+}
+
 \strong{Rate limiting and transient errors:} HTTP 429 (rate limit) errors
 trigger exponential backoff with waits of 30, 60, 120, and 240 seconds per
 key. HTTP 503 (Service Unavailable) errors are retried with shorter waits
 (5, 10, 20, 40 seconds). If any key exhausts all retries, the function
 stops immediately to avoid returning an incomplete, session-inconsistent
-result. To test your connection interactively, run
+result. Progress is saved so re-running resumes from the last successful
+key. To test your connection interactively, run
 \code{rgbif::occ_data(taxonKey = 1, limit = 1)}.
 If you see HTTP 429 errors frequently, increase \code{pause_seconds} or
-reduce \code{chunk_size}.
+reduce \code{chunk_size}, or switch to \code{\link{download_gbif_occurrences}}.
 
 \strong{Checkpoint / resume:} Progress is saved after each completed chunk
 to \code{cache_dir}. The checkpoint file name encodes the call signature
@@ -126,6 +139,8 @@ occ_clean <- filter_gbif_quality(occ)
 }
 }
 \seealso{
+\code{\link{download_gbif_occurrences}} (async alternative for
+large queries, no rate limits, requires GBIF account),
 \code{\link{make_bbox_wkt}}, \code{\link{get_keys_from_context}},
 \code{\link{filter_gbif_quality}}, \code{\link{stack_occurrences}}
 }
