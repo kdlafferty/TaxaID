@@ -40,7 +40,13 @@ utils::globalVariables(c(
 #'   \code{generate_undetected_diversity()}.
 #' @param theta_epsilon Numeric. Floor/ceiling applied to back-transformed
 #'   theta before alpha/beta conversion, to avoid boundary values.
-#'   Default \code{1e-6}.
+#'   Default \code{1e-6}. When \code{undetected} is supplied and contains
+#'   \code{"singleton_mirror"} rows, the floor is automatically raised to the
+#'   mean singleton-mirror detection rate if that value exceeds
+#'   \code{theta_epsilon}. This ensures Tier 2 species (sparse but detected)
+#'   always receive priors above the dark-diversity floor computed in
+#'   \code{TaxaAssign::join_priors()}, preventing conflation with species that
+#'   have never been detected in the system.
 #'
 #' @return A tibble with one row per taxon_name x site x habitat combination
 #'   (plus undetected rows if provided), containing:
@@ -173,6 +179,37 @@ generate_full_priors <- function(model_obj,
   has_n_total  <- "n_total_at_site" %in% names(new_sites)
   habitat_sym  <- rlang::sym(habitat_col)
   taxon_sym    <- rlang::sym(taxon_col)
+
+  # ---------------------------------------------------------------------------
+  # Derive theta_epsilon from singleton mirrors when undetected pool is available.
+  # Singleton mirrors represent the detection probability of species observed
+  # exactly once in training data. Using their mean as the floor ensures any
+  # modelled species (Tier 1 or Tier 2) has theta >= the rarest known detection
+  # rate. Without this, Tier 2 sparse species can collapse to the same prior as
+  # species never detected (dark diversity), because join_priors() promotes both
+  # to dark_mean. Since dark_mean averages singleton mirrors AND the global floor,
+  # singleton_floor > dark_mean, so floored modelled priors survive the
+  # join_priors() promotion step and remain distinguishable from unmodelled taxa.
+  # ---------------------------------------------------------------------------
+  if (!is.null(undetected) && nrow(undetected) > 0 &&
+      "undetected_type" %in% names(undetected)) {
+    sm_rows <- undetected[
+      !is.na(undetected$undetected_type) &
+        undetected$undetected_type == "singleton_mirror" &
+        !is.na(undetected$alpha) &
+        !is.na(undetected$beta), , drop = FALSE
+    ]
+    if (nrow(sm_rows) > 0) {
+      singleton_floor <- mean(sm_rows$alpha / (sm_rows$alpha + sm_rows$beta))
+      if (singleton_floor > theta_epsilon) {
+        message(sprintf(
+          "theta_epsilon raised from %.2e to %.2e (mean singleton-mirror detection rate, n=%d mirrors). Modelled-species priors will not collapse to dark-diversity floor.",
+          theta_epsilon, singleton_floor, nrow(sm_rows)
+        ))
+        theta_epsilon <- singleton_floor
+      }
+    }
+  }
 
   # ---------------------------------------------------------------------------
   # Derive phi cap from taxon_name:grid_id random effect variance

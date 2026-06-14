@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-10 (Session 106 — add_pca_covariates + apply_pca_transform)
+# Last updated: 2026-06-13 (Session 108 — generate_full_priors theta_epsilon auto-raise from singleton mirrors)
 
 ---
 
@@ -107,6 +107,7 @@ and prior generation only.
 - Covariates scaled using training `scale_params` (not re-scaled from `new_sites`).
 - Alpha/beta via moment-matching; phi capped at `1 / grid_var` (Tier 1 `taxon_name:grid_id` variance).
 - **`min_phi`** (default 2): phi floor. When the phi cap is very low (high grid variance), prevents modelled priors from becoming so diffuse that MC posterior simulation is unstable and modelled priors become less informative than dark-diversity fallbacks. Matches `singleton_ess` default in `generate_undetected_diversity()`.
+- **`theta_epsilon` auto-raise (Session 108):** When `undetected` is supplied and contains singleton-mirror rows, `theta_epsilon` is automatically raised to `mean(alpha/(alpha+beta))` across those rows if that value exceeds the default `1e-6`. This data-derived floor ensures Tier 2 sparse species (detected at least once in the system) always receive priors above the dark-diversity floor computed in `join_priors()`. Root cause fixed: a Tier 2 singleton with predicted theta ≈ 1e-6 was being promoted to dark_mean by `join_priors()`, producing priors identical to undetected species (e.g. `Syngnathus auliscus` vs `S. caribbaeus`). With the raise: `singleton_mirror_floor > dark_mean` (because dark_mean averages singleton mirrors + global floor, which is lower), so Tier 2 priors survive the promotion check unchanged.
 - Jeffreys fallback `Beta(0.5, 0.5)` when phi <= 0; flagged in `jeffreys_fallback` column.
 - Appends `undetected` rows if supplied.
 

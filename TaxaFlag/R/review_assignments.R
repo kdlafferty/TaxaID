@@ -4,7 +4,14 @@
 #' Sends unique taxa from a consensus table to an LLM for structured expert
 #' review. The LLM assesses each taxon for habitat fit, geographic plausibility,
 #' contaminant risk, and (optionally) taxonomic scope. It also suggests
-#' plausible alternative taxa and finer-rank hypotheses where appropriate.
+#' plausible alternative taxa where appropriate.
+#'
+#' When \code{plausible_taxa_col} is supplied, the function deduplicates on
+#' candidate sets rather than \code{consensus_taxon}. Each unique combination
+#' of plausible species becomes one LLM query, giving the LLM full species-level
+#' context rather than only the upranked LCA name. This is especially useful
+#' when multiple observations share the same genus-level consensus but differ in
+#' which specific candidates they contain.
 #'
 #' Works with any data frame containing a taxon column -- not restricted to
 #' TaxaAssign output. Context (geography, habitat) can be supplied as a
@@ -14,9 +21,23 @@
 #' @param taxon_col Character. Column name for consensus taxon. Default
 #'   \code{"consensus_taxon"}.
 #' @param taxon_rank_col Character or \code{NULL}. Column name for consensus
-#'   rank (e.g., "species", "genus"). When supplied AND rank is coarser than
-#'   species, the LLM populates \code{review_lower_hypotheses}. Default
-#'   \code{NULL}.
+#'   rank (e.g., "species", "genus"). When supplied, the rank is included in
+#'   the prompt for context. Default \code{NULL}.
+#' @param plausible_taxa_col Character or \code{NULL}. Name of the list column
+#'   containing per-observation plausible candidate taxa (e.g.,
+#'   \code{"plausible_taxa"} from \code{TaxaAssign::posterior_consensus()}).
+#'   When supplied, the LLM receives the full candidate set for each unique
+#'   combination rather than just the upranked consensus taxon. Singletons are
+#'   reviewed by species name as usual. Unresolved rows (empty candidate set)
+#'   are skipped. Default \code{NULL} (current behaviour -- deduplicates on
+#'   \code{taxon_col}).
+#' @param irreducible_only Logical. When \code{plausible_taxa_col} is supplied
+#'   and an \code{irreducible_consensus} column is present in \code{df} (added
+#'   by \code{TaxaAssign::add_slash_taxon()}), only candidate sets where
+#'   \code{irreducible_consensus == TRUE} are reviewed. Non-irreducible rows
+#'   receive \code{NA} review columns. When \code{irreducible_consensus} is
+#'   absent, all unique candidate sets are reviewed with a message. Ignored
+#'   when \code{plausible_taxa_col = NULL}. Default \code{TRUE}.
 #' @param context Named list or data frame describing the study context.
 #'   Recognised fields: \code{geography} (or \code{ecoregion}),
 #'   \code{habitat} (or \code{main_habitat}), \code{date}. A
@@ -30,79 +51,73 @@
 #'   Provides contaminant context. Default \code{NULL}.
 #' @param data_type Character. Detection method. One of \code{"eDNA"} (default),
 #'   \code{"acoustic"}, or \code{"image"}. Controls the contaminant assessment
-#'   guidance in the LLM prompt: \cr
-#'   - \code{"eDNA"}: highlights PCR/lab contaminants (Homo sapiens, Bos taurus, etc.) \cr
-#'   - \code{"acoustic"}: highlights false positives from handler noise and domestic animals \cr
-#'   - \code{"image"}: highlights handler presence during camera setup/teardown events
+#'   guidance in the LLM prompt.
 #' @param llm_fn Function. LLM provider function with signature
 #'   \code{function(prompt_str, ...)}. Default
-#'   \code{TaxaTools::call_anthropic_api}.
-#' @param taxa_per_call Integer. Maximum taxa per LLM call. Default
-#'   \code{15L}. Kept moderate to avoid LLM response truncation (each
-#'   taxon requires ~100-150 output tokens).
+#'   \code{TaxaTools::call_api}.
+#' @param taxa_per_call Integer. Maximum taxa (or candidate sets) per LLM call.
+#'   Default \code{15L}. Candidate-set entries are longer than single taxon
+#'   names; consider reducing to 8--10 when using \code{plausible_taxa_col}.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls.
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
-#' @return The input data frame with 8 columns appended:
+#' @return The input data frame with 7 or 8 columns appended:
 #' \describe{
-#'   \item{\code{habitat_plausibility}}{likely / possible / unlikely --
-#'     plausibility that this taxon lives in the study habitat.
-#'     Higher = more plausible genuine detection.}
-#'   \item{\code{geographic_plausibility}}{likely / possible / unlikely --
-#'     plausibility that this taxon occurs in the study region.
-#'     Higher = more plausible genuine detection.}
-#'   \item{\code{scope_plausibility}}{likely / possible / unlikely --
-#'     plausibility that this taxon belongs to the target group.
-#'     \code{NA} if \code{target_group} not supplied.}
-#'   \item{\code{contamination_risk}}{high / moderate / low --
-#'     LLM-assessed risk that this taxon is a contaminant or false positive.
-#'     Higher = more likely to be a contaminant.}
-#'   \item{\code{review_alternatives}}{Comma-separated plausible alternatives
-#'     at the same rank, or NA}
-#'   \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa
-#'     expected at this location, or NA}
-#'   \item{\code{review_confidence}}{high / moderate / low (LLM confidence in
-#'     its own assessment)}
-#'   \item{\code{review_comment}}{Free-text note, or NA}
+#'   \item{\code{habitat_plausibility}}{likely / possible / unlikely}
+#'   \item{\code{geographic_plausibility}}{likely / possible / unlikely}
+#'   \item{\code{scope_plausibility}}{likely / possible / unlikely, or \code{NA}
+#'     if \code{target_group} not supplied}
+#'   \item{\code{contamination_risk}}{high / moderate / low}
+#'   \item{\code{review_alternatives}}{Comma-separated plausible alternatives,
+#'     or \code{NA}}
+#'   \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa, or
+#'     \code{NA}. Always \code{NA} when \code{plausible_taxa_col} is supplied
+#'     (candidates already known).}
+#'   \item{\code{review_confidence}}{high / moderate / low}
+#'   \item{\code{review_comment}}{Free-text note, or \code{NA}}
 #' }
 #'
-#' @seealso \code{\link{flag_contaminant}} for data-driven contaminant detection,
-#'   \code{\link{flag_handler}} for temporal proximity flagging
+#' @seealso \code{\link{flag_contaminant}} for data-driven contaminant
+#'   detection, \code{\link{flag_handler}} for temporal proximity flagging,
+#'   \code{TaxaAssign::add_slash_taxon()} to add \code{irreducible_consensus}
 #'
 #' @examples
 #' \dontrun{
-#' # Basic review with geography and habitat
+#' # Standard review (consensus taxon only)
 #' reviewed <- review_assignments(
-#'   df         = consensus_df,
-#'   taxon_col  = "consensus_taxon",
-#'   context    = list(geography = "Palmyra Atoll, central Pacific",
-#'                     habitat   = "coral reef"),
+#'   df           = consensus_df,
+#'   context      = list(geography = "Palmyra Atoll, central Pacific",
+#'                       habitat   = "coral reef"),
 #'   target_group = "fish",
 #'   marker       = "12S MiFish"
 #' )
 #'
-#' # Using build_context() output from TaxaAssign
+#' # Candidate-aware review (recommended for upranked assignments)
+#' consensus_df <- TaxaAssign::add_slash_taxon(consensus_df)
 #' reviewed <- review_assignments(
-#'   df         = consensus_df,
-#'   taxon_col  = "consensus_taxon",
-#'   context    = ctx,
-#'   target_group = "fish"
+#'   df                 = consensus_df,
+#'   plausible_taxa_col = "plausible_taxa",
+#'   irreducible_only   = TRUE,
+#'   context            = ctx,
+#'   target_group       = "fish"
 #' )
 #' }
 #'
 #' @export
 review_assignments <- function(df,
-                               taxon_col      = "consensus_taxon",
-                               taxon_rank_col = NULL,
+                               taxon_col          = "consensus_taxon",
+                               taxon_rank_col     = NULL,
+                               plausible_taxa_col = NULL,
+                               irreducible_only   = TRUE,
                                context,
-                               target_group   = NULL,
-                               marker         = NULL,
-                               data_type      = "eDNA",
-                               llm_fn         = getOption("TaxaID.llm_fn", TaxaTools::call_api),
-                               taxa_per_call  = 15L,
-                               pause_seconds  = 1,
-                               verbose        = TRUE) {
+                               target_group       = NULL,
+                               marker             = NULL,
+                               data_type          = "eDNA",
+                               llm_fn             = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+                               taxa_per_call      = 15L,
+                               pause_seconds      = 1,
+                               verbose            = TRUE) {
 
   # --- Input validation ---
   if (!is.data.frame(df)) stop("'df' must be a data frame.", call. = FALSE)
@@ -112,6 +127,9 @@ review_assignments <- function(df,
 
   if (!is.null(taxon_rank_col) && !taxon_rank_col %in% names(df))
     stop(sprintf("Column '%s' not found in df.", taxon_rank_col), call. = FALSE)
+
+  if (!is.null(plausible_taxa_col) && !plausible_taxa_col %in% names(df))
+    stop(sprintf("Column '%s' not found in df.", plausible_taxa_col), call. = FALSE)
 
   if (missing(context) || is.null(context))
     stop("'context' is required. Supply a named list or build_context() output.",
@@ -126,33 +144,100 @@ review_assignments <- function(df,
   # --- Normalise context ---
   ctx <- .normalise_context(context)
 
-  # --- Extract unique taxa ---
-  taxa <- unique(df[[taxon_col]])
-  taxa <- taxa[!is.na(taxa) & nchar(trimws(taxa)) > 0]
+  # --- Build taxa_info: candidate-set path or consensus-taxon path ---
+  use_candidates <- !is.null(plausible_taxa_col)
 
-  if (length(taxa) == 0L)
-    stop(sprintf("No non-NA taxa found in column '%s'.", taxon_col), call. = FALSE)
+  if (use_candidates) {
 
-  # Build taxa info data frame
-  if (!is.null(taxon_rank_col)) {
-    taxa_info <- unique(df[, c(taxon_col, taxon_rank_col), drop = FALSE])
-    names(taxa_info) <- c("taxon_name", "taxon_rank")
-    taxa_info <- taxa_info[!is.na(taxa_info$taxon_name) &
-                             nchar(trimws(taxa_info$taxon_name)) > 0, ,
-                           drop = FALSE]
-    # Deduplicate (keep first rank per taxon)
+    raw_sets  <- df[[plausible_taxa_col]]
+    taxa_sets <- lapply(raw_sets, function(x) sort(unique(x[!is.na(x) & nzchar(x)])))
+    n_cands   <- lengths(taxa_sets)
+
+    # Build display labels (slash notation)
+    cand_labels <- vapply(seq_along(taxa_sets), function(i) {
+      if (n_cands[i] == 0L) return(NA_character_)
+      if (n_cands[i] == 1L) return(taxa_sets[[i]])
+      .build_candidate_label(taxa_sets[[i]])
+    }, character(1L))
+
+    # Determine which rows to review
+    if (irreducible_only) {
+      if ("irreducible_consensus" %in% names(df)) {
+        include_rows <- df[["irreducible_consensus"]] %in% TRUE
+        if (verbose)
+          message(sprintf(
+            "  irreducible_only = TRUE: %d of %d rows selected for review.",
+            sum(include_rows & n_cands > 0L), nrow(df)
+          ))
+      } else {
+        if (verbose)
+          message(paste0(
+            "  irreducible_only = TRUE but 'irreducible_consensus' column not found. ",
+            "Run TaxaAssign::add_slash_taxon() to enable filtering. ",
+            "Reviewing all non-empty candidate sets."
+          ))
+        include_rows <- rep(TRUE, nrow(df))
+      }
+    } else {
+      include_rows <- rep(TRUE, nrow(df))
+    }
+
+    # Exclude unresolved rows
+    include_rows <- include_rows & n_cands > 0L
+
+    # Store join key on df (label is the key — canonical because sets are sorted)
+    df$.join_key <- cand_labels
+
+    # Build taxa_info from unique labels in included rows
+    inc_labels <- cand_labels[include_rows]
+    inc_ranks  <- if (!is.null(taxon_rank_col)) {
+      df[[taxon_rank_col]][include_rows]
+    } else {
+      rep(NA_character_, sum(include_rows))
+    }
+
+    taxa_info <- data.frame(
+      taxon_name = inc_labels,
+      taxon_rank = inc_ranks,
+      stringsAsFactors = FALSE
+    )
     taxa_info <- taxa_info[!duplicated(taxa_info$taxon_name), , drop = FALSE]
+
+    if (nrow(taxa_info) == 0L)
+      stop("No candidate sets to review after filtering. ",
+           "Check 'irreducible_only' and 'plausible_taxa_col'.", call. = FALSE)
+
   } else {
-    taxa_info <- data.frame(taxon_name = taxa, taxon_rank = NA_character_,
-                            stringsAsFactors = FALSE)
+
+    # --- Current path: dedup on consensus_taxon ---
+    df$.join_key <- df[[taxon_col]]
+
+    taxa <- unique(df[[taxon_col]])
+    taxa <- taxa[!is.na(taxa) & nchar(trimws(taxa)) > 0]
+
+    if (length(taxa) == 0L)
+      stop(sprintf("No non-NA taxa found in column '%s'.", taxon_col), call. = FALSE)
+
+    if (!is.null(taxon_rank_col)) {
+      taxa_info <- unique(df[, c(taxon_col, taxon_rank_col), drop = FALSE])
+      names(taxa_info) <- c("taxon_name", "taxon_rank")
+      taxa_info <- taxa_info[!is.na(taxa_info$taxon_name) &
+                               nchar(trimws(taxa_info$taxon_name)) > 0, , drop = FALSE]
+      taxa_info <- taxa_info[!duplicated(taxa_info$taxon_name), , drop = FALSE]
+    } else {
+      taxa_info <- data.frame(taxon_name = taxa, taxon_rank = NA_character_,
+                              stringsAsFactors = FALSE)
+    }
   }
 
   if (verbose)
-    message(sprintf("review_assignments: %d unique taxa to review.", nrow(taxa_info)))
+    message(sprintf("review_assignments: %d unique %s to review.",
+                    nrow(taxa_info),
+                    if (use_candidates) "candidate sets" else "taxa"))
 
   # --- Batch and call LLM ---
-  n_taxa <- nrow(taxa_info)
-  tpc <- min(taxa_per_call, n_taxa)
+  n_taxa    <- nrow(taxa_info)
+  tpc       <- min(taxa_per_call, n_taxa)
   batch_idx <- split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc))
   n_batches <- length(batch_idx)
 
@@ -166,10 +251,12 @@ review_assignments <- function(df,
     taxa_batch <- taxa_info[batch_idx[[b]], , drop = FALSE]
 
     if (verbose)
-      message(sprintf("  Calling LLM (batch %d/%d, %d taxa)...",
-                      b, n_batches, nrow(taxa_batch)))
+      message(sprintf("  Calling LLM (batch %d/%d, %d %s)...",
+                      b, n_batches, nrow(taxa_batch),
+                      if (use_candidates) "candidate sets" else "taxa"))
 
-    prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker, data_type)
+    prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker,
+                                   data_type, use_candidates)
 
     raw <- tryCatch(
       llm_fn(prompt),
@@ -181,7 +268,7 @@ review_assignments <- function(df,
     )
 
     batch_results[[b]] <- .parse_review_response(
-      raw, taxa_batch, target_group, taxon_rank_col
+      raw, taxa_batch, target_group, taxon_rank_col, use_candidates
     )
 
     if (b < n_batches) Sys.sleep(pause_seconds)
@@ -190,14 +277,14 @@ review_assignments <- function(df,
   review_df <- do.call(rbind, batch_results)
   rownames(review_df) <- NULL
 
-  if (verbose) {
-    message(sprintf("  Review complete. %d taxa reviewed.", nrow(review_df)))
-  }
+  if (verbose)
+    message(sprintf("  Review complete. %d %s reviewed.",
+                    nrow(review_df),
+                    if (use_candidates) "candidate sets" else "taxa"))
 
-  # --- Join back to input ---
-  # Rename taxon_name to match the user's column name for merging
+  # --- Join back to input by .join_key ---
   merge_key <- data.frame(
-    key                     = review_df$taxon_name,
+    .join_key               = review_df$taxon_name,
     habitat_plausibility    = review_df$habitat_plausibility,
     geographic_plausibility = review_df$geographic_plausibility,
     scope_plausibility      = review_df$scope_plausibility,
@@ -208,30 +295,55 @@ review_assignments <- function(df,
     review_comment          = review_df$review_comment,
     stringsAsFactors = FALSE
   )
-  names(merge_key)[1] <- taxon_col
 
-  # Preserve original row order through merge
   df$.row_id <- seq_len(nrow(df))
-  result <- merge(df, merge_key, by = taxon_col, all.x = TRUE, sort = FALSE)
+  result <- merge(df, merge_key, by = ".join_key", all.x = TRUE, sort = FALSE)
   result <- result[order(result$.row_id), , drop = FALSE]
-  result$.row_id <- NULL
+  result$.row_id  <- NULL
+  result$.join_key <- NULL
   rownames(result) <- NULL
 
   result
 }
 
 
+# ==============================================================================
+# Internal helpers
+# ==============================================================================
+
+#' Build slash-style candidate label
+#'
+#' Constructs a compact slash-species string from a sorted, deduplicated
+#' character vector of binomial names (length >= 2). Same-genus candidates
+#' are abbreviated; mixed-genus groups are joined with " + ".
+#' Mirrors TaxaAssign::.make_slash_name() — duplicated here to avoid a
+#' dependency on TaxaAssign internals.
+#'
+#' @noRd
+.build_candidate_label <- function(taxa_vec) {
+  first_space <- regexpr(" ", taxa_vec, fixed = TRUE)
+  has_space   <- first_space > 0L
+  genera   <- ifelse(has_space, substr(taxa_vec, 1L, first_space - 1L), taxa_vec)
+  epithets <- ifelse(has_space,
+                     substr(taxa_vec, first_space + 1L, nchar(taxa_vec)),
+                     taxa_vec)
+  unique_genera <- unique(genera)
+  if (length(unique_genera) == 1L) {
+    paste0(unique_genera, " ", paste(epithets, collapse = "/"))
+  } else {
+    genus_strings <- vapply(unique_genera, function(g) {
+      eps <- epithets[genera == g]
+      if (length(eps) == 1L) paste(g, eps) else paste0(g, " ", paste(eps, collapse = "/"))
+    }, character(1L))
+    paste(genus_strings, collapse = " + ")
+  }
+}
+
+
 #' Normalise Context to Standard Fields
-#'
-#' Accepts either a build_context() data frame or a named list and returns
-#' a list with standardised field names.
-#'
-#' @param context Named list or data frame.
-#' @return Named list with fields: geography, habitat, date.
 #' @noRd
 .normalise_context <- function(context) {
   if (is.data.frame(context)) {
-    # build_context() returns a 1-row data frame
     ctx <- as.list(context[1, , drop = TRUE])
   } else if (is.list(context)) {
     ctx <- context
@@ -239,7 +351,6 @@ review_assignments <- function(df,
     stop("'context' must be a named list or data frame.", call. = FALSE)
   }
 
-  # Normalise field names
   if (is.null(ctx$geography) && !is.null(ctx$ecoregion))
     ctx$geography <- ctx$ecoregion
   if (is.null(ctx$habitat) && !is.null(ctx$main_habitat))
@@ -257,45 +368,62 @@ review_assignments <- function(df,
 
 
 #' Build Review Prompt for LLM
-#'
-#' Constructs a structured prompt asking the LLM to review a batch of taxa.
-#'
-#' @param taxa_batch Data frame with columns taxon_name, taxon_rank.
-#' @param ctx Normalised context list.
-#' @param target_group Character or NULL.
-#' @param marker Character or NULL.
-#' @return Character string (the prompt).
 #' @noRd
-.build_review_prompt <- function(taxa_batch, ctx, target_group, marker, data_type = "eDNA") {
+.build_review_prompt <- function(taxa_batch, ctx, target_group, marker,
+                                 data_type = "eDNA", use_candidates = FALSE) {
 
   # --- Context block ---
   context_lines <- character(0)
   if (!is.null(ctx$geography) && !is.na(ctx$geography))
-    context_lines <- c(context_lines,
-                       sprintf("GEOGRAPHY: %s", ctx$geography))
+    context_lines <- c(context_lines, sprintf("GEOGRAPHY: %s", ctx$geography))
   if (!is.null(ctx$habitat) && !is.na(ctx$habitat))
-    context_lines <- c(context_lines,
-                       sprintf("HABITAT: %s", ctx$habitat))
+    context_lines <- c(context_lines, sprintf("HABITAT: %s", ctx$habitat))
   if (!is.null(ctx$date) && !is.na(ctx$date))
-    context_lines <- c(context_lines,
-                       sprintf("DATE: %s", ctx$date))
+    context_lines <- c(context_lines, sprintf("DATE: %s", ctx$date))
   if (!is.null(target_group))
-    context_lines <- c(context_lines,
-                       sprintf("TARGET GROUP: %s", target_group))
+    context_lines <- c(context_lines, sprintf("TARGET GROUP: %s", target_group))
   if (!is.null(marker))
-    context_lines <- c(context_lines,
-                       sprintf("MARKER / METHOD: %s", marker))
+    context_lines <- c(context_lines, sprintf("MARKER / METHOD: %s", marker))
 
   context_block <- paste(context_lines, collapse = "\n")
+
+  # --- Candidate notation definition (only when reviewing sets) ---
+  notation_block <- if (use_candidates) {
+    paste0(
+      "CANDIDATE NOTATION:\n",
+      'When a taxon entry contains "/" or "+", it represents an unresolved ',
+      "assignment with multiple equally plausible candidate species:\n",
+      '  "/" separates species epithets within the same genus ',
+      '(e.g., "Bos javanicus/primigenius" = Bos javanicus or Bos primigenius).\n',
+      '  "+" separates candidate groups from different genera ',
+      '(e.g., "Bos javanicus/primigenius + Bison bonasus" = one of those three species).\n',
+      "Assess the candidate group as a whole. Use review_comment to note if a ",
+      "specific member is implausible."
+    )
+  } else {
+    NULL
+  }
 
   # --- Taxa list ---
   taxa_lines <- vapply(seq_len(nrow(taxa_batch)), function(i) {
     tn <- taxa_batch$taxon_name[i]
     tr <- taxa_batch$taxon_rank[i]
-    if (!is.na(tr) && nchar(tr) > 0) {
-      sprintf("- %s (rank: %s)", tn, tr)
+    rank_str <- if (!is.na(tr) && nchar(tr) > 0) tr else NULL
+
+    if (use_candidates && grepl("[/+]", tn)) {
+      # Multi-candidate entry
+      if (!is.null(rank_str)) {
+        sprintf("- %s (unresolved candidates; consensus rank: %s)", tn, rank_str)
+      } else {
+        sprintf("- %s (unresolved candidates)", tn)
+      }
     } else {
-      sprintf("- %s", tn)
+      # Singleton or consensus-taxon entry
+      if (!is.null(rank_str)) {
+        sprintf("- %s (rank: %s)", tn, rank_str)
+      } else {
+        sprintf("- %s", tn)
+      }
     }
   }, character(1))
 
@@ -304,7 +432,7 @@ review_assignments <- function(df,
   # --- Scope instructions ---
   scope_instruction <- if (!is.null(target_group)) {
     sprintf(
-      '  "scope_plausibility": one of "likely" (clearly in scope), "possible" (borderline), "unlikely" (out of scope) (does this taxon belong to the target group: %s?),',
+      '  "scope_plausibility": one of "likely", "possible", "unlikely" (does this taxon belong to the target group: %s?),',
       target_group
     )
   } else {
@@ -312,14 +440,19 @@ review_assignments <- function(df,
   }
 
   # --- Lower hypotheses instructions ---
-  has_ranks <- any(!is.na(taxa_batch$taxon_rank))
-  lower_instruction <- if (has_ranks) {
-    '  "review_lower_hypotheses": comma-separated string of finer-rank taxa (e.g., likely species within a genus) expected at this location and habitat, or null if taxon is already at species level or you cannot suggest any,'
+  # Suppressed when reviewing candidate sets (species already known to pipeline)
+  lower_instruction <- if (use_candidates) {
+    '  "review_lower_hypotheses": null (candidate species already provided by the pipeline),'
   } else {
-    '  "review_lower_hypotheses": null (no rank information provided),'   # field name unchanged
+    has_ranks <- any(!is.na(taxa_batch$taxon_rank))
+    if (has_ranks) {
+      '  "review_lower_hypotheses": comma-separated string of finer-rank taxa expected at this location and habitat, or null if taxon is already at species level or you cannot suggest any,'
+    } else {
+      '  "review_lower_hypotheses": null (no rank information provided),'
+    }
   }
 
-  # --- Data-type-specific contaminant guidance ---
+  # --- Contaminant guidance ---
   contaminant_guideline <- switch(data_type,
     eDNA     = paste0(
       "For contaminant assessment, consider: Homo sapiens and domestic animals are common ",
@@ -348,35 +481,49 @@ review_assignments <- function(df,
     "Common false positive for this detection method"
   )
 
-  # --- Build full prompt ---
+  # --- Assemble prompt ---
+  header_sections <- c(
+    'You are an expert wildlife biologist, biogeographer, and taxonomist.\n',
+    'STUDY CONTEXT:\n', context_block, '\n'
+  )
+  if (!is.null(notation_block))
+    header_sections <- c(header_sections, '\n', notation_block, '\n')
+
   prompt <- paste0(
-    'You are an expert wildlife biologist, biogeographer, and taxonomist.\n\n',
-    'STUDY CONTEXT:\n',
-    context_block, '\n\n',
+    paste(header_sections, collapse = ""), '\n',
     'TASK: Review each taxon below and assess whether it is a plausible detection ',
     'given the study context. Return your assessment as a valid JSON array with one ',
     'object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation ',
     'before or after.\n\n',
     'Each object must have these fields:\n',
     '  "taxon_name": the exact taxon name as provided,\n',
-    '  "habitat_plausibility": one of "likely", "possible", "unlikely" (does this taxon live in this habitat type?),\n',
-    '  "geographic_plausibility": one of "likely", "possible", "unlikely" (is this taxon found in this geographic region?),\n',
+    '  "habitat_plausibility": one of "likely", "possible", "unlikely",\n',
+    '  "geographic_plausibility": one of "likely", "possible", "unlikely",\n',
     scope_instruction, '\n',
-    '  "contamination_risk": one of "low", "moderate", "high" (risk that this is a contaminant or false positive; "high" = strong contamination evidence, "low" = genuine detection),\n',
-    '  "review_alternatives": comma-separated string of plausible alternative taxa at the same rank that better fit the geography and habitat, or null if the taxon is plausible,\n',
+    '  "contamination_risk": one of "low", "moderate", "high",\n',
+    '  "review_alternatives": comma-separated string of plausible alternative taxa ',
+    'that better fit the geography and habitat, or null if the taxon is plausible,\n',
     lower_instruction, '\n',
-    '  "review_confidence": one of "high", "moderate", "low" (your overall confidence in these assessments),\n',
-    '  "review_comment": a brief free-text note with any additional context, or null\n\n',
+    '  "review_confidence": one of "high", "moderate", "low",\n',
+    '  "review_comment": a brief free-text note, or null\n\n',
     'GUIDELINES:\n',
-    '- "review_alternatives" means "you might have the wrong taxon" -- suggest relatives that better fit the context. Most useful when habitat_plausibility or geographic_plausibility is "unlikely".\n',
-    '- "review_lower_hypotheses" means "you have the right group but could narrow it down" -- suggest species expected at this location when the consensus is at genus or family level.\n',
+    '- "review_alternatives" means "you might have the wrong taxon" -- suggest ',
+    'relatives that better fit the context.\n',
     '- ', contaminant_guideline, '\n',
-    '- Be conservative with "unlikely" -- only use it when you are reasonably confident the taxon does not belong.\n',
-    '- If you are uncertain, use "possible" or "moderate" rather than making a strong claim.\n\n',
+    '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
+    '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n\n',
     'EXAMPLE OUTPUT FORMAT:\n',
     '[\n',
-    '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": "Clevelandia ios, Gillichthys mirabilis", "review_confidence": "high", "review_comment": null},\n',
-    '  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "', example_comment, '"}\n',
+    '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
+    '"geographic_plausibility": "likely", "scope_plausibility": "likely", ',
+    '"contamination_risk": "low", "review_alternatives": null, ',
+    '"review_lower_hypotheses": null, "review_confidence": "high", ',
+    '"review_comment": null},\n',
+    '  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", ',
+    '"geographic_plausibility": "likely", "scope_plausibility": "unlikely", ',
+    '"contamination_risk": "high", "review_alternatives": null, ',
+    '"review_lower_hypotheses": null, "review_confidence": "high", ',
+    '"review_comment": "', example_comment, '"}\n',
     ']\n\n',
     'TAXA TO REVIEW:\n',
     taxa_block
@@ -387,17 +534,9 @@ review_assignments <- function(df,
 
 
 #' Parse LLM Review Response
-#'
-#' Extracts JSON array from LLM response and validates fields.
-#'
-#' @param response Character string (raw LLM response) or NULL.
-#' @param taxa_batch Data frame with expected taxa.
-#' @param target_group Character or NULL.
-#' @param taxon_rank_col Character or NULL (whether rank info was provided).
-#' @return Data frame with review columns, one row per taxon.
 #' @noRd
 .parse_review_response <- function(response, taxa_batch, target_group,
-                                   taxon_rank_col) {
+                                   taxon_rank_col, use_candidates = FALSE) {
 
   expected_taxa <- taxa_batch$taxon_name
   make_default <- function() {
@@ -420,10 +559,9 @@ review_assignments <- function(df,
     return(make_default())
   }
 
-  # Extract JSON array — try multiple strategies
   cleaned <- trimws(response)
 
-  # Strategy 1: Strip markdown code fences (use lazy .*? to match FIRST fence)
+  # Strategy 1: Strip markdown fences
   if (grepl("```", cleaned)) {
     fenced <- sub("(?s).*?```(?:json)?\\s*", "", cleaned, perl = TRUE)
     fenced <- sub("(?s)\\s*```.*", "", fenced, perl = TRUE)
@@ -432,13 +570,13 @@ review_assignments <- function(df,
     fenced <- cleaned
   }
 
-  # Strategy 2: Try parsing the fence-stripped text directly
+  # Strategy 2: Parse directly
   parsed <- tryCatch(
     jsonlite::fromJSON(fenced, simplifyDataFrame = TRUE),
     error = function(e) NULL
   )
 
-  # Strategy 3: Extract [...] bracket-delimited array
+  # Strategy 3: Extract [...] array
   if (is.null(parsed) || !is.data.frame(parsed)) {
     arr_str <- sub("(?s).*?(\\[\\s*\\{[\\s\\S]*\\}\\s*\\]).*", "\\1",
                    cleaned, perl = TRUE)
@@ -448,10 +586,9 @@ review_assignments <- function(df,
     )
   }
 
-  # Strategy 4: Truncated JSON recovery — find last complete object and close array
-  if (is.null(parsed) || !is.data.frame(parsed)) {
+  # Strategy 4: Truncated JSON recovery
+  if (is.null(parsed) || !is.data.frame(parsed))
     parsed <- .recover_truncated_json(fenced)
-  }
 
   if (is.null(parsed) || !is.data.frame(parsed) || nrow(parsed) == 0L) {
     n <- nchar(trimws(response))
@@ -464,15 +601,13 @@ review_assignments <- function(df,
     return(make_default())
   }
 
-  # Report partial recovery
   n_recovered <- nrow(parsed)
-  n_expected <- length(expected_taxa)
-  if (n_recovered < n_expected) {
+  n_expected  <- length(expected_taxa)
+  if (n_recovered < n_expected)
     warning(sprintf(
       "LLM response was truncated. Recovered %d of %d taxa from partial JSON.",
       n_recovered, n_expected
     ), call. = FALSE)
-  }
 
   if (!"taxon_name" %in% names(parsed)) {
     warning("LLM response missing 'taxon_name' field. Returning NA defaults.",
@@ -480,11 +615,10 @@ review_assignments <- function(df,
     return(make_default())
   }
 
-  # Extract fields with safe defaults
   .safe_col <- function(col_name) {
     if (col_name %in% names(parsed)) {
       vals <- as.character(parsed[[col_name]])
-      vals[vals == "null" | vals == "NULL" | vals == "NA"] <- NA_character_
+      vals[vals %in% c("null", "NULL", "NA")] <- NA_character_
       vals
     } else {
       rep(NA_character_, nrow(parsed))
@@ -504,15 +638,14 @@ review_assignments <- function(df,
     stringsAsFactors = FALSE
   )
 
-  # Nullify scope_plausibility if target_group was not supplied
   if (is.null(target_group))
     result$scope_plausibility <- NA_character_
 
-  # Nullify review_lower_hypotheses if rank info was not supplied
-  if (is.null(taxon_rank_col))
+  # Suppress lower hypotheses when candidates were supplied (already known)
+  if (use_candidates || is.null(taxon_rank_col))
     result$review_lower_hypotheses <- NA_character_
 
-  # Handle missing taxa -- fill with NA defaults
+  # Fill missing taxa with NA defaults
   missing_taxa <- setdiff(expected_taxa, result$taxon_name)
   if (length(missing_taxa) > 0L) {
     warning(sprintf("LLM omitted %d taxa. Filling with NA defaults.",
@@ -532,7 +665,6 @@ review_assignments <- function(df,
     result <- rbind(result, missing_rows)
   }
 
-  # Drop any extra taxa the LLM hallucinated
   result <- result[result$taxon_name %in% expected_taxa, , drop = FALSE]
 
   result
@@ -540,36 +672,19 @@ review_assignments <- function(df,
 
 
 #' Recover Parseable Objects from Truncated JSON Array
-#'
-#' When an LLM response is cut off mid-JSON (due to max_tokens), this finds
-#' the last complete object in the array and closes it so the partial result
-#' can still be parsed.
-#'
-#' @param text Character. The (possibly truncated) JSON text.
-#' @return Data frame from the recovered portion, or NULL if recovery fails.
 #' @noRd
 .recover_truncated_json <- function(text) {
   if (is.null(text) || !nzchar(trimws(text))) return(NULL)
 
-
-  # Find the array start
   arr_start <- regexpr("\\[", text)
   if (arr_start < 0L) return(NULL)
 
-  text_from_arr <- substring(text, arr_start)
-
-  # Find the position of the last complete "}" that ends an object
-
-  # Walk backward through "}" positions and try closing the array after each
-  brace_positions <- gregexpr("\\}", text_from_arr)[[1]]
+  text_from_arr    <- substring(text, arr_start)
+  brace_positions  <- gregexpr("\\}", text_from_arr)[[1]]
   if (brace_positions[1] < 0L) return(NULL)
 
-  # Try from the last "}" backward
   for (i in rev(seq_along(brace_positions))) {
-    candidate <- paste0(
-      substring(text_from_arr, 1L, brace_positions[i]),
-      "\n]"
-    )
+    candidate <- paste0(substring(text_from_arr, 1L, brace_positions[i]), "\n]")
     parsed <- tryCatch(
       jsonlite::fromJSON(candidate, simplifyDataFrame = TRUE),
       error = function(e) NULL

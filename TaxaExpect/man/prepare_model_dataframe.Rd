@@ -72,6 +72,21 @@ is checked for within-site-habitat variance. If values differ within a cell
 (e.g. depth recorded per occurrence), they are averaged with a warning.
 Consider summarising to site level before calling this function.
 }
+\section{Shared effort assumption}{
+
+\code{n_total_at_site} is the count of \emph{all} records at a grid cell
+and serves as the shared effort denominator for every taxon in the binomial
+model \code{cbind(n_species, n_other)}. This is only valid when all taxa
+were detected through the \emph{same sampling process}. Combining taxa
+collected by incommensurable methods --- for example, phytoplankton cell
+counts and bird point-count sightings, or eDNA reads from two different gene
+markers --- makes \code{n_total_at_site} a mixture of independent effort
+denominators. The model would then treat effort from one survey as
+informative about relative abundance in the other, which is not defensible.
+Taxa with different detection methods should be modelled in separate
+\code{train_biodiversity_model()} calls.
+}
+
 \examples{
 \dontrun{
 model_df <- prepare_model_dataframe(gridded_data,

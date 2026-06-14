@@ -8,6 +8,8 @@ review_assignments(
   df,
   taxon_col = "consensus_taxon",
   taxon_rank_col = NULL,
+  plausible_taxa_col = NULL,
+  irreducible_only = TRUE,
   context,
   target_group = NULL,
   marker = NULL,
@@ -25,9 +27,25 @@ review_assignments(
 \code{"consensus_taxon"}.}
 
 \item{taxon_rank_col}{Character or \code{NULL}. Column name for consensus
-rank (e.g., "species", "genus"). When supplied AND rank is coarser than
-species, the LLM populates \code{review_lower_hypotheses}. Default
-\code{NULL}.}
+rank (e.g., "species", "genus"). When supplied, the rank is included in
+the prompt for context. Default \code{NULL}.}
+
+\item{plausible_taxa_col}{Character or \code{NULL}. Name of the list column
+containing per-observation plausible candidate taxa (e.g.,
+\code{"plausible_taxa"} from \code{TaxaAssign::posterior_consensus()}).
+When supplied, the LLM receives the full candidate set for each unique
+combination rather than just the upranked consensus taxon. Singletons are
+reviewed by species name as usual. Unresolved rows (empty candidate set)
+are skipped. Default \code{NULL} (current behaviour -- deduplicates on
+\code{taxon_col}).}
+
+\item{irreducible_only}{Logical. When \code{plausible_taxa_col} is supplied
+and an \code{irreducible_consensus} column is present in \code{df} (added
+by \code{TaxaAssign::add_slash_taxon()}), only candidate sets where
+\code{irreducible_consensus == TRUE} are reviewed. Non-irreducible rows
+receive \code{NA} review columns. When \code{irreducible_consensus} is
+absent, all unique candidate sets are reviewed with a message. Ignored
+when \code{plausible_taxa_col = NULL}. Default \code{TRUE}.}
 
 \item{context}{Named list or data frame describing the study context.
 Recognised fields: \code{geography} (or \code{ecoregion}),
@@ -45,20 +63,15 @@ Provides contaminant context. Default \code{NULL}.}
 
 \item{data_type}{Character. Detection method. One of \code{"eDNA"} (default),
 \code{"acoustic"}, or \code{"image"}. Controls the contaminant assessment
-guidance in the LLM prompt: \cr
-\itemize{
-\item \code{"eDNA"}: highlights PCR/lab contaminants (Homo sapiens, Bos taurus, etc.) \cr
-\item \code{"acoustic"}: highlights false positives from handler noise and domestic animals \cr
-\item \code{"image"}: highlights handler presence during camera setup/teardown events
-}}
+guidance in the LLM prompt.}
 
 \item{llm_fn}{Function. LLM provider function with signature
 \code{function(prompt_str, ...)}. Default
-\code{TaxaTools::call_anthropic_api}.}
+\code{TaxaTools::call_api}.}
 
-\item{taxa_per_call}{Integer. Maximum taxa per LLM call. Default
-\code{15L}. Kept moderate to avoid LLM response truncation (each
-taxon requires ~100-150 output tokens).}
+\item{taxa_per_call}{Integer. Maximum taxa (or candidate sets) per LLM call.
+Default \code{15L}. Candidate-set entries are longer than single taxon
+names; consider reducing to 8--10 when using \code{plausible_taxa_col}.}
 
 \item{pause_seconds}{Numeric. Seconds to pause between LLM calls.
 Default \code{1}.}
@@ -66,63 +79,65 @@ Default \code{1}.}
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
 \value{
-The input data frame with 8 columns appended:
+The input data frame with 7 or 8 columns appended:
 \describe{
-\item{\code{habitat_plausibility}}{likely / possible / unlikely --
-plausibility that this taxon lives in the study habitat.
-Higher = more plausible genuine detection.}
-\item{\code{geographic_plausibility}}{likely / possible / unlikely --
-plausibility that this taxon occurs in the study region.
-Higher = more plausible genuine detection.}
-\item{\code{scope_plausibility}}{likely / possible / unlikely --
-plausibility that this taxon belongs to the target group.
-\code{NA} if \code{target_group} not supplied.}
-\item{\code{contamination_risk}}{high / moderate / low --
-LLM-assessed risk that this taxon is a contaminant or false positive.
-Higher = more likely to be a contaminant.}
-\item{\code{review_alternatives}}{Comma-separated plausible alternatives
-at the same rank, or NA}
-\item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa
-expected at this location, or NA}
-\item{\code{review_confidence}}{high / moderate / low (LLM confidence in
-its own assessment)}
-\item{\code{review_comment}}{Free-text note, or NA}
+\item{\code{habitat_plausibility}}{likely / possible / unlikely}
+\item{\code{geographic_plausibility}}{likely / possible / unlikely}
+\item{\code{scope_plausibility}}{likely / possible / unlikely, or \code{NA}
+if \code{target_group} not supplied}
+\item{\code{contamination_risk}}{high / moderate / low}
+\item{\code{review_alternatives}}{Comma-separated plausible alternatives,
+or \code{NA}}
+\item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa, or
+\code{NA}. Always \code{NA} when \code{plausible_taxa_col} is supplied
+(candidates already known).}
+\item{\code{review_confidence}}{high / moderate / low}
+\item{\code{review_comment}}{Free-text note, or \code{NA}}
 }
 }
 \description{
 Sends unique taxa from a consensus table to an LLM for structured expert
 review. The LLM assesses each taxon for habitat fit, geographic plausibility,
 contaminant risk, and (optionally) taxonomic scope. It also suggests
-plausible alternative taxa and finer-rank hypotheses where appropriate.
+plausible alternative taxa where appropriate.
 }
 \details{
+When \code{plausible_taxa_col} is supplied, the function deduplicates on
+candidate sets rather than \code{consensus_taxon}. Each unique combination
+of plausible species becomes one LLM query, giving the LLM full species-level
+context rather than only the upranked LCA name. This is especially useful
+when multiple observations share the same genus-level consensus but differ in
+which specific candidates they contain.
+
 Works with any data frame containing a taxon column -- not restricted to
 TaxaAssign output. Context (geography, habitat) can be supplied as a
 \code{build_context()} object from TaxaAssign, or as a simple named list.
 }
 \examples{
 \dontrun{
-# Basic review with geography and habitat
+# Standard review (consensus taxon only)
 reviewed <- review_assignments(
-  df         = consensus_df,
-  taxon_col  = "consensus_taxon",
-  context    = list(geography = "Palmyra Atoll, central Pacific",
-                    habitat   = "coral reef"),
+  df           = consensus_df,
+  context      = list(geography = "Palmyra Atoll, central Pacific",
+                      habitat   = "coral reef"),
   target_group = "fish",
   marker       = "12S MiFish"
 )
 
-# Using build_context() output from TaxaAssign
+# Candidate-aware review (recommended for upranked assignments)
+consensus_df <- TaxaAssign::add_slash_taxon(consensus_df)
 reviewed <- review_assignments(
-  df         = consensus_df,
-  taxon_col  = "consensus_taxon",
-  context    = ctx,
-  target_group = "fish"
+  df                 = consensus_df,
+  plausible_taxa_col = "plausible_taxa",
+  irreducible_only   = TRUE,
+  context            = ctx,
+  target_group       = "fish"
 )
 }
 
 }
 \seealso{
-\code{\link{flag_contaminant}} for data-driven contaminant detection,
-\code{\link{flag_handler}} for temporal proximity flagging
+\code{\link{flag_contaminant}} for data-driven contaminant
+detection, \code{\link{flag_handler}} for temporal proximity flagging,
+\code{TaxaAssign::add_slash_taxon()} to add \code{irreducible_consensus}
 }

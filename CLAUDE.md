@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-11 (Session 107 — download_gbif_occurrences, filter_gbif_quality require_species)
+# Last updated: 2026-06-13 (Session 108 — theta_epsilon auto-raise, add_slash_taxon, review_assignments candidates)
 
 ---
 
@@ -246,3 +246,6 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 106 | `add_pca_covariates()` + `apply_pca_transform()` added | TaxaExpect | Replaces correlated `_s` covariate columns with orthogonal PCA scores (`prcomp(center=TRUE)`); stores `pca_rotation` attribute for prediction-time use by `apply_pca_transform()`. |
 | 107 | `download_gbif_occurrences()` added | TaxaFetch | Async GBIF bulk download for large key sets; avoids HTTP 429 rate limits that abort `fetch_gbif_occurrences()` on 500+ keys. Requires GBIF account. Uses rank-specific OR predicate (download API `taxonKey` is exact-match only). Signature-based cache; `select_cols` subsetting at fread time. |
 | 107 | `filter_gbif_quality()` gains `require_species` | TaxaFetch | New param (default FALSE). Set TRUE when querying GBIF by family/genus key — GBIF returns all ranks within the queried taxon, including genus-only records with no species value. |
+| 108 | `generate_full_priors()` `theta_epsilon` auto-raise | TaxaExpect | When `undetected` contains singleton-mirror rows, `theta_epsilon` is raised to mean singleton-mirror theta if that exceeds the default `1e-6`. Ensures Tier 2 sparse species priors always exceed the `join_priors()` dark-diversity floor — previously a Tier 2 singleton and an undetected species could receive identical priors. |
+| 108 | `add_slash_taxon()` added | TaxaAssign | Appends `slash_taxon_name` (compact slash-species label, same-genus abbreviated; mixed-genus joined with ` + `) and `irreducible_consensus` (TRUE when candidate set is minimal in dataset; singletons always TRUE, unresolved always FALSE) to `posterior_consensus()` output. |
+| 108 | `review_assignments()` gains candidate-set awareness | TaxaFlag | New params `plausible_taxa_col` and `irreducible_only` (default TRUE). When supplied, LLM reviews the irreducible candidate set rather than `consensus_taxon`; presents slash notation; `review_lower_hypotheses` suppressed. Falls back to existing behavior when params are absent. |

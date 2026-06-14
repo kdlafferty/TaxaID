@@ -196,6 +196,27 @@ Sessions 27–84 archived in ecosystem_docs/session_notes/TaxaTools_sessions.md.
   (`data:image/png;base64,...`). Text-only calls (images = NULL) unchanged.
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes.
 
+**Session 106 (2026-06-10)**
+- `fill_higher_ranks()` added (`R/fill_higher_ranks.R`): given a character vector of taxon
+  names (typically species binomials), extracts genus (first word) and looks up family via a
+  priority chain: (1) local data frames (`local_sources`), (2) `verify_taxon_names()` at
+  genus level on primary backbone (`backbone_id = 4L` NCBI), (3) fallback backbone
+  (`fallback_backbone_id = 11L` GBIF). Genus-level querying means species absent from a
+  backbone as synonyms are still resolved if their genus is present. Returns tibble with
+  `taxon_name`, `genus`, `family`; warns for unresolved taxa; preserves duplicates and order.
+  Internal helpers: `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`,
+  `.extract_rank_from_classification()`.
+- `parse_classification_path()` added (`R/fill_higher_ranks.R`): thin exported wrapper
+  around `.extract_rank_from_classification()`. Parses a single rank value from the
+  pipe-delimited `classification_path` / `classification_ranks` columns returned by
+  `verify_taxon_names()`. Use with `mapply()` for column-level extraction. Enables
+  Option C pattern: `verify_taxon_names(word(name, 1))` → `parse_classification_path()`.
+- `tibble` added to `DESCRIPTION` Imports (was missing; caused R CMD check ERROR).
+- 39 tests in `test-fill_higher_ranks.R` (all offline; backbone API mocked via
+  `local_mocked_bindings()`).
+- `devtools::check()`: vignette/Pandoc ERROR is pre-existing infrastructure issue; 0 errors
+  in R code checks.
+
 **Session 92 (2026-05-27)**
 - `call_api()`: two new params + token usage reporting:
   - `show_tokens = FALSE`: when TRUE, prints `"Tokens used — input: N, output: N"` after

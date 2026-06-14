@@ -233,6 +233,17 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #' \code{$convergence_warnings}. If persistent, simplify the formula or
 #' increase \code{min_positive_rows}.
 #'
+#' \strong{Shared effort assumption:} The binomial response
+#' \code{cbind(n_species, n_other)} divides a focal species count by the total
+#' community count at a site. All taxa in \code{data} must therefore have been
+#' detected through the same sampling method. Mixing taxa from incommensurable
+#' surveys --- for example, eDNA reads from different gene markers, or
+#' phytoplankton microscopy counts combined with bird point-count records ---
+#' invalidates the shared denominator. Each taxon group with a distinct
+#' detection process should be modelled separately and its priors passed to
+#' TaxaAssign independently. See
+#' \code{\link{prepare_model_dataframe}} for further discussion.
+#'
 #' @references
 #' Brooks, M.E., Kristensen, K., van Benthem, K.J., Magnusson, A., Berg, C.W.,
 #' Nielsen, A., Skaug, H.J., Maechler, M. and Bolker, B.M. (2017). glmmTMB

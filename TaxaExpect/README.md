@@ -42,6 +42,40 @@ estimate) - **Tier 2** -- species observed nearby (spatial
 interpolation) - **Tier 3** -- species expected but unobserved (dark
 diversity).
 
+## Assumptions
+
+### Shared detection effort
+
+TaxaExpect models *relative* abundance: the probability that a randomly
+selected observation at a site belongs to a given taxon. The denominator
+`n_total_at_site` is the total count of all observations at a site and
+serves as the shared effort measure for every taxon in the model.
+
+**All taxa in a single model must be detected through the same sampling
+process.** Combining taxa collected by incommensurable methods corrupts
+the shared denominator: a phytoplankton cell count and a bird point-count
+sighting are not equivalent detection events. Mixing them implies that
+plankton-sampling effort informs expected bird relative abundance, which
+is not true --- the two surveys represent independent detection processes.
+
+*Problematic mixing (do not combine in a single model):*
+
+-   Phytoplankton cell counts + bird point counts
+-   eDNA reads from different gene markers (e.g. 12S fish reads combined
+    with COI invertebrate reads; amplification efficiency differs between
+    markers, so read counts are not on a shared effort scale)
+-   Arthropods from pitfall traps + arthropods from Malaise traps
+
+*Valid pooling:*
+
+-   All fish species from the same eDNA marker on the same filter
+-   All bird species detected during the same standardized point count
+-   All macroinvertebrate taxa from the same kick-net sample
+
+If your study covers taxa with truly independent detection processes,
+build separate models for each survey type and pass the appropriate
+priors to TaxaAssign for the relevant taxonomic hypotheses.
+
 ## Installation
 
 ``` r

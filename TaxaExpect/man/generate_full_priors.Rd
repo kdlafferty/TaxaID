@@ -35,7 +35,13 @@ more informative priors than undetected-diversity fallbacks. Default
 
 \item{theta_epsilon}{Numeric. Floor/ceiling applied to back-transformed
 theta before alpha/beta conversion, to avoid boundary values.
-Default \code{1e-6}.}
+Default \code{1e-6}. When \code{undetected} is supplied and contains
+\code{"singleton_mirror"} rows, the floor is automatically raised to the
+mean singleton-mirror detection rate if that value exceeds
+\code{theta_epsilon}. This ensures Tier 2 species (sparse but detected)
+always receive priors above the dark-diversity floor computed in
+\code{TaxaAssign::join_priors()}, preventing conflation with species that
+have never been detected in the system.}
 }
 \value{
 A tibble with one row per taxon_name x site x habitat combination
