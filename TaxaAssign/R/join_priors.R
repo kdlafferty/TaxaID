@@ -305,8 +305,8 @@ join_priors <- function(likelihoods,
       .groups = "drop"
     )
 
-  # Global fallback: average across all Tier 3 rows
-
+  # Global fallback: average across all Tier 3 rows (used to fill dark_alpha/beta
+  # when a site has no Tier 3 rows, driving the modelled-species floor promotion).
   global_dark <- taxaexpect_priors |>
     dplyr::filter(!is.na(undetected_type)) |>
     dplyr::summarise(
@@ -314,13 +314,43 @@ join_priors <- function(likelihoods,
       dark_beta  = mean(beta, na.rm = TRUE)
     )
 
+  # Global floor prior: used specifically as the fallback for UNMODELLED species
+  # (those with no row in taxaexpect_priors, e.g. species never detected anywhere).
+  # Distinct from dark_alpha/dark_beta: the site-level dark mean is dominated by
+  # singleton mirrors (observed species), so using it as an unmodelled-species
+  # fallback conflates "detected once elsewhere" with "never detected", erasing
+  # the prior distinction between rare observed species and true dark diversity.
+  # The global floor Beta(1, N_total - 1) is specifically designed to represent
+  # species from the regional pool that have zero detections -- appropriate here.
+  gf_rows <- taxaexpect_priors |>
+    dplyr::filter(undetected_type == "global_floor")
+  if (nrow(gf_rows) > 0 && !is.na(mean(gf_rows$alpha, na.rm = TRUE))) {
+    gf_alpha <- mean(gf_rows$alpha, na.rm = TRUE)
+    gf_beta  <- mean(gf_rows$beta,  na.rm = TRUE)
+  } else {
+    # No global floor row present -- fall back to global dark mean.
+    # This preserves prior behaviour when generate_undetected_diversity() output
+    # was filtered to exclude the global floor (habitat = NA) row.
+    gf_alpha <- global_dark$dark_alpha
+    gf_beta  <- global_dark$dark_beta
+    cli::cli_warn(paste0(
+      "join_priors: no global_floor row found in taxaexpect_priors. ",
+      "Unmodelled species will use site-level dark diversity as fallback. ",
+      "Pass the global_floor row (undetected_type == 'global_floor') to ",
+      "generate_full_priors() to enable the principled unmodelled-species prior."
+    ))
+  }
+
   result <- result |>
     dplyr::left_join(dark_by_site, by = c("grid_id", "main_habitat")) |>
     dplyr::mutate(
       dark_alpha = dplyr::coalesce(dark_alpha, global_dark$dark_alpha),
       dark_beta  = dplyr::coalesce(dark_beta, global_dark$dark_beta),
-      prior_alpha = dplyr::coalesce(alpha, dark_alpha),
-      prior_beta  = dplyr::coalesce(beta, dark_beta),
+      # Unmodelled species (alpha = NA) fall back to global floor, NOT dark_alpha.
+      # Modelled species retain their model-derived alpha/beta here; the floor
+      # promotion below handles modelled species that fall below dark_mean.
+      prior_alpha = dplyr::coalesce(alpha, gf_alpha),
+      prior_beta  = dplyr::coalesce(beta,  gf_beta),
       prior_mean  = prior_alpha / (prior_alpha + prior_beta)
     )
 
