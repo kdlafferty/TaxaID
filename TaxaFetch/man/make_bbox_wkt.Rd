@@ -32,11 +32,10 @@ ready to pass directly to the \code{geometry} argument of
 }
 \details{
 \strong{Square vs. irregular polygons:} This function always produces a
-square bounding box. If your study area has an irregular boundary (e.g., a
-coastline, watershed, or administrative region), construct a custom WKT
-POLYGON string manually and pass it directly to
-\code{fetch_gbif_occurrences(geometry = ...)}. The GBIF API accepts any
-valid WKT polygon.
+square bounding box. For an irregular boundary (coastline, watershed,
+administrative region) use \code{\link{define_search_polygon}} to draw a
+custom polygon interactively, or construct a WKT string manually and pass
+it directly to \code{fetch_gbif_occurrences(geometry = ...)}.
 
 \strong{Coordinate clamping:} If the box would extend beyond the poles
 (\code{lat +/- radius_deg} outside \code{[-90, 90]}) or the antimeridian
@@ -63,6 +62,5 @@ fetch_gbif_occurrences(keys = my_keys, geometry = bbox)
 }
 }
 \seealso{
-\code{\link{fetch_gbif_occurrences}}, which consumes the output
-of this function as its \code{geometry} argument.
+\code{\link{fetch_gbif_occurrences}}, \code{\link{define_search_polygon}}
 }

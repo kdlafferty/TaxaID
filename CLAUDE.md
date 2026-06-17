@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-06-13 (Session 108 — theta_epsilon auto-raise, add_slash_taxon, review_assignments candidates)
+# Last updated: 2026-06-16 (Session 111 — define_search_polygon() interactive polygon gadget in TaxaFetch)
 
 ---
 
@@ -9,6 +9,17 @@
 - After completing any task, play a completion sound: `afplay /System/Library/Sounds/Glass.aiff`
 - Always ask before making changes to multiple *existing* files at once, or before any deletions
 - Run `devtools::check()` after any substantive edits to a package
+
+---
+
+## 📋 Pending Documentation Tasks
+- **pkgdown sites**: No `_pkgdown.yml` exists for any package. Per the MEE TaxaID
+  manuscript plan (manuscript-context.md in Cowork), the paper will follow the
+  aniMotum precedent — a short "Application"-style paper that points readers to
+  package vignettes/docs for depth rather than including a full tutorial. This
+  requires each package (at least TaxaTools, TaxaFetch, TaxaHabitat, TaxaMatch,
+  TaxaLikely, TaxaExpect, TaxaAssign, TaxaFlag) to have a working pkgdown site
+  before submission. Flagged June 2026 during manuscript planning.
 
 ---
 
@@ -250,3 +261,6 @@ Full history in `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
 | 108 | `add_slash_taxon()` added | TaxaAssign | Appends `slash_taxon_name` (compact slash-species label, same-genus abbreviated; mixed-genus joined with ` + `) and `irreducible_consensus` (TRUE when candidate set is minimal in dataset; singletons always TRUE, unresolved always FALSE) to `posterior_consensus()` output. |
 | 108 | `review_assignments()` gains candidate-set awareness | TaxaFlag | New params `plausible_taxa_col` and `irreducible_only` (default TRUE). When supplied, LLM reviews the irreducible candidate set rather than `consensus_taxon`; presents slash notation; `review_lower_hypotheses` suppressed. Falls back to existing behavior when params are absent. |
 | 108 | `join_priors()` unmodelled-species fallback fix | TaxaAssign | Unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean (which averages singleton mirrors + global floor). Singleton mirrors represent detected species and are now reserved for the modelled-species floor promotion only. Requires the global_floor row to be present in `taxaexpect_priors` — pass `undetected` including `is.na(main_habitat)` rows to `generate_full_priors()`. Emits a warning if absent. Workflow fix: filter with `(main_habitat == SITE_HABITAT \| is.na(main_habitat))`. |
+| 109 | `join_priors()` coarse-rank expansion | TaxaAssign | New params `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90). When `taxon_name_rank` is coarser than species (family/genus-level identification), the primary join finds no match and priors were silently set to the global floor. Now, when `expansion_taxonomy` (a `fill_higher_ranks()` result) is supplied, the coarse-rank row is expanded into species-level hypotheses using the same cumulative-threshold logic as `posterior_consensus()`. Posteriors remain proportional to priors (correct for no-score pathway; likelihoods normalize to uniform within-group). `hypothesis_type = "rank_expanded"` marks expanded rows. Workflow: call `fill_higher_ranks(unique(taxaexpect_priors$taxon_name), local_sources = list(esv_expanded, gbif_std))` after `generate_full_priors()` and pass as `expansion_taxonomy` to `join_priors()`. |
+| 110 | `convert_taxonomy_backbone()` added | TaxaMatch | Remaps rank columns (default: order, family, genus, species) from source backbone to target backbone. Per-column fallback: ranks the target omits are left unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. `taxonomy_collision` values: `"consistent"`, `"backbone_N[col1,col2]"` (target applied, changed columns listed), `"backbone_N"` or `"original"` (not found in target backbone). `update_taxon_name = TRUE` cleans authority from accepted names and saves original to `taxon_name_original`. Use before `fill_higher_ranks()` / `join_priors()` expansion when match backbone (NCBI) differs from prior backbone (GBIF). Generic utility — move to TaxaTools after manuscript review. |
+| 111 | `define_search_polygon()` added | TaxaFetch | Interactive Shiny gadget for drawing a custom WKT search polygon on a leaflet map. Signature: `define_search_polygon(lat, lon, radius_deg, tile = "Esri.OceanBasemap")`. Initial square: 4 draggable corner markers (SW→SE→NE→NW). Add Point inserts vertex at midpoint of longest segment; Remove Last Point undoes last add (original 4 corners protected). Returns `POLYGON ((lng lat, ...))` WKT string. Requires `shiny`, `miniUI`, `leaflet` (checked at runtime). Must be run in interactive session. Replaces `make_bbox_wkt()` when a non-rectangular region is needed (e.g. coastal sites where square bbox wastes GBIF download bandwidth over land/ocean). Note: `addCircleMarkers(draggable=TRUE)` does NOT work — must use `addMarkers(options=markerOptions(draggable=TRUE))` (Leaflet.js L.CircleMarker limitation). |

@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-11 (Session 107 — download_gbif_occurrences() + filter_gbif_quality require_species)
+# Last updated: 2026-06-16 (Session 111 — define_search_polygon() interactive polygon gadget)
 
 ---
 
@@ -20,7 +20,8 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK | Complete | R/stack_occurrences.R |
-| `make_bbox_wkt()` | Build WKT POLYGON bounding box | Complete | R/make_bbox_wkt.R |
+| `make_bbox_wkt()` | Build WKT POLYGON bounding box (scripted, non-interactive) | Complete | R/make_bbox_wkt.R |
+| `define_search_polygon()` | Interactive Shiny gadget: user drags 4 corner markers on a leaflet map to define a custom polygon; Add Point inserts vertex at midpoint of longest side; Remove Last Point undoes last add (original 4 corners protected); Done returns WKT POLYGON string ready for `geometry` arg of `fetch_gbif_occurrences()` / `download_gbif_occurrences()`. Requires `shiny`, `miniUI`, `leaflet` (checked at runtime). Must be run in interactive R session. | Complete | R/define_search_polygon.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
 | `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. | Complete | R/fetch_gbif_occurrences.R |
 | `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility; (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). | Complete | R/download_gbif_occurrences.R |
@@ -92,9 +93,12 @@ harvest_dataone_catalog() → build_geo_prompt() → build_taxon_screen_prompt()
 
 ### GBIF pipeline
 ```
-make_bbox_wkt() → get_keys_from_context() → fetch_gbif_occurrences()        [≤~50 keys, no account]
-                                           → download_gbif_occurrences()    [100s–1000s keys, account required]
-                                           → filter_gbif_quality()
+make_bbox_wkt()              [scripted square bbox]
+define_search_polygon()      [interactive polygon gadget — interactive sessions only]
+  ↓
+get_keys_from_context() → fetch_gbif_occurrences()        [≤~50 keys, no account]
+                        → download_gbif_occurrences()    [100s–1000s keys, account required]
+                        → filter_gbif_quality()
 ```
 
 ### Literature + PDF pipeline
@@ -209,6 +213,9 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | png | `writePNG()` for image encoding | Suggests (PDF pipeline only) |
 | base64enc | `base64encode()` for API image blocks | Suggests (PDF pipeline only) |
 | withr | Used in tests only | Suggests |
+| shiny | `define_search_polygon()` interactive gadget | Suggests |
+| miniUI | `define_search_polygon()` gadget UI | Suggests |
+| leaflet | `define_search_polygon()` map rendering | Suggests |
 
 ---
 
@@ -263,6 +270,20 @@ Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
 - `devtools::test()` (test-fetch_gbif_occurrences.R): 18 pass, 0 fail, 2 skip.
   Tests updated to use `out$records`, and resilience test updated to expect
   `stop()` (not warning + partial results) on key failure.
+
+**Session 111 (2026-06-16)**
+- `define_search_polygon()` added: interactive Shiny gadget for defining custom WKT search polygons.
+  Replaces `make_bbox_wkt()` when a non-rectangular region is needed (e.g. coastal transects where
+  a square bbox wastes download bandwidth over open ocean / inland areas).
+- Signature: `define_search_polygon(lat, lon, radius_deg, tile = "Esri.OceanBasemap")`.
+- Initial square: 4 corner markers (SW→SE→NE→NW, counter-clockwise, IDs 1–4).
+- Vertex dragging via `leaflet::addMarkers(options = markerOptions(draggable = TRUE))` — NOTE:
+  `addCircleMarkers(draggable = TRUE)` does NOT work (Leaflet.js `L.CircleMarker` limitation).
+- Add Point: finds longest segment by squared Euclidean distance, inserts new draggable vertex at midpoint.
+- Remove Last Point: removes highest `id > 4` row; protects original 4 corners.
+- Returns WKT `POLYGON ((lng lat, ...))` string; ring closed (first == last vertex).
+- Requires `shiny`, `miniUI`, `leaflet` (checked at runtime with informative error if missing).
+- Tested against Mugu workflow coordinates via `devtools::load_all()`.
 
 **Session 107 (2026-06-11)**
 - `download_gbif_occurrences()` added: async GBIF bulk download for large key sets (100s–1000s).
