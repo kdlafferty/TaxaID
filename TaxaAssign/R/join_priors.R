@@ -4,6 +4,215 @@ utils::globalVariables(c(
   "genus", "family", "family.fill", "dark_alpha", "dark_beta"
 ))
 
+# ==============================================================================
+# Internal helper: coarse-rank expansion
+# ==============================================================================
+
+# .expand_coarse_rank_rows()
+#
+# For each row in `result` where the primary taxon_name join failed (alpha = NA)
+# AND the row's taxon_name_rank is a rank coarser than the finest rank in
+# rank_system (e.g. a family-rank or genus-rank hypothesis), find all species
+# in taxaexpect_priors that:
+#   (a) belong to that coarser taxon (via expansion_taxonomy),
+#   (b) have a modelled prior (non-NA alpha) at the same grid_id × main_habitat.
+#
+# The candidate species are filtered using the same logic as posterior_consensus():
+#   1. Normalize prior_mean within the candidate set.
+#   2. Drop species with normalized_prior < expansion_min_prior.
+#   3. Keep the fewest top species whose cumulative normalized_prior >=
+#      expansion_cumulative_prior.
+#
+# Each retained species replaces the original coarse-rank row. All likelihood
+# columns (observation_id, score_likelihood, etc.) are inherited from the
+# template row. Score normalization inside compute_posterior() makes the
+# inherited score_likelihood magnitude irrelevant — only relative values matter,
+# so uniform inheritance is correct.
+#
+# Returns `result` unchanged when:
+#   - expansion_taxonomy is NULL or lacks coarser-rank columns
+#   - no coarse-rank rows are present
+#   - no matching species are found in taxaexpect_priors for a given constraint
+#     (those rows remain for the dark diversity fallback downstream)
+#' @noRd
+.expand_coarse_rank_rows <- function(result,
+                                     taxaexpect_priors,
+                                     expansion_taxonomy,
+                                     rank_system,
+                                     expansion_min_prior,
+                                     expansion_cumulative_prior) {
+
+  if (is.null(expansion_taxonomy) || !is.data.frame(expansion_taxonomy)) return(result)
+  if (!"taxon_name" %in% names(expansion_taxonomy)) return(result)
+
+  finest_rank <- rank_system[length(rank_system)]
+
+  # Ranks coarser than finest that exist as columns in expansion_taxonomy.
+  # Only these can be used to match species to a coarse constraint.
+  coarser_ranks <- intersect(rank_system[-length(rank_system)], names(expansion_taxonomy))
+  if (length(coarser_ranks) == 0L) {
+    cli::cli_inform(
+      "join_priors: expansion_taxonomy lacks coarser-rank columns ({paste(rank_system[-length(rank_system)], collapse=', ')}); coarse-rank expansion skipped."
+    )
+    return(result)
+  }
+
+  # Rows eligible for expansion: failed primary join + coarser rank + named taxon
+  is_coarse <- is.na(result$alpha) &
+    !is.na(result$taxon_name_rank) &
+    result$taxon_name_rank %in% coarser_ranks &
+    !is.na(result$taxon_name)
+
+  if (!any(is_coarse)) return(result)
+
+  # Species-level rows from taxaexpect_priors: modelled (non-NA alpha), site-resolved.
+  sp_bare <- taxaexpect_priors[
+    !is.na(taxaexpect_priors$taxon_name) &
+    !is.na(taxaexpect_priors$alpha) &
+    !is.na(taxaexpect_priors$grid_id) &
+    !is.na(taxaexpect_priors$main_habitat),
+    , drop = FALSE
+  ]
+  if (nrow(sp_bare) == 0L) return(result)
+
+  # Join coarser-rank columns from expansion_taxonomy onto sp_bare.
+  # We merge only the taxonomy columns to avoid importing redundant priors columns.
+  tax_extra <- setdiff(names(expansion_taxonomy), "taxon_name")
+  sp_priors <- merge(
+    sp_bare,
+    expansion_taxonomy[, c("taxon_name", tax_extra), drop = FALSE],
+    by = "taxon_name", all.x = TRUE
+  )
+
+  # Columns to override in template rows with species-level values.
+  # Likelihood-side columns are always inherited from the template.
+  template_keep_cols <- c(
+    "observation_id", "score_likelihood", "score_likelihood_mean",
+    "score_likelihood_sd", "score_likelihood_cov", "hypothesis_type",
+    "grid_id", "main_habitat", "lab_contaminant_risk", "lab_contaminant_score",
+    "score_original", "Marker"
+  )
+  override_cols <- intersect(
+    names(sp_priors),
+    c("taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type", tax_extra)
+  )
+
+  # Build expansion map: unique (crank | cvalue | grid | hab) -> filtered species df
+  .sep <- "|||"
+  coarse_rows  <- result[is_coarse, , drop = FALSE]
+  combo_keys   <- paste(coarse_rows$taxon_name_rank, coarse_rows$taxon_name,
+                        coarse_rows$grid_id, coarse_rows$main_habitat, sep = .sep)
+  unique_keys  <- unique(combo_keys)
+
+  expansion_map      <- vector("list", length(unique_keys))
+  names(expansion_map) <- unique_keys
+  n_expanded_combos  <- 0L
+  n_fallback_combos  <- 0L
+
+  for (key in unique_keys) {
+    parts  <- strsplit(key, .sep, fixed = TRUE)[[1L]]
+    crank  <- parts[1L]
+    cvalue <- parts[2L]
+    cgrid  <- parts[3L]
+    chab   <- parts[4L]
+
+    if (!crank %in% names(sp_priors)) {
+      n_fallback_combos <- n_fallback_combos + 1L
+      next
+    }
+
+    cands <- sp_priors[
+      !is.na(sp_priors[[crank]]) &
+      sp_priors[[crank]] == cvalue &
+      sp_priors$grid_id == cgrid &
+      sp_priors$main_habitat == chab,
+      , drop = FALSE
+    ]
+
+    if (nrow(cands) == 0L) {
+      n_fallback_combos <- n_fallback_combos + 1L
+      next
+    }
+
+    # Compute normalized prior within candidate set
+    sp_pm  <- cands$alpha / (cands$alpha + cands$beta)
+    total  <- sum(sp_pm, na.rm = TRUE)
+    if (!is.finite(total) || total == 0) {
+      n_fallback_combos <- n_fallback_combos + 1L
+      next
+    }
+    norm_pm <- sp_pm / total
+
+    # Floor filter (expansion_min_prior)
+    keep <- !is.na(norm_pm) & norm_pm >= expansion_min_prior
+    if (!any(keep)) {
+      n_fallback_combos <- n_fallback_combos + 1L
+      next
+    }
+    cands   <- cands[keep, , drop = FALSE]
+    norm_pm <- norm_pm[keep]
+
+    # Cumulative threshold (expansion_cumulative_prior): fewest top species
+    ord     <- order(norm_pm, decreasing = TRUE)
+    cands   <- cands[ord, , drop = FALSE]
+    norm_pm <- norm_pm[ord]
+    keep_n  <- which(cumsum(norm_pm) >= expansion_cumulative_prior)[1L]
+    if (is.na(keep_n)) keep_n <- nrow(cands)
+    cands   <- cands[seq_len(keep_n), , drop = FALSE]
+
+    expansion_map[[key]] <- cands
+    n_expanded_combos    <- n_expanded_combos + 1L
+  }
+
+  if (n_expanded_combos == 0L) return(result)
+
+  # Replace coarse-rank rows with species-level rows
+  coarse_idx <- which(is_coarse)
+  drop_idx   <- integer(0)
+  new_rows_l <- vector("list", length(coarse_idx) * 15L)
+  nr_k       <- 0L
+
+  for (ii in seq_along(coarse_idx)) {
+    i   <- coarse_idx[ii]
+    key <- combo_keys[ii]
+
+    cands_sp <- expansion_map[[key]]
+    if (is.null(cands_sp)) next   # no expansion found; dark floor handles this row
+
+    template <- result[i, , drop = FALSE]
+
+    for (j in seq_len(nrow(cands_sp))) {
+      nr <- template
+      for (col in override_cols) {
+        if (col %in% names(nr)) {
+          nr[[col]] <- cands_sp[[col]][j]
+        } else {
+          nr[[col]] <- cands_sp[[col]][j]
+        }
+      }
+      # Ensure finest rank regardless of whether taxon_name_rank was in override_cols
+      nr$taxon_name_rank <- finest_rank
+      nr$hypothesis_type <- "rank_expanded"
+      nr_k              <- nr_k + 1L
+      new_rows_l[[nr_k]] <- nr
+    }
+    drop_idx <- c(drop_idx, i)
+  }
+
+  if (length(drop_idx) == 0L || nr_k == 0L) return(result)
+
+  new_rows <- dplyr::bind_rows(new_rows_l[seq_len(nr_k)])
+  result   <- dplyr::bind_rows(result[-drop_idx, , drop = FALSE], new_rows)
+
+  cli::cli_inform(c(
+    "join_priors: expanded {length(unique(drop_idx))} coarse-rank row(s) into {nrow(new_rows)} species-level hypothesis row(s).",
+    if (n_fallback_combos > 0L)
+      "i" = "{n_fallback_combos} coarse-rank constraint(s) had no matching species in taxaexpect_priors; dark diversity floor applied."
+  ))
+
+  result
+}
+
 #' Join Likelihoods to TaxaExpect Priors
 #'
 #' Bridges the gap between TaxaLikely likelihoods and
@@ -79,6 +288,53 @@ utils::globalVariables(c(
 #'   coarsest to finest. Passed to
 #'   [TaxaMatch::filter_redundant_hypotheses()]. Default `NULL`
 #'   auto-detects from columns in `likelihoods`.
+#' @param expansion_taxonomy Optional data frame mapping species names in
+#'   `taxaexpect_priors` to their higher-rank taxonomy. Must contain
+#'   `taxon_name` plus one or more coarser-rank columns (e.g. `genus`,
+#'   `family`). Typically produced by
+#'   `TaxaTools::fill_higher_ranks(unique(taxaexpect_priors$taxon_name),
+#'   local_sources = list(match_df))`. When `NULL` (default) and coarse-rank
+#'   likelihood rows are present, a warning is emitted and those rows fall
+#'   back to the dark diversity floor prior. See Details.
+#' @param expansion_min_prior Numeric in \[0, 1). Minimum normalized prior
+#'   (within the coarse-rank candidate set) for a species to be included in
+#'   the expansion. Mirrors `min_posterior` in [posterior_consensus()].
+#'   Default `0.05`.
+#' @param expansion_cumulative_prior Numeric in (0, 1]. Cumulative prior
+#'   threshold for the expansion candidate set. Species are added in
+#'   descending prior order until this fraction of the within-constraint
+#'   prior mass is reached. Mirrors `cumulative_threshold` in
+#'   [posterior_consensus()]. Default `0.90`.
+#'
+#' @section Coarse-rank expansion:
+#' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
+#' `"family"` or `"genus"`), the primary species-level join finds no match
+#' and the row would otherwise fall back to the global floor prior — ignoring
+#' all species-level prior information within that taxon.
+#'
+#' When `expansion_taxonomy` is supplied, `join_priors()` instead expands each
+#' coarse-rank row into one species-level hypothesis row per retained candidate:
+#' \enumerate{
+#'   \item Find all modelled species in `taxaexpect_priors` at the focal site ×
+#'     habitat that belong to the coarse-rank constraint.
+#'   \item Normalize their `prior_mean` values within the candidate set.
+#'   \item Drop species below `expansion_min_prior`.
+#'   \item Keep the fewest top species whose cumulative normalized prior
+#'     reaches `expansion_cumulative_prior`.
+#'   \item Replace the coarse-rank row with one row per retained species,
+#'     inheriting all likelihood columns unchanged and receiving the
+#'     species-level `alpha`/`beta` priors.
+#' }
+#'
+#' Because `compute_posterior()` normalizes likelihoods within each
+#' `observation_id` group before the Bayesian update, the inherited
+#' `score_likelihood` values are equivalent to uniform — posteriors are
+#' proportional to the prior alone, which is the correct behaviour when no
+#' within-family score discrimination is available.
+#'
+#' Rows whose coarse-rank constraint finds no matching species in
+#' `taxaexpect_priors` (e.g. a family absent from the study region) are left
+#' unchanged and receive the dark diversity floor prior as before.
 #'
 #' @return A data frame ready for [compute_posterior()], with columns
 #'   `prior_mean`, `prior_alpha`, and `prior_beta` added. All input columns are
@@ -106,7 +362,10 @@ join_priors <- function(likelihoods,
                         taxaexpect_priors,
                         site = NULL,
                         taxonomy_lookup = NULL,
-                        rank_system = NULL) {
+                        rank_system = NULL,
+                        expansion_taxonomy = NULL,
+                        expansion_min_prior = 0.05,
+                        expansion_cumulative_prior = 0.90) {
 
 
   # ---- Input validation -----------------------------------------------------
@@ -147,6 +406,18 @@ join_priors <- function(likelihoods,
 
   if (!is.character(rank_system) || length(rank_system) < 2L) {
     cli::cli_abort("{.arg rank_system} must be a character vector of length >= 2.")
+  }
+
+  if (!is.numeric(expansion_min_prior) || length(expansion_min_prior) != 1L ||
+      expansion_min_prior < 0 || expansion_min_prior >= 1) {
+    cli::cli_abort("{.arg expansion_min_prior} must be a single number in [0, 1).")
+  }
+  if (!is.numeric(expansion_cumulative_prior) || length(expansion_cumulative_prior) != 1L ||
+      expansion_cumulative_prior <= 0 || expansion_cumulative_prior > 1) {
+    cli::cli_abort("{.arg expansion_cumulative_prior} must be a single number in (0, 1].")
+  }
+  if (!is.null(expansion_taxonomy) && !is.data.frame(expansion_taxonomy)) {
+    cli::cli_abort("{.arg expansion_taxonomy} must be a data frame or NULL.")
   }
 
   # ---- Build event_meta from `site` ----------------------------------------
@@ -293,6 +564,44 @@ join_priors <- function(likelihoods,
       taxaexpect_priors,
       by = c("taxon_name", "taxon_name_rank", "grid_id", "main_habitat")
     )
+
+  # ---- Coarse-rank expansion -------------------------------------------------
+  # Rows where the primary join failed because taxon_name_rank is coarser than
+  # species (e.g. a family- or genus-level identification). Expand into
+  # species-level hypothesis rows using taxaexpect_priors + expansion_taxonomy.
+  # Must run before the dark diversity fallback so expanded rows receive their
+  # species-level alpha/beta directly.
+
+  # Warn if coarse-rank rows exist but expansion_taxonomy was not supplied.
+  coarser_than_finest <- rank_system[-length(rank_system)]
+  n_coarse_unmatched <- sum(
+    is.na(result$alpha) &
+    !is.na(result$taxon_name_rank) &
+    result$taxon_name_rank %in% coarser_than_finest &
+    !is.na(result$taxon_name),
+    na.rm = TRUE
+  )
+  if (n_coarse_unmatched > 0L && is.null(expansion_taxonomy)) {
+    cli::cli_warn(c(
+      "{n_coarse_unmatched} likelihood row(s) have a coarse-rank taxon_name_rank ({paste(sort(unique(result$taxon_name_rank[is.na(result$alpha) & result$taxon_name_rank %in% coarser_than_finest & !is.na(result$taxon_name)])), collapse = ', ')}) that cannot join to species-level priors.",
+      "i" = "These rows will receive the dark diversity floor prior.",
+      "i" = "To expand them into species-level hypotheses, supply {.arg expansion_taxonomy}:",
+      "i" = "  expansion_taxonomy = TaxaTools::fill_higher_ranks(",
+      "i" = "    unique(taxaexpect_priors$taxon_name[!is.na(taxaexpect_priors$taxon_name)]),",
+      "i" = "    local_sources = list(match_df, gbif_occurrences))"
+    ))
+  }
+
+  if (n_coarse_unmatched > 0L && !is.null(expansion_taxonomy)) {
+    result <- .expand_coarse_rank_rows(
+      result                    = result,
+      taxaexpect_priors         = taxaexpect_priors,
+      expansion_taxonomy        = expansion_taxonomy,
+      rank_system               = rank_system,
+      expansion_min_prior       = expansion_min_prior,
+      expansion_cumulative_prior = expansion_cumulative_prior
+    )
+  }
 
   # ---- Dark diversity fallback -----------------------------------------------
   # Site-level: mean alpha/beta from Tier 3 (undetected) rows per grid × habitat

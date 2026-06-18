@@ -9,7 +9,10 @@ join_priors(
   taxaexpect_priors,
   site = NULL,
   taxonomy_lookup = NULL,
-  rank_system = NULL
+  rank_system = NULL,
+  expansion_taxonomy = NULL,
+  expansion_min_prior = 0.05,
+  expansion_cumulative_prior = 0.9
 )
 }
 \arguments{
@@ -49,6 +52,25 @@ Default \code{NULL} (no external taxonomy fill).}
 coarsest to finest. Passed to
 \code{\link[TaxaMatch:filter_redundant_hypotheses]{TaxaMatch::filter_redundant_hypotheses()}}. Default \code{NULL}
 auto-detects from columns in \code{likelihoods}.}
+
+\item{expansion_taxonomy}{Optional data frame mapping species names in
+\code{taxaexpect_priors} to their higher-rank taxonomy. Must contain
+\code{taxon_name} plus one or more coarser-rank columns (e.g. \code{genus},
+\code{family}). Typically produced by
+\code{TaxaTools::fill_higher_ranks(unique(taxaexpect_priors$taxon_name), local_sources = list(match_df))}. When \code{NULL} (default) and coarse-rank
+likelihood rows are present, a warning is emitted and those rows fall
+back to the dark diversity floor prior. See Details.}
+
+\item{expansion_min_prior}{Numeric in [0, 1). Minimum normalized prior
+(within the coarse-rank candidate set) for a species to be included in
+the expansion. Mirrors \code{min_posterior} in \code{\link[=posterior_consensus]{posterior_consensus()}}.
+Default \code{0.05}.}
+
+\item{expansion_cumulative_prior}{Numeric in (0, 1]. Cumulative prior
+threshold for the expansion candidate set. Species are added in
+descending prior order until this fraction of the within-constraint
+prior mass is reached. Mirrors \code{cumulative_threshold} in
+\code{\link[=posterior_consensus]{posterior_consensus()}}. Default \code{0.90}.}
 }
 \value{
 A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, with columns
@@ -105,6 +127,38 @@ coarser-rank rows superseded by finer-rank rows in the same
 lineage.
 }
 }
+\section{Coarse-rank expansion}{
+
+When a likelihood row has \code{taxon_name_rank} coarser than species (e.g.
+\code{"family"} or \code{"genus"}), the primary species-level join finds no match
+and the row would otherwise fall back to the global floor prior — ignoring
+all species-level prior information within that taxon.
+
+When \code{expansion_taxonomy} is supplied, \code{join_priors()} instead expands each
+coarse-rank row into one species-level hypothesis row per retained candidate:
+\enumerate{
+\item Find all modelled species in \code{taxaexpect_priors} at the focal site ×
+habitat that belong to the coarse-rank constraint.
+\item Normalize their \code{prior_mean} values within the candidate set.
+\item Drop species below \code{expansion_min_prior}.
+\item Keep the fewest top species whose cumulative normalized prior
+reaches \code{expansion_cumulative_prior}.
+\item Replace the coarse-rank row with one row per retained species,
+inheriting all likelihood columns unchanged and receiving the
+species-level \code{alpha}/\code{beta} priors.
+}
+
+Because \code{compute_posterior()} normalizes likelihoods within each
+\code{observation_id} group before the Bayesian update, the inherited
+\code{score_likelihood} values are equivalent to uniform — posteriors are
+proportional to the prior alone, which is the correct behaviour when no
+within-family score discrimination is available.
+
+Rows whose coarse-rank constraint finds no matching species in
+\code{taxaexpect_priors} (e.g. a family absent from the study region) are left
+unchanged and receive the dark diversity floor prior as before.
+}
+
 \examples{
 \dontrun{
 joined <- join_priors(
