@@ -50,45 +50,69 @@ report_flags <- function(flagged_data,
   # --- Auto-detect flag columns -----------------------------------------------
   all_cols <- names(flagged_data)
 
-  # Contaminant flags: flag_lab, flag_field, flag_positive, flag_control
-  contaminant_cols <- grep("^flag_(lab|field|positive|control)", all_cols, value = TRUE)
+  # Contaminant flags — two naming conventions supported:
+  #   Pre-Session 101:  flag_lab_contaminant, flag_field_contaminant, etc.
+  #   Post-Session 101: lab_contaminant_risk, field_contaminant_risk,
+  #                     contamination_risk (from review_assignments())
+  contaminant_cols_old <- grep("^flag_(lab|field|positive|control)", all_cols, value = TRUE)
+  contaminant_cols_new <- grep(
+    "^(lab|field|positive|control)_contaminant_risk$|^contamination_risk$",
+    all_cols, value = TRUE
+  )
+  contaminant_cols <- unique(c(contaminant_cols_old, contaminant_cols_new))
 
-  # Handler flags: flag_handler
+  # Handler flags: flag_handler (naming unchanged)
   handler_cols <- grep("^flag_handler", all_cols, value = TRUE)
 
-  # Review flags: review_* columns from review_assignments()
+  # Plausibility columns from review_assignments() (post-Session 101):
+  #   habitat_plausibility, geographic_plausibility, scope_plausibility
+  plausibility_cols <- grep("_plausibility$", all_cols, value = TRUE)
+
+  # Review metadata columns: review_confidence, review_comment, etc.
   review_cols <- grep("^review_", all_cols, value = TRUE)
 
   flag_types <- character(0L)
-  if (length(contaminant_cols) > 0L) flag_types <- c(flag_types, "contamination")
-  if (length(handler_cols) > 0L) flag_types <- c(flag_types, "handler artifacts")
-  if (length(review_cols) > 0L) flag_types <- c(flag_types, "expert review")
+  if (length(contaminant_cols) > 0L)  flag_types <- c(flag_types, "contamination")
+  if (length(handler_cols) > 0L)      flag_types <- c(flag_types, "handler artifacts")
+  if (length(plausibility_cols) > 0L) flag_types <- c(flag_types, "plausibility review")
+  if (length(review_cols) > 0L)       flag_types <- c(flag_types, "expert review")
+  flag_types <- unique(flag_types)
 
   # --- Count flagged assignments ----------------------------------------------
   n_total <- nrow(flagged_data)
 
-  # Count "unlikely" or "possible" in each flag column
+  # Count flags for each column, accounting for both value conventions:
+  #   Pre-Session 101 risk:       "unlikely" / "possible" = flagged
+  #   Post-Session 101 risk:      "moderate" / "high"     = flagged
+  #   Post-Session 101 plausibility: "possible" / "unlikely" = flagged
+  .is_flagged <- function(col) {
+    vals <- flagged_data[[col]]
+    (vals %in% c("unlikely", "possible")) |          # pre-101 risk + post-101 plausibility
+      (vals %in% c("moderate", "high"))              # post-101 risk
+  }
+
   flag_counts <- list()
 
-  for (col in c(contaminant_cols, handler_cols)) {
+  for (col in c(contaminant_cols, handler_cols, plausibility_cols)) {
     if (col %in% all_cols) {
-      vals <- flagged_data[[col]]
-      n_flagged <- sum(vals %in% c("unlikely", "possible"), na.rm = TRUE)
+      n_flagged <- sum(.is_flagged(col), na.rm = TRUE)
       if (n_flagged > 0L) flag_counts[[col]] <- n_flagged
     }
   }
 
-  # Review: check for review_confidence == "low" or similar
+  # Review: check for review_confidence == "low"
   if ("review_confidence" %in% all_cols) {
     n_low_conf <- sum(flagged_data$review_confidence == "low", na.rm = TRUE)
     if (n_low_conf > 0L) flag_counts[["review_low_confidence"]] <- n_low_conf
   }
 
-  total_flagged <- if (length(flag_counts) > 0L) {
-    # Unique rows flagged (at least one flag column triggered)
-    flag_matrix <- vapply(c(contaminant_cols, handler_cols), function(col) {
-      flagged_data[[col]] %in% c("unlikely", "possible")
-    }, logical(n_total))
+  all_flag_cols <- intersect(
+    c(contaminant_cols, handler_cols, plausibility_cols),
+    all_cols
+  )
+  total_flagged <- if (length(all_flag_cols) > 0L) {
+    # Unique rows where at least one flag column triggered
+    flag_matrix <- vapply(all_flag_cols, .is_flagged, logical(n_total))
     if (is.matrix(flag_matrix)) {
       sum(rowSums(flag_matrix, na.rm = TRUE) > 0L)
     } else {
