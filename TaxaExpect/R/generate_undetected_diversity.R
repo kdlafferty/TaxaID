@@ -74,6 +74,21 @@
 #' have already been filtered upstream), only the global floor prior is
 #' returned. This is the minimum viable undetected pool.
 #'
+#' **Taxonomic-group dilution (known limitation):**
+#' N_total is computed across all taxa in the model regardless of taxonomic
+#' group. When a marker captures groups of very different sizes (e.g. ~800
+#' fish + ~20 mammals on a 12S marker), the global floor Beta(1, N_total - 1)
+#' is diluted by the dominant group. For a mammal query the floor prior would
+#' be Beta(1, 819) rather than the group-appropriate Beta(1, 19), making
+#' unmodelled mammals appear ~41x less likely than they should be relative to
+#' the mammal species pool. In practice the impact is modest: (1) modelled
+#' species priors come from the Tier 1/2 model and are unaffected; (2) the
+#' dark_mean used for modelled-species floor promotion is dominated by
+#' singleton mirrors which are themselves group-weighted; and (3) minority-group
+#' queries are typically rare on group-biased markers. If accurate dark
+#' diversity priors are needed across multiple taxonomic groups of very
+#' different sizes, run separate models per group and stack the prior tables.
+#'
 #' @seealso \code{train_biodiversity_model()}, \code{generate_full_priors()}
 #'
 #' @examples

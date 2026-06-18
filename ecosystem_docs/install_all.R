@@ -17,7 +17,7 @@ ROOT <- "~/My Drive/Rscripts/projects/TaxaID"
 .install <- function(pkg) {
   path <- file.path(ROOT, pkg)
   message(sprintf("\n=== Installing %s ===", pkg))
-  devtools::install(path, quiet = FALSE, upgrade = "never")
+  devtools::install(path, quiet = FALSE, upgrade = FALSE)
 }
 
 # ---- Tier 1: foundation ------------------------------------------------------

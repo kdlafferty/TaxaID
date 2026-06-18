@@ -133,17 +133,56 @@ screen_spatial_formula <- function(data,
   spatial_present <- intersect(c("lat_r_s", "lon_r_s"), all_vars)
 
   if (length(moran_present) == 0L && length(spatial_present) == 0L) {
-    stop("screen_spatial_formula: formula contains no Moran (B1...BK) or spatial ",
-         "(lat_r_s, lon_r_s) random slope terms to screen.")
+    message("screen_spatial_formula: formula contains no screenable spatial terms ",
+            "(Moran B1..BK or lat_r_s/lon_r_s). Fitting formula as-is and returning.")
+    model_out <- do.call(
+      train_biodiversity_model,
+      c(list(data = data, formula = formula_full), tbm_args)
+    )
+    model_out$model_selection <- list(
+      aic_table           = NULL,
+      recommended_formula = paste(deparse(formula_full, width.cutoff = 500), collapse = " "),
+      flagged_terms       = character(0),
+      sd_table            = data.frame(term = character(0), sd = numeric(0),
+                                       flagged = logical(0), stringsAsFactors = FALSE)
+    )
+    return(model_out)
   }
 
-  # Validate that Moran columns exist in data
+  # Validate that Moran columns exist in data; strip any that are absent
+  # (can happen with small datasets where compute_moran_basis() returns fewer
+  # than k eigenvectors and the formula references the original k).
   missing_moran <- setdiff(moran_present, names(data))
   if (length(missing_moran) > 0L) {
-    stop(sprintf(
-      "screen_spatial_formula: Moran column(s) not found in data: %s. Did you run compute_moran_basis() and left_join the result?",
-      paste(missing_moran, collapse = ", ")
-    ))
+    message(sprintf(
+      "screen_spatial_formula: %d Moran column(s) absent from data (%s); stripping from formula.",
+      length(missing_moran), paste(missing_moran, collapse = ", ")))
+    formula_chr_adj <- paste(deparse(formula_full, width.cutoff = 500), collapse = " ")
+    for (v in missing_moran) {
+      formula_chr_adj <- gsub(
+        paste0("\\s*\\+\\s*\\(0 \\+ ", v, " \\|[^)]+\\)"),
+        "", formula_chr_adj
+      )
+    }
+    formula_full  <- stats::as.formula(formula_chr_adj)
+    formula_chr   <- paste(deparse(formula_full, width.cutoff = 500), collapse = " ")
+    moran_present <- setdiff(moran_present, missing_moran)
+    # After stripping, re-check if any spatial terms remain
+    if (length(moran_present) == 0L && length(spatial_present) == 0L) {
+      message("screen_spatial_formula: no spatial terms remain after stripping absent Moran columns. Fitting formula as-is and returning.")
+      model_out <- do.call(
+        train_biodiversity_model,
+        c(list(data = data, formula = formula_full), tbm_args)
+      )
+      model_out$model_selection <- list(
+        aic_table           = NULL,
+        recommended_formula = formula_chr,
+        flagged_terms       = character(0),
+        sd_table            = data.frame(term = character(0), sd = numeric(0),
+                                         flagged = logical(0), stringsAsFactors = FALSE)
+      )
+      return(model_out)
+    }
   }
 
   # ---------------------------------------------------------------------------
@@ -331,8 +370,31 @@ screen_spatial_formula <- function(data,
   # Compute delta_AIC only over valid models
   valid_aic <- aic_vals[!na_aic]
   if (length(valid_aic) == 0L) {
-    stop("screen_spatial_formula: AIC is NA for all candidate models. ",
-         "Check $convergence_warnings.")
+    # Print convergence warnings from every candidate before stopping,
+    # since the function cannot return $convergence_warnings on error.
+    all_warns <- unlist(lapply(names(candidates), function(nm) {
+      w <- candidates[[nm]]$model$convergence_warnings
+      if (length(w)) paste0("[", candidates[[nm]]$label, "] ", w) else character(0)
+    }))
+    if (length(all_warns)) {
+      message("  Convergence warnings from all candidates:")
+      for (w in all_warns) message("    ", w)
+    }
+    stop(
+      "screen_spatial_formula: AIC is NA for all candidate models ",
+      "(glmmTMB convergence failure).\n",
+      "  Possible causes and remedies:\n",
+      "  1. Too many random-slope terms for the dataset size. Try removing\n",
+      "     spatial covariates (lat_r_s, lon_r_s) and using only the Moran\n",
+      "     basis (B1..Bk), or drop Moran terms entirely.\n",
+      "  2. Multicollinearity between scaled covariates. Run\n",
+      "     add_pca_covariates() on model_data before calling this function\n",
+      "     and replace lat_r_s/lon_r_s with PC1_s/PC2_s in the formula.\n",
+      "  3. Fit directly with train_biodiversity_model() using a simpler\n",
+      "     formula (e.g. habitat intercepts + diag(habitat|taxon) +\n",
+      "     (1|taxon:grid_id)) to establish a converging baseline, then\n",
+      "     add complexity incrementally."
+    )
   }
   aic_table$delta_AIC[!na_aic] <- round(aic_vals[!na_aic] - min(valid_aic), 1)
   aic_table <- aic_table[order(is.na(aic_table$delta_AIC), aic_table$delta_AIC), ]

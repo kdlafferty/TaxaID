@@ -30,13 +30,19 @@ test_that("NULL formula_full raises an error", {
   )
 })
 
-test_that("formula with no Moran or spatial terms raises an error", {
-  expect_error(
-    screen_spatial_formula(
-      data         = data.frame(x = 1, n_species = 1, n_other = 1),
-      formula_full = cbind(n_species, n_other) ~ x + (1 | x)
+test_that("formula with no Moran or spatial terms emits a message and fits directly", {
+  # New behaviour: no hard stop; instead emit a message and call train_biodiversity_model.
+  # With this trivial data frame, train_biodiversity_model will error on missing columns —
+  # that downstream error is separate from the screening path and is ignored here.
+  expect_message(
+    tryCatch(
+      screen_spatial_formula(
+        data         = data.frame(x = 1, n_species = 1, n_other = 1),
+        formula_full = cbind(n_species, n_other) ~ x + (1 | x)
+      ),
+      error = function(e) NULL
     ),
-    regexp = "no Moran"
+    regexp = "no screenable spatial terms"
   )
 })
 
@@ -69,7 +75,7 @@ test_that("negative delta_aic_max raises an error", {
   )
 })
 
-test_that("missing Moran columns in data raises an error", {
+test_that("missing Moran columns in data are stripped with a message", {
   d <- data.frame(
     taxon_name      = "sp1",
     grid_id         = "Grid_33p0_m119p0",
@@ -85,7 +91,12 @@ test_that("missing Moran columns in data raises an error", {
     (1 | taxon_name) + (0 + B1 | taxon_name) + (0 + B2 | taxon_name) +
     (0 + lat_r_s | taxon_name) + (1 | taxon_name:grid_id)
 
-  expect_error(screen_spatial_formula(d, f), regexp = "not found in data: B1")
+  # New behaviour: emit message about stripping absent Moran columns, then proceed.
+  # (Fitting on 1-row data may fail with a glmmTMB error — that is expected and ignored here.)
+  expect_message(
+    tryCatch(screen_spatial_formula(d, f), error = function(e) NULL),
+    regexp = "stripping"
+  )
 })
 
 test_that("Moran term detection from formula is correct", {
