@@ -23,6 +23,9 @@
 #' \itemize{
 #'   \item \code{\link{standardize_match_data}} -- canonical column names
 #'   \item \code{\link{filter_redundant_hypotheses}} -- drop superseded ranks
+#'   \item \code{\link{convert_taxonomy_backbone}} -- remap rank columns to a
+#'     target backbone (e.g. NCBI -> GBIF); adds \code{taxonomy_backbone} and
+#'     \code{taxonomy_collision} diagnostic columns
 #' }
 #'
 #' @section Reporting:

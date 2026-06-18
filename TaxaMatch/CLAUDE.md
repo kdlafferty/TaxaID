@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-08 (Session 103 — mark read_animl_output, read_birdnet_output as Complete)
+# Last updated: 2026-06-16 (Session 110 — convert_taxonomy_backbone added)
 
 ---
 
@@ -120,6 +120,7 @@ likelihood output downstream — it is NOT part of the match object.
 |---|---|---|---|
 | `standardize_match_data()` | R/standardize_match_data.R | Written | Rename columns, derive `taxon_name`, validate structure |
 | `filter_redundant_hypotheses()` | R/standardize_match_data.R | Written | Drop higher-rank rows superseded by finer-rank rows within the same lineage and sample |
+| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. NOTE: generic utility — move to TaxaTools after manuscript review. |
 
 ### Internal helpers
 
@@ -293,3 +294,20 @@ Sessions 27–82 archived in ecosystem_docs/session_notes/TaxaMatch_sessions.md.
 - README "Other Image Classifiers" section updated: dedicated reader functions shown with example code;
   classifier comparison table updated.
 - `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
+
+**Session 110 (2026-06-16)**
+- `convert_taxonomy_backbone()` added to `R/convert_taxonomy_backbone.R`.
+  Remaps rank columns (default: order, family, genus, species) from a source backbone
+  to a target backbone via `verify_taxon_names()`. Per-column fallback: ranks the target
+  backbone omits are left unchanged (no NA introduction). Adds `taxonomy_backbone` and
+  `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute + prints
+  summary message. `update_taxon_name = TRUE` (default) cleans authority strings from
+  accepted names and saves original to `taxon_name_original`. `verify_fn` parameter
+  allows offline testing via dependency injection.
+  `taxonomy_collision` values: `"consistent"`, `"backbone_N[col1,col2]"` (target applied,
+  changed columns listed), `"backbone_N"` or `"original"` (not found in target).
+  32 offline tests in `tests/testthat/test-convert_taxonomy_backbone.R`.
+  NOTE: generic utility — should move to TaxaTools after manuscript review.
+- `TaxaMatch-package.R` Standardization section updated.
+- `devtools::check()`: 0 errors, 0 notes, 1 pre-existing warning (removed TaxaLikely
+  cross-reference links from Session 97).
