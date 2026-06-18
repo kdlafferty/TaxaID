@@ -1,5 +1,5 @@
 utils::globalVariables(c(
-  "composite_id", "sequence", "distance", "p_match"
+  "composite_id", "sequence", "distance", "p_match", "species"
 ))
 
 # ==============================================================================
@@ -38,6 +38,24 @@ utils::globalVariables(c(
 #'   are discarded before alignment.
 #' @param max_seq_len Integer (default `2000`).  Sequences longer than this
 #'   are discarded before alignment.
+#' @param filter_unnamed Logical (default `TRUE`).  If `TRUE`, sequences whose
+#'   finest-rank taxonomy column (the last element of `rank_system`, typically
+#'   `species`) is blank (`""`) or `NA` are removed before alignment.  Blank
+#'   names produce spurious within-species pairs — two unidentified sequences
+#'   both labelled `""` are classified as conspecific even though they may
+#'   represent entirely different taxa.  In a broad 18S reference database this
+#'   can account for the majority of apparent within-species pairs.  Set to
+#'   `FALSE` only if blank finest-rank values are intentional.
+#' @param max_seqs_per_taxon Integer or `NULL` (default `NULL`).  If supplied,
+#'   at most this many sequences are retained per finest-rank taxon before
+#'   alignment, chosen by random sampling using the current RNG state (set
+#'   `set.seed()` before calling for reproducibility).  This prevents
+#'   heavily-sequenced model organisms or domestic species from dominating
+#'   the within-species distribution and thereby distorting model training.
+#'   For typical vertebrate barcode databases a value of `10L`–`20L` is
+#'   sufficient; the resulting within-species pair counts per taxon are at most
+#'   `max_seqs_per_taxon * (max_seqs_per_taxon - 1) / 2`.  `NULL` disables
+#'   the cap (current behaviour).
 #'
 #' @return A data frame with one row per sequence pair within `max_dist`:
 #'   \describe{
@@ -60,7 +78,9 @@ utils::globalVariables(c(
 #' # Requires DECIPHER + Biostrings (Bioconductor)
 #' ref_matrix <- build_sequence_matrix(
 #'   reference_df,
-#'   rank_system = c("family", "genus", "species")
+#'   rank_system       = c("family", "genus", "species"),
+#'   filter_unnamed    = TRUE,   # drop blank/NA species (default)
+#'   max_seqs_per_taxon = 20L    # cap per-species sequences before alignment
 #' )
 #' head(ref_matrix)
 #' }
@@ -68,10 +88,12 @@ utils::globalVariables(c(
 #' @importFrom dplyr all_of distinct filter left_join mutate rename_with select
 #' @export
 build_sequence_matrix <- function(reference_df,
-                                   rank_system = NULL,
-                                   max_dist    = 0.25,
-                                   min_seq_len = 100L,
-                                   max_seq_len = 2000L) {
+                                   rank_system        = NULL,
+                                   max_dist           = 0.25,
+                                   min_seq_len        = 100L,
+                                   max_seq_len        = 2000L,
+                                   filter_unnamed     = TRUE,
+                                   max_seqs_per_taxon = NULL) {
   if (!is.data.frame(reference_df))
     stop("reference_df must be a data frame")
 
@@ -80,6 +102,16 @@ build_sequence_matrix <- function(reference_df,
   if (length(missing_cols) > 0L)
     stop(sprintf("reference_df is missing required columns: %s",
                  paste(missing_cols, collapse = ", ")))
+
+  if (!is.logical(filter_unnamed) || length(filter_unnamed) != 1L || is.na(filter_unnamed))
+    stop("filter_unnamed must be TRUE or FALSE")
+
+  if (!is.null(max_seqs_per_taxon)) {
+    if (!is.numeric(max_seqs_per_taxon) || length(max_seqs_per_taxon) != 1L ||
+        is.na(max_seqs_per_taxon) || max_seqs_per_taxon < 2L)
+      stop("max_seqs_per_taxon must be NULL or an integer >= 2")
+    max_seqs_per_taxon <- as.integer(max_seqs_per_taxon)
+  }
 
   if (!requireNamespace("DECIPHER",   quietly = TRUE))
     stop("Package 'DECIPHER' is required. Install it with: BiocManager::install('DECIPHER')")
@@ -115,6 +147,73 @@ build_sequence_matrix <- function(reference_df,
 
   if (nrow(df) < 2L)
     stop("Fewer than 2 valid sequences in reference_df after deduplication")
+
+  # ---- 1b. IUPAC DNA FILTER --------------------------------------------------
+  # Biostrings::DNAStringSet() throws a cryptic lookup-table error if a sequence
+  # contains non-IUPAC-DNA characters (e.g., 'E', 'F', 'I', 'L' — amino acid
+  # codes returned when an accession resolves to a protein record or a corrupt
+  # NCBI entry).  Filter these out with a clear message before hitting Biostrings.
+  valid_iupac <- "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn-]+$"
+  is_valid    <- grepl(valid_iupac, df$sequence)
+  n_invalid   <- sum(!is_valid)
+  if (n_invalid > 0L) {
+    bad_ids <- head(df$composite_id[!is_valid], 5L)
+    warning(sprintf(
+      "build_sequence_matrix: removed %d sequence(s) with non-IUPAC DNA characters %s(likely protein accessions or corrupt records).",
+      n_invalid,
+      sprintf("(e.g. %s) ", paste(bad_ids, collapse = ", "))
+    ), call. = FALSE)
+    df <- df[is_valid, , drop = FALSE]
+  }
+
+  if (nrow(df) < 2L)
+    stop("Fewer than 2 valid DNA sequences in reference_df after IUPAC filter")
+
+  # ---- 1c. FILTER UNNAMED FINEST-RANK TAXA ------------------------------------
+  # Pairs where the finest-rank label is blank or NA are not valid within-species
+  # training pairs.  In broad 18S reference databases, blank species names can
+  # account for the majority of apparent within-species pairs.
+  finest_rank <- rank_cols[length(rank_cols)]
+  if (filter_unnamed && finest_rank %in% names(df)) {
+    finest_vals <- df[[finest_rank]]
+    is_named    <- !is.na(finest_vals) & nchar(trimws(finest_vals)) > 0L
+    n_unnamed   <- sum(!is_named)
+    if (n_unnamed > 0L) {
+      message(sprintf(
+        "build_sequence_matrix: removed %d sequence(s) with blank/NA '%s' (filter_unnamed = TRUE).",
+        n_unnamed, finest_rank
+      ))
+      df <- df[is_named, , drop = FALSE]
+    }
+    if (nrow(df) < 2L)
+      stop("Fewer than 2 sequences remained after filtering unnamed sequences")
+  }
+
+  # ---- 1d. THIN TO max_seqs_per_taxon -----------------------------------------
+  # Randomly subsample sequences per finest-rank taxon before alignment to
+  # prevent heavily-sequenced species from dominating the within-species
+  # distribution.  Uses the caller's RNG state; call set.seed() beforehand for
+  # reproducibility.
+  if (!is.null(max_seqs_per_taxon) && finest_rank %in% names(df)) {
+    finest_vals <- df[[finest_rank]]
+    unique_taxa <- unique(finest_vals)
+    over_cap    <- unique_taxa[
+      vapply(unique_taxa, function(tx) sum(finest_vals == tx), integer(1L)) > max_seqs_per_taxon
+    ]
+    if (length(over_cap) > 0L) {
+      keep_rows <- unlist(lapply(unique_taxa, function(tx) {
+        rows <- which(finest_vals == tx)
+        if (length(rows) > max_seqs_per_taxon) sample(rows, max_seqs_per_taxon) else rows
+      }), use.names = FALSE)
+      df <- df[sort(keep_rows), , drop = FALSE]
+      message(sprintf(
+        "build_sequence_matrix: capped %d taxon/taxa to <= %d sequences per '%s'.",
+        length(over_cap), max_seqs_per_taxon, finest_rank
+      ))
+    }
+    if (nrow(df) < 2L)
+      stop("Fewer than 2 sequences remained after thinning to max_seqs_per_taxon")
+  }
 
   # ---- 2. LENGTH FILTER -------------------------------------------------------
   dna <- Biostrings::DNAStringSet(df$sequence)

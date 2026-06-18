@@ -9,7 +9,9 @@ build_sequence_matrix(
   rank_system = NULL,
   max_dist = 0.25,
   min_seq_len = 100L,
-  max_seq_len = 2000L
+  max_seq_len = 2000L,
+  filter_unnamed = TRUE,
+  max_seqs_per_taxon = NULL
 )
 }
 \arguments{
@@ -36,6 +38,26 @@ are discarded before alignment.}
 
 \item{max_seq_len}{Integer (default \code{2000}).  Sequences longer than this
 are discarded before alignment.}
+
+\item{filter_unnamed}{Logical (default \code{TRUE}).  If \code{TRUE}, sequences whose
+finest-rank taxonomy column (the last element of \code{rank_system}, typically
+\code{species}) is blank (\code{""}) or \code{NA} are removed before alignment.  Blank
+names produce spurious within-species pairs — two unidentified sequences
+both labelled \code{""} are classified as conspecific even though they may
+represent entirely different taxa.  In a broad 18S reference database this
+can account for the majority of apparent within-species pairs.  Set to
+\code{FALSE} only if blank finest-rank values are intentional.}
+
+\item{max_seqs_per_taxon}{Integer or \code{NULL} (default \code{NULL}).  If supplied,
+at most this many sequences are retained per finest-rank taxon before
+alignment, chosen by random sampling using the current RNG state (set
+\code{set.seed()} before calling for reproducibility).  This prevents
+heavily-sequenced model organisms or domestic species from dominating
+the within-species distribution and thereby distorting model training.
+For typical vertebrate barcode databases a value of \code{10L}–\code{20L} is
+sufficient; the resulting within-species pair counts per taxon are at most
+\code{max_seqs_per_taxon * (max_seqs_per_taxon - 1) / 2}.  \code{NULL} disables
+the cap (current behaviour).}
 }
 \value{
 A data frame with one row per sequence pair within \code{max_dist}:
@@ -71,7 +93,9 @@ they are only needed for this one function.
 # Requires DECIPHER + Biostrings (Bioconductor)
 ref_matrix <- build_sequence_matrix(
   reference_df,
-  rank_system = c("family", "genus", "species")
+  rank_system       = c("family", "genus", "species"),
+  filter_unnamed    = TRUE,   # drop blank/NA species (default)
+  max_seqs_per_taxon = 20L    # cap per-species sequences before alignment
 )
 head(ref_matrix)
 }
