@@ -352,6 +352,268 @@ reference.
 
 ---
 
+## 11. From match scores to likelihoods: the calibration problem
+
+Automated identification tools return a *match score* — BLAST percent identity for
+sequence data, cosine or embedding similarity for images, or classifier confidence
+for acoustic recordings. These scores are bounded, monotonically related to match
+quality, and superficially probability-like, which invites the temptation to read
+them directly as probabilities of correct identification. This temptation should be
+resisted. As Wood & Kahl (2024) state for the BirdNET classifier, confidence scores
+"are not probabilities"; Knight et al. (2017) reach the same conclusion for acoustic
+recognizers in general. The same caution applies to BLAST percent identity: a score
+of 98% is not a 98% probability that the query and reference are conspecific, and a
+score of 100% is not certainty. A match score is an *unitless* quantity whose
+relationship to identification accuracy must be learned, not assumed.
+
+In a multi-hypothesis discrimination setting — *which taxon produced this
+observation?* — the quantity we need is not a calibrated success probability but a
+*likelihood*: the probability of observing the score we observed, given each
+candidate taxon hypothesis $H$. Writing $s$ for the (transformed) score, the
+likelihood is $L(H \mid s) = f_H(s)$, the value of the score density under $H$, and
+posterior assignment follows from Bayes' rule,
+$P(H \mid s) \propto f_H(s)\, \pi(H)$, with $\pi(H)$ the prior. Likelihoods require a
+*generative* model of the score distribution under each hypothesis, which is exactly
+what TaxaLikely estimates from reference data. This is also the structure underlying
+model-based, decision-theoretic species assignment in the DNA-barcoding literature
+(Abdo & Golding 2007), where assignment is driven by the probability of the data
+under each candidate group rather than by a fixed similarity cutoff.
+
+Our approach can be read as a generalization of the logistic-regression calibration
+recommended by Wood & Kahl (2024). Their procedure regresses a binary
+correct/incorrect outcome on the score to recover $P(\text{correct} \mid s)$; this is
+a two-hypothesis, univariate calibration. TaxaLikely instead models the full bivariate
+feature $(s, g)$ — score together with the *gap* to the next-best competing match —
+under multiple competing hypotheses, yielding per-hypothesis likelihoods rather than a
+single success probability. The bivariate generative model and the logistic
+calibration agree in the two-class, gap-free limit, but the generative form extends
+naturally to the open, multi-taxon problem that eDNA and survey identification
+present.
+
+---
+
+## 12. The open-reference problem: closure belongs in the prior
+
+A reference database is almost never a complete census of the taxa that could have
+generated an observation. Many species in a study region have no reference sequence,
+and a species with no reference simply *cannot* produce a high-scoring match to itself.
+We quantify this incompleteness with a closure parameter
+$\varphi = N_{\text{referenced}} / N_{\text{related}}$, where $N_{\text{related}}$
+counts only the species in the genus (or family) from which the match was drawn —
+the set of taxa that could plausibly have generated the observed score — not all
+species in the study region. The central modelling decision is where $\varphi$ enters
+the inference.
+
+**Closure belongs in the prior, not the likelihood.** The likelihood
+$f_H(s, g)$ is conditioned on the score actually observed; it answers "how probable is
+this score under hypothesis $H$?" The existence — or non-existence — of an unreferenced
+alternative taxon does not change the probability of observing a given score under any
+of the *stated* hypotheses, so it cannot belong in $f_H$. Instead, $\varphi$ shapes the
+prior probability that an unreferenced taxon is present at all. Because an unreferenced
+species produces no match of its own, it can be inferred only indirectly, through
+dark-diversity modelling (TaxaExpect), which supplies a prior probability of presence
+for taxa absent from the reference. This is precisely the logic of occupancy models
+with imperfect detection (MacKenzie et al. 2002): non-detection does not imply absence,
+and the probability that a species is present given that it was not detected depends on
+detection probability and occupancy (the prior), not on the value of any detection
+score. Mixing $\varphi$ into the likelihood would double-count this information and
+conflate "the score is low" with "the true taxon may be unreferenced."
+
+TaxaLikely therefore frames three hypothesis types for any observation:
+
+- $H_1$ — the match is to the *correct referenced species* (a conspecific reference
+  exists and was matched);
+- $H_2$ — the true species is *unreferenced but congeneric* with a referenced taxon
+  (the best attainable match is to a congener, at genus level);
+- $H_3$ — the true species is *unreferenced and only family-level* reference exists.
+
+Under $H_2$ and $H_3$ no conspecific match is possible, so the observed score is
+generated by a *cross-taxon* process. Their likelihoods are evaluated from the
+cross-species feature distribution; $\varphi$ and TaxaExpect determine how much prior
+weight these unreferenced hypotheses carry.
+
+---
+
+## 13. Truncation and censoring in match reporting
+
+Match-reporting pipelines rarely return every comparison. Common retention rules
+include *all-above-floor* (keep every match with score $\ge T$, e.g. $\ge 90\%$),
+*100%-only* (keep only exact matches), *max-score-only* (keep the single best match per
+query), and *gap-within-threshold* (keep all matches within $\delta$ of the best). Each
+rule is a *selection effect*: we observe a score only conditional on its having passed
+the rule. A naive likelihood that ignores this conditioning is biased.
+
+Let $R$ denote the region of $(s, g)$ space that passes the retention rule. For an
+observation retained at $(s, g)$, the corrected likelihood is
+
+$$
+L(H \mid s, g, \text{retained}) \;\propto\;
+\frac{f_H(s, g)}{P(\text{retained} \mid H)},
+\qquad
+P(\text{retained} \mid H) = \iint_{R} f_H(s', g')\, ds'\, dg'.
+$$
+
+The denominator $P(\text{retained} \mid H)$ answers: assuming hypothesis $H$ is true
+and that $H$ produces a match with score $s$ drawn from $f_H(s, g)$, what fraction of
+such matches would pass the pipeline's retention rule? Crucially, $P(\text{retained} \mid H)$
+does **not** cancel between $H_1$ and $H_2/H_3$, because the within-species density
+$f_{H_1}$ and the cross-species densities $f_{H_2}, f_{H_3}$ have different means and
+shapes. Ignoring the correction when a floor $T$ is applied gives biased likelihoods
+whenever $F_{H_1}(T) \ne F_{\text{cross}}(T)$ — that is, whenever some genuine
+within-species matches fall below the floor. The bias is in the direction of
+over-favouring whichever hypothesis loses *less* probability mass to truncation.
+
+Three special cases recur in practice. (i) *All-above-floor at* $T \le \min_{\text{self}}$:
+if every within-species match exceeds $T$, then $P(\text{retained} \mid H_1) = 1$ and
+$H_1$ needs no correction, but the cross-species hypotheses still do, since congeneric and
+familial matches fail the floor more often. (ii) *Max-score-only*: the correction for
+$H_1$ becomes $P(\text{best score} = s^* \mid H_1)$, the probability that the observed
+score is simultaneously the maximum and equal to $s^*$; the gap dimension is degenerate
+and uninformative here. (iii) *100%-only* is max-score-only at $s^* = 1.0$, so the
+correction for $H_1$ is $P(\text{exact match} \mid H_1) = p_{\text{self}}$ and for $H_2$
+it is $p_{\text{cross}}$. The empirical diagnostics on real California reference databases
+are decisive on this last case: for 12S MiFish, $p_{\text{self}} = 0.048$ versus
+$p_{\text{cross\,congeneric}} = 0.078$ (LR $= 0.61$); for 18S,
+$p_{\text{self}} = 0.080$ versus $p_{\text{cross\,congeneric}} = 0.291$ (LR $= 0.27$).
+For both markers the likelihood ratio of $H_1$ to congeneric $H_2$ under the 100% rule is
+*below one* — a 100% BLAST hit is more consistent with a congeneric than with a conspecific
+hypothesis. The familiar "100% identity = species match" heuristic is therefore not merely
+imprecise but, at these markers, *anti-informative*. All reliable species-level signal lives
+in the continuous score distribution, not in a binary threshold.
+
+---
+
+## 14. The continuous bivariate-normal as the unifying model
+
+Rather than maintain a separate rule for each retention scheme, TaxaLikely uses a single
+generative model and lets the truncation correction of Section 13 absorb the differences.
+We model the transformed feature
+$\mathbf{x} = \big(\operatorname{logit} s,\ \operatorname{logit} g\big)$ as bivariate
+normal under each hypothesis. The logit transform maps the bounded score and gap onto the
+real line, so that a Gaussian is a reasonable approximation and so that means and covariances
+are unconstrained.
+
+An alternative formulation is a discrete-continuous hybrid model: a point mass at
+$(s, g) = (1.0, 0.0)$ combined with a continuous density for $s < 1.0$. This is
+appropriate when exact matches occur far more often than the continuous distribution
+predicts — signalled by a *spike ratio* (count of exact matches divided by count in the
+immediately sub-perfect bin $[0.995, 1.0)$) substantially greater than one, roughly $\geq 5$.
+However, the empirical evidence from real reference databases supports the unified continuous
+representation over the hybrid: the spike ratio was 0.30–0.40 for both 12S MiFish and 18S
+rDNA (temperate marine taxa, California). Values below 1 indicate that exact matches are
+*less* common than sub-perfect matches — the opposite of what would justify a discrete atom.
+There is no point mass at 1.0; the continuous bivariate-normal model is the correct
+representation for these markers, and no special-case discrete rules are needed. A
+discrete-continuous hybrid model is not currently implemented; it is noted as a potential
+extension for markers that show a spike ratio well above 5, which can be assessed using the
+diagnostic script `diagnostics/seq_matrix_score_distribution.R` before model fitting.
+Among continuous parameterizations, model choice can be guided by AIC in the standard
+multimodel framework (Burnham & Anderson 2002).
+
+Under $H_1$ the distribution is *species-specific* — each taxon has its own mean and
+covariance — but estimated with Empirical Bayes shrinkage toward the global (pooled) mean.
+Species with few reference sequences shrink strongly toward the pool; well-sequenced species
+retain their own parameters. This delivers, hierarchically and automatically, the
+species-specific performance evaluation that Wood & Kahl (2024) and Knight et al. (2017)
+recommend, without the manual per-species validation those papers describe. The $H_2$ and
+$H_3$ distributions are obtained by shifting the mean (parameters `H2$delta`, `H3$delta`):
+cross-species matches have systematically lower scores and larger gaps, and the shifts encode
+this.
+
+A subtlety at the boundary requires explicit regularization. Because $p_{\text{self}}$ is
+*low but non-zero* (4–8% for the 12S and 18S markers examined in temperate-marine fish and
+eukaryote communities), a continuous bivariate normal fit to the observed within-species cloud
+assigns near-zero density at the corner $(s, g) = (1.0, 0.0)$, which would wrongly penalize the
+genuine — if rare — exact self-match. `train_likelihood_model()` corrects this by injecting
+synthetic `anchor_perfect` pseudo-observations at $(1.0, 0.0)$ before fitting, regularizing the
+density at the boundary so that real exact matches are scored as plausible rather than anomalous.
+The anchor is not an arbitrary fudge: it encodes the established fact that conspecific exact
+matches occur at a small positive rate, and it prevents the model from over-interpreting their
+rarity. Because all of these parameters are marker-dependent, they must be re-estimated for each
+marker from a clean reference matrix; the diagnostic in
+`diagnostics/seq_matrix_score_distribution.R` reports $p_{\text{self}}$,
+$p_{\text{cross\,congeneric}}$, the spike ratio, and the LR at the 100% rule, which together
+confirm that the continuous model is appropriate before it is applied. The same diagnostic can
+also be used to assess the appropriateness of different matching thresholds, minimum-score
+floors, and gap cutoffs for a given marker.
+
+---
+
+## 15. Reference-database requirements for model estimation
+
+The bivariate-normal parameters are estimated from a *sequence matrix* (`seq_matrix`) that pairs
+all reference sequences within a distance threshold and records, for each pair, whether it is
+within- or cross-species together with its score and gap. The quality of the resulting
+likelihood model is only as good as the cleanliness of these pairs, and four preprocessing steps
+are required.
+
+The table below maps the key quantities computed from the sequence matrix to the bivariate-normal
+parameters they inform:
+
+| seq_matrix quantity | Model parameter | How used |
+|---|---|---|
+| Within-species `p_match` values (logit-transformed) | `H1_Global_Mu[score_logit]`, `H1_Sigma[1,1]` | Pooled H1 score mean and variance; per-species means shrunk toward this |
+| Within-species `gap` values (logit-transformed) | `H1_Global_Mu[gap_logit]`, `H1_Sigma[2,2]`, `H1_Sigma[1,2]` | H1 gap mean, gap variance, and score–gap covariance |
+| Within-species pair count per species ($N$) | Empirical Bayes weight $w = N / (N + \text{prior\_weight})$ | Controls per-species shrinkage strength; low-$N$ species pulled toward pooled H1 |
+| Congeneric cross-species `p_match` mean − within-species mean | `H2$delta` | Score-axis shift from H1 to H2 distribution |
+| Congeneric cross-species score and gap variances | `H2$sigma` (2×2 matrix) | H2 distribution width and shape |
+| Family-level cross-species score mean | `H3$delta` (= `H2$delta` + 2.0 logit units by default) | Additional rank-step offset from H2 to H3 |
+
+First, **binomial name cleaning** (step 0; `TaxaTools::clean_taxon_names()`). Reference
+sequences are frequently annotated with taxonomic authority strings appended to the binomial
+name (e.g., *Gadus morhua* Linnaeus, 1758). If authority suffixes are not removed before
+pairing, identical species annotated with and without an authority string will generate spurious
+cross-species pairs, because the two label forms are treated as distinct taxa. Applying
+`TaxaTools::clean_taxon_names()` to the species column before calling
+`build_sequence_matrix()` ensures all records of the same species share a canonical label,
+preventing this class of spurious cross-species pairing.
+
+Second, **error correction** (`flag_reference_errors()`). Mislabelled reference sequences create
+false within-species pairs — cross-species comparisons masquerading as conspecific — which
+simultaneously inflate $p_{\text{cross}}$ and deflate $p_{\text{self}}$ and so bias the likelihood
+ratio toward the unreferenced hypotheses $H_2/H_3$. Flagging and removing suspected mislabels
+before estimation protects the within-species distribution from contamination.
+
+Third, **blank-name filtering** (`filter_unnamed = TRUE` in `build_sequence_matrix()`).
+Sequences lacking a species-level identifier generate spurious within-species pairs whenever two
+unnamed records are compared (blank matched to blank). The magnitude of this artifact is large: in
+an 18S rDNA database, blank-name pairs accounted for 69% of apparent within-species pairs before
+filtering, badly distorting the estimated $f_{H_1}$. Excluding unnamed sequences from the
+within-species count is therefore not optional housekeeping but a prerequisite for an unbiased fit.
+
+Fourth, **thinning** (`max_seqs_per_taxon` in `build_sequence_matrix()`). Heavily sequenced model
+organisms — domestic livestock, common laboratory species — contribute combinatorially many
+within-species pairs and can dominate the pooled within-species distribution. In a 12S MiFish
+database, *Ovis aries* (domestic sheep) accounted for 89% of within-species pairs before thinning.
+Capping each taxon at roughly 10–20 sequences balances contributions across species so that the
+fitted $f_{H_1}$ reflects the community rather than a handful of over-represented taxa. These four
+steps together implement, at the level of the reference matrix, the balanced and species-specific
+validation design that Wood & Kahl (2024) recommend for score-performance assessment.
+
+---
+
+## 16. Application: mapping the theory to TaxaLikely functions
+
+The theoretical pieces above correspond directly to stages of the TaxaLikely workflow.
+`build_sequence_matrix()` constructs the within-/cross-species pair table and applies the
+blank-name filtering (Section 15, step 3) and thinning (step 4) needed for an unbiased fit;
+`flag_reference_errors()` performs the mislabel error correction (step 2); binomial name
+cleaning (step 1) is applied upstream via `TaxaTools::clean_taxon_names()` before building
+the matrix. The diagnostic script `diagnostics/seq_matrix_score_distribution.R` then verifies
+the modelling assumptions of Section 14 — continuity (spike ratio), $p_{\text{self}}$,
+$p_{\text{cross\,congeneric}}$, and the LR at the 100% rule — confirming that the continuous
+bivariate-normal model is appropriate for the marker at hand. `train_likelihood_model()`
+estimates the species-specific $H_1$ distribution with Empirical Bayes shrinkage and the shifted
+$H_2/H_3$ distributions, and injects the `anchor_perfect` pseudo-observations that regularize
+the boundary (Section 14). Finally, `evaluate_likelihoods()` applies the calibrated generative
+model (Section 11) together with the truncation correction appropriate to the reporting rule in
+force (Section 13), returning per-hypothesis likelihoods $L(H_1), L(H_2), L(H_3)$ for a given
+$(s, g)$. The closure parameter $\varphi$ and the dark-diversity priors from TaxaExpect
+(Section 12) are combined with these likelihoods at the posterior-assignment stage, keeping
+reference incompleteness firmly in the prior where it belongs.
+
+---
+
 ## Glossary
 
 | Term | Definition |
@@ -365,6 +627,8 @@ reference.
 | **prior_weight** | Controls Empirical Bayes shrinkage strength (higher = more shrinkage) |
 | **anchor_perfect** | Pseudo-data injection to prevent penalizing perfect matches |
 | **taxa_model_params** | S3 class returned by `train_likelihood_model()` containing all fitted parameters |
+| **spike ratio** | Count of exact matches ($p = 1.0$) divided by count in the immediately sub-perfect bin $[0.995, 1.0)$; values $\geq 5$ suggest a discrete atom at exact match |
+| **$\varphi$ (phi)** | Reference closure: $N_{\text{referenced}} / N_{\text{related}}$, where $N_{\text{related}}$ is the number of species in the relevant genus or family that could plausibly have generated the observed score |
 
 ---
 
@@ -408,11 +672,18 @@ TaxaAssign
 
 ## References
 
+Abdo, Z., and G. B. Golding. 2007. A step toward barcoding life: a model-based,
+decision-theoretic method to assign genes to preexisting species groups.
+*Systematic Biology* 56(1):44–56. doi:10.1080/10635150601167005
+
 Axtner, J., Crampton-Platt, A., Hoerig, L.A., Mohamed, A., Xu, C.C.Y.,
 Yu, D.W. and Wilting, A. (2019). An efficient and robust laboratory workflow
 and target capture method for species identification from environmental DNA.
 *Molecular Ecology Resources*, 19(2), 524–541.
 doi:10.1111/1755-0998.12969
+
+Burnham, K. P., and D. R. Anderson. 2002. *Model selection and multimodel inference: a
+practical information-theoretic approach.* 2nd ed. Springer, New York.
 
 Efron, B. and Morris, C. (1973). Stein's estimation rule and its
 competitors — an empirical Bayes approach. *Journal of the American
@@ -427,6 +698,15 @@ Hebert, P.D.N., Cywinska, A., Ball, S.L. and deWaard, J.R. (2003).
 Biological identifications through DNA barcodes. *Proceedings of the
 Royal Society of London B*, 270(1512), 313–321.
 doi:10.1098/rspb.2002.2218
+
+Knight, E. C., K. C. Hannah, G. J. Foley, C. D. Scott, R. M. Brigham, and E. Bayne. 2017.
+Recommendations for acoustic recognizer performance assessment with application to five
+common automated signal recognition programs. *Avian Conservation and Ecology* 12(2):14.
+doi:10.5751/ACE-01114-120214
+
+MacKenzie, D. I., J. D. Nichols, G. B. Lachman, S. Droege, J. A. Royle, and C. A. Langtimm.
+2002. Estimating site occupancy rates when detection probabilities are less than one.
+*Ecology* 83(8):2248–2255. doi:10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2
 
 Ng, A.Y. and Jordan, M.I. (2001). On discriminative vs. generative
 classifiers: a comparison of logistic regression and naive Bayes.
@@ -446,6 +726,9 @@ Wang, Q., Garrity, G.M., Tiedje, J.M. and Cole, J.R. (2007). Naïve Bayesian
 classifier for rapid assignment of rRNA sequences into the new bacterial
 taxonomy. *Applied and Environmental Microbiology*, 73(16), 5261–5267.
 doi:10.1128/AEM.00062-07
+
+Wood, C. M., and S. Kahl. 2024. Guidelines for appropriate use of BirdNET scores and other
+detector outputs. *Journal of Ornithology* 165:777–782. doi:10.1007/s10336-024-02144-5
 
 Zito, A., Rigon, T., Ovaskainen, O. and Dunson, D.B. (2023). Bayesian
 nonparametric modelling of sequential discoveries. *Methods in Ecology
