@@ -5,6 +5,7 @@
 #       Written here first because TaxaTools is under manuscript review.
 # ==============================================================================
 
+
 #' Convert Match Object Taxonomy to a Target Backbone
 #'
 #' Looks up each unique taxon name in `df[[taxon_col]]` against a target
@@ -65,8 +66,9 @@
 #'   to conversion.
 #'
 #' @note
-#' This function issues one API call to `verify_fn` per unique non-NA taxon
-#' name. All lookups are batched into a single call.
+#' This function issues one API call to `verify_fn` covering all unique
+#' non-NA taxon names in `df`. Rank updates and collision detection are
+#' performed with vectorised operations (no row-by-row loop).
 #'
 #' Taxonomic backbones assign different family/order hierarchies to the same
 #' species (e.g. NCBI places *Girella nigricans* in Girellidae; GBIF places
@@ -75,8 +77,7 @@
 #' [TaxaAssign::join_priors()] when the prior expansion taxonomy was built
 #' from a different backbone.
 #'
-#' @seealso [TaxaTools::verify_taxon_names()], [TaxaTools::clean_taxon_names()],
-#'   [TaxaTools::parse_classification_path()]
+#' @seealso [TaxaTools::verify_taxon_names()], [TaxaTools::clean_taxon_names()]
 #'
 #' @examples
 #' \dontrun{
@@ -90,7 +91,7 @@
 #' attr(match_obj_gbif, "backbone_cols")
 #' }
 #'
-#' @importFrom TaxaTools clean_taxon_names parse_classification_path
+#' @importFrom TaxaTools clean_taxon_names
 #'
 #' @export
 convert_taxonomy_backbone <- function(
@@ -141,26 +142,29 @@ convert_taxonomy_backbone <- function(
   }
 
   # ---------------------------------------------------------------------------
-  # Query target backbone
+  # Query target backbone (single batched API call on unique names)
   # ---------------------------------------------------------------------------
   verified <- verify_fn(unique_names, backbone_id = target_backbone_id)
 
-  # Clean matched names (strip authority strings like "(Ayres, 1860)")
+  # Strip authority strings from matched names
   verified$matched_name_clean <- TaxaTools::clean_taxon_names(verified$matched_name)
 
-  # Parse each rank from classification_path
-  for (rk in rank_system) {
-    verified[[paste0("target_", rk)]] <- mapply(
-      TaxaTools::parse_classification_path,
-      verified$classification_path,
-      verified$classification_ranks,
-      MoreArgs  = list(target_rank = rk),
-      USE.NAMES = FALSE
-    )
-  }
+  # ---------------------------------------------------------------------------
+  # Parse rank values from classification_path
+  # Split once per unique name; extract each rank by position — avoids
+  # repeated strsplit calls that the previous mapply(parse_classification_path)
+  # approach incurred (one split per rank × per unique name).
+  # ---------------------------------------------------------------------------
+  path_list  <- strsplit(verified$classification_path,  "|", fixed = TRUE)
+  ranks_list <- strsplit(verified$classification_ranks, "|", fixed = TRUE)
 
-  # Build fast lookup: name -> row index in verified
-  lookup_idx <- stats::setNames(seq_len(nrow(verified)), verified$user_supplied_name)
+  for (rk in rank_system) {
+    verified[[paste0("target_", rk)]] <- mapply(function(path, ranks) {
+      if (length(ranks) == 1L && is.na(ranks)) return(NA_character_)
+      idx <- match(rk, ranks)
+      if (is.na(idx) || idx > length(path)) NA_character_ else path[[idx]]
+    }, path_list, ranks_list, USE.NAMES = FALSE)
+  }
 
   # ---------------------------------------------------------------------------
   # Labels
@@ -173,103 +177,146 @@ convert_taxonomy_backbone <- function(
   }
 
   # ---------------------------------------------------------------------------
-  # Prepare output columns (add if absent)
+  # Per-row index into verified table
+  # lookup_idx[i] = row in `verified` for df row i; NA when name not found
+  # or when df[[taxon_col]][i] is NA / empty.
   # ---------------------------------------------------------------------------
-  if (!backbone_col %in% names(df)) df[[backbone_col]] <- NA_character_
-  if (!collision_col %in% names(df)) df[[collision_col]] <- NA_character_
+  lookup_idx <- match(df[[taxon_col]], verified$user_supplied_name)
 
+  # A row is "found" when the API was reached (verified = TRUE).
+  # verified$verified[NA] returns NA; !is.na(NA) = FALSE → found_mask = FALSE
+  # for rows with NA/empty taxon_name, as required.
+  found_mask <- !is.na(lookup_idx) & verified$verified[lookup_idx]
+
+  # ---------------------------------------------------------------------------
+  # Prepare output columns
+  # ---------------------------------------------------------------------------
+  if (!backbone_col  %in% names(df)) df[[backbone_col]]  <- NA_character_
+  if (!collision_col %in% names(df)) df[[collision_col]] <- NA_character_
   if (update_taxon_name && !original_col %in% names(df)) {
     df[[original_col]] <- df[[taxon_col]]
   }
 
   # ---------------------------------------------------------------------------
-  # Per-row conversion
+  # Save original rank values BEFORE updating (needed for collision detection)
   # ---------------------------------------------------------------------------
-  n_changed   <- 0L
-  n_not_found <- 0L
+  original_ranks <- df[, rank_cols_present, drop = FALSE]
 
-  for (i in seq_len(nrow(df))) {
+  # ---------------------------------------------------------------------------
+  # Vectorised collision detection
+  # changed_matrix[i, j] = TRUE when rank j was different in the target backbone
+  # (target not NA, original not NA, and values differ)
+  # ---------------------------------------------------------------------------
+  changed_matrix <- matrix(FALSE,
+                            nrow     = nrow(df),
+                            ncol     = length(rank_cols_present),
+                            dimnames = list(NULL, rank_cols_present))
 
-    name_i <- df[[taxon_col]][i]
-    if (is.na(name_i) || !nzchar(name_i)) next
+  for (j in seq_along(rank_cols_present)) {
+    rk          <- rank_cols_present[j]
+    target_vals <- verified[[paste0("target_", rk)]][lookup_idx]
+    orig_vals   <- original_ranks[[rk]]
+    changed_matrix[, j] <- found_mask       &
+                            !is.na(target_vals) &
+                            !is.na(orig_vals)   &
+                            (orig_vals != target_vals)
+  }
 
-    vi <- lookup_idx[name_i]
+  n_changed_per_row <- rowSums(changed_matrix)
 
-    if (is.na(vi) || !isTRUE(verified$verified[vi])) {
-      # Not found in target backbone — keep hierarchy as-is
-      df[[backbone_col]][i] <- source_label
-      df[[collision_col]][i] <- source_label
-      n_not_found <- n_not_found + 1L
-      next
-    }
+  # Build changed-column label strings for rows where something changed.
+  # apply() operates on a logical matrix (fast) and only on the changed subset.
+  changed_labels <- character(nrow(df))
+  rows_with_changes <- which(n_changed_per_row > 0L)
+  if (length(rows_with_changes) > 0L) {
+    changed_labels[rows_with_changes] <- apply(
+      changed_matrix[rows_with_changes, , drop = FALSE], 1L,
+      function(row) paste(sort(rank_cols_present[row]), collapse = ",")
+    )
+  }
 
-    # --- Found: apply per-column fallback ---
-    changed_cols <- character(0)
+  # ---------------------------------------------------------------------------
+  # Vectorised backbone and collision columns
+  # Rows with NA / empty taxon_name were never looked up; leave their
+  # diagnostic columns NA (matching the original row-loop `next` behaviour).
+  # ---------------------------------------------------------------------------
+  has_name <- !is.na(df[[taxon_col]]) & nzchar(df[[taxon_col]])
 
-    for (rk in rank_cols_present) {
-      target_val   <- verified[[paste0("target_", rk)]][vi]
-      original_val <- df[[rk]][i]
+  df[[backbone_col]] <- ifelse(found_mask, target_label,
+                               ifelse(has_name, source_label, NA_character_))
 
-      if (!is.na(target_val)) {
-        # Target backbone provides a value for this rank
-        if (!is.na(original_val) && !identical(target_val, original_val)) {
-          # Column differs from original — record change
-          changed_cols <- c(changed_cols, rk)
-        }
-        # Update (whether original was NA or different)
-        df[[rk]][i] <- target_val
+  collision_vec <- ifelse(has_name, source_label, NA_character_)
+  collision_vec[found_mask & n_changed_per_row == 0L] <- "consistent"
+  if (length(rows_with_changes) > 0L) {
+    collision_vec[rows_with_changes] <- sprintf(
+      "%s[%s]", target_label, changed_labels[rows_with_changes]
+    )
+  }
+  df[[collision_col]] <- collision_vec
+
+  # ---------------------------------------------------------------------------
+  # Vectorised rank column updates
+  # Replace each rank column where the target backbone provides a non-NA value.
+  # ---------------------------------------------------------------------------
+  for (rk in rank_cols_present) {
+    target_vals <- verified[[paste0("target_", rk)]][lookup_idx]
+    has_target  <- found_mask & !is.na(target_vals)
+    df[[rk]]    <- ifelse(has_target, target_vals, df[[rk]])
+  }
+
+  # ---------------------------------------------------------------------------
+  # Vectorised taxon_name update
+  # ---------------------------------------------------------------------------
+  if (update_taxon_name) {
+    if ("taxon_name_rank" %in% names(df)) {
+      # Build a matrix of target values: rows = verified rows, cols = rank_system.
+      # Matrix indexing then extracts the right value per row using the row's own
+      # taxon_name_rank, without any element-wise loop.
+      target_mat <- do.call(cbind, lapply(rank_system, function(rk) {
+        col <- paste0("target_", rk)
+        if (col %in% names(verified)) verified[[col]]
+        else rep(NA_character_, nrow(verified))
+      }))
+
+      rank_col_idx <- match(df$taxon_name_rank, rank_system)
+      rank_vals    <- rep(NA_character_, nrow(df))
+      valid        <- !is.na(lookup_idx) & !is.na(rank_col_idx)
+      if (any(valid)) {
+        rank_vals[valid] <- target_mat[cbind(lookup_idx[valid], rank_col_idx[valid])]
       }
-      # If target_val is NA: leave original value in place (per-column fallback)
-    }
 
-    # --- Update taxon_col to accepted name ---
-    if (update_taxon_name) {
-      # Prefer the parsed rank-column value (extracted from classification_path,
-      # always authority-free) over matched_name, which GBIF returns with author
-      # strings for genus-level and other uninomial entries (e.g.
-      # "Atherinops Steindachner,"). Fall back to matched_name_clean when the
-      # rank column cannot supply a value (rank not in rank_system, or NA).
-      new_name <- NA_character_
-      if ("taxon_name_rank" %in% names(df)) {
-        rank_i     <- df$taxon_name_rank[i]
-        target_col <- paste0("target_", rank_i)
-        if (!is.null(verified[[target_col]])) {
-          rank_val <- verified[[target_col]][vi]
-          if (!is.na(rank_val) && nzchar(rank_val)) new_name <- rank_val
-        }
-      }
-      if (is.na(new_name) || !nzchar(new_name)) {
-        new_name <- verified$matched_name_clean[vi]
-      }
-      if (!is.na(new_name) && nzchar(new_name)) {
-        df[[taxon_col]][i] <- new_name
-      }
-    }
-
-    # --- Record outcome ---
-    df[[backbone_col]][i] <- target_label
-
-    if (length(changed_cols) > 0L) {
-      df[[collision_col]][i] <- sprintf(
-        "%s[%s]",
-        target_label,
-        paste(sort(changed_cols), collapse = ",")
+      # Prefer rank-specific value (authority-free from classification_path);
+      # fall back to matched_name_clean for ranks not in rank_system.
+      new_names <- ifelse(
+        found_mask & !is.na(rank_vals) & nzchar(rank_vals),
+        rank_vals,
+        ifelse(found_mask, verified$matched_name_clean[lookup_idx], df[[taxon_col]])
       )
-      n_changed <- n_changed + 1L
     } else {
-      df[[collision_col]][i] <- "consistent"
+      new_names <- ifelse(
+        found_mask,
+        verified$matched_name_clean[lookup_idx],
+        df[[taxon_col]]
+      )
     }
+
+    # Only update where we have a valid non-empty new name
+    update_mask      <- found_mask & !is.na(new_names) & nzchar(new_names)
+    df[[taxon_col]]  <- ifelse(update_mask, new_names, df[[taxon_col]])
   }
 
   # ---------------------------------------------------------------------------
   # Warning if any inconsistencies
   # ---------------------------------------------------------------------------
-  n_issues <- n_changed + n_not_found
+  name_ref_col <- if (update_taxon_name && original_col %in% names(df)) original_col else taxon_col
+  has_name     <- !is.na(df[[name_ref_col]]) & nzchar(df[[name_ref_col]])
+  n_changed   <- sum(n_changed_per_row > 0L)
+  n_not_found <- sum(!found_mask & has_name)
+  n_issues    <- n_changed + n_not_found
   if (n_issues > 0L) {
     warning(sprintf(
       "%d row(s) have inconsistent taxonomy; see '%s' column.",
-      n_issues,
-      collision_col
+      n_issues, collision_col
     ))
   }
 
@@ -279,12 +326,9 @@ convert_taxonomy_backbone <- function(
   bbone_attr <- list()
   bbone_attr[[paste0(target_label, "_cols")]] <- rank_cols_present
 
-  # Rank columns present in df but not in rank_system stayed from the source
-  all_rank_cols <- intersect(
-    names(df),
-    c("kingdom", "phylum", "class", "order", "family", "genus",
-      "species", "subspecies")
-  )
+  all_rank_cols    <- intersect(names(df),
+                       c("kingdom", "phylum", "class", "order", "family",
+                         "genus", "species", "subspecies"))
   source_only_cols <- setdiff(all_rank_cols, rank_cols_present)
   if (length(source_only_cols) > 0L) {
     bbone_attr[[paste0(source_label, "_cols")]] <- source_only_cols
@@ -294,7 +338,7 @@ convert_taxonomy_backbone <- function(
 
   msg_lines <- vapply(names(bbone_attr), function(nm) {
     sprintf("  %s: %s", nm, paste(bbone_attr[[nm]], collapse = ", "))
-  }, character(1))
+  }, character(1L))
   message("Backbone column mapping:\n", paste(msg_lines, collapse = "\n"))
 
   df

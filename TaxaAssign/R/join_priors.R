@@ -57,11 +57,20 @@ utils::globalVariables(c(
     return(result)
   }
 
-  # Rows eligible for expansion: failed primary join + coarser rank + named taxon
+  # Rows eligible for expansion: failed primary join + coarser rank + named taxon.
+  # Exclude H2/H3 unreferenced-hypothesis rows — their coarse taxon_name_rank reflects
+  # the best-available match level, not a coarse identification. Expanding them would
+  # replace one generic placeholder with all modelled species in that family/genus,
+  # flooding compute_posterior() with spurious competitors and diluting H1 posteriors
+  # for legitimate species (e.g. common intertidal fish resolving to family instead of
+  # species because all Cottidae species are added as new rows).
   is_coarse <- is.na(result$alpha) &
     !is.na(result$taxon_name_rank) &
     result$taxon_name_rank %in% coarser_ranks &
-    !is.na(result$taxon_name)
+    !is.na(result$taxon_name) &
+    (!("hypothesis_type" %in% names(result)) |
+     !result$hypothesis_type %in% c("unreferenced_species", "unreferenced_genus",
+                                     "unreferenced_family", "unresolved_species"))
 
   if (!any(is_coarse)) return(result)
 

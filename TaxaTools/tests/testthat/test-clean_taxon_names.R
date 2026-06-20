@@ -183,3 +183,56 @@ test_that("handles a realistic mixed vector correctly", {
   expect_equal(out[6], "Homo sapiens")
   expect_equal(out[7], "Bacillus subtilis")
 })
+
+# ==============================================================================
+# Underscore-as-space normalisation (Jonah Ventures / SILVA pipelines)
+# ==============================================================================
+
+test_that("converts underscore binomial to space-separated", {
+  out <- clean_taxon_names("Corallina_officinalis")
+  expect_equal(out, "Corallina officinalis")
+})
+
+test_that("converts underscore binomial with hyphen in genus", {
+  out <- clean_taxon_names("Pseudo-nitzschia_australis")
+  expect_equal(out, "Pseudo-nitzschia australis")
+})
+
+test_that("does not alter names that already have a space", {
+  out <- clean_taxon_names("Corallina officinalis")
+  expect_equal(out, "Corallina officinalis")
+})
+
+test_that("does not alter OTU codes with uppercase+digit pattern", {
+  # OTU_001: epithet starts with a digit, not [a-z] — regex does not match
+  out <- clean_taxon_names("OTU_001")
+  expect_equal(out, "OTU_001")  # returned unchanged (genus-only, no epithet)
+})
+
+test_that("does not alter clade codes like MAST-4", {
+  # MAST-4 has no underscore at all — regex does not match
+  out <- clean_taxon_names("MAST-4")
+  expect_equal(out, "MAST-4")  # returned unchanged
+})
+
+test_that("does not alter multi-underscore strings", {
+  # Genus_epithet_extra has two underscores — second underscore fails [A-Za-z.-]* anchor
+  out <- clean_taxon_names("Genus_epithet_extra")
+  expect_equal(out, "Genus_epithet_extra")  # returned unchanged (no conversion)
+})
+
+test_that("underscore conversion handles abbreviation stripping correctly", {
+  # After conversion "Canis_sp." -> "Canis sp." -> stripped to "Canis"
+  # But "Canis_sp." has underscore before "sp." which starts lowercase
+  out <- clean_taxon_names("Canis_lupus")
+  expect_equal(out, "Canis lupus")
+})
+
+test_that("mixed vector with underscore names", {
+  input <- c("Corallina_officinalis", "Homo sapiens", "mus_musculus", NA)
+  out <- clean_taxon_names(input)
+  expect_equal(out[1], "Corallina officinalis")
+  expect_equal(out[2], "Homo sapiens")
+  expect_true(is.na(out[3]))   # starts lowercase — NA
+  expect_true(is.na(out[4]))
+})

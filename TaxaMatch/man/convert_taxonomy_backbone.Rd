@@ -88,8 +88,9 @@ which rank columns were subject to backbone conversion. A summary message
 is also printed.
 }
 \note{
-This function issues one API call to \code{verify_fn} per unique non-NA taxon
-name. All lookups are batched into a single call.
+This function issues one API call to \code{verify_fn} covering all unique
+non-NA taxon names in \code{df}. Rank updates and collision detection are
+performed with vectorised operations (no row-by-row loop).
 
 Taxonomic backbones assign different family/order hierarchies to the same
 species (e.g. NCBI places \emph{Girella nigricans} in Girellidae; GBIF places
@@ -112,6 +113,5 @@ attr(match_obj_gbif, "backbone_cols")
 
 }
 \seealso{
-\code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}}, \code{\link[TaxaTools:clean_taxon_names]{TaxaTools::clean_taxon_names()}},
-\code{\link[TaxaTools:parse_classification_path]{TaxaTools::parse_classification_path()}}
+\code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}}, \code{\link[TaxaTools:clean_taxon_names]{TaxaTools::clean_taxon_names()}}
 }

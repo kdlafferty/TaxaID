@@ -24,7 +24,8 @@
 #' @return A tibble with one row per input name and the following columns:
 #' \describe{
 #'   \item{user_supplied_name}{The original name as supplied.}
-#'   \item{matched_name}{The best-matched name returned by the backbone, or
+#'   \item{matched_name}{The best-matched name returned by the backbone (genus
+#'     and species epithet only; authorship strings are stripped), or
 #'     \code{NA} if no match was found.}
 #'   \item{classification_path}{Pipe-delimited classification path from the
 #'     backbone (e.g., \code{"Animalia|Chordata|..."}).}
@@ -181,6 +182,19 @@ verify_taxon_names <- function(name_list,
         as.double(x)
       }
 
+      # Helper: strip authorship from a name string, keeping only the
+      # genus (and optional epithet). Authority strings begin after the
+      # binomial (e.g. "(Claus, 1863)" or "Hasle, 1993").
+      # Pattern: uppercase-start word (genus, allows hyphens/dots) +
+      # optional space + lowercase-start word (epithet).
+      strip_authority <- function(x) {
+        if (is.na(x)) return(NA_character_)
+        m <- regmatches(trimws(x),
+                        regexpr("^[A-Z][A-Za-z.-]*(?: [a-z][A-Za-z.-]*)?",
+                                trimws(x), perl = TRUE))
+        if (length(m) == 0L) x else m
+      }
+
       # --- Parse each name's result ---
       parsed <- lapply(data$names, function(item) {
         best <- item$bestResult
@@ -199,7 +213,7 @@ verify_taxon_names <- function(name_list,
 
         dplyr::tibble(
           user_supplied_name   = safe_chr(item$name),
-          matched_name         = safe_chr(best$matchedName),
+          matched_name         = strip_authority(safe_chr(best$matchedName)),
           classification_path  = safe_chr(best$classificationPath),
           classification_ranks = safe_chr(best$classificationRanks),
           score                = safe_dbl(best$score),

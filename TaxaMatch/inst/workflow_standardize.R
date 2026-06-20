@@ -25,8 +25,11 @@ match_obj <- standardize_match_data(
   # rank_system = NULL        # auto-detected from Kingdom...Species columns
   lowercase_names = TRUE         # default: all col names → lowercase
 )|>
-  dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name))#get rid of subspecies, authors, etc.
-
+  dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name))%>%#get rid of subspecies, authors, etc.
+  add_lowest_consistent_rank(
+    match_obj,
+    rank_system = c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  )
 #smaller dataset for testing workflows.
 #match_obj<-match_obj|>dplyr::filter(family=="Cottidae")
 

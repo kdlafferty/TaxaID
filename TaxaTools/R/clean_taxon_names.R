@@ -2,10 +2,12 @@
 #'
 #' Cleans a character vector of taxon names by normalising whitespace,
 #' removing \code{NA}s, removing names that do not begin with a capital letter
-#' (e.g., codes, placeholders, artefacts), trimming abbreviated second words
-#' (sp., spp., etc.) to genus-only, stripping bracket artefacts, and
-#' deduplicating. Returns a clean character vector suitable for API calls or
-#' downstream filtering.
+#' (e.g., codes, placeholders, artefacts), converting underscore-separated
+#' binomials to space-separated ones (e.g. \code{"Corallina_officinalis"} ->
+#' \code{"Corallina officinalis"}, as produced by Jonah Ventures and SILVA
+#' pipelines), trimming abbreviated second words (sp., spp., etc.) to
+#' genus-only, and stripping bracket artefacts. Returns a clean character
+#' vector suitable for API calls or downstream filtering.
 #'
 #' This function operates on a plain character vector, not a dataframe.
 #' Common patterns for dataframe workflows:
@@ -69,6 +71,16 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL) {
   # Names that are NA, empty, or do not begin with a capital letter become NA.
   bad <- is.na(x) | !grepl("^[[:upper:]]", x)
   x[bad] <- NA_character_
+
+  # --- Replace underscore-as-space in binomial names --------------------------
+  # Some pipelines (e.g. Jonah Ventures, SILVA) encode spaces as underscores:
+  # "Corallina_officinalis" -> "Corallina officinalis"
+  # Rule: exactly one underscore, no spaces, uppercase-start genus, lowercase-
+  # start epithet. Does NOT affect clade codes (MAST-4), OTU IDs (OTU_001),
+  # or multi-underscore strings.
+  binomial_under <- !is.na(x) &
+    grepl("^[A-Z][A-Za-z.-]+_[a-z][A-Za-z.-]*$", x, perl = TRUE)
+  x[binomial_under] <- gsub("_", " ", x[binomial_under], fixed = TRUE)
 
   # --- Split into at most three tokens: genus | epithet | remainder ---
   # str_split_fixed always returns exactly n columns, so no ragged results.
