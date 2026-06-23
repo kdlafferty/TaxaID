@@ -3,7 +3,7 @@ utils::globalVariables(c(
   "theta_mean", "theta_sd", "n_obs", "model_tier", "effort_flag",
   "observed_in_habitat", "extrapolation_warning",
   "undetected_type", "jeffreys_fallback", "n_total_at_site",
-  "taxon_name"
+  "taxon_name", "source_taxon_name"
 ))
 
 #' Generate Full Prior Object for TaxaAssign
@@ -70,6 +70,10 @@ utils::globalVariables(c(
 #'       covariate range seen during training (|z| > 3)?}
 #'     \item{undetected_type}{NA for modelled taxon_name; "singleton_mirror" or
 #'       "global_floor" for Tier 3 proxies.}
+#'     \item{source_taxon_name}{NA for modelled rows; taxon name of the
+#'       singleton source species for "singleton_mirror" rows; NA for
+#'       "global_floor". Used for taxonomy lookup in dark diversity grouping.
+#'       Carried through from \code{generate_undetected_diversity()}.}
 #'   }
 #'
 #' @details
@@ -523,10 +527,11 @@ generate_full_priors <- function(model_obj,
 
   predictions <- predictions |>
     dplyr::mutate(
-      taxon_name      = !!taxon_sym,
-      theta_mean      = beta_mean_fn(alpha, beta),
-      theta_sd        = beta_sd_fn(alpha, beta),
-      undetected_type = NA_character_
+      taxon_name        = !!taxon_sym,
+      theta_mean        = beta_mean_fn(alpha, beta),
+      theta_sd          = beta_sd_fn(alpha, beta),
+      undetected_type   = NA_character_,
+      source_taxon_name = NA_character_
     ) |>
     dplyr::select(
       taxon_name, grid_id, !!rlang::sym(habitat_col),
@@ -535,19 +540,22 @@ generate_full_priors <- function(model_obj,
       observed_in_habitat,
       extrapolation_warning,
       undetected_type,
+      source_taxon_name,
       jeffreys_fallback
     )
 
   # ---------------------------------------------------------------------------
   # Append undetected diversity priors
+  # source_taxon_name is retained here so it survives into taxaexpect_priors
+  # and can be used for taxonomy lookup in Issue 3 (dark diversity groups).
   # ---------------------------------------------------------------------------
   if (!is.null(undetected) && nrow(undetected) > 0) {
     undetected_out <- undetected |>
       dplyr::mutate(
-        effort_flag               = FALSE,
-        observed_in_habitat = FALSE,
-        extrapolation_warning     = FALSE,
-        jeffreys_fallback         = FALSE
+        effort_flag           = FALSE,
+        observed_in_habitat   = FALSE,
+        extrapolation_warning = FALSE,
+        jeffreys_fallback     = FALSE
       ) |>
       dplyr::select(
         taxon_name, grid_id, !!rlang::sym(habitat_col),
@@ -556,6 +564,7 @@ generate_full_priors <- function(model_obj,
         observed_in_habitat,
         extrapolation_warning,
         undetected_type,
+        source_taxon_name,
         jeffreys_fallback
       )
     predictions <- dplyr::bind_rows(predictions, undetected_out)
