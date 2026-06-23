@@ -8,7 +8,8 @@ add_lowest_consistent_rank(
   match_obj,
   rank_system = NULL,
   observation_id_col = "observation_id",
-  na_as_inconsistent = FALSE
+  na_as_inconsistent = FALSE,
+  majority_threshold = NULL
 )
 }
 \arguments{
@@ -29,14 +30,32 @@ column (default \code{"observation_id"}).}
 inconsistent when some candidates have no value and others do.  Default
 \code{FALSE}: blanks and \code{NA}s are ignored and only non-blank values
 are compared.}
+
+\item{majority_threshold}{Numeric in (0, 1] or \code{NULL} (default).  When
+supplied, switches to majority mode: a rank is treated as consistent if the
+single most-common non-blank value accounts for at least this fraction of
+all non-blank candidate values.  A value of \code{0.8} requires 4 of 5
+candidates to agree.  Values \eqn{\le 0.5} are technically valid but
+semantically unusual (the "minority" would qualify as the majority).}
 }
 \value{
-\code{match_obj} with one new column:
+\code{match_obj} with one new column in strict mode, or four new
+columns in majority mode:
 \describe{
-\item{\code{lowest_consistent_rank}}{Character.  The finest rank in
-\code{rank_system} for which every non-blank candidate value within the
-observation is identical.  \code{NA} when no rank is consistent (all
-ranks carry two or more distinct non-blank values).}
+\item{\code{lowest_consistent_rank}}{Character.  The finest rank for which
+the consistency criterion is satisfied.  \code{NA} when no rank passes.}
+\item{\code{rank_majority_value}}{(\emph{majority mode only}) Character.
+The majority value at \code{lowest_consistent_rank} for the observation.
+\code{NA} when \code{lowest_consistent_rank} is \code{NA}.}
+\item{\code{rank_majority_fraction}}{(\emph{majority mode only}) Numeric.
+Fraction of non-blank candidates that hold \code{rank_majority_value}.
+\code{NA} when \code{lowest_consistent_rank} is \code{NA}.}
+\item{\code{is_rank_outlier}}{(\emph{majority mode only}) Logical.
+\code{TRUE} for rows whose value at \code{lowest_consistent_rank} differs
+from \code{rank_majority_value}.  Rows with \code{NA}/blank values at
+that rank are \code{FALSE} (missing data, not a contradiction).
+All rows are \code{FALSE} when \code{lowest_consistent_rank} is
+\code{NA}.}
 }
 }
 \description{
@@ -50,6 +69,21 @@ Designed to run after \code{\link{standardize_match_data}()} and (optionally)
 \code{\link{convert_taxonomy_backbone}()}.  The resulting column can be used
 to filter out observations that are only resolvable to a coarse rank, or as a
 diagnostic to guide manual review.
+
+\strong{Strict mode} (default, \code{majority_threshold = NULL}): a rank is
+consistent only when every non-blank candidate value is identical.
+
+\strong{Majority mode} (\code{majority_threshold} in (0, 1]): a rank is
+consistent when the single most-common non-blank value accounts for at least
+\code{majority_threshold} of all non-blank candidate values.  This handles
+the common case where one reference-library accession carries a misassigned
+rank value that would otherwise collapse the observation to a coarser rank.
+Three additional columns are added (see \strong{Value}).
+
+\strong{Warning:} removing rows flagged by \code{is_rank_outlier} changes the
+candidate set seen by \code{\link[TaxaLikely]{evaluate_likelihoods}()}.  Do
+so before the likelihood step, and inspect the flagged rows before discarding
+them.
 }
 \examples{
 m <- data.frame(
@@ -60,8 +94,12 @@ m <- data.frame(
   species = c("Amphibalanus improvisus", "Semibalanus balanoides",
               "Balanus balanus", "Chthamalus fragilis")
 )
+# Strict mode: lowest consistent rank = order (3 different families)
 add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"))
-# lowest_consistent_rank = "order" for all four rows
+
+# Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 → family is consistent
+add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"),
+                            majority_threshold = 0.75)
 
 }
 \seealso{

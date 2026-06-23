@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-19 (Session 113 — convert_taxonomy_backbone() vectorized; add_lowest_consistent_rank() majority mode)
+# Last updated: 2026-06-22 (Session 115 — blast_sequences() field-tested; .blast_submit() !!!params bug fixed; workflow_fastq_to_match.R updated)
 
 ---
 
@@ -103,7 +103,7 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `blast_sequences()` | R/blast.R | Written | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution |
+| `blast_sequences()` | R/blast.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution |
 
 ### Image and acoustic input
 
@@ -295,6 +295,26 @@ Sessions 27–82 archived in ecosystem_docs/session_notes/TaxaMatch_sessions.md.
 - README "Other Image Classifiers" section updated: dedicated reader functions shown with example code;
   classifier comparison table updated.
 - `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
+
+**Session 115 (2026-06-22)**
+- Bug fix: `.blast_submit()` used `!!!params` (rlang splice) in `httr2::req_body_form()` call.
+  `rlang` is not in TaxaMatch Imports; without it `!!!params` evaluates as `!(!(!params))` →
+  error on a list. Remote BLAST would always fail at submission. Fixed to
+  `do.call(httr2::req_body_form, c(list(httr2::request(base_url)), params))`.
+- `blast_sequences()` field-tested on 5 PtConception MiFish sequences (OQ84xxxx series,
+  168-170 bp). All 5/5 top hits returned at 100% to correct species; score window, taxonomy
+  resolution, and `standardize_match_data()` all confirmed working end-to-end. Runtime ~18s
+  for 1 batch of 5 sequences.
+  Test script: `inst/test_blast_remote.R`.
+- `workflow_fastq_to_match.R`: `library(dada2)` commented out (optional; only needed for
+  Step 0). `infer_exclude_predicted()` call added as Step 3b (Session 114 addition).
+- Shared NCBI fetcher design decision: no `.ncbi_fetch_records()` abstraction pre-manuscript.
+  The three NCBI use-cases differ fundamentally (blast_sequences is reverse: accession → taxid
+  → lineage; fetch_reference_sequences and audit_barcode_coverage are forward: taxon → NCBI).
+  Only shared piece is taxid→lineage resolution (~30 lines each). Consolidate into TaxaTools
+  after manuscript review.
+- `devtools::check()`: 0 errors, 0 notes, 1 pre-existing warning (cross-references to removed
+  TaxaLikely functions from Session 97).
 
 **Session 113 (2026-06-19)**
 - `add_lowest_consistent_rank()` added to `R/taxonomy_consistency.R`. Strict mode

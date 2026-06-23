@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-19 (Session 113 — clean_taxon_names() underscore normalization; verify_taxon_names() authority stripping)
+# Last updated: 2026-06-23 (Session 116 — barcode_length_defaults["mifish"] tightened to c(130L, 210L) to exclude bacterial cross-amplicons)
 
 ---
 
@@ -36,7 +36,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `standard_ranks` | Character vector: `c("kingdom","phylum","class","order","family","genus","species")` | Complete | R/rank_utils.R |
 | `extended_ranks` | Character vector: standard + subspecies, variety, form | Complete | R/rank_utils.R |
 | `detect_ranks()` | Auto-detect which rank columns exist in a data frame; returns coarse-to-fine character vector | Complete | R/rank_utils.R |
-| `barcode_length_defaults` | Named list of 12 barcode markers → `list(min, max)` bp ranges | Complete | R/barcode_utils.R |
+| `barcode_length_defaults` | Named list of 12 barcode markers → `list(min, max)` bp ranges. MiFish range: `c(130L, 210L)` (tightened Session 116 from c(100L,600L); excludes bacterial cross-amplification at ~256bp). | Complete | R/barcode_utils.R |
 | `resolve_barcode_lengths()` | Resolve min/max bp from `barcode_term` vector; takes union across multiple terms; user overrides | Complete | R/barcode_utils.R |
 
 ### LLM provider functions (moved from TaxaFetch, Session 28)

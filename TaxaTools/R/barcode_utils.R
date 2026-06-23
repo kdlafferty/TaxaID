@@ -20,7 +20,7 @@
 #'
 #' @export
 barcode_length_defaults <- list(
-  "mifish" = c(100L,  600L),   # MiFishU/E 12S amplicon ~170-185 bp
+  "mifish" = c(130L,  210L),   # MiFishU/E 12S amplicon 163-185 bp; bounds exclude non-target cross-amplicons
   "teleo"  = c( 50L,  300L),   # Teleo 12S amplicon ~60-100 bp
   "12s"    = c(100L,  600L),   # General 12S vertebrate
   "16s"    = c(100L,  700L),   # 16S vertebrate ~200-450 bp
@@ -53,7 +53,7 @@ barcode_length_defaults <- list(
 #'
 #' @examples
 #' resolve_barcode_lengths("MiFishU")
-#' # 100 600
+#' # 130 210
 #' resolve_barcode_lengths(c("12S", "16S"))
 #' # 100 700  (union of both ranges)
 #' resolve_barcode_lengths("COI", min_len = 500)

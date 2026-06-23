@@ -28,7 +28,7 @@ test_that("resolve_barcode_lengths is case-insensitive", {
 
 test_that("resolve_barcode_lengths handles prefix matching (MiFishU -> mifish)", {
   out <- resolve_barcode_lengths("MiFishU")
-  expect_equal(out, c(100L, 600L))
+  expect_equal(out, c(130L, 210L))
 })
 
 test_that("resolve_barcode_lengths unions multiple markers", {

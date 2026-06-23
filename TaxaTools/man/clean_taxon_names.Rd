@@ -22,10 +22,12 @@ abbreviation are set to \code{NA}.
 \description{
 Cleans a character vector of taxon names by normalising whitespace,
 removing \code{NA}s, removing names that do not begin with a capital letter
-(e.g., codes, placeholders, artefacts), trimming abbreviated second words
-(sp., spp., etc.) to genus-only, stripping bracket artefacts, and
-deduplicating. Returns a clean character vector suitable for API calls or
-downstream filtering.
+(e.g., codes, placeholders, artefacts), converting underscore-separated
+binomials to space-separated ones (e.g. \code{"Corallina_officinalis"} ->
+\code{"Corallina officinalis"}, as produced by Jonah Ventures and SILVA
+pipelines), trimming abbreviated second words (sp., spp., etc.) to
+genus-only, and stripping bracket artefacts. Returns a clean character
+vector suitable for API calls or downstream filtering.
 }
 \details{
 This function operates on a plain character vector, not a dataframe.

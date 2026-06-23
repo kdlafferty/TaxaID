@@ -17,8 +17,9 @@
 # ==============================================================================
 
 library(TaxaMatch)
-#BiocManager::install("dada2")
-library(dada2)
+library(TaxaLikely)   # for infer_exclude_predicted() in Step 3b
+BiocManager::install("dada2")
+library(dada2)        # only needed for Step 0 (DADA2 denoising)
 # ==============================================================================
 # STEP 0 — DADA2 DENOISING (prerequisite)
 # ==============================================================================
@@ -168,6 +169,21 @@ message(sprintf(
 
 
 # ==============================================================================
+# STEP 3b — INFER EXCLUDE_PREDICTED (for audit_barcode_coverage downstream)
+# ==============================================================================
+# Inspects accession column to determine whether the BLAST reference excluded
+# computationally predicted (XR_/XM_) sequences. Pass to audit_barcode_coverage()
+# later (exclude_predicted = exclude_pred %||% TRUE).
+# Returns TRUE (no XR_/XM_ found), FALSE (predicted seqs present), or NA (all
+# custom/non-NCBI accessions — cannot determine).
+exclude_pred <- TaxaLikely::infer_exclude_predicted(blast_hits)
+message(sprintf("infer_exclude_predicted: %s",
+                if (is.na(exclude_pred)) "NA (cannot determine from accessions)"
+                else if (exclude_pred) "TRUE (no predicted sequences found)"
+                else "FALSE (predicted sequences present in reference)"))
+
+
+# ==============================================================================
 # STEP 4 — STANDARDIZE MATCH DATA
 # ==============================================================================
 # Convert BLAST output to the canonical TaxaMatch format expected by TaxaLikely.
@@ -203,7 +219,7 @@ message(sprintf("Final match object: %d rows, %d queries, %d taxa",
 #   - TaxaAssign: assign_taxa_llm() or compute_posterior()
 
 saveRDS(match_obj, "match_obj.rds")
-
+match_obj$taxon_name|>unique()
 
 # ==============================================================================
 # LOCAL BLAST SETUP INSTRUCTIONS

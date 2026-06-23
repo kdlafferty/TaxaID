@@ -27,7 +27,7 @@ User-supplied \code{min_len} / \code{max_len} override the resolved bounds.
 }
 \examples{
 resolve_barcode_lengths("MiFishU")
-# 100 600
+# 130 210
 resolve_barcode_lengths(c("12S", "16S"))
 # 100 700  (union of both ranges)
 resolve_barcode_lengths("COI", min_len = 500)

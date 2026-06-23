@@ -25,7 +25,8 @@ out. Default is 30.}
 A tibble with one row per input name and the following columns:
 \describe{
 \item{user_supplied_name}{The original name as supplied.}
-\item{matched_name}{The best-matched name returned by the backbone, or
+\item{matched_name}{The best-matched name returned by the backbone (genus
+and species epithet only; authorship strings are stripped), or
 \code{NA} if no match was found.}
 \item{classification_path}{Pipe-delimited classification path from the
 backbone (e.g., \code{"Animalia|Chordata|..."}).}

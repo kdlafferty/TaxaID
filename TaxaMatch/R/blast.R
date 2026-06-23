@@ -396,8 +396,10 @@ blast_sequences <- function(seq_df,
 
   for (attempt in 1:3) {
     tryCatch({
-      req <- httr2::request(base_url) |>
-        httr2::req_body_form(!!!params) |>
+      req <- do.call(
+        httr2::req_body_form,
+        c(list(httr2::request(base_url)), params)
+      ) |>
         httr2::req_timeout(120)
       resp <- httr2::req_perform(req)
       body <- httr2::resp_body_string(resp)
