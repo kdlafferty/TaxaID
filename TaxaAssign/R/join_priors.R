@@ -1,7 +1,8 @@
 utils::globalVariables(c(
   "taxon_name", "taxon_name_rank", "grid_id", "main_habitat",
   "undetected_type", "alpha", "beta", "prior_mean", "prior_alpha", "prior_beta",
-  "genus", "family", "family.fill", "dark_alpha", "dark_beta"
+  "genus", "family", "family.fill", "dark_alpha", "dark_beta",
+  "singleton_alpha", "singleton_beta"
 ))
 
 # ==============================================================================
@@ -632,6 +633,32 @@ join_priors <- function(likelihoods,
       dark_beta  = mean(beta, na.rm = TRUE)
     )
 
+  # Singleton-mirror mean: used as the floor threshold for modelled-species
+  # prior promotion (Issue 2 fix — dark diversity redesign, Session 117).
+  # Singleton mirrors represent the detection probability of species observed
+  # exactly once in training data — the correct floor for a modelled species
+  # with genuine (but very low) theta. Using dark_mean (= mean of singleton
+  # mirrors + global floor) was too aggressive: a Tier 2 species with genuine
+  # small theta could be promoted to dark_mean even though dark_mean is pulled
+  # down by the global floor, erasing the signal that the species was actually
+  # detected. With singleton_mean as the threshold, only species whose model
+  # estimate falls below the rarest-known detection rate are promoted.
+  singleton_by_site <- taxaexpect_priors |>
+    dplyr::filter(undetected_type == "singleton_mirror") |>
+    dplyr::group_by(grid_id, main_habitat) |>
+    dplyr::summarise(
+      singleton_alpha = mean(alpha, na.rm = TRUE),
+      singleton_beta  = mean(beta,  na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  global_singleton <- taxaexpect_priors |>
+    dplyr::filter(undetected_type == "singleton_mirror") |>
+    dplyr::summarise(
+      singleton_alpha = mean(alpha, na.rm = TRUE),
+      singleton_beta  = mean(beta,  na.rm = TRUE)
+    )
+
   # Global floor prior: used specifically as the fallback for UNMODELLED species
   # (those with no row in taxaexpect_priors, e.g. species never detected anywhere).
   # Distinct from dark_alpha/dark_beta: the site-level dark mean is dominated by
@@ -660,36 +687,41 @@ join_priors <- function(likelihoods,
   }
 
   result <- result |>
-    dplyr::left_join(dark_by_site, by = c("grid_id", "main_habitat")) |>
+    dplyr::left_join(dark_by_site,      by = c("grid_id", "main_habitat")) |>
+    dplyr::left_join(singleton_by_site, by = c("grid_id", "main_habitat")) |>
     dplyr::mutate(
-      dark_alpha = dplyr::coalesce(dark_alpha, global_dark$dark_alpha),
-      dark_beta  = dplyr::coalesce(dark_beta, global_dark$dark_beta),
+      dark_alpha      = dplyr::coalesce(dark_alpha,      global_dark$dark_alpha),
+      dark_beta       = dplyr::coalesce(dark_beta,       global_dark$dark_beta),
+      singleton_alpha = dplyr::coalesce(singleton_alpha, global_singleton$singleton_alpha),
+      singleton_beta  = dplyr::coalesce(singleton_beta,  global_singleton$singleton_beta),
       # Unmodelled species (alpha = NA) fall back to global floor, NOT dark_alpha.
       # Modelled species retain their model-derived alpha/beta here; the floor
-      # promotion below handles modelled species that fall below dark_mean.
+      # promotion below handles modelled species that fall below singleton_mean.
       prior_alpha = dplyr::coalesce(alpha, gf_alpha),
       prior_beta  = dplyr::coalesce(beta,  gf_beta),
       prior_mean  = prior_alpha / (prior_alpha + prior_beta)
     )
 
-  # ---- Modelled-species floor: never worse than dark diversity ---------------
+  # ---- Modelled-species floor: never worse than singleton-mirror mean --------
   # A species the model has seen (non-NA alpha) at the wrong habitat can get
-
-  # theta ≈ 0, producing prior_alpha << dark_alpha. This inverts the intended
-  # ordering: unobserved species beat observed ones. Fix: if a modelled species
-  # has prior_mean below the dark diversity mean, promote it to the dark level.
-  # The species was observed *somewhere* in training data, so it should receive
-  # at least as much prior mass as a completely unobserved species.
-  has_model <- !is.na(result$alpha)
-  dark_mean <- result$dark_alpha / (result$dark_alpha + result$dark_beta)
-  below_dark <- has_model & result$prior_mean < dark_mean
-  if (any(below_dark, na.rm = TRUE)) {
-    n_promoted <- sum(below_dark, na.rm = TRUE)
-    result$prior_alpha[below_dark] <- result$dark_alpha[below_dark]
-    result$prior_beta[below_dark]  <- result$dark_beta[below_dark]
-    result$prior_mean[below_dark]  <- dark_mean[below_dark]
+  # theta ≈ 0, producing prior_alpha well below the singleton-mirror level.
+  # This inverts the intended ordering: unobserved species beat observed ones.
+  # Fix: if a modelled species has prior_mean below the singleton-mirror mean,
+  # promote it to the singleton-mirror level. We use singleton_mean (not
+  # dark_mean) because dark_mean is pulled down by the global floor — using it
+  # would also promote Tier 2 species with genuine small-but-positive theta,
+  # erasing spatial signal. Singleton_mean is the correct floor: the rarest
+  # known detection rate in the system. Issue 2 fix — Session 117.
+  has_model     <- !is.na(result$alpha)
+  singleton_mean <- result$singleton_alpha / (result$singleton_alpha + result$singleton_beta)
+  below_singleton <- has_model & result$prior_mean < singleton_mean
+  if (any(below_singleton, na.rm = TRUE)) {
+    n_promoted <- sum(below_singleton, na.rm = TRUE)
+    result$prior_alpha[below_singleton] <- result$singleton_alpha[below_singleton]
+    result$prior_beta[below_singleton]  <- result$singleton_beta[below_singleton]
+    result$prior_mean[below_singleton]  <- singleton_mean[below_singleton]
     cli::cli_inform(
-      "join_priors: promoted {n_promoted} modelled row(s) with habitat-mismatch priors to dark diversity floor."
+      "join_priors: promoted {n_promoted} modelled row(s) with priors below singleton-mirror floor."
     )
   }
 
