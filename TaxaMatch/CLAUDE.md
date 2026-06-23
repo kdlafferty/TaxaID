@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-16 (Session 110 — convert_taxonomy_backbone added)
+# Last updated: 2026-06-19 (Session 113 — convert_taxonomy_backbone() vectorized; add_lowest_consistent_rank() majority mode)
 
 ---
 
@@ -120,7 +120,8 @@ likelihood output downstream — it is NOT part of the match object.
 |---|---|---|---|
 | `standardize_match_data()` | R/standardize_match_data.R | Written | Rename columns, derive `taxon_name`, validate structure |
 | `filter_redundant_hypotheses()` | R/standardize_match_data.R | Written | Drop higher-rank rows superseded by finer-rank rows within the same lineage and sample |
-| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. NOTE: generic utility — move to TaxaTools after manuscript review. |
+| `add_lowest_consistent_rank()` | R/taxonomy_consistency.R | Written | Per-observation: find finest rank with a single unambiguous value across all candidate rows. `majority_threshold` param (numeric in (0,1]) switches to majority mode — consistent when top value reaches threshold. Majority mode adds `rank_majority_value`, `rank_majority_fraction`, `is_rank_outlier` columns. `na_as_inconsistent` controls NA handling. Auto-detects `rank_system` from `TaxaTools::extended_ranks`. |
+| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Vectorized: `match()`-based index into verified table — ~100× faster than row-by-row loop for large data frames. Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. NOTE: generic utility — move to TaxaTools after manuscript review. |
 
 ### Internal helpers
 
@@ -294,6 +295,28 @@ Sessions 27–82 archived in ecosystem_docs/session_notes/TaxaMatch_sessions.md.
 - README "Other Image Classifiers" section updated: dedicated reader functions shown with example code;
   classifier comparison table updated.
 - `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
+
+**Session 113 (2026-06-19)**
+- `add_lowest_consistent_rank()` added to `R/taxonomy_consistency.R`. Strict mode
+  (default): rank consistent when every non-blank candidate value is identical.
+  New `majority_threshold` param (numeric in (0,1]): switches to majority mode where
+  rank is consistent if top non-blank value accounts for ≥ threshold of non-blank
+  candidates. Majority mode adds three columns: `rank_majority_value`,
+  `rank_majority_fraction`, `is_rank_outlier`. `is_rank_outlier = TRUE` for rows whose
+  value at `lowest_consistent_rank` differs from the majority value; NA/blank rows are
+  FALSE (missing data, not a contradiction). Interaction filter pattern:
+  `!(is_rank_outlier & lowest_consistent_rank %in% coarse_ranks)` — removes rows only
+  when both conditions are true simultaneously. Note: `NA %in% c(...)` returns FALSE, so
+  NA `lowest_consistent_rank` observations silently pass such filters.
+  8 new majority-mode tests in `test-taxonomy_consistency.R`; 73/73 tests passing.
+- `convert_taxonomy_backbone()` rewritten as vectorized implementation. Replaced
+  O(N×K) row-by-row loop with `match()`-based index into `verified` table +
+  `ifelse()` per column. Logical matrix for collision detection; `apply()` only on
+  changed-row subset. `strsplit` called once per unique name (not once per rank × name).
+  NA taxon_name rows now get NA backbone/collision columns (not `source_label`).
+  Fixed `path[[idx]]` out-of-bounds when GNVerifier returns path/ranks vectors of
+  unequal length: guard `|| idx > length(path)` added.
+  `devtools::check()`: 0 errors, 0 warnings, 0 notes.
 
 **Session 110 (2026-06-16)**
 - `convert_taxonomy_backbone()` added to `R/convert_taxonomy_backbone.R`.

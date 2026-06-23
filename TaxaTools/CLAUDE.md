@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-10 (Session 106 — fill_higher_ranks(), parse_classification_path())
+# Last updated: 2026-06-19 (Session 113 — clean_taxon_names() underscore normalization; verify_taxon_names() authority stripping)
 
 ---
 
@@ -17,9 +17,9 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `verify_taxon_names()` | Verify names against a taxonomic backbone via Global Names Verifier API; batched; returns `user_supplied_name`, `matched_name`, `classification_path`, `classification_ranks`, `score`, `verified` | Complete | R/verify_taxon_names.R |
+| `verify_taxon_names()` | Verify names against a taxonomic backbone via Global Names Verifier API; batched; returns `user_supplied_name`, `matched_name`, `classification_path`, `classification_ranks`, `score`, `verified`. `matched_name` contains genus + epithet only — authority strings stripped at parse time. | Complete | R/verify_taxon_names.R |
 | `create_taxon_names()` | Add `taxon_name` and `taxon_name_rank` columns from separate rank columns; case-insensitive column matching; most-specific non-NA rank wins | Complete | R/create_taxon_names.R |
-| `clean_taxon_names()` | Normalise, deduplicate, and filter a character vector of taxon names; removes NA, non-capital-initial, abbreviations, bracket artefacts | Complete | R/clean_taxon_names.R |
+| `clean_taxon_names()` | Normalise, deduplicate, and filter a character vector of taxon names; removes NA, non-capital-initial, abbreviations, bracket artefacts; converts underscore-encoded binomials (`Genus_epithet`) to space-separated (Jonah Ventures / SILVA pipelines) | Complete | R/clean_taxon_names.R |
 | `change_backbone()` | Post-process `verify_taxon_names()` output; rename source/translated name columns; parse pipe-delimited classification into wide rank columns | Complete | R/change_backbone.R |
 | `rename_cols()` | Rename data frame columns using an explicit `col_map` or built-in case-insensitive regex patterns for common DarwinCore alternatives; `strict` arg controls missing-key behaviour | Complete | R/rename_cols.R |
 | `find_taxonomy_conflicts()` | Detect higher-rank inconsistencies in taxonomy data frames; returns `taxon_name`, `taxon_rank`, `parent_rank`, `parent_values`, `n_values` | Complete | R/find_taxonomy_conflicts.R |
@@ -195,6 +195,18 @@ Sessions 27–84 archived in ecosystem_docs/session_notes/TaxaTools_sessions.md.
   gemini → `inlineData` parts (`mimeType/data`), openai_compat → `image_url` blocks
   (`data:image/png;base64,...`). Text-only calls (images = NULL) unchanged.
 - `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 113 (2026-06-19)**
+- `clean_taxon_names()`: added underscore-to-space normalization for Jonah Ventures / SILVA
+  pipeline names that encode binomials as `Genus_epithet`. Regex
+  `^[A-Z][A-Za-z.-]+_[a-z][A-Za-z.-]*$` detects the pattern; `gsub("_", " ", ...)` converts.
+  Does NOT alter OTU codes (`OTU_001`), clade codes (`MAST-4`), or multi-underscore strings.
+  8 new tests in `test-clean_taxon_names.R`.
+- `verify_taxon_names()`: GBIF backbone (id=11) returns `matchedName` with authority strings
+  (e.g. `"Paracalanus parvus (Claus, 1863)"`). Added `strip_authority()` helper using
+  `regmatches()`/`regexpr()` to extract genus + optional epithet only. Applied at parse time
+  so `matched_name` is clean everywhere downstream. NCBI backbone (id=4) was unaffected.
+- `devtools::check()`: 675 tests passing; 0 errors, 0 warnings, 0 notes.
 
 **Session 106 (2026-06-10)**
 - `fill_higher_ranks()` added (`R/fill_higher_ranks.R`): given a character vector of taxon

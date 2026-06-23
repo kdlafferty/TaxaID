@@ -24,6 +24,20 @@ retains only the finest-rank specific candidates — coarser candidates are
 redundant when a finer-rank hit exists — while keeping all
 \code{"unreferenced_species"} and \code{"unreferenced_genus"} rows.
 }
+\details{
+\strong{is_restored preservation:}
+When the \verb{$likelihoods} data frame contains an \code{is_restored} column
+(propagated by \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} from \code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}}),
+a coarser-rank row (e.g., genus) is \emph{preserved} instead of dropped when
+every finer-rank row for the same genus in the same observation has
+\code{is_restored = TRUE}.  This situation arises in post-LCA / post-consensus
+workflows: the genus row is a real LCA-collapsed identification, and the
+species rows were added purely by restoration (not original BLAST hits).
+Preserving the genus row allows \code{\link[TaxaAssign:join_priors]{TaxaAssign::join_priors()}} to expand it into
+named species hypotheses — including locally-expected species absent from the
+reference library.  The all-restored species rows are simultaneously dropped
+to prevent double-counting after expansion.
+}
 \examples{
 \dontrun{
 result <- evaluate_likelihoods(match_df, model)

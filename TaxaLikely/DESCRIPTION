@@ -28,6 +28,7 @@ Suggests:
     knitr,
     lme4,
     rentrez,
+    rgbif,
     rmarkdown,
     testthat (>= 3.0.0),
     xml2

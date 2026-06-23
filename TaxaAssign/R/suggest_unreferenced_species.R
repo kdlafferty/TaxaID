@@ -316,8 +316,11 @@
 #' attempts fail (treated conservatively as unreferenced by the caller).
 #' @noRd
 .count_barcode_seqs <- function(sp, barcode_clause, len_range, date_clause) {
+  # Normalise hyphens: "Pseudo-nitzschia"[Organism] can return 0 hits;
+  # space-separated form resolves correctly via NCBI's organism index.
+  sp_norm <- gsub("-", " ", sp)
   term <- sprintf('"%s"[Organism] AND %s AND %d:%d[SLEN]%s',
-                  sp, barcode_clause, len_range[1L], len_range[2L], date_clause)
+                  sp_norm, barcode_clause, len_range[1L], len_range[2L], date_clause)
   for (attempt in seq_len(3L)) {
     res <- tryCatch(
       rentrez::entrez_search(db = "nuccore", term = term, retmax = 0L),

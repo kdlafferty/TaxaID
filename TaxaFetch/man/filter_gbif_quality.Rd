@@ -9,6 +9,7 @@ filter_gbif_quality(
   basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION", "LIVING_SPECIMEN",
     "PRESERVED_SPECIMEN"),
   exclude_edna = TRUE,
+  exclude_absent = TRUE,
   bad_issues = c("COORDINATE_OUT_OF_RANGE", "COUNTRY_COORDINATE_MISMATCH",
     "COORDINATE_INVALID", "ZERO_COORDINATE", "COORDINATE_PRECISION_INVALID"),
   max_coord_uncertainty = 500,
@@ -30,6 +31,14 @@ unknown sources.}
 \code{preparations} columns contain eDNA or metabarcoding keywords are
 removed. Set to \code{FALSE} if your workflow specifically targets
 eDNA data.}
+
+\item{exclude_absent}{Logical. If \code{TRUE} (default), records where
+\code{occurrenceStatus} is \code{"ABSENT"} (case-insensitive) are
+removed. GBIF downloads can include explicit absence records from
+systematic surveys where a species was searched for but not found; these
+are non-detections and must not be used as presence data for priors or
+occurrence modelling. If the \code{occurrenceStatus} column is absent the
+filter is skipped silently.}
 
 \item{bad_issues}{Character vector. GBIF issue codes that indicate likely
 geospatial errors. Records whose \code{issues} field contains any of
@@ -83,8 +92,9 @@ only when the relevant column is present; absent columns produce an
 informational message and are skipped rather than causing an error.
 }
 \details{
-\strong{Filter order:} Coordinates -> basis of record -> issue codes ->
-coordinate uncertainty -> coordinate decimal-place precision -> eDNA.
+\strong{Filter order:} Coordinates -> absent occurrences -> basis of record
+-> issue codes -> coordinate uncertainty -> coordinate decimal-place
+precision -> eDNA -> species-level requirement.
 Applying cheaper filters first reduces unnecessary string operations on
 large datasets.
 

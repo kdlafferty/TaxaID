@@ -53,10 +53,17 @@ cat("Reference species:", nrow(ref_species), "across",
 # This can be slow for species-rich genera. Consider using cache_dir in
 # Workflow 1 and running this on a subset first.
 
+# Infer whether the reference database excluded predicted (XR_/XM_) sequences.
+# Pass the full reference_df (or match_obj from TaxaMatch) — it must contain
+# an accession column. Returns TRUE (exclude), FALSE (include), or NA (all
+# custom accessions; fall back to TRUE via %||%).
+exclude_pred <- infer_exclude_predicted(reference_df)
+
 coverage <- audit_barcode_coverage(
-  match_df     = ref_species,
-  barcode_term = "12S",          # your marker: "COI", "ITS2", etc.
-  target_rank  = "genus"
+  match_df          = ref_species,
+  barcode_term      = "12S",          # your marker: "COI", "ITS2", etc.
+  target_rank       = "genus",
+  exclude_predicted = !isFALSE(exclude_pred)
   # max_date    = "2024/12/31",  # match GenBank state when reference was built
   # min_len     = NULL,          # auto-resolved from barcode_term
   # max_len     = NULL,

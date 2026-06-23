@@ -74,7 +74,8 @@ utils::globalVariables(c(
     paste0("(", paste(bc_parts, collapse = " OR "), ")")
   }
 
-  term <- paste0(taxon, "[Organism] AND ", bc_clause)
+  # Normalise hyphens in taxon name before building the query term.
+  term <- paste0(gsub("-", " ", taxon), "[Organism] AND ", bc_clause)
 
   # Date clause (PDAT = publication date)
 

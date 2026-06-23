@@ -244,3 +244,85 @@ test_that("filter_top_hypotheses: invalid input errors", {
     "missing required columns"
   )
 })
+
+# ---- filter_top_hypotheses: is_restored behaviour ---------------------------
+
+test_that("filter_top_hypotheses: preserves genus row when all species rows are restored", {
+  # Simulates a post-LCA observation: genus-level BLAST hit + restored species rows
+  df <- tibble::tibble(
+    observation_id   = "ESV_001",
+    taxon_name       = c("Girella", "Girella simplicidens", "Girella japonica"),
+    taxon_name_rank  = c("genus", "species", "species"),
+    hypothesis_type  = "specific_candidate",
+    score_likelihood = c(0.9, 0.8, 0.7),
+    score_likelihood_mean = c(0.9, 0.8, 0.7),
+    score_likelihood_sd   = 0,
+    is_restored      = c(FALSE, TRUE, TRUE)   # genus original; species restored
+  )
+  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  spec <- out[out$hypothesis_type == "specific_candidate", ]
+
+  # Genus row should be kept (all species rows were restored)
+  expect_true("genus" %in% spec$taxon_name_rank)
+  expect_true("Girella" %in% spec$taxon_name)
+})
+
+test_that("filter_top_hypotheses: drops all-restored species rows when genus row is preserved", {
+  df <- tibble::tibble(
+    observation_id   = "ESV_001",
+    taxon_name       = c("Girella", "Girella simplicidens", "Girella japonica"),
+    taxon_name_rank  = c("genus", "species", "species"),
+    hypothesis_type  = "specific_candidate",
+    score_likelihood = c(0.9, 0.8, 0.7),
+    score_likelihood_mean = c(0.9, 0.8, 0.7),
+    score_likelihood_sd   = 0,
+    is_restored      = c(FALSE, TRUE, TRUE)
+  )
+  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  spec <- out[out$hypothesis_type == "specific_candidate", ]
+
+  # All-restored species rows should be gone (covered by genus expansion)
+  expect_false("Girella simplicidens" %in% spec$taxon_name)
+  expect_false("Girella japonica"     %in% spec$taxon_name)
+})
+
+test_that("filter_top_hypotheses: does not preserve genus row when any species row is original", {
+  # One species row is an original BLAST hit (is_restored = FALSE)
+  df <- tibble::tibble(
+    observation_id   = "ESV_001",
+    taxon_name       = c("Girella", "Girella nigricans", "Girella simplicidens"),
+    taxon_name_rank  = c("genus", "species", "species"),
+    hypothesis_type  = "specific_candidate",
+    score_likelihood = c(0.9, 1.0, 0.8),
+    score_likelihood_mean = c(0.9, 1.0, 0.8),
+    score_likelihood_sd   = 0,
+    is_restored      = c(FALSE, FALSE, TRUE)   # G. nigricans is original
+  )
+  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  spec <- out[out$hypothesis_type == "specific_candidate", ]
+
+  # Genus row should be dropped (G. nigricans is not restored → existing behaviour)
+  expect_false("genus" %in% spec$taxon_name_rank)
+  # Both species rows should be kept
+  expect_true("Girella nigricans"    %in% spec$taxon_name)
+  expect_true("Girella simplicidens" %in% spec$taxon_name)
+})
+
+test_that("filter_top_hypotheses: is_restored absent → existing behaviour unchanged", {
+  # No is_restored column: genus row should be dropped as before
+  df <- tibble::tibble(
+    observation_id   = "ESV_001",
+    taxon_name       = c("Girella", "Girella simplicidens"),
+    taxon_name_rank  = c("genus", "species"),
+    hypothesis_type  = "specific_candidate",
+    score_likelihood = c(0.9, 0.8),
+    score_likelihood_mean = c(0.9, 0.8),
+    score_likelihood_sd   = 0
+    # no is_restored column
+  )
+  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  spec <- out[out$hypothesis_type == "specific_candidate", ]
+
+  expect_false("genus"   %in% spec$taxon_name_rank)
+  expect_true("species"  %in% spec$taxon_name_rank)
+})

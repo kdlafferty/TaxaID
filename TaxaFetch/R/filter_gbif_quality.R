@@ -1,6 +1,6 @@
 utils::globalVariables(c(
   "basisOfRecord", "coordinateUncertaintyInMeters", "decimalLatitude",
-  "decimalLongitude", "issues", "species"
+  "decimalLongitude", "issues", "occurrenceStatus", "species"
 ))
 
 # ==============================================================================
@@ -42,6 +42,13 @@ utils::globalVariables(c(
 #'   \code{coordinateUncertaintyInMeters} is \code{NA} are retained
 #'   (uncertainty not reported is not the same as uncertainty being large).
 #'   If the column is absent the filter is skipped with a message.
+#' @param exclude_absent Logical. If \code{TRUE} (default), records where
+#'   \code{occurrenceStatus} is \code{"ABSENT"} (case-insensitive) are
+#'   removed. GBIF downloads can include explicit absence records from
+#'   systematic surveys where a species was searched for but not found; these
+#'   are non-detections and must not be used as presence data for priors or
+#'   occurrence modelling. If the \code{occurrenceStatus} column is absent the
+#'   filter is skipped silently.
 #' @param require_species Logical. If \code{TRUE}, records where the
 #'   \code{species} column is \code{NA} or empty are removed. Default
 #'   \code{FALSE}. Set to \code{TRUE} when querying GBIF by family or genus
@@ -68,8 +75,9 @@ utils::globalVariables(c(
 #'   records retained.
 #'
 #' @details
-#' \strong{Filter order:} Coordinates -> basis of record -> issue codes ->
-#' coordinate uncertainty -> coordinate decimal-place precision -> eDNA.
+#' \strong{Filter order:} Coordinates -> absent occurrences -> basis of record
+#' -> issue codes -> coordinate uncertainty -> coordinate decimal-place
+#' precision -> eDNA -> species-level requirement.
 #' Applying cheaper filters first reduces unnecessary string operations on
 #' large datasets.
 #'
@@ -114,6 +122,7 @@ filter_gbif_quality <- function(
     basis_keep             = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION",
                                "LIVING_SPECIMEN",   "PRESERVED_SPECIMEN"),
     exclude_edna           = TRUE,
+    exclude_absent         = TRUE,
     bad_issues             = c("COORDINATE_OUT_OF_RANGE",
                                "COUNTRY_COORDINATE_MISMATCH",
                                "COORDINATE_INVALID",
@@ -151,7 +160,20 @@ filter_gbif_quality <- function(
   }
   n_current <- n_after
 
-  # --- 2. Basis of record -----------------------------------------------------
+  # --- 2. Absent occurrences --------------------------------------------------
+  if (exclude_absent && "occurrenceStatus" %in% names(data)) {
+    data    <- dplyr::filter(data,
+                             is.na(occurrenceStatus) |
+                             toupper(trimws(occurrenceStatus)) != "ABSENT")
+    n_after <- nrow(data)
+    if (n_after < n_current) {
+      message(sprintf("  Removed %d absent-occurrence records (occurrenceStatus = ABSENT).",
+                      n_current - n_after))
+    }
+    n_current <- n_after
+  }
+
+  # --- 3. Basis of record -----------------------------------------------------
   if (!"basisOfRecord" %in% names(data)) {
     message("filter_gbif_quality: 'basisOfRecord' column not found -- skipping basis filter.")
   } else {
@@ -164,7 +186,7 @@ filter_gbif_quality <- function(
     n_current <- n_after
   }
 
-  # --- 3. GBIF issue codes ----------------------------------------------------
+  # --- 4. GBIF issue codes ----------------------------------------------------
   if (!"issues" %in% names(data)) {
     message("filter_gbif_quality: 'issues' column not found -- skipping issue filter.")
   } else if (length(bad_issues) > 0L) {
@@ -180,7 +202,7 @@ filter_gbif_quality <- function(
     n_current <- n_after
   }
 
-  # --- 4. Coordinate uncertainty ----------------------------------------------
+  # --- 5. Coordinate uncertainty ----------------------------------------------
   if (!is.finite(max_coord_uncertainty)) {
     # Inf or NaN passed -- skip silently
   } else if (!"coordinateUncertaintyInMeters" %in% names(data)) {
@@ -199,7 +221,7 @@ filter_gbif_quality <- function(
     n_current <- n_after
   }
 
-  # --- 5. Coordinate decimal-place precision ----------------------------------
+  # --- 6. Coordinate decimal-place precision ----------------------------------
   if (!is.null(max_coord_decimal_places)) {
     if (!is.numeric(max_coord_decimal_places) ||
         length(max_coord_decimal_places) != 1L ||
@@ -224,7 +246,7 @@ filter_gbif_quality <- function(
     n_current <- n_after
   }
 
-  # --- 6. eDNA / metabarcoding removal ----------------------------------------
+  # --- 7. eDNA / metabarcoding removal ----------------------------------------
   if (exclude_edna) {
     edna_cols <- intersect(
       c("samplingProtocol", "occurrenceRemarks", "preparations"),
@@ -256,7 +278,7 @@ filter_gbif_quality <- function(
     }
   }
 
-  # --- 7. Species-level requirement -------------------------------------------
+  # --- 8. Species-level requirement -------------------------------------------
   if (require_species) {
     if (!"species" %in% names(data)) {
       message("filter_gbif_quality: 'species' column not found -- skipping require_species filter.")

@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-16 (Session 109 — join_priors coarse-rank expansion)
+# Last updated: 2026-06-20 (Session 113 — .count_barcode_seqs() hyphen normalization for Pseudo-nitzschia-type genera)
 
 ---
 

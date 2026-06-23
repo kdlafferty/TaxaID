@@ -6,7 +6,8 @@ utils::globalVariables(c(
   "hypothesis_type", "taxon_name", "taxon_name_rank",
   "observation_id", "Query_ID",
   ".data", "rank_score", "best_rank_score",
-  "coverage"
+  "coverage",
+  "is_restored", ".genus", ".all_restored"
 ))
 
 # ==============================================================================
@@ -701,6 +702,21 @@ evaluate_likelihoods <- function(match_df,
                                score_likelihood_mean, score_likelihood_sd,
                                score_likelihood_cov)
 
+  # Propagate is_restored from match_df when present.
+  # For each (observation_id, taxon_name), is_restored = TRUE only when ALL
+  # corresponding match_df rows are restored (i.e. added by
+  # restore_suppressed_candidates()).  H2/H3 rows (unreferenced_*) are not in
+  # match_df and receive is_restored = FALSE.
+  if ("is_restored" %in% names(match_df)) {
+    restored_per_taxon <- match_df |>
+      dplyr::filter(!is.na(taxon_name)) |>
+      dplyr::group_by(observation_id, taxon_name) |>
+      dplyr::summarise(is_restored = all(is_restored == TRUE), .groups = "drop")
+    likelihoods <- dplyr::left_join(likelihoods, restored_per_taxon,
+                                     by = c("observation_id", "taxon_name"))
+    likelihoods$is_restored[is.na(likelihoods$is_restored)] <- FALSE
+  }
+
   list(likelihoods = likelihoods, unresolved = unresolved)
 }
 
@@ -712,6 +728,19 @@ evaluate_likelihoods <- function(match_df,
 #' retains only the finest-rank specific candidates — coarser candidates are
 #' redundant when a finer-rank hit exists — while keeping all
 #' `"unreferenced_species"` and `"unreferenced_genus"` rows.
+#'
+#' \strong{is_restored preservation:}
+#' When the `$likelihoods` data frame contains an `is_restored` column
+#' (propagated by [evaluate_likelihoods()] from [restore_suppressed_candidates()]),
+#' a coarser-rank row (e.g., genus) is \emph{preserved} instead of dropped when
+#' every finer-rank row for the same genus in the same observation has
+#' `is_restored = TRUE`.  This situation arises in post-LCA / post-consensus
+#' workflows: the genus row is a real LCA-collapsed identification, and the
+#' species rows were added purely by restoration (not original BLAST hits).
+#' Preserving the genus row allows [TaxaAssign::join_priors()] to expand it into
+#' named species hypotheses — including locally-expected species absent from the
+#' reference library.  The all-restored species rows are simultaneously dropped
+#' to prevent double-counting after expansion.
 #'
 #' @param likelihood_df Data frame -- the `$likelihoods` component of the list
 #'   returned by [evaluate_likelihoods()].
@@ -777,16 +806,63 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
     ))
   }
 
-  best_rank_per_query <- specific |>
-    dplyr::mutate(
-      rank_score = rank_scores[tolower(taxon_name_rank)]
-    ) |>
+  # Score all specific rows and identify the finest rank per observation
+  specific_scored <- specific |>
+    dplyr::mutate(rank_score = rank_scores[tolower(taxon_name_rank)]) |>
     dplyr::filter(!is.na(rank_score)) |>
     dplyr::group_by(observation_id) |>
     dplyr::mutate(best_rank_score = max(rank_score, na.rm = TRUE)) |>
-    dplyr::filter(rank_score == best_rank_score) |>
-    dplyr::select(-rank_score, -best_rank_score) |>
     dplyr::ungroup()
 
-  dplyr::bind_rows(best_rank_per_query, non_specific)
+  finest_rows  <- dplyr::filter(specific_scored, rank_score == best_rank_score)
+  coarser_rows <- dplyr::filter(specific_scored, rank_score <  best_rank_score)
+
+  # When is_restored is present: preserve coarser (e.g. genus) rows whose
+  # entire set of finest-rank (e.g. species) rows in the same observation are
+  # ALL restored by restore_suppressed_candidates().  Those restored species
+  # rows are then dropped to avoid double-counting when join_priors() expands
+  # the preserved genus row into per-species hypotheses via expansion_taxonomy.
+  #
+  # Pre-consensus observations whose species rows are a mix of original BLAST
+  # hits and restored candidates are unaffected (some is_restored = FALSE →
+  # genus row still dropped, species rows kept — existing behaviour).
+  if ("is_restored" %in% names(specific_scored) && nrow(coarser_rows) > 0L) {
+
+    # Per (observation_id, genus): are ALL finest-rank rows for that genus restored?
+    genus_all_restored <- finest_rows |>
+      dplyr::mutate(.genus = sub(" .*$", "", taxon_name)) |>
+      dplyr::group_by(observation_id, .genus) |>
+      dplyr::summarise(.all_restored = all(is_restored == TRUE), .groups = "drop")
+
+    # Join status onto coarser rows (match genus taxon_name against .genus key)
+    coarser_checked <- coarser_rows |>
+      dplyr::left_join(genus_all_restored,
+                       by = c("observation_id", "taxon_name" = ".genus"))
+
+    preserved_coarser <- dplyr::filter(coarser_checked,
+                                        !is.na(.all_restored) & .all_restored) |>
+      dplyr::select(-rank_score, -best_rank_score, -.all_restored)
+
+    if (nrow(preserved_coarser) > 0L) {
+      # Drop the all-restored finest-rank rows whose genus row is now preserved;
+      # they will be covered by join_priors() expansion of the genus row.
+      preserved_genera <- preserved_coarser |>
+        dplyr::select(observation_id, taxon_name) |>
+        dplyr::rename(.genus = taxon_name)
+
+      finest_rows <- finest_rows |>
+        dplyr::mutate(.genus = sub(" .*$", "", taxon_name)) |>
+        dplyr::anti_join(preserved_genera, by = c("observation_id", ".genus")) |>
+        dplyr::select(-.genus, -rank_score, -best_rank_score)
+    } else {
+      preserved_coarser <- NULL
+      finest_rows <- dplyr::select(finest_rows, -rank_score, -best_rank_score)
+    }
+
+  } else {
+    preserved_coarser <- NULL
+    finest_rows <- dplyr::select(finest_rows, -rank_score, -best_rank_score)
+  }
+
+  dplyr::bind_rows(finest_rows, preserved_coarser, non_specific)
 }

@@ -2,6 +2,7 @@
 % Please edit documentation in R/coverage.R
 \name{audit_barcode_coverage}
 \alias{audit_barcode_coverage}
+\alias{audit_barcode_coverage_ncbi}
 \title{Identify unreferenced species for barcode-based taxonomic assignment}
 \usage{
 audit_barcode_coverage(
@@ -13,7 +14,22 @@ audit_barcode_coverage(
   max_date = NULL,
   target_rank = "genus",
   cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
-  ncbi_api_key = NULL
+  ncbi_api_key = NULL,
+  max_nuccore = 5000L,
+  exclude_predicted = TRUE
+)
+
+audit_barcode_coverage_ncbi(
+  match_df,
+  barcode_term,
+  species_list = NULL,
+  min_len = NULL,
+  max_len = NULL,
+  max_date = NULL,
+  target_rank = "genus",
+  cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
+  ncbi_api_key = NULL,
+  max_nuccore = 5000L
 )
 }
 \arguments{
@@ -56,14 +72,32 @@ it stopped.  The checkpoint is deleted on clean completion.}
 to 10 requests per second.  Can also be set via \code{ENTREZ_KEY} environment
 variable (\code{Sys.setenv(ENTREZ_KEY = "your_key")}; confirm with
 \code{Sys.getenv("ENTREZ_KEY")}).}
+
+\item{max_nuccore}{Integer.  Maximum NCBI nucleotide IDs fetched per genus
+for the reverse barcode check.  Default 5000; increase for extremely
+sequence-rich genera if some represented species are suspected to be missed.}
+
+\item{exclude_predicted}{Logical.  If \code{TRUE} (default), computationally
+predicted sequences (NCBI title prefix \code{"PREDICTED:"}, typically
+\code{XR_} and \code{XM_} RefSeq accessions) are excluded from the barcode
+check.  Predicted sequences are absent from curated databases (SILVA, PR2,
+MIDORI) used by metabarcoding labs and do not represent experimentally
+validated barcodes — counting them inflates \code{has_seqs_not_in_ref} and
+incorrectly suppresses unreferenced-species hypotheses for those taxa.
+Set \code{FALSE} only if you explicitly need to count predicted sequences.
+Mirrors the \code{blacklist_regex = "predicted"} default in
+\code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}.}
 }
 \value{
 A named list:
 \describe{
 \item{\code{census}}{Data frame, one row per genus: \code{group}, \code{total}
 (described species), \code{in_reference} (in \code{match_df}),
-\code{has_seqs_not_in_ref} (barcode sequences exist but not in reference
--- a completeness gap), \code{unreferenced} (no barcode sequences found),
+\code{has_seqs_not_in_ref} (experimental barcode sequences exist in NCBI
+but not in the reference -- a completeness gap),
+\code{has_predicted_only} (only computationally predicted sequences found;
+\code{NA} when classification was not performed),
+\code{unreferenced} (no barcode sequences found; when \code{exclude_predicted = TRUE} (default), predicted-only species are included here),
 \code{is_complete} (TRUE when both gaps are zero).}
 \item{\code{unreferenced}}{Character vector of unreferenced species names, suitable for
 \code{TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)}.}
@@ -127,35 +161,25 @@ taxonomic completeness is critical (e.g. well-studied vertebrate genera).
 }
 }
 
-\subsection{API strategy}{
+\subsection{API strategy (reverse search)}{
 
-Per-species barcode counts use \code{retmax = 0} (count only, no records
-returned) with the date filter embedded directly in the query term as a
-\verb{[PDAT]} range.  This approach (modelled on the UBC
-\code{f_search_sequence_by_gene} function) is reliable for both small and
-large genera and avoids the HTTP 500 errors caused by passing date
-parameters separately to the NCBI nucleotide API.  Failed queries are
-retried up to three times with exponential backoff; persistent failures
-are counted and reported as warnings, and those species are conservatively
-treated as unreferenced.
-
-When \code{species_list} is NULL, described species are retrieved from the NCBI
-taxonomy subtree (three taxonomy API calls per genus).
+Species enumeration uses the NCBI taxonomy subtree (three taxonomy API
+calls per genus) when \code{species_list} is NULL.  Barcode availability is
+checked via a \strong{reverse search}: one genus-level NCBI nucleotide query
+(capped at \code{max_nuccore} hits) followed by a batched \code{entrez_summary}
+on the nuccore records to retrieve title and taxid simultaneously, then
+a batched taxonomy \code{entrez_summary} to resolve species names.  This
+requires only ~4 fixed API calls per genus regardless of how many
+candidate species exist, and is substantially faster than per-species
+\code{retmax = 0} queries for species-rich genera.  The date filter is
+embedded directly in the query term as a \verb{[PDAT]} range.  Sequences
+with a \code{"PREDICTED:"} title prefix (typically \code{XR_}/\code{XM_} RefSeq
+accessions) are classified separately; see \code{exclude_predicted}.
 }
 }
 \note{
 Requires an internet connection and the \code{rentrez} package.  NCBI
 enforces rate limits (3 req/s without an API key; 10 req/s with one).
-
-\strong{Planned deprecation (Session 34):} This function queries NCBI for
-every non-reference species in every genus, which is slow for
-species-rich groups.  A future \code{suggest_unreferenced_species()} function will
-use an LLM to pre-filter the candidate list to plausible species before
-running the NCBI barcode-count step, dramatically reducing API calls.
-The LLM-shortcut workflow (\code{\link[TaxaAssign:assign_taxa_llm]{TaxaAssign::assign_taxa_llm()}}) will
-integrate this internally.  This function remains correct and is
-appropriate for small reference databases or when exhaustive unreferenced
-species detection is required regardless of speed.
 }
 \examples{
 \dontrun{
