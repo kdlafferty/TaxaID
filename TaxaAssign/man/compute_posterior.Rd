@@ -40,6 +40,12 @@ directly. Always computed.
 propagating uncertainty into the posterior. Likelihoods are sampled from
 Normal(mean, sd). Priors are sampled from Beta(alpha, beta) when \code{prior_alpha}
 and \code{prior_beta} columns are present, correctly bounded on [0, 1].
+\strong{Exception:} when \code{prior_alpha < 1} the Beta distribution is J-shaped (mode
+at 0) and simulation draws are unreliable — species with tiny but non-zero
+prior_mean would almost always lose to species with a well-concentrated prior at
+a lower mean. For J-shaped rows (\code{prior_alpha < 1}), the prior is treated as
+fixed at \code{prior_mean} in simulation rather than sampled, making the simulation
+consistent with the point-estimate path.
 Only runs when \code{n_sims > 0} AND at least one source of uncertainty exists
 (non-zero \code{score_likelihood_sd}, or \code{prior_alpha}/\code{prior_beta} columns present).
 }
