@@ -237,6 +237,18 @@ test_that(".inat_taxon_id: returns NAs when HTTP status is not 200", {
   expect_true(is.na(result$n_observations))
 })
 
+test_that(".inat_taxon_id: stops with token message on 401", {
+  local_mocked_bindings(
+    GET         = function(...) .resp(401L),
+    status_code = function(x) x$status_code,
+    .package = "httr"
+  )
+  expect_error(
+    TaxaFetch:::.inat_taxon_id("Calidris mauri", "stale_token"),
+    regexp = "401 Unauthorized|expired|INAT_API_TOKEN"
+  )
+})
+
 test_that(".inat_taxon_id: returns NAs when results list is empty", {
   local_mocked_bindings(
     GET         = function(...) .resp(200L),

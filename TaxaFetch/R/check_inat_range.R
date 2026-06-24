@@ -141,7 +141,16 @@ check_inat_range <- function(
     n_observations    = NA_integer_
   )
 
-  if (is.null(resp) || httr::status_code(resp) != 200L) return(empty)
+  if (is.null(resp)) return(empty)
+  if (httr::status_code(resp) == 401L) {
+    stop(
+      "iNaturalist API returned 401 Unauthorized. ",
+      "Your INAT_API_TOKEN may be expired or invalid. ",
+      "Generate a new token at https://www.inaturalist.org/users/api_token and ",
+      "update it with Sys.setenv(INAT_API_TOKEN = 'new_token') or in ~/.Renviron."
+    )
+  }
+  if (httr::status_code(resp) != 200L) return(empty)
 
   parsed <- tryCatch(
     httr::content(resp, as = "parsed", type = "application/json"),
