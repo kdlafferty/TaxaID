@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-23 (Session 117 — join_priors() singleton_taxonomy param + hierarchical group priors; dark_diversity_group/n_singletons_group/n_undetected_group output columns)
+# Last updated: 2026-06-24 (Session 118 — adjust_inat_range_priors() added; check_inat_range() added to TaxaFetch)
 
 ---
 
@@ -10,7 +10,7 @@ compute posterior probabilities. Final step in the TaxaID pipeline. Designed to 
 any conforming likelihood and prior objects — inputs may come from TaxaMatch/TaxaExpect
 or be user-supplied from outside the ecosystem.
 
-**Status: Twelve working functions (9 core + 3 wrappers/utilities). All planned functions removed — superseded by inline workflow logic or existing function internals.**
+**Status: Thirteen working functions (10 core + 3 wrappers/utilities). All planned functions removed — superseded by inline workflow logic or existing function internals.**
 
 ---
 
@@ -27,6 +27,7 @@ or be user-supplied from outside the ecosystem.
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
+| `adjust_inat_range_priors()` | Elevate `prior_alpha`/`prior_beta`/`prior_mean` to Tier 2 singleton-mirror floor for unmodelled taxa confirmed `in_range = TRUE` by iNaturalist geomodel with sufficient observation coverage. Adds `inat_range_elevated` column. Guard: no elevation when singleton floor ≤ current prior. | Complete | R/adjust_inat_range_priors.R |
 | `compute_posterior()` | Core Bayes update: likelihood × prior → posterior | Complete | R/compute_posterior.R |
 | `expand_unreferenced_hypotheses()` | Replace generic H2/H3 rows from TaxaLikely with named unreferenced species; bridges TaxaLikely likelihoods to TaxaExpect priors | Complete | R/expand_unreferenced.R |
 | `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → reference-check → unreferenced vector; optional family expansion. data_type param ("eDNA"/"acoustic"/"image") routes to NCBI queries (eDNA) or set-membership check vs reference_species (acoustic/image). | Complete | R/suggest_unreferenced_species.R |
