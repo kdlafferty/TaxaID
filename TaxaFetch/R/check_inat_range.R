@@ -38,7 +38,11 @@
 #' @param verbose Logical. If TRUE, prints progress for each taxon. Default FALSE.
 #' @return A tibble with columns \code{taxon_name}, \code{taxon_id},
 #'   \code{matched_name}, \code{rank}, \code{iconic_taxon_name},
-#'   \code{n_observations}, \code{in_range}, \code{range_status}.
+#'   \code{inat_kingdom}, \code{n_observations}, \code{in_range},
+#'   \code{range_status}. \code{inat_kingdom} is derived from
+#'   \code{iconic_taxon_name} via a fixed lookup (no additional API call);
+#'   compare against your own occurrence-database kingdom to detect taxon
+#'   name collisions (e.g. a clam name matching a fungal genus).
 #' @export
 check_inat_range <- function(
     taxon_names,
@@ -67,7 +71,8 @@ check_inat_range <- function(
     name <- taxon_names[[i]]
     if (verbose) message(sprintf("[%d/%d] %s", i, length(taxon_names), name))
 
-    info <- .inat_taxon_id(name, api_token)
+    info         <- .inat_taxon_id(name, api_token)
+    inat_kingdom <- .iconic_to_kingdom(info$iconic_taxon_name)
 
     if (is.na(info$taxon_id)) {
       results[[i]] <- tibble::tibble(
@@ -76,6 +81,7 @@ check_inat_range <- function(
         matched_name      = NA_character_,
         rank              = NA_character_,
         iconic_taxon_name = NA_character_,
+        inat_kingdom      = NA_character_,
         n_observations    = NA_integer_,
         in_range          = NA,
         range_status      = "taxon_not_found"
@@ -92,6 +98,7 @@ check_inat_range <- function(
         matched_name      = info$matched_name,
         rank              = info$rank,
         iconic_taxon_name = info$iconic_taxon_name,
+        inat_kingdom      = inat_kingdom,
         n_observations    = info$n_observations,
         in_range          = NA,
         range_status      = "no_polygon"
@@ -107,6 +114,7 @@ check_inat_range <- function(
       matched_name      = info$matched_name,
       rank              = info$rank,
       iconic_taxon_name = info$iconic_taxon_name,
+      inat_kingdom      = inat_kingdom,
       n_observations    = info$n_observations,
       in_range          = in_range_val,
       range_status      = if (isTRUE(in_range_val)) "in_range" else "out_of_range"
@@ -118,6 +126,33 @@ check_inat_range <- function(
 
 
 # --- Internal helpers ---------------------------------------------------------
+
+#' Map iNaturalist iconic_taxon_name to kingdom
+#' @noRd
+.iconic_to_kingdom <- function(iconic) {
+  lookup <- c(
+    # Kingdom-level iconic taxa
+    Animalia  = "Animalia",
+    Plantae   = "Plantae",
+    Fungi     = "Fungi",
+    Chromista = "Chromista",
+    Protozoa  = "Protozoa",
+    Bacteria  = "Bacteria",
+    Archaea   = "Archaea",
+    Viruses   = "Viruses",
+    # Sub-kingdom iconic taxa (all Animalia)
+    Aves            = "Animalia",
+    Mammalia        = "Animalia",
+    Reptilia        = "Animalia",
+    Amphibia        = "Animalia",
+    Actinopterygii  = "Animalia",
+    Insecta         = "Animalia",
+    Arachnida       = "Animalia",
+    Mollusca        = "Animalia",
+    Elasmobranchii  = "Animalia"
+  )
+  unname(lookup[iconic])  # NA when iconic is NA or unrecognised
+}
 
 #' Resolve a taxon name to iNaturalist taxon ID and metadata
 #' @noRd

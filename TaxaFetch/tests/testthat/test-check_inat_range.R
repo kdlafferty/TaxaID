@@ -101,7 +101,7 @@ test_that("stops when lng is NA", {
 # Output structure
 # =============================================================================
 
-test_that("returns a tibble with the correct eight columns", {
+test_that("returns a tibble with the correct nine columns", {
   local_mocked_bindings(
     .inat_taxon_id = function(...) .not_found,
     .package = "TaxaFetch"
@@ -109,7 +109,8 @@ test_that("returns a tibble with the correct eight columns", {
   out <- check_inat_range("Unknown taxon", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("taxon_name", "taxon_id", "matched_name", "rank",
-                      "iconic_taxon_name", "n_observations", "in_range", "range_status"))
+                      "iconic_taxon_name", "inat_kingdom", "n_observations",
+                      "in_range", "range_status"))
 })
 
 test_that("returns one row per input taxon name", {
@@ -382,4 +383,51 @@ test_that(".point_in_inat_range: FALSE for point on boundary edge", {
   polygon_sf <- sf::st_read(.square_geojson, quiet = TRUE)
   # sf::st_within is strict (not st_covers), so boundary points return FALSE
   expect_false(TaxaFetch:::.point_in_inat_range(polygon_sf, lat = 0.0, lng = 0.5))
+})
+
+# =============================================================================
+# .iconic_to_kingdom helper
+# =============================================================================
+
+test_that(".iconic_to_kingdom: kingdom-level iconics map to themselves", {
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Animalia"),  "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Plantae"),   "Plantae")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Fungi"),     "Fungi")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Chromista"), "Chromista")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Protozoa"),  "Protozoa")
+})
+
+test_that(".iconic_to_kingdom: sub-kingdom Animalia iconics map to Animalia", {
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Aves"),           "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Mammalia"),       "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Actinopterygii"), "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Mollusca"),       "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Insecta"),        "Animalia")
+})
+
+test_that(".iconic_to_kingdom: NA input returns NA", {
+  expect_true(is.na(TaxaFetch:::.iconic_to_kingdom(NA_character_)))
+})
+
+test_that(".iconic_to_kingdom: unrecognised string returns NA", {
+  expect_true(is.na(TaxaFetch:::.iconic_to_kingdom("UnknownGroup")))
+})
+
+test_that("inat_kingdom is NA for taxon_not_found rows", {
+  local_mocked_bindings(
+    .inat_taxon_id = function(...) .not_found,
+    .package = "TaxaFetch"
+  )
+  out <- check_inat_range("Unknown taxon", lat = 34.1, lng = -119.1, api_token = "tok")
+  expect_true(is.na(out$inat_kingdom))
+})
+
+test_that("inat_kingdom reflects iconic_taxon_name for found taxa", {
+  local_mocked_bindings(
+    .inat_taxon_id      = function(...) .found,   # iconic_taxon_name = "Aves"
+    .inat_range_polygon  = function(...) NULL,
+    .package = "TaxaFetch"
+  )
+  out <- check_inat_range("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
+  expect_equal(out$inat_kingdom, "Animalia")
 })
