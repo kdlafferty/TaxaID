@@ -2,6 +2,7 @@
 
 S3method(print,unreferenced_species_result)
 export(add_slash_taxon)
+export(adjust_inat_range_priors)
 export(assign_taxa_llm)
 export(build_context)
 export(compute_posterior)
