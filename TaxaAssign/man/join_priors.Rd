@@ -12,7 +12,8 @@ join_priors(
   rank_system = NULL,
   expansion_taxonomy = NULL,
   expansion_min_prior = 0.05,
-  expansion_cumulative_prior = 0.9
+  expansion_cumulative_prior = 0.9,
+  singleton_taxonomy = NULL
 )
 }
 \arguments{
@@ -71,6 +72,21 @@ threshold for the expansion candidate set. Species are added in
 descending prior order until this fraction of the within-constraint
 prior mass is reached. Mirrors \code{cumulative_threshold} in
 \code{\link[=posterior_consensus]{posterior_consensus()}}. Default \code{0.90}.}
+
+\item{singleton_taxonomy}{Optional data frame mapping \code{taxon_name} to
+taxonomy columns (\code{genus}, \code{family}, \code{order}, \code{class}, \code{phylum}). When
+supplied, unmodelled candidates (those with no TaxaExpect prior) receive
+mass-conserving hierarchical group priors instead of the flat global-floor
+prior. Groups are formed by descending phylum -> class -> order -> family
+-> genus: sub-clades with zero singleton mirrors form a single combined
+group (budget = 1 x parent-clade singleton mean / n_candidates);
+sub-clades with >= 1 singleton mirrors subdivide further; genus is
+terminal. Concentration phi = effective_singletons * singleton_ess (2).
+Adds three diagnostic columns to output: \code{dark_diversity_group},
+\code{n_singletons_group}, \code{n_undetected_group}. Typically the same data frame
+passed as \code{taxonomy} to \code{generate_undetected_diversity()} (built from
+\code{occurrences_std}). Default \code{NULL} (flat global-floor for all unmodelled
+candidates).}
 }
 \value{
 A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, with columns
