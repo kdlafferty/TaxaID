@@ -28,6 +28,15 @@
 #'   around the observed singleton theta: \code{alpha = theta_obs * singleton_ess},
 #'   \code{beta = (1 - theta_obs) * singleton_ess}. A small value (default 2)
 #'   produces a diffuse prior appropriate for a species seen exactly once.
+#' @param taxonomy Optional data frame with columns \code{taxon_name} and any
+#'   subset of \code{genus}, \code{family}, \code{order}, \code{class},
+#'   \code{phylum}. When supplied, singleton mirror rows are annotated with
+#'   the full taxonomic hierarchy of their \code{source_taxon_name} via a
+#'   left join on \code{taxon_name}. Typically built from \code{occurrences_std}
+#'   (which carries the full GBIF hierarchy). Used by
+#'   \code{TaxaAssign::join_priors()} for hierarchical dark diversity grouping
+#'   (Issue 3). Global floor rows always receive NA for all taxonomy columns.
+#'   Default \code{NULL} (taxonomy columns added as NA).
 #'
 #' @return A tibble with one row per undetected species proxy, containing:
 #'   \describe{
@@ -97,12 +106,14 @@
 #' head(dark_priors)
 #' }
 #'
-#' @importFrom dplyr mutate select tibble bind_rows
+#' @importFrom dplyr mutate select bind_rows left_join
+#' @importFrom tibble tibble
 #' @export
 
 generate_undetected_diversity <- function(model_obj,
                                           jeffreys_threshold = 2L,
-                                          singleton_ess      = 2L) {
+                                          singleton_ess      = 2L,
+                                          taxonomy           = NULL) {
 
   # --- Input checks -----------------------------------------------------------
   if (!inherits(model_obj, "biofreq_model")) {
@@ -117,6 +128,19 @@ generate_undetected_diversity <- function(model_obj,
   if (N_total <= 0) {
     stop("generate_undetected_diversity: N_total is zero or negative. ",
          "Check that train_biodiversity_model() ran successfully.")
+  }
+
+  tax_rank_cols <- c("genus", "family", "order", "class", "phylum")
+
+  if (!is.null(taxonomy)) {
+    if (!is.data.frame(taxonomy) || !"taxon_name" %in% names(taxonomy)) {
+      stop("generate_undetected_diversity: taxonomy must be a data frame with a 'taxon_name' column.")
+    }
+    tax_cols_present <- intersect(tax_rank_cols, names(taxonomy))
+    if (length(tax_cols_present) == 0L) {
+      warning("generate_undetected_diversity: taxonomy has none of genus/family/order/class/phylum — ignored.")
+      taxonomy <- NULL
+    }
   }
 
   # --- Helper: beta mean and SD from alpha/beta --------------------------------
@@ -219,6 +243,36 @@ generate_undetected_diversity <- function(model_obj,
   # --- 3. Combine and return --------------------------------------------------
   proxy_list <- Filter(Negate(is.null), proxy_rows)
   result <- dplyr::bind_rows(c(proxy_list, list(global_floor)))
+
+  # --- 4. Annotate singleton mirrors with taxonomy ---------------------------
+  # Join source_taxon_name to the supplied taxonomy table to add genus/family/
+  # order/class/phylum. Global floor rows (source_taxon_name = NA) and
+  # singletons not found in taxonomy receive NA for all rank columns.
+  # Columns are always added (as NA when taxonomy = NULL) so the output schema
+  # is consistent for downstream use in join_priors() Issue 3 grouping.
+  if (!is.null(taxonomy)) {
+    tax_cols_present <- intersect(tax_rank_cols, names(taxonomy))
+    tax_lookup <- unique(taxonomy[, c("taxon_name", tax_cols_present), drop = FALSE])
+    tax_lookup <- tax_lookup[!duplicated(tax_lookup$taxon_name), ]
+    result <- dplyr::left_join(
+      result,
+      tax_lookup,
+      by = c("source_taxon_name" = "taxon_name")
+    )
+    n_matched <- sum(!is.na(result$source_taxon_name) &
+                     result$undetected_type == "singleton_mirror" &
+                     !is.na(result[[tax_cols_present[1]]]))
+    message(sprintf(
+      "  Taxonomy join: %d / %d singleton mirror(s) annotated with %s.",
+      n_matched,
+      sum(result$undetected_type == "singleton_mirror", na.rm = TRUE),
+      paste(tax_cols_present, collapse = "/")
+    ))
+  }
+  # Ensure all rank columns are present (NA when taxonomy not supplied or no match)
+  for (.col in tax_rank_cols) {
+    if (!.col %in% names(result)) result[[.col]] <- NA_character_
+  }
 
   message(sprintf(
     "--- Undetected diversity complete: %d singleton mirror(s) + 1 global floor = %d proxies ---",
