@@ -18,9 +18,11 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
     cli,
+    httr,
     httr2,
     dplyr,
     rlang,
+    sf,
     stats,
     utils,
     stringr,
@@ -32,6 +34,8 @@ Suggests:
     callr,
     data.table,
     knitr,
+    leaflet,
+    miniUI,
     rmarkdown,
     rgbif,
     base64enc,
@@ -39,6 +43,7 @@ Suggests:
     jsonlite,
     pdftools,
     png,
+    shiny,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
