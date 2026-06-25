@@ -20,10 +20,16 @@
 #' data frame in match object format, ready for
 #' [standardize_match_data()] and downstream TaxaLikely processing.
 #'
-#' @param files Character vector. Paths to BirdNET result CSV files
-#'   (typically named `recording.BirdNET.results.csv`). Alternatively, a path
-#'   to a directory: all `*.BirdNET.results.csv` files in that directory
-#'   (non-recursive) are read.
+#' @param files Character vector of paths to BirdNET result CSV files
+#'   (typically named `recording.BirdNET.results.csv`); a path to a directory
+#'   (all `*.BirdNET.results.csv` files are read non-recursively); or a data
+#'   frame already loaded into R. The data frame path accepts both the original
+#'   BirdNET column names (`"Start (s)"`, `"Scientific name"`, etc.) and the
+#'   R-mangled versions produced by `read.csv()` with `check.names = TRUE`
+#'   (`"Start..s."`, `"Scientific.name"`, etc.). A `"File"` column must be
+#'   present (Gradio / web interface combined-CSV format) to derive
+#'   `observation_id` stems; CLI per-recording CSVs should be passed as file
+#'   paths rather than pre-loaded data frames.
 #' @param min_confidence Numeric. Detections below this confidence are dropped.
 #'   Default `0` (keep all). BirdNET's own default threshold is `0.1`.
 #' @param top_n Integer or `NULL`. If supplied, only the top `n` detections
@@ -49,11 +55,25 @@
 #'   }
 #'
 #' @details
-#' **BirdNET output format:** BirdNET-Analyzer (v2.x) produces one CSV per
-#' audio file with columns: `Start (s)`, `End (s)`, `Scientific name`,
-#' `Common name`, `Confidence`. Each row is one candidate species detection
-#' within a 3-second window (BirdNET's default segment length). Multiple
-#' rows per window occur when BirdNET returns top-N results.
+#' **BirdNET output formats:** Two formats are supported:
+#'
+#' *CLI format* (recommended): BirdNET-Analyzer (v2.x) run from the command
+#' line produces one CSV per audio file, typically named
+#' `recording.BirdNET.results.csv`, with columns `Start (s)`, `End (s)`,
+#' `Scientific name`, `Common name`, `Confidence`. The recording identity is
+#' encoded in the CSV filename and used as the `observation_id` stem.
+#' Pass a directory of these files or a character vector of paths.
+#'
+#' *Combined format*: The BirdNET web interface (Gradio) and some third-party
+#' tools export a single CSV covering all recordings, with an additional `File`
+#' column containing the audio file path. When a `File` column is present,
+#' the `observation_id` stem is derived from the audio filename in that column
+#' rather than the CSV filename, so detections from different recordings remain
+#' distinct even in a single combined export.
+#'
+#' Each row is one candidate species detection within a 3-second window
+#' (BirdNET's default segment length). Multiple rows per window occur when
+#' BirdNET returns top-N results.
 #'
 #' **observation_id encoding:** Each time window in each recording is one
 #' `observation_id`. Multiple detections within the same window share the
@@ -116,10 +136,10 @@ read_birdnet_output <- function(files,
                                 top_n          = NULL) {
 
   # ---- validate inputs -------------------------------------------------------
-  if (!is.character(files) || length(files) == 0L) {
+  if ((!is.character(files) || length(files) == 0L) && !is.data.frame(files)) {
     stop(
       "read_birdnet_output: 'files' must be a non-empty character vector of ",
-      "file paths or a single directory path."
+      "file paths, a single directory path, or a BirdNET results data frame."
     )
   }
   if (!is.numeric(min_confidence) || length(min_confidence) != 1L ||
@@ -133,31 +153,37 @@ read_birdnet_output <- function(files,
     }
   }
 
-  # ---- resolve directory vs file list ----------------------------------------
-  if (length(files) == 1L && dir.exists(files)) {
-    files <- list.files(files, pattern = "\\.BirdNET\\.results\\.csv$",
-                        full.names = TRUE, recursive = FALSE)
-    if (length(files) == 0L) {
-      stop(
-        "read_birdnet_output: no *.BirdNET.results.csv files found in directory."
-      )
-    }
+  # ---- data frame path -------------------------------------------------------
+  if (is.data.frame(files)) {
+    out <- .parse_birdnet_df(files)
   } else {
-    missing_files <- files[!file.exists(files)]
-    if (length(missing_files) > 0L) {
-      stop(sprintf(
-        "read_birdnet_output: file(s) not found:\n  %s",
-        paste(missing_files, collapse = "\n  ")
-      ))
-    }
-  }
 
-  # ---- read each file --------------------------------------------------------
-  rows <- vector("list", length(files))
-  for (i in seq_along(files)) {
-    rows[[i]] <- .parse_birdnet_file(files[[i]])
+    # ---- resolve directory vs file list --------------------------------------
+    if (length(files) == 1L && dir.exists(files)) {
+      files <- list.files(files, pattern = "\\.BirdNET\\.results\\.csv$",
+                          full.names = TRUE, recursive = FALSE)
+      if (length(files) == 0L) {
+        stop(
+          "read_birdnet_output: no *.BirdNET.results.csv files found in directory."
+        )
+      }
+    } else {
+      missing_files <- files[!file.exists(files)]
+      if (length(missing_files) > 0L) {
+        stop(sprintf(
+          "read_birdnet_output: file(s) not found:\n  %s",
+          paste(missing_files, collapse = "\n  ")
+        ))
+      }
+    }
+
+    # ---- read each file ------------------------------------------------------
+    rows <- vector("list", length(files))
+    for (i in seq_along(files)) {
+      rows[[i]] <- .parse_birdnet_file(files[[i]])
+    }
+    out <- do.call(rbind, rows)
   }
-  out <- do.call(rbind, rows)
 
   # ---- apply filters ---------------------------------------------------------
   out <- out[!is.na(out$score) & out$score >= min_confidence, , drop = FALSE]
@@ -207,12 +233,6 @@ read_birdnet_output <- function(files,
     ))
   }
 
-  # Build observation_id: strip extensions .csv -> .results -> .BirdNET
-  stem <- tools::file_path_sans_ext(
-    tools::file_path_sans_ext(basename(f))   # strips .csv, then .results
-  )
-  stem <- sub("\\.BirdNET$", "", stem)
-
   if (nrow(df) == 0L) {
     message(sprintf("read_birdnet_output: '%s' has no detections (empty file).",
                     basename(f)))
@@ -232,8 +252,25 @@ read_birdnet_output <- function(files,
   start_vals <- as.numeric(df[["Start (s)"]])
   end_vals   <- as.numeric(df[["End (s)"]])
 
+  # Derive recording stem for observation_id.
+  # Two supported formats:
+  #   CLI format  — one CSV per recording (no "File" column); stem from filename.
+  #   Combined format — single CSV covering multiple recordings, "File" column
+  #                     holds the audio path (e.g. Gradio / web interface output).
+  if ("File" %in% names(df)) {
+    # Use audio filename stem from the "File" column, per row
+    stem_vals <- tools::file_path_sans_ext(basename(trimws(df[["File"]])))
+  } else {
+    # Strip .csv, .results, .BirdNET suffixes from the CSV filename
+    stem_base <- tools::file_path_sans_ext(
+      tools::file_path_sans_ext(basename(f))
+    )
+    stem_base  <- sub("\\.BirdNET$", "", stem_base)
+    stem_vals  <- rep(stem_base, nrow(df))
+  }
+
   data.frame(
-    observation_id = paste0(stem, "_", start_vals, "-", end_vals),
+    observation_id = paste0(stem_vals, "_", start_vals, "-", end_vals),
     score          = as.numeric(df[["Confidence"]]),
     species        = trimws(df[["Scientific name"]]),
     genus          = sub("^(\\S+).*", "\\1", trimws(df[["Scientific name"]])),
@@ -241,6 +278,87 @@ read_birdnet_output <- function(files,
     start_s        = start_vals,
     end_s          = end_vals,
     source_file    = basename(f),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+# ==============================================================================
+# Internal: .parse_birdnet_df()
+# ==============================================================================
+
+#' Parse an already-loaded BirdNET data frame into a match-ready data frame
+#'
+#' Accepts both the original BirdNET column names ("Start (s)", "Scientific name",
+#' etc.) and the R-mangled versions produced by read.csv() with check.names = TRUE
+#' ("Start..s.", "Scientific.name", etc.).
+#' @param df Data frame. A BirdNET results table already loaded into R.
+#' @return Data frame with canonical match columns.
+#' @noRd
+.parse_birdnet_df <- function(df) {
+
+  # Map R-mangled names back to canonical BirdNET column names so the rest of
+  # the parsing logic is identical regardless of how the CSV was read.
+  name_map <- c(
+    "Start..s."      = "Start (s)",
+    "End..s."        = "End (s)",
+    "Scientific.name" = "Scientific name",
+    "Common.name"    = "Common name"
+  )
+  idx <- match(names(df), names(name_map))
+  names(df)[!is.na(idx)] <- name_map[idx[!is.na(idx)]]
+
+  required_cols <- c("Start (s)", "End (s)", "Scientific name",
+                     "Common name", "Confidence")
+  missing_cols <- setdiff(required_cols, names(df))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      paste0(
+        "read_birdnet_output: data frame is missing required column(s): %s\n",
+        "Expected BirdNET columns: Start (s), End (s), ",
+        "Scientific name, Common name, Confidence."
+      ),
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
+
+  if (nrow(df) == 0L) {
+    message("read_birdnet_output: data frame has no rows (empty).")
+    return(data.frame(
+      observation_id = character(0),
+      score          = numeric(0),
+      species        = character(0),
+      genus          = character(0),
+      common_name    = character(0),
+      start_s        = numeric(0),
+      end_s          = numeric(0),
+      source_file    = character(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  start_vals <- as.numeric(df[["Start (s)"]])
+  end_vals   <- as.numeric(df[["End (s)"]])
+
+  if ("File" %in% names(df)) {
+    stem_vals <- tools::file_path_sans_ext(basename(trimws(df[["File"]])))
+  } else {
+    stop(
+      "read_birdnet_output: data frame has no 'File' column. ",
+      "Supply file path(s) instead, or add a 'File' column containing the ",
+      "audio file path for each row."
+    )
+  }
+
+  data.frame(
+    observation_id = paste0(stem_vals, "_", start_vals, "-", end_vals),
+    score          = as.numeric(df[["Confidence"]]),
+    species        = trimws(df[["Scientific name"]]),
+    genus          = sub("^(\\S+).*", "\\1", trimws(df[["Scientific name"]])),
+    common_name    = trimws(df[["Common name"]]),
+    start_s        = start_vals,
+    end_s          = end_vals,
+    source_file    = tools::file_path_sans_ext(basename(trimws(df[["File"]]))),
     stringsAsFactors = FALSE
   )
 }

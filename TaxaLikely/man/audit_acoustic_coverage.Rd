@@ -4,7 +4,12 @@
 \alias{audit_acoustic_coverage}
 \title{Audit Acoustic Reference Coverage for a Species List}
 \usage{
-audit_acoustic_coverage(plausible_species, reference_species, match_df = NULL)
+audit_acoustic_coverage(
+  plausible_species,
+  reference_species,
+  match_df = NULL,
+  xc_recordings = FALSE
+)
 }
 \arguments{
 \item{plausible_species}{Character vector. Species expected to occur at the
@@ -23,6 +28,11 @@ are annotated as \code{in_match_data = TRUE} in the census output.  Use
 \code{TaxaMatch::read_birdnet_output()} output.
 The species column is auto-detected from \code{"species"} or \code{"taxon_name"}.
 Default \code{NULL}.}
+
+\item{xc_recordings}{Logical. If \code{TRUE}, queries the Xeno-canto v2 API for
+the number of recordings available for each species in \code{plausible_species}
+and adds an \code{n_recordings} column to the census. Requires an internet
+connection; adds approximately 1 second per species. Default \code{FALSE}.}
 }
 \value{
 A named list with two components:
@@ -36,6 +46,10 @@ A named list with two components:
 \code{reference_species} (can never appear as a candidate detection).}
 \item{\code{in_match_data}}{Logical.  \code{TRUE} if the species appeared in
 \code{match_df}.  \code{NA} when \code{match_df = NULL}.}
+\item{\code{n_recordings}}{Integer. Number of Xeno-canto recordings for
+the species. \code{NA} when \code{xc_recordings = FALSE} or the query fails.
+Even a species present in the BirdNET list may be poorly classified
+if it has very few training recordings.}
 }}
 \item{\code{unreferenced}}{Character vector of species names absent from
 \code{reference_species}.  Pass to \code{TaxaAssign::suggest_unreferenced_species()}
