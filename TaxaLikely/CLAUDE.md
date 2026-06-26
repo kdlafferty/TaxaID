@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-24 (Session 119 — audit_inat_coverage() added; audit_acoustic_coverage() gains xc_recordings param; httr2 moved to Imports)
+# Last updated: 2026-06-26 (Session 121 — per-species sigma floor in evaluate_likelihoods())
 
 ---
 
@@ -311,6 +311,14 @@ which is skipped when DECIPHER/Biostrings are not installed.
   into training data. Prevents the "perfection penalty". Count = max(5, 10% of data).
 - **Shrinkage:** `w = N / (N + prior_weight)`; per-species score variance + gap mean shrunk
   toward global. Default `prior_weight = 10.0`.
+- **Per-species sigma floor (Session 121):** At inference, `use_sigma[1,1]` is floored at
+  `global_sigma[1,1]` before evaluating H1 density. Species-specific sigma can be
+  artificially tight for well-sampled species whose NCBI reference sequences are
+  near-identical clones; tight sigma causes the Mahalanobis distance to balloon for
+  realistic eDNA query scores, driving H1 likelihood near zero and dropping the species
+  below `ratio_threshold`. The floor ensures the per-species distribution is never
+  narrower than the global empirical distribution. Applied in `.evaluate_one_query()`
+  after loading `sp_var` from `H1_Lookup`.
 - **Monte Carlo:** n_sims perturbations of score_logit → `score_likelihood_mean` + `score_likelihood_sd`.
 - **Median-across-references:** `evaluate_likelihoods()` takes the **median** score
   per taxon_name across multiple reference accessions before likelihood calculation.

@@ -427,6 +427,16 @@ hypothesis type:
     toward the global mean (Efron and Morris 1973), with weight
     inversely proportional to sample size, preventing poorly sampled
     species from having unreliable estimates
+-   **Per-species sigma floor:** At inference, the per-species
+    `sigma_score` from `H1_Lookup` is floored at the global
+    `H1_Sigma[1,1]`.  Reference-vs-reference training pairs for
+    well-sampled species can be artificially tight (many near-identical
+    NCBI accessions from the same voucher), producing a sigma smaller
+    than the global estimate.  Real query-vs-reference scores span a
+    wider range due to intraspecific variation and sequencing error.
+    The floor ensures those species still receive non-zero H1 likelihoods
+    at realistic eDNA query scores and prevents the `ratio_threshold`
+    filter from silently discarding them when H2/H3 densities dominate
 -   **H2/H3 offset distributions:** Unreferenced species and genus
     hypotheses use the H1 distribution shifted left by learned delta
     offsets, estimated from cross-species match scores in training
