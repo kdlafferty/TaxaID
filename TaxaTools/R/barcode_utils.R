@@ -21,7 +21,7 @@
 #' @export
 barcode_length_defaults <- list(
   "mifish" = c(130L,  210L),   # MiFishU/E 12S amplicon 163-185 bp; bounds exclude non-target cross-amplicons
-  "teleo"  = c( 50L,  300L),   # Teleo 12S amplicon ~60-100 bp
+  "teleo"  = c(50L,  300L),    # Teleo 12S amplicon ~60-100 bp
   "12s"    = c(100L,  600L),   # General 12S vertebrate
   "16s"    = c(100L,  700L),   # 16S vertebrate ~200-450 bp
   "coi"    = c(300L,  900L),   # COI Folmer ~650 bp; mini ~130-200 bp
@@ -31,7 +31,7 @@ barcode_length_defaults <- list(
   "rbcl"   = c(400L,  800L),   # rbcL ~550-650 bp
   "matk"   = c(600L, 1100L),   # matK ~800-900 bp
   "18s"    = c(100L, 2000L),   # 18S varies by primer set
-  "trnl"   = c( 10L,  300L)    # trnL P6 loop ~10-150 bp
+  "trnl"   = c(10L,  300L)     # trnL P6 loop ~10-150 bp
 )
 
 

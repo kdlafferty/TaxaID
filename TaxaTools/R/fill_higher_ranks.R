@@ -238,7 +238,7 @@ fill_higher_ranks <- function(taxon_names,
 #'
 #' @export
 parse_classification_path <- function(path, ranks, target_rank) {
-  .extract_rank_from_classification(path, ranks, target_rank)
+  .extract_classified_rank(path, ranks, target_rank)
 }
 
 
@@ -289,7 +289,7 @@ parse_classification_path <- function(path, ranks, target_rank) {
   if (is.null(verified) || nrow(verified) == 0L) return(empty)
 
   families <- mapply(
-    .extract_rank_from_classification,
+    .extract_classified_rank,
     verified$classification_path,
     verified$classification_ranks,
     MoreArgs = list(target_rank = "family"),
@@ -310,7 +310,7 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # Parse one rank value from pipe-delimited classification_path +
 # classification_ranks strings.  Returns NA_character_ if rank not found.
 #' @noRd
-.extract_rank_from_classification <- function(path, ranks, target_rank) {
+.extract_classified_rank <- function(path, ranks, target_rank) {
   if (is.na(path) || is.na(ranks) || !nzchar(path) || !nzchar(ranks))
     return(NA_character_)
   rank_vec <- strsplit(ranks, "|", fixed = TRUE)[[1L]]

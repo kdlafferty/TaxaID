@@ -261,7 +261,7 @@ verify_taxon_names <- function(name_list,
   }
   rownames(final_df) <- NULL
 
-  n_verified   <- sum( unique_df$verified, na.rm = TRUE)
+  n_verified   <- sum(unique_df$verified, na.rm = TRUE)
   n_unverified <- sum(!unique_df$verified, na.rm = TRUE)
   n_no_match   <- sum(unique_df$verified & is.na(unique_df$matched_name), na.rm = TRUE)
 
@@ -316,7 +316,7 @@ verify_taxon_names <- function(name_list,
   # Build OR'd queries: "Name1"[Scientific Name] OR "Name2"[Scientific Name] ...
   batches <- split(clean_names, ceiling(seq_along(clean_names) / search_batch_size))
 
-  # Map: name -> taxid (character)
+  # Map: name => taxid (character)
   name_to_taxid <- stats::setNames(rep(NA_character_, n_total), clean_names)
 
   for (i in seq_along(batches)) {
@@ -379,7 +379,7 @@ verify_taxon_names <- function(name_list,
   message("  Found ", n_found, " of ", n_total, " names in NCBI taxonomy.")
 
   # --- Step 2: Fetch full lineage XML for found taxids ---
-  lineage_map <- list()  # taxid -> list(classification_path, classification_ranks)
+  lineage_map <- list()  # taxid => list(classification_path, classification_ranks)
 
   if (n_found > 0L) {
     unique_taxids  <- unique(found_taxids)

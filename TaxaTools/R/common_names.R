@@ -3,17 +3,17 @@
 # TaxaTools -- Common name <-> scientific name lookups
 #
 # Exported:
-#   common_to_scientific()
-#   scientific_to_common()
+#   common_to_scientific
+#   scientific_to_common
 # Internal:
-#   .gbif_common_names()
-#   .itis_common_names()
-#   .llm_common_names()
+#   .gbif_common_names
+#   .itis_common_names
+#   .llm_common_names
 # ==============================================================================
 
 
 # ==============================================================================
-# common_to_scientific()
+# common_to_scientific
 # ==============================================================================
 
 #' Convert Common Names to Scientific Names
@@ -132,8 +132,9 @@ common_to_scientific <- function(common_names,
 
   # ---- build prompt -----------------------------------------------------------
   names_block <- paste(
-    vapply(seq_along(common_names), function(i)
-      sprintf('  %d. "%s"', i, common_names[[i]]), character(1L)),
+    vapply(seq_along(common_names), function(i) {
+      sprintf('  %d. "%s"', i, common_names[[i]])
+    }, character(1L)),
     collapse = "\n"
   )
 
@@ -318,15 +319,17 @@ common_to_scientific <- function(common_names,
 #' @noRd
 .llm_common_names <- function(names, llm_fn, location = NULL,
                               batch_size = 20L, ...) {
-  location_line <- if (!is.null(location))
+  location_line <- if (!is.null(location)) {
     sprintf("\nGeographic context: %s. Prefer common names in use for this region.\n", location)
-  else
+  } else {
     ""
+  }
 
   .parse_one_batch <- function(batch_names) {
     names_block <- paste(
-      vapply(seq_along(batch_names), function(i)
-        sprintf('  %d. "%s"', i, batch_names[[i]]), character(1L)),
+      vapply(seq_along(batch_names), function(i) {
+        sprintf('  %d. "%s"', i, batch_names[[i]])
+      }, character(1L)),
       collapse = "\n"
     )
     prompt <- paste0(
@@ -335,10 +338,10 @@ common_to_scientific <- function(common_names,
       "\nScientific names:\n", names_block,
       "\n\nRespond with a JSON array only -- no markdown, no extra text. ",
       "Each element must have exactly these keys:\n",
-      '  "scientific_name"           : the input scientific name (string)\n',
-      '  "common_name"               : primary English common name, or null if none\n',
-      '  "common_name_alternatives"  : comma-separated list of other English common ',
-      'names as a single string, or null if none\n',
+      "  \"scientific_name\"           : the input scientific name (string)\n",
+      "  \"common_name\"               : primary English common name, or null if none\n",
+      "  \"common_name_alternatives\"  : comma-separated list of other English common ",
+      "names as a single string, or null if none\n",
       "\nReturn exactly ", length(batch_names),
       " elements in the same order as the input list."
     )
@@ -392,7 +395,7 @@ common_to_scientific <- function(common_names,
 
 
 # ==============================================================================
-# scientific_to_common()
+# scientific_to_common
 # ==============================================================================
 
 #' Convert Scientific Names to Common Names

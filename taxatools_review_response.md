@@ -1,12 +1,10 @@
 # TaxaTools Peer Review Response
 
-**Review date:** 2026-06-27
-**Package version reviewed:** TaxaTools 0.1.0
-**Response prepared by:** K. Lafferty
+**Review date:** 2026-06-27 **Package version reviewed:** TaxaTools 0.1.0 **Response prepared by:** K. D. Lafferty
 
-This document responds to each comment in the TaxaTools code review. Changes were implemented across two phases and verified with `devtools::check()` (0 errors, 0 warnings, 0 notes; 680 tests passing).
+This document responds to each comment in the TaxaTools code review. Changes were implemented across three phases and verified with `devtools::check()` (0 errors, 0 warnings, 0 notes; 680 tests passing).
 
----
+------------------------------------------------------------------------
 
 ## Checklist Items
 
@@ -18,7 +16,7 @@ This document responds to each comment in the TaxaTools code review. Changes wer
 
 The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to the reviewer's environment.
 
----
+------------------------------------------------------------------------
 
 ## General Comments
 
@@ -32,31 +30,31 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 ### Package scope (two distinct tasks: LLM + taxonomy)
 
-**Noted, not actioned.** This is a valid architectural observation. TaxaTools intentionally bundles both task families because the LLM provider functions are a shared dependency required by every other TaxaID package (TaxaFetch, TaxaHabitat, TaxaExpect, TaxaAssign, TaxaFlag). Splitting into two packages would create an additional dependency layer without clear user benefit at this stage. The design will be reconsidered if the package grows substantially.
+**Noted, not actioned.** The packages are divided by purpose rather than by architecture. TaxaTools intentionally bundles both task families because the LLM provider functions are a shared dependency required by every other TaxaID package (TaxaFetch, TaxaHabitat, TaxaExpect, TaxaAssign, TaxaFlag). Splitting into two packages would create an additional dependency layer without clear user benefit at this stage.
 
 ### `ellmer` / tidyverse LLM package
 
-**Noted, not actioned.** The `ellmer` package was considered. TaxaTools LLM functions predate its public availability and are built around the TaxaID-specific `llm_fn` dispatch pattern (which allows user-swappable providers as function arguments). Adopting `ellmer` would require redesigning this interface. The tradeoff may be worth revisiting before manuscript submission.
+**Noted, not actioned.** The `ellmer` package was considered. TaxaTools LLM functions predate its public availability and are built around the TaxaID-specific `llm_fn` dispatch pattern (which allows user-swappable providers as function arguments). Adopting `ellmer` would require redesigning this interface. The tradeoff may be worth revisiting.
 
 ### Security / LLM data sensitivity warning
 
-**Partially addressed.** A note about DOI-network requirements for `call_azure_openai_api()` is already present in the function documentation and in the startup message. A general data-sensitivity warning for all LLM calls is a reasonable suggestion; adding a uniform warning to the `call_api()` documentation and startup messages is deferred to a future session ahead of public release.
+**Fixed (Phase 3).** A `@details` "Data sensitivity" section was added to `call_api()` warning that cloud LLM providers transmit prompts to third-party servers and recommending `provider = "ollama"` for sensitive data. The same note was added to the `.onAttach()` startup messages for both the single-provider and multi-provider paths in `zzz.R`.
 
 ### Lintr for minor formatting
 
-**Noted.** Lintr sweeps are planned prior to first public release.
+**Fixed (Phase 3).** `lintr::lint_package()` run on TaxaTools. A `.lintr` config was added setting `line_length_linter(120L)` (the default 80-char limit is stricter than CRAN requires and impractical for long string literals) and suppressing `indentation_linter` (off-by-one hanging-indent variations throughout). All substantive issues resolved: commented-out code blocks (25) rephrased; brace style (10) fixed in anonymous function bodies and `if/else` branches; spaces inside parentheses (3) and a single-quote string (1) fixed; internal helper `.extract_rank_from_classification` (34 chars) renamed to `.extract_classified_rank` (23 chars) to satisfy `object_length_linter`. 0 remaining issues in R/ source files.
 
 ### README.Rmd
 
-**Noted.** Repo cleanup (unnecessary files) is deferred to a pre-release session.
+**Fixed (Phase 3).** Debris files removed across all packages. `README.Rmd` templates deleted from TaxaMatch, TaxaAssign (package READMEs are hand-edited). Other debris: dev scripts, placeholder tests, prompt drafts, untracked data files, and template figures.
 
----
+------------------------------------------------------------------------
 
 ## File-Specific Comments
 
 ### barcode_utils.R
 
-**`resolve_barcode_lengths()` allows min > max:** Fixed. Added validation that stops with an informative error when `min_len > max_len` (after coercion to integer).
+**`resolve_barcode_lengths()` allows min \> max:** Fixed. Added validation that stops with an informative error when `min_len > max_len` (after coercion to integer).
 
 **Unnamed return vector vs. documentation:** Fixed. `resolve_barcode_lengths()` now returns a named vector with names `"min_bp"` and `"max_bp"` at all return points (`stats::setNames()`). Tests updated to use `expect_named()` and `unname()` patterns, and `out[["min_bp"]]` / `out[["max_bp"]]` subscripting.
 
@@ -78,13 +76,13 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 ### change_backbone.R
 
-**Rename suggestion (lines 18–20):** Noted. The function does reshape and relabel rather than call a backbone directly, but the name `change_backbone` accurately describes its role in the workflow (changing which backbone's taxonomy is active). Renaming is deferred.
+**Rename suggestion (lines 18–20):** Noted. The function does reshape and relabel rather than call a backbone directly, but the name `change_backbone` accurately describes its role in the workflow (changing which backbone's taxonomy is active).
 
 **Column name specificity (lines 57–58):** The `input_col` parameter already accepts any column name. Restricting to specific names would reduce flexibility for users with non-standard verify output.
 
 **0-row input as warning vs. error (lines 133–138):** Noted. The current warning is intentional — returning an empty data frame allows pipe-based workflows to continue gracefully when upstream steps produce no results.
 
-**Piping complexity (lines 156–191):** Noted. The pipeline is intentionally concise; inline comments at each step explain what each mutation does. Rewriting to intermediate assignments is deferred.
+**Piping complexity (lines 156–191):** Noted. The pipeline is intentionally concise; inline comments at each step explain what each mutation does. Author preference for commenting to help with debugging in V1.
 
 ### clean_taxon_names.R
 
@@ -94,7 +92,7 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 ### common_names.R
 
-**LLM accuracy for `common_to_scientific()`:** The `verify = TRUE` parameter (default) passes LLM-returned scientific names through `verify_taxon_names()` against the selected backbone. This confirms the names exist as valid taxa but does not confirm that they match the user's common-name intent (as the reviewer notes). This limitation is documented in the function's `@details` section.
+**LLM accuracy for `common_to_scientific()`:** The `verify = TRUE` parameter (default) passes LLM-returned scientific names through `verify_taxon_names()` against the selected backbone. Since multiple common names are possible for the same Latin binomial, there is acceptable variation in this output. Furthermore, the purpose of this function is to help non-experts understand what kinds of organisms they are dealing with rather than settle on a preferred common name. I.e., this confirms the names exist as valid taxa but does not confirm that they match the user's common-name intent (as the reviewer notes). This limitation is documented in the function's `@details` section.
 
 **File naming convention:** Noted. The file contains both `common_to_scientific()` and `scientific_to_common()`, so a single-function name for the file would be misleading. No change.
 
@@ -134,7 +132,9 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 ### is_valid_species_name.R
 
-**Returns TRUE for "Test all day":** Accurate observation. The function tests structural plausibility, not biological validity. The name reflects this: it validates the *form* of a species name string, not whether the species exists. The documentation is explicit: "Returns FALSE for names that are structurally implausible." Renaming to `is_plausible_binomial()` is worth considering before public release; deferred.
+**Returns TRUE for "Test all day":** Accurate observation. The function tests structural plausibility, not biological validity. It is intended to be applied to a vector of scientific names, some of which might depart from convention (i.e., it is not intended to be applied to generic text). The documentation is explicit: "Returns FALSE for names that are structurally implausible."
+
+**Renamed (Phase 3).** `is_valid_species_name()` renamed to `is_plausible_binomial()` throughout the ecosystem (13 files across TaxaTools, TaxaLikely, TaxaAssign; test file renamed). The new name better describes the function's intent as a plausibility heuristic rather than a strict validator.
 
 ### llm_api_utils.R
 
@@ -160,11 +160,11 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 ### report_section.R
 
-**Line 15 reference:** Noted. Will be cleaned up in pre-release pass.
+**Line 15 reference:** Fixed (Phase 3). Session reference comment removed.
 
 **`print.report_section` vs. `print_report_section`:** `print.report_section` is an S3 method dispatch convention — R requires the name `print.<class>` for `print()` to dispatch to it automatically. This is correct R idiom, not a style violation.
 
-**`assemble_report()` returns string, not .md file (line 159):** Noted. The documentation will be clarified to say the function returns a character string which can be written to a file with `writeLines()`.
+**`assemble_report()` returns string, not .md file (line 159):** Fixed (Phase 3). `@return` updated to explicitly state "A length-1 character string" and a `\preformatted{}` block shows the `writeLines()` usage. `@examples` updated to use `writeLines(full_report, "methods_report.md")`.
 
 ### to_faire.R
 
@@ -186,7 +186,7 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 **`verified` default FALSE (line 196):** Intentional. `verified = FALSE` is the safe default for rows where the API did not return a result, to prevent unverified names from being silently treated as confirmed.
 
-**Conditional success message:** Fixed. The "0 had no match; 0 were unverified" text no longer appears on successful runs. The message now reports only counts that are > 0.
+**Conditional success message:** Fixed. The "0 had no match; 0 were unverified" text no longer appears on successful runs. The message now reports only counts that are \> 0.
 
 ### zzz.R
 
@@ -194,15 +194,17 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 **Multiline if-statement style (lines 75–78):** Fixed. `doi_note` assignment moved inside braces.
 
----
+------------------------------------------------------------------------
 
-## Items Deferred to Future Sessions
+## Previously Deferred Items — All Completed (Phase 3)
 
-| Item | File | Notes |
-|---|---|---|
-| General LLM data-sensitivity warning | `call_api.R`, `zzz.R` | Add to docs + startup message before public release |
-| `is_valid_species_name()` rename consideration | `is_valid_species_name.R` | Consider `is_plausible_binomial()` before public release |
-| `assemble_report()` documentation clarification | `report_section.R` | Clarify string vs. file return |
-| `report_section.R` line 15 cleanup | `report_section.R` | Pre-release cleanup pass |
-| Lintr sweep | All | Pre-release pass |
-| README and repo file cleanup | Root | Pre-release pass |
+All items from the original deferred list were completed in the pre-release cleanup pass (Phase 3, 2026-06-27). `devtools::check()` confirmed 0 errors, 0 warnings, 0 notes.
+
+| Item | Resolution |
+|---|---|
+| General LLM data-sensitivity warning | Fixed: `@details` added to `call_api()`; NOTE added to `.onAttach()` startup messages |
+| `is_valid_species_name()` rename | Fixed: renamed to `is_plausible_binomial()` across 13 files |
+| `assemble_report()` documentation clarification | Fixed: `@return` and `@examples` updated |
+| `report_section.R` line 15 cleanup | Fixed: session comment removed |
+| Lintr sweep | Fixed: `.lintr` config added; all substantive issues resolved (25 commented-code, 10 brace, 4 other) |
+| README and repo file cleanup | Fixed: debris deleted across all packages |

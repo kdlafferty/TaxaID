@@ -13,7 +13,7 @@
 
 
 # ==============================================================================
-# build_report_context()
+# build_report_context
 # ==============================================================================
 
 #' Build a Report Context Object
@@ -185,7 +185,7 @@ print.report_context <- function(x, ...) {
 
 
 # ==============================================================================
-# draft_methods_text()
+# draft_methods_text
 # ==============================================================================
 
 #' Draft Methods Text from R Code
@@ -318,7 +318,7 @@ draft_methods_text <- function(code,
 
 
 # ==============================================================================
-# draft_results_text()
+# draft_results_text
 # ==============================================================================
 
 #' Draft Results Text from R Objects
@@ -555,7 +555,9 @@ draft_results_text <- function(...,
 
   context_line <- if (!is.null(description)) {
     sprintf("\n\nSTUDY CONTEXT: %s\n", description)
-  } else ""
+  } else {
+    ""
+  }
 
   context_section <- if (!is.null(context_block)) {
     paste0(
@@ -563,7 +565,9 @@ draft_results_text <- function(...,
       "they override any conflicting information inferred from code or comments):\n",
       context_block, "\n"
     )
-  } else ""
+  } else {
+    ""
+  }
 
   sprintf(
     paste0(
@@ -626,7 +630,9 @@ draft_results_text <- function(...,
 
   context_line <- if (!is.null(description)) {
     sprintf("\n\nSTUDY CONTEXT: %s\n", description)
-  } else ""
+  } else {
+    ""
+  }
 
   context_section <- if (!is.null(context_block)) {
     paste0(
@@ -634,14 +640,18 @@ draft_results_text <- function(...,
       "they take precedence over any values computed from the data summaries):\n",
       context_block, "\n"
     )
-  } else ""
+  } else {
+    ""
+  }
 
   code_section <- if (!is.null(code_block)) {
     sprintf(
       "\n\nANALYSIS CODE (for reference -- describes how these results were produced):\n```r\n%s\n```\n",
       code_block
     )
-  } else ""
+  } else {
+    ""
+  }
 
   sprintf(
     paste0(

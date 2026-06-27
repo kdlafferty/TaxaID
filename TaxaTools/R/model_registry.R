@@ -307,8 +307,8 @@
 # ------------------------------------------------------------------------------
 # Tier pattern matching
 # model_ids  -- character vector sorted newest-first
-# patterns   -- list(fast=list(include, exclude), mid=..., top=...)
-# Returns    -- named character vector, e.g. c(fast="...", mid="...", top="...")
+# patterns   -- named list with fast/mid/top tiers, each with include/exclude patterns
+# Returns    -- named character vector mapping tier to model ID
 # ------------------------------------------------------------------------------
 
 #' @noRd
@@ -347,8 +347,8 @@
 
 # ------------------------------------------------------------------------------
 # Resolution chain
-# provider  -- "anthropic" | "gemini" | "openai" | "azure"
-# tier      -- "fast" | "mid" | "top"
+# provider  -- one of: "anthropic", "gemini", "openai", "azure_openai"
+# tier      -- one of: "fast", "mid", "top"
 # Returns a single model ID string; stops on complete failure
 # ------------------------------------------------------------------------------
 

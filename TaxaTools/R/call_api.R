@@ -15,8 +15,7 @@
 #     with handler_family, chat_endpoint/template, auth_type, and tier_patterns.
 #     No R code changes needed for OpenAI-compatible providers.
 #
-# Exported:
-#   call_api()
+# Exports: call_api
 #
 # Internal utilities (@noRd):
 #   .resolve_provider()            NULL -> options(TaxaID.provider) -> error
@@ -189,10 +188,12 @@
   if (!is.null(images) && length(images) > 0L) {
     content <- c(
       list(list(type = "text", text = prompt_str)),
-      lapply(unname(images), function(b64) list(
-        type   = "image",
-        source = list(type = "base64", media_type = "image/png", data = b64)
-      ))
+      lapply(unname(images), function(b64) {
+        list(
+          type   = "image",
+          source = list(type = "base64", media_type = "image/png", data = b64)
+        )
+      })
     )
   } else {
     content <- prompt_str
@@ -223,9 +224,9 @@
   if (!is.null(images) && length(images) > 0L) {
     parts <- c(
       list(list(text = prompt_str)),
-      lapply(unname(images), function(b64) list(
-        inlineData = list(mimeType = "image/png", data = b64)
-      ))
+      lapply(unname(images), function(b64) {
+        list(inlineData = list(mimeType = "image/png", data = b64))
+      })
     )
   } else {
     parts <- list(list(text = prompt_str))
@@ -258,10 +259,12 @@
   if (!is.null(images) && length(images) > 0L) {
     content <- c(
       list(list(type = "text", text = prompt_str)),
-      lapply(unname(images), function(b64) list(
-        type      = "image_url",
-        image_url = list(url = paste0("data:image/png;base64,", b64))
-      ))
+      lapply(unname(images), function(b64) {
+        list(
+          type      = "image_url",
+          image_url = list(url = paste0("data:image/png;base64,", b64))
+        )
+      })
     )
   } else {
     content <- prompt_str
@@ -306,8 +309,8 @@
 
 # ==============================================================================
 # Response parsers  (one per handler family)
-# Each takes the raw httr2 response and provider name; returns a list:
-#   list(text = "<response string>", tokens = list(input = N, output = N))
+# Each takes the raw httr2 response and provider name; returns a named list
+# with elements: text (character), tokens (list with input and output counts).
 # Token counts are NA_integer_ when the provider does not report them.
 # ==============================================================================
 

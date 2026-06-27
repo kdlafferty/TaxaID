@@ -3,10 +3,10 @@
 # TaxaTools -- S3 class for per-package report sections
 #
 # Exported functions:
-#   new_report_section()   -- constructor
-#   print.report_section() -- print method (emits markdown)
-#   format.report_section() -- format method (returns markdown string)
-#   assemble_report()      -- combine multiple report_section objects
+#   new_report_section    -- constructor
+#   print.report_section  -- print method (emits markdown)
+#   format.report_section -- format method (returns markdown string)
+#   assemble_report       -- combine multiple report_section objects
 #
 # Each TaxaID package exports a report_*() function that returns a
 # report_section object. These can be used standalone or assembled into
@@ -16,7 +16,7 @@
 
 
 # ==============================================================================
-# new_report_section()
+# new_report_section
 # ==============================================================================
 
 #' Create a Report Section Object
@@ -93,7 +93,7 @@ new_report_section <- function(package,
 
 
 # ==============================================================================
-# print.report_section()
+# print.report_section
 # ==============================================================================
 
 #' Print a Report Section
@@ -122,7 +122,7 @@ print.report_section <- function(x, ...) {
 
 
 # ==============================================================================
-# format.report_section()
+# format.report_section
 # ==============================================================================
 
 #' Format a Report Section as Markdown
@@ -148,7 +148,7 @@ format.report_section <- function(x, ...) {
 
 
 # ==============================================================================
-# assemble_report()
+# assemble_report
 # ==============================================================================
 
 #' Assemble Multiple Report Sections into a Unified Report

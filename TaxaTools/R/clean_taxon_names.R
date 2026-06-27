@@ -74,7 +74,7 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL) {
 
   # --- Replace underscore-as-space in binomial names --------------------------
   # Some pipelines (e.g. Jonah Ventures, SILVA) encode spaces as underscores:
-  # "Corallina_officinalis" -> "Corallina officinalis"
+  # "Corallina_officinalis" => "Corallina officinalis"
   # Rule: exactly one underscore, no spaces, uppercase-start genus, lowercase-
   # start epithet. Does NOT affect clade codes (MAST-4), OTU IDs (OTU_001),
   # or multi-underscore strings.

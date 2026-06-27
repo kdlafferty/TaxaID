@@ -1,6 +1,6 @@
 # test-fill_higher_ranks.R
 # Tests for fill_higher_ranks(), .build_genus_family_lookup(),
-# .lookup_family_from_backbone(), and .extract_rank_from_classification().
+# .lookup_family_from_backbone(), and .extract_classified_rank().
 # Fully offline — backbone API calls are mocked.
 
 library(testthat)
@@ -296,26 +296,26 @@ test_that("both backbone_id and fallback_backbone_id = NULL skips all API calls"
 # Internal helpers
 # =============================================================================
 
-test_that(".extract_rank_from_classification returns NA for NA inputs", {
+test_that(".extract_classified_rank returns NA for NA inputs", {
   expect_identical(
-    TaxaTools:::.extract_rank_from_classification(NA, NA, "family"),
+    TaxaTools:::.extract_classified_rank(NA, NA, "family"),
     NA_character_
   )
 })
 
-test_that(".extract_rank_from_classification extracts correct rank", {
+test_that(".extract_classified_rank extracts correct rank", {
   path  <- "Animalia|Chordata|Cottidae|Cottus|Cottus asper"
   ranks <- "kingdom|phylum|family|genus|species"
   expect_equal(
-    TaxaTools:::.extract_rank_from_classification(path, ranks, "family"),
+    TaxaTools:::.extract_classified_rank(path, ranks, "family"),
     "Cottidae"
   )
   expect_equal(
-    TaxaTools:::.extract_rank_from_classification(path, ranks, "genus"),
+    TaxaTools:::.extract_classified_rank(path, ranks, "genus"),
     "Cottus"
   )
   expect_identical(
-    TaxaTools:::.extract_rank_from_classification(path, ranks, "order"),
+    TaxaTools:::.extract_classified_rank(path, ranks, "order"),
     NA_character_
   )
 })
