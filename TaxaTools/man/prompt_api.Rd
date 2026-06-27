@@ -93,12 +93,12 @@ raw_text <- prompt_api(prompt, llm_fn = call_gemini_api)
 raw_text <- prompt_api(prompt, llm_fn = call_ollama_api)
 
 # Azure OpenAI (DOI employees; requires DOI network or VPN)
-raw_text <- prompt_api(prompt, llm_fn = call_azure_api)
+raw_text <- prompt_api(prompt, llm_fn = call_azure_openai_api)
 }
 }
 \seealso{
 \code{\link{call_api}}, \code{\link{call_anthropic_api}},
 \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-\code{\link{call_ollama_api}}, \code{\link{call_azure_api}},
+\code{\link{call_ollama_api}}, \code{\link{call_azure_openai_api}},
 \code{\link{prompt_manual}}
 }

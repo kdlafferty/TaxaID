@@ -51,10 +51,10 @@
   # Check if an API key is present but options haven't been set —
   # this means .onAttach() hasn't run (package loaded via :: not library()).
   key_map <- c(
-    anthropic = "ANTHROPIC_API_KEY",
-    gemini    = "GEMINI_API_KEY",
-    openai    = "OPENAI_API_KEY",
-    azure     = "AZURE_OPENAI_API_KEY"
+    anthropic    = "ANTHROPIC_API_KEY",
+    gemini       = "GEMINI_API_KEY",
+    openai       = "OPENAI_API_KEY",
+    azure_openai = "AZURE_OPENAI_API_KEY"
   )
   detected <- names(Filter(nzchar, vapply(key_map, Sys.getenv, character(1))))
 
@@ -73,15 +73,15 @@
     "call_api: no LLM provider configured.\n",
     library_hint,
     "Add an API key to ~/.Renviron and restart R, or specify a provider:\n",
-    "  call_api(prompt, provider = 'anthropic')  # or 'gemini', 'openai', 'azure'\n",
-    "  call_api(prompt, provider = 'ollama')      # local models, no key needed\n",
+    "  call_api(prompt, provider = 'anthropic')     # or 'gemini', 'openai', 'azure_openai'\n",
+    "  call_api(prompt, provider = 'ollama')         # local models, no key needed\n",
     "  register_provider() for third-party OpenAI-compatible APIs\n\n",
     "Supported providers and required environment variables:\n",
-    "  Anthropic  -- ANTHROPIC_API_KEY  (https://console.anthropic.com/)\n",
-    "  Gemini     -- GEMINI_API_KEY     (https://aistudio.google.com/apikey, free tier)\n",
-    "  OpenAI     -- OPENAI_API_KEY     (https://platform.openai.com/api-keys)\n",
-    "  Azure      -- AZURE_OPENAI_API_KEY (DOI employees only; DOI network/VPN required)\n",
-    "  Ollama     -- no key required    (https://ollama.com, local)"
+    "  Anthropic    -- ANTHROPIC_API_KEY    (https://console.anthropic.com/)\n",
+    "  Gemini       -- GEMINI_API_KEY       (https://aistudio.google.com/apikey, free tier)\n",
+    "  OpenAI       -- OPENAI_API_KEY       (https://platform.openai.com/api-keys)\n",
+    "  Azure OpenAI -- AZURE_OPENAI_API_KEY (DOI employees only; DOI network/VPN required)\n",
+    "  Ollama       -- no key required      (https://ollama.com, local)"
   ), call. = FALSE)
 }
 
@@ -99,11 +99,11 @@
   if (identical(prov_reg$auth_type %||% "bearer", "none")) return("")
 
   # Look up env var name: registry field first, then built-in fallbacks
-  key_var <- prov_reg$api_key_var %||% switch(provider,
-    anthropic = "ANTHROPIC_API_KEY",
-    gemini    = "GEMINI_API_KEY",
-    openai    = "OPENAI_API_KEY",
-    azure     = "AZURE_OPENAI_API_KEY",
+  key_var <- prov_reg$api_key_var %||% switch(as.character(provider),
+    anthropic    = "ANTHROPIC_API_KEY",
+    gemini       = "GEMINI_API_KEY",
+    openai       = "OPENAI_API_KEY",
+    azure_openai = "AZURE_OPENAI_API_KEY",
     ""
   )
 
@@ -424,8 +424,8 @@
 #' @param prompt_str Character. A length-1 string containing the complete
 #'   prompt to submit.
 #' @param provider Character. Provider name: \code{"anthropic"},
-#'   \code{"gemini"}, \code{"openai"}, \code{"azure"}, \code{"ollama"}, or
-#'   any name registered with \code{\link{register_provider}}.
+#'   \code{"gemini"}, \code{"openai"}, \code{"azure_openai"}, \code{"ollama"},
+#'   or any name registered with \code{\link{register_provider}}.
 #'   Default \code{NULL} uses \code{options("TaxaID.provider")}, which is set
 #'   automatically by \code{library(TaxaTools)} based on detected API keys.
 #' @param tier Character. Capability tier when \code{model = NULL}:
@@ -460,11 +460,11 @@
 #'   OpenAI \code{image_url} blocks. Requires a vision-capable model
 #'   (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o).
 #' @param show_tokens Logical. When \code{TRUE}, prints a message after each
-#'   call reporting input and output token counts (e.g.
-#'   \code{"Tokens used — input: 312, output: 87"}). Default \code{FALSE} to
-#'   avoid output in non-interactive workflows. Token counts are retrieved from
-#'   the provider's response body; \code{NA} is reported when a provider does
-#'   not return usage information.
+#'   call reporting the provider, model, and token counts (e.g.
+#'   \code{"Tokens used [anthropic / claude-sonnet-4-6] — input: 312, output: 87"}).
+#'   Default \code{FALSE} to avoid output in non-interactive workflows.
+#'   Token counts are retrieved from the provider's response body; \code{NA}
+#'   is reported when a provider does not return usage information.
 #' @param max_input_tokens Integer or \code{NULL}. When non-\code{NULL},
 #'   estimates the prompt length as \code{ceiling(nchar(prompt_str) / 3.5)}
 #'   (a conservative characters-per-token heuristic) and stops with an
@@ -511,10 +511,19 @@
 #' options(TaxaID.provider = "openai")
 #' }
 #'
+#' \strong{Data sensitivity:}
+#' Prompts sent to cloud LLM providers (Anthropic, Google, OpenAI, Azure) are
+#' transmitted over the internet and processed on third-party servers. Do not
+#' include sensitive, confidential, personally identifiable, or embargoed
+#' information in prompts. TaxaID functions pass taxon names, ecological
+#' summaries, and methods text — review prompts before calling when working
+#' with pre-publication data. Use \code{provider = "ollama"} for fully
+#' local inference when data sensitivity is a concern.
+#'
 #' @seealso \code{\link{register_provider}}, \code{\link{list_models}},
 #'   \code{\link{set_model}}, \code{\link{refresh_models}},
 #'   \code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-#'   \code{\link{call_openai_api}}, \code{\link{call_azure_api}},
+#'   \code{\link{call_openai_api}}, \code{\link{call_azure_openai_api}},
 #'   \code{\link{call_ollama_api}}
 #'
 #' @importFrom httr2 request req_headers req_body_json req_url_query req_error
@@ -600,7 +609,7 @@ call_api <- function(prompt_str,
   family   <- prov_reg$handler_family %||% "openai_compat"
 
   # Build the provider-appropriate HTTP request
-  req <- switch(family,
+  req <- switch(as.character(family),
     anthropic     = .build_anthropic_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
     gemini        = .build_gemini_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
     openai_compat = .build_openai_compat_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
@@ -624,9 +633,9 @@ call_api <- function(prompt_str,
             "Make sure Ollama is installed and running: https://ollama.com"
           ), call. = FALSE)
         }
-        if (identical(provider, "azure")) {
+        if (identical(provider, "azure_openai")) {
           stop(paste0(
-            "call_api (azure): cannot connect to the DOI Azure endpoint.\n",
+            "call_api (azure_openai): cannot connect to the DOI Azure endpoint.\n",
             "This API requires connection to a DOI computer system or DOI VPN."
           ), call. = FALSE)
         }
@@ -637,7 +646,7 @@ call_api <- function(prompt_str,
   )
 
   # Parse the provider-appropriate response (returns list(text, tokens))
-  parsed <- switch(family,
+  parsed <- switch(as.character(family),
     anthropic     = .parse_anthropic_response(resp, provider),
     gemini        = .parse_gemini_response(resp, provider),
     openai_compat = .parse_openai_compat_response(resp, provider),
@@ -659,7 +668,9 @@ call_api <- function(prompt_str,
   }
 
   if (isTRUE(show_tokens)) {
-    message(sprintf("Tokens used \u2014 input: %s, output: %s",
+    message(sprintf("Tokens used [%s / %s] \u2014 input: %s, output: %s",
+                    provider,
+                    model %||% "unknown",
                     if (is.na(tokens$input))  "NA" else as.character(tokens$input),
                     if (is.na(tokens$output)) "NA" else as.character(tokens$output)))
   }

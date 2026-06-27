@@ -54,7 +54,7 @@
         "top":  "o3"
       }
     },
-    "azure": {
+    "azure_openai": {
       "handler_family":          "openai_compat",
       "chat_endpoint_template":  "https://api-dev.ai.doi.net/openai/deployments/{model}/chat/completions?api-version=2025-03-01-preview",
       "endpoint_template":       "https://api-dev.ai.doi.net/openai/deployments/{model}/chat/completions?api-version=2025-03-01-preview",

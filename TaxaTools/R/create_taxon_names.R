@@ -9,7 +9,7 @@
 #' If all rank columns are \code{NA} for a row, both output columns are
 #' \code{NA} silently.
 #'
-#' @param df A data frame containing taxonomic rank columns.
+#' @param input_df A data frame containing taxonomic rank columns.
 #' @param rank_system A character vector of column names (any case) listing
 #'   taxonomic ranks from broadest to most specific, e.g.
 #'   \code{c("kingdom", "phylum", "class", "order", "family", "genus", "species")}.
@@ -32,42 +32,42 @@
 #' @export
 #'
 #' @examples
-#' df <- data.frame(
+#' input_df <- data.frame(
 #'   kingdom = "Animalia",
 #'   genus   = "Homo",
 #'   species = NA_character_
 #' )
-#' create_taxon_names(df)  # auto-detects rank_system
+#' create_taxon_names(input_df)  # auto-detects rank_system
 #' # taxon_name = "Homo", taxon_name_rank = "genus"
 #'
 #' # Or specify explicitly:
-#' create_taxon_names(df, c("kingdom", "genus", "species"))
-create_taxon_names <- function(df, rank_system = NULL) {
+#' create_taxon_names(input_df, c("kingdom", "genus", "species"))
+create_taxon_names <- function(input_df, rank_system = NULL) {
 
   # --- Input validation ---
-  if (!is.data.frame(df)) stop("`df` must be a data frame.")
+  if (!is.data.frame(input_df)) stop("`input_df` must be a data frame.")
   if (is.null(rank_system)) {
-    rank_system <- detect_ranks(df)
+    rank_system <- detect_ranks(input_df)
     if (length(rank_system) == 0L) {
-      stop("No recognised rank columns found in `df`. ",
+      stop("No recognised rank columns found in `input_df`. ",
            "Supply `rank_system` explicitly.")
     }
   }
   if (!is.character(rank_system) || length(rank_system) == 0) {
     stop("`rank_system` must be a non-empty character vector of column names.")
   }
-  if (nrow(df) == 0L) {
-    df$taxon_name      <- character(0)
-    df$taxon_name_rank <- character(0)
-    return(df)
+  if (nrow(input_df) == 0L) {
+    input_df$taxon_name      <- character(0)
+    input_df$taxon_name_rank <- character(0)
+    return(input_df)
   }
 
   # --- Case-insensitive column matching ---
   rank_cols_lower <- tolower(rank_system)
-  df_names_lower  <- tolower(names(df))
+  input_df_names_lower  <- tolower(names(input_df))
 
   # Check for ambiguous column names after lowercasing
-  dup_lower <- df_names_lower[duplicated(df_names_lower) & df_names_lower %in% rank_cols_lower]
+  dup_lower <- input_df_names_lower[duplicated(input_df_names_lower) & input_df_names_lower %in% rank_cols_lower]
   if (length(dup_lower) > 0L) {
     stop(
       "Ambiguous column names after case-insensitive matching: ",
@@ -76,19 +76,19 @@ create_taxon_names <- function(df, rank_system = NULL) {
     )
   }
 
-  missing_cols <- setdiff(rank_cols_lower, df_names_lower)
+  missing_cols <- setdiff(rank_cols_lower, input_df_names_lower)
   if (length(missing_cols) > 0) {
     stop(
-      "Column(s) not found in `df`: ", paste(missing_cols, collapse = ", "),
+      "Column(s) not found in `input_df`: ", paste(missing_cols, collapse = ", "),
       "\nCheck spelling and confirm `rank_system` matches your dataframe column names."
     )
   }
 
   # Map lowercase rank requests back to the actual (possibly mixed-case) column names
-  actual_cols <- names(df)[match(rank_cols_lower, df_names_lower)]
+  actual_cols <- names(input_df)[match(rank_cols_lower, input_df_names_lower)]
 
   # --- Coerce rank columns to character, treating "" as NA ---
-  df_clean <- df |>
+  input_df_clean <- input_df |>
     dplyr::mutate(dplyr::across(
       dplyr::all_of(actual_cols),
       ~ dplyr::na_if(as.character(.), "")
@@ -99,13 +99,13 @@ create_taxon_names <- function(df, rank_system = NULL) {
   # so reversing the rank order means "most specific wins".
   check_order <- rev(actual_cols)
 
-  name_vecs <- lapply(check_order, function(col) df_clean[[col]])
+  name_vecs <- lapply(check_order, function(col) input_df_clean[[col]])
   rank_vecs <- lapply(check_order, function(col) {
-    ifelse(!is.na(df_clean[[col]]), tolower(col), NA_character_)
+    ifelse(!is.na(input_df_clean[[col]]), tolower(col), NA_character_)
   })
 
   final_name <- do.call(dplyr::coalesce, name_vecs)
   final_rank <- do.call(dplyr::coalesce, rank_vecs)
 
-  df |> dplyr::mutate(taxon_name = final_name, taxon_name_rank = final_rank)
+  input_df |> dplyr::mutate(taxon_name = final_name, taxon_name_rank = final_rank)
 }

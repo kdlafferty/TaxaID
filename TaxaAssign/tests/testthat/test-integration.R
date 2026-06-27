@@ -240,7 +240,7 @@ test_that("expand_unreferenced output feeds into compute_posterior and score_con
 })
 
 # ==============================================================================
-# Test 6: TaxaTools is_valid_species_name + resolve_barcode_lengths integration
+# Test 6: TaxaTools is_plausible_binomial + resolve_barcode_lengths integration
 # ==============================================================================
 
 test_that("TaxaTools utilities work together for reference QC context", {
@@ -250,7 +250,7 @@ test_that("TaxaTools utilities work together for reference QC context", {
   names <- c("Fundulus parvipinnis", "Fundulus sp.", "uncultured clone",
              "Atherinops affinis", "cf. Mugil cephalus")
 
-  valid <- TaxaTools::is_valid_species_name(names)
+  valid <- TaxaTools::is_plausible_binomial(names)
   expect_equal(valid, c(TRUE, FALSE, FALSE, TRUE, FALSE))
 
   # Barcode lengths for a marker

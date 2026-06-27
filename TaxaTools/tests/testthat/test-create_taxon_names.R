@@ -9,9 +9,9 @@
 
 test_that("rejects non-data-frame input", {
   expect_error(create_taxon_names(list(kingdom = "Animalia"), "kingdom"),
-               "`df` must be a data frame")
+               "`input_df` must be a data frame")
   expect_error(create_taxon_names("not a df", "kingdom"),
-               "`df` must be a data frame")
+               "`input_df` must be a data frame")
 })
 
 test_that("rejects empty rank_system", {

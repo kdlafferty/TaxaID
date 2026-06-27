@@ -5,14 +5,14 @@
 \title{Export a TaxaID Data Frame in FAIRe Checklist Format}
 \usage{
 to_faire(
-  df,
+  input_df,
   table_type = c("taxaFinal", "taxaRaw"),
   checkls_ver = "1.02",
   assay_name = NULL
 )
 }
 \arguments{
-\item{df}{A TaxaID data frame. Any output from \code{TaxaMatch}, \code{TaxaLikely},
+\item{input_df}{A TaxaID data frame. Any output from \code{TaxaMatch}, \code{TaxaLikely},
 or \code{TaxaAssign} is accepted. Columns not covered by the FAIRe field
 mapping are retained with their original names.}
 

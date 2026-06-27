@@ -1,0 +1,399 @@
+---
+title: "TaxaTools code review"
+output: html_document
+---
+
+### Code Review
+
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
+
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable? 
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+    
+The code is organized and easy to read.
+
+* [x] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way.
+  * Is additional documentation required? 
+
+I did not profile the code, but I did not notice any obvious inefficiencies and performance seems adequate for the use case. No additional documentation seems required.
+ 
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+
+There are some minor issues with some of the multiline `if` statements, see individual file comments. Suggest using a linter to find minor formatting issues, which I did not comment on.
+
+* [ ] **Automated tests:** Confirm that all tests pass when run locally.
+
+testthat.R fails to run, produces the error: "Error in `test_dir()`: ! No test files found.". This may be because I built the package using `R CMD build` and `R CMD INSTALL` from the command line, I'm not sure how testthat is supposed to work. I ran using `testthat::test_dir()` with the path to the test directory. The automated tests did not pass when run locally. I have pasted the results below the file-specific comments. It may be LLM provider specific.
+
+* [ ] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
+
+I do not have the requisite knowledge to evaluate whether this package has vulnerabilities, particularly relating to interfacing with LLMs. I saw nothing obvious for other domains.
+
+Additional comments are listed below in comment section.
+
+### Domain Review
+
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
+
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct? 
+  * Are any claims of what the code does substantiated? 
+  * If tests are included, are they adequate to evaluate functionality?
+
+This code provides outputs that are biologically reasonable.
+
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces.
+  * If equations are solved, are the equations input correctly into the code?
+  
+My taxonomic expertise is limited, but this code provides outputs that are reasonably comparable to other outputs. There are no equations that I saw.
+
+* [x] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
+
+There may be an issue with using LLM supplied taxonomy for common names. As far as I can tell, it verifies if the LLM returns an actual species, but does not test if that alligns with the user input. 
+
+Additional comments are listed below.
+
+# General comments
+
+* I have only evaluated files in the `R` directory of `TaxaTools`. I did not evaluate any other files. I suggest cleaning up all unnecessary files in the repo (i.e., is the README.Rmd being used?). Some functions are designed to use objects created by other packages in the ecosystem (see file specific comments), but otherwise the package installs fine and appears to run as intended. Where reasonable and as time permitted, I ran functions line by line.
+
+* This package seems to be focused largely on two distinct tasks: interfacing with LLMs and getting taxonomic info into a standardized format from the various backbones. Perhaps a more intuitive way to organize these functions (and this whole ecosystem in general) would be to split packages into those interfacing with LLMs and those working with taxonomic databases etc.
+
+* Note that there is at least one existing package for interfacing with LLMs, but I've not used it: [](https://ellmer.tidyverse.org/). Obviously multiple packages doing the same thing is common in the R universe, but using a package maintained by the posit folks might mean easier maintenance. This is of course in conflict with this author's goal of minimizing dependencies, but I wanted to point it out.
+
+* I don't have the knowledge to evaluate the security or policy implications for some of the functions in this package, in particular those interfacing with LLMs. I'm not saying that there are issues, I'm saying that I don't know how to evaluate whether or not there is. When using the DOI interface to claude, it has this warning at the top of the page: **SECURITY WARNING: Approved for LOW impact data only. Use public, synthetic, or de-identified info. Do not enter non-public PII, case files, credentials, or sensitive DOI data.** This warning is specific to DOI use, but perhaps a general warning for all LLM use could apply here? For example, flagging all cases where an LMM provided an answer. This is done with the ollama models but I suggest applying it to all cases of LLM use.
+
+* The focus of this package seem unusually broad to me. Usually, an R package is a bit more constrained in scope, such as a package that interfaces with taxonomic databases, a package that fits Bayesian models, or a package that reshapes data. Taking a look at the CRAN tasks views will give examples. All the functions in this package appear to work as intended as-is, but this is something to keep in mind. 
+
+* It is best practice to avoid naming things in R that are used for other objects. This is obviously difficult and not always critical, but I'll point out a couple. `azure` is also a color in R. I've never used this color myself, but generally it is best to avoid names with other possible meanings though this may be a reasonable exception. Perhaps `azure_openai` would be better? And `df` is commonly used throughout to refer to dataframes. Suggest something more meaningful, such as `input_df` or similar.  
+
+* I didn't point out each instance, but running lintr::lint for each source R file will help find small syntax issues like unnecessary spaces, etc. 
+
+Comments on specific files:
+
+**barcode_utils.R**
+
+* [x] reviewed
+
+- `resolve_barcode_lengths()` allows smaller max_len than min_len when they are user supplied. Example: `resolve_barcode_lengths("bogus", min_len = 100.36, max_len = 45.6)` returns `100  45`. Note that it allows floats as inputs (see provided example), but does return integers.
+
+- the documentation suggests that `resolve_barcode_lengths()` should return a named vector (`min_bp` and `max_bp`), but it returns an unnamed vector. Suggest assigning the names or changing the documentation.
+
+**call_api.R**
+
+* [x] reviewed
+
+- Only tested with azure API, but seems to work as intended. 
+
+- Having separate helper functions for each provider seems like it results in a fair amount of duplicated code. Each API is different so this approach might be optimal, but perhaps certain components of each function could be wrapped in their own function to avoid duplication, such as error and timeout handling. Not critical.
+
+- consider coercing all expressions in calls to `switch` using `as.character()` to avoid possible selection by position.
+
+**census_genus_species.R**
+
+* [x] reviewed
+
+- Lines 92-96: should this be coercing to integer with `as.integer()` instead?
+
+- Lines 106-108: should this control for specific terms as well?
+
+- Lines 152-158: suggest placing assignment within braces for multiline if statements, example below. Same for lines 337-341.
+
+```
+if (n_miss == 0L) {
+  status_val <- "complete"
+} else if (n_miss == 1L) {
+  status_val <- "singleton_missing"
+} else {
+  status_val <- "incomplete"
+}
+```
+
+**change_backbone.R**
+
+* [x] reviewed
+
+- Lines 18-20: if this doesn't call an API and actually use a different backbone, consider renaming the function to clarify.
+
+- Lines 57-58: suggest requiring specific column names, this should just require changing line 140. 
+
+- Lines 133-138: should this just be a warning? Seems like an error might be better here.
+
+- Lines 156-191: Lots of piping in here. If something does go wrong might be tricky to debug.
+
+**clean_taxon_names.R**
+
+* [x] reviewed
+
+- Returns NA when name isn't capitalized. This appears to be intentional, but drops valid species in lower case. To be fair this is "clean" and not "verify", but this seems like a problem if this function is called before verify.
+
+- lines 83-86: "P." is two characters, and it's an abbreviation. Not clear from the comments if this is desired behavior, but "P." will be retained by this function.
+
+- I tried the following vector: "Pinus contorta", "Not species", "Bogus name", "B123 abc", "Not P.", returned the same vector but removed "species" from "Not species".
+
+**common_names.R**
+
+* [x] reviewed
+
+- This is hard to test, so we must assume the LLM returns everything as instructed in lines 152-166. This may be a safe assumption, but I really don't know.
+
+- How is accuracy from LLM output assured here? The verification only looks up the scientific names, correct? What if it assigns the incorrect scientific name, such as *Pinus ponderosa* for sugar pine? Might it be better to only work with scientific names or to query a database? The latter is obviously less flexible, but the assumption that the database is correct is at least testable.
+
+- The main function in this file is common_to_scientific(), consider following the convention in other files and renaming file to common_to_scientific.R. Not critical.
+
+- Lines 144-145: this returns an error when location and taxon_group are NULL during line by line run, but seems to run fine when loaded as a package with the same parameters. Mysterious. Suggest using braces with multiline if statements and perform assignments inside. example below.
+
+```
+if (length(context_lines) > 0L) {
+  context_block <-  paste0("\nContext:\n", paste(context_lines, collapse = "\n"), "\n")
+} else {
+  context_block <- ""
+}
+```
+- Lines 393 onward: is `scientific_to_common()` ever used elsewhere? Seems like the goal of this package is to go the other way, as in common to scientific. Consider removing if not used by other packages.
+
+- I suggest that use_llm in `scientific_to_common()` default to FALSE, as this is a simple lookup.
+
+**create_taxon_names.R**
+
+* [x] reviewed
+
+- `df` is also the distribution function for the f distribution, suggest renaming.
+
+- Lines 59-63: this is an explicit design choice, but what is the rationale for returning an empty `data.frame` instead of issuing an error?
+
+**draft_text.R**
+
+* [x] reviewed
+
+- A bit tricky to test but it all seems to work.
+
+- `df` is also the distribution function for the f distribution, suggest renaming.
+
+- Line 11: Perhaps `generate_report()` and these functions should be in the same package. Same comment for line 88.
+
+- Lines 102-109: Not sure that clinical trials are the best examples here. Even if it is applicable, seems like staying within the domain of the package (taxonomy) is more appropriate. 
+
+- Line 239: In my experience, as well as in much of the commentary I have seen on the subject, code comments are to be treated skeptically. I've even watched talks where they are referred to as "lies". Given that comments can remain the same even if the code changes without affecting the output, I suggest doing the opposite: only referencing code and either ignoring comments completely or at least weight them skeptically.
+
+**fill_higher_ranks.R**
+
+* [x] reviewed
+
+- What is the purpose of `parse_classification_path()` if it just wraps `.extract_rank_from_classification()`?
+
+- `df` is also the distribution function for the f distribution, suggest renaming. Do this for all cases in the package, not just in this file.
+
+**find_taxonomy_conflicts.R**
+
+* [x] reviewed
+
+- Lines 45-49 & 106-107: suggest doing single line `if` or using curly braces.
+
+**is_valid_species_name.R**
+
+* [x] reviewed
+
+- Returns TRUE for "Test all day". What this actually does is not return whether something is a valid species name, rather it tests if something is a sentence-case string with a space that does not contain the specified patterns. Suggest renaming or updating. 
+
+**llm_api_utils.R**
+
+* [x] reviewed
+
+- It was hard to test this without other packages in the ecosystem. Since this review is done one package at a time, I used the tests in the test directory. Perhaps this suggests that package structure should be changed? Either that or define prompt classes in this package.
+
+- Lines 27-28: backward compatibility with what? The package hasn't been released yet. Seems like all these could just be changed to `call_api()`.
+
+- Line 106: step 2 path 1 of what? Same for lines 268 and 386.
+
+**model_registry.R**
+
+* [x]  reviewed
+
+- This was tricky to review, as I only used the azure model. But everything appears to work. How reproducible are results, even from the same model?
+
+- Some minor code duplication in the fetch models functions. Consider wrapping into a single function to avoid duplication. Example: lines 177-174 are the same as 191-194.
+
+- Line 595: says "GitHub", suggest removing to make platform agnostic.
+
+**rank_utils.R**
+
+* [x] reviewed
+
+- Is there a reason to allow `rank_system` as an input at all if it is just going to be compared to reference lists anyway?
+
+**rename_cols.R**
+
+* [x] reviewed
+
+- Perhaps it will become clear later, but why is this function necessary? Numerous existing functions rename columns of a data.frame. For example, dplyr, on which this package depends, has "rename". Suggest simply requiring columns to have specific names when needed instead. 
+
+- Suggest putting variables .dwc_patterns inside the function, so it is local to the function.
+
+**report_section.R**
+
+* [x] reviewed
+
+- Line 15: what does this refer to? Suggest removing.
+
+- Line 108 and elsewhere: snake case (example: snake_case, not CamelCase or dot.separated) is used throughout. Why is this `print.report_section` and not `print_report_section`? Same comment for `format.report_section`.
+
+- Line 159: this suggests that `assemble_report()` returns an .md file, but it only produces a string. This could be done via `writeLines()` or similar.
+
+**TaxaTools-package.R**
+
+* [x] reviewed
+
+**to_faire.R**
+
+* [x] reviewed
+
+- Lines 110-118: should there be some sort of test for specific column names so this works as expected?
+
+- Line 158: This assumes species is always the second word. Could be a good assumption but I'm not sure.
+
+**token_usage.R**
+
+* [x] reviewed
+
+- Hard to test but appears to work as expected.
+
+- Line 137: Dates are tricky so it can be hard to know, but does this *always* work using this date format?
+
+**verify_taxon_names.R**
+
+* [x] reviewed
+
+- Line 80: suggest is.integer instead of is.numeric.
+
+- Line 196: Should verified default to TRUE? Seems like FALSE would be better here, but this appears to be intentional behavior.
+
+- prints out "0 had no match; 0 were unverified due to API failure." when successfully complete (no failures). Suggest only printing this message when a failure occurs.
+
+**zzz.R**
+
+* [x] reviewed
+
+- Lines 71 and 75-76 seem like they are both providing messages about azure api requirements, but they are different. Why?
+
+- Lines 75-78: multiline if should use curly braces and assignment should occur inside. See previous examples.
+
+**Test results**
+
+✔ | F W  S  OK | Context
+✔ |         49 | barcode_utils                                                                      
+✖ | 1       30 | call_api                                                                           
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Error (test-call_api.R:111:1): call_api errors on unknown provider
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+────────────────────────────────────────────────────────────────────────────────────────────────────
+⠹ |         23 | census_genus_species                                                               
+Querying GBIF backbone: Bad (key 111) [1/2]
+Querying GBIF backbone: Good (key 222) [2/2]
+✔ |         41 | census_genus_species                                                               
+⠼ |         25 | change_backbone                                                                    
+change_backbone: 1 name(s) had no match in the target backbone; original name retained in 'GBIF' column (keep_unmatched = TRUE). Rank columns for these rows remain NA.
+✔ |         36 | change_backbone
+✔ |         32 | clean_taxon_names                                                                  
+✔ |         52 | common-names                                                                       
+✔ |         29 | create_taxon_names                                                                 
+✔ |         48 | draft_text                                                                         
+✔ |         39 | fill_higher_ranks                                                                  
+✔ |         24 | find_taxonomy_conflicts                                                            
+✔ |         23 | is_valid_species_name                                                              
+✔ |   1     17 | llm_utils                                                                          
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Warning (test-llm_utils.R:112:3): read_llm_response warns on missing file
+read_llm_response: 'taxon_name' column not found in the combined response. Check that you copied the full LLM output including the header row.
+Backtrace:
+    ▆
+ 1. ├─testthat::expect_warning(...) at test-llm_utils.R:112:3
+ 2. │ └─testthat:::expect_condition_matching_(...)
+ 3. │   └─testthat:::quasi_capture(...)
+ 4. │     ├─testthat (local) .capture(...)
+ 5. │     │ └─base::withCallingHandlers(...)
+ 6. │     └─rlang::eval_bare(quo_get_expr(.quo), quo_get_env(.quo))
+ 7. └─TaxaTools::read_llm_response("nonexistent_file_12345.txt")
+────────────────────────────────────────────────────────────────────────────────────────────────────
+⠏ |          0 | model_registry                                                                      provider tier   model  source
+ listprov fast lp-mini bundled
+ listprov  mid  lp-std bundled
+ listprov  top  lp-top bundled
+⠧ | 9        9 | model_registry                                                                     Initiating curl with CURL_SSL_BACKEND: openssl
+✖ | 12       14 | model_registry                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Error (test-model_registry.R:55:3): register_provider adds provider to session registry
+Error in `.get_registry()`: could not find function ".get_registry"
+
+Error (test-model_registry.R:46:1): register_provider adds provider to session registry
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+
+Error (test-model_registry.R:74:3): register_provider strips trailing slash from base_url
+Error in `.get_registry()`: could not find function ".get_registry"
+
+Error (test-model_registry.R:65:1): register_provider strips trailing slash from base_url
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+
+Error (test-model_registry.R:94:3): register_provider fallback resolves via .resolve_model()
+Error in `.resolve_model("fallbackprov", "mid")`: could not find function ".resolve_model"
+
+Error (test-model_registry.R:80:1): register_provider fallback resolves via .resolve_model()
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+
+Error (test-model_registry.R:116:3): set_model accepts a registered custom provider
+Error in `.resolve_model("pinprov", "mid")`: could not find function ".resolve_model"
+
+Error (test-model_registry.R:104:1): set_model accepts a registered custom provider
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+
+Error (test-model_registry.R:124:1): set_model still rejects completely unknown provider names
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+
+Error (test-model_registry.R:133:1): list_models() includes registered providers when key is set
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+
+Error (test-model_registry.R:153:1): call_openai_api errors with clear message for unregistered base_url
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+
+Error (test-model_registry.R:164:1): call_openai_api resolves tier via registered provider for matching base_url
+Error in `eval(code, test_env)`: object '.registry_env' not found
+Backtrace:
+    ▆
+ 1. └─.reset_registry()
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Maximum number of failures exceeded; quitting.
+ℹ Increase this number with (e.g.) `testthat::set_max_fails(Inf)` 
+Error:
+! Test failures.
+

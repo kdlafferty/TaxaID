@@ -5,7 +5,7 @@
 \title{Convert Match Object Taxonomy to a Target Backbone}
 \usage{
 convert_taxonomy_backbone(
-  df,
+  match_df,
   target_backbone_id,
   source_backbone_id = NULL,
   rank_system = c("order", "family", "genus", "species"),
@@ -18,29 +18,29 @@ convert_taxonomy_backbone(
 )
 }
 \arguments{
-\item{df}{A data frame containing a taxon name column and rank columns.}
+\item{match_df}{A data frame containing a taxon name column and rank columns.}
 
 \item{target_backbone_id}{Integer. The target backbone identifier.
 Standard IDs: 1 = Catalogue of Life, 3 = ITIS, 4 = NCBI, 9 = WoRMS,
 11 = GBIF. See \url{https://verifier.globalnames.org/} for the full list.}
 
 \item{source_backbone_id}{Integer or \code{NULL}. The backbone that produced
-\code{df}'s current hierarchy. Used only to label the \code{taxonomy_collision}
+\code{match_df}'s current hierarchy. Used only to label the \code{taxonomy_collision}
 column for rows not found in the target backbone. When \code{NULL} (default),
 not-found rows are labelled \code{"original"}.}
 
 \item{rank_system}{Character vector of rank column names to compare and
 potentially update, listed broadest to finest (e.g.
-\code{c("order", "family", "genus", "species")}). Columns absent from \code{df}
+\code{c("order", "family", "genus", "species")}). Columns absent from \code{match_df}
 are silently skipped.}
 
 \item{taxon_col}{Character. Name of the column containing the taxon name
 used as the lookup key (default \code{"taxon_name"}).}
 
-\item{update_taxon_name}{Logical. When \code{TRUE} (default), \code{df[[taxon_col]]}
+\item{update_taxon_name}{Logical. When \code{TRUE} (default), \code{match_df[[taxon_col]]}
 is updated to the target backbone's accepted name (authority strings
 stripped via \code{\link[TaxaTools:clean_taxon_names]{TaxaTools::clean_taxon_names()}}). The original value is
-preserved in \code{df[[original_col]]}.}
+preserved in \code{match_df[[original_col]]}.}
 
 \item{original_col}{Character. Name of the column to receive the original
 taxon name when \code{update_taxon_name = TRUE} (default \code{"taxon_name_original"}).
@@ -60,14 +60,14 @@ argument; must return a data frame with columns \code{user_supplied_name},
 offline testing via dependency injection.}
 }
 \value{
-\code{df} with rank columns potentially updated, plus \code{backbone_col},
+\code{match_df} with rank columns potentially updated, plus \code{backbone_col},
 \code{collision_col}, and (when \code{update_taxon_name = TRUE}) \code{original_col}
 columns added. The attribute \code{backbone_cols} is set: a named list
 mapping \code{"backbone_N_cols"} to the rank column names that were subject
 to conversion.
 }
 \description{
-Looks up each unique taxon name in \code{df[[taxon_col]]} against a target
+Looks up each unique taxon name in \code{match_df[[taxon_col]]} against a target
 taxonomic backbone (e.g. GBIF, NCBI), then replaces rank columns with
 the target backbone's hierarchy wherever the target provides a non-NA
 value (\emph{per-column fallback}: ranks the target omits are left unchanged).
@@ -89,7 +89,7 @@ is also printed.
 }
 \note{
 This function issues one API call to \code{verify_fn} covering all unique
-non-NA taxon names in \code{df}. Rank updates and collision detection are
+non-NA taxon names in \code{match_df}. Rank updates and collision detection are
 performed with vectorised operations (no row-by-row loop).
 
 Taxonomic backbones assign different family/order hierarchies to the same
@@ -103,7 +103,7 @@ from a different backbone.
 \dontrun{
 # Convert a BLAST match object (NCBI backbone, backbone_id = 4) to GBIF (11)
 match_obj_gbif <- convert_taxonomy_backbone(
-  df                = match_obj,
+  match_df           = match_obj,
   target_backbone_id = 11,
   source_backbone_id = 4,
   rank_system        = c("order", "family", "genus", "species")

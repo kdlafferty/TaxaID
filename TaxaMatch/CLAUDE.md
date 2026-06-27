@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-24 (Session 119 — score_image_inat() added; live iNat CV API submission for image batches)
+# Last updated: 2026-06-27 (Session 122 — peer-review pass: session comment removed from report_match.R; debris deleted: Write_text_reports.R, test_image_functions.R, man/figures/README-pressure-1.png, inst/INTRO.md, README.Rmd, inst/match_obj.rds, inst/workflow_acoustics.R, inst/animl_workflow_design.md)
 
 ---
 

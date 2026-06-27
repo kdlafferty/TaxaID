@@ -53,7 +53,7 @@ corrupt slash names. These arise from GBIF records returned when querying
 at genus or family rank. Prevent them by passing
 \code{require_species = TRUE} to \code{\link[TaxaFetch:filter_gbif_quality]{TaxaFetch::filter_gbif_quality()}} before
 occurrence data enters the pipeline. Use
-\code{TaxaTools::is_valid_species_name()} to audit candidate sets if unexpected
+\code{TaxaTools::is_plausible_binomial()} to audit candidate sets if unexpected
 slash names appear.
 }
 \examples{

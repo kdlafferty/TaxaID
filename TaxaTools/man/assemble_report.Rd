@@ -15,7 +15,12 @@ assemble_report(..., title = NULL, study_description = NULL)
 description paragraph inserted before the Methods sections.}
 }
 \value{
-Character string containing the full assembled markdown report.
+A length-1 character string containing the full assembled markdown
+report. Pass to \code{writeLines()} to write to a file, or to \code{cat()}
+to view in the console:
+\preformatted{
+writeLines(full_report, "methods_report.md")
+  }
 }
 \description{
 Takes any number of \code{report_section} objects (typically one per
@@ -31,7 +36,7 @@ match_sec  <- report_match(match_data)
 assign_sec <- report_assign(result, consensus)
 full_report <- assemble_report(fetch_sec, match_sec, assign_sec,
                                title = "eDNA Taxonomic Assignment Report")
-cat(full_report)
+writeLines(full_report, "methods_report.md")
 }
 
 }

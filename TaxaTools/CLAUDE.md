@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-23 (Session 116 — barcode_length_defaults["mifish"] tightened to c(130L, 210L) to exclude bacterial cross-amplicons)
+# Last updated: 2026-06-27 (Session 122 — is_valid_species_name() → is_plausible_binomial() rename; call_api() data-sensitivity @details added; startup message data-transmission NOTE added; README.md Code Style + lintr-sweep reminder added; man/figures/README-pressure-1.png debris deleted)
 
 ---
 
@@ -23,7 +23,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `change_backbone()` | Post-process `verify_taxon_names()` output; rename source/translated name columns; parse pipe-delimited classification into wide rank columns | Complete | R/change_backbone.R |
 | `rename_cols()` | Rename data frame columns using an explicit `col_map` or built-in case-insensitive regex patterns for common DarwinCore alternatives; `strict` arg controls missing-key behaviour | Complete | R/rename_cols.R |
 | `find_taxonomy_conflicts()` | Detect higher-rank inconsistencies in taxonomy data frames; returns `taxon_name`, `taxon_rank`, `parent_rank`, `parent_values`, `n_values` | Complete | R/find_taxonomy_conflicts.R |
-| `is_valid_species_name()` | Filter out "sp.", "cf.", "aff.", uncultured, environmental, and non-binomial names; vectorised logical return | Complete | R/is_valid_species_name.R |
+| `is_plausible_binomial()` | Filter out "sp.", "cf.", "aff.", uncultured, environmental, and non-binomial names; vectorised logical return | Complete | R/is_valid_species_name.R |
 | `to_faire()` | Export a TaxaID data frame (match/likelihood/posterior object) to FAIRe checklist column conventions (`taxaRaw` / `taxaFinal`). Renames `observation_id` → `seq_id`, `taxon_name` → `scientificName`, etc.; constructs `verbatimIdentification`, `specificEpithet`, `checkls_ver`. Columns not in the FAIRe mapping are retained unchanged. Attaches `faire_table` attribute. | Complete | R/to_faire.R |
 | `format_dwc()` | Apply per-column DarwinCore formatting rules | Planned | — |
 | `validate_dwc()` | Read-only QC after formatting | Planned | — |
@@ -122,7 +122,7 @@ rename_cols()           # align column names to DarwinCore
 | test-null_coalesce.R | `%\|\|%` | Fully offline |
 | test-call_api.R | `call_api()` | 21 tests; fully offline; covers input validation, `max_input_tokens` pre-flight guard, no-provider error, mocked anthropic/gemini/openai_compat response parsers, token attribute, `show_tokens` |
 | test-find_taxonomy_conflicts.R | `find_taxonomy_conflicts()` | 13 tests; fully offline; covers clean data, known genus-family conflict, explicit and auto-detected rank_system, NA row skipping, multi-level conflict, output column types |
-| test-is_valid_species_name.R | `is_valid_species_name()` | 14 tests; fully offline; covers well-formed binomials, lowercase genus, genus-only, sp./cf./aff. suffixes, uncultured/environmental/metagenome names, vectorisation, NA |
+| test-is_plausible_binomial.R | `is_plausible_binomial()` | 14 tests; fully offline; covers well-formed binomials, lowercase genus, genus-only, sp./cf./aff. suffixes, uncultured/environmental/metagenome names, vectorisation, NA |
 | test-llm_utils.R | `call_anthropic_api()` and other provider functions | Online tests skipped; pre-existing WARN in check |
 | test-census_genus_species.R | `census_genus_species()` | Online (GBIF) tests skipped offline |
 | test-draft_text.R | `build_report_context()`, `draft_methods_text()`, `draft_results_text()` | LLM calls skipped offline |

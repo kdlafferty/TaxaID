@@ -8,7 +8,7 @@ scientific_to_common(
   scientific_names,
   backbone_id = 11L,
   location = NULL,
-  use_llm = TRUE,
+  use_llm = FALSE,
   llm_fn = getOption("TaxaID.llm_fn"),
   ...
 )
@@ -26,9 +26,9 @@ scientific_to_common(
 Biases the LLM toward regionally appropriate common names.  Has no effect
 on backbone-sourced results.  Default \code{NULL}.}
 
-\item{use_llm}{Logical.  If \code{TRUE} (default), taxa with no backbone
-result are sent to the LLM in a single batched call.  Set \code{FALSE} to
-return \code{NA} for unresolved taxa instead.}
+\item{use_llm}{Logical.  If \code{TRUE}, taxa with no backbone result are
+sent to the LLM in a single batched call.  Default \code{FALSE}: returns
+\code{NA} for unresolved taxa without an LLM call.}
 
 \item{llm_fn}{Function with signature \code{function(prompt, ...) ->
   character(1)}.  Required when \code{use_llm = TRUE} or

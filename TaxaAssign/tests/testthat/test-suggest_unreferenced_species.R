@@ -38,20 +38,20 @@ error_plausible_llm  <- function(prompt) stop("API unavailable")
 
 
 # ============================================================================
-# TaxaTools::is_valid_species_name() — spot-check here (full tests in TaxaTools)
+# TaxaTools::is_plausible_binomial() — spot-check here (full tests in TaxaTools)
 # ============================================================================
 
-test_that("is_valid_species_name() accepts clean binomials", {
+test_that("is_plausible_binomial() accepts clean binomials", {
   skip_if_not_installed("TaxaTools")
   good <- c("Fundulus parvipinnis", "Gambusia affinis", "Salmo salar")
-  expect_true(all(TaxaTools::is_valid_species_name(good)))
+  expect_true(all(TaxaTools::is_plausible_binomial(good)))
 })
 
-test_that("is_valid_species_name() rejects non-binomials and placeholders", {
+test_that("is_plausible_binomial() rejects non-binomials and placeholders", {
   skip_if_not_installed("TaxaTools")
   bad <- c("Fundulus", "sp.", "Fundulus sp.", "Fundulus cf. lima",
            "uncultured Gambusia sp.", "environmental sample")
-  expect_false(any(TaxaTools::is_valid_species_name(bad)))
+  expect_false(any(TaxaTools::is_plausible_binomial(bad)))
 })
 
 

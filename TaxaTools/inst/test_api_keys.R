@@ -67,7 +67,7 @@ providers <- list(
   list(
     name   = "Azure OpenAI (DOI)",
     key    = "AZURE_OPENAI_API_KEY",
-    fn     = TaxaTools::call_azure_api,
+    fn     = TaxaTools::call_azure_openai_api,
     note   = "Requires DOI network or DOI VPN connection"
   ),
   list(

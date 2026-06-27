@@ -123,6 +123,5 @@ head(result)
 unlink(c(tmp1, tmp2))
 }
 \seealso{
-\code{\link[=standardize_match_data]{standardize_match_data()}},
-\code{\link[TaxaLikely:fetch_reference_recordings]{TaxaLikely::fetch_reference_recordings()}}
+\code{\link[=standardize_match_data]{standardize_match_data()}}
 }

@@ -1312,7 +1312,7 @@ annotate_script <- function(script_path,
       )
     },
     function_ref = sprintf(
-      'shiny::selectInput("%s", "%s", choices = c("Auto-detect" = "TaxaTools::call_api", "Anthropic Claude" = "TaxaTools::call_anthropic_api", "Azure OpenAI (DOI)" = "TaxaTools::call_azure_api", "OpenAI GPT" = "TaxaTools::call_openai_api", "Google Gemini" = "TaxaTools::call_gemini_api", "Ollama (local)" = "TaxaTools::call_ollama_api"), selected = "%s"),',
+      'shiny::selectInput("%s", "%s", choices = c("Auto-detect" = "TaxaTools::call_api", "Anthropic Claude" = "TaxaTools::call_anthropic_api", "Azure OpenAI (DOI)" = "TaxaTools::call_azure_openai_api", "OpenAI GPT" = "TaxaTools::call_openai_api", "Google Gemini" = "TaxaTools::call_gemini_api", "Ollama (local)" = "TaxaTools::call_ollama_api"), selected = "%s"),',
       input_id, label, param$default
     ),
     null_param = sprintf(

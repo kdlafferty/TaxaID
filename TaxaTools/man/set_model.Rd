@@ -8,7 +8,7 @@ set_model(provider, tier, model)
 }
 \arguments{
 \item{provider}{Character. Provider name: \code{"anthropic"},
-\code{"gemini"}, \code{"openai"}, or \code{"azure"}.}
+\code{"gemini"}, \code{"openai"}, or \code{"azure_openai"}.}
 
 \item{tier}{Character. Tier to pin: \code{"fast"}, \code{"mid"}, or
 \code{"top"}.}

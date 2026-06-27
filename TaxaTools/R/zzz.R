@@ -18,7 +18,7 @@
     list(key = "ANTHROPIC_API_KEY",    name = "anthropic",  label = "Anthropic"),
     list(key = "GEMINI_API_KEY",       name = "gemini",     label = "Gemini"),
     list(key = "OPENAI_API_KEY",       name = "openai",     label = "OpenAI"),
-    list(key = "AZURE_OPENAI_API_KEY", name = "azure",      label = "Azure OpenAI (DOI)")
+    list(key = "AZURE_OPENAI_API_KEY", name = "azure_openai", label = "Azure OpenAI (DOI)")
   )
 
   available <- list()
@@ -67,22 +67,27 @@
 
   if (n == 1L) {
     msg <- sprintf("TaxaID: Using %s as LLM provider.", chosen$label)
-    if (identical(chosen$name, "azure")) {
+    if (identical(chosen$name, "azure_openai")) {
       msg <- paste0(msg, "\n  NOTE: Azure OpenAI requires connection to a DOI computer system or DOI VPN.")
     }
+    msg <- paste0(msg, "\n  NOTE: Cloud LLM providers transmit prompts to third-party servers.",
+                  " Use provider = 'ollama' for local inference with sensitive data.")
     packageStartupMessage(msg)
   } else {
-    doi_note <- if (identical(chosen$name, "azure"))
-      "\n  NOTE: Azure OpenAI requires connection to a DOI computer system or DOI VPN."
-    else
-      ""
+    if (identical(chosen$name, "azure_openai")) {
+      doi_note <- "\n  NOTE: Azure OpenAI requires connection to a DOI computer system or DOI VPN."
+    } else {
+      doi_note <- ""
+    }
     packageStartupMessage(
       sprintf("TaxaID: Multiple LLM providers available (%s).",
               paste(vapply(available, `[[`, character(1L), "label"),
                     collapse = ", ")),
       sprintf("\n  Using %s (first available). Change with:", chosen$label),
       sprintf('\n    options(TaxaID.provider = "%s")', available[[2L]]$name),
-      doi_note
+      doi_note,
+      "\n  NOTE: Cloud LLM providers transmit prompts to third-party servers.",
+      " Use provider = 'ollama' for local inference with sensitive data."
     )
   }
 }

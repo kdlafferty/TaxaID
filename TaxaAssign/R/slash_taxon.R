@@ -95,7 +95,7 @@
 #'   at genus or family rank. Prevent them by passing
 #'   `require_species = TRUE` to [TaxaFetch::filter_gbif_quality()] before
 #'   occurrence data enters the pipeline. Use
-#'   `TaxaTools::is_valid_species_name()` to audit candidate sets if unexpected
+#'   `TaxaTools::is_plausible_binomial()` to audit candidate sets if unexpected
 #'   slash names appear.
 #'
 #' @examples

@@ -673,7 +673,7 @@ fetch_reference_sequences <- function(taxa,
 
       # Filter to valid species names (reuse coverage.R helper pattern)
       if (finest_rank == "species") {
-        meta <- meta[TaxaTools::is_valid_species_name(meta$species),
+        meta <- meta[TaxaTools::is_plausible_binomial(meta$species),
                      , drop = FALSE]
       }
 
@@ -744,7 +744,7 @@ fetch_reference_sequences <- function(taxa,
               !is.na(priority_combined[[finest_rank]]), , drop = FALSE]
             if (finest_rank == "species") {
               priority_combined <- priority_combined[
-                TaxaTools::is_valid_species_name(priority_combined$species),
+                TaxaTools::is_plausible_binomial(priority_combined$species),
                 , drop = FALSE]
             }
           } else {

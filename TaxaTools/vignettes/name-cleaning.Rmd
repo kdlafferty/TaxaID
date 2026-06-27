@@ -93,7 +93,7 @@ create_taxon_names(df, rank_system = c("family", "genus", "species"))
 detect_ranks(match_df)
 
 # Validate species binomials
-is_valid_species_name(c("Cottus asper", "Cottus sp.", "uncultured clone"))
+is_plausible_binomial(c("Cottus asper", "Cottus sp.", "uncultured clone"))
 # TRUE, FALSE, FALSE
 
 # Resolve barcode length ranges

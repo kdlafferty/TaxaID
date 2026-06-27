@@ -114,7 +114,7 @@
 
   # Tier patterns ALWAYS come from the bundled inst/model_tiers.json.
   # This ensures that updates to patterns (via devtools::install() or a PR to
-  # the GitHub JSON) take effect immediately without clearing the local cache.
+  # the repository JSON) take effect immediately without clearing the local cache.
   #
   # The local cache only contributes fallback_models (discovered model names
   # from previous refresh_models() calls). This lets the package skip live API
@@ -376,7 +376,7 @@
       anthropic = "ANTHROPIC_API_KEY",
       gemini    = "GEMINI_API_KEY",
       openai    = "OPENAI_API_KEY",
-      azure     = "AZURE_OPENAI_API_KEY",
+      azure_openai = "AZURE_OPENAI_API_KEY",
       ""
     )
     api_key <- Sys.getenv(key_var)
@@ -393,7 +393,7 @@
             anthropic = .fetch_anthropic_models(api_key),
             gemini    = .fetch_gemini_models(api_key),
             openai    = .fetch_openai_models(api_key),
-            azure     = .fetch_azure_models(api_key, endpoint_tpl),
+            azure_openai = .fetch_azure_models(api_key, endpoint_tpl),
             character(0)
           )
         }
@@ -479,7 +479,7 @@ list_models <- function(provider = NULL) {
       anthropic = "ANTHROPIC_API_KEY",
       gemini    = "GEMINI_API_KEY",
       openai    = "OPENAI_API_KEY",
-      azure     = "AZURE_OPENAI_API_KEY",
+      azure_openai = "AZURE_OPENAI_API_KEY",
       ""
     )
   }, character(1))
@@ -570,7 +570,7 @@ refresh_models <- function(providers = NULL) {
       anthropic = "ANTHROPIC_API_KEY",
       gemini    = "GEMINI_API_KEY",
       openai    = "OPENAI_API_KEY",
-      azure     = "AZURE_OPENAI_API_KEY",
+      azure_openai = "AZURE_OPENAI_API_KEY",
       ""
     )
   }, character(1))
@@ -592,7 +592,7 @@ refresh_models <- function(providers = NULL) {
   ))
 
   # Reset registry so .get_registry() re-reads bundled patterns fresh.
-  # This ensures any JSON updates (via install or GitHub fetch) take effect.
+  # This ensures any JSON updates (via install or reinstall) take effect.
   .registry_env$registry_loaded <- FALSE
   .registry_env$registry        <- NULL
 
@@ -650,7 +650,7 @@ refresh_models <- function(providers = NULL) {
 #' restart R or call \code{set_model(provider, tier, NULL)}.
 #'
 #' @param provider Character. Provider name: \code{"anthropic"},
-#'   \code{"gemini"}, \code{"openai"}, or \code{"azure"}.
+#'   \code{"gemini"}, \code{"openai"}, or \code{"azure_openai"}.
 #' @param tier Character. Tier to pin: \code{"fast"}, \code{"mid"}, or
 #'   \code{"top"}.
 #' @param model Character. Exact model identifier to use, or \code{NULL} to
@@ -839,7 +839,7 @@ register_provider <- function(
   if (!is.character(base_url) || length(base_url) != 1L || !nzchar(base_url)) {
     stop("register_provider: 'base_url' must be a non-empty character string.")
   }
-  if (name %in% c("anthropic", "gemini", "openai", "azure")) {
+  if (name %in% c("anthropic", "gemini", "openai", "azure_openai")) {
     stop(sprintf(
       "register_provider: '%s' is a built-in provider. Use set_model() to pin models or refresh_models() to update.",
       name

@@ -83,5 +83,5 @@ answer <- call_ollama_api("What phylum do sea urchins belong to?",
 \seealso{
 \code{\link{call_api}}, \code{\link{call_anthropic_api}},
 \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-\code{\link{call_azure_api}}, \code{\link{prompt_api}}
+\code{\link{call_azure_openai_api}}, \code{\link{prompt_api}}
 }

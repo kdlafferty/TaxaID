@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-23 (Session 117 — score_image_inat() and check_inat_range() added as TODOs; inat_range_prompt.md updated with asymmetric evidence framing)
+# Last updated: 2026-06-27 (Session 122 — PDFs moved from pdfs/so_cal_gobies/ to inst/extdata/pdfs/; pdf_workflow_test_v4.R updated to use system.file("extdata/pdfs", package = "TaxaFetch"); inat_cv_api_prompt.md and inat_range_prompt.md debris deleted; keep_12S_PtCon_ESVS.csv root-level data file deleted)
 
 ---
 

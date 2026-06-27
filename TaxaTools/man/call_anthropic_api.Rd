@@ -60,6 +60,6 @@ cat(answer)
 \code{\link{call_api}} for the generic dispatcher.
 \code{\link{prompt_api}} for multi-chunk \code{llm_prompt} submission.
 \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-\code{\link{call_ollama_api}}, \code{\link{call_azure_api}} for
+\code{\link{call_ollama_api}}, \code{\link{call_azure_openai_api}} for
 alternative providers.
 }

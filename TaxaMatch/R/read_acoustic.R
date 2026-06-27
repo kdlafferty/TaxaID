@@ -98,8 +98,7 @@
 #'   )
 #' ```
 #'
-#' @seealso [standardize_match_data()],
-#'   [`TaxaLikely::fetch_reference_recordings()`][TaxaLikely::fetch_reference_recordings]
+#' @seealso [standardize_match_data()]
 #'
 #' @export
 #'

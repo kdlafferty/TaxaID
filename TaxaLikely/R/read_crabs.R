@@ -45,7 +45,7 @@
 #'   \code{NULL} retains all lengths.
 #' @param require_species Logical (default \code{TRUE}). When \code{TRUE},
 #'   rows with a missing or invalid species name are dropped.  Validity is
-#'   checked by [TaxaTools::is_valid_species_name()], which rejects
+#'   checked by [TaxaTools::is_plausible_binomial()], which rejects
 #'   \code{sp.}, \code{cf.}, \code{aff.}, and \code{uncultured} names.  Set
 #'   to \code{FALSE} to retain genus-level-only references.
 #' @param dereplicate Logical (default \code{FALSE}). When \code{TRUE},
@@ -190,7 +190,7 @@ read_crabs_output <- function(file,
   # --- require_species filter -------------------------------------------------
   if (require_species) {
     n_before <- nrow(df)
-    keep     <- !is.na(df$species) & TaxaTools::is_valid_species_name(df$species)
+    keep     <- !is.na(df$species) & TaxaTools::is_plausible_binomial(df$species)
     df       <- df[keep, , drop = FALSE]
     n_drop   <- n_before - nrow(df)
     if (n_drop > 0L)

@@ -40,7 +40,7 @@ extended_ranks <- c(
 #' warning when auto-detection finds nothing and falls back to
 #' \code{c("family", "genus", "species")}.
 #'
-#' @param df A data frame whose column names may include taxonomy ranks.
+#' @param input_df A data frame whose column names may include taxonomy ranks.
 #' @param rank_system Character vector of rank names (coarse to fine), or
 #'   \code{NULL} to auto-detect from \code{standard_ranks}.
 #' @param warn Logical (default \code{TRUE}).  If \code{TRUE}, emits a
@@ -52,18 +52,18 @@ extended_ranks <- c(
 #'   \code{character(0)}.
 #'
 #' @examples
-#' df <- data.frame(family = "Fundulidae", genus = "Fundulus",
-#'                  species = "Fundulus parvipinnis", score = 99)
-#' detect_ranks(df)
+#' input_df <- data.frame(family = "Fundulidae", genus = "Fundulus",
+#'                        species = "Fundulus parvipinnis", score = 99)
+#' detect_ranks(input_df)
 #' # "family" "genus" "species"
 #'
 #' @export
-detect_ranks <- function(df, rank_system = NULL, warn = TRUE) {
-  if (!is.data.frame(df))
-    stop("detect_ranks: df must be a data frame")
+detect_ranks <- function(input_df, rank_system = NULL, warn = TRUE) {
+  if (!is.data.frame(input_df)) {
+    stop("detect_ranks: input_df must be a data frame")
+  }
 
-  col_names <- tolower(names(df))
-
+  col_names <- tolower(names(input_df))
 
   if (!is.null(rank_system)) {
     return(rank_system[tolower(rank_system) %in% col_names])
@@ -75,13 +75,14 @@ detect_ranks <- function(df, rank_system = NULL, warn = TRUE) {
     fallback <- c("family", "genus", "species")
     detected <- fallback[fallback %in% col_names]
     if (warn) {
-      warning(
-        "detect_ranks: no standard rank columns detected in data; ",
-        if (length(detected) > 0L)
-          paste0("falling back to: ", paste(detected, collapse = ", "), ".")
-        else
-          "no rank columns found at all."
-      )
+      if (length(detected) > 0L) {
+        warning(
+          "detect_ranks: no standard rank columns detected in data; ",
+          "falling back to: ", paste(detected, collapse = ", "), "."
+        )
+      } else {
+        warning("detect_ranks: no rank columns found at all.")
+      }
     }
   }
 

@@ -120,8 +120,7 @@
 #'   )
 #' ```
 #'
-#' @seealso [standardize_match_data()],
-#'   [`TaxaLikely::build_acoustic_reference()`][TaxaLikely::build_acoustic_reference]
+#' @seealso [standardize_match_data()]
 #'
 #' @export
 #'
@@ -495,8 +494,7 @@ read_animl_output <- function(files,
 #'   )
 #' ```
 #'
-#' @seealso [read_animl_output()], [standardize_match_data()],
-#'   [`TaxaLikely::build_image_reference()`][TaxaLikely::build_image_reference]
+#' @seealso [read_animl_output()], [standardize_match_data()]
 #'
 #' @export
 #'
@@ -704,8 +702,7 @@ read_inaturalist_cv_output <- function(files,
 #' prediction per image (one row per image). If your output has multiple
 #' candidates per image, use `top_n` to control how many are retained.
 #'
-#' @seealso [read_animl_output()], [standardize_match_data()],
-#'   [`TaxaLikely::build_image_reference()`][TaxaLikely::build_image_reference]
+#' @seealso [read_animl_output()], [standardize_match_data()]
 #'
 #' @export
 #'

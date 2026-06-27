@@ -105,7 +105,7 @@ bbox <- c(
   lat_max =   34.5
 )
 
-pdf_dir <- "pdfs/so_cal_gobies"
+pdf_dir <- system.file("extdata/pdfs", package = "TaxaFetch")
 
 message(sprintf("Taxon scope : %s", taxon_scope))
 message(sprintf("Geo scope   : %s", geo_scope))

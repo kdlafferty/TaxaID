@@ -36,9 +36,9 @@ test_that("detect_ranks uses supplied rank_system", {
   expect_equal(out, c("genus", "species"))
 })
 
-test_that("detect_ranks warns when no standard ranks found", {
+test_that("detect_ranks warns when no rank columns found", {
   df <- data.frame(x = 1, y = 2)
-  expect_warning(detect_ranks(df), "no standard rank columns")
+  expect_warning(detect_ranks(df), "no rank columns found at all")
 })
 
 test_that("detect_ranks errors on non-data-frame", {

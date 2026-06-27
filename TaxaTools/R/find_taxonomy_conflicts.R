@@ -9,7 +9,7 @@
 #' corrections.  Adapted from the GITA pipeline's
 #' `f_find_taxonomic_inconsistencies()`, vectorised for performance.
 #'
-#' @param df Data frame with taxonomy columns (e.g. `family`, `genus`,
+#' @param input_df Data frame with taxonomy columns (e.g. `family`, `genus`,
 #'   `species`).
 #' @param rank_system Character vector of rank column names, coarse to fine.
 #'   If `NULL` (default), auto-detected via [detect_ranks()].
@@ -41,23 +41,25 @@
 #'
 #' @seealso [detect_ranks()], [change_backbone()]
 #' @export
-find_taxonomy_conflicts <- function(df, rank_system = NULL) {
-  if (!is.data.frame(df))
-    stop("find_taxonomy_conflicts: df must be a data frame")
+find_taxonomy_conflicts <- function(input_df, rank_system = NULL) {
+  if (!is.data.frame(input_df)) {
+    stop("find_taxonomy_conflicts: input_df must be a data frame")
+  }
 
-  if (is.null(rank_system))
-    rank_system <- detect_ranks(df, warn = TRUE)
+  if (is.null(rank_system)) {
+    rank_system <- detect_ranks(input_df, warn = TRUE)
+  }
 
   if (length(rank_system) < 2L) {
     message("find_taxonomy_conflicts: fewer than 2 rank columns detected; no conflicts possible.")
     return(.empty_conflict_df())
   }
 
-  # Only use ranks that are actually columns in df
+  # Only use ranks that are actually columns in input_df
 
-  rank_system <- rank_system[rank_system %in% names(df)]
+  rank_system <- rank_system[rank_system %in% names(input_df)]
   if (length(rank_system) < 2L) {
-    message("find_taxonomy_conflicts: fewer than 2 rank columns present in df.")
+    message("find_taxonomy_conflicts: fewer than 2 rank columns present in input_df.")
     return(.empty_conflict_df())
   }
 
@@ -68,11 +70,11 @@ find_taxonomy_conflicts <- function(df, rank_system = NULL) {
 
   for (ri in seq(2L, length(rank_system))) {
     child_rank <- rank_system[ri]
-    child_vals <- as.character(df[[child_rank]])
+    child_vals <- as.character(input_df[[child_rank]])
 
     for (pi in seq_len(ri - 1L)) {
       parent_rank <- rank_system[pi]
-      parent_vals <- as.character(df[[parent_rank]])
+      parent_vals <- as.character(input_df[[parent_rank]])
 
       # Skip rows with NA in either column
       ok <- !is.na(child_vals) & !is.na(parent_vals) &
@@ -103,8 +105,9 @@ find_taxonomy_conflicts <- function(df, rank_system = NULL) {
     }
   }
 
-  if (k == 0L)
+  if (k == 0L) {
     return(.empty_conflict_df())
+  }
 
   do.call(rbind, conflicts[seq_len(k)])
 }

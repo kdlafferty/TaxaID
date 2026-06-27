@@ -3,16 +3,6 @@
 # TaxaTools — Rename data frame columns to a target naming convention
 # ==============================================================================
 
-# Default regex pattern → DarwinCore target map.
-# Applied case-insensitively against column names when col_map = NULL.
-# Each pattern must match at most one column; ambiguous matches are skipped.
-.dwc_patterns <- c(
-  "^lat(itude)?$"                                       = "decimalLatitude",
-  "^lon(gitude)?$|^long$"                               = "decimalLongitude",
-  "^(survey|collection|event)?date$|^date(collected)?$" = "eventDate",
-  "^(site|location|locality)$"                          = "verbatimLocality"
-)
-
 #' Rename Data Frame Columns to a Target Convention
 #'
 #' Renames columns in a data frame using either a user-supplied explicit map or
@@ -21,9 +11,9 @@
 #' aligning supplemental occurrence data to a shared column naming convention
 #' before combining sources with \code{stack_occurrences()}.
 #'
-#' @param df A data frame whose columns are to be renamed.
+#' @param input_df A data frame whose columns are to be renamed.
 #' @param col_map Named character vector or \code{NULL}. When supplied, each
-#'   \strong{name} is an existing column name in \code{df} and each
+#'   \strong{name} is an existing column name in \code{input_df} and each
 #'   \strong{value} is the desired new name. Both must be \strong{quoted
 #'   strings}:
 #'   \preformatted{
@@ -36,13 +26,13 @@
 #'   \code{NULL} (default), the built-in regex patterns are used instead
 #'   (see Details).
 #' @param strict Logical. Controls behaviour when a \code{col_map} key is not
-#'   found in \code{df}.
+#'   found in \code{input_df}.
 #'   \itemize{
 #'     \item \code{FALSE} (default): warns about unmatched keys and renames
 #'       whatever it can. Suitable when \code{rename_cols()} is applied to
 #'       frames that may only contain some of the target columns.
 #'     \item \code{TRUE}: stops with an error if any \code{col_map} key is
-#'       absent from \code{df}. Use in scripts where all mappings must succeed.
+#'       absent from \code{input_df}. Use in scripts where all mappings must succeed.
 #'   }
 #'   Has no effect when \code{col_map = NULL} (default patterns always
 #'   skip non-matching columns silently).
@@ -65,8 +55,8 @@
 #'   \item \code{site}, \code{location}, \code{locality} -> \code{verbatimLocality}
 #' }
 #' Matching is case-insensitive so \code{Lat}, \code{LAT}, and \code{lat} all
-#' match. If the target column already exists in \code{df} (e.g. \code{df}
-#' already has \code{decimalLatitude}), that pattern is skipped.
+#' match. If the target column already exists in \code{input_df} (e.g.
+#' \code{input_df} already has \code{decimalLatitude}), that pattern is skipped.
 #'
 #' \strong{User col_map replaces defaults:} When \code{col_map} is supplied,
 #' none of the default patterns are applied.
@@ -127,12 +117,12 @@
 #'                       strict  = TRUE)
 #' }
 
-rename_cols <- function(df,
+rename_cols <- function(input_df,
                         col_map = NULL,
                         strict  = FALSE) {
 
   # --- Input validation -------------------------------------------------------
-  if (!is.data.frame(df)) stop("`df` must be a data frame.")
+  if (!is.data.frame(input_df)) stop("`input_df` must be a data frame.")
   if (!is.logical(strict) || length(strict) != 1L || is.na(strict)) {
     stop("`strict` must be a single logical value (TRUE or FALSE).")
   }
@@ -152,48 +142,58 @@ rename_cols <- function(df,
       )
     }
 
-    # Check keys exist in df
-    missing_keys <- setdiff(names(col_map), names(df))
+    # Check keys exist in input_df
+    missing_keys <- setdiff(names(col_map), names(input_df))
     if (length(missing_keys) > 0L) {
       msg <- paste0(
-        "rename_cols: col_map key(s) not found in `df`: ",
+        "rename_cols: col_map key(s) not found in `input_df`: ",
         paste(missing_keys, collapse = ", "), "\n",
         "  Column names are case-sensitive.\n",
-        "  Available columns: ", paste(names(df), collapse = ", ")
+        "  Available columns: ", paste(names(input_df), collapse = ", ")
       )
       if (strict) stop(msg) else warning(msg, call. = FALSE)
     }
 
     # Apply renames
-    to_rename      <- intersect(names(col_map), names(df))
-    idx            <- match(to_rename, names(df))
-    names(df)[idx] <- col_map[to_rename]
+    to_rename            <- intersect(names(col_map), names(input_df))
+    idx                  <- match(to_rename, names(input_df))
+    names(input_df)[idx] <- col_map[to_rename]
 
   } else {
+
+    # Default regex pattern → DarwinCore target map.
+    # Applied case-insensitively against column names when col_map = NULL.
+    # Each pattern must match at most one column; ambiguous matches are skipped.
+    dwc_patterns <- c(
+      "^lat(itude)?$"                                       = "decimalLatitude",
+      "^lon(gitude)?$|^long$"                               = "decimalLongitude",
+      "^(survey|collection|event)?date$|^date(collected)?$" = "eventDate",
+      "^(site|location|locality)$"                          = "verbatimLocality"
+    )
 
     # Default: case-insensitive regex pattern matching
     renamed_targets <- character(0)
 
-    for (pattern in names(.dwc_patterns)) {
-      target  <- .dwc_patterns[[pattern]]
-      matches <- which(grepl(pattern, names(df), ignore.case = TRUE))
+    for (pattern in names(dwc_patterns)) {
+      target  <- dwc_patterns[[pattern]]
+      matches <- which(grepl(pattern, names(input_df), ignore.case = TRUE))
 
       if (length(matches) == 0L)        next  # no match — skip silently
-      if (target %in% names(df))        next  # already correctly named
+      if (target %in% names(input_df))  next  # already correctly named
       if (target %in% renamed_targets)  next  # already claimed this session
 
       if (length(matches) > 1L) {
         warning(sprintf(
           "rename_cols: pattern for '%s' matched multiple columns (%s) -- skipping.",
-          target, paste(names(df)[matches], collapse = ", ")
+          target, paste(names(input_df)[matches], collapse = ", ")
         ), call. = FALSE)
         next
       }
 
-      names(df)[matches] <- target
-      renamed_targets    <- c(renamed_targets, target)
+      names(input_df)[matches] <- target
+      renamed_targets          <- c(renamed_targets, target)
     }
   }
 
-  df
+  input_df
 }

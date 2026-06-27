@@ -27,7 +27,7 @@
 # Barcode helpers (copied from TaxaLikely -- TaxaLikely internals cannot be imported):
 #   .barcode_length_defaults    Named list of min/max bp per barcode type
 #   TaxaTools::resolve_barcode_lengths()  Resolve min/max bp for a barcode_term vector
-#   TaxaTools::is_valid_species_name()    Filter non-binomial / sp. / cf. / aff. names
+#   TaxaTools::is_plausible_binomial()    Filter non-binomial / sp. / cf. / aff. names
 
 # ==============================================================================
 # Barcode helpers (private copies; same logic as TaxaLikely/R/coverage.R)
@@ -160,7 +160,7 @@
 
     g   <- as.character(item$genus)[[1L]]
     sps <- as.character(item$plausible_species)
-    valid <- unique(sps[TaxaTools::is_valid_species_name(sps)])
+    valid <- unique(sps[TaxaTools::is_plausible_binomial(sps)])
 
     if (g %in% genera)
       result[[g]] <- valid
@@ -300,7 +300,7 @@
   }
 
   # Validate binomials and remove excluded genera
-  valid        <- spp[TaxaTools::is_valid_species_name(spp)]
+  valid        <- spp[TaxaTools::is_plausible_binomial(spp)]
   valid_genera <- sub(" .*", "", valid)
   unique(valid[!valid_genera %in% exclude_genera])
 }
@@ -623,7 +623,7 @@ suggest_unreferenced_species <- function(match_df,
     genera <- unique(stats::na.omit(match_df$genus))
     genera <- genera[nchar(trimws(genera)) > 0L]
   } else {
-    sp_names <- match_df$taxon_name[TaxaTools::is_valid_species_name(match_df$taxon_name)]
+    sp_names <- match_df$taxon_name[TaxaTools::is_plausible_binomial(match_df$taxon_name)]
     genera   <- unique(sub(" .*", "", sp_names))
   }
   genera <- sort(genera[nchar(trimws(genera)) > 0L])
@@ -638,7 +638,7 @@ suggest_unreferenced_species <- function(match_df,
 
   # Skip-list: species already in match_df have reference sequences by definition
   skip_list <- unique(
-    match_df$taxon_name[TaxaTools::is_valid_species_name(match_df$taxon_name)]
+    match_df$taxon_name[TaxaTools::is_plausible_binomial(match_df$taxon_name)]
   )
 
   # ---- Normalise context to a named list -------------------------------------

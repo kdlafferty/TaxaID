@@ -1,7 +1,7 @@
 test_that("rename_cols rejects non-data-frame input", {
-  expect_error(rename_cols("not a df"), "`df` must be a data frame")
-  expect_error(rename_cols(1:5),        "`df` must be a data frame")
-  expect_error(rename_cols(NULL),       "`df` must be a data frame")
+  expect_error(rename_cols("not a df"), "`input_df` must be a data frame")
+  expect_error(rename_cols(1:5),        "`input_df` must be a data frame")
+  expect_error(rename_cols(NULL),       "`input_df` must be a data frame")
 })
 
 test_that("rename_cols rejects invalid strict argument", {

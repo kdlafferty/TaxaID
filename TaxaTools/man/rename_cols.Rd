@@ -4,13 +4,13 @@
 \alias{rename_cols}
 \title{Rename Data Frame Columns to a Target Convention}
 \usage{
-rename_cols(df, col_map = NULL, strict = FALSE)
+rename_cols(input_df, col_map = NULL, strict = FALSE)
 }
 \arguments{
-\item{df}{A data frame whose columns are to be renamed.}
+\item{input_df}{A data frame whose columns are to be renamed.}
 
 \item{col_map}{Named character vector or \code{NULL}. When supplied, each
-\strong{name} is an existing column name in \code{df} and each
+\strong{name} is an existing column name in \code{input_df} and each
 \strong{value} is the desired new name. Both must be \strong{quoted
 strings}:
 \preformatted{
@@ -24,13 +24,13 @@ matching entirely — only the mappings you specify are applied. When
 (see Details).}
 
 \item{strict}{Logical. Controls behaviour when a \code{col_map} key is not
-found in \code{df}.
+found in \code{input_df}.
 \itemize{
 \item \code{FALSE} (default): warns about unmatched keys and renames
 whatever it can. Suitable when \code{rename_cols()} is applied to
 frames that may only contain some of the target columns.
 \item \code{TRUE}: stops with an error if any \code{col_map} key is
-absent from \code{df}. Use in scripts where all mappings must succeed.
+absent from \code{input_df}. Use in scripts where all mappings must succeed.
 }
 Has no effect when \code{col_map = NULL} (default patterns always
 skip non-matching columns silently).}
@@ -61,8 +61,8 @@ renamed only when its name matches exactly one pattern; ambiguous matches
 \item \code{site}, \code{location}, \code{locality} -> \code{verbatimLocality}
 }
 Matching is case-insensitive so \code{Lat}, \code{LAT}, and \code{lat} all
-match. If the target column already exists in \code{df} (e.g. \code{df}
-already has \code{decimalLatitude}), that pattern is skipped.
+match. If the target column already exists in \code{input_df} (e.g.
+\code{input_df} already has \code{decimalLatitude}), that pattern is skipped.
 
 \strong{User col_map replaces defaults:} When \code{col_map} is supplied,
 none of the default patterns are applied.

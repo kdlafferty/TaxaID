@@ -98,5 +98,5 @@ cat(answer)
 \seealso{
 \code{\link{call_api}}, \code{\link{call_anthropic_api}},
 \code{\link{call_gemini_api}}, \code{\link{call_ollama_api}},
-\code{\link{call_azure_api}}, \code{\link{prompt_api}}
+\code{\link{call_azure_openai_api}}, \code{\link{prompt_api}}
 }

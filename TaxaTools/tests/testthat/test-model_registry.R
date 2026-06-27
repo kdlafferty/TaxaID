@@ -5,13 +5,20 @@
 # All tests avoid live API calls.
 # ==============================================================================
 
-# Helper: reset session registry state between tests
+# Helper: reset session registry state between tests.
+# Uses asNamespace() so this works both via devtools::test() (load_all)
+# and via testthat::test_dir() on an installed package.
 .reset_registry <- function() {
-  .registry_env$session_pins   <- NULL
-  .registry_env$discovered     <- NULL
-  .registry_env$registry       <- NULL
-  .registry_env$registry_loaded <- FALSE
+  env <- get(".registry_env", envir = asNamespace("TaxaTools"))
+  env$session_pins    <- NULL
+  env$discovered      <- NULL
+  env$registry        <- NULL
+  env$registry_loaded <- FALSE
 }
+
+# Convenience wrappers for internal functions (same namespace portability reason)
+.get_registry  <- function(...) get(".get_registry",  envir = asNamespace("TaxaTools"))(...)
+.resolve_model <- function(...) get(".resolve_model", envir = asNamespace("TaxaTools"))(...)
 
 
 # --- register_provider() input validation -------------------------------------
@@ -32,7 +39,7 @@ test_that("register_provider rejects blank base_url", {
 })
 
 test_that("register_provider rejects built-in provider names", {
-  for (prov in c("anthropic", "gemini", "openai", "azure")) {
+  for (prov in c("anthropic", "gemini", "openai", "azure_openai")) {
     expect_error(
       register_provider(prov, "SOME_KEY", "https://example.com"),
       "built-in provider"

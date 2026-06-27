@@ -4,10 +4,10 @@
 \alias{create_taxon_names}
 \title{Create Most Specific Taxon Name Column}
 \usage{
-create_taxon_names(df, rank_system = NULL)
+create_taxon_names(input_df, rank_system = NULL)
 }
 \arguments{
-\item{df}{A data frame containing taxonomic rank columns.}
+\item{input_df}{A data frame containing taxonomic rank columns.}
 
 \item{rank_system}{A character vector of column names (any case) listing
 taxonomic ranks from broadest to most specific, e.g.
@@ -36,16 +36,16 @@ If all rank columns are \code{NA} for a row, both output columns are
 \code{NA} silently.
 }
 \examples{
-df <- data.frame(
+input_df <- data.frame(
   kingdom = "Animalia",
   genus   = "Homo",
   species = NA_character_
 )
-create_taxon_names(df)  # auto-detects rank_system
+create_taxon_names(input_df)  # auto-detects rank_system
 # taxon_name = "Homo", taxon_name_rank = "genus"
 
 # Or specify explicitly:
-create_taxon_names(df, c("kingdom", "genus", "species"))
+create_taxon_names(input_df, c("kingdom", "genus", "species"))
 }
 \seealso{
 \code{\link{clean_taxon_names}} to extract a clean, deduplicated

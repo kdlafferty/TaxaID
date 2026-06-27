@@ -51,10 +51,10 @@ utils::globalVariables(c(
 #' are retained in the output so you can inspect translation quality before
 #' using the result downstream.
 #'
-#' @param df A dataframe returned by \code{\link{verify_taxon_names}}, containing
+#' @param input_df A dataframe returned by \code{\link{verify_taxon_names}}, containing
 #'   at minimum: \code{user_supplied_name}, \code{matched_name},
 #'   \code{classification_path}, and \code{classification_ranks}.
-#' @param input_col Character. The name of the column in \code{df} holding the
+#' @param input_col Character. The name of the column in \code{input_df} holding the
 #'   original (source backbone) names. Typically \code{"user_supplied_name"}.
 #' @param old_backbone_label Character. The label to assign to the source-name
 #'   column in the output (e.g., \code{"NCBI"} or \code{"GBIF"}).
@@ -109,14 +109,14 @@ utils::globalVariables(c(
 #'     new_backbone_label = "GBIF"
 #'   )
 #' }
-change_backbone <- function(df,
+change_backbone <- function(input_df,
                              input_col,
                              old_backbone_label = "source_name",
                              new_backbone_label = "translated_name",
                              keep_unmatched     = TRUE) {
 
   # --- Input validation ---
-  if (!is.data.frame(df)) stop("`df` must be a data frame.")
+  if (!is.data.frame(input_df)) stop("`input_df` must be a data frame.")
   if (!is.character(input_col) || length(input_col) != 1) {
     stop("`input_col` must be a single column name string.")
   }
@@ -130,30 +130,30 @@ change_backbone <- function(df,
     stop("`keep_unmatched` must be TRUE or FALSE.")
   }
 
-  if (nrow(df) == 0L) {
+  if (nrow(input_df) == 0L) {
     warning("change_backbone: input has 0 rows. Returning empty data frame.")
-    df[[old_backbone_label]] <- character(0)
-    df[[new_backbone_label]] <- character(0)
-    return(df)
+    input_df[[old_backbone_label]] <- character(0)
+    input_df[[new_backbone_label]] <- character(0)
+    return(input_df)
   }
 
   required_cols <- c(input_col, "matched_name", "classification_ranks", "classification_path")
-  missing_cols  <- setdiff(required_cols, names(df))
+  missing_cols  <- setdiff(required_cols, names(input_df))
   if (length(missing_cols) > 0) {
     stop(
-      "Required column(s) missing from `df`: ", paste(missing_cols, collapse = ", "),
-      "\n`df` should be the direct output of verify_taxon_names()."
+      "Required column(s) missing from `input_df`: ", paste(missing_cols, collapse = ", "),
+      "\n`input_df` should be the direct output of verify_taxon_names()."
     )
   }
 
   # --- Track which names genuinely matched BEFORE keep_unmatched fills gaps ---
   # matched_name is NA when the backbone found no match. Record this now so
   # backbone_matched reflects true match status regardless of keep_unmatched.
-  genuine_match <- !is.na(df[["matched_name"]])
+  genuine_match <- !is.na(input_df[["matched_name"]])
 
   # --- Rename source and translated name columns ---
   # !!sym() on both sides avoids bare-name R CMD check warnings.
-  result <- df |>
+  result <- input_df |>
     dplyr::rename(
       !!rlang::sym(old_backbone_label) := !!rlang::sym(input_col),
       !!rlang::sym(new_backbone_label) := !!rlang::sym("matched_name")

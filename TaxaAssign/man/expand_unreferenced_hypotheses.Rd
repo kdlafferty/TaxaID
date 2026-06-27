@@ -42,7 +42,7 @@ for this observation.  Other unreferenced congeners (e.g. F. parvipinnis
 when F. lima is H1) are expanded normally and receive the H2
 \code{score_likelihood} / \code{score_likelihood_mean} / \code{score_likelihood_sd}.
 Exception: when an H1 \code{specific_candidate} row is genus-rank
-(\code{taxon_name_rank == "genus"}), the entire genus is suppressed — the
+(\code{taxon_name_rank == "genus"}), the entire genus is suppressed -- the
 genus is already represented with its own calibrated score.
 \item The \code{"unreferenced_genus"} (H3) row carries a family label.
 Unreferenced species whose family matches that label, whose genus

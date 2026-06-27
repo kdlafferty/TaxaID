@@ -26,7 +26,7 @@ all_candidates <- unlist(consensus_final$plausible_taxa)
 all_candidates <- unique(all_candidates[!is.na(all_candidates) & nzchar(all_candidates)])
 
 # Flag non-binomial names
-invalid_mask  <- !TaxaTools::is_valid_species_name(all_candidates)
+invalid_mask  <- !TaxaTools::is_plausible_binomial(all_candidates)
 invalid_names <- sort(all_candidates[invalid_mask])
 
 cat("Invalid candidate names found:", length(invalid_names), "\n")
@@ -35,7 +35,7 @@ if (length(invalid_names)) print(invalid_names)
 # Which observation_ids contain invalid names?
 obs_with_invalid <- consensus_final |>
   filter(sapply(plausible_taxa, function(x)
-    any(!TaxaTools::is_valid_species_name(x[!is.na(x) & nzchar(x)])))) |>
+    any(!TaxaTools::is_plausible_binomial(x[!is.na(x) & nzchar(x)])))) |>
   select(observation_id, plausible_taxa, consensus_taxon, consensus_rank)
 
 cat("\nObservations with invalid candidate names:", nrow(obs_with_invalid), "\n")

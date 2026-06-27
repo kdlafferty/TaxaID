@@ -5,7 +5,7 @@
 \title{Translate Taxon Names Between Taxonomic Backbones}
 \usage{
 change_backbone(
-  df,
+  input_df,
   input_col,
   old_backbone_label = "source_name",
   new_backbone_label = "translated_name",
@@ -13,11 +13,11 @@ change_backbone(
 )
 }
 \arguments{
-\item{df}{A dataframe returned by \code{\link{verify_taxon_names}}, containing
+\item{input_df}{A dataframe returned by \code{\link{verify_taxon_names}}, containing
 at minimum: \code{user_supplied_name}, \code{matched_name},
 \code{classification_path}, and \code{classification_ranks}.}
 
-\item{input_col}{Character. The name of the column in \code{df} holding the
+\item{input_col}{Character. The name of the column in \code{input_df} holding the
 original (source backbone) names. Typically \code{"user_supplied_name"}.}
 
 \item{old_backbone_label}{Character. The label to assign to the source-name

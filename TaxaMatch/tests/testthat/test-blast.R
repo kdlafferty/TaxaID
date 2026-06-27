@@ -2,6 +2,16 @@
 # Tests for blast_sequences() — input validation and hit filtering
 # ==============================================================================
 
+# --- Internal-function wrappers -----------------------------------------------
+# Use asNamespace() so tests work both via devtools::test() and on an installed
+# package (where load_all() is not in effect and ::: may fail).
+
+.filter_blast_hits  <- function(...) get(".filter_blast_hits",  envir = asNamespace("TaxaMatch"))(...)
+.empty_raw_hits     <- function(...) get(".empty_raw_hits",     envir = asNamespace("TaxaMatch"))(...)
+.empty_blast_result <- function(...) get(".empty_blast_result", envir = asNamespace("TaxaMatch"))(...)
+.parse_blast_xml    <- function(...) get(".parse_blast_xml",    envir = asNamespace("TaxaMatch"))(...)
+.parse_taxonomy_xml <- function(...) get(".parse_taxonomy_xml", envir = asNamespace("TaxaMatch"))(...)
+
 # --- Helpers ------------------------------------------------------------------
 
 make_seq_df <- function(n = 5) {
@@ -81,7 +91,7 @@ test_that("score window keeps hits within range of top hit", {
   # ASV_1 top hit = 99, score_range = 2 → keep >= 97
   # ASV_2 top hit = 98, score_range = 2 → keep >= 96
 
-  result <- TaxaMatch:::.filter_blast_hits(
+  result <- .filter_blast_hits(
     hits, min_score = 70, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 2, max_hits = 20,
     verbose = FALSE
@@ -97,7 +107,7 @@ test_that("score window keeps hits within range of top hit", {
 test_that("min_score filter removes low-scoring hits", {
   hits <- make_raw_hits()
 
-  result <- TaxaMatch:::.filter_blast_hits(
+  result <- .filter_blast_hits(
     hits, min_score = 90, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 100, max_hits = 100,
     verbose = FALSE
@@ -109,7 +119,7 @@ test_that("min_score filter removes low-scoring hits", {
 test_that("query coverage filter removes partial alignments", {
   hits <- make_raw_hits()
 
-  result <- TaxaMatch:::.filter_blast_hits(
+  result <- .filter_blast_hits(
     hits, min_score = 0, min_query_coverage = 80,
     subject_len_range = NULL, score_range = 100, max_hits = 100,
     verbose = FALSE
@@ -121,7 +131,7 @@ test_that("query coverage filter removes partial alignments", {
 test_that("subject length filter removes out-of-range references", {
   hits <- make_raw_hits()
 
-  result <- TaxaMatch:::.filter_blast_hits(
+  result <- .filter_blast_hits(
     hits, min_score = 0, min_query_coverage = 0,
     subject_len_range = c(100L, 300L), score_range = 100, max_hits = 100,
     verbose = FALSE
@@ -134,7 +144,7 @@ test_that("subject length filter removes out-of-range references", {
 test_that("max_hits safety cap limits per-query results", {
   hits <- make_raw_hits()
 
-  result <- TaxaMatch:::.filter_blast_hits(
+  result <- .filter_blast_hits(
     hits, min_score = 0, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 100, max_hits = 2,
     verbose = FALSE
@@ -150,7 +160,7 @@ test_that("max_hits safety cap limits per-query results", {
 test_that("combined filters work together", {
   hits <- make_raw_hits()
 
-  result <- TaxaMatch:::.filter_blast_hits(
+  result <- .filter_blast_hits(
     hits, min_score = 90, min_query_coverage = 85,
     subject_len_range = c(100L, 300L), score_range = 2, max_hits = 3,
     verbose = FALSE
@@ -168,9 +178,9 @@ test_that("combined filters work together", {
 })
 
 test_that("empty hits return empty data frame", {
-  hits <- TaxaMatch:::.empty_raw_hits()
+  hits <- .empty_raw_hits()
 
-  result <- TaxaMatch:::.filter_blast_hits(
+  result <- .filter_blast_hits(
     hits, min_score = 0, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 2, max_hits = 20,
     verbose = FALSE
@@ -185,11 +195,11 @@ test_that("empty hits return empty data frame", {
 # ==============================================================================
 
 test_that("empty result has correct structure", {
-  result <- TaxaMatch:::.empty_blast_result(with_taxonomy = FALSE)
+  result <- .empty_blast_result(with_taxonomy = FALSE)
   expect_true(all(c("observation_id", "accession", "score") %in% names(result)))
   expect_false("kingdom" %in% names(result))
 
-  result_tax <- TaxaMatch:::.empty_blast_result(with_taxonomy = TRUE)
+  result_tax <- .empty_blast_result(with_taxonomy = TRUE)
   expect_true(all(c("kingdom", "species") %in% names(result_tax)))
 })
 
@@ -250,7 +260,7 @@ test_that("parse_blast_xml extracts hits from BLAST XML", {
     </BlastOutput_iterations>
   </BlastOutput>'
 
-  result <- TaxaMatch:::.parse_blast_xml(xml_text)
+  result <- .parse_blast_xml(xml_text)
 
   expect_equal(nrow(result), 2L)
   expect_equal(result$qseqid, c("ASV_001", "ASV_001"))
@@ -265,7 +275,7 @@ test_that("parse_blast_xml extracts hits from BLAST XML", {
 test_that("parse_blast_xml handles status page gracefully", {
   skip_if_not_installed("xml2")
   status_page <- "<p><!--\nQBlastInfoBegin\nStatus=READY\nQBlastInfoEnd\n--></p>"
-  result <- TaxaMatch:::.parse_blast_xml(status_page)
+  result <- .parse_blast_xml(status_page)
   expect_equal(nrow(result), 0L)
 })
 
@@ -281,7 +291,7 @@ test_that("parse_blast_xml handles no hits gracefully", {
       </Iteration>
     </BlastOutput_iterations>
   </BlastOutput>'
-  result <- TaxaMatch:::.parse_blast_xml(xml_text)
+  result <- .parse_blast_xml(xml_text)
   expect_equal(nrow(result), 0L)
 })
 
@@ -310,7 +320,7 @@ test_that("parse_taxonomy_xml extracts lineage correctly", {
     </Taxon>
   </TaxaSet>'
 
-  result <- TaxaMatch:::.parse_taxonomy_xml(xml_text)
+  result <- .parse_taxonomy_xml(xml_text)
 
   expect_equal(nrow(result), 1L)
   expect_equal(result$taxid, "9606")

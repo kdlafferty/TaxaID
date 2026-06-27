@@ -190,6 +190,20 @@ name handling and LLM access.
 See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
 
+## Code Style
+
+A `lintr` sweep (style consistency, unused variables, deprecated idioms)
+and repository cleanup (removal of any development artefacts) are planned
+for pre-release. These are deferred because (a) the codebase is under
+active development and style changes frequently require merge conflict
+resolution, and (b) automated style fixes can introduce unintended
+semantic changes that are difficult to detect without running the full
+test suite after every edit. The sweep will be performed in a dedicated
+cleanup pass immediately before submission, when the API surface is frozen.
+
+> **Reminder:** Run `lintr::lint_package()` and review all flagged items
+> before the pre-release tag.
+
 ## Citation
 
 Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian

@@ -4,10 +4,10 @@
 \alias{find_taxonomy_conflicts}
 \title{Find Taxonomic Conflicts in a Taxonomy Data Frame}
 \usage{
-find_taxonomy_conflicts(df, rank_system = NULL)
+find_taxonomy_conflicts(input_df, rank_system = NULL)
 }
 \arguments{
-\item{df}{Data frame with taxonomy columns (e.g. \code{family}, \code{genus},
+\item{input_df}{Data frame with taxonomy columns (e.g. \code{family}, \code{genus},
 \code{species}).}
 
 \item{rank_system}{Character vector of rank column names, coarse to fine.

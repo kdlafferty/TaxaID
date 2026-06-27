@@ -31,7 +31,11 @@ downloaded GeoJSON files. Speeds up repeated calls for the same taxa.}
 \value{
 A tibble with columns \code{taxon_name}, \code{taxon_id},
 \code{matched_name}, \code{rank}, \code{iconic_taxon_name},
-\code{n_observations}, \code{in_range}, \code{range_status}.
+\code{inat_kingdom}, \code{n_observations}, \code{in_range},
+\code{range_status}. \code{inat_kingdom} is derived from
+\code{iconic_taxon_name} via a fixed lookup (no additional API call);
+compare against your own occurrence-database kingdom to detect taxon
+name collisions (e.g. a clam name matching a fungal genus).
 }
 \description{
 For each taxon name, resolves the iNaturalist taxon ID, downloads the

@@ -99,6 +99,5 @@ head(result)
 unlink(tmp)
 }
 \seealso{
-\code{\link[=read_animl_output]{read_animl_output()}}, \code{\link[=standardize_match_data]{standardize_match_data()}},
-\code{\link[TaxaLikely:build_image_reference]{TaxaLikely::build_image_reference()}}
+\code{\link[=read_animl_output]{read_animl_output()}}, \code{\link[=standardize_match_data]{standardize_match_data()}}
 }

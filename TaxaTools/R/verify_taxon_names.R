@@ -78,9 +78,11 @@ verify_taxon_names <- function(name_list,
   if (!is.character(name_list) || length(name_list) == 0) {
     stop("`name_list` must be a non-empty character vector.")
   }
-  if (!is.numeric(backbone_id) || length(backbone_id) != 1) {
+  if ((!is.numeric(backbone_id) && !is.integer(backbone_id)) ||
+      length(backbone_id) != 1 || is.na(backbone_id)) {
     stop("`backbone_id` must be a single integer (e.g., 4 for NCBI).")
   }
+  backbone_id <- as.integer(backbone_id)
 
   # --- Clean and deduplicate ---
   trimmed_names <- trimws(name_list)
@@ -263,11 +265,10 @@ verify_taxon_names <- function(name_list,
   n_unverified <- sum(!unique_df$verified, na.rm = TRUE)
   n_no_match   <- sum(unique_df$verified & is.na(unique_df$matched_name), na.rm = TRUE)
 
-  message(
-    "Done. ", n_verified,   " name(s) reached the API; ",
-    n_no_match,             " had no match; ",
-    n_unverified,           " were unverified due to API failure."
-  )
+  msg <- sprintf("Done. %d name(s) reached the API.", n_verified)
+  if (n_no_match   > 0L) msg <- paste0(msg, sprintf(" %d had no match.", n_no_match))
+  if (n_unverified > 0L) msg <- paste0(msg, sprintf(" %d were unverified due to API failure.", n_unverified))
+  message(msg)
 
   final_df
 }
@@ -436,10 +437,9 @@ verify_taxon_names <- function(name_list,
 
   n_matched  <- sum(!is.na(result$matched_name))
   n_no_match <- sum(is.na(result$matched_name))
-  message(
-    "Done. ", n_matched, " name(s) matched; ",
-    n_no_match, " had no match; 0 were unverified due to API failure."
-  )
+  msg_ncbi <- sprintf("Done. %d name(s) matched.", n_matched)
+  if (n_no_match > 0L) msg_ncbi <- paste0(msg_ncbi, sprintf(" %d had no match.", n_no_match))
+  message(msg_ncbi)
 
   result
 }

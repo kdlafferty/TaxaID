@@ -5,7 +5,6 @@
 # Exported functions:
 #   report_match()   -- generate report_section from match data
 #
-# Session 65: initial implementation
 # ==============================================================================
 
 

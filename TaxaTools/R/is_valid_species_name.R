@@ -1,6 +1,7 @@
-#' Test Whether Strings Are Valid Species Binomials
+#' Test Whether Strings Are Plausible Species Binomials
 #'
-#' Returns `TRUE` for strings matching the `"Genus epithet"` pattern and not
+#' Returns TRUE for strings that are structurally plausible species binomials
+#' matching the `"Genus epithet"` pattern and not
 #' matching common placeholder patterns (`sp.`, `cf.`, `aff.`, `uncultured`,
 #' `environmental`, `metagenom`).
 #'
@@ -11,11 +12,11 @@
 #' @return Logical vector, same length as `x`.
 #'
 #' @examples
-#' is_valid_species_name(c("Cottus asper", "Cottus sp.", "uncultured bacterium"))
+#' is_plausible_binomial(c("Cottus asper", "Cottus sp.", "uncultured bacterium"))
 #' # TRUE, FALSE, FALSE
 #'
 #' @export
-is_valid_species_name <- function(x) {
+is_plausible_binomial <- function(x) {
   grepl("^[A-Z][a-z]+ [a-z]", x) &
     !grepl(
       "\\bsp\\.?\\s*$|\\bsp\\b|\\bcf\\.\\s|\\baff\\.\\s|uncultured|environmental|metagenom",

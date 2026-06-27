@@ -6,7 +6,7 @@
 #   call_anthropic_api()    Provider: Anthropic — thin wrapper around call_api()
 #   call_gemini_api()       Provider: Google Gemini — thin wrapper around call_api()
 #   call_openai_api()       Provider: OpenAI/compat — thin wrapper around call_api()
-#   call_azure_api()        Provider: Azure OpenAI (DOI) — thin wrapper around call_api()
+#   call_azure_openai_api()        Provider: Azure OpenAI (DOI) — thin wrapper around call_api()
 #   call_ollama_api()       Provider: Ollama (local) — thin wrapper around call_api()
 #   prompt_api()            Multi-chunk llm_prompt dispatcher; llm_fn param selects provider
 #   prompt_manual()         Manual file handoff (any provider)
@@ -24,15 +24,15 @@
 #
 # Note: the five provider call_*_api() functions are thin wrappers around
 #   call_api() (R/call_api.R), which owns all HTTP logic via registry-based
-#   dispatch (inst/model_tiers.json). Wrappers are kept for backward
-#   compatibility and for use as llm_fn arguments.
+#   dispatch (inst/model_tiers.json). Wrappers are retained for named-provider
+#   access and as llm_fn arguments (e.g. llm_fn = call_anthropic_api).
 #
 # Provider API keys (set in ~/.Renviron):
 #   ANTHROPIC_API_KEY       — required for call_anthropic_api() (no free tier)
 #   GEMINI_API_KEY          — required for call_gemini_api() (free tier available)
 #   OPENAI_API_KEY          — required for call_openai_api() (no ongoing free tier)
 #   (none)                  — call_ollama_api() needs no key; runs models locally
-#   AZURE_OPENAI_API_KEY    — required for call_azure_api() (DOI employees only;
+#   AZURE_OPENAI_API_KEY    — required for call_azure_openai_api() (DOI employees only;
 #                             requires connection to a DOI computer system or DOI VPN)
 # ==============================================================================
 
@@ -75,7 +75,7 @@
 #' @seealso \code{\link{call_api}} for the generic dispatcher.
 #'   \code{\link{prompt_api}} for multi-chunk \code{llm_prompt} submission.
 #'   \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-#'   \code{\link{call_ollama_api}}, \code{\link{call_azure_api}} for
+#'   \code{\link{call_ollama_api}}, \code{\link{call_azure_openai_api}} for
 #'   alternative providers.
 #'
 #' @export
@@ -103,7 +103,7 @@ call_anthropic_api <- function(prompt_str,
 
 
 # ==============================================================================
-# STEP 2 -- PATH 1: Multi-chunk llm_prompt dispatcher (provider-neutral)
+# Multi-chunk llm_prompt dispatcher (provider-neutral)
 # ==============================================================================
 
 #' Submit a Multi-Chunk LLM Prompt to Any Provider
@@ -171,7 +171,7 @@ call_anthropic_api <- function(prompt_str,
 #'
 #' @seealso \code{\link{call_api}}, \code{\link{call_anthropic_api}},
 #'   \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-#'   \code{\link{call_ollama_api}}, \code{\link{call_azure_api}},
+#'   \code{\link{call_ollama_api}}, \code{\link{call_azure_openai_api}},
 #'   \code{\link{prompt_manual}}
 #'
 #' @export
@@ -191,7 +191,7 @@ call_anthropic_api <- function(prompt_str,
 #' raw_text <- prompt_api(prompt, llm_fn = call_ollama_api)
 #'
 #' # Azure OpenAI (DOI employees; requires DOI network or VPN)
-#' raw_text <- prompt_api(prompt, llm_fn = call_azure_api)
+#' raw_text <- prompt_api(prompt, llm_fn = call_azure_openai_api)
 #' }
 
 prompt_api <- function(prompt,
@@ -265,7 +265,7 @@ prompt_api <- function(prompt,
 
 
 # ==============================================================================
-# STEP 2 -- PATH 3: Manual file handoff
+# Manual file handoff
 # ==============================================================================
 
 #' Submit a Prompt Manually via Any LLM Interface
@@ -383,7 +383,7 @@ prompt_manual <- function(prompt,
 
 
 # ==============================================================================
-# STEP 2 -- PATH 3 supplement: Read saved response file(s)
+# Read saved response file(s)
 # ==============================================================================
 
 #' Read Saved LLM Response File(s)
@@ -560,7 +560,7 @@ read_llm_response <- function(files) {
 #'
 #' @seealso \code{\link{call_api}}, \code{\link{call_anthropic_api}},
 #'   \code{\link{call_openai_api}}, \code{\link{call_ollama_api}},
-#'   \code{\link{call_azure_api}}, \code{\link{prompt_api}}
+#'   \code{\link{call_azure_openai_api}}, \code{\link{prompt_api}}
 #'
 #' @export
 #'
@@ -661,7 +661,7 @@ call_gemini_api <- function(prompt_str,
 #'
 #' @seealso \code{\link{call_api}}, \code{\link{call_anthropic_api}},
 #'   \code{\link{call_gemini_api}}, \code{\link{call_ollama_api}},
-#'   \code{\link{call_azure_api}}, \code{\link{prompt_api}}
+#'   \code{\link{call_azure_openai_api}}, \code{\link{prompt_api}}
 #'
 #' @export
 #'
@@ -774,11 +774,11 @@ call_openai_api <- function(prompt_str,
 #' \strong{llm_fn usage:}
 #' \preformatted{
 #' # Direct use (default DOI endpoint)
-#' screen_pdf_structure(pdf_content, llm_fn = call_azure_api)
-#' prompt_api(prompt,      llm_fn = call_azure_api)
+#' screen_pdf_structure(pdf_content, llm_fn = call_azure_openai_api)
+#' prompt_api(prompt,      llm_fn = call_azure_openai_api)
 #'
 #' # Non-default endpoint via closure
-#' my_azure <- function(p, ...) call_azure_api(p, endpoint = "https://...")
+#' my_azure <- function(p, ...) call_azure_openai_api(p, endpoint = "https://...")
 #' prompt_api(prompt, llm_fn = my_azure)
 #' }
 #'
@@ -792,11 +792,11 @@ call_openai_api <- function(prompt_str,
 #' \dontrun{
 #' # Requires DOI network or DOI VPN connection
 #' Sys.setenv(AZURE_OPENAI_API_KEY = "...")
-#' answer <- call_azure_api("What phylum do sea urchins belong to?")
+#' answer <- call_azure_openai_api("What phylum do sea urchins belong to?")
 #' cat(answer)
 #' }
 
-call_azure_api <- function(
+call_azure_openai_api <- function(
     prompt_str,
     model                 = NULL,
     tier                  = c("mid", "fast", "top"),
@@ -815,7 +815,7 @@ call_azure_api <- function(
   }
 
   call_api(prompt_str,
-           provider   = "azure",
+           provider   = "azure_openai",
            tier       = tier,
            model      = model,
            max_tokens = as.integer(max_completion_tokens),
@@ -883,7 +883,7 @@ call_azure_api <- function(
 #'
 #' @seealso \code{\link{call_api}}, \code{\link{call_anthropic_api}},
 #'   \code{\link{call_gemini_api}}, \code{\link{call_openai_api}},
-#'   \code{\link{call_azure_api}}, \code{\link{prompt_api}}
+#'   \code{\link{call_azure_openai_api}}, \code{\link{prompt_api}}
 #'
 #' @export
 #'

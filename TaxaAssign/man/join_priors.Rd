@@ -28,11 +28,11 @@ per \code{taxon_name} x \code{grid_id} x \code{main_habitat}, with columns
 (\code{genus}, \code{family}, etc.).}
 
 \item{site}{Site specification including habitat. \code{main_habitat}
-is always required — the function does not guess which habitat your
+is always required -- the function does not guess which habitat your
 observations came from. Accepted formats:
 \describe{
 \item{Named list with lat/lon}{\code{list(lat = 34.1, lon = -119.1,
-      main_habitat = "Marine")} — auto-resolves to nearest grid_id.}
+      main_habitat = "Marine")} -- auto-resolves to nearest grid_id.}
 \item{Named list with grid_id}{\code{list(grid_id = "...",
       main_habitat = "Marine")}}
 \item{Data frame (multi-site)}{Columns \code{observation_id},
@@ -147,13 +147,13 @@ lineage.
 
 When a likelihood row has \code{taxon_name_rank} coarser than species (e.g.
 \code{"family"} or \code{"genus"}), the primary species-level join finds no match
-and the row would otherwise fall back to the global floor prior — ignoring
+and the row would otherwise fall back to the global floor prior -- ignoring
 all species-level prior information within that taxon.
 
 When \code{expansion_taxonomy} is supplied, \code{join_priors()} instead expands each
 coarse-rank row into one species-level hypothesis row per retained candidate:
 \enumerate{
-\item Find all modelled species in \code{taxaexpect_priors} at the focal site ×
+\item Find all modelled species in \code{taxaexpect_priors} at the focal site x
 habitat that belong to the coarse-rank constraint.
 \item Normalize their \code{prior_mean} values within the candidate set.
 \item Drop species below \code{expansion_min_prior}.
@@ -166,7 +166,7 @@ species-level \code{alpha}/\code{beta} priors.
 
 Because \code{compute_posterior()} normalizes likelihoods within each
 \code{observation_id} group before the Bayesian update, the inherited
-\code{score_likelihood} values are equivalent to uniform — posteriors are
+\code{score_likelihood} values are equivalent to uniform -- posteriors are
 proportional to the prior alone, which is the correct behaviour when no
 within-family score discrimination is available.
 

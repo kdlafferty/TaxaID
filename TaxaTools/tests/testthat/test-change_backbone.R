@@ -27,9 +27,9 @@ mock_verified <- function(
 # Input validation
 # ==============================================================================
 
-test_that("rejects non-data-frame df", {
+test_that("rejects non-data-frame input_df", {
   expect_error(change_backbone("not a df", input_col = "user_supplied_name"),
-               "`df` must be a data frame")
+               "`input_df` must be a data frame")
 })
 
 test_that("rejects non-scalar input_col", {

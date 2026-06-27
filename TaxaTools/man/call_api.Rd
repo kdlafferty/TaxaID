@@ -22,8 +22,8 @@ call_api(
 prompt to submit.}
 
 \item{provider}{Character. Provider name: \code{"anthropic"},
-\code{"gemini"}, \code{"openai"}, \code{"azure"}, \code{"ollama"}, or
-any name registered with \code{\link{register_provider}}.
+\code{"gemini"}, \code{"openai"}, \code{"azure_openai"}, \code{"ollama"},
+or any name registered with \code{\link{register_provider}}.
 Default \code{NULL} uses \code{options("TaxaID.provider")}, which is set
 automatically by \code{library(TaxaTools)} based on detected API keys.}
 
@@ -65,11 +65,11 @@ OpenAI \code{image_url} blocks. Requires a vision-capable model
 (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o).}
 
 \item{show_tokens}{Logical. When \code{TRUE}, prints a message after each
-call reporting input and output token counts (e.g.
-\code{"Tokens used — input: 312, output: 87"}). Default \code{FALSE} to
-avoid output in non-interactive workflows. Token counts are retrieved from
-the provider's response body; \code{NA} is reported when a provider does
-not return usage information.}
+call reporting the provider, model, and token counts (e.g.
+\code{"Tokens used [anthropic / claude-sonnet-4-6] — input: 312, output: 87"}).
+Default \code{FALSE} to avoid output in non-interactive workflows.
+Token counts are retrieved from the provider's response body; \code{NA}
+is reported when a provider does not return usage information.}
 
 \item{max_input_tokens}{Integer or \code{NULL}. When non-\code{NULL},
 estimates the prompt length as \code{ceiling(nchar(prompt_str) / 3.5)}
@@ -129,6 +129,15 @@ prompt_api(prompt, llm_fn = function(p, ...) call_api(p, tier = "fast"))
 # Set session default to OpenAI
 options(TaxaID.provider = "openai")
 }
+
+\strong{Data sensitivity:}
+Prompts sent to cloud LLM providers (Anthropic, Google, OpenAI, Azure) are
+transmitted over the internet and processed on third-party servers. Do not
+include sensitive, confidential, personally identifiable, or embargoed
+information in prompts. TaxaID functions pass taxon names, ecological
+summaries, and methods text — review prompts before calling when working
+with pre-publication data. Use \code{provider = "ollama"} for fully
+local inference when data sensitivity is a concern.
 }
 \examples{
 \dontrun{
@@ -154,6 +163,6 @@ answer <- call_api("What phylum do sea urchins belong to?",
 \code{\link{register_provider}}, \code{\link{list_models}},
 \code{\link{set_model}}, \code{\link{refresh_models}},
 \code{\link{call_anthropic_api}}, \code{\link{call_gemini_api}},
-\code{\link{call_openai_api}}, \code{\link{call_azure_api}},
+\code{\link{call_openai_api}}, \code{\link{call_azure_openai_api}},
 \code{\link{call_ollama_api}}
 }

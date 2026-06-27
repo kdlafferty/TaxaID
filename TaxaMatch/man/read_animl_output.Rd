@@ -141,6 +141,5 @@ head(result)
 unlink(tmp)
 }
 \seealso{
-\code{\link[=standardize_match_data]{standardize_match_data()}},
-\code{\link[TaxaLikely:build_acoustic_reference]{TaxaLikely::build_acoustic_reference()}}
+\code{\link[=standardize_match_data]{standardize_match_data()}}
 }

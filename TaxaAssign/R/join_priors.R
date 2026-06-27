@@ -19,7 +19,7 @@ utils::globalVariables(c(
 # rank_system (e.g. a family-rank or genus-rank hypothesis), find all species
 # in taxaexpect_priors that:
 #   (a) belong to that coarser taxon (via expansion_taxonomy),
-#   (b) have a modelled prior (non-NA alpha) at the same grid_id × main_habitat.
+#   (b) have a modelled prior (non-NA alpha) at the same grid_id x main_habitat.
 #
 # The candidate species are filtered using the same logic as posterior_consensus():
 #   1. Normalize prior_mean within the candidate set.
@@ -30,7 +30,7 @@ utils::globalVariables(c(
 # Each retained species replaces the original coarse-rank row. All likelihood
 # columns (observation_id, score_likelihood, etc.) are inherited from the
 # template row. Score normalization inside compute_posterior() makes the
-# inherited score_likelihood magnitude irrelevant — only relative values matter,
+# inherited score_likelihood magnitude irrelevant -- only relative values matter,
 # so uniform inheritance is correct.
 #
 # Returns `result` unchanged when:
@@ -62,7 +62,7 @@ utils::globalVariables(c(
   }
 
   # Rows eligible for expansion: failed primary join + coarser rank + named taxon.
-  # Exclude H2/H3 unreferenced-hypothesis rows — their coarse taxon_name_rank reflects
+  # Exclude H2/H3 unreferenced-hypothesis rows -- their coarse taxon_name_rank reflects
   # the best-available match level, not a coarse identification. Expanding them would
   # replace one generic placeholder with all modelled species in that family/genus,
   # flooding compute_posterior() with spurious competitors and diluting H1 posteriors
@@ -323,7 +323,7 @@ utils::globalVariables(c(
     if (length(cpos) == 0L) return(invisible(NULL))
 
     if (depth > length(tax_ranks)) {
-      # Exhausted all ranks — group everything together
+      # Exhausted all ranks -- group everything together
       pm <- min((1L * parent_mean) / length(cpos), 1 - 1e-9)
       .record(cpos, length(spos), pm, "terminal")
       return(invisible(NULL))
@@ -332,7 +332,7 @@ utils::globalVariables(c(
     rank <- tax_ranks[depth]
 
     if (!rank %in% names(unref_df)) {
-      # Taxonomy column absent for candidates at this rank — skip to next
+      # Taxonomy column absent for candidates at this rank -- skip to next
       .descend(cpos, spos, parent_mean, depth + 1L)
       return(invisible(NULL))
     }
@@ -344,7 +344,7 @@ utils::globalVariables(c(
     if (length(na_pos) > 0L) {
       if (depth == 1L) {
         # At phylum level, unknown-phylum candidates share no taxonomic context
-        # with each other.  Do NOT pool them — each should fall back to the
+        # with each other.  Do NOT pool them -- each should fall back to the
         # global floor individually in join_priors().  Set only the label so the
         # still_na fallback below (which checks is.na(g_label)) skips them.
         g_label[na_pos] <<- "no_phylum"
@@ -372,7 +372,7 @@ utils::globalVariables(c(
       n_s <- length(val_spos)
 
       if (n_s == 0L) {
-        # No singletons in this sub-clade — form one combined group here
+        # No singletons in this sub-clade -- form one combined group here
         pm <- min(parent_mean / n_c, 1 - 1e-9)
         if (depth > 1L) {
           parent_rank <- tax_ranks[depth - 1L]
@@ -389,14 +389,14 @@ utils::globalVariables(c(
         .record(val_cpos, 0L, pm, lbl)
 
       } else if (depth == length(tax_ranks)) {
-        # Genus is terminal — group all candidates in this genus
+        # Genus is terminal -- group all candidates in this genus
         val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
         if (!is.finite(val_mean)) val_mean <- parent_mean
         pm <- min((n_s * val_mean) / n_c, 1 - 1e-9)
         .record(val_cpos, n_s, pm, paste0(rank, ":", val))
 
       } else {
-        # Has singletons at this rank and not yet at terminal — recurse
+        # Has singletons at this rank and not yet at terminal -- recurse
         val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
         if (!is.finite(val_mean)) val_mean <- parent_mean
         .descend(val_cpos, val_spos, val_mean, depth + 1L)
@@ -487,11 +487,11 @@ utils::globalVariables(c(
 #'   `alpha`, `beta`, `undetected_type`, and taxonomy columns
 #'   (`genus`, `family`, etc.).
 #' @param site Site specification including habitat. \code{main_habitat}
-#'   is always required — the function does not guess which habitat your
+#'   is always required -- the function does not guess which habitat your
 #'   observations came from. Accepted formats:
 #'   \describe{
 #'     \item{Named list with lat/lon}{\code{list(lat = 34.1, lon = -119.1,
-#'       main_habitat = "Marine")} — auto-resolves to nearest grid_id.}
+#'       main_habitat = "Marine")} -- auto-resolves to nearest grid_id.}
 #'     \item{Named list with grid_id}{\code{list(grid_id = "...",
 #'       main_habitat = "Marine")}}
 #'     \item{Data frame (multi-site)}{Columns \code{observation_id},
@@ -545,13 +545,13 @@ utils::globalVariables(c(
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
 #' `"family"` or `"genus"`), the primary species-level join finds no match
-#' and the row would otherwise fall back to the global floor prior — ignoring
+#' and the row would otherwise fall back to the global floor prior -- ignoring
 #' all species-level prior information within that taxon.
 #'
 #' When `expansion_taxonomy` is supplied, `join_priors()` instead expands each
 #' coarse-rank row into one species-level hypothesis row per retained candidate:
 #' \enumerate{
-#'   \item Find all modelled species in `taxaexpect_priors` at the focal site ×
+#'   \item Find all modelled species in `taxaexpect_priors` at the focal site x
 #'     habitat that belong to the coarse-rank constraint.
 #'   \item Normalize their `prior_mean` values within the candidate set.
 #'   \item Drop species below `expansion_min_prior`.
@@ -564,7 +564,7 @@ utils::globalVariables(c(
 #'
 #' Because `compute_posterior()` normalizes likelihoods within each
 #' `observation_id` group before the Bayesian update, the inherited
-#' `score_likelihood` values are equivalent to uniform — posteriors are
+#' `score_likelihood` values are equivalent to uniform -- posteriors are
 #' proportional to the prior alone, which is the correct behaviour when no
 #' within-family score discrimination is available.
 #'
@@ -664,7 +664,7 @@ join_priors <- function(likelihoods,
                               names(singleton_taxonomy))
     if (length(st_rank_cols) == 0L) {
       cli::cli_warn(
-        "{.arg singleton_taxonomy} has none of genus/family/order/class/phylum — ignored for group priors."
+        "{.arg singleton_taxonomy} has none of genus/family/order/class/phylum -- ignored for group priors."
       )
       singleton_taxonomy <- NULL
     }
@@ -691,7 +691,7 @@ join_priors <- function(likelihoods,
     }
   }
 
-  # Character shortcut: bare grid_id string — require main_habitat
+  # Character shortcut: bare grid_id string -- require main_habitat
 
   if (is.character(site) && length(site) == 1L) {
     grid_rows <- taxaexpect_priors[taxaexpect_priors$grid_id == site &
@@ -854,7 +854,7 @@ join_priors <- function(likelihoods,
   }
 
   # ---- Dark diversity fallback -----------------------------------------------
-  # Site-level: mean alpha/beta from Tier 3 (undetected) rows per grid × habitat
+  # Site-level: mean alpha/beta from Tier 3 (undetected) rows per grid x habitat
   dark_by_site <- taxaexpect_priors |>
     dplyr::filter(!is.na(undetected_type)) |>
     dplyr::group_by(grid_id, main_habitat) |>
@@ -874,9 +874,9 @@ join_priors <- function(likelihoods,
     )
 
   # Singleton-mirror mean: used as the floor threshold for modelled-species
-  # prior promotion (Issue 2 fix — dark diversity redesign, Session 117).
+  # prior promotion (Issue 2 fix -- dark diversity redesign, Session 117).
   # Singleton mirrors represent the detection probability of species observed
-  # exactly once in training data — the correct floor for a modelled species
+  # exactly once in training data -- the correct floor for a modelled species
   # with genuine (but very low) theta. Using dark_mean (= mean of singleton
   # mirrors + global floor) was too aggressive: a Tier 2 species with genuine
   # small theta could be promoted to dark_mean even though dark_mean is pulled
@@ -944,14 +944,14 @@ join_priors <- function(likelihoods,
 
   # ---- Modelled-species floor: never worse than singleton-mirror mean --------
   # A species the model has seen (non-NA alpha) at the wrong habitat can get
-  # theta ≈ 0, producing prior_alpha well below the singleton-mirror level.
+  # theta ~= 0, producing prior_alpha well below the singleton-mirror level.
   # This inverts the intended ordering: unobserved species beat observed ones.
   # Fix: if a modelled species has prior_mean below the singleton-mirror mean,
   # promote it to the singleton-mirror level. We use singleton_mean (not
-  # dark_mean) because dark_mean is pulled down by the global floor — using it
+  # dark_mean) because dark_mean is pulled down by the global floor -- using it
   # would also promote Tier 2 species with genuine small-but-positive theta,
   # erasing spatial signal. Singleton_mean is the correct floor: the rarest
-  # known detection rate in the system. Issue 2 fix — Session 117.
+  # known detection rate in the system. Issue 2 fix -- Session 117.
   has_model     <- !is.na(result$alpha)
   singleton_mean <- result$singleton_alpha / (result$singleton_alpha + result$singleton_beta)
   below_singleton <- has_model & result$prior_mean < singleton_mean
@@ -989,7 +989,7 @@ join_priors <- function(likelihoods,
     # Retrieve singleton mirror rows from taxaexpect_priors; join taxonomy via
     # source_taxon_name so we know which phylum/class/order/family/genus each
     # singleton proxy represents. (Taxonomy columns were stripped by
-    # generate_full_priors() select() — must re-join here.)
+    # generate_full_priors() select() -- must re-join here.)
     if ("source_taxon_name" %in% names(taxaexpect_priors)) {
       sing_rows <- taxaexpect_priors[
         !is.na(taxaexpect_priors$undetected_type) &
@@ -1015,7 +1015,7 @@ join_priors <- function(likelihoods,
     }
 
     if (any(is_unmod) && nrow(sing_rows) > 0L) {
-      # Unique unmodelled taxon names — group prior is per-taxon, not per-row
+      # Unique unmodelled taxon names -- group prior is per-taxon, not per-row
       unmod_taxa <- unique(result$taxon_name[is_unmod & !is.na(result$taxon_name)])
 
       if (length(unmod_taxa) > 0L) {

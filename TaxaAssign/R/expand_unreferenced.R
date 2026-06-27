@@ -18,7 +18,7 @@ utils::globalVariables(c("hypothesis_type"))
 #'     when F. lima is H1) are expanded normally and receive the H2
 #'     `score_likelihood` / `score_likelihood_mean` / `score_likelihood_sd`.
 #'     Exception: when an H1 `specific_candidate` row is genus-rank
-#'     (`taxon_name_rank == "genus"`), the entire genus is suppressed — the
+#'     (`taxon_name_rank == "genus"`), the entire genus is suppressed -- the
 #'     genus is already represented with its own calibrated score.
 #'   \item The `"unreferenced_genus"` (H3) row carries a family label.
 #'     Unreferenced species whose family matches that label, whose genus
@@ -151,7 +151,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
     # Species-level suppression: an unreferenced species is suppressed only if
     # that exact species is already a specific_candidate for this observation.
     # Exception: when H1 carries a genus-rank hit (taxon_name_rank == "genus"),
-    # the whole genus is suppressed — a genus-rank specific_candidate already
+    # the whole genus is suppressed -- a genus-rank specific_candidate already
     # represents the full genus with its own calibrated likelihood.
     h1_for_sid <- h1_rows[h1_rows$observation_id == sid, , drop = FALSE]
     h1_genus_rank_lc <- unique(tolower(trimws(
@@ -166,7 +166,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
       h2_genus_lc <- tolower(trimws(h2$taxon_name[1L]))
 
       if (h2_genus_lc %in% h1_genus_rank_lc) {
-        # Genus already covered by a genus-rank specific_candidate — drop all.
+        # Genus already covered by a genus-rank specific_candidate -- drop all.
         genus_sp_all <- unref[unref$genus_lc == h2_genus_lc, , drop = FALSE]
         n_h2_covered     <- n_h2_covered     + max(nrow(genus_sp_all), 1L)
         n_h2_obs_covered <- n_h2_obs_covered + 1L
@@ -190,11 +190,11 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
             )
             n_h2_species <- n_h2_species + nrow(genus_sp_keep)
           } else {
-            # All unreferenced species in genus already H1 — no expansion for this obs.
+            # All unreferenced species in genus already H1 -- no expansion for this obs.
             n_h2_obs_covered <- n_h2_obs_covered + 1L
           }
         }
-        # else: no locally-plausible unreferenced species — drop the generic H2 row
+        # else: no locally-plausible unreferenced species -- drop the generic H2 row
       }
     }
 
@@ -234,7 +234,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         )
         n_h3_species <- n_h3_species + nrow(family_sp)
       }
-      # else: no locally-plausible unreferenced species — drop the generic H3 row
+      # else: no locally-plausible unreferenced species -- drop the generic H3 row
     }
 
     result_list[[i]] <- dplyr::bind_rows(new_rows)
@@ -250,8 +250,8 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
 
   message(sprintf(
     paste0("expand_unreferenced_hypotheses: H2 -> %d named species rows ",
-           "(%d generic dropped; %d suppressed — already H1 or genus-rank H1 covered); ",
-           "H3 -> %d named species rows (%d generic dropped; %d suppressed — already H1 or genus-rank H1 covered)."),
+           "(%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered); ",
+           "H3 -> %d named species rows (%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered)."),
     n_h2_species, n_h2_generic_dropped, n_h2_covered,
     n_h3_species, n_h3_generic_dropped, n_h3_covered
   ))

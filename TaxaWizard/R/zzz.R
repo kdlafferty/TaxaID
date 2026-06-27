@@ -20,7 +20,7 @@
     list(key = "ANTHROPIC_API_KEY",    name = "anthropic"),
     list(key = "GEMINI_API_KEY",       name = "gemini"),
     list(key = "OPENAI_API_KEY",       name = "openai"),
-    list(key = "AZURE_OPENAI_API_KEY", name = "azure")
+    list(key = "AZURE_OPENAI_API_KEY", name = "azure_openai")
   )
 
   for (p in key_map) {

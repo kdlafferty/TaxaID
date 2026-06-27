@@ -13,7 +13,7 @@
 #' [FAIRe eDNA metadata checklist](https://github.com/FAIR-eDNA/FAIRe_checklist)
 #' (Takahashi et al. 2025), specifically the `taxaRaw` and `taxaFinal` classes.
 #'
-#' @param df A TaxaID data frame. Any output from `TaxaMatch`, `TaxaLikely`,
+#' @param input_df A TaxaID data frame. Any output from `TaxaMatch`, `TaxaLikely`,
 #'   or `TaxaAssign` is accepted. Columns not covered by the FAIRe field
 #'   mapping are retained with their original names.
 #' @param table_type Character. `"taxaFinal"` (post-curation assignments,
@@ -87,22 +87,25 @@
 #'
 #' faire_df <- to_faire(match_df, table_type = "taxaRaw")
 #' names(faire_df)
-to_faire <- function(df,
+to_faire <- function(input_df,
                      table_type  = c("taxaFinal", "taxaRaw"),
                      checkls_ver = "1.02",
                      assay_name  = NULL) {
 
   table_type <- match.arg(table_type)
 
-  if (!is.data.frame(df))
-    stop("`df` must be a data frame.", call. = FALSE)
+  if (!is.data.frame(input_df)) {
+    stop("`input_df` must be a data frame.", call. = FALSE)
+  }
   if (!is.character(checkls_ver) || length(checkls_ver) != 1L ||
-      !nzchar(checkls_ver))
+      !nzchar(checkls_ver)) {
     stop("`checkls_ver` must be a non-empty single string.", call. = FALSE)
+  }
   if (!is.null(assay_name) &&
       (!is.character(assay_name) || length(assay_name) != 1L ||
-       !nzchar(assay_name)))
+       !nzchar(assay_name))) {
     stop("`assay_name` must be a non-empty single string or NULL.", call. = FALSE)
+  }
 
   # ---------------------------------------------------------------------------
   # Column rename map: TaxaID -> FAIRe
@@ -118,10 +121,10 @@ to_faire <- function(df,
   )
 
   # Handle assay_name: testid absent but user supplied assay_name
-  if (!"testid" %in% names(df)) {
+  if (!"testid" %in% names(input_df)) {
     rename_map <- rename_map[names(rename_map) != "testid"]
     if (!is.null(assay_name)) {
-      df[["assay_name"]] <- assay_name
+      input_df[["assay_name"]] <- assay_name
     } else {
       message(
         "to_faire: `testid` column not found and `assay_name` not supplied; ",
@@ -130,10 +133,10 @@ to_faire <- function(df,
     }
   }
 
-  # Apply renames for columns present in df
+  # Apply renames for columns present in input_df
   for (taxaid_col in names(rename_map)) {
-    if (taxaid_col %in% names(df)) {
-      names(df)[names(df) == taxaid_col] <- rename_map[[taxaid_col]]
+    if (taxaid_col %in% names(input_df)) {
+      names(input_df)[names(input_df) == taxaid_col] <- rename_map[[taxaid_col]]
     }
   }
 
@@ -142,11 +145,11 @@ to_faire <- function(df,
   # ---------------------------------------------------------------------------
   tax_ranks     <- c("kingdom", "phylum", "class", "order",
                      "family", "genus", "species")
-  present_ranks <- intersect(tax_ranks, names(df))
+  present_ranks <- intersect(tax_ranks, names(input_df))
 
   if (length(present_ranks) > 0L) {
-    df[["verbatimIdentification"]] <- apply(
-      df[present_ranks], 1L,
+    input_df[["verbatimIdentification"]] <- apply(
+      input_df[present_ranks], 1L,
       function(row) {
         vals <- row[!is.na(row) & nzchar(row)]
         if (length(vals) == 0L) NA_character_ else paste(vals, collapse = "; ")
@@ -157,26 +160,26 @@ to_faire <- function(df,
   # ---------------------------------------------------------------------------
   # Construct specificEpithet from species column (second word of binomial)
   # ---------------------------------------------------------------------------
-  if ("species" %in% names(df)) {
-    df[["specificEpithet"]] <- sub("^\\S+\\s+", "", df[["species"]])
+  if ("species" %in% names(input_df)) {
+    input_df[["specificEpithet"]] <- sub("^\\S+\\s+", "", input_df[["species"]])
     # Where species is NA or has no space (genus-only entry), return NA
-    df[["specificEpithet"]][
-      is.na(df[["species"]]) | !grepl(" ", df[["species"]], fixed = TRUE)
+    input_df[["specificEpithet"]][
+      is.na(input_df[["species"]]) | !grepl(" ", input_df[["species"]], fixed = TRUE)
     ] <- NA_character_
   }
 
   # ---------------------------------------------------------------------------
   # Add mandatory checkls_ver field
   # ---------------------------------------------------------------------------
-  df[["checkls_ver"]] <- checkls_ver
+  input_df[["checkls_ver"]] <- checkls_ver
 
   # ---------------------------------------------------------------------------
   # Attach FAIRe metadata attribute
   # ---------------------------------------------------------------------------
-  attr(df, "faire_table") <- list(
+  attr(input_df, "faire_table") <- list(
     table_type  = table_type,
     checkls_ver = checkls_ver
   )
 
-  df
+  input_df
 }

@@ -408,7 +408,7 @@ audit_barcode_coverage <- function(match_df,
     if (!is.character(species_list) || length(species_list) == 0L)
       stop("species_list must be a character vector of species names, or NULL")
     species_list <- unique(.first_two_words(
-      trimws(species_list[TaxaTools::is_valid_species_name(trimws(species_list))])
+      trimws(species_list[TaxaTools::is_plausible_binomial(trimws(species_list))])
     ))
   }
 
@@ -530,7 +530,7 @@ audit_barcode_coverage <- function(match_df,
         dplyr::filter(.data[[target_rank]] == grp) |>
         dplyr::pull(species) |>
         unique()
-      .first_two_words(x[TaxaTools::is_valid_species_name(x)])
+      .first_two_words(x[TaxaTools::is_plausible_binomial(x)])
     }, error = function(e) character(0L))
 
     # All described species for this genus
@@ -583,7 +583,7 @@ audit_barcode_coverage <- function(match_df,
 
         raw <- vapply(sp_summ_flat, `[[`, character(1L), "scientificname")
         raw <- .first_two_words(unique(raw[!is.na(raw)]))
-        raw[TaxaTools::is_valid_species_name(raw)]
+        raw[TaxaTools::is_plausible_binomial(raw)]
         } # close inner else
         } # close outer else
       }, error = function(e) {
@@ -782,7 +782,7 @@ audit_barcode_coverage <- function(match_df,
     }, character(1L))
     matched <- nms[uid_map %in% taxid_vec]
     raw <- .first_two_words(unique(matched[!is.na(matched)]))
-    raw[TaxaTools::is_valid_species_name(raw)]
+    raw[TaxaTools::is_plausible_binomial(raw)]
   }
 
   sp_exp       <- .sp_names(taxids_exp,       tax_summ_flat)
@@ -818,7 +818,7 @@ audit_barcode_coverage <- function(match_df,
       toupper(ch$taxonomicStatus) %in% c("ACCEPTED", "DOUBTFUL")
     ]
     sp_clean <- .first_two_words(trimws(sp))
-    sp_clean[TaxaTools::is_valid_species_name(sp_clean)]
+    sp_clean[TaxaTools::is_plausible_binomial(sp_clean)]
   }, error = function(e) character(0L))
 }
 
@@ -839,7 +839,7 @@ audit_barcode_coverage <- function(match_df,
     x <- match_df |>
       dplyr::filter(.data[[target_rank]] == grp) |>
       dplyr::pull(species) |> unique()
-    .first_two_words(x[TaxaTools::is_valid_species_name(x)])
+    .first_two_words(x[TaxaTools::is_plausible_binomial(x)])
   }, error = function(e) character(0L))
 
   # Get NCBI genus UID (needed for reverse barcode check in all paths)
@@ -880,7 +880,7 @@ audit_barcode_coverage <- function(match_df,
             }), recursive = FALSE)
             raw <- vapply(sp_flat, `[[`, character(1L), "scientificname")
             raw <- .first_two_words(unique(raw[!is.na(raw)]))
-            raw[TaxaTools::is_valid_species_name(raw)]
+            raw[TaxaTools::is_plausible_binomial(raw)]
           }
         }, error = function(e) {
           warning(sprintf("NCBI taxonomy query failed for '%s': %s",
@@ -912,7 +912,7 @@ audit_barcode_coverage <- function(match_df,
         }), recursive = FALSE)
         raw <- vapply(sp_flat, `[[`, character(1L), "scientificname")
         raw <- .first_two_words(unique(raw[!is.na(raw)]))
-        raw[TaxaTools::is_valid_species_name(raw)]
+        raw[TaxaTools::is_plausible_binomial(raw)]
       }
     }, error = function(e) character(0L))
   }
@@ -1051,7 +1051,7 @@ audit_barcode_coverage_ncbi <- function(match_df,
     if (!is.character(species_list) || length(species_list) == 0L)
       stop("species_list must be a character vector or NULL")
     species_list <- unique(.first_two_words(
-      trimws(species_list[TaxaTools::is_valid_species_name(trimws(species_list))])
+      trimws(species_list[TaxaTools::is_plausible_binomial(trimws(species_list))])
     ))
   }
   if (!requireNamespace("rentrez", quietly = TRUE))

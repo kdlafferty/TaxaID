@@ -13,12 +13,15 @@
 #   - .parse_openai_compat_response() — success, HTTP error, empty content
 # ==============================================================================
 
-# Helper: reset session registry state between tests
+# Helper: reset session registry state between tests.
+# Uses asNamespace() so this works both via devtools::test() (load_all)
+# and via testthat::test_dir() on an installed package.
 .reset_registry <- function() {
-  .registry_env$session_pins    <- NULL
-  .registry_env$discovered      <- NULL
-  .registry_env$registry        <- NULL
-  .registry_env$registry_loaded <- FALSE
+  env <- get(".registry_env", envir = asNamespace("TaxaTools"))
+  env$session_pins    <- NULL
+  env$discovered      <- NULL
+  env$registry        <- NULL
+  env$registry_loaded <- FALSE
 }
 
 # ==============================================================================
