@@ -149,12 +149,12 @@ census_genus_species <- function(genus_keys,
       missing <- setdiff(species_names, match_species)
       in_ref  <- length(species_names) - length(missing)
       n_miss  <- length(missing)
-      status_val <- if (n_miss == 0L) {
-        "complete"
+      if (n_miss == 0L) {
+        status_val <- "complete"
       } else if (n_miss == 1L) {
-        "singleton_missing"
+        status_val <- "singleton_missing"
       } else {
-        "incomplete"
+        status_val <- "incomplete"
       }
     } else {
       missing    <- character(0)
@@ -334,10 +334,10 @@ census_genus_species <- function(genus_keys,
                       stringsAsFactors = FALSE))
   }
 
-  name_col <- if ("canonicalName" %in% names(children)) {
-    "canonicalName"
+  if ("canonicalName" %in% names(children)) {
+    name_col <- "canonicalName"
   } else {
-    "scientificName"
+    name_col <- "scientificName"
   }
 
   data.frame(

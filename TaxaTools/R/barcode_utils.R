@@ -62,8 +62,17 @@ barcode_length_defaults <- list(
 #' @export
 resolve_barcode_lengths <- function(barcode_term, min_len = NULL,
                                     max_len = NULL) {
-  if (!is.null(min_len) && !is.null(max_len))
-    return(c(as.integer(min_len), as.integer(max_len)))
+  if (!is.null(min_len) && !is.null(max_len)) {
+    min_i <- as.integer(min_len)
+    max_i <- as.integer(max_len)
+    if (min_i > max_i) {
+      stop(sprintf(
+        "resolve_barcode_lengths: min_len (%d) is greater than max_len (%d).",
+        min_i, max_i
+      ), call. = FALSE)
+    }
+    return(stats::setNames(c(min_i, max_i), c("min_bp", "max_bp")))
+  }
 
   if (is.null(barcode_term))
     stop("Specify barcode_term for auto-detection, or provide both min_len and max_len")
@@ -95,5 +104,5 @@ resolve_barcode_lengths <- function(barcode_term, min_len = NULL,
   if (!is.null(min_len)) resolved[1L] <- as.integer(min_len)
   if (!is.null(max_len)) resolved[2L] <- as.integer(max_len)
 
-  resolved
+  stats::setNames(resolved, c("min_bp", "max_bp"))
 }

@@ -144,10 +144,11 @@ common_to_scientific <- function(common_names,
   if (!is.null(location))
     context_lines <- c(context_lines,
                        sprintf("Geographic location: %s", location))
-  context_block <- if (length(context_lines) > 0L)
-    paste0("\nContext:\n", paste(context_lines, collapse = "\n"), "\n")
-  else
-    ""
+  if (length(context_lines) > 0L) {
+    context_block <- paste0("\nContext:\n", paste(context_lines, collapse = "\n"), "\n")
+  } else {
+    context_block <- ""
+  }
 
   prompt <- paste0(
     "You are a taxonomist. Convert the following common names to scientific ",
@@ -430,9 +431,9 @@ common_to_scientific <- function(common_names,
 #'   (e.g., \code{"Southern California Bight"}, \code{"Pacific Northwest, USA"}).
 #'   Biases the LLM toward regionally appropriate common names.  Has no effect
 #'   on backbone-sourced results.  Default \code{NULL}.
-#' @param use_llm Logical.  If \code{TRUE} (default), taxa with no backbone
-#'   result are sent to the LLM in a single batched call.  Set \code{FALSE} to
-#'   return \code{NA} for unresolved taxa instead.
+#' @param use_llm Logical.  If \code{TRUE}, taxa with no backbone result are
+#'   sent to the LLM in a single batched call.  Default \code{FALSE}: returns
+#'   \code{NA} for unresolved taxa without an LLM call.
 #' @param llm_fn Function with signature \code{function(prompt, ...) ->
 #'   character(1)}.  Required when \code{use_llm = TRUE} or
 #'   \code{backbone_id} is unsupported / \code{NULL}.  Default
@@ -487,7 +488,7 @@ common_to_scientific <- function(common_names,
 scientific_to_common <- function(scientific_names,
                                  backbone_id = 11L,
                                  location    = NULL,
-                                 use_llm     = TRUE,
+                                 use_llm     = FALSE,
                                  llm_fn      = getOption("TaxaID.llm_fn"),
                                  ...) {
 
