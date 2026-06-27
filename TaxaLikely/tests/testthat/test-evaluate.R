@@ -109,6 +109,64 @@ test_that(".evaluate_one_query: min_match_threshold filters low scores", {
   expect_equal(nrow(spec), 0L)
 })
 
+test_that(".evaluate_one_query: score-only alpha filter rejects extreme outlier, retains near-mean", {
+  # Session 121: outlier check is score-only (df=1 chi-sq), NOT 2D Mahalanobis.
+  # Fixture: mu_score=4.5, H1_Sigma[1,1]=2.0 (from .make_model_params()).
+  # Score 95 -> logit(0.95)=2.94 -> d_sq=(4.5-2.94)^2/2.0=1.22 -> p=0.27 >> 0.001 -> kept.
+  # Score 50 -> logit(0.50)=0    -> d_sq=(4.5-0)^2/2.0=10.1  -> p=0.0015 > 0.001 -> kept at alpha=0.001.
+  # Score 1  -> logit(~0.01)=-4.6-> d_sq=(4.5-(-4.6))^2/2.0=41.4 -> p<1e-10 << 0.001 -> dropped.
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+
+  # Near-mean score: should survive alpha filter
+  df_near <- .make_match_df()
+  df_near$score <- c(95, 80, 60)   # top score logit(0.95)=2.94, close to mu=4.5
+  out_near <- TaxaLikely:::.evaluate_one_query(df_near, params,
+                                                c("family", "genus", "species"),
+                                                ratio_threshold = 0, alpha = 0.001)
+  spec_near <- out_near[out_near$hypothesis_type == "specific_candidate", ]
+  expect_true(nrow(spec_near) > 0L)
+  expect_true(any(spec_near$score_likelihood > 0))
+
+  # Extreme outlier score: should be rejected by alpha filter.
+  # Fixture mu_score=4.5, use_sigma[1,1]=2.0.
+  # score=5 on 0-100 scale -> normalized 0.05 -> logit(0.05)=-2.94 ->
+  # d_sq=(4.5-(-2.94))^2/2.0=27.7 -> p~=0 << 0.001 -> alpha rejects.
+  df_far <- .make_match_df()
+  df_far$score <- c(5, 3, 1)   # 0-100 scale; ~5% identity — extreme outlier
+  out_far <- TaxaLikely:::.evaluate_one_query(df_far, params,
+                                               c("family", "genus", "species"),
+                                               ratio_threshold = 0, alpha = 0.001,
+                                               min_match_threshold = 0)
+  spec_far <- out_far[out_far$hypothesis_type == "specific_candidate", ]
+  # All H1 candidates should have likelihood 0 (alpha filter rejects them)
+  expect_true(all(spec_far$score_likelihood == 0))
+})
+
+test_that(".evaluate_one_query: alpha filter uses score only, not gap (small-gap candidate retained)", {
+  # A legitimate H1 candidate may have a tiny gap (confusable congener present) but a
+  # reasonable score. The outlier filter must NOT reject it based on the gap — only the
+  # score dimension is tested. Verify by providing a scenario where the 2D Mahalanobis
+  # would reject but the score-only test passes.
+  # Fixture: mu_score=4.5, mu_gap=2.0, H1_Sigma=[[2,0.2],[0.2,1]].
+  # Score 95 (logit=2.94): 1D d_sq=1.22 -> p=0.27 -> passes at any reasonable alpha.
+  # Gap 0.01 (logit=~0.01): extremely small, far below mu_gap=2.0.
+  # If gap were included: 2D d_sq would be much larger and could exceed threshold.
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  df_tinygap <- .make_match_df()
+  # Scores 95.0 and 94.9 give a tiny gap in logit space (~0.02 logit units)
+  df_tinygap$score <- c(95.0, 94.9, 60.0)
+  out <- TaxaLikely:::.evaluate_one_query(df_tinygap, params,
+                                           c("family", "genus", "species"),
+                                           ratio_threshold = 0, alpha = 0.001)
+  spec <- out[out$hypothesis_type == "specific_candidate" &
+                out$taxon_name == "Hybognathus nuchalis", ]
+  # Despite the tiny gap, the H1 candidate should survive the outlier filter
+  expect_true(nrow(spec) > 0L)
+  expect_true(any(spec$score_likelihood > 0))
+})
+
 # ---- evaluate_likelihoods ---------------------------------------------------
 
 test_that("evaluate_likelihoods: returns list with $likelihoods and $unresolved", {

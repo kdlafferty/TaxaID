@@ -39,7 +39,9 @@ ref_matrix <- build_sequence_matrix(reference_df)
 model <- train_likelihood_model(ref_matrix)
 
 # 3. Apply to match data
-result <- evaluate_likelihoods(match_df, model_params = model)
+# ratio_threshold = 0: gate H1 rows by the score-only outlier filter (alpha = 0.001)
+# rather than by comparison to H2/H3 likelihoods.
+result <- evaluate_likelihoods(match_df, model_params = model, ratio_threshold = 0)
 likelihoods <- result$likelihoods
 ```
 
@@ -108,10 +110,11 @@ The model learns three hypothesis distributions:
 
 ```{r evaluate}
 result <- evaluate_likelihoods(
- match_df     = match_df,
- model_params = model,
- rank_system  = c("family", "genus", "species"),
- n_sims       = 1000
+  match_df        = match_df,
+  model_params    = model,
+  rank_system     = c("family", "genus", "species"),
+  n_sims          = 1000,
+  ratio_threshold = 0    # recommended: rely on score-only outlier filter (alpha = 0.001)
 )
 
 likelihoods <- result$likelihoods
@@ -144,7 +147,8 @@ The output is ready for TaxaAssign: `expand_unreferenced_hypotheses()` →
 | Parameter | Default | When to change |
 |---|---|---|
 | `n_sims` | 1000 | Set to 0 for point estimates only (faster) |
-| `ratio_threshold` | 0.01 | Lower to retain more marginal hypotheses |
+| `ratio_threshold` | 0.01 | **Set to 0** for production workflows. The default compares H1 density to H2/H3 density (a cross-rank comparison) and can suppress legitimate H1 candidates in species-rich families. With `ratio_threshold = 0`, H1 filtering relies solely on the score-only outlier check (`alpha`) |
+| `alpha` | 0.001 | H1 score-outlier threshold (~3.3 sigma, df=1 chi-sq, score only). Increase to admit weaker H1 matches; decrease to tighten. Gap is excluded from this test — small gaps (confusable congeners) are handled by the bivariate density, not the outlier filter |
 | `anchor_perfect` | TRUE | Set FALSE if perfect matches are impossible |
 | `barcode_term` | — | Must match your marker: "12S", "COI", "ITS2", etc. |
 | `mislabel_threshold` | — | Lower to flag more borderline references |
