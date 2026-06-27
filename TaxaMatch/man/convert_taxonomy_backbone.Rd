@@ -77,7 +77,9 @@ A \code{taxonomy_collision} column records what happened for each row:
 \describe{
 \item{\code{"consistent"}}{Taxon found in target backbone; all supplied rank columns agree with the original.}
 \item{\code{"backbone_N[col1,col2]"}}{Taxon found; listed columns were changed to target backbone N values.}
-\item{\code{"backbone_N"} or \code{"original"}}{Taxon not found in target backbone; hierarchy unchanged. Label is \code{"backbone_N"} when \code{source_backbone_id} is supplied, otherwise \code{"original"}.}
+\item{\code{"backbone_N"} or \code{"original"}}{Taxon not found in target backbone; hierarchy
+unchanged. Label is \code{"backbone_N"} when \code{source_backbone_id} is supplied, otherwise
+\code{"original"}.}
 }
 
 A \code{taxonomy_backbone} column records which backbone the row's hierarchy

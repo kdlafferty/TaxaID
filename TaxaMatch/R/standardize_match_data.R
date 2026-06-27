@@ -55,7 +55,9 @@
 #' @return A data frame with at minimum:
 #' \describe{
 #'   \item{`observation_id`}{Unique query identifier (renamed from `observation_id_col`).}
-#'   \item{`score_original`}{Raw match score (renamed from `score_col`). Preserved unchanged throughout the pipeline; downstream functions add `score_norm`, `score_softmax`, and `score_likelihood` columns as transformations are applied.}
+#'   \item{`score_original`}{Raw match score (renamed from `score_col`). Preserved unchanged
+#'     throughout the pipeline; downstream functions add `score_norm`, `score_softmax`, and
+#'     `score_likelihood` columns as transformations are applied.}
 #'   \item{`taxon_name`}{Most specific non-NA taxon name (derived).}
 #'   \item{`taxon_name_rank`}{Rank of `taxon_name`, lowercase (derived).}
 #' }
@@ -274,14 +276,12 @@ filter_redundant_hypotheses <- function(
   n <- nrow(match_df)
   redundant <- logical(n)
 
-  # Only process rows whose rank is in rank_system (non-NA rank_score)
-  known_idx <- which(!is.na(rank_score))
-
   # Warn about NA observation_ids
   n_na_sid <- sum(is.na(match_df$observation_id))
   if (n_na_sid > 0L) {
     warning(sprintf(
-      "filter_redundant_hypotheses: %d row(s) have NA observation_id. These rows cannot be grouped and will be retained as-is.",
+      paste0("filter_redundant_hypotheses: %d row(s) have NA observation_id. ",
+             "These rows cannot be grouped and will be retained as-is."),
       n_na_sid
     ))
   }

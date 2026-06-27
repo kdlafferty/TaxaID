@@ -17,7 +17,9 @@
 #' \describe{
 #'   \item{`"consistent"`}{Taxon found in target backbone; all supplied rank columns agree with the original.}
 #'   \item{`"backbone_N[col1,col2]"`}{Taxon found; listed columns were changed to target backbone N values.}
-#'   \item{`"backbone_N"` or `"original"`}{Taxon not found in target backbone; hierarchy unchanged. Label is `"backbone_N"` when `source_backbone_id` is supplied, otherwise `"original"`.}
+#'   \item{`"backbone_N"` or `"original"`}{Taxon not found in target backbone; hierarchy
+#'     unchanged. Label is `"backbone_N"` when `source_backbone_id` is supplied, otherwise
+#'     `"original"`.}
 #' }
 #'
 #' A `taxonomy_backbone` column records which backbone the row's hierarchy

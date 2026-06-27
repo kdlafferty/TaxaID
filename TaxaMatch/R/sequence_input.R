@@ -487,5 +487,3 @@ filter_sequences <- function(seq_df,
   rownames(seq_df) <- NULL
   seq_df
 }
-
-

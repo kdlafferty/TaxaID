@@ -1,0 +1,6 @@
+linters: linters_with_defaults(
+    line_length_linter(120L),
+    indentation_linter = NULL
+  )
+exclusions: list("R/read_image.R" = list(commented_code_linter = c(511L, 717L)))
+encoding: "UTF-8"

@@ -11,7 +11,7 @@
 
 
 # ==============================================================================
-# read_birdnet_output()
+# read_birdnet_output
 # ==============================================================================
 
 #' Read BirdNET-Analyzer Results into a Match Object
@@ -201,7 +201,7 @@ read_birdnet_output <- function(files,
 
 
 # ==============================================================================
-# Internal: .parse_birdnet_file()
+# Internal: .parse_birdnet_file
 # ==============================================================================
 
 #' Parse a single BirdNET-Analyzer result CSV into a match-ready data frame
@@ -214,10 +214,10 @@ read_birdnet_output <- function(files,
 
   df <- tryCatch(
     utils::read.csv(f, check.names = FALSE, stringsAsFactors = FALSE),
-    error = function(e) stop(sprintf(
-      "read_birdnet_output: could not read '%s': %s",
-      basename(f), conditionMessage(e)
-    ))
+    error = function(e) {
+      stop(sprintf("read_birdnet_output: could not read '%s': %s",
+                   basename(f), conditionMessage(e)))
+    }
   )
 
   missing_cols <- setdiff(required_cols, names(df))
@@ -283,7 +283,7 @@ read_birdnet_output <- function(files,
 
 
 # ==============================================================================
-# Internal: .parse_birdnet_df()
+# Internal: .parse_birdnet_df
 # ==============================================================================
 
 #' Parse an already-loaded BirdNET data frame into a match-ready data frame

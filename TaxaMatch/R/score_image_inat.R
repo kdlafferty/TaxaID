@@ -3,13 +3,13 @@
 # TaxaMatch -- iNaturalist Computer Vision API image scoring
 #
 # Exported functions:
-#   score_image_inat()       -- submit image(s) to iNat CV API; return match object
+#   score_image_inat         -- submit image(s) to iNat CV API; return match object
 #
 # Internal helpers (@noRd):
-#   .resolve_image_files()   -- resolve single path / vector / directory to file list
-#   .path_folder_components() -- extract nested folder levels from image paths
-#   .extract_exif_info()     -- pull lat/lng/date from image EXIF (requires exifr)
-#   .parse_inat_cv_response() -- parse one iNat CV API JSON response to tibble rows
+#   .resolve_image_files     -- resolve single path / vector / directory to file list
+#   .path_folder_components  -- extract nested folder levels from image paths
+#   .extract_exif_info       -- pull lat/lng/date from image EXIF (requires exifr)
+#   .parse_inat_cv_response  -- parse one iNat CV API JSON response to tibble rows
 # ==============================================================================
 
 #' Score images using the iNaturalist Computer Vision API
@@ -277,7 +277,7 @@ score_image_inat <- function(
 
 
 # ==============================================================================
-# Internal: .resolve_image_files()
+# Internal: .resolve_image_files
 # ==============================================================================
 
 #' Resolve image_path argument to a character vector of image file paths
@@ -326,7 +326,9 @@ score_image_inat <- function(
 
   # Base dir: longest common ancestor of all file directories
   dirs      <- unique(dirname(abs_paths))
-  base_dir  <- if (length(dirs) == 1L) dirs[[1L]] else {
+  base_dir  <- if (length(dirs) == 1L) {
+    dirs[[1L]]
+  } else {
     # Find longest common path prefix
     parts   <- strsplit(dirs, .Platform$file.sep, fixed = TRUE)
     min_len <- min(vapply(parts, length, integer(1L)))
@@ -344,7 +346,7 @@ score_image_inat <- function(
 
 
 # ==============================================================================
-# Internal: .path_folder_components()
+# Internal: .path_folder_components
 # ==============================================================================
 
 #' Extract nested folder levels between base_dir and each image as columns
@@ -391,7 +393,7 @@ score_image_inat <- function(
 
 
 # ==============================================================================
-# Internal: .extract_exif_info()
+# Internal: .extract_exif_info
 # ==============================================================================
 
 #' Extract latitude, longitude, and date from image EXIF metadata
@@ -443,7 +445,7 @@ score_image_inat <- function(
 
 
 # ==============================================================================
-# Internal: .parse_inat_cv_response()
+# Internal: .parse_inat_cv_response
 # ==============================================================================
 
 #' Parse iNaturalist CV API JSON response into a match-object tibble
@@ -483,24 +485,28 @@ score_image_inat <- function(
     fs  <- if (!is.null(r[["frequency_score"]])) as.numeric(r[["frequency_score"]]) else NA_real_
     gpw <- if (!is.na(vs) && !is.na(cs) && vs > 0) cs / vs else NA_real_
 
-    nm   <- if (!is.null(tx[["name"]]))                    as.character(tx[["name"]])                    else NA_character_
-    rank <- if (!is.null(tx[["rank"]]))                    tolower(as.character(tx[["rank"]]))            else NA_character_
+    nm   <- if (!is.null(tx[["name"]])) as.character(tx[["name"]]) else NA_character_
+    rank <- if (!is.null(tx[["rank"]])) tolower(as.character(tx[["rank"]])) else NA_character_
     cn   <- if (!is.null(tx[["preferred_common_name"]])) as.character(tx[["preferred_common_name"]]) else NA_character_
-    icon <- if (!is.null(tx[["iconic_taxon_name"]]))      as.character(tx[["iconic_taxon_name"]])     else NA_character_
-    tid  <- if (!is.null(tx[["id"]]))                      as.integer(tx[["id"]])                        else NA_integer_
-    nobs <- if (!is.null(tx[["observations_count"]]))      as.integer(tx[["observations_count"]])         else NA_integer_
+    icon <- if (!is.null(tx[["iconic_taxon_name"]])) as.character(tx[["iconic_taxon_name"]]) else NA_character_
+    tid  <- if (!is.null(tx[["id"]])) as.integer(tx[["id"]]) else NA_integer_
+    nobs <- if (!is.null(tx[["observations_count"]])) as.integer(tx[["observations_count"]]) else NA_integer_
 
     # Derive genus from name:
     #   rank == "species"  → first word of binomial
     #   rank == "genus"    → full name
     #   otherwise          → NA
     genus_val <- if (!is.na(nm) && !is.na(rank)) {
-      if (identical(rank, "species") && grepl("^[A-Z][a-z]+ [a-z]", nm))
+      if (identical(rank, "species") && grepl("^[A-Z][a-z]+ [a-z]", nm)) {
         sub("^(\\S+).*", "\\1", nm)
-      else if (identical(rank, "genus"))
+      } else if (identical(rank, "genus")) {
         nm
-      else NA_character_
-    } else NA_character_
+      } else {
+        NA_character_
+      }
+    } else {
+      NA_character_
+    }
 
     rows[[i]] <- tibble::tibble(
       taxon_name        = nm,

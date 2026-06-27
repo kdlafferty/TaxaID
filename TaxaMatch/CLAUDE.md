@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-27 (Session 122 — peer-review pass + lintr follow-up: test-sequence_input.R updated to use unname() on resolve_barcode_lengths() result; resolve_barcode_lengths() now returns named vector c(min_bp, max_bp) since TaxaTools Phase 1 fix)
+# Last updated: 2026-06-27 (Session 122 — peer-review pass + lintr sweep: brace_linter fixes across blast.R, read_acoustic.R, read_image.R, score_image_inat.R; object_usage_linter: removed dead vars cand_id (read_image.R), known_idx (standardize_match_data.R); object_length_linter: .resolve_taxonomy_from_accessions → .resolve_taxonomy_by_acc; trailing_blank_lines fix (sequence_input.R); test-sequence_input.R unname() fix for resolve_barcode_lengths() named vector)
 
 ---
 

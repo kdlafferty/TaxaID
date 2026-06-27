@@ -139,7 +139,9 @@ blast_sequences <- function(seq_df,
   if (any(na_asv))
     stop(sprintf("seq_df has %d row(s) with empty or NA asv_id. All sequences must have identifiers.", sum(na_asv)))
   if (any(na_seq))
-    stop(sprintf("seq_df has %d row(s) with empty or NA sequence. Remove these rows before calling blast_sequences().", sum(na_seq)))
+    stop(sprintf(
+      "seq_df has %d row(s) with empty or NA sequence. Remove before calling blast_sequences().",
+      sum(na_seq)))
 
   # Sanitize asv_id: '>' or newlines would corrupt FASTA formatting
   bad_ids <- grepl("[>\n\r]", seq_df$asv_id)
@@ -249,7 +251,7 @@ blast_sequences <- function(seq_df,
       if (length(accessions) > 0L && verbose)
         message(sprintf("Looking up taxids for %d unique accessions...", length(accessions)))
       if (length(accessions) > 0L) {
-        tax_map <- .resolve_taxonomy_from_accessions(accessions, ncbi_api_key, verbose)
+        tax_map <- .resolve_taxonomy_by_acc(accessions, ncbi_api_key, verbose)
         if (is.data.frame(tax_map) && nrow(tax_map) > 0L) {
           filtered <- merge(filtered, tax_map, by.x = "sacc", by.y = "accession",
                             all.x = TRUE, sort = FALSE)
@@ -504,7 +506,7 @@ blast_sequences <- function(seq_df,
 
   doc <- tryCatch(xml2::read_xml(xml_text), error = function(e) {
     warning(sprintf("Failed to parse BLAST XML: %s", e$message))
-    return(NULL)
+    NULL
   })
   if (is.null(doc)) return(.empty_raw_hits())
 
@@ -799,7 +801,7 @@ blast_sequences <- function(seq_df,
 # ==============================================================================
 
 #' @noRd
-.resolve_taxonomy_from_accessions <- function(accessions, ncbi_api_key = NULL,
+.resolve_taxonomy_by_acc <- function(accessions, ncbi_api_key = NULL,
                                                verbose = TRUE) {
   if (!requireNamespace("rentrez", quietly = TRUE))
     stop("Package 'rentrez' is required for taxonomy resolution.")

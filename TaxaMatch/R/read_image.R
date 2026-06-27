@@ -16,7 +16,7 @@
 
 
 # ==============================================================================
-# read_animl_output()
+# read_animl_output
 # ==============================================================================
 
 #' Read Animl Camera Trap Results into a Match Object
@@ -230,7 +230,7 @@ read_animl_output <- function(files,
 
 
 # ==============================================================================
-# Internal: .parse_animl_file()
+# Internal: .parse_animl_file
 # ==============================================================================
 
 #' Parse a single Animl result CSV into a match-ready data frame
@@ -245,10 +245,10 @@ read_animl_output <- function(files,
 
   df <- tryCatch(
     utils::read.csv(f, check.names = FALSE, stringsAsFactors = FALSE),
-    error = function(e) stop(sprintf(
-      "read_animl_output: could not read '%s': %s",
-      basename(f), conditionMessage(e)
-    ))
+    error = function(e) {
+      stop(sprintf("read_animl_output: could not read '%s': %s",
+                   basename(f), conditionMessage(e)))
+    }
   )
 
   # ---- check file_col --------------------------------------------------------
@@ -364,7 +364,7 @@ read_animl_output <- function(files,
 
 
 # ==============================================================================
-# Internal: .pivot_wide_animl()
+# Internal: .pivot_wide_animl
 # ==============================================================================
 
 #' Pivot wide Animl format (pred1/score1 ... predN/scoreN) to long format
@@ -394,7 +394,6 @@ read_animl_output <- function(files,
   # Pivot: replicate each row n_candidates times
   n_rows  <- nrow(df)
   indices <- rep(seq_len(n_rows), times = n_candidates)
-  cand_id <- rep(seq_len(n_candidates), each = n_rows)
 
   long <- df[indices, , drop = FALSE]
   rownames(long) <- NULL
@@ -420,7 +419,7 @@ read_animl_output <- function(files,
 
 
 # ==============================================================================
-# read_inaturalist_cv_output()
+# read_inaturalist_cv_output
 # ==============================================================================
 
 #' Read iNaturalist Computer Vision API Results into a Match Object
@@ -586,10 +585,10 @@ read_inaturalist_cv_output <- function(files,
 .parse_inat_cv_file <- function(f, score_type) {
   parsed <- tryCatch(
     jsonlite::fromJSON(f, simplifyVector = FALSE),
-    error = function(e) stop(sprintf(
-      "read_inaturalist_cv_output: could not parse '%s': %s",
-      basename(f), conditionMessage(e)
-    ))
+    error = function(e) {
+      stop(sprintf("read_inaturalist_cv_output: could not parse '%s': %s",
+                   basename(f), conditionMessage(e)))
+    }
   )
 
   obs_id <- tools::file_path_sans_ext(basename(f))
@@ -614,8 +613,8 @@ read_inaturalist_cv_output <- function(files,
   rows <- lapply(results, function(r) {
     sc <- if (!is.null(r[[score_type]])) as.numeric(r[[score_type]]) else NA_real_
     tx <- r[["taxon"]]
-    nm   <- if (!is.null(tx[["name"]]))                    as.character(tx[["name"]])                    else NA_character_
-    rank <- if (!is.null(tx[["rank"]]))                    tolower(as.character(tx[["rank"]]))            else NA_character_
+    nm   <- if (!is.null(tx[["name"]])) as.character(tx[["name"]]) else NA_character_
+    rank <- if (!is.null(tx[["rank"]])) tolower(as.character(tx[["rank"]])) else NA_character_
     cn   <- if (!is.null(tx[["preferred_common_name"]])) as.character(tx[["preferred_common_name"]]) else NA_character_
     genus_val <- if (!is.na(nm) && grepl("^[A-Z][a-z]+ [a-z]", nm))
       sub("^(\\S+).*", "\\1", nm) else NA_character_
@@ -635,7 +634,7 @@ read_inaturalist_cv_output <- function(files,
 
 
 # ==============================================================================
-# read_wildlife_insights_output()
+# read_wildlife_insights_output
 # ==============================================================================
 
 #' Read Wildlife Insights / SpeciesNet JSON Results into a Match Object
@@ -803,10 +802,10 @@ read_wildlife_insights_output <- function(files,
 .parse_wi_predictions <- function(f, label_col, score_col) {
   parsed <- tryCatch(
     jsonlite::fromJSON(f, simplifyVector = FALSE),
-    error = function(e) stop(sprintf(
-      "read_wildlife_insights_output: could not parse '%s': %s",
-      basename(f), conditionMessage(e)
-    ))
+    error = function(e) {
+      stop(sprintf("read_wildlife_insights_output: could not parse '%s': %s",
+                   basename(f), conditionMessage(e)))
+    }
   )
 
   preds <- parsed[["predictions"]]

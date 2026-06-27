@@ -195,16 +195,3 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 **Multiline if-statement style (lines 75–78):** Fixed. `doi_note` assignment moved inside braces.
 
 ------------------------------------------------------------------------
-
-## Previously Deferred Items — All Completed (Phase 3)
-
-All items from the original deferred list were completed in the pre-release cleanup pass (Phase 3, 2026-06-27). `devtools::check()` confirmed 0 errors, 0 warnings, 0 notes.
-
-| Item | Resolution |
-|---|---|
-| General LLM data-sensitivity warning | Fixed: `@details` added to `call_api()`; NOTE added to `.onAttach()` startup messages |
-| `is_valid_species_name()` rename | Fixed: renamed to `is_plausible_binomial()` across 13 files |
-| `assemble_report()` documentation clarification | Fixed: `@return` and `@examples` updated |
-| `report_section.R` line 15 cleanup | Fixed: session comment removed |
-| Lintr sweep | Fixed: `.lintr` config added; all substantive issues resolved (25 commented-code, 10 brace, 4 other) |
-| README and repo file cleanup | Fixed: debris deleted across all packages |

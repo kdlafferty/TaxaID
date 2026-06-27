@@ -10,3 +10,4 @@
 ^\.Rhistory$
 ^\.DS_Store$
 ^DISCLAIMER\.md$
+^\.lintr$
