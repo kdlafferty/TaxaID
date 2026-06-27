@@ -38,8 +38,15 @@ utils::globalVariables(c(
 #'   relative to the best hypothesis; specific candidates below this are dropped.
 #' @param min_match_threshold Numeric (default `0.50`).  Raw score below which
 #'   a candidate receives likelihood 0 regardless of the model prediction.
-#' @param alpha Numeric (default `1e-6`).  Mahalanobis p-value cutoff: candidates
-#'   with smaller p-values are treated as outliers and receive likelihood 0.
+#' @param alpha Numeric (default `0.001`).  Score-outlier p-value cutoff: H1 candidates
+#'   whose query score is inconsistent with the species' own score distribution (univariate
+#'   normal, df = 1 chi-squared) receive likelihood 0.  The gap feature is NOT included in
+#'   this test -- a small gap (confusable congener present) correctly lowers the bivariate
+#'   H1 density but should not cause the candidate to be rejected as an outlier.  The
+#'   default 0.001 (1-in-1000 threshold, ~3.3 sigma) drops genuinely inconsistent
+#'   cross-family BLAST hits (e.g. freshwater taxa at 91-93% in a marine sample) while
+#'   retaining legitimate borderline H1s (e.g. a coastal species at 99% with a tight
+#'   per-species distribution).  H1-intrinsic: no comparison to H2/H3 densities.
 #' @param n_sims Integer (default `0`).  Number of Monte Carlo simulations for
 #'   `score_likelihood_mean` and `score_likelihood_sd`.  `0` = deterministic only.
 #' @param score_bounds Optional `c(min, max)` for score normalization.
@@ -62,7 +69,7 @@ utils::globalVariables(c(
                                 rank_system,
                                 ratio_threshold     = 0.01,
                                 min_match_threshold = 0.50,
-                                alpha               = 1e-6,
+                                alpha               = 0.001,
                                 n_sims              = 0,
                                 score_bounds        = NULL,
                                 logit_epsilon       = 1e-4,
@@ -230,11 +237,17 @@ utils::globalVariables(c(
                                    sd   = sqrt(use_sigma[1L, 1L]))
       } else {
         x_pt <- c(s_vec[i], g_vec[i])
-        d_sq  <- tryCatch(
-          stats::mahalanobis(x_pt, center = use_mu, cov = use_sigma),
-          error = function(e) Inf
-        )
-        p_val <- stats::pchisq(d_sq, df = 2L, lower.tail = FALSE)
+        # Outlier filter: score-only chi-squared test (df = 1).
+        # The gap measures how well-separated H1 is from alternatives — a
+        # small gap (confusable congener present) is correctly handled by
+        # the bivariate density below, which returns a lower H1 value.
+        # Including the gap in the outlier check unfairly rejects legitimate
+        # H1 candidates whose gap is small purely because a closely-scoring
+        # reference is present (e.g. a well-matched species in a speciose
+        # family). The score alone determines whether the query is consistent
+        # with this species' identity; the gap informs the relative weight.
+        d_sq_score <- (s_vec[i] - use_mu[1L])^2 / use_sigma[1L, 1L]
+        p_val <- stats::pchisq(d_sq_score, df = 1L, lower.tail = FALSE)
         if (p_val >= alpha)
           h1_vals[i] <- mvtnorm::dmvnorm(x_pt,
                                          mean  = as.numeric(use_mu),
@@ -455,7 +468,7 @@ utils::globalVariables(c(
 #'   are considered unmatchable and routed to the `$unresolved` output for
 #'   re-evaluation with a coarser `rank_system`.
 #' @param alpha Mahalanobis p-value cutoff for outlier rejection (default
-#'   `1e-6`).
+#'   `0.001`).  See `.evaluate_one_query()` for full description.
 #' @param n_sims Monte Carlo simulations per query (default `0` = point
 #'   estimate only).
 #' @param score_bounds Optional `c(min, max)` for score normalization.
@@ -599,7 +612,7 @@ evaluate_likelihoods <- function(match_df,
                                  rank_system         = NULL,
                                  ratio_threshold     = 0.01,
                                  min_match_threshold = 0.50,
-                                 alpha               = 1e-6,
+                                 alpha               = 0.001,
                                  n_sims              = 0L,
                                  score_bounds        = NULL,
                                  logit_epsilon       = 1e-4,

@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-26 (Session 121 — per-species sigma floor in evaluate_likelihoods())
+# Last updated: 2026-06-26 (Session 121 — Mahalanobis alpha default 1e-6 → 0.001 in evaluate_likelihoods())
 
 ---
 
@@ -315,10 +315,19 @@ which is skipped when DECIPHER/Biostrings are not installed.
   `global_sigma[1,1]` before evaluating H1 density. Species-specific sigma can be
   artificially tight for well-sampled species whose NCBI reference sequences are
   near-identical clones; tight sigma causes the Mahalanobis distance to balloon for
-  realistic eDNA query scores, driving H1 likelihood near zero and dropping the species
-  below `ratio_threshold`. The floor ensures the per-species distribution is never
-  narrower than the global empirical distribution. Applied in `.evaluate_one_query()`
-  after loading `sp_var` from `H1_Lookup`.
+  realistic eDNA query scores, driving H1 likelihood near zero. The floor ensures the
+  per-species distribution is never narrower than the global empirical distribution.
+  Applied in `.evaluate_one_query()` after loading `sp_var` from `H1_Lookup`.
+- **Score-only outlier filter, `alpha = 0.001` (Session 121):** Before computing H1
+  density, `.evaluate_one_query()` tests whether the query score is consistent with the
+  H1 species distribution via a univariate chi-squared test (df = 1, **score only**,
+  not 2D bivariate). If `p_val < alpha`, H1 likelihood = 0. Gap excluded from this test:
+  a small gap (confusable congener present) lowers the bivariate density correctly without
+  spuriously rejecting the H1 candidate. Including gap in the outlier check rejected
+  legitimate H1s in species-rich families (Leptocottus at 99% dropped because
+  Agonomalus at 99% gave a tiny gap, inflating 2D chi-sq past threshold). Default alpha
+  changed from `1e-6` → `0.001` (~3.3 sigma). Cyprinidae at 91–93% (>4 sigma from
+  H1 mean, p < 0.001) drop; coastal species at 99% (~2.7 sigma, p ≈ 0.006) retained.
 - **Monte Carlo:** n_sims perturbations of score_logit → `score_likelihood_mean` + `score_likelihood_sd`.
 - **Median-across-references:** `evaluate_likelihoods()` takes the **median** score
   per taxon_name across multiple reference accessions before likelihood calculation.
@@ -442,4 +451,24 @@ explaining the formula, direction of effect, and why coverage is not a model dim
 coverage audit functions.
 
 `devtools::check()`: 0 errors, 0 warnings, 1 pre-existing note (stale top-level .rds file).
+
+**Session 121 (2026-06-26): Per-species sigma floor + Mahalanobis alpha 1e-6 → 0.001**
+
+Two inference improvements in `.evaluate_one_query()` / `evaluate_likelihoods()`:
+
+Per-species sigma floor: `use_sigma[1,1]` now floored at `global_sigma[1,1]` before
+H1 density evaluation. Fixes species with artificially tight reference distributions
+(near-identical NCBI clones) silently dropping below `ratio_threshold`.
+
+Mahalanobis alpha default changed from `1e-6` to `0.001`: The chi-squared outlier
+check (2 df) now rejects H1 candidates at p < 0.001 rather than p < 1e-6. Motivation:
+`1e-6` admitted freshwater Cyprinidae (91–93% identity in a marine sample; p ≈ 0.00026)
+as spurious H1 rows. `0.001` drops them (0.00026 < 0.001) while retaining legitimate
+borderline H1 hits (e.g. Leptocottus armatus at 99%; p ≈ 0.009 > 0.001). Unlike
+`ratio_threshold`, this check is H1-intrinsic — it asks only whether the query is
+consistent with H1's own distribution, independent of H2/H3 densities. `ratio_threshold`
+default left at `0.01` in function signatures for backwards compatibility; workflows
+that use `ratio_threshold = 0` rely solely on this alpha check.
+
+449 tests pass; 0 failures.
 

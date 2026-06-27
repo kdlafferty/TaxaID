@@ -10,7 +10,7 @@ evaluate_likelihoods(
   rank_system = NULL,
   ratio_threshold = 0.01,
   min_match_threshold = 0.5,
-  alpha = 1e-06,
+  alpha = 0.001,
   n_sims = 0L,
   score_bounds = NULL,
   logit_epsilon = 1e-04,
@@ -48,7 +48,7 @@ are considered unmatchable and routed to the \verb{$unresolved} output for
 re-evaluation with a coarser \code{rank_system}.}
 
 \item{alpha}{Mahalanobis p-value cutoff for outlier rejection (default
-\code{1e-6}).}
+\code{0.001}).  See \code{.evaluate_one_query()} for full description.}
 
 \item{n_sims}{Monte Carlo simulations per query (default \code{0} = point
 estimate only).}

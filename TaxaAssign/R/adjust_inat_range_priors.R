@@ -74,6 +74,11 @@ adjust_inat_range_priors <- function(
   if (!is.data.frame(inat_range)) {
     cli::cli_abort("{.arg inat_range} must be a data frame.")
   }
+  if (nrow(inat_range) == 0L) {
+    likelihoods_ready$inat_range_elevated <- FALSE
+    cli::cli_inform("adjust_inat_range_priors: inat_range is empty; nothing elevated.")
+    return(likelihoods_ready)
+  }
   needed_ir <- c("taxon_name", "in_range", "n_observations")
   missing_ir <- setdiff(needed_ir, names(inat_range))
   if (length(missing_ir) > 0L) {
