@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-24 (Session 118 — adjust_inat_range_priors() added; check_inat_range() added to TaxaFetch)
+# Last updated: 2026-06-27 (Session 122 — is_valid_species_name() → is_plausible_binomial(); non-ASCII fixed in expand_unreferenced.R and join_priors.R; dev/ and README.Rmd deleted)
 
 ---
 
@@ -463,4 +463,12 @@ Sessions 29–77 archived in ecosystem_docs/session_notes/TaxaAssign_sessions.md
 
 **Session 89 (2026-05-27)**
 - `suggest_unreferenced_species()`: `data_type` param added (`"eDNA"` default / `"acoustic"` / `"image"`). eDNA path: existing NCBI nucleotide count queries. Acoustic/image path: set-membership check against `reference_species` (character vector of classifier's known species list). LLM prompt `ref_filter_note` switches text accordingly via `switch(data_type, ...)`. `barcode_term`, `max_date`, and `rentrez` requireNamespace guard now all wrapped in `if (data_type == "eDNA")`. `reference_species` param added (required for acoustic/image; ignored for eDNA).
+
+**Session 122 (2026-06-27)**
+- `is_valid_species_name()` → `is_plausible_binomial()`: all calls updated across R source and tests.
+- Non-ASCII chars replaced with ASCII equivalents in two files: `expand_unreferenced.R`
+  (em-dashes `—` → `--`) and `join_priors.R` (em-dashes `—` → `--`; `×` → `x`; `≈` → `~=`).
+  These were comment-decoration characters that failed `R CMD check` CRAN portability check.
+- Peer-review pass (TaxaTools reviewer checklist): no TaxaAssign-specific function changes required.
+- Debris deleted: `dev/test_compute_posterior.R` (dev scaffold), `README.Rmd` (template source).
 
