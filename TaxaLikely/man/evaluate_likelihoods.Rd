@@ -10,7 +10,7 @@ evaluate_likelihoods(
   rank_system = NULL,
   ratio_threshold = 0.01,
   min_match_threshold = 0.5,
-  alpha = 1e-06,
+  alpha = 0.001,
   n_sims = 0L,
   score_bounds = NULL,
   logit_epsilon = 1e-04,
@@ -36,7 +36,11 @@ from columns in \code{match_df}.}
 \item{ratio_threshold}{Minimum likelihood ratio to retain a hypothesis
 (default \code{0.01}).  Hypotheses with likelihood ratio less than 1\% of the
 best hypothesis are dropped.  This removes noise hypotheses that would
-not meaningfully affect posterior probabilities.}
+not meaningfully affect posterior probabilities.  Note: the per-species
+sigma floor (see Details) ensures that well-sampled species with
+artificially tight training distributions still clear this threshold at
+realistic query scores, so the default \code{0.01} is appropriate for most
+eDNA workflows.}
 
 \item{min_match_threshold}{Minimum raw score to consider a candidate
 (default \code{0.50}).  Queries whose best candidate scores below 50\% identity
@@ -44,7 +48,7 @@ are considered unmatchable and routed to the \verb{$unresolved} output for
 re-evaluation with a coarser \code{rank_system}.}
 
 \item{alpha}{Mahalanobis p-value cutoff for outlier rejection (default
-\code{1e-6}).}
+\code{0.001}).  See \code{.evaluate_one_query()} for full description.}
 
 \item{n_sims}{Monte Carlo simulations per query (default \code{0} = point
 estimate only).}
@@ -133,6 +137,23 @@ top candidate is much better than any alternative -- strong evidence for
 that identification. When only one candidate taxon exists, the gap is
 not computed (1D model used instead).
 }
+
+\strong{Per-species sigma floor:}
+When a species is found in \code{H1_Lookup}, its per-species
+\code{sigma_score} (score variance) is used in place of the global
+\code{H1_Sigma[1,1]}.  However, the per-species estimate can be
+artificially small for well-sampled species whose reference sequences are
+nearly identical (many NCBI accessions from the same voucher or
+population).  Such a tight distribution wrongly rejects realistic eDNA
+query scores that fall slightly below the near-perfect reference mean,
+causing the species to receive a near-zero H1 likelihood and be silently
+dropped by \code{ratio_threshold}.  To prevent this,
+\code{evaluate_likelihoods()} floors the per-species sigma at the global
+\code{H1_Sigma[1,1]}: species-specific sigma is used only when it is
+\emph{larger} than global (i.e., more uncertain than average).  This has
+negligible impact on discrimination between closely related species because
+the global sigma (SD \eqn{\approx \sqrt{H1\_Sigma[1,1]}}) still spans the
+logit range corresponding to a few percent identity difference.
 
 \strong{Coverage-adjusted likelihood (\code{score_likelihood_cov}):}
 When the match object contains a \code{coverage} column (e.g., BLAST \code{qcovs / 100}

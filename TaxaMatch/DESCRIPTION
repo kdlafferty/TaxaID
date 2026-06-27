@@ -17,9 +17,12 @@ Imports:
     utils,
     tools,
     stats,
+    dplyr,
+    httr,
     httr2,
     jsonlite,
     rentrez,
+    tibble,
     xml2,
     TaxaTools
 Suggests:
@@ -27,6 +30,7 @@ Suggests:
     rmarkdown,
     testthat (>= 3.0.0),
     Biostrings,
+    exifr,
     rBLAST
 Config/testthat/edition: 3
 VignetteBuilder: knitr

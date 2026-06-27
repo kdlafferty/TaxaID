@@ -7,10 +7,16 @@
 read_birdnet_output(files, min_confidence = 0, top_n = NULL)
 }
 \arguments{
-\item{files}{Character vector. Paths to BirdNET result CSV files
-(typically named \code{recording.BirdNET.results.csv}). Alternatively, a path
-to a directory: all \verb{*.BirdNET.results.csv} files in that directory
-(non-recursive) are read.}
+\item{files}{Character vector of paths to BirdNET result CSV files
+(typically named \code{recording.BirdNET.results.csv}); a path to a directory
+(all \verb{*.BirdNET.results.csv} files are read non-recursively); or a data
+frame already loaded into R. The data frame path accepts both the original
+BirdNET column names (\code{"Start (s)"}, \code{"Scientific name"}, etc.) and the
+R-mangled versions produced by \code{read.csv()} with \code{check.names = TRUE}
+(\code{"Start..s."}, \code{"Scientific.name"}, etc.). A \code{"File"} column must be
+present (Gradio / web interface combined-CSV format) to derive
+\code{observation_id} stems; CLI per-recording CSVs should be passed as file
+paths rather than pre-loaded data frames.}
 
 \item{min_confidence}{Numeric. Detections below this confidence are dropped.
 Default \code{0} (keep all). BirdNET's own default threshold is \code{0.1}.}
@@ -44,11 +50,25 @@ data frame in match object format, ready for
 \code{\link[=standardize_match_data]{standardize_match_data()}} and downstream TaxaLikely processing.
 }
 \details{
-\strong{BirdNET output format:} BirdNET-Analyzer (v2.x) produces one CSV per
-audio file with columns: \code{Start (s)}, \code{End (s)}, \verb{Scientific name},
-\verb{Common name}, \code{Confidence}. Each row is one candidate species detection
-within a 3-second window (BirdNET's default segment length). Multiple
-rows per window occur when BirdNET returns top-N results.
+\strong{BirdNET output formats:} Two formats are supported:
+
+\emph{CLI format} (recommended): BirdNET-Analyzer (v2.x) run from the command
+line produces one CSV per audio file, typically named
+\code{recording.BirdNET.results.csv}, with columns \code{Start (s)}, \code{End (s)},
+\verb{Scientific name}, \verb{Common name}, \code{Confidence}. The recording identity is
+encoded in the CSV filename and used as the \code{observation_id} stem.
+Pass a directory of these files or a character vector of paths.
+
+\emph{Combined format}: The BirdNET web interface (Gradio) and some third-party
+tools export a single CSV covering all recordings, with an additional \code{File}
+column containing the audio file path. When a \code{File} column is present,
+the \code{observation_id} stem is derived from the audio filename in that column
+rather than the CSV filename, so detections from different recordings remain
+distinct even in a single combined export.
+
+Each row is one candidate species detection within a 3-second window
+(BirdNET's default segment length). Multiple rows per window occur when
+BirdNET returns top-N results.
 
 \strong{observation_id encoding:} Each time window in each recording is one
 \code{observation_id}. Multiple detections within the same window share the

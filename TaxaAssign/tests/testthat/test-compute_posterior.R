@@ -243,33 +243,34 @@ test_that("compute_posterior errors on non-positive alpha/beta", {
 
 # ---------------------------------------------------------------------------
 # Test 12: High phi (tight priors) vs low phi (diffuse priors)
+# Both cases use prior_alpha >= 1 so the J-shaped fix does not apply.
 # ---------------------------------------------------------------------------
 
 test_that("higher phi produces lower posterior_sd than lower phi", {
-  # Tight priors: phi = 100
+  # Tight priors: phi = 100 (alpha >= 1 for both)
   df_tight <- dplyr::tibble(
-    observation_id            = rep("S1", 2),
-    taxon_name           = c("Sp_A", "Sp_B"),
-    hypothesis_type      = "specific_candidate",
-    score_likelihood = c(0.6, 0.4),
-    score_likelihood_mean      = c(0.6, 0.4),
-    score_likelihood_sd        = c(0.05, 0.05),
-    prior_mean           = c(0.7, 0.3),
-    prior_alpha          = c(70, 30),
-    prior_beta           = c(30, 70)
+    observation_id        = rep("S1", 2),
+    taxon_name            = c("Sp_A", "Sp_B"),
+    hypothesis_type       = "specific_candidate",
+    score_likelihood      = c(0.6, 0.4),
+    score_likelihood_mean = c(0.6, 0.4),
+    score_likelihood_sd   = c(0.05, 0.05),
+    prior_mean            = c(0.7, 0.3),
+    prior_alpha           = c(70, 30),
+    prior_beta            = c(30, 70)
   )
 
-  # Diffuse priors: phi = 3
+  # Diffuse priors: phi = 5 (alpha >= 1 for both — avoids J-shaped case)
   df_diffuse <- dplyr::tibble(
-    observation_id            = rep("S1", 2),
-    taxon_name           = c("Sp_A", "Sp_B"),
-    hypothesis_type      = "specific_candidate",
-    score_likelihood = c(0.6, 0.4),
-    score_likelihood_mean      = c(0.6, 0.4),
-    score_likelihood_sd        = c(0.05, 0.05),
-    prior_mean           = c(0.7, 0.3),
-    prior_alpha          = c(2.1, 0.9),
-    prior_beta           = c(0.9, 2.1)
+    observation_id        = rep("S1", 2),
+    taxon_name            = c("Sp_A", "Sp_B"),
+    hypothesis_type       = "specific_candidate",
+    score_likelihood      = c(0.6, 0.4),
+    score_likelihood_mean = c(0.6, 0.4),
+    score_likelihood_sd   = c(0.05, 0.05),
+    prior_mean            = c(0.7, 0.3),
+    prior_alpha           = c(3.5, 1.5),
+    prior_beta            = c(1.5, 3.5)
   )
 
   set.seed(42)
@@ -281,4 +282,45 @@ test_that("higher phi produces lower posterior_sd than lower phi", {
   mean_sd_tight   <- mean(res_tight$posterior_sd)
   mean_sd_diffuse <- mean(res_diffuse$posterior_sd)
   expect_true(mean_sd_tight < mean_sd_diffuse)
+})
+
+# ---------------------------------------------------------------------------
+# Test 13: J-shaped prior fix — simulation consistent with point estimate
+# Simulates the Haliotis cracherodii situation: a modelled species with
+# prior_alpha << 1 (tiny theta, high model uncertainty) vs many unmodelled
+# species with well-concentrated priors at a lower prior_mean.
+# Without the fix: unmodelled species win most simulations despite lower prior.
+# With the fix: modelled species wins simulations consistent with point estimate.
+# ---------------------------------------------------------------------------
+
+test_that("J-shaped prior (alpha < 1) simulation is consistent with point estimate", {
+  # Mimics Haliotis cracherodii situation:
+  #   Local modelled species: prior_mean = 3e-4, alpha = 0.0007 << 1 (J-shaped)
+  #   Unmodelled species:     prior_mean = 6e-6,  alpha = 1.0 (well-behaved)
+  df <- dplyr::tibble(
+    observation_id        = rep("ESV_test", 2),
+    taxon_name            = c("Local_sp", "Unmod_sp"),
+    hypothesis_type       = c("unreferenced_species", "unreferenced_species"),
+    score_likelihood      = c(1.0, 1.0),
+    score_likelihood_mean = c(1.0, 1.0),
+    score_likelihood_sd   = c(0.0, 0.0),
+    prior_mean            = c(3e-4,  6e-6),
+    prior_alpha           = c(6e-4,  1.0),
+    prior_beta            = c(1.9994, 161361)
+  )
+
+  set.seed(123)
+  result <- compute_posterior(df, n_sims = 1000L)
+
+  local_row  <- result[result$taxon_name == "Local_sp",  ]
+  unmod_row  <- result[result$taxon_name == "Unmod_sp", ]
+
+  # Point estimate: Local_sp should win (3e-4 >> 6e-6)
+  expect_gt(local_row$posterior_point_est, unmod_row$posterior_point_est)
+
+  # With fix: simulation should agree — Local_sp wins more often
+  expect_gt(local_row$confidence_score, unmod_row$confidence_score)
+
+  # posterior_mean should also rank Local_sp above Unmod_sp
+  expect_gt(local_row$posterior_mean, unmod_row$posterior_mean)
 })

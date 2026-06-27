@@ -32,6 +32,7 @@ bioinformatics pipeline.
 | **DNA sequences** | DADA2 seqtab, FASTA, DNAStringSet | `read_sequence_table()` |
 | **BLAST results** | Remote NCBI or local rBLAST | `blast_sequences()` |
 | **Images** | Animl CSV export | `read_animl_output()` |
+| **Images (iNat CV)** | iNaturalist CV API (live submission) | `score_image_inat()` |
 | **Acoustics** | BirdNET-Analyzer CSV | `read_birdnet_output()` |
 
 ## Installation
@@ -199,6 +200,28 @@ classifier's known list with
 Pass the result's `$unreferenced` vector to
 `TaxaAssign::suggest_unreferenced_species()` as `unreferenced_taxa`.
 
+### Confirmed vs. Unconfirmed Assignments
+
+Animl output typically contains two classes of predictions: confident species-level
+assignments and lower-confidence results where SpeciesNet falls back to a coarse
+"Animal" label. TaxaID handles both:
+
+- **Confirmed species** proceed directly through the likelihood pipeline
+- **"Animal" / unconfirmed** can be re-scored with `score_image_inat()` (iNaturalist
+  CV API), flagged for manual review, or carried forward as prior-only assignments
+
+See `inst/animl_workflow_design.md` for a full discussion document, including
+questions to resolve with your team before implementing.
+
+### MegaDetector
+
+MegaDetector (Microsoft AI for Earth) detects *whether* an image contains an animal,
+human, or vehicle — it does not classify to species. Animl wraps MegaDetector as its
+first stage to remove empty frames before species classification. If you run
+MegaDetector standalone (without Animl), filter its output to
+`detection_conf >= threshold` before passing images to a species classifier; TaxaID
+does not read MegaDetector output directly.
+
 **Coverage column:** `read_animl_output()` can retain the bounding box
 area (width × height, normalised 0--1) as a `coverage` column when
 `bbox_cols` are specified. Smaller bounding boxes indicate a partially
@@ -214,10 +237,24 @@ The match object format is classifier-agnostic. Three dedicated reader
 functions are available; any other tool that returns a species label
 and a confidence score per image can be adapted manually.
 
-**iNaturalist computer vision** returns a ranked list of up to 10
-candidate taxa (species, genus, or family) with softmax confidence
-scores (0--1) via the public API (`https://api.inaturalist.org/v2/`).
-Its 108,000+ taxon training set covers general wildlife globally.
+**iNaturalist computer vision (direct submission)** — `score_image_inat()` submits
+image files directly to the iNaturalist CV API and returns a match object in one
+step. Supply a directory, file vector, or single image. If images have GPS EXIF
+metadata, location is read automatically; otherwise supply `lat`, `lng`, and
+`observed_on`. Scores are in iNaturalist's 0--100 softmax scale (do not rescale).
+Requires an iNaturalist API token (`INAT_API_TOKEN` environment variable; free account).
+
+``` r
+match_df <- score_image_inat(
+  "photos/",
+  lat = 34.10, lng = -119.07, observed_on = "2024-09-15"
+)
+```
+
+**iNaturalist computer vision (saved JSON)** — returns a ranked list of up to 10
+candidate taxa (species, genus, or family) with softmax confidence scores (0--1)
+via the public API (`https://api.inaturalist.org/v2/`). Its 108,000+ taxon training
+set covers general wildlife globally.
 Use `read_inaturalist_cv_output()` on saved JSON response files:
 
 ``` r
@@ -258,9 +295,24 @@ exists at time of writing.
 | Classifier | Reader function | Score type | R package |
 |---|---|---|---|
 | Animl / SpeciesNet | `read_animl_output()` | Confidence 0--1 | `animl` (CRAN) |
-| iNaturalist CV | `read_inaturalist_cv_output()` | Softmax 0--1 | `rinat` (indirect) |
+| iNaturalist CV (direct) | `score_image_inat()` | Softmax 0--100 | Free API (token required) |
+| iNaturalist CV (saved JSON) | `read_inaturalist_cv_output()` | Softmax 0--1 | `rinat` (indirect) |
 | Wildlife Insights / SpeciesNet | `read_wildlife_insights_output()` | Confidence 0--1 | Python `speciesnet` |
 | InsectNet | *(not yet compatible)* | Conformal sets | Web app only |
+
+## Downstream Tools
+
+TaxaMatch produces a match object; TaxaLikely converts scores to likelihoods;
+TaxaAssign computes Bayesian posteriors. From there:
+
+- **cameratrappr** -- detection rates, activity patterns, survey design from camera
+  trap data
+- **Distance / unmarked** -- occupancy and abundance modeling
+- **TaxaFlag** -- flags anomalous detections (lab contamination, geographic outliers)
+
+TaxaMatch's `observation_id` (image filename stem for camera traps,
+`{recording}_{start}-{end}` for acoustics) links posteriors back to the original
+media files for review.
 
 ## Match Object Output
 

@@ -66,6 +66,10 @@ habitat extrapolation.}
 covariate range seen during training (|z| > 3)?}
 \item{undetected_type}{NA for modelled taxon_name; "singleton_mirror" or
 "global_floor" for Tier 3 proxies.}
+\item{source_taxon_name}{NA for modelled rows; taxon name of the
+singleton source species for "singleton_mirror" rows; NA for
+"global_floor". Used for taxonomy lookup in dark diversity grouping.
+Carried through from \code{generate_undetected_diversity()}.}
 }
 }
 \description{

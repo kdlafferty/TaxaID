@@ -427,6 +427,31 @@ hypothesis type:
     toward the global mean (Efron and Morris 1973), with weight
     inversely proportional to sample size, preventing poorly sampled
     species from having unreliable estimates
+-   **Per-species sigma floor:** At inference, the per-species
+    `sigma_score` from `H1_Lookup` is floored at the global
+    `H1_Sigma[1,1]`.  Reference-vs-reference training pairs for
+    well-sampled species can be artificially tight (many near-identical
+    NCBI accessions from the same voucher), producing a sigma smaller
+    than the global estimate.  Real query-vs-reference scores span a
+    wider range due to intraspecific variation and sequencing error.
+    The floor ensures those species still receive non-zero H1 likelihoods
+    at realistic eDNA query scores
+-   **Score-only outlier filter (`alpha = 0.001`):** Before computing
+    H1 density, `.evaluate_one_query()` tests whether the query score is
+    consistent with the H1 species distribution using a univariate
+    chi-squared test (df = 1, score only).  If the p-value is below `alpha`,
+    the candidate is treated as a score outlier and receives likelihood 0.
+    The gap feature is deliberately excluded from this test: a small gap
+    (a closely-scoring congener is present) is correctly handled by the
+    bivariate density, which returns a lower H1 value in that case.
+    Including the gap in the outlier test would incorrectly reject legitimate
+    H1 candidates in species-rich families where confusable congeners exist.
+    The default `alpha = 0.001` (~3.3 sigma, 1-in-1000) drops genuinely
+    inconsistent cross-family BLAST artefacts (e.g. freshwater Cyprinidae at
+    91-93% identity in a marine sample, >4 sigma from H1 mean) while retaining
+    legitimate borderline H1s (e.g. a coastal species at 99% identity, ~2.7
+    sigma from H1 mean, p ≈ 0.006).  This test is **H1-intrinsic** -- no
+    comparison to H2/H3 densities
 -   **H2/H3 offset distributions:** Unreferenced species and genus
     hypotheses use the H1 distribution shifted left by learned delta
     offsets, estimated from cross-species match scores in training

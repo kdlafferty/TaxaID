@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-22 (Session 114 -- infer_exclude_predicted() added; exclude_predicted wired into audit_barcode_coverage() calls)
+# Last updated: 2026-06-26 (Session 121 — Mahalanobis alpha default 1e-6 → 0.001 in evaluate_likelihoods())
 
 ---
 
@@ -121,7 +121,8 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `infer_exclude_predicted()` | `R/infer_predicted.R` | Written | Inspects accession column of a match object to infer whether the BLAST reference excluded computationally predicted (XR_/XM_) sequences. Returns `TRUE` (no XR_/XM_ found → exclude), `FALSE` (predicted accessions present → include), or `NA` (all custom/non-NCBI accessions → cannot determine). Auto-detects accession column; strips version suffixes; reports custom accession count. Feeds directly into `audit_barcode_coverage(exclude_predicted = infer_exclude_predicted(match_obj) \%\|\|\% TRUE)`. |
 | `audit_barcode_coverage()` | `R/coverage.R` | Written | **Preferred for eDNA/barcode data.** Unreferenced = described species with NO barcode sequence (cannot appear as reference match). **Reverse-search implementation** (Session 113): one genus-level NCBI nuccore query + batched `elink` → taxonomy + batched `entrez_summary`; ~4 fixed API calls per genus regardless of species count (3.25× faster than per-species queries on 18S protist/algae genera). Species enumeration: NCBI taxonomy subtree (or user `species_list`). Census: `in_reference`, `has_seqs_not_in_ref`, `unreferenced`, `is_complete`. Params: `barcode_term` (vector ok), `max_date`, `min_len`, `max_len`, `species_list`, `max_nuccore` (default 5000), `cache_dir`. Checkpoint/resume: progress saved per genus; interrupted runs resume automatically. Hyphenated genera (e.g. *Pseudo-nitzschia*) handled via hyphen→space normalization in `.genus_taxid()`. `audit_barcode_coverage_ncbi()` is a deprecated alias. |
 | `audit_reference_coverage()` | `R/coverage.R` | Written | Queries NCBI taxonomy tree (all described species). Use for non-barcode libraries (images, sounds) where barcode availability is irrelevant. |
-| `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates in_match_data. Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
+| `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates `in_match_data`. `xc_recordings = FALSE` param (Session 119): when TRUE, queries Xeno-canto v2 API for `n_recordings` per species (1s rate limit; NA on failure). Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
+| `audit_inat_coverage()` | `R/coverage.R` | Written | **iNaturalist image coverage audit** (Session 119). Given a species list (prior taxa), queries iNat taxa API for each species: returns `n_observations`, `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced` list. Optional `match_df` annotates `in_match_data`. Optional `api_token` (env `INAT_API_TOKEN`; 401 → stop). 0.3s rate limit. Returns `list(census, unreferenced)` with same structure as `audit_barcode_coverage()`. Internal helpers: `.inat_species_info()`, `.xc_recording_count()`. |
 | `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress "unreferenced_species" for fully-sampled genera |
 | `expand_unreferenced_hypotheses()` | moved to TaxaAssign | — | Requires both TaxaLikely and TaxaExpect outputs; belongs at the convergence point. See `TaxaAssign/R/expand_unreferenced.R`. |
 
@@ -310,6 +311,23 @@ which is skipped when DECIPHER/Biostrings are not installed.
   into training data. Prevents the "perfection penalty". Count = max(5, 10% of data).
 - **Shrinkage:** `w = N / (N + prior_weight)`; per-species score variance + gap mean shrunk
   toward global. Default `prior_weight = 10.0`.
+- **Per-species sigma floor (Session 121):** At inference, `use_sigma[1,1]` is floored at
+  `global_sigma[1,1]` before evaluating H1 density. Species-specific sigma can be
+  artificially tight for well-sampled species whose NCBI reference sequences are
+  near-identical clones; tight sigma causes the Mahalanobis distance to balloon for
+  realistic eDNA query scores, driving H1 likelihood near zero. The floor ensures the
+  per-species distribution is never narrower than the global empirical distribution.
+  Applied in `.evaluate_one_query()` after loading `sp_var` from `H1_Lookup`.
+- **Score-only outlier filter, `alpha = 0.001` (Session 121):** Before computing H1
+  density, `.evaluate_one_query()` tests whether the query score is consistent with the
+  H1 species distribution via a univariate chi-squared test (df = 1, **score only**,
+  not 2D bivariate). If `p_val < alpha`, H1 likelihood = 0. Gap excluded from this test:
+  a small gap (confusable congener present) lowers the bivariate density correctly without
+  spuriously rejecting the H1 candidate. Including gap in the outlier check rejected
+  legitimate H1s in species-rich families (Leptocottus at 99% dropped because
+  Agonomalus at 99% gave a tiny gap, inflating 2D chi-sq past threshold). Default alpha
+  changed from `1e-6` → `0.001` (~3.3 sigma). Cyprinidae at 91–93% (>4 sigma from
+  H1 mean, p < 0.001) drop; coastal species at 99% (~2.7 sigma, p ≈ 0.006) retained.
 - **Monte Carlo:** n_sims perturbations of score_logit → `score_likelihood_mean` + `score_likelihood_sd`.
 - **Median-across-references:** `evaluate_likelihoods()` takes the **median** score
   per taxon_name across multiple reference accessions before likelihood calculation.
@@ -406,4 +424,51 @@ explaining the formula, direction of effect, and why coverage is not a model dim
   early-exit (no species found) and normal completion paths.
 - On resume, already-completed genera are loaded from checkpoint and skipped.
 - Checkpoint deleted on clean completion.
+
+**Session 119 (2026-06-24): audit_inat_coverage() + audit_acoustic_coverage(xc_recordings)**
+
+`audit_inat_coverage()` added to `R/coverage.R`:
+- New exported function. Given a `species_list` (prior taxa not in match data), queries the
+  iNaturalist taxa API (`GET https://api.inaturalist.org/v1/taxa?q={name}&rank=species&per_page=1`)
+  for each species. Returns `list(census, unreferenced)` with same structure as
+  `audit_barcode_coverage()`.
+- Census columns: `species`, `taxon_id`, `matched_name`, `n_observations`, `in_inat`,
+  `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced`, `in_match_data`.
+- Optional `match_df` param annotates `in_match_data`. Optional `api_token` (env
+  `INAT_API_TOKEN`); 401 → stop with token refresh message.
+- 0.3s `Sys.sleep()` rate limit per species. `verbose = FALSE` param for progress messages.
+- Internal helper `.inat_species_info()` wraps `httr2` request; returns list with `taxon_id`,
+  `matched_name`, `rank`, `n_observations`, `found`.
+
+`audit_acoustic_coverage()` enhanced:
+- New `xc_recordings = FALSE` param. When TRUE, queries Xeno-canto v2 API
+  (`GET https://xeno-canto.org/api/2/recordings?query={name}`) per species; adds `n_recordings`
+  column to census (NA when FALSE). 1s `Sys.sleep()` rate limit per species.
+- Internal helper `.xc_recording_count()` wraps `httr2` request; parses `numRecordings`
+  string → integer; returns `NA_integer_` on any failure.
+
+`httr2` moved from Suggests to Imports in `DESCRIPTION` to support the new API-calling
+coverage audit functions.
+
+`devtools::check()`: 0 errors, 0 warnings, 1 pre-existing note (stale top-level .rds file).
+
+**Session 121 (2026-06-26): Per-species sigma floor + Mahalanobis alpha 1e-6 → 0.001**
+
+Two inference improvements in `.evaluate_one_query()` / `evaluate_likelihoods()`:
+
+Per-species sigma floor: `use_sigma[1,1]` now floored at `global_sigma[1,1]` before
+H1 density evaluation. Fixes species with artificially tight reference distributions
+(near-identical NCBI clones) silently dropping below `ratio_threshold`.
+
+Mahalanobis alpha default changed from `1e-6` to `0.001`: The chi-squared outlier
+check (2 df) now rejects H1 candidates at p < 0.001 rather than p < 1e-6. Motivation:
+`1e-6` admitted freshwater Cyprinidae (91–93% identity in a marine sample; p ≈ 0.00026)
+as spurious H1 rows. `0.001` drops them (0.00026 < 0.001) while retaining legitimate
+borderline H1 hits (e.g. Leptocottus armatus at 99%; p ≈ 0.009 > 0.001). Unlike
+`ratio_threshold`, this check is H1-intrinsic — it asks only whether the query is
+consistent with H1's own distribution, independent of H2/H3 densities. `ratio_threshold`
+default left at `0.01` in function signatures for backwards compatibility; workflows
+that use `ratio_threshold = 0` rely solely on this alpha check.
+
+449 tests pass; 0 failures.
 

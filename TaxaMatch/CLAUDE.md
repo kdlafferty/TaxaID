@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-22 (Session 115 — blast_sequences() field-tested; .blast_submit() !!!params bug fixed; workflow_fastq_to_match.R updated)
+# Last updated: 2026-06-24 (Session 119 — score_image_inat() added; live iNat CV API submission for image batches)
 
 ---
 
@@ -109,6 +109,7 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Status | Description |
 |---|---|---|---|
+| `score_image_inat()` | R/score_image_inat.R | Complete | Submit image(s) directly to iNaturalist CV API; returns canonical match object. Accepts single file, file vector, or directory. Per-image EXIF lat/lng/date extraction (requires `exifr` Suggests). User-supplied `lat`/`lng`/`observed_on` override EXIF and apply to all images. Outputs `observation_id`, `taxon_name`, `taxon_name_rank`, `score_original` (= `combined_score`), `genus`, `common_name`, `iconic_taxon_name`, `taxon_id`, `n_observations`, `vision_score`, `combined_score`, `freq_score`, `geo_prior_weight` (= combined/vision), `lat`, `lng`, `observed_on`, `folder_1`/`folder_2`/... (nested path metadata). Requires `httr` (Imports), `tibble`, `dplyr`. `exifr` in Suggests. Run `convert_taxonomy_backbone()` + `fill_higher_ranks()` before `join_priors()`. |
 | `read_animl_output()` | R/read_image.R | Complete | Ingest Animl CSV export (MegaDetector + SpeciesNet); map confidence + taxonomy to match object. Accepts long format (default) or wide format via `n_candidates`. Configurable column names via `file_col`, `species_col`, `score_col`. `observation_id` = image filename stem. `min_confidence` and `top_n` filters. |
 | `read_inaturalist_cv_output()` | R/read_image.R | Complete | Ingest saved iNaturalist CV API JSON response files (one JSON per image). `score_type` = `"combined_score"` (default) or `"score"`. Returns `observation_id`, `score`, `species`, `genus`, `common_name`, `taxon_rank`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
 | `read_wildlife_insights_output()` | R/read_image.R | Complete | Ingest SpeciesNet / Wildlife Insights batch predictions JSON (one JSON may cover many images). `label_col = "label"`, `score_col = "score"` (configurable for older formats). Returns `observation_id`, `score`, `species`, `genus`, `category`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
@@ -295,6 +296,30 @@ Sessions 27–82 archived in ecosystem_docs/session_notes/TaxaMatch_sessions.md.
 - README "Other Image Classifiers" section updated: dedicated reader functions shown with example code;
   classifier comparison table updated.
 - `devtools::check()`: 0 errors, 0 warnings, 1 note (pre-existing top-level files).
+
+**Session 119 (2026-06-24)**
+- `score_image_inat()` added to `R/score_image_inat.R`. Submits image(s) directly to the
+  iNaturalist CV API (`POST https://api.inaturalist.org/v1/computervision/score_image`) and
+  returns a canonical match object. Accepts a single file path, a character vector of paths,
+  or a directory (all JPEG/PNG files non-recursively). `observation_id` = filename stem.
+- Per-image EXIF extraction via `exifr` (Suggests): reads `GPSLatitude`, `GPSLongitude`,
+  `GPSLatitudeRef`, `GPSLongitudeRef`, `DateTimeOriginal`/`CreateDate` when `lat`/`lng`/
+  `observed_on` are NULL. User-supplied scalar args override EXIF and apply to all images.
+- Path folder columns (`folder_1`, `folder_2`, ...): directory levels between the input base
+  path and each image file are output as separate columns, enabling study design metadata
+  (site/date/treatment folders) to flow downstream.
+- Output is already in canonical match object format: `observation_id`, `taxon_name`,
+  `taxon_name_rank`, `score_original` (= `combined_score`). Supplemental columns:
+  `genus`, `common_name`, `iconic_taxon_name`, `taxon_id`, `n_observations` (from
+  `taxon$observations_count` in the CV response — no extra API call needed),
+  `vision_score`, `combined_score`, `freq_score`, `geo_prior_weight` (= combined/vision),
+  `lat`, `lng`, `observed_on`.
+- Downstream note: run `convert_taxonomy_backbone()` then `fill_higher_ranks()` before
+  `join_priors()` — documented in `@details`. `family` column not populated (not in CV response).
+- `httr`, `dplyr`, `tibble` added to DESCRIPTION Imports. `exifr` added to Suggests.
+- Internal helpers: `.resolve_image_files()`, `.path_folder_components()`,
+  `.extract_exif_info()`, `.parse_inat_cv_response()`.
+- `devtools::check()`: 0 errors, 0 notes, 1 pre-existing warning (TaxaLikely cross-references).
 
 **Session 115 (2026-06-22)**
 - Bug fix: `.blast_submit()` used `!!!params` (rlang splice) in `httr2::req_body_form()` call.

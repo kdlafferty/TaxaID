@@ -1,7 +1,11 @@
 utils::globalVariables(c(
   "taxon_name", "taxon_name_rank", "grid_id", "main_habitat",
   "undetected_type", "alpha", "beta", "prior_mean", "prior_alpha", "prior_beta",
-  "genus", "family", "family.fill", "dark_alpha", "dark_beta"
+  "genus", "family", "family.fill", "dark_alpha", "dark_beta",
+  "singleton_alpha", "singleton_beta",
+  "source_taxon_name", "theta_s",
+  "group_prior_alpha", "group_prior_beta",
+  "dark_diversity_group", "n_singletons_group", "n_undetected_group"
 ))
 
 # ==============================================================================
@@ -222,6 +226,215 @@ utils::globalVariables(c(
   result
 }
 
+# ==============================================================================
+# Internal helper: hierarchical dark diversity group priors
+# ==============================================================================
+
+# .compute_dark_diversity_groups()
+#
+# For a set of unmodelled candidate taxa (those with no TaxaExpect prior),
+# computes mass-conserving group priors by hierarchical descent through
+# phylum -> class -> order -> family -> genus.
+#
+# At each rank:
+#   - Sub-clades with 0 singletons: form ONE combined group.
+#     Budget = 1 effective singleton * parent_clade_singleton_mean / n_candidates.
+#   - Sub-clades with >= 1 singletons: subdivide further (recurse).
+#   - Genus is terminal: candidates always grouped at genus level.
+#
+# Concentration phi = effective_singletons * singleton_ess.
+# alpha = prior_mean * phi, beta = (1 - prior_mean) * phi.
+#
+# This ensures total dark-diversity mass scales with the number of singletons
+# (proxy for true undetected diversity), not with n_candidates. Without this,
+# 50 unreferenced candidates each assigned Beta(1, N-1) produce 50x the
+# intended dark-diversity mass.
+#
+# Args:
+#   unref_df              : data frame of unique unmodelled taxon names + taxonomy.
+#   singleton_df          : singleton-mirror rows from taxaexpect_priors, with
+#                           source taxonomy joined on source_taxon_name.
+#   global_singleton_mean : fallback theta when no singletons match a candidate.
+#   singleton_ess         : effective sample size for Beta concentration.
+#
+# Returns: unref_df with added columns group_prior_alpha, group_prior_beta,
+#   dark_diversity_group, n_singletons_group, n_undetected_group.
+#' @noRd
+.compute_dark_diversity_groups <- function(unref_df,
+                                            singleton_df,
+                                            global_singleton_mean,
+                                            singleton_ess = 2L) {
+
+  tax_ranks <- c("phylum", "class", "order", "family", "genus")
+  n         <- nrow(unref_df)
+
+  # Pre-allocate output vectors
+  g_alpha <- rep(NA_real_,      n)
+  g_beta  <- rep(NA_real_,      n)
+  g_label <- rep(NA_character_, n)
+  g_ns    <- rep(0L,            n)
+  g_nu    <- rep(0L,            n)
+
+  # Degenerate cases: no candidates, no singletons, or bad fallback
+  if (n == 0L) {
+    unref_df$group_prior_alpha    <- g_alpha
+    unref_df$group_prior_beta     <- g_beta
+    unref_df$dark_diversity_group <- g_label
+    unref_df$n_singletons_group   <- g_ns
+    unref_df$n_undetected_group   <- g_nu
+    return(unref_df)
+  }
+  gsm <- global_singleton_mean
+  if (!is.finite(gsm) || gsm <= 0) gsm <- 1 / (n + 1)
+
+  # Normalize empty strings to NA in taxonomy columns
+  for (col in tax_ranks) {
+    if (col %in% names(unref_df))    unref_df[[col]]    <- dplyr::na_if(unref_df[[col]],    "")
+    if (col %in% names(singleton_df)) singleton_df[[col]] <- dplyr::na_if(singleton_df[[col]], "")
+  }
+
+  # Pre-compute singleton theta (needed for group means)
+  singleton_df$theta_s <- singleton_df$alpha / (singleton_df$alpha + singleton_df$beta)
+
+  # Helper: compute alpha/beta from (n_singletons, prior_mean, ess)
+  .make_ab <- function(n_s, pm, ess) {
+    eff_s <- max(1L, as.integer(n_s))
+    phi   <- eff_s * ess
+    list(a = min(pm, 1 - 1e-9) * phi, b = (1 - min(pm, 1 - 1e-9)) * phi)
+  }
+
+  # Helper: record group assignment for candidate positions
+  .record <- function(pos, n_s, pm, label) {
+    n_c         <- length(pos)
+    ab          <- .make_ab(n_s, pm, singleton_ess)
+    g_alpha[pos] <<- ab$a
+    g_beta[pos]  <<- ab$b
+    g_label[pos] <<- label
+    g_ns[pos]    <<- as.integer(n_s)
+    g_nu[pos]    <<- as.integer(n_c)
+  }
+
+  # Recursive descent.
+  # cpos: integer positions into unref_df being processed in this call.
+  # spos: integer positions into singleton_df matching the current clade.
+  # parent_mean: mean theta of singletons in the current (parent) clade.
+  # depth: rank depth (1 = phylum, 5 = genus).
+  .descend <- function(cpos, spos, parent_mean, depth) {
+    if (length(cpos) == 0L) return(invisible(NULL))
+
+    if (depth > length(tax_ranks)) {
+      # Exhausted all ranks — group everything together
+      pm <- min((1L * parent_mean) / length(cpos), 1 - 1e-9)
+      .record(cpos, length(spos), pm, "terminal")
+      return(invisible(NULL))
+    }
+
+    rank <- tax_ranks[depth]
+
+    if (!rank %in% names(unref_df)) {
+      # Taxonomy column absent for candidates at this rank — skip to next
+      .descend(cpos, spos, parent_mean, depth + 1L)
+      return(invisible(NULL))
+    }
+
+    cvals <- unref_df[[rank]][cpos]
+
+    # --- Candidates with NA at this rank ----------------------------------------
+    na_pos <- cpos[is.na(cvals)]
+    if (length(na_pos) > 0L) {
+      if (depth == 1L) {
+        # At phylum level, unknown-phylum candidates share no taxonomic context
+        # with each other.  Do NOT pool them — each should fall back to the
+        # global floor individually in join_priors().  Set only the label so the
+        # still_na fallback below (which checks is.na(g_label)) skips them.
+        g_label[na_pos] <<- "no_phylum"
+      } else {
+        pm <- min(parent_mean / length(na_pos), 1 - 1e-9)
+        .record(na_pos, 0L, pm, paste0("no_", rank))
+      }
+    }
+
+    # --- Candidates with a known value at this rank --------------------------
+    non_na_pos <- cpos[!is.na(cvals)]
+    if (length(non_na_pos) == 0L) return(invisible(NULL))
+
+    for (val in unique(cvals[!is.na(cvals)])) {
+      val_cpos <- cpos[!is.na(cvals) & cvals == val]
+      n_c      <- length(val_cpos)
+
+      # Singletons sharing this rank value
+      if (rank %in% names(singleton_df) && length(spos) > 0L) {
+        svals    <- singleton_df[[rank]][spos]
+        val_spos <- spos[!is.na(svals) & svals == val]
+      } else {
+        val_spos <- integer(0L)
+      }
+      n_s <- length(val_spos)
+
+      if (n_s == 0L) {
+        # No singletons in this sub-clade — form one combined group here
+        pm <- min(parent_mean / n_c, 1 - 1e-9)
+        if (depth > 1L) {
+          parent_rank <- tax_ranks[depth - 1L]
+          if (parent_rank %in% names(unref_df)) {
+            pv <- unique(unref_df[[parent_rank]][val_cpos])
+            pv_str <- if (length(pv) == 1L && !is.na(pv[1L])) pv[1L] else "mixed"
+          } else {
+            pv_str <- "unknown"
+          }
+          lbl <- paste0("zero_", rank, "s_in_", pv_str)
+        } else {
+          lbl <- paste0("zero_", rank, "s")
+        }
+        .record(val_cpos, 0L, pm, lbl)
+
+      } else if (depth == length(tax_ranks)) {
+        # Genus is terminal — group all candidates in this genus
+        val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
+        if (!is.finite(val_mean)) val_mean <- parent_mean
+        pm <- min((n_s * val_mean) / n_c, 1 - 1e-9)
+        .record(val_cpos, n_s, pm, paste0(rank, ":", val))
+
+      } else {
+        # Has singletons at this rank and not yet at terminal — recurse
+        val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
+        if (!is.finite(val_mean)) val_mean <- parent_mean
+        .descend(val_cpos, val_spos, val_mean, depth + 1L)
+      }
+    }
+
+    invisible(NULL)
+  }
+
+  # Kick off recursion at phylum level
+  .descend(seq_len(n), seq_len(nrow(singleton_df)), gsm, 1L)
+
+  # Any still-unassigned rows (e.g. singleton_df was empty or all taxonomy NA):
+  # assign a single global group.
+  # Note: depth-1 NA candidates have g_label set to "no_phylum" but g_alpha = NA
+  # (intentionally left unset so join_priors() applies the global floor per-row).
+  # Exclude them here by requiring BOTH alpha and label to be NA.
+  still_na <- is.na(g_alpha) & is.na(g_label)
+  if (any(still_na)) {
+    n_c <- sum(still_na)
+    pm  <- min(gsm / n_c, 1 - 1e-9)
+    ab  <- .make_ab(0L, pm, singleton_ess)
+    g_alpha[still_na] <- ab$a
+    g_beta[still_na]  <- ab$b
+    g_label[still_na] <- "zero_phyla"
+    g_ns[still_na]    <- 0L
+    g_nu[still_na]    <- n_c
+  }
+
+  unref_df$group_prior_alpha    <- g_alpha
+  unref_df$group_prior_beta     <- g_beta
+  unref_df$dark_diversity_group <- g_label
+  unref_df$n_singletons_group   <- g_ns
+  unref_df$n_undetected_group   <- g_nu
+
+  unref_df
+}
+
 #' Join Likelihoods to TaxaExpect Priors
 #'
 #' Bridges the gap between TaxaLikely likelihoods and
@@ -314,6 +527,20 @@ utils::globalVariables(c(
 #'   descending prior order until this fraction of the within-constraint
 #'   prior mass is reached. Mirrors `cumulative_threshold` in
 #'   [posterior_consensus()]. Default `0.90`.
+#' @param singleton_taxonomy Optional data frame mapping `taxon_name` to
+#'   taxonomy columns (`genus`, `family`, `order`, `class`, `phylum`). When
+#'   supplied, unmodelled candidates (those with no TaxaExpect prior) receive
+#'   mass-conserving hierarchical group priors instead of the flat global-floor
+#'   prior. Groups are formed by descending phylum -> class -> order -> family
+#'   -> genus: sub-clades with zero singleton mirrors form a single combined
+#'   group (budget = 1 x parent-clade singleton mean / n_candidates);
+#'   sub-clades with >= 1 singleton mirrors subdivide further; genus is
+#'   terminal. Concentration phi = effective_singletons * singleton_ess (2).
+#'   Adds three diagnostic columns to output: `dark_diversity_group`,
+#'   `n_singletons_group`, `n_undetected_group`. Typically the same data frame
+#'   passed as `taxonomy` to `generate_undetected_diversity()` (built from
+#'   `occurrences_std`). Default `NULL` (flat global-floor for all unmodelled
+#'   candidates).
 #'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
@@ -364,7 +591,7 @@ utils::globalVariables(c(
 #' }
 #'
 #' @importFrom dplyr left_join distinct filter mutate select arrange
-#'   group_by summarise coalesce if_else desc
+#'   group_by summarise coalesce if_else desc na_if
 #' @importFrom rlang .data
 #' @export
 join_priors <- function(likelihoods,
@@ -374,7 +601,8 @@ join_priors <- function(likelihoods,
                         rank_system = NULL,
                         expansion_taxonomy = NULL,
                         expansion_min_prior = 0.05,
-                        expansion_cumulative_prior = 0.90) {
+                        expansion_cumulative_prior = 0.90,
+                        singleton_taxonomy = NULL) {
 
 
   # ---- Input validation -----------------------------------------------------
@@ -427,6 +655,19 @@ join_priors <- function(likelihoods,
   }
   if (!is.null(expansion_taxonomy) && !is.data.frame(expansion_taxonomy)) {
     cli::cli_abort("{.arg expansion_taxonomy} must be a data frame or NULL.")
+  }
+  if (!is.null(singleton_taxonomy)) {
+    if (!is.data.frame(singleton_taxonomy) || !"taxon_name" %in% names(singleton_taxonomy)) {
+      cli::cli_abort("{.arg singleton_taxonomy} must be a data frame with a 'taxon_name' column, or NULL.")
+    }
+    st_rank_cols <- intersect(c("genus", "family", "order", "class", "phylum"),
+                              names(singleton_taxonomy))
+    if (length(st_rank_cols) == 0L) {
+      cli::cli_warn(
+        "{.arg singleton_taxonomy} has none of genus/family/order/class/phylum — ignored for group priors."
+      )
+      singleton_taxonomy <- NULL
+    }
   }
 
   # ---- Build event_meta from `site` ----------------------------------------
@@ -632,6 +873,32 @@ join_priors <- function(likelihoods,
       dark_beta  = mean(beta, na.rm = TRUE)
     )
 
+  # Singleton-mirror mean: used as the floor threshold for modelled-species
+  # prior promotion (Issue 2 fix — dark diversity redesign, Session 117).
+  # Singleton mirrors represent the detection probability of species observed
+  # exactly once in training data — the correct floor for a modelled species
+  # with genuine (but very low) theta. Using dark_mean (= mean of singleton
+  # mirrors + global floor) was too aggressive: a Tier 2 species with genuine
+  # small theta could be promoted to dark_mean even though dark_mean is pulled
+  # down by the global floor, erasing the signal that the species was actually
+  # detected. With singleton_mean as the threshold, only species whose model
+  # estimate falls below the rarest-known detection rate are promoted.
+  singleton_by_site <- taxaexpect_priors |>
+    dplyr::filter(undetected_type == "singleton_mirror") |>
+    dplyr::group_by(grid_id, main_habitat) |>
+    dplyr::summarise(
+      singleton_alpha = mean(alpha, na.rm = TRUE),
+      singleton_beta  = mean(beta,  na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  global_singleton <- taxaexpect_priors |>
+    dplyr::filter(undetected_type == "singleton_mirror") |>
+    dplyr::summarise(
+      singleton_alpha = mean(alpha, na.rm = TRUE),
+      singleton_beta  = mean(beta,  na.rm = TRUE)
+    )
+
   # Global floor prior: used specifically as the fallback for UNMODELLED species
   # (those with no row in taxaexpect_priors, e.g. species never detected anywhere).
   # Distinct from dark_alpha/dark_beta: the site-level dark mean is dominated by
@@ -660,37 +927,156 @@ join_priors <- function(likelihoods,
   }
 
   result <- result |>
-    dplyr::left_join(dark_by_site, by = c("grid_id", "main_habitat")) |>
+    dplyr::left_join(dark_by_site,      by = c("grid_id", "main_habitat")) |>
+    dplyr::left_join(singleton_by_site, by = c("grid_id", "main_habitat")) |>
     dplyr::mutate(
-      dark_alpha = dplyr::coalesce(dark_alpha, global_dark$dark_alpha),
-      dark_beta  = dplyr::coalesce(dark_beta, global_dark$dark_beta),
+      dark_alpha      = dplyr::coalesce(dark_alpha,      global_dark$dark_alpha),
+      dark_beta       = dplyr::coalesce(dark_beta,       global_dark$dark_beta),
+      singleton_alpha = dplyr::coalesce(singleton_alpha, global_singleton$singleton_alpha),
+      singleton_beta  = dplyr::coalesce(singleton_beta,  global_singleton$singleton_beta),
       # Unmodelled species (alpha = NA) fall back to global floor, NOT dark_alpha.
       # Modelled species retain their model-derived alpha/beta here; the floor
-      # promotion below handles modelled species that fall below dark_mean.
+      # promotion below handles modelled species that fall below singleton_mean.
       prior_alpha = dplyr::coalesce(alpha, gf_alpha),
       prior_beta  = dplyr::coalesce(beta,  gf_beta),
       prior_mean  = prior_alpha / (prior_alpha + prior_beta)
     )
 
-  # ---- Modelled-species floor: never worse than dark diversity ---------------
+  # ---- Modelled-species floor: never worse than singleton-mirror mean --------
   # A species the model has seen (non-NA alpha) at the wrong habitat can get
-
-  # theta ≈ 0, producing prior_alpha << dark_alpha. This inverts the intended
-  # ordering: unobserved species beat observed ones. Fix: if a modelled species
-  # has prior_mean below the dark diversity mean, promote it to the dark level.
-  # The species was observed *somewhere* in training data, so it should receive
-  # at least as much prior mass as a completely unobserved species.
-  has_model <- !is.na(result$alpha)
-  dark_mean <- result$dark_alpha / (result$dark_alpha + result$dark_beta)
-  below_dark <- has_model & result$prior_mean < dark_mean
-  if (any(below_dark, na.rm = TRUE)) {
-    n_promoted <- sum(below_dark, na.rm = TRUE)
-    result$prior_alpha[below_dark] <- result$dark_alpha[below_dark]
-    result$prior_beta[below_dark]  <- result$dark_beta[below_dark]
-    result$prior_mean[below_dark]  <- dark_mean[below_dark]
+  # theta ≈ 0, producing prior_alpha well below the singleton-mirror level.
+  # This inverts the intended ordering: unobserved species beat observed ones.
+  # Fix: if a modelled species has prior_mean below the singleton-mirror mean,
+  # promote it to the singleton-mirror level. We use singleton_mean (not
+  # dark_mean) because dark_mean is pulled down by the global floor — using it
+  # would also promote Tier 2 species with genuine small-but-positive theta,
+  # erasing spatial signal. Singleton_mean is the correct floor: the rarest
+  # known detection rate in the system. Issue 2 fix — Session 117.
+  has_model     <- !is.na(result$alpha)
+  singleton_mean <- result$singleton_alpha / (result$singleton_alpha + result$singleton_beta)
+  below_singleton <- has_model & result$prior_mean < singleton_mean
+  if (any(below_singleton, na.rm = TRUE)) {
+    n_promoted <- sum(below_singleton, na.rm = TRUE)
+    result$prior_alpha[below_singleton] <- result$singleton_alpha[below_singleton]
+    result$prior_beta[below_singleton]  <- result$singleton_beta[below_singleton]
+    result$prior_mean[below_singleton]  <- singleton_mean[below_singleton]
     cli::cli_inform(
-      "join_priors: promoted {n_promoted} modelled row(s) with habitat-mismatch priors to dark diversity floor."
+      "join_priors: promoted {n_promoted} modelled row(s) with priors below singleton-mirror floor."
     )
+  }
+
+  # ---- Group-based dark diversity priors (Issue 3 fix, Session 117) ----------
+  # When singleton_taxonomy is supplied, replace the flat global-floor prior
+  # for unmodelled candidates with mass-conserving hierarchical group priors.
+  # See .compute_dark_diversity_groups() for the algorithm.
+  # Adds diagnostic columns: dark_diversity_group, n_singletons_group,
+  # n_undetected_group (NA for modelled rows and when singleton_taxonomy = NULL).
+  if (!is.null(singleton_taxonomy)) {
+    tax_rank_cols <- c("genus", "family", "order", "class", "phylum")
+    st_rank_cols  <- intersect(tax_rank_cols, names(singleton_taxonomy))
+
+    # Normalize empty strings to NA and deduplicate
+    sing_tax_norm <- singleton_taxonomy
+    for (.col in st_rank_cols) {
+      sing_tax_norm[[.col]] <- dplyr::na_if(sing_tax_norm[[.col]], "")
+    }
+    sing_tax_norm <- sing_tax_norm[!duplicated(sing_tax_norm$taxon_name), ,
+                                    drop = FALSE]
+
+    # Identify unmodelled rows (got gf_alpha as fallback above)
+    is_unmod <- is.na(result$alpha)
+
+    # Retrieve singleton mirror rows from taxaexpect_priors; join taxonomy via
+    # source_taxon_name so we know which phylum/class/order/family/genus each
+    # singleton proxy represents. (Taxonomy columns were stripped by
+    # generate_full_priors() select() — must re-join here.)
+    if ("source_taxon_name" %in% names(taxaexpect_priors)) {
+      sing_rows <- taxaexpect_priors[
+        !is.na(taxaexpect_priors$undetected_type) &
+          taxaexpect_priors$undetected_type == "singleton_mirror" &
+          !is.na(taxaexpect_priors$source_taxon_name),
+        , drop = FALSE
+      ]
+      if (nrow(sing_rows) > 0L) {
+        sing_rows <- merge(
+          sing_rows,
+          sing_tax_norm[, c("taxon_name", st_rank_cols), drop = FALSE],
+          by.x = "source_taxon_name", by.y = "taxon_name",
+          all.x = TRUE
+        )
+      }
+    } else {
+      sing_rows <- taxaexpect_priors[integer(0L), , drop = FALSE]
+      cli::cli_warn(paste0(
+        "join_priors: singleton_taxonomy supplied but taxaexpect_priors lacks ",
+        "'source_taxon_name'. Group dark diversity priors require TaxaExpect ",
+        ">= Session 117 with source_taxon_name in generate_full_priors() output."
+      ))
+    }
+
+    if (any(is_unmod) && nrow(sing_rows) > 0L) {
+      # Unique unmodelled taxon names — group prior is per-taxon, not per-row
+      unmod_taxa <- unique(result$taxon_name[is_unmod & !is.na(result$taxon_name)])
+
+      if (length(unmod_taxa) > 0L) {
+        unmod_df <- data.frame(taxon_name = unmod_taxa, stringsAsFactors = FALSE)
+        unmod_df <- merge(
+          unmod_df,
+          sing_tax_norm[, c("taxon_name", st_rank_cols), drop = FALSE],
+          by = "taxon_name", all.x = TRUE
+        )
+
+        # Compute global singleton mean for fallback
+        gs_a <- global_singleton$singleton_alpha
+        gs_b <- global_singleton$singleton_beta
+        gs_mean <- if (is.finite(gs_a) && is.finite(gs_b) && (gs_a + gs_b) > 0) {
+          gs_a / (gs_a + gs_b)
+        } else {
+          gf_alpha / (gf_alpha + gf_beta)
+        }
+
+        # Compute group priors
+        unmod_groups <- .compute_dark_diversity_groups(
+          unref_df              = unmod_df,
+          singleton_df          = sing_rows,
+          global_singleton_mean = gs_mean,
+          singleton_ess         = 2L
+        )
+
+        # Join group priors back to result rows by taxon_name (index-based,
+        # preserves row order and avoids duplicates from merge)
+        idx <- match(result$taxon_name, unmod_groups$taxon_name)
+        result$dark_diversity_group <- unmod_groups$dark_diversity_group[idx]
+        result$n_singletons_group   <- unmod_groups$n_singletons_group[idx]
+        result$n_undetected_group   <- unmod_groups$n_undetected_group[idx]
+        result$group_prior_alpha    <- unmod_groups$group_prior_alpha[idx]
+        result$group_prior_beta     <- unmod_groups$group_prior_beta[idx]
+
+        # Apply group priors to unmodelled rows (replace flat gf_alpha/gf_beta)
+        apply_mask <- is_unmod & !is.na(result$group_prior_alpha)
+        if (any(apply_mask)) {
+          result$prior_alpha[apply_mask] <- result$group_prior_alpha[apply_mask]
+          result$prior_beta[apply_mask]  <- result$group_prior_beta[apply_mask]
+          result$prior_mean[apply_mask]  <- result$prior_alpha[apply_mask] /
+            (result$prior_alpha[apply_mask] + result$prior_beta[apply_mask])
+          n_groups_used <- length(unique(stats::na.omit(
+            result$dark_diversity_group[apply_mask]
+          )))
+          cli::cli_inform(
+            "join_priors: group dark diversity priors applied to {sum(apply_mask)} unmodelled row(s) across {n_groups_used} taxonomic group(s)."
+          )
+        }
+      }
+    }
+
+    # Ensure diagnostic columns exist (NA for modelled rows and rows with no
+    # taxonomy match) so the output schema is consistent for downstream use.
+    if (!"dark_diversity_group" %in% names(result)) result$dark_diversity_group <- NA_character_
+    if (!"n_singletons_group"   %in% names(result)) result$n_singletons_group   <- NA_integer_
+    if (!"n_undetected_group"   %in% names(result)) result$n_undetected_group   <- NA_integer_
+    # Clean up intermediate columns not needed downstream
+    result$group_prior_alpha <- NULL
+    result$group_prior_beta  <- NULL
   }
 
   zero_ab <- which((result$prior_alpha + result$prior_beta) == 0)

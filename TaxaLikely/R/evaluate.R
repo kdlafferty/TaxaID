@@ -38,8 +38,15 @@ utils::globalVariables(c(
 #'   relative to the best hypothesis; specific candidates below this are dropped.
 #' @param min_match_threshold Numeric (default `0.50`).  Raw score below which
 #'   a candidate receives likelihood 0 regardless of the model prediction.
-#' @param alpha Numeric (default `1e-6`).  Mahalanobis p-value cutoff: candidates
-#'   with smaller p-values are treated as outliers and receive likelihood 0.
+#' @param alpha Numeric (default `0.001`).  Score-outlier p-value cutoff: H1 candidates
+#'   whose query score is inconsistent with the species' own score distribution (univariate
+#'   normal, df = 1 chi-squared) receive likelihood 0.  The gap feature is NOT included in
+#'   this test -- a small gap (confusable congener present) correctly lowers the bivariate
+#'   H1 density but should not cause the candidate to be rejected as an outlier.  The
+#'   default 0.001 (1-in-1000 threshold, ~3.3 sigma) drops genuinely inconsistent
+#'   cross-family BLAST hits (e.g. freshwater taxa at 91-93% in a marine sample) while
+#'   retaining legitimate borderline H1s (e.g. a coastal species at 99% with a tight
+#'   per-species distribution).  H1-intrinsic: no comparison to H2/H3 densities.
 #' @param n_sims Integer (default `0`).  Number of Monte Carlo simulations for
 #'   `score_likelihood_mean` and `score_likelihood_sd`.  `0` = deterministic only.
 #' @param score_bounds Optional `c(min, max)` for score normalization.
@@ -62,7 +69,7 @@ utils::globalVariables(c(
                                 rank_system,
                                 ratio_threshold     = 0.01,
                                 min_match_threshold = 0.50,
-                                alpha               = 1e-6,
+                                alpha               = 0.001,
                                 n_sims              = 0,
                                 score_bounds        = NULL,
                                 logit_epsilon       = 1e-4,
@@ -200,7 +207,15 @@ utils::globalVariables(c(
           sp_gap   <- model_params$H1_Lookup$mu_gap[idx]
           sp_var   <- model_params$H1_Lookup$sigma_score[idx]
           use_mu <- c(sp_score, sp_gap)
-          if (!is.na(sp_var) && sp_var > 0) use_sigma[1L, 1L] <- sp_var
+          # Floor at global sigma: species-specific sigma is estimated from
+          # reference-vs-reference pairs and can be artificially tight for
+          # well-sampled species whose references are nearly identical clones.
+          # Real query-vs-reference scores span a wider range. Never allow a
+          # per-species sigma tighter than the global sigma so that legitimate
+          # eDNA queries at slightly sub-perfect scores still receive non-zero
+          # H1 likelihoods.
+          if (!is.na(sp_var) && sp_var > 0)
+            use_sigma[1L, 1L] <- max(sp_var, global_sigma[1L, 1L])
         } else if (verbose) {
           message(sprintf("  Taxon '%s': no species-specific params; using global mean",
                           taxa_names[i]))
@@ -222,11 +237,17 @@ utils::globalVariables(c(
                                    sd   = sqrt(use_sigma[1L, 1L]))
       } else {
         x_pt <- c(s_vec[i], g_vec[i])
-        d_sq  <- tryCatch(
-          stats::mahalanobis(x_pt, center = use_mu, cov = use_sigma),
-          error = function(e) Inf
-        )
-        p_val <- stats::pchisq(d_sq, df = 2L, lower.tail = FALSE)
+        # Outlier filter: score-only chi-squared test (df = 1).
+        # The gap measures how well-separated H1 is from alternatives — a
+        # small gap (confusable congener present) is correctly handled by
+        # the bivariate density below, which returns a lower H1 value.
+        # Including the gap in the outlier check unfairly rejects legitimate
+        # H1 candidates whose gap is small purely because a closely-scoring
+        # reference is present (e.g. a well-matched species in a speciose
+        # family). The score alone determines whether the query is consistent
+        # with this species' identity; the gap informs the relative weight.
+        d_sq_score <- (s_vec[i] - use_mu[1L])^2 / use_sigma[1L, 1L]
+        p_val <- stats::pchisq(d_sq_score, df = 1L, lower.tail = FALSE)
         if (p_val >= alpha)
           h1_vals[i] <- mvtnorm::dmvnorm(x_pt,
                                          mean  = as.numeric(use_mu),
@@ -437,13 +458,17 @@ utils::globalVariables(c(
 #' @param ratio_threshold Minimum likelihood ratio to retain a hypothesis
 #'   (default `0.01`).  Hypotheses with likelihood ratio less than 1% of the
 #'   best hypothesis are dropped.  This removes noise hypotheses that would
-#'   not meaningfully affect posterior probabilities.
+#'   not meaningfully affect posterior probabilities.  Note: the per-species
+#'   sigma floor (see Details) ensures that well-sampled species with
+#'   artificially tight training distributions still clear this threshold at
+#'   realistic query scores, so the default `0.01` is appropriate for most
+#'   eDNA workflows.
 #' @param min_match_threshold Minimum raw score to consider a candidate
 #'   (default `0.50`).  Queries whose best candidate scores below 50% identity
 #'   are considered unmatchable and routed to the `$unresolved` output for
 #'   re-evaluation with a coarser `rank_system`.
 #' @param alpha Mahalanobis p-value cutoff for outlier rejection (default
-#'   `1e-6`).
+#'   `0.001`).  See `.evaluate_one_query()` for full description.
 #' @param n_sims Monte Carlo simulations per query (default `0` = point
 #'   estimate only).
 #' @param score_bounds Optional `c(min, max)` for score normalization.
@@ -510,6 +535,23 @@ utils::globalVariables(c(
 #'     not computed (1D model used instead).
 #' }
 #'
+#' \strong{Per-species sigma floor:}
+#' When a species is found in \code{H1_Lookup}, its per-species
+#' \code{sigma_score} (score variance) is used in place of the global
+#' \code{H1_Sigma[1,1]}.  However, the per-species estimate can be
+#' artificially small for well-sampled species whose reference sequences are
+#' nearly identical (many NCBI accessions from the same voucher or
+#' population).  Such a tight distribution wrongly rejects realistic eDNA
+#' query scores that fall slightly below the near-perfect reference mean,
+#' causing the species to receive a near-zero H1 likelihood and be silently
+#' dropped by \code{ratio_threshold}.  To prevent this,
+#' \code{evaluate_likelihoods()} floors the per-species sigma at the global
+#' \code{H1_Sigma[1,1]}: species-specific sigma is used only when it is
+#' \emph{larger} than global (i.e., more uncertain than average).  This has
+#' negligible impact on discrimination between closely related species because
+#' the global sigma (SD \eqn{\approx \sqrt{H1\_Sigma[1,1]}}) still spans the
+#' logit range corresponding to a few percent identity difference.
+#'
 #' \strong{Coverage-adjusted likelihood (`score_likelihood_cov`):}
 #' When the match object contains a `coverage` column (e.g., BLAST `qcovs / 100`
 #' or bounding-box area), a parallel point estimate `score_likelihood_cov` is
@@ -570,7 +612,7 @@ evaluate_likelihoods <- function(match_df,
                                  rank_system         = NULL,
                                  ratio_threshold     = 0.01,
                                  min_match_threshold = 0.50,
-                                 alpha               = 1e-6,
+                                 alpha               = 0.001,
                                  n_sims              = 0L,
                                  score_bounds        = NULL,
                                  logit_epsilon       = 1e-4,

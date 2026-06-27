@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-22 (Session 114 — filter_gbif_quality() gains exclude_absent parameter)
+# Last updated: 2026-06-23 (Session 117 — score_image_inat() and check_inat_range() added as TODOs; inat_range_prompt.md updated with asymmetric evidence framing)
 
 ---
 
@@ -170,6 +170,8 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 4. ~~GITA multi-table functions~~ — dropped: `rename_cols()` + `stack_occurrences()` cover the same use case (Session 63)
 5. ~~Data source citation capture~~ — implemented (Session 63): `bibliographicCitation` column added to `fetch_gbif_occurrences()`, `standardize_dataone_occurrences()`, `read_biotime_study()`; PDF pipeline already had it via `search_literature()`
 6. ~~ReefCheck + Reef Life Survey~~ — resolved (Session 64): both already in GBIF (RLS global reef fish dataset, RCCA rocky reef dataset, Reef Check Taiwan). No separate fetch functions needed.
+7. **`check_inat_range()`** — TODO (Session 117). Implementation prompt: `TaxaFetch/inat_range_prompt.md`. Checks dark diversity taxa (eDNA detections absent from occurrence database) against iNaturalist geomodel range polygons. Returns `in_range`, `range_status`, `n_observations`, `iconic_taxon_name`. Rate-limit only the taxa API step (not S3 GeoJSON fetches). Requires `sf` in Imports. Downstream: `adjust_inat_range_priors()` in TaxaAssign (planned) applies prior boost for `in_range = TRUE` taxa above the dark diversity floor.
+8. **`score_image_inat()`** — TODO (Session 117). Implementation prompt: `TaxaFetch/inat_cv_api_prompt.md`. Submits image to iNaturalist CV API; returns ranked taxon suggestions with `vision_score`, `combined_score`, `freq_score`, `geo_prior_weight` (= combined/vision ratio — iNat's continuous location prior weight). Enables image-based match objects as input to TaxaAssign. Requires `httr` in Imports (verify). `geo_prior_weight` is the continuous analogue of `check_inat_range()` binary range signal, for the image classification pathway.
 
 ---
 

@@ -4,6 +4,34 @@
 
 ---
 
+## Git branch: `dark-diversity-redesign`
+
+All implementation work for Issues 1–3 goes on the **`dark-diversity-redesign`** branch, NOT on `main`. This keeps `main` clean for the reviewer while this work is in progress.
+
+**At the start of the next session**, confirm you are on the right branch:
+```
+! git -C "~/My Drive/Rscripts/projects/TaxaID" branch
+```
+You should see `* dark-diversity-redesign`. If you are on `main`, switch:
+```
+! git -C "~/My Drive/Rscripts/projects/TaxaID" checkout dark-diversity-redesign
+```
+
+**Committing during implementation**: commit normally after each step passes testing. Claude Code will commit to the current branch automatically.
+
+**When all steps are complete and tested**, merge back to `main`:
+```
+! git -C "~/My Drive/Rscripts/projects/TaxaID" checkout main
+! git -C "~/My Drive/Rscripts/projects/TaxaID" merge dark-diversity-redesign
+! git push origin main
+```
+Then delete the branch:
+```
+! git -C "~/My Drive/Rscripts/projects/TaxaID" branch -d dark-diversity-redesign
+```
+
+---
+
 ## Context summary
 
 During the Session 116 18S workflow debug (PtConceptionWorkflow_18S_2.R, Pt. Conception, June 2026) we identified three issues with the dark diversity prior system in `join_priors()` / TaxaExpect and agreed on a full redesign. The design is fully specified. Implementation was deferred to a new session.

@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-13 (Session 108 — generate_full_priors theta_epsilon auto-raise from singleton mirrors)
+# Last updated: 2026-06-23 (Session 117 — generate_undetected_diversity taxonomy param; source_taxon_name in generate_full_priors output)
 
 ---
 
@@ -96,11 +96,12 @@ and prior generation only.
     (1 | taxon_name:grid_id)
   ```
 
-### `generate_undetected_diversity(model_obj, jeffreys_threshold = 2L, singleton_ess = 2L)`
+### `generate_undetected_diversity(model_obj, taxonomy = NULL, jeffreys_threshold = 2L, singleton_ess = 2L)`
 - Input: `biofreq_model` object.
+- **`taxonomy`** (Session 117): optional data frame with `taxon_name` + any subset of `{genus, family, order, class, phylum}` columns (e.g. `occurrences_std`). When supplied, taxonomy columns are joined onto singleton-mirror rows by `taxon_name` so that `join_priors()` hierarchical group priors can descend the taxonomy tree for singleton rows.
 - Singleton mirrors: one proxy per singleton in training data; ESS controls diffuseness (`alpha = theta_obs * ESS`, `beta = (1 - theta_obs) * ESS`).
 - Global floor: `Beta(1, N_total - 1)`; falls back to Jeffreys `Beta(0.5, 0.5)` when `N_total < jeffreys_threshold`.
-- Returns tibble with `source_taxon_name` audit column (not passed to TaxaAssign).
+- Returns tibble with `source_taxon_name` audit column linking each singleton mirror back to the observed species it was derived from. When `taxonomy` is supplied, also carries the joined taxonomy columns.
 
 ### `generate_full_priors(model_obj, new_sites, undetected = NULL, min_phi = 2, theta_epsilon = 1e-6)`
 - `new_sites` must have: `grid_id`, `lat_r`, `lon_r`, `<habitat_col>`. Optionally `n_total_at_site` (for `effort_flag`).
@@ -109,7 +110,7 @@ and prior generation only.
 - **`min_phi`** (default 2): phi floor. When the phi cap is very low (high grid variance), prevents modelled priors from becoming so diffuse that MC posterior simulation is unstable and modelled priors become less informative than dark-diversity fallbacks. Matches `singleton_ess` default in `generate_undetected_diversity()`.
 - **`theta_epsilon` auto-raise (Session 108):** When `undetected` is supplied and contains singleton-mirror rows, `theta_epsilon` is automatically raised to `mean(alpha/(alpha+beta))` across those rows if that value exceeds the default `1e-6`. This data-derived floor ensures Tier 2 sparse species (detected at least once in the system) always receive priors above the dark-diversity floor computed in `join_priors()`. Root cause fixed: a Tier 2 singleton with predicted theta ≈ 1e-6 was being promoted to dark_mean by `join_priors()`, producing priors identical to undetected species (e.g. `Syngnathus auliscus` vs `S. caribbaeus`). With the raise: `singleton_mirror_floor > dark_mean` (because dark_mean averages singleton mirrors + global floor, which is lower), so Tier 2 priors survive the promotion check unchanged.
 - Jeffreys fallback `Beta(0.5, 0.5)` when phi <= 0; flagged in `jeffreys_fallback` column.
-- Appends `undetected` rows if supplied.
+- Appends `undetected` rows if supplied. Singleton-mirror rows in `undetected` carry `source_taxon_name` (Session 117); this column is preserved in the output and used by `join_priors(singleton_taxonomy=)` to re-join taxonomy for hierarchical group priors.
 
 ### `optimize_grid_size(observation_data, n_covariates, protected_habitat = NULL, min_s_threshold = 5, min_N_threshold = 10, min_distinct_locs = 20, min_locs_per_habitat = 3, min_grid = 0.1, max_grid = 1.0, step_grid = 0.05, lat_col = "decimalLatitude", lon_col = "decimalLongitude", species_col = "taxon_name", habitat_col = "main_habitat", weights = c(resolution = 0.4, quality = 0.4, stability = 0.2))`
 - Returns named list: `$summary_table`, `$best_grid` (pass to `create_sites_from_grid`), `$explanation`, `$fallback_level` (`"none"`, `"A"`, `"B"`, `"C"`).

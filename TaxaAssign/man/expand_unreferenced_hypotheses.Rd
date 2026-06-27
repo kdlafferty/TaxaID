@@ -36,11 +36,19 @@ them directly to species-level priors from TaxaExpect.
 
 \enumerate{
 \item The \code{"unreferenced_species"} (H2) row carries a genus label.
-Unreferenced species whose genus matches that label receive the H2
+Species-level suppression: an unreferenced species in the H2 genus is
+suppressed only if that exact species is already a \code{specific_candidate}
+for this observation.  Other unreferenced congeners (e.g. F. parvipinnis
+when F. lima is H1) are expanded normally and receive the H2
 \code{score_likelihood} / \code{score_likelihood_mean} / \code{score_likelihood_sd}.
+Exception: when an H1 \code{specific_candidate} row is genus-rank
+(\code{taxon_name_rank == "genus"}), the entire genus is suppressed — the
+genus is already represented with its own calibrated score.
 \item The \code{"unreferenced_genus"} (H3) row carries a family label.
-Unreferenced species whose family matches that label \emph{and} whose
-genus differs from the H2 genus receive the H3 likelihood values.
+Unreferenced species whose family matches that label, whose genus
+differs from the H2 genus, \emph{and} that are not already a
+species-level H1 \code{specific_candidate} (or whose genus is covered by a
+genus-rank H1), receive the H3 likelihood values.
 \item If no named species are found for the H2 genus (none are locally
 plausible), the generic H2 row is dropped.  Likewise for H3.
 }

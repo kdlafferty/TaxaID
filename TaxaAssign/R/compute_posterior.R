@@ -29,6 +29,12 @@
 #'   propagating uncertainty into the posterior. Likelihoods are sampled from
 #'   Normal(mean, sd). Priors are sampled from Beta(alpha, beta) when `prior_alpha`
 #'   and `prior_beta` columns are present, correctly bounded on \[0, 1\].
+#'   **Exception:** when `prior_alpha < 1` the Beta distribution is J-shaped (mode
+#'   at 0) and simulation draws are unreliable — species with tiny but non-zero
+#'   prior_mean would almost always lose to species with a well-concentrated prior at
+#'   a lower mean. For J-shaped rows (`prior_alpha < 1`), the prior is treated as
+#'   fixed at `prior_mean` in simulation rather than sampled, making the simulation
+#'   consistent with the point-estimate path.
 #'   Only runs when `n_sims > 0` AND at least one source of uncertainty exists
 #'   (non-zero `score_likelihood_sd`, or `prior_alpha`/`prior_beta` columns present).
 #'
@@ -184,7 +190,13 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
         )
         sim_lik[sim_lik < 0] <- 0
 
-        # Sample priors: Beta(alpha, beta) — bounded [0, 1] by construction
+        # Sample priors: Beta(alpha, beta) — bounded [0, 1] by construction.
+        # When prior_alpha < 1 the Beta is J-shaped (mode at 0, spike near 0),
+        # making simulation draws unreliable: a species with prior_mean = 3e-4
+        # almost never beats one with prior_mean = 6e-6 because its draws are
+        # almost always near 0.  This arises when theta is tiny (e.g. 0.034%)
+        # and the model has high uncertainty (phi = alpha + beta is small).
+        # Fix: treat J-shaped rows as fixed at prior_mean in simulation.
         if (use_beta_prior) {
           sim_prior <- matrix(
             rbeta(n_rows * n_sims,
@@ -192,6 +204,10 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
                   shape2 = chunk$prior_beta),
             nrow = n_rows
           )
+          j_shaped <- chunk$prior_alpha < 1
+          if (any(j_shaped)) {
+            sim_prior[j_shaped, ] <- chunk$prior_mean[j_shaped]
+          }
         } else {
           # Fixed priors: replicate prior_mean across all simulations
           sim_prior <- matrix(

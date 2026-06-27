@@ -62,15 +62,18 @@ examined.
 \subsection{NA return and fallback}{
 
 If all accessions are custom (e.g. a fully curated lab database with no NCBI
-identifiers), the function returns \code{NA}.  Use \code{\%||\%} to supply a
-safe default:
+identifiers), or if the match object has no accession column at all (e.g.
+WilderLab/Mugu workflows where the match object is built directly from ESV
+taxonomy tables), the function returns \code{NA}.  Use \code{!isFALSE()} to
+apply a safe default:
 \preformatted{
 ep <- infer_exclude_predicted(match_obj)
-coverage <- audit_barcode_coverage(..., exclude_predicted = ep \%||\% TRUE)
+coverage <- audit_barcode_coverage(..., exclude_predicted = !isFALSE(ep))
 }
-\code{TRUE} is the safer default: it ensures predicted-only species are
-treated as unreferenced (eligible for hypothesis expansion) rather than
-suppressed.
+\code{!isFALSE(ep)} is \code{TRUE} for both \code{TRUE} and \code{NA}, and
+\code{FALSE} only when the function confirmed predicted sequences are present.
+This is safer than \code{ep \%||\% TRUE} because \code{\%||\%} replaces
+\code{NULL} but not \code{NA}.
 }
 }
 \examples{
@@ -81,7 +84,7 @@ coverage <- audit_barcode_coverage(
   genus_species_audit,
   barcode_term      = "18S",
   target_rank       = "genus",
-  exclude_predicted = ep \%||\% TRUE
+  exclude_predicted = !isFALSE(ep)
 )
 }
 }

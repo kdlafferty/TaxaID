@@ -1218,6 +1218,10 @@ audit_barcode_coverage_ncbi <- function(match_df,
 #'   `TaxaMatch::read_birdnet_output()` output.
 #'   The species column is auto-detected from `"species"` or `"taxon_name"`.
 #'   Default `NULL`.
+#' @param xc_recordings Logical. If `TRUE`, queries the Xeno-canto v2 API for
+#'   the number of recordings available for each species in `plausible_species`
+#'   and adds an `n_recordings` column to the census. Requires an internet
+#'   connection; adds approximately 1 second per species. Default `FALSE`.
 #'
 #' @return A named list with two components:
 #'   \describe{
@@ -1230,6 +1234,10 @@ audit_barcode_coverage_ncbi <- function(match_df,
 #'           `reference_species` (can never appear as a candidate detection).}
 #'         \item{`in_match_data`}{Logical.  `TRUE` if the species appeared in
 #'           `match_df`.  `NA` when `match_df = NULL`.}
+#'         \item{`n_recordings`}{Integer. Number of Xeno-canto recordings for
+#'           the species. `NA` when `xc_recordings = FALSE` or the query fails.
+#'           Even a species present in the BirdNET list may be poorly classified
+#'           if it has very few training recordings.}
 #'       }}
 #'     \item{`unreferenced`}{Character vector of species names absent from
 #'       `reference_species`.  Pass to `TaxaAssign::suggest_unreferenced_species()`
@@ -1251,7 +1259,8 @@ audit_barcode_coverage_ncbi <- function(match_df,
 #' @export
 audit_acoustic_coverage <- function(plausible_species,
                                     reference_species,
-                                    match_df = NULL) {
+                                    match_df      = NULL,
+                                    xc_recordings = FALSE) {
 
   # ---- validate inputs -------------------------------------------------------
   if (!is.character(plausible_species) || length(plausible_species) == 0L)
@@ -1260,6 +1269,8 @@ audit_acoustic_coverage <- function(plausible_species,
   if (!is.character(reference_species) || length(reference_species) == 0L)
     stop("audit_acoustic_coverage: 'reference_species' must be a non-empty character vector.",
          call. = FALSE)
+  if (!is.logical(xc_recordings) || length(xc_recordings) != 1L || is.na(xc_recordings))
+    stop("audit_acoustic_coverage: 'xc_recordings' must be TRUE or FALSE.", call. = FALSE)
 
   # ---- normalise for matching (trim + lowercase) -----------------------------
   plausible_norm  <- trimws(plausible_species)
@@ -1284,12 +1295,26 @@ audit_acoustic_coverage <- function(plausible_species,
     }
   }
 
+  # ---- Xeno-canto recording counts (optional) --------------------------------
+  n_rec <- rep(NA_integer_, length(plausible_norm))
+  if (xc_recordings) {
+    message(sprintf(
+      "audit_acoustic_coverage: querying Xeno-canto for %d species (1s per query)...",
+      length(plausible_norm)
+    ))
+    for (i in seq_along(plausible_norm)) {
+      n_rec[[i]] <- .xc_recording_count(plausible_norm[[i]])
+      Sys.sleep(1)
+    }
+  }
+
   # ---- build census data frame -----------------------------------------------
   census_df <- data.frame(
     species       = plausible_norm,
     in_reference  = in_ref,
     unreferenced  = !in_ref,
     in_match_data = in_match,
+    n_recordings  = n_rec,
     stringsAsFactors = FALSE
   )
 
@@ -1457,4 +1482,266 @@ apply_coverage_constraints <- function(likelihood_df,
   }
 
   result
+}
+
+
+# ==============================================================================
+# .xc_recording_count() -- internal helper
+# ==============================================================================
+
+#' Query Xeno-canto v2 API for the number of recordings for one species
+#'
+#' Returns an integer count, or \code{NA_integer_} on error or no match.
+#' Xeno-canto v2 is publicly accessible without an API key.
+#' @noRd
+.xc_recording_count <- function(species_name) {
+  if (!requireNamespace("httr2", quietly = TRUE)) {
+    warning(
+      ".xc_recording_count: 'httr2' is required for Xeno-canto queries. ",
+      "Install with: install.packages('httr2')",
+      call. = FALSE
+    )
+    return(NA_integer_)
+  }
+
+  req <- httr2::request("https://xeno-canto.org/api/2/recordings") |>
+    httr2::req_url_query(query = trimws(species_name)) |>
+    httr2::req_error(is_error = function(resp) FALSE)
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NA_integer_)
+
+  body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+  if (is.null(body) || is.null(body[["numRecordings"]])) return(NA_integer_)
+
+  suppressWarnings(as.integer(body[["numRecordings"]]))
+}
+
+
+# ==============================================================================
+# .inat_species_info() -- internal helper
+# ==============================================================================
+
+#' Query iNaturalist taxa API for observation count and taxon metadata
+#'
+#' Returns a list with \code{taxon_id}, \code{matched_name}, \code{rank},
+#' \code{n_observations}, \code{found} (logical). All fields \code{NA}/FALSE
+#' when the taxon is not found or the request fails.
+#' @noRd
+.inat_species_info <- function(species_name, api_token = "") {
+  if (!requireNamespace("httr2", quietly = TRUE)) {
+    warning(
+      ".inat_species_info: 'httr2' is required for iNaturalist queries. ",
+      "Install with: install.packages('httr2')",
+      call. = FALSE
+    )
+    return(list(taxon_id = NA_integer_, matched_name = NA_character_,
+                rank = NA_character_, n_observations = NA_integer_,
+                found = FALSE))
+  }
+
+  empty <- list(taxon_id = NA_integer_, matched_name = NA_character_,
+                rank = NA_character_, n_observations = NA_integer_,
+                found = FALSE)
+
+  req <- httr2::request("https://api.inaturalist.org/v1/taxa") |>
+    httr2::req_url_query(
+      q        = trimws(species_name),
+      rank     = "species",
+      per_page = 1L
+    ) |>
+    httr2::req_error(is_error = function(resp) FALSE)
+
+  if (nzchar(api_token))
+    req <- req |> httr2::req_headers(Authorization = paste("Bearer", api_token))
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  if (is.null(resp)) return(empty)
+
+  status <- httr2::resp_status(resp)
+  if (status == 401L)
+    stop(
+      "audit_inat_coverage: iNaturalist API returned 401 Unauthorized. ",
+      "Check your INAT_API_TOKEN or omit api_token to query without authentication."
+    )
+  if (status != 200L) return(empty)
+
+  body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+  if (is.null(body) || length(body[["results"]]) == 0L) return(empty)
+
+  r <- body[["results"]][[1L]]
+  list(
+    taxon_id      = as.integer(r[["id"]] %||% NA_integer_),
+    matched_name  = as.character(r[["name"]] %||% NA_character_),
+    rank          = as.character(r[["rank"]] %||% NA_character_),
+    n_observations = as.integer(r[["observations_count"]] %||% NA_integer_),
+    found         = TRUE
+  )
+}
+
+
+# ==============================================================================
+# audit_inat_coverage()
+# ==============================================================================
+
+#' Audit iNaturalist Reference Coverage for a Species List
+#'
+#' For each species in \code{species_list}, queries the iNaturalist taxa API
+#' to retrieve the global observation count and determine whether the species
+#' is likely present in iNaturalist's computer vision (CV) training data.
+#' Species with fewer than \code{cv_threshold} observations are treated as
+#' \strong{unreferenced} for the image classification pathway — they can never
+#' appear as CV candidates and must be handled as undetected taxa in
+#' \code{TaxaAssign::join_priors()}.
+#'
+#' This is the image analog of \code{\link{audit_barcode_coverage}}: both
+#' functions take a list of prior species, identify which lack classifier
+#' references, and return the unreferenced set for downstream handling.
+#' Unlike \code{audit_barcode_coverage()}, no authentication is required
+#' (the iNaturalist taxa API is publicly accessible); the optional
+#' \code{api_token} only relaxes rate limits.
+#'
+#' @param species_list Character vector. Species names to check (typically
+#'   the set of prior taxa, or prior taxa absent from the match object).
+#'   Non-binomial names are silently skipped.
+#' @param match_df Data frame or \code{NULL}. Optional. If supplied, species
+#'   already present in the image match data are annotated as
+#'   \code{in_match_data = TRUE}. The species column is auto-detected from
+#'   \code{"taxon_name"} or \code{"species"}. Default \code{NULL}.
+#' @param cv_threshold Integer. Minimum global observation count on iNaturalist
+#'   for a species to be considered present in the CV training data.
+#'   Default \code{100L}. The exact iNaturalist threshold is not publicly
+#'   documented; 100 research-grade observations is a widely cited approximation.
+#'   Species below this threshold are flagged \code{cv_model_included = FALSE}
+#'   and included in \code{$unreferenced}.
+#' @param api_token Character. Optional iNaturalist API token. When provided,
+#'   increases the API rate limit. Defaults to \code{INAT_API_TOKEN} environment
+#'   variable; pass \code{api_token = ""} to query without authentication.
+#' @param verbose Logical. If \code{TRUE}, prints a progress line for each
+#'   species. Default \code{FALSE}.
+#' @return A named list with two components:
+#'   \describe{
+#'     \item{\code{census}}{Data frame with one row per entry in
+#'       \code{species_list}, containing: \code{species}, \code{taxon_id},
+#'       \code{matched_name} (iNat accepted name), \code{n_observations}
+#'       (global iNat count), \code{in_inat} (logical; species found in iNat),
+#'       \code{cv_model_included} (logical; \code{n_observations >=
+#'       cv_threshold}), \code{unreferenced} (logical; \code{TRUE} when absent
+#'       from iNat or below the CV threshold), \code{in_match_data} (logical;
+#'       \code{NA} when \code{match_df = NULL}).}
+#'     \item{\code{unreferenced}}{Character vector of species either not found
+#'       in iNaturalist or below \code{cv_threshold}. Pass to
+#'       \code{TaxaLikely::unreferenced_candidates()} to build H2/H3 hypotheses.}
+#'   }
+#' @details
+#' \strong{Rate limiting:} A 0.3-second pause is inserted between API calls.
+#' For 100 species, expect approximately 30 seconds.
+#'
+#' \strong{CV threshold interpretation:} \code{cv_model_included = FALSE} means
+#' the species is too rare on iNaturalist for the CV model to have learned a
+#' reliable image signature. Such species are photographed too infrequently for
+#' training. In practice, marine invertebrates, algae, and many protists fall
+#' below this threshold even when present on iNat, while common birds and
+#' butterflies almost always exceed it.
+#'
+#' \strong{Backbone note:} iNaturalist uses its own taxonomy; matched names
+#' may differ from GBIF. After retrieving results, run
+#' \code{TaxaMatch::convert_taxonomy_backbone()} if you need GBIF-aligned names.
+#' @seealso \code{\link{audit_barcode_coverage}},
+#'   \code{\link{audit_acoustic_coverage}},
+#'   \code{\link{apply_coverage_constraints}}
+#' @export
+audit_inat_coverage <- function(species_list,
+                                match_df      = NULL,
+                                cv_threshold  = 100L,
+                                api_token     = Sys.getenv("INAT_API_TOKEN"),
+                                verbose       = FALSE) {
+
+  # ---- validate ---------------------------------------------------------------
+  if (!is.character(species_list) || length(species_list) == 0L)
+    stop("audit_inat_coverage: 'species_list' must be a non-empty character vector.",
+         call. = FALSE)
+  cv_threshold <- as.integer(cv_threshold)
+  if (is.na(cv_threshold) || cv_threshold < 0L)
+    stop("audit_inat_coverage: 'cv_threshold' must be a non-negative integer.",
+         call. = FALSE)
+  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose))
+    stop("audit_inat_coverage: 'verbose' must be TRUE or FALSE.", call. = FALSE)
+
+  species_list <- unique(trimws(species_list))
+  species_list <- species_list[nzchar(species_list)]
+  n            <- length(species_list)
+
+  if (n == 0L) {
+    message("audit_inat_coverage: no valid species names supplied.")
+    return(list(
+      census = data.frame(
+        species = character(0), taxon_id = integer(0),
+        matched_name = character(0), n_observations = integer(0),
+        in_inat = logical(0), cv_model_included = logical(0),
+        unreferenced = logical(0), in_match_data = logical(0),
+        stringsAsFactors = FALSE
+      ),
+      unreferenced = character(0)
+    ))
+  }
+
+  # ---- match_df annotation ---------------------------------------------------
+  match_sp_set <- NULL
+  if (!is.null(match_df)) {
+    if (!is.data.frame(match_df))
+      stop("audit_inat_coverage: 'match_df' must be a data frame or NULL.",
+           call. = FALSE)
+    sp_col <- if ("taxon_name" %in% names(match_df)) "taxon_name" else
+              if ("species"    %in% names(match_df)) "species"    else NULL
+    if (!is.null(sp_col))
+      match_sp_set <- trimws(tolower(unique(match_df[[sp_col]])))
+  }
+
+  # ---- query iNat taxa API per species ---------------------------------------
+  message(sprintf(
+    "audit_inat_coverage: querying iNaturalist for %d species (0.3s per query)...",
+    n
+  ))
+
+  rows <- vector("list", n)
+  for (i in seq_len(n)) {
+    nm <- species_list[[i]]
+    if (verbose) message(sprintf("  [%d/%d] %s", i, n, nm))
+
+    info <- .inat_species_info(nm, api_token = api_token)
+    Sys.sleep(0.3)
+
+    in_inat      <- info$found
+    n_obs        <- info$n_observations
+    cv_included  <- in_inat && !is.na(n_obs) && n_obs >= cv_threshold
+    unref        <- !cv_included
+    in_match     <- if (is.null(match_sp_set)) NA else
+                    tolower(nm) %in% match_sp_set
+
+    rows[[i]] <- data.frame(
+      species           = nm,
+      taxon_id          = info$taxon_id,
+      matched_name      = info$matched_name,
+      n_observations    = n_obs,
+      in_inat           = in_inat,
+      cv_model_included = cv_included,
+      unreferenced      = unref,
+      in_match_data     = in_match,
+      stringsAsFactors  = FALSE
+    )
+  }
+
+  census_df <- do.call(rbind, rows)
+
+  n_in        <- sum(census_df$cv_model_included, na.rm = TRUE)
+  n_unref     <- sum(census_df$unreferenced,      na.rm = TRUE)
+  message(sprintf(
+    paste0("audit_inat_coverage: %d species checked; ",
+           "%d likely in CV model (%.0f%%), %d unreferenced."),
+    n, n_in, 100 * n_in / n, n_unref
+  ))
+
+  unreferenced_sp <- census_df$species[census_df$unreferenced]
+  list(census = census_df, unreferenced = unreferenced_sp)
 }

@@ -186,17 +186,19 @@ test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> f
 # ==============================================================================
 
 test_that("expand_unreferenced output feeds into compute_posterior and score_consensus", {
+  # H1 is Atherinops affinis (Atherinopsidae) — different genus from H2 (Fundulus),
+  # so H2 expansion fires and produces Fundulus parvipinnis.
   lik <- data.frame(
     observation_id            = "ESV_001",
-    taxon_name           = c("Fundulus lima", "Fundulus"),
+    taxon_name           = c("Atherinops affinis", "Fundulus"),
     taxon_name_rank      = c("species", "genus"),
     hypothesis_type      = c("specific_candidate", "unreferenced_species"),
     score_likelihood = c(0.90, 0.30),
     score_likelihood_mean      = c(0.90, 0.30),
     score_likelihood_sd        = c(0.05, 0.05),
-    genus                = c("Fundulus", "Fundulus"),
-    family               = c("Fundulidae", "Fundulidae"),
-    species              = c("Fundulus lima", NA),
+    genus                = c("Atherinops", "Fundulus"),
+    family               = c("Atherinopsidae", "Fundulidae"),
+    species              = c("Atherinops affinis", NA),
     score_original                = c(99, 90),
     stringsAsFactors     = FALSE
   )

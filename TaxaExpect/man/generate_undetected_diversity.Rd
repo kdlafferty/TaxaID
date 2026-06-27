@@ -7,7 +7,8 @@
 generate_undetected_diversity(
   model_obj,
   jeffreys_threshold = 2L,
-  singleton_ess = 2L
+  singleton_ess = 2L,
+  taxonomy = NULL
 )
 }
 \arguments{
@@ -23,6 +24,16 @@ singleton mirror priors. Controls how tightly the prior is concentrated
 around the observed singleton theta: \code{alpha = theta_obs * singleton_ess},
 \code{beta = (1 - theta_obs) * singleton_ess}. A small value (default 2)
 produces a diffuse prior appropriate for a species seen exactly once.}
+
+\item{taxonomy}{Optional data frame with columns \code{taxon_name} and any
+subset of \code{genus}, \code{family}, \code{order}, \code{class},
+\code{phylum}. When supplied, singleton mirror rows are annotated with
+the full taxonomic hierarchy of their \code{source_taxon_name} via a
+left join on \code{taxon_name}. Typically built from \code{occurrences_std}
+(which carries the full GBIF hierarchy). Used by
+\code{TaxaAssign::join_priors()} for hierarchical dark diversity grouping
+(Issue 3). Global floor rows always receive NA for all taxonomy columns.
+Default \code{NULL} (taxonomy columns added as NA).}
 }
 \value{
 A tibble with one row per undetected species proxy, containing:
