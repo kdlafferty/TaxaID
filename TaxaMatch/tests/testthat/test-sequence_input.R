@@ -315,8 +315,8 @@ test_that("filter_sequences passes all when no filters specified", {
 test_that("barcode length defaults resolve correctly via TaxaTools", {
   skip_if_not_installed("TaxaTools")
   result <- TaxaTools::resolve_barcode_lengths("12S", NULL, NULL)
-  expect_equal(result, c(100L, 600L))
+  expect_equal(unname(result), c(100L, 600L))
 
   result <- TaxaTools::resolve_barcode_lengths("COI", NULL, NULL)
-  expect_equal(result, c(300L, 900L))
+  expect_equal(unname(result), c(300L, 900L))
 })
