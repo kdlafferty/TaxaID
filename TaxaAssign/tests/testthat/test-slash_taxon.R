@@ -74,6 +74,30 @@ test_that("add_slash_taxon: downranked=FALSE, mixed-genus slash name kept regard
   expect_equal(result$slash_taxon_name, "Salmo salar + Salvelinus leucomaenis")
 })
 
+test_that("add_slash_taxon: posterior ordering — same-genus, highest posterior first", {
+  df <- data.frame(
+    observation_id = "obs1",
+    consensus_taxon = "Oncorhynchus",
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa      <- list(c("Oncorhynchus tshawytscha", "Oncorhynchus kisutch"))
+  df$plausible_posteriors <- list(c(0.7, 0.3))  # tshawytscha higher
+  result <- add_slash_taxon(df)
+  expect_equal(result$slash_taxon_name, "Oncorhynchus tshawytscha/kisutch")
+})
+
+test_that("add_slash_taxon: posterior ordering — mixed-genus, highest posterior first", {
+  df <- data.frame(
+    observation_id = "obs1",
+    consensus_taxon = "Salmonidae",
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa       <- list(c("Salmo salar", "Salvelinus leucomaenis"))
+  df$plausible_posteriors <- list(c(0.2, 0.8))  # Salvelinus higher
+  result <- add_slash_taxon(df)
+  expect_equal(result$slash_taxon_name, "Salvelinus leucomaenis + Salmo salar")
+})
+
 test_that("add_slash_taxon: irreducible_consensus FALSE when another obs resolves the ambiguity", {
   df <- data.frame(
     observation_id = c("obs1", "obs2"),

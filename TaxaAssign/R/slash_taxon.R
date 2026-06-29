@@ -85,6 +85,12 @@
 #'   taxa per observation (see `taxa_col`).
 #' @param taxa_col Character. Name of the list column containing per-observation
 #'   plausible taxa vectors. Default `"plausible_taxa"`.
+#' @param posteriors_col Character. Name of the list column containing
+#'   per-observation posterior probability vectors, positionally aligned with
+#'   `taxa_col` (e.g., `"plausible_posteriors"` from [posterior_consensus()]).
+#'   When present, candidates within each slash name are ordered by descending
+#'   posterior (most probable first). When `NULL` or absent from `consensus_df`,
+#'   candidates are ordered alphabetically. Default `"plausible_posteriors"`.
 #'
 #' @return `consensus_df` with two additional columns appended:
 #'   `slash_taxon_name` (character) and `irreducible_consensus` (logical).
@@ -108,15 +114,35 @@
 #' }
 #'
 #' @export
-add_slash_taxon <- function(consensus_df, taxa_col = "plausible_taxa") {
+add_slash_taxon <- function(consensus_df,
+                           taxa_col       = "plausible_taxa",
+                           posteriors_col = "plausible_posteriors") {
 
   if (!taxa_col %in% names(consensus_df))
     stop(sprintf("Column '%s' not found in consensus_df.", taxa_col))
 
   raw_sets <- consensus_df[[taxa_col]]
 
-  # Normalise: sort + deduplicate each candidate set
-  taxa_sets <- lapply(raw_sets, function(x) sort(unique(x[nzchar(x) & !is.na(x)])))
+  # Posterior vectors for ordering (NULL when unavailable)
+  use_posteriors <- !is.null(posteriors_col) &&
+                    posteriors_col %in% names(consensus_df)
+  raw_posts <- if (use_posteriors) consensus_df[[posteriors_col]] else NULL
+
+  # Normalise: deduplicate each candidate set; order by descending posterior
+  # when available, otherwise alphabetically.
+  taxa_sets <- lapply(seq_along(raw_sets), function(i) {
+    x <- raw_sets[[i]]
+    keep <- !is.na(x) & nzchar(x) & !duplicated(x)
+    x <- x[keep]
+    if (length(x) == 0L) return(character(0L))
+    if (use_posteriors) {
+      p <- raw_posts[[i]][keep]
+      p[is.na(p)] <- 0
+      x[order(-p)]
+    } else {
+      sort(x)
+    }
+  })
   n_taxa    <- lengths(taxa_sets)
 
   # --- slash_taxon_name (per-row, no dataset context needed) ----------------
