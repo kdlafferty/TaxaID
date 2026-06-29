@@ -365,9 +365,71 @@ blast_sequences <- function(seq_df,
     }
   }
 
+  # --- Retry failed batches with halved batch size ----------------------------
+  # NCBI poll timeouts are the most common failure mode for large batches.
+  # Re-submitting with fewer sequences per batch reduces the server-side
+  # processing time and avoids the 10-minute poll ceiling.
+  if (length(failed_batches) > 0L) {
+    retry_batch_size <- max(1L, batch_size %/% 2L)
+    if (verbose)
+      message(sprintf(
+        "  Retrying %d failed batch(es) with batch_size = %d...",
+        length(failed_batches), retry_batch_size
+      ))
+
+    still_failed <- integer(0)
+
+    for (fi in failed_batches) {
+      retry_rows <- seq_df[batches[[fi]], ]
+      retry_batches <- split(
+        seq_len(nrow(retry_rows)),
+        ceiling(seq_len(nrow(retry_rows)) / retry_batch_size)
+      )
+
+      for (ri in seq_along(retry_batches)) {
+        rb_df <- retry_rows[retry_batches[[ri]], ]
+        fasta_lines <- paste0(">", rb_df$asv_id, "\n", rb_df$sequence)
+        query_str <- paste(fasta_lines, collapse = "\n")
+
+        if (verbose)
+          message(sprintf(
+            "  Retry batch %d.%d (%d sequences)...",
+            fi, ri, nrow(rb_df)
+          ))
+
+        Sys.sleep(11)  # rate-limit before retry submission
+        rid <- .blast_submit(base_url, query_str, database, program,
+                             max_target_seqs, email, ncbi_api_key)
+
+        if (is.null(rid)) {
+          if (verbose)
+            message(sprintf("    Retry batch %d.%d: submission failed.", fi, ri))
+          still_failed <- c(still_failed, fi)
+          next
+        }
+
+        if (verbose) message(sprintf("    RID: %s -- polling...", rid))
+        result_text <- .blast_poll(base_url, rid, verbose)
+
+        if (is.null(result_text)) {
+          if (verbose)
+            message(sprintf("    Retry batch %d.%d: poll timed out.", fi, ri))
+          still_failed <- c(still_failed, fi)
+          next
+        }
+
+        hits <- .parse_blast_xml(result_text)
+        if (!is.null(hits) && nrow(hits) > 0L)
+          all_hits <- c(all_hits, list(hits))
+      }
+    }
+
+    failed_batches <- unique(still_failed)
+  }
+
   if (length(failed_batches) > 0L) {
     warning(sprintf(
-      "%d of %d BLAST batch(es) failed: %s. Results are incomplete.",
+      "%d of %d original BLAST batch(es) could not be recovered: batches %s. ",
       length(failed_batches), length(batches),
       paste(failed_batches, collapse = ", ")
     ))
