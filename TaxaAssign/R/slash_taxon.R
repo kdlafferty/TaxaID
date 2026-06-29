@@ -125,6 +125,29 @@ add_slash_taxon <- function(consensus_df, taxa_col = "plausible_taxa") {
     .make_slash_name(taxa_sets[[i]])
   }, character(1L))
 
+  # When species_reference downranking overrode the LCA (downranked = TRUE),
+  # the plausible_taxa may belong to genera that differ from consensus_taxon
+  # (e.g., BLAST returned Salmo/Salvelinus but reference downranked to
+  # Oncorhynchus). In that case the slash name is a database artifact rather
+  # than a genuine species-level ambiguity, so clear it to NA so that
+  # downstream consensus_OTU logic falls back to consensus_taxon.
+  # When the plausible genera are consistent with consensus_taxon (e.g.,
+  # all candidates are Oncorhynchus and consensus is Oncorhynchus), the slash
+  # name is informative and is kept.
+  if ("downranked" %in% names(consensus_df) &&
+      "consensus_taxon" %in% names(consensus_df)) {
+    is_downranked <- !is.na(consensus_df[["downranked"]]) &
+                     consensus_df[["downranked"]]
+    ctaxa <- consensus_df[["consensus_taxon"]]
+    for (i in which(is_downranked & !is.na(slash_names))) {
+      slash_genera <- sub(" .*", "", trimws(
+        strsplit(slash_names[[i]], "\\s*[+/]\\s*")[[1L]]
+      ))
+      if (!ctaxa[[i]] %in% slash_genera)
+        slash_names[[i]] <- NA_character_
+    }
+  }
+
   # --- irreducible_consensus (dataset-level) --------------------------------
   # Unresolved rows (empty candidate set) are always FALSE — handle up front.
   is_empty <- n_taxa == 0L
