@@ -645,11 +645,40 @@ review_assignments <- function(df,
   if (use_candidates || is.null(taxon_rank_col))
     result$review_lower_hypotheses <- NA_character_
 
-  # Fill missing taxa with NA defaults
+  # Normalize taxon names: strip trailing punctuation + case-fold for matching.
+  # LLMs sometimes append periods, commas, or authority strings to names they
+  # return. Exact-string join would silently drop those rows. Attempt a
+  # normalised fallback: if a result name doesn't match any expected name
+  # exactly but matches one after normalisation, remap it to the canonical
+  # expected name and warn so the caller can inspect.
+  .norm <- function(x) tolower(trimws(gsub("[.,;:]+$", "", trimws(x))))
+  expected_norm <- .norm(expected_taxa)
+
+  unmatched_idx <- which(!result$taxon_name %in% expected_taxa)
+  if (length(unmatched_idx) > 0L) {
+    result_norm <- .norm(result$taxon_name)
+    remapped <- character(0)
+    for (i in unmatched_idx) {
+      hit <- which(expected_norm == result_norm[i])
+      if (length(hit) == 1L) {
+        remapped <- c(remapped,
+                      sprintf("'%s' -> '%s'", result$taxon_name[i], expected_taxa[hit]))
+        result$taxon_name[i] <- expected_taxa[hit]
+      }
+    }
+    if (length(remapped) > 0L)
+      warning(sprintf(
+        "LLM returned %d name(s) that required normalised matching: %s",
+        length(remapped), paste(remapped, collapse = "; ")
+      ), call. = FALSE)
+  }
+
+  # Fill any remaining missing taxa (truly absent from LLM response) with NAs
   missing_taxa <- setdiff(expected_taxa, result$taxon_name)
   if (length(missing_taxa) > 0L) {
-    warning(sprintf("LLM omitted %d taxa. Filling with NA defaults.",
-                    length(missing_taxa)), call. = FALSE)
+    warning(sprintf("LLM omitted %d taxa. Filling with NA defaults: %s",
+                    length(missing_taxa),
+                    paste(missing_taxa, collapse = ", ")), call. = FALSE)
     missing_rows <- data.frame(
       taxon_name              = missing_taxa,
       habitat_plausibility    = NA_character_,
