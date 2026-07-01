@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-23 (Session 117 — generate_undetected_diversity taxonomy param; source_taxon_name in generate_full_priors output)
+# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/generate_priors_workflow.R)
 
 ---
 
@@ -328,5 +328,20 @@ is a malformed filename in `tests/testthat/` — investigate and rename before r
   `TaxaTools::call_api`. Clears TODO from Sessions 82/85.
 - `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at TaxaID/ root).
 - Disclaimer section removed from `README.md`.
+
+**Session 123 (2026-07-01): Layer-1 workflow script**
+- `inst/workflows/generate_priors_workflow.R` added — the modelling step is genuinely
+  data-hungry (`optimize_grid_size()`'s real minimum-data thresholds; a binomial GLMM needs
+  co-occurring species to estimate relative abundance), so DEBUG_MODE cannot use a sub-minute
+  toy example the way TaxaFetch's/TaxaHabitat's scripts do. It tries TaxaHabitat's checkpoint
+  first (with a species-breadth pre-flight check, not just a location-count one), and falls
+  back to a wider live GBIF fetch (family Gadidae) when the upstream data is too narrow.
+- Live-tested end to end (real GBIF fetch, real glmmTMB fit) as part of a 5-package chain.
+  Six real bugs found and fixed by actually running it (none caught by reading alone) —
+  hardcoded `compute_moran_basis()` k crashing on sparse grids; a `paste0()` zero-length-vector
+  quirk silently building a formula term for a nonexistent column; `screen_spatial_formula()`'s
+  `recommended_formula` being a character string, not a formula object (needs `as.formula()`);
+  and more. Full list in `ecosystem_docs/LAYER1_WORKFLOWS.md` — read that before touching this
+  script again, several of these are exactly the kind of thing that would silently recur.
 
 Sessions 28, 29, 62, 73 archived in ecosystem_docs/session_notes/TaxaExpect_sessions.md.

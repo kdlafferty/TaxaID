@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-27 (Session 122 — is_valid_species_name() → is_plausible_binomial(); non-ASCII fixed in expand_unreferenced.R and join_priors.R; dev/ and README.Rmd deleted)
+# Last updated: 2026-07-01 (Session 123 — add_slash_taxon() gains consensus_OTU + primary_taxon columns)
 
 ---
 
@@ -33,6 +33,7 @@ or be user-supplied from outside the ecosystem.
 | `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → reference-check → unreferenced vector; optional family expansion. data_type param ("eDNA"/"acoustic"/"image") routes to NCBI queries (eDNA) or set-membership check vs reference_species (acoustic/image). | Complete | R/suggest_unreferenced_species.R |
 | `assign_taxa_llm()` | LLM-shortcut pipeline: score-based likelihoods + LLM priors → posteriors | Complete | R/assign_taxa_llm.R |
 | `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id` | Complete | R/posterior_consensus.R |
+| `add_slash_taxon()` | Appends `slash_taxon_name` (ornithological slash-species notation; NA for singletons/unresolved) and `irreducible_consensus` (TRUE when the candidate set can't be further decomposed elsewhere in the dataset) to `posterior_consensus()` output. **Session 123:** when `consensus_taxon` is present, also adds `consensus_OTU` (single reporting label — `slash_taxon_name` when non-NA, else `consensus_taxon`) and `primary_taxon` (`consensus_OTU` reduced to one taxon by dropping everything after the first `/` or ` + `) — logic previously hand-duplicated identically in 3 real workflows. | Complete | R/slash_taxon.R |
 | `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id` | Complete | R/score_consensus.R |
 | `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()` | Complete | R/update_prior_from_consensus.R |
 | `build_context()` | Auto-populate `ctx` (ecoregion, main_habitat, date) from taxon names via TaxaHabitat + LLM synthesis | Complete | R/build_context.R |
@@ -463,6 +464,17 @@ Sessions 29–77 archived in ecosystem_docs/session_notes/TaxaAssign_sessions.md
 
 **Session 89 (2026-05-27)**
 - `suggest_unreferenced_species()`: `data_type` param added (`"eDNA"` default / `"acoustic"` / `"image"`). eDNA path: existing NCBI nucleotide count queries. Acoustic/image path: set-membership check against `reference_species` (character vector of classifier's known species list). LLM prompt `ref_filter_note` switches text accordingly via `switch(data_type, ...)`. `barcode_term`, `max_date`, and `rentrez` requireNamespace guard now all wrapped in `if (data_type == "eDNA")`. `reference_species` param added (required for acoustic/image; ignored for eDNA).
+
+**Session 123 (2026-07-01)**
+- `add_slash_taxon()` gains two new output columns, `consensus_OTU` and `primary_taxon`,
+  computed only when `consensus_taxon` is present in `consensus_df`. `consensus_OTU` =
+  `slash_taxon_name` when non-`NA`, else `consensus_taxon`. `primary_taxon` = `consensus_OTU`
+  with everything from the first `/` or ` + ` dropped. This is logic that
+  `PtConceptionWorkflow_12S.R`, `PtConceptionWorkflow_18S_2.R`, and `MuguFishWorkflow.R`
+  had each independently hand-derived identically (as `most_likely_slash`) — now computed
+  once in the package; all three workflows updated to drop the hand-rolled block and
+  rename `most_likely_slash` → `primary_taxon` throughout. 4 new tests added to
+  `test-slash_taxon.R` (22 total, all passing). `devtools::check()`: 0 errors, 0 warnings.
 
 **Session 122 (2026-06-27)**
 - `is_valid_species_name()` → `is_plausible_binomial()`: all calls updated across R source and tests.

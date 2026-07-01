@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-26 (Session 121 — Mahalanobis alpha default 1e-6 → 0.001 in evaluate_likelihoods())
+# Last updated: 2026-07-01 (Session 124 — Layer-1 workflow script added: inst/workflows/image_acoustic_likelihood_workflow.R; .xc_recording_count() found broken (dead v2 API endpoint), not yet fixed)
 
 ---
 
@@ -201,6 +201,12 @@ monolithic `inst/TaxaLikely_workflow.R` (retained for reference but superseded).
 | 5 | `5_audit_coverage_workflow.R` | Audit reference completeness; constrain likelihoods | `infer_exclude_predicted()` → `audit_barcode_coverage()` / `audit_reference_coverage()` → `apply_coverage_constraints()` |
 | 6 | `6_no_score_pathway_workflow.R` | No-score pathway: build uniform likelihoods from consensus assignments | `unreferenced_candidates()` → `assign_scores(score_type = "none")` |
 
+**Layer-1 (Session 124), separate naming convention (`ecosystem_docs/LAYER1_WORKFLOWS.md`):**
+
+| File | Purpose | Key functions |
+|---|---|---|
+| `image_acoustic_likelihood_workflow.R` | Image + acoustic score-to-likelihood, TWO independent live sections (not a DEBUG_MODE variant switch — both real, both run in the same tutorial session): Section 1 consumes TaxaMatch's real iNat CV checkpoint (`score_type = "similarity_softmax"`, unbounded raw score); Section 2 consumes TaxaMatch's real BirdNET checkpoint (`score_type = "probability"`, already 0-1 bounded) | `unreferenced_candidates()` → `assign_scores()` |
+
 Workflows 2 and 3 share `build_sequence_matrix()` — build once, reuse.
 Acoustic and image data use `unreferenced_candidates()` + `assign_scores()` (no training
 step — classifiers are pre-trained; TaxaLikely acts as a post-classifier calibration layer).
@@ -339,6 +345,23 @@ which is skipped when DECIPHER/Biostrings are not installed.
 
 ## Known Footguns
 
+### .xc_recording_count() calls a dead Xeno-canto v2 endpoint (found Session 124, NOT FIXED)
+`.xc_recording_count()` (`R/coverage.R`), used by
+`audit_acoustic_coverage(xc_recordings = TRUE)`, queries
+`https://xeno-canto.org/api/2/recordings`. As of Session 124, Xeno-canto's v2 API is
+fully removed (404, not just an auth failure) -- recordings now require v3
+(`https://xeno-canto.org/api/3/recordings`), which additionally requires an API key
+AND tag-based query syntax (`gen:X sp:Y type:call`, not v2's free-text
+`query=X Y type:call`). Because `.xc_recording_count()` checks
+`resp_status(resp) != 200L` and returns `NA_integer_` on any non-200, this failure is
+**silent** -- `audit_acoustic_coverage(xc_recordings = TRUE)` currently returns `NA` for
+every single species with no warning at all, the same "silently degrades instead of
+erroring" pattern as the `.resolve_llm_fn()` footgun in `TaxaID/CLAUDE.md`. Confirmed by
+actually calling both v2 (404) and v3 (200, with key + tag syntax) directly while
+building the acoustic Layer-1 workflow's real BirdNET/Xeno-canto data. Not fixed this
+session (out of scope for that task) -- fix requires updating the endpoint, adding a
+required `key` param, and switching to `gen:`/`sp:` tag-based query construction.
+
 ### TaxaTools::create_taxon_names() must be installed
 `evaluate_likelihoods()` calls `TaxaTools::create_taxon_names()`. If TaxaTools
 is not installed (e.g., in test environments), tests that call `evaluate_likelihoods()`
@@ -376,6 +399,52 @@ non-zero likelihoods that bypass the constraint. Correct order:
 ---
 
 ## Session Notes
+
+**Session 124 (2026-07-01): Layer-1 image/acoustic likelihood workflow**
+
+`inst/workflows/image_acoustic_likelihood_workflow.R` added — consumes TaxaMatch's real
+iNat CV (image) and BirdNET (acoustic) checkpoints from `score_image_workflow.R` /
+`score_acoustic_workflow.R`, via the same `unreferenced_candidates()` + `assign_scores()`
+pathway this file's docs already noted is identical for both data types. Live-tested,
+0 errors: image section 5/6 (83%) correct on real camera-trap photos (5 mammal species,
+4 families); acoustic section 37/42 (88%) correct on real BirdNET output for 3
+confusable Calidris sandpipers. See `TaxaMatch/CLAUDE.md`'s Session 124 note for the
+full real-data provenance and bugs found while building the TaxaMatch side.
+
+Confirmed live: `assign_scores(score_type = "similarity_softmax")` (image, unbounded
+`combined_score`) and `score_type = "probability"` (acoustic, already 0-1 bounded
+BirdNET confidence) both ratio-normalize by the winning candidate's own score — the
+winner's `score_likelihood` is therefore always exactly 1.0 by construction; the
+meaningful comparison across observations is which taxon won, not the likelihood
+magnitude. Not a bug, but non-obvious enough to be worth stating plainly here.
+
+Also found (not fixed, out of scope for this task): `.xc_recording_count()` calls a
+dead Xeno-canto v2 endpoint — see the new Known Footguns entry above.
+
+**Session 123 (2026-07-01): audit_barcode_coverage() "Common mistake" doc fix (no logic change)**
+
+No function behavior changed — this was a workflow-usage bug, not a package defect.
+Root cause confirmed empirically against real Mugu cached data (`match_obj`/`reference_df`/
+`coverage` RDS files): *Mustelus mosis* was both an H1 BLAST `specific_candidate`
+(accession NC_077464, a complete 16755bp mitogenome, 174bp aligned region, 98.28% identity)
+and reported "unreferenced" by `audit_barcode_coverage()`. Cause: three real workflows
+(`PtConceptionWorkflow_12S.R`, `PtConceptionWorkflow_18S_2.R`, `MuguFishWorkflow.R`) all
+passed the length-curated `reference_df` (built for `build_sequence_matrix()`, which
+correctly excludes full mitogenomes from the alignment training set) as
+`audit_barcode_coverage()`'s `match_df` skip-list argument, instead of the actual match
+object. A species whose only NCBI record is a long sequence is therefore absent from the
+skip-list and fails the barcode-length-restricted reverse search, even though BLAST
+(unconstrained by length) already matched it correctly. `run_bayesian_pipeline()` was
+already unaffected — it builds its skip-list from its own `match_df` parameter (the real
+match object), never from a training `reference_df`.
+
+Added a `@param match_df` clarification plus a "Common mistake" `@details` subsection to
+`audit_barcode_coverage()` (`R/coverage.R`) documenting the exact mechanism with this case
+as a worked example, so it does not recur a fourth time. All three real workflows updated
+to pass `match_obj`/`match_obj_restored` instead of `reference_df`; each workflow's
+diagnostic NOTE (checking for species in both the match object and
+`coverage$unreferenced`) kept as a post-fix sanity check rather than removed.
+`devtools::check()`: 0 errors, 0 warnings.
 
 Sessions 30–94 archived in `ecosystem_docs/session_notes/TaxaLikely_sessions.md`.
 

@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaHabitat
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-05-23 (Session 86 — README updated; last package code changes Session 82)
+# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/assign_habitat_workflow.R)
 
 ---
 
@@ -140,3 +140,21 @@ Provider functions (`call_anthropic_api`, `call_gemini_api`, etc.) live in TaxaT
 **Session 86 (2026-05-23)**
 - No code changes. `DISCLAIMER.md` + `LICENSE.md` deleted from package root (centralised at
   TaxaID/ root). Disclaimer section removed from `README.md`.
+
+**Session 123 (2026-07-01): Layer-1 workflow script**
+- `inst/workflows/assign_habitat_workflow.R` added — teaching-oriented, fully namespaced,
+  continues directly from TaxaFetch's tutorial checkpoint. Two classification steps on the
+  SAME mechanism: Step A (always runs) standard habitat classification via
+  `build_habitat_prompt()` → `TaxaTools::prompt_api()` → `parse_hierarchical_habitat_response()`
+  → `assign_habitat_biological()`; Step B (optional, `NEEDS_SAMPLING_GROUP` toggle) reuses the
+  identical chain with a sampling-group scheme instead of a habitat scheme — confirmed to need
+  **zero package changes** (weight-matrix math is scheme-agnostic; `realm = NA` is a valid
+  scheme value; see `ecosystem_docs/LAYER1_WORKFLOWS.md` for the full generalization
+  investigation). Spatial QAQC tail (`flag_habitat_inconsistencies()`) preserved;
+  `review_spatial_flags()` documented as interactive-only, not run via `source()`.
+- Live-tested with a real Anthropic LLM call and real GEBCO bathymetry download. One real bug
+  fixed: Step B's `assign_habitat_biological()` call would have silently overwritten Step A's
+  `main_habitat` column if run on the same object (the function unconditionally drops
+  pre-existing `main_habitat`/`habitat_best_guess` from its `data` argument) — fixed by running
+  Step B against the original `all_occurrences` independently and joining only its renamed
+  output columns back on. Full record in `ecosystem_docs/LAYER1_WORKFLOWS.md`.

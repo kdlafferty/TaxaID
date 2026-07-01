@@ -4,7 +4,11 @@
 \alias{add_slash_taxon}
 \title{Add Slash Taxon Name and Irreducibility Flag to a Consensus Dataframe}
 \usage{
-add_slash_taxon(consensus_df, taxa_col = "plausible_taxa")
+add_slash_taxon(
+  consensus_df,
+  taxa_col = "plausible_taxa",
+  posteriors_col = "plausible_posteriors"
+)
 }
 \arguments{
 \item{consensus_df}{Dataframe. Output of \code{\link[=posterior_consensus]{posterior_consensus()}}. Must
@@ -13,10 +17,32 @@ taxa per observation (see \code{taxa_col}).}
 
 \item{taxa_col}{Character. Name of the list column containing per-observation
 plausible taxa vectors. Default \code{"plausible_taxa"}.}
+
+\item{posteriors_col}{Character. Name of the list column containing
+per-observation posterior probability vectors, positionally aligned with
+\code{taxa_col} (e.g., \code{"plausible_posteriors"} from \code{\link[=posterior_consensus]{posterior_consensus()}}).
+When present, candidates within each slash name are ordered by descending
+posterior (most probable first). When \code{NULL} or absent from \code{consensus_df},
+candidates are ordered alphabetically. Default \code{"plausible_posteriors"}.}
 }
 \value{
-\code{consensus_df} with two additional columns appended:
+\code{consensus_df} with additional columns appended:
 \code{slash_taxon_name} (character) and \code{irreducible_consensus} (logical).
+When \code{consensus_df} has a \code{consensus_taxon} column, two more columns are
+added:
+\describe{
+\item{\code{consensus_OTU}}{Single reporting label per observation —
+\code{slash_taxon_name} when non-\code{NA}, otherwise \code{consensus_taxon}. Use
+this as the one column with a non-\code{NA} label for every resolved
+observation.}
+\item{\code{primary_taxon}}{\code{consensus_OTU} reduced to a single taxon name
+by dropping everything from the first \code{/} or \code{+} onward — the
+single most-reportable name when a slash/plus label is not wanted
+(e.g. simple species tallies). For a slash set, this is whichever
+candidate \code{.make_slash_name()} placed first (highest posterior when
+\code{posteriors_col} is available, else alphabetical) — a convenience
+label, not a statistically preferred pick.}
+}
 }
 \description{
 Appends two columns to the output of \code{\link[=posterior_consensus]{posterior_consensus()}}:

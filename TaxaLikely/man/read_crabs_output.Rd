@@ -30,7 +30,7 @@ incorrectly-assembled entries that CRABS length filters may have missed.
 
 \item{require_species}{Logical (default \code{TRUE}). When \code{TRUE},
 rows with a missing or invalid species name are dropped.  Validity is
-checked by \code{\link[TaxaTools:is_valid_species_name]{TaxaTools::is_valid_species_name()}}, which rejects
+checked by \code{\link[TaxaTools:is_plausible_binomial]{TaxaTools::is_plausible_binomial()}}, which rejects
 \code{sp.}, \code{cf.}, \code{aff.}, and \code{uncultured} names.  Set
 to \code{FALSE} to retain genus-level-only references.}
 

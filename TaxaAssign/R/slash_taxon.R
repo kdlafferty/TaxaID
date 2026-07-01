@@ -92,8 +92,23 @@
 #'   posterior (most probable first). When `NULL` or absent from `consensus_df`,
 #'   candidates are ordered alphabetically. Default `"plausible_posteriors"`.
 #'
-#' @return `consensus_df` with two additional columns appended:
+#' @return `consensus_df` with additional columns appended:
 #'   `slash_taxon_name` (character) and `irreducible_consensus` (logical).
+#'   When `consensus_df` has a `consensus_taxon` column, two more columns are
+#'   added:
+#'   \describe{
+#'     \item{`consensus_OTU`}{Single reporting label per observation —
+#'       `slash_taxon_name` when non-`NA`, otherwise `consensus_taxon`. Use
+#'       this as the one column with a non-`NA` label for every resolved
+#'       observation.}
+#'     \item{`primary_taxon`}{`consensus_OTU` reduced to a single taxon name
+#'       by dropping everything from the first `/` or ` + ` onward — the
+#'       single most-reportable name when a slash/plus label is not wanted
+#'       (e.g. simple species tallies). For a slash set, this is whichever
+#'       candidate `.make_slash_name()` placed first (highest posterior when
+#'       `posteriors_col` is available, else alphabetical) — a convenience
+#'       label, not a statistically preferred pick.}
+#'   }
 #'
 #' @note **Invalid species names upstream:** Non-binomial entries such as
 #'   `"Thunnus aff."`, `"Thunnus cf."`, or `"Canis sp. Russia/33500"` can
@@ -209,6 +224,21 @@ add_slash_taxon <- function(consensus_df,
 
   consensus_df[["slash_taxon_name"]]      <- slash_names
   consensus_df[["irreducible_consensus"]] <- irreducible_vec
+
+  # --- consensus_OTU / primary_taxon (require consensus_taxon) --------------
+  # Every real workflow that calls add_slash_taxon() re-derives these two
+  # columns by hand (identical logic independently written 3x across
+  # PtConceptionWorkflow_12S.R, PtConceptionWorkflow_18S_2.R, and
+  # MuguFishWorkflow.R) -- promoted here so it is computed once, consistently.
+  if ("consensus_taxon" %in% names(consensus_df)) {
+    otu <- ifelse(
+      is.na(consensus_df[["slash_taxon_name"]]),
+      consensus_df[["consensus_taxon"]],
+      consensus_df[["slash_taxon_name"]]
+    )
+    consensus_df[["consensus_OTU"]]   <- otu
+    consensus_df[["primary_taxon"]]   <- sub("(\\s*\\+\\s*|/).*", "", otu)
+  }
 
   consensus_df
 }

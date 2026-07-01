@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-27 (Session 122 — PDFs moved from pdfs/so_cal_gobies/ to inst/extdata/pdfs/; pdf_workflow_test_v4.R updated to use system.file("extdata/pdfs", package = "TaxaFetch"); inat_cv_api_prompt.md and inat_range_prompt.md debris deleted; keep_12S_PtCon_ESVS.csv root-level data file deleted)
+# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/fetch_occurrences_workflow.R)
 
 ---
 
@@ -311,3 +311,16 @@ Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
   warnings on GBIF TSV data.
 - User-facing messaging improved: cache directory printed at start; "still working" message after
   rgbif "succeeded" output (which misleadingly appears before import completes).
+
+**Session 123 (2026-07-01): Layer-1 workflow script**
+- `inst/workflows/fetch_occurrences_workflow.R` added — teaching-oriented, fully namespaced,
+  runnable top to bottom on a built-in tutorial example (genus *Gadus*, North Atlantic).
+  Demonstrates `get_keys_from_context()` → GBIF two-path dispatch (`fetch_gbif_occurrences()`
+  vs. `download_gbif_occurrences()`, threshold at ~50 keys) → `filter_gbif_quality()` →
+  `stack_occurrences()`. Narrow/broad-marker VARIANT A/B preserved from the old monolithic
+  templates; broad-marker sampling_group assignment left as a TODO pointer (see
+  `ecosystem_docs/LAYER1_WORKFLOWS.md`), not inline code.
+- Live-tested against real GBIF (part of a 5-package full-chain smoke test through TaxaFlag).
+  Full design rationale, cross-package continuity conventions, and bugs found/fixed during
+  testing are in `ecosystem_docs/LAYER1_WORKFLOWS.md` — see that file, not this one, for the
+  complete record.

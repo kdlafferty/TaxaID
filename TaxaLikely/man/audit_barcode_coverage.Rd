@@ -36,7 +36,15 @@ audit_barcode_coverage_ncbi(
 \item{match_df}{Data frame with at least a \code{target_rank} column (e.g.
 \code{"genus"}) and a \code{"species"} column.  Species present in \code{match_df} are
 treated as a \strong{skip-list}: they have reference sequences by definition
-and are excluded from the barcode-count queries.}
+and are excluded from the barcode-count queries.  Pass the actual match
+object (e.g. \code{match_obj} / \code{match_obj_restored} from
+\code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}}) here -- \strong{not} a length-curated
+\code{reference_df} built for \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}/\code{\link[=train_likelihood_model]{train_likelihood_model()}}.
+A species whose only reference sequence is a long record (e.g. a complete
+mitogenome) is routinely dropped from a length-curated training set even
+though BLAST matched it correctly; passing that curated set here makes
+\code{audit_barcode_coverage()} report the species "unreferenced" despite it
+already being a specific_candidate. See \code{Details}.}
 
 \item{barcode_term}{Character scalar or vector.  One or more marker search
 terms (e.g. \code{"12S"}, \code{c("12S", "MiFish")}).  Multiple terms are OR-ed.}
@@ -159,6 +167,26 @@ taxonomic completeness is critical (e.g. well-studied vertebrate genera).
 \item{trnL}{10--300 bp}
 \item{(unrecognised)}{100--2000 bp (fallback, with message)}
 }
+}
+
+\subsection{Common mistake: passing a length-curated reference instead of the match object}{
+
+\code{match_df} must represent every species with a \emph{usable} reference
+sequence, independent of amplicon length -- because BLAST itself is not
+length-constrained. Confirmed example: a 12S BLAST hit for
+\emph{Mustelus mosis} against accession with \code{subject_length} 16755bp
+(a complete mitogenome) and \code{alignment_length} 174bp -- a correct
+\code{specific_candidate} H1. That same accession is routinely excluded from a
+\code{reference_df} built for \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}, since aligning a
+16.7kb mitogenome against ~170bp barcode fragments would corrupt the
+pairwise-distance training set. If that length-curated \code{reference_df} is
+then reused as \code{match_df} here, \emph{M. mosis} has no entry in the
+skip-list, the barcode-length-restricted NCBI query correctly finds no
+short-format sequence for it, and it is reported unreferenced --
+contradicting the match object where it is already a named H1 candidate.
+Symptom: a species appears in both \code{match_obj$taxon_name} and this
+function's \verb{$unreferenced} output. Fix: pass the match object, not the
+training reference.
 }
 
 \subsection{API strategy (reverse search)}{

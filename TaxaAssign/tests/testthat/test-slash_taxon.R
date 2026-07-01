@@ -98,6 +98,50 @@ test_that("add_slash_taxon: posterior ordering — mixed-genus, highest posterio
   expect_equal(result$slash_taxon_name, "Salvelinus leucomaenis + Salmo salar")
 })
 
+test_that("add_slash_taxon: consensus_OTU/primary_taxon -- slash case falls back to slash_taxon_name", {
+  df <- data.frame(
+    observation_id = "obs1",
+    consensus_taxon = "Oncorhynchus",
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa <- list(c("Oncorhynchus tshawytscha", "Oncorhynchus kisutch"))
+  result <- add_slash_taxon(df)
+  expect_equal(result$consensus_OTU, "Oncorhynchus kisutch/tshawytscha")
+  expect_equal(result$primary_taxon, "Oncorhynchus kisutch")
+})
+
+test_that("add_slash_taxon: consensus_OTU/primary_taxon -- mixed-genus splits on '+'", {
+  df <- data.frame(
+    observation_id = "obs1",
+    consensus_taxon = "Salmonidae",
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa <- list(c("Salmo salar", "Salvelinus leucomaenis"))
+  result <- add_slash_taxon(df)
+  expect_equal(result$consensus_OTU, "Salmo salar + Salvelinus leucomaenis")
+  expect_equal(result$primary_taxon, "Salmo salar")
+})
+
+test_that("add_slash_taxon: consensus_OTU/primary_taxon -- singleton falls back to consensus_taxon", {
+  df <- data.frame(
+    observation_id = "obs1",
+    consensus_taxon = "Oncorhynchus mykiss",
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa <- list("Oncorhynchus mykiss")
+  result <- add_slash_taxon(df)
+  expect_equal(result$consensus_OTU, "Oncorhynchus mykiss")
+  expect_equal(result$primary_taxon, "Oncorhynchus mykiss")
+})
+
+test_that("add_slash_taxon: consensus_OTU/primary_taxon omitted when consensus_taxon absent", {
+  df <- data.frame(observation_id = "obs1", stringsAsFactors = FALSE)
+  df$plausible_taxa <- list(c("Oncorhynchus tshawytscha", "Oncorhynchus kisutch"))
+  result <- add_slash_taxon(df)
+  expect_false("consensus_OTU" %in% names(result))
+  expect_false("primary_taxon" %in% names(result))
+})
+
 test_that("add_slash_taxon: irreducible_consensus FALSE when another obs resolves the ambiguity", {
   df <- data.frame(
     observation_id = c("obs1", "obs2"),

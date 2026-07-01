@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-08 (Session 104 — add_posthoc_assessment(); NA-rank vague_rank bug fix)
+# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/flag_detections_workflow.R)
 
 ---
 
@@ -201,3 +201,22 @@ Sessions 60–74 archived in ecosystem_docs/session_notes/TaxaFlag_sessions.md.
 - Bug fix: `vague_rank` mask was `!is.na(rank) & rank != finest_rank`; NA rank fell through to active path, getting treated as tier2 → "suspect". Fixed to `is.na(rank) | rank != finest_rank` so NA-rank rows correctly receive "vague_rank".
 - `flag_prior_mismatch.R` and associated man/tests deleted.
 - PtConceptionWorkflow_12S.R and _18S.R updated to use `add_posthoc_assessment()`.
+
+**Session 123 (2026-07-01): Layer-1 workflow script**
+- `inst/workflows/flag_detections_workflow.R` added — the FINAL package in the tutorial
+  chain (TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign → TaxaFlag). Unlike the four
+  upstream scripts, both live steps run on 100% real continuity data with no synthetic
+  bootstrapping: `review_assignments()` reviews TaxaAssign's real `taxaassign_consensus`
+  (irreducible candidate sets via `plausible_taxa_col`), and `add_posthoc_assessment()` uses
+  the real `taxaexpect_priors` directly as `tiers` (it only needs `taxon_name` + `model_tier`,
+  both already present). `flag_contaminant()` is documented with its full signature and
+  algorithm but not run live — it needs lab read-count data (sample × taxon, with blanks) that
+  a GBIF-occurrence-based tutorial chain has no honest way to fabricate.
+- Live-tested with a real Anthropic LLM call as part of a full 5-package chain (0 errors,
+  sensible output — see `ecosystem_docs/LAYER1_WORKFLOWS.md`). One real bug fixed:
+  `review_assignments(irreducible_only = TRUE)` hard-errors if zero rows qualify as
+  irreducible, which is the *expected* outcome (not bad luck) for TaxaAssign's small
+  synthetic species pool — fixed with an adaptive fallback to `irreducible_only = FALSE`.
+- Also surfaced (and documented in `TaxaID/CLAUDE.md`'s Known R Footguns): `review_assignments()`
+  shares the same `.resolve_llm_fn()` default-degrades-silently issue as TaxaAssign's LLM
+  pathway — must pass `llm_fn` explicitly under this ecosystem's fully-namespaced calling style.
