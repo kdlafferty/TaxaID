@@ -45,6 +45,14 @@ utils::globalVariables("taxonKey")
 #'   environment variable.
 #' @param gbif_email Character. GBIF registered email address. Defaults to
 #'   the \code{GBIF_EMAIL} environment variable.
+#' @param exclude_absent Logical. When \code{TRUE} (default), adds a
+#'   server-side \code{occurrenceStatus = PRESENT} predicate, excluding
+#'   explicit absence records before the file is built by GBIF. Systematic
+#'   surveys (e.g., eBird, iNaturalist) can contribute large numbers of
+#'   \code{ABSENT} rows that inflate the download size without providing
+#'   presence data. Set to \code{FALSE} only if you need absence records.
+#'   Changing this parameter changes the cache key and triggers a fresh
+#'   download.
 #' @param basis_keep Character vector or \code{NULL}. When not \code{NULL},
 #'   adds a server-side \code{basisOfRecord} predicate to the GBIF download
 #'   request, reducing the size of the downloaded zip. Only occurrence records
@@ -177,12 +185,13 @@ utils::globalVariables("taxonKey")
 download_gbif_occurrences <- function(
     keys,
     geometry,
-    year_range  = "2000,2024",
-    limit       = NULL,
-    cache_dir   = tools::R_user_dir("TaxaFetch", "cache"),
-    overwrite   = FALSE,
-    status_ping = 15,
-    basis_keep  = NULL,
+    year_range     = "2000,2024",
+    limit          = NULL,
+    cache_dir      = tools::R_user_dir("TaxaFetch", "cache"),
+    overwrite      = FALSE,
+    status_ping    = 15,
+    exclude_absent = TRUE,
+    basis_keep     = NULL,
     select_cols = c(
       # Taxonomy text (SIMPLE_CSV has text columns, not rank key columns)
       "kingdom", "phylum", "class", "order", "family",
@@ -265,7 +274,8 @@ download_gbif_occurrences <- function(
       normalizePath(cache_dir, mustWork = FALSE)
     ))
   }
-  meta_path <- .gbif_dl_meta_path(cache_dir, keys, geometry, year_range, basis_keep)
+  meta_path <- .gbif_dl_meta_path(cache_dir, keys, geometry, year_range,
+                                  basis_keep, exclude_absent)
   dl_key    <- NULL
   zip_path  <- NULL
 
@@ -310,6 +320,9 @@ download_gbif_occurrences <- function(
       rgbif::pred_lte("year",      yr_parts[2L]),
       rgbif::pred("hasCoordinate", TRUE)
     )
+    if (isTRUE(exclude_absent)) {
+      preds <- c(preds, list(rgbif::pred("occurrenceStatus", "PRESENT")))
+    }
     if (!is.null(basis_keep)) {
       preds <- c(preds, list(rgbif::pred_in("basisOfRecord", basis_keep)))
     }
@@ -481,19 +494,19 @@ download_gbif_occurrences <- function(
 #' @return A file path string, or NULL if cache_dir is NULL.
 #' @noRd
 .gbif_dl_meta_path <- function(cache_dir, keys, geometry, year_range,
-                               basis_keep = NULL) {
+                               basis_keep = NULL, exclude_absent = TRUE) {
   if (is.null(cache_dir)) return(NULL)
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-  basis_tag <- if (!is.null(basis_keep)) {
-    paste0("_b", sum(nchar(basis_keep)))
-  } else ""
+  basis_tag   <- if (!is.null(basis_keep)) paste0("_b", sum(nchar(basis_keep))) else ""
+  absent_tag  <- if (isTRUE(exclude_absent)) "_pres" else ""
   sig <- sprintf(
-    "%dk_s%d_g%d_%s%s",
+    "%dk_s%d_g%d_%s%s%s",
     length(keys),
     as.integer(sum(as.numeric(keys)) %% 1e9),
     nchar(geometry),
     gsub("[^0-9]", "", year_range),
-    basis_tag
+    basis_tag,
+    absent_tag
   )
   file.path(cache_dir, paste0("gbif_dl_", sig, "_meta.rds"))
 }
