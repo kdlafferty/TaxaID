@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 124 — Layer-1 workflow script added: inst/workflows/image_acoustic_likelihood_workflow.R; .xc_recording_count() found broken (dead v2 API endpoint), not yet fixed)
+# Last updated: 2026-07-01 (Session 125 — .xc_recording_count() fixed: migrated to Xeno-canto v3 API + XC_API_KEY, live-verified; correct_training_bias() added for classifier training-count bias correction, unit-tested, not yet wired into Layer-1 workflows)
 
 ---
 
@@ -107,6 +107,12 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `model_likelihoods()` | `R/compute_likelihoods.R` | Written | Apply bivariate-normal model to a `scored_df` from `assign_scores(score_type="similarity")`. Thin wrapper around `evaluate_likelihoods()`; adds `score_method = "bivariate_normal"`. |
 | `compute_likelihoods()` | `R/compute_likelihoods.R` | Written | Orchestrating wrapper: `unreferenced_candidates()` → `assign_scores()` → `model_likelihoods()` (similarity only). Recommended high-level entry point. Returns `list($likelihoods, $unresolved)`. |
 
+### Training-database bias correction (new — Session 125)
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `correct_training_bias()` | `R/correct_training_bias.R` | Written | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run. Adaptive shrinkage exponent `tau_i = n_i / (n_i + prior_weight)` (same shrinkage form as `train_likelihood_model()`'s `w = N/(N+prior_weight)`); `prior_weight` defaults to `median(n, na.rm = TRUE)` when `NULL`. Missing/zero counts fall through to the uncorrected score (`tau_i = 0`). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested only so far (synthetic fixture) — not yet wired into the Layer-1 image/acoustic workflow scripts or validated against real classifier output; see `ecosystem_docs/REENTRY_PROMPT_session125...` for the follow-up. |
+
 ### Inference (apply model to query observations)
 
 | Function | File | Status | Description |
@@ -121,7 +127,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `infer_exclude_predicted()` | `R/infer_predicted.R` | Written | Inspects accession column of a match object to infer whether the BLAST reference excluded computationally predicted (XR_/XM_) sequences. Returns `TRUE` (no XR_/XM_ found → exclude), `FALSE` (predicted accessions present → include), or `NA` (all custom/non-NCBI accessions → cannot determine). Auto-detects accession column; strips version suffixes; reports custom accession count. Feeds directly into `audit_barcode_coverage(exclude_predicted = infer_exclude_predicted(match_obj) \%\|\|\% TRUE)`. |
 | `audit_barcode_coverage()` | `R/coverage.R` | Written | **Preferred for eDNA/barcode data.** Unreferenced = described species with NO barcode sequence (cannot appear as reference match). **Reverse-search implementation** (Session 113): one genus-level NCBI nuccore query + batched `elink` → taxonomy + batched `entrez_summary`; ~4 fixed API calls per genus regardless of species count (3.25× faster than per-species queries on 18S protist/algae genera). Species enumeration: NCBI taxonomy subtree (or user `species_list`). Census: `in_reference`, `has_seqs_not_in_ref`, `unreferenced`, `is_complete`. Params: `barcode_term` (vector ok), `max_date`, `min_len`, `max_len`, `species_list`, `max_nuccore` (default 5000), `cache_dir`. Checkpoint/resume: progress saved per genus; interrupted runs resume automatically. Hyphenated genera (e.g. *Pseudo-nitzschia*) handled via hyphen→space normalization in `.genus_taxid()`. `audit_barcode_coverage_ncbi()` is a deprecated alias. |
 | `audit_reference_coverage()` | `R/coverage.R` | Written | Queries NCBI taxonomy tree (all described species). Use for non-barcode libraries (images, sounds) where barcode availability is irrelevant. |
-| `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates `in_match_data`. `xc_recordings = FALSE` param (Session 119): when TRUE, queries Xeno-canto v2 API for `n_recordings` per species (1s rate limit; NA on failure). Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
+| `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates `in_match_data`. `xc_recordings = FALSE` param (Session 119, fixed to v3 Session 125): when TRUE, queries Xeno-canto v3 API (requires `XC_API_KEY` env var) for `n_recordings` per species (1s rate limit; NA on failure or missing key). Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
 | `audit_inat_coverage()` | `R/coverage.R` | Written | **iNaturalist image coverage audit** (Session 119). Given a species list (prior taxa), queries iNat taxa API for each species: returns `n_observations`, `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced` list. Optional `match_df` annotates `in_match_data`. Optional `api_token` (env `INAT_API_TOKEN`; 401 → stop). 0.3s rate limit. Returns `list(census, unreferenced)` with same structure as `audit_barcode_coverage()`. Internal helpers: `.inat_species_info()`, `.xc_recording_count()`. |
 | `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress "unreferenced_species" for fully-sampled genera |
 | `expand_unreferenced_hypotheses()` | moved to TaxaAssign | — | Requires both TaxaLikely and TaxaExpect outputs; belongs at the convergence point. See `TaxaAssign/R/expand_unreferenced.R`. |
@@ -345,22 +351,23 @@ which is skipped when DECIPHER/Biostrings are not installed.
 
 ## Known Footguns
 
-### .xc_recording_count() calls a dead Xeno-canto v2 endpoint (found Session 124, NOT FIXED)
+### .xc_recording_count() required v2 -> v3 migration (found Session 124, FIXED Session 125)
 `.xc_recording_count()` (`R/coverage.R`), used by
-`audit_acoustic_coverage(xc_recordings = TRUE)`, queries
-`https://xeno-canto.org/api/2/recordings`. As of Session 124, Xeno-canto's v2 API is
-fully removed (404, not just an auth failure) -- recordings now require v3
-(`https://xeno-canto.org/api/3/recordings`), which additionally requires an API key
-AND tag-based query syntax (`gen:X sp:Y type:call`, not v2's free-text
-`query=X Y type:call`). Because `.xc_recording_count()` checks
-`resp_status(resp) != 200L` and returns `NA_integer_` on any non-200, this failure is
-**silent** -- `audit_acoustic_coverage(xc_recordings = TRUE)` currently returns `NA` for
-every single species with no warning at all, the same "silently degrades instead of
-erroring" pattern as the `.resolve_llm_fn()` footgun in `TaxaID/CLAUDE.md`. Confirmed by
-actually calling both v2 (404) and v3 (200, with key + tag syntax) directly while
-building the acoustic Layer-1 workflow's real BirdNET/Xeno-canto data. Not fixed this
-session (out of scope for that task) -- fix requires updating the endpoint, adding a
-required `key` param, and switching to `gen:`/`sp:` tag-based query construction.
+`audit_acoustic_coverage(xc_recordings = TRUE)`, called the dead
+`https://xeno-canto.org/api/2/recordings` endpoint (404 unconditionally as of
+Session 124's Xeno-canto migration). Because it checked `resp_status(resp) != 200L`
+and returned `NA_integer_` on any non-200, the failure was **silent** -- the same
+"silently degrades instead of erroring" pattern as the `.resolve_llm_fn()` footgun in
+`TaxaID/CLAUDE.md`. Fixed Session 125: switched to
+`https://xeno-canto.org/api/3/recordings`, added a required `key` query param read from
+the `XC_API_KEY` environment variable (register at xeno-canto.org/explore/api; set via
+`~/.Renviron`), and rewrote the query from v2's free-text to v3's tag-based syntax
+(`gen:{genus} sp:{species} type:call`). If `XC_API_KEY` is unset, the function now warns
+explicitly and returns `NA_integer_` (no longer silent). Live-verified against 4 real
+species (`Turdus migratorius`, `Setophaga petechia`, `Limosa fedoa`,
+`Selasphorus calliope`) via both `.xc_recording_count()` directly and
+`audit_acoustic_coverage(xc_recordings = TRUE)` end-to-end -- all returned real,
+non-NA counts.
 
 ### TaxaTools::create_taxon_names() must be installed
 `evaluate_likelihoods()` calls `TaxaTools::create_taxon_names()`. If TaxaTools
@@ -399,6 +406,64 @@ non-zero likelihoods that bypass the constraint. Correct order:
 ---
 
 ## Session Notes
+
+**Session 125 (2026-07-01): .xc_recording_count() v2 → v3 migration (Stage 1 of REENTRY_PROMPT_session124)**
+
+Fixed the dead-endpoint footgun flagged Session 124. `.xc_recording_count()` (`R/coverage.R`)
+switched from `https://xeno-canto.org/api/2/recordings` (404 unconditionally) to
+`https://xeno-canto.org/api/3/recordings`, added a required `key` query param read from
+`Sys.getenv("XC_API_KEY")`, and rewrote the query from v2 free-text to v3 tag-based syntax
+(`gen:{genus} sp:{species} type:call`). Missing-key case now warns explicitly instead of
+silently returning `NA` (matching the fix pattern used for `.resolve_llm_fn()` in
+`TaxaID/CLAUDE.md`). Response body parsing (`numRecordings` field) unchanged — v3 kept the
+same field name as v2.
+
+Live-verified with a real, freshly-registered `XC_API_KEY` (confirmed with the user before
+use, per the reentry note's key-provenance caution): `.xc_recording_count("Turdus migratorius")`
+→ 430; `audit_acoustic_coverage(xc_recordings = TRUE)` end-to-end on 4 species (2 in-reference,
+2 unreferenced) → all 4 returned real non-NA counts (430, 118, 78, 19). `devtools::check()`:
+0 errors, 0 warnings, 0 notes.
+
+Stage 1's second item (training-database bias correction) picked up the same session —
+see below.
+
+**Session 125 continued: `correct_training_bias()` — training-database bias correction**
+
+Design discussion with the user first (not started from a ticket, per the reentry note's
+explicit instruction): confirmed the statistical justification — a classifier trained by
+standard cross-entropy estimates a Bayes posterior, so raw score_i ∝ L(obs|species_i) × n_i,
+and dividing each candidate's score by its own n_i (rather than pairwise `R = n_i/n_j`
+corrections, which don't scale past 2 candidates) corrects every pairwise ratio
+simultaneously. Landed on an **adaptive** shrinkage exponent rather than a fixed one:
+`tau_i = n_i / (n_i + prior_weight)`, the same functional form already used in
+`train_likelihood_model()`'s per-species shrinkage (`w = N/(N+prior_weight)`) — justified
+because `n_i` (a public-database count) is only a noisy proxy for the classifier's actual
+internal training count, least trustworthy exactly where `n_i` is small. `prior_weight`
+defaults to `median(n, na.rm = TRUE)` (self-normalizing to whatever scale the count data
+has, rather than an arbitrary constant). A useful side effect: treating a missing/failed
+count lookup as `n_i = 0` makes `tau_i = 0` automatically (`n^0 = 1`, no correction) — so
+NA handling falls out of the same formula with no special-case branch, rather than having
+to decide whether a given NA reflects genuine rarity or a lookup error.
+
+`correct_training_bias()` added (`R/correct_training_bias.R`): overwrites `score_col`
+(default `"score_original"`, matching `assign_scores()`'s own default) in place with the
+corrected value, so no downstream call site needs to change; preserves the pre-correction
+value under `score_uncorrected`; adds `n_used`/`tau_used` diagnostics. Confirmed via
+`TaxaMatch::score_image_workflow.R`'s real output contract that the working column really
+is named `score_original` (not `score`) by the point this would run — the design
+conversation's placeholder name was corrected before implementation.
+
+22 offline unit tests (`test-correct-training-bias.R`), all passing: correction direction
+(favors low-n over high-n candidates), NA/zero-count fallthrough, all-NA-counts case,
+missing-count_col warning, default-vs-explicit `prior_weight`, and input validation.
+`devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Not done yet**: not wired into the Layer-1 `image_acoustic_likelihood_workflow.R` /
+`score_image_workflow.R` / `score_acoustic_workflow.R` scripts, and not validated against
+real classifier output (only a synthetic 3-row fixture so far) — the acoustic side also
+still needs the `n_recordings` join from `audit_acoustic_coverage(xc_recordings = TRUE)`
+onto the match object by taxon, which nothing does yet. See the reentry prompt for the
+concrete next steps.
 
 **Session 124 (2026-07-01): Layer-1 image/acoustic likelihood workflow**
 

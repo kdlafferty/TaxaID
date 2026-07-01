@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-01 (Session 124 — Layer-1 image/acoustic workflow scripts built + live-tested for TaxaMatch/TaxaLikely; see ecosystem_docs/LAYER1_WORKFLOWS.md; Recent Breaking Changes table trimmed — see note below)
+# Last updated: 2026-07-01 (Session 125 — TaxaLikely::.xc_recording_count() fixed: Xeno-canto v2→v3 migration; TaxaLikely::correct_training_bias() added for classifier training-count bias correction)
 
 ---
 
@@ -233,17 +233,17 @@ of the five functions above from a fully-namespaced script:
 llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api)
 ```
 
-### Xeno-canto v2 API is dead; v2→v3 migration in Session 87 missed one call site (found Session 124)
+### Xeno-canto v2 API is dead; v2→v3 migration in Session 87 missed one call site (found Session 124, FIXED Session 125)
 `ecosystem_docs/NAME_CHANGE_HISTORY.md` records the v2→v3 migration as done in Session 87
 (`fetch_reference_recordings()` updated), but `TaxaLikely::.xc_recording_count()`
-(`R/coverage.R`, added Session 119 — *after* that migration) was never updated and still
-calls the dead v2 endpoint. v3 also needs an application-specific API key and tag-based
-query syntax (`gen:X sp:Y type:call`, not v2's free-text `query=X Y type:call`). Because
-`.xc_recording_count()` checks `resp_status != 200L` and returns `NA_integer_` silently,
-`audit_acoustic_coverage(xc_recordings = TRUE)` has returned `NA` for every species, with
-no warning, since the moment it was written. Not fixed as of Session 124 — see
-`TaxaLikely/CLAUDE.md`'s Known Footguns for the fix shape and
-`ecosystem_docs/REENTRY_PROMPT_session124_image_acoustic_workflows.md` for the queued task.
+(`R/coverage.R`, added Session 119 — *after* that migration) was never updated and called
+the dead v2 endpoint. Because `.xc_recording_count()` checked `resp_status != 200L` and
+returned `NA_integer_` silently, `audit_acoustic_coverage(xc_recordings = TRUE)` had
+returned `NA` for every species, with no warning, from the moment it was written. Fixed
+Session 125: switched to the v3 endpoint, added a required `key` param (read from the
+`XC_API_KEY` env var), and rewrote the query to v3's tag-based syntax
+(`gen:X sp:Y type:call`). Live-verified against real species. See
+`TaxaLikely/CLAUDE.md`'s Known Footguns for the fix detail.
 
 ---
 
@@ -257,3 +257,5 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 
 | Session | Change | Package | Notes |
 |---|---|---|---|
+| 125 | `audit_acoustic_coverage(xc_recordings = TRUE)` now returns real data | TaxaLikely | Behavioral, not signature. `.xc_recording_count()` migrated to Xeno-canto v3; requires `XC_API_KEY` env var (previously silently returned `NA` for every species regardless of key). |
+| 125 | `correct_training_bias()` added | TaxaLikely | function | New preprocessing step, not yet called by any workflow. Divides classifier scores by an adaptive-shrinkage estimate of training-database representation bias before `unreferenced_candidates()`/`assign_scores()`. Overwrites `score_original` in place; raw value preserved in `score_uncorrected`. |

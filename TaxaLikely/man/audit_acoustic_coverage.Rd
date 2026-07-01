@@ -29,10 +29,12 @@ are annotated as \code{in_match_data = TRUE} in the census output.  Use
 The species column is auto-detected from \code{"species"} or \code{"taxon_name"}.
 Default \code{NULL}.}
 
-\item{xc_recordings}{Logical. If \code{TRUE}, queries the Xeno-canto v2 API for
+\item{xc_recordings}{Logical. If \code{TRUE}, queries the Xeno-canto v3 API for
 the number of recordings available for each species in \code{plausible_species}
 and adds an \code{n_recordings} column to the census. Requires an internet
-connection; adds approximately 1 second per species. Default \code{FALSE}.}
+connection, a registered Xeno-canto API key set via the \code{XC_API_KEY}
+environment variable (register at xeno-canto.org/explore/api), and adds
+approximately 1 second per species. Default \code{FALSE}.}
 }
 \value{
 A named list with two components:

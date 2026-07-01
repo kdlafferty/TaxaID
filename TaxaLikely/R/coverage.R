@@ -1244,10 +1244,12 @@ audit_barcode_coverage_ncbi <- function(match_df,
 #'   `TaxaMatch::read_birdnet_output()` output.
 #'   The species column is auto-detected from `"species"` or `"taxon_name"`.
 #'   Default `NULL`.
-#' @param xc_recordings Logical. If `TRUE`, queries the Xeno-canto v2 API for
+#' @param xc_recordings Logical. If `TRUE`, queries the Xeno-canto v3 API for
 #'   the number of recordings available for each species in `plausible_species`
 #'   and adds an `n_recordings` column to the census. Requires an internet
-#'   connection; adds approximately 1 second per species. Default `FALSE`.
+#'   connection, a registered Xeno-canto API key set via the `XC_API_KEY`
+#'   environment variable (register at xeno-canto.org/explore/api), and adds
+#'   approximately 1 second per species. Default `FALSE`.
 #'
 #' @return A named list with two components:
 #'   \describe{
@@ -1515,10 +1517,15 @@ apply_coverage_constraints <- function(likelihood_df,
 # .xc_recording_count() -- internal helper
 # ==============================================================================
 
-#' Query Xeno-canto v2 API for the number of recordings for one species
+#' Query Xeno-canto v3 API for the number of recordings for one species
 #'
 #' Returns an integer count, or \code{NA_integer_} on error or no match.
-#' Xeno-canto v2 is publicly accessible without an API key.
+#' Xeno-canto v3 requires an application-scoped API key (register at
+#' xeno-canto.org/explore/api) via the \code{XC_API_KEY} environment variable,
+#' and tag-based query syntax (\code{gen:Genus sp:species type:call}) rather
+#' than v2's free-text query. The v2 endpoint this previously called
+#' (\code{api/2/recordings}) is fully removed (404 unconditionally) -- see
+#' \code{ecosystem_docs/REENTRY_PROMPT_session124_image_acoustic_workflows.md}.
 #' @noRd
 .xc_recording_count <- function(species_name) {
   if (!requireNamespace("httr2", quietly = TRUE)) {
@@ -1530,8 +1537,26 @@ apply_coverage_constraints <- function(likelihood_df,
     return(NA_integer_)
   }
 
-  req <- httr2::request("https://xeno-canto.org/api/2/recordings") |>
-    httr2::req_url_query(query = trimws(species_name)) |>
+  xc_key <- Sys.getenv("XC_API_KEY")
+  if (!nzchar(xc_key)) {
+    warning(
+      ".xc_recording_count: Xeno-canto v3 requires a registered API key. ",
+      "Register at xeno-canto.org/explore/api and set ",
+      "Sys.setenv(XC_API_KEY = \"your_key\") (or add XC_API_KEY to ~/.Renviron).",
+      call. = FALSE
+    )
+    return(NA_integer_)
+  }
+
+  parts   <- strsplit(trimws(species_name), "\\s+")[[1L]]
+  genus   <- parts[1L]
+  species <- if (length(parts) >= 2L) parts[2L] else ""
+
+  req <- httr2::request("https://xeno-canto.org/api/3/recordings") |>
+    httr2::req_url_query(
+      query = sprintf("gen:%s sp:%s type:call", genus, species),
+      key   = xc_key
+    ) |>
     httr2::req_error(is_error = function(resp) FALSE)
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
