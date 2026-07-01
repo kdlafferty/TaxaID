@@ -1,6 +1,6 @@
 # TaxaID Name Change History
 # Full log of function, column, parameter, and file renames across the ecosystem.
-# Archived from CLAUDE.md (Sessions 19–95). See CLAUDE.md for recent breaking changes (Sessions 47+).
+# Archived from CLAUDE.md (Sessions 19–123, most recently Session 124). See CLAUDE.md for anything newer.
 
 | Date | Old name | New name | Package | Type | Downstream impact |
 |---|---|---|---|---|---|
@@ -119,3 +119,5 @@
 | 2026-06-23 | *(Session 117 — new param)* | `join_priors(singleton_taxonomy=)` | TaxaAssign | param added | Optional data frame (`taxon_name` + taxonomy columns). Enables hierarchical mass-conserving group priors for unmodelled candidates via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus). All 7 workflows updated. |
 | 2026-06-23 | *(Session 117 — new columns)* | `dark_diversity_group`, `n_singletons_group`, `n_undetected_group` | TaxaAssign `join_priors()` output | columns added | Diagnostic columns added when `singleton_taxonomy` is supplied. `dark_diversity_group`: taxonomy label of the group a candidate was placed in (e.g. `"genus:Syngnathus"`, `"no_phylum"`, `"zero_orders_in_Malacostraca"`). `n_singletons_group`: singletons informing the group prior. `n_undetected_group`: unmodelled candidates in the group. |
 | 2026-06-27 | *(Session 122)* | `is_valid_species_name()` | `is_plausible_binomial()` | TaxaTools | function rename | Better describes intent (plausibility heuristic, not formal validity). 13 files updated across TaxaTools, TaxaLikely, TaxaAssign. Test file renamed to test-is_plausible_binomial.R. |
+| 2026-07-01 | *(Session 123)* | `add_slash_taxon()` gains `consensus_OTU`/`primary_taxon` | TaxaAssign | columns added | Non-breaking (fires only when `consensus_taxon` present). Replaces identical hand-rolled logic independently duplicated in 3 real workflows. |
+| 2026-07-01 | *(Session 123)* | `audit_barcode_coverage()` "Common mistake" doc fix | TaxaLikely | doc only, no logic change | `match_df` must be the actual match object, not a length-curated training `reference_df` — confirmed via real Mugu data (*Mustelus mosis* case); 3 real workflows updated to pass the correct object. |

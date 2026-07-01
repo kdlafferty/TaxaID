@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-27 (Session 122 — peer-review pass + lintr sweep: brace_linter fixes across blast.R, read_acoustic.R, read_image.R, score_image_inat.R; object_usage_linter: removed dead vars cand_id (read_image.R), known_idx (standardize_match_data.R); object_length_linter: .resolve_taxonomy_from_accessions → .resolve_taxonomy_by_acc; trailing_blank_lines fix (sequence_input.R); test-sequence_input.R unname() fix for resolve_barcode_lengths() named vector)
+# Last updated: 2026-07-01 (Session 124 — Layer-1 workflow scripts added for image (score_image_workflow.R) and acoustic (score_acoustic_workflow.R) data types; real bundled example data added under inst/extdata/example_images/camera_trap_photos/)
 
 ---
 
@@ -146,6 +146,8 @@ likelihood output downstream — it is NOT part of the match object.
 |---|---|
 | `inst/workflow_standardize.R` | Original: load match data, standardize, filter redundant |
 | `inst/workflow_fastq_to_match.R` | FASTQ-to-match pipeline: DADA2 output, filter, BLAST, standardize |
+| `inst/workflows/score_image_workflow.R` | Layer-1 (Session 124): live `score_image_inat()` call on bundled real camera-trap photos (`inst/extdata/example_images/camera_trap_photos/`) → `fill_higher_ranks()` → checkpoint for TaxaLikely |
+| `inst/workflows/score_acoustic_workflow.R` | Layer-1 (Session 124): `read_birdnet_output()` on real BirdNET-Analyzer CSVs (produced by `sources/birdnet_csv_export.py`, a companion Python script outside this package) → `create_taxon_names()` + `fill_higher_ranks()` → checkpoint for TaxaLikely |
 
 ---
 
@@ -249,6 +251,82 @@ inside `filter_redundant_hypotheses()` via `match()`.
 ---
 
 ## Session Notes
+
+**Session 124 (2026-07-01): Layer-1 workflow scripts for image and acoustic data types**
+
+Item 4 of `ecosystem_docs/REENTRY_PROMPT_session123_layer1_workflows.md` — image/
+acoustic was the recommended starting point (structurally simpler than sequence/BLAST,
+no DECIPHER/reference-fetch step). Both new scripts are 100% real, live-tested, no
+synthetic data:
+
+- `score_image_workflow.R`: live `score_image_inat()` calls against real Bushnell
+  trail-camera photos of 5 mammal species across 4 families (Bobcat, Coyote, Brush
+  Rabbit, Western Spotted Skunk, Striped Skunk ×2; Central California coastal scrub,
+  34.41 N / -119.86 W). Deliberately a DIVERSITY OF TAXA rather than many replicate
+  photos of one species or a single confusable pair — consistent with how the
+  BLAST/sequence field test (Session 115) demonstrates pipeline mechanics across a
+  handful of real queries, not a CV-accuracy calibration study. 5/6 (83%) top-1 correct
+  once the real site lat/lng was supplied (2 of 6 flipped from wrong to correct vs. no
+  location — `combined_score` blends vision confidence with local occurrence
+  frequency). The one miss (coyote.JPG) is a genuine name/geo-prior collision: top
+  candidate was *Baccharis pilularis* ("coyote brush"), a locally abundant plant, not a
+  taxonomic near-miss.
+- `score_acoustic_workflow.R`: ingests real BirdNET-Analyzer CSV output (produced by
+  `sources/birdnet_csv_export.py`, a companion Python script — not part of this R
+  package — that downloads real Xeno-canto recordings and runs the actual BirdNET model
+  via `birdnetlib`) for three confusable Calidris sandpipers. 37/42 (88%) detection
+  windows correct; the misses are genuine acoustic confusion (background noise,
+  Least Sandpiper mistaken for Western/Semipalmated), not bugs.
+
+**Earlier iteration used bird photos that were replaced.** The first version of
+`score_image_workflow.R` used Semipalmated/Western Sandpiper photos from the user's
+manuscript folder (10/10, 100% — see superseded design notes below) — replaced after
+the user pointed out those were screenshots sourced from eBird/Macaulay-Library-linked
+checklists, not photos they had rights to redistribute in this public package. Also
+discovered mid-session: `TaxaMatch/inst/extdata/` already contained untracked copies of
+those same bird photos (Google Drive multi-parent-folder linking, not something this
+session created) — left in place rather than deleted via `rm`, since deleting a
+multi-parented Drive file through the desktop sync client can trash the object
+everywhere it appears, including the user's original manuscript folder. The user needs
+to unlink that folder-location manually via Drive's UI before those files are safe to
+remove from the local filesystem.
+
+**Bugs/gaps found by actually running these scripts (not caught by reading code):**
+- `unreferenced_candidates()` needs >= 2 populated rank columns; both
+  `score_image_inat()` and `read_birdnet_output()` output only `genus` (no `family`,
+  no separate `species` column) — fixed in both scripts via
+  `TaxaTools::fill_higher_ranks()` + `species <- taxon_name` (full binomial;
+  convention confirmed from `fill_higher_ranks()`'s own `@examples`, which does the
+  same rename for a sibling function).
+- `read_birdnet_output()`'s output has no `taxon_name`/`taxon_name_rank` at all (only
+  `species`/`genus`) — same cross-script contract gap as TaxaFetch's Bug #12 from the
+  five-package chain; fixed via `TaxaTools::create_taxon_names()`.
+- `assign_scores(score_type = "probability")` errors/warns when scores exceed 1 —
+  correct for BirdNET's already-bounded 0-1 confidence, but iNat's `combined_score` is
+  UNBOUNDED (observed values up to ~3000 on an easy photo) and needs
+  `score_type = "similarity_softmax"` instead. Confirmed both score types
+  ratio-normalize by the winning candidate's own score (`sc / max_sc` /
+  `sc_softmax / max_ss`) — the winner's `score_likelihood` is therefore always exactly
+  1.0 by construction; the meaningful comparison across observations is which taxon
+  won, not the likelihood magnitude.
+- Xeno-canto's v2 API (`https://xeno-canto.org/api/2/recordings`, used by the user's
+  original `birdnet_calidris_selftest.py`) now 404s — fully removed, not just an auth
+  change. v3 (`https://xeno-canto.org/api/3/recordings`) requires a key AND
+  tag-based query syntax (`gen:X sp:Y type:call`, not free-text `query=X Y type:call`).
+  **This also affects production code**: `TaxaLikely::.xc_recording_count()`
+  (`R/coverage.R`) still calls the dead v2 endpoint — `audit_acoustic_coverage(
+  xc_recordings = TRUE)` currently returns `NA` for every species silently (checks
+  `resp_status != 200`, no warning). Not fixed this session (out of scope for the
+  image/acoustic Layer-1 workflow task; flagged for the user to decide whether to fix).
+- Xeno-canto now requires per-application API keys, not personal ones (confirmed from
+  xeno-canto.org/explore/api) — the user registered/confirmed a key specifically for
+  this workflow rather than reusing a personal one already in `~/.Renviron`.
+- `INAT_API_TOKEN` is a short-lived JWT; this session's stored token had already expired
+  (~1 week old) — a 401 means regenerate the token, not a code bug.
+- Non-portable file names/paths: bundling real example photos under
+  `inst/extdata/example_images/` triggered an R CMD check WARNING for directory names
+  containing spaces (`"camera trap photos"`) — renamed to `camera_trap_photos`
+  (underscore) to fix; 0 warnings after.
 
 Sessions 27–82 archived in ecosystem_docs/session_notes/TaxaMatch_sessions.md.
 
