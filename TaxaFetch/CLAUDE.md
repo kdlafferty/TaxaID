@@ -191,9 +191,6 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | test-dataone_standardize.R | `fetch_dataone_occurrences()` | Mocked DataONE API |
 | test-dataone_taxon_screening_geo.R | `build_taxon_screen_prompt()`, `parse_taxon_screening_response()`, `build_geo_prompt()`, `parse_geo_screening_response()` | LLM mocked |
 | test-literature_search.R | `search_literature()`, `download_literature_pdfs()` | OpenAlex calls mocked |
-| test-llm_api_utils.R | legacy — functions now in TaxaTools | Skipped or stale |
-| test-parse_hierarchical_habitat_response.R | legacy — function now in TaxaHabitat | Skipped or stale |
-| test-build_iucn_scheme.R | legacy — function now in TaxaHabitat | Skipped or stale |
 
 ---
 
@@ -335,9 +332,22 @@ Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
   above:** `tests/testthat/test-build_iucn_scheme.R`, `test-llm_api_utils.R`, and
   `test-parse_hierarchical_habitat_response.R` all test functions that moved to
   TaxaHabitat/TaxaTools in the Session 28 package split and no longer exist in this
-  package — they've been failing since before any tracked git history. Excluding these 3
-  files, the suite is clean (396 expectations, 0 failures, 0 errors). Left in place
-  (deletion not done without explicit confirmation) — safe to delete once confirmed.
+  package — they've been failing since before any tracked git history. **Deleted this
+  session (confirmed by user) — see follow-up note below.**
+
+**Session 130 (2026-07-03): stale test files deleted; check()-vs-test_dir() root-caused**
+- Deleted the 3 stale test files noted above. `devtools::test()`: 0 failures, 0 errors.
+  `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+- While re-verifying, a bare `testthat::test_dir("tests/testthat")` run (not
+  `devtools::test()`) flagged a 4th apparently-stale file, `test-biotime_fetch.R`
+  (`could not find function "read_biotime_study"`) — a false alarm. `read_biotime_
+  study()` is real and correctly exported (`R/biotime_fetch.R`); bare `test_dir()`
+  doesn't `load_all()`/attach the package first, so it can spuriously report missing
+  functions. This is almost certainly the explanation for the earlier `check()`-vs-
+  `test_dir()` discrepancy noted above — `devtools::check()`'s bundled test run does the
+  equivalent of `load_all()` first, which is why its summary was trustworthy the whole
+  time. Root-caused; written into the pre-review-checklist memory as the general rule
+  (always use `devtools::test()`, never bare `test_dir()`).
 
 **Session 123 (2026-07-01): Layer-1 workflow script**
 - `inst/workflows/fetch_occurrences_workflow.R` added — teaching-oriented, fully namespaced,
