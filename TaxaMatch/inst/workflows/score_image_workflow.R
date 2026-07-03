@@ -20,18 +20,22 @@
 # building a full TaxaAssign run on top of these species would need real
 # occurrence-based priors for them, which is a separate task.
 #
-# NO SYNTHETIC DATA, AND OWNED BY THE USER: 6 real Bushnell trail-camera
+# NO SYNTHETIC DATA, AND OWNED BY THE USER: 52 real Bushnell trail-camera
 # photos (Central California coastal scrub habitat, 34.41 N / -119.86 W) of
-# 5 mammal species across 4 families -- Bobcat (Lynx rufus, Felidae), Coyote
-# (Canis latrans, Canidae), Brush Rabbit (Sylvilagus bachmani, Leporidae),
-# Western Spotted Skunk (Spilogale gracilis, Mephitidae), and Striped Skunk
-# (Mephitis mephitis, Mephitidae; 2 photos). DELIBERATE DESIGN CHOICE (per
-# discussion with the user): a DIVERSITY OF TAXA, not many replicate photos
-# of one species or a single confusable-congener pair -- consistent with how
-# TaxaMatch's BLAST/sequence field test (Session 115) used a handful of real
-# queries across different taxa to demonstrate the PIPELINE, not a rigorous
-# CV-accuracy calibration study (that would need many replicate photos per
-# species, a different and separable question).
+# 8 mammal species across 7 families, organized into per-species subfolders
+# (folder name = common name; see FOLDER_TO_SPECIES below) -- Bobcat (Lynx
+# rufus, Felidae, 8 photos), Coyote (Canis latrans, Canidae, 4), Brush Rabbit
+# (Sylvilagus bachmani, Leporidae, 6), Western Spotted Skunk (Spilogale
+# gracilis, Mephitidae, 6), Striped Skunk (Mephitis mephitis, Mephitidae, 7),
+# Raccoon (Procyon lotor, Procyonidae, 10), California Ground Squirrel
+# (Otospermophilus beecheyi, Sciuridae, 5), and Virginia Opossum (Didelphis
+# virginiana, Didelphidae, 6). EXPANDED from an original 6-photo/5-species
+# diversity-only set specifically to get enough replicate photos per species
+# to move past a single-flip small-n result on whether
+# TaxaLikely::correct_training_bias() is safe to enable by default for the
+# image pathway (see ecosystem_docs/REENTRY_PROMPT_session128... and
+# TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R, which first
+# raised this on n=6).
 #
 # These photos ARE bundled in inst/extdata/example_images/camera_trap_photos/
 # (unlike an earlier iteration of this script, which used bird photos of
@@ -63,8 +67,28 @@ DEBUG_MODE <- TRUE
 # assign_scores()'s softmax normalization downstream. A top_n = 1 result
 # would collapse to the "single-H1 caveat" documented in TaxaLikely's
 # assign_scores() -- H2/H3 anchoring loses all discriminating power when only
-# the winning candidate is known.
-TOP_N <- 5L
+# the winning candidate is known. Bumped from 5 to 8 (safety margin): with
+# TARGET_ICONIC_TAXA filtering below now removing off-scope candidates
+# (plants, birds) from each photo's top_n, a smaller top_n risks leaving too
+# few or zero real mammal candidates for photos where the CV model's top
+# guesses are unusually noisy.
+TOP_N <- 8L
+
+# iNaturalist's CV model returns candidates from ANY iconic taxon, not just
+# the study's actual domain -- confirmed by real output on this photo set:
+# "coyote brush" (Baccharis pilularis, a plant) and "Longleaf Wattle"
+# (Acacia longifolia, a plant) both appeared as top candidates for
+# coyote.JPG (name/geo-prior collision with the word "coyote"), and a
+# screech owl (Megascops kennicottii, a bird) appeared for rabbit.JPG.
+# score_image_inat()'s raw output already carries iconic_taxon_name (iNat's
+# own broad clade label) -- no external taxonomic-scope lookup needed.
+# Filtering to the study's actual domain BEFORE unreferenced_candidates()/
+# assign_scores() softmax-normalizes lets real candidates absorb the
+# probability mass currently wasted on biologically impossible ones, rather
+# than just flagging them for review after the fact (TaxaFlag's
+# "taxonomic scope" review dimension catches this too, but only after the
+# likelihood/posterior math has already run on the polluted candidate set).
+TARGET_ICONIC_TAXA <- "Mammalia"
 
 # Real camera location (Central California coastal scrub habitat) --
 # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: supplying the true lat/lng
@@ -91,7 +115,13 @@ if (DEBUG_MODE) {
          "installed package, or point DEBUG_MODE <- FALSE at your own photos.")
   }
 
-  photo_files <- list.files(.photo_dir, pattern = "\\.JPG$", full.names = TRUE)
+  # Photos are now organized into per-species subfolders (common name ==
+  # folder name) rather than a flat file list -- recursive = TRUE scans all
+  # of them. Just for the pre-flight count message here; the actual call to
+  # score_image_inat() below passes .photo_dir directly (not this vector) so
+  # it can derive its own folder_1 column from the same directory structure.
+  photo_files <- list.files(.photo_dir, pattern = "\\.JPG$", full.names = TRUE,
+                            recursive = TRUE, ignore.case = TRUE)
 
   message(sprintf(
     "DEBUG_MODE = TRUE -- found %d bundled camera-trap photo(s) in %s.",
@@ -101,16 +131,25 @@ if (DEBUG_MODE) {
   # true_species is added purely for THIS TUTORIAL's own honesty check below
   # (comparing the CV model's top candidate against known ground truth) -- it
   # is not part of the canonical match object contract and is dropped before
-  # any downstream use beyond this tutorial. Confirmed directly by the user
-  # (filenames alone are ambiguous at species level for rabbit/spotted skunk
-  # -- several candidate species exist in North America).
-  TRUE_SPECIES <- c(
-    bobcat        = "Lynx rufus",
-    coyote        = "Canis latrans",
-    rabbit        = "Sylvilagus bachmani",
-    spottedskunk  = "Spilogale gracilis",
-    stripedskunk  = "Mephitis mephitis",
-    stripedskunk2 = "Mephitis mephitis"
+  # any downstream use beyond this tutorial. Derived from folder_1 (each
+  # photo's immediate subfolder = common name) rather than a per-filename
+  # lookup, now that photos are organized into per-species subfolders rather
+  # than a flat file list with descriptive names -- filenames alone are
+  # camera-generated sequence numbers, not species identifiers.
+  #
+  # CONFIRM: "ground squirrel" is assumed to be the California ground
+  # squirrel (Otospermophilus beecheyi) -- by far the expected species for
+  # this real site (coastal Santa Barbara County), but not verified against
+  # the actual photos. Correct this line if a different species is pictured.
+  FOLDER_TO_SPECIES <- c(
+    bobcat             = "Lynx rufus",
+    coyote             = "Canis latrans",
+    rabbit             = "Sylvilagus bachmani",
+    spottedskunk       = "Spilogale gracilis",
+    stripedskunk       = "Mephitis mephitis",
+    raccoon            = "Procyon lotor",
+    "ground squirrel"  = "Otospermophilus beecheyi",
+    Opossum            = "Didelphis virginiana"
   )
 
 } else {
@@ -161,10 +200,10 @@ message("  Requires INAT_API_TOKEN (~/.Renviron) -- 401 means the token has ",
         "https://www.inaturalist.org/users/api_token.")
 
 taxamatch_image_match_obj <- TaxaMatch::score_image_inat(
-  photo_files, lat = SITE_LAT, lng = SITE_LNG, top_n = TOP_N
+  .photo_dir, lat = SITE_LAT, lng = SITE_LNG, top_n = TOP_N, recursive = TRUE
 )
 taxamatch_image_match_obj$true_species <-
-  TRUE_SPECIES[taxamatch_image_match_obj$observation_id]
+  FOLDER_TO_SPECIES[taxamatch_image_match_obj$folder_1]
 
 message(sprintf(
   "  Scored %d photo(s) (%d candidate row(s) total across top_n = %d).",
@@ -172,14 +211,52 @@ message(sprintf(
   nrow(taxamatch_image_match_obj), TOP_N
 ))
 
+# ---- Taxonomic-scope filter -------------------------------------------------
+# Drop candidates outside TARGET_ICONIC_TAXA before any downstream step gets
+# a chance to assign them probability mass (see TARGET_ICONIC_TAXA's own
+# comment above for why -- real off-scope candidates observed on this exact
+# photo set: two plants for coyote.JPG, a screech owl for rabbit.JPG).
+.obs_before_scope <- unique(taxamatch_image_match_obj$observation_id)
+.n_before_scope    <- nrow(taxamatch_image_match_obj)
+.off_scope <- taxamatch_image_match_obj[
+  !is.na(taxamatch_image_match_obj$iconic_taxon_name) &
+    taxamatch_image_match_obj$iconic_taxon_name != TARGET_ICONIC_TAXA,
+]
+if (nrow(.off_scope) > 0L) {
+  message(sprintf(
+    "  Dropping %d/%d candidate row(s) outside TARGET_ICONIC_TAXA = \"%s\": %s",
+    nrow(.off_scope), .n_before_scope, TARGET_ICONIC_TAXA,
+    paste(sort(unique(.off_scope$iconic_taxon_name)), collapse = ", ")
+  ))
+  print(.off_scope[, c("observation_id", "taxon_name", "iconic_taxon_name", "combined_score")])
+}
+taxamatch_image_match_obj <- taxamatch_image_match_obj[
+  is.na(taxamatch_image_match_obj$iconic_taxon_name) |
+    taxamatch_image_match_obj$iconic_taxon_name == TARGET_ICONIC_TAXA,
+]
+
+# Guard: a photo losing ALL its candidates to scope filtering would silently
+# vanish from every downstream step rather than error -- surface it loudly
+# instead so it can be inspected (e.g. top_n may need raising further, or
+# the photo may genuinely have no plausible in-scope CV candidate at all).
+.orphaned <- setdiff(.obs_before_scope, unique(taxamatch_image_match_obj$observation_id))
+if (length(.orphaned) > 0L) {
+  warning(sprintf(
+    "score_image_workflow: %d photo(s) lost ALL candidates to the TARGET_ICONIC_TAXA filter: %s. Raise TOP_N or inspect these photos directly.",
+    length(.orphaned), paste(.orphaned, collapse = ", ")
+  ), call. = FALSE)
+}
+
 # ---- Honesty check: does the CV model's top candidate match ground truth? --
 # This is a real accuracy check on real data, not a synthetic sanity check --
 # useful to report even though it isn't part of the match object itself.
-# CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: 5/6 correct with the real site
-# lat/lng supplied. The one miss (coyote.JPG) is a genuinely interesting real
-# failure: BirdNET's cousin problem here is name/geo-prior collision -- the
-# top candidate was Baccharis pilularis ("coyote brush"), a locally abundant
-# PLANT whose common name shares the word "coyote", not a taxonomic near-miss.
+# PRIOR RESULT (original 6-photo/5-species set, Session 124): 5/6 correct
+# with the real site lat/lng supplied. The one miss (coyote.JPG) was a
+# genuinely interesting real failure: name/geo-prior collision -- the top
+# candidate was Baccharis pilularis ("coyote brush"), a locally abundant
+# PLANT whose common name shares the word "coyote", not a taxonomic
+# near-miss. Not yet re-confirmed on the expanded 52-photo/8-species set --
+# the number below reflects whatever this run actually returns.
 .top1 <- taxamatch_image_match_obj[order(
   taxamatch_image_match_obj$observation_id, -taxamatch_image_match_obj$combined_score
 ), ]
@@ -208,9 +285,10 @@ message(sprintf(
 # taxon_name -> species for a sibling function) is that the "species" column
 # holds the FULL BINOMIAL, same value as taxon_name -- not the epithet alone.
 #
-# This photo set spans 4 distinct families (Felidae, Canidae, Leporidae,
-# Mephitidae) -- a much more taxonomically diverse test of fill_higher_ranks()
-# than a single-family confusable-congener set would be.
+# This photo set spans 7 distinct families (Felidae, Canidae, Leporidae,
+# Mephitidae, Procyonidae, Sciuridae, Didelphidae) -- a much more
+# taxonomically diverse test of fill_higher_ranks() than a single-family
+# confusable-congener set would be.
 # ==============================================================================
 
 message("\n--- Step 2: Filling family/genus via TaxaTools::fill_higher_ranks() ---")
@@ -249,9 +327,13 @@ message("\nWorkflow complete. Continue with TaxaLikely's ",
 # ==============================================================================
 # taxamatch_image_match_obj -- one row per photo (observation_id) x candidate
 #   species (up to top_n rows per photo), REAL live iNaturalist CV output for
-#   5 mammal species across 4 families from real camera-trap photos:
+#   8 mammal species across 7 families from real camera-trap photos:
 #
 #   observation_id     -- character; filename stem, one per photo
+#   folder_1            -- character; immediate subfolder name (common name);
+#                         used above to derive true_species via
+#                         FOLDER_TO_SPECIES, since filenames are camera-
+#                         generated sequence numbers, not species identifiers
 #   taxon_name         -- character; candidate species binomial
 #   taxon_name_rank    -- character; "species" for every row (CV model output)
 #   score_original     -- numeric; = combined_score (see below); UNBOUNDED,

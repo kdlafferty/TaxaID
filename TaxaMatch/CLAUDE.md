@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 124 — Layer-1 workflow scripts added for image (score_image_workflow.R) and acoustic (score_acoustic_workflow.R) data types; real bundled example data added under inst/extdata/example_images/camera_trap_photos/)
+# Last updated: 2026-07-01 (Session 126 — Layer-1 workflow script added for sequence/BLAST data type (blast_sequences_workflow.R), live-tested, 0 errors)
 
 ---
 
@@ -148,6 +148,7 @@ likelihood output downstream — it is NOT part of the match object.
 | `inst/workflow_fastq_to_match.R` | FASTQ-to-match pipeline: DADA2 output, filter, BLAST, standardize |
 | `inst/workflows/score_image_workflow.R` | Layer-1 (Session 124): live `score_image_inat()` call on bundled real camera-trap photos (`inst/extdata/example_images/camera_trap_photos/`) → `fill_higher_ranks()` → checkpoint for TaxaLikely |
 | `inst/workflows/score_acoustic_workflow.R` | Layer-1 (Session 124): `read_birdnet_output()` on real BirdNET-Analyzer CSVs (produced by `sources/birdnet_csv_export.py`, a companion Python script outside this package) → `create_taxon_names()` + `fill_higher_ranks()` → checkpoint for TaxaLikely |
+| `inst/workflows/blast_sequences_workflow.R` | Layer-1 (Session 126): live remote `blast_sequences()` call on 5 real PtConception 12S MiFish sequences (same accessions as Session 115's field test, fetched live by accession from NCBI) → `standardize_match_data()` (with `coverage_col = "query_coverage"`) → checkpoint for TaxaLikely's sequence Layer-1 script |
 
 ---
 
@@ -251,6 +252,29 @@ inside `filter_redundant_hypotheses()` via `match()`.
 ---
 
 ## Session Notes
+
+**Session 126 (2026-07-01): Layer-1 workflow script for sequence/BLAST data type**
+
+`inst/workflows/blast_sequences_workflow.R` added — the third and last Layer-1 data-type
+script for TaxaMatch (image and acoustic done Session 124). Reproduces Session 115's
+already-field-tested `inst/test_blast_remote.R` field test in the Layer-1 workflow-script
+convention (`DEBUG_MODE`, explicit checkpoints, Output block) rather than introducing a
+new example dataset: 5 real 12S MiFish sequences from the user's own PtConception eDNA
+study, fetched live from NCBI by accession (OQ846539/OQ846195/OQ846544/OQ846550/OQ846725).
+Live-tested, 0 errors: 5/5 (100%) top BLAST hits correct at ≥98% identity, matching Session
+115's result exactly.
+
+One addition beyond the original field test script: `standardize_match_data()` is now
+called with `coverage_col = "query_coverage"`, renaming BLAST's own alignment-quality
+metric to the canonical `coverage` column so TaxaLikely's `evaluate_likelihoods(
+min_coverage = ...)` can consume it directly with no extra join — the original Session 115
+script didn't carry this column through.
+
+This is the first of a two-package mini-chain; it stops at the canonical match object
+(`taxamatch_blast_match_obj` — 18 rows, 5 queries, 12 unique taxa across the 3-batch score
+window). Consumer: TaxaLikely's sequence Layer-1 script (`build_sequence_matrix()` →
+`train_likelihood_model()` → `evaluate_likelihoods()`) — see
+`ecosystem_docs/REENTRY_PROMPT_session124_image_acoustic_workflows.md`, Stage 2, item 2.
 
 **Session 124 (2026-07-01): Layer-1 workflow scripts for image and acoustic data types**
 
