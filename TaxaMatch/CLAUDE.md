@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-03 (Session 129 — score_image_workflow.R expanded to 8 species/52 photos (per-species subfolders) with a taxonomic-scope filter for off-scope CV candidates; known non-portable-filename R CMD check warning from the new photo names, not yet fixed)
+# Last updated: 2026-07-03 (Session 132 — non-portable filenames from Session 129's camera-trap expansion fixed, see Session 132 note below)
 
 ---
 
@@ -253,6 +253,28 @@ inside `filter_redundant_hypotheses()` via `match()`.
 
 ## Session Notes
 
+**Session 132 (2026-07-03): non-portable filenames fixed (rename)**
+
+Closed out the "known issue for next session" flagged at the end of Session 129's
+note below. Renamed the `ground squirrel` folder → `ground_squirrel` and all 39
+`" copy.JPG"` files → `"_copy.JPG"` under
+`inst/extdata/example_images/camera_trap_photos/` via `git mv` (underscore
+convention, matching `camera_trap_photos/` itself from Session 124). Updated the
+`FOLDER_TO_SPECIES` key in `score_image_workflow.R` to `"ground_squirrel"` to
+match. `devtools::check()`: 0 errors, 0 warnings, 0 notes — "checking for portable
+file names" now OK. Live-verified by re-running `score_image_workflow.R`'s Steps
+1-2 (real iNaturalist CV call, all 52 photos): 0 NA `true_species` values across
+294 rows, `ground_squirrel`'s photos all correctly resolve to `Otospermophilus
+beecheyi`, and top-1 accuracy (82%, 42/51) matches the prior session's pattern —
+no regression from the rename. `devtools::install()` re-shipped the renamed data
+to the canonical library (`/Library/Frameworks/R.framework/Versions/4.5-arm64/
+Resources/library`) — note `Rscript -e` does not source `~/.Rprofile` the way
+RStudio does, so a plain `Rscript`-driven `devtools::install()` can silently
+target the wrong `.libPaths()[1]` (this session hit a stale `~/Library/R/4.0/
+library` on the first attempt); `devtools::install()`'s existing-install
+detection recovered by updating the already-installed copy in place, but calling
+`.libPaths()` explicitly first is safer than relying on that.
+
 **Session 129 (2026-07-03): score_image_workflow.R expanded to 8 species/52 photos; taxonomic-scope filter added**
 
 Expanded from the original 6-photo/5-species diversity-only set (Session 124) to get
@@ -287,7 +309,7 @@ triggering `R CMD check`'s non-portable-filenames WARNING — the exact same iss
 already fixed once in this file's history (Session 124's `"camera trap photos"` →
 `"camera_trap_photos"` rename), now recurring. Needs a rename across ~30 files plus a
 matching key update to `FOLDER_TO_SPECIES` in `score_image_workflow.R`; not done this
-session since it touches many tracked files.
+session since it touches many tracked files. **Fixed in Session 132 (see above).**
 
 **Session 126 (2026-07-01): Layer-1 workflow script for sequence/BLAST data type**
 
