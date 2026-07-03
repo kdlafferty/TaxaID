@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-01 (Session 125 — TaxaLikely::.xc_recording_count() fixed: Xeno-canto v2→v3 migration; TaxaLikely::correct_training_bias() added for classifier training-count bias correction)
+# Last updated: 2026-07-02 (Session 128 — TaxaLikely::correct_training_bias() wired into the image/acoustic Layer-1 workflow and live-tested for the first time (mixed result, tau left at default); corrected this table's stale TaxaAssign status from "Planned" to "In development" — it has had 13 working functions and live-tested usage since at least Session 123)
 
 ---
 
@@ -67,7 +67,7 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 | TaxaMatch | Sequence input (DADA2/FASTA), BLAST search, match standardization; BirdNET/image classifier ingestion | In development |
 | TaxaLikely | Convert match scores to likelihoods using hierarchical Bayesian model; reference QC | New (Session 30) |
 | TaxaExpect | Use occurrence and habitat data to estimate a theta prior for a taxon at a particular location | In development |
-| TaxaAssign | Calculate posterior probability for a taxonomic assignment given a likelihood and a prior | Planned |
+| TaxaAssign | Calculate posterior probability for a taxonomic assignment given a likelihood and a prior | In development |
 | TaxaFlag | Flag anomalous detections: contamination (lab/field blanks), allochthonous transport, taxonomic scope, handler artifacts | New (Session 60) |
 | TaxaWizard | Conversational workflow designer: LLM-powered interview → .R script, .md methods, or Shiny app | New (Session 68) |
 
@@ -258,4 +258,5 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | Session | Change | Package | Notes |
 |---|---|---|---|
 | 125 | `audit_acoustic_coverage(xc_recordings = TRUE)` now returns real data | TaxaLikely | Behavioral, not signature. `.xc_recording_count()` migrated to Xeno-canto v3; requires `XC_API_KEY` env var (previously silently returned `NA` for every species regardless of key). |
-| 125 | `correct_training_bias()` added | TaxaLikely | function | New preprocessing step, not yet called by any workflow. Divides classifier scores by an adaptive-shrinkage estimate of training-database representation bias before `unreferenced_candidates()`/`assign_scores()`. Overwrites `score_original` in place; raw value preserved in `score_uncorrected`. |
+| 125 | `correct_training_bias()` added | TaxaLikely | New preprocessing step, not yet called by any workflow. Divides classifier scores by an adaptive-shrinkage estimate of training-database representation bias before `unreferenced_candidates()`/`assign_scores()`. Overwrites `score_original` in place; raw value preserved in `score_uncorrected`. |
+| 127 | `correct_training_bias(prior_weight = NULL)` → `correct_training_bias(tau = 1.0)` | TaxaLikely | Signature change. `prior_weight` param removed; `tau` added (single fixed global exponent, not adaptive per-candidate). Literature-grounded revision (Menon et al. 2020 logit adjustment) — see `TaxaLikely/CLAUDE.md`'s Session 127 note. Still not called by any workflow, so no downstream callers affected. |
