@@ -12,6 +12,7 @@ download_gbif_occurrences(
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
   status_ping = 15,
+  exclude_absent = TRUE,
   basis_keep = NULL,
   select_cols = c("kingdom", "phylum", "class", "order", "family", "genus", "species",
     "infraspecificEpithet", "taxonRank", "scientificName", "taxonKey", "speciesKey",
@@ -60,6 +61,15 @@ zip is reused. Set to \code{TRUE} to force a fresh download from GBIF.}
 \item{status_ping}{Numeric. Seconds between download-status polls while
 waiting for GBIF to prepare the file. Default 15. Minimum enforced by
 rgbif is 3.}
+
+\item{exclude_absent}{Logical. When \code{TRUE} (default), adds a
+server-side \code{occurrenceStatus = PRESENT} predicate, excluding
+explicit absence records before the file is built by GBIF. Systematic
+surveys (e.g., eBird, iNaturalist) can contribute large numbers of
+\code{ABSENT} rows that inflate the download size without providing
+presence data. Set to \code{FALSE} only if you need absence records.
+Changing this parameter changes the cache key and triggers a fresh
+download.}
 
 \item{basis_keep}{Character vector or \code{NULL}. When not \code{NULL},
 adds a server-side \code{basisOfRecord} predicate to the GBIF download
