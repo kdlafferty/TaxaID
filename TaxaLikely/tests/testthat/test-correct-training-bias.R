@@ -30,7 +30,16 @@ test_that("correct_training_bias: n_used and tau_used are added", {
   out <- correct_training_bias(df, count_col = "n_observations")
   expect_true(all(c("n_used", "tau_used") %in% names(out)))
   expect_equal(out$n_used, df$n_observations)
-  expect_true(all(out$tau_used >= 0 & out$tau_used <= 1))
+  # Default tau = 1 -- every valid-count row gets exactly tau_used = 1, not
+  # a continuous per-candidate value (that was the Session 125 adaptive
+  # design this revision replaces).
+  expect_true(all(out$tau_used == 1))
+})
+
+test_that("correct_training_bias: default tau = 1 divides score by n exactly", {
+  df  <- .toy_scored_df()
+  out <- correct_training_bias(df, count_col = "n_observations")
+  expect_equal(out$score_original, df$score_original / df$n_observations)
 })
 
 test_that("correct_training_bias: NA count falls through to uncorrected score", {
@@ -68,20 +77,29 @@ test_that("correct_training_bias: missing count_col warns and leaves scores unch
   expect_true(all(is.na(out$n_used)))
 })
 
-test_that("correct_training_bias: default prior_weight is median of counts", {
+test_that("correct_training_bias: tau = 0 disables correction entirely", {
   df  <- .toy_scored_df()
-  out_default <- correct_training_bias(df, count_col = "n_observations")
-  out_manual  <- correct_training_bias(df, count_col = "n_observations",
-                                        prior_weight = stats::median(df$n_observations))
-  expect_equal(out_default$score_original, out_manual$score_original)
+  out <- correct_training_bias(df, count_col = "n_observations", tau = 0)
+  expect_equal(out$score_original, df$score_original)
+  expect_true(all(out$tau_used == 0))
 })
 
-test_that("correct_training_bias: explicit prior_weight overrides the default", {
+test_that("correct_training_bias: tau above 1 applies stronger correction than tau = 1", {
+  df       <- .toy_scored_df()
+  out_tau1 <- correct_training_bias(df, count_col = "n_observations", tau = 1)
+  out_tau2 <- correct_training_bias(df, count_col = "n_observations", tau = 2.6)
+  # Larger tau -> the high-n candidate is pushed down further still.
+  expect_true(out_tau2$score_original[1] < out_tau1$score_original[1])
+})
+
+test_that("correct_training_bias: tau is applied uniformly across candidates (not adaptive)", {
   df  <- .toy_scored_df()
-  out_small_k <- correct_training_bias(df, count_col = "n_observations", prior_weight = 1)
-  out_big_k   <- correct_training_bias(df, count_col = "n_observations", prior_weight = 1e6)
-  # Larger prior_weight = less trust in n -> tau closer to 0 -> less correction
-  expect_true(out_big_k$tau_used[1] < out_small_k$tau_used[1])
+  out <- correct_training_bias(df, count_col = "n_observations", tau = 0.5)
+  # Both valid-count candidates in obs1 get the SAME tau_used regardless of
+  # how different their own n is -- the key behavioral change from the
+  # Session 125 adaptive-per-candidate design.
+  expect_equal(out$tau_used[1], out$tau_used[2])
+  expect_equal(out$tau_used[1], 0.5)
 })
 
 test_that("correct_training_bias: errors on non-data-frame input", {
@@ -114,14 +132,18 @@ test_that("correct_training_bias: errors on negative counts", {
   )
 })
 
-test_that("correct_training_bias: errors on invalid prior_weight", {
+test_that("correct_training_bias: errors on invalid tau", {
   df <- .toy_scored_df()
   expect_error(
-    correct_training_bias(df, count_col = "n_observations", prior_weight = -1),
-    "positive"
+    correct_training_bias(df, count_col = "n_observations", tau = -1),
+    "non-negative"
   )
   expect_error(
-    correct_training_bias(df, count_col = "n_observations", prior_weight = c(1, 2)),
-    "positive"
+    correct_training_bias(df, count_col = "n_observations", tau = c(1, 2)),
+    "non-negative"
+  )
+  expect_error(
+    correct_training_bias(df, count_col = "n_observations", tau = NA_real_),
+    "non-negative"
   )
 })

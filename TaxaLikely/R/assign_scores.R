@@ -172,6 +172,31 @@ assign_scores <- function(hypotheses_df,
   is_h1 <- hypotheses_df$hypothesis_type == "specific_candidate"
   h1_scores <- hypotheses_df[[score_col]][is_h1]
 
+  # ---- auto-detect score scale (data-type neutral: no caller config needed) --
+  # A score system is either already-normalized [0,1] (probability-like), a
+  # percent-identity style [0,100] scale (e.g. BLAST -- capped at 100 by
+  # construction, can never exceed it), or genuinely unbounded (e.g.
+  # iNaturalist's combined_score, observed up to ~3000 on real data). Only
+  # the first two have a natural fixed ceiling; forcing an unbounded score
+  # through a fixed 0-100 divisor compresses nearly all of it into a narrow
+  # low range, collapsing similarity_softmax's discrimination between
+  # candidates almost entirely regardless of score_sharpness (confirmed on
+  # real camera-trap image data: every candidate ended up within ~0.1% of
+  # each other in score_likelihood, independent of which one iNat actually
+  # favored). Detected ONCE per call from the global max across all
+  # specific_candidate rows, not per observation, so every observation in
+  # one dataset is treated consistently -- a dataset is either percent-
+  # identity-style or it isn't, that's a property of the score system, not
+  # of any one query's particular values.
+  .max_h1 <- suppressWarnings(max(h1_scores, na.rm = TRUE))
+  .unbounded_scale <- is.finite(.max_h1) && .max_h1 > 100
+  if (.unbounded_scale && score_type %in% c("similarity", "similarity_softmax")) {
+    message(sprintf(
+      "assign_scores: max %s value (%.1f) exceeds 100 -- treating as an unbounded score scale and normalizing each observation against its own candidate range, not a fixed 0-100 divisor.",
+      score_col, .max_h1
+    ))
+  }
+
   if (score_type %in% c("similarity", "similarity_softmax")) {
     if (all(is.na(h1_scores)))
       stop(sprintf(
@@ -199,7 +224,10 @@ assign_scores <- function(hypotheses_df,
   # ---- "similarity" pathway: add score_norm only, no score_likelihood --------
   if (score_type == "similarity") {
     hypotheses_df$score_norm   <- NA_real_
-    hypotheses_df$score_norm[is_h1] <- .normalize_scores(h1_scores)
+    hypotheses_df$score_norm[is_h1] <- .normalize_scores(
+      h1_scores,
+      bounds = if (.unbounded_scale) range(h1_scores, na.rm = TRUE) else NULL
+    )
     hypotheses_df$score_method <- "similarity"
     return(hypotheses_df)
   }
@@ -256,7 +284,10 @@ assign_scores <- function(hypotheses_df,
       h1_agg$score_likelihood <- sc / max_sc
 
     } else {  # "similarity_softmax"
-      sc_norm    <- .normalize_scores(sc)
+      sc_norm    <- .normalize_scores(
+        sc,
+        bounds = if (.unbounded_scale) range(sc, na.rm = TRUE) else NULL
+      )
       sc_softmax <- exp(score_sharpness * sc_norm)
       max_ss     <- max(sc_softmax, na.rm = TRUE)
       if (is.na(max_ss) || max_ss == 0) max_ss <- 1

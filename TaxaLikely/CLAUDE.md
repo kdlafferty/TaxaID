@@ -1,6 +1,6 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 125 — .xc_recording_count() fixed: migrated to Xeno-canto v3 API + XC_API_KEY, live-verified; correct_training_bias() added for classifier training-count bias correction, unit-tested, not yet wired into Layer-1 workflows)
+# Last updated: 2026-07-03 (Session 129 — assign_scores() score-scale bug found and fixed (unbounded scores like iNaturalist's combined_score no longer forced through a fixed 0-100 divisor); tau/score_sharpness jointly calibrated on 51 clean real photos; image resolved to tau≈0, superseding Session 128's confounded 5/6->4/6 number)
 
 ---
 
@@ -103,15 +103,15 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | Function | File | Status | Description |
 |---|---|---|---|
 | `unreferenced_candidates()` | `R/unreferenced_candidates.R` | Written | Expand match_df with H2/H3/(H4) placeholder rows. Auto-detects `rank_system`. `include_unreferenced_family` param (default FALSE) adds H4 catch-all. Anchor = best-scoring taxon per observation. |
-| `assign_scores()` | `R/assign_scores.R` | Written | Convert raw scores to `score_likelihood`. `score_type`: `"none"` (all rows = 1.0 uniform), `"direct"` (pass score column through unchanged; NA → 1.0; use after `restore_suppressed_candidates()` no-score path), `"probability"` (ratio-normalize H1; H2/H3 anchored at median same-genus/same-family H1 likelihood; H4 fixed at 0.05), `"similarity_softmax"` (exp-weighted, same H2/H3/H4 anchoring), `"similarity"` (adds `score_norm` only — pass to `model_likelihoods()`). **Single-H1 caveat**: for top-1 classifier output (one H1 row per observation), H2/H3 anchor = median(H1) = 1.0; score has no discriminating effect. Use multi-candidate output + `"probability"` to modulate likelihoods. |
+| `assign_scores()` | `R/assign_scores.R` | Written | Convert raw scores to `score_likelihood`. `score_type`: `"none"` (all rows = 1.0 uniform), `"direct"` (pass score column through unchanged; NA → 1.0; use after `restore_suppressed_candidates()` no-score path), `"probability"` (ratio-normalize H1; H2/H3 anchored at median same-genus/same-family H1 likelihood; H4 fixed at 0.05), `"similarity_softmax"` (exp-weighted, same H2/H3/H4 anchoring), `"similarity"` (adds `score_norm` only — pass to `model_likelihoods()`). **Single-H1 caveat**: for top-1 classifier output (one H1 row per observation), H2/H3 anchor = median(H1) = 1.0; score has no discriminating effect. Use multi-candidate output + `"probability"` to modulate likelihoods. **Session 129 fix**: `similarity`/`similarity_softmax` auto-detect score scale from the global max of `score_col` (no new parameter) — `max <= 100` keeps the original fixed 0-100/0-1 divisor (BLAST-style, unchanged); `max > 100` (unbounded scores, e.g. iNaturalist's `combined_score`) normalizes each observation against its own candidate range instead, since a fixed divisor was collapsing `score_likelihood` to near-uniform for that data type. `probability` was never affected (doesn't call `.normalize_scores()`). |
 | `model_likelihoods()` | `R/compute_likelihoods.R` | Written | Apply bivariate-normal model to a `scored_df` from `assign_scores(score_type="similarity")`. Thin wrapper around `evaluate_likelihoods()`; adds `score_method = "bivariate_normal"`. |
 | `compute_likelihoods()` | `R/compute_likelihoods.R` | Written | Orchestrating wrapper: `unreferenced_candidates()` → `assign_scores()` → `model_likelihoods()` (similarity only). Recommended high-level entry point. Returns `list($likelihoods, $unresolved)`. |
 
-### Training-database bias correction (new — Session 125)
+### Training-database bias correction (Session 125, revised Session 127)
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `correct_training_bias()` | `R/correct_training_bias.R` | Written | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run. Adaptive shrinkage exponent `tau_i = n_i / (n_i + prior_weight)` (same shrinkage form as `train_likelihood_model()`'s `w = N/(N+prior_weight)`); `prior_weight` defaults to `median(n, na.rm = TRUE)` when `NULL`. Missing/zero counts fall through to the uncorrected score (`tau_i = 0`). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested only so far (synthetic fixture) — not yet wired into the Layer-1 image/acoustic workflow scripts or validated against real classifier output; see `ecosystem_docs/REENTRY_PROMPT_session125...` for the follow-up. |
+| `correct_training_bias()` | `R/correct_training_bias.R` | Written, wired, live-tested | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run: `score_i / n_i^tau`. **Revised Session 127**: `tau` is now a single fixed global scalar (default `1.0`, user-tunable), not the Session 125 adaptive per-candidate `tau_i = n_i/(n_i+prior_weight)` — matches Menon et al. 2020's "logit adjustment" correction for long-tailed recognition (literature research found no support for a per-candidate adaptive exponent; the theoretically Fisher-consistent form applies one scalar uniformly). `prior_weight` parameter removed. Missing/zero counts still fall through to the uncorrected score (`tau_used = 0` for that row only) — a deliberate, documented deviation from strict logit adjustment, kept for the same practical reason as before (can't distinguish genuine rarity from a failed lookup). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested (27 expectations, synthetic fixture). **Wired into `image_acoustic_likelihood_workflow.R` Session 128** (both sections) and live-tested against real classifier output. **Resolved Session 129** (see that session's note below): the Session 128 image number was confounded by an unrelated `assign_scores()` bug; on clean, bug-fixed, 51-photo data, `tau ≈ 0` is optimal for image (correction should not be applied), while acoustic's `tau ≈ 1` result is unaffected by that bug and expected to still hold. `tau` must be calibrated per data type — see `TaxaLikely/inst/workflows/calibrate_training_bias_tau.R`. |
 
 ### Inference (apply model to query observations)
 
@@ -207,11 +207,12 @@ monolithic `inst/TaxaLikely_workflow.R` (retained for reference but superseded).
 | 5 | `5_audit_coverage_workflow.R` | Audit reference completeness; constrain likelihoods | `infer_exclude_predicted()` → `audit_barcode_coverage()` / `audit_reference_coverage()` → `apply_coverage_constraints()` |
 | 6 | `6_no_score_pathway_workflow.R` | No-score pathway: build uniform likelihoods from consensus assignments | `unreferenced_candidates()` → `assign_scores(score_type = "none")` |
 
-**Layer-1 (Session 124), separate naming convention (`ecosystem_docs/LAYER1_WORKFLOWS.md`):**
+**Layer-1 (Session 124-126), separate naming convention (`ecosystem_docs/LAYER1_WORKFLOWS.md`):**
 
 | File | Purpose | Key functions |
 |---|---|---|
-| `image_acoustic_likelihood_workflow.R` | Image + acoustic score-to-likelihood, TWO independent live sections (not a DEBUG_MODE variant switch — both real, both run in the same tutorial session): Section 1 consumes TaxaMatch's real iNat CV checkpoint (`score_type = "similarity_softmax"`, unbounded raw score); Section 2 consumes TaxaMatch's real BirdNET checkpoint (`score_type = "probability"`, already 0-1 bounded) | `unreferenced_candidates()` → `assign_scores()` |
+| `image_acoustic_likelihood_workflow.R` | Image + acoustic score-to-likelihood, TWO independent live sections (not a DEBUG_MODE variant switch — both real, both run in the same tutorial session): Section 1 consumes TaxaMatch's real iNat CV checkpoint (`score_type = "similarity_softmax"`, unbounded raw score); Section 2 consumes TaxaMatch's real BirdNET checkpoint (`score_type = "probability"`, already 0-1 bounded). **Session 128:** both sections now open with `correct_training_bias()` (Section 2 first joins real Xeno-canto `n_recordings` via `audit_acoustic_coverage(xc_recordings = TRUE)`), plus a before/after honesty-check comparing corrected vs. uncorrected top-1 accuracy | `correct_training_bias()` → `unreferenced_candidates()` → `assign_scores()` |
+| `sequence_likelihood_workflow.R` (Session 126) | Sequence/BLAST score-to-likelihood — the ONE Layer-1 data type needing the actual bivariate-normal self-vs-non-self model (no pre-trained classifier to calibrate). Consumes TaxaMatch's real `blast_sequences_workflow.R` checkpoint (5 real PtConception 12S queries) as the query side; fetches a real NCBI reference database live (6 genera / 3 fish families) as the training side. | `fetch_reference_sequences()` → `build_sequence_matrix()` → `calibrate_coverage_filter()` → `train_likelihood_model()` → `remove_flagged_references()` → `evaluate_likelihoods()` → `filter_top_hypotheses()` |
 
 Workflows 2 and 3 share `build_sequence_matrix()` — build once, reuse.
 Acoustic and image data use `unreferenced_candidates()` + `assign_scores()` (no training
@@ -406,6 +407,254 @@ non-zero likelihoods that bypass the constraint. Correct order:
 ---
 
 ## Session Notes
+
+**Session 129 (2026-07-03): assign_scores() score-scale bug found and fixed; tau/score_sharpness jointly calibrated on clean data — image result resolved, superseding Session 128's number**
+
+Expanded the Session 128 image photo set from 6 to 52 real photos (8 species, 3 new:
+raccoon, California ground squirrel, Virginia opossum) to get past a small-n result.
+Two real, previously-hidden bugs surfaced while doing this, both now fixed:
+
+1. **iNaturalist returns off-scope candidates** (plants, birds) that a mammal-only camera-
+   trap study can never actually be. `TaxaMatch::score_image_workflow.R` now filters to
+   `iconic_taxon_name == "Mammalia"` right after scoring, before any downstream step can
+   assign the impossible candidates probability mass. Real examples removed: *Baccharis
+   pilularis* ("coyote brush", a plant) for coyote.JPG, *Megascops kennicottii* (a screech
+   owl) for rabbit.JPG — the second of these is the exact taxon Session 128's flip report
+   named, meaning that specific result was already partly a scope-filter artifact, not a
+   pure `tau` effect.
+
+2. **`assign_scores()`'s `similarity_softmax` path collapsed to near-uniform likelihoods**,
+   independent of `tau` entirely. `.normalize_scores()` forced iNaturalist's unbounded
+   `combined_score` (real data reaches ~3000) through a fixed 0-100 divisor meant for
+   BLAST-style percent-identity scores; every candidate in every photo ended up with
+   `score_likelihood` within ~0.1% of 1.0 regardless of which one iNat actually favored.
+   Confirmed directly: a tau-only sweep on 51 scope-filtered photos showed log-loss
+   essentially FLAT across the entire `tau` range (2.4624 to 2.4638, 0.05% relative) while
+   accuracy swung 22 points non-monotonically — the two metrics disagreeing that sharply
+   was the tell that something other than `tau` was driving accuracy, and a per-photo
+   probability trace confirmed it (every candidate ~0.999-1.000, an almost perfectly
+   uniform distribution).
+
+**Fix** (`R/assign_scores.R`): score scale is now auto-detected once per call from the
+global max of `score_col` across all `specific_candidate` rows — no new caller-facing
+parameter, so every data type (existing and future) is handled without per-type
+configuration. `max <= 100` (BLAST/percent-identity): unchanged fixed-divisor behavior,
+confirmed byte-for-byte identical via the full existing test suite (497 expectations, 0
+failures) and a targeted synthetic check. `max > 100` (iNaturalist `combined_score`, or
+any other genuinely unbounded score): each observation is normalized against its own
+candidate range instead, restoring real discrimination (synthetic check: spread went from
+~0.001 to ~0.095 between best and worst candidate).
+
+**Joint (tau, score_sharpness) calibration on clean data** (`TaxaLikely/inst/workflows/
+calibrate_training_bias_tau.R`, extended from a tau-only sweep after finding
+`score_sharpness = 0.1`'s default is also poorly matched to this data type — a 2D grid,
+72 combinations, log-loss-minimizing, refined with `stats::optim()`): on the 51 real,
+scope-filtered, correctly-scaled photos, log-loss and accuracy now AGREE and are both
+monotonic in `tau` — log-loss rises and accuracy falls steadily from `tau = 0` (82%
+top-1) to `tau = 1` (63%) and beyond. **Resolved: for the image pathway,
+`tau ≈ 0` is optimal — the correction should not be applied.** Optimal `score_sharpness`
+(5-15) is also far from the package default (0.1). Continuous optimum: `tau = 0.085`,
+`score_sharpness = 15.24`.
+
+**Acoustic is unaffected by bug #2** — BirdNET confidence uses `score_type =
+"probability"` (already 0-1 bounded), which never calls `.normalize_scores()` at all, only
+`similarity`/`similarity_softmax` do. Session 128's acoustic result (37/42 -> 39/42,
+correction helps at `tau = 1`) is expected to still hold, but has not yet been
+re-validated with the same log-loss calibration procedure used for image — do that before
+fully trusting it, since it was only ever an accuracy-based first look.
+
+**The practical conclusion is not "`tau = 0` is the right default"** — both `correct_
+training_bias()`'s own roxygen and this note now say so explicitly: `tau` (and, for
+`similarity_softmax`, `score_sharpness`) must be calibrated per data type. Image and
+acoustic gave opposite answers (`tau ≈ 0` vs `tau ≈ 1`) from the identical function with
+identical defaults on real data — that is itself the strongest evidence yet that a shared
+default across data types was never going to be safe.
+
+`devtools::document()`: clean, no signature changes (auto-detection, not a new
+parameter). Full TaxaLikely test suite: 497 expectations, 0 failures, 0 errors both
+before and after the `assign_scores()` fix.
+
+**Not done**: acoustic re-validation with log-loss (see above); wiring the calibrated
+`(tau, score_sharpness)` into `TaxaAssign::camera_trap_posterior_workflow.R`'s actual
+posterior computation (currently still uses the old `tau = 1.0` default there).
+
+**Session 128 (2026-07-02): correct_training_bias() wired into the image/acoustic Layer-1 workflow and live-tested — mixed first result**
+
+The two-sessions-overdue wiring from `ecosystem_docs/REENTRY_PROMPT_session127...`, item 1.
+`correct_training_bias()` (Session 125, revised Session 127) had never been run against
+real classifier output before this session — only a synthetic 3-row fixture.
+
+**Image section** (`image_acoustic_likelihood_workflow.R` Section 1): inserted
+`correct_training_bias(count_col = "n_observations")` right after loading TaxaMatch's
+checkpoint, before `unreferenced_candidates()` (the reentry note's file reference —
+`score_image_workflow.R` — was slightly off; the actual `unreferenced_candidates()` call
+site is here, in this script, not TaxaMatch's). `score_image_inat()`'s output already
+carries `n_observations` per candidate, so no extra API call was needed.
+
+**Acoustic section** (Section 2): first built the join Session 125's reentry prompt
+flagged as never built — `audit_acoustic_coverage(xc_recordings = TRUE)` queried live
+against the 9 unique species in the real BirdNET match object (Xeno-canto v3, ~9s), and
+its `n_recordings` census column was left-joined onto the match object by `species`
+before calling `correct_training_bias(count_col = "n_recordings")`.
+
+**Grounding-truth check (first look, not a calibration — both sets are small):** re-ran
+each section's pipeline twice — once with the corrected score, once substituting
+`score_uncorrected` back in — to isolate the correction's effect on the winning
+candidate, holding everything else constant. Real, live result at `tau = 1.0`:
+
+- **Image** (6 real camera-trap photos): correction changed 2/6 winners; top-1 accuracy
+  **fell** from 5/6 (83%) to 4/6 (67%). One flip was wrong-to-wrong (coyote.JPG, already
+  a known miss — see Session 124's note); the other turned a correct call wrong: *Sylvilagus
+  bachmani* (brush rabbit) got reassigned to *Megascops kennicottii* (a screech owl) once
+  bias-corrected. `n_observations` spans 352 to 153,730 across this tiny candidate set —
+  a very large range to correct with only 6 photos of signal.
+- **Acoustic** (42 real BirdNET detection windows, 3 confusable Calidris sandpipers):
+  correction changed 2/42 winners; top-1 accuracy **rose** from 37/42 (88%) to 39/42
+  (93%). Both flips were wrong-to-right (one *Calidris mauri* window previously misassigned
+  to Killdeer, one *Calidris pusilla* window previously misassigned to Dunlin, both
+  corrected to the true species). `n_recordings` (Xeno-canto) spans 44 to 417 — a much
+  narrower range than the image path's `n_observations`.
+
+**Interpretation, held loosely:** the correction helped on the data type with narrower
+count spread and hurt on the one with wider spread, which is at least directionally
+consistent with the "First real-data look" caveat added to `correct_training_bias()`'s
+own roxygen this session — but n=6 and n=42 are both far too small to conclude anything
+about `tau` itself, and the one harmful image flip is a real, concrete warning sign, not
+noise to explain away. **`tau` was NOT changed from the default `1.0`** on the strength of
+this alone. Recorded in the function's own "Open caveat" `@details` section (per the
+Session 127 reentry prompt's explicit instruction to update that section once a real
+check had actually been run) and here, for whoever runs the next real dataset through
+this pipeline to compare against.
+
+`devtools::check()` on `TaxaLikely`: 0 errors, 0 warnings, 1 pre-existing note (timestamp
+verification, environmental). No R/ source changes besides the roxygen addition to
+`correct_training_bias()` — the wiring itself is entirely in
+`inst/workflows/image_acoustic_likelihood_workflow.R`.
+
+**Not done**: `tau` was not retuned; the Stage 3 reentry items (real head-data testing,
+function-promotion check, Layer-2 wrapper decisions, Drive cleanup check) are unchanged
+from Session 127; `TaxaID/CLAUDE.md`'s stale "Planned" label for TaxaAssign was not
+touched this session (out of scope — user chose this item specifically over that one).
+
+**Session 127 (2026-07-02): correct_training_bias() revised — logit adjustment (Menon et al. 2020) replaces adaptive per-candidate shrinkage**
+
+Prompted by the user questioning the Session 125 design before it was ever wired into a
+real workflow: "it seems like rare taxa would always win over common ones." Worked
+through the math live — with `prior_weight = median(n)`, `tau_i = n_i/(n_i+prior_weight)`
+behaves almost like a step function pivoting at the candidate set's median count (e.g.
+divisor ≈1.02× at n=10, ≈40,300× at n=50,000, ≈487,000× at n=500,000 for
+`prior_weight≈1000`). Since real classifier scores are bounded and can't differ by
+anything close to that many orders of magnitude, this meant: whenever two candidates
+straddle the local median by much, the lower-n one wins essentially by construction,
+correct or not — confirming the user's suspicion quantitatively rather than just
+intuitively.
+
+Rather than hand-tune the existing formula, ran a 105-agent deep-research literature
+review (long-tailed recognition / class-imbalance correction literature) before making
+any code change, per the user's own instinct that "this is a well-studied field." Key
+findings, all adversarially verified:
+- **Menon et al. 2020, "Long-Tail Learning via Logit Adjustment"** (ICLR 2021,
+  arXiv:2007.07314) — the standard theoretically-grounded correction: subtract
+  `tau * log(pi_i)` from class `i`'s logit (`pi_i` = training-set class frequency),
+  equivalent to dividing the raw score by `pi_i^tau`. Critically, `tau` is a **single
+  global scalar**, not a per-class adaptive value — the opposite direction from the
+  Session 125 design. Fisher-consistent for the balanced/class-uniform error at
+  `tau = 1`, derived directly from Bayes' rule; explicitly endorsed for **post-hoc**
+  application to an already-trained model (no retraining needed) when label frequencies
+  are known — directly matches this package's use case (correcting pretrained
+  third-party classifiers, iNaturalist CV / BirdNET).
+- The user's "diminishing returns from more data" intuition (their own guess was
+  sqrt(n)) does have a real literature analog — **Cui et al. 2019's "effective number
+  of samples"**, `(1-beta^n)/(1-beta)` — but it reweights *training loss*, not a frozen
+  model's inference-time posterior; structurally the wrong tool for this package's
+  post-hoc-only use case (verified against the official implementation).
+- No source survived adversarial verification for a direct sqrt(n)/log(n) posterior
+  correction; a candidate paper's log-based "Quantity Factor" claim was explicitly
+  refuted on reverification.
+- Open gap, confirmed by the research (not resolved by it): Menon's Fisher-consistency
+  guarantee formally assumes `pi_i` is an accurate estimate of the classifier's *actual*
+  training frequency. This package's `n_i` is a noisy **external proxy** (public
+  database counts, not the classifier's real internal training counts) — no paper
+  directly studies robustness to that gap. `tau` is kept user-tunable, not hardcoded,
+  for this reason.
+
+**Mathematical reconciliation**: Menon's `pi_i^tau` uses relative frequency
+(`n_i / N_total`), but `N_total` (total training count across all classes) is the same
+constant for every candidate being compared within one observation — it cancels out of
+any ratio/ranking comparison within a query's candidate set. So dividing by raw `n_i^tau`
+instead of `pi_i^tau` is exactly proportionally equivalent here; no need to know or
+estimate `N_total`, which this package has no way to obtain for a third-party classifier
+anyway. This let the revision keep `correct_training_bias()`'s existing `score / n^tau`
+structure and just change what `tau` means (fixed global scalar, default `1.0`) rather
+than rewriting the formula shape from scratch.
+
+**Kept from Session 125, deliberately**: NA/zero counts still fall through to the
+uncorrected score rather than applying `tau` — pure logit adjustment has no answer for
+an unknown `pi_i`, and treating a failed lookup as "no correction" remains the
+conservative, defensible default (can't tell a genuinely rare species from a lookup
+failure from the count alone).
+
+Test suite fully rewritten to match the new signature: removed the `prior_weight`-default
+and `prior_weight`-override tests, added `tau = 0` (disables correction),
+`tau` uniformity-across-candidates (the core behavioral change from Session 125), and
+`tau > 1` (stronger-than-theoretical correction, matching Menon et al.'s own CIFAR-10-LT
+tuned optimum of 2.6) tests. 27 expectations, all passing. `devtools::document()` +
+`devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Still not done**: wiring into `image_acoustic_likelihood_workflow.R` or any other
+Layer-1 script, and validation against real classifier output — see
+`ecosystem_docs/REENTRY_PROMPT_session127...`.
+
+**Session 126 (2026-07-01): Sequence/BLAST Layer-1 workflow — Stage 2 of REENTRY_PROMPT_session124**
+
+`inst/workflows/sequence_likelihood_workflow.R` added — the second script in the
+sequence/BLAST mini-chain (TaxaMatch's `blast_sequences_workflow.R`, added the same
+session, is the first). This is the architecturally different one among the three
+Layer-1 data types: it actually trains the bivariate-normal self-vs-non-self model
+(`build_sequence_matrix()` → `train_likelihood_model()`) rather than calibrating a
+pre-trained classifier's output like the image/acoustic pathway.
+
+Reference database: live NCBI fetch (`fetch_reference_sequences()`, `max_per_species =
+5L`) for 6 real genera spanning 3 fish families (Cottidae, Embiotocidae, Clinidae) —
+matching the same real PtConception study system as TaxaMatch's query-side script, not
+a separate invented example. Query side reuses TaxaMatch's checkpoint directly (5 real
+12S sequences).
+
+Live-tested end to end (both scripts chained in one session, real NCBI calls
+throughout), 0 errors after one bug fix (below): 5/5 (100%) top-likelihood accuracy —
+`evaluate_likelihoods()`'s winning `specific_candidate` hypothesis matched the true
+species for every query, including one genuinely interesting edge case:
+`fetch_reference_sequences()`'s genus-level NCBI search for *Rhacochilus* returned 0
+sequences (a real query-construction gap — BLAST's own `nt` search independently found
+a 100%-identity *Rhacochilus toxotes* record that the narrower reference-fetch query
+missed), so that species has no species-specific H1 parameters in the trained model at
+all. It still won correctly at inference time via the model's global-mean fallback —
+real confirmation that the fallback path (documented in Statistical Design Notes) works
+as intended, not a bug. `fetch_reference_sequences()`'s query-construction gap itself
+was not fixed this session (out of scope for the workflow-script task; a candidate for
+a future investigation if it recurs on other genera).
+
+**Bug found and fixed (by actually running the two-script chain, not by static
+review):** the honesty check in this script needs a `true_species` column carried
+through on TaxaMatch's checkpoint object, re-joined from it after `evaluate_likelihoods()`
+(whose output schema doesn't pass arbitrary columns through). `blast_sequences_workflow.R`'s
+own Output block already documented this column as present — but the column was only
+ever computed into a local copy inside that script's own honesty-check block, never
+actually attached to `taxamatch_blast_match_obj` itself. First run of the two-script
+chain failed with `"undefined columns selected"` on the re-join. Fixed in
+`TaxaMatch/inst/workflows/blast_sequences_workflow.R` by attaching
+`taxamatch_blast_match_obj$true_species <- TRUE_SPECIES[taxamatch_blast_match_obj$observation_id]`
+right after `standardize_match_data()`, matching the pattern `score_image_workflow.R`
+already uses. Second run: 0 errors.
+
+Other real behavior observed (not bugs): `calibrate_coverage_filter()` reported
+near-flat Youden's J (5 unique coverage values on this small reference set) — the
+already-documented categorical-coverage message fired as designed; fell back to
+`coverage_threshold()`'s quantile shortcut as this script's own coverage-calibration
+step anticipates. `train_likelihood_model()` skipped `lme4` hierarchy fitting (only 5
+species trained, need ≥10) and warned about singleton references lacking self-matches
+(7 of the fetched species had only 1 sequence) — both are the already-documented
+graceful-fallback paths (Known Footguns), not new issues.
 
 **Session 125 (2026-07-01): .xc_recording_count() v2 → v3 migration (Stage 1 of REENTRY_PROMPT_session124)**
 

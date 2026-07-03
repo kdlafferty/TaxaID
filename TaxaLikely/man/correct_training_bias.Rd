@@ -8,7 +8,7 @@ correct_training_bias(
   scored_df,
   count_col,
   score_col = "score_original",
-  prior_weight = NULL
+  tau = 1
 )
 }
 \arguments{
@@ -28,15 +28,20 @@ counts being \code{NA}).}
 \code{\link[=assign_scores]{assign_scores()}}'s default \code{score_col}). Name of the raw score
 column to correct.}
 
-\item{prior_weight}{Positive numeric scalar, or \code{NULL} (default).
-Shrinkage prior weight for \eqn{\tau_i}. \code{NULL} uses
-\code{median(n, na.rm = TRUE)} (see Details).}
+\item{tau}{Non-negative numeric scalar (default \code{1.0}). Global exponent
+applied to every candidate's count (see Details) -- \code{tau = 1} is the
+theoretically Fisher-consistent full correction; \code{tau = 0} disables
+correction entirely (returns scores unchanged); values above 1 apply
+stronger-than-theoretical correction (Menon et al.'s own tuned optimum
+on one benchmark was 2.6). Tune empirically against real labeled data
+where possible rather than trusting the default uncritically (see
+Details).}
 }
 \value{
 \code{scored_df} with \code{score_col} overwritten by the corrected
 score, plus three added columns: \code{score_uncorrected} (pre-correction
 value), \code{n_used} (count applied per row, \code{NA} where unavailable),
-and \code{tau_used} (shrinkage exponent applied per row).
+and \code{tau_used} (exponent actually applied per row).
 }
 \description{
 Discriminative classifiers (iNaturalist CV, BirdNET) trained by standard
@@ -51,43 +56,142 @@ bias so that scores across candidates are on a more comparable scale
 before \code{\link[=assign_scores]{assign_scores()}} normalizes them.
 }
 \details{
-\subsection{Adaptive shrinkage, not a fixed exponent}{
+\subsection{Logit adjustment (Menon et al. 2020), not adaptive per-candidate shrinkage}{
 
-The correction is \eqn{score_i / n_i^{\tau_i}}, where \eqn{\tau_i =
-n_i / (n_i + prior\_weight)} rather than a fixed global exponent. This
-mirrors the per-species shrinkage already used in
-\code{\link{train_likelihood_model}} (\code{w = N / (N + prior_weight)}):
-\eqn{n_i} is itself only a public-database proxy for the classifier's
-actual internal training count, and that proxy is less trustworthy the
-smaller it is. \eqn{\tau_i} shrinks toward 0 (no correction — trust the
-raw score) as \eqn{n_i \to 0}, and toward 1 (full correction) as
-\eqn{n_i} grows. This also means a missing or zero count falls through
-to the uncorrected score automatically (\eqn{\tau_i = 0 \Rightarrow
-n_i^{\tau_i} = 1}), with no special-case branch needed — whether the
-\code{NA} reflects a genuinely rare species or a failed lookup, leaving the
-score untouched is the conservative default in both cases.
+The correction is \eqn{score_i / n_i^{\tau}}, where \eqn{\tau} is a single
+\strong{global, user-set scalar} applied identically to every candidate,
+following the "logit adjustment" correction for long-tailed recognition
+(Menon, Jayasumana, Rawat, Jain, Veit & Kumar, "Long-Tail Learning via
+Logit Adjustment", ICLR 2021, arXiv:2007.07314). Their adjustment
+subtracts \eqn{\tau \log(\pi_i)} from class \eqn{i}'s logit, where
+\eqn{\pi_i} is class \eqn{i}'s training-set frequency; exponentiating,
+this is equivalent to dividing the raw (pre-softmax) score by
+\eqn{\pi_i^{\tau}}. Because \eqn{\pi_i = n_i / N} for a constant \eqn{N}
+(total training count) shared by every candidate being compared for the
+same observation, dividing by \eqn{n_i^{\tau}} instead of
+\eqn{\pi_i^{\tau}} gives identical relative rankings and ratios among
+candidates -- so \eqn{N} does not need to be known or estimated here.
+
+At \eqn{\tau = 1} (the default), this fully removes the \eqn{n_i} factor,
+recovering an estimate of the true likelihood \eqn{L_i} exactly under the
+\eqn{score_i \propto L_i \times n_i} model -- the value Menon et al. derive
+as Fisher-consistent for the class-balanced error from Bayes' rule
+directly. \eqn{\tau} remains a tunable argument (not hardcoded to 1)
+because Menon et al.'s own empirical tuning did not always land on 1 --
+on CIFAR-10-LT they found a validation-tuned optimum of 2.6, i.e.
+\emph{stronger} correction than the naive theoretical default improved
+balanced accuracy further in that setting.
 }
 
-\subsection{Default \code{prior_weight}}{
+\subsection{This differs from the Session 125 version of this function}{
 
-When \code{prior_weight = NULL} (default), it is set to
-\code{median(n, na.rm = TRUE)} across \code{count_col} — self-normalizing to
-whatever scale the count data actually has (iNaturalist observation
-counts and Xeno-canto recording counts live on very different scales),
-rather than reusing an arbitrary fixed constant. With this default,
-a species at the median count receives exactly half-strength
-correction (\eqn{\tau_i = 0.5}).
+The original implementation used an \strong{adaptive, per-candidate} exponent
+\eqn{\tau_i = n_i / (n_i + prior\_weight)}, intended to shrink correction
+strength toward zero for candidates with small \eqn{n_i} (treating a
+small public-database count as a less trustworthy proxy). Literature
+research (Session 127) found no support for a per-candidate adaptive
+exponent in the long-tail/class-imbalance literature -- the standard,
+theoretically justified form (logit adjustment) uses one fixed scalar
+applied uniformly regardless of a given candidate's own \eqn{n_i}. The
+adaptive version was also demonstrated to behave almost like a step
+function centered on the candidate set's median count: candidates below
+the median were barely corrected while candidates above it were divided
+by nearly their full raw count, meaning any two candidates with
+comparable raw scores but very different \eqn{n} would have the
+correction decide the outcome almost entirely in favor of the lower-n
+candidate regardless of which one was actually correct. This revision
+replaces that scheme.
+}
+
+\subsection{Open caveat: noisy proxy counts}{
+
+Menon et al.'s Fisher-consistency guarantee formally assumes \eqn{\pi_i}
+(here, \eqn{n_i}) is a consistent estimate of the classifier's \emph{actual}
+internal training-set frequency. In this package's use case, \eqn{n_i} is
+instead a noisy \strong{external proxy} -- a public database's observation or
+recording count (iNaturalist, Xeno-canto) -- not the classifier's true
+internal training count, which is unknown. The literature research
+conducted for this revision found no paper that directly studies how much
+this guarantee degrades under a noisy external proxy; this is a genuine
+open gap, not a settled question. \eqn{\tau} is therefore left tunable
+(not fixed at the theoretical default) so it can be validated empirically
+-- e.g. by bucketing real labeled observations by the log-ratio of the
+true species' count to its best wrong competitor's count, and checking
+whether correction helps or hurts accuracy in each bucket -- once enough
+labeled data exists, rather than trusted uncritically at \eqn{\tau = 1}.
+
+\strong{First real-data look (Session 128):} wired into
+\code{TaxaLikely/inst/workflows/image_acoustic_likelihood_workflow.R} at
+\eqn{\tau = 1} and run against real classifier output. Result was
+data-type-dependent, not uniformly good or bad -- on 6 real camera-trap
+photos, correction changed 2 winners and top-1 accuracy fell (5/6 to
+4/6): one flip was wrong-to-wrong (neutral) but the other was a correct
+call turned wrong (\emph{Sylvilagus bachmani} misassigned to \emph{Megascops
+kennicottii}, an owl -- likely driven by a very large \code{n_observations}
+spread among candidates on such a small photo set). On 42 real BirdNET
+sandpiper detection windows, correction changed 2 winners and top-1
+accuracy rose (37/42 to 39/42), both flips wrong-to-right. Recorded at
+the time as a first look, not a calibration, because both sets were
+small -- see Session 129's resolution below for what actually turned out
+to be true, and why the image number specifically needed revisiting.
+
+\strong{Resolved for image (Session 129), superseding the number above:} the
+original 5/6->4/6 image result was confounded by an unrelated real bug in
+\code{\link[=assign_scores]{assign_scores()}} -- \code{.normalize_scores()} forced iNaturalist's unbounded
+\code{combined_score} (real data reaches ~3000) through a fixed 0-100 divisor
+meant for BLAST-style percent-identity scores, collapsing
+\code{score_likelihood} to near-uniform (~0.999-1.000) for every candidate in
+every photo, independent of \eqn{\tau} entirely -- so the 5/6->4/6 swing
+was mostly argmax noise on a nearly flat distribution, not a clean read on
+\eqn{\tau}'s effect. That bug is fixed (score scale is now auto-detected,
+no configuration needed -- see \code{assign_scores()}'s own documentation).
+Re-run on 51 real, taxonomic-scope-filtered camera-trap photos (8 species)
+with \code{assign_scores()}'s \code{score_sharpness} calibrated jointly with
+\eqn{\tau} (log-loss-minimizing, \code{TaxaLikely/inst/workflows/ calibrate_training_bias_tau.R}): log-loss and accuracy now agree, and
+both are monotonic in \eqn{\tau} -- log-loss rises and accuracy falls
+steadily from \eqn{\tau = 0} (82\% top-1 accuracy) to \eqn{\tau = 1} (63\%)
+and beyond. \strong{For this image pathway, \eqn{\tau \approx 0} is optimal --
+the correction should not be applied.} The acoustic result above was
+never affected by the \code{assign_scores()} bug in the first place (BirdNET
+confidence is already 0-1 bounded and uses \code{score_type = "probability"},
+which does not call \code{.normalize_scores()} at all) and is expected to
+still hold, though it has not yet been re-validated with the same
+log-loss calibration procedure used for image.
+
+\strong{The practical conclusion is not "\eqn{\tau = 0} is the right default"}
+-- it is that \eqn{\tau} (and, for the \code{similarity_softmax} pathway,
+\code{score_sharpness}) must be calibrated per data type, not trusted at a
+single shared value. Image and acoustic gave opposite answers on real
+data (\eqn{\tau \approx 0} vs \eqn{\tau \approx 1}) using the identical
+function with identical defaults. Run
+\code{calibrate_training_bias_tau.R} against real labeled data for any new
+data type before deciding whether to apply this correction at all.
+}
+
+\subsection{Missing or zero counts: deliberate deviation from strict logit adjustment}{
+
+Strict logit adjustment assumes every class's \eqn{\pi_i} is known.
+Candidates with \code{NA} or non-positive counts (failed lookups, or species
+genuinely absent from the public database) instead fall through to the
+\strong{uncorrected} score (\eqn{\tau} effectively 0 for that row only) --
+the same conservative choice made by the Session 125 version, and
+retained here as a deliberate, practical deviation from the pure
+literature form: applying full correction based on a missing or zero
+count would either be undefined (division by zero at \eqn{\tau > 0}) or
+arbitrary, and whether a zero/NA reflects genuine rarity or a lookup
+failure cannot be distinguished from the count alone.
 }
 
 \subsection{Column contract}{
 
 \code{score_col} is overwritten in place with the corrected value, so no
 downstream call (e.g. \code{\link[=unreferenced_candidates]{unreferenced_candidates()}}, \code{\link[=assign_scores]{assign_scores()}})
-needs to change — they already consume \code{score_col} by default. The
+needs to change -- they already consume \code{score_col} by default. The
 pre-correction value is preserved under \code{score_uncorrected} for
 debugging. Diagnostic columns \code{n_used} (the count actually applied,
-\code{NA} preserved as-is) and \code{tau_used} (the shrinkage exponent applied)
-are also added.
+\code{NA} preserved as-is) and \code{tau_used} (the exponent actually applied per
+row -- either the global \code{tau} or 0 for a fallen-through row) are also
+added.
 }
 
 \subsection{Pipeline placement}{
@@ -112,6 +216,11 @@ corrected <- correct_training_bias(scored, count_col = "n_observations")
 corrected[, c("taxon_name", "score_uncorrected", "score_original",
               "n_used", "tau_used")]
 
+}
+\references{
+Menon, A. K., Jayasumana, S., Rawat, A. S., Jain, H., Veit,
+A., & Kumar, S. (2021). Long-Tail Learning via Logit Adjustment. ICLR
+2021. \url{https://arxiv.org/abs/2007.07314}
 }
 \seealso{
 \code{\link[=assign_scores]{assign_scores()}}, \code{\link[=unreferenced_candidates]{unreferenced_candidates()}}
