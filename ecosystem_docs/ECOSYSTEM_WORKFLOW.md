@@ -82,7 +82,7 @@ Any vector of taxon names is a valid starting point for TaxaFetch or TaxaLikely.
     │  → occurrence_data         │                                  │
     │         |                  │                                  │
     │  TaxaHabitat               │                                  │
-    │  Habitat_assign_workflow.R │                                  │
+    │  assign_habitat_workflow.R │                                  │
     │  → occurrences_with_habitat│                                  │
     │         |                  │                                  │
     │  TaxaExpect                │                                  │
@@ -174,7 +174,7 @@ See also: `TaxaFetch/inst/PDF_PIPELINE_DATAONE_PARALLEL.md` for parallel DataOne
 
 ### PRIOR PIPELINE — Habitat Assignment (TaxaHabitat, via TaxaFetch)
 
-**Script:** `TaxaFetch/inst/Habitat_assign_workflow.R`
+**Script:** `TaxaHabitat/inst/workflows/assign_habitat_workflow.R`
 
 **Inputs:** `occurrence_data`
 

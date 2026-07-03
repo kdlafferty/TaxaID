@@ -1,5 +1,5 @@
 # Edge: occurrences -> std_occurrences
-# Source: TaxaHabitat/inst/Habitat_workflow.R + TaxaFetch/inst/Habitat_assign_workflow.R
+# Source: TaxaHabitat/inst/Habitat_workflow.R + TaxaHabitat/inst/workflows/assign_habitat_workflow.R
 
 # Step 1: Get unique taxa for habitat assignment
 unique_taxa <- unique({{input_var}}$taxon_name)

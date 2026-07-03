@@ -2,8 +2,8 @@
 # TaxaExpect end-to-end workflow
 # =============================================================================
 #
-# INPUT:  occurrences_with_habitat -- output of TaxaFetch Habitat_assign_workflow.R
-#         (loaded from TaxaFetch/inst/occurrences_with_habitat.rds, or in environment)
+# INPUT:  occurrences_with_habitat -- output of TaxaHabitat's habitat assignment
+#         workflow (inst/workflows/assign_habitat_workflow.R), or in environment
 #
 # OUTPUT: Two objects saved to TaxaExpect/inst/ for use in TaxaAssign:
 #   taxaexpect_priors.rds  -- prior table (NCBI backbone); input to TaxaAssign Bayesian
@@ -29,7 +29,7 @@ moran_k      <- 5L     # number of Moran eigenvectors to compute
 sd_threshold <- 0.20   # VarCorr SD threshold for screening random slopes
 rank_system <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
 
-# Load upstream data (from TaxaFetch Habitat_assign_workflow.R)
+# Load upstream data (from TaxaHabitat's assign_habitat_workflow.R)
 occurrences_with_habitat <-
 readRDS(file.choose())  # select occurrences_clean.rds from TaxaHabitat/inst/
 

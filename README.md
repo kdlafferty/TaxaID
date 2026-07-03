@@ -480,7 +480,7 @@ Detailed, runnable workflow scripts are provided in each package's
 | **Test: local reference library** | TaxaLikely | `inst/test_local_reference.R` |
 | **Test: coverage calibration** | TaxaLikely | `inst/test_calibrate_coverage.R` |
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
-| Assign habitats | TaxaHabitat | `inst/Habitat_assign_workflow.R` |
+| Assign habitats | TaxaHabitat | `inst/workflows/assign_habitat_workflow.R` |
 | Build priors | TaxaExpect | `inst/TaxaExpect_workflow.R` |
 | LLM assignment | TaxaAssign | `inst/TaxaAssign_llm_workflow.R` |
 | Bayesian assignment | TaxaAssign | `inst/TaxaAssign_bayesian_workflow.R` |
