@@ -138,7 +138,7 @@ generate_undetected_diversity <- function(model_obj,
     }
     tax_cols_present <- intersect(tax_rank_cols, names(taxonomy))
     if (length(tax_cols_present) == 0L) {
-      warning("generate_undetected_diversity: taxonomy has none of genus/family/order/class/phylum — ignored.")
+      warning("generate_undetected_diversity: taxonomy has none of genus/family/order/class/phylum -- ignored.")
       taxonomy <- NULL
     }
   }
