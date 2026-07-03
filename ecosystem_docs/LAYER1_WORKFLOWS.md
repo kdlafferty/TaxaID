@@ -2,9 +2,10 @@
 
 **Status:** 7 of 8 packages now have at least one Layer-1 script. Five-package sequence
 chain complete (TaxaFetch, TaxaHabitat, TaxaExpect, TaxaAssign, TaxaFlag). TaxaMatch and
-TaxaLikely gained image + acoustic data-type scripts in Session 124; sequence/BLAST
-Layer-1 scripts for TaxaMatch/TaxaLikely remain deferred (see Deferred Work below).
-**Last updated:** 2026-07-01 (Session 124)
+TaxaLikely gained image + acoustic data-type scripts in Session 124, and sequence/BLAST
+data-type scripts in Session 126 — all three data types (image, acoustic, sequence) are
+now complete for both packages.
+**Last updated:** 2026-07-01 (Session 126)
 
 ---
 
@@ -264,11 +265,33 @@ to explore), not bugs.
 
 ---
 
+## Sequence/BLAST scripts (Session 126)
+
+The third and last TaxaMatch/TaxaLikely data type, and the largest remaining lift
+(real BLAST calls, real DECIPHER alignment, real model training) — this is also the
+ONE data type needing the actual bivariate-normal self-vs-non-self model, unlike
+image/acoustic which calibrate a pre-trained classifier's output with no training step.
+
+| Package | File | Purpose |
+|---|---|---|
+| TaxaMatch | `inst/workflows/blast_sequences_workflow.R` | Live remote `blast_sequences()` call on 5 real PtConception 12S sequences (same accessions as Session 115's field test) → `standardize_match_data()` |
+| TaxaLikely | `inst/workflows/sequence_likelihood_workflow.R` | Live `fetch_reference_sequences()` (6 real genera, 3 fish families) → `build_sequence_matrix()` → `train_likelihood_model()` → `evaluate_likelihoods()` |
+
+Reproduces Session 115's already-field-tested BLAST result in the Layer-1
+workflow-script convention rather than introducing a new example dataset. Live-tested
+end to end (both scripts chained in one R session), 0 errors: 5/5 (100%) top BLAST hits
+correct, 5/5 (100%) top-likelihood accuracy after model training. One real edge case
+worth noting: `fetch_reference_sequences()`'s genus-level NCBI search found 0 sequences
+for *Rhacochilus* even though BLAST's own `nt` search found a 100%-identity record for
+*Rhacochilus toxotes* — that species has no species-specific H1 parameters in the
+trained model, but still wins correctly at inference time via the model's global-mean
+fallback (confirms the documented fallback path works as intended, not a bug). See
+`TaxaLikely/CLAUDE.md`'s Session 126 note for the full bug-found/fixed record (a
+`true_species` passthrough-column bug caught only by actually running the two-script
+chain, not by static review — consistent with this document's Test Methodology above).
+
 ## Deferred work
 
-- **TaxaMatch and TaxaLikely still need a sequence/BLAST Layer-1 script.** Image and
-  acoustic are done (Session 124, see above) — sequence/BLAST is the larger remaining
-  lift (real BLAST calls, real DECIPHER alignment, real model training).
 - **`TaxaFlag::flag_contaminant()`** is documented (full signature, algorithm, Flag
   Column Convention) but not run live — needs lab read-count data (sample × taxon,
   with blanks) that a GBIF-occurrence-based tutorial chain has no way to produce
