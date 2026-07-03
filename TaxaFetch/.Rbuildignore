@@ -1,3 +1,4 @@
+^\.lintr$
 ^renv$
 ^renv\.lock$
 ^.*\.Rproj$
@@ -6,7 +7,6 @@
 ^\.claude$
 ^.*\.rds$
 ^openalex_cache$
-^inst/TaxaFetch_workflow copy\.R$
 ^\.Rhistory$
 ^\.DS_Store$
 ^DISCLAIMER\.md$

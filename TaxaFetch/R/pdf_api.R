@@ -1,6 +1,6 @@
 # ==============================================================================
 # pdf_api.R
-# TaxaFetch — Send PDF page images to the Anthropic API
+# TaxaFetch -- Send PDF page images to the Anthropic API
 #
 # Exported functions:
 #   call_api_pdf()    Send selected PDF pages as images to API
@@ -16,13 +16,13 @@
 #
 #   The section targeting here (sending only methods + results pages) is
 #   the PDF pipeline equivalent of the EML column screening step in
-#   screen_eml_columns() — both are designed to avoid committing to
+#   screen_eml_columns() -- both are designed to avoid committing to
 #   expensive processing on irrelevant content.
 #
 # Dependencies:
-#   pdftools (Suggests) — pdf_render_page() for image rendering
-#   httr2    (Imports)  — API call (same as call_anthropic_api)
-#   jsonlite (Imports)  — JSON construction
+#   pdftools (Suggests) -- pdf_render_page() for image rendering
+#   httr2    (Imports)  -- API call (same as call_anthropic_api)
+#   jsonlite (Imports)  -- JSON construction
 #
 # Token cost notes:
 #   Each rendered page costs approx 1,500-2,000 input tokens.
@@ -66,7 +66,7 @@
     )
   }
 
-  # Use subprocess rendering if callr is available — protects against segfaults
+  # Use subprocess rendering if callr is available -- protects against segfaults
   # from corrupt PDFs that crash poppler/pdftools at the C level.
   use_subprocess <- requireNamespace("callr", quietly = TRUE)
 
@@ -77,7 +77,7 @@
     pg <- page_numbers[i]
 
     if (use_subprocess) {
-      # Render in isolated subprocess — segfault kills child, not parent
+      # Render in isolated subprocess -- segfault kills child, not parent
       b64 <- tryCatch(
         callr::r(
           function(pdf_path, pg, dpi) {
@@ -224,7 +224,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Typical Stage 3 usage — page_map from Stage 2:
+#' # Typical Stage 3 usage -- page_map from Stage 2:
 #' pdf_content <- extract_pdf_text("Swift_et_al_1993.pdf")
 #'
 #' prompt <- build_pdf_extract_prompt(

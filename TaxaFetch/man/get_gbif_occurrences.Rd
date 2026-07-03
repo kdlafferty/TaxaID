@@ -126,22 +126,22 @@ not GBIF's query cost.
 
 \strong{Column standardization and a known, unfixable asymmetry:} the
 \code{"standard"} column list (see \code{TaxaFetch:::.gbif_standard_columns()})
-is aligned across both backends, with two corrections applied uniformly:
-\enumerate{
-\item The quality-issue column is renamed to \code{issues} (plural) on
-the download path before any column selection happens.
-\code{download_gbif_occurrences} imports GBIF's SIMPLE_CSV export,
-which names this field \code{issue} (singular); the search API used
-by \code{fetch_gbif_occurrences} returns \code{issues} (plural); and
-\code{\link{filter_gbif_quality}} checks for \code{issues} --
-without this rename, its issue-code filter silently no-ops on every
-download-path result (confirmed against a real cached SIMPLE_CSV file
-and a live \code{occ_data()} call).
+is aligned across both backends. \code{download_gbif_occurrences} already
+renames the download path's SIMPLE_CSV quality-issue column from
+\code{issue} (singular) to \code{issues} (plural, matching the search
+API used by \code{fetch_gbif_occurrences} and what
+\code{\link{filter_gbif_quality}} checks for) before returning -- this
+wrapper only translates the requested \code{issues} column name back to
+\code{issue} when building \code{select_cols} for the download path,
+since \code{select_cols} is matched against the SIMPLE_CSV's native
+column names at import time, before that rename happens. One asymmetry
+remains and is not fixable here:
+\itemize{
 \item \code{familyKey}/\code{genusKey} are \code{NA} on the download
-path. This is not something the wrapper can fix: GBIF's SIMPLE_CSV
-format does not include these fields at all (they are DWCA-only),
-so there is nothing to rename or select -- they are genuinely absent
-upstream. \code{fetch_gbif_occurrences} output has them populated.
+path. GBIF's SIMPLE_CSV format does not include these fields at all
+(they are DWCA-only), so there is nothing to rename or select --
+they are genuinely absent upstream. \code{fetch_gbif_occurrences}
+output has them populated.
 \item Similarly, \code{samplingProtocol}/\code{occurrenceRemarks}/
 \code{preparations} (used by
 \code{filter_gbif_quality(exclude_edna = TRUE)}) are not present in

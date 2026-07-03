@@ -162,7 +162,10 @@ fetch_gbif_occurrences <- function(keys,
     ckpt   <- readRDS(checkpoint_path)
     n_done <- length(orig_keys) - length(ckpt$remaining_keys)
     message(sprintf(
-      "  fetch_gbif_occurrences: resuming from checkpoint -- %d/%d keys already fetched (%d records); %d keys remaining.",
+      paste0(
+        "  fetch_gbif_occurrences: resuming from checkpoint -- %d/%d keys ",
+        "already fetched (%d records); %d keys remaining."
+      ),
       n_done, length(orig_keys),
       if (is.null(ckpt$partial_records)) 0L else nrow(ckpt$partial_records),
       length(ckpt$remaining_keys)
@@ -213,7 +216,11 @@ fetch_gbif_occurrences <- function(keys,
           timestamp       = Sys.time()
         ), checkpoint_path)
         stop(sprintf(
-          "fetch_gbif_occurrences: fetch aborted after %d/%d keys.\n  Progress saved -- re-run with the same arguments to resume.\n  To start fresh instead, delete: %s",
+          paste0(
+            "fetch_gbif_occurrences: fetch aborted after %d/%d keys.\n",
+            "  Progress saved -- re-run with the same arguments to resume.\n",
+            "  To start fresh instead, delete: %s"
+          ),
           global_pos, length(orig_keys), checkpoint_path
         ), call. = FALSE)
       } else {
@@ -402,7 +409,7 @@ fetch_gbif_occurrences <- function(keys,
           key, attempt, max_retries, wait))
         Sys.sleep(wait)
       } else {
-        # All retries exhausted. Never silently skip a key — that would
+        # All retries exhausted. Never silently skip a key -- that would
         # produce session-inconsistent results. Signal abort to outer loop.
         is_503 <- .is_service_unavailable(resp)
         is_429 <- .is_rate_limit(resp)

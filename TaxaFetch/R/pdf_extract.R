@@ -455,14 +455,18 @@ build_pdf_extract_prompt <- function(pdf_structure,
       format(coords$lat, nsmall = 6L),
       format(coords$lon, nsmall = 6L)
     )
-  } else NULL
+  } else {
+    NULL
+  }
 
   # --- Column list for the prompt ---
   pa_col_txt <- if (!is.na(obs) && obs == "prevalence_abundance") {
     paste0(
       ", organismQuantity, organismQuantityType"
     )
-  } else ""
+  } else {
+    ""
+  }
 
   col_list <- paste0(
     paste(.pdf_dwc_cols, collapse = ", "),
@@ -474,13 +478,17 @@ build_pdf_extract_prompt <- function(pdf_structure,
   # --- Build one prompt per chunk ---
   chunk_note_template <- if (n_chunks > 1L) {
     "NOTE: This is chunk %d of %d. Continue using the same CSV format.\n\n"
-  } else NULL
+  } else {
+    NULL
+  }
 
   prompts <- lapply(seq_along(page_chunks), function(i) {
 
     chunk_note <- if (!is.null(chunk_note_template)) {
       sprintf(chunk_note_template, i, n_chunks)
-    } else ""
+    } else {
+      ""
+    }
 
     prompt_parts <- c(
       chunk_note,
@@ -642,7 +650,7 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
         "parse_pdf_extract_response: CSV parse failed for '%s'.\n  %s",
         basename(pdf_path), conditionMessage(e)
       ), call. = FALSE)
-      return(NULL)
+      NULL
     }
   )
   if (is.null(df)) return(invisible(NULL))

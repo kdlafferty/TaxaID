@@ -16,7 +16,7 @@
 #' For each taxon name, resolves the iNaturalist taxon ID, downloads the
 #' corresponding geomodel range polygon from iNaturalist's S3 bucket, and
 #' tests whether a query point (lat/lng) falls within the polygon. The range
-#' polygons are thresholded binary outputs of iNaturalist's SINR geomodel —
+#' polygons are thresholded binary outputs of iNaturalist's SINR geomodel --
 #' the continuous probability surface is not publicly available.
 #'
 #' @details
@@ -25,7 +25,7 @@
 #' Evidence is asymmetric: \code{in_range = TRUE} warrants a prior boost;
 #' \code{in_range = FALSE} should not suppress priors (false negatives are common
 #' for aquatic taxa due to low iNaturalist observer effort in marine systems).
-#' Use \code{n_observations} to gate the boost — geomodel reliability scales with
+#' Use \code{n_observations} to gate the boost -- geomodel reliability scales with
 #' observation count. \code{in_range = NA} (no polygon exists) is neutral.
 #'
 #' @param taxon_names Character vector of species names to check.
@@ -44,6 +44,16 @@
 #'   compare against your own occurrence-database kingdom to detect taxon
 #'   name collisions (e.g. a clam name matching a fungal genus).
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Requires INAT_API_TOKEN in ~/.Renviron
+#' check_inat_range(
+#'   taxon_names = c("Gadus morhua", "Eucyclogobius newberryi"),
+#'   lat = 34.41,
+#'   lng = -119.86
+#' )
+#' }
 check_inat_range <- function(
     taxon_names,
     lat,

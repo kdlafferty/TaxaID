@@ -146,7 +146,10 @@ build_geo_prompt <- function(catalog,
   missing_cols  <- setdiff(required_cols, names(catalog))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
-      "build_geo_prompt: catalog missing required columns: %s.\nRun harvest_dataone_catalog() to produce a valid catalog.",
+      paste0(
+        "build_geo_prompt: catalog missing required columns: %s.\n",
+        "Run harvest_dataone_catalog() to produce a valid catalog."
+      ),
       paste(missing_cols, collapse = ", ")
     ))
   }
@@ -459,7 +462,10 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
   n_no_response <- sum(result$geo_source == "llm_no_response")
   if (n_no_response > 0L) {
     warning(sprintf(
-      "parse_geo_screening_response: %d package(s) received no LLM decision (geo_source = 'llm_no_response') -- treated as rejected.",
+      paste0(
+        "parse_geo_screening_response: %d package(s) received no LLM decision ",
+        "(geo_source = 'llm_no_response') -- treated as rejected."
+      ),
       n_no_response
     ), call. = FALSE)
   }

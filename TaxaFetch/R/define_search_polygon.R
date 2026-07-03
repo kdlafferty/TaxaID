@@ -17,7 +17,7 @@
 #' @param lat Numeric. Latitude of the centre point in decimal degrees (WGS 84).
 #' @param lon Numeric. Longitude of the centre point in decimal degrees (WGS 84).
 #' @param radius_deg Numeric. Half-width of the initial square in decimal
-#'   degrees. For reference: 1 degree ≈ 111 km.
+#'   degrees. For reference: 1 degree ~= 111 km.
 #' @param tile Character. Leaflet tile provider name. Default
 #'   \code{"Esri.OceanBasemap"}. Any string accepted by
 #'   \code{leaflet::addProviderTiles()} works (e.g. \code{"OpenStreetMap"},
@@ -101,7 +101,7 @@ define_search_polygon <- function(lat,
   # ---------------------------------------------------------------------------
 
   # Build a closed WKT POLYGON string from ordered (lng, lat) vectors.
-  # WKT uses (longitude latitude) — X before Y.
+  # WKT uses (longitude latitude) -- X before Y.
   .pts_to_wkt <- function(lng, lat) {
     lng_c  <- c(lng, lng[1L])
     lat_c  <- c(lat, lat[1L])
@@ -109,7 +109,7 @@ define_search_polygon <- function(lat,
     sprintf("POLYGON ((%s))", coords)
   }
 
-  # Initial square: SW → SE → NE → NW (counter-clockwise)
+  # Initial square: SW -> SE -> NE -> NW (counter-clockwise)
   init_pts <- data.frame(
     id  = 1:4,
     lat = c(lat - radius_deg, lat - radius_deg,
@@ -168,7 +168,7 @@ define_search_polygon <- function(lat,
 
     rv <- shiny::reactiveValues(
       data    = init_pts,
-      next_id = 5L         # IDs 1–4 are initial corners; added pts start at 5
+      next_id = 5L         # IDs 1-4 are initial corners; added pts start at 5
     )
 
     # -- Initial map -----------------------------------------------------------
@@ -236,7 +236,7 @@ define_search_polygon <- function(lat,
       d <- rv$data
       n <- nrow(d)
 
-      # Squared Euclidean length of each segment (i → next, wraps at end)
+      # Squared Euclidean length of each segment (i -> next, wraps at end)
       seg_sq <- vapply(seq_len(n), function(i) {
         j <- if (i == n) 1L else i + 1L
         (d$lat[j] - d$lat[i])^2 + (d$lng[j] - d$lng[i])^2

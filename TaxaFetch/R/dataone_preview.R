@@ -7,11 +7,11 @@ utils::globalVariables(c(
 
 # ==============================================================================
 # dataone_preview.R
-# TaxaExpect — lightweight preview of DataONE/EDI datasets before full download
+# TaxaExpect -- lightweight preview of DataONE/EDI datasets before full download
 #
 # Exported:
 #   preview_dataone_occurrences()   Scout datasets: size, taxa, bbox, speed est.
-#   print.dataone_preview()         S3 print method — three-section summary
+#   print.dataone_preview()         S3 print method -- three-section summary
 #
 # Internal helpers (@noRd):
 #   .get_content_length()           HEAD request -> file size in MB (no download)
@@ -180,7 +180,7 @@ preview_dataone_occurrences <- function(dataset_ids,
                                         extra_dwc_map = NULL,
                                         verbose       = TRUE) {
 
-  # ── Input validation ────────────────────────────────────────────────────────
+  # -- Input validation --------------------------------------------------------
   if (!is.character(dataset_ids) || length(dataset_ids) == 0L) {
     stop("preview_dataone_occurrences: 'dataset_ids' must be a non-empty ",
          "character vector.")
@@ -277,7 +277,7 @@ print.dataone_preview <- function(x, ...) {
 }
 
 
-# ── Print helpers ──────────────────────────────────────────────────────────────
+# -- Print helpers --------------------------------------------------------------
 
 #' Print one status section grouped by dataset
 #' @noRd
@@ -295,7 +295,7 @@ print.dataone_preview <- function(x, ...) {
   for (did in unique(rows$dataset_id)) {
     ds_rows <- rows[rows$dataset_id == did, ]
     title   <- ds_rows$dataset_title[1L]
-    # Full title on its own line — no truncation
+    # Full title on its own line -- no truncation
     cat(sprintf("\n  [%s]  %s\n", did, title))
     .print_preview_dataset(ds_rows, is_skip)
   }
@@ -325,12 +325,16 @@ print.dataone_preview <- function(x, ...) {
     n_samp   <- if (!is.null(r$sample[[1L]])) nrow(r$sample[[1L]]) else 0L
     bbox_str <- if (!is.na(r$n_bbox)) {
       sprintf(" [%d/%d in bbox]", r$n_bbox, n_samp)
-    } else ""
+    } else {
+      ""
+    }
 
     join_str <- if (!is.na(r$join_key %||% NA_character_) &&
                     nzchar(r$join_key %||% "")) {
       sprintf(" [join: %s]", r$join_key)
-    } else ""
+    } else {
+      ""
+    }
 
     cat(sprintf("    %-36s  %s  %s  %-10s  %s%s%s\n",
                 str_trunc_safe(r$entity_name, 36L),
@@ -679,7 +683,9 @@ print.dataone_preview <- function(x, ...) {
                       else NA_real_
       combined_min <- if (!is.na(combined_mb)) {
         round(combined_mb / assume_mbps / 60, 2)
-      } else NA_real_
+      } else {
+        NA_real_
+      }
 
       sci         <- .build_scientific_name(merged_sample)
       non_na      <- sci[!is.na(sci) & nzchar(sci)]

@@ -72,7 +72,7 @@
 # Keywords that suggest a table or figure does NOT contain occurrence data.
 # A legend matching these without matching occurrence keywords is likely
 # statistical, methodological, or conceptual.
-.non_occurrence_legend_keywords <- c(
+.non_occurrence_keywords <- c(
   "anova", "regression", "coefficient",
   "p-value", "p value", "significance",
   "mean", "variance", "standard deviation", "standard error",
@@ -183,7 +183,7 @@
   n_occ     <- sum(vapply(.occurrence_legend_keywords,
                           function(k) grepl(k, txt_lower, fixed = TRUE),
                           logical(1L)))
-  n_non_occ <- sum(vapply(.non_occurrence_legend_keywords,
+  n_non_occ <- sum(vapply(.non_occurrence_keywords,
                           function(k) grepl(k, txt_lower, perl = TRUE),
                           logical(1L)))
 
@@ -475,7 +475,7 @@
   # Take up to max_chars, stopping at the next likely section header
   # (all-caps line or known section keyword on its own line)
   lines <- strsplit(substr(remaining, 1L, max_chars * 2L), "\n")[[1L]]
-  header_pat <- "^\\s*(introduction|methods|materials|results|keywords|" 
+  header_pat <- "^\\s*(introduction|methods|materials|results|keywords|"
   header_pat <- paste0(header_pat, "INTRODUCTION|METHODS|MATERIALS|RESULTS|KEYWORDS)")
 
   end_line <- length(lines)

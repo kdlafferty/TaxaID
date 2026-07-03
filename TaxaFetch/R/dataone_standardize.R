@@ -1520,4 +1520,3 @@ str_trunc_safe <- function(x, width) {
   if (nchar(x) <= width) return(x)
   paste0(substr(x, 1L, width - 3L), "...")
 }
-

@@ -174,8 +174,9 @@ read_biotime_study <- function(local_path = NULL,
 
   raw <- tryCatch(
     utils::read.csv(local_path, stringsAsFactors = FALSE, check.names = FALSE),
-    error = function(e) stop("Failed to read CSV: ", conditionMessage(e),
-                             call. = FALSE)
+    error = function(e) {
+      stop("Failed to read CSV: ", conditionMessage(e), call. = FALSE)
+    }
   )
 
   if (verbose) message(sprintf("  %d rows x %d columns", nrow(raw), ncol(raw)))

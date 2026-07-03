@@ -368,7 +368,7 @@ search_literature <- function(taxon_scope,
         warning(sprintf(
           "search_literature: page fetch failed -- %s", conditionMessage(e)
         ), call. = FALSE)
-        return(NULL)
+        NULL
       }
     )
     if (is.null(body)) break
@@ -434,7 +434,9 @@ search_literature <- function(taxon_scope,
     all_kw   <- all_kw[nzchar(all_kw)]
     keywords <- if (length(all_kw) > 0L) {
       paste(all_kw, collapse = "; ")
-    } else NA_character_
+    } else {
+      NA_character_
+    }
 
     doi     <- w$doi %||% NA_character_
     oa      <- w$open_access %||% list()
@@ -451,7 +453,9 @@ search_literature <- function(taxon_scope,
     author_names <- author_names[nzchar(author_names)]
     authors      <- if (length(author_names) > 0L) {
       paste(author_names, collapse = "; ")
-    } else NA_character_
+    } else {
+      NA_character_
+    }
 
     pl      <- w$primary_location %||% list()
     src     <- pl$source %||% list()

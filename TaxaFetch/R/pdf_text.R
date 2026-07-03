@@ -1,6 +1,6 @@
 # ==============================================================================
 # pdf_text.R
-# TaxaFetch — PDF section detection and text extraction
+# TaxaFetch -- PDF section detection and text extraction
 #
 # Provides the foundation for the PDF occurrence pipeline. Uses pdftools
 # for lightweight text extraction and section detection; page images for
@@ -24,12 +24,12 @@
 #   committing to API image calls.
 #
 # Dependencies:
-#   pdftools (Suggests) — pdf_text(), pdf_info()
+#   pdftools (Suggests) -- pdf_text(), pdf_info()
 #
 # Token management strategy:
-#   Stage 1 screen  — abstract text only (no API image call)
-#   Stage 2 characterize — abstract + methods + results as text
-#   Stage 3 extract — methods + results + appendix as page images
+#   Stage 1 screen  -- abstract text only (no API image call)
+#   Stage 2 characterize -- abstract + methods + results as text
+#   Stage 3 extract -- methods + results + appendix as page images
 #   This file handles stages 1 and 2. pdf_api.R handles stage 3.
 # ==============================================================================
 
@@ -194,7 +194,7 @@
   # ---- scan every line of every page for header matches ----------------------
   # page_labels: one entry per page, the section label detected on that page
   # (NA if no header found on that page, or the label of the LAST header found
-  # if multiple headers appear on one page — e.g. very short sections)
+  # if multiple headers appear on one page -- e.g. very short sections)
 
   page_section <- rep(NA_character_, n_pages)
 
@@ -204,7 +204,7 @@
       hit <- .match_header(ln, patterns, max_chars = max_header_chars)
       if (!is.na(hit)) {
         page_section[pg] <- hit
-        # Don't break — a page can introduce a new section part-way through,
+        # Don't break -- a page can introduce a new section part-way through,
         # and the last header on the page wins (forward-fill logic below will
         # propagate it).
       }
@@ -253,19 +253,19 @@
 #'
 #' Many PDFs retrieved from journal archives contain additional articles or
 #' back matter (volume indices, conference announcements, etc.) after the
-#' target paper ends. This helper identifies the boundary page — the first
-#' page that belongs to a different article — and returns the index of the
+#' target paper ends. This helper identifies the boundary page -- the first
+#' page that belongs to a different article -- and returns the index of the
 #' last page that should be kept.
 #'
 #' Two complementary triggers are tested in order:
 #'
-#' \strong{Trigger 1 — Journal citation header repeat:} A journal article
+#' \strong{Trigger 1 -- Journal citation header repeat:} A journal article
 #' typically begins with a short header line matching the pattern
 #' \code{volume(issue), year, pp. X-Y}. If this pattern appears on page 1
 #' and then reappears on a later page with a different page range, that page
 #' starts a new article.
 #'
-#' \strong{Trigger 2 — Banner line repeat:} The first three non-empty short
+#' \strong{Trigger 2 -- Banner line repeat:} The first three non-empty short
 #' lines on page 1 (likely the journal name and volume line) are collected.
 #' If any of them reappear verbatim on a later page, that page starts a new
 #' article. This catches cases where Trigger 1 does not match (e.g. older
@@ -276,7 +276,7 @@
 #' @param pages_text Character vector. One element per page, as from
 #'   \code{pdftools::pdf_text()}.
 #' @param min_boundary Integer. Minimum page index to consider as a boundary.
-#'   Default \code{10L} — prevents false positives on the first few pages
+#'   Default \code{10L} -- prevents false positives on the first few pages
 #'   where running headers may repeat journal metadata.
 #'
 #' @return Integer. Index of the last page to keep (1-based). Returns
@@ -292,7 +292,7 @@
   p1_lines <- p1_lines[nzchar(p1_lines)]
 
   # ------------------------------------------------------------------
-  # Trigger 1 — journal citation header: "vol(issue), year, pp. X-Y"
+  # Trigger 1 -- journal citation header: "vol(issue), year, pp. X-Y"
   # Matches patterns like: "92(3), 1993, pp. 101-167"
   # or: "Vol. 92, No. 3, 1993, pp. 101-167"
   # ------------------------------------------------------------------
@@ -324,7 +324,7 @@
   }
 
   # ------------------------------------------------------------------
-  # Trigger 2 — banner line repeat
+  # Trigger 2 -- banner line repeat
   # Collect the first 3 non-empty short lines from page 1 as candidates.
   # Short = under 90 chars (journal name / volume line, not prose).
   # ------------------------------------------------------------------
@@ -342,7 +342,7 @@
     }
   }
 
-  # No boundary detected — return all pages
+  # No boundary detected -- return all pages
   n
 }
 

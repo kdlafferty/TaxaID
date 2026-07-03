@@ -238,7 +238,7 @@ get_keys_from_context <- function(hierarchy_df) {
   if (is.na(expected_pos) || is.na(resolved_pos)) return(result)
   if (resolved_pos >= expected_pos - 1L) return(result)  # allow 1-level coarsening
 
-  # Rank jump is too large — attempt recovery via name_lookup()
+  # Rank jump is too large -- attempt recovery via name_lookup()
   recovered <- tryCatch({
     lookup <- rgbif::name_lookup(
       query = target_name,
@@ -282,4 +282,3 @@ get_keys_from_context <- function(hierarchy_df) {
 
   recovered
 }
-

@@ -292,7 +292,10 @@ download_gbif_occurrences <- function(
       zip_path <- NULL
     } else {
       message(sprintf(
-        "download_gbif_occurrences: reusing cached zip from %s (key %s).\n  Set overwrite = TRUE to force a fresh download.",
+        paste0(
+          "download_gbif_occurrences: reusing cached zip from %s (key %s).\n",
+          "  Set overwrite = TRUE to force a fresh download."
+        ),
         format(meta$timestamp, "%Y-%m-%d"), dl_key
       ))
     }
@@ -429,7 +432,10 @@ download_gbif_occurrences <- function(
         as.data.frame()
     } else if (nrow(raw) > limit) {
       warning(sprintf(
-        "download_gbif_occurrences: taxonKey column absent; truncating total rows to %d (was %d). Per-key limit could not be applied.",
+        paste0(
+          "download_gbif_occurrences: taxonKey column absent; truncating total ",
+          "rows to %d (was %d). Per-key limit could not be applied."
+        ),
         limit, nrow(raw)
       ), call. = FALSE)
       raw <- raw[seq_len(limit), , drop = FALSE]
@@ -441,7 +447,7 @@ download_gbif_occurrences <- function(
   }
 
   # --- Bibliographic citation -------------------------------------------------
-  # Construct the GBIF download portal URL directly from the key — avoids an
+  # Construct the GBIF download portal URL directly from the key -- avoids an
   # occ_download_meta() network call that can hang indefinitely with no timeout.
   # The DOI (10.15468/dl.XXXXXX) is registered asynchronously by GBIF and is
   # accessible via the portal URL below once the download record is published.
@@ -551,7 +557,9 @@ download_gbif_occurrences <- function(
       available <- names(data.table::fread(data_file, nrows = 0L,
                                            showProgress = FALSE))
       intersect(select_cols, available)
-    } else NULL
+    } else {
+      NULL
+    }
     as.data.frame(data.table::fread(
       data_file, sep = "\t", quote = "", fill = TRUE,
       encoding = "UTF-8", showProgress = FALSE,

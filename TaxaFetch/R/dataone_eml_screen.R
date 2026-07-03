@@ -1,6 +1,6 @@
 # ==============================================================================
 # dataone_eml_screen.R
-# TaxaExpect — EML pre-screening for DataONE / PASTA candidate datasets
+# TaxaExpect -- EML pre-screening for DataONE / PASTA candidate datasets
 #
 # Exported functions:
 #   screen_eml_columns()    Fetch EML for candidates; check bbox + column presence
@@ -25,11 +25,11 @@
 #' \code{\link{parse_geo_screening_response}}), fetches the EML metadata
 #' document and checks two things:
 #' \enumerate{
-#'   \item \strong{Bounding box overlap} — does the EML
+#'   \item \strong{Bounding box overlap} -- does the EML
 #'     \code{<boundingCoordinates>} overlap the query bbox? Datasets without
 #'     any bounding coordinates in their EML are retained (flagged
 #'     \code{"no_eml_bbox"}) rather than dropped.
-#'   \item \strong{Column presence} — do the EML \code{<attributeName>}
+#'   \item \strong{Column presence} -- do the EML \code{<attributeName>}
 #'     elements suggest the data file contains latitude, longitude, and a
 #'     species/taxon column?
 #' }
@@ -60,7 +60,7 @@
 #'     \item{has_eml_sites}{Logical. At least one EML point site was found in
 #'       \code{<geographicCoverage>} (bounding box where west==east and
 #'       north==south). Datasets with EML point sites pass coordinate screening
-#'       even when \code{has_lat} and \code{has_lon} are \code{FALSE} — Pass 5
+#'       even when \code{has_lat} and \code{has_lon} are \code{FALSE} -- Pass 5
 #'       of \code{\link{fetch_dataone_occurrences}} will inject the coordinates.}
 #'     \item{lat_col}{Character. Detected latitude column name, or \code{NA}.}
 #'     \item{lon_col}{Character. Detected longitude column name, or \code{NA}.}
@@ -91,7 +91,7 @@
 #'
 #' \strong{Bbox note:} Many EML documents lack \code{<boundingCoordinates>}
 #' even when the data are geographically specific. These are flagged
-#' \code{eml_bbox_ok = NA} and retained if column detection passes — the
+#' \code{eml_bbox_ok = NA} and retained if column detection passes -- the
 #' record-level filter in \code{\link{fetch_dataone_occurrences}} will handle
 #' the final spatial check.
 #'
@@ -210,7 +210,7 @@ screen_eml_columns <- function(ids,
   # ---- bounding coordinates --------------------------------------------------
   bboxes    <- .eml_bounding_boxes(xml_doc)
   eml_bbox_ok <- if (length(bboxes) == 0L) {
-    NA   # no bbox in EML — retain but flag
+    NA   # no bbox in EML -- retain but flag
   } else {
     any(vapply(bboxes, .bbox_overlaps_query, logical(1), query = query_bbox))
   }

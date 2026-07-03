@@ -12,7 +12,7 @@ define_search_polygon(lat, lon, radius_deg, tile = "Esri.OceanBasemap")
 \item{lon}{Numeric. Longitude of the centre point in decimal degrees (WGS 84).}
 
 \item{radius_deg}{Numeric. Half-width of the initial square in decimal
-degrees. For reference: 1 degree ≈ 111 km.}
+degrees. For reference: 1 degree ~= 111 km.}
 
 \item{tile}{Character. Leaflet tile provider name. Default
 \code{"Esri.OceanBasemap"}. Any string accepted by

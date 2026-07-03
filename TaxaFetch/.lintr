@@ -1,0 +1,26 @@
+linters: linters_with_defaults(
+    line_length_linter(120L),
+    indentation_linter = NULL
+  )
+encoding: "UTF-8"
+exclusions: list(
+    "R/dataone_preview.R" = list(commented_code_linter = c(42L, 43L, 44L, 45L, 46L, 47L, 48L, 50L, 51L, 52L, 53L, 56L, 59L, 60L, 61L, 63L, 66L, 68L)),
+    "R/pdf_text.R" = list(commented_code_linter = c(94L, 163L, 249L, 351L)),
+    "R/pdf_api.R" = list(commented_code_linter = c(35L, 129L)),
+    "R/dataone_geo_screening.R" = list(commented_code_linter = c(15L, 16L, 19L, 24L, 26L, 32L, 287L)),
+    "R/dataone_taxon_screening.R" = list(commented_code_linter = c(14L, 15L, 18L, 19L, 20L, 22L, 23L, 26L, 31L, 33L, 34L, 40L, 317L)),
+    "R/literature_search.R" = list(commented_code_linter = c(113L, 505L)),
+    "R/download_gbif_occurrences.R" = list(commented_code_linter = c(213L)),
+    "R/pdf_extract.R" = list(commented_code_linter = c(272L, 303L, 590L)),
+    "R/dataone_catalog.R" = list(commented_code_linter = c(14L)),
+    "R/dataone_eml_screen.R" = list(commented_code_linter = c(19L)),
+    "R/pdf_characterize.R" = list(commented_code_linter = c(90L, 164L, 200L, 320L, 431L, 499L, 595L, 671L)),
+    # object_usage_linter at line 217 (exclude_absent = exclude_absent, forwarded
+    # to download_gbif_occurrences()) is a false positive confirmed via
+    # codetools::checkUsage() on the loaded namespace -- clean there; lintr's
+    # per-file static analysis of lint_package() doesn't resolve the cross-file
+    # call the same way.
+    "R/get_gbif_occurrences.R" = list(commented_code_linter = c(293L),
+                                      object_usage_linter = c(217L)),
+    "R/dataone_standardize.R" = list(commented_code_linter = c(30L))
+  )

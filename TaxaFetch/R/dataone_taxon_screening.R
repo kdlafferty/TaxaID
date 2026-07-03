@@ -376,7 +376,10 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
     stop("parse_taxon_screening_response: 'raw_text' must be a length-1 character string.")
   }
   if (!inherits(taxon_prompt, "taxon_prompt")) {
-    stop("parse_taxon_screening_response: 'taxon_prompt' must be a taxon_prompt object from build_taxon_screen_prompt().")
+    stop(paste0(
+      "parse_taxon_screening_response: 'taxon_prompt' must be a taxon_prompt ",
+      "object from build_taxon_screen_prompt()."
+    ))
   }
 
   # ---- strip markdown fences and parse CSV -----------------------------------
@@ -543,7 +546,10 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
   n_no_response <- sum(result$taxon_source == "llm_no_response")
   if (n_no_response > 0L) {
     warning(sprintf(
-      "parse_taxon_screening_response: %d dataset(s) received no LLM decision (taxon_source = 'llm_no_response') -- treated as rejected.",
+      paste0(
+        "parse_taxon_screening_response: %d dataset(s) received no LLM decision ",
+        "(taxon_source = 'llm_no_response') -- treated as rejected."
+      ),
       n_no_response
     ), call. = FALSE)
   }

@@ -119,7 +119,7 @@ session-wide, or pass \code{provider} explicitly for a single call.
 }
 \examples{
 \dontrun{
-# Typical Stage 3 usage — page_map from Stage 2:
+# Typical Stage 3 usage -- page_map from Stage 2:
 pdf_content <- extract_pdf_text("Swift_et_al_1993.pdf")
 
 prompt <- build_pdf_extract_prompt(

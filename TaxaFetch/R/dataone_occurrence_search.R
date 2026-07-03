@@ -41,10 +41,10 @@
 # ==============================================================================
 
 
-.PASTA_SOLR <- "https://pasta.lternet.edu/package/search/eml"
-.PASTA_META <- "https://pasta.lternet.edu/package/metadata/eml"
+.pasta_solr_url <- "https://pasta.lternet.edu/package/search/eml"
+.pasta_meta_url <- "https://pasta.lternet.edu/package/metadata/eml"
 
-.DEFAULT_BIO_KEYWORDS <- c(
+.default_bio_keywords <- c(
   "species", "occurrence", "abundance", "population", "biodiversity",
   "community", "survey", "specimen", "observation", "monitoring",
   "fish", "invertebrate", "algae", "kelp", "bird", "marine", "benthic",
@@ -147,7 +147,7 @@ search_dataone <- function(bbox,
 
   # -- Build base request ----------------------------------------------------
   # q=*:* -- guaranteed not to 500; all filtering via fq or post-hoc in R.
-  req <- httr2::request(.PASTA_SOLR) |>
+  req <- httr2::request(.pasta_solr_url) |>
     httr2::req_url_query(
       defType = "edismax",
       q       = "*:*",
@@ -232,7 +232,7 @@ search_dataone <- function(bbox,
   }
 
   # -- Biological relevance scoring ------------------------------------------
-  docs <- .score_occurrence_relevance(docs, .DEFAULT_BIO_KEYWORDS,
+  docs <- .score_occurrence_relevance(docs, .default_bio_keywords,
                                       min_bio_score)
 
   # -- Bbox post-filter (R-side) ---------------------------------------------
@@ -426,7 +426,10 @@ fetch_dataone_eml <- function(dataset_id) {
     if (length(m) == 0L) return(NA_real_)
     as.numeric(sub(paste0("(?i)\\b", k, ":"), "", m, perl = TRUE))
   }
-  n <- .xkey("N"); s <- .xkey("S"); e <- .xkey("E"); w <- .xkey("W")
+  n <- .xkey("N")
+  s <- .xkey("S")
+  e <- .xkey("E")
+  w <- .xkey("W")
   if (!any(is.na(c(n, s, e, w))))
     return(list(north = n, south = s, east = e, west = w))
 
@@ -437,12 +440,18 @@ fetch_dataone_eml <- function(dataset_id) {
 
   # Format A/C: exactly 4 numbers, assumed NSEW
   if (length(nums) == 4L) {
-    n2 <- nums[1L]; s2 <- nums[2L]; e2 <- nums[3L]; w2 <- nums[4L]
+    n2 <- nums[1L]
+    s2 <- nums[2L]
+    e2 <- nums[3L]
+    w2 <- nums[4L]
     if (abs(n2) <= 90 && abs(s2) <= 90 && abs(e2) <= 180 && abs(w2) <= 180
         && n2 >= s2)
       return(list(north = n2, south = s2, east = e2, west = w2))
     # Try WESN order
-    w3 <- nums[1L]; e3 <- nums[2L]; s3 <- nums[3L]; n3 <- nums[4L]
+    w3 <- nums[1L]
+    e3 <- nums[2L]
+    s3 <- nums[3L]
+    n3 <- nums[4L]
     if (abs(n3) <= 90 && abs(s3) <= 90 && abs(e3) <= 180 && abs(w3) <= 180
         && n3 >= s3)
       return(list(north = n3, south = s3, east = e3, west = w3))
@@ -450,7 +459,8 @@ fetch_dataone_eml <- function(dataset_id) {
 
   # Format D: 8 numbers as 4 lat,lon corner pairs
   if (length(nums) == 8L) {
-    lats <- nums[c(1L, 3L, 5L, 7L)]; lons <- nums[c(2L, 4L, 6L, 8L)]
+    lats <- nums[c(1L, 3L, 5L, 7L)]
+    lons <- nums[c(2L, 4L, 6L, 8L)]
     if (all(abs(lats) <= 90) && all(abs(lons) <= 180))
       return(list(north = max(lats), south = min(lats),
                   east  = max(lons), west  = min(lons)))
@@ -510,5 +520,5 @@ fetch_dataone_eml <- function(dataset_id) {
   rev   <- parts[length(parts)]
   ident <- parts[length(parts) - 1L]
   scope <- paste(parts[seq_len(length(parts) - 2L)], collapse = ".")
-  paste(.PASTA_META, scope, ident, rev, sep = "/")
+  paste(.pasta_meta_url, scope, ident, rev, sep = "/")
 }
