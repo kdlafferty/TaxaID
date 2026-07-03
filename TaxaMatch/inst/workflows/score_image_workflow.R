@@ -148,7 +148,7 @@ if (DEBUG_MODE) {
     spottedskunk       = "Spilogale gracilis",
     stripedskunk       = "Mephitis mephitis",
     raccoon            = "Procyon lotor",
-    "ground squirrel"  = "Otospermophilus beecheyi",
+    "ground_squirrel"  = "Otospermophilus beecheyi",
     Opossum            = "Didelphis virginiana"
   )
 
