@@ -195,6 +195,28 @@ screen_spatial_formula <- function(data,
     c(list(data = data, formula = formula_full), tbm_args)
   )
 
+  # No Tier 1 model exists when zero species meet min_obs_threshold (every
+  # species falls to Tier 2/empirical) -- train_biodiversity_model() leaves
+  # $models$tier1 as NULL in that case by design (see its own Tier 2 fallback
+  # docs), but VarCorr()/AIC()/logLik() below all assume a fitted Tier 1
+  # model exists to screen. Nothing to screen or compare in that case --
+  # return the fitted model as-is, same "nothing to do" pattern already used
+  # above for formulas with no screenable spatial terms.
+  if (is.null(model_full$models$tier1)) {
+    message("screen_spatial_formula: 0 Tier 1 species (none met min_obs_threshold) ",
+            "-- nothing to VarCorr-screen or AIC-compare. Returning the fitted model ",
+            "as-is; all species fall back to Tier 2 or empirical means. Consider ",
+            "lowering min_obs_threshold if this is unexpected for your dataset.")
+    model_full$model_selection <- list(
+      aic_table           = NULL,
+      recommended_formula = model_full$meta$formula_tier1,
+      flagged_terms       = character(0),
+      sd_table            = data.frame(term = character(0), sd = numeric(0),
+                                       flagged = logical(0), stringsAsFactors = FALSE)
+    )
+    return(model_full)
+  }
+
   # ---------------------------------------------------------------------------
   # Step 2: VarCorr pre-screen
   # ---------------------------------------------------------------------------

@@ -3,7 +3,8 @@ utils::globalVariables(c(
   "theta_mean", "theta_sd", "n_obs", "model_tier", "effort_flag",
   "observed_in_habitat", "extrapolation_warning",
   "undetected_type", "jeffreys_fallback", "n_total_at_site",
-  "taxon_name", "source_taxon_name"
+  "taxon_name", "source_taxon_name",
+  "theta_mean_emp", "theta_sd_emp", "n_detections"
 ))
 
 #' Generate Full Prior Object for TaxaAssign
@@ -481,12 +482,75 @@ generate_full_priors <- function(model_obj,
   }
 
   # ---------------------------------------------------------------------------
+  # Helper: predict Tier 2 from empirical means (fallback when the Tier 2
+  # GLMM did not fit -- e.g. a fixed-effect factor with a single level in
+  # this training run). train_biodiversity_model() already documents this
+  # scenario ("Tier 2 species will fall back to empirical means", its own
+  # warning message) and computes $tier2_empirical for exactly this purpose,
+  # but until now nothing downstream actually consumed it: predict_tier()
+  # just returns NULL when model is NULL, so every Tier 2 species silently
+  # vanished from the prior table instead of falling back.
+  #
+  # NOT spatially resolved: $tier2_empirical holds one theta_mean_emp/
+  # theta_sd_emp per taxon_name x habitat (no grid_id), since there is no
+  # spatial model to interpolate from -- every site sharing a habitat gets
+  # the same empirical value. Only species x habitat combinations with at
+  # least one positive detection in training data are covered (same filter
+  # $tier2_empirical itself already applies); species with zero detections
+  # get no row here, same as before this fallback existed -- they fall
+  # through to generate_undetected_diversity()/join_priors()'s dark-diversity
+  # handling instead, which is the correct mechanism for them.
+  # ---------------------------------------------------------------------------
+  predict_tier_empirical <- function(taxon_name_vec, tier_label) {
+    emp <- model_obj$tier2_empirical
+    if (length(taxon_name_vec) == 0 || is.null(emp) || nrow(emp) == 0) return(NULL)
+
+    emp <- emp[emp[[taxon_col]] %in% taxon_name_vec, , drop = FALSE]
+    if (nrow(emp) == 0) return(NULL)
+
+    site_cols <- c("grid_id", habitat_col, "n_total_at_site")
+    sites_unique <- sites_scaled |>
+      dplyr::select(dplyr::any_of(site_cols)) |>
+      dplyr::distinct()
+
+    grid <- dplyr::inner_join(emp, sites_unique, by = habitat_col)
+    if (nrow(grid) == 0) return(NULL)
+
+    ab <- moment_match(grid$theta_mean_emp, grid$theta_sd_emp^2, theta_epsilon,
+                       max_phi = max_phi, min_phi = min_phi)
+
+    grid$alpha                 <- ab$alpha
+    grid$beta                  <- ab$beta
+    grid$jeffreys_fallback     <- ab$jeffreys_fallback
+    grid$model_tier            <- tier_label
+    # Empirical means carry no covariate-based extrapolation to flag.
+    grid$extrapolation_warning <- FALSE
+
+    if (has_n_total) {
+      grid$effort_flag <- grid$n_total_at_site < effort_thr
+      grid$n_obs       <- grid$n_total_at_site
+    } else {
+      grid$effort_flag <- NA
+      grid$n_obs       <- NA_integer_
+    }
+
+    grid |> dplyr::select(-theta_mean_emp, -theta_sd_emp, -n_detections)
+  }
+
+  # ---------------------------------------------------------------------------
   # Run predictions
   # ---------------------------------------------------------------------------
   t0_pred <- proc.time()[["elapsed"]]
   message("Generating priors...")
   result_t1 <- predict_tier(model_obj$models$tier1, taxa_tier1, "tier1")
   result_t2 <- predict_tier(model_obj$models$tier2, taxa_tier2, "tier2")
+
+  if (is.null(model_obj$models$tier2) && length(taxa_tier2) > 0) {
+    message("Tier 2 model is not fitted -- falling back to per-species empirical ",
+            "means ($tier2_empirical) instead of GLMM predictions for Tier 2 species.")
+    result_t2 <- predict_tier_empirical(taxa_tier2, "tier2")
+  }
+
   predictions <- dplyr::bind_rows(result_t1, result_t2)
   message(sprintf("Prior generation complete (%.1fs).",
                   proc.time()[["elapsed"]] - t0_pred))
