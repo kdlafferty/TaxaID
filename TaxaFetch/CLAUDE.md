@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/fetch_occurrences_workflow.R)
+# Last updated: 2026-07-03 (Session 129 — get_gbif_occurrences() added: unified entry point picking fetch_gbif_occurrences() vs download_gbif_occurrences() by key count, fixes the issue/issues column-name mismatch on the download path)
 
 ---
 
@@ -24,7 +24,8 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 | `define_search_polygon()` | Interactive Shiny gadget: user drags 4 corner markers on a leaflet map to define a custom polygon; Add Point inserts vertex at midpoint of longest side; Remove Last Point undoes last add (original 4 corners protected); Done returns WKT POLYGON string ready for `geometry` arg of `fetch_gbif_occurrences()` / `download_gbif_occurrences()`. Requires `shiny`, `miniUI`, `leaflet` (checked at runtime). Must be run in interactive R session. | Complete | R/define_search_polygon.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
 | `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. | Complete | R/fetch_gbif_occurrences.R |
-| `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility; (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). | Complete | R/download_gbif_occurrences.R |
+| `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility; (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` uses SIMPLE_CSV's own `issue` (singular) name — see `get_gbif_occurrences()` for the wrapper that renames it. | Complete | R/download_gbif_occurrences.R |
+| `get_gbif_occurrences()` | **Session 129 — recommended entry point**, not a replacement for the two functions above (neither is modified). Picks `fetch_gbif_occurrences()` vs `download_gbif_occurrences()` by `key_threshold` (default 50, matching both functions' own documented guidance and the manual dispatch pattern the Layer-1 tutorial already used) and standardizes both paths to one column contract. Fixes a real cross-path bug: `download_gbif_occurrences()`'s SIMPLE_CSV names the quality-issue column `issue` (singular); `filter_gbif_quality()` checks for `issues` (plural); renamed here so the issue-code filter works regardless of source. `rank_filter = "species"` (default) is a post-fetch filter only — neither GBIF API exposes a taxonomic-rank predicate to filter server-side. `columns = "standard"` (default) / `"all"` / custom vector. `familyKey`/`genusKey` are `NA` on the download path — SIMPLE_CSV doesn't carry them at all, not fixable by this wrapper. | Complete | R/get_gbif_occurrences.R |
 | `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement. | Complete | R/filter_gbif_quality.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
 | `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble | Complete | R/biotime_fetch.R |
@@ -96,8 +97,9 @@ harvest_dataone_catalog() → build_geo_prompt() → build_taxon_screen_prompt()
 make_bbox_wkt()              [scripted square bbox]
 define_search_polygon()      [interactive polygon gadget — interactive sessions only]
   ↓
-get_keys_from_context() → fetch_gbif_occurrences()        [≤~50 keys, no account]
-                        → download_gbif_occurrences()    [100s–1000s keys, account required]
+get_keys_from_context() → get_gbif_occurrences()           [Session 129: picks the path below by key count]
+                            ↳ fetch_gbif_occurrences()      [≤~50 keys, no account]
+                            ↳ download_gbif_occurrences()   [100s–1000s keys, account required]
                         → filter_gbif_quality()
 ```
 
@@ -303,14 +305,39 @@ Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
   (not hierarchical like `occ_data()`). Fix: `pred_or(pred_in("familyKey",...), pred_in("genusKey",...),
   pred_in("speciesKey",...), pred_in("taxonKey",...))`. Without this, family-level queries returned
   only family-rank-identified records (no species data).
-- SIMPLE_CSV format notes: `issue` (singular) column renamed to `issues` post-import; `familyKey`,
-  `genusKey` etc. are DWCA-only and absent from SIMPLE_CSV — hierarchy validation removed.
+- SIMPLE_CSV format notes: `familyKey`, `genusKey` etc. are DWCA-only and absent from SIMPLE_CSV —
+  hierarchy validation removed. **Correction (Session 129):** the `issue` (singular) → `issues`
+  rename described here was never actually implemented in this function — confirmed directly
+  against a real cached SIMPLE_CSV file, the column comes out named `issue`, not `issues`. Since
+  `filter_gbif_quality()` checks for `issues`, its issue-code filter silently no-ops on every
+  `download_gbif_occurrences()` result. This function itself is unchanged (per the "don't touch
+  either backend" design in Session 129); the rename is done in `get_gbif_occurrences()` instead —
+  call that, not this function directly, unless you have a specific reason not to.
 - `filter_gbif_quality()`: `require_species` parameter added (filter 7). Needed because GBIF returns
   all ranks within a queried family/genus, including genus-only records with no species value.
 - `data.table` added to DESCRIPTION Suggests; `quote=""` in fread suppresses spurious quoting
   warnings on GBIF TSV data.
 - User-facing messaging improved: cache directory printed at start; "still working" message after
   rgbif "succeeded" output (which misleadingly appears before import completes).
+
+**Session 129 (2026-07-03): get_gbif_occurrences() unified entry point**
+- `R/get_gbif_occurrences.R` added — formalizes the manual dispatch pattern the Layer-1
+  tutorial (below) already documented informally: picks `fetch_gbif_occurrences()` vs
+  `download_gbif_occurrences()` by `key_threshold` (default 50), standardizes both paths
+  to one column contract, fixes the `issue`/`issues` column-name mismatch on the download
+  path (see that function's own entry above for the correction), and defaults to
+  species-rank-only output (`rank_filter = "species"`, post-fetch only — neither GBIF API
+  has a rank predicate to filter server-side). Neither `fetch_gbif_occurrences()` nor
+  `download_gbif_occurrences()` is modified. Verified: live-tested the fetch path against
+  real GBIF; validated the download path's column-selection/rename logic against a real
+  cached SIMPLE_CSV file without a fresh download.
+- **Known pre-existing issue found while running a final test pass, NOT related to the
+  above:** `tests/testthat/test-build_iucn_scheme.R`, `test-llm_api_utils.R`, and
+  `test-parse_hierarchical_habitat_response.R` all test functions that moved to
+  TaxaHabitat/TaxaTools in the Session 28 package split and no longer exist in this
+  package — they've been failing since before any tracked git history. Excluding these 3
+  files, the suite is clean (396 expectations, 0 failures, 0 errors). Left in place
+  (deletion not done without explicit confirmation) — safe to delete once confirmed.
 
 **Session 123 (2026-07-01): Layer-1 workflow script**
 - `inst/workflows/fetch_occurrences_workflow.R` added — teaching-oriented, fully namespaced,

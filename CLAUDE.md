@@ -1,7 +1,7 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-02 (Session 128 — TaxaLikely::correct_training_bias() wired into the image/acoustic Layer-1 workflow and live-tested for the first time (mixed result, tau left at default); corrected this table's stale TaxaAssign status from "Planned" to "In development" — it has had 13 working functions and live-tested usage since at least Session 123)
+# Last updated: 2026-07-03 (Session 129 — real assign_scores() score-scale bug found and fixed; tau/score_sharpness resolved via calibration on 51 real photos (image: correction should not be applied, tau≈0 -- opposite of acoustic's tau≈1); TaxaExpect crash fixes for sparse real data; new TaxaFetch::get_gbif_occurrences() unified wrapper; first real TaxaAssign posterior run for the camera-trap species set. See each package's own CLAUDE.md Session 129 note and ecosystem_docs/REENTRY_PROMPT_session129_calibration_resolved.md for the full record.)
 
 ---
 

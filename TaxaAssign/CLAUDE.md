@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 123 — add_slash_taxon() gains consensus_OTU + primary_taxon columns)
+# Last updated: 2026-07-03 (Session 129 — camera_trap_posterior_workflow.R added: first real TaxaAssign run for the camera-trap image species set, real GBIF priors, calibrated-vs-old-default posterior comparison)
 
 ---
 
@@ -483,4 +483,27 @@ Sessions 29–77 archived in ecosystem_docs/session_notes/TaxaAssign_sessions.md
   These were comment-decoration characters that failed `R CMD check` CRAN portability check.
 - Peer-review pass (TaxaTools reviewer checklist): no TaxaAssign-specific function changes required.
 - Debris deleted: `dev/test_compute_posterior.R` (dev scaffold), `README.Rmd` (template source).
+
+**Session 129 (2026-07-03): camera_trap_posterior_workflow.R — first real TaxaAssign run for the camera-trap image species set**
+
+`inst/workflows/camera_trap_posterior_workflow.R` added — not new package code (every
+function it calls already exists and is exercised by the five-package Gadus/GBIF chain),
+but the first time TaxaAssign's actual posterior machinery ran on the real camera-trap
+mammal species (8 species, 52 photos) that TaxaMatch/TaxaLikely's image tutorial had
+stopped short of, per that tutorial's own header note that a full TaxaAssign run "would
+need real occurrence-based priors... a separate task."
+
+Builds real GBIF priors for all 8 species via TaxaHabitat's LLM habitat classification
+and TaxaExpect's biodiversity model (uncovered and fixed two real TaxaExpect bugs along
+the way — see that package's own Session 129 note), then runs `join_priors ->
+compute_posterior -> posterior_consensus -> add_slash_taxon` twice per run: once with
+`TaxaLikely::correct_training_bias()`/`assign_scores()`'s empirically calibrated
+parameters (`tau = 0`, `score_sharpness = 10` — see `TaxaLikely/CLAUDE.md`'s Session 129
+note for how these were derived), once with the old Session 127 theoretical defaults
+(`tau = 1`, `score_sharpness = 0.1`), so the calibration's real effect on the final
+posterior is directly visible rather than asserted. `consensus_calibrated` is the
+recommended result; `consensus_old_default` is kept only for comparison.
+
+Full TaxaAssign test suite: 516 expectations, 0 failures, 0 errors, unaffected by this
+new script (no R/ source changes in this package this session).
 

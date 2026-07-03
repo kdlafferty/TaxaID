@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/generate_priors_workflow.R)
+# Last updated: 2026-07-03 (Session 129 — screen_spatial_formula()/generate_full_priors() fixed to handle zero-Tier-1-species real data instead of crashing; non-ASCII em-dash in generate_undetected_diversity() fixed)
 
 ---
 
@@ -343,5 +343,34 @@ is a malformed filename in `tests/testthat/` — investigate and rename before r
   `recommended_formula` being a character string, not a formula object (needs `as.formula()`);
   and more. Full list in `ecosystem_docs/LAYER1_WORKFLOWS.md` — read that before touching this
   script again, several of these are exactly the kind of thing that would silently recur.
+
+**Session 129 (2026-07-03): screen_spatial_formula()/generate_full_priors() fixes for zero-Tier-1-species real data**
+
+Both surfaced running `TaxaAssign::camera_trap_posterior_workflow.R`'s real GBIF-prior
+pipeline on a small/sparse real dataset (all species below `min_obs_threshold`, so
+`train_biodiversity_model()` legitimately produces `models$tier1 = NULL` by design).
+
+- `screen_spatial_formula()` called `glmmTMB::VarCorr(model_full$models$tier1)`
+  unconditionally at its VarCorr pre-screen step, crashing (`no applicable method for
+  'VarCorr' applied to an object of class 'NULL'`) whenever this happened. Fixed with an
+  early-return guard — same "nothing to screen, return the fitted model as-is" pattern
+  the function already used for formulas with no screenable spatial terms.
+- `generate_full_priors()` then failed downstream with "no predictions generated": when
+  `models$tier2` is also `NULL` (Tier 2 GLMM failed to fit, e.g. a single-level habitat
+  factor), `predict_tier()` returns `NULL` for every candidate, even though
+  `train_biodiversity_model()`'s own docs promise "Tier 2 species will fall back to
+  empirical means" — nothing downstream ever consumed `$tier2_empirical` to actually do
+  that. Added `predict_tier_empirical()`, using the same moment-matching helper the GLMM
+  path already uses; wired in as the fallback specifically when `models$tier2` is `NULL`.
+  Not spatially resolved (no GLMM to interpolate from), and only covers species x habitat
+  combinations with at least one positive training detection — species with zero
+  detections still correctly fall through to `generate_undetected_diversity()`'s
+  dark-diversity handling, unchanged.
+
+Both verified against synthetic reproductions of the exact failure conditions, and
+against the full TaxaExpect test suite (386 expectations, 0 failures, both before and
+after). Separately, `devtools::check()` found a pre-existing non-ASCII em-dash in
+`generate_undetected_diversity()`'s warning text (unrelated to the above, same fix
+pattern as TaxaAssign's Session 122 ASCII cleanup) — fixed, `check()` now 0/0/0.
 
 Sessions 28, 29, 62, 73 archived in ecosystem_docs/session_notes/TaxaExpect_sessions.md.

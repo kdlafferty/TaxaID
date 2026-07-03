@@ -1,6 +1,6 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 126 — Layer-1 workflow script added for sequence/BLAST data type (blast_sequences_workflow.R), live-tested, 0 errors)
+# Last updated: 2026-07-03 (Session 129 — score_image_workflow.R expanded to 8 species/52 photos (per-species subfolders) with a taxonomic-scope filter for off-scope CV candidates; known non-portable-filename R CMD check warning from the new photo names, not yet fixed)
 
 ---
 
@@ -146,7 +146,7 @@ likelihood output downstream — it is NOT part of the match object.
 |---|---|
 | `inst/workflow_standardize.R` | Original: load match data, standardize, filter redundant |
 | `inst/workflow_fastq_to_match.R` | FASTQ-to-match pipeline: DADA2 output, filter, BLAST, standardize |
-| `inst/workflows/score_image_workflow.R` | Layer-1 (Session 124): live `score_image_inat()` call on bundled real camera-trap photos (`inst/extdata/example_images/camera_trap_photos/`) → `fill_higher_ranks()` → checkpoint for TaxaLikely |
+| `inst/workflows/score_image_workflow.R` | Layer-1 (Session 124): live `score_image_inat()` call on bundled real camera-trap photos (`inst/extdata/example_images/camera_trap_photos/`) → `fill_higher_ranks()` → checkpoint for TaxaLikely. **Expanded Session 129**: 6 photos/5 species → 52 photos/8 species, organized into per-species subfolders (`recursive = TRUE`; `folder_1` drives ground truth via `FOLDER_TO_SPECIES`, since filenames are camera-generated sequence numbers, not species names). Added a `TARGET_ICONIC_TAXA = "Mammalia"` post-scoring filter — iNaturalist returns off-scope candidates (two plants, one bird, confirmed on this exact photo set) that a mammal-only study can never actually assign to; filtering before `unreferenced_candidates()`/`assign_scores()` lets real candidates absorb that probability mass instead. `top_n` raised 5→8 as a safety margin. |
 | `inst/workflows/score_acoustic_workflow.R` | Layer-1 (Session 124): `read_birdnet_output()` on real BirdNET-Analyzer CSVs (produced by `sources/birdnet_csv_export.py`, a companion Python script outside this package) → `create_taxon_names()` + `fill_higher_ranks()` → checkpoint for TaxaLikely |
 | `inst/workflows/blast_sequences_workflow.R` | Layer-1 (Session 126): live remote `blast_sequences()` call on 5 real PtConception 12S MiFish sequences (same accessions as Session 115's field test, fetched live by accession from NCBI) → `standardize_match_data()` (with `coverage_col = "query_coverage"`) → checkpoint for TaxaLikely's sequence Layer-1 script |
 
@@ -252,6 +252,42 @@ inside `filter_redundant_hypotheses()` via `match()`.
 ---
 
 ## Session Notes
+
+**Session 129 (2026-07-03): score_image_workflow.R expanded to 8 species/52 photos; taxonomic-scope filter added**
+
+Expanded from the original 6-photo/5-species diversity-only set (Session 124) to get
+enough replicate photos per species to move past a small-n result on whether
+`TaxaLikely::correct_training_bias()` should be enabled by default for the image
+pathway — see `TaxaLikely/CLAUDE.md`'s Session 129 note for the calibration finding this
+made possible (short answer: `tau ≈ 0`, correction should not be applied here).
+
+- 3 new species added, all real photos of the user's own: Raccoon (*Procyon lotor*,
+  Procyonidae), California Ground Squirrel (*Otospermophilus beecheyi*, Sciuridae),
+  Virginia Opossum (*Didelphis virginiana*, Didelphidae) — 7 families total now.
+- Photos reorganized from a flat file list into per-species subfolders (folder name =
+  common name). `score_image_inat()` already supported `recursive = TRUE` and its own
+  `folder_1` path-metadata column — used directly rather than hand-rolling file discovery
+  or a per-filename ground-truth lookup, which would no longer have worked once filenames
+  became camera-generated sequence numbers instead of descriptive names.
+- **Real off-scope candidates found and filtered:** running the expanded set surfaced
+  that iNaturalist's CV model returns candidates from any iconic taxon, not just mammals
+  — *Baccharis pilularis* ("coyote brush", a plant) and *Acacia longifolia* both appeared
+  for coyote.JPG, and a screech owl (*Megascops kennicottii* — the same taxon originally
+  flagged as a `correct_training_bias()` flip in Session 128) appeared for rabbit.JPG.
+  Added `TARGET_ICONIC_TAXA = "Mammalia"`, filtered right after scoring and before
+  `unreferenced_candidates()`/`assign_scores()` ever see the candidates — this changes
+  the actual likelihood math (removes competing probability mass), not just a post-hoc
+  annotation. `top_n` raised 5→8 as a safety margin since filtering can remove some of
+  each photo's candidate slate; a guard warns (does not silently drop) if any photo loses
+  every candidate to the filter.
+
+**Not done — known issue for next session:** the newly added photo filenames contain
+spaces (`"01150531 copy.JPG"`) and the `"ground squirrel"` folder name does too, both
+triggering `R CMD check`'s non-portable-filenames WARNING — the exact same issue class
+already fixed once in this file's history (Session 124's `"camera trap photos"` →
+`"camera_trap_photos"` rename), now recurring. Needs a rename across ~30 files plus a
+matching key update to `FOLDER_TO_SPECIES` in `score_image_workflow.R`; not done this
+session since it touches many tracked files.
 
 **Session 126 (2026-07-01): Layer-1 workflow script for sequence/BLAST data type**
 
