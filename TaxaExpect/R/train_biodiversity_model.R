@@ -141,8 +141,12 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #'   Details for recommended defaults.
 #' @param taxon_col Character. Name of the species identifier column.
 #'   Default \code{"taxon_name"}.
-#' @param habitat_col Character. Name of the habitat column.
-#'   Default \code{"main_habitat"}.
+#' @param habitat_col Character or \code{NULL}. Name of the habitat column.
+#'   Default \code{"main_habitat"}. Set to \code{NULL} when no habitat
+#'   classification is available -- Tier 1 and Tier 2 are then both fitted
+#'   with no habitat term at all, rather than a hardcoded single-level
+#'   habitat factor (which fails to fit; see Details). \code{data} must match:
+#'   pass the output of \code{prepare_model_dataframe(habitat_col = NULL)}.
 #' @param response Character. \code{"theta"} fits the proportion model
 #'   (default). \code{"psi"} fits a presence-absence model.
 #' @param min_obs_threshold Integer. Minimum positive detections across all
@@ -227,6 +231,19 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #'
 #' **Tier 2 formula (automatic, not user-specified):**
 #' \preformatted{cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name)}
+#' When \code{habitat_col = NULL}, the habitat term is omitted entirely:
+#' \preformatted{cbind(n_species, n_other) ~ (1 | taxon_name)}
+#'
+#' **No habitat (habitat_col = NULL):** the two-path design is: if you have a
+#' habitat column, generate real habitat classifications (via
+#' \code{TaxaHabitat}) and supply it here so habitat enters both Tier 1 and
+#' Tier 2 as a real predictor; if you don't, pass \code{NULL} and skip
+#' habitat entirely. Faking a single constant habitat value instead of
+#' passing \code{NULL} previously broke Tier 2 fitting outright -- a real
+#' bug found 2026-07-03 ("contrasts can be applied only to factors with 2 or
+#' more levels") while testing a single-observation prior pipeline that
+#' skipped \code{TaxaHabitat} to save cost. \code{habitat_col = NULL} is the
+#' correct way to opt out, not a single-level placeholder.
 #'
 #' **Convergence:** A non-positive-definite Hessian warning from glmmTMB
 #' indicates unreliable uncertainty estimates. Warnings are captured in
@@ -291,7 +308,8 @@ train_biodiversity_model <- function(data,
                                      min_positive_rows = 50L,
                                      full_data         = NULL) {
 
-  response <- match.arg(response)
+  response   <- match.arg(response)
+  no_habitat <- is.null(habitat_col)
 
   if (!requireNamespace("glmmTMB", quietly = TRUE)) {
     stop("train_biodiversity_model: package 'glmmTMB' is required. ",
@@ -318,6 +336,17 @@ train_biodiversity_model <- function(data,
   if (!grepl("cbind", lhs) && response == "theta") {
     stop("train_biodiversity_model: formula LHS must be cbind(n_species, n_other) ",
          "for response = 'theta'.")
+  }
+
+  # habitat_col = NULL but formula still references a habitat diag() term:
+  # catch this before the generic "column not found in data" check below so
+  # the error names the actual mistake (NULL habitat_col), not just a missing
+  # column.
+  if (no_habitat &&
+      grepl("diag\\(", deparse(formula, width.cutoff = 500))) {
+    stop("train_biodiversity_model: formula contains a diag(<habitat> | ",
+         taxon_col, ") term but habitat_col = NULL was supplied. Either ",
+         "pass a real habitat_col, or remove the diag() term from formula.")
   }
 
   # Check formula variables exist in data, excluding interaction terms
@@ -404,7 +433,7 @@ train_biodiversity_model <- function(data,
   # Species tier assignment
   # ---------------------------------------------------------------------------
   taxon_sym   <- rlang::sym(taxon_col)
-  habitat_sym <- rlang::sym(habitat_col)
+  habitat_sym <- if (no_habitat) NULL else rlang::sym(habitat_col)
 
   species_detections <- df |>
     dplyr::group_by(!!taxon_sym) |>
@@ -426,21 +455,38 @@ train_biodiversity_model <- function(data,
   ))
 
   # ---------------------------------------------------------------------------
-  # Tier 2 formula (always intercept-only, habitat fixed effect retained)
+  # Tier 2 formula (always intercept-only; habitat fixed effect retained ONLY
+  # when habitat_col is supplied -- a hardcoded habitat term here previously
+  # broke Tier 2 fitting outright whenever the data had a single habitat level
+  # (a real bug found 2026-07-03: "contrasts can be applied only to factors
+  # with 2 or more levels"), which is exactly what happens if a caller fakes
+  # a constant habitat value instead of genuinely opting out. habitat_col
+  # = NULL is the correct way to opt out; see prepare_model_dataframe()'s
+  # matching @details note.
   # ---------------------------------------------------------------------------
-  lhs_str       <- if (response == "psi") "is_present" else "cbind(n_species, n_other)"
-  formula_tier2 <- stats::as.formula(
-    paste0(lhs_str, " ~ ", habitat_col, " + (1 | ", taxon_col, ")")
-  )
+  lhs_str   <- if (response == "psi") "is_present" else "cbind(n_species, n_other)"
+  tier2_rhs <- if (no_habitat) {
+    paste0("(1 | ", taxon_col, ")")
+  } else {
+    paste0(habitat_col, " + (1 | ", taxon_col, ")")
+  }
+  formula_tier2 <- stats::as.formula(paste0(lhs_str, " ~ ", tier2_rhs))
 
   # ---------------------------------------------------------------------------
   # N_total: sum of community counts across unique effort-passing site x
   # habitat cells (not species x site rows, which repeat n_total_at_site)
   # ---------------------------------------------------------------------------
-  N_total <- df |>
-    dplyr::distinct(grid_id, !!habitat_sym, n_total_at_site) |>
-    dplyr::pull(n_total_at_site) |>
-    sum()
+  N_total <- if (no_habitat) {
+    df |>
+      dplyr::distinct(grid_id, n_total_at_site) |>
+      dplyr::pull(n_total_at_site) |>
+      sum()
+  } else {
+    df |>
+      dplyr::distinct(grid_id, !!habitat_sym, n_total_at_site) |>
+      dplyr::pull(n_total_at_site) |>
+      sum()
+  }
 
   # ---------------------------------------------------------------------------
   # Identify singletons for generate_undetected_diversity()
@@ -462,7 +508,25 @@ train_biodiversity_model <- function(data,
     dplyr::filter(total_detections == 1) |>
     dplyr::pull(!!rlang::sym(taxon_col))
 
-  if (is_raw) {
+  if (is_raw && no_habitat) {
+    site_totals_for_singletons <- df |>
+      dplyr::distinct(grid_id, n_total_at_site)
+
+    singletons <- singleton_src |>
+      dplyr::filter((!!rlang::sym(taxon_col)) %in% singleton_names) |>
+      dplyr::group_by(!!rlang::sym(taxon_col), grid_id) |>
+      dplyr::summarise(n_species = dplyr::n(), .groups = "drop") |>
+      dplyr::left_join(site_totals_for_singletons, by = "grid_id") |>
+      dplyr::mutate(
+        theta_obs = dplyr::if_else(
+          !is.na(n_total_at_site), n_species / n_total_at_site, NA_real_
+        )
+      ) |>
+      dplyr::left_join(
+        dplyr::rename(species_totals, !!taxon_col := !!rlang::sym(taxon_col)),
+        by = taxon_col
+      )
+  } else if (is_raw) {
     site_totals_for_singletons <- df |>
       dplyr::distinct(grid_id, !!habitat_sym, n_total_at_site)
 
@@ -477,6 +541,21 @@ train_biodiversity_model <- function(data,
         theta_obs = dplyr::if_else(
           !is.na(n_total_at_site), n_species / n_total_at_site, NA_real_
         )
+      ) |>
+      dplyr::left_join(
+        dplyr::rename(species_totals, !!taxon_col := !!rlang::sym(taxon_col)),
+        by = taxon_col
+      )
+  } else if (no_habitat) {
+    singletons <- singleton_src |>
+      dplyr::filter(
+        (!!rlang::sym(taxon_col)) %in% singleton_names,
+        n_species > 0
+      ) |>
+      dplyr::mutate(theta_obs = n_species / n_total_at_site) |>
+      dplyr::select(
+        dplyr::all_of(c(taxon_col, "grid_id",
+                        "n_species", "n_total_at_site", "theta_obs"))
       ) |>
       dplyr::left_join(
         dplyr::rename(species_totals, !!taxon_col := !!rlang::sym(taxon_col)),
@@ -511,8 +590,13 @@ train_biodiversity_model <- function(data,
     dplyr::filter(
       (!!taxon_sym) %in% taxa_tier2,
       n_species > 0
-    ) |>
-    dplyr::group_by(!!taxon_sym, !!habitat_sym) |>
+    )
+  tier2_empirical <- if (no_habitat) {
+    dplyr::group_by(tier2_empirical, !!taxon_sym)
+  } else {
+    dplyr::group_by(tier2_empirical, !!taxon_sym, !!habitat_sym)
+  }
+  tier2_empirical <- tier2_empirical |>
     dplyr::summarise(
       theta_mean_emp = mean(n_species / n_total_at_site, na.rm = TRUE),
       theta_sd_emp   = sd(n_species / n_total_at_site,   na.rm = TRUE),
@@ -533,6 +617,8 @@ train_biodiversity_model <- function(data,
   hab_screen    <- NULL
   formula_final <- formula_tier1   # default if no diag() term in formula
 
+  # (no_habitat + diag() term is already rejected earlier, right after
+  # formula validation, with a more specific error than this point could give)
   has_diag_term <- grepl("diag\\(", deparse(formula_tier1, width.cutoff = 500))
 
   if (has_diag_term && length(taxa_tier1) > 0) {

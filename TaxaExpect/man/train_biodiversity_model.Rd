@@ -31,8 +31,12 @@ Details for recommended defaults.}
 \item{taxon_col}{Character. Name of the species identifier column.
 Default \code{"taxon_name"}.}
 
-\item{habitat_col}{Character. Name of the habitat column.
-Default \code{"main_habitat"}.}
+\item{habitat_col}{Character or \code{NULL}. Name of the habitat column.
+Default \code{"main_habitat"}. Set to \code{NULL} when no habitat
+classification is available -- Tier 1 and Tier 2 are then both fitted
+with no habitat term at all, rather than a hardcoded single-level
+habitat factor (which fails to fit; see Details). \code{data} must match:
+pass the output of \code{prepare_model_dataframe(habitat_col = NULL)}.}
 
 \item{response}{Character. \code{"theta"} fits the proportion model
 (default). \code{"psi"} fits a presence-absence model.}
@@ -143,6 +147,19 @@ local update steps previously required.
 
 \strong{Tier 2 formula (automatic, not user-specified):}
 \preformatted{cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name)}
+When \code{habitat_col = NULL}, the habitat term is omitted entirely:
+\preformatted{cbind(n_species, n_other) ~ (1 | taxon_name)}
+
+\strong{No habitat (habitat_col = NULL):} the two-path design is: if you have a
+habitat column, generate real habitat classifications (via
+\code{TaxaHabitat}) and supply it here so habitat enters both Tier 1 and
+Tier 2 as a real predictor; if you don't, pass \code{NULL} and skip
+habitat entirely. Faking a single constant habitat value instead of
+passing \code{NULL} previously broke Tier 2 fitting outright -- a real
+bug found 2026-07-03 ("contrasts can be applied only to factors with 2 or
+more levels") while testing a single-observation prior pipeline that
+skipped \code{TaxaHabitat} to save cost. \code{habitat_col = NULL} is the
+correct way to opt out, not a single-level placeholder.
 
 \strong{Convergence:} A non-positive-definite Hessian warning from glmmTMB
 indicates unreliable uncertainty estimates. Warnings are captured in

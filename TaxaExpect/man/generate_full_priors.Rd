@@ -16,8 +16,12 @@ generate_full_priors(
 \item{model_obj}{A biofreq_model object from train_biodiversity_model().}
 
 \item{new_sites}{A data frame of prediction sites. Must contain grid_id,
-lat_r, lon_r, and the habitat column. Typically a subset of the output
-from create_sites_from_grid(). Does NOT need taxon_name or count columns.
+lat_r, lon_r, and the habitat column -- unless \code{model_obj} was
+trained with \code{habitat_col = NULL} (see
+\code{\link{train_biodiversity_model}}), in which case no habitat
+column is required or used, and the output has no habitat column
+either. Typically a subset of the output from create_sites_from_grid().
+Does NOT need taxon_name or count columns.
 If n_total_at_site is present, it is used for effort_flag; if absent,
 effort_flag is NA for all rows.}
 
@@ -34,14 +38,23 @@ more informative priors than undetected-diversity fallbacks. Default
 \code{generate_undetected_diversity()}.}
 
 \item{theta_epsilon}{Numeric. Floor/ceiling applied to back-transformed
-theta before alpha/beta conversion, to avoid boundary values.
-Default \code{1e-6}. When \code{undetected} is supplied and contains
-\code{"singleton_mirror"} rows, the floor is automatically raised to the
-mean singleton-mirror detection rate if that value exceeds
-\code{theta_epsilon}. This ensures Tier 2 species (sparse but detected)
-always receive priors above the dark-diversity floor computed in
-\code{TaxaAssign::join_priors()}, preventing conflation with species that
-have never been detected in the system.}
+theta before alpha/beta conversion, to avoid boundary values. Applied to
+\strong{Tier 1} predictions as supplied (default \code{1e-6}), preserving
+real differentiation among low-but-genuine probabilities.
+
+For \strong{Tier 2} only, a separate, higher floor is derived
+automatically when \code{undetected} is supplied and contains
+\code{"singleton_mirror"} rows: the floor is raised to the mean
+singleton-mirror detection rate if that exceeds \code{theta_epsilon}.
+This ensures Tier 2 species (sparse but detected) always receive priors
+above the dark-diversity floor computed in \code{TaxaAssign::join_priors()},
+preventing conflation with species that have never been detected in the
+system. \strong{This raised floor is Tier-2-only} -- a real bug found
+2026-07-03 applied it globally, silently flattening every Tier 1 species
+whose real predicted probability fell below the floor to the same
+identical value (invisible with a handful of well-separated candidates,
+but visibly wrong with a broader, more realistic candidate pool where
+many species legitimately have low individual probabilities).}
 }
 \value{
 A tibble with one row per taxon_name x site x habitat combination
@@ -49,7 +62,8 @@ A tibble with one row per taxon_name x site x habitat combination
 \describe{
 \item{taxon_name}{taxon_name identifier (NA for undetected proxies).}
 \item{grid_id}{Site identifier.}
-\item{habitat}{Habitat identifier.}
+\item{habitat}{Habitat identifier. Column absent entirely when
+\code{model_obj} was trained with \code{habitat_col = NULL}.}
 \item{alpha}{Alpha parameter of Beta(alpha, beta) prior.}
 \item{beta}{Beta parameter of Beta(alpha, beta) prior.}
 \item{theta_mean}{Derived: alpha / (alpha + beta).}

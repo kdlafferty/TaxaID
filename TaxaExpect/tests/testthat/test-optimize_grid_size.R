@@ -482,3 +482,56 @@ test_that(".score_one_resolution: grid_size column equals the res argument", {
   )
   expect_equal(out$grid_size, 0.5)
 })
+
+# =============================================================================
+# habitat_col = NULL (no-habitat path)
+# =============================================================================
+
+test_that("habitat_col = NULL runs without a habitat column and returns a valid grid", {
+  df <- .make_dense_obs()
+  df$main_habitat <- NULL
+  out <- optimize_grid_size(
+    df, n_covariates = 2, habitat_col = NULL,
+    min_s_threshold      = .loose$min_s_threshold,
+    min_N_threshold      = .loose$min_N_threshold,
+    min_distinct_locs    = 3L,
+    min_grid             = .loose$min_grid,
+    max_grid             = .loose$max_grid,
+    step_grid            = .loose$step_grid
+  )
+  expect_true(is.numeric(out$best_grid))
+  expect_false(is.na(out$best_grid))
+})
+
+test_that("habitat_col = NULL + protected_habitat errors clearly", {
+  df <- .make_dense_obs()
+  df$main_habitat <- NULL
+  expect_error(
+    optimize_grid_size(df, n_covariates = 2, habitat_col = NULL,
+                       protected_habitat = "Kelp_Forest"),
+    regexp = "habitat_col = NULL"
+  )
+})
+
+test_that("habitat_col = NULL gives the same n_distinct_locs as a single real habitat category", {
+  # A dataset with genuinely only one habitat category should score
+  # identically whether that column is supplied (as a single-level factor,
+  # for descriptive grouping/counting only -- no model is fit here) or
+  # omitted via habitat_col = NULL.
+  df_one_hab <- .make_dense_obs()
+  df_one_hab$main_habitat <- "Only_Habitat"
+  df_no_hab <- df_one_hab
+  df_no_hab$main_habitat <- NULL
+
+  common_args <- list(
+    n_covariates = 2, min_distinct_locs = 3L,
+    min_s_threshold = .loose$min_s_threshold,
+    min_N_threshold = .loose$min_N_threshold,
+    min_grid = .loose$min_grid, max_grid = .loose$max_grid,
+    step_grid = .loose$step_grid
+  )
+  out_with <- do.call(optimize_grid_size, c(list(observation_data = df_one_hab), common_args))
+  out_null <- do.call(optimize_grid_size, c(list(observation_data = df_no_hab, habitat_col = NULL), common_args))
+
+  expect_equal(out_with$best_grid, out_null$best_grid)
+})

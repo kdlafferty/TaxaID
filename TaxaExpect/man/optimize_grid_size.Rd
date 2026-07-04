@@ -37,7 +37,7 @@ for the final model. Used to calculate sample-size targets (10x and
 dropped, even if it fails the \code{min_locs_per_habitat} threshold.
 Useful when one habitat is ecologically important but sparse in GBIF
 data. \code{NULL} (default) applies the rarity threshold to all
-habitats equally.}
+habitats equally. Must be \code{NULL} when \code{habitat_col = NULL}.}
 
 \item{min_s_threshold}{Integer. Minimum number of distinct species
 per grid cell for inclusion in analysis. Cells with fewer species lack
@@ -79,8 +79,14 @@ computation time. Default 0.05.}
 \item{species_col}{Character. Name of the species identifier column.
 Default \code{"taxon_name"}.}
 
-\item{habitat_col}{Character. Name of the habitat column. Default
-\code{"main_habitat"}.}
+\item{habitat_col}{Character or \code{NULL}. Name of the habitat column.
+Default \code{"main_habitat"}. Set to \code{NULL} when no habitat
+classification is available -- resolutions are then scored purely on
+overall location count, with no per-habitat stratification
+(\code{min_locs_per_habitat} becomes redundant with
+\code{min_distinct_locs} in that case, not contradictory). Pass the same
+\code{habitat_col} value used in \code{\link{prepare_model_dataframe}}
+and \code{\link{train_biodiversity_model}} for a consistent pipeline.}
 
 \item{weights}{Named numeric vector of length 3. Composite score weights
 for the three optimization criteria. \code{resolution} rewards smaller
@@ -151,6 +157,18 @@ cells dominate.
 When only one resolution passes all thresholds, normalisation is
 undefined (max == min); scores default to 0 and the single candidate
 is returned as the winner.
+
+\strong{No habitat (habitat_col = NULL):} matches the same opt-out
+convention as \code{\link{prepare_model_dataframe}} and
+\code{\link{train_biodiversity_model}} -- if you have a habitat
+classification, supply it here too so grid-size scoring accounts for
+per-habitat sample sufficiency; if you don't, pass \code{NULL} rather than
+a placeholder constant. A placeholder constant happens to be harmless
+here (this function only groups/counts, unlike
+\code{train_biodiversity_model()}'s GLMM fit, which needs a real
+\code{habitat_col = NULL} to avoid a single-level-factor crash), but using
+\code{NULL} consistently across all three functions avoids having two
+different "no habitat" conventions in one pipeline.
 
 \strong{Sample-size targets:} The 10x and 15x rules of thumb apply to
 the number of site-habitat cells (rows in the model dataframe after

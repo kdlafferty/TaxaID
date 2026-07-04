@@ -25,8 +25,12 @@ utils::globalVariables(c(
 #'
 #' @param model_obj A biofreq_model object from train_biodiversity_model().
 #' @param new_sites A data frame of prediction sites. Must contain grid_id,
-#'   lat_r, lon_r, and the habitat column. Typically a subset of the output
-#'   from create_sites_from_grid(). Does NOT need taxon_name or count columns.
+#'   lat_r, lon_r, and the habitat column -- unless \code{model_obj} was
+#'   trained with \code{habitat_col = NULL} (see
+#'   \code{\link{train_biodiversity_model}}), in which case no habitat
+#'   column is required or used, and the output has no habitat column
+#'   either. Typically a subset of the output from create_sites_from_grid().
+#'   Does NOT need taxon_name or count columns.
 #'   If n_total_at_site is present, it is used for effort_flag; if absent,
 #'   effort_flag is NA for all rows.
 #' @param undetected A tibble from generate_undetected_diversity(), or NULL
@@ -40,21 +44,31 @@ utils::globalVariables(c(
 #'   \code{2}, matching the singleton effective sample size in
 #'   \code{generate_undetected_diversity()}.
 #' @param theta_epsilon Numeric. Floor/ceiling applied to back-transformed
-#'   theta before alpha/beta conversion, to avoid boundary values.
-#'   Default \code{1e-6}. When \code{undetected} is supplied and contains
-#'   \code{"singleton_mirror"} rows, the floor is automatically raised to the
-#'   mean singleton-mirror detection rate if that value exceeds
-#'   \code{theta_epsilon}. This ensures Tier 2 species (sparse but detected)
-#'   always receive priors above the dark-diversity floor computed in
-#'   \code{TaxaAssign::join_priors()}, preventing conflation with species that
-#'   have never been detected in the system.
+#'   theta before alpha/beta conversion, to avoid boundary values. Applied to
+#'   \strong{Tier 1} predictions as supplied (default \code{1e-6}), preserving
+#'   real differentiation among low-but-genuine probabilities.
+#'
+#'   For \strong{Tier 2} only, a separate, higher floor is derived
+#'   automatically when \code{undetected} is supplied and contains
+#'   \code{"singleton_mirror"} rows: the floor is raised to the mean
+#'   singleton-mirror detection rate if that exceeds \code{theta_epsilon}.
+#'   This ensures Tier 2 species (sparse but detected) always receive priors
+#'   above the dark-diversity floor computed in \code{TaxaAssign::join_priors()},
+#'   preventing conflation with species that have never been detected in the
+#'   system. \strong{This raised floor is Tier-2-only} -- a real bug found
+#'   2026-07-03 applied it globally, silently flattening every Tier 1 species
+#'   whose real predicted probability fell below the floor to the same
+#'   identical value (invisible with a handful of well-separated candidates,
+#'   but visibly wrong with a broader, more realistic candidate pool where
+#'   many species legitimately have low individual probabilities).
 #'
 #' @return A tibble with one row per taxon_name x site x habitat combination
 #'   (plus undetected rows if provided), containing:
 #'   \describe{
 #'     \item{taxon_name}{taxon_name identifier (NA for undetected proxies).}
 #'     \item{grid_id}{Site identifier.}
-#'     \item{habitat}{Habitat identifier.}
+#'     \item{habitat}{Habitat identifier. Column absent entirely when
+#'       \code{model_obj} was trained with \code{habitat_col = NULL}.}
 #'     \item{alpha}{Alpha parameter of Beta(alpha, beta) prior.}
 #'     \item{beta}{Beta parameter of Beta(alpha, beta) prior.}
 #'     \item{theta_mean}{Derived: alpha / (alpha + beta).}
@@ -182,20 +196,32 @@ generate_full_priors <- function(model_obj,
   }
 
   has_n_total  <- "n_total_at_site" %in% names(new_sites)
-  habitat_sym  <- rlang::sym(habitat_col)
+  no_habitat   <- is.null(habitat_col)
+  habitat_sym  <- if (no_habitat) NULL else rlang::sym(habitat_col)
   taxon_sym    <- rlang::sym(taxon_col)
 
   # ---------------------------------------------------------------------------
-  # Derive theta_epsilon from singleton mirrors when undetected pool is available.
-  # Singleton mirrors represent the detection probability of species observed
-  # exactly once in training data. Using their mean as the floor ensures any
-  # modelled species (Tier 1 or Tier 2) has theta >= the rarest known detection
-  # rate. Without this, Tier 2 sparse species can collapse to the same prior as
-  # species never detected (dark diversity), because join_priors() promotes both
-  # to dark_mean. Since dark_mean averages singleton mirrors AND the global floor,
-  # singleton_floor > dark_mean, so floored modelled priors survive the
-  # join_priors() promotion step and remain distinguishable from unmodelled taxa.
+  # Derive a Tier-2-only theta_epsilon floor from singleton mirrors when the
+  # undetected pool is available. Singleton mirrors represent the detection
+  # probability of species observed exactly once in training data. Using
+  # their mean as a floor ensures Tier 2 (sparse but detected) species have
+  # theta >= the rarest known detection rate, so they don't collapse to the
+  # same prior as species never detected at all (dark diversity), which
+  # join_priors() would otherwise conflate via its dark_mean promotion step.
+  #
+  # IMPORTANT: this floor is applied ONLY to Tier 2 predictions below (and to
+  # the Tier 2 empirical fallback), never to Tier 1. A real bug found
+  # 2026-07-03: applying this floor globally (the previous behavior) silently
+  # flattened every Tier 1 species whose genuinely differentiated, real
+  # predicted probability happened to fall below the floor to the SAME
+  # identical value -- invisible with a handful of well-separated candidates,
+  # but very visible (and wrong) with a broader, more realistic candidate
+  # pool where many real species legitimately have low individual
+  # probabilities. `theta_epsilon` (the function argument, used for Tier 1)
+  # is left untouched here; `theta_epsilon_floor` is the Tier-2-only raised
+  # value.
   # ---------------------------------------------------------------------------
+  theta_epsilon_floor <- theta_epsilon
   if (!is.null(undetected) && nrow(undetected) > 0 &&
       "undetected_type" %in% names(undetected)) {
     sm_rows <- undetected[
@@ -206,12 +232,12 @@ generate_full_priors <- function(model_obj,
     ]
     if (nrow(sm_rows) > 0) {
       singleton_floor <- mean(sm_rows$alpha / (sm_rows$alpha + sm_rows$beta))
-      if (singleton_floor > theta_epsilon) {
+      if (singleton_floor > theta_epsilon_floor) {
         message(sprintf(
-          "theta_epsilon raised from %.2e to %.2e (mean singleton-mirror detection rate, n=%d mirrors). Modelled-species priors will not collapse to dark-diversity floor.",
-          theta_epsilon, singleton_floor, nrow(sm_rows)
+          "theta_epsilon (Tier 2 only) raised from %.2e to %.2e (mean singleton-mirror detection rate, n=%d mirrors). Tier 2 priors will not collapse to dark-diversity floor.",
+          theta_epsilon_floor, singleton_floor, nrow(sm_rows)
         ))
-        theta_epsilon <- singleton_floor
+        theta_epsilon_floor <- singleton_floor
       }
     }
   }
@@ -351,36 +377,58 @@ generate_full_priors <- function(model_obj,
   # Helper: observed_in_habitat lookup
   # Extract from tier2_empirical (reliable) and tier1 model frame (best effort)
   # ---------------------------------------------------------------------------
-  observed_combos <- tryCatch({
-    t1_frame <- model_obj$models$tier1$frame
-    # response is cbind -- first column is n_taxon_name
-    resp_col  <- t1_frame[[1]]
-    if (is.matrix(resp_col)) {
-      n_sp <- resp_col[, 1]
-    } else {
-      n_sp <- resp_col
-    }
-    t1_obs <- t1_frame[n_sp > 0, c(taxon_col, habitat_col), drop = FALSE]
-    names(t1_obs) <- c("taxon_name", ".habitat")
-    t2_obs <- model_obj$tier2_empirical |>
-      dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
-      dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym)
-    dplyr::bind_rows(t1_obs, t2_obs) |>
-      dplyr::distinct() |>
-      dplyr::mutate(observed_in_habitat = TRUE)
-  }, error = function(e) {
-    # Fallback: tier2_empirical only
-    model_obj$tier2_empirical |>
-      dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
-      dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym) |>
-      dplyr::distinct() |>
-      dplyr::mutate(observed_in_habitat = TRUE)
-  })
+  observed_combos <- if (no_habitat) {
+    tryCatch({
+      t1_frame <- model_obj$models$tier1$frame
+      resp_col <- t1_frame[[1]]
+      n_sp     <- if (is.matrix(resp_col)) resp_col[, 1] else resp_col
+      t1_obs   <- t1_frame[n_sp > 0, c(taxon_col), drop = FALSE]
+      names(t1_obs) <- "taxon_name"
+      t2_obs <- model_obj$tier2_empirical |>
+        dplyr::select(dplyr::all_of(taxon_col)) |>
+        dplyr::rename(taxon_name = !!taxon_sym)
+      dplyr::bind_rows(t1_obs, t2_obs) |>
+        dplyr::distinct() |>
+        dplyr::mutate(observed_in_habitat = TRUE)
+    }, error = function(e) {
+      model_obj$tier2_empirical |>
+        dplyr::select(dplyr::all_of(taxon_col)) |>
+        dplyr::rename(taxon_name = !!taxon_sym) |>
+        dplyr::distinct() |>
+        dplyr::mutate(observed_in_habitat = TRUE)
+    })
+  } else {
+    tryCatch({
+      t1_frame <- model_obj$models$tier1$frame
+      # response is cbind -- first column is n_taxon_name
+      resp_col  <- t1_frame[[1]]
+      if (is.matrix(resp_col)) {
+        n_sp <- resp_col[, 1]
+      } else {
+        n_sp <- resp_col
+      }
+      t1_obs <- t1_frame[n_sp > 0, c(taxon_col, habitat_col), drop = FALSE]
+      names(t1_obs) <- c("taxon_name", ".habitat")
+      t2_obs <- model_obj$tier2_empirical |>
+        dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
+        dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym)
+      dplyr::bind_rows(t1_obs, t2_obs) |>
+        dplyr::distinct() |>
+        dplyr::mutate(observed_in_habitat = TRUE)
+    }, error = function(e) {
+      # Fallback: tier2_empirical only
+      model_obj$tier2_empirical |>
+        dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
+        dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym) |>
+        dplyr::distinct() |>
+        dplyr::mutate(observed_in_habitat = TRUE)
+    })
+  }
 
   # ---------------------------------------------------------------------------
   # Helper: predict one tier
   # ---------------------------------------------------------------------------
-  predict_tier <- function(model, taxon_name_vec, tier_label) {
+  predict_tier <- function(model, taxon_name_vec, tier_label, epsilon) {
     if (is.null(model) || length(taxon_name_vec) == 0) return(NULL)
 
     # Reduce to unique site rows before crossing -- sites_scaled is derived
@@ -461,7 +509,7 @@ generate_full_priors <- function(model_obj,
 
     # Back-transform and moment-match to Beta parameters
     bt  <- backxform(eta, se)
-    ab  <- moment_match(bt$mean, bt$var, theta_epsilon, max_phi = max_phi,
+    ab  <- moment_match(bt$mean, bt$var, epsilon, max_phi = max_phi,
                         min_phi = min_phi)
 
     grid$alpha              <- ab$alpha
@@ -501,7 +549,7 @@ generate_full_priors <- function(model_obj,
   # through to generate_undetected_diversity()/join_priors()'s dark-diversity
   # handling instead, which is the correct mechanism for them.
   # ---------------------------------------------------------------------------
-  predict_tier_empirical <- function(taxon_name_vec, tier_label) {
+  predict_tier_empirical <- function(taxon_name_vec, tier_label, epsilon) {
     emp <- model_obj$tier2_empirical
     if (length(taxon_name_vec) == 0 || is.null(emp) || nrow(emp) == 0) return(NULL)
 
@@ -513,10 +561,17 @@ generate_full_priors <- function(model_obj,
       dplyr::select(dplyr::any_of(site_cols)) |>
       dplyr::distinct()
 
-    grid <- dplyr::inner_join(emp, sites_unique, by = habitat_col)
+    # No habitat: tier2_empirical carries one row per taxon (no habitat/grid_id
+    # dimension at all), so every prediction site gets the same taxon-level
+    # empirical value -- a cross join, not a keyed join.
+    grid <- if (no_habitat) {
+      tidyr::crossing(emp, sites_unique)
+    } else {
+      dplyr::inner_join(emp, sites_unique, by = habitat_col)
+    }
     if (nrow(grid) == 0) return(NULL)
 
-    ab <- moment_match(grid$theta_mean_emp, grid$theta_sd_emp^2, theta_epsilon,
+    ab <- moment_match(grid$theta_mean_emp, grid$theta_sd_emp^2, epsilon,
                        max_phi = max_phi, min_phi = min_phi)
 
     grid$alpha                 <- ab$alpha
@@ -542,13 +597,19 @@ generate_full_priors <- function(model_obj,
   # ---------------------------------------------------------------------------
   t0_pred <- proc.time()[["elapsed"]]
   message("Generating priors...")
-  result_t1 <- predict_tier(model_obj$models$tier1, taxa_tier1, "tier1")
-  result_t2 <- predict_tier(model_obj$models$tier2, taxa_tier2, "tier2")
+  # Tier 1 uses the base (un-raised) epsilon so genuinely low-but-real
+  # probabilities stay differentiated; Tier 2 uses the raised floor so sparse
+  # species don't collapse toward the dark-diversity floor. See the comment
+  # above theta_epsilon_floor's derivation for why these must differ.
+  result_t1 <- predict_tier(model_obj$models$tier1, taxa_tier1, "tier1",
+                            epsilon = theta_epsilon)
+  result_t2 <- predict_tier(model_obj$models$tier2, taxa_tier2, "tier2",
+                            epsilon = theta_epsilon_floor)
 
   if (is.null(model_obj$models$tier2) && length(taxa_tier2) > 0) {
     message("Tier 2 model is not fitted -- falling back to per-species empirical ",
             "means ($tier2_empirical) instead of GLMM predictions for Tier 2 species.")
-    result_t2 <- predict_tier_empirical(taxa_tier2, "tier2")
+    result_t2 <- predict_tier_empirical(taxa_tier2, "tier2", epsilon = theta_epsilon_floor)
   }
 
   predictions <- dplyr::bind_rows(result_t1, result_t2)
@@ -573,21 +634,38 @@ generate_full_priors <- function(model_obj,
   # ---------------------------------------------------------------------------
   # Habitat-observed-elsewhere flag
   # ---------------------------------------------------------------------------
-  predictions <- predictions |>
-    dplyr::rename(.habitat = !!habitat_sym) |>
-    dplyr::left_join(observed_combos,
-                     by = c("taxon_name", ".habitat")) |>
-    dplyr::mutate(
-      observed_in_habitat = tidyr::replace_na(
-        observed_in_habitat, FALSE)
-    ) |>
-    dplyr::rename(!!habitat_col := .habitat)
+  predictions <- if (no_habitat) {
+    predictions |>
+      dplyr::left_join(observed_combos, by = "taxon_name") |>
+      dplyr::mutate(
+        observed_in_habitat = tidyr::replace_na(observed_in_habitat, FALSE)
+      )
+  } else {
+    predictions |>
+      dplyr::rename(.habitat = !!habitat_sym) |>
+      dplyr::left_join(observed_combos,
+                       by = c("taxon_name", ".habitat")) |>
+      dplyr::mutate(
+        observed_in_habitat = tidyr::replace_na(
+          observed_in_habitat, FALSE)
+      ) |>
+      dplyr::rename(!!habitat_col := .habitat)
+  }
 
   # ---------------------------------------------------------------------------
   # Finalise columns
   # ---------------------------------------------------------------------------
   beta_mean_fn <- function(a, b) a / (a + b)
   beta_sd_fn   <- function(a, b) sqrt((a * b) / ((a + b)^2 * (a + b + 1)))
+
+  output_cols <- c("taxon_name", "grid_id", habitat_col,
+                   "alpha", "beta", "theta_mean", "theta_sd",
+                   "n_obs", "model_tier", "effort_flag",
+                   "observed_in_habitat",
+                   "extrapolation_warning",
+                   "undetected_type",
+                   "source_taxon_name",
+                   "jeffreys_fallback")
 
   predictions <- predictions |>
     dplyr::mutate(
@@ -597,16 +675,7 @@ generate_full_priors <- function(model_obj,
       undetected_type   = NA_character_,
       source_taxon_name = NA_character_
     ) |>
-    dplyr::select(
-      taxon_name, grid_id, !!rlang::sym(habitat_col),
-      alpha, beta, theta_mean, theta_sd,
-      n_obs, model_tier, effort_flag,
-      observed_in_habitat,
-      extrapolation_warning,
-      undetected_type,
-      source_taxon_name,
-      jeffreys_fallback
-    )
+    dplyr::select(dplyr::all_of(output_cols))
 
   # ---------------------------------------------------------------------------
   # Append undetected diversity priors
@@ -621,16 +690,7 @@ generate_full_priors <- function(model_obj,
         extrapolation_warning = FALSE,
         jeffreys_fallback     = FALSE
       ) |>
-      dplyr::select(
-        taxon_name, grid_id, !!rlang::sym(habitat_col),
-        alpha, beta, theta_mean, theta_sd,
-        n_obs, model_tier, effort_flag,
-        observed_in_habitat,
-        extrapolation_warning,
-        undetected_type,
-        source_taxon_name,
-        jeffreys_fallback
-      )
+      dplyr::select(dplyr::all_of(output_cols))
     predictions <- dplyr::bind_rows(predictions, undetected_out)
   }
 

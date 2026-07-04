@@ -44,7 +44,8 @@
 #'     \item{grid_id}{Grid cell identifier inherited from singleton source, or
 #'       NA for the global floor.}
 #'     \item{habitat}{Habitat inherited from singleton source, or NA for
-#'       global floor.}
+#'       global floor. Column absent entirely when \code{model_obj} was
+#'       trained with \code{habitat_col = NULL}.}
 #'     \item{alpha}{Alpha parameter of Beta(alpha, beta) prior.}
 #'     \item{beta}{Beta parameter of Beta(alpha, beta) prior.}
 #'     \item{theta_mean}{Derived: alpha / (alpha + beta).}
@@ -77,6 +78,10 @@
 #' the theta expected if an undetected species appeared exactly once across
 #' all sampling effort. This is always smaller than any singleton-derived
 #' theta in a well-sampled dataset.
+#'
+#' **No habitat:** when \code{model_obj} was trained with
+#' \code{habitat_col = NULL} (see \code{train_biodiversity_model()}), no
+#' habitat column is added to the returned proxy rows.
 #'
 #' **No singletons:**
 #' If the dataset contains no singletons (as is common when rare species
@@ -198,7 +203,9 @@ generate_undetected_diversity <- function(model_obj,
         undetected_type   = "singleton_mirror",
         source_taxon_name = as.character(row[[model_obj$meta$taxon_col]])
       )
-      proxy_tbl[[habitat_col]] <- row[[habitat_col]]
+      if (!is.null(habitat_col)) {
+        proxy_tbl[[habitat_col]] <- row[[habitat_col]]
+      }
       proxy_rows[[i]] <- proxy_tbl
     }
 
@@ -238,7 +245,9 @@ generate_undetected_diversity <- function(model_obj,
     undetected_type   = "global_floor",
     source_taxon_name = NA_character_
   )
-  global_floor[[habitat_col]] <- NA_character_
+  if (!is.null(habitat_col)) {
+    global_floor[[habitat_col]] <- NA_character_
+  }
 
   # --- 3. Combine and return --------------------------------------------------
   proxy_list <- Filter(Negate(is.null), proxy_rows)

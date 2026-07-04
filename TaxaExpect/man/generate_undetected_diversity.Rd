@@ -42,7 +42,8 @@ A tibble with one row per undetected species proxy, containing:
 \item{grid_id}{Grid cell identifier inherited from singleton source, or
 NA for the global floor.}
 \item{habitat}{Habitat inherited from singleton source, or NA for
-global floor.}
+global floor. Column absent entirely when \code{model_obj} was
+trained with \code{habitat_col = NULL}.}
 \item{alpha}{Alpha parameter of Beta(alpha, beta) prior.}
 \item{beta}{Beta parameter of Beta(alpha, beta) prior.}
 \item{theta_mean}{Derived: alpha / (alpha + beta).}
@@ -95,6 +96,10 @@ Beta(1, N_total - 1) places the prior mean at 1/N_total, equivalent to
 the theta expected if an undetected species appeared exactly once across
 all sampling effort. This is always smaller than any singleton-derived
 theta in a well-sampled dataset.
+
+\strong{No habitat:} when \code{model_obj} was trained with
+\code{habitat_col = NULL} (see \code{train_biodiversity_model()}), no
+habitat column is added to the returned proxy rows.
 
 \strong{No singletons:}
 If the dataset contains no singletons (as is common when rare species

@@ -43,7 +43,7 @@ utils::globalVariables(c(
 #'   dropped, even if it fails the \code{min_locs_per_habitat} threshold.
 #'   Useful when one habitat is ecologically important but sparse in GBIF
 #'   data. \code{NULL} (default) applies the rarity threshold to all
-#'   habitats equally.
+#'   habitats equally. Must be \code{NULL} when \code{habitat_col = NULL}.
 #' @param min_s_threshold Integer. Minimum number of distinct species
 #'   per grid cell for inclusion in analysis. Cells with fewer species lack
 #'   sufficient community data for habitat assignment. Default 5.
@@ -74,8 +74,14 @@ utils::globalVariables(c(
 #'   \code{"decimalLongitude"}.
 #' @param species_col Character. Name of the species identifier column.
 #'   Default \code{"taxon_name"}.
-#' @param habitat_col Character. Name of the habitat column. Default
-#'   \code{"main_habitat"}.
+#' @param habitat_col Character or \code{NULL}. Name of the habitat column.
+#'   Default \code{"main_habitat"}. Set to \code{NULL} when no habitat
+#'   classification is available -- resolutions are then scored purely on
+#'   overall location count, with no per-habitat stratification
+#'   (\code{min_locs_per_habitat} becomes redundant with
+#'   \code{min_distinct_locs} in that case, not contradictory). Pass the same
+#'   \code{habitat_col} value used in \code{\link{prepare_model_dataframe}}
+#'   and \code{\link{train_biodiversity_model}} for a consistent pipeline.
 #' @param weights Named numeric vector of length 3. Composite score weights
 #'   for the three optimization criteria. \code{resolution} rewards smaller
 #'   cells (finer spatial detail); \code{quality} rewards cells meeting
@@ -120,6 +126,18 @@ utils::globalVariables(c(
 #' When only one resolution passes all thresholds, normalisation is
 #' undefined (max == min); scores default to 0 and the single candidate
 #' is returned as the winner.
+#'
+#' \strong{No habitat (habitat_col = NULL):} matches the same opt-out
+#' convention as \code{\link{prepare_model_dataframe}} and
+#' \code{\link{train_biodiversity_model}} -- if you have a habitat
+#' classification, supply it here too so grid-size scoring accounts for
+#' per-habitat sample sufficiency; if you don't, pass \code{NULL} rather than
+#' a placeholder constant. A placeholder constant happens to be harmless
+#' here (this function only groups/counts, unlike
+#' \code{train_biodiversity_model()}'s GLMM fit, which needs a real
+#' \code{habitat_col = NULL} to avoid a single-level-factor crash), but using
+#' \code{NULL} consistently across all three functions avoids having two
+#' different "no habitat" conventions in one pipeline.
 #'
 #' \strong{Sample-size targets:} The 10x and 15x rules of thumb apply to
 #' the number of site-habitat cells (rows in the model dataframe after
@@ -175,6 +193,12 @@ optimize_grid_size <- function(
     )
   }
 
+  no_habitat <- is.null(habitat_col)
+  if (no_habitat && !is.null(protected_habitat)) {
+    stop("optimize_grid_size: 'protected_habitat' requires a real habitat_col; ",
+         "it cannot be used when habitat_col = NULL.")
+  }
+
   required_cols <- c(lat_col, lon_col, species_col, habitat_col)
   missing_cols  <- setdiff(required_cols, names(observation_data))
   if (length(missing_cols) > 0) {
@@ -192,6 +216,20 @@ optimize_grid_size <- function(
       "optimize_grid_size: no rows remain after removing NAs ",
       "from required columns."
     )
+  }
+
+  # habitat_col = NULL: score resolutions on location count alone, with no
+  # per-habitat stratification. Uses a single internal placeholder category
+  # so .score_one_resolution()'s grouping/counting logic runs unchanged
+  # (it never fits a model, so a single-level "habitat" is harmless here --
+  # unlike train_biodiversity_model(), which needs real habitat_col = NULL
+  # handling because glmmTMB requires >= 2 factor levels for a contrast).
+  # The placeholder never appears in any returned column (summary_table only
+  # reports counts, e.g. n_habitats_kept, not raw habitat values), so nothing
+  # needs to be stripped from the output.
+  if (no_habitat) {
+    df_clean$.no_habitat <- "_no_habitat_"
+    habitat_col <- ".no_habitat"
   }
 
   if (!is.null(protected_habitat)) {

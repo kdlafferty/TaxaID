@@ -283,3 +283,19 @@ test_that("N_total <= 0 triggers informative error", {
     regexp = "N_total is zero"
   )
 })
+
+# =============================================================================
+# habitat_col = NULL (no-habitat path)
+# =============================================================================
+
+test_that("habitat_col = NULL: no habitat column on singleton mirrors or global floor", {
+  mod <- .make_mock_model_obj(n_singleton = 3)
+  mod$singletons$main_habitat <- NULL
+  mod$meta$habitat_col <- NULL
+
+  result <- generate_undetected_diversity(mod)
+
+  expect_false("main_habitat" %in% names(result))
+  expect_true(any(result$undetected_type == "singleton_mirror"))
+  expect_true(any(result$undetected_type == "global_floor"))
+})

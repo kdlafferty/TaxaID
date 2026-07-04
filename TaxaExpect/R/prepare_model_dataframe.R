@@ -28,8 +28,12 @@ utils::globalVariables(c(
 #'   Additional covariates (beyond \code{lat_r} / \code{lon_r}) are checked
 #'   for within-site variance and averaged to the site-habitat level if they
 #'   vary within a cell.
-#' @param habitat_col Character. Name of the habitat column.
-#'   Default \code{"main_habitat"}.
+#' @param habitat_col Character or \code{NULL}. Name of the habitat column.
+#'   Default \code{"main_habitat"}. Set to \code{NULL} when no habitat
+#'   classification is available (e.g. \code{TaxaHabitat} was not run) --
+#'   the returned tibble then has no habitat column, and downstream
+#'   \code{\link{train_biodiversity_model}} fits without a habitat term
+#'   instead of degenerating to a single-level fixed effect.
 #' @param cor_threshold Numeric. Pairwise correlation threshold for
 #'   collinearity screening. Predictor pairs with |r| above this threshold
 #'   trigger a warning suggesting PCA reduction of correlated covariates.
@@ -51,6 +55,17 @@ utils::globalVariables(c(
 #'   prediction time.
 #'
 #' @details
+#' \strong{No habitat (habitat_col = NULL):} the two-path design is: if you
+#' have a habitat column, generate real habitat classifications (via
+#' \code{TaxaHabitat}) and pass it here so habitat enters the model as a real
+#' predictor; if you don't, pass \code{NULL} and skip habitat entirely rather
+#' than defaulting to a single hardcoded category, which previously produced
+#' a degenerate single-level factor that \code{train_biodiversity_model()}'s
+#' Tier 2 formula could not fit (a real bug found 2026-07-03 testing a
+#' single-observation prior pipeline that skipped \code{TaxaHabitat} to save
+#' cost). With \code{habitat_col = NULL}, the returned tibble has no habitat
+#' column at all.
+#'
 #' \strong{observed_in_habitat:} computed from positive detections only,
 #' before zero-filling. If a species is predicted with non-trivial theta at a
 #' site where \code{observed_in_habitat} is \code{FALSE}, that
@@ -96,6 +111,8 @@ prepare_model_dataframe <- function(data,
                                     cor_threshold = 0.7) {
 
   # --- Required column check --------------------------------------------------
+  # habitat_col = NULL means "no habitat modeling" -- the caller has no habitat
+  # column to supply and none is required. See @details.
   required_cols <- c("grid_id", "lat_r", "lon_r", habitat_col, "taxon_name")
   missing_cols  <- setdiff(required_cols, names(data))
   if (length(missing_cols) > 0) {
@@ -133,7 +150,17 @@ prepare_model_dataframe <- function(data,
   }
 
   # --- Internal rename --------------------------------------------------------
-  data <- dplyr::rename(data, .habitat = !!habitat_col)
+  # No habitat_col supplied: use a single constant internal placeholder so the
+  # existing grouping/join logic below runs unchanged (grouping by a constant
+  # is equivalent to not grouping by it). Dropped from the final output below
+  # -- never exposed to the caller, and never enters any model formula (that
+  # guarantee is enforced in train_biodiversity_model(), not here).
+  no_habitat <- is.null(habitat_col)
+  if (no_habitat) {
+    data$.habitat <- "_no_habitat_"
+  } else {
+    data <- dplyr::rename(data, .habitat = !!habitat_col)
+  }
 
   # --- Extra covariate handling -----------------------------------------------
   extra_covs <- setdiff(covariates, c("lat_r", "lon_r"))
@@ -235,14 +262,26 @@ prepare_model_dataframe <- function(data,
   attr(model_df, "scale_params") <- scale_params
 
   # --- Final column order and return ------------------------------------------
-  model_df <- dplyr::select(
-    dplyr::rename(model_df, !!habitat_col := .habitat),
-    grid_id, lat_r, lon_r, !!habitat_col, taxon_name,
-    n_species, n_total_at_site, n_other, is_present,
-    observed_in_habitat,
-    dplyr::ends_with("_s"),
-    dplyr::everything()
-  )
+  if (no_habitat) {
+    # Drop the internal placeholder entirely -- no habitat column in output.
+    model_df <- dplyr::select(
+      dplyr::select(model_df, -.habitat),
+      grid_id, lat_r, lon_r, taxon_name,
+      n_species, n_total_at_site, n_other, is_present,
+      observed_in_habitat,
+      dplyr::ends_with("_s"),
+      dplyr::everything()
+    )
+  } else {
+    model_df <- dplyr::select(
+      dplyr::rename(model_df, !!habitat_col := .habitat),
+      grid_id, lat_r, lon_r, !!habitat_col, taxon_name,
+      n_species, n_total_at_site, n_other, is_present,
+      observed_in_habitat,
+      dplyr::ends_with("_s"),
+      dplyr::everything()
+    )
+  }
 
   return(dplyr::as_tibble(model_df))
 }

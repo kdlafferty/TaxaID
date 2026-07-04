@@ -128,6 +128,26 @@ library(dplyr)
   cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name)
 }
 
+# Same shape as .make_train_data() but with NO habitat column at all --
+# mirrors prepare_model_dataframe(habitat_col = NULL)'s output. Includes
+# rare species so Tier 2 actually gets exercised (the regression this
+# session found only shows up when a Tier 2 species exists).
+.make_train_data_no_habitat <- function(n_common = 3,
+                                        n_rare   = 2,
+                                        n_sites  = 20,
+                                        seed     = 42) {
+  df <- .make_train_data(n_common = n_common, n_rare = n_rare,
+                         n_sites = n_sites, seed = seed)
+  sp <- attr(df, "scale_params")
+  df$main_habitat <- NULL
+  attr(df, "scale_params") <- sp
+  df
+}
+
+.no_habitat_formula <- function() {
+  cbind(n_species, n_other) ~ (1 | taxon_name)
+}
+
 # =============================================================================
 # Return structure
 # =============================================================================
@@ -341,4 +361,62 @@ test_that("missing required columns trigger informative error", {
     train_biodiversity_model(data, formula = .simple_formula()),
     regexp = "missing required columns"
   )
+})
+
+# =============================================================================
+# habitat_col = NULL (no-habitat path)
+#
+# Regression coverage for the bug found 2026-07-03: faking a single constant
+# habitat value (instead of properly opting out via habitat_col = NULL) broke
+# Tier 2 fitting outright with "contrasts can be applied only to factors with
+# 2 or more levels", because Tier 2's formula unconditionally included the
+# habitat term. These tests confirm the NULL path fits cleanly instead.
+# =============================================================================
+
+test_that("habitat_col = NULL fits Tier 1 and Tier 2 without a habitat term", {
+  skip_if_not_installed("glmmTMB")
+  data <- .make_train_data_no_habitat(n_common = 3, n_rare = 2)
+  mod  <- train_biodiversity_model(data,
+                                   formula     = .no_habitat_formula(),
+                                   habitat_col = NULL,
+                                   min_obs_threshold = 5L)
+  expect_s3_class(mod, "biofreq_model")
+  expect_true(is.null(mod$meta$habitat_col))
+  # The key regression: Tier 2 must actually fit, not error out.
+  expect_true(any(mod$tiers$tier == "tier2"))
+  expect_s3_class(mod$models$tier2, "glmmTMB")
+  expect_false(grepl("habitat", mod$meta$formula_tier2))
+})
+
+test_that("habitat_col = NULL produces no habitat_screening entries", {
+  skip_if_not_installed("glmmTMB")
+  data <- .make_train_data_no_habitat()
+  mod  <- train_biodiversity_model(data,
+                                   formula     = .no_habitat_formula(),
+                                   habitat_col = NULL)
+  expect_length(mod$habitat_screening$supported, 0)
+  expect_length(mod$habitat_screening$sparse, 0)
+})
+
+test_that("habitat_col = NULL errors clearly if formula still has a diag() habitat term", {
+  data <- .make_train_data_no_habitat()
+  expect_error(
+    train_biodiversity_model(
+      data,
+      formula     = cbind(n_species, n_other) ~ diag(main_habitat | taxon_name),
+      habitat_col = NULL
+    ),
+    regexp = "habitat_col = NULL"
+  )
+})
+
+test_that("$N_total and $singletons work correctly with habitat_col = NULL", {
+  skip_if_not_installed("glmmTMB")
+  data <- .make_train_data_no_habitat(n_common = 3, n_rare = 2)
+  mod  <- train_biodiversity_model(data,
+                                   formula     = .no_habitat_formula(),
+                                   habitat_col = NULL,
+                                   min_obs_threshold = 5L)
+  expect_true(mod$N_total > 0)
+  expect_true(is.data.frame(mod$singletons))
 })

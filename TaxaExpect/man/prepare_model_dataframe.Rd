@@ -23,8 +23,12 @@ Additional covariates (beyond \code{lat_r} / \code{lon_r}) are checked
 for within-site variance and averaged to the site-habitat level if they
 vary within a cell.}
 
-\item{habitat_col}{Character. Name of the habitat column.
-Default \code{"main_habitat"}.}
+\item{habitat_col}{Character or \code{NULL}. Name of the habitat column.
+Default \code{"main_habitat"}. Set to \code{NULL} when no habitat
+classification is available (e.g. \code{TaxaHabitat} was not run) --
+the returned tibble then has no habitat column, and downstream
+\code{\link{train_biodiversity_model}} fits without a habitat term
+instead of degenerating to a single-level fixed effect.}
 
 \item{cor_threshold}{Numeric. Pairwise correlation threshold for
 collinearity screening. Predictor pairs with |r| above this threshold
@@ -62,6 +66,17 @@ scaling parameters as an attribute for use at prediction time.
 }
 }
 \details{
+\strong{No habitat (habitat_col = NULL):} the two-path design is: if you
+have a habitat column, generate real habitat classifications (via
+\code{TaxaHabitat}) and pass it here so habitat enters the model as a real
+predictor; if you don't, pass \code{NULL} and skip habitat entirely rather
+than defaulting to a single hardcoded category, which previously produced
+a degenerate single-level factor that \code{train_biodiversity_model()}'s
+Tier 2 formula could not fit (a real bug found 2026-07-03 testing a
+single-observation prior pipeline that skipped \code{TaxaHabitat} to save
+cost). With \code{habitat_col = NULL}, the returned tibble has no habitat
+column at all.
+
 \strong{observed_in_habitat:} computed from positive detections only,
 before zero-filling. If a species is predicted with non-trivial theta at a
 site where \code{observed_in_habitat} is \code{FALSE}, that

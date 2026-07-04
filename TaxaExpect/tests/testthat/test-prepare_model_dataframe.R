@@ -326,3 +326,26 @@ test_that("missing covariate column triggers informative error", {
     regexp = "covariate columns not found"
   )
 })
+
+# =============================================================================
+# habitat_col = NULL (no-habitat path)
+# =============================================================================
+
+test_that("habitat_col = NULL requires no habitat column and returns none", {
+  input <- .make_model_input()
+  input$main_habitat <- NULL
+  out <- prepare_model_dataframe(input, habitat_col = NULL)
+  expect_false("main_habitat" %in% names(out))
+  expect_false(".habitat" %in% names(out))
+  expect_true(all(c("grid_id", "lat_r", "lon_r", "taxon_name",
+                    "n_species", "n_total_at_site", "n_other",
+                    "is_present") %in% names(out)))
+})
+
+test_that("habitat_col = NULL still zero-fills and scales correctly", {
+  input <- .make_guaranteed_absence_input()
+  input$main_habitat <- NULL
+  out <- prepare_model_dataframe(input, habitat_col = NULL)
+  expect_equal(nrow(out), 3L * dplyr::n_distinct(input$grid_id))
+  expect_true(!is.null(attr(out, "scale_params")))
+})

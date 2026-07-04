@@ -87,6 +87,36 @@ library(dplyr)
   )
 }
 
+# --- No-habitat variants (habitat_col = NULL) --------------------------------
+
+.make_model_data_no_habitat <- function(n_sites = 10, n_common = 3, n_rare = 2) {
+  d <- .make_model_data(n_sites = n_sites, n_common = n_common,
+                        n_rare = n_rare, habitats = "Rocky")
+  sp <- attr(d, "scale_params")
+  d$main_habitat <- NULL
+  structure(as.data.frame(d), scale_params = sp)
+}
+
+.fit_minimal_model_no_habitat <- function() {
+  skip_if_not_installed("glmmTMB")
+  data <- .make_model_data_no_habitat()
+  train_biodiversity_model(
+    data              = data,
+    formula           = cbind(n_species, n_other) ~
+      (1 | taxon_name) + (1 | taxon_name:grid_id),
+    habitat_col       = NULL,
+    min_obs_threshold = 3L,
+    effort_threshold  = 5L,
+    min_positive_rows = 1L
+  )
+}
+
+.make_new_sites_no_habitat <- function(n = 5) {
+  s <- .make_new_sites(n)
+  s$main_habitat <- NULL
+  s
+}
+
 # =============================================================================
 # Input validation (no model needed)
 # =============================================================================
@@ -198,6 +228,34 @@ test_that("undetected rows are appended when undetected is supplied", {
   expect_gt(nrow(out_with), nrow(out_base))
 })
 
+test_that("Tier 1 predictions are unaffected by the Tier-2-only theta_epsilon floor", {
+  # Regression test for a real bug found 2026-07-03: theta_epsilon's
+  # singleton-mirror-derived auto-raise (meant to protect Tier 2 from
+  # collapsing to the dark-diversity floor) was being applied globally,
+  # silently flattening Tier 1 species whose real predicted probability fell
+  # below the raised floor to an identical value. Tier 1's output must be
+  # IDENTICAL whether or not `undetected` (the thing that triggers the raise)
+  # is supplied at all.
+  skip_if_not_installed("glmmTMB")
+  mod   <- .fit_minimal_model()
+  sites <- .make_new_sites()
+  undet <- generate_undetected_diversity(mod)
+
+  out_with <- generate_full_priors(mod, new_sites = sites, undetected = undet)
+  out_base <- generate_full_priors(mod, new_sites = sites, undetected = NULL)
+
+  t1_with <- out_with |>
+    dplyr::filter(model_tier == "tier1") |>
+    dplyr::arrange(taxon_name, grid_id) |>
+    dplyr::pull(theta_mean)
+  t1_base <- out_base |>
+    dplyr::filter(model_tier == "tier1") |>
+    dplyr::arrange(taxon_name, grid_id) |>
+    dplyr::pull(theta_mean)
+
+  expect_equal(t1_with, t1_base)
+})
+
 test_that("undetected rows have taxon_name = NA", {
   skip_if_not_installed("glmmTMB")
   mod   <- .fit_minimal_model()
@@ -231,4 +289,36 @@ test_that("undetected_type is NA for modelled rows", {
   out <- generate_full_priors(mod, new_sites = .make_new_sites())
   modelled <- out[!is.na(out$taxon_name), ]
   expect_true(all(is.na(modelled$undetected_type)))
+})
+
+# =============================================================================
+# habitat_col = NULL (no-habitat path)
+# =============================================================================
+
+test_that("habitat_col = NULL: output has no habitat column, Tier 2 included", {
+  skip_if_not_installed("glmmTMB")
+  mod   <- .fit_minimal_model_no_habitat()
+  sites <- .make_new_sites_no_habitat()
+  out   <- generate_full_priors(mod, new_sites = sites)
+
+  expect_true(is.data.frame(out))
+  expect_false("main_habitat" %in% names(out))
+  expect_true(all(c("taxon_name", "grid_id", "alpha", "beta",
+                    "theta_mean", "theta_sd", "model_tier") %in% names(out)))
+  # Tier 2 species (Rare_*) must have received a prior, whether from the
+  # GLMM or the empirical fallback -- not silently dropped.
+  expect_true(any(grepl("^Rare_", out$taxon_name)))
+})
+
+test_that("habitat_col = NULL: undetected diversity appends cleanly", {
+  skip_if_not_installed("glmmTMB")
+  mod   <- .fit_minimal_model_no_habitat()
+  sites <- .make_new_sites_no_habitat()
+  undet <- generate_undetected_diversity(mod)
+  out   <- generate_full_priors(mod, new_sites = sites, undetected = undet)
+
+  expect_false("main_habitat" %in% names(out))
+  undet_rows <- out[out$model_tier == "tier3_undetected", ]
+  expect_true(nrow(undet_rows) > 0)
+  expect_true(all(is.na(undet_rows$taxon_name)))
 })
