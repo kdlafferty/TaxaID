@@ -1,7 +1,25 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-03 (Session 129 — real assign_scores() score-scale bug found and fixed; tau/score_sharpness resolved via calibration on 51 real photos (image: correction should not be applied, tau≈0 -- opposite of acoustic's tau≈1); TaxaExpect crash fixes for sparse real data; new TaxaFetch::get_gbif_occurrences() unified wrapper; first real TaxaAssign posterior run for the camera-trap species set. See each package's own CLAUDE.md Session 129 note and ecosystem_docs/REENTRY_PROMPT_session129_calibration_resolved.md for the full record.)
+# Last updated: 2026-07-04 (Session 134b, branch `single-observation-pipeline` — after
+# reviewing Session 134's automatic-spatial-grouping implementation, the user raised package-
+# placement questions before committing (see
+# ecosystem_docs/REENTRY_PROMPT_session134b_grouping_implemented.md). Resolved: the shared
+# interactive polygon gadget only needed a small additive generalization (color the points
+# overlay by group; reopen a previous polygon for reshaping) to serve both TaxaFetch's
+# search-area purpose and TaxaMatch's spatial-group purpose, so `define_search_polygon()`
+# moved TaxaFetch -> TaxaTools and `group_observations_by_bbox()` moved TaxaFetch -> TaxaMatch
+# (it operates on TaxaMatch::build_site_table()'s output; a spatial-grouping concern, not a
+# fetch concern). `group_observations_by_bbox()` also substantially reworked: `spatial_group_id`
+# now defaults to the observation's own `observation_id` (set by `build_site_table()`, not
+# invented by the grouping function), last-drawn-wins overlap resolution with a warning, and a
+# new end-of-loop review/edit/delete step. New `TaxaMatch::assign_spatial_group()` manual
+# helper for metadata-known groupings. All three packages (TaxaTools, TaxaFetch, TaxaMatch)
+# plus TaxaAssign (doc-only cross-reference fix) `devtools::check()`-clean. Still open for a
+# follow-up session: the search-area-vs-spatial-group reconciliation, fetch-scope branching
+# (the escalation-ladder engineering work), the Reads-table relocation, and the TaxaAssign
+# (observation_id, site) schema question -- see the reentry prompt and each touched package's
+# Session 134b note for the full record. Session 133 — acoustic tau/score_sharpness re-calibrated on a real, deliberately-designed 24-species/8-cluster/2487-detection-window dataset (up from a 3-species/42-window pilot); Session 128/129's "acoustic wants tau≈1, opposite of image" conclusion did NOT hold — pooled acoustic optimum is tau≈0, same as image, though per-cluster results are genuinely heterogeneous and one global tau may not be appropriate. No current real-data evidence supports tau>0 as a default for either data type. See TaxaLikely/CLAUDE.md's Session 133 note and ecosystem_docs/REENTRY_PROMPT_acoustic_tau_calibration_expanded.md for the full record. Session 132 — TaxaMatch non-portable camera-trap filenames fixed. Session 129 — real assign_scores() score-scale bug found and fixed; TaxaExpect crash fixes for sparse real data; new TaxaFetch::get_gbif_occurrences() unified wrapper; first real TaxaAssign posterior run for the camera-trap species set. See ecosystem_docs/REENTRY_PROMPT_session129_calibration_resolved.md for that record.)
 
 ---
 
@@ -48,7 +66,7 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 | R version | R version 4.5.2 (2025-10-31) |
 | Primary IDE | RStudio |
 | Git remotes | `origin` → https://github.com/kdlafferty/TaxaID (public monorepo, Session 80) |
-| R library | `/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/library` — set via `~/.Rprofile` `.libPaths()` call |
+| R library | `~/Library/R/4.0/library` — set via `R_LIBS_USER` in `~/.Renviron`, **not** `~/.Rprofile` (corrected Session 134b; see that session's TaxaTools/CLAUDE.md note). This project has its own `TaxaID.Rproj` + project-level `.Rprofile`, which RStudio sources *instead of* `~/.Rprofile` when the project is open — so `~/.Rprofile`'s own `.libPaths()` call (pointing at a directory that doesn't even exist, `~/Library/R/4.5-arm64/library`) never actually runs in this project. Confirmed directly: a real `R` session started from the project root resolves `.libPaths()[1]` to `~/Library/R/4.0/library`, and that's where `find.package()` finds every TaxaID package. `Rscript` (no project context) also lands here by default via `R_LIBS_USER`. The system default library (`/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/library`, i.e. `.Library`) is a same-R-version fallback, not the primary install target — don't rely on it matching what's actually loaded. |
 | ANTHROPIC_API_KEY | Set in `~/.Renviron` |
 | GEMINI_API_KEY | Set in `~/.Renviron` — free tier; get key at aistudio.google.com/apikey |
 | OPENAI_API_KEY | Set in `~/.Renviron` — paid account required |
@@ -244,6 +262,33 @@ Session 125: switched to the v3 endpoint, added a required `key` param (read fro
 `XC_API_KEY` env var), and rewrote the query to v3's tag-based syntax
 (`gen:X sp:Y type:call`). Live-verified against real species. See
 `TaxaLikely/CLAUDE.md`'s Known Footguns for the fix detail.
+
+### RStudio's `dialogViewer()` can silently swallow a Shiny gadget's Done button when the gadget contains a `leaflet` map (found Session 134b)
+`TaxaTools::define_search_polygon()` (a `miniUI`/`shiny` gadget with a `leaflet` map)
+worked fine in earlier sessions but started returning `NULL` on every call in Session
+134b, even when the user clicked **Done** (not Cancel) -- confirmed reproducible, not a
+one-off. A *minimal* gadget (title bar + Done button, no leaflet) worked correctly with
+`shiny::dialogViewer()` in the same RStudio session, ruling out a general
+`shiny`/`miniUI` problem. The *exact* production gadget code worked correctly when its
+viewer was swapped to `shiny::browserViewer()` (opens in a real browser) -- confirmed
+both via the calling R session receiving the correct return value and via directly
+inspecting the live page with Claude's Chrome browser-automation tools. `paneViewer()`
+was then also tested directly against this exact gadget and confirmed working too.
+Conclusion: on at least one real RStudio setup, the embedded `dialogViewer()` webview
+specifically mishandles a gadget's Leaflet content in a way that breaks the Done
+button's click-to-server round trip, while the identical gadget works fine via either
+`browserViewer()` or `paneViewer()`. **If you write or modify any Shiny gadget in this
+ecosystem that embeds a `leaflet` map, do not assume `dialogViewer()` works -- use
+`shiny::paneViewer()` instead**, matching this ecosystem's existing mapping gadgets
+(`TaxaTools::define_search_polygon()`, `TaxaHabitat::review_spatial_flags()`,
+`TaxaExpect::plot_theta_map_interactive()` all use it, for one consistent
+map-interaction style) -- and only use `dialogViewer()` if you've confirmed it
+round-trips a real click on the actual machine you're targeting.
+Also see this same debugging session's now-corrected R library documentation just above
+(Developer Environment table) -- a stale-library-cache theory looked very plausible for
+several rounds before being ruled out by directly checking `.libPaths()` from a real
+session; don't skip that direct check next time something "should be fixed but isn't."
+See `TaxaTools/CLAUDE.md`'s Session 134b note for the full multi-round debugging record.
 
 ---
 

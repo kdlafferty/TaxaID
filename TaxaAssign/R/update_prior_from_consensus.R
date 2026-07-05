@@ -24,6 +24,20 @@
 #' from *other* observations. An observation's own posterior never feeds back into its own
 #' prior.
 #'
+#' **Multi-member vs. single-observation spatial groups:** this refinement is
+#' only valid when other observations genuinely share a local species pool
+#' with the one being updated -- i.e. they share a spatial group (a drawn
+#' bounding box; see `TaxaMatch::group_observations_by_bbox()`). For a
+#' single-observation spatial group (whether because it was submitted alone,
+#' or because it fell outside every user-drawn box and was placed in its own
+#' group rather than dropped), no other observation shares its local species
+#' pool, so another observation's confirmed presence says nothing about it and
+#' must not be used. Supply `spatial_group_map` to enforce this: only
+#' observations whose `spatial_group_id` is shared with at least one other
+#' observation are used as evidence sources or receive a prior update;
+#' observations in a single-observation spatial group are always returned
+#' unchanged, exactly like already-resolved observations.
+#'
 #' **Multiplier choice:** A multiplier raises the prior proportionally, preserving
 #' the relative ranking of other hypotheses before renormalization. The default
 #' of 5 is a moderate nudge: a confirmed species starting at 10\% prior moves
@@ -44,13 +58,25 @@
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty — match the value used in the original run.
+#' @param spatial_group_map Dataframe with `observation_id` and
+#'   `spatial_group_id` columns (e.g. from
+#'   `TaxaMatch::group_observations_by_bbox()`), optional. When supplied, only
+#'   observations whose `spatial_group_id` is shared with at least one other
+#'   observation can contribute confirmed species or receive a prior update;
+#'   observations in a single-observation spatial group (a singleton
+#'   `spatial_group_id` -- there is no separate naming convention for these,
+#'   see `group_observations_by_bbox()`) are always returned unchanged.
+#'   Default `NULL` (no group-based restriction — all observations
+#'   participate, matching this function's original behaviour).
 #'
 #' @return The full posterior dataframe with the same structure as `result`.
-#'   Resolved observations are returned unchanged. Unresolved observations have updated
+#'   Resolved observations are returned unchanged. Unresolved observations in
+#'   a multi-member spatial group (see `spatial_group_map`) have updated
 #'   `prior_mean` and freshly computed posterior columns
 #'   (`posterior_point_est`, `posterior_mean`, `posterior_sd`,
-#'   `confidence_score`). Sorted by `observation_id` then descending
-#'   `posterior_point_est`.
+#'   `confidence_score`). Unresolved observations in a single-observation
+#'   spatial group are returned unchanged, same as resolved ones. Sorted by
+#'   `observation_id` then descending `posterior_point_est`.
 #'
 #' @seealso [posterior_consensus()], [compute_posterior()], [assign_taxa_llm()]
 #'
@@ -70,7 +96,8 @@
 update_prior_from_consensus <- function(result,
                                          consensus,
                                          presence_multiplier = 5,
-                                         n_sims              = 0) {
+                                         n_sims              = 0,
+                                         spatial_group_map    = NULL) {
 
   # --- Input validation -------------------------------------------------------
   required_result <- c("observation_id", "taxon_name", "score_likelihood",
@@ -88,9 +115,37 @@ update_prior_from_consensus <- function(result,
       presence_multiplier <= 1)
     cli::cli_abort("{.arg presence_multiplier} must be a single number > 1.")
 
-  # --- Extract confirmed species (resolved across any observation) -------------
-  confirmed_species <- unique(consensus$consensus_taxon[
-    !is.na(consensus$consensus_taxon) & consensus$is_resolved
+  # --- Resolve multi-member spatial groups from spatial_group_map, if supplied ----
+  # Only observations that share a spatial_group_id with >=1 other observation
+  # may act as evidence sources or receive an update -- an observation in a
+  # single-observation spatial group's own posterior never says anything
+  # about an unrelated one.
+  grouped_ids <- NULL
+  if (!is.null(spatial_group_map)) {
+    required_group <- c("observation_id", "spatial_group_id")
+    missing_group  <- setdiff(required_group, names(spatial_group_map))
+    if (length(missing_group) > 0)
+      cli::cli_abort("spatial_group_map missing required column(s): {.field {missing_group}}")
+
+    group_sizes    <- table(spatial_group_map$spatial_group_id)
+    shared_groups  <- names(group_sizes)[group_sizes >= 2L]
+    grouped_ids    <- unique(spatial_group_map$observation_id[spatial_group_map$spatial_group_id %in% shared_groups])
+
+    n_singleton <- dplyr::n_distinct(spatial_group_map$observation_id) - length(grouped_ids)
+    cli::cli_inform(
+      "spatial_group_map supplied: {length(grouped_ids)} observation(s) in a multi-member \\
+      spatial group are eligible for the consensus prior update; {n_singleton} observation(s) \\
+      in a single-observation spatial group will be skipped (returned unchanged)."
+    )
+  }
+
+  # --- Extract confirmed species (resolved across any OTHER observation sharing a spatial group) ---
+  confirmation_pool <- consensus
+  if (!is.null(grouped_ids)) {
+    confirmation_pool <- consensus[consensus$observation_id %in% grouped_ids, , drop = FALSE]
+  }
+  confirmed_species <- unique(confirmation_pool$consensus_taxon[
+    !is.na(confirmation_pool$consensus_taxon) & confirmation_pool$is_resolved
   ])
 
   if (length(confirmed_species) == 0L) {
@@ -103,8 +158,20 @@ update_prior_from_consensus <- function(result,
     is.na(consensus$consensus_taxon) | !consensus$is_resolved
   ]
 
+  if (!is.null(grouped_ids)) {
+    # Unresolved observations in a single-observation spatial group are left
+    # unchanged, same as resolved ones -- they are not eligible for this
+    # refinement (see @details).
+    unresolved_ids <- intersect(unresolved_ids, grouped_ids)
+  }
+
   if (length(unresolved_ids) == 0L) {
-    cli::cli_inform("All observations already resolved; returning result unchanged.")
+    cli::cli_inform(
+      if (!is.null(grouped_ids))
+        "No unresolved observations in a multi-member spatial group; returning result unchanged."
+      else
+        "All observations already resolved; returning result unchanged."
+    )
     return(result)
   }
 

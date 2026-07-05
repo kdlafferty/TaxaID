@@ -1,6 +1,9 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-03 (Session 129 — camera_trap_posterior_workflow.R added: first real TaxaAssign run for the camera-trap image species set, real GBIF priors, calibrated-vs-old-default posterior comparison)
+# Last updated: 2026-07-03 (Session 134 — update_prior_from_consensus() gains a spatial_group_map
+# param to skip single-observation spatial groups, see Session 134 note below. Session 129 — camera_trap_posterior_workflow.R
+# added: first real TaxaAssign run for the camera-trap image species set, real GBIF priors,
+# calibrated-vs-old-default posterior comparison)
 
 ---
 
@@ -35,7 +38,7 @@ or be user-supplied from outside the ecosystem.
 | `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id` | Complete | R/posterior_consensus.R |
 | `add_slash_taxon()` | Appends `slash_taxon_name` (ornithological slash-species notation; NA for singletons/unresolved) and `irreducible_consensus` (TRUE when the candidate set can't be further decomposed elsewhere in the dataset) to `posterior_consensus()` output. **Session 123:** when `consensus_taxon` is present, also adds `consensus_OTU` (single reporting label — `slash_taxon_name` when non-NA, else `consensus_taxon`) and `primary_taxon` (`consensus_OTU` reduced to one taxon by dropping everything after the first `/` or ` + `) — logic previously hand-duplicated identically in 3 real workflows. | Complete | R/slash_taxon.R |
 | `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id` | Complete | R/score_consensus.R |
-| `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()` | Complete | R/update_prior_from_consensus.R |
+| `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()`. **Session 134:** optional `spatial_group_map` param (`observation_id`/`spatial_group_id`) restricts both the confirmation source and the update target to observations sharing a `spatial_group_id` with >= 1 other observation (a multi-member spatial group) -- observations in a single-observation spatial group (whether a genuine single observation or one that fell outside a drawn group, per `TaxaMatch::group_observations_by_bbox()` -- there's no separate naming for these, just a singleton group) are always returned unchanged, since another unrelated observation's confirmed presence says nothing about them. | Complete | R/update_prior_from_consensus.R |
 | `build_context()` | Auto-populate `ctx` (ecoregion, main_habitat, date) from taxon names via TaxaHabitat + LLM synthesis | Complete | R/build_context.R |
 | `generate_report()` | Publication-ready Methods + Results text; hybrid template (Methods) + LLM (Results) with template fallback | Complete | R/generate_report.R |
 | `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). | Complete | R/join_priors.R |
@@ -249,7 +252,8 @@ taxon absent.
 update_prior_from_consensus(result,
                              consensus,
                              presence_multiplier = 5,
-                             n_sims              = 0)
+                             n_sims              = 0,
+                             spatial_group_map    = NULL)
 ```
 
 One-pass empirical Bayes refinement. Extracts `is_resolved = TRUE` species from `consensus`
@@ -260,6 +264,21 @@ columns into the returned dataframe for downstream propagation by `posterior_con
 
 **Circularity guard:** a sample's own posterior never feeds back into its own prior — only
 other samples' confirmations are used.
+
+**Multi-member-vs-single-observation spatial group guard (`spatial_group_map`, Session 134):**
+when supplied (`observation_id`/`spatial_group_id`, e.g. from
+`TaxaMatch::group_observations_by_bbox()`), only observations sharing a `spatial_group_id`
+with >= 1 other observation (a multi-member spatial group) can act as a confirmation source or
+receive the boost. Observations in a single-observation spatial group — whether a genuine
+single observation or one that fell outside every drawn group polygon — are always returned
+unchanged, same as already-resolved observations. There is no separate naming convention for
+these: eligibility is determined purely by counting group membership (`table()` + `>= 2L`),
+never by the id's shape or format. (Session 134b: `TaxaMatch::build_site_table()`/
+`group_observations_by_bbox()` now default an ungrouped observation's `spatial_group_id` to
+its own `observation_id` rather than a `"spatial_group_<n>"` string -- this function's logic
+required no changes, since it was already counting membership, not pattern-matching the id.)
+Without `spatial_group_map` (default `NULL`), behavior is unchanged from before Session 134:
+every observation participates.
 
 ---
 
@@ -413,6 +432,55 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 ---
 
 ## Session Notes
+
+**Session 134 (2026-07-03): update_prior_from_consensus() spatial_group_map guard**
+
+Branch `single-observation-pipeline`. Implements the decision tree item from
+`~/.claude/projects/-Users-lafferty/memory/project_clustered_vs_independent_reframe.md`:
+`update_prior_from_consensus()` is only valid when other observations genuinely share a
+local species pool (a multi-member spatial group), and must be skipped for single
+observations and independent observations, since another unrelated observation's
+confirmed presence would smuggle in a false shared-context assumption.
+
+Added optional `spatial_group_map` param (`observation_id`/`spatial_group_id`, matching
+`TaxaMatch::group_observations_by_bbox()`'s output shape). When supplied: (1) only
+`consensus` rows whose `observation_id` belongs to a `spatial_group_id` shared with >= 1
+other observation contribute to `confirmed_species`; (2) `unresolved_ids` is intersected
+with that same multi-member-group set before the boost is applied, so an observation in
+a single-observation spatial group's unresolved rows fall through to the
+unchanged/"resolved" branch of the existing resolved/unresolved split with no other code
+path changes needed. Default `NULL` preserves the exact pre-Session-134 behavior (every
+observation participates) — non-breaking.
+
+This also covers the specific case this session's work introduced: an observation that
+fell outside every user-drawn group polygon in `group_observations_by_bbox()` and was
+placed in its own single-observation spatial group (not dropped) is, correctly, still
+excluded here — landing in a single-observation group for that reason carries the same
+"no shared local species pool" implication as being a genuine single observation.
+
+**Naming, settled before commit:** started as `group_map`/`group_id`, renamed to
+`spatial_group_map`/`spatial_group_id` after the user flagged that bare "group" already
+means something else in this very package (`assign_taxa_llm()`'s `context_group`/
+`.build_group_map()` — LLM-batching context groups, unrelated to spatial location) and
+that "cluster" (the other candidate) is taken by `TaxaLikely`'s confusable-species
+`cluster`/`true_cluster` concept. Also dropped the separate `"independent_*"` id
+convention per the user's direction — a single-observation spatial group isn't a
+different kind of thing, it's a `spatial_group_id` like any other with one member. No
+logic changes were needed for this: eligibility was already determined by counting
+group membership (`table(spatial_group_map$spatial_group_id) >= 2L`), never by
+pattern-matching the id string.
+
+7 new tests added to `test-update_prior.R` (a shared-group pair still boosts; a pair
+each in their own single-observation group blocks the boost; a third, single-observation
+group in an otherwise-grouped dataset is skipped while the shared-group pair still
+updates normally; missing-column validation). `devtools::test()`: 0 failures (12
+warnings/1 skip pre-existing). `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Not done this session:** the deeper `(observation_id, site)` schema question for
+`join_priors()`/`compute_posterior()`/`posterior_consensus()` (needed once sequence
+ASVs detected at multiple real sites become the true analysis unit) remains open —
+flagged in `ecosystem_docs/REENTRY_PROMPT_session134_single_observation_pipeline.md`
+as probably deserving its own session; unaffected by this session's `spatial_group_map` addition.
 
 Sessions 29–77 archived in ecosystem_docs/session_notes/TaxaAssign_sessions.md.
 

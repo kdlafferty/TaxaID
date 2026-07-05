@@ -34,8 +34,6 @@ Suggests:
     callr,
     data.table,
     knitr,
-    leaflet,
-    miniUI,
     rmarkdown,
     rgbif,
     base64enc,
@@ -43,7 +41,6 @@ Suggests:
     jsonlite,
     pdftools,
     png,
-    shiny,
     testthat (>= 3.0.0),
     zip
 Config/testthat/edition: 3

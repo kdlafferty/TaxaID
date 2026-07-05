@@ -1,6 +1,13 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-03 (Session 132 — non-portable filenames from Session 129's camera-trap expansion fixed, see Session 132 note below)
+# Last updated: 2026-07-04 (Session 134b — group_observations_by_bbox() moved here from
+# TaxaFetch and substantially reworked (default-to-observation_id behavior, last-drawn-wins
+# overlap rule, end-of-loop review/edit/delete step); new assign_spatial_group() manual
+# helper; build_site_table() now populates spatial_group_id/spatial_group_N defaults on
+# every row. sf added to Imports. See Session 134b note below. Session 134 — build_site_table()
+# added: unified long-format site table across image/DNA/acoustic pathways, see Session 134
+# note below. Session 132 — non-portable filenames from Session 129's camera-trap expansion
+# fixed, see Session 132 note below.)
 
 ---
 
@@ -25,8 +32,10 @@ those functions live in TaxaLikely.
 TaxaTools → TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign
 TaxaMatch → TaxaLikely → TaxaAssign
 
-TaxaMatch depends on TaxaTools for `rename_cols()` and `create_taxon_names()`.
-Also depends on `httr2` (remote BLAST API), `rentrez` + `xml2` (taxonomy resolution).
+TaxaMatch depends on TaxaTools for `rename_cols()`, `create_taxon_names()`, and (Session
+134b) `define_search_polygon()` (called by `group_observations_by_bbox()`).
+Also depends on `httr2` (remote BLAST API), `rentrez` + `xml2` (taxonomy resolution), and
+(Session 134b) `sf` (point-in-polygon spatial-group assignment).
 `Biostrings` and `rBLAST` are in Suggests (FASTA reading and local BLAST, respectively).
 
 ---
@@ -114,6 +123,14 @@ likelihood output downstream — it is NOT part of the match object.
 | `read_inaturalist_cv_output()` | R/read_image.R | Complete | Ingest saved iNaturalist CV API JSON response files (one JSON per image). `score_type` = `"combined_score"` (default) or `"score"`. Returns `observation_id`, `score`, `species`, `genus`, `common_name`, `taxon_rank`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
 | `read_wildlife_insights_output()` | R/read_image.R | Complete | Ingest SpeciesNet / Wildlife Insights batch predictions JSON (one JSON may cover many images). `label_col = "label"`, `score_col = "score"` (configurable for older formats). Returns `observation_id`, `score`, `species`, `genus`, `category`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
 | `read_birdnet_output()` | R/read_acoustic.R | Complete | Ingest BirdNET-Analyzer CSV (detections × species × confidence); map to match object. Accepts file vector or directory path. `observation_id = "{file_stem}_{start_s}-{end_s}"`. `min_confidence` and `top_n` filters. |
+
+### Site table and spatial grouping (Sessions 134, 134b)
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `build_site_table()` | R/build_site_table.R | Complete | Unifies per-observation site info (`observation_id`, `lat`, `lon`, `observed_on`) across all three match-object pathways into one long-format table. Image pathway (`score_image_inat()` output): extracted directly from embedded `lat`/`lng`/`observed_on`. DNA/BLAST and acoustic pathways: neither carries site info in the match object itself, so `site_df` must be supplied externally; may have more than one row per `observation_id` -- this is the correct shape for a sequence ASV genuinely detected at several real sample sites in one sequencing run (see Session 134 note). **Session 134b:** also populates `spatial_group_id` (default = the row's own `observation_id`) and `spatial_group_N` (default = `1L`) on every row from the moment the table is built, so every site table has valid, non-missing values before any grouping step runs -- `group_observations_by_bbox()`/`assign_spatial_group()` update these in place. |
+| `group_observations_by_bbox()` | R/group_observations_by_bbox.R | Complete | **Session 134b, moved here from TaxaFetch and reworked** (see that session's note below for the full design rationale). Interactive: loops `TaxaTools::define_search_polygon()` (re-centred each time on still-default observations, guaranteed to fully enclose them) to collect one or more group polygons, then an end-of-loop review step (list drawn groups by member count; re-open one by number to reshape via `init_polygon`; `"delete <n>"` to remove one, releasing its members back to default; Enter to finalize). Updates `spatial_group_id`/`spatial_group_N` **in place** on a `build_site_table()`-shaped input -- only touches observations still at their default single-observation state; anything already grouped (prior call, or `assign_spatial_group()`) is left untouched regardless of geometry. Overlap rule: **last-drawn-wins** with a `warning()` naming every ambiguous `observation_id`. Internal helpers `.bbox_center_radius()`, `.assign_spatial_groups_from_polygons()`, and `.review_drawn_groups()`'s non-interactive/zero-polygon paths are pure and unit-tested without a live gadget session. |
+| `assign_spatial_group()` | R/assign_spatial_group.R | Complete | **Session 134b.** Manual `spatial_group_id` setter for a named set of observations -- for a study where grouping is already known from metadata, or to hand-correct a few observations after `group_observations_by_bbox()`. Validates every named `observation_id` exists; **collision guard**: stops if the target `spatial_group_id` is already used by an observation *not* named in the call (would otherwise silently expand an unrelated group's membership) -- include that observation explicitly to merge groups instead. Recomputes `spatial_group_N` in sync. |
 
 ### Standardization (original)
 
@@ -252,6 +269,137 @@ inside `filter_redundant_hypotheses()` via `match()`.
 ---
 
 ## Session Notes
+
+**Session 134b (2026-07-04): group_observations_by_bbox() moved here and reworked; assign_spatial_group() added**
+
+Branch `single-observation-pipeline`. Follow-up to Session 134 below and to TaxaFetch's
+Session 134 (`group_observations_by_bbox()` originally landed there). After the user
+reviewed that implementation and raised design questions before committing (recorded in
+`ecosystem_docs/REENTRY_PROMPT_session134b_grouping_implemented.md`), three decisions
+were confirmed and implemented this session:
+
+- **Package placement:** `group_observations_by_bbox()` moved from TaxaFetch to TaxaMatch.
+  It operates on `build_site_table()`'s output and decides `spatial_group_id` membership --
+  a spatial-grouping concern that belongs next to the site table, not a fetch concern.
+  `TaxaTools::define_search_polygon()` (also moved this session, from TaxaFetch) is the
+  shared gadget both this function and TaxaFetch's search-area use now call.
+- **`build_site_table()` reframed as the source of truth for `spatial_group_id`/
+  `spatial_group_N` defaults**, not `group_observations_by_bbox()`. Every site table now
+  gets `spatial_group_id` (default = the row's own `observation_id`) and `spatial_group_N`
+  (default = `1L`) from the moment it's built -- solving the original worry that a
+  downstream function could assume these columns exist on a site table that never went
+  through grouping. `group_observations_by_bbox()` **updates these columns in place**
+  for whichever observations get captured by a drawn box; this simplified the "leftover"
+  handling considerably -- an observation outside every drawn box just keeps its existing
+  default, no separate singleton-numbering logic needed (the old
+  `"spatial_group_<n>"`-for-everyone convention from TaxaFetch's Session 134 is
+  superseded by this simpler default-to-`observation_id` shape; multi-member groups still
+  use `"spatial_group_1"`, `"spatial_group_2"`, ... in draw order).
+- **Manual assignment mechanism:** `assign_spatial_group()` added, a validating helper
+  rather than "just document that the column is editable" -- the user wanted the
+  collision guard (see Function Inventory entry above) rather than relying on callers to
+  get it right by hand.
+
+Also implemented, per the reentry prompt's "settled after further review" items:
+- **Last-drawn-wins overlap rule** (reversing the old first-drawn-wins): when an
+  observation falls inside more than one drawn polygon, the most recently drawn one's
+  group wins, with a `warning()` naming every ambiguous `observation_id`. Required
+  restructuring `.assign_spatial_groups_from_polygons()` to check every still-default
+  point against every polygon (not just points still "remaining" as boxes are drawn),
+  since two drawn boxes can geometrically overlap even though the interactive loop's own
+  view-narrowing heuristic only shows "not yet captured" points at each step.
+- **End-of-loop review/edit/delete step** (`.review_drawn_groups()`): after the user
+  cancels the draw loop, a numbered summary of drawn groups with member counts; entering
+  a number reopens that group's polygon via `TaxaTools::define_search_polygon(
+  init_polygon = ...)` for reshaping (new gadget param, see TaxaTools/CLAUDE.md);
+  `"delete <n>"` removes a group, releasing its members back to the default pool;
+  Enter/`"done"` finalizes. No-op (returns polygons unchanged) when zero polygons were
+  drawn or the session is non-interactive -- same testing boundary as the gadget itself.
+- **Default starting polygon full-enclosure guarantee confirmed, not just assumed:**
+  `.bbox_center_radius()`'s `radius_deg = max(half-ranges) * pad` (pad = 1.2) was already
+  correct but only implicitly so; added an explicit test
+  (`.bbox_center_radius()`'s "fully enclose every input point" case) and documented it as
+  a guaranteed property in the roxygen, per the reentry prompt's request to confirm this
+  before relying on it.
+
+**Live-testing hazard found and mitigated (same session, after a real user report) --
+initial hypothesis corrected below:** the first live run produced a fully unchanged
+result -- a box was drawn around a real cluster and "Done" was clicked, but the returned
+table showed no grouping applied at all, and no second gadget opened. Two mitigations
+were added while investigating: (1) `message()` progress feedback throughout the draw
+loop (box N captured M of N remaining; how many boxes recorded after Cancel; how many
+after review) so a live run's console transcript makes the actual sequence of events
+visible instead of opaque; (2) an explicit roxygen `@details` warning about running
+`group_observations_by_bbox()` as one isolated command, since its review step reads
+console input via `readline()` and RStudio can queue a following line as pending console
+input if both are submitted together. Both are harmless and worth keeping, but **neither
+was the actual root cause** -- an initial "RStudio queues the next line as readline()'s
+answer" hypothesis was floated and written up here, but the real bug (found via
+extended debugging, including Claude's Chrome browser-automation tools reproducing the
+exact gadget in a real browser) was that **`TaxaTools::define_search_polygon()`'s Done
+button never returned a value at all** when opened via RStudio's `dialogViewer()` --
+confirmed reproducible even in a bare, no-loop, no-`readline()` standalone call. See
+`TaxaTools/CLAUDE.md`'s Session 134b note for the full root-cause record and fix
+(`define_search_polygon()` now defaults to `shiny::paneViewer(minHeight = 500)` instead
+of `dialogViewer()` -- `browserViewer()` was the first fix and also confirmed working,
+but the user pointed out `paneViewer()` matches this ecosystem's other mapping gadgets
+and should be preferred for a consistent interaction style, which was then verified
+directly against this exact gadget too). With that fixed, `group_observations_by_bbox()`
+needed no code changes of its own -- it inherits the new default automatically, so it
+now opens each box-drawing step in RStudio's Viewer pane, same as before the bug, just
+via a different (working) viewer call. The `readline()`-queuing hazard documented above
+is still real and still worth avoiding, just wasn't what happened here.
+
+**Not done this session** (still open, see the reentry prompt's remaining items): the
+search-area-vs-spatial-group reconciliation (`points` param support for group-coloring
+was added to `define_search_polygon()`, but the actual per-group search-area drawing
+workflow is deferred to the fetch-scope-wiring session), fetch-scope branching itself
+(pooled fetch for multi-member groups vs. taxonomic escalation for singletons), the
+Reads-table relocation, and the TaxaAssign `(observation_id, site)` schema question.
+
+16 new/rewritten tests in `test-group_observations_by_bbox.R` (fully offline; the old
+15-test TaxaFetch version was rewritten for the new default-to-`observation_id` behavior
+and last-drawn-wins logic, not just moved verbatim), plus 10 new tests in
+`test-assign_spatial_group.R` and 2 new tests in `test-build_site_table.R` for the new
+default columns. `sf` added to `DESCRIPTION` Imports. `devtools::document()` +
+`devtools::test()` (390 expectations, 0 failures) + `devtools::check()` (0 errors, 0
+warnings, 0 notes) all clean.
+
+**Session 134 (2026-07-03): build_site_table() -- unified long-format site table**
+
+Branch `single-observation-pipeline`. Closes (partially) the site-table contract gap
+flagged in `ecosystem_docs/REENTRY_PROMPT_session134_single_observation_pipeline.md`
+(also `~/.claude/projects/-Users-lafferty/memory/project_site_table_contract_gap.md`):
+per-observation `lat`/`lon` is inconsistently present across the three match-object
+pathways. Confirmed directly this session (not assumed): `read_birdnet_output()`'s
+output carries **zero** site metadata -- only detection-window start/end times and the
+source recording filename, nothing GPS-like at all. So acoustic (like DNA/BLAST) needs
+site info supplied externally; only the image pathway (`score_image_inat()`) has it
+embedded.
+
+`build_site_table(match_df, site_df = NULL, id_col = "observation_id")` added
+(`R/build_site_table.R`): when `match_df` carries embedded `lat`/`lng` (image pathway),
+extracts and renames to the canonical `lat`/`lon`/`observed_on` shape directly, ignoring
+(with a warning) any `site_df` supplied alongside. Otherwise requires `site_df`
+(`observation_id`/`lat`/`lon`, optional `observed_on`) and joins it in, explicitly
+allowing more than one `site_df` row per `observation_id` -- this is the correct,
+intended shape for the ASV multi-site case flagged in the reentry prompt (a sequence
+ASV genuinely detected at several real sites within one sequencing run produces multiple
+`(observation_id, site)` rows sharing one likelihood, not a single row with one site).
+14 new tests (`test-build_site_table.R`), fully offline. `devtools::test()`: 342
+expectations, 0 failures. `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Not done this session** (left for the dedicated follow-up the reentry prompt already
+flagged): relocating the Reads-table (ASV x sample matrix, each sample column carrying
+an associated place + time) wide-to-long parsing logic from `TaxaFlag`'s
+`inst/contaminant_workflow.R` pivot step into a proper TaxaMatch function that feeds
+`build_site_table()`'s `site_df` argument directly for the sequence pathway -- confirmed
+this session that no such reusable function exists yet anywhere in the ecosystem, only
+an ad hoc `pivot_longer()` in that one workflow script, which doesn't yet parse
+per-sample place/time out of the sample-label convention. `TaxaAssign`'s downstream
+`(observation_id, site)` schema question (whether `join_priors()`/`compute_posterior()`/
+`posterior_consensus()` need to key on the pair rather than `observation_id` alone) is
+also still open, unaffected by this session's work.
 
 **Session 132 (2026-07-03): non-portable filenames fixed (rename)**
 

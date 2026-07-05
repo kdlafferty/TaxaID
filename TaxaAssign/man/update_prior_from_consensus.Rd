@@ -8,7 +8,8 @@ update_prior_from_consensus(
   result,
   consensus,
   presence_multiplier = 5,
-  n_sims = 0
+  n_sims = 0,
+  spatial_group_map = NULL
 )
 }
 \arguments{
@@ -25,14 +26,27 @@ multiplied for confirmed species in unresolved observations. Default 5.}
 \item{n_sims}{Integer. Passed to \code{\link[=compute_posterior]{compute_posterior()}} for the re-run.
 Default 0 (point estimates only, fast). Set to 1000 to propagate
 uncertainty — match the value used in the original run.}
+
+\item{spatial_group_map}{Dataframe with \code{observation_id} and
+\code{spatial_group_id} columns (e.g. from
+\code{TaxaMatch::group_observations_by_bbox()}), optional. When supplied, only
+observations whose \code{spatial_group_id} is shared with at least one other
+observation can contribute confirmed species or receive a prior update;
+observations in a single-observation spatial group (a singleton
+\code{spatial_group_id} -- there is no separate naming convention for these,
+see \code{group_observations_by_bbox()}) are always returned unchanged.
+Default \code{NULL} (no group-based restriction — all observations
+participate, matching this function's original behaviour).}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result}.
-Resolved observations are returned unchanged. Unresolved observations have updated
+Resolved observations are returned unchanged. Unresolved observations in
+a multi-member spatial group (see \code{spatial_group_map}) have updated
 \code{prior_mean} and freshly computed posterior columns
 (\code{posterior_point_est}, \code{posterior_mean}, \code{posterior_sd},
-\code{confidence_score}). Sorted by \code{observation_id} then descending
-\code{posterior_point_est}.
+\code{confidence_score}). Unresolved observations in a single-observation
+spatial group are returned unchanged, same as resolved ones. Sorted by
+\code{observation_id} then descending \code{posterior_point_est}.
 }
 \description{
 A one-pass empirical Bayes refinement step. Takes the output of
@@ -51,6 +65,20 @@ from the additional site-level presence information.
 \strong{Avoiding circularity:} Priors for observation B are updated using confirmations
 from \emph{other} observations. An observation's own posterior never feeds back into its own
 prior.
+
+\strong{Multi-member vs. single-observation spatial groups:} this refinement is
+only valid when other observations genuinely share a local species pool
+with the one being updated -- i.e. they share a spatial group (a drawn
+bounding box; see \code{TaxaMatch::group_observations_by_bbox()}). For a
+single-observation spatial group (whether because it was submitted alone,
+or because it fell outside every user-drawn box and was placed in its own
+group rather than dropped), no other observation shares its local species
+pool, so another observation's confirmed presence says nothing about it and
+must not be used. Supply \code{spatial_group_map} to enforce this: only
+observations whose \code{spatial_group_id} is shared with at least one other
+observation are used as evidence sources or receive a prior update;
+observations in a single-observation spatial group are always returned
+unchanged, exactly like already-resolved observations.
 
 \strong{Multiplier choice:} A multiplier raises the prior proportionally, preserving
 the relative ranking of other hypotheses before renormalization. The default

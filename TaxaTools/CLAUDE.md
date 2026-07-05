@@ -1,6 +1,16 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-27 (Session 122 — is_valid_species_name() → is_plausible_binomial() rename; call_api() data-sensitivity @details added; startup message data-transmission NOTE added; README.md Code Style + lintr-sweep reminder added; man/figures/README-pressure-1.png debris deleted)
+# Last updated: 2026-07-04 (Session 134b — define_search_polygon() moved here from TaxaFetch:
+# the shared interactive polygon gadget for both TaxaFetch's search-area use and TaxaMatch's
+# spatial-group use (group_observations_by_bbox()). Added group_col (color the points overlay
+# by an existing group column), init_polygon (reopen a previously drawn polygon for
+# reshaping), and viewer (default shiny::paneViewer(minHeight = 500) -- RStudio's
+# dialogViewer() was found, via real live-testing, to silently break this gadget's Done
+# button; paneViewer() confirmed working and matches this ecosystem's other mapping
+# gadgets) params. shiny/miniUI/leaflet added to Suggests. See Session 134b note below.
+# Session 122 — is_valid_species_name() → is_plausible_binomial() rename; call_api()
+# data-sensitivity @details added; startup message data-transmission NOTE added; README.md
+# Code Style + lintr-sweep reminder added; man/figures/README-pressure-1.png debris deleted)
 
 ---
 
@@ -71,6 +81,12 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 |---|---|---|---|
 | `census_genus_species()` | Enumerate described species per genus (or higher rank) via GBIF backbone `name_usage(children)`. `match_species` param computes reference completeness: "complete" / "singleton_missing" / "incomplete". Higher-rank recursion (family → genera → species). `rgbif` in Suggests. | Complete | R/census_genus_species.R |
 
+### Interactive spatial gadget (Session 134b, moved from TaxaFetch)
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `define_search_polygon()` | Interactive Shiny gadget: user drags corner markers on a leaflet map to define a custom polygon. Add Point inserts a vertex at the midpoint of the longest side; Remove Last Point undoes the last add (initial corners protected); Done returns a WKT POLYGON string. Requires `shiny`, `miniUI`, `leaflet` (checked at runtime). Must be run in an interactive R session. Shared by two callers: `TaxaFetch`'s search-area use (`fetch_gbif_occurrences()`/`download_gbif_occurrences()` geometry) and `TaxaMatch::group_observations_by_bbox()`'s spatial-group use -- the only generalization either needed was the `points`/`group_col`/`init_polygon` params below. `points` (data frame with `lat`/`lng`) overlays reference markers. `group_col` (Session 134b): optional column in `points` used to color the overlay by an existing group (e.g. `spatial_group_id`), with a legend -- lets a user drawing a broader search area see which points already belong to which group. `init_polygon` (Session 134b): reopen a previously returned WKT polygon for reshaping instead of starting from a fresh square -- used by `group_observations_by_bbox()`'s end-of-loop edit step. `viewer` (Session 134b): defaults to `shiny::paneViewer(minHeight = 500)` -- **not** `shiny::dialogViewer()`, which was found via real live-testing to silently swallow the Done button's return value whenever this gadget's leaflet map is present (confirmed reproducible; see Session 134b note below for the full debugging record). `paneViewer()` matches the call style already used by `TaxaHabitat::review_spatial_flags()` and `TaxaExpect::plot_theta_map_interactive()`, so all of this ecosystem's mapping gadgets now behave consistently. `browserViewer()` also confirmed working, for callers who want a separate browser tab instead. Internal helpers `.pts_to_wkt()`/`.wkt_to_pts()` are pure and unit-tested without a live gadget session. | Complete | R/define_search_polygon.R |
+
 ### Common name utilities (Session 97)
 
 | Function | Purpose | Status | Source file |
@@ -128,6 +144,7 @@ rename_cols()           # align column names to DarwinCore
 | test-draft_text.R | `build_report_context()`, `draft_methods_text()`, `draft_results_text()` | LLM calls skipped offline |
 | test-model_registry.R | Model registry internals | Fully offline |
 | test-report_section.R | Report section helpers | Fully offline |
+| test-define_search_polygon.R | `.pts_to_wkt()`, `.wkt_to_pts()` | 8 tests; fully offline; the gadget itself requires a live interactive session and is not covered |
 
 **Testing rules:** All tests use small inline data. No external files. No API calls except
 the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
@@ -147,6 +164,9 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
 | stringr | String cleaning in `clean_taxon_names()` |
 | rlang | NSE (`:=`, `sym()`) in `change_backbone()` |
 | stats | `setNames()` in `change_backbone()` |
+| shiny (Suggests) | `define_search_polygon()` interactive gadget (Session 134b, moved from TaxaFetch) |
+| miniUI (Suggests) | `define_search_polygon()` gadget UI (Session 134b) |
+| leaflet (Suggests) | `define_search_polygon()` map rendering (Session 134b) |
 
 ---
 
@@ -168,6 +188,103 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
 ---
 
 ## Session Notes
+
+**Session 134b (2026-07-04): define_search_polygon() moved here from TaxaFetch**
+
+Branch `single-observation-pipeline`, follow-up to TaxaFetch/TaxaMatch's Session 134
+(automatic spatial grouping). After the user reviewed that session's implementation,
+a design question came up before committing: could the same interactive polygon gadget
+serve both TaxaFetch's search-area purpose and TaxaMatch's new spatial-group purpose
+(`group_observations_by_bbox()`), or did they need separate tools? Worked out that the
+only generalization needed was small and additive -- coloring the `points` overlay by an
+existing group column, and letting a previously drawn polygon be reopened for reshaping --
+neither changes the core interaction model. That argued for one shared gadget rather than
+duplicating it, so `define_search_polygon()` moved here (a dependency both TaxaFetch and
+TaxaMatch already have) and TaxaFetch/TaxaMatch call `TaxaTools::define_search_polygon()`.
+
+- Added `group_col` param: optional column in `points` used to color the reference-marker
+  overlay by group (e.g. `spatial_group_id`), with a legend.
+- Added `init_polygon` param: an existing WKT POLYGON string can be passed to reopen the
+  gadget seeded with that polygon's own vertices instead of a fresh square -- used by
+  `TaxaMatch::group_observations_by_bbox()`'s new end-of-loop edit step.
+- Refactored `.pts_to_wkt()`/`.wkt_to_pts()` (WKT <-> vertex-vector conversion) out of the
+  function's closure to module scope (`@noRd`) so they're unit-testable without a live
+  gadget session -- matching the pattern the ecosystem already uses for other pure
+  geometry helpers (e.g. `TaxaMatch`'s `.bbox_center_radius()`).
+- `shiny`/`miniUI`/`leaflet` added to this package's `DESCRIPTION` Suggests (moved from
+  TaxaFetch's, which no longer calls those namespaces directly).
+- 8 new tests (`test-define_search_polygon.R`), fully offline (the gadget itself still
+  requires a live interactive session, same testing boundary as before the move).
+  `devtools::document()` + `devtools::test()` (688 expectations, 0 failures) +
+  `devtools::check()` (0 errors, 0 warnings, 0 notes) all clean.
+- See TaxaFetch/CLAUDE.md and TaxaMatch/CLAUDE.md Session 134b notes for what changed on
+  the calling side, and `ecosystem_docs/REENTRY_PROMPT_session134b_grouping_implemented.md`
+  for the full design discussion.
+
+**Bug found and fixed live-testing the gadget with `points` for the first time (same
+session):** the `points`/`group_col` reference-marker overlay never actually rendered --
+it flashed on load and immediately vanished. Root cause: `leaflet::clearMarkers()` and
+`leaflet::clearShapes()` are not scoped to the layers you just added with `addMarkers()`/
+`addPolygons()` -- per the leaflet R package's own documentation, `clearMarkers()` removes
+**every** marker-type layer on the map (`addMarkers()`, `addCircleMarkers()`,
+`addAwesomeMarkers()` alike), and `clearShapes()` removes every polygon/line/circle layer,
+regardless of which call added them. The gadget's redraw `observe()` block called both,
+intending only to wipe the old draggable-vertex polygon before redrawing it -- but that
+also wiped the `addCircleMarkers()` reference-point overlay added once at gadget startup,
+and since that `observe()` block fires immediately on load (not just on user interaction),
+the points never had a chance to stay visible. Fixed by tagging the polygon and draggable
+vertices with `group = "editor"` and the reference points with `group = "reference_points"`,
+then replacing the two global `clear*()` calls with a single `leaflet::clearGroup(proxy,
+group = "editor")` that only touches the editor's own layers. This bug existed from the
+original `points` param's introduction (TaxaFetch Session 134) -- the pure/unit-tested
+helpers never exercised it, and this was the first time anyone actually ran the gadget
+with `points` supplied. Re-verified: `devtools::test()` (688 expectations, 0 failures),
+`devtools::check()` (0 errors, 0 warnings, 0 notes).
+
+**Second, much larger bug found the same way (same session): RStudio's `dialogViewer()`
+silently swallowed the Done button's return value for this gadget specifically.** After
+the fix above, live use of `group_observations_by_bbox()` still completely failed --
+clicking Done closed the dialog, but the function always behaved as if the user had
+clicked Cancel (returned `NULL`), so the calling loop never recorded a polygon and never
+reopened for a second box. This took an extended debugging session to isolate, because
+every offline signal looked fine: the installed code was confirmed correct via
+`loadNamespace()` + `deparse()` (ruling out a stale-library-cache theory that seemed very
+plausible at first, given `~/.Renviron`'s `R_LIBS_USER=~/Library/R/4.0/library` -- **not**
+the path documented in this file's Developer Environment table -- turned out to be the
+real, active library the whole time, confirmed by starting a real `R` session from the
+project directory and checking `.libPaths()`/`find.package()` directly); a minimal
+`miniUI` gadget (no leaflet, just a title bar and a Done button) worked correctly with
+`shiny::dialogViewer()`, ruling out a general `shiny`/`miniUI`/RStudio incompatibility;
+and the actual point-in-polygon math was independently verified correct with `sf` in
+isolation. The conclusive test: the *exact* production gadget code (leaflet map,
+reactive observers, everything), reconstructed via `deparse()` with only
+`shiny::dialogViewer(...)` swapped for `shiny::browserViewer()`, opened in a real Chrome
+browser and worked perfectly on the first click -- confirmed both by inspecting the
+live page (Claude's Chrome browser-automation tools: accessibility tree showed real map
+tiles and a correctly-updating live WKT preview) and by the calling R session printing
+the correct WKT string after the click. Root cause, narrowed to: RStudio's embedded
+dialog webview specifically mishandles this gadget's Leaflet content in a way that
+breaks the Done button's click-to-server round trip, while an identical non-leaflet
+gadget works fine in the same viewer and this exact gadget works fine outside that one
+webview. Not something this package can fix in RStudio's dialog webview -- added a
+`viewer` param to `define_search_polygon()` instead of the previous hardcoded
+`shiny::dialogViewer(...)`. First set to `shiny::browserViewer()` (confirmed reliable),
+but the user then pointed out this ecosystem already has two other interactive mapping
+gadgets (`TaxaHabitat::review_spatial_flags()`, `TaxaExpect::plot_theta_map_interactive()`)
+that both use `shiny::paneViewer()` successfully -- mixing a browser-tab gadget with
+pane-based ones would be a needless inconsistency for the user. Tested
+`paneViewer()` directly against this exact gadget (not just the non-leaflet minimal
+test) and confirmed it also round-trips Done correctly, so the **final default is
+`shiny::paneViewer(minHeight = 500)`**, matching the other two gadgets' own call style
+exactly. `browserViewer()` remains confirmed working and is documented as the
+alternative to pass explicitly; `dialogViewer()` is documented as the one to avoid for
+this function. Callers who've confirmed `dialogViewer()` works on their own machine can
+still pass it explicitly. Re-verified after each change: `devtools::test()` (688
+expectations, 0 failures), `devtools::check()` (0 errors, 0 warnings, 0 notes). See
+`TaxaID/CLAUDE.md`'s Known R Footguns for the ecosystem-wide note (any future Shiny
+gadget wrapping `leaflet` should default away from `dialogViewer()` until this is
+independently reproduced/reported upstream; use `paneViewer()` for consistency with the
+mapping gadgets that already exist in this ecosystem).
 
 Sessions 27–84 archived in ecosystem_docs/session_notes/TaxaTools_sessions.md.
 

@@ -1,6 +1,13 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-03 (Session 131 — pre-code-review cleanup pass: ASCII/lintr/naming sweeps,
+# Last updated: 2026-07-04 (Session 134b -- define_search_polygon() and
+# group_observations_by_bbox() moved OUT of this package: define_search_polygon() -> TaxaTools
+# (shared gadget, now also used for TaxaMatch's spatial grouping), group_observations_by_bbox()
+# -> TaxaMatch (it operates on TaxaMatch::build_site_table()'s output; a spatial-grouping
+# concern, not a fetch concern). shiny/miniUI/leaflet dropped from this package's Suggests
+# accordingly. See TaxaTools/CLAUDE.md and TaxaMatch/CLAUDE.md Session 134b notes for the new
+# homes. Session 134 -- group_observations_by_bbox() originally added here; see Session 134
+# note below for that history. Session 131 -- pre-code-review cleanup pass: ASCII/lintr/naming sweeps,
 # documentation completeness pass, security + algorithm review. Also corrects a false claim from
 # Session 129: get_gbif_occurrences() does NOT fix an issue/issues column-name mismatch on the
 # download path -- download_gbif_occurrences() already renamed it correctly, always had. See the
@@ -19,13 +26,18 @@ now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Sess
 
 ## Function Inventory
 
+**Note (Session 134b):** the interactive polygon gadget formerly documented here,
+`define_search_polygon()`, is now `TaxaTools::define_search_polygon()` -- moved so
+TaxaMatch's `group_observations_by_bbox()` (spatial grouping) can share it with this
+package's search-area use. `make_bbox_wkt()` below still links to it for the
+non-interactive-vs-interactive comparison.
+
 ### DataONE / GBIF pipeline
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box (scripted, non-interactive) | Complete | R/make_bbox_wkt.R |
-| `define_search_polygon()` | Interactive Shiny gadget: user drags 4 corner markers on a leaflet map to define a custom polygon; Add Point inserts vertex at midpoint of longest side; Remove Last Point undoes last add (original 4 corners protected); Done returns WKT POLYGON string ready for `geometry` arg of `fetch_gbif_occurrences()` / `download_gbif_occurrences()`. Requires `shiny`, `miniUI`, `leaflet` (checked at runtime). Must be run in interactive R session. | Complete | R/define_search_polygon.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
 | `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. | Complete | R/fetch_gbif_occurrences.R |
 | `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility — implemented and verified working (Session 131; a Session 129 note here previously claimed otherwise, incorrectly); (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` should reference SIMPLE_CSV's native `issue` (singular) name if customized — the function renames the output column to `issues` regardless. | Complete | R/download_gbif_occurrences.R |
@@ -98,8 +110,8 @@ harvest_dataone_catalog() → build_geo_prompt() → build_taxon_screen_prompt()
 
 ### GBIF pipeline
 ```
-make_bbox_wkt()              [scripted square bbox]
-define_search_polygon()      [interactive polygon gadget — interactive sessions only]
+make_bbox_wkt()                        [scripted square bbox]
+TaxaTools::define_search_polygon()     [interactive polygon gadget — interactive sessions only]
   ↓
 get_keys_from_context() → get_gbif_occurrences()           [Session 129: picks the path below by key count]
                             ↳ fetch_gbif_occurrences()      [≤~50 keys, no account]
@@ -216,13 +228,108 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | pdftools | `pdf_text()`, `pdf_render_page()` | Suggests (PDF pipeline only) |
 | png | `writePNG()` for image encoding | Suggests (PDF pipeline only) |
 | base64enc | `base64encode()` for API image blocks | Suggests (PDF pipeline only) |
-| shiny | `define_search_polygon()` interactive gadget | Suggests |
-| miniUI | `define_search_polygon()` gadget UI | Suggests |
-| leaflet | `define_search_polygon()` map rendering | Suggests |
+
+**Session 134b:** `shiny`/`miniUI`/`leaflet` removed from Suggests -- they were only used
+by `define_search_polygon()`, which moved to TaxaTools this session (see Session 134b note
+below and TaxaTools/CLAUDE.md).
 
 ---
 
 ## Session Notes
+
+**Session 134b (2026-07-04): define_search_polygon() and group_observations_by_bbox() moved out**
+
+Follow-up to Session 134 below, after the user reviewed that session's implementation and
+raised package-placement questions before committing (see
+`ecosystem_docs/REENTRY_PROMPT_session134b_grouping_implemented.md`). Resolution: the only
+generalization `define_search_polygon()` needed to serve both a search-area purpose (this
+package) and a spatial-group purpose (`TaxaMatch::group_observations_by_bbox()`) was letting
+its `points` overlay be colored by an existing group column, plus letting a previously drawn
+polygon be reopened for reshaping (`init_polygon` param) -- neither changes the core
+interaction model, so one shared gadget covers both rather than two divergent ones.
+
+- `define_search_polygon()` moved to **TaxaTools** (`R/define_search_polygon.R` there),
+  with the `group_col` and `init_polygon` additions. Call it as
+  `TaxaTools::define_search_polygon()` from this package now (see the GBIF pipeline diagram
+  above). `make_bbox_wkt()`'s cross-reference updated accordingly.
+- `group_observations_by_bbox()` moved to **TaxaMatch** (it operates on
+  `TaxaMatch::build_site_table()`'s output -- a spatial-grouping concern, not a fetch
+  concern) and was substantially reworked there (default-to-`observation_id` behavior,
+  last-drawn-wins overlap rule, end-of-loop review/edit/delete step, new
+  `assign_spatial_group()` manual-assignment helper). See TaxaMatch/CLAUDE.md's Session
+  134b note for the full design.
+- `shiny`/`miniUI`/`leaflet` dropped from this package's `DESCRIPTION` Suggests (moved to
+  TaxaTools's Suggests instead) -- nothing in this package calls those namespaces directly
+  anymore.
+- Two workflow scripts fixed to call the new location:
+  `inst/TaxaID_Workflow_Template.R` and `inst/TaxaID_Workflow_Template_TEST.R`
+  (`TaxaFetch::define_search_polygon()` -> `TaxaTools::define_search_polygon()`).
+- `devtools::document()` + `devtools::test()` (407 expectations, 0 failures, 4 pre-existing
+  warnings/2 skips) + `devtools::check()` (0 errors, 0 warnings, 0 notes) all clean after
+  the move.
+
+**Session 134 (2026-07-03): group_observations_by_bbox() -- automatic spatial grouping**
+
+*(Historical record -- this function and `define_search_polygon()` moved out of this
+package in Session 134b, see that note above. Kept here for the original design
+rationale, which still mostly applies at the new location.)*
+
+Branch `single-observation-pipeline`. Implements the "automatic grouping" design from
+`ecosystem_docs/REENTRY_PROMPT_session134_single_observation_pipeline.md`'s Thread 2 /
+step 3, with one deliberate deviation from that prompt's original spec: **observations
+outside every drawn group polygon (or all of them, if the user draws no polygon at all)
+are placed in their own single-observation spatial group, not dropped.** The original
+design (written mid-session before the user weighed in) called for dropping them with
+an alert; the user redirected this before implementation started -- dropping silently
+discards data the pipeline can still handle via the single-observation escalation path,
+whereas keeping it as its own group costs nothing and is strictly more useful. A
+`message()` always explains the reclassification (distinct wording for "some points
+outside every box" vs. "no box drawn at all").
+
+**Naming, settled before commit:** the column/param started out as `group_id`/`group_map`
+with a special `"independent_<id>"` string for unboxed observations. The user flagged
+this before committing: "group" is already used for unrelated concepts elsewhere in the
+ecosystem (`TaxaAssign::assign_taxa_llm()`'s `context_group`/`.build_group_map()` for
+LLM-batching context groups; `TaxaExpect` also uses "group" for taxonomic grouping), and
+"cluster" -- the other candidate -- is *already taken* by `TaxaLikely`'s acoustic
+calibration work (`cluster`/`true_cluster`/`CLUSTER_MAP` = confusable-species groups, a
+completely different concept). Renamed to `spatial_group_id`/`spatial_group_map`
+throughout, and dropped the separate `"independent_*"` naming convention entirely per the
+user's direction: a single-observation spatial group isn't a different kind of thing, so
+it gets a `spatial_group_id` with the exact same `"spatial_group_<n>"` shape as any other
+group (continuing the same sequential numbering), just with one member. This cost nothing
+downstream -- `update_prior_from_consensus()`'s eligibility check already worked by
+counting how many observations share a `spatial_group_id` (`table()` + `>= 2L`), never by
+pattern-matching the id string, so removing the special prefix required no logic changes,
+only renaming.
+
+- `define_search_polygon()`: added `points` param (data frame with `lat`/`lng`),
+  overlaid as small non-interactive `addCircleMarkers()` so the user can see the actual
+  observation cloud while drawing. Backward compatible (`NULL` default, no behavior
+  change when omitted).
+- `group_observations_by_bbox()` (new, `R/group_observations_by_bbox.R`): loops
+  `define_search_polygon()`, re-centring each call on the bounding box of whatever
+  observations are still ungrouped (via `.bbox_center_radius()`), until the user cancels
+  the gadget (signals "done drawing groups" -- does not discard groups already
+  recorded). Final assignment via `.assign_spatial_groups_from_polygons()`:
+  point-in-polygon test using `sf::st_within()` (same pattern already used in
+  `check_inat_range()`), first-match-wins draw order, singleton-group reclassification
+  with message as described above. Both internal helpers are pure (no Shiny dependency)
+  and fully unit-tested -- the interactive loop itself is not (same testing boundary as
+  `define_search_polygon()` already has, gated by `interactive()`).
+- Consequence for `TaxaAssign::update_prior_from_consensus()`: single-observation spatial
+  groups produced here (including the newly-singleton unboxed ones) must never contribute
+  to or receive that function's consensus-based prior boost -- implemented this same
+  session via that function's new `spatial_group_map` param (see `TaxaAssign/CLAUDE.md`).
+- 15 new tests (`test-group_observations_by_bbox.R`), fully offline. `devtools::test()`:
+  422 expectations, 0 failures (4 warnings/2 skips pre-existing). `devtools::check()`:
+  0 errors, 0 warnings, 0 notes.
+- **Not done this session** (see `ecosystem_docs/REENTRY_PROMPT_session134...` follow-up
+  for the next session): wiring `spatial_group_id` into the actual occurrence/reference
+  fetch calls (pooled fetch for multi-member groups vs. per-observation taxonomic
+  escalation for single-observation groups) -- the escalation ladder itself (genus ->
+  family -> order) was only validated empirically in ad hoc session scripts last session,
+  not yet built as a reusable function anywhere in the ecosystem.
 
 Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
 

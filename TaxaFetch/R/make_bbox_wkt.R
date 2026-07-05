@@ -22,7 +22,7 @@
 #' @details
 #' \strong{Square vs. irregular polygons:} This function always produces a
 #' square bounding box. For an irregular boundary (coastline, watershed,
-#' administrative region) use \code{\link{define_search_polygon}} to draw a
+#' administrative region) use \code{\link[TaxaTools]{define_search_polygon}} to draw a
 #' custom polygon interactively, or construct a WKT string manually and pass
 #' it directly to \code{fetch_gbif_occurrences(geometry = ...)}.
 #'
@@ -37,7 +37,7 @@
 #' convention. This function handles the swap internally; callers supply
 #' (lat, lon) as is conventional in this package.
 #'
-#' @seealso \code{\link{fetch_gbif_occurrences}}, \code{\link{define_search_polygon}}
+#' @seealso \code{\link{fetch_gbif_occurrences}}, \code{\link[TaxaTools]{define_search_polygon}}
 #'
 #' @export
 #'

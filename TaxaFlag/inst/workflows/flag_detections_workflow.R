@@ -124,7 +124,7 @@ if (DEBUG_MODE) {
   # habitat: the real SITE_HABITAT value derived above, never hardcoded.
   # geography: HONESTY CAVEAT -- this tutorial chain never geocoded its GBIF
   # search box (a lat/lon bounding box or WKT polygon; see TaxaFetch's
-  # make_bbox_wkt()/define_search_polygon()) to a named place. Inventing a
+  # make_bbox_wkt() / TaxaTools's define_search_polygon()) to a named place. Inventing a
   # specific place name here (e.g. "North Atlantic" or "Gulf of Maine") would
   # misrepresent it as an authoritative geocoded result when it is not. State
   # plainly that it is an approximate, non-geocoded placeholder so a reader

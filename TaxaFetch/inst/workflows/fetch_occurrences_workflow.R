@@ -101,7 +101,7 @@ message("\n--- Step 1: Defining search area and resolving GBIF keys ---")
 
 # make_bbox_wkt() builds a square WKT bounding box (scripted, non-interactive)
 # -- fine for a tutorial box. For a real study with an irregular coastline,
-# TaxaFetch::define_search_polygon() (interactive; requires shiny/miniUI/
+# TaxaTools::define_search_polygon() (interactive; requires shiny/miniUI/
 # leaflet) usually wastes less GBIF download bandwidth over land/open ocean.
 bbox <- TaxaFetch::make_bbox_wkt(
   lat        = STUDY_LAT,

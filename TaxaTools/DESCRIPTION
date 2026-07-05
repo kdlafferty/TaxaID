@@ -18,9 +18,12 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests:
     knitr,
+    leaflet,
+    miniUI,
     rentrez,
     rgbif,
     rmarkdown,
+    shiny,
     taxize,
     testthat (>= 3.0.0),
     withr,
