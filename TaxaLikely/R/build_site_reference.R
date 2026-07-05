@@ -9,7 +9,7 @@
 #' This function is the site-specific analog of a CRABS workflow:
 #' \enumerate{
 #'   \item \strong{Fetch} - downloads sequences from NCBI for `taxa` using
-#'     [fetch_reference_sequences()].
+#'     [fetch_ncbi_reference_sequences()].
 #'   \item \strong{Flag} - optionally detects mislabeled references with
 #'     [flag_reference_errors()] + [build_sequence_matrix()] (slow; requires
 #'     \pkg{DECIPHER} and \pkg{Biostrings}).
@@ -86,7 +86,7 @@
 #' If \code{output_dir} is specified, \code{reference.fasta} and
 #' \code{reference_taxonomy.tsv} are written there.
 #'
-#' @seealso [fetch_reference_sequences()], [write_reference_fasta()],
+#' @seealso [fetch_ncbi_reference_sequences()], [write_reference_fasta()],
 #'   [audit_barcode_coverage()], [flag_reference_errors()],
 #'   [build_sequence_matrix()], [train_likelihood_model()]
 #'
@@ -152,7 +152,7 @@ build_site_reference <- function(taxa,
   # ---- Step 1: Fetch reference sequences -------------------------------------
 
   message("Step 1/3: Fetching reference sequences from NCBI...")
-  reference_df <- fetch_reference_sequences(
+  reference_df <- fetch_ncbi_reference_sequences(
     taxa            = taxa,
     barcode_term    = barcode_term,
     rank_system     = rank_system,

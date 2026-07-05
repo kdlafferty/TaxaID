@@ -55,6 +55,14 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #' @param resolve_taxonomy Logical. If \code{TRUE} (default), resolve NCBI
 #'   taxonomy IDs to full lineage (kingdom through species) and append taxonomy
 #'   columns to the output.
+#' @param resolve_location Logical. Default \code{FALSE}. If \code{TRUE},
+#'   fetch each unique hit accession's full GenBank record (a real, separate
+#'   NCBI round trip -- not free) and append \code{lat}/\code{lon}/
+#'   \code{country} columns parsed from the record's \code{source} feature
+#'   \code{lat_lon}/\code{country} qualifiers. \code{NA} where the record has
+#'   no collection-location metadata. Independent of \code{resolve_taxonomy}
+#'   -- taxonomy comes from the NCBI taxonomy database, location from the
+#'   full nucleotide record; neither fetch gives you the other.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
 #' @return A data frame with one row per query x hit, containing:
@@ -70,7 +78,8 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #'   }
 #'   If \code{resolve_taxonomy = TRUE}, taxonomy columns (\code{kingdom},
 #'   \code{phylum}, \code{class}, \code{order}, \code{family}, \code{genus},
-#'   \code{species}) are appended.
+#'   \code{species}) are appended. If \code{resolve_location = TRUE},
+#'   \code{lat}, \code{lon}, and \code{country} columns are appended.
 #'
 #'   This output is ready for \code{\link{standardize_match_data}}.
 #'
@@ -125,6 +134,7 @@ blast_sequences <- function(seq_df,
                             email = NULL,
                             ncbi_api_key = NULL,
                             resolve_taxonomy = TRUE,
+                            resolve_location = FALSE,
                             verbose = TRUE) {
 
   # --- Input validation -------------------------------------------------------
@@ -166,6 +176,9 @@ blast_sequences <- function(seq_df,
   if (!is.logical(resolve_taxonomy) || length(resolve_taxonomy) != 1L ||
       is.na(resolve_taxonomy))
     stop("resolve_taxonomy must be TRUE or FALSE")
+  if (!is.logical(resolve_location) || length(resolve_location) != 1L ||
+      is.na(resolve_location))
+    stop("resolve_location must be TRUE or FALSE")
 
   max_hits <- as.integer(max_hits)
   max_target_seqs <- as.integer(max_target_seqs)
@@ -278,6 +291,36 @@ blast_sequences <- function(seq_df,
   for (tc in tax_cols) {
     if (tc %in% names(filtered)) {
       out[[tc]] <- filtered[[tc]]
+    }
+  }
+
+  # --- Resolve collection location (lat/lon/country) if requested ------------
+  if (resolve_location) {
+    accessions <- unique(out$accession)
+    accessions <- accessions[!is.na(accessions) & nchar(accessions) > 0L]
+    if (length(accessions) > 0L) {
+      if (verbose)
+        message(sprintf("Resolving location metadata for %d unique accessions...",
+                        length(accessions)))
+      loc_map <- .resolve_locations_by_acc(accessions, ncbi_api_key, verbose)
+      # Version-suffix-stripped join key on both sides -- GBSeq_primary-accession
+      # is already version-free, but out$accession/BLAST's sacc is not guaranteed
+      # to be, so this is defensive rather than load-bearing.
+      if (is.data.frame(loc_map) && nrow(loc_map) > 0L) {
+        out$.join_acc <- sub("\\.[0-9]+$", "", out$accession)
+        loc_map$.join_acc <- sub("\\.[0-9]+$", "", loc_map$accession)
+        loc_map$accession <- NULL
+        out <- merge(out, loc_map, by = ".join_acc", all.x = TRUE, sort = FALSE)
+        out$.join_acc <- NULL
+      } else {
+        out$lat     <- NA_real_
+        out$lon     <- NA_real_
+        out$country <- NA_character_
+      }
+    } else {
+      out$lat     <- NA_real_
+      out$lon     <- NA_real_
+      out$country <- NA_character_
     }
   }
 
@@ -940,6 +983,119 @@ blast_sequences <- function(seq_df,
   result <- merge(acc_df, tax_map, by = "taxid", all.x = TRUE, sort = FALSE)
   result$taxid <- NULL
   result
+}
+
+
+# ==============================================================================
+# Internal: Resolve collection location (lat_lon/country) from accessions
+# ==============================================================================
+
+#' Parse an INSDC lat_lon qualifier string into signed decimal degrees
+#'
+#' GenBank's \code{/lat_lon} qualifier uses the format
+#' \code{"36.789 N 121.947 W"} (degrees, hemisphere letter, repeated for
+#' longitude). Returns \code{c(lat = NA_real_, lon = NA_real_)} on any
+#' missing/unparseable input. Deliberately duplicated from TaxaLikely's
+#' identical internal helper rather than shared across packages -- matches
+#' this ecosystem's existing pre-manuscript stance on NCBI-fetcher overlap
+#' (see `ecosystem_docs` / TaxaLikely's Session 115 note: the only real
+#' cross-package overlap is small taxid/qualifier parsing, not worth
+#' abstracting before manuscript review).
+#' @noRd
+.parse_lat_lon <- function(x) {
+  empty <- c(lat = NA_real_, lon = NA_real_)
+  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) return(empty)
+
+  m <- regmatches(x, regexec(
+    "^\\s*([0-9.]+)\\s*([NSns])\\s+([0-9.]+)\\s*([EWew])\\s*$", x
+  ))[[1L]]
+  if (length(m) != 5L) return(empty)
+
+  lat_val <- suppressWarnings(as.numeric(m[2L]))
+  lon_val <- suppressWarnings(as.numeric(m[4L]))
+  if (is.na(lat_val) || is.na(lon_val)) return(empty)
+
+  lat <- if (toupper(m[3L]) == "S") -lat_val else lat_val
+  lon <- if (toupper(m[5L]) == "W") -lon_val else lon_val
+  c(lat = lat, lon = lon)
+}
+
+
+#' Resolve GenBank collection location (lat_lon/country) from accessions
+#'
+#' Fetches full GBSeq XML records (\code{rettype = "gb", retmode = "xml"})
+#' directly by accession -- neither \code{.resolve_taxonomy()} nor
+#' \code{.resolve_taxonomy_by_acc()} ever touch this record type (both only
+#' reach the NCBI taxonomy database), so BLAST hit accessions' collection
+#' coordinates are otherwise never in scope. Accessions are passed directly
+#' as \code{id} (the same convention used elsewhere in this file), avoiding
+#' a separate search/summary round trip.
+#' @noRd
+.resolve_locations_by_acc <- function(accessions, ncbi_api_key = NULL,
+                                      verbose = TRUE) {
+  empty <- data.frame(accession = character(0L), lat = numeric(0L),
+                      lon = numeric(0L), country = character(0L),
+                      stringsAsFactors = FALSE)
+
+  if (!requireNamespace("rentrez", quietly = TRUE))
+    stop("Package 'rentrez' is required for location resolution.")
+  if (!requireNamespace("xml2", quietly = TRUE))
+    stop("Package 'xml2' is required for location resolution.")
+
+  if (!is.null(ncbi_api_key))
+    rentrez::set_entrez_key(ncbi_api_key)
+
+  accessions <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
+  if (length(accessions) == 0L) return(empty)
+
+  batch_size <- 100L
+  batches    <- split(accessions, ceiling(seq_along(accessions) / batch_size))
+  res        <- vector("list", length(batches))
+
+  for (i in seq_along(batches)) {
+    batch <- batches[[i]]
+    for (attempt in 1:3) {
+      tryCatch({
+        xml_raw <- rentrez::entrez_fetch(
+          db = "nucleotide", id = batch, rettype = "gb", retmode = "xml"
+        )
+        xml_doc <- xml2::read_xml(xml_raw)
+        nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
+
+        res[[i]] <- do.call(rbind, lapply(nodes, function(node) {
+          acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
+          quals <- xml2::xml_find_all(
+            node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
+          )
+          qnames <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_name"))
+          qvals  <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_value"))
+
+          lat_lon_raw <- qvals[qnames == "lat_lon"]
+          country_raw <- qvals[qnames == "country"]
+          ll <- .parse_lat_lon(if (length(lat_lon_raw) > 0L) lat_lon_raw[1L] else NA_character_)
+
+          data.frame(
+            accession = acc,
+            lat       = ll[["lat"]],
+            lon       = ll[["lon"]],
+            country   = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
+            stringsAsFactors = FALSE
+          )
+        }))
+        break
+      }, error = function(e) {
+        if (attempt < 3L) {
+          Sys.sleep(attempt * 2)
+        } else if (verbose) {
+          warning(sprintf("Location fetch failed for batch %d: %s", i, e$message))
+        }
+      })
+    }
+    if (i < length(batches)) Sys.sleep(0.4)
+  }
+
+  out <- do.call(rbind, Filter(Negate(is.null), res))
+  if (is.null(out)) empty else out
 }
 
 

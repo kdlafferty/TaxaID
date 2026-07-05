@@ -23,7 +23,7 @@ restore_suppressed_candidates(
 \item{match_obj}{Data frame. Standardised match object.}
 
 \item{reference_df}{Data frame. Reference database (output of
-\code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}, \code{\link[=read_reference_fasta]{read_reference_fasta()}}, or
+\code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}, \code{\link[=read_reference_fasta]{read_reference_fasta()}}, or
 \code{\link[=read_crabs_output]{read_crabs_output()}}).  Must contain the same genus/species columns as
 \code{match_obj}.}
 

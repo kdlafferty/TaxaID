@@ -1,21 +1,196 @@
 # tests/testthat/test-fetch.R
-# Tests for fetch_reference_sequences() and read_reference_fasta() —
+# Tests for fetch_ncbi_reference_sequences() and read_reference_fasta() —
 # input validation only (network tests are separate)
 
-# ---- fetch_reference_sequences validation ------------------------------------
+# ---- fetch_ncbi_reference_sequences validation --------------------------------
 
-test_that("fetch_reference_sequences errors on non-character taxa", {
+test_that("fetch_ncbi_reference_sequences errors on non-character taxa", {
   expect_error(
-    fetch_reference_sequences(taxa = 123, barcode_term = "COI"),
+    fetch_ncbi_reference_sequences(taxa = 123, barcode_term = "COI"),
     "character"
   )
 })
 
-test_that("fetch_reference_sequences errors on missing barcode_term", {
+test_that("fetch_ncbi_reference_sequences errors on missing barcode_term", {
   expect_error(
-    fetch_reference_sequences(taxa = "Gadidae"),
+    fetch_ncbi_reference_sequences(taxa = "Gadidae"),
     'argument "barcode_term" is missing'
   )
+})
+
+# ---- fetch_reference_sequences() deprecated alias -----------------------------
+
+test_that("fetch_reference_sequences is deprecated but still forwards correctly", {
+  expect_warning(
+    expect_error(
+      fetch_reference_sequences(taxa = 123, barcode_term = "COI"),
+      "character"
+    ),
+    "deprecated"
+  )
+})
+
+test_that("fetch_reference_sequences forwards all arguments to the renamed function", {
+  expect_warning(
+    expect_error(
+      fetch_reference_sequences(taxa = "Gadidae"),
+      'argument "barcode_term" is missing'
+    ),
+    "deprecated"
+  )
+})
+
+# ---- fetch_bold_reference_sequences validation --------------------------------
+
+test_that("fetch_bold_reference_sequences errors on non-character taxa", {
+  expect_error(
+    fetch_bold_reference_sequences(taxa = 123),
+    "character"
+  )
+})
+
+test_that("fetch_bold_reference_sequences errors on non-character barcode_term", {
+  expect_error(
+    fetch_bold_reference_sequences(taxa = "Fundulus", barcode_term = 123),
+    "barcode_term"
+  )
+})
+
+test_that("fetch_bold_reference_sequences errors on empty rank_system", {
+  expect_error(
+    fetch_bold_reference_sequences(taxa = "Fundulus", rank_system = character(0L)),
+    "rank_system"
+  )
+})
+
+test_that("fetch_bold_reference_sequences errors on invalid max_per_species", {
+  expect_error(
+    fetch_bold_reference_sequences(taxa = "Fundulus", max_per_species = -1),
+    "max_per_species"
+  )
+  expect_error(
+    fetch_bold_reference_sequences(taxa = "Fundulus", max_per_species = "a"),
+    "max_per_species"
+  )
+})
+
+# ---- .parse_bold_coord (internal) ---------------------------------------------
+
+test_that(".parse_bold_coord parses a well-formed bracketed coord string", {
+  pbc <- TaxaLikely:::.parse_bold_coord
+  out <- pbc("[33.1518, -117.181]")
+  expect_equal(unname(out["lat"]), 33.1518)
+  expect_equal(unname(out["lon"]), -117.181)
+})
+
+test_that(".parse_bold_coord returns NA on NA/empty/malformed input", {
+  pbc <- TaxaLikely:::.parse_bold_coord
+  expect_true(all(is.na(pbc(NA_character_))))
+  expect_true(all(is.na(pbc(""))))
+  expect_true(all(is.na(pbc("not a coord"))))
+  expect_true(all(is.na(pbc(NULL))))
+})
+
+# ---- fetch_bold_reference_sequences end-to-end (mocked, offline) -------------
+# Mocks the three internal API-calling helpers so the combining/filtering/
+# reshape logic is tested without live network calls, matching the mocking
+# convention already used in test-build-site-reference.R.
+
+test_that("fetch_bold_reference_sequences combines taxa with different columns (bind_rows, not rbind)", {
+  # Real bug found via live testing (Session 136): different taxa can return
+  # different column sets from BOLD's TSV export; a plain rbind() errors.
+  docs_a <- data.frame(processid = "A1", nuc = "ACGT", marker_code = "COI-5P",
+                       family = "Fam1", genus = "G1", species = "G1 s1",
+                       coord = "[1.0, 2.0]", `country/ocean` = "USA",
+                       check.names = FALSE, stringsAsFactors = FALSE)
+  docs_b <- data.frame(processid = "B1", nuc = "TTTT", marker_code = "COI-5P",
+                       family = "Fam2", genus = "G2", species = "G2 s2",
+                       extra_col_only_here = "x",
+                       stringsAsFactors = FALSE)
+
+  local_mocked_bindings(
+    .bold_resolve_taxon  = function(taxon) paste0("tax:genus:", taxon),
+    .bold_submit_query   = function(triplet, extent = "full") paste0("qid_", triplet),
+    .bold_fetch_documents = function(query_id) {
+      if (grepl("G1", query_id)) docs_a else docs_b
+    },
+    .package = "TaxaLikely"
+  )
+
+  ref <- suppressMessages(fetch_bold_reference_sequences(taxa = c("G1", "G2")))
+  expect_equal(nrow(ref), 2L)
+  expect_setequal(ref$composite_id, c("A1", "B1"))
+})
+
+test_that("fetch_bold_reference_sequences applies client-side barcode_term filter on marker_code", {
+  docs <- data.frame(
+    processid   = c("A1", "A2"),
+    nuc         = c("ACGT", "TTTT"),
+    marker_code = c("COI-5P", "COI-3P"),
+    family = "Fam1", genus = "G1", species = c("G1 s1", "G1 s2"),
+    stringsAsFactors = FALSE
+  )
+  local_mocked_bindings(
+    .bold_resolve_taxon  = function(taxon) "tax:genus:G1",
+    .bold_submit_query   = function(triplet, extent = "full") "qid1",
+    .bold_fetch_documents = function(query_id) docs,
+    .package = "TaxaLikely"
+  )
+
+  ref <- suppressMessages(fetch_bold_reference_sequences(taxa = "G1", barcode_term = "COI-5P"))
+  expect_equal(nrow(ref), 1L)
+  expect_equal(ref$composite_id, "A1")
+})
+
+test_that("fetch_bold_reference_sequences parses coord into lat/lon and keeps country", {
+  docs <- data.frame(
+    processid = "A1", nuc = "ACGT", marker_code = "COI-5P",
+    family = "Fam1", genus = "G1", species = "G1 s1",
+    coord = "[10.5, -85.2]", `country/ocean` = "Costa Rica",
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  local_mocked_bindings(
+    .bold_resolve_taxon  = function(taxon) "tax:genus:G1",
+    .bold_submit_query   = function(triplet, extent = "full") "qid1",
+    .bold_fetch_documents = function(query_id) docs,
+    .package = "TaxaLikely"
+  )
+
+  ref <- suppressMessages(fetch_bold_reference_sequences(taxa = "G1"))
+  expect_equal(ref$lat, 10.5)
+  expect_equal(ref$lon, -85.2)
+  expect_equal(ref$country, "Costa Rica")
+})
+
+test_that("fetch_bold_reference_sequences omits location columns when include_location = FALSE", {
+  docs <- data.frame(
+    processid = "A1", nuc = "ACGT", marker_code = "COI-5P",
+    family = "Fam1", genus = "G1", species = "G1 s1",
+    coord = "[10.5, -85.2]", `country/ocean` = "Costa Rica",
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  local_mocked_bindings(
+    .bold_resolve_taxon  = function(taxon) "tax:genus:G1",
+    .bold_submit_query   = function(triplet, extent = "full") "qid1",
+    .bold_fetch_documents = function(query_id) docs,
+    .package = "TaxaLikely"
+  )
+
+  ref <- suppressMessages(fetch_bold_reference_sequences(taxa = "G1", include_location = FALSE))
+  expect_false("lat" %in% names(ref))
+  expect_false("lon" %in% names(ref))
+  expect_false("country" %in% names(ref))
+})
+
+test_that("fetch_bold_reference_sequences returns empty typed data frame when a taxon can't be resolved", {
+  local_mocked_bindings(
+    .bold_resolve_taxon = function(taxon) NA_character_,
+    .package = "TaxaLikely"
+  )
+
+  ref <- suppressWarnings(suppressMessages(fetch_bold_reference_sequences(taxa = "Nonexistentgenusxyz")))
+  expect_equal(nrow(ref), 0L)
+  expect_equal(names(ref), c("composite_id", "sequence"))
 })
 
 # ---- read_reference_fasta validation -----------------------------------------
@@ -92,4 +267,51 @@ test_that(".build_search_term ORs multiple barcode terms", {
   expect_true(grepl("12S\\[All Fields\\]", out))
   expect_true(grepl("16S\\[All Fields\\]", out))
   expect_true(grepl(" OR ", out))
+})
+
+# ---- .parse_lat_lon (internal) ------------------------------------------------
+
+test_that(".parse_lat_lon parses well-formed N/E coordinates", {
+  pll <- TaxaLikely:::.parse_lat_lon
+  out <- pll("36.789 N 121.947 E")
+  expect_equal(unname(out["lat"]), 36.789)
+  expect_equal(unname(out["lon"]), 121.947)
+})
+
+test_that(".parse_lat_lon negates S and W", {
+  pll <- TaxaLikely:::.parse_lat_lon
+  out <- pll("36.789 S 121.947 W")
+  expect_equal(unname(out["lat"]), -36.789)
+  expect_equal(unname(out["lon"]), -121.947)
+})
+
+test_that(".parse_lat_lon is case-insensitive on hemisphere letters", {
+  pll <- TaxaLikely:::.parse_lat_lon
+  out <- pll("36.789 s 121.947 w")
+  expect_equal(unname(out["lat"]), -36.789)
+  expect_equal(unname(out["lon"]), -121.947)
+})
+
+test_that(".parse_lat_lon returns NA on NA/empty/malformed input", {
+  pll <- TaxaLikely:::.parse_lat_lon
+  expect_true(all(is.na(pll(NA_character_))))
+  expect_true(all(is.na(pll(""))))
+  expect_true(all(is.na(pll("not a coordinate"))))
+  expect_true(all(is.na(pll("missing: true"))))
+})
+
+test_that(".parse_lat_lon returns NA on NULL/multi-length input", {
+  pll <- TaxaLikely:::.parse_lat_lon
+  expect_true(all(is.na(pll(NULL))))
+  expect_true(all(is.na(pll(c("36.789 N 121.947 W", "1 N 2 E")))))
+})
+
+# ---- .fetch_locations_batched (internal) --------------------------------------
+
+test_that(".fetch_locations_batched returns empty typed data frame for no accessions", {
+  flb <- TaxaLikely:::.fetch_locations_batched
+  out <- flb(character(0L))
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 0L)
+  expect_equal(names(out), c("composite_id", "lat", "lon", "country"))
 })

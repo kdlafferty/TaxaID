@@ -56,7 +56,7 @@ BiocManager::install("DECIPHER")
 library(TaxaLikely)
 
 # 1. Fetch reference sequences from NCBI
-reference_df <- fetch_reference_sequences(
+reference_df <- fetch_ncbi_reference_sequences(
   taxa = c("Fundulidae", "Gobiidae"),
   barcode_term = "12S",
   rank = "family"
@@ -154,7 +154,7 @@ the data types they cover, and the recommended loading path.
 
 | Database | Focus | Typical size | Loading path | Notes |
 |---|---|---|---|---|
-| **NCBI GenBank** | Universal | API (no local file) | `fetch_reference_sequences()` | Per-taxon API query; best for targeted eDNA marker retrieval |
+| **NCBI GenBank** | Universal | API (no local file) | `fetch_ncbi_reference_sequences()` | Per-taxon API query; best for targeted eDNA marker retrieval |
 | **CRABS output** | eDNA amplicons | Varies | `read_crabs_output()` | CRABS handles bulk QC; TaxaLikely adds mislabel detection |
 | **SILVA SSU** | 16S / 18S / 23S rRNA | ~1.3 GB | `subset_local_database()` | Primary database for microbial amplicon eDNA; ~510 k sequences |
 | **MIDORI2** | COI + nuclear markers | ~4.4 GB (COI) | `subset_local_database()` | Best for metazoan COI and nuclear eDNA markers |
@@ -168,7 +168,7 @@ these files rather than loading them into memory, so filtering to the genera
 or families relevant to your site is fast regardless of total database size.
 CRABS can also download from SILVA and BOLD directly and produce its own
 internal format, which `read_crabs_output()` handles. For NCBI, use
-`fetch_reference_sequences()` or `build_site_reference()` to fetch only the
+`fetch_ncbi_reference_sequences()` or `build_site_reference()` to fetch only the
 taxa you need.
 
 ## Subsetting a Large Local Database
@@ -271,7 +271,7 @@ matches, not database size - `write_reference_fasta()` -- export
 any `reference_df` to FASTA + optional taxonomy TSV (round-trippable
 with `read_reference_fasta()`) - `read_crabs_output()` -- load a CRABS
 internal-format database (taxonomy embedded; no separate file needed) -
-`fetch_reference_sequences()` -- download
+`fetch_ncbi_reference_sequences()` -- download
 from NCBI by taxon + barcode marker - `read_reference_fasta()` -- load
 local FASTA + data-frame taxonomy (or `taxonomy_file` TSV for
 QIIME2/RESCRIPt/MIDORI2)
@@ -319,7 +319,7 @@ matrix. The function's applicability depends on the data source:
 
 | Reference source | Use `flag_reference_errors()`? | Notes |
 |---|---|---|
-| **NCBI nucleotide** (via `fetch_reference_sequences()`) | **Yes — recommended** | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. Use routinely. |
+| **NCBI nucleotide** (via `fetch_ncbi_reference_sequences()`) | **Yes — recommended** | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. Use routinely. |
 | **Curated libraries** (CRUX, custom expert-built FASTA) | **Optional** | Lower mislabeling rate than NCBI, but flagging is still worth running. If your library has a quality column, use that filter instead. |
 | **Xeno-canto bird sounds** (acoustic) | **No** | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Use `quality = c("A", "B")` in `fetch_reference_recordings()` instead. Hard-case recordings flagged by the mislabel detector may be legitimate. |
 | **Camera trap images** (Animl/SpeciesNet) | **Untested — potentially useful** | Camera trap ground-truth labeling has different error modes from DNA (occlusion, blur, multiple animals, handler setup). The score-distribution mislabel signal should still be informative in principle — a consistently low-scoring "within-species" pair is suspect regardless of data type — but systematic evaluation has not been done. See the Image Workflow section below. |

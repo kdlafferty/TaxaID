@@ -14,7 +14,7 @@ write_reference_fasta(
 \arguments{
 \item{reference_df}{Data frame with columns \code{composite_id}, \code{sequence}, and
 at least one taxonomy column from \code{rank_system}.
-Output of \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}, \code{\link[=read_reference_fasta]{read_reference_fasta()}}, or
+Output of \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}, \code{\link[=read_reference_fasta]{read_reference_fasta()}}, or
 \code{\link[=read_crabs_output]{read_crabs_output()}}.}
 
 \item{file}{Character. Output path for the FASTA file
@@ -33,7 +33,7 @@ Invisibly returns \code{reference_df}. Called for its side-effect of
 writing files.
 }
 \description{
-Exports a \code{reference_df} (from \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}} or
+Exports a \code{reference_df} (from \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}} or
 \code{\link[=read_reference_fasta]{read_reference_fasta()}}) to a FASTA file compatible with BLAST, CRABS,
 Obitools, and other external tools. Optionally writes a companion taxonomy
 TSV in the same positional format accepted by
@@ -55,7 +55,7 @@ map to the wrong positions. This file can be passed directly to
 }
 \examples{
 \dontrun{
-ref <- fetch_reference_sequences(
+ref <- fetch_ncbi_reference_sequences(
   taxa        = "Fundulus",
   barcode_term = "MiFishU"
 )
@@ -70,6 +70,6 @@ ref2 <- read_reference_fasta("fundulus_mifish.fasta",
 
 }
 \seealso{
-\code{\link[=read_reference_fasta]{read_reference_fasta()}}, \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}},
+\code{\link[=read_reference_fasta]{read_reference_fasta()}}, \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}},
 \code{\link[=read_crabs_output]{read_crabs_output()}}, \code{\link[=build_site_reference]{build_site_reference()}}
 }

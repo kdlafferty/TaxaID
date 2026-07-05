@@ -364,7 +364,7 @@ audit_reference_coverage <- function(reference_df,
 #'   incorrectly suppresses unreferenced-species hypotheses for those taxa.
 #'   Set \code{FALSE} only if you explicitly need to count predicted sequences.
 #'   Mirrors the \code{blacklist_regex = "predicted"} default in
-#'   [fetch_reference_sequences()].
+#'   [fetch_ncbi_reference_sequences()].
 #'
 #' @seealso [audit_reference_coverage()], [apply_coverage_constraints()]
 #'
@@ -1514,38 +1514,45 @@ apply_coverage_constraints <- function(likelihood_df,
 
 
 # ==============================================================================
-# .xc_recording_count() -- internal helper
+# .xc_recordings_raw() / .xc_recording_count() / .xc_recording_locations()
+# -- internal helpers
 # ==============================================================================
 
-#' Query Xeno-canto v3 API for the number of recordings for one species
+#' Query Xeno-canto v3 API and return the raw parsed response body
 #'
-#' Returns an integer count, or \code{NA_integer_} on error or no match.
-#' Xeno-canto v3 requires an application-scoped API key (register at
+#' Shared HTTP call behind \code{.xc_recording_count()} (reads
+#' \code{numRecordings}) and \code{.xc_recording_locations()} (reads the
+#' \code{recordings} array's \code{lat}/\code{lng}/\code{cnt} fields) --
+#' extracted so the per-recording location fields the v3 API already returns
+#' aren't fetched and then silently discarded a second time. Returns the
+#' parsed JSON body (a list), or \code{NULL} on any failure (missing
+#' \code{httr2}, missing \code{XC_API_KEY}, non-200 response, or unparseable
+#' body). Xeno-canto v3 requires an application-scoped API key (register at
 #' xeno-canto.org/explore/api) via the \code{XC_API_KEY} environment variable,
 #' and tag-based query syntax (\code{gen:Genus sp:species type:call}) rather
 #' than v2's free-text query. The v2 endpoint this previously called
 #' (\code{api/2/recordings}) is fully removed (404 unconditionally) -- see
 #' \code{ecosystem_docs/REENTRY_PROMPT_session124_image_acoustic_workflows.md}.
 #' @noRd
-.xc_recording_count <- function(species_name) {
+.xc_recordings_raw <- function(species_name) {
   if (!requireNamespace("httr2", quietly = TRUE)) {
     warning(
-      ".xc_recording_count: 'httr2' is required for Xeno-canto queries. ",
+      ".xc_recordings_raw: 'httr2' is required for Xeno-canto queries. ",
       "Install with: install.packages('httr2')",
       call. = FALSE
     )
-    return(NA_integer_)
+    return(NULL)
   }
 
   xc_key <- Sys.getenv("XC_API_KEY")
   if (!nzchar(xc_key)) {
     warning(
-      ".xc_recording_count: Xeno-canto v3 requires a registered API key. ",
+      ".xc_recordings_raw: Xeno-canto v3 requires a registered API key. ",
       "Register at xeno-canto.org/explore/api and set ",
       "Sys.setenv(XC_API_KEY = \"your_key\") (or add XC_API_KEY to ~/.Renviron).",
       call. = FALSE
     )
-    return(NA_integer_)
+    return(NULL)
   }
 
   parts   <- strsplit(trimws(species_name), "\\s+")[[1L]]
@@ -1560,12 +1567,116 @@ apply_coverage_constraints <- function(likelihood_df,
     httr2::req_error(is_error = function(resp) FALSE)
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NA_integer_)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NULL)
 
-  body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+  tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+}
+
+
+#' Query Xeno-canto v3 API for the number of recordings for one species
+#'
+#' Returns an integer count, or \code{NA_integer_} on error or no match.
+#' @noRd
+.xc_recording_count <- function(species_name) {
+  body <- .xc_recordings_raw(species_name)
   if (is.null(body) || is.null(body[["numRecordings"]])) return(NA_integer_)
-
   suppressWarnings(as.integer(body[["numRecordings"]]))
+}
+
+
+#' Query Xeno-canto v3 API for per-recording locations for one species
+#'
+#' Returns a data frame with one row per recording: \code{species},
+#' \code{xc_id} (Xeno-canto's own catalog number), \code{lat}, \code{lon},
+#' \code{country}. Xeno-canto's \code{lat}/\code{lng}/\code{cnt} fields are
+#' already plain decimal-degree/text strings (no DMS parsing needed, unlike
+#' GenBank's \code{lat_lon} qualifier). \code{xc_id} is Xeno-canto's own
+#' catalog number, not a \code{build_site_table()}-ready \code{observation_id}
+#' -- mapping XC recordings to a caller's own BirdNET observation naming
+#' convention is left to the caller. Returns a 0-row (but correctly typed)
+#' data frame on any failure or when the species has no recordings.
+#' @noRd
+.xc_recording_locations <- function(species_name) {
+  empty <- data.frame(species = character(0L), xc_id = character(0L),
+                      lat = numeric(0L), lon = numeric(0L),
+                      country = character(0L), stringsAsFactors = FALSE)
+
+  body <- .xc_recordings_raw(species_name)
+  if (is.null(body) || is.null(body[["recordings"]]) ||
+      length(body[["recordings"]]) == 0L) return(empty)
+
+  recs <- body[["recordings"]]
+  do.call(rbind, lapply(recs, function(r) {
+    data.frame(
+      species = species_name,
+      xc_id   = as.character(r[["id"]] %||% NA_character_),
+      lat     = suppressWarnings(as.numeric(r[["lat"]] %||% NA_character_)),
+      lon     = suppressWarnings(as.numeric(r[["lng"]] %||% NA_character_)),
+      country = as.character(r[["cnt"]] %||% NA_character_),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+
+#' Fetch per-recording locations from Xeno-canto for one or more species
+#'
+#' Thin looping wrapper around \code{.xc_recording_locations()} -- same
+#' 1-second-per-species rate limit \code{\link{audit_acoustic_coverage}}
+#' already uses for its own Xeno-canto queries. Unlike
+#' \code{audit_acoustic_coverage(xc_recordings = TRUE)}, which only keeps a
+#' per-species recording *count*, this returns the per-recording
+#' \code{lat}/\code{lon} the Xeno-canto v3 API already provides in the same
+#' response body.
+#'
+#' @param species_names Character vector of binomial species names (e.g.
+#'   \code{"Turdus migratorius"}).
+#' @param verbose Logical. Print progress messages. Default \code{TRUE}.
+#'
+#' @return A data frame with one row per recording, across all requested
+#'   species: \code{species}, \code{xc_id} (Xeno-canto's own catalog number),
+#'   \code{lat}, \code{lon}, \code{country}.
+#'
+#' @details
+#' \code{xc_id} is Xeno-canto's own catalog number, not a
+#' \code{\link[TaxaMatch]{build_site_table}}-ready \code{observation_id}.
+#' Mapping a Xeno-canto recording to a caller's own BirdNET
+#' \code{observation_id} convention (\code{"\{file_stem\}_\{start\}-\{end\}"},
+#' per \code{TaxaMatch::read_birdnet_output()}) is a harness/study-design
+#' concern, not something this function attempts.
+#'
+#' @seealso \code{\link{audit_acoustic_coverage}}
+#'
+#' @examples
+#' \dontrun{
+#' locs <- fetch_xc_recording_locations(c("Turdus migratorius", "Setophaga petechia"))
+#' }
+#'
+#' @export
+fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
+  if (!is.character(species_names) || length(species_names) == 0L)
+    stop("fetch_xc_recording_locations: 'species_names' must be a non-empty character vector.",
+         call. = FALSE)
+
+  if (verbose)
+    message(sprintf(
+      "fetch_xc_recording_locations: querying Xeno-canto for %d species (1s per query)...",
+      length(species_names)
+    ))
+
+  res <- vector("list", length(species_names))
+  for (i in seq_along(species_names)) {
+    res[[i]] <- .xc_recording_locations(species_names[[i]])
+    Sys.sleep(1)
+  }
+
+  out <- do.call(rbind, res)
+  if (is.null(out)) {
+    out <- data.frame(species = character(0L), xc_id = character(0L),
+                      lat = numeric(0L), lon = numeric(0L),
+                      country = character(0L), stringsAsFactors = FALSE)
+  }
+  out
 }
 
 

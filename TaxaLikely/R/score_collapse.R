@@ -218,7 +218,7 @@ detect_suppressed_candidates <- function(match_obj,
 #'
 #' @param match_obj Data frame. Standardised match object.
 #' @param reference_df Data frame. Reference database (output of
-#'   [fetch_reference_sequences()], [read_reference_fasta()], or
+#'   [fetch_ncbi_reference_sequences()], [read_reference_fasta()], or
 #'   [read_crabs_output()]).  Must contain the same genus/species columns as
 #'   \code{match_obj}.
 #' @param detected List or \code{NULL}. Output of

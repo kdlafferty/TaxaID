@@ -1,6 +1,10 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-04 (Session 134b — group_observations_by_bbox() moved here from
+# Last updated: 2026-07-05 (Session 135 — blast_sequences(resolve_location=) added to
+# extract GenBank lat_lon/country qualifiers for BLAST hit accessions; closes the
+# BLAST-hit-side half of the location-metadata gap flagged in ecosystem_docs/
+# TODO_validation_benchmark.md's "Sourcing location data" section. See Session 135 note
+# below. Session 134b — group_observations_by_bbox() moved here from
 # TaxaFetch and substantially reworked (default-to-observation_id behavior, last-drawn-wins
 # overlap rule, end-of-loop review/edit/delete step); new assign_spatial_group() manual
 # helper; build_site_table() now populates spatial_group_id/spatial_group_N defaults on
@@ -112,7 +116,7 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `blast_sequences()` | R/blast.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution |
+| `blast_sequences()` | R/blast.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution. **Session 135**: `resolve_location = FALSE` param — when `TRUE`, fetches each unique hit accession's full GBSeq XML record (`.resolve_locations_by_acc()`) and appends `lat`/`lon`/`country` parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); independent of `resolve_taxonomy` (taxonomy comes from the NCBI taxonomy DB, location from the full nucleotide record — neither fetch gives you the other). |
 
 ### Image and acoustic input
 
@@ -146,6 +150,8 @@ likelihood output downstream — it is NOT part of the match object.
 | Function | File | Description |
 |---|---|---|
 | `.resolve_taxonomy()` | R/blast.R | NCBI taxid to full lineage (kingdom-species) via rentrez + xml2 |
+| `.resolve_locations_by_acc()` | R/blast.R | **Session 135.** Accession → `lat`/`lon`/`country` via full GBSeq XML record (`db="nucleotide", rettype="gb", retmode="xml"`) — the record type `.resolve_taxonomy()`/`.resolve_taxonomy_by_acc()` never touch. Accessions passed directly as `id`, no search/summary round trip. |
+| `.parse_lat_lon()` | R/blast.R | **Session 135.** Parses INSDC `lat_lon` qualifier strings (`"36.789 N 121.947 W"`) into signed decimal `c(lat=, lon=)`. Deliberately duplicated from TaxaLikely's identical helper (`R/fetch.R`) rather than shared — matches this ecosystem's existing pre-manuscript stance on small NCBI-fetcher overlap (see `project_blast_ncbi_fetcher_todo` memory / TaxaLikely's Session 115 note). |
 | `.parse_taxonomy_xml()` | R/blast.R | Parse NCBI taxonomy XML response |
 | `.blast_remote()` | R/blast.R | Remote NCBI BLAST URL API with batching, rate limiting, RID polling |
 | `.blast_local()` | R/blast.R | Local BLAST via rBLAST wrapper |
@@ -269,6 +275,33 @@ inside `filter_redundant_hypotheses()` via `match()`.
 ---
 
 ## Session Notes
+
+**Session 135 (2026-07-05): blast_sequences(resolve_location=) — GenBank location extraction for BLAST hits**
+
+Companion to TaxaLikely's same-session fetch-side work — together they close two of
+the three location-metadata gaps flagged in `ecosystem_docs/
+TODO_validation_benchmark.md`'s "Sourcing location data from online reference
+records" section (BOLD's equivalent remains a separate, unchecked TBD; wiring either
+into a real `build_site_table()` `site_df` call is left for benchmark-harness time).
+Explicitly scoped to this plumbing only — the leave-one-out benchmark harness itself
+stays gated behind the user's 2026-07-04 directive.
+
+Confirmed directly: `.resolve_taxonomy()` and `.resolve_taxonomy_by_acc()` only ever
+reach the NCBI **taxonomy** database (lineage), never `db="nucleotide"`, so a BLAST
+hit's collection coordinates were never in scope regardless of `resolve_taxonomy`.
+Added `.parse_lat_lon()` (INSDC `lat_lon` qualifier parser, identical to TaxaLikely's
+own — deliberately duplicated rather than shared, matching this ecosystem's existing
+pre-manuscript stance) and `.resolve_locations_by_acc()` (fetches full GBSeq XML by
+accession directly, no search→summary round trip). `blast_sequences(resolve_location =
+FALSE)` — new opt-in trailing param; when `TRUE`, resolves unique hit accessions and
+left-joins `lat`/`lon`/`country` onto the output (version-suffix-stripped join key on
+both sides, defensive since `GBSeq_primary-accession` is already version-free but
+BLAST's `sacc` isn't guaranteed to be).
+
+New tests in `test-blast.R`: `.parse_lat_lon()` (5 cases, same coverage as TaxaLikely's
+mirror), `.resolve_locations_by_acc()` empty-input typing, `resolve_location` input
+validation. `devtools::document()` + `devtools::test()` (406 expectations, 0 failures,
+0 warnings) + `devtools::check()` (0 errors, 0 warnings, 0 notes) all clean.
 
 **Session 134b (2026-07-04): group_observations_by_bbox() moved here and reworked; assign_spatial_group() added**
 

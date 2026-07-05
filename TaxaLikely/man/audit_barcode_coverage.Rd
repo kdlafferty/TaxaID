@@ -94,7 +94,7 @@ validated barcodes — counting them inflates \code{has_seqs_not_in_ref} and
 incorrectly suppresses unreferenced-species hypotheses for those taxa.
 Set \code{FALSE} only if you explicitly need to count predicted sequences.
 Mirrors the \code{blacklist_regex = "predicted"} default in
-\code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}.}
+\code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}.}
 }
 \value{
 A named list:

@@ -26,7 +26,7 @@ library(TaxaLikely)
 
 cat("\n===== PART 1: write_reference_fasta() =====\n")
 
-# A minimal reference_df -- the same structure as fetch_reference_sequences() output
+# A minimal reference_df -- the same structure as fetch_ncbi_reference_sequences() output
 ref_df <- data.frame(
   composite_id = c("NC_001606", "NC_012361", "NC_004388", "KR014477"),
   sequence     = c(

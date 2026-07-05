@@ -195,3 +195,87 @@ test_that("audit_acoustic_coverage: match_df without species or taxon_name warns
     "no 'taxon_name' or 'species' column"
   )
 })
+
+# ---- .xc_recording_locations / fetch_xc_recording_locations ------------------
+# Offline via local_mocked_bindings() on .xc_recordings_raw(), matching the
+# mocking pattern already used in test-build-site-reference.R.
+
+fake_xc_body <- function() {
+  list(
+    numRecordings = "2",
+    recordings = list(
+      list(id = "123456", lat = "34.41", lng = "-119.86", cnt = "United States"),
+      list(id = "789012", lat = "", lng = "", cnt = "Canada")
+    )
+  )
+}
+
+test_that(".xc_recording_count still works after the .xc_recordings_raw refactor", {
+  local_mocked_bindings(
+    .xc_recordings_raw = function(species_name) fake_xc_body(),
+    .package = "TaxaLikely"
+  )
+  xrc <- TaxaLikely:::.xc_recording_count
+  expect_equal(xrc("Turdus migratorius"), 2L)
+})
+
+test_that(".xc_recording_count returns NA when .xc_recordings_raw fails", {
+  local_mocked_bindings(
+    .xc_recordings_raw = function(species_name) NULL,
+    .package = "TaxaLikely"
+  )
+  xrc <- TaxaLikely:::.xc_recording_count
+  expect_true(is.na(xrc("Turdus migratorius")))
+})
+
+test_that(".xc_recording_locations extracts per-recording lat/lon/country", {
+  local_mocked_bindings(
+    .xc_recordings_raw = function(species_name) fake_xc_body(),
+    .package = "TaxaLikely"
+  )
+  xrl <- TaxaLikely:::.xc_recording_locations
+  out <- xrl("Turdus migratorius")
+
+  expect_equal(nrow(out), 2L)
+  expect_equal(names(out), c("species", "xc_id", "lat", "lon", "country"))
+  expect_equal(out$xc_id, c("123456", "789012"))
+  expect_equal(out$lat[1], 34.41)
+  expect_equal(out$lon[1], -119.86)
+  expect_equal(out$country[1], "United States")
+  expect_true(is.na(out$lat[2]))
+  expect_true(is.na(out$lon[2]))
+})
+
+test_that(".xc_recording_locations returns empty typed data frame when raw fetch fails", {
+  local_mocked_bindings(
+    .xc_recordings_raw = function(species_name) NULL,
+    .package = "TaxaLikely"
+  )
+  xrl <- TaxaLikely:::.xc_recording_locations
+  out <- xrl("Turdus migratorius")
+
+  expect_equal(nrow(out), 0L)
+  expect_equal(names(out), c("species", "xc_id", "lat", "lon", "country"))
+})
+
+test_that("fetch_xc_recording_locations combines results across species", {
+  local_mocked_bindings(
+    .xc_recording_locations = function(species_name) {
+      data.frame(species = species_name, xc_id = "1", lat = 1, lon = 2,
+                country = "X", stringsAsFactors = FALSE)
+    },
+    .package = "TaxaLikely"
+  )
+  out <- fetch_xc_recording_locations(c("Turdus migratorius", "Setophaga petechia"),
+                                      verbose = FALSE)
+  expect_equal(nrow(out), 2L)
+  expect_equal(out$species, c("Turdus migratorius", "Setophaga petechia"))
+})
+
+test_that("fetch_xc_recording_locations errors on empty species_names", {
+  expect_error(fetch_xc_recording_locations(character(0L)), "non-empty character vector")
+})
+
+test_that("fetch_xc_recording_locations errors on non-character species_names", {
+  expect_error(fetch_xc_recording_locations(123), "non-empty character vector")
+})

@@ -87,10 +87,10 @@ if (DEBUG_MODE) {
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
   # Replace the fetch below with your own reference database, via
-  # TaxaLikely::fetch_reference_sequences() (broader NCBI search) or
+  # TaxaLikely::fetch_ncbi_reference_sequences() (broader NCBI search) or
   # TaxaLikely::read_reference_fasta() / read_crabs_output() (local FASTA):
   #
-  #   reference_df <- TaxaLikely::fetch_reference_sequences(
+  #   reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   #     taxa = c("YourFamily1", "YourGenus2"), barcode_term = "YourMarker",
   #     rank_system = RANK_SYSTEM
   #   )
@@ -112,7 +112,7 @@ OUT_PREFIX <- "tutorial_ptconception_seqmodel"
 # ==============================================================================
 # 1.  FETCH REFERENCE SEQUENCES -- LIVE NCBI CALL
 # ==============================================================================
-# fetch_reference_sequences() does a count-first estimation before committing
+# fetch_ncbi_reference_sequences() does a count-first estimation before committing
 # to any download, then fetches, filters, and resolves taxonomy. Resumable
 # via cache_dir (default tools::R_user_dir("TaxaLikely","cache")) -- a
 # second run with identical parameters reuses the cache instead of
@@ -121,7 +121,7 @@ OUT_PREFIX <- "tutorial_ptconception_seqmodel"
 
 message("\n--- Step 1: Fetching reference sequences from NCBI ---")
 
-reference_df <- TaxaLikely::fetch_reference_sequences(
+reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   taxa            = REFERENCE_TAXA,
   barcode_term    = BARCODE_TERM,
   rank_system     = RANK_SYSTEM,

@@ -59,7 +59,7 @@ Respond with a single JSON object. No text outside the JSON.
 **local_fasta vs fetching from NCBI:** For building a sequence reference library.
 
 - input_type = "local_fasta" when: the user already has a local sequence database — either a CRABS internal-format TSV, or a FASTA file with an accompanying taxonomy TSV (QIIME2/SILVA/MIDORI2 format). The workflow reads it directly without any NCBI API calls.
-- input_type = "taxa" + output_type = "reference_df" when: the user has species names and wants to fetch sequences from NCBI automatically (via `build_site_reference()` or `fetch_reference_sequences()`).
+- input_type = "taxa" + output_type = "reference_df" when: the user has species names and wants to fetch sequences from NCBI automatically (via `build_site_reference()` or `fetch_ncbi_reference_sequences()`).
 
 **images_meta:** This is a special input used ONLY for building an image reference model — it is NOT a workflow input for field image classification.
 

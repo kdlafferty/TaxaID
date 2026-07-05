@@ -21,6 +21,7 @@ blast_sequences(
   email = NULL,
   ncbi_api_key = NULL,
   resolve_taxonomy = TRUE,
+  resolve_location = FALSE,
   verbose = TRUE
 )
 }
@@ -85,6 +86,15 @@ Default \code{NULL}.}
 taxonomy IDs to full lineage (kingdom through species) and append taxonomy
 columns to the output.}
 
+\item{resolve_location}{Logical. Default \code{FALSE}. If \code{TRUE},
+fetch each unique hit accession's full GenBank record (a real, separate
+NCBI round trip -- not free) and append \code{lat}/\code{lon}/
+\code{country} columns parsed from the record's \code{source} feature
+\code{lat_lon}/\code{country} qualifiers. \code{NA} where the record has
+no collection-location metadata. Independent of \code{resolve_taxonomy}
+-- taxonomy comes from the NCBI taxonomy database, location from the
+full nucleotide record; neither fetch gives you the other.}
+
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
 \value{
@@ -101,7 +111,8 @@ A data frame with one row per query x hit, containing:
 }
 If \code{resolve_taxonomy = TRUE}, taxonomy columns (\code{kingdom},
 \code{phylum}, \code{class}, \code{order}, \code{family}, \code{genus},
-\code{species}) are appended.
+\code{species}) are appended. If \code{resolve_location = TRUE},
+\code{lat}, \code{lon}, and \code{country} columns are appended.
 
 This output is ready for \code{\link{standardize_match_data}}.
 }

@@ -216,6 +216,99 @@ utils::globalVariables(c(
 }
 
 
+#' Parse an INSDC lat_lon qualifier string into signed decimal degrees
+#'
+#' GenBank's \code{/lat_lon} qualifier uses the format
+#' \code{"36.789 N 121.947 W"} (degrees, hemisphere letter, repeated for
+#' longitude). Returns \code{c(lat = NA_real_, lon = NA_real_)} on any
+#' missing/unparseable input -- GenBank free-text metadata is inconsistent
+#' enough that this must degrade silently rather than error.
+#' @noRd
+.parse_lat_lon <- function(x) {
+  empty <- c(lat = NA_real_, lon = NA_real_)
+  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) return(empty)
+
+  m <- regmatches(x, regexec(
+    "^\\s*([0-9.]+)\\s*([NSns])\\s+([0-9.]+)\\s*([EWew])\\s*$", x
+  ))[[1L]]
+  if (length(m) != 5L) return(empty)
+
+  lat_val <- suppressWarnings(as.numeric(m[2L]))
+  lon_val <- suppressWarnings(as.numeric(m[4L]))
+  if (is.na(lat_val) || is.na(lon_val)) return(empty)
+
+  lat <- if (toupper(m[3L]) == "S") -lat_val else lat_val
+  lon <- if (toupper(m[5L]) == "W") -lon_val else lon_val
+  c(lat = lat, lon = lon)
+}
+
+
+#' Fetch GenBank collection location (lat_lon/country) by accession, batched
+#'
+#' Fetches full GBSeq XML records (\code{rettype = "gb", retmode = "xml"}) --
+#' unlike \code{.fetch_summaries_batched()} (ESummary) or
+#' \code{.fetch_taxonomy_map()} (taxonomy DB), this is the only record type
+#' that carries the \code{source} feature's \code{lat_lon}/\code{country}
+#' qualifiers. Accessions are passed directly as \code{id} (the same
+#' calling convention \code{.fetch_fasta_batched()} already uses
+#' successfully), so no separate search/summary round trip is needed.
+#' @noRd
+.fetch_locations_batched <- function(accessions, batch_size = 100L) {
+  empty <- data.frame(composite_id = character(0L), lat = numeric(0L),
+                      lon = numeric(0L), country = character(0L),
+                      stringsAsFactors = FALSE)
+
+  accessions <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
+  if (length(accessions) == 0L) return(empty)
+
+  batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
+  res     <- vector("list", length(batches))
+
+  for (i in seq_along(batches)) {
+    attempt <- 0L
+    success <- FALSE
+    while (attempt < 3L && !success) {
+      attempt <- attempt + 1L
+      tryCatch({
+        xml_raw <- rentrez::entrez_fetch(
+          db = "nucleotide", id = batches[[i]], rettype = "gb", retmode = "xml"
+        )
+        xml_doc <- xml2::read_xml(xml_raw)
+        nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
+
+        res[[i]] <- do.call(rbind, lapply(nodes, function(node) {
+          acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
+          quals <- xml2::xml_find_all(
+            node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
+          )
+          qnames <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_name"))
+          qvals  <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_value"))
+
+          lat_lon_raw <- qvals[qnames == "lat_lon"]
+          country_raw <- qvals[qnames == "country"]
+          ll <- .parse_lat_lon(if (length(lat_lon_raw) > 0L) lat_lon_raw[1L] else NA_character_)
+
+          data.frame(
+            composite_id = acc,
+            lat          = ll[["lat"]],
+            lon          = ll[["lon"]],
+            country      = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
+            stringsAsFactors = FALSE
+          )
+        }))
+        success <- TRUE
+      }, error = function(e) {
+        if (attempt < 3L) Sys.sleep(attempt)
+      })
+    }
+    Sys.sleep(.ncbi_delay())
+  }
+
+  out <- do.call(rbind, Filter(Negate(is.null), res))
+  if (is.null(out)) empty else out
+}
+
+
 #' Parse FASTA text into a data frame of composite_id + sequence
 #' @noRd
 .parse_fasta_text <- function(fasta_text) {
@@ -247,6 +340,12 @@ utils::globalVariables(c(
 # --- Exported functions -------------------------------------------------------
 
 #' Fetch reference sequences from NCBI for model building
+#'
+#' Renamed from `fetch_reference_sequences()` (Session 136) now that a second
+#' live-API reference source (`fetch_bold_reference_sequences()`, BOLD Systems)
+#' exists -- the old name didn't say NCBI anywhere, which stopped being safe
+#' once a second source existed. `fetch_reference_sequences()` remains
+#' available as a deprecated alias forwarding to this function.
 #'
 #' Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
 #' taxonomy via the NCBI taxonomy database, filters by sequence length and
@@ -329,6 +428,15 @@ utils::globalVariables(c(
 #' @param ncbi_api_key Character or NULL.
 #'   NCBI API key (increases rate limit from 3 to 10 requests/second).
 #'   Can also be set via the `ENTREZ_KEY` environment variable.
+#' @param include_location Logical (default `FALSE`).
+#'   When `TRUE`, fetches each accession's full GenBank record (a real,
+#'   separate NCBI round trip -- not free) and adds `lat`/`lon`/`country`
+#'   columns parsed from the `source` feature's `lat_lon`/`country`
+#'   qualifiers. `NA` where the record has no collection-location metadata
+#'   (common for older/predicted sequences). Neither `.fetch_summaries_batched()`
+#'   (ESummary) nor `.fetch_taxonomy_map()` (taxonomy DB) -- the two record
+#'   types this function otherwise fetches -- carry these qualifiers, so this
+#'   is a genuinely separate fetch, not a free re-parse of existing output.
 #'
 #' @return A data frame (`reference_df`) with columns:
 #'   \describe{
@@ -336,6 +444,9 @@ utils::globalVariables(c(
 #'     \item{`sequence`}{DNA sequence string.}
 #'     \item{rank columns}{One column per rank in `rank_system`
 #'       (e.g., `family`, `genus`, `species`).}
+#'     \item{`lat`, `lon`, `country`}{Only when `include_location = TRUE`.
+#'       Collection location parsed from GenBank's `lat_lon`/`country`
+#'       qualifiers; `NA` when absent or unparseable.}
 #'   }
 #'   Ready for input to [build_sequence_matrix()].
 #'
@@ -344,7 +455,7 @@ utils::globalVariables(c(
 #'
 #' @examples
 #' \dontrun{
-#' ref <- fetch_reference_sequences(
+#' ref <- fetch_ncbi_reference_sequences(
 #'   taxa = c("Fundulus", "Atherinops"),
 #'   barcode_term = "MiFishU",
 #'   max_sequences = 500
@@ -355,7 +466,7 @@ utils::globalVariables(c(
 #' @importFrom dplyr filter mutate group_by slice_sample ungroup n select
 #'   all_of left_join distinct
 #' @export
-fetch_reference_sequences <- function(taxa,
+fetch_ncbi_reference_sequences <- function(taxa,
                                       barcode_term,
                                       rank_system     = c("family", "genus", "species"),
                                       min_len         = NULL,
@@ -369,13 +480,14 @@ fetch_reference_sequences <- function(taxa,
                                       min_date        = NULL,
                                       max_date        = NULL,
                                       cache_dir       = tools::R_user_dir("TaxaLikely", "cache"),
-                                      ncbi_api_key    = NULL) {
+                                      ncbi_api_key    = NULL,
+                                      include_location = FALSE) {
 
   # --- Validate inputs --------------------------------------------------------
   if (!requireNamespace("rentrez", quietly = TRUE))
-    stop("fetch_reference_sequences requires the 'rentrez' package. Install with: install.packages('rentrez')")
+    stop("fetch_ncbi_reference_sequences requires the 'rentrez' package. Install with: install.packages('rentrez')")
   if (!requireNamespace("xml2", quietly = TRUE))
-    stop("fetch_reference_sequences requires the 'xml2' package. Install with: install.packages('xml2')")
+    stop("fetch_ncbi_reference_sequences requires the 'xml2' package. Install with: install.packages('xml2')")
   if (!is.character(taxa) || length(taxa) == 0L)
     stop("taxa must be a non-empty character vector")
   if (!is.character(barcode_term) || length(barcode_term) == 0L)
@@ -705,7 +817,7 @@ fetch_reference_sequences <- function(taxa,
       }
     }, error = function(e) {
       warning(sprintf(
-        "fetch_reference_sequences: '%s' failed (%s). Skipping this taxon.",
+        "fetch_ncbi_reference_sequences: '%s' failed (%s). Skipping this taxon.",
         taxa[i], conditionMessage(e)
       ), call. = FALSE)
     })
@@ -810,12 +922,364 @@ fetch_reference_sequences <- function(taxa,
   reference_df <- reference_df[!is.na(reference_df$sequence) &
                                 nchar(reference_df$sequence) > 0L, , drop = FALSE]
 
+  # --- Optional: collection location (lat/lon/country) -----------------------
+  if (include_location) {
+    message(sprintf("Fetching location metadata for %d accessions...",
+                    length(unique(combined_meta$acc))))
+    loc_df <- .fetch_locations_batched(combined_meta$acc)
+    if (nrow(loc_df) > 0L) {
+      reference_df <- merge(reference_df, loc_df, by = "composite_id", all.x = TRUE)
+    } else {
+      reference_df$lat     <- NA_real_
+      reference_df$lon     <- NA_real_
+      reference_df$country <- NA_character_
+    }
+  }
+
   finest_rank <- tolower(rank_system[length(rank_system)])
   message(sprintf("Done. reference_df: %d sequences, %d unique %s",
                   nrow(reference_df),
                   dplyr::n_distinct(reference_df[[finest_rank]]),
                   finest_rank))
   reference_df
+}
+
+
+#' @rdname fetch_ncbi_reference_sequences
+#' @export
+fetch_reference_sequences <- function(taxa,
+                                      barcode_term,
+                                      rank_system     = c("family", "genus", "species"),
+                                      min_len         = NULL,
+                                      max_len         = NULL,
+                                      max_per_species = NULL,
+                                      max_per_genus   = NULL,
+                                      priority_taxa   = NULL,
+                                      max_sequences   = 10000L,
+                                      min_per_taxon   = 50L,
+                                      blacklist_regex = "uncultured|environmental|predicted|vector|synthetic|unverified",
+                                      min_date        = NULL,
+                                      max_date        = NULL,
+                                      cache_dir       = tools::R_user_dir("TaxaLikely", "cache"),
+                                      ncbi_api_key    = NULL,
+                                      include_location = FALSE) {
+  .Deprecated("fetch_ncbi_reference_sequences")
+  fetch_ncbi_reference_sequences(
+    taxa = taxa, barcode_term = barcode_term, rank_system = rank_system,
+    min_len = min_len, max_len = max_len, max_per_species = max_per_species,
+    max_per_genus = max_per_genus, priority_taxa = priority_taxa,
+    max_sequences = max_sequences, min_per_taxon = min_per_taxon,
+    blacklist_regex = blacklist_regex, min_date = min_date, max_date = max_date,
+    cache_dir = cache_dir, ncbi_api_key = ncbi_api_key,
+    include_location = include_location
+  )
+}
+
+
+# ==============================================================================
+# BOLD Systems v5 Data Portal API (reference-fetch analog of NCBI)
+# ==============================================================================
+# BOLD migrated to a new "v5" Data Portal API in 2024; the old v3/v4 endpoints
+# the (now CRAN-archived) `bold` R package targets are permanently retired --
+# confirmed directly, Session 136 (bold_seqspec()/bold_identify() both return
+# a "BOLD Public Offline" page against the old API). This talks to the new,
+# live, documented API (https://portal.boldsystems.org/openapi.json) directly
+# via httr2, matching how this ecosystem already talks to NCBI (rentrez) and
+# Xeno-canto (raw httr2) -- no `bold` package dependency needed at all.
+
+#' BOLD's v5 Data Portal API base URL
+#' @noRd
+.bold_api_base <- "https://portal.boldsystems.org/api"
+
+#' Resolve a free-text taxon name into a formal BOLD query triplet
+#'
+#' Calls \code{query/preprocessor}. Returns a semicolon-joined string of
+#' resolved \code{scope:subscope:value} triplets (usually just one, e.g.
+#' \code{"tax:species:Melanogrammus aeglefinus"}), or \code{NA_character_} if
+#' the taxon can't be resolved.
+#' @noRd
+.bold_resolve_taxon <- function(taxon) {
+  req <- httr2::request(.bold_api_base) |>
+    httr2::req_url_path_append("query", "preprocessor") |>
+    httr2::req_url_query(query = taxon) |>
+    httr2::req_error(is_error = function(resp) FALSE)
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NA_character_)
+
+  body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+  terms <- body[["successful_terms"]]
+  if (is.null(terms) || length(terms) == 0L) return(NA_character_)
+
+  matched <- vapply(terms, function(x) {
+    v <- x[["matched"]]
+    if (is.null(v)) NA_character_ else v
+  }, character(1L))
+  matched <- matched[!is.na(matched) & nzchar(matched)]
+  if (length(matched) == 0L) return(NA_character_)
+
+  paste(matched, collapse = ";")
+}
+
+#' Submit a resolved BOLD query triplet and return its query_id
+#' @noRd
+.bold_submit_query <- function(triplet, extent = "full") {
+  req <- httr2::request(.bold_api_base) |>
+    httr2::req_url_path_append("query") |>
+    httr2::req_url_query(query = triplet, extent = extent) |>
+    httr2::req_error(is_error = function(resp) FALSE)
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NA_character_)
+
+  body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+  qid <- body[["query_id"]]
+  if (is.null(qid)) NA_character_ else qid
+}
+
+#' Download BOLD records for a resolved query_id as a data frame
+#'
+#' Requests TSV (not JSON) -- BOLD's download endpoint returns full records
+#' in one response regardless of format (it "ignores the query extent to
+#' always download the full extent" per its own API docs), and TSV parses
+#' with base R's \code{read.delim()} without a new JSON dependency, matching
+#' this ecosystem's existing preference (NCBI ESummary/FASTA are handled the
+#' same way).
+#' @noRd
+.bold_fetch_documents <- function(query_id) {
+  req <- httr2::request(.bold_api_base) |>
+    httr2::req_url_path_append("documents", query_id, "download") |>
+    httr2::req_url_query(format = "tsv") |>
+    httr2::req_error(is_error = function(resp) FALSE)
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NULL)
+
+  txt <- tryCatch(httr2::resp_body_string(resp), error = function(e) NULL)
+  if (is.null(txt) || !nzchar(trimws(txt))) return(NULL)
+
+  tryCatch(
+    utils::read.delim(text = txt, sep = "\t", quote = "", na.strings = "",
+                      stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) NULL
+  )
+}
+
+#' Parse BOLD's bracketed \code{coord} field (\code{"[lat, lon]"}) into
+#' signed decimal degrees
+#'
+#' Confirmed format directly against real populated records (Session 136,
+#' e.g. \emph{Danaus plexippus} specimens) -- GenBank-mined BOLD records
+#' (the majority) have \code{coord = NA}; field-vouchered specimens carry
+#' real values in this bracketed-array style.
+#' @noRd
+.parse_bold_coord <- function(x) {
+  empty <- c(lat = NA_real_, lon = NA_real_)
+  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) return(empty)
+  x <- gsub("[][]", "", x)
+  parts <- trimws(strsplit(x, ",", fixed = TRUE)[[1L]])
+  if (length(parts) != 2L) return(empty)
+  vals <- suppressWarnings(as.numeric(parts))
+  if (anyNA(vals)) return(empty)
+  c(lat = vals[1L], lon = vals[2L])
+}
+
+
+#' Fetch reference sequences from BOLD Systems for model building
+#'
+#' Searches BOLD's v5 Data Portal API by taxon name and returns a
+#' `reference_df` ready for [build_sequence_matrix()] -- the BOLD analog of
+#' [fetch_ncbi_reference_sequences()].
+#'
+#' @details
+#' Talks directly to BOLD's live v5 Data Portal API
+#' (\url{https://portal.boldsystems.org/api}) via a 3-stage flow:
+#' \code{query/preprocessor} resolves a taxon name into a formal query
+#' triplet, \code{query} submits it and returns a \code{query_id}, and
+#' \code{documents/{query_id}/download} returns the matching records. No API
+#' key required. Confirmed live and documented directly against BOLD's own
+#' OpenAPI spec (\url{https://portal.boldsystems.org/openapi.json}), Session
+#' 136 -- this does NOT wrap the \code{bold} R package, whose
+#' \code{bold_seqspec()}/\code{bold_identify()} target BOLD's now-retired
+#' v3/v4 API and no longer work.
+#'
+#' \strong{No server-side marker/locus filter exists.} BOLD's query API only
+#' supports \code{tax}/\code{geo}/\code{ids}/\code{bin}/\code{recordsetcode}
+#' scopes -- there is no marker/gene scope the way NCBI's \code{[GENE]} field
+#' tag provides via [fetch_ncbi_reference_sequences()]. \code{barcode_term}
+#' is therefore applied as a client-side filter on the returned
+#' \code{marker_code} field (e.g. \code{"COI-5P"}, \code{"COI-3P"}) after
+#' download, not as part of the query itself -- every record for the taxon
+#' is fetched regardless of marker.
+#'
+#' \strong{Location comes free, like BOLD's own `coord`/`country/ocean`
+#' fields}: no separate round trip is needed the way NCBI requires one
+#' (\code{include_location} on [fetch_ncbi_reference_sequences()] triggers a
+#' real second fetch) -- BOLD's query already returns these fields, so this
+#' parameter just controls whether to keep or drop the columns.
+#'
+#' @param taxa Character vector of taxon names to search. Each is resolved
+#'   and queried separately; results are combined and de-duplicated by
+#'   \code{processid}.
+#' @param barcode_term Character vector of BOLD marker codes to keep (e.g.
+#'   \code{"COI-5P"}), matched against the returned \code{marker_code}
+#'   column. \code{NULL} (default) keeps every marker returned.
+#' @param rank_system Character vector of taxonomy ranks, coarse to fine
+#'   (default \code{c("family", "genus", "species")}). Resolved from BOLD's
+#'   own taxonomy columns (\code{kingdom}, \code{phylum}, \code{class},
+#'   \code{order}, \code{family}, \code{subfamily}, \code{genus},
+#'   \code{species}, \code{subspecies} -- confirmed live, Session 136).
+#' @param max_per_species Integer or \code{NULL} (default \code{NULL}).
+#'   Maximum sequences per species (stratified downsampling), matching
+#'   [fetch_ncbi_reference_sequences()]'s convention. Requires
+#'   \code{"species"} to be in \code{rank_system}.
+#' @param include_location Logical (default \code{TRUE}). Keep the
+#'   \code{lat}/\code{lon}/\code{country} columns parsed from BOLD's own
+#'   \code{coord}/\code{country/ocean} fields. \code{NA} where BOLD has no
+#'   collection-location metadata (common -- most BOLD records are
+#'   GenBank-mined and carry no field-collection coordinates).
+#'
+#' @return A data frame (`reference_df`) with columns:
+#'   \describe{
+#'     \item{`composite_id`}{BOLD `processid`.}
+#'     \item{`sequence`}{DNA sequence string (BOLD's `nuc` field).}
+#'     \item{rank columns}{One column per rank in `rank_system`.}
+#'     \item{`lat`, `lon`, `country`}{Only when `include_location = TRUE`.}
+#'   }
+#'   Ready for input to [build_sequence_matrix()].
+#'
+#' @seealso [fetch_ncbi_reference_sequences()] for the NCBI equivalent,
+#'   [build_sequence_matrix()] for the next step
+#'
+#' @examples
+#' \dontrun{
+#' ref <- fetch_bold_reference_sequences(
+#'   taxa = c("Fundulus", "Atherinops"),
+#'   barcode_term = "COI-5P"
+#' )
+#' head(ref)
+#' }
+#'
+#' @importFrom dplyr group_by slice_sample ungroup n_distinct bind_rows
+#' @export
+fetch_bold_reference_sequences <- function(taxa,
+                                           barcode_term    = NULL,
+                                           rank_system     = c("family", "genus", "species"),
+                                           max_per_species = NULL,
+                                           include_location = TRUE) {
+
+  if (!requireNamespace("httr2", quietly = TRUE))
+    stop("fetch_bold_reference_sequences requires the 'httr2' package. Install with: install.packages('httr2')")
+  if (!is.character(taxa) || length(taxa) == 0L)
+    stop("taxa must be a non-empty character vector")
+  if (!is.character(rank_system) || length(rank_system) == 0L)
+    stop("rank_system must be a non-empty character vector (coarse to fine)")
+  if (!is.null(barcode_term) && !is.character(barcode_term))
+    stop("barcode_term must be a character vector or NULL")
+  if (!is.null(max_per_species) && (!is.numeric(max_per_species) || max_per_species < 1L))
+    stop("max_per_species must be a positive integer or NULL")
+
+  message("Querying BOLD Systems v5 Data Portal API...")
+  all_records <- vector("list", length(taxa))
+
+  for (i in seq_along(taxa)) {
+    triplet <- .bold_resolve_taxon(taxa[i])
+    if (is.na(triplet)) {
+      warning(sprintf(
+        "fetch_bold_reference_sequences: '%s' could not be resolved by BOLD. Skipping.",
+        taxa[i]
+      ), call. = FALSE)
+      next
+    }
+
+    query_id <- .bold_submit_query(triplet)
+    if (is.na(query_id)) {
+      warning(sprintf(
+        "fetch_bold_reference_sequences: query submission failed for '%s'. Skipping.",
+        taxa[i]
+      ), call. = FALSE)
+      next
+    }
+
+    docs <- .bold_fetch_documents(query_id)
+    if (is.null(docs) || nrow(docs) == 0L) {
+      message(sprintf("  %s: no records returned", taxa[i]))
+      next
+    }
+
+    message(sprintf("  %s: %d record(s)", taxa[i], nrow(docs)))
+    all_records[[i]] <- docs
+  }
+
+  # dplyr::bind_rows(), not rbind() -- BOLD's per-query TSV column set can
+  # differ across taxa (confirmed live, Session 136: some optional/flattened
+  # columns only appear when populated for that result set), so a plain
+  # rbind() errors on mismatched column counts.
+  non_null_records <- Filter(Negate(is.null), all_records)
+  combined <- if (length(non_null_records) > 0L) {
+    as.data.frame(dplyr::bind_rows(non_null_records))
+  } else {
+    NULL
+  }
+  empty_out <- data.frame(composite_id = character(0L), sequence = character(0L),
+                          stringsAsFactors = FALSE)
+
+  if (is.null(combined) || nrow(combined) == 0L) {
+    message("No records found for any taxon.")
+    return(empty_out)
+  }
+
+  combined <- combined[!duplicated(combined$processid), , drop = FALSE]
+
+  if (!is.null(barcode_term)) {
+    combined <- combined[!is.na(combined$marker_code) &
+                        combined$marker_code %in% barcode_term, , drop = FALSE]
+    if (nrow(combined) == 0L) {
+      message("No records matched the requested barcode_term after filtering.")
+      return(empty_out)
+    }
+  }
+
+  combined <- combined[!is.na(combined$nuc) & nzchar(combined$nuc), , drop = FALSE]
+  if (nrow(combined) == 0L) {
+    message("No records with a usable sequence.")
+    return(empty_out)
+  }
+
+  if (!is.null(max_per_species) && "species" %in% rank_system &&
+      "species" %in% names(combined)) {
+    combined <- dplyr::group_by(combined, species)
+    combined <- dplyr::slice_sample(combined, n = max_per_species)
+    combined <- dplyr::ungroup(combined)
+  }
+
+  out <- data.frame(
+    composite_id = combined$processid,
+    sequence     = combined$nuc,
+    stringsAsFactors = FALSE
+  )
+
+  for (rc in tolower(rank_system)) {
+    out[[rc]] <- if (rc %in% names(combined)) combined[[rc]] else NA_character_
+  }
+
+  if (include_location) {
+    if ("coord" %in% names(combined)) {
+      coord_mat <- t(vapply(combined$coord, .parse_bold_coord, numeric(2L)))
+      out$lat <- unname(coord_mat[, 1L])
+      out$lon <- unname(coord_mat[, 2L])
+    } else {
+      out$lat <- NA_real_
+      out$lon <- NA_real_
+    }
+    out$country <- if ("country/ocean" %in% names(combined)) combined[["country/ocean"]] else NA_character_
+  }
+
+  rownames(out) <- NULL
+  finest_rank <- tolower(rank_system[length(rank_system)])
+  message(sprintf("Done. reference_df: %d sequences, %d unique %s",
+                  nrow(out), dplyr::n_distinct(out[[finest_rank]]), finest_rank))
+  out
 }
 
 
@@ -826,15 +1290,47 @@ fetch_reference_sequences <- function(taxa,
 .crabs_std_hierarchy <- c("kingdom", "phylum", "class", "order",
                           "family", "genus", "species")
 
+#' PR2's fixed 9-level positional hierarchy
+#'
+#' Confirmed directly (Session 136) against a real PR2 v5.1.1 release file
+#' (\code{pr2_version_5.1.1_SSU_mothur.tax.gz}, 240,201 records): every single
+#' record uses exactly this 9-level positional order, with no missing levels
+#' and no prefix codes -- e.g.
+#' \code{Eukaryota;TSAR;Alveolata;Dinoflagellata;Dinophyceae;Peridiniales;Kryptoperidiniaceae;Unruhdinium;Unruhdinium_kevei}.
+#' This does not line up with \code{.crabs_std_hierarchy} (7 levels,
+#' kingdom-first) either in count or in rank names -- PR2's own
+#' \code{supergroup}/\code{division}/\code{subdivision} concepts (protist
+#' taxonomy) have no equivalent there, so PR2 gets its own hierarchy constant
+#' rather than bending the shared one every other positional source relies on.
+#' Two real quirks confirmed in the same file, deliberately NOT auto-corrected
+#' here (this parser stays a faithful structural splitter, same as it is for
+#' every other source): (1) plastid-derived sequences suffix every level with
+#' \code{:plas} (e.g. \code{Eukaryota:plas}) -- collapsing that would erase a
+#' real, scientifically meaningful distinction (plastid ancestry vs. nuclear
+#' genome), so it is preserved as-is in the parsed value; (2) the
+#' \code{species} level is underscore-joined (\code{Unruhdinium_kevei}), not
+#' space-separated, and many "species" values are unresolved placeholder
+#' labels (e.g. \code{Rozellomycota_XXX_sp.}) rather than real binomials --
+#' callers wanting a clean binomial should post-process, this parser does not
+#' guess which underscore-joined values are real names.
+#' @noRd
+.pr2_hierarchy <- c("domain", "supergroup", "division", "subdivision",
+                    "class", "order", "family", "genus", "species")
+
 #' Parse one semicolon-delimited taxonomy string into named rank values
 #'
-#' Supports two formats:
+#' Supports three formats:
 #' \itemize{
 #'   \item Prefix-style: \code{k__Kingdom;p__Phylum;...} (QIIME2 / RESCRIPt /
 #'     SILVA). Also accepts \code{d__} (domain) as an alias for kingdom.
-#'   \item Positional (no prefix): \code{Kingdom;Phylum;Class;Order;Family;Genus;Species}
+#'   \item Positional, 7 levels: \code{Kingdom;Phylum;Class;Order;Family;Genus;Species}
 #'     (MIDORI2, plain SILVA). Levels are matched left-to-right against
 #'     \code{.crabs_std_hierarchy}.
+#'   \item Positional, 9 levels: PR2's fixed
+#'     \code{Domain;Supergroup;Division;Subdivision;Class;Order;Family;Genus;Species}
+#'     shape (see \code{.pr2_hierarchy}) -- disambiguated from the 7-level
+#'     case purely by field count, confirmed uniform across a real PR2
+#'     release (Session 136).
 #' }
 #' @noRd
 .parse_tax_string <- function(tax_string, rank_system) {
@@ -866,10 +1362,18 @@ fetch_reference_sequences <- function(taxa,
         result[[rank]] <- val
     }
   } else {
-    # Positional mapping against standard 7-level hierarchy
+    # Positional mapping. PR2's fixed 9-level shape is distinguished from the
+    # standard 7-level (MIDORI2/plain-SILVA) shape purely by field count --
+    # confirmed uniform (always exactly 9, no missing levels) across a real
+    # PR2 release; see .pr2_hierarchy's roxygen for the verification note.
+    hierarchy <- if (length(parts) == length(.pr2_hierarchy)) {
+      .pr2_hierarchy
+    } else {
+      .crabs_std_hierarchy
+    }
     for (k in seq_along(parts)) {
-      if (k > length(.crabs_std_hierarchy)) break
-      rank <- .crabs_std_hierarchy[k]
+      if (k > length(hierarchy)) break
+      rank <- hierarchy[k]
       if (rank %in% rank_system && !is.na(parts[k]))
         result[[rank]] <- parts[k]
     }
@@ -933,7 +1437,7 @@ fetch_reference_sequences <- function(taxa,
 #' Reads a FASTA file and joins it to a user-supplied taxonomy table to produce
 #' a `reference_df` suitable for [build_sequence_matrix()].
 #'
-#' This is the local-file alternative to [fetch_reference_sequences()].
+#' This is the local-file alternative to [fetch_ncbi_reference_sequences()].
 #' Use it when you already have a reference database on disk (e.g., a CRUX
 #' database, a GenBank download, or a custom curated FASTA).
 #'
@@ -989,7 +1493,7 @@ fetch_reference_sequences <- function(taxa,
 #'   Ready for input to [build_sequence_matrix()].
 #'
 #' @seealso [read_crabs_output()] for CRABS internal-format files,
-#'   [fetch_reference_sequences()] for downloading from NCBI,
+#'   [fetch_ncbi_reference_sequences()] for downloading from NCBI,
 #'   [build_sequence_matrix()]
 #'
 #' @examples

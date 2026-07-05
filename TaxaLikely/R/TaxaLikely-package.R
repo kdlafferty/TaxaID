@@ -10,7 +10,7 @@
 #'
 #' @section Reference acquisition:
 #' \itemize{
-#'   \item \code{\link{fetch_reference_sequences}} -- download from NCBI
+#'   \item \code{\link{fetch_ncbi_reference_sequences}} -- download from NCBI
 #'   \item \code{\link{read_reference_fasta}} -- read local FASTA + taxonomy
 #' }
 #'

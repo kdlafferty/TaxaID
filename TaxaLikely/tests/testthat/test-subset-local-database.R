@@ -298,3 +298,78 @@ test_that("subset_local_database: error when require_species = TRUE but species 
     "require_species"
   )
 })
+
+# ===========================================================================
+# Part E: PR2's 9-level positional format (real strings, Session 136)
+# ===========================================================================
+# Real taxonomy strings copied verbatim from a downloaded PR2 v5.1.1 release
+# file (pr2_version_5.1.1_SSU_mothur.tax.gz), confirming .parse_tax_string()'s
+# field-count dispatch (9 parts -> .pr2_hierarchy, not .crabs_std_hierarchy).
+
+PR2_SEQS <- c(
+  "AB353770.1.1740_U" = "ATCGATCGATCG",
+  "AB284159.1.1765_U" = "GCTAGCTAGCTA",
+  "FJ355953.1.1907_U" = "TTTTCCCCAAAA"
+)
+
+PR2_TAX_ROWS <- list(
+  c("AB353770.1.1740_U",
+    "Eukaryota;TSAR;Alveolata;Dinoflagellata;Dinophyceae;Peridiniales;Kryptoperidiniaceae;Unruhdinium;Unruhdinium_kevei"),
+  c("AB284159.1.1765_U",
+    "Eukaryota;TSAR;Alveolata;Dinoflagellata;Dinophyceae;Peridiniales;Protoperidiniaceae;Protoperidinium;Protoperidinium_bipes"),
+  c("FJ355953.1.1907_U",
+    "Eukaryota;Obazoa;Opisthokonta;Fungi;Ascomycota;Pezizomycotina;Eurotiomycetes;Knufia;Knufia_epidermidis")
+)
+
+test_that("subset_local_database: PR2's 9-level positional format is parsed correctly", {
+  fasta <- make_fasta(PR2_SEQS)
+  tax   <- make_tax_tsv(PR2_TAX_ROWS)
+  ref <- suppressMessages(
+    subset_local_database(
+      fasta, taxa = "Peridiniales", rank = "order",
+      rank_system = c("domain", "supergroup", "division", "subdivision",
+                      "class", "order", "family", "genus", "species"),
+      taxonomy_file = tax
+    )
+  )
+  expect_equal(nrow(ref), 2L)
+  expect_true(all(ref$order == "Peridiniales"))
+  expect_true(all(ref$domain == "Eukaryota"))
+  expect_true(all(ref$supergroup == "TSAR"))
+  expect_setequal(ref$genus, c("Unruhdinium", "Protoperidinium"))
+})
+
+test_that("subset_local_database: PR2 filtering works with a rank_system subset (family/genus/species only)", {
+  fasta <- make_fasta(PR2_SEQS)
+  tax   <- make_tax_tsv(PR2_TAX_ROWS)
+  ref <- suppressMessages(
+    subset_local_database(
+      fasta, taxa = "Kryptoperidiniaceae", rank = "family",
+      rank_system = c("family", "genus", "species"),
+      taxonomy_file = tax
+    )
+  )
+  expect_equal(nrow(ref), 1L)
+  expect_equal(ref$genus, "Unruhdinium")
+  expect_equal(ref$species, "Unruhdinium_kevei")
+  # domain/supergroup should NOT appear -- not requested in rank_system
+  expect_false("domain" %in% names(ref))
+  expect_false("supergroup" %in% names(ref))
+})
+
+test_that("subset_local_database: PR2's plastid-tagged (:plas) suffix is preserved, not stripped", {
+  fasta <- make_fasta(c("PLAS001" = "ATCGATCGATCG"))
+  tax   <- make_tax_tsv(list(c(
+    "PLAS001",
+    "Eukaryota:plas;TSAR:plas;Stramenopiles:plas;Gyrista:plas;Diatomeae_X:plas;Diatomeae_XX:plas;Diatomeae_XXX:plas;Diatomeae_XXXX:plas;Diatomeae_XXXX_sp.:plas"
+  )))
+  ref <- suppressMessages(
+    subset_local_database(
+      fasta, taxa = "Diatomeae_XXX:plas", rank = "family",
+      rank_system = c("domain", "family", "genus", "species"),
+      taxonomy_file = tax
+    )
+  )
+  expect_equal(nrow(ref), 1L)
+  expect_equal(ref$domain, "Eukaryota:plas")
+})

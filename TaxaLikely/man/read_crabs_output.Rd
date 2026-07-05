@@ -100,6 +100,6 @@ model      <- train_likelihood_model(clean_mat)
 }
 \seealso{
 \code{\link[=read_reference_fasta]{read_reference_fasta()}} for FASTA + separate taxonomy table,
-\code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}} for downloading from NCBI,
+\code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}} for downloading from NCBI,
 \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}, \code{\link[=flag_reference_errors]{flag_reference_errors()}}
 }

@@ -63,7 +63,7 @@
 #' Ready for input to [build_sequence_matrix()].
 #'
 #' @seealso [read_reference_fasta()] for FASTA + separate taxonomy table,
-#'   [fetch_reference_sequences()] for downloading from NCBI,
+#'   [fetch_ncbi_reference_sequences()] for downloading from NCBI,
 #'   [build_sequence_matrix()], [flag_reference_errors()]
 #'
 #' @examples

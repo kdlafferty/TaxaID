@@ -40,7 +40,7 @@ Reads a FASTA file and joins it to a user-supplied taxonomy table to produce
 a \code{reference_df} suitable for \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.
 }
 \details{
-This is the local-file alternative to \code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}.
+This is the local-file alternative to \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}.
 Use it when you already have a reference database on disk (e.g., a CRUX
 database, a GenBank download, or a custom curated FASTA).
 }
@@ -105,6 +105,6 @@ ref <- read_reference_fasta(
 }
 \seealso{
 \code{\link[=read_crabs_output]{read_crabs_output()}} for CRABS internal-format files,
-\code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}} for downloading from NCBI,
+\code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}} for downloading from NCBI,
 \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}
 }

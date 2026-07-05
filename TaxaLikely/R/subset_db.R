@@ -15,10 +15,28 @@
 #'     SILVA taxonomy strings use prefix-style (\code{d__}, \code{p__}, \ldots)
 #'     and are auto-detected.  SILVA sequences span 16S/18S/23S rRNA and are
 #'     the standard reference for microbial amplicon eDNA.}
+#'   \item{PR2}{Download the mothur-format taxonomy TSV
+#'     (\code{pr2_version_*_SSU_mothur.tax.gz}) and its companion FASTA
+#'     (\code{pr2_version_*_SSU_mothur.fasta.gz}) from
+#'     \url{https://github.com/pr2database/pr2database/releases}.  PR2 covers
+#'     18S rRNA with a protist/eukaryote focus.  Its taxonomy strings use a
+#'     fixed 9-level positional format (\code{domain;supergroup;division;
+#'     subdivision;class;order;family;genus;species}, no prefix codes) --
+#'     auto-detected by field count (confirmed against a real v5.1.1 release,
+#'     Session 136; see \code{.pr2_hierarchy}'s roxygen for detail). Two real
+#'     quirks worth knowing before filtering: plastid-derived sequences suffix
+#'     every level with \code{:plas} (preserved as-is, not stripped, since it's
+#'     a real ancestry signal); and \code{species}-level values are
+#'     underscore-joined and often unresolved placeholder labels (e.g.
+#'     \code{Rozellomycota_XXX_sp.}) rather than clean binomials.}
 #'   \item{MIDORI2}{Download the FASTA (\code{MIDORI2_UNIQ_NUC_*_QIIME.fasta})
 #'     and its companion \code{_taxon.tsv} from
 #'     \url{https://www.reference-midori.info/}.  MIDORI2 covers COI and a
-#'     range of nuclear markers for metazoan eDNA; the full COI release is ~4 GB.}
+#'     range of nuclear markers for metazoan eDNA; the full COI release is ~4 GB.
+#'     Its license is reported as CC-BY-NC in secondary sources (unconfirmed on
+#'     the primary site) -- this may be in tension with this ecosystem's
+#'     CC0/USGS public-domain policy for anything beyond local model training;
+#'     confirm before redistributing any cached MIDORI2-derived data.}
 #'   \item{GTDB}{GTDB taxonomy differs from NCBI for bacteria and archaea.
 #'     Export GTDB-formatted 16S sequences + taxonomy via QIIME 2 (\code{qiime
 #'     tools export}) or download pre-built QIIME2 classifiers and extract
@@ -90,6 +108,15 @@
 #'   rank          = "family",
 #'   rank_system   = c("family", "genus", "species"),
 #'   taxonomy_file = "silva_taxonomy.tsv"
+#' )
+#'
+#' # Filter a local PR2 SSU database to a genus (note PR2-native rank names)
+#' ref <- subset_local_database(
+#'   fasta_path    = "pr2_version_5.1.1_SSU_mothur.fasta.gz",
+#'   taxa          = "Tetrahymena",
+#'   rank          = "genus",
+#'   rank_system   = c("supergroup", "family", "genus", "species"),
+#'   taxonomy_file = "pr2_version_5.1.1_SSU_mothur.tax.gz"
 #' )
 #'
 #' # Filter MIDORI2 COI to a genus; drop sequences > 700 bp

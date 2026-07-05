@@ -11,6 +11,8 @@
 .empty_blast_result <- function(...) get(".empty_blast_result", envir = asNamespace("TaxaMatch"))(...)
 .parse_blast_xml    <- function(...) get(".parse_blast_xml",    envir = asNamespace("TaxaMatch"))(...)
 .parse_taxonomy_xml <- function(...) get(".parse_taxonomy_xml", envir = asNamespace("TaxaMatch"))(...)
+.parse_lat_lon      <- function(...) get(".parse_lat_lon",      envir = asNamespace("TaxaMatch"))(...)
+.resolve_locations_by_acc <- function(...) get(".resolve_locations_by_acc", envir = asNamespace("TaxaMatch"))(...)
 
 # --- Helpers ------------------------------------------------------------------
 
@@ -79,6 +81,53 @@ test_that("blast_sequences rejects invalid max_hits", {
 test_that("blast_sequences rejects invalid resolve_taxonomy", {
   seq_df <- make_seq_df(1)
   expect_error(blast_sequences(seq_df, resolve_taxonomy = NA), "resolve_taxonomy")
+})
+
+test_that("blast_sequences rejects invalid resolve_location", {
+  seq_df <- make_seq_df(1)
+  expect_error(blast_sequences(seq_df, resolve_location = NA), "resolve_location")
+  expect_error(blast_sequences(seq_df, resolve_location = "yes"), "resolve_location")
+})
+
+
+# ==============================================================================
+# .parse_lat_lon() — INSDC lat_lon qualifier parser
+# ==============================================================================
+
+test_that(".parse_lat_lon parses well-formed N/E coordinates", {
+  out <- .parse_lat_lon("36.789 N 121.947 E")
+  expect_equal(unname(out["lat"]), 36.789)
+  expect_equal(unname(out["lon"]), 121.947)
+})
+
+test_that(".parse_lat_lon negates S and W", {
+  out <- .parse_lat_lon("36.789 S 121.947 W")
+  expect_equal(unname(out["lat"]), -36.789)
+  expect_equal(unname(out["lon"]), -121.947)
+})
+
+test_that(".parse_lat_lon is case-insensitive on hemisphere letters", {
+  out <- .parse_lat_lon("36.789 s 121.947 w")
+  expect_equal(unname(out["lat"]), -36.789)
+  expect_equal(unname(out["lon"]), -121.947)
+})
+
+test_that(".parse_lat_lon returns NA on NA/empty/malformed input", {
+  expect_true(all(is.na(.parse_lat_lon(NA_character_))))
+  expect_true(all(is.na(.parse_lat_lon(""))))
+  expect_true(all(is.na(.parse_lat_lon("not a coordinate"))))
+})
+
+test_that(".parse_lat_lon returns NA on NULL/multi-length input", {
+  expect_true(all(is.na(.parse_lat_lon(NULL))))
+  expect_true(all(is.na(.parse_lat_lon(c("1 N 2 E", "3 N 4 E")))))
+})
+
+test_that(".resolve_locations_by_acc returns empty typed data frame for no accessions", {
+  out <- .resolve_locations_by_acc(character(0L))
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 0L)
+  expect_equal(names(out), c("accession", "lat", "lon", "country"))
 })
 
 

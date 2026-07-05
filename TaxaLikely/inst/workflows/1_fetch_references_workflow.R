@@ -50,7 +50,7 @@ library(TaxaLikely)
 # a biased subset. A good model needs the broader picture: within-species
 # variation, between-species distances, and related taxa.
 #
-# fetch_reference_sequences() searches NCBI by taxon name + barcode marker.
+# fetch_ncbi_reference_sequences() searches NCBI by taxon name + barcode marker.
 # It does a count-first estimation before committing to any download, so
 # you can see how large the search is before proceeding.
 match_obj <- readRDS(file.choose())  # select your match data file (.rds)
@@ -72,7 +72,7 @@ barcode_term <- "12S"
 rank_system <- c("family", "genus", "species")
 
 # ---- A2. Estimate search size (automatic) -----------------------------------
-# fetch_reference_sequences() always runs a count-first pass.
+# fetch_ncbi_reference_sequences() always runs a count-first pass.
 # If the total exceeds max_sequences (default 10,000), it stops and
 # shows you the per-taxon counts so you can adjust.
 #
@@ -83,7 +83,7 @@ rank_system <- c("family", "genus", "species")
 #   - Increase max_sequences if you're prepared to wait
 
 # ---- A3. Fetch ---------------------------------------------------------------
-reference_df <- fetch_reference_sequences(
+reference_df <- fetch_ncbi_reference_sequences(
   taxa         = taxa,
   barcode_term = barcode_term,
   rank_system  = rank_system

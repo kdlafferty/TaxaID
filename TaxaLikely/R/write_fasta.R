@@ -1,6 +1,6 @@
 #' Write a Reference Data Frame to FASTA Format
 #'
-#' Exports a `reference_df` (from [fetch_reference_sequences()] or
+#' Exports a `reference_df` (from [fetch_ncbi_reference_sequences()] or
 #' [read_reference_fasta()]) to a FASTA file compatible with BLAST, CRABS,
 #' Obitools, and other external tools. Optionally writes a companion taxonomy
 #' TSV in the same positional format accepted by
@@ -21,7 +21,7 @@
 #'
 #' @param reference_df Data frame with columns `composite_id`, `sequence`, and
 #'   at least one taxonomy column from `rank_system`.
-#'   Output of [fetch_reference_sequences()], [read_reference_fasta()], or
+#'   Output of [fetch_ncbi_reference_sequences()], [read_reference_fasta()], or
 #'   [read_crabs_output()].
 #' @param file Character. Output path for the FASTA file
 #'   (e.g., `"reference.fasta"`).
@@ -35,12 +35,12 @@
 #' @return Invisibly returns `reference_df`. Called for its side-effect of
 #'   writing files.
 #'
-#' @seealso [read_reference_fasta()], [fetch_reference_sequences()],
+#' @seealso [read_reference_fasta()], [fetch_ncbi_reference_sequences()],
 #'   [read_crabs_output()], [build_site_reference()]
 #'
 #' @examples
 #' \dontrun{
-#' ref <- fetch_reference_sequences(
+#' ref <- fetch_ncbi_reference_sequences(
 #'   taxa        = "Fundulus",
 #'   barcode_term = "MiFishU"
 #' )

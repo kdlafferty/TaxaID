@@ -1,6 +1,16 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-03 (Session 129 — assign_scores() score-scale bug found and fixed (unbounded scores like iNaturalist's combined_score no longer forced through a fixed 0-100 divisor); tau/score_sharpness jointly calibrated on 51 clean real photos; image resolved to tau≈0, superseding Session 128's confounded 5/6->4/6 number)
+# Last updated: 2026-07-05 (Session 136 — fetch_reference_sequences() renamed to
+# fetch_ncbi_reference_sequences() (old name kept as deprecated alias) now that a second
+# live-API reference source exists: fetch_bold_reference_sequences(), built directly
+# against BOLD's real v5 Data Portal API via httr2 (BOLD migrated off the old v3/v4 API
+# the archived `bold` R package targets -- see Session 136 note below for the full
+# investigation). subset_local_database() gained real PR2 support (.pr2_hierarchy, a
+# fixed 9-level positional format, confirmed against real PR2 v5.1.1 data) and a MIDORI2
+# license caveat. Session 135 — fetch_reference_sequences(include_location=)
+# and a new fetch_xc_recording_locations() close two of the three location-metadata gaps
+# flagged in ecosystem_docs/TODO_validation_benchmark.md's "Sourcing location data" section;
+# see Session 135 note below. Session 133 — acoustic tau re-calibrated on a real 24-species/8-cluster/2487-window dataset; Session 128/129's tau≈1/tau≈3.6 for acoustic did NOT survive the larger sample, pooled result is tau≈0 matching image, though per-cluster results are heterogeneous; no current evidence for tau>0 as a default. Session 129 — assign_scores() score-scale bug found and fixed (unbounded scores like iNaturalist's combined_score no longer forced through a fixed 0-100 divisor); tau/score_sharpness jointly calibrated on 51 clean real photos; image resolved to tau≈0, superseding Session 128's confounded 5/6->4/6 number)
 
 ---
 
@@ -85,10 +95,11 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `fetch_reference_sequences()` | `R/fetch.R` | Written | Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. |
+| `fetch_ncbi_reference_sequences()` | `R/fetch.R` | Written | **Renamed from `fetch_reference_sequences()` (Session 136)** — old name kept as a deprecated forwarding alias (`.Deprecated()`, matches `audit_barcode_coverage_ncbi()`'s pattern); renamed because a second live-API reference source (BOLD) was planned and the old name didn't say NCBI anywhere. Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. **Session 135**: `include_location = FALSE` param — when `TRUE`, fetches each accession's full GBSeq XML record (`.fetch_locations_batched()`) and adds `lat`/`lon`/`country` columns parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); a genuinely separate NCBI round trip from the ESummary/taxonomy-XML fetches this function already does, neither of which carries those qualifiers. |
+| `fetch_bold_reference_sequences()` | `R/fetch.R` | Written | BOLD Systems reference-fetch analog. **Session 136**: talks directly to BOLD's real, live v5 Data Portal API (`portal.boldsystems.org/api`, confirmed via its own OpenAPI spec) via `httr2` -- does NOT wrap the `bold` R package, whose `bold_seqspec()`/`bold_identify()` target BOLD's now-permanently-retired v3/v4 API. 3-stage flow: `query/preprocessor` (resolve taxon → triplet) → `query` (submit → `query_id`) → `documents/{id}/download?format=tsv` (returns full result set, no pagination needed). No server-side marker/locus filter exists in BOLD's query API (only `tax`/`geo`/`ids`/`bin`/`recordsetcode` scopes) — `barcode_term` filters client-side on the returned `marker_code` column. Location (`coord`, bracketed `"[lat, lon]"` string, parsed by `.parse_bold_coord()`; `country/ocean`) comes free with every query, unlike NCBI which needs a separate round trip. Live-tested end to end (103 real sequences across 2 taxa, 84% real coordinate coverage). Internal helpers: `.bold_resolve_taxon()`, `.bold_submit_query()`, `.bold_fetch_documents()`, `.parse_bold_coord()`. |
 | `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
 | `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + taxonomy → `reference_df`. For CRUX, GenBank dumps, custom databases. `taxonomy` param accepts a data frame; new `taxonomy_file` param accepts a 2-column TSV (QIIME2/RESCRIPt/SILVA/MIDORI2 prefix-style `k__Kingdom;...` or positional `Kingdom;...`). Exactly one of `taxonomy` or `taxonomy_file` must be supplied (previously `taxonomy` was required). Internals: `.parse_taxonomy_tsv()`, `.parse_tax_string()`. |
-| `subset_local_database()` | `R/subset_db.R` | Written | Filter a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB, Greengenes2, RDP) to a user-supplied taxon list. Parses taxonomy first → O(1) ID lookup via environment hash → streams FASTA in chunks; peak memory scales with matching sequences, not total database size. Supports `.gz`-compressed FASTA. Optional `max_n_bases` and `require_species` filters. Returns `reference_df`. Reuses `.parse_taxonomy_tsv()` internal. |
+| `subset_local_database()` | `R/subset_db.R` | Written | Filter a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB, Greengenes2, RDP, **PR2 — Session 136**) to a user-supplied taxon list. Parses taxonomy first → O(1) ID lookup via environment hash → streams FASTA in chunks; peak memory scales with matching sequences, not total database size. Supports `.gz`-compressed FASTA. Optional `max_n_bases` and `require_species` filters. Returns `reference_df`. Reuses `.parse_taxonomy_tsv()` internal. **Session 136**: added real PR2 support — PR2 uses a fixed 9-level positional taxonomy string (`domain;supergroup;division;subdivision;class;order;family;genus;species`, confirmed against a real downloaded v5.1.1 release, 240,201 records, 100% uniform) that doesn't match `.crabs_std_hierarchy`'s 7-level shape; `.parse_tax_string()` now dispatches on field count (9 → new `.pr2_hierarchy` constant) rather than bending the shared 7-level constant every other positional source relies on. Also confirmed and preserved (not stripped) PR2's `:plas` plastid-ancestry suffix. MIDORI2's license (reported CC-BY-NC in secondary sources, unconfirmed on the primary site) now flagged in `@details` as a possible conflict with this ecosystem's CC0/USGS policy. |
 
 ### Training (fit model on reference database)
 
@@ -111,7 +122,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `correct_training_bias()` | `R/correct_training_bias.R` | Written, wired, live-tested | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run: `score_i / n_i^tau`. **Revised Session 127**: `tau` is now a single fixed global scalar (default `1.0`, user-tunable), not the Session 125 adaptive per-candidate `tau_i = n_i/(n_i+prior_weight)` — matches Menon et al. 2020's "logit adjustment" correction for long-tailed recognition (literature research found no support for a per-candidate adaptive exponent; the theoretically Fisher-consistent form applies one scalar uniformly). `prior_weight` parameter removed. Missing/zero counts still fall through to the uncorrected score (`tau_used = 0` for that row only) — a deliberate, documented deviation from strict logit adjustment, kept for the same practical reason as before (can't distinguish genuine rarity from a failed lookup). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested (27 expectations, synthetic fixture). **Wired into `image_acoustic_likelihood_workflow.R` Session 128** (both sections) and live-tested against real classifier output. **Resolved Session 129** (see that session's note below): the Session 128 image number was confounded by an unrelated `assign_scores()` bug; on clean, bug-fixed, 51-photo data, `tau ≈ 0` is optimal for image (correction should not be applied), while acoustic's `tau ≈ 1` result is unaffected by that bug and expected to still hold. `tau` must be calibrated per data type — see `TaxaLikely/inst/workflows/calibrate_training_bias_tau.R`. |
+| `correct_training_bias()` | `R/correct_training_bias.R` | Written, wired, live-tested | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run: `score_i / n_i^tau`. **Revised Session 127**: `tau` is now a single fixed global scalar (default `1.0`, user-tunable), not the Session 125 adaptive per-candidate `tau_i = n_i/(n_i+prior_weight)` — matches Menon et al. 2020's "logit adjustment" correction for long-tailed recognition (literature research found no support for a per-candidate adaptive exponent; the theoretically Fisher-consistent form applies one scalar uniformly). `prior_weight` parameter removed. Missing/zero counts still fall through to the uncorrected score (`tau_used = 0` for that row only) — a deliberate, documented deviation from strict logit adjustment, kept for the same practical reason as before (can't distinguish genuine rarity from a failed lookup). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested (27 expectations, synthetic fixture). **Wired into `image_acoustic_likelihood_workflow.R` Session 128** (both sections) and live-tested against real classifier output. **Resolved Session 129** (see that session's note below): the Session 128 image number was confounded by an unrelated `assign_scores()` bug; on clean, bug-fixed, 51-photo data, `tau ≈ 0` is optimal for image (correction should not be applied). **Session 133**: acoustic's Session 128/129 `tau ≈ 1`/`tau ≈ 3.6` result did NOT survive a properly powered re-test (24 species/8 confusable clusters/2487 real BirdNET detection windows, vs. the original 3-species/42-window pilot) — pooled acoustic optimum is now `tau ≈ 0` too, though per-cluster results are genuinely heterogeneous (5/8 clusters agree with `tau ≈ 0`; 2 clusters still prefer high `tau` even at ~150-170 windows each, unbracketed at the swept grid's edge). **No current real-data evidence supports `tau > 0` as a default for either data type** — the package default remains `tau = 1.0` (theoretical, Menon et al. 2020) pending a deliberate decision on whether to change it. `tau` must still be calibrated per data type (and, per Session 133, possibly per taxon cluster) — see `TaxaLikely/inst/workflows/calibrate_training_bias_tau.R` and `ecosystem_docs/REENTRY_PROMPT_acoustic_tau_calibration_expanded.md` for full method detail. |
 
 ### Inference (apply model to query observations)
 
@@ -129,6 +140,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `audit_reference_coverage()` | `R/coverage.R` | Written | Queries NCBI taxonomy tree (all described species). Use for non-barcode libraries (images, sounds) where barcode availability is irrelevant. |
 | `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates `in_match_data`. `xc_recordings = FALSE` param (Session 119, fixed to v3 Session 125): when TRUE, queries Xeno-canto v3 API (requires `XC_API_KEY` env var) for `n_recordings` per species (1s rate limit; NA on failure or missing key). Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
 | `audit_inat_coverage()` | `R/coverage.R` | Written | **iNaturalist image coverage audit** (Session 119). Given a species list (prior taxa), queries iNat taxa API for each species: returns `n_observations`, `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced` list. Optional `match_df` annotates `in_match_data`. Optional `api_token` (env `INAT_API_TOKEN`; 401 → stop). 0.3s rate limit. Returns `list(census, unreferenced)` with same structure as `audit_barcode_coverage()`. Internal helpers: `.inat_species_info()`, `.xc_recording_count()`. |
+| `fetch_xc_recording_locations()` | `R/coverage.R` | Written | **Session 135.** Given one or more species names, returns per-recording `species`/`xc_id`/`lat`/`lon`/`country` from Xeno-canto v3 — the same API response `audit_acoustic_coverage(xc_recordings = TRUE)` already queries via `.xc_recording_count()`, but that function only ever read `numRecordings` off the body and discarded the `recordings` array's own `lat`/`lng`/`cnt` fields. Refactored the shared HTTP call into `.xc_recordings_raw()` (zero behavior change for `.xc_recording_count()`, confirmed by its own tests) and added `.xc_recording_locations()` as the per-recording extractor this function loops over (1s/species rate limit, matching `audit_acoustic_coverage()`'s own). `xc_id` is Xeno-canto's own catalog number, not a `TaxaMatch::build_site_table()`-ready `observation_id` — mapping it to a caller's BirdNET observation-id convention is left to the caller (harness-level concern, not attempted here). |
 | `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress "unreferenced_species" for fully-sampled genera |
 | `expand_unreferenced_hypotheses()` | moved to TaxaAssign | — | Requires both TaxaLikely and TaxaExpect outputs; belongs at the convergence point. See `TaxaAssign/R/expand_unreferenced.R`. |
 
@@ -408,6 +420,225 @@ non-zero likelihoods that bypass the constraint. Correct order:
 
 ## Session Notes
 
+**Session 136 (2026-07-05): fetch_reference_sequences() renamed; real PR2 support added; BOLD wrapper work blocked by a live outage**
+
+Follow-on from Session 135's `ecosystem_docs/EXTERNAL_DATA_SOURCES.md` work: reviewing
+that table with the user identified BOLD Systems and PR2 as worth real engineering
+investment (Macaulay Library explicitly dropped as too access-gated/legally risky).
+
+**Rename**: `fetch_reference_sequences()` → `fetch_ncbi_reference_sequences()`. The old
+name didn't say NCBI anywhere, which stopped being safe once a second live-API
+reference source (BOLD) was on the table. Old name kept as a pure forwarding deprecated
+alias (`.Deprecated()`, `@rdname` folding into the same Rd page), mirroring
+`audit_barcode_coverage_ncbi()`'s existing pattern exactly. All internal call sites
+updated to the new name directly: `build_site_reference()`, both `1_fetch_references_workflow.R`
+and `sequence_likelihood_workflow.R`, `README.md`, and (cross-package)
+`TaxaWizard`'s `taxa_to_refs.R`/`taxa_to_site_refs.R` snippets. The
+`test-build-site-reference.R` mock bindings were also updated to target the new name —
+missing this would have made the mocks silently stop intercepting, since
+`local_mocked_bindings()` replaces by exact name.
+
+**Real PR2 support** (`subset_local_database()`/`.parse_tax_string()`): downloaded a real
+PR2 v5.1.1 release file (`pr2_version_5.1.1_SSU_mothur.tax.gz`, 240,201 records — the
+smallest real release asset, not the multi-GB FASTA) to check PR2's actual taxonomy
+string format directly rather than assume compatibility, per the plan's explicit
+"verify before writing code" instruction. Confirmed PR2 uses a **fixed, always-9-level
+positional format** (`domain;supergroup;division;subdivision;class;order;family;genus;species`,
+100% uniform across all 240,201 records, no prefix codes) that does not match
+`.crabs_std_hierarchy`'s 7-level kingdom-first shape either in count or rank names.
+Added `.pr2_hierarchy` as its own constant and made `.parse_tax_string()`'s positional
+branch dispatch on field count (exactly 9 → PR2; otherwise → the existing 7-level
+constant) — a real, verified structural signal, not a heuristic guess. Two additional
+real quirks found and deliberately preserved rather than "cleaned": plastid-derived
+sequences suffix every taxonomic level with `:plas` (e.g. `Eukaryota:plas`) — collapsing
+this would erase a real, scientifically meaningful ancestry distinction, so it's kept
+as-is in the parsed value; and PR2's `species`-level values are underscore-joined and
+often unresolved placeholder labels (e.g. `Rozellomycota_XXX_sp.`) rather than clean
+binomials, left for callers to post-process if needed. Live-verified `.parse_tax_string()`
+against the real 9-level, `:plas`-tagged, 7-level (MIDORI2), and prefix-style (SILVA/GTDB)
+cases side by side to confirm no regression. 4 new offline tests added to
+`test-subset-local-database.R` using the real downloaded strings verbatim (not
+fabricated), all passing (37/37 in that file, 0 regressions).
+
+**MIDORI2 license caveat**: added to `subset_local_database()`'s `@section Supported
+database formats` — MIDORI2's license is reported as CC-BY-NC in secondary sources
+(unconfirmed on the primary site, per `EXTERNAL_DATA_SOURCES.md`'s MIDORI2 row),
+potentially in tension with this ecosystem's CC0/USGS public-domain policy. Flagged as
+needing resolution before redistributing any cached MIDORI2-derived data. Documentation
+only, no code change.
+
+**BOLD: not an outage — a full API migration. Real API found, `fetch_bold_reference_sequences()`
+built and shipped.** First diagnosis this session (see below) was wrong in framing, not
+in observation: installed `bold` (ropensci/bold, archived from CRAN 2024-08-26) via
+`remotes::install_github()` to live-verify its output before writing any reshape code,
+per this session's "verify, don't guess" discipline, and both `bold_seqspec()` (returns
+an HTML "BOLD Public Offline" page) and `bold_identify()` (crashes on non-XML content)
+failed live. When the user reported BOLD's website looked up and asked to recheck,
+further digging found the real cause: **BOLD migrated to an entirely new "v5" API in
+2024; the old v3/v4 endpoints the `bold` package targets are permanently retired, not
+temporarily down.** Found and fully live-tested the real replacement: BOLD's v5 Data
+Portal API (`portal.boldsystems.org/api`), documented by its own public OpenAPI spec
+(`portal.boldsystems.org/openapi.json`). Confirmed the complete 3-stage flow live
+end-to-end (`query/preprocessor` → `query` → `documents/{id}/download`), and pulled the
+real field list directly from live records rather than secondhand docs.
+
+**Built `fetch_bold_reference_sequences()` directly against this API via `httr2`** (see
+Function Inventory above) — no `bold` package dependency needed at all, sidestepping the
+whole archived-from-CRAN dependency question. Live end-to-end test (`Fundulus` +
+`Danaus plexippus`): 103 real sequences, 38 species, 84% real coordinate coverage
+(87/103) — notably better location coverage than NCBI/GenBank typically has. Found and
+fixed one real bug this way: different taxa return different column sets from BOLD's
+TSV export, so combining needed `dplyr::bind_rows()`, not `rbind()` (which errors on
+mismatched columns).
+
+**Query/ID-engine side (`identify_bold_sequences()`, TaxaMatch) — investigated,
+no public API found, not built.** Pulled BOLD's complete OpenAPI paths list (20
+endpoints, all reference/query-by-known-criteria) and confirmed no
+identification/sequence-matching endpoint exists anywhere in it. BOLD's "Barcode ID"
+tool now lives at `id.boldsystems.org` and every page checked describes only a
+web-form (paste/upload sequence, click Identify), no documented REST endpoint. This may
+be a real, permanent capability gap under BOLD v5, not an oversight — see
+`project_bold_v5_migration_resolved` memory for the full record and how to re-check if
+BOLD ever publishes one.
+
+`devtools::document()` + `devtools::test()` (551 passing, 0 regressions) +
+`devtools::check()` (0 errors/warnings/notes) all clean for the rename, PR2, and BOLD
+reference-fetch work.
+
+**Session 135 (2026-07-05): GenBank + Xeno-canto location extraction — closes two of three gaps in `ecosystem_docs/TODO_validation_benchmark.md`'s "Sourcing location data" section**
+
+Scoped narrowly to the location-metadata plumbing itself, not the leave-one-out
+benchmark harness (still gated behind the user's 2026-07-04 directive — confirmed
+explicitly out of scope this session before starting).
+
+**GenBank side** (`R/fetch.R`): confirmed directly that neither
+`.fetch_summaries_batched()` (ESummary: `acc`/`title`/`taxid`/`slen`/`organism`) nor
+`.fetch_taxonomy_map()` (taxonomy DB: lineage only) ever retrieves a record that can
+carry `/lat_lon` or `/country` — those live only in the full GenBank nucleotide record's
+`source` feature qualifiers. Added `.parse_lat_lon()` (pure INSDC `lat_lon` string
+parser, e.g. `"36.789 N 121.947 W"` → signed decimal `c(lat=, lon=)`; degrades to
+`NA`/`NA` on anything unparseable rather than erroring, since GenBank free-text is
+inconsistent) and `.fetch_locations_batched()` (batched `rentrez::entrez_fetch(db =
+"nucleotide", rettype = "gb", retmode = "xml")`, passing accessions directly as `id` —
+the same convention `.fetch_fasta_batched()` already uses successfully, so no separate
+search→summary round trip is needed). `fetch_reference_sequences(include_location =
+FALSE)` — new opt-in trailing param; when `TRUE`, joins `lat`/`lon`/`country` onto the
+final `reference_df` by `composite_id`.
+
+**Xeno-canto side** (`R/coverage.R`): `.xc_recording_count()` was already performing the
+exact HTTP request whose response body contains a `recordings` array with `lat`/`lng`
+per recording — it just read `numRecordings` and threw the rest away. Extracted the
+shared HTTP call into `.xc_recordings_raw()` and rewrote `.xc_recording_count()` to call
+it (zero behavior change, confirmed by keeping its call sites' existing tests passing
+unmodified plus a new direct test). Added `.xc_recording_locations()` (per-recording
+`species`/`xc_id`/`lat`/`lon`/`country` — XC's `lat`/`lng`/`cnt` fields are already plain
+decimal-degree/text strings, no DMS parsing needed unlike GenBank) and exported
+`fetch_xc_recording_locations()` as the public entry point (1s/species rate limit,
+matching `audit_acoustic_coverage()`'s own). `xc_id` is XC's own catalog number, not a
+`build_site_table()`-ready `observation_id` — deliberately left for the caller to map to
+their own BirdNET observation-id convention.
+
+BOLD's equivalent location fields remain unchecked (separate TBD, no BOLD integration
+exists anywhere in the ecosystem) and wiring either of the above into an actual
+`TaxaMatch::build_site_table()` `site_df` call is left for benchmark-harness time, once
+a real caller exists — both explicitly out of scope this session.
+
+New tests: `.parse_lat_lon()` (6 cases, `test-fetch.R`), `.fetch_locations_batched()`
+empty-input typing (`test-fetch.R`), `.xc_recording_count()`/`.xc_recording_locations()`/
+`fetch_xc_recording_locations()` via `local_mocked_bindings()` on `.xc_recordings_raw()`
+(`test-coverage.R`), matching the offline-mock convention already used in
+`test-build-site-reference.R`. No live NCBI/Xeno-canto network calls added to the test
+suite. `devtools::document()` + `devtools::test()` (512 expectations, 0 failures, 15
+pre-existing unrelated warnings) + `devtools::check()` (0 errors, 0 warnings, 0 notes)
+all clean.
+
+**Session 133 (2026-07-03): acoustic tau re-calibrated on a broad, multi-cluster real dataset — Session 128/129's tau≈1 for acoustic does NOT hold; pooled result is tau≈0, matching image, but per-cluster results are genuinely heterogeneous**
+
+Session 129's acoustic number (`tau ≈ 1` helps, later re-confirmed by log-loss at
+`tau ≈ 3.6`) rested on 3 species, all one genus (*Calidris*), 9 recordings, 42 detection
+windows — flagged by the user as too thin an evidence base to trust as a general
+default. This session redid the calibration on a deliberately-designed, real,
+much larger dataset: **8 confusable clusters, 24 species, 191 real Xeno-canto
+recordings, real BirdNET-Analyzer runs, 2487 detection windows** (up from 42). Full
+design rationale, live Xeno-canto recon, species list, and reproducible method detail
+are in `ecosystem_docs/REENTRY_PROMPT_acoustic_tau_calibration_expanded.md` (now marked
+complete) — this note summarizes the result.
+
+**Design, briefly:** clusters chosen from real, live-verified Xeno-canto `n_recordings`
+counts, not guessed — an initial assumption that confusable congener pairs would show
+orders-of-magnitude count contrast was wrong; real confusable pairs mostly span only
+2-7x. One genuine outlier was found and included (*Phylloscopus collybita* vs.
+*ibericus*, ~19x — a species pair only recently split, still essentially inseparable by
+song). A low-confusability control cluster (*Turdus migratorius* vs. *Megascops asio*)
+was included specifically to test whether `tau` does damage where there's nothing to
+correct. The original 3 Calidris species were folded back in at the same sampling depth
+as everything else, so this result supersedes rather than discards Session 128/129's
+pilot.
+
+**Pooled result: `tau ≈ 0` is optimal — log-loss and accuracy both get monotonically
+worse from `tau = 0` (log-loss 4.4136, 71% accuracy, 1771/2487) through `tau = 6`
+(log-loss 4.6200, 68%).** This reverses Session 129's acoustic finding and now agrees
+with image's own `tau ≈ 0` result — the "image and acoustic need opposite corrections"
+conclusion from Session 129 does not survive a properly powered sample.
+
+**Per-cluster breakdown (new diagnostic, not run in any prior session) shows this is
+not uniform, though:** 5 of 8 clusters (Catharus, Control, Empidonax, Melospiza,
+Chiffchaff — collectively ~1900 of 2487 windows) independently favor `tau` at or near 0,
+which is why the pooled fit does too. But **Calidris (152 windows) and Woodpecker
+(172 windows) both still prefer high `tau` (5.0 and 6.0 respectively) even at this much
+larger scale**, and both optima are pinned at the swept grid's edge (`tau = 6`),
+meaning their true optima are still unbracketed. Accipiter also "prefers" `tau = 6`, but
+that cluster's accuracy is poor (41%) regardless of `tau` (59% complete-miss rate — the
+true species frequently isn't even among BirdNET's candidates at all, a coverage
+problem no amount of re-weighting fixes), so its tau=6 result is not treated as
+meaningful signal, just noise on a bad cluster. **Practical conclusion: a single global
+`tau` does not fit this data well — it behaves as if it should be cluster/taxon-specific
+rather than one ecosystem-wide scalar.** That's a new open design question, not resolved
+this session.
+
+**True=rare vs. true=common balance check (new diagnostic):** among 211 windows where
+the top-2 candidates' `n_recordings` differed by ≥1.5x, the TRUE species was the more
+*common* candidate 44% of the time (93/211) vs. the rarer candidate only 18% of the time
+(37/211) — the remainder (38%) matched neither top-2 candidate. This directly explains
+why a large `tau` loses on the pooled fit: favoring the rarer candidate is wrong more
+often than it's right in this broader, more representative sample — the opposite of
+what the narrow Calidris pilot implied. This was exactly the design concern flagged
+before data collection (an all-true=rare sample would make large `tau` trivially win by
+construction); good to have it checked and refuted rather than assumed away.
+
+**One real, confirmed bug found and fixed while building the dataset:** Xeno-canto
+tags Hairy Woodpecker as `Leuconotopicus villosus` (its older genus), but BirdNET's own
+internal taxonomy calls it `Dryobates villosus` and never once output the XC-tag name —
+confirmed directly (0/8 Hairy Woodpecker files matched `Leuconotopicus villosus`; 126
+rows matched `Dryobates villosus`). Every Hairy Woodpecker window was silently
+registering as a complete miss even where BirdNET correctly identified the bird. Fixed
+by correcting the true-species label to match BirdNET's own taxonomy (not by re-fetching
+audio — the XC tag is still the correct thing to query by; only the ground-truth label
+used for scoring needed to change). Woodpecker's accuracy went from 22% to 88% after the
+fix. Checked all other 23 species for the same failure mode (does BirdNET ever output
+that species' own name for its own recordings, at all) — none had it; this looks like a
+one-off Xeno-canto/BirdNET taxonomy divergence for this specific species, not a
+systemic issue. Worth checking for any future species added to this kind of design,
+though — it's the second live taxonomy-tag mismatch found on Xeno-canto data this
+session (the other, `Dryobates villosus` returning 0 hits on Xeno-canto's own search
+API, was caught during species selection, before any data was pulled).
+
+**Net effect on the package:** **there is currently no real-data evidence supporting
+`tau > 0` as a general default for either data type (image or acoustic).** The
+package's own default remains `tau = 1.0` (Menon et al. 2020's theoretical
+Fisher-consistent value) — this session's result doesn't prove `tau = 1.0` is wrong in
+principle, only that it hasn't been empirically supported yet on any real dataset built
+so far, image or acoustic. Whether `correct_training_bias()` should ship with a
+different default, or a per-context `tau`, remains an open decision — not changed this
+session (would need to touch multiple files/tests; flagging for a deliberate choice
+rather than making it unilaterally here).
+
+Not done: bracketing Calidris/Woodpecker's true per-cluster optima (grid capped at
+`tau = 6`, both still climbing); wiring any of this into
+`TaxaAssign::camera_trap_posterior_workflow.R` (still uses the old `tau = 1.0` default);
+whether `.xc_recording_count()`'s `type:call`-only restriction is even the right
+training-representation proxy (flagged, not investigated).
+
 **Session 129 (2026-07-03): assign_scores() score-scale bug found and fixed; tau/score_sharpness jointly calibrated on clean data — image result resolved, superseding Session 128's number**
 
 Expanded the Session 128 image photo set from 6 to 52 real photos (8 species, 3 new:
@@ -462,6 +693,10 @@ top-1) to `tau = 1` (63%) and beyond. **Resolved: for the image pathway,
 correction helps at `tau = 1`) is expected to still hold, but has not yet been
 re-validated with the same log-loss calibration procedure used for image — do that before
 fully trusting it, since it was only ever an accuracy-based first look.
+**Update, Session 133: this expectation did NOT hold** — re-validated on a much larger,
+multi-cluster real dataset (2487 windows vs. 42); pooled acoustic optimum is `tau ≈ 0`,
+same as image. See Session 133's note below for the full result, including real
+per-cluster heterogeneity this 3-species pilot had no way to detect.
 
 **The practical conclusion is not "`tau = 0` is the right default"** — both `correct_
 training_bias()`'s own roxygen and this note now say so explicitly: `tau` (and, for
@@ -474,9 +709,10 @@ default across data types was never going to be safe.
 parameter). Full TaxaLikely test suite: 497 expectations, 0 failures, 0 errors both
 before and after the `assign_scores()` fix.
 
-**Not done**: acoustic re-validation with log-loss (see above); wiring the calibrated
-`(tau, score_sharpness)` into `TaxaAssign::camera_trap_posterior_workflow.R`'s actual
-posterior computation (currently still uses the old `tau = 1.0` default there).
+**Not done**: acoustic re-validation with log-loss (see above — **done Session 133**, see
+that note above for the result); wiring the calibrated `(tau, score_sharpness)` into
+`TaxaAssign::camera_trap_posterior_workflow.R`'s actual posterior computation (currently
+still uses the old `tau = 1.0` default there — still not done as of Session 133).
 
 **Session 128 (2026-07-02): correct_training_bias() wired into the image/acoustic Layer-1 workflow and live-tested — mixed first result**
 

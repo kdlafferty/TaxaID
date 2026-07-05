@@ -1,7 +1,7 @@
 # tests/testthat/test-build-site-reference.R
 # Offline tests for build_site_reference().
 #
-# build_site_reference() orchestrates fetch_reference_sequences(),
+# build_site_reference() orchestrates fetch_ncbi_reference_sequences(),
 # optionally flag_reference_errors() + build_sequence_matrix(), optionally
 # audit_barcode_coverage(), and optionally write_reference_fasta().
 # All external calls are mocked via local_mocked_bindings().
@@ -76,7 +76,7 @@ test_that("build_site_reference: error on invalid output_dir type", {
 
 test_that("build_site_reference: returns named list with correct components", {
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) make_ref_df(),
+    fetch_ncbi_reference_sequences = function(...) make_ref_df(),
     audit_barcode_coverage    = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
@@ -89,7 +89,7 @@ test_that("build_site_reference: returns named list with correct components", {
 
 test_that("build_site_reference: reference_df matches fetched data", {
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) make_ref_df(),
+    fetch_ncbi_reference_sequences = function(...) make_ref_df(),
     audit_barcode_coverage    = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
@@ -103,7 +103,7 @@ test_that("build_site_reference: reference_df matches fetched data", {
 
 test_that("build_site_reference: errors is NULL when flag_errors = FALSE", {
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) make_ref_df(),
+    fetch_ncbi_reference_sequences = function(...) make_ref_df(),
     audit_barcode_coverage    = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
@@ -116,7 +116,7 @@ test_that("build_site_reference: errors is NULL when flag_errors = FALSE", {
 
 test_that("build_site_reference: census populated when audit_coverage = TRUE", {
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) make_ref_df(),
+    fetch_ncbi_reference_sequences = function(...) make_ref_df(),
     audit_barcode_coverage    = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
@@ -131,7 +131,7 @@ test_that("build_site_reference: census populated when audit_coverage = TRUE", {
 
 test_that("build_site_reference: census is empty df when audit_coverage = FALSE", {
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) make_ref_df(),
+    fetch_ncbi_reference_sequences = function(...) make_ref_df(),
     .package = "TaxaLikely"
   )
   result <- suppressMessages(
@@ -149,7 +149,7 @@ test_that("build_site_reference: census is empty df when audit_coverage = FALSE"
 test_that("build_site_reference: creates output_dir and writes fasta + tsv", {
   out_dir <- tempfile()
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) make_ref_df(),
+    fetch_ncbi_reference_sequences = function(...) make_ref_df(),
     audit_barcode_coverage    = function(...) make_coverage(),
     write_reference_fasta     = function(reference_df, file, taxonomy_file, ...) {
       writeLines("", file)
@@ -177,7 +177,7 @@ test_that("build_site_reference: flag_errors = TRUE errors when DECIPHER absent"
     "DECIPHER + Biostrings installed — skipping absent-package test"
   )
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) make_ref_df(),
+    fetch_ncbi_reference_sequences = function(...) make_ref_df(),
     .package = "TaxaLikely"
   )
   expect_error(
@@ -196,7 +196,7 @@ test_that("build_site_reference: flag_errors = TRUE errors when DECIPHER absent"
 test_that("build_site_reference: error when fetch returns 0 sequences", {
   empty_df <- make_ref_df()[0L, ]
   local_mocked_bindings(
-    fetch_reference_sequences = function(...) empty_df,
+    fetch_ncbi_reference_sequences = function(...) empty_df,
     .package = "TaxaLikely"
   )
   expect_error(

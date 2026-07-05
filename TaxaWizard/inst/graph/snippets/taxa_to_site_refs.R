@@ -1,6 +1,6 @@
 # Edge: taxa -> reference_df  (site reference wrapper, recommended for eDNA)
 # Source: TaxaLikely build_site_reference()
-# Wraps: fetch_reference_sequences() + audit_barcode_coverage() +
+# Wraps: fetch_ncbi_reference_sequences() + audit_barcode_coverage() +
 #        write_reference_fasta()
 # output_dir writes reference.fasta + reference_taxonomy.tsv to disk.
 # DNA / eDNA only. For acoustic, see taxa_to_acoustic_matrix.R.

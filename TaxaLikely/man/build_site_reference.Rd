@@ -98,7 +98,7 @@ genera returned by \code{build_priors()}) or any user-supplied list.
 This function is the site-specific analog of a CRABS workflow:
 \enumerate{
 \item \strong{Fetch} - downloads sequences from NCBI for \code{taxa} using
-\code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}.
+\code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}.
 \item \strong{Flag} - optionally detects mislabeled references with
 \code{\link[=flag_reference_errors]{flag_reference_errors()}} + \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} (slow; requires
 \pkg{DECIPHER} and \pkg{Biostrings}).
@@ -152,7 +152,7 @@ model <- train_likelihood_model(ref_matrix)
 
 }
 \seealso{
-\code{\link[=fetch_reference_sequences]{fetch_reference_sequences()}}, \code{\link[=write_reference_fasta]{write_reference_fasta()}},
+\code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}, \code{\link[=write_reference_fasta]{write_reference_fasta()}},
 \code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}, \code{\link[=flag_reference_errors]{flag_reference_errors()}},
 \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}, \code{\link[=train_likelihood_model]{train_likelihood_model()}}
 }

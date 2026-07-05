@@ -1,5 +1,5 @@
 # Edge: taxa -> reference_df
-# Source: TaxaLikely fetch_reference_sequences()
+# Source: TaxaLikely fetch_ncbi_reference_sequences()
 # NOTE: Searches by FAMILY to build a comprehensive reference database.
 # The model needs within-species variation and between-species distances.
 # Species from the match data are prioritized so their sequences are
@@ -27,7 +27,7 @@ message("Searching NCBI for families: ", paste(ref_families, collapse = ", "))
 }
 message("Priority species from match data: ", length(.priority_species))
 
-reference_df <- TaxaLikely::fetch_reference_sequences(
+reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   taxa           = ref_families,
   barcode_term   = .barcode_term,
   priority_taxa  = if (length(.priority_species) > 0L) .priority_species else NULL
@@ -35,7 +35,7 @@ reference_df <- TaxaLikely::fetch_reference_sequences(
 
 if (nrow(reference_df) == 0L) {
   stop(
-    "fetch_reference_sequences() returned 0 sequences. Possible causes:\n",
+    "fetch_ncbi_reference_sequences() returned 0 sequences. Possible causes:\n",
     "  - NCBI API rate limit (try again in a few minutes)\n",
     "  - No sequences for these taxa + barcode marker in NCBI\n",
     "  - Network connectivity issue\n",
