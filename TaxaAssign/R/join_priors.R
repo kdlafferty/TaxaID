@@ -471,12 +471,18 @@ utils::globalVariables(c(
 #'
 #' ## Deduplication and redundancy filtering
 #' After the join, rows are deduplicated on `observation_id` x
-#' `taxon_name` x `taxon_name_rank` (keeping the highest
-#' `prior_mean`). Genus-rank rows with missing taxonomy are filled
-#' from `taxon_name` and propagated from other rows sharing the same
-#' genus. Finally, [TaxaMatch::filter_redundant_hypotheses()] removes
-#' coarser-rank rows superseded by finer-rank rows in the same
-#' lineage.
+#' `taxon_name` x `taxon_name_rank` x `grid_id` x `main_habitat`
+#' (keeping the highest `prior_mean` among same-site duplicates --
+#' e.g. artifacts of coarse-rank expansion). The `grid_id`/`main_habitat`
+#' keys (added Session 138) mean a genuine multi-site observation (the same
+#' `observation_id` detected at more than one site) keeps one row per site
+#' per candidate rather than collapsing to a single site. Pass the result
+#' through [combine_multisite_priors()] before [compute_posterior()] to
+#' combine each candidate's per-site rows into one. Genus-rank rows with
+#' missing taxonomy are filled from `taxon_name` and propagated from other
+#' rows sharing the same genus. Finally,
+#' [TaxaMatch::filter_redundant_hypotheses()] removes coarser-rank rows
+#' superseded by finer-rank rows in the same lineage.
 #'
 #' @param likelihoods Data frame of likelihoods, typically from
 #'   [TaxaLikely::apply_coverage_constraints()] or
@@ -808,8 +814,15 @@ join_priors <- function(likelihoods,
   }
 
   # ---- Join likelihoods -> event_meta -> taxaexpect_priors ------------------
+  # relationship = "many-to-many" on the first join is expected and intentional
+  # when an observation_id has multiple candidates AND multiple sites (Session
+  # 138 multi-site support): every candidate fans out against every site row,
+  # to be recombined downstream by combine_multisite_priors(). Declaring this
+  # explicitly silences dplyr's precautionary warning, which would otherwise
+  # fire on every genuinely multi-site, multi-candidate observation.
   result <- likelihoods |>
-    dplyr::left_join(event_meta, by = "observation_id") |>
+    dplyr::left_join(event_meta, by = "observation_id",
+                      relationship = "many-to-many") |>
     dplyr::left_join(
       taxaexpect_priors,
       by = c("taxon_name", "taxon_name_rank", "grid_id", "main_habitat")
@@ -1096,9 +1109,18 @@ join_priors <- function(likelihoods,
   }
 
   # ---- Dedup + taxonomy fill + redundancy filter -----------------------------
+  # grid_id/main_habitat included so a genuine multi-site observation (the same
+  # observation_id detected at more than one site -- see combine_multisite_priors())
+  # keeps one row PER SITE per candidate, instead of collapsing to a single
+  # highest-prior_mean site per candidate. Without this, each candidate would be
+  # matched only to its own most favorable site, discarding the site it was
+  # actually detected at (Session 138 -- see combine_multisite_priors() roxygen
+  # for the full empirical repro). This still dedupes same-site duplicates from
+  # coarse-rank expansion, which is what this call originally existed for.
   result <- result |>
     dplyr::arrange(dplyr::desc(prior_mean)) |>
-    dplyr::distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)
+    dplyr::distinct(observation_id, taxon_name, taxon_name_rank, grid_id,
+                     main_habitat, .keep_all = TRUE)
 
   # Fill taxonomy from taxonomy_lookup (e.g. from match_df reference taxonomy)
   if (!is.null(taxonomy_lookup) && is.data.frame(taxonomy_lookup) &&

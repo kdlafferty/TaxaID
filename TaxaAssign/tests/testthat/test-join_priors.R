@@ -91,6 +91,51 @@ test_that("join_priors works in multi-site mode", {
   expect_true(all(c("prior_mean", "prior_alpha", "prior_beta") %in% names(out)))
 })
 
+test_that("join_priors preserves one row per site for a genuine multi-site observation (Session 138)", {
+  # One observation, two candidates, two sites -- each candidate has a strong
+  # prior at one site and a weak prior at the other. Before the Session 138
+  # grid_id/main_habitat-aware distinct() fix, this collapsed to one row per
+  # candidate (each matched to its own best site), discarding the site it was
+  # actually detected at.
+  lik <- tibble(
+    observation_id        = "obs1",
+    taxon_name            = c("Species_a", "Species_b"),
+    taxon_name_rank       = "species",
+    hypothesis_type       = "specific_candidate",
+    score_likelihood      = 1,
+    score_likelihood_mean = 1,
+    score_likelihood_sd   = 0,
+    genus                 = "Species",
+    family                = "Familyx",
+    species               = c("Species_a", "Species_b")
+  )
+  pri <- tibble(
+    taxon_name      = c("Species_a", "Species_a", "Species_b", "Species_b"),
+    taxon_name_rank = "species",
+    grid_id         = c("site1", "site2", "site1", "site2"),
+    main_habitat    = "Marine",
+    alpha           = c(8, 1, 1, 8),
+    beta            = c(2, 9, 9, 2),
+    undetected_type = NA_character_
+  )
+  site_df <- tibble(
+    observation_id = c("obs1", "obs1"),
+    grid_id        = c("site1", "site2"),
+    main_habitat   = c("Marine", "Marine")
+  )
+
+  out <- suppressMessages(join_priors(lik, pri, site = site_df,
+                                       rank_system = c("family", "genus", "species")))
+
+  # 2 candidates x 2 sites = 4 rows, not collapsed to 2.
+  expect_equal(nrow(out), 4L)
+  expect_setequal(out$grid_id, c("site1", "site2"))
+  a_site1 <- out$prior_mean[out$taxon_name == "Species_a" & out$grid_id == "site1"]
+  a_site2 <- out$prior_mean[out$taxon_name == "Species_a" & out$grid_id == "site2"]
+  expect_equal(a_site1, 0.8)
+  expect_equal(a_site2, 0.1)
+})
+
 # ---- Coarse-rank expansion ---------------------------------------------------
 
 # Fixtures for expansion tests: one observation with a family-rank match only.

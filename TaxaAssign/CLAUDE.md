@@ -1,6 +1,13 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-03 (Session 134 — update_prior_from_consensus() gains a spatial_group_map
+# Last updated: 2026-07-05 (Session 138 — multi-site posterior combination. join_priors()'s
+# final distinct() call is now grid_id/main_habitat-aware, fixing a real bug where a
+# multi-site observation had each candidate cherry-pick its own best site instead of being
+# joined against the site it was actually detected at. New combine_multisite_priors()
+# combines the resulting per-site prior rows via precision-weighted logit combination (not
+# a plain product of means, and not raw Monte Carlo simulation -- both were shown empirically
+# to fail to discount a low-confidence site relative to a well-supported one). See Session
+# 138 note below. Session 134 — update_prior_from_consensus() gains a spatial_group_map
 # param to skip single-observation spatial groups, see Session 134 note below. Session 129 — camera_trap_posterior_workflow.R
 # added: first real TaxaAssign run for the camera-trap image species set, real GBIF priors,
 # calibrated-vs-old-default posterior comparison)
@@ -32,6 +39,7 @@ or be user-supplied from outside the ecosystem.
 |---|---|---|---|
 | `adjust_inat_range_priors()` | Elevate `prior_alpha`/`prior_beta`/`prior_mean` to Tier 2 singleton-mirror floor for unmodelled taxa confirmed `in_range = TRUE` by iNaturalist geomodel with sufficient observation coverage. Adds `inat_range_elevated` column. Guard: no elevation when singleton floor ≤ current prior. | Complete | R/adjust_inat_range_priors.R |
 | `compute_posterior()` | Core Bayes update: likelihood × prior → posterior | Complete | R/compute_posterior.R |
+| `combine_multisite_priors()` | **Session 138.** Combines `join_priors()`'s per-site prior rows for a single observation detected at more than one real site (e.g. the same eDNA ASV recovered at two different sample sites) into one row per candidate, via precision-weighted combination in logit space: `logit(Beta(a,b))` has exact mean `digamma(a)-digamma(b)` and variance `trigamma(a)+trigamma(b)`; combining with inverse-variance weighting discounts a sparse/low-confidence site relative to a well-supported one. The combined Beta's own concentration is derived from the pooled logit variance (large-phi delta-method approx), so `compute_posterior()`'s existing Beta-sampling MC path needs no changes. Adds `n_sites_combined` and `combined_sites` (pipe-delimited `grid_id` list, `NA` for single-site rows); `grid_id`/`main_habitat` set to `NA` on combined rows. Single-site observations pass through unchanged. Insert between `join_priors()` and `compute_posterior()`. | Complete | R/combine_multisite_priors.R |
 | `expand_unreferenced_hypotheses()` | Replace generic H2/H3 rows from TaxaLikely with named unreferenced species; bridges TaxaLikely likelihoods to TaxaExpect priors | Complete | R/expand_unreferenced.R |
 | `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → reference-check → unreferenced vector; optional family expansion. data_type param ("eDNA"/"acoustic"/"image") routes to NCBI queries (eDNA) or set-membership check vs reference_species (acoustic/image). | Complete | R/suggest_unreferenced_species.R |
 | `assign_taxa_llm()` | LLM-shortcut pipeline: score-based likelihoods + LLM priors → posteriors | Complete | R/assign_taxa_llm.R |
@@ -41,7 +49,7 @@ or be user-supplied from outside the ecosystem.
 | `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()`. **Session 134:** optional `spatial_group_map` param (`observation_id`/`spatial_group_id`) restricts both the confirmation source and the update target to observations sharing a `spatial_group_id` with >= 1 other observation (a multi-member spatial group) -- observations in a single-observation spatial group (whether a genuine single observation or one that fell outside a drawn group, per `TaxaMatch::group_observations_by_bbox()` -- there's no separate naming for these, just a singleton group) are always returned unchanged, since another unrelated observation's confirmed presence says nothing about them. | Complete | R/update_prior_from_consensus.R |
 | `build_context()` | Auto-populate `ctx` (ecoregion, main_habitat, date) from taxon names via TaxaHabitat + LLM synthesis | Complete | R/build_context.R |
 | `generate_report()` | Publication-ready Methods + Results text; hybrid template (Methods) + LLM (Results) with template fallback | Complete | R/generate_report.R |
-| `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). | Complete | R/join_priors.R |
+| `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). **Session 138:** the final `distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)` dedup now also keys on `grid_id`/`main_habitat`, fixing a real bug where a genuine multi-site observation (the same `observation_id` detected at more than one site) had each candidate collapse to only its own highest-`prior_mean` site — discarding the site it was actually detected at. Output is now site-preserving (one row per candidate per site); pass it through the new `combine_multisite_priors()` before `compute_posterior()` to recombine. The first `left_join()` (likelihoods → event_meta) now declares `relationship = "many-to-many"` since a multi-candidate, multi-site observation legitimately fans out on both sides. | Complete | R/join_priors.R |
 | `run_bayesian_pipeline()` | High-level wrapper: TaxaLikely likelihoods + TaxaExpect priors → full Bayesian workflow (~10 calls → 1). Auto-filters errors from model_params, auto-resolves site habitat. Stage 1b: three-tier H2 phantom suppression via GBIF genus census (suppress complete, rename singleton-missing, keep incomplete). GBIF species list fed to `audit_barcode_coverage(species_list=)`. | Complete | R/run_bayesian_pipeline.R |
 | `run_llm_pipeline()` | High-level wrapper: LLM-shortcut workflow (~7 calls → 1); optional auto-context + unreferenced detection + report. Optional `reference_errors` param. | Complete | R/run_llm_pipeline.R |
 | `report_assign()` | Generate `report_section` summarizing taxonomic assignment (workflow type, resolution rate, posterior/score stats). For `assemble_report()`. | Complete | R/report_assign.R |
@@ -379,10 +387,11 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 | test-compute_posterior.R | `compute_posterior()` | 12 tests: Beta prior, uncertainty propagation, MC, n_sims=0, NA handling, sort order |
 | test-assign_taxa_llm.R | `assign_taxa_llm()` | LLM calls mocked |
 | test-build_context.R | `build_context()` | Fully offline |
+| test-combine_multisite_priors.R | `combine_multisite_priors()` | Fully offline (Session 138); includes the precision-weighted-vs-plain-product worked comparison as a regression test |
 | test-expand_unreferenced.R | `expand_unreferenced_hypotheses()` | Fully offline |
 | test-generate_report.R | `generate_report()` | Fully offline |
 | test-integration.R | Full pipeline integration | Uses minimal fixtures |
-| test-join_priors.R | `join_priors()` | Fully offline |
+| test-join_priors.R | `join_priors()` | Fully offline; Session 138 added a genuine multi-site preservation test |
 | test-posterior_consensus.R | `posterior_consensus()` | Includes winner_prior/winner_likelihood/winner_likelihood_cov columns (Session 101) |
 | test-report_assign.R | `report_assign()` | Fully offline |
 | test-run_pipelines.R | `run_bayesian_pipeline()`, `run_llm_pipeline()` | Mocked LLM |
@@ -432,6 +441,86 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 ---
 
 ## Session Notes
+
+**Session 138 (2026-07-05): multi-site posterior combination -- join_priors() dedup fix + combine_multisite_priors()**
+
+Branch `single-observation-pipeline`. Implements
+`ecosystem_docs/REENTRY_PROMPT_session138_multisite_posterior_combination.md` (Phase 5 of
+the observation-pipeline-wiring plan). Phase 4's DNA/BLAST wiring (Session 137) made a real
+multi-site single observation reachable in this ecosystem's own bundled test data for the
+first time (`OQ846725`, real reads at both `sample_1` and `sample_2`); testing what
+`join_priors()` actually does with such an observation found a real, currently-shipping bug.
+
+**Bug, reproduced before touching code:** `join_priors()`'s final
+`distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)` call kept only the
+highest-`prior_mean` site *per candidate* -- each candidate ended up matched to its own most
+favorable site rather than the site it was actually detected at. A synthetic repro (one
+observation, two candidates, two sites, strong-prior-at-one-site/weak-at-the-other for each
+candidate) confirmed exactly the reentry prompt's description: two rows total instead of
+four, collapsing what should be combined evidence into an arbitrary per-candidate site pick.
+
+**Fix 1 (`join_priors()`):** the `distinct()` call now also keys on `grid_id`/
+`main_habitat`, so a genuine multi-site observation keeps one row per candidate per site
+instead of collapsing across sites, while still deduping same-site duplicates (the original
+purpose of this call, from coarse-rank expansion). Traced `.expand_coarse_rank_rows()` first
+to confirm it wouldn't need reordering relative to this fix -- it already keys candidates by
+`(taxon_name_rank, taxon_name, grid_id, main_habitat)`, so it was already site-safe; the bug
+was isolated to this one `distinct()` call. The first `left_join()` (likelihoods →
+event_meta) now declares `relationship = "many-to-many"` explicitly, since a multi-candidate,
+multi-site observation legitimately fans out on both sides of that join (this stopped being
+incidental once multi-site became an intentional, tested code path).
+
+**Fix 2 (new `combine_multisite_priors()`):** combines join_priors()'s now-preserved
+per-site rows into one row per candidate. **Design decision revised from the reentry
+prompt's two options** (simulation-based product vs. moment-matched Beta approximation of a
+plain product-of-means), after the user raised a concrete concern mid-session: shouldn't a
+site with little supporting data count for less than one with strong, high-quality support?
+Checked this empirically before implementing (not asserted): in a worked example (site A,
+phi=100, confidently favors candidate X at 0.8; site B, phi=5, sparse data weakly favoring
+candidate Y at 0.6 -- a spurious signal in the opposite direction), a plain product-of-means
+gives X only 72.7% of the combined mass, and running the reentry prompt's own recommended
+full Monte Carlo simulation (draw `theta_site ~ Beta`, multiply, renormalize per draw) does
+NOT fix this -- it shifts weight *toward* the noisier site's minority pick (69.2%), a known
+statistical artifact of averaging a renormalized ratio of random variables, unrelated to
+confidence. **Implemented instead: precision-weighted combination in logit space.**
+`logit(Beta(a,b))` has an *exact* mean (`digamma(a) - digamma(b)`) and variance
+(`trigamma(a) + trigamma(b)`), via the Gamma-ratio representation of a Beta variate;
+inverse-variance-weighting these and converting back with `plogis()` gives X 78.5% in the
+same worked example -- the only one of the three approaches that actually discounts a
+low-confidence site (about 16x less weight here, from the ratio of logit variances) rather
+than counting it at face value or distorting the result in an uncontrolled direction. The
+combined Beta's own concentration is derived from the pooled logit variance via the
+large-phi delta-method approximation `Var(logit(Beta(m*phi,(1-m)*phi))) ~= 1/(phi*m*(1-m))`,
+solved for phi, so `compute_posterior()`'s existing Beta-sampling Monte Carlo path needs no
+changes at all.
+
+Function/package placement (`TaxaAssign::combine_multisite_priors()`, the reentry prompt's
+placeholder name) confirmed with a grep across the monorepo before implementing -- no
+collision, only the reentry prompt itself used the name (see
+`~/.claude/projects/-Users-lafferty/memory/feedback_naming_collision_check.md`).
+
+Re-ran the OQ846725-style repro end to end after implementing: the old buggy cherry-pick
+behavior gave a near-toss-up (57.1%/42.9%) on an asymmetric two-candidate/two-site fixture
+built to mirror the design-discussion scenario; the fixed path (`join_priors()` →
+`combine_multisite_priors()` → `compute_posterior()`) gives the correctly-supported
+candidate a decisive 78.5%/21.5% win. (A separate, perfectly-symmetric mirror-image fixture,
+closer to the reentry prompt's own literal repro numbers, correctly reduces to an exact
+50/50 tie under both old and new logic -- that fixture doesn't discriminate between the two
+implementations, since the underlying evidence really is symmetric; it's kept as a
+combination-mechanics test, not a bug-fix regression test.)
+
+Wired into `inst/TaxaID_Workflow_Template_TEST.R` Section 7, right after `join_priors()` and
+before `compute_posterior()` (no-op for the template's current single-site bundled data).
+
+7 new tests in `test-combine_multisite_priors.R` (validation, single-site passthrough,
+multi-site combination, the precision-weighting worked comparison as a regression test,
+column inheritance, mixed single/multi-site batches) plus 1 new multi-site-preservation test
+in `test-join_priors.R`. Full TaxaAssign suite: 539 expectations, 0 failures (up from 516 in
+Session 129's count). `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Not done:** Phase 6's test matrix (the four-scenario real end-to-end run, still blocked on
+live BLAST/NCBI/GBIF + an interactive RStudio session for the two Shiny gadgets) -- see the
+reentry prompt's own Phase 6 section, unaffected by this session's Phase 5 work.
 
 **Session 134 (2026-07-03): update_prior_from_consensus() spatial_group_map guard**
 

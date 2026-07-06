@@ -1,8 +1,23 @@
 # Reentry Prompt: Multi-Site Posterior Combination (Phase 5 + Phase 6 Kickoff)
 
-**Status: design decided with the user, nothing implemented yet.** Written 2026-07-05
-(Session 137, continued from the observation-pipeline-wiring work), branch
-`single-observation-pipeline`. Read this first when re-entering Phase 5 of
+**STATUS: Phase 5 COMPLETE (2026-07-05, Session 138).** `join_priors()`'s dedup fixed
+(grid_id/main_habitat-aware) and `combine_multisite_priors()` implemented and wired into
+`TaxaID_Workflow_Template_TEST.R` Section 7. **The combination rule actually implemented
+differs from both options below**: mid-session, the user questioned whether either rule
+weights by confidence, and an empirical check (see `TaxaAssign/CLAUDE.md`'s Session 138
+note) showed neither did -- the plain product ignores confidence entirely, and full Monte
+Carlo simulation shifts weight *toward* a noisy site's minority pick, not away from it.
+Implemented instead: precision-weighted combination in logit space (exact
+digamma/trigamma mean+variance of a Beta's log-odds, inverse-variance weighted). Phase 6
+(the four-scenario real end-to-end test matrix) is NOT done -- still blocked on live
+BLAST/NCBI/GBIF + an interactive RStudio session, see that section below, unchanged from
+when this was written.
+
+---
+
+**Original status when written: design decided with the user, nothing implemented yet.**
+Written 2026-07-05 (Session 137, continued from the observation-pipeline-wiring work),
+branch `single-observation-pipeline`. Read this first when re-entering Phase 5 of
 `ecosystem_docs/REENTRY_PROMPT_session137_observation_pipeline_wiring.md`.
 
 ---

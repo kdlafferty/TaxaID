@@ -1,8 +1,18 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-05 (Session 137 continued yet further, branch `single-observation-
-# pipeline` — Phase 4 (DNA/BLAST half) of the observation-pipeline-wiring plan:
+# Last updated: 2026-07-05 (Session 138, branch `single-observation-pipeline` — Phase 5 of
+# the observation-pipeline-wiring plan: multi-site posterior combination.
+# `TaxaAssign::join_priors()`'s final dedup was silently collapsing a genuine multi-site
+# observation (the same detection recovered at more than one real site, surfaced by Session
+# 137's Phase 4 DNA/BLAST wiring) to one row per candidate per its own best site, discarding
+# the site it was actually detected at — fixed by making that dedup grid_id/main_habitat-
+# aware. New `TaxaAssign::combine_multisite_priors()` recombines the resulting per-site rows
+# via precision-weighted combination in logit space (empirically shown to correctly discount
+# a low-confidence/sparse-data site, unlike either of the two options the prior session's
+# reentry prompt had proposed — see `TaxaAssign/CLAUDE.md`'s Session 138 note for the full
+# empirical comparison). Wired into `TaxaID_Workflow_Template_TEST.R` Section 7.
+# Session 137 continued yet further (same day, earlier) — Phase 4 (DNA/BLAST half) of the observation-pipeline-wiring plan:
 # `TaxaMatch::join_event_site_metadata()` added, producing a `site_df` for
 # `build_site_table()` from an event-level detections table joined against a
 # user-maintained site-metadata table — generalizes the ecosystem's existing
@@ -357,3 +367,5 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 127 | `correct_training_bias(prior_weight = NULL)` → `correct_training_bias(tau = 1.0)` | TaxaLikely | Signature change. `prior_weight` param removed; `tau` added (single fixed global exponent, not adaptive per-candidate). Literature-grounded revision (Menon et al. 2020 logit adjustment) — see `TaxaLikely/CLAUDE.md`'s Session 127 note. Still not called by any workflow, so no downstream callers affected. |
 | 136 | `fetch_reference_sequences()` → `fetch_ncbi_reference_sequences()` | TaxaLikely | Function rename. Old name didn't say NCBI anywhere; needed to disambiguate once a second live-API reference source (`fetch_bold_reference_sequences()`, BOLD Systems) existed. Old name kept as a deprecated forwarding alias (`.Deprecated()`, matches `audit_barcode_coverage_ncbi()`'s pattern) — all internal call sites (`build_site_reference()`, workflows, README, TaxaWizard snippets) updated to the new name directly. |
 | 136 | `fetch_bold_reference_sequences()` added | TaxaLikely | New reference-fetch function, BOLD Systems analog of `fetch_ncbi_reference_sequences()`. Talks directly to BOLD's real v5 Data Portal API via `httr2` (no `bold` package dependency — that package targets BOLD's now-retired v3/v4 API and no longer works). Live-tested end to end. See `TaxaLikely/CLAUDE.md`'s Session 136 note. |
+| 138 | `join_priors()` output is now site-preserving for multi-site observations | TaxaAssign | Behavioral, not signature. Final `distinct()` call now also keys on `grid_id`/`main_habitat` (bug fix — previously collapsed a multi-site observation to one row per candidate per its own best site). Any caller using `join_priors()`'s multi-site `site` data-frame path must now call the new `combine_multisite_priors()` before `compute_posterior()`. |
+| 138 | `combine_multisite_priors()` added | TaxaAssign | New function, inserted between `join_priors()` and `compute_posterior()`. Combines per-site prior rows via precision-weighted logit combination. See `TaxaAssign/CLAUDE.md`'s Session 138 note. |

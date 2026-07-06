@@ -861,15 +861,23 @@ census_result <- mutate(coverage$census,
 # 7.  POSTERIOR ASSIGNMENT (TaxaAssign)
 # =============================================================================
 # join_priors() bridges TaxaLikely's likelihood object to TaxaExpect's prior
-# table (dark-diversity fallback for any candidate without a modelled prior),
-# compute_posterior() runs the Bayes update, posterior_consensus() collapses
-# each observation_id to one LCA-based row, update_prior_from_consensus()
-# lets confirmed species from OTHER observations in the SAME multi-member
-# spatial group nudge priors for that group's still-unresolved observations
-# (explicitly skipped for single-observation groups via spatial_group_map --
-# see TaxaAssign/CLAUDE.md's Session 134 note), and add_slash_taxon() appends
-# the compact reporting labels (slash_taxon_name / consensus_OTU /
-# primary_taxon).
+# table (dark-diversity fallback for any candidate without a modelled prior;
+# Session 138 -- its final dedup now preserves one row per site, instead of
+# collapsing a multi-site observation to one row per candidate).
+# combine_multisite_priors() (Session 138) combines those per-site rows for
+# any observation_id detected at more than one real site (e.g. the same eDNA
+# ASV recovered from reads at two different sample sites in Reads_Table) via
+# precision-weighted logit combination -- a site with little occurrence data
+# is discounted relative to a well-supported one, rather than treated as
+# equally reliable. Single-site observations (still the common case for this
+# template's bundled test data) pass through unchanged. compute_posterior()
+# runs the Bayes update, posterior_consensus() collapses each observation_id
+# to one LCA-based row, update_prior_from_consensus() lets confirmed species
+# from OTHER observations in the SAME multi-member spatial group nudge priors
+# for that group's still-unresolved observations (explicitly skipped for
+# single-observation groups via spatial_group_map -- see TaxaAssign/CLAUDE.md's
+# Session 134 note), and add_slash_taxon() appends the compact reporting
+# labels (slash_taxon_name / consensus_OTU / primary_taxon).
 # =============================================================================
 
 # taxonomy_lookup: distinct taxon_name x rank x taxonomy.
@@ -901,8 +909,15 @@ likelihoods_w_prior <- TaxaAssign::join_priors(
 )
 .save(likelihoods_w_prior, "likelihoods_w_prior")
 
+# Combine per-site prior rows for any observation detected at more than one
+# site (no-op for single-site observations -- see Section 7 header note).
+likelihoods_w_prior_combined <- TaxaAssign::combine_multisite_priors(
+  joined = likelihoods_w_prior
+)
+.save(likelihoods_w_prior_combined, "likelihoods_w_prior_combined")
+
 posterior_df <- TaxaAssign::compute_posterior(
-  likelihood_w_prior = likelihoods_w_prior,
+  likelihood_w_prior = likelihoods_w_prior_combined,
   n_sims             = 1000
 )
 .save(posterior_df, "posterior_df")

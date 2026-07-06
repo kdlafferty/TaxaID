@@ -135,12 +135,18 @@ could be present.
 \subsection{Deduplication and redundancy filtering}{
 
 After the join, rows are deduplicated on \code{observation_id} x
-\code{taxon_name} x \code{taxon_name_rank} (keeping the highest
-\code{prior_mean}). Genus-rank rows with missing taxonomy are filled
-from \code{taxon_name} and propagated from other rows sharing the same
-genus. Finally, \code{\link[TaxaMatch:filter_redundant_hypotheses]{TaxaMatch::filter_redundant_hypotheses()}} removes
-coarser-rank rows superseded by finer-rank rows in the same
-lineage.
+\code{taxon_name} x \code{taxon_name_rank} x \code{grid_id} x \code{main_habitat}
+(keeping the highest \code{prior_mean} among same-site duplicates --
+e.g. artifacts of coarse-rank expansion). The \code{grid_id}/\code{main_habitat}
+keys (added Session 138) mean a genuine multi-site observation (the same
+\code{observation_id} detected at more than one site) keeps one row per site
+per candidate rather than collapsing to a single site. Pass the result
+through \code{\link[=combine_multisite_priors]{combine_multisite_priors()}} before \code{\link[=compute_posterior]{compute_posterior()}} to
+combine each candidate's per-site rows into one. Genus-rank rows with
+missing taxonomy are filled from \code{taxon_name} and propagated from other
+rows sharing the same genus. Finally,
+\code{\link[TaxaMatch:filter_redundant_hypotheses]{TaxaMatch::filter_redundant_hypotheses()}} removes coarser-rank rows
+superseded by finer-rank rows in the same lineage.
 }
 }
 \section{Coarse-rank expansion}{
