@@ -1,6 +1,12 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-04 (Session 134b — define_search_polygon() moved here from TaxaFetch:
+# Last updated: 2026-07-05 (Session 137 — escalate_taxonomic_rank() added: the escalation-
+# ladder function (genus -> family -> order broadening for singleton observations with no
+# reference/occurrence data at their own rank), Phase 1 of the observation-pipeline-wiring
+# reentry plan. Reuses verify_taxon_names()/parse_classification_path(); same primary/
+# fallback-backbone pattern as fill_higher_ranks(). Live-verified against real NCBI data for
+# the PtConception 12S cases and the bobcat-photo case. See Session 137 note below.
+# Session 134b — define_search_polygon() moved here from TaxaFetch:
 # the shared interactive polygon gadget for both TaxaFetch's search-area use and TaxaMatch's
 # spatial-group use (group_observations_by_bbox()). Added group_col (color the points overlay
 # by an existing group column), init_polygon (reopen a previously drawn polygon for
@@ -93,6 +99,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 |---|---|---|---|
 | `common_to_scientific()` | Convert a character vector of common names to scientific names via LLM, with optional backbone verification via `verify_taxon_names()`. Params: `taxonomic_group`, `location`, `verify`, `backbone_id`, `llm_fn`. Returns data frame with `common_name`, `scientific_name`, `verified`, `matched_name`. | Complete | R/common_names.R |
 | `fill_higher_ranks()` | Given a character vector of taxon names (typically species binomials), extract `genus` and look up `family` via a priority chain: (1) local data frames (`local_sources`), (2) primary backbone via `verify_taxon_names()` at genus level (`backbone_id = 4L`), (3) fallback backbone (`fallback_backbone_id = 11L`). Returns tibble with `taxon_name`, `genus`, `family`; warns for unresolved taxa. Internal helpers: `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_classified_rank()`. | Complete | R/fill_higher_ranks.R |
+| `escalate_taxonomic_rank()` | The escalation-ladder function (Session 137 reentry plan, Phase 1): given `taxon_name` at `current_rank`, resolves its full classification via `verify_taxon_names()` and returns the name at the next coarser rank in `rank_system` (default `standard_ranks`) -- e.g. broadening a genus with no reference sequences/occurrence records to its family. Walks up to `max_levels` (default `2L`) rank levels within one call if an intermediate rank is itself absent from the classification path (e.g. genus straight to order when family is missing), so callers get one escalation step per retry-loop iteration rather than a fixed single-rank hop. Same primary/fallback backbone pattern as `fill_higher_ranks()` (`backbone_id = 4L` NCBI, `fallback_backbone_id = 11L` GBIF). Returns `list(taxon_name, rank)`, both `NA` if already at the coarsest rank or nothing resolves within `max_levels`. Only walks the hierarchy -- has no notion of whether a fetch at any rank returned data; that's the caller's retry loop. Live-verified against real NCBI data for the PtConception 12S validation cases (*Rhacochilus*, *Embiotoca caryi* -> family `Embiotocidae`) and the bobcat-photo case (*Lynx* -> family `Felidae`). | Complete | R/escalate_taxonomic_rank.R |
 | `parse_classification_path()` | Extract one rank value from the pipe-delimited `classification_path` and `classification_ranks` columns returned by `verify_taxon_names()`. Params: `path`, `ranks`, `target_rank`. Returns `NA_character_` if rank absent. Thin wrapper around `.extract_classified_rank()`; use with `mapply()` for column-level parsing. | Complete | R/fill_higher_ranks.R |
 | `scientific_to_common()` | Convert scientific names to English common names. Backbone sources: GBIF (backbone_id=11, via rgbif) or ITIS (backbone_id=3, via taxize). LLM fallback when backbone returns nothing or backbone_id=NULL. `location` param biases LLM toward regionally appropriate names. Batches LLM calls (20/batch). Returns `scientific_name`, `common_name`, `common_name_alternatives` (semicolon-delimited), `source` ("gbif"/"itis"/"llm"/"none"), `backbone_id`. | Complete | R/common_names.R |
 
@@ -132,6 +139,7 @@ rename_cols()           # align column names to DarwinCore
 | test-to_faire.R | `to_faire()` | Fully offline; 52 tests covering renames, constructed columns, attribute, missing-column handling, validation |
 | test-common-names.R | `common_to_scientific()`, `scientific_to_common()` | Offline; backbone calls mocked via `local_mocked_bindings()`; location param verified via prompt capture; 52 tests |
 | test-fill_higher_ranks.R | `fill_higher_ranks()`, `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_classified_rank()` | Fully offline (API mocked); 35 tests |
+| test-escalate_taxonomic_rank.R | `escalate_taxonomic_rank()` | Fully offline (API mocked); 35 tests; covers immediate-parent escalation, skip-level escalation within `max_levels`, already-coarsest short-circuit, primary/fallback backbone, custom `rank_system` |
 | test-token_usage.R | `token_usage()`, `reset_token_usage()` | Fully offline; mocks `.token_ledger` directly |
 | test-rank_utils.R | `standard_ranks`, `extended_ranks`, `detect_ranks()` | Fully offline |
 | test-barcode_utils.R | `barcode_length_defaults`, `resolve_barcode_lengths()` | Fully offline |
@@ -188,6 +196,18 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
 ---
 
 ## Session Notes
+
+**Session 137 (2026-07-05): escalate_taxonomic_rank() -- escalation ladder, Phase 1 of the observation-pipeline-wiring reentry plan**
+
+Branch `single-observation-pipeline`. Per `ecosystem_docs/REENTRY_PROMPT_session137_observation_pipeline_wiring.md`, the escalation ladder (broaden genus -> family -> order when a singleton's own genus has no reference data or occurrence records) had been validated by hand three separate times (Sessions 134, 134b, 134c) but never built as a real function -- the actual bottleneck blocking the single-observation and spatially-independent multi-observation cases, not the spatial-grouping mechanism itself (that part was already done). Package placement (TaxaTools vs. TaxaLikely vs. TaxaExpect) confirmed with the user before starting: TaxaTools, matching the precedent of `%||%` and `define_search_polygon()` -- generic taxonomic-hierarchy-walking logic, not fetch-API-specific, shared by both consumers (TaxaLikely for reference-sequence fetch, TaxaExpect for occurrence fetch).
+
+`escalate_taxonomic_rank(taxon_name, current_rank, rank_system = standard_ranks, max_levels = 2L, backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE)` added (`R/escalate_taxonomic_rank.R`). Reuses `verify_taxon_names()` + `parse_classification_path()` directly (same primary-then-fallback-backbone pattern as `fill_higher_ranks()`) rather than duplicating classification-lookup logic. Given a taxon at `current_rank`, resolves its full classification once, then walks coarser ranks in `rank_system` starting at the immediate parent, up to `max_levels` steps, returning the first rank/name pair present in the classification path. This lets one call automatically skip a rank that's genuinely absent from the backbone's own path (e.g. genus straight to order when family isn't populated) without a second API round-trip -- distinct from "no reference/occurrence data at that rank," which is the caller's retry loop's job to detect by trying a fetch and calling this function again with the returned rank/name as the new `current_rank`/`taxon_name` if that fetch is still empty. Short-circuits with no API call at all when `current_rank` is already the coarsest rank in `rank_system`.
+
+35 tests (`test-escalate_taxonomic_rank.R`), fully offline, `verify_taxon_names()` mocked via `local_mocked_bindings()` following `test-fill_higher_ranks.R`'s established pattern. `devtools::document()` + `devtools::test()` (723 expectations ecosystem-wide, 0 failures) + `devtools::check()` (0 errors, 0 warnings, 1 pre-existing NOTE re: cross-package Rd xrefs) all clean.
+
+Live-verified against real NCBI data (not just mocks) for the exact validation cases named in the reentry prompt: `escalate_taxonomic_rank("Rhacochilus", current_rank = "genus")` -> family `Embiotocidae`; `escalate_taxonomic_rank("Embiotoca caryi", current_rank = "species")` -> genus `Embiotoca`; and the bobcat-photo case, `escalate_taxonomic_rank("Lynx", current_rank = "genus")` -> family `Felidae`. All three match the prior sessions' ad hoc validation.
+
+**Not done this session** (Phases 2-7 of the reentry plan): wiring spatial grouping or this function into any of the four production workflow scripts, the Reads-table relocation, the TaxaAssign `(observation_id, site)` schema question, the end-to-end test matrix, or documentation. See the reentry prompt for the full sequenced plan.
 
 **Session 134b (2026-07-04): define_search_polygon() moved here from TaxaFetch**
 

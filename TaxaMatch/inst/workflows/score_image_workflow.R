@@ -90,13 +90,25 @@ TOP_N <- 8L
 # likelihood/posterior math has already run on the polluted candidate set).
 TARGET_ICONIC_TAXA <- "Mammalia"
 
-# Real camera location (Central California coastal scrub habitat) --
-# CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: supplying the true lat/lng
-# measurably changed results (iNat's combined_score blends vision confidence
-# with local occurrence frequency) -- 2 of 6 photos flipped from wrong to
-# correct once the real location was supplied instead of leaving lat/lng NULL
-# (which would fall back to EXIF, absent on these trail-camera files, or no
-# geographic prior at all).
+# score_image_inat()'s lat/lng args, when supplied, OVERRIDE every photo's own
+# EXIF coordinates unconditionally (see its own @param docs) -- correct for a
+# genuinely single-site batch shot on one camera with no usable EXIF GPS (this
+# bundled trail-camera set: EXIF is absent entirely on these files), wrong for
+# a real multi-site study where photos carry real, differing per-photo EXIF
+# GPS that this override would silently stomp on. OVERRIDE_SITE_LATLNG makes
+# that choice explicit rather than hardcoding the override unconditionally --
+# see ecosystem_docs/REENTRY_PROMPT_session137_observation_pipeline_wiring.md,
+# Phase 3. Set FALSE for your own photos if they carry real per-photo EXIF GPS
+# (score_image_inat() then reads it directly, one coordinate pair per photo).
+OVERRIDE_SITE_LATLNG <- TRUE
+
+# Real camera location (Central California coastal scrub habitat) -- only
+# used when OVERRIDE_SITE_LATLNG is TRUE. CONFIRMED BY ACTUALLY RUNNING THIS
+# SCRIPT: supplying the true lat/lng measurably changed results (iNat's
+# combined_score blends vision confidence with local occurrence frequency) --
+# 2 of 6 photos flipped from wrong to correct once the real location was
+# supplied instead of leaving lat/lng NULL (which would fall back to EXIF,
+# absent on these trail-camera files, or no geographic prior at all).
 SITE_LAT <- 34.41
 SITE_LNG <- -119.86
 
@@ -200,7 +212,11 @@ message("  Requires INAT_API_TOKEN (~/.Renviron) -- 401 means the token has ",
         "https://www.inaturalist.org/users/api_token.")
 
 taxamatch_image_match_obj <- TaxaMatch::score_image_inat(
-  .photo_dir, lat = SITE_LAT, lng = SITE_LNG, top_n = TOP_N, recursive = TRUE
+  .photo_dir,
+  lat         = if (OVERRIDE_SITE_LATLNG) SITE_LAT else NULL,
+  lng         = if (OVERRIDE_SITE_LATLNG) SITE_LNG else NULL,
+  top_n       = TOP_N,
+  recursive   = TRUE
 )
 taxamatch_image_match_obj$true_species <-
   FOLDER_TO_SPECIES[taxamatch_image_match_obj$folder_1]
@@ -309,6 +325,30 @@ message(sprintf("  family resolved for %d/%d unique taxon_name value(s): %s",
                 sum(!is.na(.higher$family)), nrow(.higher),
                 paste(sort(unique(.higher$family)), collapse = ", ")))
 
+# ==============================================================================
+# 2.5.  SITE TABLE (TaxaMatch) -- spatial-grouping prerequisite
+# ==============================================================================
+# build_site_table() extracts the per-photo lat/lng that score_image_inat()'s
+# output already carries embedded (real per-photo EXIF when
+# OVERRIDE_SITE_LATLNG = FALSE, or the uniform SITE_LAT/SITE_LNG override when
+# TRUE) -- no site_df needed for the image pathway, unlike DNA/BLAST or
+# acoustic (see TaxaMatch::build_site_table()'s own docs). This script stops
+# at TaxaLikely (see header), so spatial_group_id isn't consumed downstream
+# here -- but it's exactly what a future TaxaAssign continuation for these
+# species would need (see ecosystem_docs/REENTRY_PROMPT_session137_
+# observation_pipeline_wiring.md, Phase 3), so it's produced and checkpointed
+# now rather than re-derived later.
+# ==============================================================================
+
+image_site_table <- TaxaMatch::build_site_table(taxamatch_image_match_obj)
+
+message(sprintf(
+  "  Site table built: %d photo(s), %d spatial group(s) (%s).",
+  nrow(image_site_table), dplyr::n_distinct(image_site_table$spatial_group_id),
+  if (OVERRIDE_SITE_LATLNG) "uniform SITE_LAT/SITE_LNG override -- every photo shares one location"
+  else "per-photo EXIF coordinates"
+))
+
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 # Save now so a future session (or TaxaLikely's script) can skip Steps 1-2 by
 # pasting the readRDS() line below -- no file.exists()-gated auto-reload; you
@@ -318,6 +358,10 @@ saveRDS(taxamatch_image_match_obj, taxamatch_image_match_obj_path)
 message(sprintf("\n  Saved: %s", taxamatch_image_match_obj_path))
 message(sprintf("  To reuse without re-querying the CV API, paste:\n    taxamatch_image_match_obj <- readRDS(\"%s\")",
                 taxamatch_image_match_obj_path))
+
+image_site_table_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_image_site_table.rds"))
+saveRDS(image_site_table, image_site_table_path)
+message(sprintf("  Saved: %s", image_site_table_path))
 
 message("\nWorkflow complete. Continue with TaxaLikely's ",
         "image_acoustic_likelihood_workflow.R (IMAGE section).")
@@ -354,6 +398,14 @@ message("\nWorkflow complete. Continue with TaxaLikely's ",
 #                         object contract, harmless extra column for
 #                         downstream (unreferenced_candidates()/assign_scores()
 #                         ignore unrecognized columns)
+#
+# image_site_table -- one row per observation_id (photo), from
+#   TaxaMatch::build_site_table(): observation_id, lat, lon, observed_on,
+#   spatial_group_id, spatial_group_N. Every photo shares one spatial group
+#   when OVERRIDE_SITE_LATLNG = TRUE (uniform coordinates); one group per real
+#   distinct EXIF coordinate when FALSE. Not consumed further in this script
+#   (see header -- stops at TaxaLikely) but ready for
+#   TaxaMatch::group_observations_by_bbox() / a future TaxaAssign continuation.
 #
 # Consumer: TaxaLikely::image_acoustic_likelihood_workflow.R (IMAGE section) --
 #   calls unreferenced_candidates(rank_system = c("family","genus","species"))

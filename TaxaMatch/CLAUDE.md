@@ -1,6 +1,23 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-05 (Session 135 — blast_sequences(resolve_location=) added to
+# Last updated: 2026-07-05 (Session 137 continued — join_event_site_metadata() added:
+# Phase 4 (DNA/BLAST half) of the observation-pipeline-wiring plan. Produces a site_df for
+# build_site_table() from an event-level detections table joined against a
+# separately-maintained site-metadata table, generalizing the ecosystem's existing
+# blank-identification lookup-table pattern to carry site coordinates. Data-type-agnostic
+# (DNA/BLAST and acoustic both reduce to the same join); wired live into
+# TaxaID_Workflow_Template_TEST.R's Section 2.5 using the bundled Reads_Table's real
+# sample_1/sample_2/control_1 columns as genuinely different sites -- surfaced and fixed a
+# real bug in Section 3's multi-member-vs-singleton branching along the way (see Session
+# 137 note below). Acoustic half deferred -- no real multi-site BirdNET deployment data
+# exists yet to wire against honestly. Session 137 — score_image_workflow.R: Phase 3 of the
+# observation-pipeline-wiring plan. New OVERRIDE_SITE_LATLNG flag makes the previously-
+# unconditional SITE_LAT/SITE_LNG override explicit (default TRUE, matching this bundled
+# photo set's real EXIF-less trail-camera files); FALSE lets score_image_inat() read each
+# photo's own real EXIF coordinates. New build_site_table() call checkpoints
+# image_site_table. Live-verified both flag settings against the real bundled 52-photo
+# set (82%/60% top-1 accuracy respectively, matching prior documented results -- no
+# regression). See Session 137 note below. Session 135 — blast_sequences(resolve_location=) added to
 # extract GenBank lat_lon/country qualifiers for BLAST hit accessions; closes the
 # BLAST-hit-side half of the location-metadata gap flagged in ecosystem_docs/
 # TODO_validation_benchmark.md's "Sourcing location data" section. See Session 135 note
@@ -135,6 +152,7 @@ likelihood output downstream — it is NOT part of the match object.
 | `build_site_table()` | R/build_site_table.R | Complete | Unifies per-observation site info (`observation_id`, `lat`, `lon`, `observed_on`) across all three match-object pathways into one long-format table. Image pathway (`score_image_inat()` output): extracted directly from embedded `lat`/`lng`/`observed_on`. DNA/BLAST and acoustic pathways: neither carries site info in the match object itself, so `site_df` must be supplied externally; may have more than one row per `observation_id` -- this is the correct shape for a sequence ASV genuinely detected at several real sample sites in one sequencing run (see Session 134 note). **Session 134b:** also populates `spatial_group_id` (default = the row's own `observation_id`) and `spatial_group_N` (default = `1L`) on every row from the moment the table is built, so every site table has valid, non-missing values before any grouping step runs -- `group_observations_by_bbox()`/`assign_spatial_group()` update these in place. |
 | `group_observations_by_bbox()` | R/group_observations_by_bbox.R | Complete | **Session 134b, moved here from TaxaFetch and reworked** (see that session's note below for the full design rationale). Interactive: loops `TaxaTools::define_search_polygon()` (re-centred each time on still-default observations, guaranteed to fully enclose them) to collect one or more group polygons, then an end-of-loop review step (list drawn groups by member count; re-open one by number to reshape via `init_polygon`; `"delete <n>"` to remove one, releasing its members back to default; Enter to finalize). Updates `spatial_group_id`/`spatial_group_N` **in place** on a `build_site_table()`-shaped input -- only touches observations still at their default single-observation state; anything already grouped (prior call, or `assign_spatial_group()`) is left untouched regardless of geometry. Overlap rule: **last-drawn-wins** with a `warning()` naming every ambiguous `observation_id`. Internal helpers `.bbox_center_radius()`, `.assign_spatial_groups_from_polygons()`, and `.review_drawn_groups()`'s non-interactive/zero-polygon paths are pure and unit-tested without a live gadget session. |
 | `assign_spatial_group()` | R/assign_spatial_group.R | Complete | **Session 134b.** Manual `spatial_group_id` setter for a named set of observations -- for a study where grouping is already known from metadata, or to hand-correct a few observations after `group_observations_by_bbox()`. Validates every named `observation_id` exists; **collision guard**: stops if the target `spatial_group_id` is already used by an observation *not* named in the call (would otherwise silently expand an unrelated group's membership) -- include that observation explicitly to merge groups instead. Recomputes `spatial_group_N` in sync. |
+| `join_event_site_metadata()` | R/join_event_site_metadata.R | Complete | **Session 137 (Phase 4).** Produces a `site_df` for `build_site_table()` from any event-level detections table (one row per `id_col` x `event_col` pair actually observed) joined against a separately-maintained site-metadata table (`event_col` + `lat`/`lon`/`observed_on`) -- the same "sample column -> attribute lookup table" pattern already used ecosystem-wide to identify blanks (`BLANKS_MARCH`/`BLANKS_AUG` in `PtConceptionWorkflow_12S.R`, `control_samples` in `TaxaFlag::flag_contaminant()`), generalized to carry site coordinates instead of (or alongside) blank status. Data-type-agnostic: DNA/BLAST (Reads-table sample columns, already pivoted to long format and filtered to real detections) and acoustic (recording/device identifiers) both reduce to the same join, so one function serves both rather than duplicating it per pathway. `control_samples` param excludes blanks before joining (blanks are not real site detections). Warns (does not error) on events with no matching site-metadata row -- those rows get `NA` `lat`/`lon` rather than being silently dropped. |
 
 ### Standardization (original)
 
@@ -169,7 +187,7 @@ likelihood output downstream — it is NOT part of the match object.
 |---|---|
 | `inst/workflow_standardize.R` | Original: load match data, standardize, filter redundant |
 | `inst/workflow_fastq_to_match.R` | FASTQ-to-match pipeline: DADA2 output, filter, BLAST, standardize |
-| `inst/workflows/score_image_workflow.R` | Layer-1 (Session 124): live `score_image_inat()` call on bundled real camera-trap photos (`inst/extdata/example_images/camera_trap_photos/`) → `fill_higher_ranks()` → checkpoint for TaxaLikely. **Expanded Session 129**: 6 photos/5 species → 52 photos/8 species, organized into per-species subfolders (`recursive = TRUE`; `folder_1` drives ground truth via `FOLDER_TO_SPECIES`, since filenames are camera-generated sequence numbers, not species names). Added a `TARGET_ICONIC_TAXA = "Mammalia"` post-scoring filter — iNaturalist returns off-scope candidates (two plants, one bird, confirmed on this exact photo set) that a mammal-only study can never actually assign to; filtering before `unreferenced_candidates()`/`assign_scores()` lets real candidates absorb that probability mass instead. `top_n` raised 5→8 as a safety margin. |
+| `inst/workflows/score_image_workflow.R` | Layer-1 (Session 124): live `score_image_inat()` call on bundled real camera-trap photos (`inst/extdata/example_images/camera_trap_photos/`) → `fill_higher_ranks()` → checkpoint for TaxaLikely. **Expanded Session 129**: 6 photos/5 species → 52 photos/8 species, organized into per-species subfolders (`recursive = TRUE`; `folder_1` drives ground truth via `FOLDER_TO_SPECIES`, since filenames are camera-generated sequence numbers, not species names). Added a `TARGET_ICONIC_TAXA = "Mammalia"` post-scoring filter — iNaturalist returns off-scope candidates (two plants, one bird, confirmed on this exact photo set) that a mammal-only study can never actually assign to; filtering before `unreferenced_candidates()`/`assign_scores()` lets real candidates absorb that probability mass instead. `top_n` raised 5→8 as a safety margin. **Session 137 (Phase 3 of the observation-pipeline-wiring plan):** new `OVERRIDE_SITE_LATLNG` CONFIG flag (default `TRUE`, matching this bundled photo set's own real requirement — its trail-camera files carry no EXIF GPS at all) makes the previously-unconditional `SITE_LAT`/`SITE_LNG` override explicit; `FALSE` passes `lat = NULL, lng = NULL` so `score_image_inat()` reads each photo's own real EXIF coordinates instead of stomping on them with one global site. New Step 2.5 calls `TaxaMatch::build_site_table()` (no `site_df` needed — the image pathway's output already carries embedded lat/lng either way) and checkpoints the result as `image_site_table`; not consumed further in this script (still stops at TaxaLikely, per its own scope) but ready for a future TaxaAssign continuation. |
 | `inst/workflows/score_acoustic_workflow.R` | Layer-1 (Session 124): `read_birdnet_output()` on real BirdNET-Analyzer CSVs (produced by `sources/birdnet_csv_export.py`, a companion Python script outside this package) → `create_taxon_names()` + `fill_higher_ranks()` → checkpoint for TaxaLikely |
 | `inst/workflows/blast_sequences_workflow.R` | Layer-1 (Session 126): live remote `blast_sequences()` call on 5 real PtConception 12S MiFish sequences (same accessions as Session 115's field test, fetched live by accession from NCBI) → `standardize_match_data()` (with `coverage_col = "query_coverage"`) → checkpoint for TaxaLikely's sequence Layer-1 script |
 
@@ -275,6 +293,126 @@ inside `filter_redundant_hypotheses()` via `match()`.
 ---
 
 ## Session Notes
+
+**Session 137 continued (2026-07-05): join_event_site_metadata() — Phase 4 (DNA/BLAST half) of the observation-pipeline-wiring plan**
+
+Branch `single-observation-pipeline`. Per `ecosystem_docs/REENTRY_PROMPT_session137_
+observation_pipeline_wiring.md`'s Phase 4, this needed the user's real answer before any
+implementation, not just engineering: how does an event_id/sample ID actually connect to
+a physical site and collection date? Real event_ids found in this ecosystem (Palmyra:
+`"Palmyra01"`; PtConception: `"XBK316KS"`, `"Blank1.0"`) are opaque lab codes with no
+embedded site/time info -- confirmed by reading the actual production workflows, not
+assumed. User's answer: eDNA studies already construct a lookup table connecting sample
+columns to attributes (the existing `BLANKS_MARCH`/`BLANKS_AUG` pattern for identifying
+blanks is the same idea) -- the same kind of table should carry lat/lon/site name. For
+acoustic, the user described two plausible real shapes (fixed BirdWeather-style
+recorders, each with one site; or a field trip submitting recordings from several sites)
+but was explicitly unsure which shape real data will actually take -- so that half stays
+deferred rather than guessed at.
+
+`join_event_site_metadata(detections, site_metadata, event_col = "event_id", id_col =
+"observation_id", lat_col = "lat", lon_col = "lon", observed_on_col = "observed_on",
+control_samples = NULL)` added (`R/join_event_site_metadata.R`). Deliberately
+data-type-agnostic -- DNA/BLAST (Reads-table sample columns, already pivoted to long
+format by the calling workflow's own study-specific `pivot_longer()`, since that pivot
+step is genuinely idiosyncratic per lab/study and not something to force into one shared
+function) and acoustic (recording/device identifiers) both reduce to "join an event
+identifier against a metadata table of where/when that event happened," so one function
+serves both rather than duplicating the join per pathway. `control_samples` reuses the
+same param name as `TaxaFlag::flag_contaminant()` for consistency. Returns a
+`site_df`-shaped tibble directly feedable to `build_site_table()`.
+
+Wired live into `inst/TaxaID_Workflow_Template_TEST.R`'s Section 2.5 (not just added and
+left unused): new `SAMPLE_SITE_METADATA` config table gives the bundled `Reads_Table`'s
+`sample_1`/`sample_2`/`control_1` columns genuinely different real coordinates, so this
+template's own bundled test data now exercises actual multi-site behavior (previously,
+Phase 2's wiring could only be verified structurally, on one hardcoded placeholder
+point). Also added a fallback path for any `decontaminated_table` observation with no
+Reads_Table row at all (this template's own `conflict_row` demo taxon, added purely to
+show GBIF taxonomy-conflict handling in Section 1 -- never a real sequenced sample) so no
+observation is silently dropped from spatial grouping.
+
+**Real bug found and fixed by actually testing this against the bundled Reads_Table
+values (not by reading code):** one bundled ASV (`OQ846725`) has real, non-blank reads
+in both `sample_1` and `sample_2` -- a genuine multi-site single observation.
+`build_site_table()` hardcodes `spatial_group_N = 1L` on every row unconditionally in its
+`site_df` branch (only `group_observations_by_bbox()` recomputes it via real `table()`
+counting, and only after grouping actually runs) -- so this ASV's two site rows both
+read as `spatial_group_N = 1`, even though `site_table` genuinely has 2 rows sharing
+that `spatial_group_id`. `TaxaID_Workflow_Template_TEST.R`'s Section 3 branching
+originally checked `group_sites$spatial_group_N[1L] >= 2L` (the stored, possibly-stale
+column) rather than `nrow(group_sites) >= 2L` (what is actually in `site_table` for that
+group) -- meaning a multi-site ASV would have silently been misrouted to the
+single-observation escalation branch, which only reads the *first* site row
+(`group_sites$lat[1L]`/`lon[1L]`), quietly dropping its second site's context entirely.
+Fixed by switching to `nrow(group_sites) >= 2L`, which is correct whether or not
+`group_observations_by_bbox()` has run. Documented as a known, deliberately-not-"fixed"
+limitation in `SAMPLE_SITE_METADATA`'s own comment: a multi-site single ASV now routes
+to the multi-member pooled-fetch branch (a reasonable fallback -- pools its own two
+sites' occurrence context) rather than the correct-but-unbuilt per-`(observation_id,
+site)` treatment, which is explicitly Phase 5's job, not this session's.
+
+Verified via a standalone reproduction of Section 2/2.5's logic against the real bundled
+`Reads_Table` values (BLAST/GBIF calls stood in for, same reasoning as Phase 2 -- a full
+live run needs BLAST/NCBI/GBIF/Anthropic plus two interactive Shiny gadgets, out of scope
+for this session, deferred to Phase 6): confirmed the multi-site ASV produces exactly 2
+site rows sharing one `spatial_group_id`, the blank-only ASV correctly falls through to
+the no-site fallback, and the fix correctly reclassifies the multi-site case as
+multi-member. 20 new tests (`test-join_event_site_metadata.R`), fully offline.
+`devtools::document()` + `devtools::test()` (426 expectations, 0 failures) +
+`devtools::check()` (0 errors, 0 warnings, 0 notes) all clean.
+
+`score_acoustic_workflow.R` gets a documentation-only note (no code change): this
+tutorial's real BirdNET data (Xeno-canto downloads from scattered, uncontrolled
+locations) has no honest site-metadata table to join against, so the acoustic half of
+Phase 4 stays deferred rather than wired against fabricated coordinates -- matching this
+script's own "NO SYNTHETIC DATA" convention. The two real-world shapes the user
+described (fixed-recorder devices vs. multi-site field-trip submissions) are documented
+inline for whenever real deployment data exists to confirm which applies.
+
+**Session 137 (2026-07-05): score_image_workflow.R — Phase 3 of the observation-pipeline-wiring plan**
+
+Branch `single-observation-pipeline`. Per `ecosystem_docs/REENTRY_PROMPT_session137_
+observation_pipeline_wiring.md`'s Phase 3 (the smallest of the four workflow-wiring
+phases): this script previously passed `SITE_LAT`/`SITE_LNG` to `score_image_inat()`
+unconditionally, silently overriding every photo's own EXIF coordinates (per that
+function's own documented behavior) even though `score_image_inat()` already supports
+real per-photo EXIF-derived coordinates.
+
+Added `OVERRIDE_SITE_LATLNG` CONFIG flag (default `TRUE`). When `TRUE`, behavior is
+unchanged from before this session (`lat = SITE_LAT, lng = SITE_LNG` passed through).
+When `FALSE`, `lat = NULL, lng = NULL` is passed instead, so `score_image_inat()` reads
+each photo's own real EXIF GPS. `TRUE` is the right default specifically for this
+script's own bundled photo set (confirmed directly: these Bushnell trail-camera JPEGs
+carry no GPS EXIF at all -- `OVERRIDE_SITE_LATLNG = FALSE` produces all-`NA` `lat`/`lng`
+on this exact photo set), not a generic recommendation -- the comment block makes this
+explicit so a user swapping in their own photos with real per-photo EXIF GPS knows to
+flip it.
+
+New Step 2.5 calls `TaxaMatch::build_site_table()` on the checkpointed match object (no
+`site_df` needed -- the image pathway's output always carries embedded `lat`/`lng`,
+either the uniform override or real EXIF, so `build_site_table()` extracts it directly)
+and checkpoints the result as `image_site_table`. Not consumed further in this script
+(unchanged scope -- still stops at TaxaLikely, per its own header note) but now produced
+and saved for whenever a future TaxaAssign continuation for these species needs it,
+matching the "Output" block's own updated documentation.
+
+Live-verified both flag settings against the real bundled 52-photo/8-species set (not
+just parsed): `OVERRIDE_SITE_LATLNG = TRUE` reproduces the documented 82% top-1 CV
+accuracy (42/51, matching Session 129's result exactly -- confirms no regression from
+this session's change) and correctly reports "51 spatial group(s)" (every photo defaults
+to its own singleton group; `build_site_table()` does not itself deduplicate identical
+coordinates into one group -- that's `group_observations_by_bbox()`'s job, out of scope
+for this script). `OVERRIDE_SITE_LATLNG = FALSE` confirmed `lat` is `NA` for all 51
+scored photos (no EXIF GPS present, as expected) and top-1 accuracy correctly drops to
+60% (30/50) without the geographic prior -- consistent with the already-documented
+finding that supplying real lat/lng measurably helps. `build_site_table()` handled the
+all-`NA`-coordinate case without erroring in both live runs.
+
+**Not done this session** (Phases 1-2 already landed in earlier Session 137 work; Phases
+4-7 remain open): the Reads-table relocation, the TaxaAssign `(observation_id, site)`
+schema question, the end-to-end test matrix, and documentation. See the reentry prompt
+for the full sequenced plan.
 
 **Session 135 (2026-07-05): blast_sequences(resolve_location=) — GenBank location extraction for BLAST hits**
 

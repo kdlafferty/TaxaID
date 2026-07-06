@@ -58,11 +58,16 @@ SeqMatch1.png
 SeqMatch2.png
 
 # ── TaxaWizard transient state ──────────────────
+# Generated filenames are always taxaid_workflow_YYYYMMDD.R / taxaid_methods_YYYYMMDD.md
+# (TaxaWizard/R/output.R). Anchored on a leading digit after the underscore so this
+# doesn't also match hand-maintained templates like inst/TaxaID_Workflow_Template_TEST.R
+# on case-insensitive filesystems (core.ignorecase=true) -- confirmed via
+# `git check-ignore` that the old unanchored *.R glob did exactly that.
 .workflow_checkpoints/
-taxaid_workflow_*.R
-taxaid_methods_*.md
-*/taxaid_workflow_*.R
-*/taxaid_methods_*.md
+taxaid_workflow_[0-9]*.R
+taxaid_methods_[0-9]*.md
+*/taxaid_workflow_[0-9]*.R
+*/taxaid_methods_[0-9]*.md
 
 # ── Claude Code local settings ──────────────────
 .claude/

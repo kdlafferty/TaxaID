@@ -61,7 +61,11 @@ machinery, once spatial grouping is actually wired in.
 
 ## Sequenced phases
 
-### Phase 1 — Escalation ladder as a real, reusable function
+### Phase 1 — Escalation ladder as a real, reusable function [DONE 2026-07-05]
+
+`TaxaTools::escalate_taxonomic_rank()` implemented, tested, live-verified. See
+`TaxaTools/CLAUDE.md`'s Session 137 note.
+
 
 **Recommended package placement (confirm before starting): `TaxaTools`.** The
 hierarchy-walking logic itself (given a taxon at rank X with no usable data, what's the
@@ -85,7 +89,38 @@ GBIF case. Do not re-derive the validation from scratch — the prior sessions' 
 (`TaxaLikely/CLAUDE.md`, `TaxaExpect/CLAUDE.md` Session 134 notes) already have the
 real species names and expected broadened ranks.
 
-### Phase 2 — Wire spatial grouping into `TaxaID_Workflow_Template_TEST.R`
+### Phase 2 — Wire spatial grouping into `TaxaID_Workflow_Template_TEST.R` [DONE 2026-07-05]
+
+Implemented per the design below, plus a design decision made with the user before
+writing code: multi-member groups' occurrence-fetch search area is drawn interactively
+per group (not auto-computed), matching the existing single-site behavior's own
+interactive `define_search_polygon()` step, just re-run once per group instead of once
+globally. Singleton groups get a small automatic, non-interactive radius
+(`SINGLETON_RADIUS_DEG`, via `TaxaFetch::make_bbox_wkt()`) since their whole point is to
+broaden taxonomically, not spatially.
+
+Section 5's prior generation resolves each group's own grid cell via
+`TaxaExpect::create_sites_from_grid()` at the model's own `grid_size`, falling back to
+the old "busiest grid cell for `SITE_HABITAT`" heuristic when that exact cell has no
+modelled data there. Section 7 uses `join_priors()`'s existing multi-site data-frame
+`site` path (no need to loop `join_priors()` itself) and adds a genuinely new call,
+`TaxaAssign::update_prior_from_consensus(spatial_group_map = site_table)` — this
+function already existed and already handled the singleton-skip logic correctly
+(Session 134), but was not called anywhere in this template before now.
+
+Verified: script parses (`parse()`), no orphaned variable references from the rewrite
+(`SITE_GRID_ID`/old `site_data`/`bbox`/`families`/`valid_keys` all traced), and the
+escalation retry control flow (genus -> zero rows -> escalate -> family -> rows found;
+and the exhausted-at-order-still-zero case) verified against mocked
+`get_keys_from_context()`/`get_gbif_occurrences()`/`escalate_taxonomic_rank()` calls.
+**Not run end-to-end** — this template's other steps (BLAST, live NCBI/GBIF fetches, an
+Anthropic API key, and two interactive Shiny gadgets: habitat review and the new
+box-drawing grouping step) make a full live run out of scope for this session; that's
+Phase 6's job once Phases 3-5 also land. The DNA/BLAST pathway's `site_df` is still a
+single hardcoded-coordinate placeholder pending Phase 4, so today's bundled test data
+cannot yet exercise a real multi-site scenario — only the wiring pattern itself.
+
+
 
 This is the master template (741 lines, 8 sections: BLAST → TaxaFlag contamination →
 TaxaFetch occurrences → TaxaHabitat → TaxaExpect priors → TaxaLikely → TaxaAssign →
@@ -102,7 +137,15 @@ escalation-ladder fetch (Phase 1's function) for `spatial_group_N == 1` groups. 
 spatial_group_map = ...)` passed through explicitly (the function already handles it
 correctly, per "confirmed done" above — this is just wiring the call site).
 
-### Phase 3 — Wire `score_image_workflow.R`
+### Phase 3 — Wire `score_image_workflow.R` [DONE 2026-07-05]
+
+`OVERRIDE_SITE_LATLNG` flag added (default `TRUE`, right for this script's own bundled
+EXIF-less trail-camera photos); `build_site_table()` call added, checkpointed as
+`image_site_table`. Live-verified both flag settings against the real bundled photo set
+— 82%/60% top-1 accuracy respectively, matching prior documented results, no regression.
+See `TaxaMatch/CLAUDE.md`'s Session 137 note.
+
+
 
 Smallest lift. Currently applies one hardcoded `SITE_LAT`/`SITE_LNG` to every photo in
 the CONFIG section, even though `score_image_inat()` already supports per-photo
@@ -111,28 +154,50 @@ site pair (or make the override explicitly opt-in for genuinely single-site batc
 then call `build_site_table()` on the checkpointed output before handing off to
 TaxaLikely.
 
-### Phase 4 — Reads-table relocation (sequence AND acoustic)
+### Phase 4 — Reads-table relocation (sequence AND acoustic) [DNA/BLAST half DONE 2026-07-05, acoustic half deferred]
 
-**Needs your input before implementation**, not just engineering: the real sample-label
-convention (how does a DNA sample ID or a BirdNET recording filename actually encode
-site/time?) was never confirmed with the user in prior sessions — this was explicitly
-deferred each time it came up (134, 134b). Once confirmed, build the function(s) that
-produce a real `site_df` for `build_site_table()` from:
-- The sequence/Reads-table pathway (currently ad hoc `pivot_longer()` in
-  `TaxaFlag/inst/contaminant_workflow.R`, extracts `event_id` only, no place/time
-  parsing) — likely relocates to TaxaMatch.
-- The acoustic pathway (`read_birdnet_output()`/`score_acoustic_workflow.R`) — same
-  shape of gap, not previously tracked as its own item; treat as the same underlying
-  problem (site metadata living in a filename/manifest convention that needs parsing
-  into `site_df`), not a separate design question.
+User's answer (confirmed before implementation, as required): eDNA studies already
+construct a lookup table connecting sample columns to attributes (same pattern as
+`BLANKS_MARCH`/`BLANKS_AUG`) -- the same table should carry lat/lon/site name. For
+acoustic, the user described two plausible real shapes (fixed BirdWeather-style
+recorders each with one site; or a field trip submitting recordings from several sites)
+but was explicitly unsure which shape real data will take.
 
-### Phase 5 — TaxaAssign `(observation_id, site)` schema question
+`TaxaMatch::join_event_site_metadata()` implemented: data-type-agnostic join of an
+event-level detections table against a user-maintained site-metadata table, generalizing
+the blank-lookup pattern to site coordinates. Wired live into
+`TaxaID_Workflow_Template_TEST.R`'s Section 2.5 using the bundled `Reads_Table`'s real
+`sample_1`/`sample_2`/`control_1` columns as genuinely different sites -- this template's
+bundled test data now exercises real multi-site behavior, not just the wiring pattern.
+Surfaced and fixed a real bug along the way: Section 3's multi-member-vs-singleton
+branching relied on `build_site_table()`'s stored `spatial_group_N` column, which is
+hardcoded to `1L` per row regardless of duplicates (only `group_observations_by_bbox()`
+recomputes it, and only after grouping runs) -- switched to `nrow(group_sites)`, which is
+always correct. A genuine multi-site single ASV in the bundled data (`OQ846725`, real
+reads in both `sample_1` and `sample_2`) now correctly routes to the multi-member pooled
+branch -- a reasonable fallback, though the fully-correct per-`(observation_id, site)`
+treatment is Phase 5's job, not this one's.
 
-Only matters once Phase 4 produces real multi-site ASVs (a sequence genuinely detected
-at more than one real site in one sequencing run). Decide whether `join_priors()`/
-`compute_posterior()`/`posterior_consensus()` need to key on the `(observation_id, site)`
-pair rather than `observation_id` alone. Explicitly deferred in every prior session
-pending Phase 4 — "probably deserving its own session" per the 134b reentry prompt.
+Acoustic half NOT wired with fabricated data (per this ecosystem's real-data-only
+convention for these tutorial scripts) -- `score_acoustic_workflow.R`'s real BirdNET
+data (Xeno-canto downloads from scattered, uncontrolled locations) has no honest
+site-metadata table to join against. `join_event_site_metadata()` is ready for this
+pathway once real deployment data exists; documented inline which of the two real-world
+shapes to check for. See `TaxaMatch/CLAUDE.md`'s Session 137-continued note for the
+full record.
+
+### Phase 5 — TaxaAssign `(observation_id, site)` schema question [DESIGN DECIDED 2026-07-05, implementation deferred to a dedicated session]
+
+Phase 4 produced a real multi-site ASV in the bundled test data (`OQ846725`), which
+surfaced a real, currently-shipping bug in `join_priors()`'s multi-site path (silently
+keeps only the highest-prior_mean site per candidate, not the site actually detected at
+-- confirmed via a real repro, not just code-reading). User decided the combination rule
+(multiply priors across sites, treating multi-site detection as independent confirmatory
+evidence for the same identity; single shared likelihood used once) before any
+implementation. Full empirical finding, design rationale, recommended architecture, and
+open questions are in
+`ecosystem_docs/REENTRY_PROMPT_session138_multisite_posterior_combination.md` -- read
+that file, not this section, when re-entering this phase.
 
 ### Phase 6 — Test matrix
 

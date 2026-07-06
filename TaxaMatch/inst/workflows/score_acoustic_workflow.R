@@ -190,6 +190,36 @@ taxamatch_acoustic_match_obj <- dplyr::left_join(
 message(sprintf("  family resolved for %d/%d unique taxon_name value(s).",
                 sum(!is.na(.higher$family)), nrow(.higher)))
 
+# ==============================================================================
+# NOT DONE HERE: site table / spatial grouping (Phase 4 of
+# ecosystem_docs/REENTRY_PROMPT_session137_observation_pipeline_wiring.md)
+# ==============================================================================
+# read_birdnet_output()'s output carries NO site metadata at all -- only
+# `source_file` (which recording a detection window came from). Unlike the
+# DNA/BLAST pathway (see TaxaID_Workflow_Template_TEST.R's Section 2.5, which
+# now wires this via TaxaMatch::join_event_site_metadata() against a real
+# sample-to-site lookup table), this tutorial's real BirdNET data has no
+# corresponding site-metadata table to join -- these are Xeno-canto downloads
+# from scattered, uncontrolled real-world recording locations, not a
+# systematic multi-site deployment, so there's nothing honest to attach.
+#
+# `join_event_site_metadata()` is data-type-agnostic (event_col is just
+# whatever identifier connects a detection to a place) and would serve a real
+# acoustic deployment the same way it serves DNA/BLAST once one exists -- two
+# real-world shapes the user described, both reducible to the same join:
+#   - Multiple BirdWeather-style fixed recorders: each device has one fixed
+#     site, so site_metadata would have one row per device_id (parsed from
+#     source_file or a manifest), joined by device_id.
+#   - A field trip submitting recordings from several sites in one batch:
+#     site_metadata would need one row per recording (or per site-visit),
+#     joined by source_file directly, same shape as this script's own
+#     .manifest join above (by source_file) but carrying lat/lon instead of
+#     (or alongside) true_species.
+# Revisit once a real multi-site acoustic dataset exists to confirm which
+# shape actually applies -- deferred, per that reentry prompt's Phase 4 note,
+# rather than guessed at here.
+# ==============================================================================
+
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 taxamatch_acoustic_match_obj_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxamatch_acoustic_match_obj.rds"))
 saveRDS(taxamatch_acoustic_match_obj, taxamatch_acoustic_match_obj_path)

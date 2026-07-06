@@ -1,7 +1,57 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-04 (Session 134b, branch `single-observation-pipeline` — after
+# Last updated: 2026-07-05 (Session 137 continued yet further, branch `single-observation-
+# pipeline` — Phase 4 (DNA/BLAST half) of the observation-pipeline-wiring plan:
+# `TaxaMatch::join_event_site_metadata()` added, producing a `site_df` for
+# `build_site_table()` from an event-level detections table joined against a
+# user-maintained site-metadata table — generalizes the ecosystem's existing
+# blank-identification lookup-table pattern (`BLANKS_MARCH`/`BLANKS_AUG`,
+# `control_samples`) to carry site coordinates. Data-type-agnostic by design (DNA/BLAST
+# and acoustic reduce to the same join), but only the DNA/BLAST half is wired live this
+# session — `TaxaID_Workflow_Template_TEST.R`'s Section 2.5 now uses the bundled
+# `Reads_Table`'s real `sample_1`/`sample_2` columns as genuinely different sites,
+# surfacing and fixing a real latent bug in Section 3's multi-member-vs-singleton
+# branching (`build_site_table()` hardcodes `spatial_group_N = 1L` per row regardless of
+# duplicates; branching now uses `nrow(group_sites)` instead of the stored column). The
+# acoustic half stays deferred — no real multi-site BirdNET deployment data exists yet to
+# wire against honestly; the user described two plausible real shapes (fixed BirdWeather-
+# style recorders vs. multi-site field-trip submissions) but was explicitly unsure which
+# applies, so `score_acoustic_workflow.R` only gets a documentation pointer. See
+# `TaxaMatch/CLAUDE.md`'s Session 137-continued note for the full record.
+# Session 137 continued further (same day, earlier) — Phase 3 of the observation-
+# pipeline-wiring plan:
+# `TaxaMatch/inst/workflows/score_image_workflow.R` gains an `OVERRIDE_SITE_LATLNG` flag
+# (default TRUE, matching this script's bundled EXIF-less trail-camera photos) so the
+# previously-unconditional site-coordinate override is now explicit rather than silently
+# stomping on real per-photo EXIF GPS for other users' photo sets, plus a new
+# `build_site_table()` call producing a checkpointed `image_site_table`. Live-verified
+# both flag settings against the real bundled 52-photo set (82%/60% top-1 accuracy,
+# matching prior documented results — no regression). See `TaxaMatch/CLAUDE.md`'s Session
+# 137 note for detail.
+# Session 137 continued (same day, earlier) — Phase 2 of the observation-pipeline-wiring
+# plan: `inst/TaxaID_Workflow_Template_TEST.R`
+# (the master 8-section workflow template) now wires spatial grouping end to end. New
+# Section 2.5 builds a `site_table` (`TaxaMatch::build_site_table()` +
+# `group_observations_by_bbox()`); Section 3's occurrence fetch branches per
+# `spatial_group_id` (pooled bbox fetch for multi-member groups, per-observation
+# taxonomic-escalation fetch via `TaxaTools::escalate_taxonomic_rank()` for singletons);
+# Section 5 generates `TaxaExpect` priors once per group at that group's own resolved
+# grid cell instead of one global `SITE_GRID_ID`; Section 7 joins each observation
+# against its own group's priors (`join_priors()`'s existing multi-site data-frame path)
+# and adds a new `TaxaAssign::update_prior_from_consensus(spatial_group_map = site_table)`
+# call (previously not invoked anywhere in this template). The DNA/BLAST pathway still
+# has no real per-observation site metadata (Phase 4, deferred) — every observation is
+# placed at one hardcoded `STUDY_LAT`/`STUDY_LON` as a documented placeholder, so real
+# multi-site behavior isn't exercised by this template's bundled test data yet, only the
+# wiring itself. See `TaxaID/CLAUDE.md`'s own Session 137-continued note below for the
+# verification approach and what's still deferred (Phases 4-7).
+# Session 137 (earlier in the same day) — TaxaTools::escalate_taxonomic_rank() added: the
+# escalation-ladder function (broaden genus -> family -> order when a singleton's own
+# genus has no reference/occurrence data), Phase 1 of the same plan. Live-verified against
+# real NCBI data for the PtConception 12S cases and the bobcat-photo case. See
+# TaxaTools/CLAUDE.md's Session 137 note for detail.
+# Session 134b, branch `single-observation-pipeline` — after
 # reviewing Session 134's automatic-spatial-grouping implementation, the user raised package-
 # placement questions before committing (see
 # ecosystem_docs/REENTRY_PROMPT_session134b_grouping_implemented.md). Resolved: the shared
