@@ -45,6 +45,16 @@
 #' frame it will be overwritten in the combined output so that all rows use a
 #' consistent format.
 #'
+#' \strong{gbifID deduplication:} If the combined frame has a \code{gbifID}
+#' column, rows with a duplicated non-\code{NA} \code{gbifID} are dropped
+#' (first occurrence kept). This is defense-in-depth against the same GBIF
+#' record being counted twice -- e.g. two separately-issued queries with
+#' overlapping search geometry, or a genuinely coincidental overlap between
+#' separately-fetched taxa -- since neither
+#' \code{\link{get_gbif_occurrences}} nor \code{\link{filter_gbif_quality}}
+#' dedupe records themselves. Sources without a \code{gbifID} column (e.g.
+#' literature or DataONE occurrences) are unaffected.
+#'
 #' @seealso \code{\link[TaxaTools]{rename_cols}}
 #'
 #' @importFrom dplyr bind_rows
@@ -109,6 +119,18 @@ stack_occurrences <- function(...,
   # --- Bind and add point_id ---------------------------------------------------
   combined          <- dplyr::bind_rows(frames)
   combined$point_id <- paste(combined[[lat_col]], combined[[lon_col]], sep = "_")
+
+  # --- Dedup by gbifID (defense-in-depth; see @details) ------------------------
+  if ("gbifID" %in% names(combined)) {
+    is_dup <- duplicated(combined$gbifID) & !is.na(combined$gbifID)
+    if (any(is_dup)) {
+      message(sprintf(
+        "stack_occurrences: dropped %d record(s) with a duplicate gbifID.",
+        sum(is_dup)
+      ))
+      combined <- combined[!is_dup, , drop = FALSE]
+    }
+  }
 
   n_per_frame <- vapply(frames, nrow, integer(1L))
 

@@ -1,17 +1,15 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-04 (Session 134b -- define_search_polygon() and
-# group_observations_by_bbox() moved OUT of this package: define_search_polygon() -> TaxaTools
-# (shared gadget, now also used for TaxaMatch's spatial grouping), group_observations_by_bbox()
-# -> TaxaMatch (it operates on TaxaMatch::build_site_table()'s output; a spatial-grouping
-# concern, not a fetch concern). shiny/miniUI/leaflet dropped from this package's Suggests
-# accordingly. See TaxaTools/CLAUDE.md and TaxaMatch/CLAUDE.md Session 134b notes for the new
-# homes. Session 134 -- group_observations_by_bbox() originally added here; see Session 134
-# note below for that history. Session 131 -- pre-code-review cleanup pass: ASCII/lintr/naming sweeps,
-# documentation completeness pass, security + algorithm review. Also corrects a false claim from
-# Session 129: get_gbif_occurrences() does NOT fix an issue/issues column-name mismatch on the
-# download path -- download_gbif_occurrences() already renamed it correctly, always had. See the
-# Session 131 notes below for the full correction and the regression test added to pin it down.)
+# Last updated: 2026-07-06 (Session 140 -- fetch_occurrences_by_taxon() added: taxon-centric
+# batched GBIF fetch, implementing the general-fix design from
+# ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md. stack_occurrences() also
+# gained a gbifID dedup step. See Session 140 note below for the full record. Session 134b --
+# define_search_polygon() and group_observations_by_bbox() moved OUT of this package:
+# define_search_polygon() -> TaxaTools (shared gadget, now also used for TaxaMatch's spatial
+# grouping), group_observations_by_bbox() -> TaxaMatch (it operates on
+# TaxaMatch::build_site_table()'s output; a spatial-grouping concern, not a fetch concern).
+# shiny/miniUI/leaflet dropped from this package's Suggests accordingly. See TaxaTools/CLAUDE.md
+# and TaxaMatch/CLAUDE.md Session 134b notes for the new homes.)
 
 ---
 
@@ -36,12 +34,13 @@ non-interactive-vs-interactive comparison.
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK | Complete | R/stack_occurrences.R |
+| `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK. **Session 140:** drops rows with a duplicate non-`NA` `gbifID` (first kept) when that column is present -- defense-in-depth against double-counting the same GBIF record, since no earlier step in the GBIF pipeline dedupes by key. | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box (scripted, non-interactive) | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
 | `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. | Complete | R/fetch_gbif_occurrences.R |
 | `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility — implemented and verified working (Session 131; a Session 129 note here previously claimed otherwise, incorrectly); (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` should reference SIMPLE_CSV's native `issue` (singular) name if customized — the function renames the output column to `issues` regardless. | Complete | R/download_gbif_occurrences.R |
 | `get_gbif_occurrences()` | **Session 129 — recommended entry point**, not a replacement for the two functions above (neither is modified). Picks `fetch_gbif_occurrences()` vs `download_gbif_occurrences()` by `key_threshold` (default 50, matching both functions' own documented guidance and the manual dispatch pattern the Layer-1 tutorial already used) and standardizes both paths to one column contract. `rank_filter = "species"` (default) is a post-fetch filter only — neither GBIF API exposes a taxonomic-rank predicate to filter server-side. `columns = "standard"` (default) / `"all"` / custom vector. `familyKey`/`genusKey` are `NA` on the download path — SIMPLE_CSV doesn't carry them at all, not fixable by this wrapper. Translates the wrapper's canonical `issues` column name back to SIMPLE_CSV's native `issue` when building `select_cols` for the download path (needed because `select_cols` matches at import time, before `download_gbif_occurrences()`'s own rename runs) — this is the only issue/issues handling the wrapper does; see `download_gbif_occurrences()`'s entry above for the Session 131 correction to a false "cross-path bug" claimed here previously. | Complete | R/get_gbif_occurrences.R |
+| `fetch_occurrences_by_taxon()` | **Session 140 — taxon-centric batched fetch.** Groups a fetch scope (one row per (site, candidate taxon) pair: `taxon_key` + `geometry` WKT) by taxon key instead of by observation/site: unions each taxon key's own geometry via `sf::st_union()` (dissolving the duplicate-record risk when two site boxes for the same taxon overlap), then combines different taxon keys that end up with an identical unioned geometry into one multi-key `get_gbif_occurrences()` call (`combine_shared_geometry = TRUE`, default). Neither `get_gbif_occurrences()` nor its own backends are modified — this is a pure call-grouping layer above it. Does not expose `rgbif`'s `geom_big`/`geom_size`/`geom_n` WKT-complexity escape valve and does not characterize GBIF's real WKT-size ceiling (documented as a known limitation, not silently masked). See `ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md` for the full design discussion this implements. | Complete | R/fetch_occurrences_by_taxon.R |
 | `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement. | Complete | R/filter_gbif_quality.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
 | `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble | Complete | R/biotime_fetch.R |
@@ -118,6 +117,23 @@ get_keys_from_context() → get_gbif_occurrences()           [Session 129: picks
                             ↳ download_gbif_occurrences()   [100s–1000s keys, account required]
                         → filter_gbif_quality()
 ```
+
+**Session 140 -- taxon-centric batched fetch (a scope-building layer above `get_gbif_occurrences()`):**
+```
+build a (taxon_key, geometry) fetch scope, one row per (site, candidate taxon)
+  ↓
+fetch_occurrences_by_taxon()   [unions each taxon key's own geometry, combines
+                                 taxa sharing identical geometry, one call per
+                                 group via get_gbif_occurrences()]
+  ↓
+stack_occurrences()             [row-bind + gbifID dedup, Session 140]
+```
+Use this instead of calling `get_gbif_occurrences()` directly whenever the
+fetch scope spans more than one site/observation and search areas can
+overlap or coincide -- see `fetch_occurrences_by_taxon()`'s own entry above
+and `inst/TaxaID_Workflow_Template_TEST.R` Section 3 for a worked example
+(multi-member cluster + single-observation escalation ladder, unified into
+one taxon-key map).
 
 ### Literature + PDF pipeline
 ```
@@ -236,6 +252,77 @@ below and TaxaTools/CLAUDE.md).
 ---
 
 ## Session Notes
+
+**Session 140 (2026-07-06): fetch_occurrences_by_taxon() -- taxon-centric batched GBIF fetch**
+
+Branch `main`. Implements the general-fix scope from
+`ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md`, confirmed with the user
+over the narrow fix (union just one multi-site observation's own sites) after re-verifying
+Phase 6's live RStudio run had completed successfully post-Session-139's Section 3/5 fix.
+
+- `fetch_occurrences_by_taxon()` added (`R/fetch_occurrences_by_taxon.R`): takes a
+  `taxon_geometry_map` (one row per (site, candidate taxon) pair -- `taxon_key` + `geometry`
+  WKT), unions each taxon key's own geometry via `sf::st_union()`, then (`combine_shared_geometry
+  = TRUE`, default) combines taxon keys whose resulting unioned geometry is byte-identical into
+  one multi-key `get_gbif_occurrences()` call. This is a pure call-grouping layer -- neither
+  `get_gbif_occurrences()` nor its backends are touched. 22 new tests
+  (`test-fetch_occurrences_by_taxon.R`), fully offline (`get_gbif_occurrences()` mocked via
+  `local_mocked_bindings()`), covering input validation, same-taxon-overlapping-geometry union,
+  different-taxa-same-geometry combination, `combine_shared_geometry = FALSE`, disjoint
+  geometry (no wasted combination), duplicate-row and NA-row cleaning, and param forwarding.
+- `stack_occurrences()`: added a `gbifID` dedup step (drops rows with a duplicated non-`NA`
+  `gbifID`, keeps first) -- defense-in-depth per the reentry prompt's "worth doing regardless"
+  recommendation. Checked first whether this was still needed given
+  `TaxaMatch::standardize_match_data()` might already cover it: confirmed that function
+  standardizes classifier match records (DNA/BLAST, image, acoustic -- the
+  TaxaMatch -> TaxaLikely -> TaxaAssign chain) and has zero row-level dedup logic of its own; it
+  is not in the GBIF occurrence -> `TaxaExpect::build_priors()` -> `model_data` path at all, so
+  the gap was real, not stale. Confirmed no dedup existed anywhere in that path
+  (`get_gbif_occurrences()`, `filter_gbif_quality()`, `stack_occurrences()` all checked
+  directly) before adding it. 3 new tests in `test-stack_occurrences.R`.
+- `inst/TaxaID_Workflow_Template_TEST.R` Section 3 restructured into the two-pass split the
+  reentry prompt identified as a hard prerequisite (the old single-pass loop interleaved
+  box-definition and fetching per group, making a whole-scope taxon union impossible): Pass 1
+  defines every `spatial_group_id`'s search geometry with no fetching (interactive polygon for
+  multi-member groups, automatic per-site bbox for single-observation groups), guarding a
+  cancelled gadget immediately; Pass 2 builds one taxon_key/geometry map spanning both branches
+  and fetches once via `fetch_occurrences_by_taxon()`. The escalation ladder (genus -> family ->
+  order for single-observation candidates with zero hits) is now decided per starting genus
+  rather than per site -- sites sharing a candidate genus already share the same escalation
+  path, and this session worked through why a nonzero result anywhere in that genus's unioned
+  search area means real local data exists for it, so no per-site spatial containment check is
+  needed to decide whether an individual site would have escalated on its own. Zero-hit
+  detection matches on the taxonomic text column (`genus`/`family`/`order`) rather than a
+  `*Key` column, since not every rank has a corresponding key column in
+  `.gbif_standard_columns()` (no `orderKey`) -- this makes the check rank-agnostic with no
+  extra columns needed. Verified via an isolated logic test against the real
+  `TaxaID_test_site_table.rds`/`TaxaID_test_BLAST.rds` checkpoints from Session 139's live run
+  (mocking `get_keys_from_context()`, `escalate_taxonomic_rank()`, and `get_gbif_occurrences()`,
+  since the real multi-member group in that data requires the interactive
+  `define_search_polygon()` gadget): confirmed the 4-member cluster's family keys combine into
+  one call (not four), a zero-hit genus is escalated and successfully refetched at its family
+  rank in round 1, and the final `gbif_occurrences` assembles correctly across both rounds.
+- `devtools::document()` + `devtools::test()` (434 expectations, 0 failures, 4 pre-existing
+  warnings, 2 pre-existing skips) + `devtools::check()` (0 errors, 0 warnings, 0 notes) all
+  clean.
+- **Live-verified by the user in a real RStudio run, same session:** 3 spatial groups (2
+  multi-member, 1 singleton) -- Pass 1 correctly drew search areas for the 2 multi-member
+  groups and computed an automatic bbox for the singleton; Pass 2's round 0 found 4 distinct
+  taxon keys (2 family, 2 genus) and issued only **2** GBIF queries, confirming the
+  same-geometry-taxa combination worked on real data, not just the mocked isolated test.
+  226 + 10,576 species-rank records returned; `gbif_occurrences` came back with the expected
+  31-column standard schema. One cosmetic artifact noted and explained: `class` came back
+  `<lgl>` (all `NA`) rather than `<chr>` -- confirmed by the user to be a known GBIF backbone
+  gap for bony fishes (Actinopterygii/Actinopteri routinely missing a populated `class`
+  field), not a fetch bug; the logical-vs-character type is just `get_gbif_occurrences()`'s
+  pre-existing NA-fill behavior for an entirely-absent column, unrelated to this session's
+  changes.
+- **Not done this session:** characterizing GBIF's actual WKT-complexity ceiling (documented
+  as a known, non-silently-masked limitation on `fetch_occurrences_by_taxon()` instead, per the
+  reentry prompt's own item 4); cross-round query merging (an escalated taxon key can be
+  re-queried in a later round at a different geometry than an earlier round's use of the same
+  key, which is correct but not maximally efficient -- the final `gbifID` dedup step is the
+  safety net for any resulting overlap, not a further optimization).
 
 **Session 134b (2026-07-04): define_search_polygon() and group_observations_by_bbox() moved out**
 

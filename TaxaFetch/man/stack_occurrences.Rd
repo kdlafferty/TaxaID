@@ -54,6 +54,16 @@ date columns align correctly across sources.
 \strong{point_id:} If a \code{point_id} column already exists in any input
 frame it will be overwritten in the combined output so that all rows use a
 consistent format.
+
+\strong{gbifID deduplication:} If the combined frame has a \code{gbifID}
+column, rows with a duplicated non-\code{NA} \code{gbifID} are dropped
+(first occurrence kept). This is defense-in-depth against the same GBIF
+record being counted twice -- e.g. two separately-issued queries with
+overlapping search geometry, or a genuinely coincidental overlap between
+separately-fetched taxa -- since neither
+\code{\link{get_gbif_occurrences}} nor \code{\link{filter_gbif_quality}}
+dedupe records themselves. Sources without a \code{gbifID} column (e.g.
+literature or DataONE occurrences) are unaffected.
 }
 \examples{
 \dontrun{

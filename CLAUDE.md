@@ -1,7 +1,21 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-06 (Session 139, branch `main` — Phase 6 live-testing of
+# Last updated: 2026-07-06 (Session 140, branch `main` -- implements
+# ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md's general (taxon-centric)
+# fix: new TaxaFetch::fetch_occurrences_by_taxon() unions each candidate taxon's own search
+# geometry and combines taxa sharing identical geometry into one GBIF call, replacing
+# `TaxaID_Workflow_Template_TEST.R` Section 3's old per-observation/site fetch loop with a
+# two-pass design (define all groups' geometry first, then fetch once per taxon key across
+# the whole scope). `TaxaFetch::stack_occurrences()` also gained a `gbifID` dedup step
+# (defense-in-depth; confirmed no dedup existed anywhere in the GBIF occurrence pipeline
+# before adding it, and that `TaxaMatch::standardize_match_data()` is an unrelated pipeline
+# -- classifier match records, not occurrence data -- so the gap was real, not stale). See
+# TaxaFetch/CLAUDE.md's Session 140 note for the full record, including the isolated-logic-
+# test verification against Session 139's own real bundled checkpoint data and the user's own
+# live RStudio confirmation the same session (4 taxon keys correctly collapsed to 2 GBIF
+# queries on real data).
+# Session 139, branch `main` — Phase 6 live-testing of
 # `TaxaID_Workflow_Template_TEST.R` (Session 138's reentry plan) surfaced and fixed three
 # more real bugs beyond Session 138's own scope. (1) Section 3/5 conflated "multiple
 # different observations sharing a bounding box" with "one observation detected at
@@ -418,3 +432,5 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 136 | `fetch_bold_reference_sequences()` added | TaxaLikely | New reference-fetch function, BOLD Systems analog of `fetch_ncbi_reference_sequences()`. Talks directly to BOLD's real v5 Data Portal API via `httr2` (no `bold` package dependency — that package targets BOLD's now-retired v3/v4 API and no longer works). Live-tested end to end. See `TaxaLikely/CLAUDE.md`'s Session 136 note. |
 | 138 | `join_priors()` output is now site-preserving for multi-site observations | TaxaAssign | Behavioral, not signature. Final `distinct()` call now also keys on `grid_id`/`main_habitat` (bug fix — previously collapsed a multi-site observation to one row per candidate per its own best site). Any caller using `join_priors()`'s multi-site `site` data-frame path must now call the new `combine_multisite_priors()` before `compute_posterior()`. |
 | 138 | `combine_multisite_priors()` added | TaxaAssign | New function, inserted between `join_priors()` and `compute_posterior()`. Combines per-site prior rows via precision-weighted logit combination. See `TaxaAssign/CLAUDE.md`'s Session 138 note. |
+| 140 | `stack_occurrences()` now drops duplicate-`gbifID` rows | TaxaFetch | Behavioral, not signature. Rows with a duplicated non-`NA` `gbifID` are dropped (first kept) whenever that column is present. Defense-in-depth against double-counted GBIF records; sources without a `gbifID` column (literature/DataONE) are unaffected. See `TaxaFetch/CLAUDE.md`'s Session 140 note. |
+| 140 | `fetch_occurrences_by_taxon()` added | TaxaFetch | New function. Taxon-centric batched GBIF fetch -- unions each candidate taxon's own search geometry and combines taxa sharing identical geometry into one `get_gbif_occurrences()` call. See `TaxaFetch/CLAUDE.md`'s Session 140 note. |

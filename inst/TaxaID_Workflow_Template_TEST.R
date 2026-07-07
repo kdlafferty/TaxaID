@@ -313,60 +313,63 @@ if (interactive()) {
 # =============================================================================
 # Find occurrences for the matched taxa and their relatives.
 #
-# Branches per spatial_group_id from Section 2.5:
-#   - Multi-member groups (>= 2 DISTINCT observation_id values): one pooled,
-#     community-level bounding-box fetch across that group's own candidate
-#     taxa -- the existing clustered design, just scoped to the group's own
-#     members and own search area instead of one single global
-#     STUDY_LAT/STUDY_LON.
-#   - Single-observation groups (exactly 1 distinct observation_id, whether
-#     it has 1 or N site rows): no pooling, no interactive search-area draw.
-#     Fetch is scoped to just that observation's own candidate genera within
-#     a small local, automatically computed radius (SINGLETON_RADIUS_DEG);
-#     on zero occurrences, broadens taxonomically via
-#     TaxaTools::escalate_taxonomic_rank() (genus -> family -> order) and
-#     refetches, up to ESCALATION_MAX_LEVELS escalations. Session 138 fix:
-#     this branch now loops over EVERY site row belonging to the observation
-#     (not just the first) -- a genuine multi-site single observation (e.g.
-#     this template's own OQ846725/ASV_2 case) must fetch occurrences at
-#     EACH of its real sites, not just one, so Section 5 can generate
-#     genuinely different per-site priors for combine_multisite_priors() to
-#     combine in Section 7.
+# Two passes, per the taxon-centric fetch-efficiency design (Session 139;
+# see ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md for
+# the full discussion this implements). Grouping the fetch loop by
+# observation/site (the pre-Session-139 design) meant two overlapping site
+# boxes wanting the same taxon issued two separately-issued GBIF queries,
+# risking the same record being counted twice downstream -- confirmed to
+# actually happen with this template's own bundled OQ846725/ASV_2 case.
+#
+#   Pass 1 -- define every spatial_group_id's search geometry, no fetching
+#     yet: an interactively-drawn polygon for multi-member groups (>= 2
+#     DISTINCT observation_id values -- the existing clustered design), or
+#     one automatic small bbox per site row (SINGLETON_RADIUS_DEG) for
+#     single-observation groups (exactly 1 distinct observation_id, whether
+#     it has 1 or N site rows -- e.g. a genuine multi-site observation like
+#     OQ846725/ASV_2). Interleaving box-definition with fetching (the old
+#     design) made it impossible to union a taxon's geometry across groups
+#     that hadn't been drawn yet.
+#   Pass 2 -- build one taxon_key -> geometry map spanning BOTH branches
+#     (family keys for multi-member groups, genus keys for single-observation
+#     groups) and fetch once per taxon key via
+#     TaxaFetch::fetch_occurrences_by_taxon(), which unions each taxon's own
+#     geometry (dissolving the overlapping-query duplicate-record risk at
+#     the source) and combines different taxa sharing identical geometry
+#     into one call. Single-observation genus-level candidates that come
+#     back with zero matching records are escalated
+#     (TaxaTools::escalate_taxonomic_rank(), genus -> family -> order) and
+#     refetched, up to ESCALATION_MAX_LEVELS additional rounds -- escalation
+#     is decided per starting genus, not per site: sites sharing a candidate
+#     genus already share the same escalation path, and a nonzero result
+#     anywhere in that genus's unioned search area means real local data
+#     exists for it (no need for per-site spatial attribution to decide
+#     whether THIS site individually would have escalated on its own).
+#     Multi-member (family-level) rows never escalate, matching the
+#     pre-Session-139 behavior for that branch.
 # =============================================================================
 
-group_ids            <- unique(site_table$spatial_group_id)
-occurrences_by_group  <- vector("list", length(group_ids))
+group_ids <- unique(site_table$spatial_group_id)
+
+# --- Pass 1: define geometry only, no fetching -----------------------------
+group_geometry <- vector("list", length(group_ids))
 
 for (.g in seq_along(group_ids)) {
 
-  group_id      <- group_ids[.g]
-  group_sites   <- site_table[site_table$spatial_group_id == group_id, , drop = FALSE]
-  group_members <- decontaminated_table[
-    decontaminated_table$observation_id %in% group_sites$observation_id, , drop = FALSE
-  ]
+  group_id    <- group_ids[.g]
+  group_sites <- site_table[site_table$spatial_group_id == group_id, , drop = FALSE]
   n_distinct_obs <- dplyr::n_distinct(group_sites$observation_id)
 
   # dplyr::n_distinct(group_sites$observation_id), NOT nrow(group_sites): a
-  # genuine multi-site single observation (one observation_id, >1 site row --
-  # e.g. this template's own OQ846725/ASV_2 case) must NOT be routed into the
-  # multi-member pooled/interactive-bbox branch below just because it has
-  # multiple site ROWS. Session 138 fix -- previously nrow(group_sites) >= 2L
-  # conflated "multiple sites of one observation" with "multiple different
-  # observations sharing a bounding box", incorrectly triggering the
-  # interactive define_search_polygon() gadget for a single-observation case
-  # (this was flagged but not fixed in Section 2.5's original KNOWN
-  # LIMITATION note -- now resolved here and in Section 5 below).
+  # genuine multi-site single observation (one observation_id, >1 site row)
+  # must NOT be routed into the multi-member pooled/interactive-bbox branch
+  # below just because it has multiple site ROWS (Session 138 fix).
   if (n_distinct_obs >= 2L) {
 
-    # --- Multi-member group: pooled community-level fetch ---------------------
     message(sprintf(
-      "Section 3: group %d/%d ('%s') -- %d distinct observation(s), %d site row(s) -- pooled fetch, draw a search area.",
+      "Section 3, Pass 1: group %d/%d ('%s') -- %d distinct observation(s), %d site row(s) -- draw a search area.",
       .g, length(group_ids), group_id, n_distinct_obs, nrow(group_sites)
     ))
-
-    families   <- unique(group_members$family)
-    taxa_keys  <- TaxaFetch::get_keys_from_context(tibble(family = families))
-    valid_keys <- taxa_keys$usageKey[!is.na(taxa_keys$usageKey)]
 
     bbox <- TaxaTools::define_search_polygon(
       lat        = mean(range(group_sites$lat)),
@@ -377,17 +380,15 @@ for (.g in seq_along(group_ids)) {
     )
 
     # define_search_polygon() returns NULL if its gadget is cancelled/closed
-    # without Done (same convention as group_observations_by_bbox()'s own
-    # loop). A pooled multi-member fetch needs a real, deliberately-drawn
-    # search area -- there's no sensible automatic fallback the way the
-    # singleton path has SINGLETON_RADIUS_DEG -- so stop with a clear,
-    # actionable message here rather than passing NULL through to
-    # get_gbif_occurrences(), which would only surface a confusing
-    # "geometry must be a single WKT string" error several calls downstream.
+    # without Done. A pooled multi-member fetch needs a real, deliberately-
+    # drawn search area -- there's no sensible automatic fallback the way
+    # the singleton path has SINGLETON_RADIUS_DEG -- so stop with a clear,
+    # actionable message immediately (Pass 1, before any fetching starts)
+    # rather than passing NULL through to a later fetch call.
     if (is.null(bbox)) {
       stop(sprintf(
         paste0(
-          "Section 3: define_search_polygon() was cancelled for multi-member group '%s' ",
+          "Section 3, Pass 1: define_search_polygon() was cancelled for multi-member group '%s' ",
           "(%d observation(s): %s). A pooled fetch needs a drawn search area -- re-run ",
           "this section and click Done after drawing a box."
         ),
@@ -395,92 +396,179 @@ for (.g in seq_along(group_ids)) {
       ), call. = FALSE)
     }
 
-    ## get_gbif_occurrences() picks the right GBIF API automatically: few keys ->
-    ## direct occ_data() calls (seconds, no GBIF account needed); many keys (>=
-    ## key_threshold, default 50 -- e.g. the 18S workflow's hundreds of keys) ->
-    ## the async bulk download API (minutes, requires GBIF_USER/PWD/EMAIL).
-    ## Also standardizes output columns across both paths and defaults to
-    ## species-rank-only records (rank_filter = "species") -- occurrences above
-    ## species rank are not usable by downstream taxon-level modelling anyway.
-    occurrences_by_group[[.g]] <- TaxaFetch::get_gbif_occurrences(
-      keys       = valid_keys,
-      geometry   = bbox,
-      year_range = YEAR_RANGE,
-      limit      = GBIF_LIMIT,
-      exclude_absent = TRUE,
-      basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
-      overwrite  = TRUE
-    )
+    group_geometry[[.g]] <- list(type = "multi_member", group_id = group_id,
+                                  geometry = bbox, sites = group_sites)
 
   } else {
 
-    # --- Single-observation group: taxonomic escalation, no pooling -----------
-    # Loop over every real site row for this observation (usually 1, but a
-    # multi-site observation has N) -- each site gets its own local escalation
-    # fetch; results are pooled into the same occurrences_by_group[[.g]] slot,
-    # which just feeds the global spatial model (Section 5 fits one model
-    # across all fetched occurrences, then predicts per-site priors
-    # separately) so no site-tagging is needed on the occurrence rows
-    # themselves.
     message(sprintf(
-      "Section 3: group %d/%d ('%s') -- 1 distinct observation, %d site row(s) -- escalation-ladder fetch, no interaction needed.",
+      "Section 3, Pass 1: group %d/%d ('%s') -- 1 distinct observation, %d site row(s) -- automatic local bbox(es).",
       .g, length(group_ids), group_id, nrow(group_sites)
     ))
 
-    site_occ <- vector("list", nrow(group_sites))
-
-    for (.s in seq_len(nrow(group_sites))) {
-
-      obs_bbox <- TaxaFetch::make_bbox_wkt(
-        lat        = group_sites$lat[.s],
-        lon        = group_sites$lon[.s],
+    site_bbox <- vapply(seq_len(nrow(group_sites)), function(.s) {
+      TaxaFetch::make_bbox_wkt(
+        lat = group_sites$lat[.s], lon = group_sites$lon[.s],
         radius_deg = SINGLETON_RADIUS_DEG
       )
+    }, character(1L))
 
-      candidate_genera <- unique(stats::na.omit(group_members$genus))
-      genus_occ        <- vector("list", length(candidate_genera))
-
-      for (.i in seq_along(candidate_genera)) {
-        rank_name  <- "genus"
-        taxon_name <- candidate_genera[.i]
-        fetched    <- tibble()
-
-        for (.level in 0:ESCALATION_MAX_LEVELS) {
-          key_df  <- stats::setNames(data.frame(taxon_name, stringsAsFactors = FALSE), rank_name)
-          key_row <- TaxaFetch::get_keys_from_context(key_df)
-          key     <- key_row$usageKey[!is.na(key_row$usageKey)]
-
-          if (length(key) > 0L) {
-            fetched <- TaxaFetch::get_gbif_occurrences(
-              keys       = key,
-              geometry   = obs_bbox,
-              year_range = YEAR_RANGE,
-              limit      = GBIF_LIMIT,
-              exclude_absent = TRUE,
-              basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
-              overwrite  = TRUE
-            )
-          }
-
-          if (nrow(fetched) > 0L || .level == ESCALATION_MAX_LEVELS) break
-
-          step <- TaxaTools::escalate_taxonomic_rank(taxon_name, current_rank = rank_name, verbose = FALSE)
-          if (is.na(step$taxon_name)) break
-          taxon_name <- step$taxon_name
-          rank_name  <- step$rank
-        }
-
-        genus_occ[[.i]] <- fetched
-      }
-
-      site_occ[[.s]] <- dplyr::bind_rows(genus_occ)
-    }
-
-    occurrences_by_group[[.g]] <- dplyr::bind_rows(site_occ)
+    group_geometry[[.g]] <- list(type = "singleton", group_id = group_id,
+                                  geometry = site_bbox, sites = group_sites)
   }
 }
 
-gbif_occurrences <- dplyr::bind_rows(occurrences_by_group) |>
+# --- Pass 2: build the combined taxon_key -> geometry map, fetch once ------
+
+# Multi-member groups: family-level candidates, resolved once, never
+# escalated -- one row per (family, group's own drawn polygon).
+multi_member_map <- dplyr::bind_rows(lapply(group_geometry, function(gg) {
+  if (gg$type != "multi_member") return(NULL)
+  group_members <- decontaminated_table[
+    decontaminated_table$observation_id %in% gg$sites$observation_id, , drop = FALSE
+  ]
+  families  <- unique(group_members$family)
+  taxa_keys <- TaxaFetch::get_keys_from_context(tibble(family = families))
+  valid     <- taxa_keys[!is.na(taxa_keys$usageKey), , drop = FALSE]
+  if (nrow(valid) == 0L) return(NULL)
+  tibble(
+    taxon_key  = valid$usageKey,
+    geometry   = gg$geometry,
+    rank_name  = "family",
+    taxon_name = valid$family
+  )
+}))
+
+# Single-observation groups: one row per (site, candidate genus) -- not yet
+# resolved to a usageKey, since taxon_name/rank_name change across
+# escalation rounds (resolved fresh each round by .resolve_round_keys()).
+singleton_rows <- dplyr::bind_rows(lapply(group_geometry, function(gg) {
+  if (gg$type != "singleton") return(NULL)
+  group_members <- decontaminated_table[
+    decontaminated_table$observation_id %in% gg$sites$observation_id, , drop = FALSE
+  ]
+  candidate_genera <- unique(stats::na.omit(group_members$genus))
+  if (length(candidate_genera) == 0L) return(NULL)
+  tidyr::crossing(site_idx = seq_along(gg$geometry), taxon_name = candidate_genera) |>
+    dplyr::mutate(geometry = gg$geometry[site_idx], rank_name = "genus") |>
+    dplyr::select(-site_idx)
+}))
+
+# Resolves each unique (taxon_name, rank_name) pair in `df` to a usageKey
+# (one get_keys_from_context() call per rank present, not per row -- sites
+# sharing a candidate genus/family share one lookup) and drops rows whose
+# name never resolves to a key at all (mirrors the pre-Session-139 escalation
+# ladder's own behavior: an unresolvable name still counts as "found
+# nothing" and is eligible to escalate further).
+.resolve_round_keys <- function(df) {
+  by_rank <- split(df, df$rank_name)
+  resolved <- lapply(by_rank, function(d) {
+    key_df  <- stats::setNames(data.frame(unique(d$taxon_name), stringsAsFactors = FALSE), d$rank_name[1L])
+    key_row <- TaxaFetch::get_keys_from_context(key_df)
+    lookup  <- stats::setNames(key_row$usageKey, key_row[[d$rank_name[1L]]])
+    d$taxon_key <- lookup[d$taxon_name]
+    d
+  })
+  dplyr::bind_rows(resolved)
+}
+
+# Rank-agnostic zero-hit check: does `occ` contain any row whose `rank_name`
+# text column matches `taxon_name` (case-insensitive)? Matching on the
+# taxonomic text column (always present, every rank) rather than a *Key
+# column avoids relying on GBIF usage-key columns that aren't all present in
+# the standard schema (e.g. no orderKey).
+.found_taxa <- function(occ, rank_name, taxon_names) {
+  if (nrow(occ) == 0L || !rank_name %in% names(occ)) return(character(0))
+  present <- unique(occ[[rank_name]][!is.na(occ[[rank_name]])])
+  taxon_names[tolower(trimws(taxon_names)) %in% tolower(trimws(present))]
+}
+
+singleton_round0 <- if (nrow(singleton_rows) > 0L) {
+  .resolve_round_keys(singleton_rows)
+} else {
+  singleton_rows
+}
+
+round0_map <- dplyr::bind_rows(multi_member_map, singleton_round0) |>
+  dplyr::filter(!is.na(taxon_key))
+
+message(sprintf(
+  "Section 3, Pass 2: round 0 -- %d distinct taxon key(s) (%d family, %d genus).",
+  dplyr::n_distinct(round0_map$taxon_key),
+  dplyr::n_distinct(round0_map$taxon_key[round0_map$rank_name == "family"]),
+  dplyr::n_distinct(round0_map$taxon_key[round0_map$rank_name == "genus"])
+))
+
+occ_round0 <- TaxaFetch::fetch_occurrences_by_taxon(
+  taxon_geometry_map = round0_map[, c("taxon_key", "geometry")],
+  year_range = YEAR_RANGE,
+  limit      = GBIF_LIMIT,
+  exclude_absent = TRUE,
+  basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
+  overwrite  = TRUE
+)
+
+occ_rounds <- list(occ_round0)
+
+# Only single-observation (genus-level) candidates ever escalate -- a
+# multi-member group's family-level fetch never did, before or after
+# Session 139.
+found0   <- .found_taxa(occ_round0, "genus", unique(singleton_round0$taxon_name))
+pending  <- singleton_rows[!singleton_rows$taxon_name %in% found0, , drop = FALSE]
+
+for (.round in seq_len(ESCALATION_MAX_LEVELS)) {
+  if (nrow(pending) == 0L) break
+
+  # Keyed on (taxon_name, rank_name), not taxon_name alone -- a name could in
+  # principle appear at two different ranks among still-pending rows (e.g. a
+  # rare cross-rank homonym), and rank_name is always known/unambiguous here.
+  zero_pairs <- unique(pending[, c("taxon_name", "rank_name")])
+  escalated  <- dplyr::bind_rows(lapply(seq_len(nrow(zero_pairs)), function(i) {
+    step <- TaxaTools::escalate_taxonomic_rank(
+      zero_pairs$taxon_name[i], current_rank = zero_pairs$rank_name[i], verbose = FALSE
+    )
+    if (is.na(step$taxon_name)) return(NULL)
+    tibble(
+      taxon_name = zero_pairs$taxon_name[i], rank_name = zero_pairs$rank_name[i],
+      new_name = step$taxon_name, new_rank = step$rank
+    )
+  }))
+
+  if (is.null(escalated) || nrow(escalated) == 0L) {
+    message("Section 3, Pass 2: no further escalation possible for any remaining candidate -- stopping.")
+    break
+  }
+
+  pending <- pending |>
+    dplyr::inner_join(escalated, by = c("taxon_name", "rank_name")) |>
+    dplyr::mutate(taxon_name = new_name, rank_name = new_rank) |>
+    dplyr::select(-new_name, -new_rank)
+
+  round_map <- .resolve_round_keys(pending) |> dplyr::filter(!is.na(taxon_key))
+  if (nrow(round_map) == 0L) break
+
+  message(sprintf(
+    "Section 3, Pass 2: escalation round %d/%d -- %d distinct taxon key(s).",
+    .round, ESCALATION_MAX_LEVELS, dplyr::n_distinct(round_map$taxon_key)
+  ))
+
+  occ_this_round <- TaxaFetch::fetch_occurrences_by_taxon(
+    taxon_geometry_map = round_map[, c("taxon_key", "geometry")],
+    year_range = YEAR_RANGE,
+    limit      = GBIF_LIMIT,
+    exclude_absent = TRUE,
+    basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
+    overwrite  = TRUE
+  )
+  occ_rounds <- c(occ_rounds, list(occ_this_round))
+
+  found_this_round <- unlist(lapply(unique(round_map$rank_name), function(r) {
+    .found_taxa(occ_this_round, r, unique(round_map$taxon_name[round_map$rank_name == r]))
+  }))
+  pending <- pending[!pending$taxon_name %in% found_this_round, , drop = FALSE]
+}
+
+gbif_occurrences <- dplyr::bind_rows(occ_rounds) |>
   # coord uncertainty (intentionally retains NA )
   dplyr::filter(is.na(coordinateUncertaintyInMeters) | coordinateUncertaintyInMeters <= 3000)|>
  # decimal places (counts digits after the decimal point)

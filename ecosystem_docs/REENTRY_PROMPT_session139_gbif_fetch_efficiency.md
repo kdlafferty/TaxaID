@@ -1,9 +1,20 @@
 # Reentry Prompt: GBIF Fetch Efficiency (Taxon-Centric Query Grouping)
 
-**STATUS: design discussed with the user, not implemented. Written 2026-07-06 (Session
-139, continued from Session 138's Phase 6 live-testing work), branch `main`.** Read this
-when picking up the GBIF-fetch-efficiency follow-up flagged during Session 138/139's
-Phase 6 live run.
+**STATUS: RESOLVED, Session 140 (2026-07-06).** The user confirmed the general
+(taxon-centric) fix over the narrow one, plus the `gbifID` dedup step as a separate
+defense-in-depth fix. Implemented as `TaxaFetch::fetch_occurrences_by_taxon()` +
+`stack_occurrences()` dedup + a two-pass restructuring of
+`inst/TaxaID_Workflow_Template_TEST.R` Section 3. See `TaxaFetch/CLAUDE.md`'s Session 140
+note for the full record (including the isolated-logic-test verification against this
+session's own real bundled checkpoint data) and `TaxaID/CLAUDE.md`'s Session 140 header.
+Item 4 below (GBIF's real WKT-complexity ceiling) was deliberately left uncharacterized,
+documented as a known limitation on the new function rather than silently assumed away.
+The rest of this file is kept as the original design record.
+
+**STATUS (superseded by the above): design discussed with the user, not implemented.
+Written 2026-07-06 (Session 139, continued from Session 138's Phase 6 live-testing
+work), branch `main`.** Read this when picking up the GBIF-fetch-efficiency follow-up
+flagged during Session 138/139's Phase 6 live run.
 
 ---
 
