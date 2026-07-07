@@ -28,20 +28,29 @@
 #' Observations that never fall inside any drawn box -- including every
 #' observation, if the user draws no box at all -- are \strong{not dropped}:
 #' they are left at their existing \code{spatial_group_id} (by default, from
-#' \code{\link{build_site_table}}, a singleton equal to their own
-#' \code{observation_id}), so they flow through the single-observation
-#' escalation path (taxonomic broadening: genus -> family -> order) instead
-#' of being silently discarded.
+#' \code{\link{build_site_table}}, a grid-snapped label derived from their own
+#' coordinates -- see that function's Details for why this is a location
+#' property, not an observation property), so they flow through the
+#' single-observation escalation path (taxonomic broadening: genus -> family
+#' -> order) instead of being silently discarded.
 #'
 #' @param sites Data frame with one row per observation, containing at least
 #'   \code{id_col}, \code{lat_col}, and \code{lon_col}. Typically the output
 #'   of \code{\link{build_site_table}}, which already carries
-#'   \code{spatial_group_id}/\code{spatial_group_N} defaults -- this function
-#'   \strong{updates those columns in place} for whichever observations get
-#'   captured by a drawn box, leaving everything else untouched. If
-#'   \code{sites} has no \code{spatial_group_id}/\code{spatial_group_N}
-#'   columns at all (i.e. it did not come from \code{build_site_table()}),
-#'   singleton defaults are initialized first, with a message.
+#'   \code{spatial_group_id}/\code{spatial_group_N}/\code{is_default_group}
+#'   defaults -- this function \strong{updates those columns in place} for
+#'   whichever observations get captured by a drawn box, leaving everything
+#'   else untouched. \code{is_default_group} (not the contents of
+#'   \code{spatial_group_id} itself) is what this function checks to decide
+#'   which rows are still eligible to be captured by a new box -- so it works
+#'   the same way regardless of what \code{build_site_table()}'s default
+#'   label happens to look like. If \code{sites} has no
+#'   \code{spatial_group_id}/\code{spatial_group_N} columns at all (i.e. it
+#'   did not come from \code{build_site_table()}), singleton defaults are
+#'   initialized first, with a message. If \code{sites} has
+#'   \code{spatial_group_id}/\code{spatial_group_N} but no
+#'   \code{is_default_group} (a site table built before this marker existed),
+#'   it is inferred from the old default convention, with a message.
 #' @param id_col Character. Column identifying each observation. Default
 #'   \code{"observation_id"}.
 #' @param lat_col,lon_col Character. Latitude/longitude column names. Default
@@ -50,17 +59,17 @@
 #'   \code{\link[TaxaTools]{define_search_polygon}}. Default
 #'   \code{"Esri.OceanBasemap"}.
 #'
-#' @return \code{sites} with \code{spatial_group_id}/\code{spatial_group_N}
-#'   updated in place: observations captured by a drawn box (in draw order;
-#'   an observation falling inside more than one box gets the
-#'   \strong{most recently drawn} one, with a warning -- see Details) get
-#'   \code{"spatial_group_1"}, \code{"spatial_group_2"}, ... and
-#'   \code{spatial_group_N} equal to that group's member count. Observations
-#'   already in a non-default (previously grouped, or manually assigned via
+#' @return \code{sites} with \code{spatial_group_id}/\code{spatial_group_N}/
+#'   \code{is_default_group} updated in place: observations captured by a
+#'   drawn box (in draw order; an observation falling inside more than one
+#'   box gets the \strong{most recently drawn} one, with a warning -- see
+#'   Details) get \code{"spatial_group_1"}, \code{"spatial_group_2"}, ...,
+#'   \code{spatial_group_N} equal to that group's member count, and
+#'   \code{is_default_group = FALSE}. Observations already in a non-default
+#'   (previously grouped, or manually assigned via
 #'   \code{\link{assign_spatial_group}}) group are left untouched regardless
 #'   of geometry. Everything else keeps its existing default. A message
-#'   reports how many observations were left at their default
-#'   single-observation group and why.
+#'   reports how many observations were left at their default group and why.
 #'
 #' @details
 #' \strong{Interaction model:} each iteration re-centres
@@ -145,14 +154,27 @@ group_observations_by_bbox <- function(sites,
     message(
       "group_observations_by_bbox: 'sites' has no spatial_group_id/spatial_group_N columns -- ",
       "initializing single-observation defaults (run TaxaMatch::build_site_table() first to ",
-      "get these automatically)."
+      "get grid-based defaults automatically)."
     )
     sites$spatial_group_id <- as.character(sites[[id_col]])
     sites$spatial_group_N  <- 1L
+    sites$is_default_group <- TRUE
+  } else if (!"is_default_group" %in% names(sites)) {
+    # Migration path for a site table built before Session 139 (grid-based
+    # defaults + is_default_group marker): fall back to the old heuristic
+    # (spatial_group_id == observation_id & spatial_group_N == 1) to infer
+    # which rows are still untouched, so older cached/saved site tables keep
+    # working without needing to be rebuilt.
+    message(
+      "group_observations_by_bbox: 'sites' has no is_default_group column -- inferring it from ",
+      "the pre-Session-139 default convention (spatial_group_id == observation_id). Re-run ",
+      "TaxaMatch::build_site_table() to get this column directly."
+    )
+    sites$is_default_group <- sites$spatial_group_id == as.character(sites[[id_col]]) &
+                              sites$spatial_group_N == 1L
   }
 
-  still_default <- sites$spatial_group_id == as.character(sites[[id_col]]) &
-                   sites$spatial_group_N == 1L
+  still_default <- sites$is_default_group
 
   polygons <- character(0)
   assigned <- !still_default
@@ -168,7 +190,13 @@ group_observations_by_bbox <- function(sites,
       lon        = view$lon,
       radius_deg = view$radius_deg,
       tile       = tile,
-      points     = data.frame(lat = remaining[[lat_col]], lng = remaining[[lon_col]])
+      points     = data.frame(lat = remaining[[lat_col]], lng = remaining[[lon_col]]),
+      title      = sprintf(
+        "Draw Spatial Group %d (%d observation(s) still ungrouped)",
+        length(polygons) + 1L, nrow(remaining)
+      ),
+      done_label   = "Group These Points",
+      cancel_label = "No More Groups"
     )
 
     if (is.null(wkt)) {
@@ -243,9 +271,8 @@ group_observations_by_bbox <- function(sites,
 
 #' Assign spatial_group_id to observations from a set of drawn WKT polygons
 #'
-#' Only touches observations currently at their default single-observation
-#' state (\code{spatial_group_id == id_col} value and \code{spatial_group_N
-#' == 1L}) -- anything already grouped (from a prior call, or manual
+#' Only touches observations currently marked \code{is_default_group ==
+#' TRUE} -- anything already grouped (from a prior call, or manual
 #' assignment via \code{\link{assign_spatial_group}}) is left unchanged
 #' regardless of whether a newly drawn polygon happens to cover it
 #' geometrically. Among the still-default observations: a point inside a
@@ -257,18 +284,17 @@ group_observations_by_bbox <- function(sites,
 #' left at their default, not dropped.
 #'
 #' @param sites Data frame with \code{id_col}/\code{lat_col}/\code{lon_col}
-#'   and existing \code{spatial_group_id}/\code{spatial_group_N} columns.
+#'   and existing \code{spatial_group_id}/\code{spatial_group_N}/
+#'   \code{is_default_group} columns.
 #' @param polygons Character vector of WKT POLYGON strings, in draw order.
 #'   May be length 0 (no boxes drawn).
-#' @return \code{sites} with \code{spatial_group_id}/\code{spatial_group_N}
-#'   updated.
+#' @return \code{sites} with \code{spatial_group_id}/\code{spatial_group_N}/
+#'   \code{is_default_group} updated.
 #' @noRd
 .assign_spatial_groups_from_polygons <- function(sites, polygons, id_col = "observation_id",
                                                  lat_col = "lat", lon_col = "lon") {
 
-  is_default <- sites$spatial_group_id == as.character(sites[[id_col]]) &
-                sites$spatial_group_N == 1L
-  target_idx <- which(is_default)
+  target_idx <- which(sites$is_default_group)
 
   if (length(target_idx) == 0L) {
     if (length(polygons) > 0L)
@@ -282,13 +308,18 @@ group_observations_by_bbox <- function(sites,
   if (length(polygons) > 0L) {
     pts_sf <- sf::st_as_sf(sites[target_idx, , drop = FALSE], coords = c(lon_col, lat_col), crs = 4326L)
 
+    # Start numbering past whatever "spatial_group_<n>" labels already exist
+    # (e.g. build_site_table()'s own default exact-match groups) so a newly
+    # drawn box's group id can never collide with a pre-existing one.
+    group_start <- .next_spatial_group_number(sites$spatial_group_id)
+
     for (i in seq_along(polygons)) {
       poly_sf <- tryCatch(sf::st_as_sfc(polygons[[i]], crs = 4326L), error = function(e) NULL)
       if (is.null(poly_sf)) next
 
       inside <- as.logical(sf::st_within(pts_sf, poly_sf, sparse = FALSE)[, 1])
       match_count[inside] <- match_count[inside] + 1L
-      new_group[inside]   <- sprintf("spatial_group_%d", i)  # overwritten by later i: last-drawn-wins
+      new_group[inside]   <- sprintf("spatial_group_%d", group_start + i - 1L)  # overwritten by later i: last-drawn-wins
     }
 
     ambiguous <- which(match_count > 1L)
@@ -306,7 +337,8 @@ group_observations_by_bbox <- function(sites,
 
   grouped_local <- !is.na(new_group)
   if (any(grouped_local)) {
-    sites$spatial_group_id[target_idx[grouped_local]] <- new_group[grouped_local]
+    sites$spatial_group_id[target_idx[grouped_local]]  <- new_group[grouped_local]
+    sites$is_default_group[target_idx[grouped_local]]  <- FALSE
   }
 
   n_leftover <- sum(!grouped_local)
@@ -404,7 +436,10 @@ group_observations_by_bbox <- function(sites,
     new_wkt <- TaxaTools::define_search_polygon(
       init_polygon = polygons[[idx]],
       tile         = tile,
-      points       = data.frame(lat = candidate_sites[[lat_col]], lng = candidate_sites[[lon_col]])
+      points       = data.frame(lat = candidate_sites[[lat_col]], lng = candidate_sites[[lon_col]]),
+      title        = sprintf("Reshape Spatial Group %d", idx),
+      done_label   = "Save Shape",
+      cancel_label = "Keep Original Shape"
     )
     if (!is.null(new_wkt)) {
       polygons[[idx]] <- new_wkt

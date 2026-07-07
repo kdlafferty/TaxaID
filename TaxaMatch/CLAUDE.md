@@ -1,6 +1,25 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-05 (Session 137 continued — join_event_site_metadata() added:
+# Last updated: 2026-07-06 (Session 139 — two related fixes, both found via live testing,
+# not code reading. (1) build_site_table()'s default spatial_group_id changed from
+# observation_id to an exact-(lat,lon)-match grouping (new is_default_group marker column
+# replaces the old spatial_group_id==observation_id heuristic group_observations_by_bbox()/
+# assign_spatial_group() used to detect "still default"). A grid-snapping design (round to
+# a fixed bin size) was tried first and rejected after it collapsed four genuinely distinct
+# real observations into one default cluster on this ecosystem's own bundled test data --
+# exact match has no such tuning parameter and matches this ecosystem's actual data flow
+# (shared coordinates come from a site-metadata table join, not noisy independent GPS).
+# New .next_spatial_group_number() helper keeps default-assigned and interactively-drawn
+# "spatial_group_<n>" labels from colliding. (2) Spatial-grouping applet usability redesign:
+# TaxaTools::define_search_polygon() gained title/done_label/cancel_label params (backward
+# compatible) so group_observations_by_bbox() can describe what each button does in context
+# ("Group These Points"/"No More Groups" instead of generic Done/Cancel) and show per-group
+# progress in the title itself; the gadget's initial zoom is now one step further out so the
+# starting (unshrunk) box is actually visible on first open. See Session 139 note below for
+# the full record, including a real live bug (define_search_polygon() returning NULL on
+# Cancel crashed several calls downstream in TaxaID_Workflow_Template_TEST.R's Section 3 with
+# a confusing error) found and fixed the same way.
+# Session 137 continued — join_event_site_metadata() added:
 # Phase 4 (DNA/BLAST half) of the observation-pipeline-wiring plan. Produces a site_df for
 # build_site_table() from an event-level detections table joined against a
 # separately-maintained site-metadata table, generalizing the ecosystem's existing
@@ -149,9 +168,9 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `build_site_table()` | R/build_site_table.R | Complete | Unifies per-observation site info (`observation_id`, `lat`, `lon`, `observed_on`) across all three match-object pathways into one long-format table. Image pathway (`score_image_inat()` output): extracted directly from embedded `lat`/`lng`/`observed_on`. DNA/BLAST and acoustic pathways: neither carries site info in the match object itself, so `site_df` must be supplied externally; may have more than one row per `observation_id` -- this is the correct shape for a sequence ASV genuinely detected at several real sample sites in one sequencing run (see Session 134 note). **Session 134b:** also populates `spatial_group_id` (default = the row's own `observation_id`) and `spatial_group_N` (default = `1L`) on every row from the moment the table is built, so every site table has valid, non-missing values before any grouping step runs -- `group_observations_by_bbox()`/`assign_spatial_group()` update these in place. |
-| `group_observations_by_bbox()` | R/group_observations_by_bbox.R | Complete | **Session 134b, moved here from TaxaFetch and reworked** (see that session's note below for the full design rationale). Interactive: loops `TaxaTools::define_search_polygon()` (re-centred each time on still-default observations, guaranteed to fully enclose them) to collect one or more group polygons, then an end-of-loop review step (list drawn groups by member count; re-open one by number to reshape via `init_polygon`; `"delete <n>"` to remove one, releasing its members back to default; Enter to finalize). Updates `spatial_group_id`/`spatial_group_N` **in place** on a `build_site_table()`-shaped input -- only touches observations still at their default single-observation state; anything already grouped (prior call, or `assign_spatial_group()`) is left untouched regardless of geometry. Overlap rule: **last-drawn-wins** with a `warning()` naming every ambiguous `observation_id`. Internal helpers `.bbox_center_radius()`, `.assign_spatial_groups_from_polygons()`, and `.review_drawn_groups()`'s non-interactive/zero-polygon paths are pure and unit-tested without a live gadget session. |
-| `assign_spatial_group()` | R/assign_spatial_group.R | Complete | **Session 134b.** Manual `spatial_group_id` setter for a named set of observations -- for a study where grouping is already known from metadata, or to hand-correct a few observations after `group_observations_by_bbox()`. Validates every named `observation_id` exists; **collision guard**: stops if the target `spatial_group_id` is already used by an observation *not* named in the call (would otherwise silently expand an unrelated group's membership) -- include that observation explicitly to merge groups instead. Recomputes `spatial_group_N` in sync. |
+| `build_site_table()` | R/build_site_table.R | Complete | Unifies per-observation site info (`observation_id`, `lat`, `lon`, `observed_on`) across all three match-object pathways into one long-format table. Image pathway (`score_image_inat()` output): extracted directly from embedded `lat`/`lng`/`observed_on`. DNA/BLAST and acoustic pathways: neither carries site info in the match object itself, so `site_df` must be supplied externally; may have more than one row per `observation_id` -- this is the correct shape for a sequence ASV genuinely detected at several real sample sites in one sequencing run (see Session 134 note). **Session 134b:** also populates `spatial_group_id`/`spatial_group_N` on every row from the moment the table is built. **Session 139 (default changed):** `spatial_group_id` now defaults to `"spatial_group_<n>"`, grouping rows by **exact** `(lat, lon)` match -- not the row's own `observation_id` (spatial_group_id is a location property; two different observations sharing an exact site coordinate, e.g. both joined from the same site-metadata row, now correctly default to the same group, and one observation's own several genuinely different sites now correctly default to *different* groups). A grid-snapping design (round to a fixed bin size) was tried first and rejected -- see the function's own `@details` for why exact match is both simpler and semantically correct here, and no bin size is well-posed in general. New `is_default_group` column (always `TRUE` here) replaces the old `spatial_group_id == observation_id` heuristic `group_observations_by_bbox()`/`assign_spatial_group()` used to infer "still default" -- both now just check this boolean directly. `default_grid_size` parameter from an earlier same-session iteration was removed entirely (superseded by exact match, never shipped in a release). |
+| `group_observations_by_bbox()` | R/group_observations_by_bbox.R | Complete | **Session 134b, moved here from TaxaFetch and reworked** (see that session's note below for the full design rationale). Interactive: loops `TaxaTools::define_search_polygon()` (re-centred each time on still-default observations, guaranteed to fully enclose them) to collect one or more group polygons, then an end-of-loop review step (list drawn groups by member count; re-open one by number to reshape via `init_polygon`; `"delete <n>"` to remove one, releasing its members back to default; Enter to finalize). Updates `spatial_group_id`/`spatial_group_N` **in place** on a `build_site_table()`-shaped input -- only touches observations still at their default single-observation state; anything already grouped (prior call, or `assign_spatial_group()`) is left untouched regardless of geometry. Overlap rule: **last-drawn-wins** with a `warning()` naming every ambiguous `observation_id`. Internal helpers `.bbox_center_radius()`, `.assign_spatial_groups_from_polygons()`, and `.review_drawn_groups()`'s non-interactive/zero-polygon paths are pure and unit-tested without a live gadget session. **Session 139:** checks `is_default_group` directly instead of re-deriving "still default" from `spatial_group_id`'s contents (needed once `build_site_table()`'s default label stopped being `observation_id`-shaped); newly drawn groups' `"spatial_group_<n>"` numbering now starts past whatever numbers `build_site_table()`'s own exact-match default already used (`.next_spatial_group_number()`), so the two numbering sources can never collide; also sets `is_default_group = FALSE` for captured/reshaped rows. Gadget calls now pass context-specific `title`/`done_label`/`cancel_label` ("Group These Points"/"No More Groups", with per-iteration progress in the title) instead of relying on `define_search_polygon()`'s generic defaults -- see `TaxaTools::define_search_polygon()`'s own Session 139 note. |
+| `assign_spatial_group()` | R/assign_spatial_group.R | Complete | **Session 134b.** Manual `spatial_group_id` setter for a named set of observations -- for a study where grouping is already known from metadata, or to hand-correct a few observations after `group_observations_by_bbox()`. Validates every named `observation_id` exists; **collision guard**: stops if the target `spatial_group_id` is already used by an observation *not* named in the call (would otherwise silently expand an unrelated group's membership) -- include that observation explicitly to merge groups instead. Recomputes `spatial_group_N` in sync. **Session 139:** also clears `is_default_group` (sets `FALSE`) for the named observations when that column is present; no-ops harmlessly on older-shaped input without it. |
 | `join_event_site_metadata()` | R/join_event_site_metadata.R | Complete | **Session 137 (Phase 4).** Produces a `site_df` for `build_site_table()` from any event-level detections table (one row per `id_col` x `event_col` pair actually observed) joined against a separately-maintained site-metadata table (`event_col` + `lat`/`lon`/`observed_on`) -- the same "sample column -> attribute lookup table" pattern already used ecosystem-wide to identify blanks (`BLANKS_MARCH`/`BLANKS_AUG` in `PtConceptionWorkflow_12S.R`, `control_samples` in `TaxaFlag::flag_contaminant()`), generalized to carry site coordinates instead of (or alongside) blank status. Data-type-agnostic: DNA/BLAST (Reads-table sample columns, already pivoted to long format and filtered to real detections) and acoustic (recording/device identifiers) both reduce to the same join, so one function serves both rather than duplicating it per pathway. `control_samples` param excludes blanks before joining (blanks are not real site detections). Warns (does not error) on events with no matching site-metadata row -- those rows get `NA` `lat`/`lon` rather than being silently dropped. |
 
 ### Standardization (original)
@@ -293,6 +312,96 @@ inside `filter_redundant_hypotheses()` via `match()`.
 ---
 
 ## Session Notes
+
+**Session 139 (2026-07-06): default spatial_group_id redesign (exact-match, not observation_id) + spatial-grouping applet usability fixes**
+
+Branch `main`. Found live, during the user's own interactive Phase 6 testing of
+`TaxaID_Workflow_Template_TEST.R` (session continuing from `ecosystem_docs/
+REENTRY_PROMPT_session138_multisite_posterior_combination.md`'s Phase 6) -- not from
+reading code.
+
+**The core insight, from the user directly:** `build_site_table()`'s default
+`spatial_group_id = observation_id` conflates two different things. `spatial_group_id` is
+supposed to answer "do these coordinates belong together," a property of *location* -- but
+defaulting it to the row's own observation made a genuine multi-site observation's several
+sites always share one group (regardless of whether they're actually near each other),
+while two different observations sharing an exact site coordinate (e.g. two ASVs both
+detected in the same physical sample) never defaulted to sharing a group at all, even
+though that's real, meaningful co-location information. This directly contradicts this
+ecosystem's own stated Session 134 design principle that clustering should be a geometric
+property of coordinates, not a submission-process property.
+
+**First attempt (grid-snapping) tried and rejected, live, same session:** a design
+rounding `(lat, lon)` to a fixed bin size (`TaxaExpect::create_sites_from_grid()`'s own
+label format, `"Grid_{lat_r}_{lon_r}"`) was implemented first. Live-tested against this
+template's own real bundled data with a `0.1`-degree default bin: it collapsed **four**
+genuinely distinct observations (a real sample coordinate and a fallback/placeholder
+coordinate that happened to sit within ~11km of each other) into one default cluster --
+reintroducing, automatically and silently, the exact "swept into an unrelated cluster"
+ambiguity this whole redesign exists to prevent. Choosing a "correct" bin size is not
+well-posed in general (depends on how close together a given study's real sites happen to
+be, which this function has no way to know). **User's fix, adopted:** group by **exact**
+`(lat, lon)` match instead -- no tuning parameter, and correct for this ecosystem's actual
+data flow, where shared coordinates come from a site-metadata table join (e.g.
+`join_event_site_metadata()`'s pattern), not independent noisy GPS reads of the same
+physical spot. `default_grid_size` (added, then removed the same session) never shipped
+in any released state.
+
+**`is_default_group` column added** (`build_site_table()` sets it `TRUE` on every row) to
+replace the old `spatial_group_id == observation_id & spatial_group_N == 1` heuristic
+`group_observations_by_bbox()`/`.assign_spatial_groups_from_polygons()` used to infer
+"still at default" -- needed once the default label stopped being `observation_id`-shaped,
+but a cleaner mechanism regardless (decouples "is this default" from having to know or
+guess what the default label looks like). `group_observations_by_bbox()` migrates an
+older-shaped `sites` input missing this column via the old heuristic, with a message, so
+existing cached/saved site tables keep working. `assign_spatial_group()` also clears it
+for manually-assigned rows when present (no-ops harmlessly otherwise).
+
+**Numbering-collision guard added:** once both `build_site_table()`'s exact-match default
+*and* `group_observations_by_bbox()`'s drawn groups mint `"spatial_group_<n>"` labels, they
+could collide (e.g. a default group already named `spatial_group_1`, then a freshly drawn
+box also starting its own count at 1) -- a real, live-tested risk that didn't exist before
+this session, since the old `observation_id`-shaped default could never collide with the
+`"spatial_group_<n>"` format by construction. New `.next_spatial_group_number()` helper
+(shared internal, in `build_site_table.R`) scans existing `spatial_group_id` values and
+returns one past the highest `"spatial_group_<n>"` number found; both the default
+assignment and the drawn-group numbering now go through it.
+
+**Spatial-grouping applet usability redesign** (same session, prompted directly by the
+user hitting real confusion live): `TaxaTools::define_search_polygon()` gained `title`/
+`done_label`/`cancel_label` parameters (backward-compatible defaults unchanged) -- see
+that package's own Session 139 note for the full detail. `group_observations_by_bbox()`'s
+draw loop now passes `done_label = "Group These Points"`, `cancel_label = "No More
+Groups"`, and a per-iteration `title` showing live progress (`"Draw Spatial Group N (M
+observation(s) still ungrouped)"`) instead of relying on the gadget's generic "Done"/
+"Cancel" wording; `.review_drawn_groups()`'s reshape call similarly now reads "Save
+Shape"/"Keep Original Shape" with a `"Reshape Spatial Group N"` title.
+
+**Real bug found and fixed the same way** (live testing, not code reading):
+`TaxaID_Workflow_Template_TEST.R`'s Section 3 calls `TaxaTools::define_search_polygon()`
+directly for a multi-member group's pooled search area, but never checked whether it
+returned `NULL` (which it does when its own gadget is cancelled) before passing that
+straight into `TaxaFetch::get_gbif_occurrences(geometry = ...)` -- which crashed several
+calls downstream with a confusing "geometry must be a single WKT string" error instead of
+a clear message naming the actual problem. Fixed with a direct `stop()` in the template
+naming the affected group and its members. Also added per-group progress `message()`s to
+Section 3's loop (both the pooled and escalation-ladder branches) after the user reported
+the multi-step loop was "hard to debug since the function groups a lot of processes."
+
+`devtools::document()` + `devtools::test()` (450 expectations, 0 failures) +
+`devtools::check()` (0 errors, 0 warnings, 0 notes) all clean, twice (once after the
+exact-match/is_default_group work, again after the applet-redesign work). New/updated
+tests across `test-build_site_table.R` (exact-match default behavior, co-located vs.
+differently-located observations, `.next_spatial_group_number()` directly),
+`test-group_observations_by_bbox.R` (`is_default_group` propagation, numbering-collision
+avoidance), and `test-assign_spatial_group.R` (`is_default_group` clearing, backward
+compatibility without the column).
+
+**Not done this session:** the two-pass split (define every group's geometry before
+fetching any of them) that the taxon-centric GBIF-fetch-efficiency design depends on --
+see `ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md`'s own
+same-session addition for why this session's applet work makes that split newly relevant,
+without implementing it.
 
 **Session 137 continued (2026-07-05): join_event_site_metadata() — Phase 4 (DNA/BLAST half) of the observation-pipeline-wiring plan**
 

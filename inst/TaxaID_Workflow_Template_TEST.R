@@ -68,16 +68,19 @@ SAMPLE_SITE_METADATA <- tibble(
   lon         = c(-120.41, -120.36, NA),
   observed_on = c("2026-03-14", "2026-03-14", "2026-03-14")
 )
-# KNOWN LIMITATION surfaced by this real bundled data, not fixed here: one ASV
-# in Reads_Table (OQ846725) has real (non-blank) reads in BOTH sample_1 AND
-# sample_2 -- a genuine multi-site ASV. build_site_table() defaults both of
-# its site rows to the SAME spatial_group_id (its own observation_id), so
-# spatial_group_N counts SITE ROWS, not distinct observations -- this ASV
-# reads as a 2-member "group" even though it is one observation, not two.
-# This is exactly the deferred `(observation_id, site)` schema question
-# (Phase 5 of the reentry plan) -- not resolved here; Sections 3/5/7 below
-# will process this ASV's candidates correctly but under a group_N that
-# conflates "multi-site" with "multi-observation."
+# One ASV in Reads_Table (OQ846725) has real (non-blank) reads in BOTH
+# sample_1 AND sample_2 -- a genuine multi-site ASV. build_site_table()
+# defaults both of its site rows to the SAME spatial_group_id (its own
+# observation_id), so this ASV has 2 site rows under one spatial_group_id --
+# the stored spatial_group_N column counts SITE ROWS, not distinct
+# observations, and is unreliable for this reason (see Section 3's own note).
+# Session 137 first surfaced this as a live bug (Phase 6 test run); Session
+# 138 fixed Sections 3 and 5 to branch on the number of DISTINCT
+# observation_id values in a group rather than the row count, so this case
+# is now handled correctly: per-site (not pooled, not interactively-boxed)
+# occurrence fetch and per-site (not averaged-centroid) prior generation,
+# feeding combine_multisite_priors() in Section 7 with genuinely different
+# per-site priors.
 
 # --- TaxaExpect model settings -----------------------------------------------
 MORAN_K      <- 5L                       # Spatial basis vectors
@@ -311,16 +314,24 @@ if (interactive()) {
 # Find occurrences for the matched taxa and their relatives.
 #
 # Branches per spatial_group_id from Section 2.5:
-#   - Multi-member groups (spatial_group_N >= 2): one pooled, community-level
-#     bounding-box fetch across that group's own candidate taxa -- the
-#     existing clustered design, just scoped to the group's own members and
-#     own search area instead of one single global STUDY_LAT/STUDY_LON.
-#   - Single-observation groups (spatial_group_N == 1): no pooling, no
-#     interactive search-area draw. Fetch is scoped to just that
-#     observation's own candidate genera within a small local, automatically
-#     computed radius (SINGLETON_RADIUS_DEG); on zero occurrences, broadens
-#     taxonomically via TaxaTools::escalate_taxonomic_rank() (genus -> family
-#     -> order) and refetches, up to ESCALATION_MAX_LEVELS escalations.
+#   - Multi-member groups (>= 2 DISTINCT observation_id values): one pooled,
+#     community-level bounding-box fetch across that group's own candidate
+#     taxa -- the existing clustered design, just scoped to the group's own
+#     members and own search area instead of one single global
+#     STUDY_LAT/STUDY_LON.
+#   - Single-observation groups (exactly 1 distinct observation_id, whether
+#     it has 1 or N site rows): no pooling, no interactive search-area draw.
+#     Fetch is scoped to just that observation's own candidate genera within
+#     a small local, automatically computed radius (SINGLETON_RADIUS_DEG);
+#     on zero occurrences, broadens taxonomically via
+#     TaxaTools::escalate_taxonomic_rank() (genus -> family -> order) and
+#     refetches, up to ESCALATION_MAX_LEVELS escalations. Session 138 fix:
+#     this branch now loops over EVERY site row belonging to the observation
+#     (not just the first) -- a genuine multi-site single observation (e.g.
+#     this template's own OQ846725/ASV_2 case) must fetch occurrences at
+#     EACH of its real sites, not just one, so Section 5 can generate
+#     genuinely different per-site priors for combine_multisite_priors() to
+#     combine in Section 7.
 # =============================================================================
 
 group_ids            <- unique(site_table$spatial_group_id)
@@ -333,18 +344,26 @@ for (.g in seq_along(group_ids)) {
   group_members <- decontaminated_table[
     decontaminated_table$observation_id %in% group_sites$observation_id, , drop = FALSE
   ]
+  n_distinct_obs <- dplyr::n_distinct(group_sites$observation_id)
 
-  # nrow(group_sites), not the stored spatial_group_N column: build_site_table()
-  # hardcodes spatial_group_N = 1L per row regardless of duplicates (only
-  # group_observations_by_bbox() recomputes it via real table() counting after
-  # grouping actually runs) -- so a multi-site single ASV (one observation_id,
-  # >1 site row, e.g. this template's own OQ846725/ASV case, see Section 2.5's
-  # KNOWN LIMITATION note) would otherwise read as spatial_group_N = 1 and
-  # silently lose every site row after its first. nrow() always reflects what
-  # is actually in site_table for this group, whether or not grouping ran.
-  if (nrow(group_sites) >= 2L) {
+  # dplyr::n_distinct(group_sites$observation_id), NOT nrow(group_sites): a
+  # genuine multi-site single observation (one observation_id, >1 site row --
+  # e.g. this template's own OQ846725/ASV_2 case) must NOT be routed into the
+  # multi-member pooled/interactive-bbox branch below just because it has
+  # multiple site ROWS. Session 138 fix -- previously nrow(group_sites) >= 2L
+  # conflated "multiple sites of one observation" with "multiple different
+  # observations sharing a bounding box", incorrectly triggering the
+  # interactive define_search_polygon() gadget for a single-observation case
+  # (this was flagged but not fixed in Section 2.5's original KNOWN
+  # LIMITATION note -- now resolved here and in Section 5 below).
+  if (n_distinct_obs >= 2L) {
 
     # --- Multi-member group: pooled community-level fetch ---------------------
+    message(sprintf(
+      "Section 3: group %d/%d ('%s') -- %d distinct observation(s), %d site row(s) -- pooled fetch, draw a search area.",
+      .g, length(group_ids), group_id, n_distinct_obs, nrow(group_sites)
+    ))
+
     families   <- unique(group_members$family)
     taxa_keys  <- TaxaFetch::get_keys_from_context(tibble(family = families))
     valid_keys <- taxa_keys$usageKey[!is.na(taxa_keys$usageKey)]
@@ -353,8 +372,28 @@ for (.g in seq_along(group_ids)) {
       lat        = mean(range(group_sites$lat)),
       lon        = mean(range(group_sites$lon)),
       radius_deg = STUDY_RADIUS,
-      points     = data.frame(lat = group_sites$lat, lng = group_sites$lon)
+      points     = data.frame(lat = group_sites$lat, lng = group_sites$lon),
+      title      = sprintf("Define Search Area for %s (%d observation(s))", group_id, n_distinct_obs)
     )
+
+    # define_search_polygon() returns NULL if its gadget is cancelled/closed
+    # without Done (same convention as group_observations_by_bbox()'s own
+    # loop). A pooled multi-member fetch needs a real, deliberately-drawn
+    # search area -- there's no sensible automatic fallback the way the
+    # singleton path has SINGLETON_RADIUS_DEG -- so stop with a clear,
+    # actionable message here rather than passing NULL through to
+    # get_gbif_occurrences(), which would only surface a confusing
+    # "geometry must be a single WKT string" error several calls downstream.
+    if (is.null(bbox)) {
+      stop(sprintf(
+        paste0(
+          "Section 3: define_search_polygon() was cancelled for multi-member group '%s' ",
+          "(%d observation(s): %s). A pooled fetch needs a drawn search area -- re-run ",
+          "this section and click Done after drawing a box."
+        ),
+        group_id, n_distinct_obs, paste(unique(group_sites$observation_id), collapse = ", ")
+      ), call. = FALSE)
+    }
 
     ## get_gbif_occurrences() picks the right GBIF API automatically: few keys ->
     ## direct occ_data() calls (seconds, no GBIF account needed); many keys (>=
@@ -376,49 +415,68 @@ for (.g in seq_along(group_ids)) {
   } else {
 
     # --- Single-observation group: taxonomic escalation, no pooling -----------
-    obs_bbox <- TaxaFetch::make_bbox_wkt(
-      lat        = group_sites$lat[1L],
-      lon        = group_sites$lon[1L],
-      radius_deg = SINGLETON_RADIUS_DEG
-    )
+    # Loop over every real site row for this observation (usually 1, but a
+    # multi-site observation has N) -- each site gets its own local escalation
+    # fetch; results are pooled into the same occurrences_by_group[[.g]] slot,
+    # which just feeds the global spatial model (Section 5 fits one model
+    # across all fetched occurrences, then predicts per-site priors
+    # separately) so no site-tagging is needed on the occurrence rows
+    # themselves.
+    message(sprintf(
+      "Section 3: group %d/%d ('%s') -- 1 distinct observation, %d site row(s) -- escalation-ladder fetch, no interaction needed.",
+      .g, length(group_ids), group_id, nrow(group_sites)
+    ))
 
-    candidate_genera <- unique(stats::na.omit(group_members$genus))
-    genus_occ        <- vector("list", length(candidate_genera))
+    site_occ <- vector("list", nrow(group_sites))
 
-    for (.i in seq_along(candidate_genera)) {
-      rank_name  <- "genus"
-      taxon_name <- candidate_genera[.i]
-      fetched    <- tibble()
+    for (.s in seq_len(nrow(group_sites))) {
 
-      for (.level in 0:ESCALATION_MAX_LEVELS) {
-        key_df  <- stats::setNames(data.frame(taxon_name, stringsAsFactors = FALSE), rank_name)
-        key_row <- TaxaFetch::get_keys_from_context(key_df)
-        key     <- key_row$usageKey[!is.na(key_row$usageKey)]
+      obs_bbox <- TaxaFetch::make_bbox_wkt(
+        lat        = group_sites$lat[.s],
+        lon        = group_sites$lon[.s],
+        radius_deg = SINGLETON_RADIUS_DEG
+      )
 
-        if (length(key) > 0L) {
-          fetched <- TaxaFetch::get_gbif_occurrences(
-            keys       = key,
-            geometry   = obs_bbox,
-            year_range = YEAR_RANGE,
-            limit      = GBIF_LIMIT,
-            exclude_absent = TRUE,
-            basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
-            overwrite  = TRUE
-          )
+      candidate_genera <- unique(stats::na.omit(group_members$genus))
+      genus_occ        <- vector("list", length(candidate_genera))
+
+      for (.i in seq_along(candidate_genera)) {
+        rank_name  <- "genus"
+        taxon_name <- candidate_genera[.i]
+        fetched    <- tibble()
+
+        for (.level in 0:ESCALATION_MAX_LEVELS) {
+          key_df  <- stats::setNames(data.frame(taxon_name, stringsAsFactors = FALSE), rank_name)
+          key_row <- TaxaFetch::get_keys_from_context(key_df)
+          key     <- key_row$usageKey[!is.na(key_row$usageKey)]
+
+          if (length(key) > 0L) {
+            fetched <- TaxaFetch::get_gbif_occurrences(
+              keys       = key,
+              geometry   = obs_bbox,
+              year_range = YEAR_RANGE,
+              limit      = GBIF_LIMIT,
+              exclude_absent = TRUE,
+              basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
+              overwrite  = TRUE
+            )
+          }
+
+          if (nrow(fetched) > 0L || .level == ESCALATION_MAX_LEVELS) break
+
+          step <- TaxaTools::escalate_taxonomic_rank(taxon_name, current_rank = rank_name, verbose = FALSE)
+          if (is.na(step$taxon_name)) break
+          taxon_name <- step$taxon_name
+          rank_name  <- step$rank
         }
 
-        if (nrow(fetched) > 0L || .level == ESCALATION_MAX_LEVELS) break
-
-        step <- TaxaTools::escalate_taxonomic_rank(taxon_name, current_rank = rank_name, verbose = FALSE)
-        if (is.na(step$taxon_name)) break
-        taxon_name <- step$taxon_name
-        rank_name  <- step$rank
+        genus_occ[[.i]] <- fetched
       }
 
-      genus_occ[[.i]] <- fetched
+      site_occ[[.s]] <- dplyr::bind_rows(genus_occ)
     }
 
-    occurrences_by_group[[.g]] <- dplyr::bind_rows(genus_occ)
+    occurrences_by_group[[.g]] <- dplyr::bind_rows(site_occ)
   }
 }
 
@@ -614,28 +672,49 @@ priors_undetected <- TaxaExpect::generate_undetected_diversity(
   # (not the focal site) — grid_id filter drops all of them. Habitat filter only.
   filter(main_habitat == SITE_HABITAT | is.na(main_habitat))
 
-# One representative centroid per spatial group -- a small drawn bounding box
+# Prior-generation units, Session 138 fix: a multi-member cluster gets ONE
+# representative centroid per group, as before -- a small drawn bounding box
 # is assumed to resolve to one grid cell; a group spanning more than one grid
 # cell (grid_size smaller than the box) is a known simplification here, not a
-# rigorous per-member nearest-grid design.
-group_centroids <- site_table |>
+# rigorous per-member nearest-grid design. But a single-observation group
+# (whether it has 1 or N site rows) now gets ONE UNIT PER SITE ROW, using
+# that site's own real coordinates directly -- never averaged. Averaging a
+# genuine multi-site observation's real sites into one centroid (the
+# pre-Session-138 behavior) silently destroyed the very per-site distinction
+# combine_multisite_priors() (Section 7) needs to combine.
+site_table_aug <- site_table |>
   dplyr::group_by(spatial_group_id) |>
-  dplyr::summarise(lat = mean(lat), lon = mean(lon), .groups = "drop")
+  dplyr::mutate(n_obs_in_group = dplyr::n_distinct(observation_id),
+                .site_row      = dplyr::row_number()) |>
+  dplyr::ungroup()
+
+prior_units <- dplyr::bind_rows(
+  site_table_aug |>
+    dplyr::filter(n_obs_in_group >= 2L) |>
+    dplyr::group_by(spatial_group_id) |>
+    dplyr::summarise(lat = mean(lat), lon = mean(lon), .groups = "drop") |>
+    dplyr::mutate(unit_id = spatial_group_id, observation_id = NA_character_,
+                  .site_row = NA_integer_),
+  site_table_aug |>
+    dplyr::filter(n_obs_in_group == 1L) |>
+    dplyr::mutate(unit_id = paste0(spatial_group_id, "__site", .site_row)) |>
+    dplyr::select(unit_id, spatial_group_id, observation_id, .site_row, lat, lon)
+)
 
 taxaexpect_priors_by_group <- list()
-group_grid_lookup          <- vector("list", nrow(group_centroids))
+group_grid_lookup          <- vector("list", nrow(prior_units))
 
-for (.g in seq_len(nrow(group_centroids))) {
-  gid  <- group_centroids$spatial_group_id[.g]
-  glat <- group_centroids$lat[.g]
-  glon <- group_centroids$lon[.g]
+for (.g in seq_len(nrow(prior_units))) {
+  uid  <- prior_units$unit_id[.g]
+  glat <- prior_units$lat[.g]
+  glon <- prior_units$lon[.g]
 
   grid_id_g <- .resolve_group_grid_id(glat, glon, grid_result$best_grid, SITE_HABITAT, model_data)
 
   site_data_g <- model_data |>
     filter(grid_id == grid_id_g, main_habitat == SITE_HABITAT)
 
-  taxaexpect_priors_by_group[[gid]] <- TaxaExpect::generate_full_priors(
+  taxaexpect_priors_by_group[[uid]] <- TaxaExpect::generate_full_priors(
     model_obj  = model_fit,
     new_sites  = site_data_g,
     undetected = priors_undetected
@@ -643,20 +722,47 @@ for (.g in seq_len(nrow(group_centroids))) {
     dplyr::mutate(taxon_name_rank = "species")
 
   group_grid_lookup[[.g]] <- tibble(
-    spatial_group_id = gid, grid_id = grid_id_g, main_habitat = SITE_HABITAT
+    unit_id          = uid,
+    spatial_group_id = prior_units$spatial_group_id[.g],
+    observation_id   = prior_units$observation_id[.g],
+    .site_row        = prior_units$.site_row[.g],
+    grid_id          = grid_id_g,
+    main_habitat     = SITE_HABITAT
   )
 }
 
 group_grid_lookup <- dplyr::bind_rows(group_grid_lookup)
 taxaexpect_priors  <- dplyr::bind_rows(taxaexpect_priors_by_group) |> dplyr::distinct()
 
-# site_for_join: one row per observation_id, mapping to its OWN spatial
-# group's resolved (grid_id, main_habitat) -- feeds join_priors()'s existing
-# multi-site data-frame path in Section 7.
-site_for_join <- site_table |>
-  dplyr::select(observation_id, spatial_group_id) |>
-  dplyr::left_join(group_grid_lookup, by = "spatial_group_id") |>
-  dplyr::select(observation_id, grid_id, main_habitat)
+# site_for_join: one row per (observation_id, site) -- a genuine multi-site
+# observation naturally produces MULTIPLE rows here (Session 138), matching
+# join_priors()'s multi-site data-frame contract exactly, instead of one row
+# per observation_id collapsed to an averaged centroid.
+site_for_join <- dplyr::bind_rows(
+  # Multi-member cluster members: join by spatial_group_id to that group's
+  # single averaged-centroid prior (unchanged design).
+  site_table_aug |>
+    dplyr::filter(n_obs_in_group >= 2L) |>
+    dplyr::select(observation_id, spatial_group_id) |>
+    dplyr::left_join(
+      group_grid_lookup |>
+        dplyr::filter(is.na(observation_id)) |>
+        dplyr::select(spatial_group_id, grid_id, main_habitat),
+      by = "spatial_group_id"
+    ) |>
+    dplyr::select(observation_id, grid_id, main_habitat),
+  # Single-observation groups (both single- and multi-site): join by
+  # (spatial_group_id, .site_row) to their own site-specific prior.
+  site_table_aug |>
+    dplyr::filter(n_obs_in_group == 1L) |>
+    dplyr::left_join(
+      group_grid_lookup |>
+        dplyr::filter(!is.na(observation_id)) |>
+        dplyr::select(spatial_group_id, .site_row, grid_id, main_habitat),
+      by = c("spatial_group_id", ".site_row")
+    ) |>
+    dplyr::select(observation_id, grid_id, main_habitat)
+)
 
 #Generate a map from which one can confirm that priors line up with observations. This is most useful
 #when predictions are generated for a range of points rather than a focal point.
@@ -680,45 +786,53 @@ TaxaExpect::plot_theta_map_interactive(taxaexpect_priors, occurrences_with_habit
 # functions expect (observation_id, score_original, taxon_name, family/genus/species).
 match_obj <- decontaminated_table
 
-# 6a. Build or load sequence matrix -------------------------------------------
-# ncbi_rows: blast_sequences()'s own full output already carries accession +
-# resolved family/genus/species (resolve_taxonomy = TRUE, the default) -- no
-# separate NCBI taxonomy lookup step is needed, just reuse it.
-ncbi_rows <- BLAST_annotated_ASV_table_full
+# 6a. Build reference sequence database ---------------------------------------
+# Session 139 rewrite: previously built by reusing whatever accessions BLAST
+# itself happened to hit (BLAST_annotated_ASV_table_full$accession), with no
+# control over reference sequence length or contamination status. Two real
+# bugs this caused, found via a live Phase 6 run (see
+# ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md for the
+# full root-cause and the barcode-length design discussion):
+#   1. GenBank mixes short, purpose-built barcode submissions with full
+#      mitogenomes (~16.5kb) for the same species/gene. build_sequence_matrix()
+#      silently drops anything outside its own length window (default
+#      100-2000bp) *after* download -- in this template's real bundled data,
+#      every within-species pair happened to come from a dropped mitogenome
+#      duplicate, leaving ZERO same-species pairs and a hard training failure
+#      ("No H1 pairs found").
+#   2. acc_unique was pulled from BLAST_annotated_ASV_table_full -- the RAW,
+#      pre-decontamination BLAST output -- so a flagged lab contaminant
+#      (Salmo salar / OQ846544, excluded from decontaminated_table in Section
+#      2) still ended up in the reference database and fed model training.
+#
+# fetch_ncbi_reference_sequences() fixes both at the source: it filters
+# candidate sequences by length BEFORE downloading (via
+# TaxaTools::resolve_barcode_lengths(BARCODE_TERM) -- "12S" defaults to
+# 100-600bp), so mitogenomes are never fetched at all; and its `taxa` list is
+# derived from match_obj (already contaminant-filtered), not raw BLAST output,
+# so an excluded contaminant can never re-enter via the reference set.
+#
+# max_len widened to 1200bp (from the "12S" default's 600bp): this template's
+# real data includes legitimate ~850-950bp full/partial 12S-gene-region
+# reference submissions -- longer than a tight PCR-amplicon default, but nowhere
+# near mitogenome length (16.5kb, >13x this ceiling). This is a judgment call,
+# not a fixed rule -- revisit if a different marker/study shows different
+# submission-length patterns.
+candidate_genera <- match_obj |>
+  dplyr::filter(!is.na(genus)) |>
+  dplyr::distinct(genus) |>
+  dplyr::pull(genus)
 
-#start with the accession numbers.
-acc_unique<-BLAST_annotated_ASV_table_full$accession%>%unique() #get the accessions from the blast
-acc_unique <- acc_unique[!is.na(acc_unique) & nchar(trimws(acc_unique)) > 0L] #clean for submitting to NCBI
-batch_size   <- 50L
-fasta_chunks <- vector("list", ceiling(length(acc_unique) / batch_size))
-for (i in seq_along(fasta_chunks)) {
-  idx <- ((i - 1L) * batch_size + 1L):min(i * batch_size, length(acc_unique))
-  fasta_chunks[[i]] <- rentrez::entrez_fetch(
-    db = "nuccore", id = acc_unique[idx], rettype = "fasta", retmode = "text"
-  )
-  Sys.sleep(0.4)
-}
-fasta_text <- paste(fasta_chunks, collapse = "")
-
-lines   <- strsplit(fasta_text, "\n")[[1L]]
-hdr_idx <- which(startsWith(lines, ">"))
-seq_end <- c(hdr_idx[-1L] - 1L, length(lines))
-comp_ids <- vapply(hdr_idx, function(k)
-  sub("\\.[0-9]+$", "", strsplit(trimws(sub("^>", "", lines[k])),
-                                 "\\s+")[[1L]][1L]), character(1L))
-seqs <- vapply(seq_along(hdr_idx), function(k)
-  paste(lines[(hdr_idx[k] + 1L):seq_end[k]], collapse = ""), character(1L))
-
-fasta_df     <- data.frame(composite_id = comp_ids, sequence = seqs,
-                           stringsAsFactors = FALSE)
-fasta_df     <- fasta_df[nchar(fasta_df$sequence) > 0L, ]
-tax_lookup              <- ncbi_rows[!duplicated(ncbi_rows$accession), ]
-tax_lookup$composite_id <- sub("\\.[0-9]+$", "", tax_lookup$accession)
-reference_df <- merge(fasta_df,
-                      tax_lookup[, c("composite_id", "family", "genus", "species")],
-                      by = "composite_id", all.x = TRUE)
-reference_df <- reference_df[!is.na(reference_df$species), ]
-message(sprintf("  %d sequences with taxonomy.", nrow(reference_df)))
+reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
+  taxa            = candidate_genera,
+  barcode_term    = BARCODE_TERM,
+  rank_system     = c("family", "genus", "species"),
+  max_len         = 1200L,
+  max_per_species = 10L,
+  ncbi_api_key    = Sys.getenv("ENTREZ_KEY") %||% NULL
+)
+message(sprintf("  %d reference sequence(s) fetched across %d genus/genera.",
+                nrow(reference_df), length(candidate_genera)))
 seq_matrix <- build_sequence_matrix(reference_df,
                                     rank_system = c("family", "genus", "species"))
 .save(seq_matrix, "seq_matrix")
@@ -744,12 +858,10 @@ if (nrow(ref_conflicts) > 0) {
 # BLAST 100%-rule drops sub-perfect hits when a perfect match exists.
 # restore_suppressed_candidates() re-adds referenced congeners from reference_df
 # so evaluate_likelihoods() can rank them against the best match.
-# reference_df's merge() above (line 476) only pulled composite_id/family/
-# genus/species from tax_lookup -- no taxon_name column was ever created, so
-# this always referenced a NULL column. Derive it from species (full
-# binomial; ecosystem convention -- see fill_higher_ranks()'s own @examples,
-# and TaxaMatch::score_image_workflow.R Step 2's identical pattern) before
-# cleaning, in one line rather than two.
+# fetch_ncbi_reference_sequences() doesn't produce a taxon_name column (only
+# the rank columns) -- derive it from species (full binomial; ecosystem
+# convention -- see fill_higher_ranks()'s own @examples, and
+# TaxaMatch::score_image_workflow.R Step 2's identical pattern).
 reference_df$taxon_name <- TaxaTools::clean_taxon_names(reference_df$species)
 detected <- TaxaLikely::detect_suppressed_candidates(match_obj)
 if (detected$rule_detected)
@@ -896,10 +1008,12 @@ census_result <- mutate(coverage$census,
 taxonomy_lookup <- match_obj_restored |>
   dplyr::distinct(taxon_name, taxon_name_rank, genus, family)
 
-# site_for_join (Section 5): one row per observation_id, mapping each to its
-# own spatial group's resolved (grid_id, main_habitat) -- join_priors()'s
-# existing multi-site data-frame path, so every observation is joined against
-# the priors generated for ITS OWN group's site, not one global site.
+# site_for_join (Section 5): one row per (observation_id, site) -- usually one
+# row per observation_id, but a genuine multi-site observation (Session 138
+# fix) now correctly produces one row PER SITE -- join_priors()'s multi-site
+# data-frame path, so every observation is joined against the priors
+# generated for ITS OWN site(s), not one global site or an averaged
+# centroid.
 likelihoods_w_prior <- TaxaAssign::join_priors(
   likelihoods       = lik_result$likelihoods,
   taxaexpect_priors = taxaexpect_priors,

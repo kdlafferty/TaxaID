@@ -91,7 +91,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `define_search_polygon()` | Interactive Shiny gadget: user drags corner markers on a leaflet map to define a custom polygon. Add Point inserts a vertex at the midpoint of the longest side; Remove Last Point undoes the last add (initial corners protected); Done returns a WKT POLYGON string. Requires `shiny`, `miniUI`, `leaflet` (checked at runtime). Must be run in an interactive R session. Shared by two callers: `TaxaFetch`'s search-area use (`fetch_gbif_occurrences()`/`download_gbif_occurrences()` geometry) and `TaxaMatch::group_observations_by_bbox()`'s spatial-group use -- the only generalization either needed was the `points`/`group_col`/`init_polygon` params below. `points` (data frame with `lat`/`lng`) overlays reference markers. `group_col` (Session 134b): optional column in `points` used to color the overlay by an existing group (e.g. `spatial_group_id`), with a legend -- lets a user drawing a broader search area see which points already belong to which group. `init_polygon` (Session 134b): reopen a previously returned WKT polygon for reshaping instead of starting from a fresh square -- used by `group_observations_by_bbox()`'s end-of-loop edit step. `viewer` (Session 134b): defaults to `shiny::paneViewer(minHeight = 500)` -- **not** `shiny::dialogViewer()`, which was found via real live-testing to silently swallow the Done button's return value whenever this gadget's leaflet map is present (confirmed reproducible; see Session 134b note below for the full debugging record). `paneViewer()` matches the call style already used by `TaxaHabitat::review_spatial_flags()` and `TaxaExpect::plot_theta_map_interactive()`, so all of this ecosystem's mapping gadgets now behave consistently. `browserViewer()` also confirmed working, for callers who want a separate browser tab instead. Internal helpers `.pts_to_wkt()`/`.wkt_to_pts()` are pure and unit-tested without a live gadget session. | Complete | R/define_search_polygon.R |
+| `define_search_polygon()` | Interactive Shiny gadget: user drags corner markers on a leaflet map to define a custom polygon. Add Point inserts a vertex at the midpoint of the longest side; Remove Last Point undoes the last add (initial corners protected); Done returns a WKT POLYGON string. Requires `shiny`, `miniUI`, `leaflet` (checked at runtime). Must be run in an interactive R session. Shared by two callers: `TaxaFetch`'s search-area use (`fetch_gbif_occurrences()`/`download_gbif_occurrences()` geometry) and `TaxaMatch::group_observations_by_bbox()`'s spatial-group use -- the only generalization either needed was the `points`/`group_col`/`init_polygon` params below. `points` (data frame with `lat`/`lng`) overlays reference markers. `group_col` (Session 134b): optional column in `points` used to color the overlay by an existing group (e.g. `spatial_group_id`), with a legend -- lets a user drawing a broader search area see which points already belong to which group. `init_polygon` (Session 134b): reopen a previously returned WKT polygon for reshaping instead of starting from a fresh square -- used by `group_observations_by_bbox()`'s end-of-loop edit step. `viewer` (Session 134b): defaults to `shiny::paneViewer(minHeight = 500)` -- **not** `shiny::dialogViewer()`, which was found via real live-testing to silently swallow the Done button's return value whenever this gadget's leaflet map is present (confirmed reproducible; see Session 134b note below for the full debugging record). `paneViewer()` matches the call style already used by `TaxaHabitat::review_spatial_flags()` and `TaxaExpect::plot_theta_map_interactive()`, so all of this ecosystem's mapping gadgets now behave consistently. `browserViewer()` also confirmed working, for callers who want a separate browser tab instead. Internal helpers `.pts_to_wkt()`/`.wkt_to_pts()` are pure and unit-tested without a live gadget session. **Session 139:** `title`/`done_label`/`cancel_label` params added (backward-compatible defaults: `"Define Search Polygon"`/`"Done"`/`"Cancel"`, unchanged from before) so a caller embedding this gadget in a larger interactive workflow can describe what each button actually does in that context, and show which specific group/area is being drawn directly in the title rather than only in a separate console message -- prompted by the user hitting real confusion live (accepting the gadget's un-shrunk starting box, reading "Done" as "confirm and proceed," merged far more observations into one group than intended). Initial zoom is also now one step further out than an exact fit, so the starting square's corners are comfortably visible/draggable on first open rather than at or beyond the frame edge. | Complete | R/define_search_polygon.R |
 
 ### Common name utilities (Session 97)
 
@@ -196,6 +196,41 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
 ---
 
 ## Session Notes
+
+**Session 139 (2026-07-06): define_search_polygon() usability redesign -- customizable title/button labels, zoomed-out initial view**
+
+Branch `main`. Prompted directly by the user hitting real confusion while live-testing
+`TaxaMatch::group_observations_by_bbox()` (see that package's own Session 139 note for the
+full spatial-grouping redesign this was part of): clicking the gadget's generic "Done"
+button on its un-shrunk starting square (which is deliberately oversized to guarantee it
+encloses every point) merged far more observations into one group than intended, because
+nothing in the UI signals that the starting box is meant to be resized first -- "Done"
+reads as "confirm and proceed," not "I've finished positioning this."
+
+Added `title`/`done_label`/`cancel_label` parameters, all backward-compatible (defaults
+unchanged: `"Define Search Polygon"`/`"Done"`/`"Cancel"`, matching this function's
+behavior before this session for any caller that doesn't pass them). Wired via
+`miniUI::gadgetTitleBar(title, left = miniUI::miniTitleBarCancelButton(label =
+cancel_label), right = miniUI::miniTitleBarButton("done", done_label, primary = TRUE))`
+-- confirmed `miniTitleBarCancelButton()`'s own signature (`inputId = "cancel", label =
+"Cancel", primary = FALSE`) directly rather than assuming it, since the existing server
+code's `observeEvent(input$cancel, ...)` handler depends on `inputId` staying `"cancel"`
+regardless of the displayed label. `TaxaMatch::group_observations_by_bbox()` now passes
+context-specific wording ("Group These Points"/"No More Groups", with per-iteration
+progress in the title) instead of relying on the generic defaults -- see that package's
+own Session 139 note.
+
+Also widened the initial zoom by one step (`round(8L - log2(view_radius_deg)) - 1L`
+instead of the exact-fit `round(8L - log2(view_radius_deg))`) so the un-shrunk starting
+square's corners are comfortably inside the visible frame on first open, not right at or
+beyond its edge -- directly requested by the user as "the bounding box can't be seen on
+first opening."
+
+`devtools::document()` + `devtools::test()` (723 expectations, 0 failures) +
+`devtools::check()` (0 errors, 0 warnings, 0 notes) all clean. No test changes needed --
+the pure `.pts_to_wkt()`/`.wkt_to_pts()` helpers this package's own tests cover are
+unaffected; the new params/zoom change only affect the live gadget path, which remains
+outside this package's own testing boundary (requires a real interactive session).
 
 **Session 137 (2026-07-05): escalate_taxonomic_rank() -- escalation ladder, Phase 1 of the observation-pipeline-wiring reentry plan**
 

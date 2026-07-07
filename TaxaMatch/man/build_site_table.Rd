@@ -28,15 +28,21 @@ site info.}
 A tibble in long format: one row per \code{(observation_id, site)}
 pair actually present in \code{match_df}, with columns \code{id_col},
 \code{lat}, \code{lon}, \code{observed_on} (\code{NA} where unknown),
-\code{spatial_group_id}, and \code{spatial_group_N}. The two
-\code{spatial_group_*} columns start out as "every observation is its
-own singleton group" -- \code{spatial_group_id} defaults to the row's own
-\code{id_col} value and \code{spatial_group_N} to \code{1L} -- until
+\code{spatial_group_id}, \code{spatial_group_N}, and
+\code{is_default_group}. \code{spatial_group_id} defaults to
+\code{"spatial_group_<n>"}, grouping rows that share an \strong{exact}
+\code{(lat, lon)} pair (see Details), and \code{spatial_group_N} to the
+count of rows sharing that default label -- until
 \code{\link[TaxaMatch]{group_observations_by_bbox}} (or
 \code{\link[TaxaMatch]{assign_spatial_group}}) updates them in place for
-whichever observations get grouped. This guarantees every site table has
-valid, non-missing \code{spatial_group_id}/\code{spatial_group_N} values
-from the moment it is built, even before any grouping step runs.
+whichever observations get grouped. \code{is_default_group} is
+\code{TRUE} for every row until one of those two functions reassigns it;
+this is the marker they use to know which rows are still eligible to be
+captured by a newly drawn box or manual assignment, so they never need to
+re-derive "is this still a default" from \code{spatial_group_id}'s
+contents. This guarantees every site table has valid, non-missing
+\code{spatial_group_id}/\code{spatial_group_N}/\code{is_default_group}
+values from the moment it is built, even before any grouping step runs.
 }
 \description{
 Produces one standardized site table -- \code{observation_id}, \code{lat},
@@ -60,6 +66,44 @@ one sequencing run. \code{site_df} is therefore required (not derived)
 for the acoustic and DNA/BLAST pathways -- callers must build it from
 whatever recording-filename or sample-metadata convention their own study
 uses.
+
+\strong{Why the default spatial_group_id is location-based, not
+observation-based (Session 139):} \code{spatial_group_id} is meant to
+answer "do these coordinates belong to the same neighborhood," a property
+of \emph{location}, not of which observation happens to own a row.
+Defaulting it to \code{observation_id} (the pre-Session-139 behavior)
+meant a genuine multi-site observation's own several sites always
+defaulted to one shared group purely because they share an observation --
+regardless of whether those sites were actually near each other -- while
+two genuinely co-located observations were never grouped by default at
+all, contradicting this ecosystem's own stated design principle that
+clustering should be a geometric property of coordinates. The exact-match
+default fixes both: two of one observation's own sites at different real
+coordinates now default to different groups (as they should), and two
+different observations sharing the exact same coordinate (typically
+because both were joined from the same site-metadata row -- e.g.
+\code{\link{join_event_site_metadata}}'s pattern) now default to the same
+group (also as they should) -- \code{\link[TaxaMatch]{group_observations_by_bbox}}'s
+interactive step remains available as a refinement/override on top of this
+more sensible default, not the only mechanism that ever creates a shared
+group.
+
+\strong{Why exact match, not grid-snapping/binning to a fixed resolution
+(also Session 139):} a grid-snapping design (rounding coordinates to a
+fixed bin size) was tried first and rejected after live testing against
+this ecosystem's own bundled example data. A 0.1-degree bin collapsed four
+genuinely distinct observations (a real sample coordinate and a
+fallback/placeholder coordinate that happened to sit within ~11km of each
+other) into one default group -- reintroducing the exact "swept into an
+unrelated cluster" ambiguity this whole redesign exists to avoid. Choosing
+a "correct" bin size is not well-posed in general: it depends on how close
+together a given study's real sites happen to be, which this function has
+no way to know in advance. In this ecosystem's actual data flow, two
+coordinates that are supposed to represent the same site come from the
+same site-metadata lookup row (exactly equal), not from independent noisy
+GPS reads of the same physical spot (nearly, but not exactly, equal) -- so
+exact match is both simpler and the semantically correct comparison here,
+with no tuning parameter and no equivalent failure mode.
 }
 \examples{
 # Image pathway: site info already embedded, extracted directly

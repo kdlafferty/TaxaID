@@ -16,12 +16,20 @@ group_observations_by_bbox(
 \item{sites}{Data frame with one row per observation, containing at least
 \code{id_col}, \code{lat_col}, and \code{lon_col}. Typically the output
 of \code{\link{build_site_table}}, which already carries
-\code{spatial_group_id}/\code{spatial_group_N} defaults -- this function
-\strong{updates those columns in place} for whichever observations get
-captured by a drawn box, leaving everything else untouched. If
-\code{sites} has no \code{spatial_group_id}/\code{spatial_group_N}
-columns at all (i.e. it did not come from \code{build_site_table()}),
-singleton defaults are initialized first, with a message.}
+\code{spatial_group_id}/\code{spatial_group_N}/\code{is_default_group}
+defaults -- this function \strong{updates those columns in place} for
+whichever observations get captured by a drawn box, leaving everything
+else untouched. \code{is_default_group} (not the contents of
+\code{spatial_group_id} itself) is what this function checks to decide
+which rows are still eligible to be captured by a new box -- so it works
+the same way regardless of what \code{build_site_table()}'s default
+label happens to look like. If \code{sites} has no
+\code{spatial_group_id}/\code{spatial_group_N} columns at all (i.e. it
+did not come from \code{build_site_table()}), singleton defaults are
+initialized first, with a message. If \code{sites} has
+\code{spatial_group_id}/\code{spatial_group_N} but no
+\code{is_default_group} (a site table built before this marker existed),
+it is inferred from the old default convention, with a message.}
 
 \item{id_col}{Character. Column identifying each observation. Default
 \code{"observation_id"}.}
@@ -34,17 +42,17 @@ singleton defaults are initialized first, with a message.}
 \code{"Esri.OceanBasemap"}.}
 }
 \value{
-\code{sites} with \code{spatial_group_id}/\code{spatial_group_N}
-updated in place: observations captured by a drawn box (in draw order;
-an observation falling inside more than one box gets the
-\strong{most recently drawn} one, with a warning -- see Details) get
-\code{"spatial_group_1"}, \code{"spatial_group_2"}, ... and
-\code{spatial_group_N} equal to that group's member count. Observations
-already in a non-default (previously grouped, or manually assigned via
+\code{sites} with \code{spatial_group_id}/\code{spatial_group_N}/
+\code{is_default_group} updated in place: observations captured by a
+drawn box (in draw order; an observation falling inside more than one
+box gets the \strong{most recently drawn} one, with a warning -- see
+Details) get \code{"spatial_group_1"}, \code{"spatial_group_2"}, ...,
+\code{spatial_group_N} equal to that group's member count, and
+\code{is_default_group = FALSE}. Observations already in a non-default
+(previously grouped, or manually assigned via
 \code{\link{assign_spatial_group}}) group are left untouched regardless
 of geometry. Everything else keeps its existing default. A message
-reports how many observations were left at their default
-single-observation group and why.
+reports how many observations were left at their default group and why.
 }
 \description{
 Plots all observations' site coordinates and lets the user draw one or
@@ -56,10 +64,11 @@ occurrence/reference fetch (the existing clustered pipeline design).
 Observations that never fall inside any drawn box -- including every
 observation, if the user draws no box at all -- are \strong{not dropped}:
 they are left at their existing \code{spatial_group_id} (by default, from
-\code{\link{build_site_table}}, a singleton equal to their own
-\code{observation_id}), so they flow through the single-observation
-escalation path (taxonomic broadening: genus -> family -> order) instead
-of being silently discarded.
+\code{\link{build_site_table}}, a grid-snapped label derived from their own
+coordinates -- see that function's Details for why this is a location
+property, not an observation property), so they flow through the
+single-observation escalation path (taxonomic broadening: genus -> family
+-> order) instead of being silently discarded.
 }
 \details{
 \strong{Interaction model:} each iteration re-centres

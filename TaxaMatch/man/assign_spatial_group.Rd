@@ -29,9 +29,12 @@ group); see Details for the collision guard.}
 }
 \value{
 \code{sites} with \code{spatial_group_id} set to
-\code{spatial_group_id} for the named observations, and
-\code{spatial_group_N} recomputed for that group so it stays in sync.
-All other rows are unaffected.
+\code{spatial_group_id} for the named observations, \code{spatial_group_N}
+recomputed for that group so it stays in sync, and (when present)
+\code{is_default_group} set to \code{FALSE} for the named observations --
+they are no longer eligible to be captured by a future
+\code{\link{group_observations_by_bbox}} call. All other rows are
+unaffected.
 }
 \description{
 Sets \code{spatial_group_id} directly for a named set of observations --

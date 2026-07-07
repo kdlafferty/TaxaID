@@ -4,7 +4,66 @@
 #
 # Exported functions:
 #   build_site_table()   Extract or attach per-observation site info
+#
+# Internal helpers (@noRd):
+#   .next_spatial_group_number()   Lowest unused "spatial_group_<n>" number
+#   .default_exact_match_group_id()  Group rows sharing an exact (lat, lon)
 # ==============================================================================
+
+# .next_spatial_group_number()
+#
+# Shared by build_site_table()'s default assignment and
+# .assign_spatial_groups_from_polygons() (group_observations_by_bbox.R):
+# both mint "spatial_group_<n>" labels, and must never collide with each
+# other's numbering. Scans whatever spatial_group_id values already exist
+# and returns one past the highest "spatial_group_<n>" number found (1L if
+# none) -- so a fresh call to build_site_table() and a later interactive
+# grouping call always get non-overlapping numbers, without either function
+# needing to know anything about the other's own counter.
+#' @noRd
+.next_spatial_group_number <- function(existing_ids) {
+  nums <- suppressWarnings(as.integer(sub("^spatial_group_", "", existing_ids)))
+  nums <- nums[!is.na(nums)]
+  if (length(nums) == 0L) return(1L)
+  max(nums) + 1L
+}
+
+# .default_exact_match_group_id()
+#
+# Session 139: spatial_group_id's default (before any interactive grouping)
+# used to be the row's own observation_id -- meaning a genuine multi-site
+# observation's own several sites all defaulted to ONE shared group, purely
+# because they belong to the same observation, regardless of whether they
+# are actually near each other. spatial_group_id is meant to be a LOCATION
+# property (do these coordinates belong to the same neighborhood?), not an
+# observation property.
+#
+# Groups rows by EXACT (lat, lon) equality -- not grid-snapping/binning.
+# Deliberately no distance tolerance or bin resolution parameter: in this
+# ecosystem's actual data flow, shared coordinates come from a site-metadata
+# lookup table join (e.g. TaxaMatch::join_event_site_metadata()'s
+# SAMPLE_SITE_METADATA pattern), not raw continuous GPS with measurement
+# noise -- two rows genuinely share a site if and only if they were joined
+# from the same site-metadata row, which means their lat/lon are exactly
+# equal, not merely close. An earlier grid-snapping design (rounding to a
+# fixed resolution, e.g. 0.1 degrees) was tried and rejected after live
+# testing against this template's own bundled data: with a 0.1-degree bin,
+# four genuinely distinct observations (three different real/fallback
+# coordinates within ~11km of each other) collapsed into one default group,
+# reintroducing the exact "swept into an unrelated cluster" ambiguity this
+# whole redesign was meant to avoid -- and picking a "correct" bin size is
+# not well-posed in general (it depends on how close together a given
+# study's real sites happen to be). Exact match has no such tuning parameter
+# and no such failure mode.
+#' @noRd
+.default_exact_match_group_id <- function(lat, lon) {
+  key       <- paste(lat, lon, sep = "|")
+  uniq_keys <- unique(key)
+  labels    <- sprintf("spatial_group_%d",
+                       seq(.next_spatial_group_number(character(0)),
+                           length.out = length(uniq_keys)))
+  labels[match(key, uniq_keys)]
+}
 
 #' Build a Unified Long-Format Site Table
 #'
@@ -35,15 +94,21 @@
 #' @return A tibble in long format: one row per \code{(observation_id, site)}
 #'   pair actually present in \code{match_df}, with columns \code{id_col},
 #'   \code{lat}, \code{lon}, \code{observed_on} (\code{NA} where unknown),
-#'   \code{spatial_group_id}, and \code{spatial_group_N}. The two
-#'   \code{spatial_group_*} columns start out as "every observation is its
-#'   own singleton group" -- \code{spatial_group_id} defaults to the row's own
-#'   \code{id_col} value and \code{spatial_group_N} to \code{1L} -- until
+#'   \code{spatial_group_id}, \code{spatial_group_N}, and
+#'   \code{is_default_group}. \code{spatial_group_id} defaults to
+#'   \code{"spatial_group_<n>"}, grouping rows that share an \strong{exact}
+#'   \code{(lat, lon)} pair (see Details), and \code{spatial_group_N} to the
+#'   count of rows sharing that default label -- until
 #'   \code{\link[TaxaMatch]{group_observations_by_bbox}} (or
 #'   \code{\link[TaxaMatch]{assign_spatial_group}}) updates them in place for
-#'   whichever observations get grouped. This guarantees every site table has
-#'   valid, non-missing \code{spatial_group_id}/\code{spatial_group_N} values
-#'   from the moment it is built, even before any grouping step runs.
+#'   whichever observations get grouped. \code{is_default_group} is
+#'   \code{TRUE} for every row until one of those two functions reassigns it;
+#'   this is the marker they use to know which rows are still eligible to be
+#'   captured by a newly drawn box or manual assignment, so they never need to
+#'   re-derive "is this still a default" from \code{spatial_group_id}'s
+#'   contents. This guarantees every site table has valid, non-missing
+#'   \code{spatial_group_id}/\code{spatial_group_N}/\code{is_default_group}
+#'   values from the moment it is built, even before any grouping step runs.
 #'
 #' @details
 #' \strong{Why site info can't just be joined in generically:} the image
@@ -57,6 +122,44 @@
 #' for the acoustic and DNA/BLAST pathways -- callers must build it from
 #' whatever recording-filename or sample-metadata convention their own study
 #' uses.
+#'
+#' \strong{Why the default spatial_group_id is location-based, not
+#' observation-based (Session 139):} \code{spatial_group_id} is meant to
+#' answer "do these coordinates belong to the same neighborhood," a property
+#' of \emph{location}, not of which observation happens to own a row.
+#' Defaulting it to \code{observation_id} (the pre-Session-139 behavior)
+#' meant a genuine multi-site observation's own several sites always
+#' defaulted to one shared group purely because they share an observation --
+#' regardless of whether those sites were actually near each other -- while
+#' two genuinely co-located observations were never grouped by default at
+#' all, contradicting this ecosystem's own stated design principle that
+#' clustering should be a geometric property of coordinates. The exact-match
+#' default fixes both: two of one observation's own sites at different real
+#' coordinates now default to different groups (as they should), and two
+#' different observations sharing the exact same coordinate (typically
+#' because both were joined from the same site-metadata row -- e.g.
+#' \code{\link{join_event_site_metadata}}'s pattern) now default to the same
+#' group (also as they should) -- \code{\link[TaxaMatch]{group_observations_by_bbox}}'s
+#' interactive step remains available as a refinement/override on top of this
+#' more sensible default, not the only mechanism that ever creates a shared
+#' group.
+#'
+#' \strong{Why exact match, not grid-snapping/binning to a fixed resolution
+#' (also Session 139):} a grid-snapping design (rounding coordinates to a
+#' fixed bin size) was tried first and rejected after live testing against
+#' this ecosystem's own bundled example data. A 0.1-degree bin collapsed four
+#' genuinely distinct observations (a real sample coordinate and a
+#' fallback/placeholder coordinate that happened to sit within ~11km of each
+#' other) into one default group -- reintroducing the exact "swept into an
+#' unrelated cluster" ambiguity this whole redesign exists to avoid. Choosing
+#' a "correct" bin size is not well-posed in general: it depends on how close
+#' together a given study's real sites happen to be, which this function has
+#' no way to know in advance. In this ecosystem's actual data flow, two
+#' coordinates that are supposed to represent the same site come from the
+#' same site-metadata lookup row (exactly equal), not from independent noisy
+#' GPS reads of the same physical spot (nearly, but not exactly, equal) -- so
+#' exact match is both simpler and the semantically correct comparison here,
+#' with no tuning parameter and no equivalent failure mode.
 #'
 #' @seealso \code{\link{score_image_inat}}, \code{\link{read_birdnet_output}},
 #'   \code{\link{standardize_match_data}}
@@ -101,11 +204,14 @@ build_site_table <- function(match_df, site_df = NULL, id_col = "observation_id"
     out  <- unique(match_df[, keep, drop = FALSE])
     names(out)[names(out) == "lng"] <- "lon"
     if (!"observed_on" %in% names(out)) out$observed_on <- NA_character_
-    out$spatial_group_id <- as.character(out[[id_col]])
-    out$spatial_group_N  <- 1L
+    out$spatial_group_id  <- .default_exact_match_group_id(out$lat, out$lon)
+    tab <- table(out$spatial_group_id)
+    out$spatial_group_N   <- as.integer(tab[out$spatial_group_id])
+    out$is_default_group  <- TRUE
 
     return(tibble::as_tibble(
-      out[, c(id_col, "lat", "lon", "observed_on", "spatial_group_id", "spatial_group_N"), drop = FALSE]
+      out[, c(id_col, "lat", "lon", "observed_on", "spatial_group_id",
+              "spatial_group_N", "is_default_group"), drop = FALSE]
     ))
   }
 
@@ -136,10 +242,13 @@ build_site_table <- function(match_df, site_df = NULL, id_col = "observation_id"
 
   out <- site_df[site_df[[id_col]] %in% ids, , drop = FALSE]
   if (!"observed_on" %in% names(out)) out$observed_on <- NA_character_
-  out$spatial_group_id <- as.character(out[[id_col]])
-  out$spatial_group_N  <- 1L
+  out$spatial_group_id <- .default_exact_match_group_id(out$lat, out$lon)
+  tab <- table(out$spatial_group_id)
+  out$spatial_group_N  <- as.integer(tab[out$spatial_group_id])
+  out$is_default_group <- TRUE
 
   tibble::as_tibble(
-    out[, c(id_col, "lat", "lon", "observed_on", "spatial_group_id", "spatial_group_N"), drop = FALSE]
+    out[, c(id_col, "lat", "lon", "observed_on", "spatial_group_id",
+            "spatial_group_N", "is_default_group"), drop = FALSE]
   )
 }

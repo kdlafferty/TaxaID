@@ -12,6 +12,9 @@ define_search_polygon(
   points = NULL,
   group_col = NULL,
   init_polygon = NULL,
+  title = "Define Search Polygon",
+  done_label = "Done",
+  cancel_label = "Cancel",
   viewer = shiny::paneViewer(minHeight = 500)
 )
 }
@@ -49,6 +52,26 @@ returned by a previous call to this function) to reopen for editing,
 instead of starting from a fresh square. Its own vertices become the
 initial draggable markers. When supplied, \code{lat}/\code{lon}/
 \code{radius_deg} are not required and are ignored if given.}
+
+\item{title}{Character. Gadget title bar text. Default
+\code{"Define Search Polygon"}. Callers embedding this gadget in a
+larger workflow (e.g. \code{\link[TaxaMatch]{group_observations_by_bbox}})
+should pass something identifying what this particular call is for (e.g.
+which spatial group or search area is being drawn) -- session experience
+showed that information buried only in a console message is easy to miss
+while looking at the map itself.}
+
+\item{done_label}{Character. Label for the primary (right-hand) title bar
+button. Default \code{"Done"}. Override with a verb describing what
+clicking it actually does in the calling context (e.g.
+\code{"Group These Points"}) -- generic "Done" reads as "confirm and
+proceed," which does not by itself convey that clicking it before
+resizing the initial square will capture everything currently visible.}
+
+\item{cancel_label}{Character. Label for the title bar's cancel button
+(returns \code{NULL}). Default \code{"Cancel"}. Override with wording
+describing what \emph{not} drawing anything means in the calling context
+(e.g. \code{"No More Groups"}).}
 
 \item{viewer}{A \pkg{shiny} gadget viewer, passed to
 \code{\link[shiny]{runGadget}}. Default \code{shiny::paneViewer(minHeight = 500)}

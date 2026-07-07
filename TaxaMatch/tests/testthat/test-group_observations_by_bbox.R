@@ -8,8 +8,9 @@
 library(testthat)
 
 .site_defaults <- function(sites, id_col = "observation_id") {
-  sites$spatial_group_id <- as.character(sites[[id_col]])
-  sites$spatial_group_N  <- 1L
+  sites$spatial_group_id  <- as.character(sites[[id_col]])
+  sites$spatial_group_N   <- 1L
+  sites$is_default_group  <- TRUE
   sites
 }
 
@@ -57,6 +58,29 @@ test_that("observations outside every box keep their default singleton group, no
   expect_equal(nrow(out), nrow(sites))  # nothing dropped
   expect_equal(out$spatial_group_id[out$observation_id == "obs6"], "obs6")
   expect_equal(out$spatial_group_N[out$observation_id == "obs6"], 1L)
+  expect_true(out$is_default_group[out$observation_id == "obs6"])
+})
+
+test_that("newly drawn groups never collide with pre-existing spatial_group_<n> default labels", {
+  # Simulate build_site_table()'s own exact-match default already having
+  # minted "spatial_group_1" for two unrelated, pre-grouped observations,
+  # before any interactive drawing happens.
+  pre_named <- sites
+  pre_named$spatial_group_id[pre_named$observation_id %in% c("obs4", "obs5")] <- "spatial_group_1"
+  pre_named$spatial_group_N[pre_named$observation_id %in% c("obs4", "obs5")]  <- 2L
+  pre_named$is_default_group[pre_named$observation_id %in% c("obs4", "obs5")] <- FALSE
+
+  out <- .assign_spatial_groups_from_polygons(pre_named, box1)  # captures obs1-3
+  new_ids <- unique(out$spatial_group_id[out$observation_id %in% c("obs1", "obs2", "obs3")])
+  expect_length(new_ids, 1L)
+  expect_false(new_ids %in% "spatial_group_1")  # would collide with obs4/obs5's group
+  # obs4/obs5's pre-existing group is untouched
+  expect_true(all(out$spatial_group_id[out$observation_id %in% c("obs4", "obs5")] == "spatial_group_1"))
+})
+
+test_that("observations captured by a drawn box get is_default_group = FALSE", {
+  out <- .assign_spatial_groups_from_polygons(sites, c(box1, box2))
+  expect_false(any(out$is_default_group[out$observation_id %in% c("obs1", "obs2", "obs3", "obs4", "obs5")]))
 })
 
 test_that("a message explains the outside-box reclassification", {
@@ -70,6 +94,7 @@ test_that("already-grouped observations are left untouched even if geometrically
   pre_grouped <- sites
   pre_grouped$spatial_group_id[pre_grouped$observation_id == "obs6"] <- "manual_group"
   pre_grouped$spatial_group_N[pre_grouped$observation_id == "obs6"] <- 1L
+  pre_grouped$is_default_group[pre_grouped$observation_id == "obs6"] <- FALSE
   # A huge box that would geometrically cover obs6 too, were it still eligible
   huge_box <- .test_bbox_wkt(lat = 30, lon = -80, radius_deg = 40)
   out <- suppressMessages(.assign_spatial_groups_from_polygons(pre_grouped, c(huge_box)))
@@ -101,8 +126,9 @@ test_that("no message when a single drawn box captures every observation", {
 
 test_that("a message explains there is nothing left when all observations are already grouped", {
   clustered <- sites
-  clustered$spatial_group_id <- "already_grouped"
-  clustered$spatial_group_N  <- nrow(clustered)
+  clustered$spatial_group_id  <- "already_grouped"
+  clustered$spatial_group_N   <- nrow(clustered)
+  clustered$is_default_group  <- FALSE
   expect_message(
     .assign_spatial_groups_from_polygons(clustered, box1),
     "nothing left to assign"

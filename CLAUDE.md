@@ -1,7 +1,56 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-05 (Session 138, branch `single-observation-pipeline` — Phase 5 of
+# Last updated: 2026-07-06 (Session 139, branch `main` — Phase 6 live-testing of
+# `TaxaID_Workflow_Template_TEST.R` (Session 138's reentry plan) surfaced and fixed three
+# more real bugs beyond Session 138's own scope. (1) Section 3/5 conflated "multiple
+# different observations sharing a bounding box" with "one observation detected at
+# multiple sites" -- branching now keys on distinct observation_id count, not row count;
+# Section 5 generates priors per real site instead of an averaged centroid. (2) Section
+# 6a built its reference sequence database by reusing whatever accessions BLAST itself
+# hit, with no length control -- GenBank mixes short barcode submissions with full
+# mitogenomes for the same species, and build_sequence_matrix()'s length filter silently
+# dropped every within-species pair in this template's real bundled data, hard-failing
+# model training ("No H1 pairs found"). (3) The same raw-BLAST-reuse approach also pulled
+# in a flagged lab contaminant (Salmo salar) that had already been excluded from
+# decontaminated_table -- a genuine disconnect between the analysis candidate set and the
+# reference-fetch candidate set. Fixed (2) and (3) together: Section 6a now calls
+# `TaxaLikely::fetch_ncbi_reference_sequences()`, deriving candidate taxa from the
+# already-decontaminated `match_obj` and filtering reference sequences by barcode-
+# appropriate length before download (mitogenomes never fetched at all) -- verified live
+# against real NCBI data, training now succeeds (12 within-species pairs, up from 0). A
+# deeper, more general version of the mitogenome problem (in-silico PCR to extract the
+# amplicon region from an over-length sequence instead of discarding it outright) was
+# deliberately scoped out as its own design task, not implemented --- see
+# `ecosystem_docs/REENTRY_PROMPT_session139_insilico_pcr_amplicon_trimming.md`. A related,
+# separate GBIF-fetch-efficiency discussion (taxon-centric query grouping to avoid
+# redundant/overlapping GBIF searches) is captured in
+# `ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md` -- also not yet
+# implemented, scope not yet chosen with the user.
+# Session 139 continued (2026-07-06): continued live testing surfaced two more real issues
+# and one usability redesign, all found by actually using the pipeline, not reading code.
+# (a) `TaxaMatch::build_site_table()`'s default `spatial_group_id` (previously the row's own
+# `observation_id`) redesigned to group by exact `(lat, lon)` match instead -- a grid-
+# snapping alternative was tried first and rejected after it collapsed four genuinely
+# distinct real observations into one default cluster on this template's own bundled data.
+# New `is_default_group` marker column replaces a fragile string-comparison heuristic;
+# `.next_spatial_group_number()` keeps default-assigned and interactively-drawn group labels
+# from colliding. (b) The spatial-grouping applet itself redesigned for clarity:
+# `TaxaTools::define_search_polygon()` gained customizable `title`/`done_label`/
+# `cancel_label` params (backward compatible) so `group_observations_by_bbox()` can say
+# "Group These Points"/"No More Groups" instead of generic "Done"/"Cancel", show per-group
+# progress in the title, and open one zoom step further out so the starting box is actually
+# visible -- prompted by the user reflexively clicking "Done" on the unshrunk starting
+# square and merging far more observations into one group than intended. (c) A real,
+# previously-latent bug fixed along the way: `TaxaID_Workflow_Template_TEST.R`'s Section 3
+# never checked whether a cancelled search-area gadget returned `NULL` before passing it to
+# `TaxaFetch::get_gbif_occurrences()`, crashing several calls downstream with a confusing
+# error instead of a clear one. See `TaxaMatch/CLAUDE.md`'s and `TaxaTools/CLAUDE.md`'s own
+# Session 139 notes for full detail; the GBIF-fetch-efficiency reentry prompt above also
+# gained a note on why this session's applet work makes a "define all boxes, then fetch"
+# two-pass split a real prerequisite for that document's taxon-centric design, still not
+# implemented.
+# Session 138 (2026-07-05), branch `single-observation-pipeline` — Phase 5 of
 # the observation-pipeline-wiring plan: multi-site posterior combination.
 # `TaxaAssign::join_priors()`'s final dedup was silently collapsing a genuine multi-site
 # observation (the same detection recovered at more than one real site, surfaced by Session

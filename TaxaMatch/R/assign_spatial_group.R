@@ -32,9 +32,12 @@
 #'   \code{"observation_id"}.
 #'
 #' @return \code{sites} with \code{spatial_group_id} set to
-#'   \code{spatial_group_id} for the named observations, and
-#'   \code{spatial_group_N} recomputed for that group so it stays in sync.
-#'   All other rows are unaffected.
+#'   \code{spatial_group_id} for the named observations, \code{spatial_group_N}
+#'   recomputed for that group so it stays in sync, and (when present)
+#'   \code{is_default_group} set to \code{FALSE} for the named observations --
+#'   they are no longer eligible to be captured by a future
+#'   \code{\link{group_observations_by_bbox}} call. All other rows are
+#'   unaffected.
 #'
 #' @details
 #' \strong{Collision guard:} before assigning, checks whether
@@ -106,6 +109,8 @@ assign_spatial_group <- function(sites, observation_ids, spatial_group_id,
   sites$spatial_group_id[target_rows] <- spatial_group_id
   sites$spatial_group_N[sites$spatial_group_id == spatial_group_id] <-
     sum(sites$spatial_group_id == spatial_group_id)
+  if ("is_default_group" %in% names(sites))
+    sites$is_default_group[target_rows] <- FALSE
 
   sites
 }

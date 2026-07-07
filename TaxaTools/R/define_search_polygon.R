@@ -73,6 +73,23 @@
 #'   instead of starting from a fresh square. Its own vertices become the
 #'   initial draggable markers. When supplied, \code{lat}/\code{lon}/
 #'   \code{radius_deg} are not required and are ignored if given.
+#' @param title Character. Gadget title bar text. Default
+#'   \code{"Define Search Polygon"}. Callers embedding this gadget in a
+#'   larger workflow (e.g. \code{\link[TaxaMatch]{group_observations_by_bbox}})
+#'   should pass something identifying what this particular call is for (e.g.
+#'   which spatial group or search area is being drawn) -- session experience
+#'   showed that information buried only in a console message is easy to miss
+#'   while looking at the map itself.
+#' @param done_label Character. Label for the primary (right-hand) title bar
+#'   button. Default \code{"Done"}. Override with a verb describing what
+#'   clicking it actually does in the calling context (e.g.
+#'   \code{"Group These Points"}) -- generic "Done" reads as "confirm and
+#'   proceed," which does not by itself convey that clicking it before
+#'   resizing the initial square will capture everything currently visible.
+#' @param cancel_label Character. Label for the title bar's cancel button
+#'   (returns \code{NULL}). Default \code{"Cancel"}. Override with wording
+#'   describing what \emph{not} drawing anything means in the calling context
+#'   (e.g. \code{"No More Groups"}).
 #' @param viewer A \pkg{shiny} gadget viewer, passed to
 #'   \code{\link[shiny]{runGadget}}. Default \code{shiny::paneViewer(minHeight = 500)}
 #'   (renders in RStudio's own Viewer pane) -- matches the viewer style already
@@ -157,6 +174,9 @@ define_search_polygon <- function(lat        = NULL,
                                   points     = NULL,
                                   group_col  = NULL,
                                   init_polygon = NULL,
+                                  title        = "Define Search Polygon",
+                                  done_label   = "Done",
+                                  cancel_label = "Cancel",
                                   viewer     = shiny::paneViewer(minHeight = 500)) {
 
   # ---------------------------------------------------------------------------
@@ -223,8 +243,12 @@ define_search_polygon <- function(lat        = NULL,
     next_id_start  <- 5L
   }
 
-  # Sensible initial zoom for the given radius
-  init_zoom <- max(3L, min(12L, round(8L - log2(view_radius_deg))))
+  # Sensible initial zoom for the given radius -- one step further out than
+  # the exact fit, so the box's own edges (and its draggable corner markers)
+  # are comfortably inside the visible frame on first open rather than right
+  # at or beyond it (session experience: the exact-fit zoom made the initial
+  # square hard to see/grab on first opening).
+  init_zoom <- max(3L, min(12L, round(8L - log2(view_radius_deg)) - 1L))
 
   point_pal <- NULL
   if (!is.null(points) && !is.null(group_col)) {
@@ -238,8 +262,9 @@ define_search_polygon <- function(lat        = NULL,
 
   ui <- miniUI::miniPage(
     miniUI::gadgetTitleBar(
-      "Define Search Polygon",
-      right = miniUI::miniTitleBarButton("done", "Done", primary = TRUE)
+      title,
+      left  = miniUI::miniTitleBarCancelButton(label = cancel_label),
+      right = miniUI::miniTitleBarButton("done", done_label, primary = TRUE)
     ),
     miniUI::miniContentPanel(
       leaflet::leafletOutput("map", height = "100%"),

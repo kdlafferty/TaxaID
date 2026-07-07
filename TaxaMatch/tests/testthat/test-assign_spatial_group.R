@@ -66,3 +66,16 @@ test_that("errors on invalid spatial_group_id", {
 test_that("errors on empty sites", {
   expect_error(assign_spatial_group(sites[0, ], "obs1", "spatial_group_1"), "non-empty data frame")
 })
+
+test_that("clears is_default_group for manually assigned observations, when present", {
+  sites_marked <- sites
+  sites_marked$is_default_group <- TRUE
+  out <- assign_spatial_group(sites_marked, c("obs1", "obs2"), "spatial_group_1")
+  expect_false(any(out$is_default_group[out$observation_id %in% c("obs1", "obs2")]))
+  expect_true(all(out$is_default_group[out$observation_id %in% c("obs3", "obs4")]))
+})
+
+test_that("does not error when is_default_group column is absent (backward compatible)", {
+  out <- assign_spatial_group(sites, c("obs1", "obs2"), "spatial_group_1")
+  expect_false("is_default_group" %in% names(out))
+})
