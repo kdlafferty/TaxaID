@@ -1,7 +1,36 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-06 (Session 140, branch `main` -- implements
+# Last updated: 2026-07-06 (Session 142, branch `main` -- TaxaLikely::trim_to_amplicon() now
+# supports the real eDNA/metabarcoding COI mini-barcode (Leray et al. 2013 mlCOIintF paired
+# with Meyer 2003's dgHCO2198, registry key `coi-leray`), resolving the inosine blocker Session
+# 141 explicitly left unimplemented (Geller et al. 2013's jgHCO2198 uses inosine, which
+# Biostrings::DNAString cannot represent -- Meyer's older degenerate reverse primer binds the
+# same site without it, a real published pairing, not an invented workaround). Prompted by the
+# user asking to learn about the mini-barcode's known discriminatory-power limitations before
+# deciding whether the implementation effort was worth it; empirically confirmed 365bp on real
+# Drosophila melanogaster mtDNA, reconciling exactly to the commonly-cited "313bp Leray
+# fragment" once both primers are excluded. Bare "COI" is now deliberately ambiguous between
+# coi-folmer and coi-leray. See TaxaTools/CLAUDE.md's and TaxaLikely/CLAUDE.md's own Session
+# 142 notes for the full literature review and verification record.
+# Session 141, branch `main` -- TaxaLikely::trim_to_amplicon()
+# (Session 140) now covers every mitochondrial/chloroplast marker in
+# TaxaTools::barcode_length_defaults (16S, COI, cytb, rbcL, matK, trnL), not just MiFish-12S.
+# Prompted by the user asking directly whether primer-trimming was worth it for 12S at all
+# (yes -- safe fallback, real production impact already observed, low false-positive risk)
+# and to work through the remaining mito/chloroplast markers (nuclear genes -- 18S, ITS,
+# ITS2 -- explicitly excluded per the user's own instruction, no canonical primer pair
+# exists for any of them). Each new primer pair verified two ways: cross-checked against
+# 2-3 independent literature sources, AND empirically tested with Biostrings::matchPattern()
+# against a real GenBank mitogenome/chloroplast genome fetched live via NCBI eutils -- this
+# caught two real errors a literature check alone would have missed (a wrong cytb amplicon
+# length two secondary sources agreed on but real data contradicted; a genuine
+# forward/reverse primer mislabeling in an otherwise-authoritative matK primer table,
+# resolved by testing both orientations against real chloroplast DNA). No code changes
+# needed in TaxaLikely itself -- trim_to_amplicon() was already generic over any
+# barcode_term with a registered primer pair. See TaxaTools/CLAUDE.md's and
+# TaxaLikely/CLAUDE.md's own Session 141 notes for the full record.
+# Session 140, branch `main` -- implements
 # ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md's general (taxon-centric)
 # fix: new TaxaFetch::fetch_occurrences_by_taxon() unions each candidate taxon's own search
 # geometry and combines taxa sharing identical geometry into one GBIF call, replacing
@@ -15,6 +44,20 @@
 # test verification against Session 139's own real bundled checkpoint data and the user's own
 # live RStudio confirmation the same session (4 taxon keys correctly collapsed to 2 GBIF
 # queries on real data).
+# Session 140 continued (2026-07-06): implements
+# ecosystem_docs/REENTRY_PROMPT_session139_insilico_pcr_amplicon_trimming.md -- new
+# TaxaLikely::trim_to_amplicon() locates primer-binding sites (verified MiFish-U/E only,
+# Miya et al. 2015) in over-length reference sequences (e.g. full mitogenomes) via
+# Biostrings in-silico PCR and extracts just the amplicon, instead of
+# build_sequence_matrix()'s length filter discarding the whole sequence outright -- the
+# deeper fix for the exact "No H1 pairs found" mitogenome-contamination problem the Session
+# 139 note below describes fixing with length-exclusion only. Package placement (TaxaLikely,
+# not TaxaFetch/TaxaMatch) argued through explicitly with the user before starting; new
+# TaxaTools::barcode_primer_defaults registry deliberately populated with only MiFish-U/E
+# (the sole marker with real production use in this ecosystem) rather than attempting all
+# `barcode_length_defaults` markers -- 18S explicitly excluded since no single canonical
+# primer pair exists to verify. See TaxaLikely/CLAUDE.md's and TaxaTools/CLAUDE.md's own
+# Session 140 notes for the full record.
 # Session 139, branch `main` — Phase 6 live-testing of
 # `TaxaID_Workflow_Template_TEST.R` (Session 138's reentry plan) surfaced and fixed three
 # more real bugs beyond Session 138's own scope. (1) Section 3/5 conflated "multiple
@@ -434,3 +477,7 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 138 | `combine_multisite_priors()` added | TaxaAssign | New function, inserted between `join_priors()` and `compute_posterior()`. Combines per-site prior rows via precision-weighted logit combination. See `TaxaAssign/CLAUDE.md`'s Session 138 note. |
 | 140 | `stack_occurrences()` now drops duplicate-`gbifID` rows | TaxaFetch | Behavioral, not signature. Rows with a duplicated non-`NA` `gbifID` are dropped (first kept) whenever that column is present. Defense-in-depth against double-counted GBIF records; sources without a `gbifID` column (literature/DataONE) are unaffected. See `TaxaFetch/CLAUDE.md`'s Session 140 note. |
 | 140 | `fetch_occurrences_by_taxon()` added | TaxaFetch | New function. Taxon-centric batched GBIF fetch -- unions each candidate taxon's own search geometry and combines taxa sharing identical geometry into one `get_gbif_occurrences()` call. See `TaxaFetch/CLAUDE.md`'s Session 140 note. |
+| 140 | `trim_to_amplicon()` added | TaxaLikely | New function. In-silico PCR: extracts the amplicon region from over-length reference sequences (e.g. full mitogenomes) via primer matching, instead of `build_sequence_matrix()`'s length filter discarding them outright. See `TaxaLikely/CLAUDE.md`'s Session 140 note. |
+| 140 | `barcode_primer_defaults` / `resolve_barcode_primers()` added | TaxaTools | New registry + resolver, consumed by `TaxaLikely::trim_to_amplicon()`. Populated only with verified MiFish-U/E (12S) primers so far. See `TaxaTools/CLAUDE.md`'s Session 140 note. |
+| 141 | `barcode_primer_defaults` gains 6 more entries (16S, COI, cytb, rbcL, matK, trnL) | TaxaTools | Behavioral, not signature. Every mito/chloroplast marker in `barcode_length_defaults` now has a verified primer pair; nuclear markers (18S/ITS/ITS2) deliberately still unpopulated. See `TaxaTools/CLAUDE.md`'s Session 141 note. |
+| 142 | `barcode_primer_defaults` gains `coi-leray`; bare `"COI"` now ambiguous | TaxaTools | Behavioral, not signature. The real eDNA COI mini-barcode (mlCOIintF/dgHCO2198) is now registered alongside `coi-folmer`. Any existing caller passing bare `barcode_term = "COI"` to `resolve_barcode_primers()`/`trim_to_amplicon()` must now specify `"COI-Folmer"` or `"COI-Leray"` explicitly -- bare `"COI"` now errors instead of resolving. See `TaxaTools/CLAUDE.md`'s Session 142 note. |

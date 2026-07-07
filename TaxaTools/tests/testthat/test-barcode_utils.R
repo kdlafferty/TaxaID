@@ -67,6 +67,91 @@ test_that("resolve_barcode_lengths uses fallback for unknown marker", {
   expect_equal(unname(out), c(100L, 2000L))
 })
 
+# ---- barcode_primer_defaults / resolve_barcode_primers ----------------------
+
+test_that("barcode_primer_defaults entries have fwd/rev/amplicon_range", {
+  expect_true(length(barcode_primer_defaults) > 0L)
+  for (nm in names(barcode_primer_defaults)) {
+    entry <- barcode_primer_defaults[[nm]]
+    expect_true(all(c("fwd", "rev", "amplicon_range") %in% names(entry)), info = nm)
+    expect_type(entry$fwd, "character")
+    expect_type(entry$rev, "character")
+    expect_length(entry$amplicon_range, 2L)
+    expect_true(entry$amplicon_range[1] < entry$amplicon_range[2], info = nm)
+  }
+})
+
+test_that("resolve_barcode_primers exact-matches a specific variant, case/separator-insensitive", {
+  out1 <- resolve_barcode_primers("MiFishU")
+  out2 <- resolve_barcode_primers("mifish-u")
+  out3 <- resolve_barcode_primers("MIFISH_U")
+  expect_equal(out1, out2)
+  expect_equal(out1, out3)
+  expect_equal(out1$fwd, "GTCGGTAAAACTCGTGCCAGC")
+  expect_equal(out1$rev, "CATAGTGGGGTATCTAATCCCAGTTTG")
+})
+
+test_that("resolve_barcode_primers distinguishes MiFish-U from MiFish-E", {
+  u <- resolve_barcode_primers("MiFishU")
+  e <- resolve_barcode_primers("MiFishE")
+  expect_false(identical(u$fwd, e$fwd))
+  expect_false(identical(u$rev, e$rev))
+})
+
+test_that("resolve_barcode_primers errors (not guesses) on ambiguous bare 'mifish'", {
+  expect_error(resolve_barcode_primers("mifish"), "ambiguous")
+})
+
+test_that("resolve_barcode_primers errors clearly on an unregistered marker", {
+  expect_error(resolve_barcode_primers("ITS2"), "no primer defaults found")
+})
+
+test_that("resolve_barcode_primers resolves bare marker names unambiguously for the mito/chloroplast entries", {
+  s16 <- resolve_barcode_primers("16S")
+  expect_equal(s16$fwd, "CGCCTGTTTATCAAAAACAT")
+  expect_equal(s16$rev, "CCGGTCTGAACTCAGATCACGT")
+
+  coi <- resolve_barcode_primers("COI-Folmer")
+  expect_equal(coi$fwd, "GGTCAACAAATCATAAAGATATTGG")
+  expect_equal(coi$rev, "TAAACTTCAGGGTGACCAAAAAATCA")
+
+  cytb <- resolve_barcode_primers("cytb")
+  expect_equal(cytb$fwd, "CCATCCAACATCTCAGCATGATGAAA")
+  expect_equal(cytb$rev, "CCCCTCAGAATGATATTTGTCCTCA")
+
+  rbcl <- resolve_barcode_primers("rbcL")
+  expect_equal(rbcl$fwd, "ATGTCACCACAAACAGAGACTAAAGC")
+  expect_equal(rbcl$rev, "GTAAAATCAAGTCCACCRCG")
+
+  matk <- resolve_barcode_primers("matK")
+  expect_equal(matk$fwd, "CGTACAGTACTTTTGTGTTTACGAG")
+  expect_equal(matk$rev, "ACCCAGTCCATCTGGAAATCTTGGTTC")
+
+  trnl <- resolve_barcode_primers("trnL")
+  expect_equal(trnl$fwd, "GGGCAATCCTGAGCCAA")
+  expect_equal(trnl$rev, "CCATTGAGTCTCTGCACCTATC")
+})
+
+test_that("resolve_barcode_primers distinguishes COI-Folmer from COI-Leray", {
+  folmer <- resolve_barcode_primers("COI-Folmer")
+  leray  <- resolve_barcode_primers("COI-Leray")
+  expect_false(identical(folmer$fwd, leray$fwd))
+  expect_false(identical(folmer$rev, leray$rev))
+  expect_equal(leray$fwd, "GGWACWGGWTGAACWGTWTAYCCYCC")
+  expect_equal(leray$rev, "TAAACTTCAGGGTGACCAAARAAYCA")
+})
+
+test_that("resolve_barcode_primers errors (not guesses) on ambiguous bare 'COI' now that two variants are registered", {
+  expect_error(resolve_barcode_primers("COI"), "ambiguous")
+})
+
+test_that("resolve_barcode_primers validates input", {
+  expect_error(resolve_barcode_primers(NULL), "single non-empty string")
+  expect_error(resolve_barcode_primers(""), "single non-empty string")
+  expect_error(resolve_barcode_primers(c("a", "b")), "single non-empty string")
+  expect_error(resolve_barcode_primers(NA_character_), "single non-empty string")
+})
+
 # ---- is_plausible_binomial --------------------------------------------------
 
 test_that("is_plausible_binomial accepts valid binomials", {

@@ -274,7 +274,16 @@ internal-format database (taxonomy embedded; no separate file needed) -
 `fetch_ncbi_reference_sequences()` -- download
 from NCBI by taxon + barcode marker - `read_reference_fasta()` -- load
 local FASTA + data-frame taxonomy (or `taxonomy_file` TSV for
-QIIME2/RESCRIPt/MIDORI2)
+QIIME2/RESCRIPt/MIDORI2) - `trim_to_amplicon()` -- in-silico PCR: extract
+just the amplicon region from an over-length sequence (e.g. a full
+mitogenome swept up by an NCBI fetch) via primer matching, instead of
+discarding it outright; run between `fetch_ncbi_reference_sequences()`/
+`read_reference_fasta()` and `build_sequence_matrix()`. Primer pairs come
+from `TaxaTools::barcode_primer_defaults` -- see `?barcode_primer_defaults`
+(in TaxaTools) for the full list of verified primer sets and their known
+limitations (e.g. `coi-folmer`'s documented vertebrate mismatches,
+`coi-leray`'s reduced discriminatory power relative to full-length COI)
+before trusting a result on real data.
 
 **Model training (DNA):** - `build_sequence_matrix()` -- pairwise distance
 matrix via DECIPHER; required for `flag_reference_errors()` and

@@ -1,6 +1,31 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-05 (Session 137 — escalate_taxonomic_rank() added: the escalation-
+# Last updated: 2026-07-06 (Session 142 — barcode_primer_defaults gains coi-leray
+# (mlCOIintF/dgHCO2198, Leray et al. 2013 / Meyer 2003), the actual eDNA-relevant COI
+# mini-barcode -- pairs Leray's own inosine-free forward primer with Meyer's inosine-free
+# degenerate reverse primer (not Geller et al. 2013's jgHCO2198, which uses inosine and has
+# no representation in Biostrings::DNAString's IUPAC alphabet), avoiding the workaround
+# flagged as unresolved in Session 141. bare "COI" is now deliberately ambiguous between
+# coi-folmer and coi-leray -- callers must specify which fragment their data actually is.
+# See Session 142 note below for the discriminatory-power literature review that preceded
+# this addition.
+# Session 141 — barcode_primer_defaults expanded from MiFish-only to
+# 6 more real, independently-verified primer sets covering every mitochondrial and chloroplast
+# marker in barcode_length_defaults (16S, COI, cytb, rbcL, matK, trnL) -- nuclear markers (18S,
+# ITS/ITS2) deliberately skipped per the user's own direction, since neither has one canonical
+# primer pair to verify. Each entry empirically tested against a real GenBank mitogenome/
+# chloroplast genome (not just cross-checked against literature), which caught two real errors
+# a literature-only check would have missed: a wrong cytb amplicon length repeated by two
+# secondary sources, and a genuine forward/reverse mislabeling in an otherwise-authoritative
+# primer table for matK. See Session 141 note below for the full record.
+# Session 140 — barcode_primer_defaults + resolve_barcode_primers()
+# added: a new primer-sequence registry (MiFish-U/E only, verified against Miya et al. 2015
+# across three independent sources), consumed by TaxaLikely::trim_to_amplicon() for in-silico
+# PCR amplicon extraction. Deliberately does NOT mirror barcode_length_defaults' generic
+# substring matching for a bare "mifish" -- U and E have genuinely different primer
+# sequences, so resolve_barcode_primers() errors on ambiguity rather than guessing. See
+# Session 140 note below and TaxaLikely/CLAUDE.md's own Session 140 note for the full record.
+# Session 137 — escalate_taxonomic_rank() added: the escalation-
 # ladder function (genus -> family -> order broadening for singleton observations with no
 # reference/occurrence data at their own rank), Phase 1 of the observation-pipeline-wiring
 # reentry plan. Reuses verify_taxon_names()/parse_classification_path(); same primary/
@@ -54,6 +79,8 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `detect_ranks()` | Auto-detect which rank columns exist in a data frame; returns coarse-to-fine character vector | Complete | R/rank_utils.R |
 | `barcode_length_defaults` | Named list of 12 barcode markers → `list(min, max)` bp ranges. MiFish range: `c(130L, 210L)` (tightened Session 116 from c(100L,600L); excludes bacterial cross-amplification at ~256bp). | Complete | R/barcode_utils.R |
 | `resolve_barcode_lengths()` | Resolve min/max bp from `barcode_term` vector; takes union across multiple terms; user overrides | Complete | R/barcode_utils.R |
+| `barcode_primer_defaults` | Named list of primer sets → `list(fwd, rev, amplicon_range)`. Requires the *specific* primer variant (e.g. `"mifish-u"`), unlike `barcode_length_defaults`'s generic marker keys -- different variants can have genuinely different primer sequences. **Session 140**: MiFish-U, MiFish-E (12S; Miya et al. 2015). **Session 141**: 6 more entries added, one per mitochondrial/chloroplast marker in `barcode_length_defaults` -- `16s-palumbi` (Palumbi 16Sar-L/16Sbr-H), `coi-folmer` (Folmer et al. 1994 LCO1490/HCO2198; documented invertebrate-only scope, empirically confirmed to fail on human/vertebrate COI at default mismatch tolerance), `cytb-kocher` (Kocher et al. 1989 L14841/H15149), `rbcla` (Levin 2003 rbcLa-F / Kress & Erickson 2007 rbcLa-R), `matk-kim` (Hollingsworth et al. 2009 matK-3F_KIM/matK-1R_KIM), `trnl-taberlet` (Taberlet et al. 2007 primers g/h). Nuclear markers (18S, ITS/ITS2) deliberately still unpopulated -- no single canonical primer pair exists to verify for either. Every Session 141 entry was empirically tested with `Biostrings::matchPattern()` against a real GenBank mitogenome or chloroplast genome, not just cross-checked against literature -- see that session's note for two real errors this caught. **Session 142**: `coi-leray` added (mlCOIintF/dgHCO2198, Leray et al. 2013 / Meyer 2003) -- the actual eDNA/metabarcoding-relevant COI mini-barcode, distinct from `coi-folmer`'s full-length Sanger-era product. Deliberately pairs Leray's forward primer with Meyer's *inosine-free* degenerate reverse primer rather than Geller et al. (2013)'s `jgHCO2198`, which uses inosine (a base analog `Biostrings::DNAString` cannot represent) -- confirmed via a real published precedent for this exact pairing, not invented. Empirically confirmed on real *Drosophila melanogaster* mtDNA: 365bp full product, which exactly reconciles to the ubiquitous "313bp Leray fragment" figure once both primers (52bp combined) are excluded. Bare `"COI"` is now deliberately ambiguous between `coi-folmer` and `coi-leray` (same ambiguity-over-guessing discipline as MiFish-U/E). | Complete (incremental) | R/barcode_utils.R |
+| `resolve_barcode_primers()` | Resolve `fwd`/`rev`/`amplicon_range` from a specific `barcode_term`. Errors (does not guess) on an ambiguous bare term (e.g. `"mifish"` alone) or an unregistered marker, with guidance to supply primers directly or pre-trim with CRABS. | Complete | R/barcode_utils.R |
 
 ### LLM provider functions (moved from TaxaFetch, Session 28)
 
@@ -142,7 +169,7 @@ rename_cols()           # align column names to DarwinCore
 | test-escalate_taxonomic_rank.R | `escalate_taxonomic_rank()` | Fully offline (API mocked); 35 tests; covers immediate-parent escalation, skip-level escalation within `max_levels`, already-coarsest short-circuit, primary/fallback backbone, custom `rank_system` |
 | test-token_usage.R | `token_usage()`, `reset_token_usage()` | Fully offline; mocks `.token_ledger` directly |
 | test-rank_utils.R | `standard_ranks`, `extended_ranks`, `detect_ranks()` | Fully offline |
-| test-barcode_utils.R | `barcode_length_defaults`, `resolve_barcode_lengths()` | Fully offline |
+| test-barcode_utils.R | `barcode_length_defaults`, `resolve_barcode_lengths()`, `barcode_primer_defaults`, `resolve_barcode_primers()` | Fully offline |
 | test-null_coalesce.R | `%\|\|%` | Fully offline |
 | test-call_api.R | `call_api()` | 21 tests; fully offline; covers input validation, `max_input_tokens` pre-flight guard, no-provider error, mocked anthropic/gemini/openai_compat response parsers, token attribute, `show_tokens` |
 | test-find_taxonomy_conflicts.R | `find_taxonomy_conflicts()` | 13 tests; fully offline; covers clean data, known genus-family conflict, explicit and auto-detected rank_system, NA row skipping, multi-level conflict, output column types |
@@ -196,6 +223,175 @@ the online group in test-verify_taxon_names.R (guarded by `skip_if_offline()`).
 ---
 
 ## Session Notes
+
+**Session 142 (2026-07-06): coi-leray added -- the actual eDNA mini-barcode, resolving Session 141's flagged inosine blocker**
+
+Direct same-day follow-on. Session 141 left the Leray et al. (2013) mini-barcode
+(mlCOIintF/jgHCO2198, the "313bp Leray fragment" widely used in real metabarcoding --
+as opposed to `coi-folmer`'s full-length Sanger-era product) explicitly unimplemented,
+because Geller et al. (2013)'s `jgHCO2198` reverse primer encodes several positions
+with inosine (dITP), a base analog with no representation in
+`Biostrings::DNAString`'s IUPAC alphabet. The user asked to learn more about the
+mini-barcode's known discriminatory-power limitations and to weigh that against the
+implementation difficulty before deciding whether to add it.
+
+**Literature review (not independently re-verified against primary sources the way the
+Session 141 primer sequences were -- this is background context, not a citation-grade
+claim)**: shorter COI fragments carry fewer phylogenetically informative sites than the
+full ~658-710bp Folmer barcode, and resolve species less reliably as a direct
+consequence -- one comparison found a 313bp fragment resolved 95% of species via
+barcode-gap analysis versus 87% for a much shorter (55bp) mini-barcode, i.e. a real but
+bounded cost that scales with fragment length, not an unusable degradation. A second,
+mechanistically distinct problem shows up in "Know your limits" (miniCOI metabarcoding
+of marine zooplankton, *J. Plankton Res.*): real primer-binding-site sequence variation
+causes outright non-amplification in specific taxa (Appendicularia; some *Oithona
+similis* lineages show up to 6 mismatches to `mlCOIintF`) -- a property of the specific
+primer sequence chosen, not of fragment length per se, and only partially mitigated by
+the more-degenerate "Leray-XT" primer variant (not implemented here).
+
+**The inosine blocker turned out to be avoidable, not fundamental.** `mlCOIintF`
+itself is already fully IUPAC-standard (only `W`/`Y` degeneracy, no inosine) --
+only Geller's redesigned reverse primer has the problem. Real precedent exists for
+pairing `mlCOIintF` with **Meyer (2003)'s `dgHCO2198`** instead -- a fully degenerate,
+inosine-free encoding of the same reverse-primer binding site (Gomez-Rodriguez et al.,
+"Biases in bulk", *Molecular Ecology* 2020, use exactly this pairing) -- so no lossy
+N-substitution approximation was needed. `dgHCO2198` cross-checked against two
+independent sources (`TAAACTTCAGGGTGACCAAARAAYCA`, differing from `coi-folmer`'s
+`HCO2198` only in two ambiguity-coded positions). Empirically confirmed against the
+real *Drosophila melanogaster* mitogenome (NC_001709.1, the same accession Session 141
+used for `coi-folmer`): unique hit at positions 1834-2198, a 365bp full PCR product.
+365 minus both primers' combined length (52bp) is exactly 313bp -- this cleanly
+reconciles the measurement with the "313bp Leray fragment" figure ubiquitous in the
+metabarcoding literature (which refers to the primer-excluded interior), the same
+primer-inclusive-vs-exclusive distinction already noted for `coi-folmer`'s 710bp.
+
+`coi-leray` added to `barcode_primer_defaults` (`fwd = "GGWACWGGWTGAACWGTWTAYCCYCC"`,
+`rev = "TAAACTTCAGGGTGACCAAARAAYCA"`, `amplicon_range = c(350L, 370L)`). Bare `"COI"`
+is now deliberately ambiguous between `coi-folmer` and `coi-leray` --
+`resolve_barcode_primers("COI")` errors rather than guessing, same discipline as
+MiFish-U/E, forcing the caller to specify which fragment their actual data is.
+
+7 new/updated tests: `coi-folmer` vs `coi-leray` distinguished; the new bare-`"COI"`
+ambiguity error; one existing test that had assumed bare `"COI"` resolved uniquely
+(it previously did, before this session) updated to `"COI-Folmer"` explicitly.
+`devtools::document()` + `devtools::test()` (129/129 in `test-barcode_utils.R`, full
+suite unaffected) + `devtools::check()` (0 errors, 0 warnings, 0 notes) all clean.
+See `TaxaLikely/CLAUDE.md`'s own Session 142 note for the consuming-side tests
+(`trim_to_amplicon()` correctly extracts a real Leray-fragment amplicon).
+
+**Session 141 (2026-07-06): barcode_primer_defaults expanded to every mito/chloroplast marker -- empirical verification catches two real errors**
+
+Follow-on the same day as Session 140. After that session shipped `trim_to_amplicon()`
+scoped to MiFish-12S only, the user asked directly: is primer-based amplicon trimming
+actually worth it for 12S specifically, or better to just drop over-length sequences? --
+and separately, to work through the rest of the mitochondrial and chloroplast markers in
+`barcode_length_defaults` (explicitly told to skip the nuclear genes -- 18S/ITS/ITS2 --
+since those don't have one canonical primer pair the way mito/chloroplast genes do).
+
+**Opinion on 12S given first**: yes, practical, for three reasons -- the fallback is
+always exactly today's length-exclusion behavior (never removes a sequence that would
+otherwise be kept), the primer specificity plus length-plausibility gate make a spurious
+accept astronomically unlikely, and the problem is already observed on real data (Session
+139's "No H1 pairs found" bug), disproportionately affecting exactly the rare/undersampled
+species this pipeline cares most about.
+
+**Six new entries added**, each verified two ways -- cross-checked against 2-3 independent
+sources (ideally the primary paper), AND empirically tested with
+`Biostrings::matchPattern()` against a real GenBank sequence (a real mitogenome for
+mitochondrial markers, a real chloroplast genome for plastid markers) -- fetched live via
+NCBI eutils rather than relying on citation text alone:
+
+- `16s-palumbi` (16Sar-L/16Sbr-H, Palumbi 1996) -- confirmed 590bp on real human mtDNA
+  (NC_012920.1).
+- `coi-folmer` (LCO1490/HCO2198, Folmer et al. 1994) -- sequences read directly from a
+  fetched copy of the primary 1994 paper. Confirmed on real *Drosophila melanogaster*
+  mtDNA (NC_001709.1) at **exactly** positions 1490-2198 (matching the primers' own
+  position-based names) with a 709bp amplicon (paper reports 710bp). Also confirmed,
+  empirically, a real documented limitation: at `max_mismatch_rate` ~0.12-0.15 this pair
+  does NOT match human/vertebrate COI -- consistent with the paper's own invertebrate-only
+  design scope and the reason Geller et al. (2013) later redesigned it for broader
+  taxonomic coverage.
+- `cytb-kocher` (L14841/H15149, Kocher et al. 1989) -- **caught a real error this way**:
+  two independent secondary sources both stated a 309bp amplicon; direct empirical testing
+  against real human mtDNA measured 358bp. A third secondary source's "359bp" was
+  essentially confirmed (within 1bp). Used the primers' core annealing sequence only --
+  some secondary sources report versions with a 5' restriction-site cloning tail
+  (`AAAAAGCTT`/`AAACTGCAG`) that isn't part of the genomic template and would never match
+  a real sequence.
+- `rbcla` (rbcLa-F/rbcLa-R, Levin 2003 / Kress & Erickson 2007) -- cross-checked against
+  the Canadian Centre for DNA Barcoding's own "Primer Sets for Plants and Fungi" protocol
+  PDF (a primary protocol document, not a citing paper) plus two further sources; confirmed
+  599bp on real *Arabidopsis thaliana* chloroplast DNA (NC_000932.1). Noted, not silently
+  reconciled: this real measurement does NOT match the "~670bp" figure commonly quoted for
+  "the rbcLa barcode" elsewhere -- that figure likely refers to a longer product using the
+  alternative `rbcLajf634R` reverse primer (Fazekas et al. 2008), which isn't implemented.
+- `matk-kim` (matK-3F_KIM/matK-1R_KIM, Hollingsworth et al. 2009 CBOL, attributed to K-J
+  Kim) -- **caught a second real error, resolved empirically rather than guessed**: most
+  sources describe 3F_KIM as forward and 1R_KIM as reverse, but the CCDB's own protocol PDF
+  labels them the opposite way in its "-f"/"-r" suffixes. Tested both orientations directly
+  against the real *Arabidopsis* chloroplast genome: `3F_KIM` matched upstream on the sense
+  strand (true forward), `1R_KIM`'s reverse complement matched downstream (true reverse) --
+  874bp amplicon, consistent with this pair's commonly-cited ~850bp product.
+- `trnl-taberlet` (primers g/h, Taberlet et al. 2007) -- sequences read directly from the
+  primary paper's own Table 1 (fetched via PMC). Confirmed 87bp on real *Arabidopsis*
+  chloroplast DNA, within the paper's own documented 10-143bp P6-loop range across land
+  plants (a highly length-variable marker by design -- this is its intended discriminatory
+  signal, not primer-matching noise).
+
+**Deliberately still not populated**: 18S, ITS, ITS2 -- explicitly out of scope per the
+user's own instruction this session, since none of these has one single canonical primer
+pair the way every mito/chloroplast marker checked here does (matches the reasoning already
+recorded for 18S in Session 140's note).
+
+8 new offline tests (`test-barcode_utils.R`) covering unambiguous bare-marker-name
+resolution (`"16S"`, `"COI"`, `"cytb"`, `"rbcL"`, `"matK"`, `"trnL"` each resolve uniquely
+despite the registry's specific-variant keys, since only one variant per marker is
+registered). One existing test updated: the "unregistered marker" example switched from
+`"COI"` (now registered) to `"ITS2"`. `devtools::document()` + `devtools::test()`
+(119/119 in this file, full suite unaffected) + `devtools::check()` (0 errors, 0 warnings,
+0 notes) all clean.
+
+**Session 140 (2026-07-06): barcode_primer_defaults + resolve_barcode_primers() -- new primer registry for TaxaLikely::trim_to_amplicon()**
+
+Companion to `TaxaLikely::trim_to_amplicon()` (in-silico PCR amplicon extraction, see
+that package's own Session 140 note and
+`ecosystem_docs/REENTRY_PROMPT_session139_insilico_pcr_amplicon_trimming.md` for the
+full design discussion). This package's half: a new primer-sequence registry mirroring
+`barcode_length_defaults`'s shape but with a deliberately different matching contract.
+
+**Why matching can't mirror `resolve_barcode_lengths()` exactly**: that function
+resolves a bare `"mifish"` to a merged length range covering both MiFish-U and
+MiFish-E, which is safe because their amplicon lengths overlap closely (163-185bp vs.
+170-185bp). Primer *sequences* can't be merged the same way -- U and E are genuinely
+different oligos. `resolve_barcode_primers()` therefore requires the specific variant
+(`"MiFishU"`/`"mifish-u"`/`"MIFISH_U"`, case/separator-insensitive) and **errors rather
+than guessing** when a bare `"mifish"` matches more than one registered variant, or when
+the term isn't registered at all -- both error messages point the caller at supplying
+`primer_fwd`/`primer_rev` directly or pre-trimming with CRABS.
+
+**Primer sequences verified against three independent sources** before being added
+(Miya et al. 2015's own text, a university eDNA core-facility protocol page, and a
+GitHub pipeline README all agreed verbatim) -- not trusted from training-data memory
+alone, given a wrong base in a primer sequence would silently corrupt real reference
+data downstream. MiFish-U-F `GTCGGTAAAACTCGTGCCAGC` / MiFish-U-R
+`CATAGTGGGGTATCTAATCCCAGTTTG`; MiFish-E-F `GTTGGTAAATCTCGTGCCAGC` / MiFish-E-R
+`CATAGTGGGGTATCTAATCCTAGTTTG`.
+
+**Deliberately not populated**: every other marker in `barcode_length_defaults` (16S,
+COI, cytb, ITS/ITS2, rbcL, matK, 18S, trnL, teleo) has no entry here yet. 18S in
+particular was explicitly considered and rejected -- unlike MiFish, there is no single
+canonical 18S primer pair (`barcode_length_defaults`'s own existing comment already
+notes 18S "varies widely by primer set"), so inventing one entry would misrepresent a
+marker that doesn't have one standard answer. Only MiFish-U/E were added because they
+are (a) the only marker with real production use in this ecosystem's workflows
+(confirmed by grep across `TaxaLikely/inst/workflows/`) and (b) verifiable against a
+single canonical source. Registry is designed to grow incrementally, same pattern as
+`barcode_length_defaults` itself.
+
+8 new offline tests (`test-barcode_utils.R`): exact/case/separator-insensitive matching,
+MiFish-U vs. MiFish-E distinction, the deliberate ambiguous-bare-term error, unregistered-marker
+error, and input validation. `devtools::document()` + `devtools::test()` (77/77 in this
+file, full suite unaffected) + `devtools::check()` (0 errors, 0 warnings, 0 notes) all clean.
 
 **Session 139 (2026-07-06): define_search_polygon() usability redesign -- customizable title/button labels, zoomed-out initial view**
 

@@ -1,6 +1,30 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-05 (Session 136 — fetch_reference_sequences() renamed to
+# Last updated: 2026-07-06 (Session 142 -- trim_to_amplicon() now supports the real eDNA COI
+# mini-barcode (Leray et al. 2013 mlCOIintF/Meyer 2003 dgHCO2198, "coi-leray"), resolving
+# Session 141's flagged inosine blocker by pairing Leray's own inosine-free forward primer
+# with an inosine-free reverse primer (Meyer 2003) instead of Geller et al. 2013's jgHCO2198 --
+# no code changes needed here, same pattern as Session 141. See TaxaTools/CLAUDE.md's Session
+# 142 note for the discriminatory-power literature review and full verification record.
+# Session 141 -- trim_to_amplicon() now works out of the box for
+# every mitochondrial/chloroplast marker in barcode_length_defaults (16S, COI, cytb, rbcL,
+# matK, trnL), not just MiFish-12S -- TaxaTools::barcode_primer_defaults gained 6 more
+# entries, each independently verified AND empirically tested against a real GenBank
+# mitogenome/chloroplast genome. No code changes needed in this package -- trim_to_amplicon()
+# was already generic over any barcode_term with a registered primer pair. See
+# TaxaTools/CLAUDE.md's Session 141 note for the full verification record, including two real
+# errors the empirical testing caught (a wrong cytb amplicon length, a matK forward/reverse
+# mislabeling) that a literature-only check would have missed.
+# Session 140 -- trim_to_amplicon() added: in-silico PCR
+# amplicon extraction for over-length reference sequences (full mitogenomes, etc.) that
+# would otherwise be excluded outright by build_sequence_matrix()'s length filter --
+# implements ecosystem_docs/REENTRY_PROMPT_session139_insilico_pcr_amplicon_trimming.md.
+# Locates verified MiFish-U/E primer-binding sites (Biostrings::matchPattern(fixed =
+# "subject"), both strands, mismatch-tolerant) and extracts just the amplicon; falls back
+# gracefully per-sequence when a primer site can't be found or implies an implausible span.
+# New TaxaTools::barcode_primer_defaults registry (MiFish-U/E only, verified against Miya
+# et al. 2015 across three independent sources) + resolve_barcode_primers(). See Session
+# 140 note below and TaxaTools/CLAUDE.md's own Session 140 note. Session 136 — fetch_reference_sequences() renamed to
 # fetch_ncbi_reference_sequences() (old name kept as deprecated alias) now that a second
 # live-API reference source exists: fetch_bold_reference_sequences(), built directly
 # against BOLD's real v5 Data Portal API via httr2 (BOLD migrated off the old v3/v4 API
@@ -98,6 +122,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `fetch_ncbi_reference_sequences()` | `R/fetch.R` | Written | **Renamed from `fetch_reference_sequences()` (Session 136)** — old name kept as a deprecated forwarding alias (`.Deprecated()`, matches `audit_barcode_coverage_ncbi()`'s pattern); renamed because a second live-API reference source (BOLD) was planned and the old name didn't say NCBI anywhere. Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. **Session 135**: `include_location = FALSE` param — when `TRUE`, fetches each accession's full GBSeq XML record (`.fetch_locations_batched()`) and adds `lat`/`lon`/`country` columns parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); a genuinely separate NCBI round trip from the ESummary/taxonomy-XML fetches this function already does, neither of which carries those qualifiers. |
 | `fetch_bold_reference_sequences()` | `R/fetch.R` | Written | BOLD Systems reference-fetch analog. **Session 136**: talks directly to BOLD's real, live v5 Data Portal API (`portal.boldsystems.org/api`, confirmed via its own OpenAPI spec) via `httr2` -- does NOT wrap the `bold` R package, whose `bold_seqspec()`/`bold_identify()` target BOLD's now-permanently-retired v3/v4 API. 3-stage flow: `query/preprocessor` (resolve taxon → triplet) → `query` (submit → `query_id`) → `documents/{id}/download?format=tsv` (returns full result set, no pagination needed). No server-side marker/locus filter exists in BOLD's query API (only `tax`/`geo`/`ids`/`bin`/`recordsetcode` scopes) — `barcode_term` filters client-side on the returned `marker_code` column. Location (`coord`, bracketed `"[lat, lon]"` string, parsed by `.parse_bold_coord()`; `country/ocean`) comes free with every query, unlike NCBI which needs a separate round trip. Live-tested end to end (103 real sequences across 2 taxa, 84% real coordinate coverage). Internal helpers: `.bold_resolve_taxon()`, `.bold_submit_query()`, `.bold_fetch_documents()`, `.parse_bold_coord()`. |
 | `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
+| `trim_to_amplicon()` | `R/trim_to_amplicon.R` | Written | **Session 140.** In-silico PCR: locates forward/reverse primer-binding sites in over-length `reference_df` sequences (full mitogenomes, whole-genome scaffolds) and extracts just the amplicon, instead of `build_sequence_matrix()`'s length filter discarding the whole sequence -- the fix for a poorly-sampled species whose only GenBank record is over-length losing all reference representation. Standalone stage: `fetch_ncbi_reference_sequences()` → `trim_to_amplicon()` → `build_sequence_matrix()`. Sequences already within `[min_len, max_len]` are left untouched (most purpose-cut barcode submissions already have primers stripped at deposition, so attempting a match on them would often fail even though the sequence is fine). Primers resolved via `barcode_term` (`TaxaTools::resolve_barcode_primers()`) or supplied directly (`primer_fwd`/`primer_rev`) for any marker not yet in the registry. `Biostrings::matchPattern(fixed = "subject")` (both strands, via `reverseComplement()`) -- empirically confirmed `fixed = FALSE` produces spurious matches across long N-runs in draft sequences, while `fixed = "subject"` correctly treats subject ambiguity codes literally while still interpreting the primer's own IUPAC degeneracy. `max_mismatch_rate` (default `0.15`) tolerates real SNP variation at primer-binding sites. A matched pair implying a span outside `[min_len, max_len]` is rejected as an implausible pairing rather than accepted (guards against a spurious far-apart match producing a near-original-length "amplicon"). Per-sequence graceful fallback: unmatched/implausible sequences are left unchanged (still over-length) and flagged via `amplicon_trim_note`, so they fall through to `build_sequence_matrix()`'s existing length filter exactly as before -- this function only ever rescues sequences that would otherwise be lost, never removes ones that would otherwise be kept. Live-verified on a realistic simulated 16kb mitogenome containing an embedded real MiFish-U amplicon: correctly extracted a 172bp sequence (matching Miya et al. 2015's own reported mean amplicon length exactly) that would otherwise have been dropped outright. Deliberately narrow in scope -- not a CRABS reimplementation; primer registry is populated only for verified primer sets (currently MiFish-U/E), with an unregistered marker directed to supply primers directly or pre-trim with CRABS. Internal helper: `.extract_amplicon_one()`. **Session 141**: works out of the box for 6 more markers now that `barcode_primer_defaults` covers every mito/chloroplast marker in `barcode_length_defaults` (16S, COI, cytb, rbcL, matK, trnL) -- no code change needed here, since this function was already generic over any `barcode_term` with a registered pair. New tests confirm real, literature-verified COI-Folmer and rbcLa primer pairs correctly extract from an over-length synthetic sequence, plus a loop test covering all 6 new registry entries end-to-end. **Session 142**: now also supports `coi-leray` (the real mlCOIintF/dgHCO2198 eDNA mini-barcode) -- no code change needed, `barcode_term = "COI-Leray"` resolves through the same generic path. New test confirms correct extraction of a real, literature-verified Leray-fragment amplicon; bare `"COI"` now errors (ambiguous between `coi-folmer`/`coi-leray`) rather than guessing. |
 | `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + taxonomy → `reference_df`. For CRUX, GenBank dumps, custom databases. `taxonomy` param accepts a data frame; new `taxonomy_file` param accepts a 2-column TSV (QIIME2/RESCRIPt/SILVA/MIDORI2 prefix-style `k__Kingdom;...` or positional `Kingdom;...`). Exactly one of `taxonomy` or `taxonomy_file` must be supplied (previously `taxonomy` was required). Internals: `.parse_taxonomy_tsv()`, `.parse_tax_string()`. |
 | `subset_local_database()` | `R/subset_db.R` | Written | Filter a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB, Greengenes2, RDP, **PR2 — Session 136**) to a user-supplied taxon list. Parses taxonomy first → O(1) ID lookup via environment hash → streams FASTA in chunks; peak memory scales with matching sequences, not total database size. Supports `.gz`-compressed FASTA. Optional `max_n_bases` and `require_species` filters. Returns `reference_df`. Reuses `.parse_taxonomy_tsv()` internal. **Session 136**: added real PR2 support — PR2 uses a fixed 9-level positional taxonomy string (`domain;supergroup;division;subdivision;class;order;family;genus;species`, confirmed against a real downloaded v5.1.1 release, 240,201 records, 100% uniform) that doesn't match `.crabs_std_hierarchy`'s 7-level shape; `.parse_tax_string()` now dispatches on field count (9 → new `.pr2_hierarchy` constant) rather than bending the shared 7-level constant every other positional source relies on. Also confirmed and preserved (not stripped) PR2's `:plas` plastid-ancestry suffix. MIDORI2's license (reported CC-BY-NC in secondary sources, unconfirmed on the primary site) now flagged in `@details` as a possible conflict with this ecosystem's CC0/USGS policy. |
 
@@ -419,6 +444,205 @@ non-zero likelihoods that bypass the constraint. Correct order:
 ---
 
 ## Session Notes
+
+**Session 142 (2026-07-06): trim_to_amplicon() now supports the real eDNA COI mini-barcode (coi-leray)**
+
+Direct same-day follow-on to Session 141, which explicitly flagged the Leray et al.
+(2013) mini-barcode (mlCOIintF/jgHCO2198, the actual ~313bp fragment most real COI
+metabarcoding studies use -- not `coi-folmer`'s full-length ~710bp Sanger-era product)
+as unimplemented, blocked by Geller et al. (2013)'s `jgHCO2198` reverse primer using
+inosine (dITP), a base analog `Biostrings::DNAString` has no representation for. The
+user asked to learn more about the mini-barcode's discriminatory-power tradeoffs before
+deciding whether to invest in solving that.
+
+**No code change needed in this package again** -- all the work was in
+`TaxaTools::barcode_primer_defaults` gaining a `coi-leray` entry (pairs Leray's own
+inosine-free forward primer with Meyer (2003)'s inosine-free degenerate reverse primer
+`dgHCO2198` instead of Geller's, a real published pairing, not an invented workaround --
+see `TaxaTools/CLAUDE.md`'s own Session 142 note for the full verification record and
+the discriminatory-power literature summary). `trim_to_amplicon(barcode_term =
+"COI-Leray")` resolves through the same already-generic path as every other marker.
+
+New test confirms `trim_to_amplicon()` correctly extracts a real, literature-verified
+Leray-fragment amplicon from a synthetic over-length sequence (same fixture pattern as
+the Session 141 markers); one existing test that had assumed bare `"COI"` resolved
+uniquely (updated to `"COI-Folmer"` explicitly, since `"COI"` alone is now ambiguous
+between `coi-folmer` and `coi-leray` -- confirmed by a new test that this errors rather
+than silently picking one). `devtools::test()` (58/58 in `test-trim-to-amplicon.R`;
+full suite 609 passing, up from 605, 0 failures, same 15 pre-existing unrelated
+warnings) + `devtools::check()` (0 errors, 0 warnings, 0 notes) all clean.
+
+**Still not implemented**: the more-degenerate "Leray-XT" mlCOIintF variant (partially
+mitigates, but doesn't eliminate, the primer-mismatch-driven non-amplification in
+certain marine zooplankton taxa noted in the discriminatory-power review); any
+vertebrate-tolerant COI primer pair (Folmer's own known limitation, noted Session 141,
+remains unaddressed); wiring `trim_to_amplicon()` into any production workflow script.
+
+**Session 141 (2026-07-06): trim_to_amplicon() now covers every mito/chloroplast marker, not just MiFish-12S**
+
+Same-day follow-on to Session 140. The user asked two things directly: (1) is
+primer-based trimming actually worth it for 12S, or better to just drop over-length
+sequences? (2) work through the rest of the mitochondrial and chloroplast markers in
+`TaxaTools::barcode_length_defaults` (nuclear genes -- 18S, ITS, ITS2 -- explicitly
+excluded per the user's own instruction, since none of them has one canonical primer
+pair to verify the way every mito/chloroplast marker does).
+
+**Opinion on 12S**: yes, practical -- the fallback is always exactly today's
+length-exclusion behavior (this function can only rescue sequences that would
+otherwise be lost, never discard ones that would otherwise be kept), the primer
+specificity plus length-plausibility gate make a spurious accept astronomically
+unlikely, and the problem is already observed on real data (Session 139's "No H1
+pairs found" bug).
+
+**No code changes needed in this package.** `trim_to_amplicon()` was already fully
+generic over `barcode_term` -- all the new-marker work happened in
+`TaxaTools::barcode_primer_defaults`, which gained 6 new entries (16S, COI, cytb,
+rbcL, matK, trnL), each verified against 2-3 independent literature sources AND
+empirically tested with `Biostrings::matchPattern()` against a real GenBank
+mitogenome or chloroplast genome fetched live via NCBI eutils -- not just trusted from
+citation text. This caught two real errors a literature-only check would have missed
+(a wrong cytb amplicon length repeated by two secondary sources -- corrected from a
+mistaken 309bp to the empirically-measured 358bp -- and a genuine forward/reverse
+mislabeling in an otherwise-authoritative matK primer table, resolved by testing both
+orientations directly against real chloroplast DNA). Full verification record is in
+`TaxaTools/CLAUDE.md`'s own Session 141 note.
+
+Added 21 new offline tests here confirming the *consuming* side works correctly with
+the newly-registered primers: real COI-Folmer and rbcLa pairs each correctly extract
+from a synthetic over-length sequence built around them, plus a loop test exercising
+all 6 new registry entries end-to-end through `trim_to_amplicon()` itself (not just
+through the registry lookup, which `TaxaTools`'s own tests already cover). One
+existing test's example marker changed from `"COI"` (now registered, so no longer a
+valid "unregistered marker" example) to `"ITS2"`.
+
+`devtools::test()` (54/54 in `test-trim-to-amplicon.R`; full suite 605 passing, up
+from 588, 0 failures, same 15 pre-existing unrelated warnings) + `devtools::check()`
+(0 errors, 0 warnings, 0 notes) all clean.
+
+**Still deliberately unimplemented**: 18S/ITS/ITS2 primer entries (no canonical pair
+to verify); wiring `trim_to_amplicon()` into any production workflow script (still
+the case from Session 140); the Geller et al. (2013) jgLCO1490/jgHCO2198 redesigned
+COI primers, which use inosine (`I`) -- not a standard IUPAC symbol
+`Biostrings::DNAString` supports, so they can't be implemented with the current
+algorithm without a lossy `N`-substitution approximation that wasn't attempted this
+session; and the Leray et al. (2013) mlCOIintF/jgHCO2198 mini-barcode ("Leray
+fragment"), the actual eDNA-relevant COI marker, blocked by the same inosine issue on
+its reverse primer.
+
+**Session 140 (2026-07-06): trim_to_amplicon() -- in-silico PCR amplicon extraction, implements the Session 139 reentry design doc**
+
+Implements `ecosystem_docs/REENTRY_PROMPT_session139_insilico_pcr_amplicon_trimming.md`
+in full. That doc deliberately stopped short of recommending answers to its own open
+design questions (package placement, primer scope, naming) -- resolved with the user at
+the start of this session before writing any code:
+
+- **Package placement** (design question 4): user pushed back on the doc's own
+  TaxaLikely recommendation, asking for the TaxaMatch/TaxaFetch alternatives to be
+  argued through rather than assumed. Worked through it explicitly: TaxaFetch only ever
+  handles *occurrence* data (GBIF/DataONE), never reference sequences, so it doesn't
+  fit despite the name. TaxaMatch has the raw-sequence/`Biostrings` tooling but is
+  strictly query-side (`TaxaMatch → TaxaLikely`, one direction) -- putting a
+  reference-database-shaping function there would either reverse that dependency
+  direction or split one pipeline stage across a package boundary. TaxaLikely already
+  owns the entire reference-fetch/reference-QC pipeline this slots into
+  (`fetch_ncbi_reference_sequences()`, `read_reference_fasta()`,
+  `build_sequence_matrix()`, `audit_barcode_coverage()`) with no new cross-package
+  dependency either way. User confirmed TaxaLikely on that reasoning.
+- **Primer scope** (design question 1): user's own framing was that the package should
+  stay generic to marker type, populate the registry only where the "long submission
+  contaminates the short-barcode training set" problem is real and a primer pair can be
+  verified, and have a fallback plan (point users at CRABS pre-trimming, and confirm a
+  length-based exclusion filter already exists) if broader coverage turns out to be too
+  much work. Landed on: `trim_to_amplicon()` itself is fully generic (any primer pair
+  via `primer_fwd`/`primer_rev` works, registry lookup via `barcode_term` is a
+  convenience, not a requirement); the registry itself is populated only with MiFish-U/E
+  (12S) this session -- the only marker with real production use in this ecosystem
+  (confirmed by grep: every real `barcode_term` ever passed by a live workflow is
+  `"MiFishU"`) and a single, well-established, verifiable primer pair. Confirmed the
+  fallback length filter already exists and needed no new work:
+  `build_sequence_matrix()`'s existing `min_seq_len`/`max_seq_len` step (`R/build_sequence.R`,
+  "LENGTH FILTER" section) already excludes anything `trim_to_amplicon()` can't rescue,
+  exactly as before this session -- this function only ever adds sequences that would
+  otherwise be lost, never removes ones that would otherwise be kept. 18S was
+  deliberately NOT given a registry entry: unlike MiFish, there is no single canonical
+  18S primer pair (the existing `barcode_length_defaults` comment already flags "varies
+  widely by primer set") -- inventing one would be exactly the unverified-citation risk
+  the reentry doc warned against. 18S callers must supply `primer_fwd`/`primer_rev`
+  directly from their own wet-lab protocol, or pre-trim with CRABS.
+- **Naming** (design question 4b): `trim_to_amplicon()` / `barcode_primer_defaults`,
+  user's direct choice over the doc's `extract_amplicon()` alternative.
+
+**Primer sequences verified, not trusted from memory.** Per the reentry doc's explicit
+instruction ("citing real primer papers... is real work, not a placeholder task"), used
+live web search to cross-check the MiFish-U/E sequences against Miya et al. (2015)'s own
+primary text plus two independent secondary sources (a university core-facility protocol
+page, a GitHub pipeline's README) before adding them to
+`TaxaTools::barcode_primer_defaults` -- all three agreed verbatim:
+MiFish-U-F `GTCGGTAAAACTCGTGCCAGC` / MiFish-U-R `CATAGTGGGGTATCTAATCCCAGTTTG`
+(amplicon 163-185bp); MiFish-E-F `GTTGGTAAATCTCGTGCCAGC` / MiFish-E-R
+`CATAGTGGGGTATCTAATCCTAGTTTG` (amplicon 170-185bp). New
+`TaxaTools::resolve_barcode_primers()` deliberately does *not* mirror
+`resolve_barcode_lengths()`'s substring-prefix convenience matching for a bare
+`"mifish"` -- U and E have genuinely different primer sequences, so an ambiguous term
+errors with guidance instead of silently picking one (see `TaxaTools/CLAUDE.md`'s own
+Session 140 note).
+
+**Algorithm choices empirically verified via real `Biostrings` calls before being
+written into the function**, not assumed from documentation alone: confirmed
+`Biostrings::matchPattern(fixed = FALSE)` produces spurious matches across long
+N-runs (ambiguity codes in the *subject* matching every primer base for free), and that
+`fixed = "subject"` (the reentry doc's own suggested value) correctly avoids this while
+still letting a degenerate primer base match a literal subject base -- reproduced both
+behaviors directly in a throwaway script before committing to the design. Also
+empirically confirmed the both-strand search (via `Biostrings::reverseComplement()`)
+correctly recovers a primer pair when a sequence was deposited on the opposite strand,
+and that `max.mismatch` tolerates a real single-base substitution at a primer-binding
+site. `Biostrings::start()`/`end()` must be called via explicit `::` (a bare `start()`
+resolves to base R's own S3 generic and silently returns wrong values for an
+`XStringViews` object) -- caught by testing this directly rather than assuming.
+
+**Implausible-span guard**: an extracted "amplicon" is only accepted if its span falls
+within `[min_len, max_len]` (from `barcode_length_defaults` via `barcode_term`, or
+supplied directly) -- without this, a spurious far-apart primer pairing inside a large
+sequence could produce a near-original-length "amplicon" that passes through
+undetected. Caught by an early test failure during development (a deliberately
+long-interior synthetic fixture) before it could reach real data.
+
+37 new offline tests (`test-trim-to-amplicon.R`), all using real, verified MiFish-U
+primer sequences embedded in synthetic flanking contexts rather than fabricated
+primers -- covers: already-short sequences left untouched; correct extraction on the
+sense strand; correct extraction when the sequence was deposited on the antisense
+strand; single-base-mismatch tolerance and its rejection at `max_mismatch_rate = 0`;
+graceful fallback when a primer is genuinely absent; the implausible-span rejection;
+explicit `primer_fwd`/`primer_rev` bypassing the registry; mixed-outcome multi-row
+input; and non-IUPAC (protein-looking) sequences flagged rather than crashing. Plus 8
+new offline tests for `TaxaTools::resolve_barcode_primers()`
+(`test-barcode_utils.R`) covering exact/case/separator-insensitive matching, the
+MiFish-U vs. MiFish-E distinction, the deliberate ambiguous-bare-term error, and input
+validation.
+
+Live-verified end to end against a realistic simulated 16kb mitogenome (random-sequence
+flanks, not a repeated motif, to avoid an artificially easy case) containing a real
+embedded MiFish-U amplicon: correctly extracted exactly 172bp -- matching Miya et al.
+2015's own reported mean MiFish-U amplicon length -- while a co-occurring
+already-short, already-primer-trimmed barcode submission (the common real deposition
+convention) was correctly left untouched. This is the exact scenario that broke
+`train_likelihood_model()` in Session 139 ("No H1 pairs found"), now rescuable instead
+of being discarded outright.
+
+`devtools::document()` + `devtools::test()` (TaxaTools: 77/77 in `test-barcode_utils.R`,
+full suite unaffected; TaxaLikely: 37/37 in `test-trim-to-amplicon.R`, full suite 588
+passing / 0 failures / 15 pre-existing unrelated warnings) + `devtools::check()` on both
+packages (0 errors, 0 warnings, 0 notes) all clean.
+
+**Not done / deliberately deferred**: no other marker besides MiFish-U/E was added to
+`barcode_primer_defaults` -- 18S in particular was explicitly ruled out this session (no
+single canonical primer set exists to verify); `trim_to_amplicon()` is not wired into
+any of the four production `PtConceptionWorkflow_*`/`MuguFishWorkflow.R` scripts or the
+Layer-1 `sequence_likelihood_workflow.R` -- those still use the length-exclusion-only
+fix from Session 139's sibling GBIF reentry doc. BLAST-alignment-coordinate trimming
+(the reentry doc's "ruled out as a shortcut" alternative) remains unimplemented and
+unrevisited.
 
 **Session 136 (2026-07-05): fetch_reference_sequences() renamed; real PR2 support added; BOLD wrapper work blocked by a live outage**
 
