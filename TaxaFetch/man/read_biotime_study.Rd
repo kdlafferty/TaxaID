@@ -31,7 +31,8 @@ passthroughs, compatible with \code{\link[=stack_occurrences]{stack_occurrences(
 \item{\code{year}}{Integer.}
 \item{\code{month}}{Integer or NA.}
 \item{\code{day}}{Integer or NA.}
-\item{\code{occurrenceStatus}}{Character.  \code{"present"} or \code{"absent"}.}
+\item{\code{occurrenceStatus}}{Character.  \code{"present"}, \code{"absent"}, or \code{NA}
+(neither \code{ABUNDANCE} nor \code{BIOMAS} parsed to a number for this row).}
 \item{\code{organismQuantity}}{Numeric.  ABUNDANCE value.}
 \item{\code{organismQuantityType}}{Character.  \code{"abundance"}.}
 \item{\code{eventID}}{Character.  BioTime SAMPLE_DESC value.}
@@ -86,9 +87,13 @@ one-s spelling in BioTime source files)}
 }
 
 \code{occurrenceStatus} is set to \code{"present"} when \code{ABUNDANCE > 0} or
-\code{BIOMAS > 0}, and \code{"absent"} otherwise.  Explicit zero records are
-retained; filter with
-\code{dplyr::filter(occurrenceStatus == "present")} if absences are not needed.
+\code{BIOMAS > 0}; \code{"absent"} when at least one of the two is a valid,
+explicit zero; and \code{NA} when neither \code{ABUNDANCE} nor \code{BIOMAS} parses to a
+number at all (missing or malformed in the source CSV) -- an unparseable
+value is not treated as a confirmed non-detection.  Explicit zero records
+are retained; filter with
+\code{dplyr::filter(occurrenceStatus == "present")} if absences (and unknowns)
+are not needed.
 }
 
 \examples{

@@ -541,6 +541,11 @@ print.dataone_preview <- function(x, ...) {
   if (is.na(data_url) || !nzchar(data_url)) {
     return(make_skip("no data URL", cat = cat_entity))
   }
+  if (!.is_trusted_pasta_url(data_url)) {
+    return(make_skip(
+      "data_url host is not a trusted PASTA/EDI host", cat = cat_entity
+    ))
+  }
 
   # HEAD request for file size (fast -- no download)
   file_mb <- .get_content_length(data_url)

@@ -17,7 +17,9 @@
 #'     \item{usageKey}{Integer. GBIF usage key for the matched name, or
 #'       \code{NA} if no match was found.}
 #'     \item{matchType}{Character. GBIF match quality: \code{"EXACT"},
-#'       \code{"FUZZY"}, \code{"HIGHERRANK"}, \code{"NONE"},
+#'       \code{"FUZZY"}, \code{"HIGHERRANK"}, \code{"LOOKUP_RECOVERED"}
+#'       (a \code{"HIGHERRANK"} result recovered via a secondary
+#'       \code{name_lookup()} call -- see \code{@details}), \code{"NONE"},
 #'       \code{"NO_DATA"} (no rank columns present in this row), or
 #'       \code{"ERROR"} (API call failed).}
 #'     \item{gbif_rank}{Character. The rank GBIF assigned to the matched
@@ -40,7 +42,11 @@
 #' \strong{Errors and missing matches:} API failures for individual rows
 #' produce a warning and return \code{matchType = "ERROR"} for that row
 #' rather than stopping the entire run. Review rows with
-#' \code{matchType \%in\% c("NONE", "FUZZY", "ERROR")} before downstream use.
+#' \code{matchType \%in\% c("NONE", "FUZZY", "ERROR", "LOOKUP_RECOVERED")}
+#' before downstream use -- \code{"LOOKUP_RECOVERED"} rows were resolved by a
+#' secondary, less-precise lookup (narrowed by kingdom when available, but
+#' not guaranteed correct for homonyms; see the Homonym prevention section
+#' above) and deserve the same scrutiny as a \code{"FUZZY"} match.
 #'
 #' \strong{rgbif:} This function requires the \code{rgbif} package, listed
 #' under \code{Suggests} because it is only needed for the data-ingest
@@ -114,12 +120,14 @@ get_keys_from_context <- function(hierarchy_df) {
     lapply(row_list, .process_gbif_row, valid_ranks = valid_ranks)
   )
 
+  n_recovered <- sum(results$matchType == "LOOKUP_RECOVERED", na.rm = TRUE)
   message(sprintf(
-    "get_keys_from_context: done. %d matched (%d EXACT, %d FUZZY, %d NONE/ERROR).",
+    "get_keys_from_context: done. %d matched (%d EXACT, %d FUZZY, %d NONE/ERROR%s).",
     sum(!is.na(results$usageKey)),
     sum(results$matchType == "EXACT",  na.rm = TRUE),
     sum(results$matchType == "FUZZY",  na.rm = TRUE),
-    sum(results$matchType %in% c("NONE", "NO_DATA", "ERROR"), na.rm = TRUE)
+    sum(results$matchType %in% c("NONE", "NO_DATA", "ERROR"), na.rm = TRUE),
+    if (n_recovered > 0L) sprintf(", %d LOOKUP_RECOVERED", n_recovered) else ""
   ))
 
   dplyr::bind_cols(hierarchy_df, results)
@@ -196,7 +204,8 @@ get_keys_from_context <- function(hierarchy_df) {
     # (e.g. Cyprinidae -> Animalia), try name_lookup() to find the correct
     # key at the expected rank. This handles deprecated/split taxa that
     # name_backbone() fails to resolve.
-    result <- .recover_higherrank(result, target_name, target_rank, valid_ranks)
+    result <- .recover_higherrank(result, target_name, target_rank, valid_ranks,
+                                  context = rank_values)
 
     result
   }, error = function(e) {
@@ -219,14 +228,36 @@ get_keys_from_context <- function(hierarchy_df) {
 #' name_lookup() for the name at the expected rank. Uses the nubKey
 #' (GBIF backbone key) from search results.
 #'
+#' \strong{Homonym context:} \code{name_lookup()} is queried by name and rank
+#' only -- it does not accept the kingdom/phylum/class context that
+#' \code{name_backbone()} used. Without narrowing, a cross-kingdom homonym
+#' (e.g. \emph{Alaria}, both a brown alga and a trematode worm -- the example
+#' this was verified against) could have its majority-vote \code{nubKey}
+#' come from the wrong kingdom entirely. When \code{context$kingdom} is
+#' available (from the same row's own hierarchy columns), hits are narrowed
+#' to that kingdom before voting. This is a real narrowing, not a guaranteed
+#' fix: GBIF's own per-record \code{kingdom} field is inconsistently
+#' populated across the checklist datasets \code{name_lookup()} searches, and
+#' distinct kingdoms occasionally collapse to the same backbone
+#' \code{nubKey} regardless (a GBIF backbone data-quality issue, confirmed
+#' live for the \emph{Alaria} case -- both kingdoms' hits voted for the same
+#' key there). Rows with no kingdom context fall back to the previous
+#' unfiltered majority vote, consistent with this function's documented
+#' \code{@details} that context-free rows are the ones at risk of homonym
+#' errors.
+#'
 #' @param result One-row data.frame from name_backbone() (usageKey, matchType, gbif_rank).
 #' @param target_name Character. The taxon name that was queried.
 #' @param target_rank Character (lowercase). The expected rank (e.g. "family").
 #' @param valid_ranks Character vector of rank names from coarsest to finest.
+#' @param context Named list of the row's own higher-rank values (e.g.
+#'   \code{list(kingdom = "Animalia")}), used to narrow \code{name_lookup()}
+#'   hits by kingdom when available. Default \code{list()} (no narrowing).
 #' @return The original result if no recovery needed/possible, or an updated
 #'   result with the recovered key and matchType = "LOOKUP_RECOVERED".
 #' @noRd
-.recover_higherrank <- function(result, target_name, target_rank, valid_ranks) {
+.recover_higherrank <- function(result, target_name, target_rank, valid_ranks,
+                                 context = list()) {
 
   if (is.na(result$matchType) || result$matchType != "HIGHERRANK") return(result)
 
@@ -256,6 +287,15 @@ get_keys_from_context <- function(hierarchy_df) {
     hits <- hits[!is.na(hits$nubKey), ]
 
     if (nrow(hits) == 0L) return(result)
+
+    # Narrow to the row's own kingdom, when supplied and present in the
+    # lookup results, before voting -- see @details above.
+    if (!is.null(context$kingdom) && "kingdom" %in% names(hits)) {
+      kingdom_hits <- hits[
+        !is.na(hits$kingdom) & tolower(hits$kingdom) == tolower(context$kingdom),
+      ]
+      if (nrow(kingdom_hits) > 0L) hits <- kingdom_hits
+    }
 
     # Use the most common nubKey (consensus across checklist datasets)
     nub_counts <- table(hits$nubKey)

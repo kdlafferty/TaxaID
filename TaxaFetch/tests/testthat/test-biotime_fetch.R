@@ -277,6 +277,55 @@ test_that("read_biotime_study() sets occurrenceStatus to 'absent' when ABUNDANCE
   }
 })
 
+test_that("read_biotime_study() leaves occurrenceStatus NA (not 'absent') when neither ABUNDANCE nor BIOMAS parses", {
+  df <- data.frame(
+    ABUNDANCE   = c("1", "not_a_number"),
+    BIOMAS      = c(NA, NA),
+    valid_name  = c("Alloclinus holderi", "Gobiiformes sp"),
+    SAMPLE_DESC = c("2008_11_5_SB-AP", "2008_11_6_SB-CAT"),
+    LATITUDE    = c(33.48, 33.46),
+    LONGITUDE   = c(-119.02, -119.03),
+    DAY         = c(5L, 6L),
+    MONTH       = c(11L, 11L),
+    YEAR        = c(2008L, 2008L),
+    stringsAsFactors = FALSE
+  )
+  tmp <- tempfile(fileext = ".csv")
+  utils::write.csv(df, tmp, row.names = FALSE)
+  on.exit(unlink(tmp))
+
+  result <- read_biotime_study(tmp, verbose = FALSE)
+  bad_row <- result[result$scientificName == "Gobiiformes sp", ]
+  expect_equal(nrow(bad_row), 1L)
+  expect_true(is.na(bad_row$occurrenceStatus))
+  # the still-valid row is unaffected
+  good_row <- result[result$scientificName == "Alloclinus holderi", ]
+  expect_equal(good_row$occurrenceStatus, "present")
+})
+
+test_that("read_biotime_study() reports unknown-status row count when verbose", {
+  df <- data.frame(
+    ABUNDANCE   = c("1", "not_a_number"),
+    BIOMAS      = c(NA, NA),
+    valid_name  = c("Alloclinus holderi", "Gobiiformes sp"),
+    SAMPLE_DESC = c("2008_11_5_SB-AP", "2008_11_6_SB-CAT"),
+    LATITUDE    = c(33.48, 33.46),
+    LONGITUDE   = c(-119.02, -119.03),
+    DAY         = c(5L, 6L),
+    MONTH       = c(11L, 11L),
+    YEAR        = c(2008L, 2008L),
+    stringsAsFactors = FALSE
+  )
+  tmp <- tempfile(fileext = ".csv")
+  utils::write.csv(df, tmp, row.names = FALSE)
+  on.exit(unlink(tmp))
+
+  expect_message(
+    read_biotime_study(tmp, verbose = TRUE),
+    "neither a valid ABUNDANCE nor BIOMAS value"
+  )
+})
+
 
 # ── coordinate handling ───────────────────────────────────────────────────────
 

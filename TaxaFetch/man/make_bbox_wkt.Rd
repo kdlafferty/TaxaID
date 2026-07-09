@@ -15,9 +15,16 @@ make_bbox_wkt(lat, lon, radius_deg)
 
 \item{radius_deg}{Numeric. Half-width of the bounding box in decimal
 degrees. The box extends \code{radius_deg} degrees in each direction
-from the centre, giving a total side length of \code{2 * radius_deg}.
-Must be positive. For reference: 1 degree of latitude is approximately
-111 km; 0.5 degrees is approximately 55 km.}
+from the centre, giving a total side length of \code{2 * radius_deg}
+-- a square in degree-space, not in physical distance. Must be
+positive. For reference: 1 degree of latitude is approximately 111 km
+at any latitude; 0.5 degrees is approximately 55 km. \strong{This
+conversion holds only along the north-south axis.} East-west, 1 degree
+of longitude shrinks by a factor of \code{cos(latitude)} (e.g. only
+about 78 km at 45 degrees latitude, about 39 km at 70 degrees), so the
+box's true east-west coverage is narrower than its north-south
+coverage away from the equator -- a real consideration for high-
+latitude sites.}
 }
 \value{
 A length-1 character vector: a WKT POLYGON string with vertices

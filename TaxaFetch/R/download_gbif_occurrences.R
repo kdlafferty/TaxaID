@@ -532,6 +532,23 @@ download_gbif_occurrences <- function(
   dir.create(tmp)
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
+  # Defense-in-depth against zip-slip: zip_path comes from GBIF's own
+  # occ_download()/occ_download_get() (a trusted first party), but nothing
+  # downstream re-validates that trust (cache tampering, a MITM'd download,
+  # etc.), so entry paths are checked before extraction rather than assumed
+  # safe.
+  entry_names <- utils::unzip(zip_path, list = TRUE)$Name
+  unsafe <- entry_names[
+    startsWith(entry_names, "/") | grepl("(^|/)\\.\\.(/|$)", entry_names)
+  ]
+  if (length(unsafe) > 0L) {
+    stop(
+      "download_gbif_occurrences: refusing to extract '", zip_path,
+      "' -- contains unsafe entry path(s) outside the target directory: ",
+      paste(unsafe, collapse = ", ")
+    )
+  }
+
   utils::unzip(zip_path, exdir = tmp)
   all_files <- list.files(tmp, full.names = TRUE, recursive = TRUE)
 

@@ -1,0 +1,208 @@
+---
+title: "TaxaFetch code and domain review"
+output: html_document
+---
+
+Review date: 2026-07-09. Package version reviewed: TaxaFetch 0.1.0. Review conducted by
+Claude Code, using the template in `inst/Code and Domain Review 2.Rmd`. This review
+combines findings and fixes in one pass (no separate response document) -- all issues
+below were fixed and verified in the same session, with two design decisions (marked
+below) made by K. D. Lafferty before implementation.
+
+`devtools::check()`: 0 errors, 0 warnings, 0 notes. `devtools::test()`: 459 expectations
+(up from 434 before this review), 0 failures, 0 errors (2 expected skips, 6 expected
+warnings from tests deliberately checking warning messages). `lintr::lint_package()`:
+clean.
+
+------------------------------------------------------------------------
+
+# Code Review
+
+Purpose: To produce high quality code that is well written and organized according to
+best coding practices.
+
+### [x] Functionality: The code is readable, organized, and efficient.
+
+Readable and consistently organized across all 24 files -- roxygen documentation,
+internal-helper naming (`.` prefix), and `package::function()` cross-package calls follow
+the same conventions throughout. No changes needed here.
+
+### [x] Optimizations: No areas needing optimization; documentation is adequate.
+
+No performance concerns found. `fetch_occurrences_by_taxon()` (the newest function,
+Session 140) already documents its own known scaling limitation (GBIF's uncharacterized
+WKT-complexity ceiling) rather than leaving it undiscovered.
+
+### [x] Coding standards: No errors or bad practices; docstrings and comments are accurate.
+
+Every exported function has complete roxygen (title, `@param` for every argument,
+`@return` describing actual structure, `@examples`). Two doc-accuracy gaps were found and
+fixed (see File-specific comments): `get_gbif_occurrences()`'s `rank_filter` doc didn't
+disclose that it drops `SUBSPECIES`/`VARIETY`/`FORM` records, and `get_keys_from_context()`'s
+`matchType` enum and review-advice list didn't mention the real `"LOOKUP_RECOVERED"` value
+its own recovery path can return.
+
+### [x] Automated tests: Confirmed passing when run locally.
+
+`devtools::test()`: 459 expectations, 0 failures, 0 errors. (Always use `devtools::test()`,
+not bare `testthat::test_dir()`, for this package -- see `TaxaFetch/CLAUDE.md`'s Known
+Footguns for why the latter produces false "function not found" failures.)
+
+### [x] Vulnerabilities: One real finding, fixed; see below.
+
+**SSRF via third-party EML metadata (Medium-High, fixed).** `dataone_standardize.R`'s
+`.download_data_table()` and `dataone_preview.R`'s `.preview_one_entity()` (via
+`.get_content_length()`/`.stream_n_rows()`) took `data_url` verbatim from EML metadata
+fetched from the PASTA/EDI repository and used it as the full request URL (host and
+scheme included) for HTTP GET/HEAD calls, with no restriction on the destination. Verified
+live against a real PASTA record (`edi.1290.9`) that legitimate `dataTable`/`otherEntity`
+download URLs consistently resolve to `pasta.lternet.edu`, while other `<online><url>`
+entries in the same real record pointed at five different external hosts entirely
+(`filelib.wildlife.ca.gov`, `wildlife.ca.gov`, `nrm.dfg.ca.gov`, `usbr.gov`, `doi.org`) --
+confirming the attack surface is real, not theoretical: a malformed or malicious EML
+record could point `data_url` at an internal address, and this code would fetch it.
+
+*Decision (K. D. Lafferty): add a host allowlist.* Fixed via `.is_trusted_pasta_url()`
+(`dataone_standardize.R`), restricting requests to `https://pasta.lternet.edu` and
+`https://pasta.edirepository.org` (EDI's own alternate system host for the same
+infrastructure). Both call sites now skip (with a clear message/skip-reason) rather than
+request any URL outside this allowlist. 6 new tests
+(`test-dataone_standardize.R`, `test-dataone_preview.R`) cover accepted hosts, rejected
+hosts (including a cloud metadata-endpoint address and `localhost`), non-`https` schemes,
+and unparseable input.
+
+**Zip-slip (Low, hardened defensively).** `download_gbif_occurrences.R`'s
+`.read_gbif_zip()` called `utils::unzip()` with no entry-path validation. `zip_path`
+originates from GBIF's own `occ_download()`/`occ_download_get()` API (a trusted first
+party), so this was not assessed as exploitable today, but nothing re-validates that
+trust downstream (cache tampering, a MITM'd download). Added an explicit entry-path check
+(rejects absolute paths and `..` traversal segments) before extraction, as defense in
+depth.
+
+Everything else checked and found not exploitable (command injection: none found anywhere
+in the package; XXE: `xml2::read_xml()` does not resolve external entities by default,
+confirmed with a live test; unsafe deserialization: all `readRDS()` calls load only the
+package's own previously-written cache files; path traversal: all user/API-derived
+filename components are sanitized via `basename()` + character-class stripping before use
+in `file.path()`; PDF magic-byte validation: confirmed working as documented, not
+bypassable via extension alone).
+
+------------------------------------------------------------------------
+
+# Domain Review
+
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is
+biologically reasonable when compared to other similar information available.
+
+### [x] Scientific Rigor: One real finding, fixed; two lower-severity findings fixed.
+
+**Homonym misresolution in `get_keys_from_context()`'s `HIGHERRANK` recovery path
+(Medium-High, fixed).** The function's entire design premise is that supplying full
+taxonomic hierarchy context to GBIF's `name_backbone()` prevents homonym errors (its own
+documented example: *Alaria* is both a brown alga and a trematode worm). But its recovery
+path for a `HIGHERRANK` result too coarse to trust (`.recover_higherrank()`) called
+`rgbif::name_lookup()` with only the name and rank -- no kingdom/phylum context -- and
+picked the majority-vote `nubKey` across whatever checklist datasets `name_lookup()`
+searched. This reintroduces exactly the failure mode the rest of the function exists to
+prevent. Verified live against real GBIF data for *Alaria*: `name_lookup()` results mixed
+kingdoms (Animalia/Platyhelminthes, Chromista/Ochrophyta, and others) under the same
+generic-rank query, with the per-record `kingdom` field itself inconsistently populated
+across checklist datasets -- confirming the concern is real, though also surfacing that
+GBIF's backbone occasionally collapses distinct kingdoms to the same `nubKey` regardless
+(a GBIF data-quality limitation outside this package's control, disclosed in the fixed
+function's own roxygen).
+
+*Decision (K. D. Lafferty): filter `name_lookup()` hits by kingdom before voting.* Fixed:
+`.recover_higherrank()` now accepts a `context` list (the row's own already-available
+hierarchy values) and narrows lookup hits to the matching kingdom before the majority
+vote, falling back to the previous unfiltered behavior when no kingdom context is
+available or the narrowed set is empty. The resulting `matchType = "LOOKUP_RECOVERED"`
+was also missing from the function's documented `matchType` enum and its "review these
+rows" advice -- both fixed. 3 new tests using a synthetic, deliberately unambiguous mixed-
+kingdom fixture (real GBIF data was tried first but is too noisy to isolate the narrowing
+logic cleanly, per the note above).
+
+**BioTime `occurrenceStatus` conflated missing data with confirmed absence (Medium,
+fixed).** `biotime_fetch.R`'s `read_biotime_study()` coded `occurrenceStatus` as
+`"present"` when `ABUNDANCE`/`BIOMAS` was a valid number `> 0`, and `"absent"` in every
+other case -- including rows where both fields were missing or failed `as.numeric()`
+coercion on malformed source data (silently caught by `suppressWarnings()`). This treats
+"unparseable" the same as "confirmed non-detection," a real risk for a database (BioTime)
+that is predominantly presence-based, where an `"absent"` row is unusual and consequential
+for downstream occurrence priors. Fixed: `occurrenceStatus` is now `NA` when neither field
+parses to a number, `"absent"` only when at least one field is a valid, explicit zero, and
+`"present"` as before. A verbose-mode message reports the affected row count. 3 new tests.
+
+**eDNA-exclusion pattern was overly broad (Low-Medium, fixed).** `filter_gbif_quality()`'s
+`exclude_edna` filter matched the generic phrases `"bulk sample"` and `"water sample"`
+against `samplingProtocol`/`occurrenceRemarks`/`preparations`, in addition to
+`"edna"`/`"environmental dna"`/`"metabarcod"`. The two generic phrases can appear in
+non-eDNA methods (plankton tows, water-quality collection notes), risking silent exclusion
+of legitimate presence data. Fixed: removed the two generic phrases from the pattern; real
+GBIF eDNA datasets consistently self-label with one of the three remaining specific terms.
+1 new test confirms generic wording alone no longer triggers exclusion.
+
+### [x] Outputs: Comparable to other implementations; two doc-accuracy gaps fixed.
+
+**`make_bbox_wkt()`'s km-conversion reference was latitude-dependent but undisclosed
+(Low, doc fix).** The function always produces a square in degree-space (by design, not a
+bug -- irregular polygons are explicitly routed to `TaxaTools::define_search_polygon()`
+instead). Its docstring's "0.5 degrees is approximately 55 km" reference conversion holds
+along the north-south axis only; east-west coverage shrinks by `cos(latitude)` and was not
+disclosed, a real risk for high-latitude sites. Fixed: `@param radius_deg` now states the
+caveat explicitly with concrete examples (about 78 km at 45 degrees, about 39 km at 70
+degrees).
+
+**`get_gbif_occurrences()`'s `rank_filter` default silently excludes subspecies-level
+records (Low, doc fix, behavior unchanged).** `rank_filter = "species"` (default) is an
+exact string match against `taxonRank`, so GBIF records ranked `SUBSPECIES`/`VARIETY`/
+`FORM` are dropped even though they carry a usable species-level identity in their own
+`species` column -- inconsistent with `filter_gbif_quality(require_species = TRUE)`'s more
+permissive downstream check. Assessed as plausibly intentional (conservative default,
+every existing caller already expects species-rank-only output) rather than a bug to fix
+behaviorally this session; documented explicitly instead so the tradeoff is visible rather
+than discovered by surprise.
+
+### [x] Algorithms: Appropriate for intended purpose; no other flaws found.
+
+`fetch_occurrences_by_taxon()`'s geometry union/combine logic, `stack_occurrences()`'s
+`gbifID` dedup, `check_inat_range()`'s point-in-polygon logic, and the DataONE geo/taxon
+LLM-screening prompts (deliberately biased toward "answer YES when in doubt," relying on
+stricter downstream EML screening) were all read closely and found appropriate for their
+purpose. `filter_gbif_quality()`'s other six filters (coordinates, absent-occurrence
+exclusion, basis of record, issue codes, coordinate-uncertainty `NA`-handling, decimal-
+place precision) are correctly implemented and match their documentation.
+
+------------------------------------------------------------------------
+
+# File specific comments
+
+- `R/dataone_standardize.R` -- added `.pasta_trusted_hosts` / `.is_trusted_pasta_url()`
+  and the `.download_data_table()` guard (SSRF fix); `.recover_higherrank()` gained a
+  `context` parameter and kingdom-narrowing logic (homonym fix); `.process_gbif_row()`
+  updated to pass context through.
+- `R/dataone_preview.R` -- `.preview_one_entity()` gained the same host-allowlist guard
+  before its HEAD/stream calls.
+- `R/get_keys_from_context.R` -- `matchType` roxygen enum and review-advice list updated
+  to include `"LOOKUP_RECOVERED"`; summary message now reports a `LOOKUP_RECOVERED` count
+  when nonzero.
+- `R/biotime_fetch.R` -- `occurrenceStatus` derivation and all three related roxygen
+  sections (`@details`, `@return` field, verbose summary message) updated for the
+  NA-vs-absent distinction.
+- `R/filter_gbif_quality.R` -- `edna_pattern` narrowed; inline comment explains why.
+- `R/make_bbox_wkt.R` -- `@param radius_deg` gained the latitude-dependent caveat.
+- `R/get_gbif_occurrences.R` -- `@param rank_filter` gained the exact-match/subspecies
+  caveat. (Unrelated: this edit shifted `.lintr`'s line-293 `commented_code_linter`
+  exclusion to line 300 -- updated; see `.lintr`'s Pass 5 note in the project's own
+  pre-review-checklist memory about exclusion line-number drift.)
+- `R/download_gbif_occurrences.R` -- `.read_gbif_zip()` gained a zip-slip entry-path
+  check before extraction.
+- `.lintr` -- added an `object_usage_linter` exclusion for `dataone_preview.R:544`
+  (`.is_trusted_pasta_url()` cross-file call, same false-positive class as the existing
+  `get_gbif_occurrences.R:217` exclusion, confirmed via `codetools::checkUsage()` on the
+  loaded namespace).
+- New/expanded test files: `test-dataone_standardize.R` (+6), `test-dataone_preview.R`
+  (new file, +4 -- this file previously had zero test coverage at all;
+  `preview_dataone_occurrences()` itself remains untested beyond this guard, a
+  pre-existing gap out of scope for this review), `test-get_keys_from_context.R` (+3),
+  `test-biotime_fetch.R` (+2), `test-filter_gbif_quality.R` (+1).

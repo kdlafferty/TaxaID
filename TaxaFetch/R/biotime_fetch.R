@@ -47,9 +47,13 @@ utils::globalVariables(c(
 #' }
 #'
 #' `occurrenceStatus` is set to `"present"` when `ABUNDANCE > 0` or
-#' `BIOMAS > 0`, and `"absent"` otherwise.  Explicit zero records are
-#' retained; filter with
-#' `dplyr::filter(occurrenceStatus == "present")` if absences are not needed.
+#' `BIOMAS > 0`; `"absent"` when at least one of the two is a valid,
+#' explicit zero; and `NA` when neither `ABUNDANCE` nor `BIOMAS` parses to a
+#' number at all (missing or malformed in the source CSV) -- an unparseable
+#' value is not treated as a confirmed non-detection.  Explicit zero records
+#' are retained; filter with
+#' `dplyr::filter(occurrenceStatus == "present")` if absences (and unknowns)
+#' are not needed.
 #'
 #' @param local_path Character scalar or `NULL`.  Path to the downloaded
 #'   BioTime study CSV.  If `NULL` (the default), a system file-chooser
@@ -72,7 +76,8 @@ utils::globalVariables(c(
 #'   \item{`year`}{Integer.}
 #'   \item{`month`}{Integer or NA.}
 #'   \item{`day`}{Integer or NA.}
-#'   \item{`occurrenceStatus`}{Character.  `"present"` or `"absent"`.}
+#'   \item{`occurrenceStatus`}{Character.  `"present"`, `"absent"`, or `NA`
+#'     (neither `ABUNDANCE` nor `BIOMAS` parsed to a number for this row).}
 #'   \item{`organismQuantity`}{Numeric.  ABUNDANCE value.}
 #'   \item{`organismQuantityType`}{Character.  `"abundance"`.}
 #'   \item{`eventID`}{Character.  BioTime SAMPLE_DESC value.}
@@ -227,11 +232,24 @@ read_biotime_study <- function(local_path = NULL,
   # -- derived DwC columns -------------------------------------------------------
   biomass_vals <- if ("biotime_biomass" %in% names(raw)) raw$biotime_biomass else NA_real_
 
-  raw$occurrenceStatus     <- ifelse(
-    (!is.na(raw$organismQuantity) & raw$organismQuantity > 0) |
-      (!is.na(biomass_vals) & biomass_vals > 0),
-    "present", "absent"
+  has_abundance <- !is.na(raw$organismQuantity)
+  has_biomass   <- !is.na(biomass_vals)
+  raw$occurrenceStatus <- ifelse(
+    (has_abundance & raw$organismQuantity > 0) | (has_biomass & biomass_vals > 0),
+    "present",
+    ifelse(has_abundance | has_biomass, "absent", NA_character_)
   )
+  n_unknown_status <- sum(is.na(raw$occurrenceStatus))
+  if (n_unknown_status > 0L && verbose) {
+    message(sprintf(
+      paste0(
+        "  %d row(s) have neither a valid ABUNDANCE nor BIOMAS value (missing ",
+        "or unparseable in the source CSV) -- occurrenceStatus left NA rather ",
+        "than coded as \"absent\"; review these rows before use."
+      ),
+      n_unknown_status
+    ))
+  }
   raw$organismQuantityType <- "abundance"
   raw$basisOfRecord        <- "HumanObservation"
   raw$datasetID            <- dataset_id
@@ -251,12 +269,16 @@ read_biotime_study <- function(local_path = NULL,
 
   # -- report --------------------------------------------------------------------
   if (verbose) {
-    n_present <- sum(raw$occurrenceStatus == "present")
-    n_absent  <- sum(raw$occurrenceStatus == "absent")
+    n_present <- sum(raw$occurrenceStatus == "present", na.rm = TRUE)
+    n_absent  <- sum(raw$occurrenceStatus == "absent", na.rm = TRUE)
+    n_unknown <- sum(is.na(raw$occurrenceStatus))
     n_taxa    <- length(unique(raw$scientificName))
     message(sprintf(
-      "  %d records: %d present, %d absent | %d taxa | datasetID = \"%s\"",
-      nrow(raw), n_present, n_absent, n_taxa, dataset_id
+      paste0(
+        "  %d records: %d present, %d absent, %d unknown | %d taxa | ",
+        "datasetID = \"%s\""
+      ),
+      nrow(raw), n_present, n_absent, n_unknown, n_taxa, dataset_id
     ))
   }
 

@@ -51,12 +51,19 @@ rather have the fetch path's immediate per-key feedback for a somewhat
 larger query and have a stable connection.}
 
 \item{rank_filter}{Character or \code{FALSE}/\code{NULL}. \code{"species"}
-(default) keeps only records where \code{taxonRank} equals this value
-(case-insensitive) -- occurrences above species rank (family/genus-only
-identifications) are not usable by downstream taxon-level modelling
-(TaxaHabitat / TaxaExpect) and every existing caller already drops them
-post hoc. Set to \code{FALSE} or \code{NULL} to disable. See Details for
-why this is always a post-fetch filter, never a GBIF query predicate.}
+(default) keeps only records where \code{taxonRank} \strong{exactly
+equals} this value (case-insensitive) -- occurrences above species rank
+(family/genus-only identifications) are not usable by downstream
+taxon-level modelling (TaxaHabitat / TaxaExpect) and every existing
+caller already drops them post hoc. Because this is an exact match, not
+a "species or finer" match, records GBIF ranks \code{SUBSPECIES},
+\code{VARIETY}, or \code{FORM} are also dropped by the default, even
+though they carry a usable species-level identity in their own
+\code{species} column -- deliberately conservative rather than a bug,
+but worth knowing if a query returns fewer records than expected for a
+taxon with many subspecies-level GBIF identifications. Set to
+\code{FALSE} or \code{NULL} to disable. See Details for why this is
+always a post-fetch filter, never a GBIF query predicate.}
 
 \item{columns}{Character. \code{"standard"} (default) trims and reorders
 the output to a curated column set covering the spatial / temporal /

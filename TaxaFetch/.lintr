@@ -4,7 +4,14 @@ linters: linters_with_defaults(
   )
 encoding: "UTF-8"
 exclusions: list(
-    "R/dataone_preview.R" = list(commented_code_linter = c(42L, 43L, 44L, 45L, 46L, 47L, 48L, 50L, 51L, 52L, 53L, 56L, 59L, 60L, 61L, 63L, 66L, 68L)),
+    # object_usage_linter at line 544 (.is_trusted_pasta_url(), defined in
+    # dataone_standardize.R and called here) is the same cross-file
+    # resolution gap as get_gbif_occurrences.R's exclusion below --
+    # confirmed clean via codetools::checkUsage() on the loaded namespace.
+    "R/dataone_preview.R" = list(
+      commented_code_linter = c(42L, 43L, 44L, 45L, 46L, 47L, 48L, 50L, 51L, 52L, 53L, 56L, 59L, 60L, 61L, 63L, 66L, 68L),
+      object_usage_linter = c(544L)
+    ),
     "R/pdf_text.R" = list(commented_code_linter = c(94L, 163L, 249L, 351L)),
     "R/pdf_api.R" = list(commented_code_linter = c(35L, 129L)),
     "R/dataone_geo_screening.R" = list(commented_code_linter = c(15L, 16L, 19L, 24L, 26L, 32L, 287L)),
@@ -20,7 +27,7 @@ exclusions: list(
     # codetools::checkUsage() on the loaded namespace -- clean there; lintr's
     # per-file static analysis of lint_package() doesn't resolve the cross-file
     # call the same way.
-    "R/get_gbif_occurrences.R" = list(commented_code_linter = c(293L),
+    "R/get_gbif_occurrences.R" = list(commented_code_linter = c(300L),
                                       object_usage_linter = c(217L)),
     "R/dataone_standardize.R" = list(commented_code_linter = c(30L))
   )

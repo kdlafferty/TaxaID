@@ -20,7 +20,9 @@ The input dataframe with three columns appended:
 \item{usageKey}{Integer. GBIF usage key for the matched name, or
 \code{NA} if no match was found.}
 \item{matchType}{Character. GBIF match quality: \code{"EXACT"},
-\code{"FUZZY"}, \code{"HIGHERRANK"}, \code{"NONE"},
+\code{"FUZZY"}, \code{"HIGHERRANK"}, \code{"LOOKUP_RECOVERED"}
+(a \code{"HIGHERRANK"} result recovered via a secondary
+\code{name_lookup()} call -- see \code{@details}), \code{"NONE"},
 \code{"NO_DATA"} (no rank columns present in this row), or
 \code{"ERROR"} (API call failed).}
 \item{gbif_rank}{Character. The rank GBIF assigned to the matched
@@ -49,7 +51,11 @@ matched case-insensitively, so \code{Kingdom}, \code{KINGDOM}, and
 \strong{Errors and missing matches:} API failures for individual rows
 produce a warning and return \code{matchType = "ERROR"} for that row
 rather than stopping the entire run. Review rows with
-\code{matchType \%in\% c("NONE", "FUZZY", "ERROR")} before downstream use.
+\code{matchType \%in\% c("NONE", "FUZZY", "ERROR", "LOOKUP_RECOVERED")}
+before downstream use -- \code{"LOOKUP_RECOVERED"} rows were resolved by a
+secondary, less-precise lookup (narrowed by kingdom when available, but
+not guaranteed correct for homonyms; see the Homonym prevention section
+above) and deserve the same scrutiny as a \code{"FUZZY"} match.
 
 \strong{rgbif:} This function requires the \code{rgbif} package, listed
 under \code{Suggests} because it is only needed for the data-ingest

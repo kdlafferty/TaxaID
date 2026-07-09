@@ -256,11 +256,13 @@ filter_gbif_quality <- function(
     if (length(edna_cols) == 0L) {
       message("filter_gbif_quality: no eDNA-detectable character columns found -- skipping eDNA filter.")
     } else {
-      edna_pattern <- paste(
-        "edna", "environmental dna", "metabarcod",
-        "bulk sample", "water sample",
-        sep = "|"
-      )
+      # "bulk sample"/"water sample" alone are deliberately excluded from
+      # this pattern -- both phrases are generic enough to appear in
+      # non-eDNA methods (plankton tows, water-quality-linked collection
+      # remarks) and would over-exclude legitimate presence data. Real GBIF
+      # eDNA/metabarcoding datasets consistently self-label with one of the
+      # three terms below.
+      edna_pattern <- paste("edna", "environmental dna", "metabarcod", sep = "|")
       search_text <- do.call(
         paste,
         c(lapply(edna_cols, function(col) {

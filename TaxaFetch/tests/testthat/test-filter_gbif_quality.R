@@ -318,6 +318,24 @@ test_that("removes records with metabarcoding keyword (case-insensitive)", {
   expect_equal(nrow(out), 1L)
 })
 
+test_that("does NOT remove records with only generic 'bulk sample'/'water sample' wording", {
+  # A plankton tow or water-quality collection note can legitimately say
+  # "water sample"/"bulk sample" with no eDNA/metabarcoding content at all --
+  # these must not be excluded as presence data (see filter_gbif_quality.R's
+  # eDNA-filter comment for the rationale).
+  df <- data.frame(
+    decimalLatitude  = c(34.5, 35.0),
+    decimalLongitude = c(-120.0, -119.0),
+    samplingProtocol = c("bulk sample, plankton net tow", "grab water sample"),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0),
+                              bad_issues = character(0),
+                              max_coord_uncertainty = Inf,
+                              exclude_edna = TRUE)
+  expect_equal(nrow(out), 2L)
+})
+
 test_that("exclude_edna = FALSE skips eDNA filter entirely", {
   df <- data.frame(
     decimalLatitude  = c(34.5, 35.0),

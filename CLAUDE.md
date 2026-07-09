@@ -1,7 +1,29 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-09 (Session 147, branch `main` -- fifth parameter-audit punch-list
+# Last updated: 2026-07-09 (Session 148, branch `main` -- full TaxaFetch code + domain
+# review against inst/Code and Domain Review 2.Rmd (findings + fixes recorded in
+# taxafetch_review.Rmd at the TaxaID root). Two real, fixed issues at the deep-review level:
+# an SSRF gap in the DataONE pipeline (data_url read verbatim from third-party EML metadata,
+# used as a full request URL with no host restriction -- fixed via a
+# pasta.lternet.edu/pasta.edirepository.org allowlist, verified live against a real PASTA
+# record showing legitimate vs. arbitrary-external-host <online><url> entries side by side)
+# and a homonym-misresolution gap in TaxaFetch::get_keys_from_context()'s HIGHERRANK-recovery
+# fallback (name_lookup() queried with no kingdom context, undermining the function's own
+# stated purpose -- fixed by narrowing lookup hits to the row's own kingdom before voting,
+# verified live against real GBIF *Alaria* data). Also fixed: biotime_fetch.R conflating
+# unparseable ABUNDANCE/BIOMAS with confirmed occurrenceStatus = "absent" (now NA);
+# filter_gbif_quality()'s eDNA-exclusion pattern over-broad ("bulk sample"/"water sample"
+# alone); a zip-slip defense-in-depth check; two doc-only clarifications (make_bbox_wkt()'s
+# latitude-dependent km caveat, get_gbif_occurrences()'s rank_filter subspecies-exclusion
+# behavior). This session's security/domain passes went deeper than Session 131's original
+# pre-review cleanup (which had found "no high-confidence vulnerabilities") specifically by
+# live-testing against real external data instead of static review alone -- a corroboration
+# of the ecosystem's own repeated lesson (see the pre-review-checklist memory) that live data
+# surfaces real bugs static passes miss. devtools::test(): 459/459 (up from 434), 0 failures.
+# devtools::check(): 0 errors, 0 warnings, 0 notes. See TaxaFetch/CLAUDE.md's Session 148
+# note for the full record.
+# Session 147, branch `main` -- fifth parameter-audit punch-list
 # family (score floors). New diagnostics/score_floor_roc_sweep.R uses real classification
 # ground truth (every pair in the real 12S seq_matrix reference data has known species/genus/
 # family identity) to show raw percent-identity score alone cannot discriminate a species from

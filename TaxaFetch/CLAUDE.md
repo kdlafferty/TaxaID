@@ -1,6 +1,23 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-06 (Session 140 -- fetch_occurrences_by_taxon() added: taxon-centric
+# Last updated: 2026-07-09 (Session 148 -- full code + domain review against
+# inst/Code and Domain Review 2.Rmd, findings and fixes in taxafetch_review.Rmd at the
+# TaxaID root. Two real, fixed issues: an SSRF gap in the DataONE pipeline (data_url read
+# verbatim from third-party EML metadata with no host restriction -- fixed via a
+# pasta.lternet.edu/pasta.edirepository.org allowlist) and a homonym-misresolution gap in
+# get_keys_from_context()'s HIGHERRANK recovery path (name_lookup() fallback dropped all
+# kingdom context -- fixed by narrowing lookup hits to the row's own kingdom before voting).
+# Also fixed: biotime_fetch.R conflating unparseable ABUNDANCE/BIOMAS with confirmed
+# occurrenceStatus = "absent" (now NA); filter_gbif_quality()'s eDNA-exclusion pattern was
+# overly broad ("bulk sample"/"water sample" alone, narrowed to the three eDNA-specific
+# terms); doc-only clarifications for make_bbox_wkt()'s latitude-dependent km caveat and
+# get_gbif_occurrences()'s rank_filter subspecies-exclusion behavior; a zip-slip defense-in-
+# depth check added to download_gbif_occurrences(). Corrects Session 131's Pass 7a note
+# ("no high-confidence vulnerabilities found") -- that pass did not live-test DataONE's EML
+# handling against real PASTA data, which is what surfaced the SSRF gap this session.
+# devtools::test(): 459 expectations (up from 434), 0 failures. devtools::check(): 0 errors,
+# 0 warnings, 0 notes. See Session 148 note below for the full record. Session 140 --
+# fetch_occurrences_by_taxon() added: taxon-centric
 # batched GBIF fetch, implementing the general-fix design from
 # ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md. stack_occurrences() also
 # gained a gbifID dedup step. See Session 140 note below for the full record. Session 134b --
@@ -36,14 +53,14 @@ non-interactive-vs-interactive comparison.
 |---|---|---|---|
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK. **Session 140:** drops rows with a duplicate non-`NA` `gbifID` (first kept) when that column is present -- defense-in-depth against double-counting the same GBIF record, since no earlier step in the GBIF pipeline dedupes by key. | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box (scripted, non-interactive) | Complete | R/make_bbox_wkt.R |
-| `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys | Complete | R/get_keys_from_context.R |
+| `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys. **Session 148:** its `HIGHERRANK`-recovery path (`.recover_higherrank()`) now narrows `rgbif::name_lookup()` hits to the row's own kingdom (when available) before majority-voting a `nubKey`, closing a homonym-misresolution gap; the resulting `matchType = "LOOKUP_RECOVERED"` is now documented and included in the "review these rows" advice. | Complete | R/get_keys_from_context.R |
 | `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. | Complete | R/fetch_gbif_occurrences.R |
 | `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility — implemented and verified working (Session 131; a Session 129 note here previously claimed otherwise, incorrectly); (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` should reference SIMPLE_CSV's native `issue` (singular) name if customized — the function renames the output column to `issues` regardless. | Complete | R/download_gbif_occurrences.R |
 | `get_gbif_occurrences()` | **Session 129 — recommended entry point**, not a replacement for the two functions above (neither is modified). Picks `fetch_gbif_occurrences()` vs `download_gbif_occurrences()` by `key_threshold` (default 50, matching both functions' own documented guidance and the manual dispatch pattern the Layer-1 tutorial already used) and standardizes both paths to one column contract. `rank_filter = "species"` (default) is a post-fetch filter only — neither GBIF API exposes a taxonomic-rank predicate to filter server-side. `columns = "standard"` (default) / `"all"` / custom vector. `familyKey`/`genusKey` are `NA` on the download path — SIMPLE_CSV doesn't carry them at all, not fixable by this wrapper. Translates the wrapper's canonical `issues` column name back to SIMPLE_CSV's native `issue` when building `select_cols` for the download path (needed because `select_cols` matches at import time, before `download_gbif_occurrences()`'s own rename runs) — this is the only issue/issues handling the wrapper does; see `download_gbif_occurrences()`'s entry above for the Session 131 correction to a false "cross-path bug" claimed here previously. | Complete | R/get_gbif_occurrences.R |
 | `fetch_occurrences_by_taxon()` | **Session 140 — taxon-centric batched fetch.** Groups a fetch scope (one row per (site, candidate taxon) pair: `taxon_key` + `geometry` WKT) by taxon key instead of by observation/site: unions each taxon key's own geometry via `sf::st_union()` (dissolving the duplicate-record risk when two site boxes for the same taxon overlap), then combines different taxon keys that end up with an identical unioned geometry into one multi-key `get_gbif_occurrences()` call (`combine_shared_geometry = TRUE`, default). Neither `get_gbif_occurrences()` nor its own backends are modified — this is a pure call-grouping layer above it. Does not expose `rgbif`'s `geom_big`/`geom_size`/`geom_n` WKT-complexity escape valve and does not characterize GBIF's real WKT-size ceiling (documented as a known limitation, not silently masked). See `ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md` for the full design discussion this implements. | Complete | R/fetch_occurrences_by_taxon.R |
-| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement. | Complete | R/filter_gbif_quality.R |
+| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement. **Session 148:** the eDNA-exclusion pattern narrowed to `edna`/`environmental dna`/`metabarcod` -- dropped the generic `bulk sample`/`water sample` phrases, which risked over-excluding legitimate non-eDNA presence data. | Complete | R/filter_gbif_quality.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
-| `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble | Complete | R/biotime_fetch.R |
+| `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble. **Session 148:** `occurrenceStatus` is now `NA` (not `"absent"`) when neither `ABUNDANCE` nor `BIOMAS` parses to a number, since an unparseable/missing value is not a confirmed non-detection. | Complete | R/biotime_fetch.R |
 | `screen_eml_columns()` | Fetch EML; check bbox overlap; detect lat/lon columns | Complete | R/dataone_eml_screen.R |
 | `preview_dataone_occurrences()` | Pre-download scout; `dataone_preview` S3 class | Complete | R/dataone_preview.R |
 | `print.dataone_preview()` | S3 print method | Complete | R/dataone_preview.R |
@@ -214,12 +231,13 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 |---|---|---|
 | test-fetch_gbif_occurrences.R | `fetch_gbif_occurrences()` | Mocked rgbif; covers 429 retry/backoff |
 | test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline |
-| test-get_keys_from_context.R | `get_keys_from_context()` | Mocked rgbif |
+| test-get_keys_from_context.R | `get_keys_from_context()`, `.recover_higherrank()` | Mocked rgbif; Session 148 added kingdom-narrowing coverage via a synthetic mixed-kingdom fixture |
 | test-make_bbox_wkt.R | `make_bbox_wkt()` | Fully offline |
 | test-stack_occurrences.R | `stack_occurrences()` | 22 tests; fully offline |
 | test-report_fetch.R | `report_fetch()` | Fully offline |
-| test-biotime_fetch.R | `read_biotime_study()` | Fully offline |
-| test-dataone_standardize.R | `fetch_dataone_occurrences()` | Mocked DataONE API |
+| test-biotime_fetch.R | `read_biotime_study()` | Fully offline; Session 148 added NA-vs-absent `occurrenceStatus` coverage |
+| test-dataone_standardize.R | `fetch_dataone_occurrences()`, `.is_trusted_pasta_url()`, `.download_data_table()` | Mocked DataONE API; Session 148 added SSRF host-allowlist coverage |
+| test-dataone_preview.R | `.preview_one_entity()` (guard only) | Session 148, **new file** -- `preview_dataone_occurrences()` itself remains untested, a pre-existing gap |
 | test-dataone_taxon_screening_geo.R | `build_taxon_screen_prompt()`, `parse_taxon_screening_response()`, `build_geo_prompt()`, `parse_geo_screening_response()` | LLM mocked |
 | test-literature_search.R | `search_literature()`, `download_literature_pdfs()` | OpenAlex calls mocked |
 
@@ -252,6 +270,77 @@ below and TaxaTools/CLAUDE.md).
 ---
 
 ## Session Notes
+
+**Session 148 (2026-07-09): full code + domain review (`inst/Code and Domain Review 2.Rmd`)**
+
+Branch `main`. Full pass-by-pass code and domain review, findings and fixes recorded in
+`taxafetch_review.Rmd` at the TaxaID root (following the `taxatools_review.Rmd`/
+`taxatools_review_response.md` precedent, combined into one document since review and
+fix happened in the same pass). Passes 1/2/5 (debris, ASCII, lintr) were already clean
+from Session 131; this session re-ran Pass 6 (`check()`/`test()`), then did a deeper
+Pass 7 (security + algorithm/domain correctness) than Session 131's had covered,
+live-testing against real PASTA/GBIF data rather than static review alone.
+
+- **SSRF (Medium-High, fixed).** `.download_data_table()` (`dataone_standardize.R`) and
+  `.preview_one_entity()` (`dataone_preview.R`, via `.get_content_length()`/
+  `.stream_n_rows()`) used `data_url` -- read verbatim from third-party EML metadata --
+  as the full request URL (host and scheme included) with no restriction. Verified live
+  against a real PASTA record (`edi.1290.9`): legitimate entity-download URLs
+  consistently resolve to `pasta.lternet.edu`, while other `<online><url>` entries in the
+  same record pointed at five unrelated external hosts, confirming the risk is real. User
+  decision: add a host allowlist. New `.pasta_trusted_hosts`/`.is_trusted_pasta_url()`
+  (`dataone_standardize.R`) restrict requests to `pasta.lternet.edu`/
+  `pasta.edirepository.org` over https; both call sites now skip untrusted URLs with a
+  clear reason instead of requesting them. **This corrects Session 131's Pass 7a note**
+  ("no high-confidence vulnerabilities found") -- that pass was a static
+  `/security-review` run, not a live test against real DataONE EML data, which is what
+  surfaced this gap.
+- **Homonym misresolution (Medium-High, fixed).** `get_keys_from_context()`'s
+  `.recover_higherrank()` (the `HIGHERRANK`-result recovery path) called
+  `rgbif::name_lookup()` with no kingdom/phylum context, undermining the function's own
+  stated purpose of preventing cross-kingdom homonym errors (its own documented example:
+  *Alaria*, a brown alga and a trematode worm). Verified live against real GBIF data for
+  *Alaria* -- confirmed `name_lookup()`'s kingdom field is genuinely noisy across
+  checklist datasets, and that GBIF's backbone can even collapse distinct kingdoms to the
+  same `nubKey` regardless (a GBIF data-quality limitation, not fixable here, now
+  disclosed in the function's own roxygen). User decision: filter lookup hits by kingdom
+  before voting. `.recover_higherrank()` gained a `context` parameter; falls back to the
+  previous unfiltered behavior when no kingdom is available. `matchType =
+  "LOOKUP_RECOVERED"` (a real return value the roxygen previously omitted) added to the
+  documented enum and review-advice list.
+- **BioTime NA-vs-absent conflation (Medium, fixed).** `read_biotime_study()` coded
+  `occurrenceStatus` as `"absent"` whenever `ABUNDANCE`/`BIOMAS` was missing or failed
+  `as.numeric()` coercion, not just when a value was validly zero -- risked treating
+  malformed source data as a confirmed non-detection. Now `NA` when neither field parses;
+  `"absent"` only for an explicit valid zero.
+- **eDNA filter over-broad (Low-Medium, fixed).** `filter_gbif_quality()`'s
+  `exclude_edna` pattern included generic `"bulk sample"`/`"water sample"` phrases that
+  could over-exclude legitimate non-eDNA presence data; narrowed to the three
+  eDNA-specific terms (`edna`, `environmental dna`, `metabarcod`).
+- **Doc-only clarifications:** `make_bbox_wkt()`'s km-conversion reference didn't
+  disclose it only holds along the north-south axis (`cos(latitude)` shrinkage
+  east-west); `get_gbif_occurrences()`'s `rank_filter = "species"` default's exact-match
+  behavior (drops `SUBSPECIES`/`VARIETY`/`FORM`) wasn't documented -- assessed as
+  plausibly intentional (every existing caller already expects species-rank-only output)
+  rather than changed behaviorally.
+- **Zip-slip (Low, hardened defensively).** `.read_gbif_zip()` gained an entry-path check
+  before `unzip()` -- `zip_path` is GBIF's own trusted API output today, but nothing
+  downstream re-validates that trust.
+- Test coverage: 25 new tests across `test-dataone_standardize.R` (+6),
+  `test-dataone_preview.R` (**new file** -- this package's `dataone_preview.R` had zero
+  test coverage before this session; `preview_dataone_occurrences()` itself is still
+  untested beyond the new guard, a pre-existing gap out of scope here), `test-
+  get_keys_from_context.R` (+3, synthetic mixed-kingdom fixture -- real GBIF *Alaria*
+  data was tried first but is too noisy to isolate the narrowing logic cleanly),
+  `test-biotime_fetch.R` (+2), `test-filter_gbif_quality.R` (+1).
+- `.lintr`: added an `object_usage_linter` exclusion for `dataone_preview.R:544`
+  (`.is_trusted_pasta_url()` cross-file call, same false-positive class as the existing
+  `get_gbif_occurrences.R:217` exclusion, confirmed via `codetools::checkUsage()` on the
+  loaded namespace); updated `get_gbif_occurrences.R`'s `commented_code_linter` line
+  number (293 -> 300, drifted by this session's own doc edit above it -- see the
+  pre-review-checklist memory's Pass 5 note on exclusion line-number drift).
+- `devtools::document()`/`test()`/`check()` all clean: 459 expectations (up from 434),
+  0 failures; 0 errors, 0 warnings, 0 notes.
 
 **Session 140 (2026-07-06): fetch_occurrences_by_taxon() -- taxon-centric batched GBIF fetch**
 

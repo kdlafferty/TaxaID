@@ -300,6 +300,76 @@ test_that("one failed row does not prevent other rows from resolving", {
 })
 
 # =============================================================================
+# .recover_higherrank() -- HIGHERRANK recovery, kingdom-narrowed voting
+# =============================================================================
+# Real GBIF data (Alaria, a brown alga AND a trematode worm) confirmed that
+# name_lookup()'s per-record kingdom field is noisy and that unrelated
+# kingdoms can even share a nubKey -- these tests use a synthetic hits table
+# instead, deliberately constructed so kingdom-narrowing changes which
+# nubKey wins, to isolate and verify the narrowing logic itself rather than
+# depend on GBIF's live (and occasionally degenerate) checklist data.
+
+.valid_ranks_coarse_to_fine <- c(
+  "kingdom", "phylum", "class", "order", "family", "genus", "species"
+)
+
+.higherrank_result <- function() {
+  data.frame(
+    usageKey  = NA_integer_,
+    matchType = "HIGHERRANK",
+    gbif_rank = "KINGDOM",
+    stringsAsFactors = FALSE
+  )
+}
+
+.mixed_kingdom_hits <- function() {
+  list(data = data.frame(
+    rank    = rep("GENUS", 5L),
+    nubKey  = c(100L, 100L, 100L, 200L, 200L),
+    kingdom = c("Animalia", "Animalia", "Animalia", "Chromista", "Chromista"),
+    stringsAsFactors = FALSE
+  ))
+}
+
+test_that(".recover_higherrank() uses the unfiltered majority vote with no kingdom context", {
+  local_mocked_bindings(
+    name_lookup = function(...) .mixed_kingdom_hits(),
+    .package = "rgbif"
+  )
+  out <- TaxaFetch:::.recover_higherrank(
+    .higherrank_result(), "Testgenus", "genus", .valid_ranks_coarse_to_fine
+  )
+  expect_equal(out$matchType, "LOOKUP_RECOVERED")
+  expect_equal(out$usageKey, 100L)  # majority nubKey, 3/5 hits
+})
+
+test_that(".recover_higherrank() narrows to the supplied kingdom before voting", {
+  local_mocked_bindings(
+    name_lookup = function(...) .mixed_kingdom_hits(),
+    .package = "rgbif"
+  )
+  out <- TaxaFetch:::.recover_higherrank(
+    .higherrank_result(), "Testgenus", "genus", .valid_ranks_coarse_to_fine,
+    context = list(kingdom = "Chromista")
+  )
+  expect_equal(out$matchType, "LOOKUP_RECOVERED")
+  expect_equal(out$usageKey, 200L)  # only Chromista hit, differs from the
+                                    # unfiltered majority vote above
+})
+
+test_that(".recover_higherrank() falls back to unfiltered voting when the kingdom has no hits", {
+  local_mocked_bindings(
+    name_lookup = function(...) .mixed_kingdom_hits(),
+    .package = "rgbif"
+  )
+  out <- TaxaFetch:::.recover_higherrank(
+    .higherrank_result(), "Testgenus", "genus", .valid_ranks_coarse_to_fine,
+    context = list(kingdom = "Plantae")  # no Plantae rows in the mock hits
+  )
+  expect_equal(out$usageKey, 100L)  # unfiltered majority, since narrowing emptied the set
+})
+
+# =============================================================================
 # Live API integration (skipped offline)
 # =============================================================================
 
