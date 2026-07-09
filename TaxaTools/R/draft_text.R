@@ -214,7 +214,9 @@ print.report_context <- function(x, ...) {
 #'   appendix with parameter details, or \code{"brief"} for a short summary.
 #' @param llm_fn Function. LLM provider function with signature
 #'   \code{function(prompt_str, ...) -> character(1)}. Default
-#'   \code{call_anthropic_api}.
+#'   \code{getOption("TaxaID.llm_fn", call_api)} -- the ecosystem-wide
+#'   auto-detected provider (see \code{\link{call_api}}), falling back to
+#'   \code{call_api} itself if the option is unset.
 #' @param max_code_lines Integer. Maximum number of code lines to include
 #'   in the prompt. Long scripts are truncated with a note. Default
 #'   \code{300L}.
@@ -340,7 +342,9 @@ draft_methods_text <- function(code,
 #'   the objects. When provided, the LLM can reference specific analysis
 #'   steps. Default \code{NULL}.
 #' @param llm_fn Function. LLM provider function. Default
-#'   \code{call_anthropic_api}.
+#'   \code{getOption("TaxaID.llm_fn", call_api)} -- the ecosystem-wide
+#'   auto-detected provider (see \code{\link{call_api}}), falling back to
+#'   \code{call_api} itself if the option is unset.
 #' @param max_rows Integer. Maximum rows to show per data frame in the
 #'   prompt. Default \code{20L}.
 #' @param verbose Logical. Print progress messages. Default \code{FALSE}.

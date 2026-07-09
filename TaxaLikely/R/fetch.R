@@ -390,7 +390,7 @@ utils::globalVariables(c(
 #'   If NULL, auto-resolved from `barcode_term`.
 #'   Set both to NULL and supply wide manual values to cast a broader net
 #'   (useful for exploring how sequence length relates to errors).
-#' @param max_per_species Integer or NULL (default 5).
+#' @param max_per_species Integer or NULL (default NULL).
 #'   Maximum sequences to retain per species (stratified downsampling).
 #'   NULL disables species-level capping.
 #' @param max_per_genus Integer or NULL (default NULL).

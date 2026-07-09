@@ -1,6 +1,146 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-05 (Session 138 — multi-site posterior combination. join_priors()'s
+# Last updated: 2026-07-09 (Session 147 -- fifth parameter-audit punch-list family (score
+# floors: score_consensus::min_score, assign_taxa_llm::score_threshold). New
+# diagnostics/score_floor_roc_sweep.R gives this family something the earlier ones lacked: REAL
+# ground truth, not a resolution-rate proxy -- every pair in the real 12S seq_matrix reference
+# data has known species/genus/family identity on both sides, so TPR (within-species) and FPR
+# (congeneric/confamilial/cross-family) at each percent-identity threshold are actual
+# classification metrics. Finding: TPR and FPR_congeneric track almost identically from
+# threshold 70 to 96 (e.g. at 90: TPR=1.000, FPR_congeneric=0.991) -- raw percent-identity score
+# alone cannot discriminate a species from its closest congener at almost any real-world
+# threshold, directly confirming and sharpening the ecosystem's own prior "Framing B verdict"
+# memory ("100% rule unreliable at congeneric level") at the specific parameter level.
+# score_threshold=80/min_score=0 both turn out fine for what they actually do (coarse
+# cross-family pre-filtering; assign_taxa_llm()'s LLM prior and score_consensus()'s
+# rank_thresholds are what do the real species-level discrimination) -- but pursuing that second
+# half surfaced a real, higher-stakes gap, not just an unvalidated default: score_consensus()'s
+# rank_thresholds defaulted to NULL, so a caller with no explicit override got ZERO score-based
+# species-vs-congener protection, silently. Fixed: rank_thresholds now defaults to the
+# conventional GITA/Jonah Ventures thresholds c(species=98, genus=95, family=90, order=85),
+# auto-rescaled by /100 if score_col looks like a 0-1 proportion scale rather than 0-100 percent
+# identity (matching the `if (max(x) > 1) treat-as-percent else treat-as-proportion` convention
+# already used in TaxaLikely's .normalize_scores()/assign_scores()/
+# restore_suppressed_candidates()$delta -- confirmed via search before implementing, not
+# invented fresh). Verified this doesn't break existing behavior: walked every real call site
+# and every score_consensus() test manually before running them -- all either explicitly
+# override rank_thresholds already, or use synthetic scores high enough (>=97) that the new
+# default's capping never actually engages (rank_thresholds only ever demotes an LCA that's
+# FINER than what the score justifies, never promotes one that's already coarser) --
+# devtools::test() confirmed 539/539 unchanged, devtools::check() 0 errors/0 warnings/1
+# pre-existing NOTE (unrelated clock-check artifact), vignettes rebuilt clean. Also fixed an
+# adjacent, unrelated TaxaWizard metadata bug found while updating rank_thresholds' JSON entry:
+# min_score's documented default was 80, but the real function default is 0.
+# Session 146 -- fixed the silent LLM-response-truncation risk
+# assign_taxa_llm() Session 145 surfaced (not a punch-list item itself, but a real,
+# higher-stakes finding hit along the way: 4/5 real 30-taxon batches truncated at
+# call_api()'s default max_tokens=3000, silently falling back to uniform priors with only a
+# warning). Two changes: (1) .parse_taxa_response() now detects the truncation signature
+# specifically (response has no closing "]" at all) and gives an actionable warning naming the
+# real cause and two concrete fixes, instead of the old generic "failed to parse" message --
+# verified directly against both a synthetic truncated response and a synthetic
+# complete-but-malformed one, confirmed each hits the intended branch. (2) taxa_per_call's
+# default lowered assign_taxa_llm() 30->15 (also propagated to run_llm_pipeline(), which
+# forwards it, and to the real example call in TaxaAssign_llm_workflow.R) -- corroborated by
+# discovering TaxaFlag::review_assignments() had independently hit and fixed the identical
+# failure mode in an earlier session with the same 30->15 change, so this isn't just one
+# session's single real trial. suggest_unreferenced_species() still defaults taxa_per_call=30L
+# and was deliberately NOT changed -- it batches genera with a simpler response shape, and the
+# same risk wasn't confirmed for it this session (flagged for a future check, not assumed).
+# devtools::check() 0 errors/0 warnings/0 notes, 539 tests unchanged.
+# Session 145 -- empirical sensitivity check for the fourth
+# parameter-audit punch-list family: assign_taxa_llm()'s score_sharpness, unknown_lik_weight,
+# prior_phi, absent_detection_prob. Unlike Session 143/144's targets, these four are consumed
+# upstream of compute_posterior() (baked into score_likelihood/prior_alpha/prior_beta), not a
+# downstream filter -- but all four turned out to be deterministic post-processing on
+# already-fetched LLM output, so no LLM re-call was needed per sweep grid point. Small
+# behavior-preserving refactor first: extracted the merge/rescale/Beta-construction block
+# (previously inline in assign_taxa_llm()) into new internal helper .merge_llm_priors()
+# (R/assign_taxa_llm.R) so it can be re-run cheaply against a fixed LLM response;
+# devtools::test() unchanged (539 passing) confirming no behavior change. No usable real
+# assign_taxa_llm()/run_llm_pipeline() checkpoint existed anywhere in the repo or the eDNA data
+# tree (every real workflow there uses the Bayesian pathway) -- ran assign_taxa_llm()'s real
+# LLM-call stage once for real (5 Anthropic API calls, 499 real PtConception 12S observations,
+# 143 unique taxa; script not committed, see scratchpad note in
+# diagnostics/llm_prior_shape_sweep.R's header) and checkpointed the pre-merge intermediates.
+# Hit and fixed two real snags getting that one real run to work: (1) TaxaTools's LLM provider
+# auto-detection doesn't activate in a plain Rscript session even with library(TaxaTools)
+# loaded (confirmed directly -- getOption("TaxaID.provider") stayed NULL); worked around with
+# an explicit provider argument, not investigated further since it's a TaxaTools-level gap,
+# out of scope here. (2) call_api()'s default max_tokens=3000 truncated 4/5 real 30-taxon-batch
+# JSON responses (the one 23-taxon batch succeeded) -- confirmed this is a REAL, not
+# hypothetical, risk of the documented default taxa_per_call=30; worked around locally with
+# max_tokens=8000, not promoted to a fix in assign_taxa_llm()/call_api() itself (flagged for a
+# future punch-list pass, not fixed this session). Finding, once a clean real checkpoint
+# existed: these four parameters mostly shape CONFIDENCE (consensus_posterior), not WHICH taxon
+# wins (pct_resolved was flat within ~1.5 points across every grid tested). unknown_lik_weight
+# has the largest real effect (mean winning posterior 0.997->0.911 sweeping 0.01->0.20).
+# score_sharpness had almost no effect (0.9922->0.9936 across the full 0-1 range) -- the LLM
+# prior is doing nearly all the discriminating work, as intended. prior_phi: a flat scalar
+# (5-80) matched the tiered default's resolution/confidence almost exactly -- a real, still-open
+# question about whether the tiered complexity earns its keep, not resolved this session.
+# absent_detection_prob: tested via a disclosed SYNTHETIC known_absent overlay (no real
+# ecosystem workflow currently supplies known_absent) -- no aggregate effect detected, but this
+# is the weakest/most diluted result of the four (5/143 taxa affected across 499 observations),
+# not a validated finding either way. Findings written into assign_taxa_llm()'s own @details
+# section. devtools::document()/test() clean throughout. Reclassified in the audit table
+# (GROUND_TRUTH -> DOCUMENT) per user's choice to document rather than dig deeper on any of the
+# open questions (flat-vs-tiered phi, absent_detection_prob dilution) this session.
+# Session 144 -- empirical sensitivity check for
+# posterior_consensus()'s min_posterior/cumulative_threshold defaults (0.05/0.90), the second
+# item on the parameter-audit punch list after Session 143's backbone_id work. Reconstructed a
+# real posterior_df (44,442 rows / 13,483 observations) offline from PtConception 12S
+# checkpoints (Step 7a.5 through compute_posterior(), no live GBIF/DECIPHER calls, a modest
+# number of TaxaTools::verify_taxon_names() calls for taxonomy gaps) via a one-off
+# reconstruction script (session-local, not committed -- see scratchpad note in
+# diagnostics/posterior_threshold_sweep.R's header). New diagnostics/posterior_threshold_sweep.R
+# grid-sweeps min_posterior x cumulative_threshold against a 3,000-observation real subsample
+# (subsampled after the full-13,483/56-grid-point sweep proved too slow for this session's
+# background-task setup -- twice interrupted at ~15-17 min; the subsampled sweep finished in
+# 215s and produces the same qualitative picture). Finding: the two defaults are NOT equally
+# load-bearing. min_posterior does real, roughly linear work (sweeping 0->0.20 at the
+# cumulative_threshold default moves resolution rate by +8.2 points); cumulative_threshold does
+# comparatively little independent work once a reasonable min_posterior floor exists (sweeping
+# 0.70->0.99 at the min_posterior default moves resolution by only -3.3 points, and
+# non-monotonically -- more "conservative" values don't cleanly increase caution). The two
+# interact sharply only in the unrealistic min_posterior=0 + cumulative_threshold=0.99 corner
+# (resolution craters to 57.9%), confirming the documented interaction mechanism is real but not
+# a practical risk at the shipped defaults. Explicitly caveated in both the roxygen and here:
+# this sweep measures resolution RATE (how often the pipeline commits to a finest-rank call),
+# not ACCURACY (whether that call is correct) -- no ground-truth-validated observation set was
+# available, so this closes the "is there a citable empirical characterization" gap the
+# parameter audit flagged (GROUND_TRUTH -> DOCUMENT) without claiming the defaults are proven
+# optimal. Findings written into posterior_consensus()'s own @details "Threshold interaction"
+# section (not duplicated here beyond this summary). devtools::document() clean. join_priors()'s
+# mirrored expansion_min_prior/expansion_cumulative_prior params were deliberately NOT touched
+# this session (user's choice) -- still flagged GROUND_TRUTH in the audit table, open for later.
+# Session 143 -- backbone_id no longer has a silent default anywhere
+# it's actually used for taxonomy reconciliation. join_priors() gains a new required
+# backbone_id param (no default, errors if omitted), replacing a hardcoded, un-overridable
+# backbone_id = 4L inside its taxonomy-fallback fill. posterior_consensus()'s backbone_id
+# default changed from 11L to NULL (errors only when lookup_missing_taxonomy = TRUE and
+# backbone_id is omitted -- lazy, since most callers never touch that path).
+# run_bayesian_pipeline()/run_llm_pipeline()'s backbone_id lost its 4L default entirely and is
+# now required (errors immediately if omitted), since both forward it unconditionally into
+# join_priors()/posterior_consensus(). Prompted by a parameter audit flagging the 4L vs 11L
+# default mismatch between run_bayesian_pipeline() and posterior_consensus() as a possible
+# correctness bug; traced first and confirmed it was NOT live (run_bayesian_pipeline() always
+# explicitly forwards its own backbone_id through .run_consensus_and_report() into
+# posterior_consensus(), so posterior_consensus()'s own default was never actually reached
+# through that call path) -- but the user's design call was that no function reconciling
+# input taxonomy against an external backbone should have a silent default at all, since the
+# correct backbone depends on which backbone the caller's own input data used and this varies
+# by project. TaxaTools::fill_higher_ranks()/escalate_taxonomic_rank() were evaluated against
+# the same rule and deliberately left with their existing 4L/11L primary/fallback defaults,
+# since that pair is a resolution strategy (try NCBI, then GBIF as cross-check) rather than an
+# assumption about the input data's own backbone. All ~15 real in-repo call sites (vignettes,
+# workflow scripts, TaxaWizard snippets + metadata) and all test call sites updated to pass
+# backbone_id explicitly; devtools::check() 0 errors/0 warnings/1 pre-existing NOTE, 539 tests
+# passing. Found and flagged (not fixed, out of scope) a pre-existing, unrelated bug while
+# here: TaxaWizard's inst/metadata/TaxaAssign.json join_priors entry uses param names
+# (likelihoods_df/priors_df/grid_id/main_habitat) that don't match the real signature
+# (likelihoods/taxaexpect_priors/site) at all.
+# Session 138 — multi-site posterior combination. join_priors()'s
 # final distinct() call is now grid_id/main_habitat-aware, fixing a real bug where a
 # multi-site observation had each candidate cherry-pick its own best site instead of being
 # joined against the site it was actually detected at. New combine_multisite_priors()
@@ -42,14 +182,14 @@ or be user-supplied from outside the ecosystem.
 | `combine_multisite_priors()` | **Session 138.** Combines `join_priors()`'s per-site prior rows for a single observation detected at more than one real site (e.g. the same eDNA ASV recovered at two different sample sites) into one row per candidate, via precision-weighted combination in logit space: `logit(Beta(a,b))` has exact mean `digamma(a)-digamma(b)` and variance `trigamma(a)+trigamma(b)`; combining with inverse-variance weighting discounts a sparse/low-confidence site relative to a well-supported one. The combined Beta's own concentration is derived from the pooled logit variance (large-phi delta-method approx), so `compute_posterior()`'s existing Beta-sampling MC path needs no changes. Adds `n_sites_combined` and `combined_sites` (pipe-delimited `grid_id` list, `NA` for single-site rows); `grid_id`/`main_habitat` set to `NA` on combined rows. Single-site observations pass through unchanged. Insert between `join_priors()` and `compute_posterior()`. | Complete | R/combine_multisite_priors.R |
 | `expand_unreferenced_hypotheses()` | Replace generic H2/H3 rows from TaxaLikely with named unreferenced species; bridges TaxaLikely likelihoods to TaxaExpect priors | Complete | R/expand_unreferenced.R |
 | `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → reference-check → unreferenced vector; optional family expansion. data_type param ("eDNA"/"acoustic"/"image") routes to NCBI queries (eDNA) or set-membership check vs reference_species (acoustic/image). | Complete | R/suggest_unreferenced_species.R |
-| `assign_taxa_llm()` | LLM-shortcut pipeline: score-based likelihoods + LLM priors → posteriors | Complete | R/assign_taxa_llm.R |
+| `assign_taxa_llm()` | LLM-shortcut pipeline: score-based likelihoods + LLM priors → posteriors. **Session 145:** merge/rescale/Beta-construction step factored into new internal `.merge_llm_priors()` helper (deterministic, no LLM calls -- enables cheap re-sweeping against a fixed LLM response). Empirical sensitivity findings for `score_sharpness`/`unknown_lik_weight`/`prior_phi`/`absent_detection_prob` in its own `@details`. | Complete | R/assign_taxa_llm.R |
 | `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id` | Complete | R/posterior_consensus.R |
 | `add_slash_taxon()` | Appends `slash_taxon_name` (ornithological slash-species notation; NA for singletons/unresolved) and `irreducible_consensus` (TRUE when the candidate set can't be further decomposed elsewhere in the dataset) to `posterior_consensus()` output. **Session 123:** when `consensus_taxon` is present, also adds `consensus_OTU` (single reporting label — `slash_taxon_name` when non-NA, else `consensus_taxon`) and `primary_taxon` (`consensus_OTU` reduced to one taxon by dropping everything after the first `/` or ` + `) — logic previously hand-duplicated identically in 3 real workflows. | Complete | R/slash_taxon.R |
-| `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id` | Complete | R/score_consensus.R |
+| `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id`. **Session 147:** `rank_thresholds` default changed `NULL` → `c(species=98, genus=95, family=90, order=85)` (the conventional GITA/JV thresholds) after an ROC sweep against real 12S reference data showed `min_score`/`max_gap` alone provide essentially no species-vs-congener discrimination -- a caller with no explicit `rank_thresholds` previously got zero protection against confusing a species with its congener. Auto-rescales by /100 if `score_col` looks like a 0-1 proportion scale. Pass `rank_thresholds = NULL` to restore old behavior. | Complete | R/score_consensus.R |
 | `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()`. **Session 134:** optional `spatial_group_map` param (`observation_id`/`spatial_group_id`) restricts both the confirmation source and the update target to observations sharing a `spatial_group_id` with >= 1 other observation (a multi-member spatial group) -- observations in a single-observation spatial group (whether a genuine single observation or one that fell outside a drawn group, per `TaxaMatch::group_observations_by_bbox()` -- there's no separate naming for these, just a singleton group) are always returned unchanged, since another unrelated observation's confirmed presence says nothing about them. | Complete | R/update_prior_from_consensus.R |
 | `build_context()` | Auto-populate `ctx` (ecoregion, main_habitat, date) from taxon names via TaxaHabitat + LLM synthesis | Complete | R/build_context.R |
 | `generate_report()` | Publication-ready Methods + Results text; hybrid template (Methods) + LLM (Results) with template fallback | Complete | R/generate_report.R |
-| `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). **Session 138:** the final `distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)` dedup now also keys on `grid_id`/`main_habitat`, fixing a real bug where a genuine multi-site observation (the same `observation_id` detected at more than one site) had each candidate collapse to only its own highest-`prior_mean` site — discarding the site it was actually detected at. Output is now site-preserving (one row per candidate per site); pass it through the new `combine_multisite_priors()` before `compute_posterior()` to recombine. The first `left_join()` (likelihoods → event_meta) now declares `relationship = "many-to-many"` since a multi-candidate, multi-site observation legitimately fans out on both sides. | Complete | R/join_priors.R |
+| `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). **Session 138:** the final `distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)` dedup now also keys on `grid_id`/`main_habitat`, fixing a real bug where a genuine multi-site observation (the same `observation_id` detected at more than one site) had each candidate collapse to only its own highest-`prior_mean` site — discarding the site it was actually detected at. Output is now site-preserving (one row per candidate per site); pass it through the new `combine_multisite_priors()` before `compute_posterior()` to recombine. The first `left_join()` (likelihoods → event_meta) now declares `relationship = "many-to-many"` since a multi-candidate, multi-site observation legitimately fans out on both sides. **Session 143:** new required `backbone_id` param (no default, errors if omitted), replacing a previously hardcoded, un-overridable `backbone_id = 4L` inside the taxonomy-fallback fill -- the correct backbone depends on which backbone the caller's input taxonomy was verified against. | Complete | R/join_priors.R |
 | `run_bayesian_pipeline()` | High-level wrapper: TaxaLikely likelihoods + TaxaExpect priors → full Bayesian workflow (~10 calls → 1). Auto-filters errors from model_params, auto-resolves site habitat. Stage 1b: three-tier H2 phantom suppression via GBIF genus census (suppress complete, rename singleton-missing, keep incomplete). GBIF species list fed to `audit_barcode_coverage(species_list=)`. | Complete | R/run_bayesian_pipeline.R |
 | `run_llm_pipeline()` | High-level wrapper: LLM-shortcut workflow (~7 calls → 1); optional auto-context + unreferenced detection + report. Optional `reference_errors` param. | Complete | R/run_llm_pipeline.R |
 | `report_assign()` | Generate `report_section` summarizing taxonomic assignment (workflow type, resolution rate, posterior/score stats). For `assemble_report()`. | Complete | R/report_assign.R |
@@ -62,6 +202,7 @@ or be user-supplied from outside the ecosystem.
 | `.resolve_site()` | Site resolution: lat/lon → nearest grid_id from priors; multi-site support | R/site_utils.R |
 | `.latlon_to_grid()` | Haversine nearest-grid lookup with habitat auto-selection | R/site_utils.R |
 | `.run_consensus_and_report()` | Shared consensus → empirical Bayes → report helper for both pipeline wrappers | R/run_bayesian_pipeline.R |
+| `.merge_llm_priors()` | **Session 145.** Merges per-observation likelihoods with LLM-derived priors, applies `known_absent` suppression + `unknown_lik_weight` rescaling, constructs Beta `prior_alpha`/`prior_beta` from `prior_phi`. Factored out of `assign_taxa_llm()`'s main body (pure post-processing on already-fetched LLM output, no LLM calls) so it can be re-run cheaply for a sensitivity sweep — see `diagnostics/llm_prior_shape_sweep.R`. | R/assign_taxa_llm.R |
 
 ---
 
@@ -179,7 +320,7 @@ posterior_consensus(posterior_df,
                     min_posterior           = 0.05,
                     posterior_col           = "posterior_mean",
                     lookup_missing_taxonomy = FALSE,
-                    backbone_id             = 11L,
+                    backbone_id             = NULL,
                     species_reference       = NULL)
 ```
 
@@ -203,7 +344,9 @@ When `species_reference` is non-NULL, also adds: `downranked` (logical).
 hypotheses summing to `cumulative_threshold` of named-taxon mass, after dropping any below
 `min_posterior`. Genus is derived from binomial when explicit column has NA (e.g. unreferenced rows).
 `lookup_missing_taxonomy = TRUE` calls `TaxaTools::verify_taxon_names()` + `change_backbone()`
-to fill family/genus/species for unreferenced rows. `backbone_id` passed through (default 11 = GBIF).
+to fill family/genus/species for unreferenced rows. `backbone_id` passed through -- required
+(errors) when `lookup_missing_taxonomy = TRUE`; no default, since the correct backbone
+depends on which backbone the input taxonomy was verified against (Session 143).
 
 **Renormalization note:** cumulative proportions are renormalized (post-`min_posterior` filter)
 only for selecting the plausible set. The reported `consensus_posterior` is the raw sum of

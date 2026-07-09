@@ -1,6 +1,9 @@
 # Edge: match_df + model_params + priors -> consensus (Bayesian wrapper)
 # Source: TaxaAssign run_bayesian_pipeline()
 # Prerequisite: match_df must have observation_id, score_original, taxon_name, taxon_name_rank
+# NOTE: {{backbone_id}} is required — no default. Must match whichever
+#   taxonomic backbone the input taxonomy was verified against (e.g. 11
+#   for GBIF, 4 for NCBI).
 
 # Standardize common column name variations
 if (!"observation_id" %in% names({{match_var}})) {
@@ -46,6 +49,7 @@ bayes_result <- TaxaAssign::run_bayesian_pipeline(
   taxaexpect_priors = {{priors_var}},
   site         = {{site}},
   rank_system  = detected_ranks,
+  backbone_id  = {{backbone_id}},
   verbose      = TRUE
 )
 consensus <- bayes_result$consensus

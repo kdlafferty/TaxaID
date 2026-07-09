@@ -1107,7 +1107,8 @@ likelihoods_w_prior <- TaxaAssign::join_priors(
   taxaexpect_priors = taxaexpect_priors,
   site              = site_for_join,
   taxonomy_lookup   = taxonomy_lookup,
-  rank_system       = fgs
+  rank_system       = fgs,
+  backbone_id       = PRIOR_BACKBONE_ID
 )
 .save(likelihoods_w_prior, "likelihoods_w_prior")
 

@@ -85,8 +85,12 @@
 #'   TaxaTools to be installed and may make network requests. Default `FALSE`.
 #' @param backbone_id Integer. Taxonomic backbone to use when
 #'   `lookup_missing_taxonomy = TRUE`. Passed to
-#'   `TaxaTools::verify_taxon_names()`. Common values: 1 = Catalogue of Life,
-#'   11 = GBIF (default), 9 = WoRMS. See ecosystem CLAUDE.md for full list.
+#'   `TaxaTools::verify_taxon_names()`. Required (errors) when
+#'   `lookup_missing_taxonomy = TRUE` -- no default, since the correct
+#'   backbone depends on which backbone your input taxonomy was verified
+#'   against, which varies by project. Common values: 1 = Catalogue of Life,
+#'   4 = NCBI, 9 = WoRMS, 11 = GBIF. See ecosystem CLAUDE.md for full list.
+#'   Ignored (may be left `NULL`) when `lookup_missing_taxonomy = FALSE`.
 #' @param species_reference Optional. A plausible-species reference used to
 #'   downrank unresolved coarse-rank consensus assignments. Accepts two forms:
 #'   \itemize{
@@ -120,6 +124,27 @@
 #' 90\% credible interval; increase toward 0.95--0.99 for more conservative
 #' assignments (more upranking to genus/family); decrease to 0.8 for more
 #' aggressive species-level calls.
+#'
+#' \strong{Empirical sensitivity (2026-07-09, real data):} a grid sweep against
+#' a real 3,000-observation subsample of PtConception 12S posteriors (see
+#' \code{diagnostics/posterior_threshold_sweep.R}) found the two defaults are
+#' NOT equally load-bearing. Holding \code{cumulative_threshold} at the
+#' default 0.90, sweeping \code{min_posterior} from 0 to 0.20 moved the
+#' finest-rank resolution rate by +8.2 points (72.3\% -> 80.5\%) -- a real,
+#' fairly linear effect. Holding \code{min_posterior} at the default 0.05,
+#' sweeping \code{cumulative_threshold} from 0.70 to 0.99 moved resolution by
+#' only -3.3 points (79.6\% -> 76.3\%) -- \code{cumulative_threshold} does
+#' comparatively little independent work once a reasonable \code{min_posterior}
+#' floor is already in place. The two parameters interact sharply only in the
+#' unrealistic corner of \code{min_posterior = 0} combined with
+#' \code{cumulative_threshold = 0.99} (resolution drops to 57.9\%), confirming
+#' the mechanism described above is real but not a practical risk at the
+#' current defaults. \strong{Caveat:} this sweep measures resolution
+#' \emph{rate} (how often the pipeline commits to a finest-rank call), not
+#' \emph{accuracy} (whether that call is correct) -- no ground-truth-validated
+#' observation set was available to check against, so a higher
+#' \code{min_posterior} driving up the resolved-\% is not itself evidence that
+#' those additional resolved calls are correct.
 #'
 #' \strong{LCA method:}
 #' Lowest Common Ancestor is the standard conservative consensus method in
@@ -211,7 +236,7 @@ posterior_consensus <- function(posterior_df,
                                 min_posterior           = 0.05,
                                 posterior_col           = "posterior_mean",
                                 lookup_missing_taxonomy = FALSE,
-                                backbone_id             = 11L,
+                                backbone_id             = NULL,
                                 species_reference       = NULL) {
 
   # --- Input validation -------------------------------------------------------
@@ -244,6 +269,17 @@ posterior_consensus <- function(posterior_df,
 
   # --- Optional taxonomy lookup for unreferenced rows -------------------------
   if (lookup_missing_taxonomy) {
+    if (is.null(backbone_id)) {
+      cli::cli_abort(c(
+        "{.arg backbone_id} must be specified explicitly when \\
+        {.arg lookup_missing_taxonomy} = TRUE.",
+        "i" = "There is no safe default: the correct backbone depends on \\
+        which backbone your input taxonomy was verified against, and this \\
+        varies by project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). \\
+        See the Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the \\
+        full list."
+      ))
+    }
     if (!requireNamespace("TaxaTools", quietly = TRUE)) {
       cli::cli_warn(
         "TaxaTools not installed; skipping taxonomy lookup for unreferenced taxa."

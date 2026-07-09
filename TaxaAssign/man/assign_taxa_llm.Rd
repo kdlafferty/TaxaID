@@ -18,7 +18,7 @@ assign_taxa_llm(
   known_present = NULL,
   known_absent = NULL,
   absent_detection_prob = 0.8,
-  taxa_per_call = 30L,
+  taxa_per_call = 15L,
   pause_seconds = 1,
   prior_phi = c(high = 50, moderate = 10, low = 3),
   prior_weight_guide = list(native_expected = c(0.5, 1), native_occasional = c(0.03,
@@ -118,8 +118,18 @@ the default when \code{known_absent} is a character vector or when a row in a
 \item{taxa_per_call}{Integer >= 1. Maximum number of unique taxa sent to the
 LLM in a single call. When the unique taxon list for a group exceeds this
 limit it is split into sequential batches; results are combined before
-joining to observations. Default 30. Reduce if the LLM truncates responses;
-increase if taxa are few and you prefer fewer API calls.}
+joining to observations. Default 15. Lowered from a prior default of 30
+(2026-07-09) after a real batch of 30 taxa truncated 4 times out of 5 at
+\code{call_api()}'s default \code{max_tokens} of 3000 (a 23-taxon batch succeeded
+in the same run) -- see \code{.parse_taxa_response()}'s truncation-specific
+warning. 15 also matches \code{TaxaFlag::review_assignments()}'s own default,
+independently lowered from 30 to 15 for the identical failure mode in an
+earlier session -- two independent real-data findings agreeing on the
+same number. Still based on real trials rather than an exhaustive sweep
+across response verbosity; if you still see truncation warnings, reduce
+further or pass an \code{llm_fn} wrapper with a higher \code{max_tokens} (e.g.
+\code{function(prompt) TaxaTools::call_api(prompt, max_tokens = 8000L)}).
+Increase if taxa are few and you prefer fewer API calls.}
 
 \item{pause_seconds}{Numeric. Seconds to pause between LLM calls (both
 between groups and between taxon batches within a group). Default 1.}
@@ -217,6 +227,47 @@ Species absent from the reference database (from
 scored candidate are inserted as additional hypotheses. Their likelihood equals
 the median of their referenced congeners so unreferenced taxa start on equal
 footing. They appear in the prompt labelled \verb{[no reference sequence]}.
+
+\strong{Empirical sensitivity (2026-07-09, real data):} a sweep of
+\code{score_sharpness}, \code{unknown_lik_weight}, \code{prior_phi}, and
+\code{absent_detection_prob} against a real, fixed LLM response (499
+PtConception 12S observations, 143 LLM-evaluated taxa; see
+\code{diagnostics/llm_prior_shape_sweep.R}) found these four parameters mostly
+shape \emph{confidence} (\code{consensus_posterior}), not \emph{which} taxon
+wins (\code{pct_resolved} was essentially flat -- within ~1.5 points -- across
+every parameter and grid tested):
+\itemize{
+\item \strong{\code{unknown_lik_weight}} has the largest real effect: mean
+winning-hypothesis posterior mass dropped from 0.997 to 0.911 sweeping
+0.01 -> 0.20 (default 0.05 sits at 0.992). It siphons probability mass
+from every named candidate uniformly, so the same candidate usually
+still wins, just less confidently.
+\item \strong{\code{score_sharpness}} had almost no effect in this dataset
+(confidence moved only 0.9922 -> 0.9936 across the full 0-1 range) --
+the LLM-derived prior is doing nearly all the discriminating work here,
+consistent with the "LLM prior dominates over score" design intent
+documented above.
+\item \strong{\code{prior_phi}}: a flat scalar phi (any value 5-80) gave
+statistically the same resolution/confidence as the default tiered
+vector \code{c(high=50, moderate=10, low=3)} in this sweep -- only very low
+phi (2-3) noticeably hurt. This does not prove the tiered structure is
+unnecessary (it may matter more for datasets with more skewed
+\code{information_quality}, or for accuracy rather than confidence), but it
+is a real, open question about whether the added complexity is
+earning its keep, not yet resolved.
+\item \strong{\code{absent_detection_prob}}: tested via a disclosed synthetic
+\code{known_absent} overlay (no real workflow in this ecosystem currently
+supplies \code{known_absent}, so the real checkpoint had none to sweep
+against) -- no meaningful aggregate effect was detected, but this
+result is the weakest of the four: only 5 of 143 taxa were affected,
+diluted across 499 observations. Not a validated finding either way.
+}
+\strong{Caveat:} this sweep measures resolution \emph{rate} and mean
+posterior \emph{mass}, not \emph{accuracy} -- no ground-truth-validated
+observations were available. It also reflects ONE real but
+non-reproducible LLM response (a single model call, not repeated draws),
+so treat the exact numbers as illustrative of sensitivity magnitude, not a
+precise calibration.
 }
 }
 \examples{

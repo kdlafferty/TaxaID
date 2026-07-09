@@ -197,7 +197,9 @@ result <- assign_taxa_llm(
   score_sharpness      = 0.1,     # exponential weight sharpness (0 = uniform lik)
   unknown_lik_weight   = 0.05,    # likelihood and prior weight for the unreferenced_family catch-all row
   unreferenced_taxa    = unreferenced_species,
-  taxa_per_call        = 30,      # taxa per LLM call (batches large taxon lists)
+  taxa_per_call        = 15,      # taxa per LLM call (batches large taxon lists);
+                                   # 30 truncated 4/5 real batches at call_api()'s default
+                                   # max_tokens=3000 (Session 145) -- see assign_taxa_llm()'s docs
   pause_seconds        = 1,       # delay between calls (rate limit buffer)
   prior_phi            = c(high = 50, moderate = 10, low = 3),
                                    # Beta concentration by information_quality:

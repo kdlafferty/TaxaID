@@ -35,7 +35,9 @@ the objects. When provided, the LLM can reference specific analysis
 steps. Default \code{NULL}.}
 
 \item{llm_fn}{Function. LLM provider function. Default
-\code{call_anthropic_api}.}
+\code{getOption("TaxaID.llm_fn", call_api)} -- the ecosystem-wide
+auto-detected provider (see \code{\link{call_api}}), falling back to
+\code{call_api} itself if the option is unset.}
 
 \item{max_rows}{Integer. Maximum rows to show per data frame in the
 prompt. Default \code{20L}.}

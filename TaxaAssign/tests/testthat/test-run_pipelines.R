@@ -26,7 +26,8 @@ test_that("run_bayesian_pipeline: rejects invalid constraint_behavior", {
       model_params      = list(),
       taxaexpect_priors = data.frame(),
       site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine"),
-      constraint_behavior = "invalid_value"
+      constraint_behavior = "invalid_value",
+      backbone_id       = 11L
     ),
     "should be one of"
   )
@@ -48,7 +49,8 @@ test_that("run_bayesian_pipeline: rejects match_df with too few rank columns", {
       match_df          = narrow_df,
       model_params      = list(),
       taxaexpect_priors = data.frame(),
-      site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine")
+      site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine"),
+      backbone_id       = 11L
     ),
     "fewer than 2 rank_system"
   )
@@ -70,7 +72,8 @@ test_that("run_bayesian_pipeline: accepts build_priors list and extracts $priors
       match_df          = mock_match_df,
       model_params      = list(),
       taxaexpect_priors = list(priors = priors_df),
-      site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine")
+      site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine"),
+      backbone_id       = 11L
     )
   )
 })
@@ -85,7 +88,8 @@ test_that("run_bayesian_pipeline: rejects non-data-frame taxaexpect_priors", {
       match_df          = mock_match_df,
       model_params      = list(),
       taxaexpect_priors = "not_a_df",
-      site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine")
+      site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine"),
+      backbone_id       = 11L
     )
   )
 })
@@ -100,7 +104,8 @@ test_that("run_llm_pipeline: rejects non-data-frame match_df", {
     run_llm_pipeline(
       match_df     = "not a df",
       llm_fn       = function(x) "mock",
-      auto_context = FALSE
+      auto_context = FALSE,
+      backbone_id  = 11L
     ),
     "match_df|data frame"
   )
@@ -113,7 +118,8 @@ test_that("run_llm_pipeline: rejects match_df missing required columns", {
       match_df            = bad_df,
       llm_fn              = function(x) "mock",
       auto_context        = FALSE,
-      detect_unreferenced = FALSE
+      detect_unreferenced = FALSE,
+      backbone_id         = 11L
     ),
     "missing|column"
   )
@@ -126,7 +132,8 @@ test_that("run_llm_pipeline: rejects invalid score_threshold", {
       llm_fn               = function(x) "mock",
       auto_context         = FALSE,
       detect_unreferenced  = FALSE,
-      score_threshold      = 150
+      score_threshold      = 150,
+      backbone_id          = 11L
     ),
     "score_threshold"
   )
@@ -138,7 +145,8 @@ test_that("run_llm_pipeline: rejects non-function non-NULL llm_fn", {
       match_df            = mock_match_df,
       llm_fn              = "not_a_function",
       auto_context        = FALSE,
-      detect_unreferenced = FALSE
+      detect_unreferenced = FALSE,
+      backbone_id         = 11L
     ),
     "llm_fn|function"
   )
@@ -148,7 +156,7 @@ test_that("run_llm_pipeline: NULL llm_fn without TaxaTools gives clear error", {
   skip_if(requireNamespace("TaxaTools", quietly = TRUE),
           "TaxaTools is installed -- cannot test missing-package path")
   expect_error(
-    run_llm_pipeline(match_df = mock_match_df, llm_fn = NULL),
+    run_llm_pipeline(match_df = mock_match_df, llm_fn = NULL, backbone_id = 11L),
     "TaxaTools"
   )
 })

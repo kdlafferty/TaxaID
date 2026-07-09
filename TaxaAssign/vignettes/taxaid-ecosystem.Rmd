@@ -210,7 +210,8 @@ coverage <- audit_barcode_coverage(
 likelihoods_final <- apply_coverage_constraints(likelihoods_expanded, coverage)
 
 # Join priors
-joined <- join_priors(likelihoods_final, priors, site = list(main_habitat = "Marine"))
+joined <- join_priors(likelihoods_final, priors, site = list(main_habitat = "Marine"),
+                      backbone_id = 11L)  # GBIF; match whichever backbone your input taxonomy used
 
 # Compute posterior
 result <- compute_posterior(joined, n_sims = 1000)
@@ -233,6 +234,7 @@ pipeline <- run_bayesian_pipeline(
   taxaexpect_priors = priors,
   site = list(main_habitat = "Marine"),
   barcode_term = "MiFish",
+  backbone_id = 11L,  # GBIF; match whichever backbone your input taxonomy used
   verbose = TRUE
 )
 consensus_final <- pipeline$consensus
@@ -280,6 +282,7 @@ pipeline <- run_llm_pipeline(
   geographic_hint = "Southern California estuaries",
   detect_unreferenced = TRUE,
   barcode_term = "MiFish",
+  backbone_id = 11L,  # GBIF; match whichever backbone your input taxonomy used
   generate_report = TRUE,
   verbose = TRUE
 )

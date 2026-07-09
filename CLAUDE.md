@@ -1,7 +1,81 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-06 (Session 142, branch `main` -- TaxaLikely::trim_to_amplicon() now
+# Last updated: 2026-07-09 (Session 147, branch `main` -- fifth parameter-audit punch-list
+# family (score floors). New diagnostics/score_floor_roc_sweep.R uses real classification
+# ground truth (every pair in the real 12S seq_matrix reference data has known species/genus/
+# family identity) to show raw percent-identity score alone cannot discriminate a species from
+# its closest congener at almost any real-world threshold -- confirming and sharpening the
+# ecosystem's own "Framing B verdict" memory at the specific parameter level. Surfaced a real,
+# higher-stakes gap along the way: TaxaAssign::score_consensus()'s rank_thresholds defaulted to
+# NULL, so a caller with no explicit override got zero score-based species-vs-congener
+# protection, silently. Fixed: rank_thresholds now defaults to the conventional GITA/Jonah
+# Ventures thresholds, auto-rescaled by /100 if the score column looks like a 0-1 proportion
+# scale (matching TaxaLikely's existing scale-detection convention). Verified against every
+# real call site and test before running them; devtools::test() 539/539 unchanged,
+# devtools::check() clean. See TaxaAssign/CLAUDE.md's Session 147 note for the full record.
+# Session 146, branch `main` -- fixed a real, silent LLM-response-
+# truncation risk in TaxaAssign::assign_taxa_llm() that Session 145's sensitivity work surfaced:
+# 4/5 real 30-taxon batches truncated at call_api()'s default max_tokens=3000, silently falling
+# back to uniform priors with only a warning. .parse_taxa_response() now detects the truncation
+# signature specifically and gives an actionable warning; taxa_per_call's default lowered
+# 30->15 in both assign_taxa_llm() and run_llm_pipeline() (which forwards it), corroborated by
+# TaxaFlag::review_assignments() having independently made the identical 30->15 fix for the same
+# failure mode in an earlier session. suggest_unreferenced_species() still defaults
+# taxa_per_call=30L, deliberately not changed (different, simpler response shape; risk not
+# confirmed there). devtools::check() clean, 539 tests unchanged. See TaxaAssign/CLAUDE.md's
+# Session 146 note for the full record.
+# Session 145, branch `main` -- empirical sensitivity check for the
+# fourth parameter-audit punch-list family: TaxaAssign::assign_taxa_llm()'s score_sharpness,
+# unknown_lik_weight, prior_phi, absent_detection_prob. Small refactor first (new internal
+# .merge_llm_priors() helper, behavior-preserving, 539 tests unchanged) to enable a cheap sweep
+# against one real LLM response (499 real PtConception 12S observations, 5 real Anthropic API
+# calls -- no usable real assign_taxa_llm() checkpoint existed anywhere beforehand). Finding:
+# these four parameters mostly shape CONFIDENCE (consensus_posterior), not WHICH taxon wins
+# (resolution rate was flat within ~1.5 points across every grid). unknown_lik_weight has the
+# largest real effect (mean winning posterior 0.997->0.911 across a plausible range);
+# score_sharpness had almost none; prior_phi's tiered default matched a flat scalar almost
+# exactly (a real, still-open question about whether the tiering earns its keep);
+# absent_detection_prob (tested via a disclosed synthetic overlay, since no real workflow here
+# uses known_absent) showed no aggregate effect but is the weakest/most diluted result. Also
+# surfaced two real, general gaps along the way (not fixed, flagged for later): TaxaTools's LLM
+# provider auto-detection doesn't activate in a plain Rscript session even with
+# library(TaxaTools) loaded; call_api()'s max_tokens=3000 default truncated 4/5 real 30-taxon
+# LLM responses at the documented taxa_per_call=30 batch size. See TaxaAssign/CLAUDE.md's
+# Session 145 note for the full record.
+# Session 144, branch `main` -- empirical sensitivity check for
+# TaxaAssign::posterior_consensus()'s min_posterior/cumulative_threshold defaults (0.05/0.90)
+# against a real 3,000-observation PtConception 12S posterior_df. Finding: min_posterior does
+# real, roughly linear work (+8.2 resolution-rate points sweeping 0->0.20); cumulative_threshold
+# does comparatively little independent work once a reasonable min_posterior floor exists
+# (-3.3 points sweeping 0.70->0.99, non-monotonically). The two interact sharply only in the
+# unrealistic min_posterior=0 + cumulative_threshold=0.99 corner. Measures resolution RATE, not
+# ACCURACY -- no ground-truth-validated observations were available to check correctness. New
+# reusable diagnostics/posterior_threshold_sweep.R. See TaxaAssign/CLAUDE.md's Session 144 note
+# for the full record, including why the sweep was subsampled to 3,000 of 13,483 real
+# observations (the full sweep was twice interrupted at 15-17 min in this session's background-
+# task setup).
+# Session 143, branch `main` -- TaxaAssign::join_priors()/
+# posterior_consensus()/run_bayesian_pipeline()/run_llm_pipeline() no longer have a silent
+# default for backbone_id anywhere it's actually used to reconcile taxonomy against an
+# external backbone -- join_priors() gains a new required backbone_id param (no default,
+# errors if omitted), replacing a hardcoded backbone_id = 4L; posterior_consensus()'s default
+# changed from 11L to NULL (errors only when lookup_missing_taxonomy = TRUE); the two pipeline
+# wrappers lost their 4L default entirely since both forward it unconditionally downstream.
+# Prompted by a parameter audit flagging the 4L (run_bayesian_pipeline) vs 11L
+# (posterior_consensus) default mismatch as a possible correctness bug -- traced first and
+# confirmed it was NOT live (the value is always explicitly forwarded through
+# .run_consensus_and_report(), so posterior_consensus()'s own default was never actually
+# reached via that path), but the user's design call was that the correct backbone depends on
+# which backbone the caller's own input data used, which varies by project, so no such
+# function should have a silent default. TaxaTools::fill_higher_ranks()/
+# escalate_taxonomic_rank() deliberately kept their existing 4L/11L primary/fallback pair
+# (a resolution strategy, not an input-backbone assumption). All ~15 real call sites across
+# vignettes, workflow scripts, and TaxaWizard snippets + metadata updated; devtools::check()
+# clean, 539 tests passing. See TaxaAssign/CLAUDE.md's Session 143 note for the full record,
+# including a pre-existing, unrelated TaxaWizard metadata bug found and flagged (not fixed) 
+# along the way.
+# Session 142, branch `main` -- TaxaLikely::trim_to_amplicon() now
 # supports the real eDNA/metabarcoding COI mini-barcode (Leray et al. 2013 mlCOIintF paired
 # with Meyer 2003's dgHCO2198, registry key `coi-leray`), resolving the inosine blocker Session
 # 141 explicitly left unimplemented (Geller et al. 2013's jgHCO2198 uses inosine, which
@@ -417,6 +491,22 @@ of the five functions above from a fully-namespaced script:
 llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api)
 ```
 
+### `library(TaxaTools)` alone does not activate provider auto-detection in a plain `Rscript` session (found Session 145)
+The Session 123 footgun above prescribes `library(TaxaTools)` as the fix for `call_api()`'s
+provider auto-detection. That's necessary but **not sufficient** in a non-interactive
+`Rscript` session (as opposed to RStudio): confirmed directly that `library(TaxaTools);
+call_api(prompt)` still errors `"no LLM provider configured"` even with a real
+`ANTHROPIC_API_KEY` set in `~/.Renviron`, because `getOption("TaxaID.provider")` /
+`getOption("TaxaID.llm_fn")` stay `NULL` after attach in that context. Whatever sets those
+options interactively (RStudio session init, or an `.Rprofile` hook) doesn't fire for a bare
+`Rscript` batch run. Not investigated further (out of scope for the session that found it) --
+the workaround is to pass an explicit provider:
+```r
+llm_fn <- function(prompt) TaxaTools::call_api(prompt, provider = "anthropic")
+```
+Relevant any time you write a one-off `Rscript` (not run inside RStudio) that needs to make a
+real LLM call — e.g. diagnostic/sensitivity-sweep scripts under `diagnostics/`.
+
 ### Xeno-canto v2 API is dead; v2→v3 migration in Session 87 missed one call site (found Session 124, FIXED Session 125)
 `ecosystem_docs/NAME_CHANGE_HISTORY.md` records the v2→v3 migration as done in Session 87
 (`fetch_reference_recordings()` updated), but `TaxaLikely::.xc_recording_count()`
@@ -481,3 +571,11 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 140 | `barcode_primer_defaults` / `resolve_barcode_primers()` added | TaxaTools | New registry + resolver, consumed by `TaxaLikely::trim_to_amplicon()`. Populated only with verified MiFish-U/E (12S) primers so far. See `TaxaTools/CLAUDE.md`'s Session 140 note. |
 | 141 | `barcode_primer_defaults` gains 6 more entries (16S, COI, cytb, rbcL, matK, trnL) | TaxaTools | Behavioral, not signature. Every mito/chloroplast marker in `barcode_length_defaults` now has a verified primer pair; nuclear markers (18S/ITS/ITS2) deliberately still unpopulated. See `TaxaTools/CLAUDE.md`'s Session 141 note. |
 | 142 | `barcode_primer_defaults` gains `coi-leray`; bare `"COI"` now ambiguous | TaxaTools | Behavioral, not signature. The real eDNA COI mini-barcode (mlCOIintF/dgHCO2198) is now registered alongside `coi-folmer`. Any existing caller passing bare `barcode_term = "COI"` to `resolve_barcode_primers()`/`trim_to_amplicon()` must now specify `"COI-Folmer"` or `"COI-Leray"` explicitly -- bare `"COI"` now errors instead of resolving. See `TaxaTools/CLAUDE.md`'s Session 142 note. |
+| 143 | `join_priors(backbone_id = ...)` added, no default | TaxaAssign | New required parameter (errors if omitted). Replaces a previously hardcoded, un-overridable `backbone_id = 4L` inside `join_priors()`'s taxonomy-fallback fill (`R/join_priors.R`). No safe default exists -- the correct backbone depends on which backbone the caller's input taxonomy was verified against, which varies by project. All in-repo call sites updated to pass it explicitly. |
+| 143 | `posterior_consensus(backbone_id = 11L)` default removed | TaxaAssign | Signature change: default changed from `11L` to `NULL`. Errors only when `lookup_missing_taxonomy = TRUE` and `backbone_id` is not supplied (lazy validation -- most call sites never touch this path and are unaffected). |
+| 143 | `run_bayesian_pipeline(backbone_id = 4L)` default removed | TaxaAssign | Signature change: `backbone_id` is now required, no default (errors immediately if omitted). Previously defaulted to `4L` (NCBI) although the parameter is forwarded unconditionally into `join_priors()`/`posterior_consensus()` -- there is no backbone choice that is safe for every project. All in-repo call sites updated to pass it explicitly. |
+| 143 | `run_llm_pipeline(backbone_id = 4L)` default removed | TaxaAssign | Same change as `run_bayesian_pipeline()` above, same reasoning. All in-repo call sites updated to pass it explicitly. |
+| 146 | `assign_taxa_llm(taxa_per_call = 30L)` → `15L` | TaxaAssign | Behavioral default change. Lowered after confirming a real batch of 30 taxa truncated 4/5 times at `call_api()`'s default `max_tokens = 3000`, silently falling back to uniform priors. Matches `TaxaFlag::review_assignments()`'s own independently-made `30L → 15L` fix for the identical failure mode. |
+| 146 | `run_llm_pipeline(taxa_per_call = 30L)` → `15L` | TaxaAssign | Same change, forwarded to `assign_taxa_llm()`. |
+| 146 | `.parse_taxa_response()` gives a truncation-specific warning | TaxaAssign | Behavioral, not signature. When the LLM response has no closing `]` at all (truncation signature), the warning now names the real cause and two concrete fixes instead of the old generic "failed to parse" message. |
+| 147 | `score_consensus(rank_thresholds = NULL)` → `c(species=98, genus=95, family=90, order=85)` | TaxaAssign | Signature + behavioral change. A caller relying on the old default silently got zero score-based species-vs-congener discrimination -- see `TaxaAssign/CLAUDE.md`'s Session 147 note for the ROC-sweep evidence. Pass `rank_thresholds = NULL` explicitly to restore old behavior. Auto-rescaled by /100 if `score_col` looks like a 0-1 proportion scale. Verified against every real call site and test; none broken (539/539 tests unchanged). |

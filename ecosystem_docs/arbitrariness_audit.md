@@ -1,5 +1,14 @@
 # Arbitrariness Audit — TaxaID Ecosystem
 
+> **SUPERSEDED (2026-07-07).** Retired in favor of
+> `ecosystem_docs/parameter_audit_2026-07-06.md` (+ companion `.csv`), which covers all
+> 9 current packages (this document predates TaxaFlag, TaxaHabitat, and TaxaWizard) and
+> is current as of Session 142, vs. this document's Session 56 snapshot. The newer audit
+> uses a different, narrower classification (HARDCODED vs. USER-DEFINED — a factual
+> catalog only) rather than this document's principled/conventional/arbitrary judgment
+> calls, which is left to a later review pass. Retained below for historical reference
+> only; do not treat its per-value judgments as current.
+
 **Generated:** 2026-04-13 (Session 56)
 **Scope:** All R source files across 7 packages
 **Purpose:** Catalog every hard-coded numeric threshold, magic number, and default parameter value. Classify each as principled, conventional, or arbitrary.

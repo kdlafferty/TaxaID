@@ -36,7 +36,8 @@ library(dplyr)
 test_that("join_priors errors on non-data-frame likelihoods", {
   expect_error(
     join_priors(list(), .make_priors(),
-                site = list(grid_id = "G", main_habitat = "H")),
+                site = list(grid_id = "G", main_habitat = "H"),
+                backbone_id = 11L),
     "must be a data frame"
   )
 })
@@ -46,7 +47,8 @@ test_that("join_priors errors on missing columns in likelihoods", {
   expect_error(
     join_priors(lik, .make_priors(),
                 site = list(grid_id = "Grid_34p1_m119p1",
-                            main_habitat = "Estuarine Bay")),
+                            main_habitat = "Estuarine Bay"),
+                backbone_id = 11L),
     "missing required column"
   )
 })
@@ -54,7 +56,8 @@ test_that("join_priors errors on missing columns in likelihoods", {
 test_that("join_priors errors on missing site elements", {
   expect_error(
     join_priors(.make_likelihoods(), .make_priors(),
-                site = list(grid_id = "G")),
+                site = list(grid_id = "G"),
+                backbone_id = 11L),
     "missing element"
   )
 })
@@ -66,7 +69,7 @@ test_that("join_priors works in single-site mode", {
   pri <- .make_priors()
   site <- list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
 
-  out <- suppressMessages(join_priors(lik, pri, site = site))
+  out <- suppressMessages(join_priors(lik, pri, site = site, backbone_id = 11L))
 
   expect_s3_class(out, "data.frame")
   expect_true(all(c("prior_mean", "prior_alpha", "prior_beta") %in% names(out)))
@@ -86,7 +89,7 @@ test_that("join_priors works in multi-site mode", {
     stringsAsFactors = FALSE
   )
 
-  out <- suppressMessages(join_priors(lik, pri, site = site_df))
+  out <- suppressMessages(join_priors(lik, pri, site = site_df, backbone_id = 11L))
   expect_s3_class(out, "data.frame")
   expect_true(all(c("prior_mean", "prior_alpha", "prior_beta") %in% names(out)))
 })
@@ -125,7 +128,8 @@ test_that("join_priors preserves one row per site for a genuine multi-site obser
   )
 
   out <- suppressMessages(join_priors(lik, pri, site = site_df,
-                                       rank_system = c("family", "genus", "species")))
+                                       rank_system = c("family", "genus", "species"),
+                                       backbone_id = 11L))
 
   # 2 candidates x 2 sites = 4 rows, not collapsed to 2.
   expect_equal(nrow(out), 4L)
@@ -186,7 +190,8 @@ test_that("coarse-rank family row is expanded to species-level hypotheses", {
 
   out <- suppressMessages(
     join_priors(lik, pri, site = site, expansion_taxonomy = etax,
-                rank_system = c("family", "genus", "species"))
+                rank_system = c("family", "genus", "species"),
+                backbone_id = 11L)
   )
 
   # Original family-rank row should be replaced by species-level rows
@@ -209,7 +214,8 @@ test_that("expansion_cumulative_prior limits the number of species retained", {
   out_tight <- suppressMessages(
     join_priors(lik, pri, site = site, expansion_taxonomy = etax,
                 rank_system = c("family", "genus", "species"),
-                expansion_cumulative_prior = 0.75)
+                expansion_cumulative_prior = 0.75,
+                backbone_id = 11L)
   )
   expect_equal(nrow(out_tight), 1L)
   expect_equal(out_tight$taxon_name, "Gillichthys mirabilis")
@@ -218,7 +224,8 @@ test_that("expansion_cumulative_prior limits the number of species retained", {
   out_wide <- suppressMessages(
     join_priors(lik, pri, site = site, expansion_taxonomy = etax,
                 rank_system = c("family", "genus", "species"),
-                expansion_cumulative_prior = 0.90)
+                expansion_cumulative_prior = 0.90,
+                backbone_id = 11L)
   )
   expect_equal(nrow(out_wide), 2L)
   expect_true("Gillichthys mirabilis"    %in% out_wide$taxon_name)
@@ -237,7 +244,8 @@ test_that("expansion_min_prior floor removes low-probability species", {
     join_priors(lik, pri, site = site, expansion_taxonomy = etax,
                 rank_system = c("family", "genus", "species"),
                 expansion_min_prior = 0.15,
-                expansion_cumulative_prior = 1.0)
+                expansion_cumulative_prior = 1.0,
+                backbone_id = 11L)
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$taxon_name, "Gillichthys mirabilis")
@@ -260,7 +268,8 @@ test_that("NULL expansion_taxonomy emits a warning and falls back to dark floor"
     out <- suppressMessages(
       join_priors(lik, pri_with_floor, site = site,
                   expansion_taxonomy = NULL,
-                  rank_system = c("family", "genus", "species"))
+                  rank_system = c("family", "genus", "species"),
+                  backbone_id = 11L)
     ),
     regexp = "coarse-rank"
   )
@@ -294,7 +303,8 @@ test_that("expansion falls back to dark floor when family absent from priors", {
     join_priors(.make_lik_family_only(), pri_estuarine,
                 site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine"),
                 expansion_taxonomy = etax,
-                rank_system = c("family", "genus", "species"))
+                rank_system = c("family", "genus", "species"),
+                backbone_id = 11L)
   )
 
   # Gobiidae expansion finds no species in pri_estuarine → dark floor on family row

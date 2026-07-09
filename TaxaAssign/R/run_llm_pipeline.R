@@ -54,7 +54,10 @@
 #'   absent species. See \code{\link{assign_taxa_llm}} for details.
 #' @param absent_detection_prob Numeric. Detection probability for known-absent
 #'   species. Default 0.80.
-#' @param taxa_per_call Integer. Maximum taxa per LLM call. Default 30.
+#' @param taxa_per_call Integer. Maximum taxa per LLM call. Default 15
+#'   (lowered from 30 on 2026-07-09 -- see \code{\link{assign_taxa_llm}}'s
+#'   own \code{taxa_per_call} docs for the real truncation evidence behind
+#'   this change).
 #' @param pause_seconds Numeric. Pause between LLM calls. Default 1.
 #' @param prior_phi Named numeric vector mapping \code{information_quality}
 #'   to Beta concentration. Default \code{c(high = 50, moderate = 10, low = 3)}.
@@ -69,8 +72,11 @@
 #'   Default 0.05.
 #' @param posterior_col Character. Column name for posterior values. Default
 #'   \code{"posterior_point_est"}.
-#' @param backbone_id Integer. Backbone for taxonomy lookup. Default \code{4L}
-#'   (NCBI).
+#' @param backbone_id Integer. Backbone for taxonomy lookup in consensus.
+#'   Required, no default -- the correct value depends on which backbone
+#'   your input taxonomy was verified against, which varies by project
+#'   (e.g. \code{11} for GBIF, \code{4} for NCBI). See the Taxonomic
+#'   Backbone ID Reference in \code{TaxaID/CLAUDE.md} for the full list.
 #' @param lookup_missing_taxonomy Logical. Look up missing taxonomy in
 #'   consensus. Default \code{TRUE}.
 #' @param presence_multiplier Numeric. Multiplier for empirical Bayes
@@ -109,7 +115,8 @@
 #' out <- run_llm_pipeline(
 #'   match_df        = match_obj,
 #'   geographic_hint = "Southern California",
-#'   barcode_term    = "12S"
+#'   barcode_term    = "12S",
+#'   backbone_id     = 11L
 #' )
 #' head(out$consensus)
 #' }
@@ -135,7 +142,7 @@ run_llm_pipeline <- function(
     known_present        = NULL,
     known_absent         = NULL,
     absent_detection_prob = 0.80,
-    taxa_per_call        = 30L,
+    taxa_per_call        = 15L,
     pause_seconds        = 1,
     prior_phi            = c(high = 50, moderate = 10, low = 3),
     n_sims               = 1000L,
@@ -144,7 +151,7 @@ run_llm_pipeline <- function(
     cumulative_threshold = 0.90,
     min_posterior        = 0.05,
     posterior_col        = "posterior_point_est",
-    backbone_id          = 4L,
+    backbone_id,
     lookup_missing_taxonomy = TRUE,
     presence_multiplier  = 5,
     generate_report      = FALSE,
@@ -152,6 +159,16 @@ run_llm_pipeline <- function(
     reference_errors     = NULL,
     verbose              = TRUE
 ) {
+
+  if (missing(backbone_id)) {
+    cli::cli_abort(c(
+      "{.arg backbone_id} must be specified explicitly.",
+      "i" = "There is no safe default: the correct backbone depends on which \\
+      backbone your input taxonomy was verified against, and this varies by \\
+      project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See the \\
+      Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the full list."
+    ))
+  }
 
   .msg <- function(...) if (verbose) message(...)
   llm_fn <- .resolve_llm_fn(llm_fn, "run_llm_pipeline")

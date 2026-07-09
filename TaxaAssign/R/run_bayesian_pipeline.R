@@ -64,8 +64,12 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #'   Default 0.05.
 #' @param posterior_col Character. Column name for posterior values. Default
 #'   \code{"posterior_point_est"}.
-#' @param backbone_id Integer. Backbone for taxonomy lookup in consensus.
-#'   Default \code{4L} (NCBI).
+#' @param backbone_id Integer. Backbone for taxonomy lookup in
+#'   \code{\link{join_priors}} and consensus. Required, no default -- the
+#'   correct value depends on which backbone your input taxonomy was
+#'   verified against, which varies by project (e.g. \code{11} for GBIF,
+#'   \code{4} for NCBI). See the Taxonomic Backbone ID Reference in
+#'   \code{TaxaID/CLAUDE.md} for the full list.
 #' @param lookup_missing_taxonomy Logical. Look up missing taxonomy in
 #'   consensus. Default \code{TRUE}.
 #' @param presence_multiplier Numeric. Multiplier for empirical Bayes
@@ -109,7 +113,8 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #'   match_df          = match_obj,
 #'   model_params      = trained_model,
 #'   taxaexpect_priors = priors,
-#'   site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+#'   site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
+#'   backbone_id       = 11L
 #' )
 #' head(out$consensus)
 #' }
@@ -130,7 +135,7 @@ run_bayesian_pipeline <- function(
     cumulative_threshold = 0.90,
     min_posterior         = 0.05,
     posterior_col         = "posterior_point_est",
-    backbone_id          = 4L,
+    backbone_id,
     lookup_missing_taxonomy = TRUE,
     presence_multiplier  = 5,
     species_reference    = NULL,
@@ -141,6 +146,17 @@ run_bayesian_pipeline <- function(
 ) {
 
   constraint_behavior <- match.arg(constraint_behavior)
+
+  if (missing(backbone_id)) {
+    stop(
+      "run_bayesian_pipeline: 'backbone_id' must be specified explicitly.\n",
+      "There is no safe default: the correct backbone depends on which ",
+      "backbone your input taxonomy was verified against, which varies by ",
+      "project. Common values: 11 (GBIF), 4 (NCBI). See the Taxonomic ",
+      "Backbone ID Reference in TaxaID/CLAUDE.md for the full list.",
+      call. = FALSE
+    )
+  }
 
   # --- Check dependencies ---
   if (!requireNamespace("TaxaLikely", quietly = TRUE)) {
@@ -505,7 +521,8 @@ run_bayesian_pipeline <- function(
     taxaexpect_priors = priors_filtered,
     site              = event_meta,
     taxonomy_lookup   = taxonomy_lookup,
-    rank_system       = rank_system
+    rank_system       = rank_system,
+    backbone_id       = backbone_id
   )
 
   .msg(sprintf("  %d rows ready for posterior computation.", nrow(likelihoods_ready)))

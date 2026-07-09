@@ -19,7 +19,7 @@ run_bayesian_pipeline(
   cumulative_threshold = 0.9,
   min_posterior = 0.05,
   posterior_col = "posterior_point_est",
-  backbone_id = 4L,
+  backbone_id,
   lookup_missing_taxonomy = TRUE,
   presence_multiplier = 5,
   species_reference = NULL,
@@ -97,8 +97,12 @@ Default 0.05.}
 \item{posterior_col}{Character. Column name for posterior values. Default
 \code{"posterior_point_est"}.}
 
-\item{backbone_id}{Integer. Backbone for taxonomy lookup in consensus.
-Default \code{4L} (NCBI).}
+\item{backbone_id}{Integer. Backbone for taxonomy lookup in
+\code{\link{join_priors}} and consensus. Required, no default -- the
+correct value depends on which backbone your input taxonomy was
+verified against, which varies by project (e.g. \code{11} for GBIF,
+\code{4} for NCBI). See the Taxonomic Backbone ID Reference in
+\code{TaxaID/CLAUDE.md} for the full list.}
 
 \item{lookup_missing_taxonomy}{Logical. Look up missing taxonomy in
 consensus. Default \code{TRUE}.}
@@ -158,7 +162,8 @@ out <- run_bayesian_pipeline(
   match_df          = match_obj,
   model_params      = trained_model,
   taxaexpect_priors = priors,
-  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
+  backbone_id       = 11L
 )
 head(out$consensus)
 }

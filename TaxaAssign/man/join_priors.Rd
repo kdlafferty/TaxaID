@@ -13,7 +13,8 @@ join_priors(
   expansion_taxonomy = NULL,
   expansion_min_prior = 0.05,
   expansion_cumulative_prior = 0.9,
-  singleton_taxonomy = NULL
+  singleton_taxonomy = NULL,
+  backbone_id
 )
 }
 \arguments{
@@ -87,6 +88,12 @@ Adds three diagnostic columns to output: \code{dark_diversity_group},
 passed as \code{taxonomy} to \code{generate_undetected_diversity()} (built from
 \code{occurrences_std}). Default \code{NULL} (flat global-floor for all unmodelled
 candidates).}
+
+\item{backbone_id}{Taxonomic backbone ID used for the taxonomy fallback
+fill (see Details). Required, no default -- the correct value depends on
+which backbone your input taxonomy was verified against, which varies by
+project (e.g. \code{11} for GBIF, \code{4} for NCBI). See the Taxonomic Backbone ID
+Reference in \code{TaxaID/CLAUDE.md} for the full list.}
 }
 \value{
 A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, with columns

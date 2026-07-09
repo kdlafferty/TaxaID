@@ -20,6 +20,10 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #
 # Internal helpers:
 #   .score_to_likelihood()    Exponential-weight scores -> normalized likelihood proxy
+#   .merge_llm_priors()       Merge likelihoods + LLM priors, apply known_absent/unknown_lik_weight
+#                             rescaling, construct Beta prior_alpha/prior_beta from prior_phi.
+#                             Deterministic, no LLM calls -- factored out (Session 145) so it can
+#                             be re-run cheaply for a sensitivity sweep.
 #   .build_group_map()        Map observation_ids to group labels via context_group columns
 #   .collect_unique_taxa()    Unique taxon data frame from a set of lik_dfs
 #   .get_group_context()      Context list for a representative observation in a group
@@ -143,8 +147,18 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #' @param taxa_per_call Integer >= 1. Maximum number of unique taxa sent to the
 #'   LLM in a single call. When the unique taxon list for a group exceeds this
 #'   limit it is split into sequential batches; results are combined before
-#'   joining to observations. Default 30. Reduce if the LLM truncates responses;
-#'   increase if taxa are few and you prefer fewer API calls.
+#'   joining to observations. Default 15. Lowered from a prior default of 30
+#'   (2026-07-09) after a real batch of 30 taxa truncated 4 times out of 5 at
+#'   `call_api()`'s default `max_tokens` of 3000 (a 23-taxon batch succeeded
+#'   in the same run) -- see `.parse_taxa_response()`'s truncation-specific
+#'   warning. 15 also matches `TaxaFlag::review_assignments()`'s own default,
+#'   independently lowered from 30 to 15 for the identical failure mode in an
+#'   earlier session -- two independent real-data findings agreeing on the
+#'   same number. Still based on real trials rather than an exhaustive sweep
+#'   across response verbosity; if you still see truncation warnings, reduce
+#'   further or pass an `llm_fn` wrapper with a higher `max_tokens` (e.g.
+#'   `function(prompt) TaxaTools::call_api(prompt, max_tokens = 8000L)`).
+#'   Increase if taxa are few and you prefer fewer API calls.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls (both
 #'   between groups and between taxon batches within a group). Default 1.
 #' @param prior_phi Named numeric vector mapping `information_quality` levels
@@ -177,6 +191,48 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #'   Default 1000. Set to 0 to skip simulation and return point estimates only.
 #' @param verbose Logical. If `TRUE`, prints the prompt and raw LLM response for
 #'   each group call. Default `FALSE`.
+#'
+#' @details
+#' \strong{Empirical sensitivity (2026-07-09, real data):} a sweep of
+#' `score_sharpness`, `unknown_lik_weight`, `prior_phi`, and
+#' `absent_detection_prob` against a real, fixed LLM response (499
+#' PtConception 12S observations, 143 LLM-evaluated taxa; see
+#' `diagnostics/llm_prior_shape_sweep.R`) found these four parameters mostly
+#' shape \emph{confidence} (`consensus_posterior`), not \emph{which} taxon
+#' wins (`pct_resolved` was essentially flat -- within ~1.5 points -- across
+#' every parameter and grid tested):
+#' \itemize{
+#'   \item \strong{`unknown_lik_weight`} has the largest real effect: mean
+#'     winning-hypothesis posterior mass dropped from 0.997 to 0.911 sweeping
+#'     0.01 -> 0.20 (default 0.05 sits at 0.992). It siphons probability mass
+#'     from every named candidate uniformly, so the same candidate usually
+#'     still wins, just less confidently.
+#'   \item \strong{`score_sharpness`} had almost no effect in this dataset
+#'     (confidence moved only 0.9922 -> 0.9936 across the full 0-1 range) --
+#'     the LLM-derived prior is doing nearly all the discriminating work here,
+#'     consistent with the "LLM prior dominates over score" design intent
+#'     documented above.
+#'   \item \strong{`prior_phi`}: a flat scalar phi (any value 5-80) gave
+#'     statistically the same resolution/confidence as the default tiered
+#'     vector `c(high=50, moderate=10, low=3)` in this sweep -- only very low
+#'     phi (2-3) noticeably hurt. This does not prove the tiered structure is
+#'     unnecessary (it may matter more for datasets with more skewed
+#'     `information_quality`, or for accuracy rather than confidence), but it
+#'     is a real, open question about whether the added complexity is
+#'     earning its keep, not yet resolved.
+#'   \item \strong{`absent_detection_prob`}: tested via a disclosed synthetic
+#'     `known_absent` overlay (no real workflow in this ecosystem currently
+#'     supplies `known_absent`, so the real checkpoint had none to sweep
+#'     against) -- no meaningful aggregate effect was detected, but this
+#'     result is the weakest of the four: only 5 of 143 taxa were affected,
+#'     diluted across 499 observations. Not a validated finding either way.
+#' }
+#' \strong{Caveat:} this sweep measures resolution \emph{rate} and mean
+#' posterior \emph{mass}, not \emph{accuracy} -- no ground-truth-validated
+#' observations were available. It also reflects ONE real but
+#' non-reproducible LLM response (a single model call, not repeated draws),
+#' so treat the exact numbers as illustrative of sensitivity magnitude, not a
+#' precise calibration.
 #'
 #' @return A data frame (the output of `compute_posterior()`) with columns:
 #'   `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`, `range_status`,
@@ -238,7 +294,7 @@ assign_taxa_llm <- function(match_df,
                              known_present         = NULL,
                              known_absent          = NULL,
                              absent_detection_prob = 0.80,
-                             taxa_per_call         = 30L,
+                             taxa_per_call         = 15L,
                              pause_seconds         = 1,
                              prior_phi             = c(high = 50, moderate = 10, low = 3),
                              prior_weight_guide    = list(
@@ -465,95 +521,17 @@ assign_taxa_llm <- function(match_df,
   cli::cli_progress_done(id = pb)
 
   # --- Merge likelihoods + priors for each observation -------------------------
-  merged_list <- vector("list", n_total)
-  names(merged_list) <- observation_ids
-
-  for (sid in observation_ids) {
-    grp      <- group_map$group_label[group_map$observation_id == sid]
-    lik_df   <- lik_list[[sid]]
-    prior_df <- prior_tables[[grp]]
-
-    # Drop columns from prior_df that also exist in lik_df (other than the join key)
-    # to prevent dplyr from creating .x / .y suffixed duplicates.
-    prior_cols_to_drop <- intersect(
-      c("hypothesis_type", "taxon_name_rank"),
-      names(prior_df)
-    )
-    prior_df_clean <- prior_df[, setdiff(names(prior_df), prior_cols_to_drop),
-                                drop = FALSE]
-
-    merged <- dplyr::left_join(lik_df, prior_df_clean, by = "taxon_name")
-
-    # unreferenced_family prior: identified by NA taxon_name (fixed weight, not LLM-assigned)
-    unk_idx <- is.na(merged$taxon_name)
-    merged$prior_mean[unk_idx]            <- 0   # placeholder; set after rescaling
-    merged$range_status[unk_idx]          <- "unknown"
-    merged$habitat_fit[unk_idx]           <- NA_character_
-    merged$information_quality[unk_idx]   <- NA_character_
-
-    # Fill NA priors for taxa the LLM omitted:
-    # - unreferenced taxa: median prior of their referenced congeners in this response
-    # - other taxa: global minimum non-NA prior
-    if (any(is.na(merged$prior_mean))) {
-      non_na_priors <- merged$prior_mean[!is.na(merged$prior_mean)]
-      global_min <- if (length(non_na_priors) > 0L) min(non_na_priors) else 0.01
-      if (!is.finite(global_min)) global_min <- 0.01
-      for (i in which(is.na(merged$prior_mean))) {
-        if (merged$hypothesis_type[[i]] == "unreferenced_species") {
-          g_genus   <- sub(" .*", "", merged$taxon_name[[i]])
-          congeners <- merged[!is.na(merged$prior_mean) &
-                                merged$hypothesis_type == "specific_candidate" &
-                                sub(" .*", "", merged$taxon_name) == g_genus, ]
-          merged$prior_mean[[i]] <- if (nrow(congeners) > 0)
-            stats::median(congeners$prior_mean) else global_min
-        } else {
-          merged$prior_mean[[i]] <- global_min
-        }
-        # Omitted taxa get "low" information_quality (LLM couldn't assess them)
-        if (is.na(merged$information_quality[[i]]))
-          merged$information_quality[[i]] <- "low"
-        if (is.na(merged$prior_source[[i]]))
-          merged$prior_source[[i]] <- "na_fill_fallback"
-      }
-    }
-
-    # Mathematical absence suppression: P(present | not detected) ∝ (1 - p_det) × prior
-    # Applied after NA-fill so unreferenced taxon fallback priors are also suppressed where appropriate.
-    # Skips unreferenced_family row (prior is set as a fixed weight, not LLM-assigned).
-    if (nrow(known_absent_df) > 0) {
-      for (ka_i in seq_len(nrow(known_absent_df))) {
-        sp  <- known_absent_df$taxon_name[[ka_i]]
-        pd  <- known_absent_df$detection_prob[[ka_i]]
-        idx <- !unk_idx & merged$taxon_name == sp
-        if (any(idx))
-          merged$prior_mean[idx] <- merged$prior_mean[idx] * (1 - pd)
-      }
-    }
-
-    # Rescale named taxa priors to (1 - unknown_lik_weight); set unreferenced_family
-    named_sum <- sum(merged$prior_mean[!unk_idx], na.rm = TRUE)
-    if (named_sum > 0) {
-      merged$prior_mean[!unk_idx] <-
-        merged$prior_mean[!unk_idx] / named_sum * (1 - unknown_lik_weight)
-    }
-    merged$prior_mean[unk_idx] <- unknown_lik_weight
-
-    # --- Compute Beta prior parameters (alpha, beta) from phi ---
-    if (use_beta_prior) {
-      phi_vec <- if (!is.null(phi_scalar)) {
-        rep(phi_scalar, nrow(merged))
-      } else {
-        # Map information_quality -> phi; NA -> "low" (most diffuse)
-        iq <- merged$information_quality
-        iq[is.na(iq)] <- "low"
-        unname(prior_phi[iq])
-      }
-      merged$prior_alpha <- merged$prior_mean * phi_vec
-      merged$prior_beta  <- (1 - merged$prior_mean) * phi_vec
-    }
-
-    merged_list[[sid]] <- merged
-  }
+  merged_list <- .merge_llm_priors(
+    observation_ids    = observation_ids,
+    group_map          = group_map,
+    lik_list           = lik_list,
+    prior_tables       = prior_tables,
+    known_absent_df    = known_absent_df,
+    unknown_lik_weight = unknown_lik_weight,
+    use_beta_prior     = use_beta_prior,
+    phi_scalar         = phi_scalar,
+    prior_phi          = prior_phi
+  )
 
   # --- Compute posteriors -----------------------------------------------------
   out <- compute_posterior(dplyr::bind_rows(merged_list), n_sims = n_sims)
@@ -705,6 +683,113 @@ assign_taxa_llm <- function(match_df,
   }
 
   out
+}
+
+
+#' Merge per-observation likelihoods with LLM-derived priors, apply
+#' known_absent suppression + unknown_lik_weight rescaling, and construct
+#' Beta prior_alpha/prior_beta from prior_phi. Deterministic post-processing
+#' on already-fetched LLM output (prior_tables) -- makes NO LLM calls, so it
+#' can be re-run cheaply against a fixed prior_tables/lik_list for a
+#' sensitivity sweep over unknown_lik_weight/absent_detection_prob/prior_phi
+#' (score_sharpness is consumed earlier, inside .score_to_likelihood(), and
+#' so is swept by rebuilding lik_list instead -- see
+#' diagnostics/llm_prior_shape_sweep.R).
+#' @noRd
+.merge_llm_priors <- function(observation_ids, group_map, lik_list, prior_tables,
+                               known_absent_df, unknown_lik_weight,
+                               use_beta_prior, phi_scalar, prior_phi) {
+  merged_list <- vector("list", length(observation_ids))
+  names(merged_list) <- observation_ids
+
+  for (sid in observation_ids) {
+    grp      <- group_map$group_label[group_map$observation_id == sid]
+    lik_df   <- lik_list[[sid]]
+    prior_df <- prior_tables[[grp]]
+
+    # Drop columns from prior_df that also exist in lik_df (other than the join key)
+    # to prevent dplyr from creating .x / .y suffixed duplicates.
+    prior_cols_to_drop <- intersect(
+      c("hypothesis_type", "taxon_name_rank"),
+      names(prior_df)
+    )
+    prior_df_clean <- prior_df[, setdiff(names(prior_df), prior_cols_to_drop),
+                                drop = FALSE]
+
+    merged <- dplyr::left_join(lik_df, prior_df_clean, by = "taxon_name")
+
+    # unreferenced_family prior: identified by NA taxon_name (fixed weight, not LLM-assigned)
+    unk_idx <- is.na(merged$taxon_name)
+    merged$prior_mean[unk_idx]            <- 0   # placeholder; set after rescaling
+    merged$range_status[unk_idx]          <- "unknown"
+    merged$habitat_fit[unk_idx]           <- NA_character_
+    merged$information_quality[unk_idx]   <- NA_character_
+
+    # Fill NA priors for taxa the LLM omitted:
+    # - unreferenced taxa: median prior of their referenced congeners in this response
+    # - other taxa: global minimum non-NA prior
+    if (any(is.na(merged$prior_mean))) {
+      non_na_priors <- merged$prior_mean[!is.na(merged$prior_mean)]
+      global_min <- if (length(non_na_priors) > 0L) min(non_na_priors) else 0.01
+      if (!is.finite(global_min)) global_min <- 0.01
+      for (i in which(is.na(merged$prior_mean))) {
+        if (merged$hypothesis_type[[i]] == "unreferenced_species") {
+          g_genus   <- sub(" .*", "", merged$taxon_name[[i]])
+          congeners <- merged[!is.na(merged$prior_mean) &
+                                merged$hypothesis_type == "specific_candidate" &
+                                sub(" .*", "", merged$taxon_name) == g_genus, ]
+          merged$prior_mean[[i]] <- if (nrow(congeners) > 0)
+            stats::median(congeners$prior_mean) else global_min
+        } else {
+          merged$prior_mean[[i]] <- global_min
+        }
+        # Omitted taxa get "low" information_quality (LLM couldn't assess them)
+        if (is.na(merged$information_quality[[i]]))
+          merged$information_quality[[i]] <- "low"
+        if (is.na(merged$prior_source[[i]]))
+          merged$prior_source[[i]] <- "na_fill_fallback"
+      }
+    }
+
+    # Mathematical absence suppression: P(present | not detected) ∝ (1 - p_det) × prior
+    # Applied after NA-fill so unreferenced taxon fallback priors are also suppressed where appropriate.
+    # Skips unreferenced_family row (prior is set as a fixed weight, not LLM-assigned).
+    if (nrow(known_absent_df) > 0) {
+      for (ka_i in seq_len(nrow(known_absent_df))) {
+        sp  <- known_absent_df$taxon_name[[ka_i]]
+        pd  <- known_absent_df$detection_prob[[ka_i]]
+        idx <- !unk_idx & merged$taxon_name == sp
+        if (any(idx))
+          merged$prior_mean[idx] <- merged$prior_mean[idx] * (1 - pd)
+      }
+    }
+
+    # Rescale named taxa priors to (1 - unknown_lik_weight); set unreferenced_family
+    named_sum <- sum(merged$prior_mean[!unk_idx], na.rm = TRUE)
+    if (named_sum > 0) {
+      merged$prior_mean[!unk_idx] <-
+        merged$prior_mean[!unk_idx] / named_sum * (1 - unknown_lik_weight)
+    }
+    merged$prior_mean[unk_idx] <- unknown_lik_weight
+
+    # --- Compute Beta prior parameters (alpha, beta) from phi ---
+    if (use_beta_prior) {
+      phi_vec <- if (!is.null(phi_scalar)) {
+        rep(phi_scalar, nrow(merged))
+      } else {
+        # Map information_quality -> phi; NA -> "low" (most diffuse)
+        iq <- merged$information_quality
+        iq[is.na(iq)] <- "low"
+        unname(prior_phi[iq])
+      }
+      merged$prior_alpha <- merged$prior_mean * phi_vec
+      merged$prior_beta  <- (1 - merged$prior_mean) * phi_vec
+    }
+
+    merged_list[[sid]] <- merged
+  }
+
+  merged_list
 }
 
 
@@ -930,10 +1015,28 @@ assign_taxa_llm <- function(match_df,
 
   if (is.null(parsed) || !is.data.frame(parsed) ||
       !all(c("taxon_name", "prior_weight") %in% names(parsed))) {
-    cli::cli_warn(
-      "Failed to parse taxon prior response for group {.val {group_label}}. \\
-      Using uniform priors."
-    )
+    # A response with no "]" at all almost always means the LLM's JSON array
+    # was cut off mid-response by the token limit, not that it returned
+    # malformed JSON -- confirmed empirically (Session 145): 4/5 real
+    # 30-taxon batches failed this way at call_api()'s default max_tokens =
+    # 3000, while a 23-taxon batch succeeded. Give a specific, actionable
+    # warning for this case instead of the generic parse-failure message.
+    if (!grepl("]", response, fixed = TRUE)) {
+      cli::cli_warn(c(
+        "LLM response for group {.val {group_label}} looks TRUNCATED (no \\
+        closing {.val ]} found) -- likely hit the token limit, not a \\
+        malformed-JSON issue. Using uniform priors for {n} taxa.",
+        "i" = "Fix: reduce {.arg taxa_per_call} (fewer taxa -> shorter \\
+        expected response), or pass an {.arg llm_fn} wrapper that raises \\
+        {.arg max_tokens} above the {.fn call_api} default of 3000, e.g. \\
+        {.code function(prompt) TaxaTools::call_api(prompt, max_tokens = 8000L)}."
+      ))
+    } else {
+      cli::cli_warn(
+        "Failed to parse taxon prior response for group {.val {group_label}}. \\
+        Using uniform priors."
+      )
+    }
     return(make_uniform())
   }
 

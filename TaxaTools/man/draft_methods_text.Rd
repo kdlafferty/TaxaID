@@ -39,7 +39,9 @@ appendix with parameter details, or \code{"brief"} for a short summary.}
 
 \item{llm_fn}{Function. LLM provider function with signature
 \code{function(prompt_str, ...) -> character(1)}. Default
-\code{call_anthropic_api}.}
+\code{getOption("TaxaID.llm_fn", call_api)} -- the ecosystem-wide
+auto-detected provider (see \code{\link{call_api}}), falling back to
+\code{call_api} itself if the option is unset.}
 
 \item{max_code_lines}{Integer. Maximum number of code lines to include
 in the prompt. Long scripts are truncated with a note. Default

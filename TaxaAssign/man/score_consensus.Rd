@@ -8,7 +8,7 @@ score_consensus(
   match_df,
   min_score = 0,
   max_gap = Inf,
-  rank_thresholds = NULL,
+  rank_thresholds = c(species = 98, genus = 95, family = 90, order = 85),
   whitelist = NULL,
   score_col = "score_original",
   rank_system = NULL
@@ -24,7 +24,14 @@ resolution when present; genus is always derivable from species binomials.}
 \item{min_score}{Numeric.  Minimum score to retain a hit.  Hits below this
 value are discarded before any other filtering.  Scale must match the
 \code{score_col} values (e.g. 97 for percent identity, 0.97 for proportion).
-Default \code{0} (no filtering).}
+Default \code{0} (no filtering). Note: an ROC-style sweep against real 12S
+reference data (\code{diagnostics/score_floor_roc_sweep.R}, 2026-07-09) found
+that \code{min_score}/raw percent-identity alone cannot discriminate a true
+species from its closest congener at almost any real-world threshold
+(true-positive and congeneric-false-positive rates track each other
+almost exactly up to ~97). \code{min_score}'s real value is excluding
+obviously-wrong cross-family hits, not fine species-level discrimination
+-- that discrimination is \code{rank_thresholds}' job (see below).}
 
 \item{max_gap}{Numeric.  Maximum score difference from the top hit (per
 sample).  All hits within \code{max_gap} of the best score contribute to the
@@ -37,9 +44,15 @@ the LCA is computed, the consensus is capped at the finest rank whose
 threshold the top score meets.  If the top score fails all thresholds, the
 sample is unresolvable.  Applied independently of the LCA — so even if all
 hits agree on species, the consensus is demoted to genus if the top score
-is below the species threshold.  Default \code{NULL} (no rank capping).
-The default covers 4 ranks (species, genus, family, order); users can
-extend for additional ranks by passing a longer named vector.}
+is below the species threshold.
+Default \code{c(species = 98, genus = 95, family = 90, order = 85)} -- the
+conventional GITA/Jonah Ventures thresholds (changed from \code{NULL} on
+2026-07-09; see Details). Pass \code{rank_thresholds = NULL} explicitly to
+disable rank capping entirely (restores the pre-2026-07-09 default
+behavior). If \code{score_col}'s values look like a 0-1 proportion scale
+(max <= 1) rather than 0-100 percent-identity, the default is
+automatically rescaled by /100 (with an informational message) --
+pass your own already-scaled \code{rank_thresholds} to silence this.}
 
 \item{whitelist}{Character vector or \code{NULL}.  Plausible taxon names (any
 rank).  When supplied, the consensus taxon must appear in this list;
@@ -103,6 +116,21 @@ where at least one whitelist member agrees with the retained candidates.
 This function does not require a trained likelihood model or priors.  It is
 the conventional approach used in most metabarcoding and BLAST-based
 pipelines.
+
+\strong{Why \code{rank_thresholds} defaults to non-\code{NULL} (2026-07-09):}
+\code{min_score} and \code{max_gap} alone provide essentially no protection against
+confusing a species with its closest congener -- an ROC-style sweep against
+real 12S reference data found true-positive (within-species) and
+false-positive (congeneric) rates track almost identically up to a ~97
+percent-identity threshold (see \code{diagnostics/score_floor_roc_sweep.R}).
+Before this change, a caller who did not explicitly pass \code{rank_thresholds}
+got \emph{zero} score-based discrimination between a species and its congener,
+silently -- \code{score_consensus(match_df)} with no other arguments would
+happily return a confident species-level call even when a same-genus
+competitor scored just as well. Defaulting to the conventional GITA/Jonah
+Ventures thresholds makes the function safe out of the box; pass
+\code{rank_thresholds = NULL} explicitly to restore the old (unguarded)
+behavior.
 }
 \examples{
 \dontrun{

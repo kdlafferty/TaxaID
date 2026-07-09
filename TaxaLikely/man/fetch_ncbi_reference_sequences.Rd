@@ -67,7 +67,7 @@ If NULL, auto-resolved from \code{barcode_term}.
 Set both to NULL and supply wide manual values to cast a broader net
 (useful for exploring how sequence length relates to errors).}
 
-\item{max_per_species}{Integer or NULL (default 5).
+\item{max_per_species}{Integer or NULL (default NULL).
 Maximum sequences to retain per species (stratified downsampling).
 NULL disables species-level capping.}
 

@@ -171,7 +171,8 @@ likelihoods_ready <- join_priors(
   taxaexpect_priors = taxaexpect_priors,
   site              = site,
   taxonomy_lookup   = taxonomy_lookup,
-  rank_system       = c("order", "family", "genus", "species")
+  rank_system       = c("order", "family", "genus", "species"),
+  backbone_id       = 4  # NCBI; matches backbone_id used below in posterior_consensus()
 )
 .toc("S3_join_priors")
 cat("Rows ready for posterior:", nrow(likelihoods_ready), "\n")

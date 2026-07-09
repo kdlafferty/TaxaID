@@ -46,7 +46,14 @@ utils::globalVariables(c("score_val"))
 #' @param min_score Numeric.  Minimum score to retain a hit.  Hits below this
 #'   value are discarded before any other filtering.  Scale must match the
 #'   `score_col` values (e.g. 97 for percent identity, 0.97 for proportion).
-#'   Default `0` (no filtering).
+#'   Default `0` (no filtering). Note: an ROC-style sweep against real 12S
+#'   reference data (`diagnostics/score_floor_roc_sweep.R`, 2026-07-09) found
+#'   that `min_score`/raw percent-identity alone cannot discriminate a true
+#'   species from its closest congener at almost any real-world threshold
+#'   (true-positive and congeneric-false-positive rates track each other
+#'   almost exactly up to ~97). `min_score`'s real value is excluding
+#'   obviously-wrong cross-family hits, not fine species-level discrimination
+#'   -- that discrimination is `rank_thresholds`' job (see below).
 #' @param max_gap Numeric.  Maximum score difference from the top hit (per
 #'   sample).  All hits within `max_gap` of the best score contribute to the
 #'   LCA.  For example, `max_gap = 1` keeps all hits within 1 unit of the top
@@ -57,9 +64,15 @@ utils::globalVariables(c("score_val"))
 #'   threshold the top score meets.  If the top score fails all thresholds, the
 #'   sample is unresolvable.  Applied independently of the LCA — so even if all
 #'   hits agree on species, the consensus is demoted to genus if the top score
-#'   is below the species threshold.  Default `NULL` (no rank capping).
-#'   The default covers 4 ranks (species, genus, family, order); users can
-#'   extend for additional ranks by passing a longer named vector.
+#'   is below the species threshold.
+#'   Default `c(species = 98, genus = 95, family = 90, order = 85)` -- the
+#'   conventional GITA/Jonah Ventures thresholds (changed from `NULL` on
+#'   2026-07-09; see Details). Pass `rank_thresholds = NULL` explicitly to
+#'   disable rank capping entirely (restores the pre-2026-07-09 default
+#'   behavior). If `score_col`'s values look like a 0-1 proportion scale
+#'   (max <= 1) rather than 0-100 percent-identity, the default is
+#'   automatically rescaled by /100 (with an informational message) --
+#'   pass your own already-scaled `rank_thresholds` to silence this.
 #' @param whitelist Character vector or `NULL`.  Plausible taxon names (any
 #'   rank).  When supplied, the consensus taxon must appear in this list;
 #'   otherwise the consensus is upranked to the coarsest rank where a
@@ -70,6 +83,22 @@ utils::globalVariables(c("score_val"))
 #' @param rank_system Character vector of taxonomy column names, coarse to
 #'   fine (e.g. `c("family", "genus", "species")`).  If `NULL` (default),
 #'   standard columns present in `match_df` are detected automatically.
+#'
+#' @details
+#' \strong{Why `rank_thresholds` defaults to non-`NULL` (2026-07-09):}
+#' `min_score` and `max_gap` alone provide essentially no protection against
+#' confusing a species with its closest congener -- an ROC-style sweep against
+#' real 12S reference data found true-positive (within-species) and
+#' false-positive (congeneric) rates track almost identically up to a ~97
+#' percent-identity threshold (see `diagnostics/score_floor_roc_sweep.R`).
+#' Before this change, a caller who did not explicitly pass `rank_thresholds`
+#' got *zero* score-based discrimination between a species and its congener,
+#' silently -- `score_consensus(match_df)` with no other arguments would
+#' happily return a confident species-level call even when a same-genus
+#' competitor scored just as well. Defaulting to the conventional GITA/Jonah
+#' Ventures thresholds makes the function safe out of the box; pass
+#' `rank_thresholds = NULL` explicitly to restore the old (unguarded)
+#' behavior.
 #'
 #' @return A data frame with one row per `observation_id`:
 #'   \describe{
@@ -118,7 +147,8 @@ utils::globalVariables(c("score_val"))
 score_consensus <- function(match_df,
                             min_score       = 0,
                             max_gap         = Inf,
-                            rank_thresholds = NULL,
+                            rank_thresholds = c(species = 98, genus = 95,
+                                               family = 90, order = 85),
                             whitelist       = NULL,
                             score_col       = "score_original",
                             rank_system     = NULL) {
@@ -141,6 +171,30 @@ score_consensus <- function(match_df,
   if (!is.null(whitelist)) {
     if (!is.character(whitelist))
       cli::cli_abort("{.arg whitelist} must be a character vector.")
+  }
+
+  # --- Auto-scale rank_thresholds if score_col looks like a 0-1 proportion --
+  # rank_thresholds defaults to the conventional GITA/Jonah Ventures 0-100
+  # percent-identity thresholds (species=98, genus=95, family=90, order=85;
+  # see TaxaAssign/CLAUDE.md). score_consensus() itself is scale-agnostic
+  # (min_score's own doc: "97 for percent identity, 0.97 for proportion"), so
+  # applying a 0-100-scale default blindly to 0-1-scale data would silently
+  # make every observation unresolvable (no score could ever clear a
+  # threshold of 85+). Detect and rescale, following the same
+  # `if (max(x) > 1) treat-as-percent else treat-as-proportion` convention
+  # used elsewhere in the ecosystem (TaxaLikely::.normalize_scores(),
+  # assign_scores(), restore_suppressed_candidates()$delta).
+  if (!is.null(rank_thresholds) && any(rank_thresholds > 1)) {
+    max_score <- suppressWarnings(max(match_df[[score_col]], na.rm = TRUE))
+    if (is.finite(max_score) && max_score <= 1) {
+      rank_thresholds <- rank_thresholds / 100
+      cli::cli_inform(
+        "score_consensus: {.field {score_col}} values look like a 0-1 \\
+        proportion scale (max = {round(max_score, 3)}); rescaling \\
+        {.arg rank_thresholds} by /100 to match. Pass {.arg rank_thresholds} \\
+        explicitly (already on your data's scale) to silence this."
+      )
+    }
   }
 
   # --- Resolve rank system ----------------------------------------------------

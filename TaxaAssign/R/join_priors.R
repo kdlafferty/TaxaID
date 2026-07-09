@@ -533,6 +533,11 @@ utils::globalVariables(c(
 #'   descending prior order until this fraction of the within-constraint
 #'   prior mass is reached. Mirrors `cumulative_threshold` in
 #'   [posterior_consensus()]. Default `0.90`.
+#' @param backbone_id Taxonomic backbone ID used for the taxonomy fallback
+#'   fill (see Details). Required, no default -- the correct value depends on
+#'   which backbone your input taxonomy was verified against, which varies by
+#'   project (e.g. `11` for GBIF, `4` for NCBI). See the Taxonomic Backbone ID
+#'   Reference in `TaxaID/CLAUDE.md` for the full list.
 #' @param singleton_taxonomy Optional data frame mapping `taxon_name` to
 #'   taxonomy columns (`genus`, `family`, `order`, `class`, `phylum`). When
 #'   supplied, unmodelled candidates (those with no TaxaExpect prior) receive
@@ -608,12 +613,23 @@ join_priors <- function(likelihoods,
                         expansion_taxonomy = NULL,
                         expansion_min_prior = 0.05,
                         expansion_cumulative_prior = 0.90,
-                        singleton_taxonomy = NULL) {
+                        singleton_taxonomy = NULL,
+                        backbone_id) {
 
 
   # ---- Input validation -----------------------------------------------------
   if (!is.data.frame(likelihoods)) {
     cli::cli_abort("{.arg likelihoods} must be a data frame.")
+  }
+
+  if (missing(backbone_id)) {
+    cli::cli_abort(c(
+      "{.arg backbone_id} must be specified explicitly.",
+      "i" = "There is no safe default: the correct backbone depends on which \\
+      backbone your input taxonomy was verified against, and this varies by \\
+      project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See the \\
+      Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the full list."
+    ))
   }
 
   needed_lik <- c("observation_id", "taxon_name", "taxon_name_rank")
@@ -1223,7 +1239,7 @@ join_priors <- function(likelihoods,
       names_to_query <- unique(result$taxon_name[still_missing])
       backbone_fill <- tryCatch({
         verified <- TaxaTools::verify_taxon_names(names_to_query,
-                                                  backbone_id = 4L)
+                                                  backbone_id = backbone_id)
         TaxaTools::change_backbone(verified,
                                    input_col = "user_supplied_name")
       }, error = function(e) {
@@ -1256,7 +1272,7 @@ join_priors <- function(likelihoods,
           n_filled <- sum(!is.na(idx))
           if (n_filled > 0L) {
             cli::cli_inform(
-              "Filled taxonomy for {n_filled} taxon name{?s} via NCBI backbone."
+              "Filled taxonomy for {n_filled} taxon name{?s} via backbone {backbone_id}."
             )
           }
         }

@@ -328,7 +328,8 @@ likelihoods_w_prior <- TaxaAssign::join_priors(
   taxaexpect_priors = taxaexpect_priors,
   site              = list(grid_id = SITE_GRID_ID, main_habitat = SITE_HABITAT),
   taxonomy_lookup   = taxonomy_lookup,
-  rank_system       = RANK_SYSTEM
+  rank_system       = RANK_SYSTEM,
+  backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
 )
 
 message(sprintf("  %d row(s) ready for compute_posterior().", nrow(likelihoods_w_prior)))

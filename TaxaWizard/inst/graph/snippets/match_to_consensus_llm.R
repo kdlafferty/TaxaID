@@ -2,6 +2,9 @@
 # Source: TaxaAssign run_llm_pipeline()
 # Prerequisite: match_df must have observation_id, score_original, taxon_name, taxon_name_rank
 # If taxon_name is missing, create it from taxonomy columns first.
+# NOTE: {{backbone_id}} is required — no default. Must match whichever
+#   taxonomic backbone the input taxonomy was verified against (e.g. 11
+#   for GBIF, 4 for NCBI).
 
 # Standardize common column name variations
 if (!"observation_id" %in% names({{input_var}})) {
@@ -46,6 +49,7 @@ llm_result <- TaxaAssign::run_llm_pipeline(
   habitat_scheme  = {{habitat_scheme}},
   llm_fn          = {{llm_fn}},
   score_threshold = {{score_threshold}},
+  backbone_id     = {{backbone_id}},
   verbose         = TRUE
 )
 consensus <- llm_result$consensus

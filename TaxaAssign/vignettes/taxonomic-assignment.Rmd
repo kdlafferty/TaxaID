@@ -41,7 +41,8 @@ out <- run_bayesian_pipeline(
   match_df          = match_obj,
   model_params      = trained_model,
   taxaexpect_priors = priors,
-  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
+  backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
 )
 
 head(out$consensus)
@@ -53,7 +54,8 @@ head(out$consensus)
 out <- run_llm_pipeline(
   match_df        = match_obj,
   geographic_hint = "Southern California",
-  barcode_term    = "12S"
+  barcode_term    = "12S",
+  backbone_id     = 11L  # GBIF; match whichever backbone your input taxonomy used
 )
 
 head(out$consensus)
@@ -100,7 +102,8 @@ ready <- join_priors(
   likelihoods       = constrained,
   taxaexpect_priors = taxaexpect_priors,
   site              = list(grid_id = "Grid_34p1_m119p1",
-                           main_habitat = "Estuarine Bay")
+                           main_habitat = "Estuarine Bay"),
+  backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
 )
 ```
 

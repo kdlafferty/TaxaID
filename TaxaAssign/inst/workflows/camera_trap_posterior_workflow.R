@@ -472,7 +472,8 @@ saveRDS(likelihoods_old_default,
     taxaexpect_priors = taxaexpect_priors,
     site              = list(grid_id = SITE_GRID_ID, main_habitat = SITE_HABITAT),
     taxonomy_lookup   = taxonomy_lookup,
-    rank_system       = RANK_SYSTEM
+    rank_system       = RANK_SYSTEM,
+    backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
   )
 
   posterior_df <- TaxaAssign::compute_posterior(
