@@ -1,6 +1,92 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-11 (Session 151 continued -- correct_training_bias()'s default tau
+# Last updated: 2026-07-11 (Session 151 continued once more -- ecosystem soundness-review
+# item 13 (build_sequence_matrix()'s pairwise_distance_to_match) fixed: new opt-in
+# barcode_term param auto-resolves min_seq_len/max_seq_len via
+# TaxaTools::resolve_barcode_lengths() instead of the generic [100, 2000] default. This
+# is the documented Paralabrax footgun (see Known Footguns below) made ergonomic: a
+# broad NCBI fetch can return sequences describing a genomically different stretch of
+# the same gene that still pass a length filter, silently mixing two amplicon windows
+# into what looks like one self-consistent H1/H2 training set --
+# diagnostics/sebastes_chromis_confirmation.R (the script that found this) already
+# hand-implemented the fix by manually pre-filtering reference_df via
+# TaxaTools::resolve_barcode_lengths() before calling this function; that pattern is now
+# built in. Detected via missing(), not value comparison, so explicit min_seq_len/
+# max_seq_len (even if numerically identical to the old defaults) always override the
+# resolved range -- fully backward compatible, no existing caller's behavior changes
+# unless barcode_term is newly supplied. Important nuance documented in the roxygen: a
+# *specific registered primer variant* (e.g. "MiFishU", resolves to the literature-
+# verified 130-210bp real PCR amplicon) gives a strong guarantee; a bare marker name
+# (e.g. "12S", resolves to a much wider 100-600bp per-gene range) only guarantees
+# "roughly the right marker," not amplicon-window comparability -- this fix closes the
+# ergonomic gap, not the judgment-call gap. Wired into
+# inst/workflows/sequence_likelihood_workflow.R (the one real workflow calling this
+# function with no existing length safeguard); deliberately NOT wired into
+# inst/TaxaID_Workflow_Template_TEST.R, which already made and documented its own wider
+# max_len=1200L judgment call for real longer submissions -- applying the generic "12S"
+# resolved range there would have silently excluded data that workflow's own team
+# already decided to keep. Not attempted: making max_dist marker-aware (the review's
+# smaller secondary suggestion) -- no established per-marker max_dist mapping exists
+# anywhere in the ecosystem to draw from. 5 new offline tests. devtools::test() 667/667
+# (up from 661), check() clean. See ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_
+# REVIEW.md's item 13 for the full record.
+# Previous update, same day (Session 151 continued once more -- ecosystem soundness-review
+# item 12 (apply_coverage_constraints()'s completeness_penalty_weight) fixed:
+# constraint_behavior default changed "zero" -> "relabel". The review flagged that the
+# default hard-zeros the "unreferenced_species" hypothesis for any genus
+# audit_barcode_coverage() calls "complete" -- treating an NCBI taxonomy-tree query result
+# as certain ground truth, when it can under-enumerate a genus for reasons unrelated to
+# true completeness (unindexed recent species, unresolved synonyms, missed renamings). A
+# wrongly-"complete" genus then deterministically misassigns a genuinely novel detection,
+# with the correct hypothesis permanently zeroed out. Investigating found the ecosystem had
+# already half-adopted the fix: TaxaAssign::run_bayesian_pipeline() (the real production
+# entry point) has defaulted to the non-destructive "relabel" mode since it was written --
+# only this low-level function's own default still pointed at "zero", so any direct caller
+# (three vignettes, one demo workflow script, the superseded monolithic workflow) got the
+# unsafe default even though the flagship pipeline had already moved past it. Changed this
+# function's default to match; added @section Census confidence explaining the reasoning.
+# The one demo script that specifically narrates and counts zero-suppression
+# (5_audit_coverage_workflow.R) and the superseded TaxaLikely_workflow.R both now request
+# constraint_behavior = "zero" explicitly, preserving their teaching intent; the three
+# vignettes were left to pick up the safer new default. Not attempted: a soft/
+# confidence-scaled penalty_factor (the review's alternative suggestion) -- no data exists
+# to quantify per-genus census confidence, and the default-mode fix alone already closes
+# the H-priority risk (no more silent, irreversible destruction of likelihood mass by
+# default). Two tests exercising "zero" mode's specific math now request it explicitly
+# (matching item 11's tau=1 test-pinning pattern); new test confirms the new default is
+# non-destructive. devtools::test() 661/661 (up from 658), check() clean. Also noticed, not
+# fixed (pre-existing, out of scope): TaxaAssign/vignettes/taxaid-ecosystem.Rmd passes the
+# whole audit_barcode_coverage() return list to apply_coverage_constraints() instead of the
+# reshaped coverage$census every real call site uses -- a second instance of that file's
+# already-known API drift (Session 150 flagged a separate stale-argument-count bug in the
+# same file). See ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 12 for
+# the full record.
+# Previous update, same day (Session 151 continued yet further -- ecosystem soundness-review
+# item 9 (train_likelihood_model()'s eb_bivariate_normal) closed out, docs-only, after the
+# shrinkage-weight half of the finding turned out to be a false positive on verification.
+# The review claimed the Empirical Bayes shrinkage weight (w = N/(N+prior_weight)) uses N =
+# within-species PAIR count (O(k^2) for k reference sequences, correlated), inflating
+# confidence in well-sampled species. Built a synthetic 5-sequence species and ran it
+# through the real pipeline before touching any code: .prep_training_data() does generate
+# all 20 ordered pairs internally, and a separate N_Obs diagnostic column does carry that
+# pair count -- but group_by(id_x) |> slice_max(score_logit, n=1) (present since the
+# package's initial commit) already collapses this to one row per SEQUENCE (its single best
+# within-species match) before train_likelihood_model() ever computes the shrinkage N.
+# Confirmed directly: N_Obs = 20 (pairs), but the actual n_obs_species used for shrinkage =
+# 5 (sequences). N_Obs is dead code with respect to shrinkage -- grepped the whole package,
+# never read again, and doesn't even survive into the returned model_params object. Fix
+# (docs-only, kept N_Obs per the user's explicit choice rather than removing it -- costs
+# nothing computationally, could be a future pair-density diagnostic): N_Obs's roxygen in
+# .prep_training_data() now states plainly it's an unused pair-count diagnostic, not the
+# shrinkage N; train_likelihood_model() gained a new @section Marker validation scope
+# stating that Framing B (the continuous bivariate-normal form) is empirically validated
+# for 12S/18S only and pointing at ecosystem_docs/../diagnostics/seq_matrix_score_distribution.R
+# for any other marker (COI/16S/cytb/rbcL/matK/trnL, all now trainable via
+# trim_to_amplicon()) -- this half of the original finding was real and remains open as a
+# workflow caveat, not a code bug. devtools::test() 658/658 unchanged (docs-only), check()
+# clean. See ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 9 for the full
+# record, including the exact synthetic-fixture verification.
+# Previous update, same day (Session 151 continued -- correct_training_bias()'s default tau
 # changed 1.0 -> 0 (ecosystem-wide soundness-review item 11, the review's own "single
 # clearest actionable bug"): every real calibration run against this function so far --
 # image (Session 129) and acoustic, on both the original small pilot AND the later,
@@ -185,9 +271,9 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output includes `coverage` column. New params (Session 112): `filter_unnamed = TRUE` drops sequences with blank/NA finest-rank (species) label before alignment — removes spurious within-species pairs (blank == blank) that dominated 18S databases (69% of pairs); `max_seqs_per_taxon = NULL` randomly subsamples sequences per species before alignment to prevent heavily-sequenced taxa (e.g. Ovis aries) from dominating the within-species distribution. Both operate pre-alignment, reducing DECIPHER computation time. Renamed from `build_reference_matrix()` Session 88. |
+| `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output includes `coverage` column. New params (Session 112): `filter_unnamed = TRUE` drops sequences with blank/NA finest-rank (species) label before alignment — removes spurious within-species pairs (blank == blank) that dominated 18S databases (69% of pairs); `max_seqs_per_taxon = NULL` randomly subsamples sequences per species before alignment to prevent heavily-sequenced taxa (e.g. Ovis aries) from dominating the within-species distribution. Both operate pre-alignment, reducing DECIPHER computation time. Renamed from `build_reference_matrix()` Session 88. **Session 151**: `barcode_term = NULL` param — when supplied and `min_seq_len`/`max_seq_len` are left at their defaults, auto-resolves the length window via `TaxaTools::resolve_barcode_lengths(barcode_term)` instead of the generic `[100, 2000]` default (explicit lengths always override). Closes the Paralabrax footgun (below) ergonomically — a specific registered primer variant (e.g. `"MiFishU"`) gives a real amplicon-window guarantee; a bare marker name (e.g. `"12S"`) does not. |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
-| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. **Session 151**: `H2$delta` (the missing-species shift) is otherwise a single value pooled across every genus in the training set; where a genus has a real congener pair (`max_congener_score` from `.prep_training_data()`, distinct from the existing cross-any-genus `max_foreign_score`), a genus-specific delta is estimated and shrunk toward the pooled value via the same Empirical Bayes form as the per-species H1 means, stored in a new `H2_Lookup` slot. Genera with only one referenced species get no lookup row and fall back to the pooled delta unchanged. |
+| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. Empirical Bayes shrinkage weight `w = N/(N+prior_weight)` uses `N` = within-species SEQUENCE count (one row per sequence after `.prep_training_data()`'s `group_by(id_x) |> slice_max()` dedup), not raw pair count — confirmed empirically Session 151 after a soundness-review finding claimed otherwise (see that function's `N_Obs` doc note). **Session 151**: gained `@section Marker validation scope` — Framing B (this bivariate-normal form) is validated for 12S/18S only; run `diagnostics/seq_matrix_score_distribution.R` before trusting it on another marker. Also **Session 151**: `H2$delta` (the missing-species shift) is otherwise a single value pooled across every genus in the training set; where a genus has a real congener pair (`max_congener_score` from `.prep_training_data()`, distinct from the existing cross-any-genus `max_foreign_score`), a genus-specific delta is estimated and shrunk toward the pooled value via the same Empirical Bayes form as the per-species H1 means, stored in a new `H2_Lookup` slot. Genera with only one referenced species get no lookup row and fall back to the pooled delta unchanged. |
 
 ### Unified likelihood pipeline (new — Session 99)
 
@@ -221,7 +307,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates `in_match_data`. `xc_recordings = FALSE` param (Session 119, fixed to v3 Session 125): when TRUE, queries Xeno-canto v3 API (requires `XC_API_KEY` env var) for `n_recordings` per species (1s rate limit; NA on failure or missing key). Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
 | `audit_inat_coverage()` | `R/coverage.R` | Written | **iNaturalist image coverage audit** (Session 119). Given a species list (prior taxa), queries iNat taxa API for each species: returns `n_observations`, `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced` list. Optional `match_df` annotates `in_match_data`. Optional `api_token` (env `INAT_API_TOKEN`; 401 → stop). 0.3s rate limit. Returns `list(census, unreferenced)` with same structure as `audit_barcode_coverage()`. Internal helpers: `.inat_species_info()`, `.xc_recording_count()`. |
 | `fetch_xc_recording_locations()` | `R/coverage.R` | Written | **Session 135.** Given one or more species names, returns per-recording `species`/`xc_id`/`lat`/`lon`/`country` from Xeno-canto v3 — the same API response `audit_acoustic_coverage(xc_recordings = TRUE)` already queries via `.xc_recording_count()`, but that function only ever read `numRecordings` off the body and discarded the `recordings` array's own `lat`/`lng`/`cnt` fields. Refactored the shared HTTP call into `.xc_recordings_raw()` (zero behavior change for `.xc_recording_count()`, confirmed by its own tests) and added `.xc_recording_locations()` as the per-recording extractor this function loops over (1s/species rate limit, matching `audit_acoustic_coverage()`'s own). `xc_id` is Xeno-canto's own catalog number, not a `TaxaMatch::build_site_table()`-ready `observation_id` — mapping it to a caller's BirdNET observation-id convention is left to the caller (harness-level concern, not attempted here). |
-| `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress "unreferenced_species" for fully-sampled genera |
+| `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress or relabel "unreferenced_species" for fully-sampled genera. **Session 151**: `constraint_behavior` default changed `"zero"` -> `"relabel"` (non-destructive) — matches `TaxaAssign::run_bayesian_pipeline()`'s own already-established default; `"zero"` mode (opt-in) treats `audit_barcode_coverage()`'s `is_complete` as certain ground truth, which it isn't (NCBI-query estimate). See `@section Census confidence`. |
 | `expand_unreferenced_hypotheses()` | `R/expand_unreferenced.R` | Written | **Session 150: moved here from TaxaAssign.** Models likelihoods for named unreferenced species by copying/medianing the generic H2/H3 values (borrowed from referenced relatives), then expands genus/family placeholder rows into named species so they can join TaxaExpect priors directly. Still needs a TaxaExpect-derived `unreferenced_df` as input -- that's a data/workflow-ordering requirement only (build it, then call this function), not a package dependency, since this function never calls into TaxaExpect or TaxaAssign itself. `TaxaAssign::expand_unreferenced_hypotheses()` remains as a `.Deprecated()` forwarding wrapper. See `TaxaID/CLAUDE.md`'s Session 150 note for the full reasoning. |
 
 ### Coverage quality calibration
@@ -453,6 +539,8 @@ Live-fetched 238 real `Sebastes` (rockfish) 12S sequences from NCBI (`fetch_ncbi
 **The more consequential, broadly-actionable finding:** `build_sequence_matrix()`'s default `min_seq_len = 100L, max_seq_len = 2000L` is wide enough that it does **not** filter out these off-target, non-MiFish-window sequences -- they pass straight into alignment and pairwise-distance calculation alongside genuine short MiFish-amplicon sequences. For `Sebastes`, this went unnoticed at first because DECIPHER's alignment coincidentally produced high divergence (and thus exclusion via the `distance < 0.25` pair-retention step) for most such cross-window pairs -- but for `Paralabrax`, ALL fetched sequences were off-target long fragments, so the *entire* resulting seq_matrix was built from a different genomic window than intended, silently invalidating a same-species vs. congeneric %-match comparison that looked superficially normal (non-empty, plausible-looking output). This would not have been caught without an independent, methodologically-motivated reason to compare two genera against each other and notice the numbers looked inconsistent.
 
 **How to apply:** when reference sequences are fetched by a broad NCBI text search term (e.g. `barcode_term = "12S"`) rather than sourced from a curated amplicon-only database, do not trust `build_sequence_matrix()`'s default length filter to guarantee amplicon-window comparability across taxa/sources -- it only guards against absurdly short/long sequences, not "same region as every other sequence in this matrix." Explicitly filter `reference_df` to the registered amplicon length range first (`TaxaTools::resolve_barcode_lengths("MiFishU")` gives `130-210`bp for MiFish-U/E) before calling `build_sequence_matrix()`, especially when comparing results *across* separately-fetched taxon sets rather than just running one self-contained pipeline. See `diagnostics/sebastes_chromis_confirmation.R` for the corrected pattern.
+
+**UPDATE (Session 151, ecosystem soundness-review item 13):** the manual pre-filter above is now built into `build_sequence_matrix()` itself via a new `barcode_term` param -- `build_sequence_matrix(reference_df, ..., barcode_term = "MiFishU")` auto-resolves and applies the same length window (explicit `min_seq_len`/`max_seq_len` still override). The nuance from this footgun still applies to the new parameter, not just the old manual pattern: pass a *specific registered primer variant* (`"MiFishU"`), not just a bare marker name (`"12S"`, which resolves to a much wider 100-600bp range) -- only the specific-variant term gives the real amplicon-window guarantee this footgun is about.
 
 ### .xc_recording_count() required v2 -> v3 migration (found Session 124, FIXED Session 125)
 `.xc_recording_count()` (`R/coverage.R`), used by

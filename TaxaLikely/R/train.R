@@ -175,8 +175,17 @@ flag_reference_errors <- function(raw_df,
 #'       match score.}
 #'     \item{`gap_logit`}{Score gap (capped at `max_gap_ceiling`).}
 #'     \item{`rank_category`}{`"1_Known_Species"` or `"Singleton"`.}
-#'     \item{`N_Obs`}{Number of within-species pairs for this taxon (used for
-#'       shrinkage weight in `train_likelihood_model()`).}
+#'     \item{`N_Obs`}{Number of within-species PAIRS for this taxon (O(k^2)
+#'       for k reference sequences, since every ordered pair within
+#'       `max_dist` survives `build_sequence_matrix()`). Diagnostic only --
+#'       NOT the N used for Empirical Bayes shrinkage in
+#'       `train_likelihood_model()`, which instead counts rows of this data
+#'       frame per species (one row per SEQUENCE, since the `group_by(id_x)
+#'       |> slice_max()` step above already collapses each sequence's many
+#'       pairs down to its single best within-species match before this
+#'       column is even computed). Kept for possible future use as a
+#'       pair-density diagnostic; not currently read by any downstream
+#'       function.}
 #'     \item{`max_congener_score`}{Best cross-species match restricted to a
 #'       true congener (same genus, different species). `NA` when the query's
 #'       genus has no other referenced species. Used by
@@ -411,6 +420,21 @@ flag_reference_errors <- function(raw_df,
 #'   `evaluate_likelihoods()` prefers when available. See the "Per-genus
 #'   delta shrinkage" section below.
 #' * **H3 (missing genus):** H1 mean shifted further left by `H3$delta`.
+#'
+#' @section Marker validation scope:
+#' The continuous bivariate-normal form above (as opposed to a discrete
+#' "100\% match or nothing" rule) was empirically validated against real
+#' PtConception data for the 12S and 18S markers only (see the "Framing B
+#' verdict" project notes) -- 100\% rules were shown unreliable at the
+#' congeneric level, and the bivariate-normal form captured the real score
+#' distribution well for those two markers specifically. Nothing in this
+#' function checks that the same form fits a different marker (e.g. COI,
+#' 16S, cytb, rbcL, matK, trnL -- all now trainable here via
+#' `trim_to_amplicon()`) before fitting it. Run
+#' `diagnostics/seq_matrix_score_distribution.R` on `build_sequence_matrix()`
+#' output for a new marker before trusting this model there -- it checks
+#' logit-normality and the H1/H2 spike ratio, the two properties this
+#' function's Gaussian form assumes hold.
 #'
 #' @section Per-genus delta shrinkage:
 #' The pooled, global `H2$delta` treats every genus identically, which is a

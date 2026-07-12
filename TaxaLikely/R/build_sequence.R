@@ -35,9 +35,37 @@ utils::globalVariables(c(
 #'   The 75% identity threshold is a standard floor for retaining distantly
 #'   related taxa in barcode reference databases.
 #' @param min_seq_len Integer (default `100`).  Sequences shorter than this
-#'   are discarded before alignment.
+#'   are discarded before alignment.  Ignored if `barcode_term` is supplied
+#'   and this argument is left at its default -- see `barcode_term` below.
 #' @param max_seq_len Integer (default `2000`).  Sequences longer than this
-#'   are discarded before alignment.
+#'   are discarded before alignment.  Ignored if `barcode_term` is supplied
+#'   and this argument is left at its default -- see `barcode_term` below.
+#' @param barcode_term Character or `NULL` (default `NULL`).  When supplied
+#'   AND `min_seq_len`/`max_seq_len` are both left at their defaults, resolves
+#'   the length window via `TaxaTools::resolve_barcode_lengths(barcode_term)`
+#'   instead of using the generic `[100, 2000]` default.  Explicit
+#'   `min_seq_len`/`max_seq_len` always override this, matching
+#'   `resolve_barcode_lengths()`'s own override convention.
+#'
+#'   This exists because the generic default length window does NOT
+#'   guarantee every retained sequence covers the same amplicon window --
+#'   only that it is a plausible barcode-length fragment of *some* kind. A
+#'   broad NCBI free-text search (e.g. `barcode_term = "12S"` at fetch time)
+#'   can return sequences describing a genomically different stretch of the
+#'   same gene (older primer sets, broader mitochondrial fragments) that
+#'   still happen to pass a length filter -- silently mixing two different
+#'   genomic windows into what looks like one self-consistent H1/H2 training
+#'   set (the documented "Paralabrax footgun": a real 0% MiFish-primer-site
+#'   hit rate on sequences that had already passed the generic length
+#'   filter). Passing a *specific, registered primer variant* here (e.g.
+#'   `"MiFishU"`, not just `"12S"`) gives the strongest guarantee, since that
+#'   resolves to the literature-verified real PCR amplicon length rather than
+#'   a broader per-gene range; a bare marker name (e.g. `"12S"`) only
+#'   guarantees "roughly the right marker," not amplicon-window
+#'   comparability, and does not by itself close this gap. See
+#'   `diagnostics/sebastes_chromis_confirmation.R` for the case this was
+#'   found in and the (now-superseded, use this parameter instead) manual
+#'   pre-filter pattern it used.
 #' @param filter_unnamed Logical (default `TRUE`).  If `TRUE`, sequences whose
 #'   finest-rank taxonomy column (the last element of `rank_system`, typically
 #'   `species`) is blank (`""`) or `NA` are removed before alignment.  Blank
@@ -93,7 +121,25 @@ build_sequence_matrix <- function(reference_df,
                                    min_seq_len        = 100L,
                                    max_seq_len        = 2000L,
                                    filter_unnamed     = TRUE,
-                                   max_seqs_per_taxon = NULL) {
+                                   max_seqs_per_taxon = NULL,
+                                   barcode_term       = NULL) {
+  if (!is.null(barcode_term)) {
+    if (missing(min_seq_len) && missing(max_seq_len)) {
+      len_bounds  <- TaxaTools::resolve_barcode_lengths(barcode_term)
+      min_seq_len <- len_bounds[["min_bp"]]
+      max_seq_len <- len_bounds[["max_bp"]]
+      message(sprintf(
+        "build_sequence_matrix: barcode_term '%s' resolved to length range [%d, %d] bp (TaxaTools::resolve_barcode_lengths()); pass min_seq_len/max_seq_len explicitly to override.",
+        paste(barcode_term, collapse = "/"), min_seq_len, max_seq_len
+      ))
+    } else {
+      message(sprintf(
+        "build_sequence_matrix: barcode_term supplied but min_seq_len/max_seq_len were also set explicitly -- using [%d, %d] as given, NOT barcode_term's resolved range. This does not guarantee every retained sequence covers the same amplicon window.",
+        min_seq_len, max_seq_len
+      ))
+    }
+  }
+
   if (!is.data.frame(reference_df))
     stop("reference_df must be a data frame")
 

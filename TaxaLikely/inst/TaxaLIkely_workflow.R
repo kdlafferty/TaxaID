@@ -298,7 +298,10 @@ census_result <- dplyr::mutate(
 
 
 # Check: unreferenced_species rows for complete genera now have likelihood = 0
-constrained <- apply_coverage_constraints(real_likelihoods$likelihoods, census_result)
+# (constraint_behavior = "zero" requested explicitly; package default is now
+# "relabel" -- see ?apply_coverage_constraints's "Census confidence" section)
+constrained <- apply_coverage_constraints(real_likelihoods$likelihoods, census_result,
+                                          constraint_behavior = "zero")
 message("\nWorkflow complete.")
 # Next step: obtain data for priors using TaxaFetch.
 # see inst/TaxaAssign_bayesian_workflow.R in TaxaAssign for the full

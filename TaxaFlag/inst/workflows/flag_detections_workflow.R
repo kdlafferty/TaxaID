@@ -349,12 +349,23 @@ message(sprintf("  To reuse without re-running this workflow, paste:\n    taxaas
 # "lab_contaminant", "field_contaminant", "positive_control") -- see the Flag
 # Column Convention below.
 #
-# Algorithm (.compute_contaminant_scores(), one row per taxon in the output):
-#   1. Within-sample proportions: prop = n_reads / sum(n_reads) per sample
-#   2. Per taxon: mean_prop_field, mean_prop_control, n_controls_present
-#   3. Score: mean_prop_field / (mean_prop_field + mean_prop_control) in [0, 1]
-#   4. Taxa absent from controls entirely -> score = 1.0 (no evidence of
-#      contamination)
+# Algorithm (.compute_contaminant_scores(), one row per taxon in the output;
+# depth-weighting + shrinkage added Session 151, ecosystem soundness-review
+# item 15 -- see that function's own "Depth-weighting and shrinkage" roxygen
+# section for the full real-world motivation):
+#   1. Depth-weighted rate per group: field_rate/control_rate =
+#      sum(taxon reads in group) / sum(total reads across samples in that
+#      group) -- a proportion from 500,000 reads now counts far more than
+#      one from 50 (fixes the old unweighted per-sample-proportion mean,
+#      still returned as mean_prop_field/mean_prop_control for reference
+#      but no longer driving the score).
+#   2. Raw ratio: field_rate / (field_rate + control_rate)
+#   3. Shrunk toward 0.5 (maximally uncertain) with weight
+#      n_present / (n_present + prior_weight), n_present = total samples
+#      (field + control) where the taxon was actually detected -- default
+#      prior_weight = 2. A taxon absent from controls entirely no longer
+#      gets an automatic, unwarranted score = 1.0 when only a couple of
+#      controls exist; more replication (either direction) shrinks less.
 #
 # FLAG COLUMN CONVENTION (the counterintuitive score/risk asymmetry -- see
 # TaxaFlag/CLAUDE.md's "Flag Column Convention" section): flag_contaminant()
@@ -364,15 +375,17 @@ message(sprintf("  To reuse without re-running this workflow, paste:\n    taxaas
 #                                 genuine), gated by score_thresholds
 #   {contaminant_type}_score  -- numeric in [0, 1]; HIGHER = MORE LIKELY
 #                                 GENUINE (i.e. score is the inverse sense of
-#                                 risk -- score 1.0 means low risk/real
-#                                 detection, score 0.0 means high risk/
+#                                 risk -- score near 1.0 means low risk/real
+#                                 detection, score near 0.0 means high risk/
 #                                 contaminant). This is intentional: score is
 #                                 an intermediate, threshold-tunable output;
 #                                 risk is the user-facing categorical result,
-#                                 and the two are NOT the same direction.
+#                                 and the two are NOT the same direction. A
+#                                 ranked screening statistic, not a
+#                                 calibrated probability.
 #   {contaminant_type}_reason -- character; plain-English explanation (e.g.
-#                                 mean_prop_field/mean_prop_control values,
-#                                 or "absent from controls")
+#                                 field_rate/control_rate values, or
+#                                 "absent from controls")
 #
 # Would-be example call, if this chain produced real read-count data:
 #

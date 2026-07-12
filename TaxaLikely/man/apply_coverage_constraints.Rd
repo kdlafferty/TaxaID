@@ -8,7 +8,7 @@ apply_coverage_constraints(
   likelihood_df,
   census_result,
   penalty_factor = 0,
-  constraint_behavior = c("zero", "relabel")
+  constraint_behavior = c("relabel", "zero")
 )
 }
 \arguments{
@@ -33,10 +33,10 @@ census_result <- dplyr::mutate(
 \item{penalty_factor}{Numeric in [0, 1] (default \code{0.0}).  Multiplier
 applied to \code{score_likelihood} and \code{score_likelihood_mean} for constrained
 hypotheses when \code{constraint_behavior = "zero"}.  Ignored when
-\code{constraint_behavior = "relabel"}.}
+\code{constraint_behavior = "relabel"} (the default).}
 
-\item{constraint_behavior}{Character scalar: \code{"zero"} (default) or
-\code{"relabel"}.  See Details above.}
+\item{constraint_behavior}{Character scalar: \code{"relabel"} (default) or
+\code{"zero"}.  See Details above and "Census confidence" below.}
 }
 \value{
 \code{likelihood_df} with an added \code{constraint_applied} column and
@@ -61,19 +61,44 @@ zeroed (hard constraint) or relabeled to capture the alternative biology.
 \details{
 \strong{Behaviour modes} (controlled by \code{constraint_behavior}):
 \itemize{
-\item \code{"zero"} (default): likelihoods are multiplied by \code{penalty_factor}
-(default 0.0 = hard zero).  Use when you are confident the genus is
-complete and any match signal is artefactual.
-\item \code{"relabel"}: \code{hypothesis_type} is changed from \code{"unreferenced_species"}
-to \code{"unresolved_species"} and likelihoods are left unchanged.  Use when
-the census confirms all known species are in the reference but match
-scores cannot determine \emph{which} species the sample belongs to -- i.e.
-the sequence is real but ambiguous among the known members.  The relabeled
-row contributes as a named genus-level hypothesis in
-\code{TaxaAssign::consensus_taxonomy()}, preventing a prior-only fallback for
-these samples while correctly resolving to genus rank.
+\item \code{"relabel"} (default): \code{hypothesis_type} is changed from
+\code{"unreferenced_species"} to \code{"unresolved_species"} and likelihoods are
+left unchanged.  Use when the census confirms all known species are in
+the reference but match scores cannot determine \emph{which} species the
+sample belongs to -- i.e. the sequence is real but ambiguous among the
+known members.  The relabeled row contributes as a named genus-level
+hypothesis in \code{TaxaAssign::consensus_taxonomy()}, preventing a
+prior-only fallback for these samples while correctly resolving to
+genus rank.
+\item \code{"zero"}: likelihoods are multiplied by \code{penalty_factor} (default
+0.0 = hard zero).  Use only when you are confident the genus census
+itself is ground truth, not just an estimate -- see the "Census
+confidence" section below before choosing this mode.
 }
 }
+\section{Census confidence}{
+
+\code{census_result$status} (built from \code{audit_barcode_coverage()}'s
+\code{is_complete}) reflects what an NCBI taxonomy-tree query returned for the
+genus, not a verified, ground-truth-complete species enumeration.  A
+genus can look "complete" because of a query gap rather than genuine
+completeness -- e.g. a recently described species not yet indexed in NCBI
+taxonomy, an unresolved synonym, or a taxonomic renaming the query missed
+(\code{audit_barcode_coverage()}'s own docs already note the \code{species_list}
+parameter exists specifically to supply a more complete enumeration, e.g.
+from FishBase, when this is a concern). \code{constraint_behavior = "zero"}
+treats \code{status == "complete"} as certain and permanently discards the
+\code{"unreferenced_species"} hypothesis for that genus -- a genuinely novel
+detection in a falsely-"complete" genus is then deterministically
+misassigned, with no way for downstream evidence to recover it. \code{"relabel"}
+(the default) is deliberately conservative instead: it never destroys
+likelihood mass, only changes how the hypothesis is labeled, so a
+mistaken census can, at worst, cost genus-level resolution rather than
+create a wrong answer with no exit. \code{run_bayesian_pipeline()} (TaxaAssign)
+has defaulted to \code{"relabel"} since it was written; this function's own
+default now matches it.
+}
+
 \examples{
 \dontrun{
 constrained <- apply_coverage_constraints(

@@ -111,6 +111,23 @@ delta shrinkage" section below.
 }
 }
 
+\section{Marker validation scope}{
+
+The continuous bivariate-normal form above (as opposed to a discrete
+"100\\% match or nothing" rule) was empirically validated against real
+PtConception data for the 12S and 18S markers only (see the "Framing B
+verdict" project notes) -- 100\\% rules were shown unreliable at the
+congeneric level, and the bivariate-normal form captured the real score
+distribution well for those two markers specifically. Nothing in this
+function checks that the same form fits a different marker (e.g. COI,
+16S, cytb, rbcL, matK, trnL -- all now trainable here via
+\code{trim_to_amplicon()}) before fitting it. Run
+\code{diagnostics/seq_matrix_score_distribution.R} on \code{build_sequence_matrix()}
+output for a new marker before trusting this model there -- it checks
+logit-normality and the H1/H2 spike ratio, the two properties this
+function's Gaussian form assumes hold.
+}
+
 \section{Per-genus delta shrinkage}{
 
 The pooled, global \code{H2$delta} treats every genus identically, which is a

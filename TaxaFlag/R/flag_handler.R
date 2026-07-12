@@ -10,6 +10,29 @@
 #' time-stamped detection data. The datetime column is auto-parsed using
 #' \code{\link[base]{as.POSIXct}} with common format guessing.
 #'
+#' @section Edge anchoring (soundness-review item 16):
+#' By default (\code{station_metadata = NULL}), "deployment edges" are the
+#' detection data's own per-group minimum and maximum timestamps -- NOT true
+#' setup/pickup times. This means the very first and last GENUINE wildlife
+#' detection at a station is always exactly at the edge (\code{minutes_to_edge
+#' = 0}) and scores maximally suspect, purely as an artifact of how the edge
+#' is defined, regardless of whether a handler was ever actually present.
+#' Supply \code{station_metadata} (one row per \code{group_col} value, with
+#' real deploy/retrieve timestamps -- the same "external attribute lookup
+#' table keyed by a sample/event identifier" pattern already used elsewhere
+#' in this ecosystem, e.g. \code{TaxaMatch::join_event_site_metadata()}) to
+#' anchor edges on the actual deployment window instead. A group present in
+#' \code{df} but absent from \code{station_metadata} (or with an unparseable
+#' timestamp) falls back to the data-derived min/max for that group only,
+#' with a \code{warning()} naming it -- this is a real weakening of that
+#' group's flag, not a silent one. The output \code{edge_anchor_source}
+#' column records, per row, whether \code{"station_metadata"} or
+#' \code{"detection_data_fallback"} was used, so a caller can filter or
+#' discount rows accordingly. When \code{station_metadata} is not supplied
+#' at all, every row is fallback -- \code{handler_taxa} remains the primary
+#' real protection in that case, since it already restricts flagging to a
+#' caller-nominated taxon list regardless of edge-anchor quality.
+#'
 #' @param df Data frame with at minimum a datetime column, a taxon column,
 #'   and optionally a grouping column (e.g., station or site).
 #' @param datetime_col Character. Column name containing timestamps. The
@@ -27,9 +50,18 @@
 #'   within the interval receive a score but are flagged \code{"likely"}.
 #'   If \code{NULL}, all taxa within the interval are flagged. Default
 #'   \code{NULL}.
+#' @param station_metadata Data frame or \code{NULL} (default). One row per
+#'   \code{group_col} value with real deploy/retrieve timestamps -- see
+#'   "Edge anchoring" above. Requires \code{group_col} to be non-\code{NULL}
+#'   (a single implicit "all" group has no per-station metadata to key on).
+#'   Must contain \code{group_col} plus \code{deploy_col}/\code{retrieve_col}.
+#' @param deploy_col Character. Column name in \code{station_metadata} for
+#'   the true equipment-setup timestamp. Default \code{"deploy_time"}.
+#' @param retrieve_col Character. Column name in \code{station_metadata} for
+#'   the true equipment-retrieval timestamp. Default \code{"retrieve_time"}.
 #' @param verbose Logical. Print summary messages. Default \code{TRUE}.
 #'
-#' @return The input data frame with three columns appended:
+#' @return The input data frame with four columns appended:
 #' \describe{
 #'   \item{\code{flag_handler}}{Character. \code{"likely"} (valid detection),
 #'     \code{"possible"}, or \code{"unlikely"} (probable handler artifact).}
@@ -37,6 +69,9 @@
 #'     outside the interval; decreasing toward 0 as the detection approaches
 #'     the min/max timestamp.}
 #'   \item{\code{flag_handler_reason}}{Character. Plain-English explanation.}
+#'   \item{\code{edge_anchor_source}}{Character. \code{"station_metadata"}
+#'     (real deploy/retrieve times used) or \code{"detection_data_fallback"}
+#'     (data-derived min/max used -- see "Edge anchoring" above).}
 #' }
 #'
 #' @seealso \code{\link{flag_contaminant}} for data-driven contaminant detection,
@@ -44,13 +79,15 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Flag detections within 30 minutes of camera setup/retrieval
+#' # Flag detections within 30 minutes of camera setup/retrieval, anchored
+#' # on real per-station deploy/retrieve timestamps
 #' flagged <- flag_handler(
 #'   df               = camera_detections,
 #'   datetime_col     = "datetime",
 #'   group_col        = "station",
 #'   interval_minutes = 30,
-#'   handler_taxa     = "Homo sapiens"
+#'   handler_taxa     = "Homo sapiens",
+#'   station_metadata = station_deploy_log  # columns: station, deploy_time, retrieve_time
 #' )
 #' }
 #'
@@ -61,6 +98,9 @@ flag_handler <- function(df,
                          group_col        = NULL,
                          interval_minutes = 30,
                          handler_taxa     = NULL,
+                         station_metadata = NULL,
+                         deploy_col       = "deploy_time",
+                         retrieve_col     = "retrieve_time",
                          verbose          = TRUE) {
 
   # --- Input validation ---
@@ -78,6 +118,19 @@ flag_handler <- function(df,
       interval_minutes <= 0)
     stop("'interval_minutes' must be a single positive number.", call. = FALSE)
 
+  if (!is.null(station_metadata)) {
+    if (is.null(group_col))
+      stop("'station_metadata' requires 'group_col' (a single implicit ",
+           "group has no per-station metadata to key on).", call. = FALSE)
+    if (!is.data.frame(station_metadata))
+      stop("'station_metadata' must be a data frame.", call. = FALSE)
+    for (col in c(group_col, deploy_col, retrieve_col)) {
+      if (!col %in% names(station_metadata))
+        stop(sprintf("Column '%s' not found in station_metadata.", col),
+             call. = FALSE)
+    }
+  }
+
   # --- Parse datetimes ---
   parsed <- .parse_datetimes(df[[datetime_col]])
   if (all(is.na(parsed)))
@@ -91,7 +144,7 @@ flag_handler <- function(df,
 
   df$datetime_parsed <- parsed
 
-  # --- Compute min/max per group ---
+  # --- Compute min/max per group (data-derived fallback) ---
   if (is.null(group_col)) {
     df$.tmp_group <- "all"
   } else {
@@ -108,6 +161,47 @@ flag_handler <- function(df,
   group_edges$group_min <- as.POSIXct(edge_mat[, "min"], origin = "1970-01-01")
   group_edges$group_max <- as.POSIXct(edge_mat[, "max"], origin = "1970-01-01")
   group_edges$datetime_parsed <- NULL
+  group_edges$edge_anchor_source <- "detection_data_fallback"
+
+  # --- Override with real station_metadata deploy/retrieve times where available ---
+  if (!is.null(station_metadata)) {
+    meta <- data.frame(
+      .tmp_group  = as.character(station_metadata[[group_col]]),
+      station_min = .parse_datetimes(station_metadata[[deploy_col]]),
+      station_max = .parse_datetimes(station_metadata[[retrieve_col]]),
+      stringsAsFactors = FALSE
+    )
+    meta <- meta[!is.na(meta$station_min) & !is.na(meta$station_max), , drop = FALSE]
+
+    missing_groups <- setdiff(unique(df$.tmp_group), meta$.tmp_group)
+    if (length(missing_groups) > 0L)
+      warning(sprintf(
+        "flag_handler: %d group(s) have no usable station_metadata entry (missing row, or unparseable deploy_time/retrieve_time) and fall back to data-derived edges: %s",
+        length(missing_groups),
+        paste(utils::head(missing_groups, 10L), collapse = ", ")
+      ), call. = FALSE)
+
+    group_edges <- merge(group_edges, meta, by = ".tmp_group", all.x = TRUE)
+    has_meta <- !is.na(group_edges$station_min) & !is.na(group_edges$station_max)
+    group_edges$group_min <- as.POSIXct(
+      ifelse(has_meta, group_edges$station_min, group_edges$group_min),
+      origin = "1970-01-01"
+    )
+    group_edges$group_max <- as.POSIXct(
+      ifelse(has_meta, group_edges$station_max, group_edges$group_max),
+      origin = "1970-01-01"
+    )
+    group_edges$edge_anchor_source <- ifelse(has_meta, "station_metadata",
+                                             "detection_data_fallback")
+    group_edges$station_min <- NULL
+    group_edges$station_max <- NULL
+
+    if (verbose)
+      message(sprintf(
+        "flag_handler: %d of %d group(s) anchored on real station_metadata deploy/retrieve times; %d fell back to data-derived edges.",
+        sum(has_meta), nrow(group_edges), sum(!has_meta)
+      ))
+  }
 
   df <- merge(df, group_edges, by = ".tmp_group", all.x = TRUE)
 

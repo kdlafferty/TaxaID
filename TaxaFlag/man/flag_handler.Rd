@@ -11,6 +11,9 @@ flag_handler(
   group_col = NULL,
   interval_minutes = 30,
   handler_taxa = NULL,
+  station_metadata = NULL,
+  deploy_col = "deploy_time",
+  retrieve_col = "retrieve_time",
   verbose = TRUE
 )
 }
@@ -38,10 +41,22 @@ within the interval receive a score but are flagged \code{"likely"}.
 If \code{NULL}, all taxa within the interval are flagged. Default
 \code{NULL}.}
 
+\item{station_metadata}{Data frame or \code{NULL} (default). One row per
+\code{group_col} value with real deploy/retrieve timestamps -- see
+"Edge anchoring" above. Requires \code{group_col} to be non-\code{NULL}
+(a single implicit "all" group has no per-station metadata to key on).
+Must contain \code{group_col} plus \code{deploy_col}/\code{retrieve_col}.}
+
+\item{deploy_col}{Character. Column name in \code{station_metadata} for
+the true equipment-setup timestamp. Default \code{"deploy_time"}.}
+
+\item{retrieve_col}{Character. Column name in \code{station_metadata} for
+the true equipment-retrieval timestamp. Default \code{"retrieve_time"}.}
+
 \item{verbose}{Logical. Print summary messages. Default \code{TRUE}.}
 }
 \value{
-The input data frame with three columns appended:
+The input data frame with four columns appended:
 \describe{
 \item{\code{flag_handler}}{Character. \code{"likely"} (valid detection),
 \code{"possible"}, or \code{"unlikely"} (probable handler artifact).}
@@ -49,6 +64,9 @@ The input data frame with three columns appended:
 outside the interval; decreasing toward 0 as the detection approaches
 the min/max timestamp.}
 \item{\code{flag_handler_reason}}{Character. Plain-English explanation.}
+\item{\code{edge_anchor_source}}{Character. \code{"station_metadata"}
+(real deploy/retrieve times used) or \code{"detection_data_fallback"}
+(data-derived min/max used -- see "Edge anchoring" above).}
 }
 }
 \description{
@@ -62,15 +80,42 @@ This is a placeholder implementation for camera trap and similar
 time-stamped detection data. The datetime column is auto-parsed using
 \code{\link[base]{as.POSIXct}} with common format guessing.
 }
+\section{Edge anchoring (soundness-review item 16)}{
+
+By default (\code{station_metadata = NULL}), "deployment edges" are the
+detection data's own per-group minimum and maximum timestamps -- NOT true
+setup/pickup times. This means the very first and last GENUINE wildlife
+detection at a station is always exactly at the edge (\code{minutes_to_edge
+= 0}) and scores maximally suspect, purely as an artifact of how the edge
+is defined, regardless of whether a handler was ever actually present.
+Supply \code{station_metadata} (one row per \code{group_col} value, with
+real deploy/retrieve timestamps -- the same "external attribute lookup
+table keyed by a sample/event identifier" pattern already used elsewhere
+in this ecosystem, e.g. \code{TaxaMatch::join_event_site_metadata()}) to
+anchor edges on the actual deployment window instead. A group present in
+\code{df} but absent from \code{station_metadata} (or with an unparseable
+timestamp) falls back to the data-derived min/max for that group only,
+with a \code{warning()} naming it -- this is a real weakening of that
+group's flag, not a silent one. The output \code{edge_anchor_source}
+column records, per row, whether \code{"station_metadata"} or
+\code{"detection_data_fallback"} was used, so a caller can filter or
+discount rows accordingly. When \code{station_metadata} is not supplied
+at all, every row is fallback -- \code{handler_taxa} remains the primary
+real protection in that case, since it already restricts flagging to a
+caller-nominated taxon list regardless of edge-anchor quality.
+}
+
 \examples{
 \dontrun{
-# Flag detections within 30 minutes of camera setup/retrieval
+# Flag detections within 30 minutes of camera setup/retrieval, anchored
+# on real per-station deploy/retrieve timestamps
 flagged <- flag_handler(
   df               = camera_detections,
   datetime_col     = "datetime",
   group_col        = "station",
   interval_minutes = 30,
-  handler_taxa     = "Homo sapiens"
+  handler_taxa     = "Homo sapiens",
+  station_metadata = station_deploy_log  # columns: station, deploy_time, retrieve_time
 )
 }
 

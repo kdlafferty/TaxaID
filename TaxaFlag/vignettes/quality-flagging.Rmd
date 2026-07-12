@@ -61,6 +61,12 @@ Risk values:
 The `flag_handler()` function identifies detections clustered near equipment
 setup, collection, or handling events.
 
+By default, "deployment edges" are the detection data's own earliest/latest
+timestamp per station -- **not** the true setup/pickup time, so the very
+first and last genuine wildlife detection at a station is always scored
+maximally suspect. If you have a real per-station deployment log, pass it as
+`station_metadata` to anchor edges on the actual setup/pickup times instead:
+
 ```{r handler-example, eval = FALSE}
 # Flag detections within 30 minutes of sample collection
 flagged <- flag_handler(
@@ -72,6 +78,23 @@ flagged <- flag_handler(
 
 # Result adds: flag_handler column
 table(flagged$flag_handler)
+
+# Better: anchor edges on real deploy/retrieve times, not the data's own
+# min/max, so a genuine detection right when the camera happened to start
+# recording isn't automatically flagged as a handler artifact.
+# station_deploy_log needs one row per station_id with real timestamps:
+#   station_id, deploy_time, retrieve_time
+flagged_anchored <- flag_handler(
+  df               = assignments,
+  datetime_col     = "detection_time",
+  group_col        = "station_id",
+  interval_minutes = 30,
+  station_metadata = station_deploy_log
+)
+
+# edge_anchor_source tells you, per row, whether the real deployment log or
+# the data-derived fallback was used for that station
+table(flagged_anchored$edge_anchor_source)
 ```
 
 ## Expert Review (LLM-based)

@@ -1,7 +1,131 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-11 (Session 151, branch `main` -- TaxaLikely::train_likelihood_model()
+# Last updated: 2026-07-11 (Session 151, final entry, branch `main` -- ecosystem
+# soundness-review item 16 (TaxaFlag::flag_handler()'s edge_proximity_score) fixed,
+# closing out the full 16-item H-priority walk-through (ecosystem_docs/
+# STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md): **16 of 16 H-priority items now
+# addressed.** "Addressed" does not mean every caveat is resolved -- most rows remain
+# explicitly CONDITIONAL, several fixes are opt-in with no production caller wired in yet
+# (this item and item 13 both), and a few items were deliberately left unchanged by
+# design after the user confirmed the flagged behavior was intentional (items 2 and 4).
+# Read the review doc's own per-item status before trusting any specific row as fully
+# closed. Item 16 itself: new opt-in `station_metadata` param anchors
+# `flag_handler()`'s group edges on real per-station deploy/retrieve timestamps instead
+# of the detection data's own min/max -- the flaw meant the very first/last GENUINE
+# wildlife detection at a station was always scored maximally suspect, purely as an
+# artifact of how "edge" was defined. Mirrors this ecosystem's established "external
+# attribute lookup table keyed by a sample/event identifier" pattern
+# (`TaxaMatch::join_event_site_metadata()`, `BLANKS_MARCH`/`BLANKS_AUG`) rather than
+# inventing a new one. A group missing from `station_metadata` falls back to the old
+# data-derived min/max with an explicit `warning()`; new `edge_anchor_source` column
+# records which was used per row. Fully additive/backward compatible -- all 36
+# pre-existing tests pass unchanged. `devtools::test()` 181/181 (up from 169),
+# `devtools::check()` clean. Still true, not solved: no production workflow supplies
+# `station_metadata` yet (only the vignette's own updated example does), so this
+# remains the lowest-priority item in practice, exactly as the original finding said.
+# See TaxaFlag/CLAUDE.md's Session 151 note and
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 16 for the full record.
+# Previous update, same day (Session 151, still further, branch `main` -- ecosystem
+# soundness-review item 15 (TaxaFlag::flag_contaminant()'s contaminant_score) fixed:
+# depth-weighted field/control rates + Empirical Bayes shrinkage of the final ratio toward
+# 0.5 (new `prior_weight`, default 2) replace the old unweighted-mean-of-proportions
+# formula and its hard 0.0/1.0 edge cases -- implementing the review's stated minimum bar
+# rather than adopting the `decontam` package wholesale (its own methods need per-sample
+# DNA concentration data, or reduce to presence/absence only, neither a clean fit here).
+# `field_rate`/`control_rate` = `sum(taxon reads in group) / sum(total reads in that
+# group)`, so a proportion from 500,000 reads now outweighs one from 50. A real design bug
+# was found and fixed mid-implementation, not by review alone: an earlier version shrunk
+# each rate toward the taxon's own pooled field+control rate, which let a taxon's own
+# (usually much larger) field read volume leak into its control-side prior and
+# systematically understated genuinely clean taxa's scores whenever field sequencing depth
+# dominated control depth -- caught only by running the real test suite and seeing a
+# clean, field-only mock taxon score "moderate" instead of "low." Fixed by shrinking the
+# FINAL ratio toward a taxon-independent 0.5 by sample-count replication instead. Also
+# fixed: roxygen no longer calls the score a "probability." `devtools::test()` 169/169,
+# `check()` clean. **15 of 16 H-priority items now addressed; 1 remains (item 16,
+# TaxaFlag::flag_handler, genuinely unfixed -- see that item's own row for why it's lower
+# priority: no live caller exists in the monorepo besides one vignette example).** See
+# TaxaFlag/CLAUDE.md's Session 151 note and
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 15 for the full record.
+# Previous update, same day (Session 151, yet further, branch `main` -- ecosystem
+# soundness-review item 14 (TaxaMatch::blast_sequences()'s score_window) fixed: default
+# `score_range` widened from 2 to 8 percentage points, backed by a real leave-one-out
+# check (new `diagnostics/score_window_leave_one_out.R`) rather than a guess. The review
+# flagged that a tight 2-pt tolerance window can silently drop a query's true species
+# from blast_sequences()'s output entirely -- before TaxaLikely/TaxaAssign ever see it,
+# unrecoverable downstream -- whenever a confusable congener happens to score higher,
+# and that this had only ever been field-tested on 5 easy queries with clear top hits.
+# Ran the recommended check against three independent real 12S reference-vs-reference
+# distance matrices (Sebastes, 54 species; Chromis, 26 species; a 6-genus PtConception
+# set): pooled, 4 of 7 real congener-outscoring events (57%) exceeded the old 2-pt
+# default and would have been silently dropped, with the worst observed gap at 7.1
+# points (Chromis). New default (8) covers every gap actually observed with margin --
+# `max_hits=20` (unchanged) still bounds candidate volume, and the wider window is what
+# lets TaxaLikely's downstream bivariate-normal model (not this coarse pre-filter) do
+# the actual species-vs-congener discrimination, directly closing this review's own
+# cross-cutting pattern #3. Two real workflow scripts hardcoding the old value updated.
+# `devtools::test()` 451/451, `check()` clean. **14 of 16 H-priority items now
+# addressed; 2 remain (items 15-16, both TaxaFlag).** See TaxaMatch/CLAUDE.md's Session
+# 151 note and ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 14.
+# Previous update, same day (Session 151 continued yet again, branch `main` -- ecosystem
+# soundness-review item 13 (TaxaLikely::build_sequence_matrix()'s
+# pairwise_distance_to_match) fixed: new opt-in `barcode_term` param auto-resolves
+# `min_seq_len`/`max_seq_len` via `TaxaTools::resolve_barcode_lengths()` instead of the
+# generic `[100, 2000]` default (explicit lengths still override). This is the
+# documented "Paralabrax footgun" (TaxaLikely/CLAUDE.md's Known Footguns) made
+# ergonomic: a broad NCBI fetch can return sequences describing a genomically different
+# stretch of the same gene that still pass a length filter, silently mixing two
+# amplicon windows into what looks like one self-consistent H1/H2 training set.
+# `diagnostics/sebastes_chromis_confirmation.R` (the script that found this) already
+# hand-implemented the fix manually; that pattern is now built into the function
+# itself. Purely additive -- no existing caller's behavior changes unless
+# `barcode_term` is newly supplied. Wired into the one real workflow
+# (`sequence_likelihood_workflow.R`) lacking an existing length safeguard;
+# deliberately not forced into `TaxaID_Workflow_Template_TEST.R`, which already made
+# and documented its own wider `max_len=1200L` judgment call for real longer
+# submissions -- applying a generic marker-resolved range there would have silently
+# excluded data that workflow's own team already decided to keep. `devtools::test()`
+# 667/667 (up from 661), `devtools::check()` clean. **13 of 16 H-priority items now
+# addressed; 3 remain (items 14-16: TaxaMatch::blast_sequences, TaxaFlag x2).** See
+# TaxaLikely/CLAUDE.md's Session 151 note and
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 13 for the full record.
+# Previous update, same day (Session 151 continued once more, branch `main` -- ecosystem
+# soundness-review item 12 (TaxaLikely::apply_coverage_constraints()'s
+# completeness_penalty_weight) fixed: `constraint_behavior` default changed `"zero"` ->
+# `"relabel"`. The review flagged that the old default hard-zeroed the
+# "unreferenced_species" hypothesis whenever a genus census said "complete" -- treating an
+# NCBI taxonomy-tree query result as certain ground truth, when synonymy/unindexed recent
+# species/missed renamings can make a genus look complete when it isn't, permanently
+# discarding a genuinely novel detection's correct hypothesis with no way for downstream
+# evidence to recover it. Turned out `TaxaAssign::run_bayesian_pipeline()` (the real
+# production entry point) already defaulted to the non-destructive `"relabel"` mode -- only
+# this lower-level function's own default was still unsafe, meaning direct callers (3
+# vignettes, 1 demo workflow script, the superseded monolithic workflow) got the risky
+# default even though the flagship pipeline had already moved past it. Changed to match;
+# the one demo script whose comments specifically narrate/count zero-suppression now
+# requests `constraint_behavior = "zero"` explicitly to preserve its teaching intent, rather
+# than silently drifting. `devtools::test()` 661/661 (up from 658), `check()` clean. 12 of
+# 16 H-priority items now addressed; 4 remain (items 13-16, TaxaLikely/TaxaMatch/TaxaFlag).
+# See TaxaLikely/CLAUDE.md's Session 151 note and
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 12 for the full record.
+# Previous update, same day (Session 151 continued yet further, branch `main` -- ecosystem
+# soundness-review item 9 (TaxaLikely::train_likelihood_model()'s eb_bivariate_normal) closed
+# out, docs-only, after empirical verification showed the review's shrinkage-weight claim
+# doesn't hold against current code: `.prep_training_data()` already collapses each
+# species' O(k^2) within-species pairs down to one row per SEQUENCE before the Empirical
+# Bayes shrinkage N is computed (confirmed with a synthetic 5-sequence fixture: pair count
+# 20 vs. the shrinkage weight's actual N of 5) -- the `N_Obs` column the review's finding
+# pointed at is unused dead code, never read again after being computed. Docs fixed rather
+# than code: `N_Obs`'s roxygen now says plainly what it is; `train_likelihood_model()`
+# gained a `@section Marker validation scope` for the still-real half of the finding
+# (Framing B validated for 12S/18S only, run `diagnostics/seq_matrix_score_distribution.R`
+# before trusting another marker). Same "verify before fixing" discipline as items 2 and 6
+# in this review. `devtools::test()` 658/658 unchanged, `check()` clean. 11 of 16
+# H-priority items now addressed; 5 remain (items 12-16, all TaxaLikely/TaxaMatch/TaxaFlag).
+# See TaxaLikely/CLAUDE.md's Session 151 note and
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 9 for the full record.
+# Previous update, same day (Session 151, branch `main` -- TaxaLikely::train_likelihood_model()
 # gains per-genus H2 delta shrinkage, prompted by a manuscript peer-review comment that the
 # reference-gaps section's P(E|unreferenced) ~ P(E|referenced) approximation was asserted, not
 # defended, and would fail exactly where taxonomists most need help (cryptic complexes, deep
@@ -741,3 +865,9 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 150 | `expand_unreferenced_hypotheses()` moved TaxaAssign → TaxaLikely | TaxaLikely (new home), TaxaAssign (deprecated alias) | Package-placement fix, not a math change -- same algorithm, same output. `TaxaAssign::expand_unreferenced_hypotheses()` kept as a `.Deprecated()` forwarding wrapper to `TaxaLikely::expand_unreferenced_hypotheses()`. Callers using the bare (unqualified) name inside TaxaAssign, or `TaxaAssign::expand_unreferenced_hypotheses()` explicitly, still work but now warn; update to `TaxaLikely::expand_unreferenced_hypotheses()` to silence the warning. See `TaxaID/CLAUDE.md`'s Session 150 note above for the full reasoning and verification record. |
 | 149 | `update_prior_from_consensus(presence_multiplier = 5)` → `confirmation_quantile = 0.9, min_confirmation_confidence = 0.8` | TaxaAssign | Signature + behavioral change. The flat multiplier ignored confirmation count/confidence entirely; the new design substitutes the confirmation-quantile of confirming donors' `consensus_posterior` (never lowering the existing prior), gated by a minimum confidence floor. Also fixes a latent `prior_alpha`/`prior_beta` staleness bug. Propagated through `run_bayesian_pipeline()`, `run_llm_pipeline()`, `generate_report()`, both `inst/` workflow scripts, and the `taxonomic-assignment` vignette. See `TaxaAssign/CLAUDE.md`'s Session 149 notes and `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`. `devtools::test()` 537/537, `devtools::check()` clean. |
 | 149 | `prepare_model_dataframe(sampling_group_col = ...)` added; `train_biodiversity_model()` refuses multi-group data; `train_biodiversity_model_by_group()` added | TaxaExpect | Additive, backward compatible (`sampling_group_col` defaults `NULL`, no behavioral change for existing callers) -- except `train_biodiversity_model()` now errors if its input happens to already carry a `sampling_group` column spanning >1 value (previously would have silently fit a pooled model). Code-level enforcement of the "Shared effort assumption" that was previously advisory documentation only. See `TaxaExpect/CLAUDE.md`'s Session 149 notes. `devtools::test()` 401/401 (up from 383), `devtools::check()` clean. |
+| 151 | `correct_training_bias(tau = 1.0)` → `tau = 0` | TaxaLikely | Behavioral default change (soundness-review item 11, the review's own "single clearest actionable bug"). Every real calibration run against this function (image, pooled acoustic across two sample sizes) found `tau ≈ 0` optimal, contradicting the shipped `tau = 1.0` default. A caller who does nothing now gets no correction instead of one contradicted by every real result obtained so far. Not called by any production workflow with an explicit `tau` override, so no real call site's behavior changed. `devtools::test()` 658/658, `devtools::check()` clean. |
+| 151 | `apply_coverage_constraints(constraint_behavior = "zero")` → `"relabel"` | TaxaLikely | Behavioral default change (soundness-review item 12). The old default hard-zeroed the `"unreferenced_species"` hypothesis whenever a genus census said "complete" -- treating an NCBI-query estimate as certain ground truth. `TaxaAssign::run_bayesian_pipeline()` already defaulted to `"relabel"`; this brings the low-level function's own default in line. Any caller relying on the implicit old default (three vignettes, `TaxaLikely/inst/workflows/5_audit_coverage_workflow.R`, the superseded `TaxaLikely_workflow.R`) now gets the non-destructive mode; the two workflow scripts whose comments specifically narrate zero-suppression now request `constraint_behavior = "zero"` explicitly to preserve that. `devtools::test()` 661/661 (up from 658), `devtools::check()` clean. |
+| 151 | `build_sequence_matrix(barcode_term = NULL)` added | TaxaLikely | Additive, backward compatible (soundness-review item 13) -- no behavioral change for existing callers, since `barcode_term` defaults `NULL` and explicit `min_seq_len`/`max_seq_len` always override it. When supplied, auto-resolves the length window via `TaxaTools::resolve_barcode_lengths()` instead of the generic `[100, 2000]` default, closing the documented "Paralabrax footgun" (a broad NCBI fetch can silently mix two different amplicon windows into one training set) ergonomically. Wired into `sequence_likelihood_workflow.R`. `devtools::test()` 667/667 (up from 661), `devtools::check()` clean. |
+| 151 | `blast_sequences(score_range = 2)` → `8` | TaxaMatch | Behavioral default change (soundness-review item 14). The old 2-pt tolerance window could silently drop a query's true species from the output entirely whenever a confusable congener scored higher -- a real leave-one-out check against 3 real 12S reference datasets found this happened in 4/7 real congener-outscoring events (57%), worst gap 7.1 points. New default covers every observed gap with margin. Any caller relying on the implicit old default now retains more candidates per query (bounded by `max_hits`, unchanged at 20); two real workflow scripts hardcoding `score_range = 2` explicitly (`blast_sequences_workflow.R`, `workflow_fastq_to_match.R`) updated to `8`. `devtools::test()` 451/451, `devtools::check()` clean. |
+| 151 | `flag_contaminant()`'s `contaminant_score` formula changed; `prior_weight = 2` added | TaxaFlag | Behavioral change (soundness-review item 15), affects every existing caller since the score formula itself changed, not just a parameter default. Old: unweighted mean of per-sample proportions, hard 0.0/1.0 for taxa absent from one side. New: depth-weighted `field_rate`/`control_rate` (reads-weighted, not sample-count-weighted), Empirical-Bayes-shrunk toward 0.5 by total sample-count replication. `mean_prop_field`/`mean_prop_control` still returned (informational only); new `field_rate`/`control_rate`/`n_field_present` columns added. `prior_weight = 0` reproduces the old exact-0/1 boundary behavior on the new depth-weighted rates (not byte-identical to the pre-Session-151 formula, which used unweighted per-sample means). `devtools::test()` 169/169, `devtools::check()` clean. |
+| 151 | `flag_handler(station_metadata = NULL, deploy_col = "deploy_time", retrieve_col = "retrieve_time")` added; new `edge_anchor_source` output column | TaxaFlag | Additive, backward compatible (soundness-review item 16, the review's final H-priority item) -- no behavioral change for existing callers, since `station_metadata` defaults `NULL` and every one of the 36 pre-existing tests passes unchanged. When supplied, anchors group edges on real deploy/retrieve timestamps instead of the detection data's own min/max, fixing the flaw where the first/last genuine detection at a station was always scored maximally suspect. A group missing from `station_metadata` falls back to the old behavior with an explicit `warning()`. `devtools::test()` 181/181 (up from 169), `devtools::check()` clean. |

@@ -146,7 +146,10 @@ message("\n--- Step 2: Building pairwise sequence matrix (DECIPHER) ---")
 
 ref_matrix <- TaxaLikely::build_sequence_matrix(
   reference_df = reference_df,
-  rank_system  = RANK_SYSTEM
+  rank_system  = RANK_SYSTEM,
+  barcode_term = BARCODE_TERM   # same term used at fetch time; guards against
+                                # off-target same-length, wrong-window sequences
+                                # slipping past the generic default length filter
 )
 
 message(sprintf("  %d pairwise comparison(s) built.", nrow(ref_matrix)))

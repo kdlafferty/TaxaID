@@ -51,6 +51,14 @@
 # amplicon-window comparability). This is the methodologically correct fix:
 # guarantee both genera's %-match values are computed over the same genomic
 # window, rather than relying on incidental DECIPHER distance-filtering to
+#
+# UPDATE (2026-07-11, ecosystem soundness-review item 13): this manual
+# pre-filter pattern is now built into build_sequence_matrix() itself via a
+# new barcode_term parameter (build_sequence_matrix(reference_df, ...,
+# barcode_term = "MiFishU") resolves and applies the same length window
+# automatically). Left as manual code here since this script's whole point
+# is demonstrating and explaining the mechanism that new parameter now
+# encapsulates -- see TaxaLikely/CLAUDE.md's Session 151 note.
 # paper over a window mismatch.
 #
 # Output: two seq_matrix .rds files. Run compare_sebastes_chromis_

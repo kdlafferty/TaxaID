@@ -1,6 +1,59 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-10 (Session 149 -- add_posthoc_assessment() gains domestic_taxa/
+# Last updated: 2026-07-11 (Session 151, once more -- ecosystem soundness-review item 16
+# (flag_handler()'s edge_proximity_score), the LAST of the review's 16 H-priority items,
+# fixed: new optional station_metadata param anchors group edges on real per-station
+# deploy/retrieve timestamps instead of the detection data's own min/max. The core flaw:
+# without real deployment metadata, the very first and last GENUINE wildlife detection at
+# a station is always exactly at the data-derived edge and scores maximally suspect,
+# purely as an artifact of how "edge" is defined -- not because a handler was ever
+# present. station_metadata mirrors the "external attribute lookup table keyed by a
+# sample/event identifier" pattern already established in this ecosystem
+# (TaxaMatch::join_event_site_metadata(), the BLANKS_MARCH/BLANKS_AUG convention): one row
+# per group_col value with deploy_time/retrieve_time (column names configurable via
+# deploy_col/retrieve_col). A group present in the data but missing from
+# station_metadata (or with an unparseable timestamp) falls back to the data-derived
+# min/max for that group only, with an explicit warning() naming it -- a real weakening
+# of that group's flag, not a silent one. New edge_anchor_source output column records,
+# per row, whether "station_metadata" or "detection_data_fallback" was used. Fully
+# additive/backward compatible: station_metadata defaults NULL, and all 36 pre-existing
+# tests pass completely unchanged. The vignette (quality-flagging.Rmd) -- still this
+# function's only real call site anywhere in the monorepo -- updated to demonstrate the
+# new param. 12 new tests. devtools::test() 181/181 (up from 169), devtools::check()
+# clean. This closes out the full 16-item H-priority soundness-review walk-through: 16 of
+# 16 addressed (fixed/mitigated/reclassified/flagged-by-design -- see
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md for the final per-item status;
+# "addressed" does not mean every caveat is resolved, several items remain CONDITIONAL
+# with explicitly documented open gaps).
+# Previous update, same day (Session 151 -- ecosystem soundness-review item 15
+# (flag_contaminant()'s contaminant_score) fixed: depth-weighted rates + Empirical Bayes
+# shrinkage replace the old unweighted-mean-of-proportions formula with its hard 0.0/1.0
+# edge cases. field_rate/control_rate now = sum(taxon reads in group)/sum(total reads in
+# that group) -- a proportion from 500,000 reads counts far more than one from 50, fixing
+# "read-depth-unweighted." The raw ratio field_rate/(field_rate+control_rate) is then
+# shrunk toward 0.5 with weight n_present/(n_present+prior_weight) (default prior_weight=2,
+# n_present = total samples across both groups where the taxon was detected) -- a taxon
+# absent from controls no longer gets an automatic exact 1.0 when only a couple of controls
+# exist. Design bug found and fixed mid-implementation, not just in code review: an earlier
+# version shrunk field_rate/control_rate individually toward the taxon's own pooled
+# (field+control) rate, which let a taxon's large field read volume leak into its
+# control-side prior, systematically understating genuinely clean taxa's scores whenever
+# field sequencing depth dominated control depth (the common real case: many field samples,
+# few small blanks) -- caught only by running the actual test suite against the mock data
+# and seeing TaxonA (a clean, field-only taxon) score "moderate" instead of "low." Fixed by
+# shrinking the FINAL ratio toward 0.5 by sample-count replication instead, which keeps the
+# two groups' magnitudes fully independent. Also fixed: roxygen no longer calls the score a
+# "probability" -- explicit new prose states it's a ranked screening statistic. New
+# mean_prop_field/mean_prop_control (unweighted, informational only) vs. field_rate/
+# control_rate (depth-weighted, drives the score) distinction throughout docs/reason
+# strings. New prior_weight param (default 2, 0 disables shrinkage). Tests updated: two
+# tests asserting exact 1.0/0.0 for absent-from-one-side taxa now assert the shrunk,
+# non-exact values instead (matching item 11/12's "tests exercising old exact math now pin
+# that value explicitly" pattern); new tests cover prior_weight=0 (exact un-shrunk
+# boundary), prior_weight sensitivity, and input validation. devtools::test() 169/169,
+# devtools::check() clean. See ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's
+# item 15 for the full record.
+# Previous update, 2026-07-10 (Session 149 -- add_posthoc_assessment() gains domestic_taxa/
 # domestic_prior_source params, implementing the deferred domestic-species-floor design note
 # ([[project_taxaflag_domestic_species_floor_note]] in project memory) at the user's direction
 # during the ecosystem statistical soundness review walk-through. A strong-likelihood call to a
@@ -67,7 +120,7 @@ TaxaFlag depends on:
 - `habitat_plausibility`, `geographic_plausibility`, `scope_plausibility` -- `"likely"` / `"possible"` / `"unlikely"` (higher = more plausible genuine detection)
 - `contamination_risk` -- `"high"` / `"moderate"` / `"low"` (higher = more contamination risk)
 
-Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (character). Score 1.0 = low risk (real detection); score 0.0 = high risk (contaminant). This asymmetry is intentional: scores are intermediate outputs for threshold-tuning; risk labels are the user-facing result.
+Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (character). Score near 1.0 = low risk (real detection); score near 0.0 = high risk (contaminant). This asymmetry is intentional: scores are intermediate outputs for threshold-tuning; risk labels are the user-facing result. (`flag_contaminant()`'s score no longer reaches an exact 0.0/1.0 since Session 151's shrinkage fix -- see below.)
 
 `review_assignments()` adds 8 structured LLM assessment columns (see below).
 
@@ -78,8 +131,8 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | Function | File | Status | Description |
 |----------|------|--------|-------------|
 | `.compute_contaminant_scores()` | `R/flag_contaminant.R` | Written | Internal: proportion-based control comparison algorithm |
-| `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control |
-| `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts |
+| `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control. **Session 151**: depth-weighted rates + Empirical Bayes shrinkage (`prior_weight`, default `2`) replace the old unweighted-mean/hard-0-1 formula; score documented as a ranked screening statistic, not a probability. |
+| `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts. **Session 151**: optional `station_metadata` param anchors edges on real deploy/retrieve timestamps instead of the data's own min/max (opt-in, backward compatible; see "flag_handler() Design" below). |
 | `.parse_datetimes()` | `R/flag_handler.R` | Written | Internal: auto-detect datetime format |
 | `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. |
 | `.normalise_context()` | `R/review_assignments.R` | Written | Internal: normalise build_context() or named list to standard fields |
@@ -111,27 +164,75 @@ frustrating than helpful; workflow scripts are more transparent.
 - `exclude_samples` -- remove samples from both control and field calculations
 - `contaminant_type` -- controls output column names (`{contaminant_type}_risk`, `{contaminant_type}_score`, `{contaminant_type}_reason`)
 - `score_thresholds` -- numeric(2), default `c(0.5, 0.9)`
+- `prior_weight` -- numeric, default `2` (**Session 151**). Shrinkage strength for the
+  final ratio toward 0.5; `0` disables shrinkage.
 
-**Algorithm:** `.compute_contaminant_scores()`:
-1. Compute within-sample proportions: `prop = n_reads / sum(n_reads)` per sample
-2. Per taxon: `mean_prop_field`, `mean_prop_control`, `n_controls_present`
-3. Score: `mean_prop_field / (mean_prop_field + mean_prop_control)` -- range [0, 1]
-4. Taxa absent from controls -> score = 1.0
+**Algorithm:** `.compute_contaminant_scores()` (**Session 151**, ecosystem soundness-review
+item 15 -- see that function's roxygen "Depth-weighting and shrinkage" section for the full
+real-data motivation and the design bug found and fixed mid-implementation):
+1. Depth-weighted rate per group: `field_rate`/`control_rate` = `sum(taxon reads in group) /
+   sum(total reads across samples in that group)` -- a proportion from 500,000 reads now
+   counts far more than one from 50. (The old unweighted per-sample-proportion mean is
+   still computed as `mean_prop_field`/`mean_prop_control` for reference, but no longer
+   drives the score.)
+2. Raw ratio: `field_rate / (field_rate + control_rate)`.
+3. Shrunk toward 0.5 (maximally uncertain) with weight `n_present / (n_present +
+   prior_weight)`, where `n_present` = total samples (field + control combined) in which
+   the taxon was detected -- same Empirical Bayes form used throughout this ecosystem
+   (e.g. `TaxaLikely::train_likelihood_model()`'s per-species shrinkage). Applied to the
+   FINAL ratio, not to `field_rate`/`control_rate` individually toward a shared reference
+   rate -- an earlier design shrunk each rate toward the taxon's own pooled (field+control)
+   rate, which let a taxon's own (usually much larger) field read volume leak into its
+   control-side prior and systematically understated genuinely clean taxa's scores whenever
+   field depth dominated control depth. Caught by actually running the test suite, not by
+   review alone.
+4. Taxa absent from controls no longer get an automatic exact 1.0 -- with few controls,
+   real absence is still real evidence, but shrinkage keeps the score below 1.0 in
+   proportion to how little total replication supports it.
+Score is documented as a ranked screening statistic, not a calibrated probability
+(the roxygen previously called it one).
 
 ---
 
 ## flag_handler() Design
 
 **Input:** Data frame with a datetime column and optionally a grouping column.
-**Output:** Input data frame with 3 columns appended (per-row flags).
+**Output:** Input data frame with 4 columns appended (per-row flags; **Session 151** adds
+`edge_anchor_source`).
 
 **Key parameters:**
 - `datetime_col` -- auto-parsed via `.parse_datetimes()`
 - `group_col` -- min/max computed per group (e.g., camera station)
 - `interval_minutes` -- flag window from edges
 - `handler_taxa` -- optional whitelist (e.g., "Homo sapiens")
+- `station_metadata` / `deploy_col` / `retrieve_col` -- **Session 151**, ecosystem
+  soundness-review item 16. Optional data frame, one row per `group_col` value, with real
+  deploy/retrieve timestamps -- the same "external attribute lookup table keyed by a
+  sample/event identifier" pattern already used elsewhere in this ecosystem (e.g.
+  `TaxaMatch::join_event_site_metadata()`, the `BLANKS_MARCH`/`BLANKS_AUG` convention).
+  When supplied, anchors group edges on the REAL deployment window instead of the
+  data's own detection min/max -- fixes the core flaw the review flagged: without this,
+  the very first and last genuine wildlife detection at a station is always scored
+  maximally suspect, purely because the edge is defined by the data itself, not because a
+  handler was ever actually present. A group missing from `station_metadata` (or with an
+  unparseable timestamp) falls back to the data-derived min/max for that group only, with
+  a `warning()` naming it. Fully backward compatible -- default `NULL`, no behavior change
+  for existing callers; every existing test (36) passes unchanged.
 
-**Score:** `min(minutes_to_start, minutes_to_end) / interval_minutes`, clamped [0, 1].
+**Score:** `min(minutes_to_start, minutes_to_end) / interval_minutes`, clamped [0, 1],
+computed against `group_min`/`group_max` -- real deploy/retrieve times when
+`station_metadata` covers that group, data-derived min/max otherwise (see
+`edge_anchor_source`).
+
+**Still genuinely unfixed (Session 151, honestly recorded, not solved):** when
+`station_metadata` is NOT supplied (still the default, and the only mode any real caller
+has ever used -- see below), `handler_taxa` remains the sole real protection, exactly as
+before this session; the structural bias itself is only fixed when a user actually has and
+supplies a real deployment log. No live caller in the monorepo does yet -- `flag_handler()`
+still has only one real call site anywhere: `vignettes/quality-flagging.Rmd`'s own example
+(now updated to demonstrate `station_metadata`, Session 151). This was the lowest-priority
+of the review's 16 H-priority items for exactly this reason (its own row: "no live caller
+found yet, which is the only thing keeping this from being worse").
 
 ---
 

@@ -1376,18 +1376,41 @@ audit_acoustic_coverage <- function(plausible_species,
 #'
 #' **Behaviour modes** (controlled by `constraint_behavior`):
 #'
-#' - `"zero"` (default): likelihoods are multiplied by `penalty_factor`
-#'   (default 0.0 = hard zero).  Use when you are confident the genus is
-#'   complete and any match signal is artefactual.
+#' - `"relabel"` (default): `hypothesis_type` is changed from
+#'   `"unreferenced_species"` to `"unresolved_species"` and likelihoods are
+#'   left unchanged.  Use when the census confirms all known species are in
+#'   the reference but match scores cannot determine *which* species the
+#'   sample belongs to -- i.e. the sequence is real but ambiguous among the
+#'   known members.  The relabeled row contributes as a named genus-level
+#'   hypothesis in `TaxaAssign::consensus_taxonomy()`, preventing a
+#'   prior-only fallback for these samples while correctly resolving to
+#'   genus rank.
 #'
-#' - `"relabel"`: `hypothesis_type` is changed from `"unreferenced_species"`
-#'   to `"unresolved_species"` and likelihoods are left unchanged.  Use when
-#'   the census confirms all known species are in the reference but match
-#'   scores cannot determine *which* species the sample belongs to -- i.e.
-#'   the sequence is real but ambiguous among the known members.  The relabeled
-#'   row contributes as a named genus-level hypothesis in
-#'   `TaxaAssign::consensus_taxonomy()`, preventing a prior-only fallback for
-#'   these samples while correctly resolving to genus rank.
+#' - `"zero"`: likelihoods are multiplied by `penalty_factor` (default
+#'   0.0 = hard zero).  Use only when you are confident the genus census
+#'   itself is ground truth, not just an estimate -- see the "Census
+#'   confidence" section below before choosing this mode.
+#'
+#' @section Census confidence:
+#' `census_result$status` (built from `audit_barcode_coverage()`'s
+#' `is_complete`) reflects what an NCBI taxonomy-tree query returned for the
+#' genus, not a verified, ground-truth-complete species enumeration.  A
+#' genus can look "complete" because of a query gap rather than genuine
+#' completeness -- e.g. a recently described species not yet indexed in NCBI
+#' taxonomy, an unresolved synonym, or a taxonomic renaming the query missed
+#' (`audit_barcode_coverage()`'s own docs already note the `species_list`
+#' parameter exists specifically to supply a more complete enumeration, e.g.
+#' from FishBase, when this is a concern). `constraint_behavior = "zero"`
+#' treats `status == "complete"` as certain and permanently discards the
+#' `"unreferenced_species"` hypothesis for that genus -- a genuinely novel
+#' detection in a falsely-"complete" genus is then deterministically
+#' misassigned, with no way for downstream evidence to recover it. `"relabel"`
+#' (the default) is deliberately conservative instead: it never destroys
+#' likelihood mass, only changes how the hypothesis is labeled, so a
+#' mistaken census can, at worst, cost genus-level resolution rather than
+#' create a wrong answer with no exit. `run_bayesian_pipeline()` (TaxaAssign)
+#' has defaulted to `"relabel"` since it was written; this function's own
+#' default now matches it.
 #'
 #' @param likelihood_df Data frame returned by [evaluate_likelihoods()].
 #' @param census_result Data frame with columns `taxon_name` (the group name,
@@ -1409,9 +1432,9 @@ audit_acoustic_coverage <- function(plausible_species,
 #' @param penalty_factor Numeric in \[0, 1\] (default `0.0`).  Multiplier
 #'   applied to `score_likelihood` and `score_likelihood_mean` for constrained
 #'   hypotheses when `constraint_behavior = "zero"`.  Ignored when
-#'   `constraint_behavior = "relabel"`.
-#' @param constraint_behavior Character scalar: `"zero"` (default) or
-#'   `"relabel"`.  See Details above.
+#'   `constraint_behavior = "relabel"` (the default).
+#' @param constraint_behavior Character scalar: `"relabel"` (default) or
+#'   `"zero"`.  See Details above and "Census confidence" below.
 #'
 #' @return `likelihood_df` with an added `constraint_applied` column and
 #'   updated likelihood and/or `hypothesis_type` columns:
@@ -1442,7 +1465,7 @@ audit_acoustic_coverage <- function(plausible_species,
 apply_coverage_constraints <- function(likelihood_df,
                                        census_result,
                                        penalty_factor      = 0.0,
-                                       constraint_behavior = c("zero", "relabel")) {
+                                       constraint_behavior = c("relabel", "zero")) {
   constraint_behavior <- match.arg(constraint_behavior)
 
   if (!is.data.frame(likelihood_df))

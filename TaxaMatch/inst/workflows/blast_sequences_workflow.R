@@ -58,9 +58,15 @@ if (is.na(MY_API_KEY) || !nzchar(MY_API_KEY)) MY_API_KEY <- NULL
 # blast_sequences() score-window parameters. These known-reference sequences
 # warrant a high min_score (95) -- a real unknown-identity survey would
 # typically use a lower floor (e.g. 70, blast_sequences()'s own default) to
-# avoid discarding genuine but imperfect matches.
+# avoid discarding genuine but imperfect matches. SCORE_RANGE matches the
+# package default (8, widened from 2 -- see blast_sequences()'s "Score
+# window validation" roxygen section and diagnostics/
+# score_window_leave_one_out.R for the real-data evidence: a real congener
+# can outscore the true species by several points, and the old 2-pt window
+# silently dropped it in 4 of 7 such events observed across three real
+# reference sets).
 BARCODE_TERM        <- "12S"
-SCORE_RANGE         <- 2
+SCORE_RANGE         <- 8
 MAX_HITS            <- 10L
 MIN_SCORE           <- 95
 MIN_QUERY_COVERAGE  <- 85

@@ -48,8 +48,9 @@ test_that("audit_reference_coverage: empty groups returns empty census + unrefer
   )
 }
 
-test_that("apply_coverage_constraints: suppresses unreferenced_species for complete genus", {
-  out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result())
+test_that("apply_coverage_constraints: suppresses unreferenced_species for complete genus (zero mode)", {
+  out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result(),
+                                    constraint_behavior = "zero")
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_equal(h2_row$score_likelihood, 0)
   expect_equal(h2_row$score_likelihood_mean, 0)
@@ -63,11 +64,19 @@ test_that("apply_coverage_constraints: leaves other hypotheses unchanged", {
   expect_true(is.na(h1_row$constraint_applied))
 })
 
-test_that("apply_coverage_constraints: soft penalty factor applied", {
+test_that("apply_coverage_constraints: soft penalty factor applied (zero mode)", {
   out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result(),
-                                    penalty_factor = 0.5)
+                                    penalty_factor = 0.5, constraint_behavior = "zero")
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_equal(h2_row$score_likelihood, 0.25)
+})
+
+test_that("apply_coverage_constraints: default is relabel, not zero -- non-destructive", {
+  out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result())
+  h2_row <- out[out$taxon_name == "Hybognathus", ]
+  expect_equal(h2_row$hypothesis_type, "unresolved_species")
+  expect_equal(h2_row$score_likelihood, 0.5)
+  expect_equal(h2_row$constraint_applied, "census_closed_genus_relabeled")
 })
 
 test_that("apply_coverage_constraints: incomplete genus not constrained", {

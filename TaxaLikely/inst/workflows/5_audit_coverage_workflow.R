@@ -102,7 +102,11 @@ cat("Total unreferenced:", length(coverage$unreferenced), "\n")
 # ---- 4. Apply coverage constraints to likelihoods ----------------------------
 # For fully sampled genera, H2 (unreferenced_species) hypotheses are
 # implausible and should be suppressed. apply_coverage_constraints() sets
-# their likelihoods to zero.
+# their likelihoods to zero -- constraint_behavior = "zero" requested
+# explicitly here to demonstrate that mode; the package default is now
+# "relabel" (non-destructive), since is_complete is an NCBI-query estimate,
+# not verified ground truth -- see ?apply_coverage_constraints's "Census
+# confidence" section before using "zero" on real data.
 
 likelihoods <- readRDS("likelihoods.rds")
 
@@ -114,7 +118,8 @@ census_result <- data.frame(
   stringsAsFactors = FALSE
 )
 
-constrained <- apply_coverage_constraints(likelihoods, census_result)
+constrained <- apply_coverage_constraints(likelihoods, census_result,
+                                          constraint_behavior = "zero")
 
 # How many H2 rows were suppressed?
 n_suppressed <- sum(

@@ -11,7 +11,8 @@ build_sequence_matrix(
   min_seq_len = 100L,
   max_seq_len = 2000L,
   filter_unnamed = TRUE,
-  max_seqs_per_taxon = NULL
+  max_seqs_per_taxon = NULL,
+  barcode_term = NULL
 )
 }
 \arguments{
@@ -34,10 +35,12 @@ The 75\% identity threshold is a standard floor for retaining distantly
 related taxa in barcode reference databases.}
 
 \item{min_seq_len}{Integer (default \code{100}).  Sequences shorter than this
-are discarded before alignment.}
+are discarded before alignment.  Ignored if \code{barcode_term} is supplied
+and this argument is left at its default -- see \code{barcode_term} below.}
 
 \item{max_seq_len}{Integer (default \code{2000}).  Sequences longer than this
-are discarded before alignment.}
+are discarded before alignment.  Ignored if \code{barcode_term} is supplied
+and this argument is left at its default -- see \code{barcode_term} below.}
 
 \item{filter_unnamed}{Logical (default \code{TRUE}).  If \code{TRUE}, sequences whose
 finest-rank taxonomy column (the last element of \code{rank_system}, typically
@@ -58,6 +61,33 @@ For typical vertebrate barcode databases a value of \code{10L}–\code{20L} is
 sufficient; the resulting within-species pair counts per taxon are at most
 \code{max_seqs_per_taxon * (max_seqs_per_taxon - 1) / 2}.  \code{NULL} disables
 the cap (current behaviour).}
+
+\item{barcode_term}{Character or \code{NULL} (default \code{NULL}).  When supplied
+AND \code{min_seq_len}/\code{max_seq_len} are both left at their defaults, resolves
+the length window via \code{TaxaTools::resolve_barcode_lengths(barcode_term)}
+instead of using the generic \verb{[100, 2000]} default.  Explicit
+\code{min_seq_len}/\code{max_seq_len} always override this, matching
+\code{resolve_barcode_lengths()}'s own override convention.
+
+This exists because the generic default length window does NOT
+guarantee every retained sequence covers the same amplicon window --
+only that it is a plausible barcode-length fragment of \emph{some} kind. A
+broad NCBI free-text search (e.g. \code{barcode_term = "12S"} at fetch time)
+can return sequences describing a genomically different stretch of the
+same gene (older primer sets, broader mitochondrial fragments) that
+still happen to pass a length filter -- silently mixing two different
+genomic windows into what looks like one self-consistent H1/H2 training
+set (the documented "Paralabrax footgun": a real 0\% MiFish-primer-site
+hit rate on sequences that had already passed the generic length
+filter). Passing a \emph{specific, registered primer variant} here (e.g.
+\code{"MiFishU"}, not just \code{"12S"}) gives the strongest guarantee, since that
+resolves to the literature-verified real PCR amplicon length rather than
+a broader per-gene range; a bare marker name (e.g. \code{"12S"}) only
+guarantees "roughly the right marker," not amplicon-window
+comparability, and does not by itself close this gap. See
+\code{diagnostics/sebastes_chromis_confirmation.R} for the case this was
+found in and the (now-superseded, use this parameter instead) manual
+pre-filter pattern it used.}
 }
 \value{
 A data frame with one row per sequence pair within \code{max_dist}:

@@ -1,6 +1,35 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-06 (Session 139 — two related fixes, both found via live testing,
+# Last updated: 2026-07-11 (Session 151 -- ecosystem soundness-review item 14
+# (blast_sequences()'s score_window) fixed: default score_range widened 2 -> 8, backed by
+# a new real-data leave-one-out check (diagnostics/score_window_leave_one_out.R at the
+# TaxaID root), not a guess. The review flagged that a fixed 2-point tolerance window can
+# silently drop the true species from blast_sequences()'s output entirely -- before
+# TaxaLikely/TaxaAssign ever see it, with no way to recover it downstream -- whenever a
+# confusable congener happens to score higher, and that this had only ever been
+# field-tested on 5 easy PtConception queries with clear top hits at 98%+ identity.
+# Method: treat each reference sequence in a real reference-vs-reference distance matrix
+# as a leave-one-out query against every other sequence in the same matrix, and ask how
+# often (and by how much) a congener outscores the sequence's own true species. Run
+# against three independent real 12S datasets: Sebastes (54 species, real
+# MiFish-window-filtered data) -- 3/113 events, all trivial (0.6 pts, none dropped at the
+# old default); Chromis (26 species) -- 3/33 events, 4.7-7.1 pts, ALL THREE would have
+# been silently dropped at score_range=2; a real 6-genus PtConception 12S set -- 1/11
+# events, 2.5 pts, also dropped. Pooled: 4 of 7 real congener-outscoring events (57%)
+# exceeded the old default. New default (8) covers every gap actually observed with
+# margin -- documented explicitly as evidence-backed given what's been measured so far,
+# not proof against a more extreme future case; max_hits=20 (unchanged) still bounds
+# candidate volume regardless of window width, and the wider window is exactly what
+# preserves TaxaLikely::train_likelihood_model()'s "gap" feature (its own key H1/H2/H3
+# discriminator) for the bivariate-normal model to actually use, rather than this coarse
+# pre-filter silently deciding the case on raw percent-identity alone -- directly closing
+# the review's own cross-cutting pattern #3 (percent-identity thresholds can't reliably
+# discriminate species from congener; route that decision through the bivariate-normal
+# path instead). Two real workflow scripts hardcoding the old value updated
+# (blast_sequences_workflow.R, workflow_fastq_to_match.R). New test pins the default at
+# 8. devtools::test() 451/451, check() clean. See
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md's item 14 for the full record.
+# Previous update, 2026-07-06 (Session 139 — two related fixes, both found via live testing,
 # not code reading. (1) build_site_table()'s default spatial_group_id changed from
 # observation_id to an exact-(lat,lon)-match grouping (new is_default_group marker column
 # replaces the old spatial_group_id==observation_id heuristic group_observations_by_bbox()/
@@ -152,7 +181,7 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `blast_sequences()` | R/blast.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution. **Session 135**: `resolve_location = FALSE` param — when `TRUE`, fetches each unique hit accession's full GBSeq XML record (`.resolve_locations_by_acc()`) and appends `lat`/`lon`/`country` parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); independent of `resolve_taxonomy` (taxonomy comes from the NCBI taxonomy DB, location from the full nucleotide record — neither fetch gives you the other). |
+| `blast_sequences()` | R/blast.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution. **Session 135**: `resolve_location = FALSE` param — when `TRUE`, fetches each unique hit accession's full GBSeq XML record (`.resolve_locations_by_acc()`) and appends `lat`/`lon`/`country` parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); independent of `resolve_taxonomy` (taxonomy comes from the NCBI taxonomy DB, location from the full nucleotide record — neither fetch gives you the other). **Session 151**: `score_range` default widened `2` → `8` — a leave-one-out check against 3 real 12S reference datasets found the old 2-pt window silently dropped the true species in 4/7 real congener-outscoring events; see roxygen's "Score window validation" section and `diagnostics/score_window_leave_one_out.R`. |
 
 ### Image and acoustic input
 

@@ -57,11 +57,22 @@ test_that("flag_contaminant returns one row per taxon", {
  expect_true("lab_contaminant_reason" %in% names(result))
  expect_true("mean_prop_field" %in% names(result))
  expect_true("mean_prop_control" %in% names(result))
+ expect_true("field_rate" %in% names(result))
+ expect_true("control_rate" %in% names(result))
+ expect_true("n_field_present" %in% names(result))
  # 5 unique taxa with non-zero reads
  expect_equal(nrow(result), 5L)
 })
 
-test_that("TaxonA (only in field) gets score 1.0 and risk 'low'", {
+test_that("TaxonA (only in field) gets a high score approaching but not reaching 1.0", {
+ # Session 151: shrinkage means "absent from controls" no longer means an
+ # absolute 1.0 -- with only 2 controls total (n_present = 3 field + 0
+ # control = 3) and the default prior_weight = 2, real but limited
+ # replication pulls the score toward 0.5 from what would otherwise be an
+ # exact 1.0 (raw_score, before shrinkage, is 1.0 since control_rate = 0).
+ # This mock dataset is deliberately tiny (5 samples total) specifically to
+ # exercise this small-n regime -- a real study with dozens of field
+ # replicates would converge much closer to the raw ratio.
  result <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
@@ -69,19 +80,70 @@ test_that("TaxonA (only in field) gets score 1.0 and risk 'low'", {
  )
  a_row <- result[result$taxon_name == "TaxonA", ]
  expect_equal(nrow(a_row), 1L)
- expect_equal(a_row$lab_contaminant_score, 1.0)
- expect_equal(a_row$lab_contaminant_risk, "low")
+ expect_true(a_row$lab_contaminant_score < 1.0)
+ expect_true(a_row$lab_contaminant_score > 0.5)
+ # w = 3/(3+2) = 0.6; score = 0.6*1.0 + 0.4*0.5 = 0.8
+ expect_equal(a_row$lab_contaminant_score, 0.8, tolerance = 1e-6)
 })
 
-test_that("TaxonD (only in controls) gets score 0.0 and risk 'high'", {
+test_that("TaxonD (only in controls) gets a low score approaching but not reaching 0.0, risk 'high'", {
  result <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
  d_row <- result[result$taxon_name == "TaxonD", ]
- expect_equal(d_row$lab_contaminant_score, 0.0)
+ expect_true(d_row$lab_contaminant_score > 0.0)
+ expect_true(d_row$lab_contaminant_score < 0.5)
  expect_equal(d_row$lab_contaminant_risk, "high")
+})
+
+test_that("prior_weight = 0 disables shrinkage: TaxonA/TaxonD hit the exact un-shrunk 1.0/0.0 boundary", {
+ result <- flag_contaminant(
+   df              = mock_long,
+   control_samples = c("blank_1", "blank_2"),
+   prior_weight    = 0,
+   verbose         = FALSE
+ )
+ a_row <- result[result$taxon_name == "TaxonA", ]
+ d_row <- result[result$taxon_name == "TaxonD", ]
+ expect_equal(a_row$lab_contaminant_score, 1.0)
+ expect_equal(d_row$lab_contaminant_score, 0.0)
+})
+
+test_that("higher prior_weight shrinks a single-sample detection harder toward 0.5", {
+ # TaxonD is detected in only 1 of 2 controls and absent from field --
+ # sparse evidence, so it should be pulled toward the neutral 0.5 more
+ # strongly as prior_weight increases.
+ weak_shrink <- flag_contaminant(
+   df              = mock_long,
+   control_samples = c("blank_1", "blank_2"),
+   prior_weight    = 1,
+   verbose         = FALSE
+ )
+ strong_shrink <- flag_contaminant(
+   df              = mock_long,
+   control_samples = c("blank_1", "blank_2"),
+   prior_weight    = 20,
+   verbose         = FALSE
+ )
+ d_weak   <- weak_shrink[weak_shrink$taxon_name == "TaxonD", "lab_contaminant_score"]
+ d_strong <- strong_shrink[strong_shrink$taxon_name == "TaxonD", "lab_contaminant_score"]
+ # Stronger shrinkage pulls the score up from near-0 toward 0.5
+ expect_true(d_strong > d_weak)
+})
+
+test_that("invalid prior_weight errors", {
+ expect_error(
+   flag_contaminant(mock_long, control_samples = "blank_1",
+                    prior_weight = -1, verbose = FALSE),
+   "prior_weight"
+ )
+ expect_error(
+   flag_contaminant(mock_long, control_samples = "blank_1",
+                    prior_weight = NA, verbose = FALSE),
+   "prior_weight"
+ )
 })
 
 test_that("TaxonB (high in controls, low in field) gets low score", {
@@ -136,7 +198,9 @@ test_that("flag_contaminant works with sample_type_col", {
 
  expect_true("lab_contaminant_risk" %in% names(result))
  a_row <- result[result$taxon_name == "TaxonA", ]
- expect_equal(a_row$lab_contaminant_risk, "low")
+ # Session 151: not "low" at this dataset's small sample size -- see the
+ # dedicated TaxonA shrinkage test above for the exact value/reasoning.
+ expect_equal(a_row$lab_contaminant_risk, "moderate")
 })
 
 
@@ -235,8 +299,8 @@ test_that("reason strings contain expected information", {
  )
 
  reasons <- result$lab_contaminant_reason
- expect_true(all(grepl("field proportion", reasons)))
- expect_true(all(grepl("control proportion", reasons)))
+ expect_true(all(grepl("field rate", reasons)))
+ expect_true(all(grepl("control rate", reasons)))
  expect_true(all(grepl("detected in", reasons)))
 })
 

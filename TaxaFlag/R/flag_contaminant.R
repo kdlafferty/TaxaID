@@ -10,10 +10,23 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #' contaminants. Supports extraction controls, PCR controls, field controls,
 #' and positive controls.
 #'
-#' The algorithm computes within-sample proportions for each taxon, then
-#' compares mean proportions in field samples vs. controls. Taxa with higher
-#' proportions in controls than field samples receive low scores (likely
-#' contaminants); taxa absent from controls receive a score of 1.0.
+#' The algorithm computes a read-depth-weighted detection rate per taxon in
+#' field samples vs. controls, then an Empirical Bayes-shrunk score
+#' comparing them (\code{.compute_contaminant_scores()}'s own internal
+#' documentation has the full mechanism and the real-data motivation for
+#' it). Taxa with a higher rate in controls than field samples receive low
+#' scores (likely contaminants); taxa strongly favoring field samples
+#' receive scores approaching, but not reaching, 1.0 -- shrinkage means no
+#' taxon gets an absolute 0 or 1 score purely from being absent from a
+#' group with few samples.
+#'
+#' \strong{This score is a ranked screening statistic, not a calibrated
+#' probability.} Earlier versions of this documentation described it as
+#' "the probability the detection reflects true presence" -- it is not:
+#' no generative model of contamination is fit, and the score is not
+#' validated against known-true contamination status. Use it to rank taxa
+#' for review against \code{score_thresholds}, not as a literal posterior
+#' probability.
 #'
 #' For positive controls, the interpretation is inverted: taxa from the
 #' positive control appearing in field samples indicate cross-contamination.
@@ -50,24 +63,43 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #'   are \code{"high"} risk (probable contaminant); scores at or below the
 #'   second are \code{"moderate"} risk; higher scores are \code{"low"} risk
 #'   (likely a genuine detection). Default \code{c(0.5, 0.9)}.
+#' @param prior_weight Numeric (default \code{2}). Empirical Bayes shrinkage
+#'   strength, in units of "equivalent samples" -- controls how strongly the
+#'   final field-vs-control ratio is pulled toward 0.5 (maximally uncertain)
+#'   when a taxon is detected in few samples overall. Higher values shrink
+#'   harder (more conservative, less willing to call a rarely-detected taxon
+#'   confidently clean or contaminated); \code{0} disables shrinkage
+#'   entirely, restoring the raw depth-weighted ratio (still depth-weighted,
+#'   unlike the pre-Session-151 default).
 #' @param verbose Logical. Print summary messages. Default \code{TRUE}.
 #'
 #' @return A data frame with one row per taxon, sorted by score (most
 #'   likely contaminants first). Columns:
 #' \describe{
 #'   \item{\code{{taxon_col}}}{Taxon identifier (from input).}
-#'   \item{\code{flag_{contaminant_type}_score}}{Numeric 0--1. Ratio of
-#'     field proportion to total (field + control) proportion. Higher = more
-#'     likely a real detection. 1.0 for taxa absent from controls.}
+#'   \item{\code{flag_{contaminant_type}_score}}{Numeric 0--1. Empirical
+#'     Bayes-shrunk ratio of the depth-weighted field rate to the total
+#'     (field + control) rate. Higher = more likely a real detection.
+#'     Approaches, but does not reach, 1.0 for taxa absent from controls --
+#'     see Details. A ranked screening statistic, not a calibrated
+#'     probability.}
 #'   \item{\code{{contaminant_type}_risk}}{Character. \code{"high"} (probable
 #'     contaminant), \code{"moderate"} (uncertain), or \code{"low"} (likely
 #'     genuine detection). Higher = more contamination risk.}
 #'   \item{\code{flag_{contaminant_type}_reason}}{Character. Plain-English
-#'     explanation including proportions and control detection counts.}
-#'   \item{\code{mean_prop_field}}{Mean within-sample proportion in field
-#'     samples.}
-#'   \item{\code{mean_prop_control}}{Mean within-sample proportion in control
-#'     samples.}
+#'     explanation including depth-weighted rates and control detection counts.}
+#'   \item{\code{mean_prop_field}}{Informational only, does not drive the
+#'     score (Session 151): unweighted mean of within-sample proportions in
+#'     field samples.}
+#'   \item{\code{mean_prop_control}}{Informational only, does not drive the
+#'     score (Session 151): unweighted mean of within-sample proportions in
+#'     control samples.}
+#'   \item{\code{field_rate}}{Depth-weighted detection rate in field samples
+#'     (taxon reads / total field sequencing depth), before shrinkage.}
+#'   \item{\code{control_rate}}{Depth-weighted detection rate in control
+#'     samples, before shrinkage.}
+#'   \item{\code{n_field_present}}{Number of field samples in which the taxon
+#'     was detected.}
 #'   \item{\code{n_controls_present}}{Number of controls in which the taxon was
 #'     detected.}
 #'   \item{\code{n_controls_total}}{Total number of controls.}
@@ -112,6 +144,7 @@ flag_contaminant <- function(df,
                              exclude_samples  = NULL,
                              contaminant_type = "lab_contaminant",
                              score_thresholds = c(0.5, 0.9),
+                             prior_weight     = 2,
                              verbose          = TRUE) {
 
   # --- Input validation ---
@@ -124,6 +157,10 @@ flag_contaminant <- function(df,
 
   if (!is.numeric(df[[reads_col]]))
     stop(sprintf("Column '%s' must be numeric.", reads_col), call. = FALSE)
+
+  if (!is.numeric(prior_weight) || length(prior_weight) != 1L ||
+      is.na(prior_weight) || prior_weight < 0)
+    stop("'prior_weight' must be a single non-negative numeric value.", call. = FALSE)
 
   if (is.null(control_samples) && is.null(sample_type_col))
     stop("Supply either 'control_samples' or 'sample_type_col' to identify controls.",
@@ -186,11 +223,13 @@ flag_contaminant <- function(df,
     taxon_col  = taxon_col,
     reads_col  = reads_col,
     control_ids  = control_ids,
-    field_ids  = field_ids
+    field_ids  = field_ids,
+    prior_weight = prior_weight
   )
 
   # --- Apply thresholds to get risk levels ---
-  # score = field / (field + control); low score = probable contaminant = high risk
+  # score = shrunk field rate / (shrunk field rate + shrunk control rate);
+  # low score = probable contaminant = high risk
   scores$flag <- dplyr::case_when(
     scores$contaminant_score <= score_thresholds[1] ~ "high",
     scores$contaminant_score <= score_thresholds[2] ~ "moderate",
@@ -198,10 +237,14 @@ flag_contaminant <- function(df,
   )
 
   # --- Build reason strings ---
+  # Reports the depth-weighted rates that actually drive contaminant_score
+  # (Session 151), not the old unweighted mean_prop_field/mean_prop_control
+  # (still returned, but purely informational -- see roxygen).
   scores$reason <- sprintf(
-    "field proportion %.4f, control proportion %.4f, score %.3f; detected in %d/%d control(s)",
-    scores$mean_prop_field, scores$mean_prop_control,
-    scores$contaminant_score, scores$n_controls_present, scores$n_controls_total
+    "field rate %.5f, control rate %.5f (depth-weighted, shrunk), score %.3f; detected in %d field / %d/%d control sample(s)",
+    scores$field_rate, scores$control_rate,
+    scores$contaminant_score, scores$n_field_present,
+    scores$n_controls_present, scores$n_controls_total
   )
 
   # --- Build per-taxon result ---
@@ -216,13 +259,17 @@ flag_contaminant <- function(df,
     reason           = scores$reason,
     mean_prop_field  = scores$mean_prop_field,
     mean_prop_control  = scores$mean_prop_control,
+    field_rate         = scores$field_rate,
+    control_rate       = scores$control_rate,
+    n_field_present     = scores$n_field_present,
     n_controls_present = scores$n_controls_present,
     n_controls_total   = scores$n_controls_total,
     stringsAsFactors = FALSE
   )
   names(result) <- c(taxon_col, score_col, flag_col, reason_col,
                      "mean_prop_field", "mean_prop_control",
-                     "n_controls_present", "n_controls_total")
+                     "field_rate", "control_rate",
+                     "n_field_present", "n_controls_present", "n_controls_total")
 
   # Sort by score (most likely contaminants first)
   result <- result[order(result[[score_col]]), , drop = FALSE]
@@ -242,20 +289,68 @@ flag_contaminant <- function(df,
 
 #' Compute Contaminant Scores from Read Proportions
 #'
-#' Internal helper. Computes within-sample proportions for each taxon,
-#' then compares mean proportions between field and control samples.
+#' Internal helper. Computes within-sample proportions for each taxon, a
+#' read-depth-weighted rate per group (field vs. control), then an Empirical
+#' Bayes-shrunk score comparing them.
+#'
+#' @section Depth-weighting and shrinkage (soundness-review item 15):
+#' The naive version of this comparison -- an unweighted mean of each
+#' taxon's per-sample proportions -- lets a single shallow, noisy sample
+#' dominate the mean as much as a deep, well-supported one, and gives a hard
+#' 0.0/1.0 score to any taxon absent from one side regardless of how little
+#' evidence (how few samples) that absence is based on. Two independent
+#' fixes, composed:
+#' \enumerate{
+#'   \item \strong{Depth-weighting.} `field_rate`/`control_rate` are computed
+#'     as `sum(taxon reads in group) / sum(total reads across samples in
+#'     that group)` -- mathematically identical to a reads-weighted mean of
+#'     per-sample proportions, so a proportion from 500,000 reads now counts
+#'     far more than one from 50. Each rate is normalized by its OWN group's
+#'     total depth (not a shared pool), which keeps the comparison
+#'     scale-free even when field and control pools have very different
+#'     total sequencing depth -- the common real case of many field samples
+#'     against a couple of small blanks.
+#'   \item \strong{Shrinkage.} The raw ratio `field_rate / (field_rate +
+#'     control_rate)` is shrunk toward 0.5 (maximally uncertain) with weight
+#'     `w = n_present / (n_present + prior_weight)`, where `n_present` is
+#'     the total number of samples (summed across both groups) in which the
+#'     taxon was actually detected -- the same Empirical Bayes form used
+#'     throughout this ecosystem (e.g.
+#'     `TaxaLikely::train_likelihood_model()`'s per-species shrinkage). A
+#'     taxon detected in only one or two samples total, however lopsided
+#'     its raw ratio, no longer gets an overconfident 0 or 1; a taxon
+#'     consistently detected across many samples keeps close to its raw
+#'     ratio.
+#' }
+#' Shrinkage is applied to the FINAL ratio, not to `field_rate`/
+#' `control_rate` individually toward some shared reference rate -- an
+#' earlier version of this fix tried shrinking each rate toward the taxon's
+#' own pooled (field+control) rate, which let a taxon's own field read
+#' volume leak into its control-side prior and systematically understated
+#' genuinely clean taxa's scores whenever field depth dominated control
+#' depth (re-introducing the exact group-depth-imbalance problem
+#' depth-weighting exists to avoid). Shrinking by sample count instead keeps
+#' the two groups' magnitudes fully independent. `mean_prop_field`/
+#' `mean_prop_control` (the old, unweighted per-sample means) are still
+#' returned as informational diagnostics, but no longer feed
+#' `contaminant_score`.
 #'
 #' @param df Data frame in long format.
 #' @param event_col,taxon_col,reads_col Column name strings.
 #' @param control_ids,field_ids Character vectors of sample IDs.
+#' @param prior_weight Numeric. Equivalent pseudo-sample-count for shrinking
+#'   the final ratio toward 0.5. Higher values pull harder toward 0.5 for
+#'   taxa detected in few total samples (field + control combined).
 #'
 #' @return Data frame with one row per taxon and columns: \code{taxon},
-#'   \code{mean_prop_field}, \code{mean_prop_control}, \code{n_controls_present},
+#'   \code{mean_prop_field}, \code{mean_prop_control}, \code{field_rate},
+#'   \code{control_rate}, \code{n_field_present}, \code{n_controls_present},
 #'   \code{n_controls_total}, \code{contaminant_score}.
 #'
 #' @noRd
 .compute_contaminant_scores <- function(df, event_col, taxon_col, reads_col,
-                                        control_ids, field_ids) {
+                                        control_ids, field_ids,
+                                        prior_weight = 2) {
 
   # Standardise column names for internal use
   work <- data.frame(
@@ -269,7 +364,8 @@ flag_contaminant <- function(df,
 
   work <- work[work$n_reads > 0, , drop = FALSE]
 
-  # Within-sample proportions
+  # Within-sample proportions (still computed -- feeds mean_prop_field/
+  # mean_prop_control, the informational unweighted-mean diagnostics)
   sample_totals <- stats::aggregate(n_reads ~ sample, data = work, FUN = sum)
   names(sample_totals)[2] <- "total_reads"
   work <- merge(work, sample_totals, by = "sample")
@@ -278,36 +374,72 @@ flag_contaminant <- function(df,
   # Tag control vs field
   work$is_control <- work$sample %in% control_ids
 
+  # Group-level sequencing depth (sum of each sample's own total reads,
+  # across ALL taxa) -- the denominator for depth-weighted rates. Computed
+  # once, not per taxon: constant across taxa within one call.
+  field_depth   <- sum(sample_totals$total_reads[sample_totals$sample %in% field_ids])
+  control_depth <- sum(sample_totals$total_reads[sample_totals$sample %in% control_ids])
+
   # Get all unique taxa
   all_taxa <- unique(work$taxon)
   n_controls_total <- length(control_ids)
 
-  # Mean proportion per taxon in field vs control
   results <- lapply(all_taxa, function(tx) {
     tx_rows <- work[work$taxon == tx, , drop = FALSE]
     field_rows <- tx_rows[!tx_rows$is_control, , drop = FALSE]
     control_rows <- tx_rows[tx_rows$is_control, , drop = FALSE]
 
+    # Informational only (Session 151): unweighted mean of per-sample
+    # proportions -- no longer feeds contaminant_score.
     mean_prop_field <- if (nrow(field_rows) > 0L) mean(field_rows$prop) else 0
     mean_prop_control <- if (nrow(control_rows) > 0L) mean(control_rows$prop) else 0
+
+    n_field_present    <- length(unique(field_rows$sample))
     n_controls_present <- length(unique(control_rows$sample))
 
-    # Score: field / (field + control). Taxa absent from controls get 1.0
-    if (mean_prop_control == 0) {
-      score <- 1.0
-    } else if (mean_prop_field == 0) {
-      score <- 0.0
-    } else {
-      score <- mean_prop_field / (mean_prop_field + mean_prop_control)
-    }
+    # Depth-weighted rate per group: taxon reads / total sequencing depth
+    # of that group. Equivalent to a reads-weighted mean of per-sample
+    # proportions -- normalizing by each group's OWN total depth (not a
+    # shared pool) keeps the comparison scale-free even when field and
+    # control pools have very different total sequencing depth (the common
+    # real case: many field samples, few small blanks).
+    taxon_field_reads   <- sum(field_rows$n_reads)
+    taxon_control_reads <- sum(control_rows$n_reads)
+    field_rate   <- if (field_depth   > 0) taxon_field_reads   / field_depth   else 0
+    control_rate <- if (control_depth > 0) taxon_control_reads / control_depth else 0
+
+    # Raw (un-shrunk) ratio, same structural form as the pre-Session-151
+    # formula, just with depth-weighted rates in place of unweighted
+    # per-sample-proportion means.
+    rate_sum  <- field_rate + control_rate
+    raw_score <- if (rate_sum > 0) field_rate / rate_sum else 0.5
+
+    # Empirical Bayes shrinkage of the FINAL ratio toward 0.5 (maximally
+    # uncertain), weighted by total replication (n_present summed across
+    # both groups) -- w = n_present / (n_present + prior_weight). Shrinking
+    # the ratio itself, rather than shrinking field_rate/control_rate
+    # separately toward some shared reference rate, avoids a subtle bug: an
+    # early version of this fix shrunk each rate toward their taxon-specific
+    # pooled average, which let a taxon's own (usually much larger) field
+    # read volume leak into its control-side prior, systematically
+    # understating genuinely clean taxa's scores whenever field depth
+    # dominated control depth -- exactly the group-depth-imbalance problem
+    # depth-weighting was supposed to avoid. Shrinking the ratio by sample
+    # COUNT instead keeps the two groups' magnitudes fully independent.
+    n_present <- n_field_present + n_controls_present
+    w <- n_present / (n_present + prior_weight)
+    score <- w * raw_score + (1 - w) * 0.5
 
     data.frame(
-      taxon            = tx,
-      mean_prop_field  = mean_prop_field,
+      taxon              = tx,
+      mean_prop_field    = mean_prop_field,
       mean_prop_control  = mean_prop_control,
+      field_rate         = field_rate,
+      control_rate       = control_rate,
+      n_field_present    = n_field_present,
       n_controls_present = n_controls_present,
       n_controls_total   = n_controls_total,
-      contaminant_score = score,
+      contaminant_score  = score,
       stringsAsFactors = FALSE
     )
   })

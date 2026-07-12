@@ -223,3 +223,107 @@ test_that("error when all datetimes unparseable", {
     "Could not parse"
   )
 })
+
+
+# ===========================================================================
+# station_metadata -- real deploy/retrieve edge anchoring (soundness-review
+# item 16)
+# ===========================================================================
+
+test_that("default (no station_metadata) marks every row as detection_data_fallback", {
+  result <- flag_handler(mock_camera, group_col = "station",
+                         interval_minutes = 30, verbose = FALSE)
+
+  expect_true("edge_anchor_source" %in% names(result))
+  expect_true(all(result$edge_anchor_source == "detection_data_fallback"))
+})
+
+test_that("station_metadata with a wider real deployment window rescues an edge detection", {
+  # Real setup was 30 min before the first detection, real retrieval 30 min
+  # after the last -- so the first/last detections are no longer AT the
+  # edge once anchored on the real window, unlike the data-derived default
+  # (test above: "detections at min/max get score 0").
+  meta <- data.frame(
+    station      = "StationA",
+    deploy_time  = as.POSIXct("2025-06-15 07:30:00"),
+    retrieve_time = as.POSIXct("2025-06-15 11:30:00"),
+    stringsAsFactors = FALSE
+  )
+
+  result <- flag_handler(mock_camera, group_col = "station",
+                         interval_minutes = 30,
+                         station_metadata = meta,
+                         verbose = FALSE)
+
+  # Row 1 (08:00) is now 30 min from the REAL deploy time (07:30) --
+  # outside the 30-min interval entirely -> score 1.0, "likely" (was 0.0/
+  # "unlikely" under the data-derived default).
+  expect_equal(result$flag_handler_score[1], 1.0)
+  expect_equal(result$flag_handler[1], "likely")
+  expect_equal(result$edge_anchor_source[1], "station_metadata")
+})
+
+test_that("groups missing from station_metadata fall back with a warning, not silently", {
+  df2 <- rbind(
+    mock_camera,
+    data.frame(
+      station    = "StationB",
+      datetime   = as.POSIXct(c("2025-06-16 12:00:00", "2025-06-16 12:10:00")),
+      taxon_name = c("Homo sapiens", "Lynx rufus"),
+      stringsAsFactors = FALSE
+    )
+  )
+  meta <- data.frame(
+    station      = "StationA",
+    deploy_time  = as.POSIXct("2025-06-15 07:30:00"),
+    retrieve_time = as.POSIXct("2025-06-15 11:30:00"),
+    stringsAsFactors = FALSE
+  )
+
+  expect_warning(
+    result <- flag_handler(df2, group_col = "station", interval_minutes = 30,
+                           station_metadata = meta, verbose = FALSE),
+    "StationB"
+  )
+
+  stb <- result[result$station == "StationB", ]
+  expect_true(all(stb$edge_anchor_source == "detection_data_fallback"))
+  sta <- result[result$station == "StationA", ]
+  expect_true(all(sta$edge_anchor_source == "station_metadata"))
+})
+
+test_that("station_metadata requires group_col", {
+  meta <- data.frame(station = "StationA",
+                     deploy_time = as.POSIXct("2025-06-15 07:30:00"),
+                     retrieve_time = as.POSIXct("2025-06-15 11:30:00"),
+                     stringsAsFactors = FALSE)
+  expect_error(
+    flag_handler(mock_camera, group_col = NULL, station_metadata = meta,
+                verbose = FALSE),
+    "group_col"
+  )
+})
+
+test_that("station_metadata missing required columns errors", {
+  bad_meta <- data.frame(station = "StationA", stringsAsFactors = FALSE)
+  expect_error(
+    flag_handler(mock_camera, group_col = "station", station_metadata = bad_meta,
+                verbose = FALSE),
+    "deploy_time"
+  )
+})
+
+test_that("custom deploy_col/retrieve_col names work", {
+  meta <- data.frame(
+    station    = "StationA",
+    setup_ts   = as.POSIXct("2025-06-15 07:30:00"),
+    pickup_ts  = as.POSIXct("2025-06-15 11:30:00"),
+    stringsAsFactors = FALSE
+  )
+  result <- flag_handler(mock_camera, group_col = "station",
+                         interval_minutes = 30, station_metadata = meta,
+                         deploy_col = "setup_ts", retrieve_col = "pickup_ts",
+                         verbose = FALSE)
+  expect_equal(result$edge_anchor_source[1], "station_metadata")
+  expect_equal(result$flag_handler_score[1], 1.0)
+})

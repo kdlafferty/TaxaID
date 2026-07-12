@@ -21,10 +21,13 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #'   local: path to a local BLAST database.
 #' @param program BLAST program. Default \code{"blastn"}.
 #' @param score_range Numeric. Keep all hits within this many percent identity
-#'   points of each query's top hit (default \code{2}). For example, if the
-#'   top hit is 99% identity, all hits at 97% or above are retained. Wider
-#'   ranges capture more taxonomic alternatives; narrower ranges (e.g., 1)
-#'   focus on the closest matches only.
+#'   points of each query's top hit (default \code{8}, widened from an
+#'   earlier default of \code{2} -- see "Score window validation" below).
+#'   For example, if the top hit is 99% identity, all hits at 91% or above
+#'   are retained. Wider ranges capture more taxonomic alternatives; narrower
+#'   ranges (e.g., 2) focus on the closest matches only but risk silently
+#'   dropping the true species when a congener happens to score higher (see
+#'   Details).
 #' @param max_hits Integer. Safety cap: maximum hits to retain per query after
 #'   score window filtering (default \code{20L}). Increase for queries
 #'   expected to match many closely related species.
@@ -99,6 +102,48 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #' This means a clear top match may return only 1-3 hits (the rest are too
 #' distant), while an ambiguous query retains all plausible candidates.
 #'
+#' ## Score window validation
+#'
+#' This filter decides which candidates ever reach TaxaLikely/TaxaAssign --
+#' a true species dropped here cannot be recovered downstream, no matter how
+#' good the likelihood model is. The original \code{score_range = 2} default
+#' was field-tested only on 5 easy PtConception queries with clear top hits
+#' at 98% identity or above; it was never stress-tested against a
+#' taxonomically dense genus where real congeneric divergence can be tight.
+#'
+#' A leave-one-out check (\code{diagnostics/score_window_leave_one_out.R} at
+#' the TaxaID root) against three independent real reference-vs-reference
+#' distance matrices found this risk is real, not hypothetical: treating each
+#' reference sequence as a query against every other sequence in the same
+#' matrix, and asking how often a congener outscores the sequence's own true
+#' species, and by how much --
+#' \itemize{
+#'   \item \strong{Sebastes} (54 species, real MiFish-window 12S data):
+#'     3/113 (2.7\%) queries had a congener score higher than the true
+#'     species, but only by 0.6 points each -- none would have been dropped
+#'     even at the old \code{score_range = 2} default.
+#'   \item \strong{Chromis} (26 species): 3/33 (9.1\%) queries had this
+#'     happen, by 4.7-7.1 points -- \emph{all three} would have been
+#'     silently dropped at \code{score_range = 2}.
+#'   \item \strong{A real 6-genus PtConception 12S set} (Clinocottus,
+#'     Gibbonsia, Oligocottus, Embiotoca, Phanerodon): 1/11 (9.1\%) queries,
+#'     by 2.5 points -- would also have been dropped at the old default.
+#' }
+#' Pooling all three: 4 of 7 real congener-outscoring events (57\%) exceeded
+#' the old \code{score_range = 2} default and would have silently excluded
+#' the true species from every downstream step. The new default (\code{8})
+#' comfortably covers every gap actually observed in this check (worst case
+#' 7.1 points); it is an evidence-backed starting point given what has
+#' been measured so far, not a guarantee no real dataset will ever exceed it
+#' -- \code{max_hits} (default 20) bounds the resulting candidate count
+#' regardless of how wide \code{score_range} is set, and a wider window is
+#' precisely what preserves the "gap" feature
+#' (\code{TaxaLikely::train_likelihood_model()}'s own key discriminator
+#' between H1/H2/H3) for the bivariate-normal model to actually use --
+#' dropping the true congener here removes the one signal that model needs
+#' to correctly flag a genuinely ambiguous call instead of confidently
+#' returning the wrong species.
+#'
 #' ## Remote BLAST
 #'
 #' Uses the NCBI BLAST URL API with proper rate limiting (minimum 10 seconds
@@ -122,7 +167,7 @@ blast_sequences <- function(seq_df,
                             method = "remote",
                             database = "nt",
                             program = "blastn",
-                            score_range = 2,
+                            score_range = 8,
                             max_hits = 20L,
                             min_score = 70,
                             min_query_coverage = 80,

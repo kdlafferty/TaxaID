@@ -190,3 +190,76 @@ test_that("build_sequence_matrix: max_seqs_per_taxon = NULL leaves all sequences
   # 2 sequences → 2*(2-1) = 2 directed pairs
   expect_equal(nrow(out_null), 2L)
 })
+
+# ---------------------------------------------------------------------------
+# barcode_term -- amplicon-length auto-resolution (soundness-review item 13)
+# ---------------------------------------------------------------------------
+
+test_that("build_sequence_matrix: barcode_term resolves and applies a length window", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- data.frame(
+    composite_id = c("S1", "S2"),
+    sequence     = c(.seq_a, .seq_b),   # both 120 bp
+    species      = c("Sp a", "Sp b"),
+    stringsAsFactors = FALSE
+  )
+  # MiFishU resolves to [130, 210] bp -- both 120 bp sequences fall below the
+  # resolved minimum, so this should behave exactly as if min_seq_len = 130L
+  # had been passed explicitly (both dropped -> error), not the generic
+  # default [100, 2000] (which would have kept both).
+  expect_error(
+    build_sequence_matrix(df, "species", max_dist = 1.0,
+                          barcode_term = "MiFishU"),
+    "Fewer than 2 sequences remained"
+  )
+})
+
+test_that("build_sequence_matrix: barcode_term messages the resolved range", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- data.frame(
+    composite_id = c("S1", "S2"),
+    sequence     = c(.seq_a, .seq_b),
+    species      = c("Sp a", "Sp b"),
+    stringsAsFactors = FALSE
+  )
+  expect_message(
+    tryCatch(build_sequence_matrix(df, "species", max_dist = 1.0,
+                                   barcode_term = "MiFishU"),
+             error = function(e) NULL),
+    "resolved to length range \\[130, 210\\]"
+  )
+})
+
+test_that("build_sequence_matrix: explicit min_seq_len/max_seq_len override barcode_term", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- data.frame(
+    composite_id = c("S1", "S2"),
+    sequence     = c(.seq_a, .seq_b),   # both 120 bp
+    species      = c("Sp a", "Sp b"),
+    stringsAsFactors = FALSE
+  )
+  # barcode_term alone would resolve to [130, 210] and drop both 120bp
+  # sequences (see test above); explicit min_seq_len = 100L must win instead.
+  out <- build_sequence_matrix(df, "species", max_dist = 1.0,
+                               barcode_term = "MiFishU", min_seq_len = 100L,
+                               max_seq_len = 2000L)
+  expect_true(is.data.frame(out))
+  expect_equal(nrow(out), 2L)
+})
+
+test_that("build_sequence_matrix: barcode_term = NULL (default) leaves existing behavior unchanged", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- data.frame(
+    composite_id = c("S1", "S2"),
+    sequence     = c(.seq_a, .seq_b),
+    species      = c("Sp a", "Sp b"),
+    stringsAsFactors = FALSE
+  )
+  out <- build_sequence_matrix(df, "species", max_dist = 1.0)
+  expect_true(is.data.frame(out))
+  expect_equal(nrow(out), 2L)
+})

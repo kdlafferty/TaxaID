@@ -89,6 +89,10 @@ test_that("blast_sequences rejects invalid resolve_location", {
   expect_error(blast_sequences(seq_df, resolve_location = "yes"), "resolve_location")
 })
 
+test_that("blast_sequences default score_range is 8 (widened from 2, soundness-review item 14)", {
+  expect_equal(formals(blast_sequences)$score_range, 8)
+})
+
 
 # ==============================================================================
 # .parse_lat_lon() — INSDC lat_lon qualifier parser

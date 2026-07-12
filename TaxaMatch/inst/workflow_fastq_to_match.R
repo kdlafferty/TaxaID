@@ -140,7 +140,7 @@ message(sprintf("%d ASVs retained after filtering", nrow(filtered_df)))
 blast_hits <- blast_sequences(
   filtered_df,
   method = "remote", database = "nt",
-  score_range = 2, max_hits = 20, min_score = 70,
+  score_range = 8, max_hits = 20, min_score = 70,
   min_query_coverage = 85, barcode_term = NULL,
   email = "lafferty@ucsb.edu", resolve_taxonomy = TRUE
 )
@@ -152,7 +152,7 @@ blast_hits <- blast_sequences(
 #   filtered_df,
 #   method              = "local",
 #   database            = "/path/to/blast_db/nt",
-#   score_range         = 2,
+#   score_range         = 8,
 #   max_hits            = 20,
 #   min_score           = 70,
 #   min_query_coverage  = 80,

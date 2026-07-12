@@ -15,6 +15,7 @@ flag_contaminant(
   exclude_samples = NULL,
   contaminant_type = "lab_contaminant",
   score_thresholds = c(0.5, 0.9),
+  prior_weight = 2,
   verbose = TRUE
 )
 }
@@ -61,6 +62,15 @@ are \code{"high"} risk (probable contaminant); scores at or below the
 second are \code{"moderate"} risk; higher scores are \code{"low"} risk
 (likely a genuine detection). Default \code{c(0.5, 0.9)}.}
 
+\item{prior_weight}{Numeric (default \code{2}). Empirical Bayes shrinkage
+strength, in units of "equivalent samples" -- controls how strongly the
+final field-vs-control ratio is pulled toward 0.5 (maximally uncertain)
+when a taxon is detected in few samples overall. Higher values shrink
+harder (more conservative, less willing to call a rarely-detected taxon
+confidently clean or contaminated); \code{0} disables shrinkage
+entirely, restoring the raw depth-weighted ratio (still depth-weighted,
+unlike the pre-Session-151 default).}
+
 \item{verbose}{Logical. Print summary messages. Default \code{TRUE}.}
 }
 \value{
@@ -68,18 +78,29 @@ A data frame with one row per taxon, sorted by score (most
 likely contaminants first). Columns:
 \describe{
 \item{\code{{taxon_col}}}{Taxon identifier (from input).}
-\item{\code{flag_{contaminant_type}_score}}{Numeric 0--1. Ratio of
-field proportion to total (field + control) proportion. Higher = more
-likely a real detection. 1.0 for taxa absent from controls.}
+\item{\code{flag_{contaminant_type}_score}}{Numeric 0--1. Empirical
+Bayes-shrunk ratio of the depth-weighted field rate to the total
+(field + control) rate. Higher = more likely a real detection.
+Approaches, but does not reach, 1.0 for taxa absent from controls --
+see Details. A ranked screening statistic, not a calibrated
+probability.}
 \item{\code{{contaminant_type}_risk}}{Character. \code{"high"} (probable
 contaminant), \code{"moderate"} (uncertain), or \code{"low"} (likely
 genuine detection). Higher = more contamination risk.}
 \item{\code{flag_{contaminant_type}_reason}}{Character. Plain-English
-explanation including proportions and control detection counts.}
-\item{\code{mean_prop_field}}{Mean within-sample proportion in field
-samples.}
-\item{\code{mean_prop_control}}{Mean within-sample proportion in control
-samples.}
+explanation including depth-weighted rates and control detection counts.}
+\item{\code{mean_prop_field}}{Informational only, does not drive the
+score (Session 151): unweighted mean of within-sample proportions in
+field samples.}
+\item{\code{mean_prop_control}}{Informational only, does not drive the
+score (Session 151): unweighted mean of within-sample proportions in
+control samples.}
+\item{\code{field_rate}}{Depth-weighted detection rate in field samples
+(taxon reads / total field sequencing depth), before shrinkage.}
+\item{\code{control_rate}}{Depth-weighted detection rate in control
+samples, before shrinkage.}
+\item{\code{n_field_present}}{Number of field samples in which the taxon
+was detected.}
 \item{\code{n_controls_present}}{Number of controls in which the taxon was
 detected.}
 \item{\code{n_controls_total}}{Total number of controls.}
@@ -92,10 +113,23 @@ contaminants. Supports extraction controls, PCR controls, field controls,
 and positive controls.
 }
 \details{
-The algorithm computes within-sample proportions for each taxon, then
-compares mean proportions in field samples vs. controls. Taxa with higher
-proportions in controls than field samples receive low scores (likely
-contaminants); taxa absent from controls receive a score of 1.0.
+The algorithm computes a read-depth-weighted detection rate per taxon in
+field samples vs. controls, then an Empirical Bayes-shrunk score
+comparing them (\code{.compute_contaminant_scores()}'s own internal
+documentation has the full mechanism and the real-data motivation for
+it). Taxa with a higher rate in controls than field samples receive low
+scores (likely contaminants); taxa strongly favoring field samples
+receive scores approaching, but not reaching, 1.0 -- shrinkage means no
+taxon gets an absolute 0 or 1 score purely from being absent from a
+group with few samples.
+
+\strong{This score is a ranked screening statistic, not a calibrated
+probability.} Earlier versions of this documentation described it as
+"the probability the detection reflects true presence" -- it is not:
+no generative model of contamination is fit, and the score is not
+validated against known-true contamination status. Use it to rank taxa
+for review against \code{score_thresholds}, not as a literal posterior
+probability.
 
 For positive controls, the interpretation is inverted: taxa from the
 positive control appearing in field samples indicate cross-contamination.
