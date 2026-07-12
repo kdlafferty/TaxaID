@@ -137,8 +137,23 @@ with a modest logit-scale SE. Phi is capped at \code{1 / grid_var}, where
 model. This is principled: the model's own estimate of grid-level
 uncertainty sets the ceiling on prior concentration. No user input needed.
 
-If phi <= 0 after capping (variance exceeds Bernoulli maximum), the row
-receives alpha = beta = 0.5 (Jeffreys prior) and a warning flag.
+If phi <= 0 after capping and flooring at \code{min_phi} (variance exceeds
+the Bernoulli maximum, or the SE prediction itself was non-finite -- with
+\code{min_phi > 0}, the default, the finite "too much variance" case is
+already rescued by the floor, so this branch is reached almost exclusively
+via a non-finite SE), the fallback (Session 149) preserves the model's
+point-estimate mean \code{m} rather than discarding it for the agnostic
+Jeffreys mean of 0.5 -- 0.5 is a poor stand-in for what a Tier 1/2
+prediction almost always actually is (a low-theta species, not a coin
+flip). The row instead receives a diffuse Beta at that same mean,
+concentration \code{min_phi} (\code{alpha = m * min_phi},
+\code{beta = (1 - m) * min_phi}), with \code{jeffreys_fallback = TRUE}
+flagging that the variance side of the moment-match was unusable here. A
+true, fully agnostic Jeffreys prior (\code{alpha = beta = 0.5}) is used
+only when the mean itself is also non-finite (a total prediction failure,
+not just an unreliable SE) -- confirmed empirically not to fire on real
+PtConception 18S data (0/1200 rows) with defaults, since \code{min_phi}'s
+floor already handles the ordinary finite-variance case.
 
 \strong{Covariate scaling:}
 \code{new_sites} is scaled using \code{scale_params} stored in

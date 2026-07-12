@@ -342,7 +342,7 @@ plot_theta_map_interactive <- function(
         flags <- character(0L)
         if (isTRUE(args$effort_flag))           flags <- c(flags, "effort")
         if (isTRUE(args$extrapolation_warning)) flags <- c(flags, "extrapolation")
-        if (isTRUE(args$jeffreys_fallback))     flags <- c(flags, "Jeffreys")
+        if (isTRUE(args$jeffreys_fallback))     flags <- c(flags, "variance fallback")
         if (length(flags)) {
           lines <- paste0(lines, sprintf("<br/><b>flags:</b> %s",
                                          paste(flags, collapse = ", ")))

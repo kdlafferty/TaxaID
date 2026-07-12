@@ -18,6 +18,26 @@
 #'    theta = 1 / N_total, parameterized as Beta(1, N_total - 1).
 #'    This ensures TaxaAssign always has at least one undetected competitor.
 #'
+#' @section Domestic/synanthropic species (Session 149):
+#' Both priors above are ultimately derived from \code{model_obj}'s training
+#' occurrence data (typically fetched from GBIF/iNaturalist). Those sources
+#' structurally under-index captive/domestic organisms (pets, livestock), so
+#' a domestic species with no detections in your dataset will receive the
+#' same tiny global-floor prior as a genuinely implausible candidate -- not
+#' because it is actually rare, but because the occurrence database it's
+#' being compared against under-counts it. This is not something
+#' \code{generate_undetected_diversity()} (or any prior-generation step
+#' downstream) can correct on its own, since it has no way to distinguish
+#' "genuinely undetected" from "detected in reality but not in this data
+#' source." **If your study system includes domestic/synanthropic species
+#' that are plausible detections (e.g. camera-trap surveys near human
+#' habitation), augment your occurrence data with their known local presence
+#' before calling \code{train_biodiversity_model()}, rather than relying on
+#' the automatic floor to represent them.** \code{TaxaFlag::
+#' add_posthoc_assessment(domestic_taxa = ...)} can flag the resulting
+#' low-prior-vs-strong-likelihood contrast for review if augmentation isn't
+#' practical for your workflow.
+#'
 #' @param model_obj A biofreq_model object. Output of
 #'   train_biodiversity_model().
 #' @param jeffreys_threshold Integer. If N_total is below this value, use a
@@ -88,20 +108,37 @@
 #' have already been filtered upstream), only the global floor prior is
 #' returned. This is the minimum viable undetected pool.
 #'
-#' **Taxonomic-group dilution (known limitation):**
-#' N_total is computed across all taxa in the model regardless of taxonomic
-#' group. When a marker captures groups of very different sizes (e.g. ~800
-#' fish + ~20 mammals on a 12S marker), the global floor Beta(1, N_total - 1)
-#' is diluted by the dominant group. For a mammal query the floor prior would
-#' be Beta(1, 819) rather than the group-appropriate Beta(1, 19), making
-#' unmodelled mammals appear ~41x less likely than they should be relative to
-#' the mammal species pool. In practice the impact is modest: (1) modelled
-#' species priors come from the Tier 1/2 model and are unaffected; (2) the
-#' dark_mean used for modelled-species floor promotion is dominated by
-#' singleton mirrors which are themselves group-weighted; and (3) minority-group
-#' queries are typically rare on group-biased markers. If accurate dark
-#' diversity priors are needed across multiple taxonomic groups of very
-#' different sizes, run separate models per group and stack the prior tables.
+#' **Taxonomic-group dilution (Session 149: mitigated via the grouped pathway,
+#' opt-in):**
+#' N_total is computed across all taxa in \code{model_obj} regardless of
+#' taxonomic group. When a marker captures groups of very different sizes
+#' (e.g. ~800 fish + ~20 mammals on a 12S marker), the global floor
+#' Beta(1, N_total - 1) is diluted by the dominant group. For a mammal query
+#' the floor prior would be Beta(1, 819) rather than the group-appropriate
+#' Beta(1, 19), making unmodelled mammals appear ~41x less likely than they
+#' should be relative to the mammal species pool. Confirmed on real
+#' PtConception 18S data (Session 149): pooling `macroinvertebrates` +
+#' `other_vascular_plants` + `zooplankton` into one N_total gives
+#' `zooplankton` a floor ~34x too low relative to its own group's true
+#' effort.
+#'
+#' \strong{Fix (opt-in, not automatic):} call
+#' \code{\link{train_biodiversity_model_by_group}} instead of
+#' \code{\link{train_biodiversity_model}}, then call this function once per
+#' returned \code{biofreq_model} -- each group's model carries its own
+#' correctly-scoped \code{N_total}, so its global floor is automatically
+#' group-appropriate with no extra parameter here. This is the same
+#' \code{sampling_group_col} infrastructure built for the "Shared effort
+#' assumption" (see \code{\link{prepare_model_dataframe}}'s docs); it was
+#' already the documented recommendation before Session 149, but there was no
+#' concrete tool to do the splitting until then. If you do not group your
+#' data this way, the dilution described above still applies uncorrected --
+#' in practice its impact is also blunted by three things even when
+#' unmitigated: (1) modelled species priors come from the Tier 1/2 model and
+#' are unaffected; (2) the dark_mean used for modelled-species floor
+#' promotion is dominated by singleton mirrors, which are themselves
+#' group-weighted; and (3) minority-group queries are typically rare on
+#' group-biased markers.
 #'
 #' @seealso \code{train_biodiversity_model()}, \code{generate_full_priors()}
 #'

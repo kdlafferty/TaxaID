@@ -1,6 +1,68 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-03 (habitat_col = NULL support added to optimize_grid_size()/prepare_model_dataframe()/train_biodiversity_model()/generate_undetected_diversity()/generate_full_priors() -- fixes a real Tier 2 fitting bug found testing a single-observation prior pipeline. SAME session, second bug found re-verifying the first fix: theta_epsilon's singleton-mirror auto-raise was clipping ALL tiers' predictions instead of just Tier 2, flattening real Tier 1 differentiation -- fixed by scoping the raised floor to Tier 2 only. See session notes below. Session 129 — screen_spatial_formula()/generate_full_priors() fixed to handle zero-Tier-1-species real data instead of crashing; non-ASCII em-dash in generate_undetected_diversity() fixed)
+# Last updated: 2026-07-11 (Session 149, one more continuation -- generate_full_priors()'s
+# jeffreys_fallback (item 6, last untouched TaxaExpect H-priority soundness row) fixed:
+# moment_match() no longer discards a finite point-estimate mean for the agnostic Jeffreys
+# mean of 0.5 when phi (precision) is unusable -- it now builds a diffuse Beta at that SAME
+# mean (concentration min_phi) whenever the mean itself is finite, degrading to true
+# Beta(0.5,0.5) only when the mean is also non-finite. Traced reachability first (same
+# "verify before fixing" discipline as item 2): with min_phi>0 (default), the pre-existing
+# min_phi floor (2026-07-03) already rescues the "typical, extrapolating low-base-rate taxon"
+# scenario this finding described -- confirmed empirically 0/1200 rows fire on real
+# PtConception 18S data. What remains reachable is a genuinely non-finite SE (rarer, narrower
+# than first characterized), still worth fixing since it still discarded a usable mean. 4 new
+# tests (NA-SE-preserves-mean at default min_phi; large-finite-variance-preserves-mean at
+# min_phi=0, restoring the historical case; genuinely-unusable-mean gets true Jeffreys).
+# devtools::test() 445/445 (up from 435), check() clean. Soundness-review doc reclassified
+# item 6 NO->CONDITIONAL (fixed); 8 of 16 H-priority items now addressed. Previous update,
+# same day: generate_undetected_diversity()'s
+# item-7 soundness finding (global_floor_beta, N_total pooled across taxonomic groups diluting
+# the undetected-species floor for a minority group) is now mitigated by REUSING
+# train_biodiversity_model_by_group()'s infrastructure: each per-group biofreq_model already
+# carries its own correctly-scoped N_total, so calling generate_undetected_diversity() once per
+# group (already demonstrated in the real-data test below) gives an automatically
+# group-appropriate floor -- no new code, docs-only update pointing at the concrete tool, with a
+# real confirmed number (pooling gives zooplankton a floor ~34x too low vs. its own group's true
+# effort, on real PtConception 18S data). devtools::check() clean (docs-only). Previous update,
+# same day: real-data testing
+# against actual PtConception 18S occurrences (156,210 rows, real 11-way sampling_group
+# classification) surfaced two real bugs beyond the empty-string-taxonomy one below:
+# (1) compute_adaptive_sampling_groups() -- FIXED, see that entry below. (2)
+# train_biodiversity_model_by_group() had no tryCatch() around its per-group fit, so one
+# group's failure crashed the whole call, discarding every other group's result --
+# FIXED by wrapping each group's prepare_model_dataframe()+train_biodiversity_model()
+# call in tryCatch(), dropping failed groups with a warning naming them (mirrors the
+# protection the real workflow script's own manual loop already had). Re-run against
+# real data post-fix: of 8 real groups, 3 fit cleanly (macroinvertebrates,
+# other_vascular_plants, zooplankton); macroalgae/sea_grasses hit the known
+# single-habitat-level "contrasts" error (real data, not synthetic); meiofauna/
+# parasites/phytoplankton have too few raw records (1-5) to clear effort_threshold.
+# Real, concrete confirmation that per-group effort denominators actually matter:
+# at site Grid_32p0_m118p4, old pooled n_total_at_site=550 vs. new per-group values
+# macroalgae=218/macroinvertebrates=328/sea_grasses=4 (~137x difference for
+# sea_grasses). devtools::test() 435/435 (up from 423), check() clean. Previous
+# update, same day: compute_adaptive_sampling_groups(): automates the sampling_group classification
+# (previously always hand-built, e.g. the real 18S workflow's manual 11-way case_when())
+# by greedily merging taxa up a rank hierarchy (default order -> class -> phylum) until
+# each group's mean per-site record count clears a minimum viable N, never crossing the
+# ceiling rank. "Stratum collapsing" from survey methodology; structurally a bottom-up
+# mirror of TaxaAssign::join_priors()'s existing top-down dark-diversity recursion. Found
+# and fixed a real bug during testing (list[[NA]] returns NULL, not the actual element,
+# breaking NA-taxonomy handling) via deliberate smoke-testing before writing formal tests.
+# devtools::test() 423/423 (up from 401), check() clean. See session notes below for the
+# design discussion that led here. Previous update, 2026-07-10 (Session 149 continued --
+# prepare_model_dataframe() gains
+# sampling_group_col (group-aware n_total_at_site); train_biodiversity_model() now refuses
+# to fit against multi-group data; new train_biodiversity_model_by_group() orchestrates
+# per-group fitting. This is the code-level enforcement of the long-documented "Shared
+# effort assumption" (previously advisory prose only). Applied to the real PtConception 18S
+# workflow (11 sampling groups). devtools::test() 401/401 (up from 383), check() clean. See
+# session notes below for the full record, including the investigation confirming this had
+# never actually been fixed before (only documented) despite the user's recollection of
+# prior discussion. Earlier same-day: generate_undetected_diversity() gains a
+# documentation-only note on the domestic/synanthropic species floor artifact, recommending
+# occurrence-data augmentation rather than a code fix; see session notes below. Session 2026-07-03
+# -- habitat_col = NULL support added to optimize_grid_size()/prepare_model_dataframe()/train_biodiversity_model()/generate_undetected_diversity()/generate_full_priors() -- fixes a real Tier 2 fitting bug found testing a single-observation prior pipeline. SAME session, second bug found re-verifying the first fix: theta_epsilon's singleton-mirror auto-raise was clipping ALL tiers' predictions instead of just Tier 2, flattening real Tier 1 differentiation -- fixed by scoping the raised floor to Tier 2 only. See session notes below. Session 129 — screen_spatial_formula()/generate_full_priors() fixed to handle zero-Tier-1-species real data instead of crashing; non-ASCII em-dash in generate_undetected_diversity() fixed)
 
 ---
 
@@ -23,8 +85,10 @@ and prior generation only.
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `create_sites_from_grid()` | Snap lat/lon to grid cells; add `lat_r`, `lon_r`, `grid_id` | Complete | R/create_sites_from_grid.R |
-| `prepare_model_dataframe()` | Aggregate occurrences to species × site-habitat counts; zero-fill; scale covariates | Complete | R/prepare_model_dataframe.R |
-| `train_biodiversity_model()` | Fit Tier 1/2 binomial GLMM; return `biofreq_model` S3 object | Complete | R/train_biodiversity_model.R |
+| `prepare_model_dataframe()` | Aggregate occurrences to species × site-habitat counts; zero-fill; scale covariates. **Session 149:** `sampling_group_col` (default `NULL`) computes `n_total_at_site` within each group rather than pooling all taxa -- the code-level fix for the long-documented-but-unenforced "Shared effort assumption" (e.g. don't mix phytoplankton counts with vertebrate counts on one denominator). | Complete | R/prepare_model_dataframe.R |
+| `train_biodiversity_model()` | Fit Tier 1/2 binomial GLMM; return `biofreq_model` S3 object. **Session 149:** refuses to fit against data whose `sampling_group` column (from `prepare_model_dataframe(sampling_group_col=)`) spans more than one value -- use `train_biodiversity_model_by_group()` instead. | Complete | R/train_biodiversity_model.R |
+| `train_biodiversity_model_by_group()` | **Session 149, new.** Splits raw occurrence data by `sampling_group_col` and runs `prepare_model_dataframe()` + `train_biodiversity_model()` once per group (each with its own effort denominator and covariate scaling); returns a named list of `biofreq_model` objects. Recommended entry point for broad-marker data (e.g. 18S) spanning multiple detection processes. Each group's fit is wrapped in `tryCatch()` (added after real-data testing found a single failing group crashed the whole call) -- failed groups are dropped with a `warning()` naming them, not fatal. | Complete | R/train_biodiversity_model_by_group.R |
+| `compute_adaptive_sampling_groups()` | **Session 149, new.** Automated alternative to hand-classifying `sampling_group`: greedily merges taxa up a taxonomic rank hierarchy (`rank_system`, finest first, e.g. `c("order","class","phylum")`) until each group's mean per-site record count clears `min_n`, never merging across the ceiling rank (default phylum). Analogous to "stratum collapsing" in survey methodology; structurally similar to `TaxaAssign::join_priors()`'s hierarchical dark-diversity grouping but merges bottom-up on a sample-size criterion rather than descending top-down on singleton presence. Groups still below `min_n` even at the ceiling are finalized anyway (never escalated further) and flagged via `sampling_group_below_min_n`. Feed its output into `prepare_model_dataframe(sampling_group_col=)`/`train_biodiversity_model_by_group()` the same as a manually-supplied grouping. | Complete | R/compute_adaptive_sampling_groups.R |
 | `generate_undetected_diversity()` | Tier 3 proxy priors: singleton mirrors + global floor | Complete | R/generate_undetected_diversity.R |
 | `generate_full_priors()` | Predict theta at all taxon × site × habitat; return Beta(alpha, beta) prior table | Complete | R/generate_full_priors.R |
 
@@ -111,6 +175,12 @@ and prior generation only.
   ```
 
 ### `generate_undetected_diversity(model_obj, taxonomy = NULL, jeffreys_threshold = 2L, singleton_ess = 2L)`
+- **Multi-taxonomic-group markers (Session 149):** `N_total`-based global floor is diluted for
+  a minority group when `model_obj` pools multiple detection-process groups. Fixed via reuse,
+  not new code: call `train_biodiversity_model_by_group()` and run this function once per
+  returned model instead of once on a pooled model — each group's own correctly-scoped
+  `N_total` gives an automatically group-appropriate floor. See `@details` in the function's
+  own roxygen for a real confirmed number (~34x dilution on real PtConception 18S data).
 - Input: `biofreq_model` object.
 - No habitat column on singleton-mirror/global-floor rows when `model_obj` was trained with
   `habitat_col = NULL`.
@@ -128,7 +198,15 @@ and prior generation only.
 - Alpha/beta via moment-matching; phi capped at `1 / grid_var` (Tier 1 `taxon_name:grid_id` variance).
 - **`min_phi`** (default 2): phi floor. When the phi cap is very low (high grid variance), prevents modelled priors from becoming so diffuse that MC posterior simulation is unstable and modelled priors become less informative than dark-diversity fallbacks. Matches `singleton_ess` default in `generate_undetected_diversity()`.
 - **`theta_epsilon` auto-raise (Session 108):** When `undetected` is supplied and contains singleton-mirror rows, `theta_epsilon` is automatically raised to `mean(alpha/(alpha+beta))` across those rows if that value exceeds the default `1e-6`. This data-derived floor ensures Tier 2 sparse species (detected at least once in the system) always receive priors above the dark-diversity floor computed in `join_priors()`. Root cause fixed: a Tier 2 singleton with predicted theta ≈ 1e-6 was being promoted to dark_mean by `join_priors()`, producing priors identical to undetected species (e.g. `Syngnathus auliscus` vs `S. caribbaeus`). With the raise: `singleton_mirror_floor > dark_mean` (because dark_mean averages singleton mirrors + global floor, which is lower), so Tier 2 priors survive the promotion check unchanged.
-- Jeffreys fallback `Beta(0.5, 0.5)` when phi <= 0; flagged in `jeffreys_fallback` column.
+- **Variance fallback (Session 149):** when phi (precision) is unusable (<=0 or non-finite --
+  with `min_phi > 0`, the default, this is now almost always a non-finite SE, since the
+  finite-variance case is already rescued by the `min_phi` floor), the row gets a diffuse
+  Beta at the model's own predicted mean (concentration `min_phi`) if that mean is finite,
+  or true Jeffreys `Beta(0.5, 0.5)` only if the mean itself is also unusable. Flagged in
+  `jeffreys_fallback` column either way. Previously always used `Beta(0.5, 0.5)`, discarding
+  a real (usually low-theta) mean estimate for an agnostic mean of 0.5 -- confirmed via real
+  PtConception 18S data that this fires 0/1200 rows with defaults, since `min_phi` already
+  neutralizes the common finite-variance case; the fix protects the rarer non-finite-SE case.
 - Appends `undetected` rows if supplied. Singleton-mirror rows in `undetected` carry `source_taxon_name` (Session 117); this column is preserved in the output and used by `join_priors(singleton_taxonomy=)` to re-join taxonomy for hierarchical group priors.
 
 ### `optimize_grid_size(observation_data, n_covariates, protected_habitat = NULL, min_s_threshold = 5, min_N_threshold = 10, min_distinct_locs = 20, min_locs_per_habitat = 3, min_grid = 0.1, max_grid = 1.0, step_grid = 0.05, lat_col = "decimalLatitude", lon_col = "decimalLongitude", species_col = "taxon_name", habitat_col = "main_habitat", weights = c(resolution = 0.4, quality = 0.4, stability = 0.2))`
@@ -197,7 +275,7 @@ Tibble, one row per taxon × site × habitat (plus Tier 3 proxies):
 | `observed_in_habitat` | logical | TRUE if taxon ever recorded in this habitat in training data |
 | `extrapolation_warning` | logical | TRUE if any covariate |z| > 3 at this site |
 | `undetected_type` | character | NA (modelled); `"singleton_mirror"`; `"global_floor"` |
-| `jeffreys_fallback` | logical | TRUE if Jeffreys Beta(0.5, 0.5) used (variance too large) |
+| `jeffreys_fallback` | logical | TRUE if the variance/SE was unusable here. **Session 149:** if the model's own predicted mean was still finite, the row gets a diffuse Beta at that mean (concentration `min_phi`), not automatically `Beta(0.5,0.5)`; true Jeffreys `Beta(0.5,0.5)` is used only when the mean itself was also unusable. |
 
 ---
 
@@ -312,6 +390,219 @@ is a malformed filename in `tests/testthat/` — investigate and rename before r
 ---
 
 ## Session Notes
+
+**Session 149 (2026-07-10): domestic/synanthropic species documentation note**
+
+Prompted by the ecosystem statistical soundness review's dark-diversity-floor finding
+(`ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`): GBIF/iNaturalist-derived
+occurrence data structurally under-index captive/domestic organisms, so a domestic
+species with no detections gets the same tiny global-floor prior as a genuinely
+implausible candidate. The user's design call: this is a training-data problem, not
+something `generate_undetected_diversity()` can fix on its own (it has no way to
+distinguish "genuinely undetected" from "under-counted by this data source") -- the
+right fix is a documentation note telling users to augment their occurrence data with
+known local domestic-species presence before training, if relevant to their study.
+`generate_undetected_diversity()` gained a new `@section Domestic/synanthropic species`
+roxygen block explaining this at the actual point where the floor is computed, and
+pointing to `TaxaFlag::add_posthoc_assessment(domestic_taxa = ...)` (added same session)
+for flagging the resulting low-prior-vs-strong-likelihood contrast when augmentation
+isn't practical. Docs-only, no behavior change: `devtools::test()` 383/383 unchanged,
+`devtools::check()` 0/0/1 (pre-existing clock-check NOTE). See `TaxaFlag/CLAUDE.md`'s
+own Session 149 note for the full cross-package record.
+
+**Session 149 continued (same day): group-aware effort denominators -- the "Shared
+effort assumption" is now enforced, not just documented.**
+
+Sixth H-priority item from the soundness-review walk-through:
+`train_biodiversity_model::tier1_binomial_glmm` treats `n_species/n_total_at_site` as
+an equal-detectability community sample, and `n_total_at_site` is pooled across every
+taxon in the input data regardless of detection process. The user recalled discussing
+this before, specifically in the context of the PtConception 18S workflow mixing
+phytoplankton counts with vertebrate counts, and asked to verify (not assume) what had
+actually been done before proceeding, to avoid duplicating work.
+
+**Investigation (via a dedicated Explore agent) found:** the exact file recalled
+(`PtConceptionWorkflow_18S_phytoplankton.R`) no longer exists; the real script with this
+scenario is `PtConceptionWorkflow_18S_2.R` (outside this monorepo, at
+`~/My Drive/Rscripts/eDNA/PtConception/`), which computes an 11-way `sampling_group`
+classification (phytoplankton, fishes, birds_mammals, macroalgae, zooplankton, parasites,
+meiofauna, terrestrial_arthropods, macroinvertebrates, sea_grasses, other_vascular_plants)
+but uses it **only** to split output CSVs after modelling -- never to split the data
+before `prepare_model_dataframe()`/`train_biodiversity_model()`, which is called once,
+pooled, across all 11 groups. The package's own "Shared effort assumption" docs (Session
+108) already use phytoplankton-vs-bird-point-counts as their own illustrative example of
+what not to do -- but until now this was advisory prose only, never enforced anywhere,
+and no memory or session note recorded ever actually fixing this specific case. Confirmed
+safe to proceed without duplicating prior work.
+
+**Package-level fix:**
+- `prepare_model_dataframe()` gains `sampling_group_col` (default `NULL`). When supplied,
+  the function splits `data` by that column and runs its existing (unmodified)
+  single-group aggregation logic on each split independently, then recombines with a
+  `sampling_group` output column -- deliberately not attempting to make a single shared
+  `tidyr::complete()` call respect group boundaries, which would risk re-introducing
+  cross-group zero-fill contamination (a phytoplankton taxon zero-filled into a
+  vertebrate-group site row, or vice versa).
+- `train_biodiversity_model()` now errors if its input carries a `sampling_group` column
+  spanning more than one value -- turning the "shared effort assumption" from a
+  recommendation a caller could silently ignore into an enforced guard. Only fires when
+  such a column is present (i.e. the data came from
+  `prepare_model_dataframe(sampling_group_col=)`); ungrouped callers are unaffected.
+- New `train_biodiversity_model_by_group()` orchestrates the recommended path end to end:
+  splits raw occurrence data by group, calls `prepare_model_dataframe()` +
+  `train_biodiversity_model()` independently per group (each gets its own correctly-scoped
+  `scale_params`, not a combined-then-resplit set that would lose the attribute), and
+  returns a named list of `biofreq_model` objects. Deliberately does *not* reuse
+  `prepare_model_dataframe(sampling_group_col=)`'s combined output internally, to sidestep
+  attribute-loss-on-subset entirely -- that combined-output path remains available as an
+  independent, standalone capability for exploration/diagnostics.
+
+14 new tests across `test-prepare_model_dataframe.R` and the new
+`test-train_biodiversity_model_by_group.R` (group-scoped `n_total_at_site` computed
+correctly and NOT pooled; no cross-group zero-fill; `NULL` default fully backward
+compatible; missing-column and single-group-warning validation; `train_biodiversity_model()`
+itself refuses multi-group data). `devtools::test()`: 401/401 passing (0 failures, up from
+383). `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Applied to the real workflow** (per the user's explicit request, "both -- package fix,
+then apply it to the real workflow"): `PtConceptionWorkflow_18S_2.R` rewritten so Step 5
+now calls `prepare_model_dataframe(sampling_group_col = "sampling_group")` and loops
+`screen_spatial_formula()` once per group (wrapped in `tryCatch()`, since several of the
+11 groups -- e.g. `sea_grasses`, `parasites` -- are plausibly too sparse for the full
+spatial formula to converge, a risk that didn't exist before when there was only ever one
+combined fit), collecting results into a named `model_fits` list. `generate_undetected_
+diversity()`/`generate_full_priors()` also now run once per group against that group's own
+site-data slice, then `dplyr::bind_rows()`d into the same `priors_combined`/
+`taxaexpect_priors` objects the rest of the workflow (Steps 6+) already expects unchanged
+-- downstream TaxaAssign wiring required no changes. Grid optimisation, gridding, the
+focal-site grid-cell lookup, and the Moran spatial basis are all still computed once
+(shared spatial structure, independent of sampling group). Fixed one leftover reference to
+the old singular `model_fit` object further down the script (a run-metadata summary block)
+to sum Tier 1/2 counts across all groups' models instead. Verified the edited script parses
+cleanly (`parse()`); **not run live** against real GBIF/PtConception data this session --
+that requires live API calls and interactive Shiny gadgets (per this workflow's own
+established pattern), left for the user to run. This script is not under version control
+(outside the monorepo, no git), so there is no diff/rollback via git if a revert is ever
+wanted -- flagging this since it differs from every other edit this session.
+
+**Session 149 continued once more (same day): compute_adaptive_sampling_groups() --
+automating the manual sampling_group classification, prompted by a design discussion
+about how to choose the denominator N well.**
+
+After finishing the `sampling_group_col`/`train_biodiversity_model_by_group()` fix above,
+the user pushed on a real follow-up question: choosing a good detection-process grouping
+involves two competing goals -- (1) enough sample size in the denominator to trust an
+estimate, and (2) not mixing genuinely different detection processes ("apples and
+oranges") -- and asked whether a grouping could be computed automatically by starting at
+a fine taxonomic rank and escalating to a coarser one only where a candidate group's
+sample size is too thin, rather than requiring a hand-built classification (like the real
+PtConception 18S workflow's 11-way manual `case_when()`) every time.
+
+**Design worked through explicitly before coding:** confirmed this is conceptually
+different from (not solved by) either `sampling_group_col` (which answers "were these
+taxa even measured comparably," a domain-knowledge question no sample-size check can
+answer) or `generate_undetected_diversity()`'s `N_total` stratification (item #7 in the
+soundness review, not yet reached -- a genuinely analogous sample-size problem, but for
+undetected-species floor priors, not the Tier 1/2 GLMM denominator). Landed on a
+precedented pattern: "stratum collapsing" from survey methodology (merge an
+under-sized stratum with an adjacent one until it's viable), implemented as a bottom-up
+mirror of `TaxaAssign::join_priors()`'s existing top-down `.compute_dark_diversity_groups()`
+recursion (phylum -> genus), but merging on a sample-size criterion instead of
+singleton presence.
+
+**Implementation:** `compute_adaptive_sampling_groups(data, rank_system = c("order",
+"class", "phylum"), min_n = 100, grid_col = "grid_id", habitat_col = NULL)`. At each rank
+(finest to the ceiling rank, the last element of `rank_system`), every not-yet-resolved
+candidate group's mean per-site (or per site x habitat, if `habitat_col` supplied) record
+count is checked against `min_n`; groups that clear it are finalized immediately, groups
+that don't are left unresolved and picked up again at the next (coarser) rank's grouping
+-- which automatically pools exactly the taxonomically-adjacent shortfall groups, since
+they're grouped by their shared value at that coarser rank, while already-resolved finer
+groups are excluded and untouched. Never merges across the ceiling rank; a group still
+below `min_n` even there is finalized anyway (per the user's explicit choice) and flagged
+via `sampling_group_below_min_n`, never silently treated as if the floor were met.
+Rows with `NA` taxonomy at the rank currently being evaluated are held back rather than
+merged into a same-rank "NA bucket," and finalize into a single `"unknown"` group only if
+still `NA` at the ceiling.
+
+**One real bug found and fixed during testing** (a good example of why the "verify"
+convention in this codebase's checklists matters): the NA-handling path initially crashed
+with "missing value where TRUE/FALSE needed." Root cause: iterating
+`for (val_chr in names(idx_by_val))` and then indexing `idx_by_val[[val_chr]]` -- when
+`val_chr` is the literal value `NA` (the explicit NA factor level's name), `list[[NA]]`
+returns `NULL`, not the actual list element, silently breaking the lookup. Fixed by
+iterating by position (`for (i in seq_along(idx_by_val))`, `idx_by_val[[i]]`) instead of
+by name, which is unaffected by NA names. Caught by deliberately smoke-testing the NA
+path before writing formal tests, not by code review alone.
+
+22 new tests (clean resolution at the finest rank; sibling-order pooling at a shared
+class; escalation all the way to a flagged ceiling-level pool; an independently-resolved
+finer group correctly excluded from a coarser pool; the ceiling-crossing guard; both NA
+paths, including the bug above; `habitat_col`; input validation). `devtools::test()`:
+423/423 passing (up from 401), 0 failures. `devtools::check()`: 0 errors, 0 warnings, 0
+notes. Not yet wired into the real `PtConceptionWorkflow_18S_2.R` workflow (that workflow
+still uses its original manual 11-way classification) -- this is offered as an available
+alternative, not a replacement forced onto existing hand-curated groupings.
+
+**Session 149 continued yet again (2026-07-11): real-data validation of the new
+sampling-group infrastructure against actual PtConception 18S occurrences**
+
+Per the user's request to actually test the new functions (`prepare_model_dataframe(
+sampling_group_col=)`, `train_biodiversity_model_by_group()`,
+`compute_adaptive_sampling_groups()`) against real data rather than only synthetic
+fixtures, ran the full chain against
+`~/My Drive/Rscripts/eDNA/PtConception/PtCon18SSchulte_occurrences_clean.rds` (156,210
+real rows, existing real 11-way `sampling_group` classification: macroinvertebrates,
+other_vascular_plants, macroalgae, zooplankton, sea_grasses, phytoplankton, meiofauna,
+parasites).
+
+**Bug 1 (already recorded above): empty-string taxonomy in `compute_adaptive_
+sampling_groups()`** -- 13 real rows had `phylum == ""` rather than `NA`; fixed via
+`dplyr::na_if()` normalization, matching the existing `join_priors()` convention.
+
+**Bug 2: `train_biodiversity_model_by_group()` had no failure isolation between
+groups.** Running it against the real data with formula
+`cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name)`, the `macroalgae` group
+(8,463 records) got through effort filtering and tier assignment (101 Tier 1, 98 Tier
+2, 34 singletons) but then failed to fit with `Error: contrasts can be applied only to
+factors with 2 or more levels` (the same known real-data failure mode fixed for a
+different function on 2026-07-03) -- and this crashed the entire
+`train_biodiversity_model_by_group()` call, discarding every other group's result,
+including groups (`macroinvertebrates`, `zooplankton`) that would otherwise fit fine.
+This is exactly the failure mode the real `PtConceptionWorkflow_18S_2.R` workflow
+script's own manual loop already guards against with a `tryCatch()` -- that protection
+had never been added to the package function itself.
+
+**Fix:** wrapped each group's `prepare_model_dataframe()` + `train_biodiversity_model()`
+call in `tryCatch()`; a failing group is dropped (with a `message()` if `verbose=TRUE`)
+and every dropped group is named in one summary `warning()` after the loop completes.
+`@return`/new `@section` documents this. 12 new tests (11 pre-existing +1 new
+regression: one group with a single collapsed habitat level fails, the other group
+still fits and is returned). `devtools::test()`: 435/435 (up from 423).
+`devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Concrete real-data results post-fix:** of the 8 real sampling groups present after
+gridding (0.8-degree grid, 21 cells), 3 fit cleanly end-to-end --
+`macroinvertebrates` (87,665 records -> 255 Tier 1 / 412 Tier 2 / 142 singletons),
+`other_vascular_plants` (53,907 -> 141 Tier 1 / 201 Tier 2 / 51 singletons),
+`zooplankton` (4,255 -> 9 Tier 1 / 36 Tier 2 / 12 singletons). `macroalgae` and
+`sea_grasses` both hit the single-habitat-level contrasts error post-effort-filtering
+(a real, not hypothetical, data configuration). `meiofauna`, `parasites`, and
+`phytoplankton` have too few raw records (1-5 each) to clear even one effort-threshold
+cell and are excluded before a model is ever attempted -- expected given the sample
+sizes, not a bug.
+
+**Also confirmed with a real concrete number why the whole `sampling_group_col`
+mechanism matters**, not just in the abstract: at real site `Grid_32p0_m118p4`, the
+OLD pooled `n_total_at_site` was 550 (summed across every taxon regardless of
+detection process), while the NEW per-group values are `macroalgae=218`,
+`macroinvertebrates=328`, `sea_grasses=4` -- i.e. the pooled denominator overstated
+`sea_grasses`' true sampling effort by roughly 137x at that one site.
+
+Not yet done: `generate_undetected_diversity()`/`generate_full_priors()` have not yet
+been run per-group against this real data (planned next); item #7's `min_n`
+criterion for `generate_undetected_diversity()`'s own `N_total` stratification is
+still an open design question, unconfirmed by the user.
 
 **Session 77 (2026-05-19)**
 - `build_priors()`: added `census_genera` parameter (default TRUE). After Stage 1

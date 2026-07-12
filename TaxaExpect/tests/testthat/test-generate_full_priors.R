@@ -322,3 +322,72 @@ test_that("habitat_col = NULL: undetected diversity appends cleanly", {
   expect_true(nrow(undet_rows) > 0)
   expect_true(all(is.na(undet_rows$taxon_name)))
 })
+
+# =============================================================================
+# moment_match() fallback (Session 149): preserve the mean instead of
+# discarding it for an agnostic Jeffreys mean of 0.5, exercised via the Tier 2
+# empirical fallback path (predict_tier_empirical()) so theta_sd_emp can be
+# controlled directly without needing a real GLMM to produce a degenerate SE.
+# =============================================================================
+
+.make_empirical_fallback_model <- function(sd_values, mean_values = c(0.001, 0.002)) {
+  skip_if_not_installed("glmmTMB")
+  mod <- .fit_minimal_model()
+  mod$models$tier2 <- NULL
+  mod$tiers <- dplyr::bind_rows(
+    mod$tiers[mod$tiers$tier == "tier1", ],
+    tibble::tibble(taxon_name = c("Rare_probe1", "Rare_probe2"),
+                   tier = "tier2", n_detections = 1L)
+  )
+  mod$tier2_empirical <- tibble::tibble(
+    taxon_name     = c("Rare_probe1", "Rare_probe2"),
+    main_habitat   = c("Rocky", "Rocky"),
+    theta_mean_emp = mean_values,
+    theta_sd_emp   = sd_values,
+    n_detections   = 1L
+  )
+  mod
+}
+
+test_that("non-finite variance (NA SE) with default min_phi preserves the mean, not 0.5", {
+  mod <- .make_empirical_fallback_model(sd_values = c(NA_real_, 0.01))
+  out <- suppressWarnings(
+    generate_full_priors(mod, new_sites = .make_new_sites(), min_phi = 2)
+  )
+
+  row <- out[out$taxon_name == "Rare_probe1" & !is.na(out$taxon_name), ][1, ]
+  expect_true(row$jeffreys_fallback)
+  # Mean-preserving fallback at concentration min_phi=2: alpha = 0.001*2, beta = 0.999*2.
+  expect_equal(unname(row$alpha), 0.001 * 2, tolerance = 1e-8)
+  expect_equal(unname(row$beta),  0.999 * 2, tolerance = 1e-8)
+  expect_false(isTRUE(all.equal(unname(c(row$alpha, row$beta)), c(0.5, 0.5))))
+})
+
+test_that("large-but-finite variance with min_phi = 0 also preserves the mean, not 0.5", {
+  mod <- .make_empirical_fallback_model(sd_values = c(0.01, 50))
+  out <- suppressWarnings(
+    generate_full_priors(mod, new_sites = .make_new_sites(), min_phi = 0)
+  )
+
+  row <- out[out$taxon_name == "Rare_probe2" & !is.na(out$taxon_name), ][1, ]
+  expect_true(row$jeffreys_fallback)
+  # min_phi = 0 -> fallback concentration is 1 (true Jeffreys concentration),
+  # but the mean is still the model's own 0.002, not the agnostic 0.5.
+  expect_equal(unname(row$alpha), 0.002, tolerance = 1e-8)
+  expect_equal(unname(row$beta),  0.998, tolerance = 1e-8)
+})
+
+test_that("a genuinely unusable mean (NaN) still falls back to true Jeffreys Beta(0.5, 0.5)", {
+  mod <- .make_empirical_fallback_model(
+    sd_values   = c(0.01, 0.01),
+    mean_values = c(NaN, 0.002)
+  )
+  out <- suppressWarnings(
+    generate_full_priors(mod, new_sites = .make_new_sites(), min_phi = 2)
+  )
+
+  row <- out[out$taxon_name == "Rare_probe1" & !is.na(out$taxon_name), ][1, ]
+  expect_true(row$jeffreys_fallback)
+  expect_equal(unname(row$alpha), 0.5)
+  expect_equal(unname(row$beta),  0.5)
+})

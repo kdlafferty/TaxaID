@@ -349,3 +349,64 @@ test_that("habitat_col = NULL still zero-fills and scales correctly", {
   expect_equal(nrow(out), 3L * dplyr::n_distinct(input$grid_id))
   expect_true(!is.null(attr(out, "scale_params")))
 })
+
+# =============================================================================
+# sampling_group_col (Session 149: group-aware effort denominators)
+# =============================================================================
+
+# One site (g1), two sampling groups: "vertebrate" (V1, V2; 5 records total,
+# V1 x3, V2 x2) and "phytoplankton" (P1; 10 records). If pooled, n_total_at_site
+# at g1 would be 15 for every taxon; grouped, vertebrate rows should see
+# n_total_at_site = 5 and phytoplankton rows should see n_total_at_site = 10.
+.make_grouped_input <- function() {
+  data.frame(
+    grid_id      = "g1",
+    lat_r        = 34,
+    lon_r        = -120,
+    main_habitat = "Kelp",
+    taxon_name   = c(rep("V1", 3), rep("V2", 2), rep("P1", 10)),
+    sampling_group = c(rep("vertebrate", 5), rep("phytoplankton", 10)),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("sampling_group_col computes n_total_at_site within each group, not pooled", {
+  input <- .make_grouped_input()
+  out <- suppressWarnings(prepare_model_dataframe(input, sampling_group_col = "sampling_group"))
+
+  v1 <- out[out$taxon_name == "V1" & out$sampling_group == "vertebrate", ]
+  p1 <- out[out$taxon_name == "P1" & out$sampling_group == "phytoplankton", ]
+
+  expect_equal(v1$n_total_at_site, 5L)   # NOT 15 (would be, if pooled)
+  expect_equal(p1$n_total_at_site, 10L)  # NOT 15
+  expect_equal(v1$n_species, 3L)
+  expect_equal(p1$n_species, 10L)
+})
+
+test_that("sampling_group_col does not zero-fill a taxon into another group's rows", {
+  input <- .make_grouped_input()
+  out <- suppressWarnings(prepare_model_dataframe(input, sampling_group_col = "sampling_group"))
+
+  # P1 (phytoplankton-only) must not appear as a zero-filled "vertebrate" row,
+  # and V1/V2 (vertebrate-only) must not appear as zero-filled "phytoplankton"
+  # rows -- each taxon belongs to exactly one group in the output.
+  p1_groups <- unique(out$sampling_group[out$taxon_name == "P1"])
+  v1_groups <- unique(out$sampling_group[out$taxon_name == "V1"])
+  expect_equal(p1_groups, "phytoplankton")
+  expect_equal(v1_groups, "vertebrate")
+})
+
+test_that("sampling_group_col = NULL (default) is unaffected -- no sampling_group column", {
+  input <- .make_grouped_input()
+  out <- suppressWarnings(prepare_model_dataframe(input))  # sampling_group ignored as an ordinary column
+  expect_false("sampling_group" %in% names(out))
+})
+
+test_that("sampling_group_col errors when the column is missing", {
+  input <- .make_grouped_input()
+  input$sampling_group <- NULL
+  expect_error(
+    prepare_model_dataframe(input, sampling_group_col = "sampling_group"),
+    "sampling_group_col"
+  )
+})

@@ -40,6 +40,15 @@ utils::globalVariables(c(
 #'   Following Dormann et al. (2013), 0.7 is the conventional threshold
 #'   beyond which collinearity substantially inflates coefficient variance.
 #'   Default \code{0.7}.
+#' @param sampling_group_col Character or \code{NULL}. Name of a column in
+#'   \code{data} identifying which detection process/sampling method each
+#'   taxon's records came from (e.g. \code{"phytoplankton"} vs.
+#'   \code{"vertebrate"} on a broad marker). When supplied,
+#'   \code{n_total_at_site} is computed separately within each group instead
+#'   of pooling all taxa together, and the output gains a \code{sampling_group}
+#'   column. Default \code{NULL} (no grouping; existing behavior unchanged).
+#'   See the Shared effort assumption and Group-aware effort denominators
+#'   sections below.
 #'
 #' @return A tibble with one row per species \eqn{\times} site-habitat
 #'   combination (including implicit zeros). Columns are ordered as:
@@ -87,20 +96,51 @@ utils::globalVariables(c(
 #' denominators. The model would then treat effort from one survey as
 #' informative about relative abundance in the other, which is not defensible.
 #' Taxa with different detection methods should be modelled in separate
-#' \code{train_biodiversity_model()} calls.
+#' \code{train_biodiversity_model()} calls -- as of Session 149 this is no
+#' longer purely a documentation-only recommendation: see
+#' \code{sampling_group_col} below and \code{\link{train_biodiversity_model_by_group}}.
+#'
+#' @section Group-aware effort denominators (\code{sampling_group_col}, Session 149):
+#' When supplied, \code{n_total_at_site} is computed \emph{within} each
+#' \code{sampling_group_col} value at a site, instead of pooling every taxon
+#' together -- this is the code-level fix for the Shared effort assumption
+#' above, confirmed (2026-07-10) to have been previously documented only as
+#' advisory prose, never enforced anywhere, including in the one real
+#' production workflow (PtConception 18S) that actually mixes phytoplankton
+#' counts with vertebrate counts. Internally, \code{data} is split by
+#' \code{sampling_group_col} and this function's existing aggregation logic is
+#' applied to each split independently (never a shared \code{tidyr::complete()}
+#' cross-join across groups, which would itself reintroduce cross-group
+#' contamination), then the results are combined with a \code{sampling_group}
+#' column identifying each row's group. Pass the result to
+#' \code{\link{train_biodiversity_model_by_group}} to fit one model per group
+#' rather than one pooled model across all of them --
+#' \code{\link{train_biodiversity_model}} itself will refuse to fit a single
+#' model against multi-group data (see its own docs) as a safety check.
+#' Default \code{NULL}: no grouping, output and behavior unchanged from before
+#' Session 149.
 #'
 #' @seealso \code{\link{create_sites_from_grid}},
-#'   \code{\link{train_biodiversity_model}}
+#'   \code{\link{train_biodiversity_model}},
+#'   \code{\link{train_biodiversity_model_by_group}}
 #'
 #' @examples
 #' \dontrun{
 #' model_df <- prepare_model_dataframe(gridded_data,
 #'                                     covariates = c("lat_r", "lon_r"),
 #'                                     habitat_col = "main_habitat")
+#'
+#' # Group-aware effort denominators for a broad marker mixing detection
+#' # processes (e.g. 18S phytoplankton + vertebrate counts):
+#' model_df_grouped <- prepare_model_dataframe(
+#'   gridded_data,
+#'   habitat_col        = "main_habitat",
+#'   sampling_group_col = "sampling_group"
+#' )
 #' }
 #'
 #' @importFrom dplyr rename filter group_by summarise mutate left_join
-#'   distinct select ends_with across all_of as_tibble n
+#'   distinct select ends_with across all_of as_tibble n bind_rows
 #' @importFrom tidyr complete nesting replace_na
 #' @importFrom rlang sym :=
 #' @importFrom stats cor
@@ -108,7 +148,8 @@ utils::globalVariables(c(
 prepare_model_dataframe <- function(data,
                                     covariates    = c("lat_r", "lon_r"),
                                     habitat_col   = "main_habitat",
-                                    cor_threshold = 0.7) {
+                                    cor_threshold = 0.7,
+                                    sampling_group_col = NULL) {
 
   # --- Required column check --------------------------------------------------
   # habitat_col = NULL means "no habitat modeling" -- the caller has no habitat
@@ -124,6 +165,11 @@ prepare_model_dataframe <- function(data,
   if (length(missing_covs) > 0) {
     stop("prepare_model_dataframe: covariate columns not found in data: ",
          paste(missing_covs, collapse = ", "))
+  }
+
+  if (!is.null(sampling_group_col) && !sampling_group_col %in% names(data)) {
+    stop("prepare_model_dataframe: sampling_group_col '", sampling_group_col,
+         "' not found in data.")
   }
 
   # --- Multicollinearity check ------------------------------------------------
@@ -148,6 +194,15 @@ prepare_model_dataframe <- function(data,
       )
     }
   }
+
+  # --- Per-group processing (Session 149) -------------------------------------
+  # sampling_group_col: rather than teach tidyr::complete()'s zero-filling to
+  # respect group boundaries within one combined aggregation (fragile -- a
+  # shared complete() call risks re-introducing cross-group zero-fill
+  # contamination), split data by group and run the existing, already-tested
+  # single-group aggregation logic (below) on each split independently, then
+  # recombine. This guarantees n_total_at_site is never pooled across groups.
+  .run_one_group <- function(data) {
 
   # --- Internal rename --------------------------------------------------------
   # No habitat_col supplied: use a single constant internal placeholder so the
@@ -283,5 +338,19 @@ prepare_model_dataframe <- function(data,
     )
   }
 
-  return(dplyr::as_tibble(model_df))
+  dplyr::as_tibble(model_df)
+  } # end .run_one_group
+
+  if (is.null(sampling_group_col)) {
+    return(.run_one_group(data))
+  }
+
+  # --- Split by sampling group and recombine (Session 149) --------------------
+  group_splits <- split(data, data[[sampling_group_col]])
+  grouped_out  <- lapply(names(group_splits), function(g) {
+    out <- .run_one_group(group_splits[[g]])
+    out$sampling_group <- g
+    out
+  })
+  dplyr::bind_rows(grouped_out)
 }

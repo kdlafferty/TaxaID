@@ -164,6 +164,15 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #'   \code{generate_undetected_diversity()}. If \code{NULL}, singletons are
 #'   identified from \code{data} directly.
 #'
+#' @section Multi-group data is refused (Session 149):
+#' If \code{data} carries a \code{sampling_group} column (i.e. it came from
+#' \code{\link{prepare_model_dataframe}(sampling_group_col = ...)}) spanning
+#' more than one group, this function errors rather than silently fitting one
+#' pooled model across taxa detected by different processes -- see the Shared
+#' effort assumption section in \code{\link{prepare_model_dataframe}}. Use
+#' \code{\link{train_biodiversity_model_by_group}} instead. Data with no
+#' \code{sampling_group} column (the default, ungrouped path) is unaffected.
+#'
 #' @return An object of class \code{"biofreq_model"}, a named list containing:
 #'   \describe{
 #'     \item{models}{List: \code{$tier1} and \code{$tier2}, each a fitted
@@ -326,6 +335,24 @@ train_biodiversity_model <- function(data,
     stop("train_biodiversity_model: missing required columns: ",
          paste(missing_cols, collapse = ", "),
          "\nDid you run prepare_model_dataframe() first?")
+  }
+
+  # Session 149: refuse to silently pool multiple sampling groups (different
+  # detection processes, e.g. phytoplankton counts vs. vertebrate counts) into
+  # one shared n_total_at_site denominator -- see the Shared effort assumption
+  # section in prepare_model_dataframe()'s docs. Only fires when a
+  # sampling_group column is present (i.e. data came from
+  # prepare_model_dataframe(sampling_group_col = ...)) and actually spans more
+  # than one value; callers who never use groups are unaffected.
+  if ("sampling_group" %in% names(data) &&
+      dplyr::n_distinct(data$sampling_group) > 1L) {
+    stop(
+      "train_biodiversity_model: 'data' spans ", dplyr::n_distinct(data$sampling_group),
+      " sampling groups (", paste(sort(unique(data$sampling_group)), collapse = ", "), "). ",
+      "Fitting one pooled model would share n_total_at_site across taxa detected by ",
+      "different processes, which is not defensible (see the Shared effort assumption ",
+      "section in ?prepare_model_dataframe). Use train_biodiversity_model_by_group() instead."
+    )
   }
 
   if (!inherits(formula, "formula")) {

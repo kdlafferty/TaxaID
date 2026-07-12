@@ -723,7 +723,10 @@ message("Next: pass taxaexpect_priors to TaxaAssign::join_priors() for posterior
 #                             site
 #   undetected_type         -- character; NA (modelled); "singleton_mirror";
 #                             "global_floor"
-#   jeffreys_fallback       -- logical; TRUE if Jeffreys Beta(0.5, 0.5) used
+#   jeffreys_fallback       -- logical; TRUE if the variance/SE was unusable
+#                             here. Diffuse Beta at the model's own mean if
+#                             that mean was still finite; true Jeffreys
+#                             Beta(0.5, 0.5) only if the mean was also unusable
 #   source_taxon_name       -- character; for singleton-mirror rows, the
 #                             observed species the proxy was derived from
 #                             (Session 117); NA for modelled rows and the

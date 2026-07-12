@@ -127,8 +127,23 @@ utils::globalVariables(c(
 #' model. This is principled: the model's own estimate of grid-level
 #' uncertainty sets the ceiling on prior concentration. No user input needed.
 #'
-#' If phi <= 0 after capping (variance exceeds Bernoulli maximum), the row
-#' receives alpha = beta = 0.5 (Jeffreys prior) and a warning flag.
+#' If phi <= 0 after capping and flooring at \code{min_phi} (variance exceeds
+#' the Bernoulli maximum, or the SE prediction itself was non-finite -- with
+#' \code{min_phi > 0}, the default, the finite "too much variance" case is
+#' already rescued by the floor, so this branch is reached almost exclusively
+#' via a non-finite SE), the fallback (Session 149) preserves the model's
+#' point-estimate mean \code{m} rather than discarding it for the agnostic
+#' Jeffreys mean of 0.5 -- 0.5 is a poor stand-in for what a Tier 1/2
+#' prediction almost always actually is (a low-theta species, not a coin
+#' flip). The row instead receives a diffuse Beta at that same mean,
+#' concentration \code{min_phi} (\code{alpha = m * min_phi},
+#' \code{beta = (1 - m) * min_phi}), with \code{jeffreys_fallback = TRUE}
+#' flagging that the variance side of the moment-match was unusable here. A
+#' true, fully agnostic Jeffreys prior (\code{alpha = beta = 0.5}) is used
+#' only when the mean itself is also non-finite (a total prediction failure,
+#' not just an unreliable SE) -- confirmed empirically not to fire on real
+#' PtConception 18S data (0/1200 rows) with defaults, since \code{min_phi}'s
+#' floor already handles the ordinary finite-variance case.
 #'
 #' \strong{Covariate scaling:}
 #' \code{new_sites} is scaled using \code{scale_params} stored in
@@ -339,7 +354,7 @@ generate_full_priors <- function(model_obj,
   moment_match <- function(m, v, epsilon, max_phi = NULL, min_phi = 0) {
     m        <- pmax(pmin(m, 1 - epsilon), epsilon)
     phi      <- m * (1 - m) / v - 1
-    # Cap phi at the model-derived ceiling before checking for Jeffreys fallback.
+    # Cap phi at the model-derived ceiling before checking for the fallback below.
     # This prevents astronomically tight priors when theta is near 0 or 1,
     # where m*(1-m) is tiny and phi explodes even with a modest logit-SE.
     if (!is.null(max_phi) && is.finite(max_phi))
@@ -349,14 +364,36 @@ generate_full_priors <- function(model_obj,
     # posterior simulation is unstable and modelled priors become less informative
     # than dark-diversity fallbacks. The floor guarantees that species observed in
     # training data always have more informative priors than undetected species.
+    # With min_phi > 0 (the generate_full_priors() default), this floor already
+    # rescues every *finite* phi <= 0 case (the "too much variance" scenario) --
+    # the fallback below can then only be reached via a non-finite phi (NA/NaN/Inf
+    # propagated from an unusable SE), a narrower and rarer failure than a plain
+    # large-but-finite variance. With min_phi = 0, the finite phi <= 0 case is
+    # reachable again and hits the same fallback.
     if (min_phi > 0)
       phi    <- pmax(phi, min_phi)
-    # phi <= 0: variance >= Bernoulli maximum, too uncertain for Beta.
-    # Fall back to Jeffreys prior Beta(0.5, 0.5), the standard non-informative
-    # prior for a Bernoulli parameter (Jeffreys, 1946).
-    jeffreys <- phi <= 0 | !is.finite(phi)
-    alpha    <- dplyr::if_else(jeffreys, 0.5, m * phi)
-    beta     <- dplyr::if_else(jeffreys, 0.5, (1 - m) * phi)
+    # phi <= 0, or non-finite (NA/NaN/Inf: a genuinely failed/unreliable SE
+    # prediction for this row): the variance side of the moment-match is
+    # unusable. Session 149 fix -- do NOT discard the mean `m` for an agnostic
+    # Jeffreys mean of 0.5: `m` is usually still a valid, real point estimate
+    # (glmmTMB's Wald SE computation can fail/return NaN for a specific
+    # new-level combination even when the fixed+random-effect mean prediction
+    # itself is fine), and 0.5 is wildly wrong for what a Tier 1/2 species
+    # prediction almost always actually is -- a low-theta species, not a coin
+    # flip. Fall back to a diffuse Beta AT THE SAME MEAN using min_phi as the
+    # concentration (the same "informative-enough floor" value used
+    # everywhere else in this function) when the mean is itself finite; only
+    # degrade to a true, fully agnostic Jeffreys(0.5, 0.5) -- the standard
+    # non-informative prior for a Bernoulli parameter (Jeffreys, 1946) -- when
+    # even the mean is unusable (a total prediction failure, not just an
+    # unreliable SE).
+    jeffreys      <- phi <= 0 | !is.finite(phi)
+    mean_usable   <- is.finite(m)
+    fallback_conc <- if (min_phi > 0) min_phi else 1
+    fb_mean       <- dplyr::if_else(mean_usable, m, 0.5)
+    fb_conc       <- dplyr::if_else(mean_usable, fallback_conc, 1)
+    alpha    <- dplyr::if_else(jeffreys, fb_mean * fb_conc, m * phi)
+    beta     <- dplyr::if_else(jeffreys, (1 - fb_mean) * fb_conc, (1 - m) * phi)
     list(alpha = alpha, beta = beta, jeffreys_fallback = jeffreys)
   }
 
@@ -624,10 +661,12 @@ generate_full_priors <- function(model_obj,
   if (any(predictions$jeffreys_fallback, na.rm = TRUE)) {
     n_jf <- sum(predictions$jeffreys_fallback, na.rm = TRUE)
     warning(sprintf(
-      "generate_full_priors: %d row(s) had prediction variance >= Bernoulli ",
+      "generate_full_priors: %d row(s) had an unusable prediction variance ",
       n_jf
-    ), "maximum and received Jeffreys fallback prior Beta(0.5, 0.5). ",
-    "This may indicate extrapolation beyond the training range.",
+    ), "(>= Bernoulli maximum, or a non-finite SE) and received a diffuse ",
+    "fallback prior -- at the model's own predicted mean when that mean was ",
+    "itself finite, or the fully agnostic Jeffreys Beta(0.5, 0.5) only when ",
+    "it was not. This may indicate extrapolation beyond the training range.",
     call. = FALSE)
   }
 

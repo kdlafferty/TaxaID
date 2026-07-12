@@ -177,6 +177,17 @@ detection process should be modelled separately and its priors passed to
 TaxaAssign independently. See
 \code{\link{prepare_model_dataframe}} for further discussion.
 }
+\section{Multi-group data is refused (Session 149)}{
+
+If \code{data} carries a \code{sampling_group} column (i.e. it came from
+\code{\link{prepare_model_dataframe}(sampling_group_col = ...)}) spanning
+more than one group, this function errors rather than silently fitting one
+pooled model across taxa detected by different processes -- see the Shared
+effort assumption section in \code{\link{prepare_model_dataframe}}. Use
+\code{\link{train_biodiversity_model_by_group}} instead. Data with no
+\code{sampling_group} column (the default, ungrouped path) is unaffected.
+}
+
 \examples{
 \dontrun{
 model_fit <- train_biodiversity_model(
