@@ -33,6 +33,28 @@ utils::globalVariables(character(0))
 #' more than twice the sequence-match density as the winner -- the winner won
 #' primarily via prior strength.
 #'
+#' @section Domestic/synanthropic species caveat (Session 149):
+#' GBIF- and iNaturalist-derived occurrence priors structurally under-index
+#' captive/domestic organisms (pets, livestock) -- a data-curation property of
+#' those sources, not a modelling choice. A domestic species can therefore
+#' land in \code{tier2}/\code{tier3_undetected} (an artificially low prior)
+#' even when the sequence-match or image/acoustic evidence for it is strong,
+#' producing an \code{"unexpected"}/\code{"unprecedented"} label that looks
+#' like a suspicious call but is really just a database gap -- likelihood
+#' (from e.g. NCBI BLAST or iNaturalist image recognition, both of which
+#' handle domestic species classification fine) contrasting with a low prior
+#' that came from an occurrence database with no domestic-species coverage.
+#' Passing \code{domestic_taxa} re-labels exactly this combination (strong
+#' likelihood + a low-tier prior) to \code{"domestic_prior_caveat"} instead,
+#' so a reviewer sees "trust the ID, question the rarity" rather than a
+#' generic low-plausibility flag. This is deliberately conservative: it only
+#' fires when the prior is expected to be an under-count (see
+#' \code{domestic_prior_source}), never invents or elevates a prior itself.
+#' If your prior pipeline already augments occurrence data with known local
+#' domestic/synanthropic presence (rather than relying on raw GBIF/iNat), set
+#' \code{domestic_prior_source = "augmented"} to disable this re-labelling,
+#' since the low-tier signal is then informative on its own.
+#'
 #' @param consensus_df Data frame.  Output of
 #'   \code{TaxaAssign::posterior_consensus()}, containing at minimum
 #'   \code{winner_likelihood_col}, \code{consensus_taxon_col}, and
@@ -61,12 +83,30 @@ utils::globalVariables(character(0))
 #' @param finest_rank Character.  The rank at which tier lookups are valid
 #'   (default \code{"species"}).  Rows where \code{consensus_rank} differs
 #'   receive \code{"vague_rank"}.
+#' @param domestic_taxa Character vector or \code{NULL} (default).  Taxon
+#'   names (matched against \code{consensus_taxon_col}) that are domestic or
+#'   synanthropic for your study system (e.g. \code{"Felis catus"},
+#'   \code{"Canis familiaris"}, \code{"Bos taurus"}) -- there is no built-in
+#'   default list, since what counts as "domestic" is study-system-specific.
+#'   \code{NULL} disables this feature entirely (matches
+#'   \code{\link{flag_handler}}'s \code{handler_taxa} convention). See the
+#'   Domestic/synanthropic species caveat section below.
+#' @param domestic_prior_source Character.  One of \code{"wild"} (default) or
+#'   \code{"augmented"}. \code{"wild"} assumes \code{tiers} came from a raw
+#'   occurrence database (GBIF/iNaturalist) with no domestic-species
+#'   augmentation, so a strong-likelihood + low-tier domestic-species row is
+#'   re-labelled \code{"domestic_prior_caveat"}. \code{"augmented"} means the
+#'   prior pipeline already incorporated known local domestic/synanthropic
+#'   presence, so the low tier is treated as informative and no re-labelling
+#'   happens. Ignored when \code{domestic_taxa} is \code{NULL}.
 #'
 #' @return \code{consensus_df} with one column appended:
 #' \describe{
 #'   \item{\code{posthoc_assessment}}{Character.  One of: \code{"sensible"},
 #'     \code{"limited_evidence"}, \code{"unexpected"}, \code{"suspect"},
-#'     \code{"unprecedented"}, \code{"vague_rank"}, \code{"modeled"}.}
+#'     \code{"unprecedented"}, \code{"vague_rank"}, \code{"modeled"}, and
+#'     (only when \code{domestic_taxa} is supplied)
+#'     \code{"domestic_prior_caveat"}.}
 #' }
 #'
 #' @examples
@@ -89,6 +129,22 @@ utils::globalVariables(character(0))
 #' )
 #' add_posthoc_assessment(cons, tiers)
 #'
+#' # Domestic-species caveat: a cat with a strong ID but a database-driven
+#' # low prior gets a distinct label instead of looking "suspect".
+#' cons2 <- data.frame(
+#'   observation_id    = c("obs7", "obs8"),
+#'   consensus_taxon   = c("Felis catus", "Made-up sp."),
+#'   consensus_rank    = c("species", "species"),
+#'   winner_likelihood = c(0.90, 0.90),
+#'   stringsAsFactors  = FALSE
+#' )
+#' tiers2 <- data.frame(
+#'   taxon_name = character(0),
+#'   model_tier = character(0),
+#'   stringsAsFactors = FALSE
+#' )
+#' add_posthoc_assessment(cons2, tiers2, domestic_taxa = "Felis catus")
+#'
 #' @seealso \code{\link{flag_contaminant}}, \code{\link{flag_handler}},
 #'   \code{\link{review_assignments}}
 #' @export
@@ -101,7 +157,11 @@ add_posthoc_assessment <- function(
     taxon_col             = "taxon_name",
     tier_col              = "model_tier",
     likelihood_threshold  = 0.5,
-    finest_rank           = "species") {
+    finest_rank           = "species",
+    domestic_taxa         = NULL,
+    domestic_prior_source = c("wild", "augmented")) {
+
+  domestic_prior_source <- match.arg(domestic_prior_source)
 
   # ---- validate ----------------------------------------------------------------
   if (!is.data.frame(consensus_df))
@@ -122,6 +182,9 @@ add_posthoc_assessment <- function(
       is.na(likelihood_threshold) || likelihood_threshold <= 0 ||
       likelihood_threshold >= 1)
     stop("add_posthoc_assessment: 'likelihood_threshold' must be a single number in (0, 1).",
+         call. = FALSE)
+  if (!is.null(domestic_taxa) && !is.character(domestic_taxa))
+    stop("add_posthoc_assessment: 'domestic_taxa' must be a character vector or NULL.",
          call. = FALSE)
 
   # ---- build tier lookup -------------------------------------------------------
@@ -168,6 +231,20 @@ add_posthoc_assessment <- function(
     t3 <- active_mask & !is.na(tier_vec) & !tier_vec %in% c("tier1", "tier2")
     assessment[t3 &  lik_ok] <- "unprecedented"
     assessment[t3 & !lik_ok] <- "suspect"
+
+    # Domestic/synanthropic species caveat (Session 149): a strong-likelihood
+    # call to a known domestic taxon that landed in tier2/tier3 purely
+    # because GBIF/iNat under-index captive organisms is not the same kind
+    # of "unexpected"/"unprecedented" as a genuinely surprising wild
+    # detection -- re-label it distinctly rather than let it look equally
+    # suspect. Deliberately narrow: only fires when the likelihood itself is
+    # strong (the ID is trustworthy) and the low tier is the thing in
+    # question, and only when the caller confirms the prior source didn't
+    # already account for domestic species.
+    if (!is.null(domestic_taxa) && domestic_prior_source == "wild") {
+      domestic_mask <- active_mask & lik_ok & (t2 | t3) & taxon %in% domestic_taxa
+      assessment[domestic_mask] <- "domestic_prior_caveat"
+    }
   }
 
   consensus_df$posthoc_assessment <- assessment

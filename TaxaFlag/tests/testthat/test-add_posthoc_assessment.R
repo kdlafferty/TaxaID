@@ -202,3 +202,52 @@ test_that("stops on invalid likelihood_threshold", {
     "single number in"
   )
 })
+
+# ---- domestic-species caveat (Session 149) --------------------------------------
+
+test_that("domestic_taxa = NULL (default) leaves tier2/tier3 classification unchanged", {
+  # "Rare sp." is tier2 + lik_ok (0.70) -> "unexpected" without the feature
+  out <- add_posthoc_assessment(.make_cons(), .make_tiers())
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs5"], "unexpected")
+})
+
+test_that("domestic_taxa re-labels a strong-likelihood tier2 domestic species", {
+  out <- add_posthoc_assessment(.make_cons(), .make_tiers(), domestic_taxa = "Rare sp.")
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs5"], "domestic_prior_caveat")
+})
+
+test_that("domestic_taxa re-labels a strong-likelihood tier3_undetected domestic species", {
+  # Sardina pilchardus is tier3_undetected but has low likelihood (0.03) in the
+  # base fixture -- bump it so lik_ok is TRUE to exercise the tier3 branch.
+  cons <- .make_cons()
+  cons$winner_likelihood[cons$observation_id == "obs4"] <- 0.85
+  out <- add_posthoc_assessment(cons, .make_tiers(), domestic_taxa = "Sardina pilchardus")
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs4"], "domestic_prior_caveat")
+})
+
+test_that("domestic_taxa does NOT re-label a low-likelihood domestic species (still suspect)", {
+  cons <- .make_cons()
+  cons$winner_likelihood[cons$observation_id == "obs5"] <- 0.10  # below threshold
+  out <- add_posthoc_assessment(cons, .make_tiers(), domestic_taxa = "Rare sp.")
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs5"], "suspect")
+})
+
+test_that("domestic_taxa does not affect non-domestic taxa", {
+  out <- add_posthoc_assessment(.make_cons(), .make_tiers(), domestic_taxa = "Rare sp.")
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "sensible")
+})
+
+test_that("domestic_prior_source = 'augmented' disables the re-labelling", {
+  out <- add_posthoc_assessment(
+    .make_cons(), .make_tiers(),
+    domestic_taxa = "Rare sp.", domestic_prior_source = "augmented"
+  )
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs5"], "unexpected")
+})
+
+test_that("stops on non-character domestic_taxa", {
+  expect_error(
+    add_posthoc_assessment(.make_cons(), .make_tiers(), domestic_taxa = 42),
+    "character vector or NULL"
+  )
+})

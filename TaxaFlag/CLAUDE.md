@@ -1,6 +1,25 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/flag_detections_workflow.R)
+# Last updated: 2026-07-10 (Session 149 -- add_posthoc_assessment() gains domestic_taxa/
+# domestic_prior_source params, implementing the deferred domestic-species-floor design note
+# ([[project_taxaflag_domestic_species_floor_note]] in project memory) at the user's direction
+# during the ecosystem statistical soundness review walk-through. A strong-likelihood call to a
+# user-specified domestic/synanthropic taxon that lands in tier2/tier3_undetected purely because
+# GBIF/iNat under-index captive organisms is now re-labelled "domestic_prior_caveat" instead of
+# "unexpected"/"unprecedented", so a reviewer sees "trust the ID, question the rarity" rather
+# than a generic low-plausibility flag. domestic_taxa defaults to NULL (feature off, matching
+# flag_handler()'s handler_taxa convention -- no built-in species list, since "domestic" is
+# study-system-specific). domestic_prior_source = "wild" (default) vs "augmented" gives an
+# explicit opt-out for pipelines that already augment occurrence data with known local domestic
+# presence (the companion prior-side fix: TaxaExpect::generate_undetected_diversity() and
+# TaxaAssign::join_priors() both gained a documentation-only note recommending exactly that
+# augmentation, rather than TaxaID inventing a fix on the prior side). Backward compatible
+# (new params both optional, no behavior change when domestic_taxa is not supplied). 7 new
+# tests added to test-add_posthoc_assessment.R (33 test_that blocks total in that file);
+# devtools::test() 159/159 passing, 0 failures; devtools::check() 0 errors/0 warnings/1
+# pre-existing NOTE (clock-check artifact, same as
+# other packages). See this file's own Session 149 note below for the full record, and
+# ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md for the review row this resolves.
 
 ---
 
@@ -68,7 +87,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
 | `.recover_truncated_json()` | `R/review_assignments.R` | Written | Internal: salvage complete JSON objects from truncated LLM response |
 
-| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Seven categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`. Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. |
+| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Eight categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`, and (Session 149) `"domestic_prior_caveat"` -- a strong-likelihood call to a user-specified `domestic_taxa` name that landed in tier2/tier3 purely from GBIF/iNat's under-indexing of captive organisms, not genuine rarity. Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. `domestic_taxa = NULL` (default, feature off) / `domestic_prior_source = "wild"` (default) vs `"augmented"` (opt-out when priors already account for domestic species). |
 
 **Dropped (Session 62):** `flag_allochthonous()` and `flag_taxonomic_scope()` -- absorbed
 into `review_assignments()`. One LLM call covers habitat, geography, scope, contaminant
@@ -154,11 +173,64 @@ frustrating than helpful; workflow scripts are more transparent.
 | test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
 | test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
 | test-report_flags.R | `report_flags()` | Fully offline |
-| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 27 tests; covers all 7 categories, tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank) |
+| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 33 tests; covers all 8 categories (incl. Session 149's `domestic_prior_caveat`), tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank) |
 
 ---
 
 ## Session Notes
+
+**Session 149 (2026-07-10): add_posthoc_assessment() domestic-species caveat**
+
+Third item on the ecosystem statistical soundness review's H-priority walk-through
+(`ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`) was
+`TaxaAssign::join_priors()`'s dark-diversity floor treating domestic/synanthropic species
+as exchangeable with genuinely unmodelled wild species -- the deferred design note from
+[[project_taxaflag_domestic_species_floor_note]] (single-observation-pipeline work,
+2026-07-03), never implemented. The user resolved where this belongs across two
+functions rather than one: (1) priors -- a user who knows their study includes domestic
+species should augment their occurrence data before training, and TaxaID's job is just
+to document that clearly (a note is sufficient; not a code fix); (2) likelihoods --
+iNaturalist image recognition and NCBI BLAST already handle domestic-species
+classification fine, so the likelihood side needs no change; (3) the one thing worth
+building is a small, narrow flag in TaxaFlag for the specific *contrast* -- a strong
+likelihood for a domestic species next to a low prior, when that prior came from an
+unaugmented wild-species database.
+
+**Implementation:** `add_posthoc_assessment()` gains two new optional params:
+- `domestic_taxa = NULL` -- character vector of taxon names the caller considers
+  domestic/synanthropic for their study system. No built-in default list (matches
+  `flag_handler()`'s `handler_taxa = NULL` convention) -- what counts as "domestic" is
+  study-system-specific, so a curated list baked into the package would be either
+  incomplete or presumptuous.
+- `domestic_prior_source = c("wild", "augmented")` -- default `"wild"`. When a row's
+  `consensus_taxon` is in `domestic_taxa` AND its likelihood is above
+  `likelihood_threshold` AND it landed in the tier2/tier3_undetected branch (which would
+  otherwise emit `"unexpected"`/`"unprecedented"`), the assessment is re-labelled
+  `"domestic_prior_caveat"` instead -- signalling "trust the ID, question the rarity"
+  rather than a generic low-plausibility flag. Passing `domestic_prior_source =
+  "augmented"` disables this entirely, for pipelines that already incorporated known
+  local domestic presence into their priors (the low tier is then genuinely
+  informative, not a database artifact).
+
+Deliberately narrow: only fires on the strong-likelihood + low-tier combination (a
+low-likelihood domestic-species call stays `"suspect"`, correctly -- the caveat is about
+the *prior*, not the identification), never invents or elevates a prior itself, and is
+opt-in (`NULL` default, zero behavior change for existing callers).
+
+**Companion prior-side documentation fix** (no code change, per the user's steer that a
+note is sufficient there): `TaxaExpect::generate_undetected_diversity()` gained a new
+`@section Domestic/synanthropic species` explaining the root cause (GBIF/iNat under-index
+captive organisms) at the actual point where the floor value is computed, and recommending
+occurrence-data augmentation before training as the fix; `TaxaAssign::join_priors()`'s
+"Dark diversity fallback" section cross-references it. Both are pure roxygen additions --
+`devtools::test()` unchanged (TaxaExpect 383/383, TaxaAssign 544/544), `devtools::check()`
+clean on both.
+
+7 new tests added to `test-add_posthoc_assessment.R` covering: default-off behavior,
+tier2 and tier3_undetected re-labelling, the low-likelihood non-re-labelling case, no
+effect on non-domestic taxa, the `"augmented"` opt-out, and input validation.
+`devtools::test()`: 159/159 passing, 0 failures. `devtools::check()`: 0 errors, 0
+warnings, 1 pre-existing NOTE (clock-check artifact, unrelated).
 
 Sessions 60–74 archived in ecosystem_docs/session_notes/TaxaFlag_sessions.md.
 
