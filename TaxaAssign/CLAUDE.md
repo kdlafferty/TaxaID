@@ -1,6 +1,24 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-09 (Session 147 -- fifth parameter-audit punch-list family (score
+# Last updated: 2026-07-10 (Session 150 -- expand_unreferenced_hypotheses() moved to TaxaLikely
+# (package-placement fix, not a math change); TaxaAssign::expand_unreferenced_hypotheses() is now
+# a thin .Deprecated() forwarding wrapper. See TaxaID/CLAUDE.md's Session 150 note for the full
+# reasoning. devtools::test() 522/522 (0 failures; count differs from Session 149's 544 because
+# ~17 tests moved to TaxaLikely, not because coverage was lost), devtools::check() clean.)
+# Previous update, 2026-07-09 (Session 149 -- compute_posterior() Monte Carlo fixes, prompted by
+# the ecosystem statistical soundness review (ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_
+# REVIEW.md): (1) likelihood draws now sampled from an exact truncated-normal via a new
+# embedded rtruncnorm_at_zero() helper instead of rnorm()+clamp-to-0, removing a spurious
+# point mass at exactly 0 that wasn't part of the modelled distribution; (2) the J-shaped-Beta
+# simulation override widened from prior_alpha < 1 to <= 1, catching the real, non-negligible
+# (~14-20% of bundled fixture rows) exact-alpha-1 case (e.g. TaxaExpect's global-floor
+# Beta(1, N_total-1)) that the old strict cutoff missed. Both are behavioral, no signature
+# change. 2 new regression tests confirmed to fail against the pre-149 logic before being
+# added. devtools::test() 544/544 (up from 539), devtools::check() 0/0/0. See this file's own
+# Session 149 note below for the full record, including what's deliberately left open (whether
+# the alpha boundary should extend further -- needs a larger real prior_alpha distribution than
+# the bundled fixtures to decide with evidence rather than a guess).
+# Session 147 -- fifth parameter-audit punch-list family (score
 # floors: score_consensus::min_score, assign_taxa_llm::score_threshold). New
 # diagnostics/score_floor_roc_sweep.R gives this family something the earlier ones lacked: REAL
 # ground truth, not a resolution-rate proxy -- every pair in the real 12S seq_matrix reference
@@ -180,13 +198,13 @@ or be user-supplied from outside the ecosystem.
 | `adjust_inat_range_priors()` | Elevate `prior_alpha`/`prior_beta`/`prior_mean` to Tier 2 singleton-mirror floor for unmodelled taxa confirmed `in_range = TRUE` by iNaturalist geomodel with sufficient observation coverage. Adds `inat_range_elevated` column. Guard: no elevation when singleton floor ≤ current prior. | Complete | R/adjust_inat_range_priors.R |
 | `compute_posterior()` | Core Bayes update: likelihood × prior → posterior | Complete | R/compute_posterior.R |
 | `combine_multisite_priors()` | **Session 138.** Combines `join_priors()`'s per-site prior rows for a single observation detected at more than one real site (e.g. the same eDNA ASV recovered at two different sample sites) into one row per candidate, via precision-weighted combination in logit space: `logit(Beta(a,b))` has exact mean `digamma(a)-digamma(b)` and variance `trigamma(a)+trigamma(b)`; combining with inverse-variance weighting discounts a sparse/low-confidence site relative to a well-supported one. The combined Beta's own concentration is derived from the pooled logit variance (large-phi delta-method approx), so `compute_posterior()`'s existing Beta-sampling MC path needs no changes. Adds `n_sites_combined` and `combined_sites` (pipe-delimited `grid_id` list, `NA` for single-site rows); `grid_id`/`main_habitat` set to `NA` on combined rows. Single-site observations pass through unchanged. Insert between `join_priors()` and `compute_posterior()`. | Complete | R/combine_multisite_priors.R |
-| `expand_unreferenced_hypotheses()` | Replace generic H2/H3 rows from TaxaLikely with named unreferenced species; bridges TaxaLikely likelihoods to TaxaExpect priors | Complete | R/expand_unreferenced.R |
+| `expand_unreferenced_hypotheses()` | **Deprecated (Session 150).** Moved to `TaxaLikely::expand_unreferenced_hypotheses()` -- this function models likelihoods for unreferenced taxa, which belongs next to `TaxaLikely::unreferenced_candidates()`, not in the posterior-computation package. Now a thin `.Deprecated()` forwarding wrapper only. | Deprecated | R/expand_unreferenced.R |
 | `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → reference-check → unreferenced vector; optional family expansion. data_type param ("eDNA"/"acoustic"/"image") routes to NCBI queries (eDNA) or set-membership check vs reference_species (acoustic/image). | Complete | R/suggest_unreferenced_species.R |
 | `assign_taxa_llm()` | LLM-shortcut pipeline: score-based likelihoods + LLM priors → posteriors. **Session 145:** merge/rescale/Beta-construction step factored into new internal `.merge_llm_priors()` helper (deterministic, no LLM calls -- enables cheap re-sweeping against a fixed LLM response). Empirical sensitivity findings for `score_sharpness`/`unknown_lik_weight`/`prior_phi`/`absent_detection_prob` in its own `@details`. | Complete | R/assign_taxa_llm.R |
-| `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id` | Complete | R/posterior_consensus.R |
+| `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id`. **Session 149:** adds `winner_hypothesis_type`/`winner_rank_expanded` columns -- `winner_rank_expanded = TRUE` flags a species-level `consensus_taxon` that was decided entirely by occurrence-prior mass among `join_priors()`-manufactured `"rank_expanded"` candidates sharing one inherited likelihood, not by real sequence/image/acoustic evidence. | Complete | R/posterior_consensus.R |
 | `add_slash_taxon()` | Appends `slash_taxon_name` (ornithological slash-species notation; NA for singletons/unresolved) and `irreducible_consensus` (TRUE when the candidate set can't be further decomposed elsewhere in the dataset) to `posterior_consensus()` output. **Session 123:** when `consensus_taxon` is present, also adds `consensus_OTU` (single reporting label — `slash_taxon_name` when non-NA, else `consensus_taxon`) and `primary_taxon` (`consensus_OTU` reduced to one taxon by dropping everything after the first `/` or ` + `) — logic previously hand-duplicated identically in 3 real workflows. | Complete | R/slash_taxon.R |
 | `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id`. **Session 147:** `rank_thresholds` default changed `NULL` → `c(species=98, genus=95, family=90, order=85)` (the conventional GITA/JV thresholds) after an ROC sweep against real 12S reference data showed `min_score`/`max_gap` alone provide essentially no species-vs-congener discrimination -- a caller with no explicit `rank_thresholds` previously got zero protection against confusing a species with its congener. Auto-rescales by /100 if `score_col` looks like a 0-1 proportion scale. Pass `rank_thresholds = NULL` to restore old behavior. | Complete | R/score_consensus.R |
-| `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()`. **Session 134:** optional `spatial_group_map` param (`observation_id`/`spatial_group_id`) restricts both the confirmation source and the update target to observations sharing a `spatial_group_id` with >= 1 other observation (a multi-member spatial group) -- observations in a single-observation spatial group (whether a genuine single observation or one that fell outside a drawn group, per `TaxaMatch::group_observations_by_bbox()` -- there's no separate naming for these, just a singleton group) are always returned unchanged, since another unrelated observation's confirmed presence says nothing about them. | Complete | R/update_prior_from_consensus.R |
+| `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()`. **Session 134:** optional `spatial_group_map` param (`observation_id`/`spatial_group_id`) restricts both the confirmation source and the update target to observations sharing a `spatial_group_id` with >= 1 other observation (a multi-member spatial group) -- observations in a single-observation spatial group (whether a genuine single observation or one that fell outside a drawn group, per `TaxaMatch::group_observations_by_bbox()` -- there's no separate naming for these, just a singleton group) are always returned unchanged, since another unrelated observation's confirmed presence says nothing about them. **Session 149:** the fixed `presence_multiplier` (removed) replaced by `confirmation_quantile`/`min_confirmation_confidence` -- for each confirmed species, the confirmation_quantile-th quantile (default 0.9) of confirming donors' `consensus_posterior` substitutes for `prior_mean` (never lowering it) only when it clears `min_confirmation_confidence` (default 0.8, set to 0 to disable). `prior_alpha`/`prior_beta` are now recomputed consistently with a boosted `prior_mean` (preserving the original concentration), fixing a latent inconsistency with `compute_posterior()`'s Monte Carlo path. | Complete | R/update_prior_from_consensus.R |
 | `build_context()` | Auto-populate `ctx` (ecoregion, main_habitat, date) from taxon names via TaxaHabitat + LLM synthesis | Complete | R/build_context.R |
 | `generate_report()` | Publication-ready Methods + Results text; hybrid template (Methods) + LLM (Results) with template fallback | Complete | R/generate_report.R |
 | `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). **Session 138:** the final `distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)` dedup now also keys on `grid_id`/`main_habitat`, fixing a real bug where a genuine multi-site observation (the same `observation_id` detected at more than one site) had each candidate collapse to only its own highest-`prior_mean` site — discarding the site it was actually detected at. Output is now site-preserving (one row per candidate per site); pass it through the new `combine_multisite_priors()` before `compute_posterior()` to recombine. The first `left_join()` (likelihoods → event_meta) now declares `relationship = "many-to-many"` since a multi-candidate, multi-site observation legitimately fans out on both sides. **Session 143:** new required `backbone_id` param (no default, errors if omitted), replacing a previously hardcoded, un-overridable `backbone_id = 4L` inside the taxonomy-fallback fill -- the correct backbone depends on which backbone the caller's input taxonomy was verified against. | Complete | R/join_priors.R |
@@ -327,12 +345,24 @@ posterior_consensus(posterior_df,
 **Output:** one row per `observation_id` with columns: `consensus_taxon`, `consensus_rank`,
 `consensus_reason`, `is_resolved`, `consensus_posterior`, `consensus_confidence_score`,
 `n_plausible`, `winner_prior`, `winner_likelihood`, `winner_likelihood_cov`,
+`winner_hypothesis_type`, `winner_rank_expanded`,
 `plausible_taxa` (list), `plausible_posteriors` (list).
 `consensus_reason` values: `"unanimous"` (all plausible agree at finest rank), `"single"`
 (only one plausible hypothesis), `"lca"` (multiple plausible, LCA at coarser rank), or `NA`.
 `winner_prior` = `prior_mean` of highest-posterior hypothesis; `winner_likelihood` =
 `score_likelihood`; `winner_likelihood_cov` = `score_likelihood_cov`. All three are `NA`
 when the source column is absent (e.g. `assign_taxa_llm()` input) or consensus is `NA`.
+**`winner_hypothesis_type`** (Session 149) = `hypothesis_type` of the winning row (e.g.
+`"specific_candidate"`, `"rank_expanded"`). **`winner_rank_expanded`** = `TRUE` when that
+winner came from `join_priors()`'s coarse-rank expansion (`.expand_coarse_rank_rows()`) --
+meaning every candidate in that expansion inherited one identical, uninformative
+likelihood from the original coarse-rank (e.g. family-level) identification, so the
+species-level winner was decided entirely by occurrence-prior mass, not by any real
+sequence/image/acoustic evidence. This is intentional, sound behavior (confirmed with the
+user during the statistical soundness review, see
+`ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`) -- the flag exists so a
+downstream consumer can distinguish it from a genuinely evidence-resolved species call,
+not to suppress or "fix" it.
 Use these columns with `TaxaFlag::flag_prior_mismatch()` to detect implausible winners
 (e.g. a low-prior taxon winning due to a reference error or sequencer 100%-rule artefact).
 When `result2` from `update_prior_from_consensus()` is passed as input, also adds:
@@ -402,16 +432,35 @@ taxon absent.
 ```r
 update_prior_from_consensus(result,
                              consensus,
-                             presence_multiplier = 5,
+                             confirmation_quantile       = 0.9,
+                             min_confirmation_confidence = 0.8,
                              n_sims              = 0,
                              spatial_group_map    = NULL)
 ```
 
 One-pass empirical Bayes refinement. Extracts `is_resolved = TRUE` species from `consensus`
-as confirmed-present evidence; multiplies their `prior_mean` by `presence_multiplier` in all
-unresolved samples; re-runs `compute_posterior()` on those samples only. Resolved samples are
-returned unchanged. Also joins `consensus_taxon_v1` / `consensus_rank_v1` / `prior_updated`
-columns into the returned dataframe for downstream propagation by `posterior_consensus()`.
+as confirmed-present evidence; re-runs `compute_posterior()` on unresolved samples only.
+Resolved samples are returned unchanged. Also joins `consensus_taxon_v1` / `consensus_rank_v1`
+/ `prior_updated` columns into the returned dataframe for downstream propagation by
+`posterior_consensus()`.
+
+**Confirmation-quantile boost (Session 149, replaces the old fixed `presence_multiplier`):**
+for each confirmed species, take the `confirmation_quantile`-th quantile (default 0.9) of
+`consensus_posterior` across all resolved donor observations naming it. If that value clears
+`min_confirmation_confidence` (default 0.8; `0` disables the gate), it substitutes for
+`prior_mean` in matching unresolved-observation hypothesis rows -- but only where it exceeds
+the existing prior (never-demote). A high quantile behaves like a near-maximum for a small
+donor pool (rewarding one strong confirmation) but, unlike a plain maximum, converges to a
+stable value as the donor pool grows rather than drifting toward 1.0 regardless of whether the
+evidence is real -- important specifically for a pair of species a classifier can't reliably
+separate, where many weak correlated confirmations split between them would otherwise
+manufacture unwarranted confidence for one or both. When `prior_alpha`/`prior_beta` are
+present, they are recomputed for boosted rows too, preserving the original concentration
+(`alpha + beta`) but recentering at the new mean -- fixes a latent inconsistency where only
+`prior_mean` was rescaled and `compute_posterior()`'s Monte Carlo path (`n_sims > 0`) could
+sample from a stale Beta shape. See `update_prior_from_consensus.R`'s own "Confirmation-quantile
+design" roxygen section for the full rationale, including the deliberately-not-solved
+correlated-confusion problem and the deferred quality-covariate idea it depends on.
 
 **Circularity guard:** a sample's own posterior never feeds back into its own prior — only
 other samples' confirmations are used.
@@ -531,7 +580,7 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 | test-assign_taxa_llm.R | `assign_taxa_llm()` | LLM calls mocked |
 | test-build_context.R | `build_context()` | Fully offline |
 | test-combine_multisite_priors.R | `combine_multisite_priors()` | Fully offline (Session 138); includes the precision-weighted-vs-plain-product worked comparison as a regression test |
-| test-expand_unreferenced.R | `expand_unreferenced_hypotheses()` | Fully offline |
+| test-expand_unreferenced.R | `expand_unreferenced_hypotheses()` (deprecated wrapper) | **Session 150:** full coverage moved to TaxaLikely; this file now only confirms the wrapper warns and forwards identically to `TaxaLikely::expand_unreferenced_hypotheses()`. |
 | test-generate_report.R | `generate_report()` | Fully offline |
 | test-integration.R | Full pipeline integration | Uses minimal fixtures |
 | test-join_priors.R | `join_priors()` | Fully offline; Session 138 added a genuine multi-site preservation test |
@@ -584,6 +633,239 @@ All input columns preserved, plus: `posterior_point_est`, `posterior_mean`,
 ---
 
 ## Session Notes
+
+**Session 149 (2026-07-09): compute_posterior() Monte Carlo fixes -- truncated-normal likelihood sampling + widened J-shape prior guard**
+
+Prompted by the ecosystem-wide statistical soundness review
+(`ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`, same day), which flagged
+`compute_posterior()`'s Monte Carlo path as High priority: `posterior_consensus()` defaults
+to reading `posterior_mean` (the MC mean), so this is the live winner-selection path for the
+whole Bayesian pipeline, not just a confidence estimate.
+
+Two fixes, both behavioral (no signature change):
+
+1. **Likelihood draws are now sampled from a truncated normal, not clamped.** The previous
+   `rnorm(mean, sd)` followed by `sim_lik[sim_lik < 0] <- 0` manufactured a spurious point
+   mass at exactly 0 that isn't part of the modelled Normal(mean, sd) distribution -- any
+   probability mass below 0 was being piled onto 0 itself rather than reflecting a genuinely
+   truncated density. Replaced with `rtruncnorm_at_zero()`, a new embedded (non-exported)
+   helper doing exact inverse-CDF truncated-normal sampling via `stats::pnorm`/`qnorm`/
+   `runif` (no new package dependency -- deliberately avoided adding `truncnorm` to Imports
+   for a three-line closed-form sampler). `sd == 0` rows remain deterministic, matching the
+   old `rnorm(sd = 0)` behavior.
+2. **The J-shaped-Beta simulation override widened from `prior_alpha < 1` to `prior_alpha <= 1`.**
+   The exact boundary case `prior_alpha == 1` (e.g. `TaxaExpect::generate_undetected_diversity()`'s
+   global-floor `Beta(1, N_total - 1)`) has the same "density strictly decreasing away from 0"
+   shape that makes simulation draws unreliable for comparing tiny prior means, but was not
+   being caught by the old strict `< 1` cutoff. Checked against the real (if small, 5-7 row)
+   bundled fixtures (`TaxaID_test_likelihoods_w_prior*.rds`) before deciding this was worth
+   fixing now rather than deferring: `prior_alpha == 1` appears in 1 of 7 and 1 of 5 rows in
+   those fixtures respectively (~14-20%) -- a real, non-negligible share, not a hypothetical
+   edge case. **Left deliberately unresolved:** whether the boundary should extend further
+   (e.g. `prior_alpha` moderately above 1 with high relative uncertainty) -- the bundled
+   fixtures are too small to characterize that continuum, and inventing a threshold without
+   real data would just be swapping one unvalidated constant for another. Needs a larger real
+   `prior_alpha` distribution (e.g. reconstructing Session 144's ~44k-row `posterior_df`) to
+   settle with evidence rather than a guess.
+
+Both changes are pure MC-internals changes with no parameter/column signature change, so no
+call site anywhere in the ecosystem needed updating. Added 2 new regression tests to
+`test-compute_posterior.R` (13 → 15 tests in this file) that specifically lock in the fixes
+and were confirmed to fail against the pre-149 logic before being added (verified by
+re-running the old `rbeta`/`rnorm`+clamp logic standalone: the old cutoff misses
+`prior_alpha == 1` entirely, and the old clamp triggers the all-zero-likelihood
+uniform-fallback warning in ~22% of 2000 simulations for a mean-near-0 test case that no
+longer warns at all under the fix). `devtools::test()`: 544/544 passing (up from 539, 0
+failures) -- the pre-existing 13 warnings/1 skip are unrelated informational messages,
+unchanged. `devtools::check()`: 0 errors, 0 warnings, 0 notes.
+
+**Session 149 continued (same day): `score_consensus()` purpose clarified -- not a bug,
+a documentation gap.** Next item on the soundness-review walk-through was
+`score_consensus::rank_threshold_capping`, flagged High priority because fixed
+percent-identity thresholds can't reliably separate a species from its closest congener
+when the congener is absent from the reference. The user's context reframed this
+entirely: `score_consensus()` exists specifically to *reproduce* a conventional
+fixed-threshold pipeline's decision rule (GITA/Jonah Ventures-style), so a user can
+compare what a conventional pipeline would call against TaxaID's own Bayesian pathway
+(`TaxaLikely` -> `compute_posterior()` -> `posterior_consensus()`) on the same data. Given
+that purpose, percent-identity's known inability to discriminate species from congener
+is not a defect here -- it is a faithful reproduction of the exact same limitation the
+mimicked pipeline has. The review's original recommendation (gate on reference
+completeness, or route through the bivariate-normal model) would have been wrong --
+that would defeat the comparison this function exists to provide, and duplicate
+`posterior_consensus()`'s actual job. **Fix: documentation only, no behavior change.**
+Added a `@section Purpose` block to `score_consensus()`'s roxygen stating explicitly that
+this is a mimicry/benchmarking tool, not TaxaID's species-level discriminator, and
+reframed the existing "why `rank_thresholds` defaults to non-`NULL`" note -- the default
+isn't there to make species-level calls "safe" (no such thing is this function's job),
+it's there so the reproduction matches what a real conventional pipeline actually does
+(every real fixed-threshold workflow has a rank-threshold step) rather than an
+accidental TaxaID-only permissive default nothing real mimics. `devtools::document()`
++ `test-score_consensus.R` re-run: 51/51 passing, 0 warnings, unchanged. Soundness-review
+doc updated: this row reclassified CONDITIONAL/H -> YES (Session 149 counts: 9 sound=YES
+ecosystem-wide, up from 8; 14 of the original 16 H-priority rows remain open).
+
+**Session 149 continued further (same day): domestic-species floor mitigation (see
+TaxaExpect/CLAUDE.md and TaxaFlag/CLAUDE.md for the primary changes) -- join_priors()'s
+"Dark diversity fallback" roxygen section gains a cross-reference to
+TaxaExpect::generate_undetected_diversity()'s new documentation on the
+domestic/synanthropic-species floor artifact and the recommended fix (augment occurrence
+data before training). No code change in this package for this item.**
+
+**Session 149 continued once more (same day): posterior_consensus() gains
+`winner_hypothesis_type`/`winner_rank_expanded` -- flags prior-only species resolution,
+per the user's explicit direction not to change the underlying behavior.**
+
+Fourth H-priority item from the soundness review walk-through:
+`join_priors::coarse_rank_expansion_credible_set` (`.expand_coarse_rank_rows()`). When a
+likelihood row arrives at a coarser-than-species rank (e.g. a family-level image/sequence
+ID) with no species-level match data, this function expands it into the top species-level
+candidates by occurrence-prior mass -- but every expanded candidate inherits the exact
+same (flat, uninformative) likelihood from the original coarse row, since there is no new
+evidence to discriminate between them. The concern the review raised: `compute_posterior()`
+then picks a "winner" among these purely by prior mass, and nothing downstream distinguishes
+this from a genuinely evidence-resolved species call.
+
+Walked through with the user using a concrete example (a Felidae-family-only camera-trap ID
+expanded into `Lynx rufus` vs `Puma concolor`, both sharing one inherited likelihood, winner
+decided by which is locally more common) before asking the design question. First round of
+discussion clarified this is a *different* mechanism than TaxaMatch's existing
+`filter_redundant_hypotheses()` (which already removes a genuinely redundant coarser-rank
+row when a finer-rank row for the same lineage/observation already exists, called as
+`join_priors()`'s very last step) -- `.expand_coarse_rank_rows()` only fires when there is
+no species-level candidate at all, so there's nothing "redundant" to remove; it's
+*manufacturing* species candidates from prior mass alone, not deduplicating existing ones.
+
+**User's verdict: this is intended behavior -- flag it, don't change it.** Implemented as
+two new columns on `posterior_consensus()`'s output (not a `join_priors()` change, since the
+`hypothesis_type = "rank_expanded"` marker already exists at the row level from Session 109
+-- what was missing was surfacing it in the final consensus output):
+- `winner_hypothesis_type`: the `hypothesis_type` of the winning (highest-posterior) row,
+  general-purpose diagnostic (not `rank_expanded`-specific).
+- `winner_rank_expanded`: `TRUE` when that winner's `hypothesis_type == "rank_expanded"` --
+  the direct, actionable flag a downstream consumer (e.g. a future TaxaFlag check, or a
+  human reviewer) can filter on to know "this species-level call was a prior tie-break of a
+  coarse ID, not real discriminating evidence."
+
+Both new columns are additive (present in the main result path and in
+`.empty_consensus_row()`'s NA-filled fallback) -- no existing column changed, no signature
+change, fully backward compatible. 4 new tests added to `test-posterior_consensus.R`
+(columns present; `FALSE` for a normal `specific_candidate` winner; `TRUE` for a
+`rank_expanded` winner, using the Felidae example verified end-to-end; `NA` in the empty-row
+case). `devtools::test()`: 553/553 passing (up from 544), 0 failures. `devtools::check()`:
+0 errors, 0 warnings, 0 notes. Soundness-review doc updated: this row marked "flagged, not
+fixed, per explicit user direction" -- still CONDITIONAL/H, since the underlying mechanism
+is unchanged and intentional; the fix is visibility, not behavior change.
+
+**Session 149 continued yet further (same day): update_prior_from_consensus() redesigned --
+fixed presence_multiplier replaced by a confirmation-quantile boost, arrived at through an
+extended design discussion with the user working through several candidate mechanisms and
+their failure modes before settling on one.**
+
+Fifth H-priority item from the soundness-review walk-through: the old design multiplied a
+confirmed species' `prior_mean` by a flat `presence_multiplier` (default 5) in every
+unresolved observation sharing a spatial group, regardless of how many observations
+confirmed it or how confident those confirmations were (`confirmed_species <-
+unique(...)` collapsed straight to a set of names). The user proposed and the two of us
+worked through several alternatives in sequence, each rejected for a specific, checkable
+reason before arriving at the final design:
+
+1. **Max-confidence single donor** (user's opening proposal): substitute the prior with the
+   most confident confirming observation's own posterior, never updating that donor's own
+   prior (circularity). Confirmed circularity is a non-issue for this one-pass design by
+   construction (donors are always in the *resolved* set, receivers always in the
+   *unresolved* set, disjoint) -- but would need an explicit guard if this function is ever
+   run iteratively.
+2. **Noisy-OR combination across all donors** (`1 - prod(1 - p_i)`) proposed as a way to
+   let a single strong donor dominate while still letting additional donors contribute,
+   addressing max's blindness to confirmation count. **User pressure-tested this with a
+   sharp hypothetical** (a classifier that structurally cannot distinguish two species A/B,
+   producing many observations resolved 50/50-ish to one or the other by chance) and asked
+   whether renormalization would correct for the resulting spurious accumulation. Worked
+   the actual math: renormalization exactly restores 50/50 *only* in the degenerate
+   exactly-two-candidate, exactly-equal-donor-count case; it does NOT hold once donor
+   counts differ by chance (a real, arbitrary tilt persists) or once a third, genuinely
+   unrelated candidate is present (its relative mass is deflated purely by A/B's spurious
+   accumulation, confirmed numerically: a candidate's normalized share dropped from 40% to
+   17% with no change to its own evidence). This ruled out naive noisy-OR/max-as-primary as
+   a full fix.
+3. Investigated whether a `min_donor_confidence` gate on individual donors would help
+   noisy-OR -- concluded it would make noisy-OR behave *like* max when only one donor
+   clears the bar, without being max, so not obviously better than just using max.
+4. **User asked whether plain max already "scales with N"** (an insight prompted by real
+   camera-trap experience: most images in a burst are poor, but the rare excellent one is
+   what should establish presence -- correctly identified as a genuine extreme-value-theory
+   property, max of k i.i.d. draws is stochastically increasing in k). Checked this
+   carefully: true, but this property does NOT protect against the A/B confusion scenario
+   specifically -- the same accumulation mechanism inflates both sides' max as N grows, and
+   max (a single order statistic) is *more* volatile than noisy-OR's aggregate, not less,
+   making it *more* exposed to one spurious extreme donor, not immune. The real fix needed
+   is a way to get max's "reward one strong donor" behavior without max's degenerate
+   climb-toward-1.0-regardless-of-truth behavior as N grows.
+5. **User proposed a high quantile (e.g. 90th percentile) as an interim "near-max but not
+   stuck on one outlier" solution.** Verified this is the right fix, with a precise
+   justification: unlike the sample max (which climbs toward the support boundary as N
+   grows, uninformatively, for real or spurious evidence alike), a sample quantile
+   converges to the *true population quantile* as N grows (standard order-statistics
+   result). For a genuinely confused A/B pair drawing from the same underlying
+   confusion-noise distribution, both sides' quantile estimates converge to the *same*
+   value as N grows (restoring symmetry, unlike max); for a genuinely separable species,
+   its true quantile sits above the confusion-noise floor, so discriminating power is
+   preserved. For small N, a high quantile behaves like max (little difference) -- which is
+   fine, since that's also the lower-risk regime. Explicitly still arbitrary in *which*
+   quantile to use, but a much milder arbitrariness than a multiplicative constant, since
+   the qualitative behavior (bounded, convergent, not degenerate) holds across a wide range
+   of reasonable choices.
+6. **User then asked whether the quantile should always apply, or be gated by an absolute
+   confidence floor** -- correctly identifying that never-demote alone doesn't stop a
+   barely-resolved confirmation (e.g. quantile = 0.51) from injecting a large, unwarranted
+   jump into a rare species' prior (e.g. 0.02 -> 0.51) just because 0.51 exceeds the old
+   value. Agreed: gate on the *aggregate* quantile (simpler than filtering individual
+   donors) via a new `min_confirmation_confidence` parameter, default 0.8 (placeholder, not
+   empirically calibrated, same caveat as every other threshold surfaced in this review),
+   disableable via `0`.
+
+**Final design implemented:** for each confirmed species, compute
+`quantile(donor consensus_posterior, probs = confirmation_quantile)` (default 0.9); only use
+it if it clears `min_confirmation_confidence` (default 0.8, `0` disables); substitute it for
+`prior_mean` in matching unresolved rows only where it exceeds the existing value
+(never-demote). **Also fixed the latent alpha/beta inconsistency** flagged along the way: the
+old code rescaled only `prior_mean`, leaving `prior_alpha`/`prior_beta` stale, so
+`compute_posterior()`'s Monte Carlo path (`n_sims > 0`) could sample from the pre-boost Beta
+shape while the point estimate used the boosted mean. Fixed by preserving the original
+concentration (`alpha + beta`) and recentering it at the new mean for boosted rows.
+
+**Explicitly deferred, not solved here** (documented in the function's own roxygen and
+flagged for a dedicated future design thread, prompted by the user sharing Silva-Rodríguez
+et al. 2025, *J. Appl. Ecol.*, a camera-trap dataset-QC protocol paper -- itself a different
+layer, dataset-level audit/reporting rather than a per-detection statistical model, but
+useful as evidence the underlying data-quality problem is real and recognized elsewhere): a
+quantile still cannot distinguish "confidence earned by genuinely strong evidence" from
+"confidence attained despite thin/low-quality input" (e.g. a short, low-coverage sequence
+read producing a spuriously perfect match). That would need a quality covariate on the
+underlying match scores -- connects to (and would generalize) `TaxaLikely::
+evaluate_likelihoods()`'s existing but unvalidated coverage-based sigma inflation,
+`TaxaMatch::bbox_coverage`, and `build_sequence_matrix()`'s coverage statistic, all flagged
+separately in the soundness review. Bigger than one H-priority item; not attempted this
+session.
+
+**Signature change (breaking):** `presence_multiplier` removed entirely, replaced by
+`confirmation_quantile = 0.9` and `min_confirmation_confidence = 0.8`. Propagated through
+`update_prior_from_consensus()`, `.run_consensus_and_report()` (internal), `
+run_bayesian_pipeline()`, `run_llm_pipeline()`, `generate_report()`'s methods-text template
+(rewrote the empirical-Bayes paragraph to describe the new mechanism), both `inst/`
+workflow scripts, and the `taxonomic-assignment.Rmd` vignette -- all real call sites found
+via ecosystem-wide grep and updated; no residual `presence_multiplier` references remain in
+executable code or user-facing docs (historical session notes/reentry prompts describing
+the *old* design were deliberately left as-is, since they're a record of past state, not
+current documentation). `consensus` now requires a `consensus_posterior` column (already
+present in real `posterior_consensus()` output; only synthetic test fixtures needed
+updating). `test-update_prior.R` rewritten with 15 test blocks covering the quantile
+computation across multiple donors, the confidence gate (both engaged and disabled), the
+never-demote guard, and the alpha/beta consistency fix -- each verified to exercise the
+actual mechanism, not just check it runs. `devtools::test()`: 537/537 passing, 0 failures,
+13 pre-existing warnings/1 skip unchanged. `devtools::check()`: 0 errors, 0 warnings, 0
+notes.
 
 **Session 138 (2026-07-05): multi-site posterior combination -- join_priors() dedup fix + combine_multisite_priors()**
 

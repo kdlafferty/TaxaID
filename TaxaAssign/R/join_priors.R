@@ -469,6 +469,17 @@ utils::globalVariables(c(
 #' non-zero prior, reflecting the possibility that unobserved species
 #' could be present.
 #'
+#' **Domestic/synanthropic species caveat (Session 149):** this fallback
+#' assumes unmodelled species are exchangeable draws from one detection
+#' process. Domestic/synanthropic species (pets, livestock) violate this in
+#' a known, systematic direction, since GBIF/iNaturalist under-index captive
+#' organisms -- see `TaxaExpect::generate_undetected_diversity()`'s own
+#' Domestic/synanthropic species section for the root cause and the
+#' recommended fix (augment your occurrence data before training, rather
+#' than relying on this floor). `TaxaFlag::add_posthoc_assessment(domestic_taxa
+#' = ...)` can flag the resulting low-prior-vs-strong-likelihood contrast
+#' downstream for review.
+#'
 #' ## Deduplication and redundancy filtering
 #' After the join, rows are deduplicated on `observation_id` x
 #' `taxon_name` x `taxon_name_rank` x `grid_id` x `main_habitat`

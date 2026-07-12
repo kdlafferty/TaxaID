@@ -79,8 +79,13 @@
 #'   Backbone ID Reference in \code{TaxaID/CLAUDE.md} for the full list.
 #' @param lookup_missing_taxonomy Logical. Look up missing taxonomy in
 #'   consensus. Default \code{TRUE}.
-#' @param presence_multiplier Numeric. Multiplier for empirical Bayes
-#'   refinement. Default 5.
+#' @param confirmation_quantile Numeric in (0, 1]. Quantile of confirming
+#'   observations' \code{consensus_posterior} used for the empirical Bayes
+#'   prior boost of confirmed species. Default 0.9. See
+#'   \code{\link{update_prior_from_consensus}}.
+#' @param min_confirmation_confidence Numeric in \[0, 1\]. Minimum confirmation
+#'   quantile required before a species counts as confirmed at all. Default
+#'   0.8; set to 0 to disable. See \code{\link{update_prior_from_consensus}}.
 #' @param generate_report Logical. Generate a Methods + Results report.
 #'   Default \code{FALSE}.
 #' @param report_params Named list of additional arguments passed to
@@ -153,7 +158,8 @@ run_llm_pipeline <- function(
     posterior_col        = "posterior_point_est",
     backbone_id,
     lookup_missing_taxonomy = TRUE,
-    presence_multiplier  = 5,
+    confirmation_quantile       = 0.9,
+    min_confirmation_confidence = 0.8,
     generate_report      = FALSE,
     report_params        = list(),
     reference_errors     = NULL,
@@ -278,7 +284,8 @@ run_llm_pipeline <- function(
     lookup_missing_taxonomy = lookup_missing_taxonomy,
     backbone_id           = backbone_id,
     rank_system           = rank_system,
-    presence_multiplier   = presence_multiplier,
+    confirmation_quantile       = confirmation_quantile,
+    min_confirmation_confidence = min_confirmation_confidence,
     n_sims                = n_sims,
     generate_report_flag  = generate_report,
     report_params         = report_params,

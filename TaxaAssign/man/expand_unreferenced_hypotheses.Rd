@@ -7,97 +7,21 @@
 expand_unreferenced_hypotheses(likelihood_df, unreferenced_df)
 }
 \arguments{
-\item{likelihood_df}{Data frame -- the \verb{$likelihoods} component returned by
-\code{\link[TaxaLikely:evaluate_likelihoods]{TaxaLikely::evaluate_likelihoods()}}.  Must contain \code{observation_id},
-\code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type},
-\code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd}.}
+\item{likelihood_df}{See \code{\link[TaxaLikely:expand_unreferenced_hypotheses]{TaxaLikely::expand_unreferenced_hypotheses()}}.}
 
-\item{unreferenced_df}{Data frame of unreferenced but plausible species.
-Must contain columns \code{species} (binomial name), \code{genus}, and \code{family}.
-Built from TaxaExpect rows confirmed as unreferenced by
-\code{\link[TaxaLikely:audit_barcode_coverage]{TaxaLikely::audit_barcode_coverage()}}.}
+\item{unreferenced_df}{See \code{\link[TaxaLikely:expand_unreferenced_hypotheses]{TaxaLikely::expand_unreferenced_hypotheses()}}.}
 }
 \value{
-\code{likelihood_df} with generic \code{"unreferenced_species"} and
-\code{"unreferenced_genus"} rows replaced by named species rows where matches
-are found.  Column set is unchanged; new rows carry \code{NA} for any extra
-columns in the input (e.g. \code{constraint_applied}).
+See \code{\link[TaxaLikely:expand_unreferenced_hypotheses]{TaxaLikely::expand_unreferenced_hypotheses()}}.
 }
 \description{
-After \code{\link[TaxaLikely:evaluate_likelihoods]{TaxaLikely::evaluate_likelihoods()}}, the \code{"unreferenced_species"}
-hypothesis is labelled at genus level (e.g. \code{taxon_name = "Fundulus"},
-\code{taxon_name_rank = "genus"}) and the \code{"unreferenced_genus"} hypothesis at
-family level.  This function replaces those generic rows with one named row
-per plausible unreferenced species, enabling \code{\link[=compute_posterior]{compute_posterior()}} to join
-them directly to species-level priors from TaxaExpect.
-}
-\details{
-\subsection{Expansion rules (applied per \code{observation_id})}{
-
-\enumerate{
-\item The \code{"unreferenced_species"} (H2) row carries a genus label.
-Species-level suppression: an unreferenced species in the H2 genus is
-suppressed only if that exact species is already a \code{specific_candidate}
-for this observation.  Other unreferenced congeners (e.g. F. parvipinnis
-when F. lima is H1) are expanded normally and receive the H2
-\code{score_likelihood} / \code{score_likelihood_mean} / \code{score_likelihood_sd}.
-Exception: when an H1 \code{specific_candidate} row is genus-rank
-(\code{taxon_name_rank == "genus"}), the entire genus is suppressed -- the
-genus is already represented with its own calibrated score.
-\item The \code{"unreferenced_genus"} (H3) row carries a family label.
-Unreferenced species whose family matches that label, whose genus
-differs from the H2 genus, \emph{and} that are not already a
-species-level H1 \code{specific_candidate} (or whose genus is covered by a
-genus-rank H1), receive the H3 likelihood values.
-\item If no named species are found for the H2 genus (none are locally
-plausible), the generic H2 row is dropped.  Likewise for H3.
-}
-}
-
-\subsection{H2 and H3 likelihoods}{
-
-The H2 likelihood is independently modelled by TaxaLikely from sister-species
-matches (cross-species matches within the same genus in the reference
-database).  The H3 likelihood is modelled from sister-genus matches.
-These are not borrowed from H1 rows -- they reflect the expected score
-distribution for an unreferenced congener or confamilial, respectively.
-All named species produced by expansion share the same H2 (or H3) likelihood;
-TaxaExpect priors differentiate among them geographically.
-}
-
-\subsection{Building \code{unreferenced_df}}{
-
-\enumerate{
-\item Start with TaxaExpect's plausible species list for the site
-(includes \code{genus} and \code{family} columns from TaxaFetch).
-\item Subtract species already in TaxaMatch -- these have reference
-sequences by definition.
-\item Call \code{\link[TaxaLikely:audit_barcode_coverage]{TaxaLikely::audit_barcode_coverage()}} with
-\code{species_list} = the TaxaExpect species and \code{match_df} = the TaxaMatch
-reference species.  Species with NCBI barcode count = 0 are truly
-unreferenced.
-\item Filter TaxaExpect rows to those confirmed as unreferenced and
-select \code{species}, \code{genus}, \code{family}.
-}
-}
-
-\subsection{Pipeline order}{
-
-Run \emph{before} \code{\link[TaxaLikely:apply_coverage_constraints]{TaxaLikely::apply_coverage_constraints()}}: coverage
-constraints must see the named rows, not the generic genus/family rows.
-}
-}
-\examples{
-\dontrun{
-expanded <- expand_unreferenced_hypotheses(
-  result$likelihoods,
-  unreferenced_df = unreferenced_species_result
-)
-}
-
+\strong{Deprecated.} Moved to \code{\link[TaxaLikely:expand_unreferenced_hypotheses]{TaxaLikely::expand_unreferenced_hypotheses()}} (Session 150).
+TaxaLikely already owns unreferenced-\emph{candidate} generation
+(\code{\link[TaxaLikely:unreferenced_candidates]{TaxaLikely::unreferenced_candidates()}}); this keeps both halves of
+unreferenced-taxon handling -- generating the candidates and modeling
+their likelihoods -- in one package. This function is a thin forwarding
+wrapper kept for backward compatibility; it has no logic of its own.
 }
 \seealso{
-\code{\link[=compute_posterior]{compute_posterior()}}, \code{\link[TaxaLikely:evaluate_likelihoods]{TaxaLikely::evaluate_likelihoods()}},
-\code{\link[TaxaLikely:audit_barcode_coverage]{TaxaLikely::audit_barcode_coverage()}},
-\code{\link[TaxaLikely:apply_coverage_constraints]{TaxaLikely::apply_coverage_constraints()}}
+\code{\link[TaxaLikely:expand_unreferenced_hypotheses]{TaxaLikely::expand_unreferenced_hypotheses()}}
 }

@@ -142,6 +142,26 @@ a reference error). \code{NA} when \code{prior_mean} is absent from
 \item{\code{winner_likelihood_cov}}{Coverage-adjusted sequence-match
 likelihood (\code{score_likelihood_cov}) of the consensus taxon. \code{NA}
 when absent from \code{posterior_df} or when \code{consensus_taxon} is \code{NA}.}
+\item{\code{winner_hypothesis_type}}{Character. The \code{hypothesis_type} of
+the winning (highest-posterior) hypothesis row, e.g.
+\code{"specific_candidate"}, \code{"unreferenced_species"}, or
+\code{"rank_expanded"} (see \code{winner_rank_expanded} below). \code{NA} when the
+winning row's \code{hypothesis_type} value is itself \code{NA}, or when
+\code{consensus_taxon} is \code{NA}.}
+\item{\code{winner_rank_expanded}}{Logical. \code{TRUE} when the winning
+hypothesis was manufactured by \code{join_priors()}'s coarse-rank
+expansion (\code{.expand_coarse_rank_rows()}) rather than resolved from a
+real species-level match. This means the reported species-level
+\code{consensus_taxon} was decided entirely by occurrence-prior mass
+among candidates that all inherited one identical, uninformative
+likelihood from the original coarse-rank (e.g. family-level)
+identification -- no sequence/image/acoustic evidence discriminated
+between them. This is intentional, sound behavior (using local
+occurrence priors to resolve an otherwise-coarse ID) -- this column
+exists so a downstream consumer can distinguish it from a
+genuinely evidence-resolved species call, not to flag it as an
+error. \code{NA} when \code{winner_hypothesis_type} is \code{NA}; \code{FALSE}
+otherwise.}
 }
 }
 \description{

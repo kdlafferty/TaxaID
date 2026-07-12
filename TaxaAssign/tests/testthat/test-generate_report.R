@@ -186,10 +186,11 @@ test_that(".build_methods_text produces LLM workflow methods", {
 
 test_that(".build_methods_text produces Bayesian workflow methods", {
   params <- list(
-    n_sims               = 1000L,
-    cumulative_threshold = 0.9,
-    min_posterior        = 0.05,
-    presence_multiplier  = 5
+    n_sims                      = 1000L,
+    cumulative_threshold        = 0.9,
+    min_posterior               = 0.05,
+    confirmation_quantile       = 0.9,
+    min_confirmation_confidence = 0.8
   )
 
   text <- .build_methods_text("bayesian", params, "eDNA", NULL,

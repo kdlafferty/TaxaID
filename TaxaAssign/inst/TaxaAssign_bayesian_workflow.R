@@ -118,7 +118,7 @@ unreferenced_df <- taxaexpect_species_df |>
 cat("Unreferenced species with TaxaExpect priors:", nrow(unreferenced_df), "\n")
 
 .tic("S2b_expand")
-expanded_likelihoods <- expand_unreferenced_hypotheses(
+expanded_likelihoods <- TaxaLikely::expand_unreferenced_hypotheses(
   likelihood_df   = top_likelihoods,
   unreferenced_df = unreferenced_df
 )
@@ -206,8 +206,9 @@ consensus <- posterior_consensus(
 
 posteriors_updated <- update_prior_from_consensus(
   posteriors, consensus,
-  presence_multiplier = 5,
-  n_sims              = 1000
+  confirmation_quantile       = 0.9,
+  min_confirmation_confidence = 0.8,
+  n_sims                      = 1000
 )
 
 consensus_final <- posterior_consensus(

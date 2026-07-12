@@ -11,9 +11,12 @@
 #' A one-pass empirical Bayes refinement step. Takes the output of
 #' [posterior_consensus()] and uses species-level consensus assignments
 #' (where `is_resolved = TRUE`) as evidence of true presence at the site.
-#' The `prior_mean` for each confirmed species is multiplied by
-#' `presence_multiplier` in all *unresolved* observations, then
-#' [compute_posterior()] is re-run for those observations only.
+#' For each confirmed species, the `confirmation_quantile`-th quantile of
+#' `consensus_posterior` across all confirming ("donor") observations is
+#' computed; if that value clears `min_confirmation_confidence`, it
+#' *substitutes* for `prior_mean` (never lowering it) in all *unresolved*
+#' observations, and [compute_posterior()] is re-run for those observations
+#' only.
 #'
 #' **Why only unresolved observations?** Resolved observations already have a clear
 #' winner; updating their priors and re-running would not change the conclusion
@@ -38,23 +41,71 @@
 #' observations in a single-observation spatial group are always returned
 #' unchanged, exactly like already-resolved observations.
 #'
-#' **Multiplier choice:** A multiplier raises the prior proportionally, preserving
-#' the relative ranking of other hypotheses before renormalization. The default
-#' of 5 is a moderate nudge: a confirmed species starting at 10\% prior moves
-#' to roughly 33\% after normalization. Increase to 10--20 for datasets where
-#' species identity is highly consistent within a site (e.g. eDNA from a single
-#' water body). Decrease to 2 for datasets with high spatial heterogeneity.
-#' A formally correct alternative would be a Beta-Binomial hierarchical model
-#' over species x observation within a site, but the multiplier approximation is
-#' adequate in practice.
+#' @section Confirmation-quantile design (Session 149):
+#' The previous design (a fixed `presence_multiplier`, e.g. x5) applied the
+#' same boost regardless of how many observations confirmed a species or how
+#' confident those confirmations were -- flagged as High priority in
+#' `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`. This design
+#' instead ties the boost directly to the strength of the confirming
+#' evidence:
+#' \enumerate{
+#'   \item For each confirmed species, take the `confirmation_quantile`-th
+#'     quantile (default 0.9) of `consensus_posterior` across all resolved
+#'     "donor" observations naming it. A high quantile behaves like a
+#'     near-maximum for a small donor pool (rewarding one strong,
+#'     high-quality confirmation the way a single excellent frame in an
+#'     otherwise-poor camera-trap burst should), but -- unlike a plain
+#'     maximum -- it converges to a *stable* population value as the donor
+#'     pool grows, rather than drifting toward the degenerate ceiling of 1.0
+#'     regardless of whether the evidence is real. This matters specifically
+#'     for a pair of species a classifier cannot reliably separate: many
+#'     weak, correlated (not independent) confirmations split between them
+#'     would otherwise let a plain maximum -- or a probabilistic-OR
+#'     combination across all of them -- manufacture unwarranted confidence
+#'     for one or both, an effect that does not simply cancel out under
+#'     renormalization once a third, unrelated candidate is also present.
+#'   \item That quantile value is only used at all if it clears
+#'     `min_confirmation_confidence` (default 0.8) -- a barely-resolved
+#'     confirmation (e.g. just above whatever `posterior_consensus()`
+#'     threshold marked it "resolved") should not be trusted to inject a
+#'     large jump into an unrelated observation's prior.
+#'   \item Even then, it only *replaces* `prior_mean` where it exceeds the
+#'     existing value (never-demote) -- a species already well-supported by
+#'     occurrence data is left alone.
+#' }
+#' This is still a threshold-based design (the quantile level and the
+#' confidence floor are both free parameters), and it does not by itself
+#' distinguish "confidence earned by genuinely strong evidence" from
+#' "confidence attained despite thin/low-quality input" (e.g. a short,
+#' low-coverage sequence read producing a spurious high-identity match) --
+#' that would need a quality covariate on the underlying scores, a separate,
+#' larger design question flagged for later rather than solved here.
+#' A formally correct alternative would still be a Beta-Binomial
+#' hierarchical model over species x observation within a site; this
+#' quantile-based design is a more evidence-sensitive interim step than the
+#' old fixed multiplier, not a replacement for that.
 #'
 #' @param result Dataframe. Output of [assign_taxa_llm()] or [compute_posterior()].
 #'   Must contain: `observation_id`, `taxon_name`, `score_likelihood`,
-#'   `score_likelihood_mean`, `score_likelihood_sd`, `prior_mean`.
+#'   `score_likelihood_mean`, `score_likelihood_sd`, `prior_mean`. When
+#'   `prior_alpha`/`prior_beta` (Beta shape parameters) are present, they are
+#'   recomputed alongside `prior_mean` for boosted rows, preserving the
+#'   original concentration (`alpha + beta`) so [compute_posterior()]'s Monte
+#'   Carlo path stays consistent with the boosted point estimate -- fixes a
+#'   latent inconsistency in the previous design, where only `prior_mean` was
+#'   rescaled and a stale Beta shape could be sampled from if `n_sims > 0`.
 #' @param consensus Dataframe. Output of [posterior_consensus()] run on `result`.
-#'   Must contain: `observation_id`, `consensus_taxon`, `is_resolved`.
-#' @param presence_multiplier Numeric > 1. Factor by which `prior_mean` is
-#'   multiplied for confirmed species in unresolved observations. Default 5.
+#'   Must contain: `observation_id`, `consensus_taxon`, `is_resolved`,
+#'   `consensus_posterior`.
+#' @param confirmation_quantile Numeric in (0, 1]. Quantile of confirming
+#'   observations' `consensus_posterior` used as the candidate new
+#'   `prior_mean` for a confirmed species. Default 0.9. `1` is equivalent to
+#'   taking the maximum.
+#' @param min_confirmation_confidence Numeric in \[0, 1\]. Minimum value the
+#'   `confirmation_quantile` must clear for a species to be treated as
+#'   confirmed at all. Default 0.8. Set to `0` to disable this gate entirely
+#'   (every confirmed species is used, however weakly confirmed -- restores
+#'   the previous design's lack of a confidence floor).
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty — match the value used in the original run.
@@ -84,18 +135,21 @@
 #' \dontrun{
 #' result_updated <- update_prior_from_consensus(
 #'   result, consensus,
-#'   presence_multiplier = 5
+#'   confirmation_quantile        = 0.9,
+#'   min_confirmation_confidence  = 0.8
 #' )
 #' }
 #'
 #' @importFrom cli cli_abort cli_inform
 #' @importFrom dplyr bind_rows arrange desc n_distinct
 #' @importFrom rlang .data
+#' @importFrom stats quantile
 #'
 #' @export
 update_prior_from_consensus <- function(result,
                                          consensus,
-                                         presence_multiplier = 5,
+                                         confirmation_quantile       = 0.9,
+                                         min_confirmation_confidence = 0.8,
                                          n_sims              = 0,
                                          spatial_group_map    = NULL) {
 
@@ -106,14 +160,20 @@ update_prior_from_consensus <- function(result,
   if (length(missing_result) > 0)
     cli::cli_abort("result missing required column(s): {.field {missing_result}}")
 
-  required_consensus <- c("observation_id", "consensus_taxon", "is_resolved")
+  required_consensus <- c("observation_id", "consensus_taxon", "is_resolved",
+                           "consensus_posterior")
   missing_consensus <- setdiff(required_consensus, names(consensus))
   if (length(missing_consensus) > 0)
     cli::cli_abort("consensus missing required column(s): {.field {missing_consensus}}")
 
-  if (!is.numeric(presence_multiplier) || length(presence_multiplier) != 1L ||
-      presence_multiplier <= 1)
-    cli::cli_abort("{.arg presence_multiplier} must be a single number > 1.")
+  if (!is.numeric(confirmation_quantile) || length(confirmation_quantile) != 1L ||
+      is.na(confirmation_quantile) || confirmation_quantile <= 0 || confirmation_quantile > 1)
+    cli::cli_abort("{.arg confirmation_quantile} must be a single number in (0, 1].")
+
+  if (!is.numeric(min_confirmation_confidence) || length(min_confirmation_confidence) != 1L ||
+      is.na(min_confirmation_confidence) ||
+      min_confirmation_confidence < 0 || min_confirmation_confidence > 1)
+    cli::cli_abort("{.arg min_confirmation_confidence} must be a single number in [0, 1].")
 
   # --- Resolve multi-member spatial groups from spatial_group_map, if supplied ----
   # Only observations that share a spatial_group_id with >=1 other observation
@@ -140,16 +200,48 @@ update_prior_from_consensus <- function(result,
   }
 
   # --- Extract confirmed species (resolved across any OTHER observation sharing a spatial group) ---
+  # For each species named by >= 1 resolved ("donor") observation, take the
+  # confirmation_quantile-th quantile of those donors' consensus_posterior --
+  # not just the raw set of names -- so the eventual boost reflects how
+  # strong (and how numerous) the confirming evidence actually was, not a
+  # flat constant regardless of confirmation count/confidence (see @section
+  # Confirmation-quantile design above).
   confirmation_pool <- consensus
   if (!is.null(grouped_ids)) {
     confirmation_pool <- consensus[consensus$observation_id %in% grouped_ids, , drop = FALSE]
   }
-  confirmed_species <- unique(confirmation_pool$consensus_taxon[
-    !is.na(confirmation_pool$consensus_taxon) & confirmation_pool$is_resolved
-  ])
+  donor_rows <- confirmation_pool[
+    !is.na(confirmation_pool$consensus_taxon) &
+      confirmation_pool$is_resolved &
+      !is.na(confirmation_pool$consensus_posterior),
+    ,
+    drop = FALSE
+  ]
+
+  if (nrow(donor_rows) == 0L) {
+    cli::cli_inform("No resolved species found in consensus; returning result unchanged.")
+    return(result)
+  }
+
+  species_quantile <- tapply(
+    donor_rows$consensus_posterior, donor_rows$consensus_taxon,
+    function(x) stats::quantile(x, probs = confirmation_quantile, na.rm = TRUE, names = FALSE)
+  )
+  n_species_seen <- length(species_quantile)
+
+  if (min_confirmation_confidence > 0) {
+    species_quantile <- species_quantile[species_quantile >= min_confirmation_confidence]
+  }
+
+  confirmed_species <- names(species_quantile)
 
   if (length(confirmed_species) == 0L) {
-    cli::cli_inform("No resolved species found in consensus; returning result unchanged.")
+    cli::cli_inform(
+      "{n_species_seen} confirmed species found, but none reached the \\
+      confirmation_quantile = {confirmation_quantile} threshold of \\
+      min_confirmation_confidence = {min_confirmation_confidence}; \\
+      returning result unchanged."
+    )
     return(result)
   }
 
@@ -176,9 +268,10 @@ update_prior_from_consensus <- function(result,
   }
 
   cli::cli_inform(c(
-    "Confirmed species from resolved observations: {length(confirmed_species)}",
+    "Confirmed species from resolved observations: {length(confirmed_species)} \\
+    (of {n_species_seen} seen, gated at min_confirmation_confidence = {min_confirmation_confidence})",
     "Unresolved observations to update: {length(unresolved_ids)}",
-    "Prior multiplier: {presence_multiplier}x"
+    "Confirmation quantile: {confirmation_quantile}"
   ))
 
   # --- Split result -----------------------------------------------------------
@@ -197,7 +290,7 @@ update_prior_from_consensus <- function(result,
   resolved_rows$prior_updated   <- FALSE
   unresolved_rows$prior_updated <- TRUE
 
-  # --- Apply multiplier -------------------------------------------------------
+  # --- Apply confirmation-quantile substitution (never-demote) ----------------
   boost_mask <- unresolved_rows$taxon_name %in% confirmed_species
   n_boosted  <- sum(boost_mask)
 
@@ -210,13 +303,41 @@ update_prior_from_consensus <- function(result,
     return(result)
   }
 
+  candidate_prior <- unname(species_quantile[unresolved_rows$taxon_name[boost_mask]])
+  old_prior        <- unresolved_rows$prior_mean[boost_mask]
+  raise_mask       <- candidate_prior > old_prior   # never-demote: only raise
+  n_raised         <- sum(raise_mask)
+
   cli::cli_inform(
-    "Boosting {n_boosted} hypothesis row(s) across \\
-    {dplyr::n_distinct(unresolved_rows$observation_id[boost_mask])} observation(s)."
+    "{n_boosted} hypothesis row(s) across \\
+    {dplyr::n_distinct(unresolved_rows$observation_id[boost_mask])} observation(s) \\
+    matched a confirmed species; {n_raised} actually raised above their existing prior \\
+    (others already met or exceeded the confirmation quantile)."
   )
 
-  unresolved_rows$prior_mean[boost_mask] <-
-    unresolved_rows$prior_mean[boost_mask] * presence_multiplier
+  new_prior <- old_prior
+  new_prior[raise_mask] <- candidate_prior[raise_mask]
+
+  # Keep prior_alpha/prior_beta consistent with the boosted prior_mean, when
+  # present, by preserving the original concentration (alpha + beta) and
+  # recentering it at the new mean -- otherwise compute_posterior()'s Monte
+  # Carlo path (if n_sims > 0) would sample from a stale Beta shape while the
+  # point estimate uses the new mean (a latent inconsistency in the previous
+  # design, flagged during the Session 149 soundness-review walk-through).
+  has_beta_cols <- all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))
+  if (has_beta_cols) {
+    old_alpha <- unresolved_rows$prior_alpha[boost_mask]
+    old_beta  <- unresolved_rows$prior_beta[boost_mask]
+    phi       <- old_alpha + old_beta
+    new_alpha <- old_alpha
+    new_beta  <- old_beta
+    new_alpha[raise_mask] <- new_prior[raise_mask] * phi[raise_mask]
+    new_beta[raise_mask]  <- (1 - new_prior[raise_mask]) * phi[raise_mask]
+    unresolved_rows$prior_alpha[boost_mask] <- new_alpha
+    unresolved_rows$prior_beta[boost_mask]  <- new_beta
+  }
+
+  unresolved_rows$prior_mean[boost_mask] <- new_prior
 
   # --- Recompute posteriors for unresolved observations ------------------------
   # Drop existing posterior columns so compute_posterior() produces fresh values
@@ -235,8 +356,9 @@ update_prior_from_consensus <- function(result,
     dplyr::arrange(.data$observation_id, dplyr::desc(.data$posterior_point_est))
 
   attr(out, "report_params") <- list(
-    presence_multiplier = presence_multiplier,
-    n_sims              = n_sims
+    confirmation_quantile       = confirmation_quantile,
+    min_confirmation_confidence = min_confirmation_confidence,
+    n_sims                      = n_sims
   )
   out
 }

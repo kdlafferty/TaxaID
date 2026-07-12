@@ -106,8 +106,9 @@ refinement
 
 **Unreferenced species:** - `suggest_unreferenced_species()` --
 LLM-first detection of missing taxa (supports eDNA, acoustic, and image
-data via `data_type` param) - `expand_unreferenced_hypotheses()` -- name
-generic H2/H3 rows
+data via `data_type` param) - `expand_unreferenced_hypotheses()` --
+deprecated forwarding wrapper; moved to
+`TaxaLikely::expand_unreferenced_hypotheses()` (Session 150)
 
 **High-level wrappers:** - `run_bayesian_pipeline()` -- full Bayesian
 (TaxaLikely + TaxaExpect -\> posteriors) - `run_llm_pipeline()` --

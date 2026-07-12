@@ -7,7 +7,8 @@
 update_prior_from_consensus(
   result,
   consensus,
-  presence_multiplier = 5,
+  confirmation_quantile = 0.9,
+  min_confirmation_confidence = 0.8,
   n_sims = 0,
   spatial_group_map = NULL
 )
@@ -15,13 +16,28 @@ update_prior_from_consensus(
 \arguments{
 \item{result}{Dataframe. Output of \code{\link[=assign_taxa_llm]{assign_taxa_llm()}} or \code{\link[=compute_posterior]{compute_posterior()}}.
 Must contain: \code{observation_id}, \code{taxon_name}, \code{score_likelihood},
-\code{score_likelihood_mean}, \code{score_likelihood_sd}, \code{prior_mean}.}
+\code{score_likelihood_mean}, \code{score_likelihood_sd}, \code{prior_mean}. When
+\code{prior_alpha}/\code{prior_beta} (Beta shape parameters) are present, they are
+recomputed alongside \code{prior_mean} for boosted rows, preserving the
+original concentration (\code{alpha + beta}) so \code{\link[=compute_posterior]{compute_posterior()}}'s Monte
+Carlo path stays consistent with the boosted point estimate -- fixes a
+latent inconsistency in the previous design, where only \code{prior_mean} was
+rescaled and a stale Beta shape could be sampled from if \code{n_sims > 0}.}
 
 \item{consensus}{Dataframe. Output of \code{\link[=posterior_consensus]{posterior_consensus()}} run on \code{result}.
-Must contain: \code{observation_id}, \code{consensus_taxon}, \code{is_resolved}.}
+Must contain: \code{observation_id}, \code{consensus_taxon}, \code{is_resolved},
+\code{consensus_posterior}.}
 
-\item{presence_multiplier}{Numeric > 1. Factor by which \code{prior_mean} is
-multiplied for confirmed species in unresolved observations. Default 5.}
+\item{confirmation_quantile}{Numeric in (0, 1]. Quantile of confirming
+observations' \code{consensus_posterior} used as the candidate new
+\code{prior_mean} for a confirmed species. Default 0.9. \code{1} is equivalent to
+taking the maximum.}
+
+\item{min_confirmation_confidence}{Numeric in [0, 1]. Minimum value the
+\code{confirmation_quantile} must clear for a species to be treated as
+confirmed at all. Default 0.8. Set to \code{0} to disable this gate entirely
+(every confirmed species is used, however weakly confirmed -- restores
+the previous design's lack of a confidence floor).}
 
 \item{n_sims}{Integer. Passed to \code{\link[=compute_posterior]{compute_posterior()}} for the re-run.
 Default 0 (point estimates only, fast). Set to 1000 to propagate
@@ -52,9 +68,12 @@ spatial group are returned unchanged, same as resolved ones. Sorted by
 A one-pass empirical Bayes refinement step. Takes the output of
 \code{\link[=posterior_consensus]{posterior_consensus()}} and uses species-level consensus assignments
 (where \code{is_resolved = TRUE}) as evidence of true presence at the site.
-The \code{prior_mean} for each confirmed species is multiplied by
-\code{presence_multiplier} in all \emph{unresolved} observations, then
-\code{\link[=compute_posterior]{compute_posterior()}} is re-run for those observations only.
+For each confirmed species, the \code{confirmation_quantile}-th quantile of
+\code{consensus_posterior} across all confirming ("donor") observations is
+computed; if that value clears \code{min_confirmation_confidence}, it
+\emph{substitutes} for \code{prior_mean} (never lowering it) in all \emph{unresolved}
+observations, and \code{\link[=compute_posterior]{compute_posterior()}} is re-run for those observations
+only.
 }
 \details{
 \strong{Why only unresolved observations?} Resolved observations already have a clear
@@ -79,22 +98,59 @@ observations whose \code{spatial_group_id} is shared with at least one other
 observation are used as evidence sources or receive a prior update;
 observations in a single-observation spatial group are always returned
 unchanged, exactly like already-resolved observations.
-
-\strong{Multiplier choice:} A multiplier raises the prior proportionally, preserving
-the relative ranking of other hypotheses before renormalization. The default
-of 5 is a moderate nudge: a confirmed species starting at 10\\% prior moves
-to roughly 33\\% after normalization. Increase to 10--20 for datasets where
-species identity is highly consistent within a site (e.g. eDNA from a single
-water body). Decrease to 2 for datasets with high spatial heterogeneity.
-A formally correct alternative would be a Beta-Binomial hierarchical model
-over species x observation within a site, but the multiplier approximation is
-adequate in practice.
 }
+\section{Confirmation-quantile design (Session 149)}{
+
+The previous design (a fixed \code{presence_multiplier}, e.g. x5) applied the
+same boost regardless of how many observations confirmed a species or how
+confident those confirmations were -- flagged as High priority in
+\code{ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md}. This design
+instead ties the boost directly to the strength of the confirming
+evidence:
+\enumerate{
+\item For each confirmed species, take the \code{confirmation_quantile}-th
+quantile (default 0.9) of \code{consensus_posterior} across all resolved
+"donor" observations naming it. A high quantile behaves like a
+near-maximum for a small donor pool (rewarding one strong,
+high-quality confirmation the way a single excellent frame in an
+otherwise-poor camera-trap burst should), but -- unlike a plain
+maximum -- it converges to a \emph{stable} population value as the donor
+pool grows, rather than drifting toward the degenerate ceiling of 1.0
+regardless of whether the evidence is real. This matters specifically
+for a pair of species a classifier cannot reliably separate: many
+weak, correlated (not independent) confirmations split between them
+would otherwise let a plain maximum -- or a probabilistic-OR
+combination across all of them -- manufacture unwarranted confidence
+for one or both, an effect that does not simply cancel out under
+renormalization once a third, unrelated candidate is also present.
+\item That quantile value is only used at all if it clears
+\code{min_confirmation_confidence} (default 0.8) -- a barely-resolved
+confirmation (e.g. just above whatever \code{posterior_consensus()}
+threshold marked it "resolved") should not be trusted to inject a
+large jump into an unrelated observation's prior.
+\item Even then, it only \emph{replaces} \code{prior_mean} where it exceeds the
+existing value (never-demote) -- a species already well-supported by
+occurrence data is left alone.
+}
+This is still a threshold-based design (the quantile level and the
+confidence floor are both free parameters), and it does not by itself
+distinguish "confidence earned by genuinely strong evidence" from
+"confidence attained despite thin/low-quality input" (e.g. a short,
+low-coverage sequence read producing a spurious high-identity match) --
+that would need a quality covariate on the underlying scores, a separate,
+larger design question flagged for later rather than solved here.
+A formally correct alternative would still be a Beta-Binomial
+hierarchical model over species x observation within a site; this
+quantile-based design is a more evidence-sensitive interim step than the
+old fixed multiplier, not a replacement for that.
+}
+
 \examples{
 \dontrun{
 result_updated <- update_prior_from_consensus(
   result, consensus,
-  presence_multiplier = 5
+  confirmation_quantile        = 0.9,
+  min_confirmation_confidence  = 0.8
 )
 }
 

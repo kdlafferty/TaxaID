@@ -137,6 +137,16 @@ If no site-level Tier 3 rows exist, a global average across all
 Tier 3 rows is used. This ensures that every hypothesis has a
 non-zero prior, reflecting the possibility that unobserved species
 could be present.
+
+\strong{Domestic/synanthropic species caveat (Session 149):} this fallback
+assumes unmodelled species are exchangeable draws from one detection
+process. Domestic/synanthropic species (pets, livestock) violate this in
+a known, systematic direction, since GBIF/iNaturalist under-index captive
+organisms -- see \code{TaxaExpect::generate_undetected_diversity()}'s own
+Domestic/synanthropic species section for the root cause and the
+recommended fix (augment your occurrence data before training, rather
+than relying on this floor). \code{TaxaFlag::add_posthoc_assessment(domestic_taxa = ...)} can flag the resulting low-prior-vs-strong-likelihood contrast
+downstream for review.
 }
 
 \subsection{Deduplication and redundancy filtering}{

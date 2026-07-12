@@ -36,7 +36,8 @@ refinement
 
 \itemize{
 \item \code{\link{suggest_unreferenced_species}} -- LLM-first detection
-\item \code{\link{expand_unreferenced_hypotheses}} -- expand generic rows
+\item \code{\link{expand_unreferenced_hypotheses}} -- deprecated; moved to
+\code{TaxaLikely::expand_unreferenced_hypotheses()} (Session 150)
 }
 }
 

@@ -1,4 +1,7 @@
 # tests/testthat/test-update_prior.R
+# Session 149: rewritten for the confirmation-quantile design (replaces the
+# old fixed presence_multiplier). See update_prior_from_consensus.R's
+# "Confirmation-quantile design" roxygen section for the full rationale.
 
 library(dplyr)
 
@@ -47,13 +50,17 @@ library(dplyr)
   )
 }
 
-.make_consensus <- function() {
+# consensus_posterior default 0.9 for the confirming S1 row -- comfortably
+# above the default min_confirmation_confidence (0.8) so "boost happens"
+# tests exercise the intended path without also depending on the gate.
+.make_consensus <- function(s1_posterior = 0.9) {
   tibble(
     observation_id       = c("S1", "S2"),
-    consensus_taxon = c("Sp_A", NA),
-    consensus_rank  = c("species", NA),
-    is_resolved     = c(TRUE, FALSE),
-    n_plausible     = c(1L, 2L)
+    consensus_taxon      = c("Sp_A", NA),
+    consensus_rank       = c("species", NA),
+    is_resolved          = c(TRUE, FALSE),
+    consensus_posterior  = c(s1_posterior, NA),
+    n_plausible          = c(1L, 2L)
   )
 }
 
@@ -63,8 +70,7 @@ test_that("update_prior_from_consensus returns data frame with expected columns"
   result    <- .make_result()
   consensus <- .make_consensus()
 
-  out <- update_prior_from_consensus(result, consensus,
-                                     presence_multiplier = 5, n_sims = 0)
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
   expect_s3_class(out, "data.frame")
   expect_true("prior_updated" %in% names(out))
   expect_true(nrow(out) >= nrow(result))
@@ -74,13 +80,14 @@ test_that("update_prior_from_consensus boosts confirmed species in unresolved sa
   result    <- .make_result()
   consensus <- .make_consensus()
 
-  out <- update_prior_from_consensus(result, consensus,
-                                     presence_multiplier = 5, n_sims = 0)
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
 
-  # Sp_A confirmed in S1, should get boosted prior in S2
+  # Sp_A confirmed in S1 at posterior 0.9 (clears the default gate); should be
+  # boosted (substituted, not multiplied) in S2 since 0.9 > the existing 0.5.
   s2_sp_a <- out |> filter(observation_id == "S2", taxon_name == "Sp_A")
   expect_true(nrow(s2_sp_a) == 1L)
   expect_true(s2_sp_a$prior_updated)
+  expect_equal(s2_sp_a$prior_mean, 0.9)
 })
 
 test_that("update_prior_from_consensus handles case with no resolved species", {
@@ -88,13 +95,110 @@ test_that("update_prior_from_consensus handles case with no resolved species", {
   consensus <- .make_consensus()
   consensus$is_resolved <- FALSE
 
-  out <- update_prior_from_consensus(result, consensus,
-                                     presence_multiplier = 5, n_sims = 0)
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
   expect_s3_class(out, "data.frame")
   # No species should be boosted — prior_updated may not exist or be all FALSE
   if ("prior_updated" %in% names(out)) {
     expect_true(all(!out$prior_updated))
   }
+})
+
+# ---- min_confirmation_confidence gate ----------------------------------------
+
+test_that("a confirmation below min_confirmation_confidence is not used by default", {
+  result    <- .make_result()
+  consensus <- .make_consensus(s1_posterior = 0.6)  # resolved, but weakly so
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+
+  # Default min_confirmation_confidence = 0.8; 0.6 doesn't clear it -> unchanged.
+  expect_equal(nrow(out), nrow(result))
+  s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_equal(s2_sp_a$prior_mean, 0.5)
+})
+
+test_that("min_confirmation_confidence = 0 disables the gate entirely", {
+  result    <- .make_result()
+  consensus <- .make_consensus(s1_posterior = 0.6)
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0,
+                                     min_confirmation_confidence = 0)
+
+  s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_true(s2_sp_a$prior_updated)
+  expect_equal(s2_sp_a$prior_mean, 0.6)
+})
+
+# ---- never-demote guard -------------------------------------------------------
+
+test_that("never-demote: an existing prior above the confirmation quantile is left unchanged", {
+  result    <- .make_result()
+  result$prior_mean[result$observation_id == "S2" & result$taxon_name == "Sp_A"] <- 0.95
+  consensus <- .make_consensus(s1_posterior = 0.9)  # would only raise to 0.9
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+
+  s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  # 0.9 < 0.95, so prior_mean must stay at 0.95 (not lowered)
+  expect_equal(s2_sp_a$prior_mean, 0.95)
+})
+
+# ---- confirmation_quantile across multiple donors ----------------------------
+
+test_that("confirmation_quantile combines multiple donor observations correctly", {
+  result <- bind_rows(
+    .make_result(),
+    tibble(
+      observation_id       = "S3",
+      taxon_name           = "Sp_A",
+      taxon_name_rank      = "species",
+      hypothesis_type      = "specific_candidate",
+      score_likelihood     = 1.0,
+      score_likelihood_mean = 1.0,
+      score_likelihood_sd  = 0,
+      prior_mean           = 0.4,
+      prior_alpha          = 4,
+      prior_beta           = 6,
+      posterior_point_est  = 1.0,
+      posterior_mean       = 1.0,
+      posterior_sd         = 0,
+      confidence_score     = 1.0,
+      genus = "GenA", family = "FamA", species = "Sp_A"
+    )
+  )
+  # Two donors confirming Sp_A: S1 at 0.90, S4 at 0.95 (S4 has no hypothesis
+  # rows in `result` -- only its consensus counts as a donor). S3 needs its
+  # own (unresolved) consensus row to be eligible for the boost at all.
+  consensus <- bind_rows(
+    .make_consensus(s1_posterior = 0.90),
+    tibble(observation_id = "S3", consensus_taxon = NA, consensus_rank = NA,
+           is_resolved = FALSE, consensus_posterior = NA, n_plausible = 1L),
+    tibble(observation_id = "S4", consensus_taxon = "Sp_A", consensus_rank = "species",
+           is_resolved = TRUE, consensus_posterior = 0.95, n_plausible = 1L)
+  )
+
+  expected_q90 <- stats::quantile(c(0.90, 0.95), probs = 0.9, names = FALSE)
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  s3_sp_a <- out[out$observation_id == "S3" & out$taxon_name == "Sp_A", ]
+  expect_equal(s3_sp_a$prior_mean, expected_q90)
+})
+
+# ---- prior_alpha/prior_beta consistency (Session 149 latent-bug fix) --------
+
+test_that("prior_alpha/prior_beta are recomputed consistently with a boosted prior_mean", {
+  result    <- .make_result()
+  consensus <- .make_consensus(s1_posterior = 0.9)
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+
+  phi <- 5 + 5  # original prior_alpha + prior_beta for this row
+  expect_equal(s2_sp_a$prior_alpha, 0.9 * phi)
+  expect_equal(s2_sp_a$prior_beta,  0.1 * phi)
+  # Mean implied by the recomputed Beta matches the boosted prior_mean exactly
+  expect_equal(s2_sp_a$prior_alpha / (s2_sp_a$prior_alpha + s2_sp_a$prior_beta),
+               s2_sp_a$prior_mean)
 })
 
 # ---- spatial_group_map: multi-member vs. single-observation spatial groups ---
@@ -111,8 +215,8 @@ test_that("spatial_group_map blocks the boost when the confirming observation is
     spatial_group_id = c("spatial_group_1", "spatial_group_2")
   )
 
-  out <- update_prior_from_consensus(result, consensus, presence_multiplier = 5,
-                                     n_sims = 0, spatial_group_map = spatial_group_map)
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0,
+                                     spatial_group_map = spatial_group_map)
 
   # No spatial group has >= 2 members, so nothing is eligible; result unchanged.
   expect_equal(nrow(out), nrow(result))
@@ -129,8 +233,8 @@ test_that("spatial_group_map allows the boost when S1 and S2 share a spatial gro
     spatial_group_id = c("spatial_group_1", "spatial_group_1")
   )
 
-  out <- update_prior_from_consensus(result, consensus, presence_multiplier = 5,
-                                     n_sims = 0, spatial_group_map = spatial_group_map)
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0,
+                                     spatial_group_map = spatial_group_map)
 
   s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   expect_true(nrow(s2_sp_a) == 1L)
@@ -163,7 +267,7 @@ test_that("an unresolved observation in a single-observation spatial group is sk
   consensus <- bind_rows(
     .make_consensus(),
     tibble(observation_id = "S3", consensus_taxon = NA, consensus_rank = NA,
-           is_resolved = FALSE, n_plausible = 2L)
+           is_resolved = FALSE, consensus_posterior = NA, n_plausible = 2L)
   )
 
   # S1/S2 share a spatial group (confirms Sp_A); S3 is its own single-observation group.
@@ -172,8 +276,8 @@ test_that("an unresolved observation in a single-observation spatial group is sk
     spatial_group_id = c("spatial_group_1", "spatial_group_1", "spatial_group_2")
   )
 
-  out <- update_prior_from_consensus(result, consensus, presence_multiplier = 5,
-                                     n_sims = 0, spatial_group_map = spatial_group_map)
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0,
+                                     spatial_group_map = spatial_group_map)
 
   s3_sp_a <- out[out$observation_id == "S3" & out$taxon_name == "Sp_A", ]
   expect_equal(s3_sp_a$prior_mean, 0.5)  # unchanged -- S3 is its own spatial group
@@ -189,5 +293,46 @@ test_that("spatial_group_map missing required columns errors", {
   expect_error(
     update_prior_from_consensus(result, consensus, spatial_group_map = bad_map),
     "spatial_group_map missing required column"
+  )
+})
+
+# ---- Input validation ---------------------------------------------------------
+
+test_that("consensus missing consensus_posterior errors", {
+  result    <- .make_result()
+  consensus <- .make_consensus()
+  consensus$consensus_posterior <- NULL
+
+  expect_error(
+    update_prior_from_consensus(result, consensus),
+    "consensus_posterior"
+  )
+})
+
+test_that("confirmation_quantile must be in (0, 1]", {
+  result    <- .make_result()
+  consensus <- .make_consensus()
+
+  expect_error(
+    update_prior_from_consensus(result, consensus, confirmation_quantile = 0),
+    "confirmation_quantile"
+  )
+  expect_error(
+    update_prior_from_consensus(result, consensus, confirmation_quantile = 1.5),
+    "confirmation_quantile"
+  )
+})
+
+test_that("min_confirmation_confidence must be in [0, 1]", {
+  result    <- .make_result()
+  consensus <- .make_consensus()
+
+  expect_error(
+    update_prior_from_consensus(result, consensus, min_confirmation_confidence = -0.1),
+    "min_confirmation_confidence"
+  )
+  expect_error(
+    update_prior_from_consensus(result, consensus, min_confirmation_confidence = 1.1),
+    "min_confirmation_confidence"
   )
 })

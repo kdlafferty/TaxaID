@@ -324,3 +324,63 @@ test_that("J-shaped prior (alpha < 1) simulation is consistent with point estima
   # posterior_mean should also rank Local_sp above Unmod_sp
   expect_gt(local_row$posterior_mean, unmod_row$posterior_mean)
 })
+
+# ---------------------------------------------------------------------------
+# Test 14 (Session 149): prior_alpha == 1 exactly is now treated as
+# fixed-at-mean. Before Session 149, the J-shape guard was `prior_alpha < 1`,
+# so alpha == 1 rows (e.g. TaxaExpect's global-floor Beta(1, N_total - 1))
+# were still sampled from Beta(1, beta) rather than fixed -- introducing
+# prior-sampling noise into what should be a deterministic case whenever
+# score_likelihood_sd is also 0. This test would fail under the pre-149
+# `< 1` cutoff (posterior_sd would be > 0 due to Beta sampling variance).
+# ---------------------------------------------------------------------------
+
+test_that("prior_alpha == 1 boundary is treated as fixed-at-mean (Session 149)", {
+  df <- dplyr::tibble(
+    observation_id        = rep("boundary_test", 2),
+    taxon_name            = c("Sp_A", "Sp_B"),
+    hypothesis_type       = "specific_candidate",
+    score_likelihood      = c(0.6, 0.4),
+    score_likelihood_mean = c(0.6, 0.4),
+    score_likelihood_sd   = c(0, 0),
+    prior_alpha           = c(1, 1),
+    prior_beta            = c(99, 9)
+  )
+  df$prior_mean <- df$prior_alpha / (df$prior_alpha + df$prior_beta)
+
+  set.seed(7)
+  result <- compute_posterior(df, n_sims = 2000L)
+
+  # With no likelihood uncertainty and both priors fixed at alpha == 1,
+  # every simulation should reproduce the same posterior exactly.
+  expect_equal(result$posterior_sd, c(0, 0))
+  expect_equal(result$posterior_mean, result$posterior_point_est, tolerance = 1e-10)
+})
+
+# ---------------------------------------------------------------------------
+# Test 15 (Session 149): truncated-normal likelihood sampling no longer
+# manufactures a spurious point mass at exactly 0. Before Session 149,
+# rnorm() draws below 0 were clamped to exactly 0, so a likelihood with a
+# mean close to 0 relative to its sd would frequently produce simulations
+# where every hypothesis's likelihood was clamped to 0 simultaneously,
+# triggering the all-zero-likelihood uniform-fallback warning. With exact
+# truncated-normal sampling, a draw of exactly 0 has probability 0, so that
+# warning should no longer fire for this input.
+# ---------------------------------------------------------------------------
+
+test_that("truncated-normal sampling avoids the spurious all-zero-likelihood warning (Session 149)", {
+  df <- dplyr::tibble(
+    observation_id        = rep("trunc_test", 2),
+    taxon_name            = c("Sp_A", "Sp_B"),
+    hypothesis_type       = "specific_candidate",
+    score_likelihood      = c(0.001, 0.001),
+    score_likelihood_mean = c(0.001, 0.001),
+    score_likelihood_sd   = c(0.01, 0.01),
+    prior_mean            = c(0.5, 0.5)
+  )
+
+  set.seed(99)
+  expect_no_warning(result <- compute_posterior(df, n_sims = 2000L))
+  expect_true(all(is.finite(result$posterior_mean)))
+  expect_true(all(result$posterior_mean >= 0))
+})

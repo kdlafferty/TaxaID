@@ -162,7 +162,6 @@ test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> f
 
   # Step 3: empirical Bayes refinement
   result_updated <- update_prior_from_consensus(result, con,
-                                                 presence_multiplier = 5,
                                                  n_sims = 100)
   expect_s3_class(result_updated, "data.frame")
 
@@ -186,6 +185,7 @@ test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> f
 # ==============================================================================
 
 test_that("expand_unreferenced output feeds into compute_posterior and score_consensus", {
+  skip_if_not_installed("TaxaLikely")
   # H1 is Atherinops affinis (Atherinopsidae) — different genus from H2 (Fundulus),
   # so H2 expansion fires and produces Fundulus parvipinnis.
   lik <- data.frame(
@@ -210,7 +210,7 @@ test_that("expand_unreferenced output feeds into compute_posterior and score_con
   )
 
   # Expand
-  expanded <- expand_unreferenced_hypotheses(lik, unref)
+  expanded <- TaxaLikely::expand_unreferenced_hypotheses(lik, unref)
   expect_true("Fundulus parvipinnis" %in% expanded$taxon_name)
   expect_false("Fundulus" %in% expanded$taxon_name[
     expanded$hypothesis_type == "unreferenced_species"])

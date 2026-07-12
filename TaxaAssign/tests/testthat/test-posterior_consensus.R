@@ -388,6 +388,66 @@ test_that("winner columns are NA_real_ in empty consensus rows", {
   expect_true(is.na(out$winner_likelihood_cov))
 })
 
+# ==============================================================================
+# winner_hypothesis_type / winner_rank_expanded (Session 149)
+# ==============================================================================
+
+test_that("winner_hypothesis_type/winner_rank_expanded columns are present", {
+  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
+                        "specific_candidate", 0.9)
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  expect_true(all(c("winner_hypothesis_type", "winner_rank_expanded") %in% names(out)))
+})
+
+test_that("winner_rank_expanded is FALSE for a normal specific_candidate winner", {
+  df <- make_posterior(
+    observation_id  = c("s1", "s1"),
+    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("specific_candidate", 2),
+    posterior_mean  = c(0.7, 0.3)
+  )
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  expect_equal(out$winner_hypothesis_type, "specific_candidate")
+  expect_false(out$winner_rank_expanded)
+})
+
+test_that("winner_rank_expanded is TRUE when the winner came from coarse-rank expansion", {
+  # Mimics join_priors()'s .expand_coarse_rank_rows() output: a family-level
+  # ID with no species-level match data expanded into two species candidates
+  # (different genera, as real Felidae congeners would be) sharing one
+  # inherited (flat) likelihood/score -- the winner among them is decided
+  # entirely by prior mass, not by any new evidence. cumulative_threshold is
+  # lowered so only the single top hypothesis is "plausible" -- this test is
+  # about the winner-diagnostic columns, not the LCA/rank behavior across
+  # different-genus congeners (which correctly cannot resolve to species
+  # when both are included in the plausible set).
+  df <- make_posterior(
+    observation_id  = c("s1", "s1"),
+    taxon_name      = c("Lynx rufus", "Puma concolor"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("rank_expanded", 2),
+    posterior_mean  = c(0.65, 0.35)   # tie-broken by prior alone
+  )
+  out <- posterior_consensus(df, rank_system = c("genus", "species"),
+                             cumulative_threshold = 0.5)
+  expect_equal(out$consensus_taxon, "Lynx rufus")
+  expect_equal(out$winner_hypothesis_type, "rank_expanded")
+  expect_true(out$winner_rank_expanded)
+})
+
+test_that("winner_hypothesis_type/winner_rank_expanded are NA in empty consensus rows", {
+  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
+                        "specific_candidate", 0.01)
+  expect_warning(
+    out <- posterior_consensus(df, rank_system = c("genus", "species"),
+                               min_posterior = 0.05),
+    "no hypotheses above min_posterior"
+  )
+  expect_true(is.na(out$winner_hypothesis_type))
+  expect_true(is.na(out$winner_rank_expanded))
+})
+
 test_that("missing required columns raises error", {
   df <- data.frame(observation_id = "s1", taxon_name = "Foo",
                     stringsAsFactors = FALSE)

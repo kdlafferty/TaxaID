@@ -199,7 +199,7 @@ unreferenced <- suggest_unreferenced_species(
 )
 
 # Expand generic unreferenced rows into named species
-likelihoods_expanded <- expand_unreferenced_hypotheses(
+likelihoods_expanded <- TaxaLikely::expand_unreferenced_hypotheses(
   likelihoods, unreferenced, priors
 )
 

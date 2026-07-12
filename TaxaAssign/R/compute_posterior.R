@@ -27,14 +27,24 @@
 #'   directly. Always computed.
 #' - **Monte Carlo path** (robust): samples from prior and likelihood distributions,
 #'   propagating uncertainty into the posterior. Likelihoods are sampled from
-#'   Normal(mean, sd). Priors are sampled from Beta(alpha, beta) when `prior_alpha`
-#'   and `prior_beta` columns are present, correctly bounded on \[0, 1\].
-#'   **Exception:** when `prior_alpha < 1` the Beta distribution is J-shaped (mode
-#'   at 0) and simulation draws are unreliable — species with tiny but non-zero
-#'   prior_mean would almost always lose to species with a well-concentrated prior at
-#'   a lower mean. For J-shaped rows (`prior_alpha < 1`), the prior is treated as
-#'   fixed at `prior_mean` in simulation rather than sampled, making the simulation
-#'   consistent with the point-estimate path.
+#'   Normal(mean, sd) truncated at 0 (via exact inverse-CDF sampling, not a
+#'   post-hoc clamp — a clamp would manufacture a spurious point mass at exactly 0
+#'   that is not part of the modelled distribution). Priors are sampled from
+#'   Beta(alpha, beta) when `prior_alpha` and `prior_beta` columns are present,
+#'   correctly bounded on \[0, 1\].
+#'   **Exception:** when `prior_alpha <= 1` the Beta distribution has its mode at
+#'   (or density strictly decreasing from) 0 and simulation draws are unreliable —
+#'   species with tiny but non-zero prior_mean would almost always lose to species
+#'   with a well-concentrated prior at a lower mean. For these rows, the prior is
+#'   treated as fixed at `prior_mean` in simulation rather than sampled, making the
+#'   simulation consistent with the point-estimate path. (Widened from `< 1` to
+#'   `<= 1` in Session 149 — `prior_alpha == 1` exactly is a real, common case,
+#'   e.g. `TaxaExpect::generate_undetected_diversity()`'s global floor
+#'   `Beta(1, N_total - 1)`, and was previously not caught. Whether the boundary
+#'   should extend further, e.g. to `prior_alpha` moderately above 1 with high
+#'   relative uncertainty, is still open — needs a larger real `prior_alpha`
+#'   distribution than the small bundled fixtures to characterize; see
+#'   `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`.)
 #'   Only runs when `n_sims > 0` AND at least one source of uncertainty exists
 #'   (non-zero `score_likelihood_sd`, or `prior_alpha`/`prior_beta` columns present).
 #'
@@ -93,7 +103,7 @@
 #' }
 #'
 #' @importFrom rlang .data
-#' @importFrom stats rnorm rbeta sd
+#' @importFrom stats rbeta sd
 #'
 #' @export
 compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
@@ -164,6 +174,30 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
     x / s
   }
 
+  # --- Helper: sample from Normal(mean, sd) truncated to [0, Inf) ---
+  # Exact inverse-CDF truncated-normal sampling (Session 149). Replaces the
+  # previous rnorm() + clamp-negative-to-0 approach, which manufactured a
+  # spurious point mass at exactly 0 not present in the modelled distribution
+  # (see ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md, row
+  # TaxaAssign::compute_posterior::mc_uncertainty_propagation). `mean`/`sd` are
+  # recycled to length `n`, matching rnorm()'s own recycling behavior. sd == 0
+  # is deterministic, matching rnorm(sd = 0) returning `mean` exactly.
+  rtruncnorm_at_zero <- function(n, mean, sd) {
+    mean <- rep_len(mean, n)
+    sd   <- rep_len(sd, n)
+    out  <- mean
+    pos_sd <- sd > 0
+    if (any(pos_sd)) {
+      # Clamp away from exactly 1 to avoid qnorm(1) = Inf for extreme
+      # negative-mean/small-sd combinations (probability mass below 0
+      # effectively 1 in double precision).
+      lower_p <- pmin(stats::pnorm(0, mean[pos_sd], sd[pos_sd]), 1 - 1e-12)
+      u       <- stats::runif(sum(pos_sd), min = lower_p, max = 1)
+      out[pos_sd] <- stats::qnorm(u, mean[pos_sd], sd[pos_sd])
+    }
+    out
+  }
+
   # --- Process each observation_id group ---
   cli::cli_inform("Computing posteriors for {dplyr::n_distinct(likelihood_w_prior$observation_id)} observation(s)...")
 
@@ -183,20 +217,27 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
       # --- Monte Carlo path ---
       if (run_sims) {
 
-        # Sample likelihoods: Normal(mean, sd), floor at 0
+        # Sample likelihoods: Normal(mean, sd) truncated at 0 (Session 149 —
+        # exact inverse-CDF sampling, not a post-hoc clamp; see
+        # rtruncnorm_at_zero() above for why the clamp was a real bug).
         sim_lik <- matrix(
-          rnorm(n_rows * n_sims, mean = chunk$score_likelihood_mean, sd = chunk$score_likelihood_sd),
+          rtruncnorm_at_zero(n_rows * n_sims, chunk$score_likelihood_mean, chunk$score_likelihood_sd),
           nrow = n_rows
         )
-        sim_lik[sim_lik < 0] <- 0
 
         # Sample priors: Beta(alpha, beta) — bounded [0, 1] by construction.
-        # When prior_alpha < 1 the Beta is J-shaped (mode at 0, spike near 0),
-        # making simulation draws unreliable: a species with prior_mean = 3e-4
-        # almost never beats one with prior_mean = 6e-6 because its draws are
-        # almost always near 0.  This arises when theta is tiny (e.g. 0.034%)
-        # and the model has high uncertainty (phi = alpha + beta is small).
-        # Fix: treat J-shaped rows as fixed at prior_mean in simulation.
+        # When prior_alpha <= 1 the Beta's density is at its maximum at (or
+        # strictly decreasing from) 0, making simulation draws unreliable: a
+        # species with prior_mean = 3e-4 almost never beats one with
+        # prior_mean = 6e-6 because its draws are almost always near 0. This
+        # arises when theta is tiny (e.g. 0.034%) and the model has high
+        # uncertainty (phi = alpha + beta is small).
+        # Fix: treat these rows as fixed at prior_mean in simulation.
+        # Session 149: widened from `< 1` to `<= 1` — `prior_alpha == 1`
+        # exactly (e.g. TaxaExpect's global-floor Beta(1, N_total - 1)) has
+        # the same "always decreasing away from 0" density shape and was
+        # previously missed. See compute_posterior()'s roxygen for the
+        # still-open question of whether this boundary should extend further.
         if (use_beta_prior) {
           sim_prior <- matrix(
             rbeta(n_rows * n_sims,
@@ -204,7 +245,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
                   shape2 = chunk$prior_beta),
             nrow = n_rows
           )
-          j_shaped <- chunk$prior_alpha < 1
+          j_shaped <- chunk$prior_alpha <= 1
           if (any(j_shaped)) {
             sim_prior[j_shaped, ] <- chunk$prior_mean[j_shaped]
           }

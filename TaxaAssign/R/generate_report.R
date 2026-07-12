@@ -705,9 +705,11 @@ generate_report <- function(result,
   cum_thresh <- if (!is.null(params$cumulative_threshold)) params$cumulative_threshold else 0.9
   min_post   <- if (!is.null(params$min_posterior)) params$min_posterior else 0.05
 
-  multiplier <- params$presence_multiplier
-  has_eb <- !is.null(multiplier) || has_empirical_bayes
-  if (is.null(multiplier) && has_eb) multiplier <- 5L  # default
+  confirm_q     <- params$confirmation_quantile
+  min_confirm_p <- params$min_confirmation_confidence
+  has_eb <- !is.null(confirm_q) || has_empirical_bayes
+  if (is.null(confirm_q))     confirm_q     <- 0.9  # default
+  if (is.null(min_confirm_p)) min_confirm_p <- 0.8  # default
 
   cons_text <- sprintf(
     paste0(
@@ -729,15 +731,17 @@ generate_report <- function(result,
     eb_text <- sprintf(
       paste0(
         "Following the initial consensus, a single-pass empirical Bayes ",
-        "refinement was applied: species that were confidently identified in at ",
-        "least one observation had their prior probabilities multiplied by %s in all ",
-        "remaining unresolved observations, reflecting the increased likelihood of ",
-        "encountering a species already confirmed as present in the dataset. ",
-        "Posteriors were then recomputed and the consensus algorithm was re-run ",
-        "for the affected observations. This step used only cross-observation evidence ",
-        "(an observation's own posterior was never used to update its own prior)."
+        "refinement was applied: for each species confidently identified in at least ",
+        "one observation, the %s%% quantile of the confirming observations' consensus ",
+        "posterior probability was computed; where this exceeded both %s and the ",
+        "species' existing prior in a given unresolved observation, the prior was ",
+        "raised to that value in all remaining unresolved observations, reflecting the ",
+        "confirmed evidence of presence at the site. Posteriors were then recomputed and ",
+        "the consensus algorithm was re-run for the affected observations. This step ",
+        "used only cross-observation evidence (an observation's own posterior was never ",
+        "used to update its own prior)."
       ),
-      multiplier
+      round(confirm_q * 100, 1), min_confirm_p
     )
     sections <- c(sections, eb_text)
   }

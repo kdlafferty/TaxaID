@@ -516,12 +516,20 @@ ones within the same dataset:
 2.  **Identify unresolved observations**: observations where the
     consensus did not achieve species-level resolution.
 
-3.  **Boost priors**: for each unresolved observation, if a confirmed
-    species appears among its candidate hypotheses, multiply that
-    candidate's `prior_mean` by `presence_multiplier` (default 5). This
-    encodes the reasoning: "if this species was confidently identified
+3.  **Boost priors**: for each confirmed species, take the
+    `confirmation_quantile`-th quantile (default 0.9) of the confirming
+    ("donor") observations' `consensus_posterior`. If that value clears
+    `min_confirmation_confidence` (default 0.8), substitute it for
+    `prior_mean` in unresolved observations where the candidate appears
+    -- but only where it exceeds the existing prior (never lowering it).
+    This ties the size of the boost to how strong and how numerous the
+    confirming evidence actually was, rather than a fixed multiplier
+    applied identically regardless of confirmation count or confidence.
+    It encodes the reasoning: "if this species was confidently identified
     in another observation from the same study, it is more likely
-    present in observations where assignment is ambiguous."
+    present in observations where assignment is ambiguous" -- while a
+    single barely-resolved confirmation is not trusted to move the
+    needle much.
 
 4.  **Recompute posteriors**: run `compute_posterior()` again on
     unresolved observations with the boosted priors.

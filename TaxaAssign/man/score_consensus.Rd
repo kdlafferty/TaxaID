@@ -122,16 +122,48 @@ pipelines.
 confusing a species with its closest congener -- an ROC-style sweep against
 real 12S reference data found true-positive (within-species) and
 false-positive (congeneric) rates track almost identically up to a ~97
-percent-identity threshold (see \code{diagnostics/score_floor_roc_sweep.R}).
-Before this change, a caller who did not explicitly pass \code{rank_thresholds}
-got \emph{zero} score-based discrimination between a species and its congener,
-silently -- \code{score_consensus(match_df)} with no other arguments would
-happily return a confident species-level call even when a same-genus
-competitor scored just as well. Defaulting to the conventional GITA/Jonah
-Ventures thresholds makes the function safe out of the box; pass
-\code{rank_thresholds = NULL} explicitly to restore the old (unguarded)
-behavior.
+percent-identity threshold (see \code{diagnostics/score_floor_roc_sweep.R}). This
+is a real limitation of percent-identity thresholds generally, and this
+function's non-\code{NULL} default does not fix it -- it is not meant to (see
+the Purpose section above). What the default DOES fix: before this change,
+a caller who did not explicitly pass \code{rank_thresholds} got \code{NULL}, i.e. no
+rank-capping step at all -- a permissive behavior no actual conventional
+pipeline uses, since every real fixed-threshold workflow this function is
+meant to reproduce (GITA, Jonah Ventures, etc.) applies per-rank score
+thresholds. So the un-guarded default was not a more faithful reproduction
+of a real pipeline -- it was an accidental, no-pipeline-actually-does-this
+behavior of TaxaID's own reproduction code. Defaulting to the conventional
+thresholds makes \code{score_consensus()} correctly reproduce a real workflow's
+behavior out of the box, rather than silently mimicking nothing that
+exists. Pass \code{rank_thresholds = NULL} explicitly only if the specific
+pipeline you're mirroring genuinely has no rank-threshold step (rare), or
+your own published thresholds if they differ from the GITA/Jonah Ventures
+convention.
 }
+\section{Purpose -- why this function exists alongside the Bayesian pathway}{
+
+\code{score_consensus()} is deliberately a \strong{reproduction of a conventional,
+non-Bayesian pipeline's decision rule} (fixed percent-identity thresholds
+per rank, e.g. the GITA / Jonah Ventures convention), not TaxaID's own
+species-level discriminator. Its purpose is to let a user run the exact
+same match data through both approaches and compare: what would a
+conventional fixed-threshold workflow have called here, versus what does
+TaxaID's Bayesian pathway (\code{TaxaLikely}'s bivariate-normal likelihoods ->
+\code{\link[=compute_posterior]{compute_posterior()}} -> \code{\link[=posterior_consensus]{posterior_consensus()}}) call? This is the
+intended, load-bearing use case -- mirroring another pipeline's process so
+its output can be directly compared against TaxaID's.
+
+Because of this, \code{rank_thresholds}' known inability to reliably separate a
+true species from its closest congener (percent-identity alone cannot do
+this at almost any real-world threshold -- see Details) is \strong{not a defect
+to fix in this function}: it is a faithful reproduction of the same
+limitation those conventional pipelines actually have. "Fixing" it (e.g. by
+gating on reference completeness, or routing through the bivariate-normal
+model) would defeat the comparison this function exists to provide. If you
+need real species-vs-congener discrimination for an actual assignment,
+use \code{\link[=posterior_consensus]{posterior_consensus()}}, not this function.
+}
+
 \examples{
 \dontrun{
 sc <- score_consensus(

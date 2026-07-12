@@ -250,8 +250,9 @@ consensus <- posterior_consensus(
 
 result_updated <- update_prior_from_consensus(
   result, consensus,
-  presence_multiplier = 5,
-  n_sims              = 1000
+  confirmation_quantile       = 0.9,
+  min_confirmation_confidence = 0.8,
+  n_sims                      = 1000
 )
 
 consensus_final <- posterior_consensus(
@@ -530,7 +531,8 @@ cat(assembled)
 #   prior_phi            = c(high = 50, moderate = 10, low = 3),
 #   n_sims               = 1000L,
 #   cumulative_threshold = 0.90,
-#   presence_multiplier  = 5,
+#   confirmation_quantile       = 0.9,
+#   min_confirmation_confidence = 0.8,
 #   rank_system          = c("family", "genus", "species"),
 #   generate_report      = TRUE,
 #   report_params        = list(data_type = "eDNA", marker = "12S MiFish",

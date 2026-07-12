@@ -10,7 +10,8 @@
                                        lookup_missing_taxonomy,
                                        backbone_id,
                                        rank_system,
-                                       presence_multiplier,
+                                       confirmation_quantile,
+                                       min_confirmation_confidence,
                                        n_sims,
                                        generate_report_flag,
                                        report_params,
@@ -39,8 +40,9 @@
 
   result_updated <- update_prior_from_consensus(
     result, consensus,
-    presence_multiplier = presence_multiplier,
-    n_sims              = n_sims
+    confirmation_quantile       = confirmation_quantile,
+    min_confirmation_confidence = min_confirmation_confidence,
+    n_sims                      = n_sims
   )
 
   consensus_final <- posterior_consensus(

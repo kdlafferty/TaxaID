@@ -6,6 +6,14 @@ utils::globalVariables(c("score_val"))
 # Conventional score-based consensus taxonomy.  Works directly from raw match
 # scores (percent identity, similarity, etc.) without Bayesian machinery.
 #
+# Purpose (clarified Session 149): this exists to REPRODUCE the fixed-
+# threshold consensus logic of conventional non-Bayesian pipelines (e.g.
+# GITA, Jonah Ventures-style workflows), so a user can compare TaxaID's own
+# Bayesian pathway (TaxaLikely -> compute_posterior() -> posterior_consensus())
+# against what a conventional pipeline would have called on the same data.
+# It is a mimicry/benchmarking tool, not TaxaID's own species-level
+# discriminator -- see the roxygen "Purpose" note below.
+#
 # Exported functions:
 #   score_consensus()        Score-based LCA consensus from a match dataframe
 #
@@ -37,6 +45,28 @@ utils::globalVariables(c("score_val"))
 #' This function does not require a trained likelihood model or priors.  It is
 #' the conventional approach used in most metabarcoding and BLAST-based
 #' pipelines.
+#'
+#' @section Purpose -- why this function exists alongside the Bayesian pathway:
+#' `score_consensus()` is deliberately a **reproduction of a conventional,
+#' non-Bayesian pipeline's decision rule** (fixed percent-identity thresholds
+#' per rank, e.g. the GITA / Jonah Ventures convention), not TaxaID's own
+#' species-level discriminator. Its purpose is to let a user run the exact
+#' same match data through both approaches and compare: what would a
+#' conventional fixed-threshold workflow have called here, versus what does
+#' TaxaID's Bayesian pathway (`TaxaLikely`'s bivariate-normal likelihoods ->
+#' [compute_posterior()] -> [posterior_consensus()]) call? This is the
+#' intended, load-bearing use case -- mirroring another pipeline's process so
+#' its output can be directly compared against TaxaID's.
+#'
+#' Because of this, `rank_thresholds`' known inability to reliably separate a
+#' true species from its closest congener (percent-identity alone cannot do
+#' this at almost any real-world threshold -- see Details) is **not a defect
+#' to fix in this function**: it is a faithful reproduction of the same
+#' limitation those conventional pipelines actually have. "Fixing" it (e.g. by
+#' gating on reference completeness, or routing through the bivariate-normal
+#' model) would defeat the comparison this function exists to provide. If you
+#' need real species-vs-congener discrimination for an actual assignment,
+#' use [posterior_consensus()], not this function.
 #'
 #' @param match_df Data frame.
 #'   One row per `observation_id` x reference hit.  Required columns: `observation_id`,
@@ -90,15 +120,23 @@ utils::globalVariables(c("score_val"))
 #' confusing a species with its closest congener -- an ROC-style sweep against
 #' real 12S reference data found true-positive (within-species) and
 #' false-positive (congeneric) rates track almost identically up to a ~97
-#' percent-identity threshold (see `diagnostics/score_floor_roc_sweep.R`).
-#' Before this change, a caller who did not explicitly pass `rank_thresholds`
-#' got *zero* score-based discrimination between a species and its congener,
-#' silently -- `score_consensus(match_df)` with no other arguments would
-#' happily return a confident species-level call even when a same-genus
-#' competitor scored just as well. Defaulting to the conventional GITA/Jonah
-#' Ventures thresholds makes the function safe out of the box; pass
-#' `rank_thresholds = NULL` explicitly to restore the old (unguarded)
-#' behavior.
+#' percent-identity threshold (see `diagnostics/score_floor_roc_sweep.R`). This
+#' is a real limitation of percent-identity thresholds generally, and this
+#' function's non-`NULL` default does not fix it -- it is not meant to (see
+#' the Purpose section above). What the default DOES fix: before this change,
+#' a caller who did not explicitly pass `rank_thresholds` got `NULL`, i.e. no
+#' rank-capping step at all -- a permissive behavior no actual conventional
+#' pipeline uses, since every real fixed-threshold workflow this function is
+#' meant to reproduce (GITA, Jonah Ventures, etc.) applies per-rank score
+#' thresholds. So the un-guarded default was not a more faithful reproduction
+#' of a real pipeline -- it was an accidental, no-pipeline-actually-does-this
+#' behavior of TaxaID's own reproduction code. Defaulting to the conventional
+#' thresholds makes `score_consensus()` correctly reproduce a real workflow's
+#' behavior out of the box, rather than silently mimicking nothing that
+#' exists. Pass `rank_thresholds = NULL` explicitly only if the specific
+#' pipeline you're mirroring genuinely has no rank-threshold step (rare), or
+#' your own published thresholds if they differ from the GITA/Jonah Ventures
+#' convention.
 #'
 #' @return A data frame with one row per `observation_id`:
 #'   \describe{

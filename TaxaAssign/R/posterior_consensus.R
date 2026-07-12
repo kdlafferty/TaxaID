@@ -210,6 +210,26 @@
 #'     \item{`winner_likelihood_cov`}{Coverage-adjusted sequence-match
 #'       likelihood (`score_likelihood_cov`) of the consensus taxon. `NA`
 #'       when absent from `posterior_df` or when `consensus_taxon` is `NA`.}
+#'     \item{`winner_hypothesis_type`}{Character. The `hypothesis_type` of
+#'       the winning (highest-posterior) hypothesis row, e.g.
+#'       `"specific_candidate"`, `"unreferenced_species"`, or
+#'       `"rank_expanded"` (see `winner_rank_expanded` below). `NA` when the
+#'       winning row's `hypothesis_type` value is itself `NA`, or when
+#'       `consensus_taxon` is `NA`.}
+#'     \item{`winner_rank_expanded`}{Logical. `TRUE` when the winning
+#'       hypothesis was manufactured by `join_priors()`'s coarse-rank
+#'       expansion (`.expand_coarse_rank_rows()`) rather than resolved from a
+#'       real species-level match. This means the reported species-level
+#'       `consensus_taxon` was decided entirely by occurrence-prior mass
+#'       among candidates that all inherited one identical, uninformative
+#'       likelihood from the original coarse-rank (e.g. family-level)
+#'       identification -- no sequence/image/acoustic evidence discriminated
+#'       between them. This is intentional, sound behavior (using local
+#'       occurrence priors to resolve an otherwise-coarse ID) -- this column
+#'       exists so a downstream consumer can distinguish it from a
+#'       genuinely evidence-resolved species call, not to flag it as an
+#'       error. `NA` when `winner_hypothesis_type` is `NA`; `FALSE`
+#'       otherwise.}
 #'   }
 #'
 #' @seealso [assign_taxa_llm()], [compute_posterior()],
@@ -432,6 +452,21 @@ posterior_consensus <- function(posterior_df,
   winner_likelihood     <- if ("score_likelihood"     %in% names(winner_row)) winner_row$score_likelihood[[1L]]     else NA_real_
   winner_likelihood_cov <- if ("score_likelihood_cov" %in% names(winner_row)) winner_row$score_likelihood_cov[[1L]] else NA_real_
 
+  # winner_rank_expanded (Session 149): TRUE when the winning hypothesis came
+  # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
+  # i.e. every expanded candidate for that coarse-rank identification shares
+  # one inherited, uninformative likelihood -- so this species-level winner
+  # was decided entirely by occurrence-prior mass, not by any sequence/image/
+  # acoustic evidence discriminating between the candidates. This is
+  # intentional, sound behavior (using priors to resolve an otherwise-coarse
+  # ID), but a downstream consumer treating every species-level consensus_taxon
+  # as equally evidence-supported would be wrong to do so for these rows --
+  # see ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md.
+  winner_hypothesis_type <- if ("hypothesis_type" %in% names(winner_row))
+    as.character(winner_row$hypothesis_type[[1L]]) else NA_character_
+  winner_rank_expanded <- if (is.na(winner_hypothesis_type)) NA
+    else identical(winner_hypothesis_type, "rank_expanded")
+
   # LCA among plausible hypotheses
   lca         <- .find_lca(plausible, rank_system)
   finest_rank <- rank_system[length(rank_system)]
@@ -482,6 +517,8 @@ posterior_consensus <- function(posterior_df,
     winner_prior               = winner_prior,
     winner_likelihood          = winner_likelihood,
     winner_likelihood_cov      = winner_likelihood_cov,
+    winner_hypothesis_type     = winner_hypothesis_type,
+    winner_rank_expanded       = winner_rank_expanded,
     plausible_taxa       = I(list(plausible$taxon_name)),
     plausible_posteriors = I(list(stats::setNames(
       plausible[[posterior_col]], plausible$taxon_name
@@ -586,6 +623,8 @@ posterior_consensus <- function(posterior_df,
     winner_prior               = NA_real_,
     winner_likelihood          = NA_real_,
     winner_likelihood_cov      = NA_real_,
+    winner_hypothesis_type     = NA_character_,
+    winner_rank_expanded       = NA,
     plausible_taxa       = I(list(character(0))),
     plausible_posteriors = I(list(stats::setNames(numeric(0), character(0)))),
     stringsAsFactors     = FALSE
