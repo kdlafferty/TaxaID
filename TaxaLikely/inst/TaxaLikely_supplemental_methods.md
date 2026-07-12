@@ -156,6 +156,50 @@ rows can later be expanded into named unreferenced species by
 `TaxaAssign::expand_unreferenced_hypotheses()` using taxonomic plausibility
 information.
 
+### A load-bearing assumption, and where it breaks down
+
+The entire H2/H3 construction — using a referenced congener's match profile to
+stand in for an unreferenced relative's — rests on one assumption:
+**related taxa are more similar in the evidence trait used for matching than
+unrelated taxa are.** For DNA sequence identity this is close to true by
+construction, since sequence divergence *is* the recorded output of the
+evolutionary process being modelled (marker-specific homoplasy aside). For
+image and acoustic evidence the assumption is considerably weaker: visual and
+acoustic phenotypes are shaped by ecological pressures — predator-avoidance
+mimicry, environmental convergence in call structure — that can run
+orthogonal to phylogeny. A Batesian mimic or an acoustically convergent
+species produces evidence indistinguishable, to the classifier, from a
+genuine confusable congener, yet H2/H3 have no way to represent "resembles
+candidate X, but is not related to X" — they only ever anchor on the
+best-scoring candidate's own genus. This is not a parameter that can be
+tuned away: it is a structural limitation of borrowing evidence across a
+taxonomic relationship that the evidence itself may not track. Species with
+known or suspected unreferenced mimicry/convergence complexes are exactly the
+priority candidates for direct reference-database expansion (sequencing,
+voucher photographs, reference recordings), since no statistical correction
+substitutes for reference data on the mimic itself.
+
+A narrower, second problem affects H2 even for sequence data, where the
+assumption largely does hold: `H2$delta` (the logit-scale shift applied to
+every genus) is a single value pooled across every genus in the training set,
+so a genus with unusually tight congeneric divergence (a cryptic species
+complex, where the real divergence is much smaller than the pooled average)
+gets the same shift as a genus with unusually loose divergence — and the
+pooled constant will *overstate* confidence in the known-species hypothesis
+exactly where a taxonomist most needs the model to hedge. Where the reference
+database has at least one true congener pair for a genus, `H2_Lookup`
+(`train_likelihood_model()`) now estimates a genus-specific delta from that
+pair and shrinks it toward the pooled value by the same Empirical Bayes form
+used for per-species means (Section 5), rather than always falling back to
+the pooled constant; `evaluate_likelihoods()` marks which delta a given H2/H3
+row actually used (`h2_delta_source`: `"genus_specific"` or
+`"global_fallback"`) so a `"global_fallback"` row — including every genus
+with only one referenced species, where no local divergence estimate is
+possible at all — can be treated with appropriate caution. This addresses
+only the *magnitude* of the shift for the correct genus; it does nothing for
+the mimicry/convergence case above, where the true relative may not even be
+the best-scoring candidate's genus.
+
 ---
 
 ## 5. Hierarchical Parameter Estimation

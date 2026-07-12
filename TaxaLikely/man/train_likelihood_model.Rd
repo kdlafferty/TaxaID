@@ -71,9 +71,12 @@ A named list (class \code{"taxa_model_params"}) with slots:
 \item{\code{H1_Global_Mu}}{Named numeric vector: \code{score_logit}, \code{gap_logit}.}
 \item{\code{H1_Sigma}}{2x2 covariance matrix for the global H1 distribution.}
 \item{\code{H2}}{List with \code{delta} and \code{sigma} for the missing-species
-hypothesis.}
+hypothesis (pooled across all genera).}
 \item{\code{H3}}{List with \code{delta} and \code{sigma} for the missing-genus
 hypothesis.}
+\item{\code{H2_Lookup}}{Data frame (or \code{NULL}) with per-genus \code{H2} delta
+estimates: \code{genus}, \code{n_pairs}, \code{delta_shrunk}. See "Per-genus delta
+shrinkage" section below.}
 \item{\code{Stats}}{List of diagnostics (e.g., \code{AIC_Score} if lmer succeeded,
 \code{n_species}, \code{n_singletons}).}
 \item{\code{reference_errors}}{Data frame of flagged references (output of
@@ -97,9 +100,41 @@ normal distribution over \verb{(score_logit, gap_logit)}:
 \item \strong{H1 (known species):} species-specific mean with shrinkage; global
 covariance matrix.
 \item \strong{H2 (missing species):} H1 mean shifted left by \code{H2$delta} --
-approximately what a sister species looks like.
+approximately what a sister species looks like. \code{H2$delta} is a single
+value pooled across every genus in the training set; where a genus has
+real congener pairs in the reference, \code{H2_Lookup} provides a
+genus-specific delta (Empirical Bayes shrinkage toward \code{H2$delta},
+identical in form to the per-species shrinkage below) that
+\code{evaluate_likelihoods()} prefers when available. See the "Per-genus
+delta shrinkage" section below.
 \item \strong{H3 (missing genus):} H1 mean shifted further left by \code{H3$delta}.
 }
+}
+
+\section{Per-genus delta shrinkage}{
+
+The pooled, global \code{H2$delta} treats every genus identically, which is a
+poor approximation for genera whose real congeneric divergence is far from
+the training-set average -- most consequentially for cryptic species
+complexes, where true divergence is much smaller than the pooled estimate
+and the pooled delta will overstate confidence in the known-species
+hypothesis. Where a genus has at least one real congener pair in the
+reference database, \code{H2_Lookup} stores a genus-specific delta shrunk
+toward the pooled value by \code{n_pairs / (n_pairs + prior_weight)} (the same
+Empirical Bayes form used for per-species means). A genus with only one
+referenced species (no congener pairs at all) gets no \code{H2_Lookup} row and
+falls back to the pooled \code{H2$delta} unchanged -- there is no way to
+estimate local divergence from a single species, and none is invented.
+This says nothing about whether an unreferenced congener is plausible in
+the first place (that is a prior-side question, answered by
+\code{TaxaExpect} from occurrence/richness data, not by this function) --
+only about how far its likelihood should be shifted from a known match
+\emph{if} one exists. Nor does it address the case where a query's true
+relatives are absent from the reference for reasons unrelated to sequence
+divergence (e.g. an unreferenced acoustic or visual mimic in the acoustic
+and image pathways, where evidence similarity need not track phylogeny at
+all) -- see \code{inst/TaxaLikely_supplemental_methods.md} for a fuller
+discussion of that limitation.
 }
 
 \section{Pseudo-data anchoring}{

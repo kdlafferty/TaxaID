@@ -7,7 +7,7 @@ utils::globalVariables(c(
   "observation_id", "Query_ID",
   ".data", "rank_score", "best_rank_score",
   "coverage",
-  "is_restored", ".genus", ".all_restored"
+  "is_restored", ".genus", ".all_restored", "h2_delta_source"
 ))
 
 # ==============================================================================
@@ -61,7 +61,10 @@ utils::globalVariables(c(
 #'
 #' @return A data frame with columns `hypothesis_type`, `taxon_name`,
 #'   `taxon_name_rank`, `score_likelihood`, `score_likelihood_mean`,
-#'   `score_likelihood_sd`, sorted by `score_likelihood_mean` descending.
+#'   `score_likelihood_sd`, `score_likelihood_cov`, `h2_delta_source`
+#'   (`"genus_specific"` or `"global_fallback"` for `unreferenced_species`/
+#'   `unreferenced_genus` rows; `NA` for `specific_candidate` rows), sorted
+#'   by `score_likelihood_mean` descending.
 #'
 #' @noRd
 .evaluate_one_query <- function(candidate_df,
@@ -79,6 +82,10 @@ utils::globalVariables(c(
 
   names(candidate_df) <- tolower(names(candidate_df))
   rank_cols <- tolower(rank_system)    # coarse to fine
+  # Rank immediately coarser than the finest (species) -- genus, by this
+  # package's rank_system convention. Used to look up a genus-specific H2
+  # delta in model_params$H2_Lookup when available.
+  genus_rank_col <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NA_character_
 
   score_col <- if ("p_match"        %in% names(candidate_df)) "p_match" else
     if ("score_original" %in% names(candidate_df)) "score_original" else
@@ -181,7 +188,7 @@ utils::globalVariables(c(
 
   # ---- 4. LIKELIHOOD CALCULATOR (shared by point-estimate and MC sims) ------
   .calc_likelihoods <- function(s_vec, g_vec, p_raw, taxa_names, use_1d,
-                                cov_vec = NULL) {
+                                cov_vec = NULL, genus_vec = NULL) {
     h1_vals <- numeric(length(s_vec))
     has_lookup <- !is.null(model_params$H1_Lookup) &&
       nrow(model_params$H1_Lookup) > 0L
@@ -257,12 +264,34 @@ utils::globalVariables(c(
 
     best_i <- which.max(s_vec)
     if (length(best_i) == 0L || all(s_vec == 0)) {
-      return(list(h1 = h1_vals, h2 = 0, h3 = 0))
+      return(list(h1 = h1_vals, h2 = 0, h3 = 0, h2_delta_source = "global_fallback"))
     }
 
     best_pt <- c(s_vec[best_i], g_vec[best_i])
-    h2_mu   <- c(global_mu[1L] - h2_delta, 0)
-    h3_mu   <- c(global_mu[1L] - h3_delta, 0)
+
+    # Per-genus H2 delta (see train_likelihood_model()'s "Per-genus delta
+    # shrinkage" section): prefer the anchor candidate's own genus-specific
+    # estimate when the model has one; otherwise fall back to the pooled
+    # global delta unchanged. H3 keeps the "+ constant taxonomic step"
+    # heuristic on top of whichever delta (local or global) H2 used, so a
+    # genus-specific H2 correction propagates to H3 consistently.
+    use_h2_delta <- h2_delta
+    delta_source <- "global_fallback"
+    if (!is.null(genus_vec) && !is.null(model_params$H2_Lookup) &&
+        nrow(model_params$H2_Lookup) > 0L) {
+      anchor_genus <- genus_vec[best_i]
+      if (!is.na(anchor_genus)) {
+        gidx <- match(anchor_genus, model_params$H2_Lookup$genus)
+        if (!is.na(gidx)) {
+          use_h2_delta <- model_params$H2_Lookup$delta_shrunk[gidx]
+          delta_source <- "genus_specific"
+        }
+      }
+    }
+    use_h3_delta <- use_h2_delta + (h3_delta - h2_delta)
+
+    h2_mu   <- c(global_mu[1L] - use_h2_delta, 0)
+    h3_mu   <- c(global_mu[1L] - use_h3_delta, 0)
     if (use_1d) {
       h2_val <- stats::dnorm(best_pt[1L], mean = h2_mu[1L],
                              sd = sqrt(h2_sigma[1L, 1L]))
@@ -273,13 +302,16 @@ utils::globalVariables(c(
       h3_val <- mvtnorm::dmvnorm(best_pt, mean = h3_mu, sigma = h3_sigma)
     }
 
-    list(h1 = h1_vals, h2 = h2_val, h3 = h3_val)
+    list(h1 = h1_vals, h2 = h2_val, h3 = h3_val, h2_delta_source = delta_source)
   }
 
   # ---- 5. POINT ESTIMATE ----------------------------------------------------
+  genus_vec <- if (!is.na(genus_rank_col) && genus_rank_col %in% names(cand))
+    cand[[genus_rank_col]] else NULL
+
   primary <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
                                cand$p_med, cand$taxon_name,
-                               use_1d = is_singleton)
+                               use_1d = is_singleton, genus_vec = genus_vec)
 
   # Coverage-adjusted point estimate: inflate sigma_score by 1/coverage for
   # each candidate taxon. When coverage is absent or all = 1, identical to
@@ -288,7 +320,8 @@ utils::globalVariables(c(
   primary_cov  <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
                                     cand$p_med, cand$taxon_name,
                                     use_1d = is_singleton,
-                                    cov_vec = if (has_coverage) cand$coverage else NULL)
+                                    cov_vec = if (has_coverage) cand$coverage else NULL,
+                                    genus_vec = genus_vec)
 
   # Build result rows for H1
   df_h1 <- cand |>
@@ -312,6 +345,7 @@ utils::globalVariables(c(
   row_h2$hypothesis_type    <- "unreferenced_species"
   row_h2$raw_likelihood     <- primary$h2
   row_h2$raw_likelihood_cov <- primary$h2   # H2 sigma is global fixed; no inflation
+  row_h2$h2_delta_source    <- primary$h2_delta_source
 
   row_h3 <- best_row
   if (!is.null(finest) && finest %in% names(row_h3))
@@ -322,6 +356,7 @@ utils::globalVariables(c(
   row_h3$hypothesis_type    <- "unreferenced_genus"
   row_h3$raw_likelihood     <- primary$h3
   row_h3$raw_likelihood_cov <- primary$h3   # H3 sigma is global fixed; no inflation
+  row_h3$h2_delta_source    <- primary$h2_delta_source
 
   res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
 
@@ -332,6 +367,10 @@ utils::globalVariables(c(
     dplyr::group_by(hypothesis_type, taxon_name, taxon_name_rank) |>
     dplyr::summarise(raw_likelihood     = max(raw_likelihood,     na.rm = TRUE),
                      raw_likelihood_cov = max(raw_likelihood_cov, na.rm = TRUE),
+                     # NA for specific_candidate rows (only H2/H3 rows carry this);
+                     # each unreferenced_species/unreferenced_genus group has a
+                     # single row, so first() is unambiguous.
+                     h2_delta_source    = dplyr::first(h2_delta_source),
                      .groups = "drop")
 
   # ---- 6. NORMALISE TO LIKELIHOOD RATIOS ------------------------------------
@@ -392,7 +431,7 @@ utils::globalVariables(c(
 
       sim_res <- .calc_likelihoods(sim_scores, sim_gaps,
                                    cand$p_med, cand$taxon_name,
-                                   use_1d = is_singleton)
+                                   use_1d = is_singleton, genus_vec = genus_vec)
 
       # Map results using pre-computed indices
       iter_liks <- numeric(nrow(res_agg))
@@ -423,7 +462,7 @@ utils::globalVariables(c(
   res_agg |>
     dplyr::select(hypothesis_type, taxon_name, taxon_name_rank,
                   score_likelihood, score_likelihood_mean, score_likelihood_sd,
-                  score_likelihood_cov) |>
+                  score_likelihood_cov, h2_delta_source) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
 
@@ -499,8 +538,11 @@ utils::globalVariables(c(
 #'       `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`
 #'       (`"specific_candidate"`, `"unreferenced_species"`, or `"unreferenced_genus"`),
 #'       `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`,
-#'       `score_likelihood_cov`.  Rows where `taxon_name` resolved to `NA` are
-#'       excluded.  See Details for `score_likelihood_cov`.}
+#'       `score_likelihood_cov`, `h2_delta_source` (`"genus_specific"` or
+#'       `"global_fallback"` for `unreferenced_species`/`unreferenced_genus`
+#'       rows; `NA` for `specific_candidate` rows).  Rows where `taxon_name`
+#'       resolved to `NA` are excluded.  See Details for `score_likelihood_cov`
+#'       and `h2_delta_source`.}
 #'     \item{`$unresolved`}{Rows from `match_df` for any `observation_id` that
 #'       produced no usable likelihoods (empty data frame if none).  Pass to
 #'       a second call of `evaluate_likelihoods()` with a coarser
@@ -517,7 +559,10 @@ utils::globalVariables(c(
 #'   \item \strong{H2 (unreferenced_species):} The query comes from a species not
 #'     in the reference database, but whose genus is represented. The model
 #'     shifts the H1 score distribution downward (by \code{H2$delta} logit
-#'     units) to predict what a sister-species match looks like.
+#'     units, or by a genus-specific shrunk delta from
+#'     \code{model_params$H2_Lookup} when the anchor candidate's genus has
+#'     real congener data -- see \code{h2_delta_source} below) to predict
+#'     what a sister-species match looks like.
 #'   \item \strong{H3 (unreferenced_genus):} The query comes from a genus not in
 #'     the reference database at all. The score distribution is shifted further
 #'     downward (by \code{H3$delta}).
@@ -565,6 +610,25 @@ utils::globalVariables(c(
 #' `score_likelihood`.  Pass to `TaxaAssign::compute_posterior()` instead of
 #' `score_likelihood` to apply the coverage adjustment; compare the two columns
 #' to identify queries where coverage meaningfully shifts the likelihood ratios.
+#'
+#' \strong{Genus-specific H2/H3 delta (`h2_delta_source`):}
+#' `H2$delta`/`H3$delta` are single values pooled across every genus seen
+#' during training, which treats a genus with unusually tight (cryptic-like)
+#' congeneric divergence the same as one with unusually loose divergence.
+#' When `train_likelihood_model()` found at least one real congener pair for
+#' the query's best-matching candidate's genus, `evaluate_likelihoods()` uses
+#' a genus-specific delta (`model_params$H2_Lookup`, shrunk toward the pooled
+#' value by how many congener pairs were available) instead, and marks the
+#' row `h2_delta_source = "genus_specific"`. Rows marked
+#' `"global_fallback"` (including every row when the genus has only one
+#' referenced species, or when the model was trained without genus
+#' information) used the pooled constant, which is the cruder approximation
+#' -- treat `unreferenced_species`/`unreferenced_genus` likelihoods on those
+#' rows with more caution. This correction only adjusts the shift's
+#' \emph{magnitude} for the correct genus; it does not address the separate
+#' case where the true taxon's nearest relative in evidence space (visual or
+#' acoustic mimicry/convergence) is not its nearest phylogenetic relative --
+#' see `inst/TaxaLikely_supplemental_methods.md` for that limitation.
 #'
 #' \strong{hypothesis_type values in output:}
 #' \itemize{
@@ -742,7 +806,7 @@ evaluate_likelihoods <- function(match_df,
   likelihoods <- dplyr::select(out, observation_id, taxon_name, taxon_name_rank,
                                hypothesis_type, score_likelihood,
                                score_likelihood_mean, score_likelihood_sd,
-                               score_likelihood_cov)
+                               score_likelihood_cov, h2_delta_source)
 
   # Propagate is_restored from match_df when present.
   # For each (observation_id, taxon_name), is_restored = TRUE only when ALL

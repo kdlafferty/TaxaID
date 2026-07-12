@@ -1,6 +1,60 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-06 (Session 142 -- trim_to_amplicon() now supports the real eDNA COI
+# Last updated: 2026-07-11 (Session 151 continued -- correct_training_bias()'s default tau
+# changed 1.0 -> 0 (ecosystem-wide soundness-review item 11, the review's own "single
+# clearest actionable bug"): every real calibration run against this function so far --
+# image (Session 129) and acoustic, on both the original small pilot AND the later,
+# properly-powered Session 133 re-test -- found tau ~= 0 optimal, contradicting the
+# shipped tau = 1.0 default. Also fixed a stale docstring claim while in there: the
+# function's own Details section still said "image and acoustic gave opposite answers"
+# (tau~=0 vs tau~=1), which Session 133's larger acoustic re-test had already superseded
+# (pooled acoustic is also tau~=0) without the docstring being updated to match. Tests
+# that exercised tau=1's specific math now pass tau=1 explicitly rather than relying on
+# the default; new test confirms the new default leaves scores unchanged.
+# devtools::test() 658/658 (up from 656), check() clean. Not a claim that tau=0 is
+# correct in general -- only the evidence-backed starting point given what has actually
+# been measured; per-cluster heterogeneity (Session 133: 2/8 acoustic clusters still
+# prefer high tau) means a single scalar default still won't fit every case. Previous
+# update, same day (Session 151): per-genus H2 delta shrinkage, prompted by a
+# manuscript peer-review pushback on the reference-gaps section: H2$delta (the logit shift
+# used to model an unreferenced congener's likelihood) was a single value pooled across
+# every genus in the training set, so a cryptic species complex (real divergence far below
+# the pooled average) got the exact same shift as a loosely-differentiated genus, silently
+# overstating confidence in the known-species hypothesis exactly where a taxonomist most
+# needs the model to hedge. .prep_training_data() gains max_congener_score (best same-
+# genus/different-species match, NA when the genus has no second referenced species --
+# distinct from the existing max_foreign_score, which mixes in matches to unrelated
+# genera); train_likelihood_model() uses it to estimate a genus-specific H2 delta,
+# shrunk toward the pooled value via the identical Empirical Bayes w = n/(n+prior_weight)
+# form already used for per-species H1 means, stored as a new H2_Lookup slot.
+# evaluate_likelihoods() prefers H2_Lookup's genus-specific delta at inference time when
+# the anchor candidate's genus has one (H3 keeps its "+2.0 taxonomic step" heuristic on
+# top of whichever delta -- local or global -- H2 used), and marks every H2/H3 row with a
+# new h2_delta_source diagnostic ("genus_specific" vs "global_fallback") so a
+# "global_fallback" row -- including every genus with only one referenced species, where
+# no local estimate is possible -- can be read with appropriate caution. Backward
+# compatible: model_params objects trained before this change (no H2_Lookup slot) fall
+# back to the pooled global delta exactly as before, unchanged. This fix only corrects the
+# *magnitude* of the shift for the correct genus -- it does not address the separate,
+# structural mimicry/convergence problem (H2/H3 only ever anchor on the best-scoring
+# candidate's own genus; an unreferenced visual/acoustic mimic's true relatives may not be
+# that genus at all), which has no statistical fix and is now documented as a load-bearing
+# assumption -- "related taxa are more similar in the evidence trait than unrelated taxa
+# are" -- with a new subsection in inst/TaxaLikely_supplemental_methods.md scoping it as
+# much weaker for image/acoustic evidence than for DNA sequence identity, and recommending
+# direct reference-database expansion (not modeling) for species with known/suspected
+# unreferenced mimicry complexes. New tests confirm H2_Lookup construction on a real
+# 2-genus fixture (a tight congener pair vs. a monotypic genus whose only foreign matches
+# are cross-genus), confirm the monotypic genus is correctly excluded, and confirm
+# .evaluate_one_query() actually prefers the genus-specific delta and raises H2's
+# likelihood accordingly. devtools::test(): 656/656 (0 failures, up from 643; same 15
+# pre-existing unrelated warnings, 1 pre-existing skip). devtools::check(): 0 errors,
+# 0 warnings, 0 notes.
+# Previous update, 2026-07-10 (Session 150 -- expand_unreferenced_hypotheses() moved here from
+# TaxaAssign (package-placement fix, not a math change); see TaxaID/CLAUDE.md's Session 150
+# note and this file's own Function Inventory entry above for the full record.
+# devtools::test() 643/643 (0 failures), devtools::check() clean.)
+# Previous update, 2026-07-06 (Session 142 -- trim_to_amplicon() now supports the real eDNA COI
 # mini-barcode (Leray et al. 2013 mlCOIintF/Meyer 2003 dgHCO2198, "coi-leray"), resolving
 # Session 141's flagged inosine blocker by pairing Leray's own inosine-free forward primer
 # with an inosine-free reverse primer (Meyer 2003) instead of Geller et al. 2013's jgHCO2198 --
@@ -102,6 +156,7 @@ to likelihood output downstream -- it is NOT part of the match object.
 | `score_likelihood_mean` | numeric | Mean across Monte Carlo simulations |
 | `score_likelihood_sd` | numeric | SD across simulations (0 if n_sims = 0) |
 | `score_likelihood_cov` | numeric | Coverage-adjusted point estimate: H1 sigma inflated by `1/sqrt(coverage)`; equals `score_likelihood` when coverage absent or = 1 |
+| `h2_delta_source` | character | `unreferenced_species`/`unreferenced_genus` rows only (`NA` for `specific_candidate`): `"genus_specific"` when the anchor candidate's genus had an `H2_Lookup` entry, `"global_fallback"` when it used the pooled `H2$delta`/`H3$delta` instead (includes every genus with only one referenced species). |
 
 **`$unresolved`** -- rows from the original `match_df` for any `observation_id` that
 produced no usable likelihoods (e.g., all candidates matched only at a rank
@@ -132,7 +187,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 |---|---|---|---|
 | `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output includes `coverage` column. New params (Session 112): `filter_unnamed = TRUE` drops sequences with blank/NA finest-rank (species) label before alignment — removes spurious within-species pairs (blank == blank) that dominated 18S databases (69% of pairs); `max_seqs_per_taxon = NULL` randomly subsamples sequences per species before alignment to prevent heavily-sequenced taxa (e.g. Ovis aries) from dominating the within-species distribution. Both operate pre-alignment, reducing DECIPHER computation time. Renamed from `build_reference_matrix()` Session 88. |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
-| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. |
+| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. **Session 151**: `H2$delta` (the missing-species shift) is otherwise a single value pooled across every genus in the training set; where a genus has a real congener pair (`max_congener_score` from `.prep_training_data()`, distinct from the existing cross-any-genus `max_foreign_score`), a genus-specific delta is estimated and shrunk toward the pooled value via the same Empirical Bayes form as the per-species H1 means, stored in a new `H2_Lookup` slot. Genera with only one referenced species get no lookup row and fall back to the pooled delta unchanged. |
 
 ### Unified likelihood pipeline (new — Session 99)
 
@@ -147,13 +202,13 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `correct_training_bias()` | `R/correct_training_bias.R` | Written, wired, live-tested | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run: `score_i / n_i^tau`. **Revised Session 127**: `tau` is now a single fixed global scalar (default `1.0`, user-tunable), not the Session 125 adaptive per-candidate `tau_i = n_i/(n_i+prior_weight)` — matches Menon et al. 2020's "logit adjustment" correction for long-tailed recognition (literature research found no support for a per-candidate adaptive exponent; the theoretically Fisher-consistent form applies one scalar uniformly). `prior_weight` parameter removed. Missing/zero counts still fall through to the uncorrected score (`tau_used = 0` for that row only) — a deliberate, documented deviation from strict logit adjustment, kept for the same practical reason as before (can't distinguish genuine rarity from a failed lookup). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested (27 expectations, synthetic fixture). **Wired into `image_acoustic_likelihood_workflow.R` Session 128** (both sections) and live-tested against real classifier output. **Resolved Session 129** (see that session's note below): the Session 128 image number was confounded by an unrelated `assign_scores()` bug; on clean, bug-fixed, 51-photo data, `tau ≈ 0` is optimal for image (correction should not be applied). **Session 133**: acoustic's Session 128/129 `tau ≈ 1`/`tau ≈ 3.6` result did NOT survive a properly powered re-test (24 species/8 confusable clusters/2487 real BirdNET detection windows, vs. the original 3-species/42-window pilot) — pooled acoustic optimum is now `tau ≈ 0` too, though per-cluster results are genuinely heterogeneous (5/8 clusters agree with `tau ≈ 0`; 2 clusters still prefer high `tau` even at ~150-170 windows each, unbracketed at the swept grid's edge). **No current real-data evidence supports `tau > 0` as a default for either data type** — the package default remains `tau = 1.0` (theoretical, Menon et al. 2020) pending a deliberate decision on whether to change it. `tau` must still be calibrated per data type (and, per Session 133, possibly per taxon cluster) — see `TaxaLikely/inst/workflows/calibrate_training_bias_tau.R` and `ecosystem_docs/REENTRY_PROMPT_acoustic_tau_calibration_expanded.md` for full method detail. |
+| `correct_training_bias()` | `R/correct_training_bias.R` | Written, wired, live-tested | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run: `score_i / n_i^tau`. **Revised Session 127**: `tau` is now a single fixed global scalar (default `1.0`, user-tunable), not the Session 125 adaptive per-candidate `tau_i = n_i/(n_i+prior_weight)` — matches Menon et al. 2020's "logit adjustment" correction for long-tailed recognition (literature research found no support for a per-candidate adaptive exponent; the theoretically Fisher-consistent form applies one scalar uniformly). `prior_weight` parameter removed. Missing/zero counts still fall through to the uncorrected score (`tau_used = 0` for that row only) — a deliberate, documented deviation from strict logit adjustment, kept for the same practical reason as before (can't distinguish genuine rarity from a failed lookup). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested (27 expectations, synthetic fixture). **Wired into `image_acoustic_likelihood_workflow.R` Session 128** (both sections) and live-tested against real classifier output. **Resolved Session 129** (see that session's note below): the Session 128 image number was confounded by an unrelated `assign_scores()` bug; on clean, bug-fixed, 51-photo data, `tau ≈ 0` is optimal for image (correction should not be applied). **Session 133**: acoustic's Session 128/129 `tau ≈ 1`/`tau ≈ 3.6` result did NOT survive a properly powered re-test (24 species/8 confusable clusters/2487 real BirdNET detection windows, vs. the original 3-species/42-window pilot) — pooled acoustic optimum is now `tau ≈ 0` too, though per-cluster results are genuinely heterogeneous (5/8 clusters agree with `tau ≈ 0`; 2 clusters still prefer high `tau` even at ~150-170 windows each, unbracketed at the swept grid's edge). **No current real-data evidence supports `tau > 0` as a default for either data type.** **Session 151**: the package default was changed `1.0` -> `0` accordingly (ecosystem soundness-review item 11) — a caller who does nothing now gets no correction, matching every real result obtained so far, instead of a correction contradicted by every real result obtained so far. `tau` must still be calibrated per data type (and, per Session 133, possibly per taxon cluster) before being raised — see `TaxaLikely/inst/workflows/calibrate_training_bias_tau.R` and `ecosystem_docs/REENTRY_PROMPT_acoustic_tau_calibration_expanded.md` for full method detail. |
 
 ### Inference (apply model to query observations)
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. Output includes `score_likelihood_cov`: coverage-adjusted point estimate inflating H1 sigma by `1/sqrt(coverage)` per candidate taxon (binomial SE prior); equals `score_likelihood` when coverage column is absent or all 1. |
+| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. Output includes `score_likelihood_cov`: coverage-adjusted point estimate inflating H1 sigma by `1/sqrt(coverage)` per candidate taxon (binomial SE prior); equals `score_likelihood` when coverage column is absent or all 1. **Session 151**: prefers `model_params$H2_Lookup`'s genus-specific H2 delta over the pooled global one when the anchor candidate's genus has an entry (H3 keeps its `+2.0` step on top of whichever delta H2 used); output gains `h2_delta_source` (`"genus_specific"`/`"global_fallback"`) so callers can identify rows that used the cruder pooled approximation. Backward compatible with `model_params` objects trained before this change (no `H2_Lookup` slot -> always `"global_fallback"`). |
 | `filter_top_hypotheses()` | `R/evaluate.R` | Written | Keep finest-rank candidates per query |
 
 ### Reference coverage
@@ -167,7 +222,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `audit_inat_coverage()` | `R/coverage.R` | Written | **iNaturalist image coverage audit** (Session 119). Given a species list (prior taxa), queries iNat taxa API for each species: returns `n_observations`, `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced` list. Optional `match_df` annotates `in_match_data`. Optional `api_token` (env `INAT_API_TOKEN`; 401 → stop). 0.3s rate limit. Returns `list(census, unreferenced)` with same structure as `audit_barcode_coverage()`. Internal helpers: `.inat_species_info()`, `.xc_recording_count()`. |
 | `fetch_xc_recording_locations()` | `R/coverage.R` | Written | **Session 135.** Given one or more species names, returns per-recording `species`/`xc_id`/`lat`/`lon`/`country` from Xeno-canto v3 — the same API response `audit_acoustic_coverage(xc_recordings = TRUE)` already queries via `.xc_recording_count()`, but that function only ever read `numRecordings` off the body and discarded the `recordings` array's own `lat`/`lng`/`cnt` fields. Refactored the shared HTTP call into `.xc_recordings_raw()` (zero behavior change for `.xc_recording_count()`, confirmed by its own tests) and added `.xc_recording_locations()` as the per-recording extractor this function loops over (1s/species rate limit, matching `audit_acoustic_coverage()`'s own). `xc_id` is Xeno-canto's own catalog number, not a `TaxaMatch::build_site_table()`-ready `observation_id` — mapping it to a caller's BirdNET observation-id convention is left to the caller (harness-level concern, not attempted here). |
 | `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress "unreferenced_species" for fully-sampled genera |
-| `expand_unreferenced_hypotheses()` | moved to TaxaAssign | — | Requires both TaxaLikely and TaxaExpect outputs; belongs at the convergence point. See `TaxaAssign/R/expand_unreferenced.R`. |
+| `expand_unreferenced_hypotheses()` | `R/expand_unreferenced.R` | Written | **Session 150: moved here from TaxaAssign.** Models likelihoods for named unreferenced species by copying/medianing the generic H2/H3 values (borrowed from referenced relatives), then expands genus/family placeholder rows into named species so they can join TaxaExpect priors directly. Still needs a TaxaExpect-derived `unreferenced_df` as input -- that's a data/workflow-ordering requirement only (build it, then call this function), not a package dependency, since this function never calls into TaxaExpect or TaxaAssign itself. `TaxaAssign::expand_unreferenced_hypotheses()` remains as a `.Deprecated()` forwarding wrapper. See `TaxaID/CLAUDE.md`'s Session 150 note for the full reasoning. |
 
 ### Coverage quality calibration
 
@@ -275,8 +330,9 @@ Output of `train_likelihood_model()`.
 | `H1_Lookup` | data.frame | Per-species `lookup_key`, `rank`, `mu_score`, `mu_gap`, `sigma_score` (shrunk) |
 | `H1_Global_Mu` | named numeric | Global fallback mean: `c(score_logit, gap_logit)`. |
 | `H1_Sigma` | matrix | 2×2 global covariance over `(score_logit, gap_logit)`. |
-| `H2` | list | Missing-species params: `delta` (logit offset from H1 mean), `sigma` (2×2). |
+| `H2` | list | Missing-species params: `delta` (logit offset from H1 mean, pooled across all genera), `sigma` (2×2). |
 | `H3` | list | Missing-genus params: `delta`, `sigma` (2×2). |
+| `H2_Lookup` | data.frame or `NULL` | **Session 151.** Per-genus H2 delta: `genus`, `n_pairs`, `delta_shrunk`. `NULL` when no genus in the training set had a real congener pair (or `rank_system` has no genus-level rank). Genera absent from this table simply weren't estimable locally and use `H2$delta` unchanged. |
 | `Stats` | list | Diagnostics: `AIC_Score`, `n_species`, `n_singletons`, `n_anchors`. |
 | `reference_errors` | data.frame | Output of `flag_reference_errors()` (mislabeled + singleton flags). Use with `remove_flagged_references()` to clean match objects. Auto-used by `run_bayesian_pipeline()`. |
 

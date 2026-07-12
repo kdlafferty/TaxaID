@@ -384,3 +384,88 @@ test_that("filter_top_hypotheses: is_restored absent → existing behaviour unch
   expect_false("genus"   %in% spec$taxon_name_rank)
   expect_true("species"  %in% spec$taxon_name_rank)
 })
+
+# ---- H2_Lookup: per-genus delta at inference time ----------------------------
+#
+# .make_match_df()'s best-scoring candidate is "Hybognathus nuchalis"
+# (genus "Hybognathus", score 95). These tests attach an H2_Lookup entry for
+# that genus to .make_model_params()'s output and confirm .evaluate_one_query()
+# prefers it over the pooled global H2$delta = 3.0.
+
+.add_h2_lookup <- function(params, genus, delta_shrunk, n_pairs = 5L) {
+  params$H2_Lookup <- data.frame(
+    genus = genus, n_pairs = n_pairs, delta_shrunk = delta_shrunk,
+    stringsAsFactors = FALSE
+  )
+  params
+}
+
+test_that(".evaluate_one_query: uses genus-specific delta when anchor's genus is in H2_Lookup", {
+  skip_if_not_installed("TaxaTools")
+  params <- .add_h2_lookup(.make_model_params(), "Hybognathus", delta_shrunk = 1.0)
+  out <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params, c("family", "genus", "species"),
+    ratio_threshold = 0
+  )
+  h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
+  expect_equal(h2_row$h2_delta_source, "genus_specific")
+})
+
+test_that(".evaluate_one_query: falls back to global delta when anchor's genus is absent from H2_Lookup", {
+  skip_if_not_installed("TaxaTools")
+  params <- .add_h2_lookup(.make_model_params(), "SomeOtherGenus", delta_shrunk = 1.0)
+  out <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params, c("family", "genus", "species"),
+    ratio_threshold = 0
+  )
+  h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
+  h3_row <- out[out$hypothesis_type == "unreferenced_genus", ]
+  expect_equal(h2_row$h2_delta_source, "global_fallback")
+  expect_equal(h3_row$h2_delta_source, "global_fallback")
+})
+
+test_that(".evaluate_one_query: model_params without H2_Lookup slot falls back cleanly (backward compatibility)", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()   # no $H2_Lookup element at all
+  expect_null(params$H2_Lookup)
+  out <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params, c("family", "genus", "species"),
+    ratio_threshold = 0
+  )
+  h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
+  expect_equal(h2_row$h2_delta_source, "global_fallback")
+})
+
+test_that(".evaluate_one_query: specific_candidate rows carry NA h2_delta_source", {
+  skip_if_not_installed("TaxaTools")
+  params <- .add_h2_lookup(.make_model_params(), "Hybognathus", delta_shrunk = 1.0)
+  out <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params, c("family", "genus", "species"),
+    ratio_threshold = 0
+  )
+  spec <- out[out$hypothesis_type == "specific_candidate", ]
+  expect_true(all(is.na(spec$h2_delta_source)))
+})
+
+test_that(".evaluate_one_query: a smaller genus-specific delta raises H2 likelihood relative to the global fallback", {
+  skip_if_not_installed("TaxaTools")
+  # H2$delta = 3.0 (global, from .make_model_params()); a genus-specific
+  # delta of 1.0 shifts the H2 mean much closer to the observed top score,
+  # so the H2 density -- and hence score_likelihood -- should be higher than
+  # under the pooled global delta alone.
+  params_global <- .make_model_params()
+  params_local  <- .add_h2_lookup(.make_model_params(), "Hybognathus", delta_shrunk = 1.0)
+
+  out_global <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params_global, c("family", "genus", "species"),
+    ratio_threshold = 0
+  )
+  out_local <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params_local, c("family", "genus", "species"),
+    ratio_threshold = 0
+  )
+
+  h2_global <- out_global$score_likelihood[out_global$hypothesis_type == "unreferenced_species"]
+  h2_local  <- out_local$score_likelihood[out_local$hypothesis_type == "unreferenced_species"]
+  expect_gt(h2_local, h2_global)
+})

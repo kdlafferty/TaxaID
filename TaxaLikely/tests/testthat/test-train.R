@@ -125,3 +125,74 @@ test_that("train_likelihood_model: prior_weight validation", {
 })
 
 # (trivariate coverage path removed — coverage used as filter only)
+
+# ---- H2_Lookup: per-genus delta shrinkage ------------------------------------
+#
+# Fixture: genus "Fundulus" has two real congener species (lima,
+# heteroclitus, p_match = 0.90 to each other -- tight, "cryptic-like"
+# divergence) and genus "Distant" has one species (distantus, monotypic in
+# the reference) whose only foreign matches are the more distant Fundulus
+# cross-genus comparisons (p_match = 0.70). Within-species self-matches are
+# 0.97 for all three species. This lets the pooled-global delta (which mixes
+# Distant's uninformative cross-genus number into the average) be checked
+# against a Fundulus-specific delta estimated only from the real congener
+# pairs.
+.make_genus_raw_df <- function() {
+  ids <- c("L1", "L2", "M1", "M2", "D1", "D2")
+  species_map <- c(L1 = "lima", L2 = "lima",
+                   M1 = "heteroclitus", M2 = "heteroclitus",
+                   D1 = "distantus", D2 = "distantus")
+  genus_map <- c(L1 = "Fundulus", L2 = "Fundulus",
+                M1 = "Fundulus", M2 = "Fundulus",
+                D1 = "Distant", D2 = "Distant")
+
+  grid <- expand.grid(id_x = ids, id_y = ids, stringsAsFactors = FALSE)
+  grid$species.x <- species_map[grid$id_x]
+  grid$species.y <- species_map[grid$id_y]
+  grid$genus.x   <- genus_map[grid$id_x]
+  grid$genus.y   <- genus_map[grid$id_y]
+  grid$p_match <- mapply(function(x, y, sx, sy, gx, gy) {
+    if (x == y) return(1.00)          # self-match
+    if (sx == sy) return(0.97)        # within-species, different sequence
+    if (gx == gy) return(0.90)        # true congener (lima vs heteroclitus)
+    0.70                               # unrelated genus (Fundulus vs Distant)
+  }, grid$id_x, grid$id_y, grid$species.x, grid$species.y,
+  grid$genus.x, grid$genus.y)
+  grid
+}
+
+test_that("train_likelihood_model: H2_Lookup created when congener pairs exist", {
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  expect_false(is.null(out$H2_Lookup))
+  expect_true("Fundulus" %in% out$H2_Lookup$genus)
+})
+
+test_that("train_likelihood_model: monotypic genus excluded from H2_Lookup", {
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  # "Distant" has only one referenced species (distantus) -- no real congener
+  # pair exists to estimate a local delta from, so it must not appear.
+  expect_false("Distant" %in% out$H2_Lookup$genus)
+})
+
+test_that("train_likelihood_model: genus-specific delta is shrunk below the pooled global delta for a tight congener pair", {
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  fundulus_delta <- out$H2_Lookup$delta_shrunk[out$H2_Lookup$genus == "Fundulus"]
+  # Fundulus's real congener match (0.90) is much tighter than the pooled
+  # average (which also includes Distant's uninformative 0.70 cross-genus
+  # number), so the shrunk local delta should sit below the pooled global one.
+  expect_lt(fundulus_delta, out$H2$delta)
+  # ... but still shrunk toward it, not equal to the raw empirical estimate.
+  expect_gt(fundulus_delta, 0.5)
+})
+
+test_that("train_likelihood_model: H2_Lookup is NULL when rank_system has no genus level", {
+  # rank_system = "species" only -- .generalize_ranks() never produces a
+  # rank_code_b in this case (regardless of whether a genus column exists in
+  # the raw data), so there is no genus to group congener pairs by at all.
+  out <- train_likelihood_model(.make_genus_raw_df(), c("species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  expect_null(out$H2_Lookup)
+})

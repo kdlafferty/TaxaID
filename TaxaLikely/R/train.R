@@ -1,14 +1,14 @@
 utils::globalVariables(c(
   "p_norm", "p_b", "score_logit", "id_x", "id_y",
   "max_foreign_score", "raw_gap", "gap_logit", "rank_category", "N_Obs",
-  "rank_code_a.x", "rank_code_a",
+  "rank_code_a.x", "rank_code_a", "rank_code_b",
   "median_self_match", "max_foreign_match", "n_self_neighbors",
   "integrity_gap", "error_type", "identifier",
   "species.x", "species.y", "p_match",
   "mu_score", "mu_gap", "sigma_score", "lookup_key", "rank",
   "score_logit_mean", "gap_logit_mean", "score_logit_var",
   "n_obs_species", "shrunk_mu_score", "shrunk_mu_gap", "shrunk_sigma",
-  "w", "species"
+  "w", "species", "max_congener_score", "delta_emp", "n_pairs", "delta_shrunk"
 ))
 
 # ==============================================================================
@@ -177,6 +177,10 @@ flag_reference_errors <- function(raw_df,
 #'     \item{`rank_category`}{`"1_Known_Species"` or `"Singleton"`.}
 #'     \item{`N_Obs`}{Number of within-species pairs for this taxon (used for
 #'       shrinkage weight in `train_likelihood_model()`).}
+#'     \item{`max_congener_score`}{Best cross-species match restricted to a
+#'       true congener (same genus, different species). `NA` when the query's
+#'       genus has no other referenced species. Used by
+#'       `train_likelihood_model()` to estimate a genus-specific H2 delta.}
 #'   }
 #'
 #' @noRd
@@ -269,6 +273,44 @@ flag_reference_errors <- function(raw_df,
       )
     )
 
+  # ---- STEP 3B: CONGENER STATS (best same-genus, different-species match) ---
+  # max_foreign_score above is the best match to ANY other species, in any
+  # genus. That mixes true congeners in with distant, unrelated matches, so it
+  # cannot tell "this genus has tight congeneric divergence" apart from "this
+  # sequence's closest relative in the whole database happens to be distant."
+  # max_congener_score restricts to real congeners (same genus, different
+  # species) and is left NA -- not floored -- when the query's genus has no
+  # other referenced species at all, so train_likelihood_model() can tell
+  # "no local congener data exists for this genus" apart from "a real
+  # congener match was observed and it was distant." Used to estimate a
+  # genus-specific H2 delta (see H2_Lookup below); requires rank_code_b
+  # (the rank immediately coarser than species -- genus, by this package's
+  # rank_system convention) to be present.
+  has_genus_code <- all(c("rank_code_b.x", "rank_code_b.y") %in% names(df_logit))
+  congener_stats <- if (has_genus_code) {
+    df_logit |>
+      dplyr::filter(
+        !is.na(.data[["rank_code_a.x"]]), !is.na(.data[["rank_code_a.y"]]),
+        !is.na(.data[["rank_code_b.x"]]), !is.na(.data[["rank_code_b.y"]])
+      ) |>
+      dplyr::group_by(id_x) |>
+      dplyr::summarise(
+        max_congener_score = suppressWarnings(
+          max(score_logit[
+            .data[["rank_code_b.x"]] == .data[["rank_code_b.y"]] &
+              .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]
+          ], -Inf)
+        ),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(
+        max_congener_score = ifelse(is.infinite(max_congener_score),
+                                    NA_real_, max_congener_score)
+      )
+  } else {
+    NULL
+  }
+
   # ---- STEP 4: H1 PAIRS (same taxon, different sequence IDs) ----------------
   h1_pairs <- df_logit |>
     dplyr::filter(
@@ -277,7 +319,15 @@ flag_reference_errors <- function(raw_df,
       .data[["rank_code_a.x"]] == .data[["rank_code_a.y"]],
       id_x != id_y
     ) |>
-    dplyr::left_join(foreign_stats, by = "id_x") |>
+    dplyr::left_join(foreign_stats, by = "id_x")
+
+  h1_pairs <- if (!is.null(congener_stats)) {
+    dplyr::left_join(h1_pairs, congener_stats, by = "id_x")
+  } else {
+    dplyr::mutate(h1_pairs, max_congener_score = NA_real_)
+  }
+
+  h1_pairs <- h1_pairs |>
     dplyr::mutate(
       raw_gap       = score_logit - max_foreign_score,
       gap_logit     = pmin(raw_gap, max_gap_ceiling),
@@ -325,10 +375,11 @@ flag_reference_errors <- function(raw_df,
 
   df_singletons <- df_singletons |>
     dplyr::mutate(
-      max_foreign_score = noise_floor_logit,
-      gap_logit         = max_gap_ceiling,
-      rank_category     = "Singleton",
-      N_Obs             = 1L
+      max_foreign_score  = noise_floor_logit,
+      max_congener_score = NA_real_,
+      gap_logit          = max_gap_ceiling,
+      rank_category      = "Singleton",
+      N_Obs              = 1L
     )
 
   # ---- COMBINE + STRIP .x SUFFIXES ------------------------------------------
@@ -352,8 +403,38 @@ flag_reference_errors <- function(raw_df,
 #' * **H1 (known species):** species-specific mean with shrinkage; global
 #'   covariance matrix.
 #' * **H2 (missing species):** H1 mean shifted left by `H2$delta` --
-#'   approximately what a sister species looks like.
+#'   approximately what a sister species looks like. `H2$delta` is a single
+#'   value pooled across every genus in the training set; where a genus has
+#'   real congener pairs in the reference, `H2_Lookup` provides a
+#'   genus-specific delta (Empirical Bayes shrinkage toward `H2$delta`,
+#'   identical in form to the per-species shrinkage below) that
+#'   `evaluate_likelihoods()` prefers when available. See the "Per-genus
+#'   delta shrinkage" section below.
 #' * **H3 (missing genus):** H1 mean shifted further left by `H3$delta`.
+#'
+#' @section Per-genus delta shrinkage:
+#' The pooled, global `H2$delta` treats every genus identically, which is a
+#' poor approximation for genera whose real congeneric divergence is far from
+#' the training-set average -- most consequentially for cryptic species
+#' complexes, where true divergence is much smaller than the pooled estimate
+#' and the pooled delta will overstate confidence in the known-species
+#' hypothesis. Where a genus has at least one real congener pair in the
+#' reference database, `H2_Lookup` stores a genus-specific delta shrunk
+#' toward the pooled value by `n_pairs / (n_pairs + prior_weight)` (the same
+#' Empirical Bayes form used for per-species means). A genus with only one
+#' referenced species (no congener pairs at all) gets no `H2_Lookup` row and
+#' falls back to the pooled `H2$delta` unchanged -- there is no way to
+#' estimate local divergence from a single species, and none is invented.
+#' This says nothing about whether an unreferenced congener is plausible in
+#' the first place (that is a prior-side question, answered by
+#' \code{TaxaExpect} from occurrence/richness data, not by this function) --
+#' only about how far its likelihood should be shifted from a known match
+#' \emph{if} one exists. Nor does it address the case where a query's true
+#' relatives are absent from the reference for reasons unrelated to sequence
+#' divergence (e.g. an unreferenced acoustic or visual mimic in the acoustic
+#' and image pathways, where evidence similarity need not track phylogeny at
+#' all) -- see `inst/TaxaLikely_supplemental_methods.md` for a fuller
+#' discussion of that limitation.
 #'
 #' @section Pseudo-data anchoring:
 #' When `anchor_perfect = TRUE`, synthetic "perfect match" observations are
@@ -410,9 +491,12 @@ flag_reference_errors <- function(raw_df,
 #'     \item{`H1_Global_Mu`}{Named numeric vector: `score_logit`, `gap_logit`.}
 #'     \item{`H1_Sigma`}{2x2 covariance matrix for the global H1 distribution.}
 #'     \item{`H2`}{List with `delta` and `sigma` for the missing-species
-#'       hypothesis.}
+#'       hypothesis (pooled across all genera).}
 #'     \item{`H3`}{List with `delta` and `sigma` for the missing-genus
 #'       hypothesis.}
+#'     \item{`H2_Lookup`}{Data frame (or `NULL`) with per-genus `H2` delta
+#'       estimates: `genus`, `n_pairs`, `delta_shrunk`. See "Per-genus delta
+#'       shrinkage" section below.}
 #'     \item{`Stats`}{List of diagnostics (e.g., `AIC_Score` if lmer succeeded,
 #'       `n_species`, `n_singletons`).}
 #'     \item{`reference_errors`}{Data frame of flagged references (output of
@@ -680,14 +764,16 @@ train_likelihood_model <- function(raw_df,
   # (see empirical override below).
   h2_delta_val <- 3.0
   h2_var       <- 1.0   # default before empirical override
+  H2_Lookup    <- NULL
 
   if (nrow(h1_data) > 5L && "max_foreign_score" %in% names(train_df)) {
     # Filters extreme foreign-match scores below logit(0.007); prevents
     # outliers from inflating H2 delta.
-    h2_scores <- train_df$max_foreign_score[
+    h2_source <- train_df[
       train_df$rank_category == "1_Known_Species" &
-        train_df$max_foreign_score > -5.0
+        train_df$max_foreign_score > -5.0,
     ]
+    h2_scores <- h2_source$max_foreign_score
     if (length(h2_scores) > 2L) {
       # Minimum H1-H2 separation of 0.5 ensures unreferenced-species
       # hypothesis is always distinguishable from known-species hypothesis.
@@ -695,6 +781,43 @@ train_likelihood_model <- function(raw_df,
       # Minimum H2 variance of 0.1 prevents degenerate zero-variance
       # estimates when few foreign matches exist.
       h2_var <- max(stats::var(h2_scores, na.rm = TRUE), 0.1)
+
+      # ---- PER-GENUS DELTA SHRINKAGE (Empirical Bayes, same form as H1) ----
+      # h2_delta_val above pools cross-species divergence across every genus
+      # in the training set, so a genus with unusually tight (cryptic-like)
+      # or unusually loose congeneric divergence gets the exact same constant
+      # as every other genus -- the model has no way to tell them apart.
+      # Where a genus has real congener pairs in the reference
+      # (max_congener_score, restricted to same-genus/different-species
+      # matches -- NA when the genus has no second referenced species at
+      # all), shrink a genus-specific delta toward the pooled value with the
+      # identical w = n / (n + prior_weight) form used for H1 species means
+      # above. Genera with no congener data (monotypic in the reference
+      # database, regardless of how many species the genus has in nature)
+      # simply get no lookup row and fall back to h2_delta_val unchanged --
+      # there is no local information to borrow, and none is invented.
+      if ("max_congener_score" %in% names(h2_source) &&
+          "rank_code_b" %in% names(h2_source)) {
+        genus_h2 <- h2_source |>
+          dplyr::filter(!is.na(rank_code_b), !is.na(max_congener_score)) |>
+          dplyr::group_by(rank_code_b) |>
+          dplyr::summarise(
+            n_pairs   = dplyr::n(),
+            delta_emp = mu_score_global - mean(max_congener_score, na.rm = TRUE),
+            .groups   = "drop"
+          ) |>
+          dplyr::mutate(
+            w            = n_pairs / (n_pairs + prior_weight),
+            delta_shrunk = pmax(0.5, w * delta_emp + (1 - w) * h2_delta_val)
+          )
+        if (nrow(genus_h2) > 0L) {
+          H2_Lookup <- tibble::tibble(
+            genus        = genus_h2$rank_code_b,
+            n_pairs      = genus_h2$n_pairs,
+            delta_shrunk = genus_h2$delta_shrunk
+          )
+        }
+      }
     }
   }
 
@@ -706,8 +829,10 @@ train_likelihood_model <- function(raw_df,
   H2 <- list(delta = h2_delta_val,           sigma = h2_sigma_mat)
   # H3 delta = H2 delta + 2.0: heuristic representing one additional
   # taxonomic rank step (genus-level mismatch vs species-level mismatch).
-  # H3 is rarely decisive; inspect via interpret_model() if needed.
-  # Alternative: estimate from genus-level foreign-match data (low priority).
+  # Applied on top of whichever H2 delta -- pooled global or genus-specific
+  # via H2_Lookup -- is selected at inference time; see .evaluate_one_query().
+  # H3 itself has no genus-specific estimate (would need family-level
+  # congener data); low priority, noted as a possible future extension.
   H3 <- list(delta = h2_delta_val + 2.0,     sigma = h3_sigma_mat)
 
   message(sprintf(
@@ -722,6 +847,7 @@ train_likelihood_model <- function(raw_df,
       H1_Sigma     = global_cov,
       H2           = H2,
       H3           = H3,
+      H2_Lookup    = H2_Lookup,
       Stats        = list(
         AIC_Score    = aic_score,
         n_species    = n_species,

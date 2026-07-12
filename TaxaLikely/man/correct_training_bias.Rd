@@ -8,7 +8,7 @@ correct_training_bias(
   scored_df,
   count_col,
   score_col = "score_original",
-  tau = 1
+  tau = 0
 )
 }
 \arguments{
@@ -28,14 +28,17 @@ counts being \code{NA}).}
 \code{\link[=assign_scores]{assign_scores()}}'s default \code{score_col}). Name of the raw score
 column to correct.}
 
-\item{tau}{Non-negative numeric scalar (default \code{1.0}). Global exponent
-applied to every candidate's count (see Details) -- \code{tau = 1} is the
-theoretically Fisher-consistent full correction; \code{tau = 0} disables
-correction entirely (returns scores unchanged); values above 1 apply
+\item{tau}{Non-negative numeric scalar (default \code{0}, changed from \code{1.0}
+in Session 151 -- see "Default changed" in Details). Global exponent
+applied to every candidate's count (see Details) -- \code{tau = 0} disables
+correction entirely (returns scores unchanged); \code{tau = 1} is the
+theoretically Fisher-consistent full correction; values above 1 apply
 stronger-than-theoretical correction (Menon et al.'s own tuned optimum
-on one benchmark was 2.6). Tune empirically against real labeled data
-where possible rather than trusting the default uncritically (see
-Details).}
+on one benchmark was 2.6). Every real calibration run against this
+function's own real classifier output so far (image, and acoustic on a
+properly powered re-test) found \verb{tau ≈ 0} optimal -- raise it only
+after calibrating against real labeled data for your own data type
+(see Details).}
 }
 \value{
 \code{scored_df} with \code{score_col} overwritten by the corrected
@@ -72,12 +75,14 @@ same observation, dividing by \eqn{n_i^{\tau}} instead of
 \eqn{\pi_i^{\tau}} gives identical relative rankings and ratios among
 candidates -- so \eqn{N} does not need to be known or estimated here.
 
-At \eqn{\tau = 1} (the default), this fully removes the \eqn{n_i} factor,
+At \eqn{\tau = 1}, this fully removes the \eqn{n_i} factor,
 recovering an estimate of the true likelihood \eqn{L_i} exactly under the
 \eqn{score_i \propto L_i \times n_i} model -- the value Menon et al. derive
 as Fisher-consistent for the class-balanced error from Bayes' rule
-directly. \eqn{\tau} remains a tunable argument (not hardcoded to 1)
-because Menon et al.'s own empirical tuning did not always land on 1 --
+directly. The default is \code{tau = 0} (no correction), not \code{1} -- see
+"Default changed (Session 151)" below for why. \eqn{\tau} remains a
+tunable argument (not hardcoded to any one value) because Menon et al.'s
+own empirical tuning did not always land on 1 --
 on CIFAR-10-LT they found a validation-tuned optimum of 2.6, i.e.
 \emph{stronger} correction than the naive theoretical default improved
 balanced accuracy further in that setting.
@@ -154,18 +159,39 @@ and beyond. \strong{For this image pathway, \eqn{\tau \approx 0} is optimal --
 the correction should not be applied.} The acoustic result above was
 never affected by the \code{assign_scores()} bug in the first place (BirdNET
 confidence is already 0-1 bounded and uses \code{score_type = "probability"},
-which does not call \code{.normalize_scores()} at all) and is expected to
-still hold, though it has not yet been re-validated with the same
-log-loss calibration procedure used for image.
+which does not call \code{.normalize_scores()} at all), but did NOT hold up
+on its own terms -- see the next paragraph.
 
-\strong{The practical conclusion is not "\eqn{\tau = 0} is the right default"}
--- it is that \eqn{\tau} (and, for the \code{similarity_softmax} pathway,
-\code{score_sharpness}) must be calibrated per data type, not trusted at a
-single shared value. Image and acoustic gave opposite answers on real
-data (\eqn{\tau \approx 0} vs \eqn{\tau \approx 1}) using the identical
-function with identical defaults. Run
-\code{calibrate_training_bias_tau.R} against real labeled data for any new
-data type before deciding whether to apply this correction at all.
+\strong{Acoustic re-tested at scale (Session 133), reversing the result above:}
+the 42-window/3-species pilot's \eqn{\tau \approx 1} finding was flagged
+by the user as too thin an evidence base and re-run on a deliberately
+larger, more representative real dataset -- 8 confusable clusters, 24
+species, 2487 real BirdNET detection windows. Pooled result:
+\eqn{\tau \approx 0} is optimal for acoustic too, matching image, not
+opposing it -- log-loss and accuracy both get monotonically worse from
+\eqn{\tau = 0} through \eqn{\tau = 6}. Per-cluster results are genuinely
+heterogeneous, though (2 of 8 clusters still prefer high \eqn{\tau} even
+at ~150-170 windows each, unbracketed at the swept grid's edge) -- a
+single global \eqn{\tau} does not fit this data well even now that the
+pooled default has flipped; see
+\code{ecosystem_docs/REENTRY_PROMPT_acoustic_tau_calibration_expanded.md} for
+the full per-cluster breakdown.
+
+\strong{Default changed (Session 151):} every real calibration run against
+this function so far -- image (Session 129) and acoustic, on both the
+original small pilot AND the later, properly-powered re-test (Session
+133) -- found \eqn{\tau \approx 0} optimal, not the theoretical
+\eqn{\tau = 1}. The default changed from \code{1.0} to \code{0} accordingly: a
+user who does nothing now gets no correction (matching every real result
+obtained so far) rather than a correction contradicted by every real
+result obtained so far. This is \strong{not} a claim that \eqn{\tau = 0} is
+correct in general or for every data type -- only that it is the
+evidence-backed starting point given what has actually been measured.
+\eqn{\tau} (and, for the \code{similarity_softmax} pathway, \code{score_sharpness})
+should still be calibrated per data type -- and, per the acoustic
+per-cluster result above, potentially per taxon cluster -- before being
+raised. Run \code{calibrate_training_bias_tau.R} against real labeled data for
+any new data type before deciding whether to apply this correction at all.
 }
 
 \subsection{Missing or zero counts: deliberate deviation from strict logit adjustment}{

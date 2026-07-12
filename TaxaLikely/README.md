@@ -299,7 +299,13 @@ used in no-score and acoustic/image pathways) - `assign_scores()` -- set
 (`"probability"`), softmax (`"similarity_softmax"`), or prepare for the
 bivariate-normal model (`"similarity"`) - `compute_likelihoods()` --
 high-level wrapper: `unreferenced_candidates()` → `assign_scores()` →
-`model_likelihoods()` (DNA scored pathway)
+`model_likelihoods()` (DNA scored pathway) -
+`expand_unreferenced_hypotheses()` -- models likelihoods for named
+unreferenced species (borrowed from the generic H2/H3 values) and expands
+them so they can join TaxaExpect priors directly; requires a TaxaExpect-
+derived unreferenced-species list, so it runs after both TaxaLikely and
+TaxaExpect and before `TaxaAssign::compute_posterior()` (moved from
+TaxaAssign, Session 150)
 
 **Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
 species (no barcode sequence; eDNA/DNA only) - `audit_acoustic_coverage()` --

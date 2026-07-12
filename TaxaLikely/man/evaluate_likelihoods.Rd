@@ -86,8 +86,11 @@ hypothesis, suitable for input to \code{TaxaAssign::compute_posterior()}:
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type}
 (\code{"specific_candidate"}, \code{"unreferenced_species"}, or \code{"unreferenced_genus"}),
 \code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd},
-\code{score_likelihood_cov}.  Rows where \code{taxon_name} resolved to \code{NA} are
-excluded.  See Details for \code{score_likelihood_cov}.}
+\code{score_likelihood_cov}, \code{h2_delta_source} (\code{"genus_specific"} or
+\code{"global_fallback"} for \code{unreferenced_species}/\code{unreferenced_genus}
+rows; \code{NA} for \code{specific_candidate} rows).  Rows where \code{taxon_name}
+resolved to \code{NA} are excluded.  See Details for \code{score_likelihood_cov}
+and \code{h2_delta_source}.}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
 produced no usable likelihoods (empty data frame if none).  Pass to
 a second call of \code{evaluate_likelihoods()} with a coarser
@@ -120,7 +123,10 @@ species looks like based on reference-vs-reference scores.
 \item \strong{H2 (unreferenced_species):} The query comes from a species not
 in the reference database, but whose genus is represented. The model
 shifts the H1 score distribution downward (by \code{H2$delta} logit
-units) to predict what a sister-species match looks like.
+units, or by a genus-specific shrunk delta from
+\code{model_params$H2_Lookup} when the anchor candidate's genus has
+real congener data -- see \code{h2_delta_source} below) to predict
+what a sister-species match looks like.
 \item \strong{H3 (unreferenced_genus):} The query comes from a genus not in
 the reference database at all. The score distribution is shifted further
 downward (by \code{H3$delta}).
@@ -168,6 +174,25 @@ absent or equals 1 for all candidates, \code{score_likelihood_cov} is identical 
 \code{score_likelihood}.  Pass to \code{TaxaAssign::compute_posterior()} instead of
 \code{score_likelihood} to apply the coverage adjustment; compare the two columns
 to identify queries where coverage meaningfully shifts the likelihood ratios.
+
+\strong{Genus-specific H2/H3 delta (\code{h2_delta_source}):}
+\code{H2$delta}/\code{H3$delta} are single values pooled across every genus seen
+during training, which treats a genus with unusually tight (cryptic-like)
+congeneric divergence the same as one with unusually loose divergence.
+When \code{train_likelihood_model()} found at least one real congener pair for
+the query's best-matching candidate's genus, \code{evaluate_likelihoods()} uses
+a genus-specific delta (\code{model_params$H2_Lookup}, shrunk toward the pooled
+value by how many congener pairs were available) instead, and marks the
+row \code{h2_delta_source = "genus_specific"}. Rows marked
+\code{"global_fallback"} (including every row when the genus has only one
+referenced species, or when the model was trained without genus
+information) used the pooled constant, which is the cruder approximation
+-- treat \code{unreferenced_species}/\code{unreferenced_genus} likelihoods on those
+rows with more caution. This correction only adjusts the shift's
+\emph{magnitude} for the correct genus; it does not address the separate
+case where the true taxon's nearest relative in evidence space (visual or
+acoustic mimicry/convergence) is not its nearest phylogenetic relative --
+see \code{inst/TaxaLikely_supplemental_methods.md} for that limitation.
 
 \strong{hypothesis_type values in output:}
 \itemize{

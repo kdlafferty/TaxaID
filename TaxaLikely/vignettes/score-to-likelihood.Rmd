@@ -139,8 +139,9 @@ coverage <- audit_barcode_coverage(
 constrained <- apply_coverage_constraints(top, coverage$census)
 ```
 
-The output is ready for TaxaAssign: `expand_unreferenced_hypotheses()` →
-`join_priors()` → `compute_posterior()`.
+The output is ready for `expand_unreferenced_hypotheses()` (also in
+TaxaLikely, once a TaxaExpect-derived unreferenced-species list is
+available) and then TaxaAssign: `join_priors()` → `compute_posterior()`.
 
 ## Key Parameters
 
