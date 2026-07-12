@@ -1,7 +1,143 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-09 (Session 148, branch `main` -- full TaxaFetch code + domain
+# Last updated: 2026-07-11 (Session 151, branch `main` -- TaxaLikely::train_likelihood_model()
+# gains per-genus H2 delta shrinkage, prompted by a manuscript peer-review comment that the
+# reference-gaps section's P(E|unreferenced) ~ P(E|referenced) approximation was asserted, not
+# defended, and would fail exactly where taxonomists most need help (cryptic complexes, deep
+# splits, mimicry/convergent signals). H2$delta (the logit shift used to model a missing
+# congener's likelihood) was a single value pooled across every genus in the training set;
+# a genus-specific estimate (new H2_Lookup slot, Empirical Bayes-shrunk toward the pooled
+# value using a real congener pair when one exists in the reference database) now corrects
+# the *magnitude* of that shift for cryptic-complex-like genera, while a documentation-only
+# addition to TaxaLikely/inst/TaxaLikely_supplemental_methods.md states the load-bearing
+# assumption plainly (related taxa assumed more similar in the evidence trait than unrelated
+# taxa -- true by construction for DNA, much weaker for image/acoustic mimicry/convergence,
+# where no statistical fix exists and direct reference-database expansion for the mimic
+# itself is the only real remedy). Fully additive and backward compatible -- no signature
+# changes; model_params objects trained before this session simply have no H2_Lookup slot
+# and behave exactly as before. See TaxaLikely/CLAUDE.md's Session 151 note for the full
+# implementation record.
+# Previous update, 2026-07-10 (Session 149 continued once more, branch `main` -- new
+# TaxaExpect::compute_adaptive_sampling_groups(), prompted by a follow-up design question
+# after the sampling_group_col fix below: how do you choose a good detection-process
+# grouping when a user doesn't have (or doesn't want to hand-build) domain knowledge for
+# it? Answer: greedily merge taxa up a taxonomic rank hierarchy (default order -> class ->
+# phylum) until each candidate group's mean per-site record count clears a minimum viable
+# sample size, never merging across the ceiling rank (phylum) -- "stratum collapsing" from
+# survey methodology, mirroring (bottom-up, on a sample-size criterion) the same recursive
+# pattern TaxaAssign::join_priors()'s dark-diversity grouping already uses top-down (on
+# singleton presence). A real bug (list[[NA]] returns NULL, breaking NA-taxonomy handling)
+# was found and fixed via deliberate smoke-testing before formal tests were written.
+# devtools::test() 423/423 (up from 401), check() clean. This is a standalone,
+# user-optional tool -- not wired into the real 18S workflow, which still uses its
+# original hand-built classification. See TaxaExpect/CLAUDE.md's Session 149 notes.
+# Previous update, 2026-07-10 (Session 149 continued yet further, branch `main` -- sixth
+# H-priority item: TaxaExpect::train_biodiversity_model()'s shared-effort assumption
+# (n_total_at_site pooled across every taxon regardless of detection process) is now
+# enforced, not just documented. prepare_model_dataframe() gains sampling_group_col
+# (group-aware n_total_at_site, split-and-recombine internally to avoid cross-group
+# zero-fill contamination); train_biodiversity_model() refuses multi-group data; new
+# train_biodiversity_model_by_group() orchestrates per-group fitting end to end. Before
+# implementing, verified via a dedicated search (prompted by the user's recollection of
+# past discussion) that this had never actually been fixed anywhere -- only documented,
+# Session 108 -- including in the one real production workflow (PtConception 18S, 11
+# sampling groups spanning phytoplankton/fish/birds/plants/parasites/etc.) that has exactly
+# this scenario; that workflow (outside this monorepo, not under git) was then rewritten to
+# use the new mechanism, looping model fitting per group with a tryCatch() guard for sparse
+# groups, not run live this session. devtools::test() 401/401 (up from 383), check() clean.
+# See TaxaExpect/CLAUDE.md's Session 149 notes for the full record.
+# Previous update, 2026-07-10 (Session 149 continued, branch `main` -- fifth H-priority item from
+# the statistical soundness review: TaxaAssign::update_prior_from_consensus()'s fixed
+# presence_multiplier (a flat x5 boost regardless of confirmation count/confidence) replaced by
+# a confirmation-quantile design, reached via an extended design discussion where the user
+# proposed and pressure-tested several alternatives (max-confidence donor -> noisy-OR
+# combination -> high-quantile combination) before settling on: the confirmation_quantile-th
+# quantile (default 0.9) of confirming donors' consensus_posterior substitutes for a confirmed
+# species' prior_mean (never lowering it) only when it clears min_confirmation_confidence
+# (default 0.8, disableable via 0). Key finding along the way: a plain maximum or a
+# probabilistic-OR combination across donors can both be fooled by many correlated (not
+# independent) confirmations from a classifier that structurally cannot separate two similar
+# species -- renormalization does NOT correct this once a third, unrelated candidate is
+# present (confirmed numerically). A quantile is the more defensible choice specifically
+# because it converges to a stable population value as the donor pool grows (unlike a sample
+# maximum, which drifts toward the degenerate ceiling of 1.0 regardless of whether the
+# evidence is real). Also fixed a latent inconsistency found along the way: prior_alpha/
+# prior_beta were never rescaled to match a boosted prior_mean, so compute_posterior()'s Monte
+# Carlo path could sample from a stale Beta shape -- now recomputed preserving the original
+# concentration. Explicitly deferred (not solved): a quantile still can't tell "confidence
+# earned by strong evidence" from "confidence attained despite thin/low-quality input" (e.g. a
+# short DNA read producing a spuriously perfect match) -- flagged as its own future design
+# thread (a quality covariate on match scores), prompted by the user's own camera-trap and
+# short-sequence-read examples and a shared reference (Silva-Rodriguez et al. 2025, J. Appl.
+# Ecol., a camera-trap QC-protocol paper -- a different layer, dataset-level audit rather than
+# a per-detection statistical model, but evidence the underlying problem is recognized
+# elsewhere). Signature change (breaking): presence_multiplier removed, replaced by
+# confirmation_quantile/min_confirmation_confidence, propagated through
+# run_bayesian_pipeline()/run_llm_pipeline()/generate_report()'s methods text/both inst/
+# workflow scripts/the taxonomic-assignment vignette -- all real call sites updated.
+# devtools::test() 537/537 (0 failures), devtools::check() 0/0/0. See TaxaAssign/CLAUDE.md's
+# Session 149 notes for the full record, including the full sequence of rejected alternatives
+# and why each failed. 12 of the original 16 H-priority items remain.
+# Previous update, 2026-07-10 (Session 150, branch `main` -- package-placement fix prompted by the
+# user's parallel manuscript-driven review of the ecosystem's 4 conceptual pipeline steps
+# (calibrate likelihoods -> generate priors -> model missing likelihoods -> calculate
+# posteriors): `expand_unreferenced_hypotheses()` moved TaxaAssign -> TaxaLikely. It models
+# likelihoods for named unreferenced species (the "model missing likelihoods" step) by copying/
+# medianing values from referenced relatives -- conceptually a likelihood-modeling function, not
+# a posterior-computation one, so it belongs next to `unreferenced_candidates()` (candidate
+# generation) rather than inside TaxaAssign. It still runs after both TaxaLikely's own output
+# and a TaxaExpect-derived unreferenced-species list are available, and before
+# `TaxaAssign::compute_posterior()` -- confirmed this is a workflow-ordering requirement only,
+# not a package-dependency one, since the function only ever consumes plain data frames and
+# never calls into TaxaExpect or TaxaAssign itself. `TaxaAssign::expand_unreferenced_hypotheses()`
+# kept as a thin `.Deprecated()` forwarding wrapper (matching Session 136's
+# fetch_reference_sequences() -> fetch_ncbi_reference_sequences() pattern) -- zero-risk for any
+# workflow script not yet updated to the new namespaced call. All real call sites found via
+# ecosystem-wide grep and updated (`run_bayesian_pipeline()`, the bayesian workflow tutorial, both
+# vignette code chunks, the one live call in TaxaAssign's own integration test); the dedicated
+# unit test file moved to TaxaLikely, replaced in TaxaAssign by one test confirming the wrapper
+# warns and forwards identically. No TaxaWizard metadata/snippets referenced this function
+# (checked, zero hits). Found and flagged (not fixed, pre-existing, unrelated) a stale 3-argument
+# call in `TaxaAssign/vignettes/taxaid-ecosystem.Rmd` that doesn't match the real 2-argument
+# signature -- likely the same kind of doc/metadata drift already known from the TaxaWizard
+# metadata case ([[project_taxawizard_metadata_drift]]). `devtools::test()`: TaxaLikely 643/643
+# (0 failures, up from 609; 15 pre-existing unrelated warnings, 1 pre-existing skip), TaxaAssign
+# 522/522 (0 failures; count differs from Session 149's 544 because ~17 tests moved to TaxaLikely
+# and were replaced by 1 forwarding-wrapper test, not because coverage was lost).
+# `devtools::check()`: both packages 0 errors/0 warnings/0 notes.
+# Previous update, 2026-07-10 (Session 149 continued, branch `main` -- ecosystem-wide statistical
+# soundness review (ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md; see
+# ecosystem_docs/STATISTICAL_COMPONENT_CATALOG.md for the prior cataloging-only pass), judging
+# all 59 cataloged statistical components, then walking the 16 High-priority rows one at a time
+# with the user. Four done so far: (1) TaxaAssign::compute_posterior()'s Monte Carlo path --
+# the live winner-selection path, since posterior_consensus() defaults to reading the MC-derived
+# posterior_mean -- fixed: exact truncated-normal likelihood sampling (was rnorm()+clamp-to-0,
+# manufacturing a spurious point mass at 0) and the J-shaped-Beta override widened from
+# prior_alpha < 1 to <= 1. (2) TaxaAssign::score_consensus()'s fixed percent-identity thresholds
+# were NOT a bug -- the user clarified this function deliberately reproduces a conventional
+# fixed-threshold pipeline (GITA/Jonah Ventures-style) for benchmarking against TaxaID's own
+# Bayesian pathway, so its known inability to discriminate species-from-congener is the point,
+# not a defect; fixed with a documentation-only `@section Purpose` clarifying this so a future
+# reader doesn't make the same mistake the review did. (3) The domestic/synanthropic-species
+# occurrence-floor artifact ([[project_taxaflag_domestic_species_floor_note]]): resolved as a
+# split fix per the user's design -- priors get a documentation note only (recommending
+# occurrence-data augmentation, in TaxaExpect::generate_undetected_diversity() +
+# TaxaAssign::join_priors()), and TaxaFlag::add_posthoc_assessment() gains opt-in
+# `domestic_taxa`/`domestic_prior_source` params that re-label a strong-likelihood +
+# database-driven-low-tier domestic species call as `"domestic_prior_caveat"`. All three fixes
+# behavioral/docs-only where applicable, fully backward compatible, every touched package's
+# devtools::test()/check() re-verified clean. (4) TaxaAssign::join_priors()'s coarse-rank
+# expansion (species candidates manufactured from a family-level ID, all sharing one inherited
+# likelihood so the "winner" is decided by occurrence prior alone) was confirmed by the user,
+# via a concrete example, to be intended behavior -- fixed by adding
+# posterior_consensus()'s new winner_hypothesis_type/winner_rank_expanded output columns so a
+# downstream consumer can tell a prior-only-resolved species call apart from a genuinely
+# evidence-resolved one, without changing the underlying mechanism. See TaxaAssign/CLAUDE.md's,
+# TaxaExpect/CLAUDE.md's, and TaxaFlag/CLAUDE.md's own Session 149 notes for the full
+# per-package record. 12 H-priority items remain, being worked through one at a time with the
+# user.
+# Session 148, branch `main` -- full TaxaFetch code + domain
 # review against inst/Code and Domain Review 2.Rmd (findings + fixes recorded in
 # taxafetch_review.Rmd at the TaxaID root). Two real, fixed issues at the deep-review level:
 # an SSRF gap in the DataONE pipeline (data_url read verbatim from third-party EML metadata,
@@ -601,3 +737,7 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 146 | `run_llm_pipeline(taxa_per_call = 30L)` → `15L` | TaxaAssign | Same change, forwarded to `assign_taxa_llm()`. |
 | 146 | `.parse_taxa_response()` gives a truncation-specific warning | TaxaAssign | Behavioral, not signature. When the LLM response has no closing `]` at all (truncation signature), the warning now names the real cause and two concrete fixes instead of the old generic "failed to parse" message. |
 | 147 | `score_consensus(rank_thresholds = NULL)` → `c(species=98, genus=95, family=90, order=85)` | TaxaAssign | Signature + behavioral change. A caller relying on the old default silently got zero score-based species-vs-congener discrimination -- see `TaxaAssign/CLAUDE.md`'s Session 147 note for the ROC-sweep evidence. Pass `rank_thresholds = NULL` explicitly to restore old behavior. Auto-rescaled by /100 if `score_col` looks like a 0-1 proportion scale. Verified against every real call site and test; none broken (539/539 tests unchanged). |
+| 149 | `compute_posterior()`'s Monte Carlo path: truncated-normal likelihood sampling + widened J-shape prior guard (`prior_alpha < 1` → `<= 1`) | TaxaAssign | Behavioral, not signature. Fixes a spurious point-mass-at-0 in likelihood draws and a missed exact-`alpha==1` case in the fixed-at-mean override, on the path `posterior_consensus()` reads by default (`posterior_mean`). See `TaxaAssign/CLAUDE.md`'s Session 149 note and `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`. `devtools::test()` 544/544 (up from 539), `devtools::check()` clean. |
+| 150 | `expand_unreferenced_hypotheses()` moved TaxaAssign → TaxaLikely | TaxaLikely (new home), TaxaAssign (deprecated alias) | Package-placement fix, not a math change -- same algorithm, same output. `TaxaAssign::expand_unreferenced_hypotheses()` kept as a `.Deprecated()` forwarding wrapper to `TaxaLikely::expand_unreferenced_hypotheses()`. Callers using the bare (unqualified) name inside TaxaAssign, or `TaxaAssign::expand_unreferenced_hypotheses()` explicitly, still work but now warn; update to `TaxaLikely::expand_unreferenced_hypotheses()` to silence the warning. See `TaxaID/CLAUDE.md`'s Session 150 note above for the full reasoning and verification record. |
+| 149 | `update_prior_from_consensus(presence_multiplier = 5)` → `confirmation_quantile = 0.9, min_confirmation_confidence = 0.8` | TaxaAssign | Signature + behavioral change. The flat multiplier ignored confirmation count/confidence entirely; the new design substitutes the confirmation-quantile of confirming donors' `consensus_posterior` (never lowering the existing prior), gated by a minimum confidence floor. Also fixes a latent `prior_alpha`/`prior_beta` staleness bug. Propagated through `run_bayesian_pipeline()`, `run_llm_pipeline()`, `generate_report()`, both `inst/` workflow scripts, and the `taxonomic-assignment` vignette. See `TaxaAssign/CLAUDE.md`'s Session 149 notes and `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`. `devtools::test()` 537/537, `devtools::check()` clean. |
+| 149 | `prepare_model_dataframe(sampling_group_col = ...)` added; `train_biodiversity_model()` refuses multi-group data; `train_biodiversity_model_by_group()` added | TaxaExpect | Additive, backward compatible (`sampling_group_col` defaults `NULL`, no behavioral change for existing callers) -- except `train_biodiversity_model()` now errors if its input happens to already carry a `sampling_group` column spanning >1 value (previously would have silently fit a pooled model). Code-level enforcement of the "Shared effort assumption" that was previously advisory documentation only. See `TaxaExpect/CLAUDE.md`'s Session 149 notes. `devtools::test()` 401/401 (up from 383), `devtools::check()` clean. |
