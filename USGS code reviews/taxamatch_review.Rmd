@@ -1,0 +1,592 @@
+---
+title: "TaxaMatch code review"
+output: html_document
+---
+
+### Code Review
+
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
+
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable? 
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+
+The code is organized and easy to read.
+
+* [x] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way. 
+  * Is additional documentation required?
+
+I did not profile the code, but I did not notice any obvious inefficiencies and performance seems adequate for the use case. See minor suggestions in file-specific comments, otherwise additional documentation seems required.
+
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+
+See individual file comments for minor suggestions. Suggest using a linter to find minor formatting issues, which I did not comment on.
+
+* [x] **Automated tests:** Confirm that all tests pass when run locally.
+
+I ran each test file manually. One file did not have a test file, see comments.
+
+* [x] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
+
+I do not have the requisite knowledge to evaluate whether this package has vulnerabilities, particularly relating to interfacing with LLMs. I saw nothing obvious for other domains.
+
+Any Additional comments, list below in comment section.
+
+### Domain Review
+
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
+
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct? 
+  * Are any claims of what the code does substantiated? 
+  * If tests are included, are they adequate to evaluate functionality?
+  
+This code provides outputs that are biologically reasonable.
+
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces. 
+  * If equations are solved, are the equations input correctly into the code?
+
+Based on my limited expertise, the outputs seem correct.
+
+* [x] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
+
+See minor comments for individual files.
+
+Any Additional comments, list below in comment section.
+
+# General comments
+
+* It would be easier to test these functions if minimal example data structures were supplied. These could be synthetic. This comment applies to the entire package ecosystem.
+
+* I have only evaluated files in the `R` directory of `TaxaMatch`. I did not evaluate any other files. I suggest cleaning up all unnecessary files in the repo. 
+
+* I used the DOI temporary access for claude to assist in the review. Specifically, I used the WERC code review template with the following prompt for each file: 'Perform a code review for the attached R file. This file is part of a package. Assess if the file adheres to tidyverse style guidelines, whether or not it violates the "do not repeat yourself" coding standard, and other common coding standards. The code review should be in markdown format, following the template below.' Note that I read each file myself, and read all of claude's recommendations. I currated claude's comments to those which seemed actionabe and legitimate, but I have not verified the all of the claims claude made or evaluated the importance of each claim. Comments from claude are included in code blocks below, and occasionally inline comments.
+
+Comments on specific files:
+
+**blast.R**
+
+* [x] reviewed
+
+- Since `blast_sequences()` is the only exported function, consider renaiming the file to match.
+
+- Line 1: suggest explaining why this line is included, claude thinks it's because otherwise the nonstandard evaluation in `stats::aggregate` would be flagged by `R CMD CHECK`.
+
+- Line 44: should `max_target_seqs` be forced to be larger than `max_hits`?
+
+- Line 53: consider adding a suggestion here to define this as an environmental variable.
+
+- Line 60: suggesr documenting `report_params` here too.
+
+- Line 156: suggest using `is.integer()` instead of `is.numeric()`.
+
+- Line 171: consider testing if it's an integer or if numeric and converting, printing a warning.
+
+- Line 188: consider requiring email for remote method.
+
+- Line 399, 725, and 821: a helper function for three attempt retries would reduce code duplication.
+
+- Line 486: was the global assignment operator `<<-` intended to be used here? Same with line 739.
+
+- Line 526, 556, 558, 843: mutiline `if` statememts should use curly braces.
+
+- Line 542: claude pointed out that this loop with the `rbind` is potentially inefficient for large results. A more efficient pattern would be to collect all scalar fields into pre-allocated vectors and construct a single `data.frame` at the end.
+
+- Line 674: from claude- "`stats::aggregate()` followed by `merge()` to compute per-query max percent identity works correctly but is heavier than necessary. This is a good candidate for a `data.table` or `dplyr` grouped operation, or at minimum a `tapply`/`ave` approach that avoids the merge entirely. Given that this is a filtering utility, the performance impact is low in practice, but it is worth flagging." This seems pretty minor to me, as long as `hits` isn't that large.
+
+- Line 824: from claude: " The `entrez_search` query is constructed as `paste(batch, "[ACCN]", collapse = " OR ")`. For batches of 100 accessions this produces very long query strings that may hit NCBI URL length limits. Fetching summaries directly by UID after an elink or efetch call would be more robust."
+
+- claude suggests that hardcoded values (i.e. `batch_size` on line 717) should be named constants or at minimum documented with inline comments explaining their origin.
+
+- Line 310 and elsewhere: from claude- "The `if (!requireNamespace(...)) stop(...)` guard appears six times across `.blast_remote()`, `.blast_local()`, `.parse_blast_xml()`, `.resolve_taxonomy()`, and `.resolve_taxonomy_by_acc()`. Consider a small internal helper `.check_pkg(pkg, install_cmd)` to reduce repetition."
+
+- Line 852 and elsewhere: an empty `data.frame` is created on early return in multiple places. Suggest creating once and referencing or making a simple helper function to avoid repetition.
+
+- When using `make_seq_df()` from the test file, it always filters everything out with the defaults. I think this is intended behavior as these are randomly generated sequences, but it is challenging to test what happens when rows are *not* filtered.
+
+- Line 885: suggest moving to the top of the file.
+
+- From claude: The following comments are directly from claude. I have not verified their accuracy.
+
+```
+- The fallback from taxid-based to accession-based taxonomy resolution is robust, but the two code paths produce slightly different column structures before the `merge()` step (one has `taxid_join`, the other does not). Adding an explicit column-alignment step before returning `out` would guard against subtle merge artefacts if the code paths are ever modified independently.
+
+- **Percent identity calculation:** Computed as `round(100 * identity / align_len, 2)` from HSP fields. This is the standard NCBI definition and is implemented correctly. Note that this is *alignment* identity, not *sequence* identity over the full query length — a distinction worth clarifying in the `@return` documentation for `score`.
+
+- **Query coverage from XML:** Computed as `abs(qto - qfrom + 1) / qlen`. This correctly handles both forward and reverse-strand alignments. However, for multi-HSP alignments (common in fragmented or chimeric reads), only the first HSP is used. This may underestimate coverage for valid multi-HSP hits and overestimate it for artifactual ones. A note in the documentation acknowledging this limitation would be appropriate.
+
+- **Potential shortcoming — single HSP per hit:** As noted above, only `hsps[[1L]]` (the highest-scoring HSP) is used per hit. For long reference sequences with multiple alignment blocks, the single-HSP query coverage estimate may be misleading. This is a known simplification in many BLAST parsers, but it should be documented.
+
+- **Potential shortcoming — `max_target_seqs` bias:** The documentation notes that `max_target_seqs` should be "generous." This is important: NCBI's `max_target_seqs` parameter does not guarantee the *best* hits are returned first; it truncates the internal hit list before scoring is complete. This is a known BLAST behaviour (Shah et al. 2018, *Bioinformatics*) that can cause the true top hit to be missed at low values. The current default of `100L` is reasonable for most use cases, but a warning or documentation note about this BLAST limitation would help users set this parameter appropriately.
+
+- **Rate limiting:** The 11-second inter-batch sleep correctly exceeds NCBI's stated minimum of 10 seconds for URL API users without an API key. With an API key, 3 requests/second are permitted — the code does not adjust the sleep interval when a key is provided, which is a missed optimisation but not a correctness issue.
+
+- For published or production use, it may be worth noting in the documentation that remote BLAST results can vary over time as the NCBI `nt` database is updated, which has implications for reproducibility in scientific workflows. Recommending users record the query date or database version (retrievable via NCBI Entrez) would be good practice.
+```
+
+**convert_taxonomy_backbone.R**
+
+* [x] reviewed
+
+- Line 4: suggest removing comments once this is moved
+
+- Line 250 and 323: this object name is used twice for different things. This is what claude has to say about it: "using the same variable name for two different logical vectors in the same function scope is misleading and error-prone. The second should be named `has_original_name` or similar, and the first should be retained or reused where appropriate."
+
+- Other comments from claude:
+
+```
+- **`ifelse()` chains:** Several nested `ifelse()` calls (e.g., in the `collision_vec` and `new_names` blocks) evaluate all branches unconditionally, including for rows where the condition is `FALSE`. For large data frames this is wasteful. Given that `match_df` in typical use is not millions of rows this is acceptable, but using `data.table`'s `fcase()` or simply replacing with indexed assignment (as is done elsewhere in the function) would be more consistent and efficient.
+
+- The `verify_fn` parameter documentation describes the required contract (argument names and return column names) which is excellent. However, it does not document what `verified$verified` contains (a logical column? a character status?). This is critical for anyone writing a test double or mock and should be added to the `@param verify_fn` section.
+
+- The `backbone_cols` attribute structure is described in `@return` but not illustrated. An example showing the actual list structure (e.g., `list(backbone_11_cols = c("order", "family"), backbone_4_cols = c("kingdom", "phylum"))`) would help users working with the attribute downstream.
+
+- One gap: the `@return` section describes new columns but does not mention that `backbone_col` and `collision_col` are created if absent and left unchanged if already present — which is meaningful behaviour for iterative pipeline use.
+
+- The function modifies `match_df` in place and returns it. Since R uses copy-on-modify semantics, this is safe, but it means the caller's original `match_df` is not modified (which may surprise users). This is standard R behaviour but worth a `@note` mention for users coming from Python or reference-semantic languages.
+
+- `nzchar(match_df[[taxon_col]])` will return `FALSE` for empty strings but `TRUE` for whitespace-only strings (e.g., `" "`). If whitespace-only names are a realistic data quality issue in this pipeline, a `trimws()` guard in the unique name extraction step would be defensive.
+
+- **External API dependency:** `verify_fn` defaults to `TaxaTools::verify_taxon_names`, which makes a network call. If the API is unavailable or rate-limits the caller, the function will fail with an uninformative error from the API layer. Wrapping the `verify_fn(...)` call in a `tryCatch` with a clear error message (e.g., "verify_fn call failed — check network access or provide a local verify_fn") would improve robustness.
+
+- **No input sanitisation of taxon names before API call:** Taxon names containing special characters (e.g., `|`, which is the `classification_path` delimiter) could produce incorrect parsing downstream. A check or sanitisation step before calling `verify_fn` would be defensive.
+
+- **`match()` behaviour with duplicates:** `match(match_df[[taxon_col]], verified$user_supplied_name)` returns the index of the *first* match in `verified`. If `verified` contains duplicate `user_supplied_name` rows (e.g., due to API behaviour), only the first result is used silently. A `stopifnot(anyDuplicated(verified$user_supplied_name) == 0L)` guard after the API call would make this assumption explicit.
+
+- The `message()` at the end summarising backbone column mapping is a helpful user-facing touch. Consider making it suppressible via a `verbose = TRUE` parameter consistent with `blast_sequences()` in the same package, so pipeline scripts can run silently when desired.
+
+- **Name-based lookup (not ID-based):** The function uses taxon *names* as the lookup key rather than taxon IDs. This is the correct approach for cross-backbone conversion (since IDs are backbone-specific), but it introduces known limitations: homonyms (same name used for different taxa in different kingdoms) may resolve to the wrong backbone entry. For example, *Morus* is both a plant genus (mulberry) and a bird genus (gannets); the Global Names Verifier may return the more common usage. A note in the documentation warning users to filter to a single kingdom before conversion, or to verify results for known homonymous genera, would be appropriate.
+
+- **Single-name resolution (not genus-up cascade):** The function resolves each unique `taxon_col` value independently. If `taxon_col` contains species names and the species is not found in the target backbone, the entire row's taxonomy is left unchanged — even if the genus or family *is* present in the target. Whether this is the desired behaviour depends on the use case; it is not documented explicitly and should be.
+
+- **Potential shortcoming — authority strings:** `TaxaTools::clean_taxon_names()` strips authority strings from `matched_name`. If `classification_path` entries also contain authority strings (which varies by backbone and API version), the rank-level values extracted via `path_list` may retain them. This could cause false `"changed"` collision flags when the name itself is the same but authority formatting differs. A `clean_taxon_names()` pass on the extracted rank values, not just on `matched_name`, would guard against this.
+
+- For eDNA metabarcoding applications specifically, WoRMS (backbone 9) is the authoritative backbone for marine species. The function correctly supports this as a target backbone, but a `@note` pointing users toward backbone selection guidance (e.g., WoRMS for marine, GBIF for terrestrial) would help less experienced users make the right choice.
+
+- The function assumes the Global Names Verifier API returns a consistent `classification_path` / `classification_ranks` format delimited by `|`. If the API changes its delimiter or format, the `strsplit(..., "|", fixed = TRUE)` calls will silently return incorrect results. A format validation check on the first row of `verified` after the API call would make this assumption explicit and catch API changes early.
+```
+
+**read_acoustic.R**
+
+* [x] reviewed
+
+- Despite the filename, this isn't reading accoustic data. It's loading, formatting, and optionally filtering .csv files from a specific source, birdnet. Suggest renaming to `read_birdnet_output`, the name of the main exported function.
+
+- Line 148: this check coerces to integer but doesn't test for it. Suggest testing for integer instead, as `as.integer()` will round down floats. Claude says "`as.integer(top_n)` is applied to the user's input before the `is.na()` check. If `top_n` is a non-numeric character (e.g., `"abc"`), `as.integer("abc")` produces `NA` with a warning, and the subsequent `is.na(top_n)` catches it — but the user sees a cryptic coercion warning before the informative `stop()`. Testing `is.numeric(top_n)` before coercion (as done for `min_confidence`) would be more consistent and user-friendly."
+
+- Line 180: would `lapply()` be better here? 
+
+- Line 265: why is `file_path_sans_ext()` wrapped twice here? If the path is always "*.BirdNET.results.csv", couldn't it all be removed in `sub()` on line 267? 
+
+- Suggest using an internal helper for constructing empty `data.frame` to avoid duplication.
+
+- from claude:
+```
+- **`as.numeric()` coercion:** Start/end time and confidence values are coerced with `as.numeric()` without checking for `NA` values introduced by coercion (e.g., if a CSV contains non-numeric values in those columns). A post-coercion `NA` check with a warning would make the function more robust against malformed BirdNET outputs.
+
+- The file header lists `.parse_birdnet_file()` as an internal helper but does not list `.parse_birdnet_df()`. The header should be updated to include it for consistency.
+
+- The `@details` downstream workflow example uses `TaxaTools::change_backbone()`, but other files in this package use `convert_taxonomy_backbone()` (a TaxaMatch function). These should be reconciled and the correct function name used.
+
+- **Genus extraction from binomial:** `sub("^(\\S+).*", "\\1", species)` extracts the first whitespace-delimited token. For standard binomial names this is correct. BirdNET occasionally outputs names that do not conform to standard binomial format (e.g., hybrid notations, undescribed species placeholders). A note in the documentation acknowledging this edge case would be appropriate, as the genus column may contain unexpected values for non-standard names.
+
+- **Potential shortcoming — `observation_id` collisions:** The `observation_id` is constructed as `paste0(stem, "_", start_s, "-", end_s)`. If `start_s` and `end_s` are floating-point values, their string representation may vary across platforms or R versions (e.g., `3` vs. `3.0` vs. `3.000000`). This could cause the same window to receive different `observation_id` values when read on different systems, breaking joins downstream. Formatting the times with a fixed number of decimal places (e.g., `sprintf("%.1f", start_s)`) would ensure consistent IDs.
+
+- **Potential shortcoming — combined format with duplicate filenames:** In the combined/Gradio format, `stem_vals` is derived from `basename(df[["File"]])`. If two different recordings happen to have the same basename (e.g., `recording.wav` from different directories), their detections will receive identical `observation_id` stems and will be indistinguishable. A warning when duplicate basenames are detected in the `File` column would alert users to this issue.
+
+- **No validation of time window ordering:** The function does not check that `end_s > start_s` for each row. Malformed BirdNET outputs or manually assembled data frames could have reversed or zero-length windows. A simple validation check with a warning would improve robustness.
+
+- BirdNET-Analyzer v2.4+ introduced a `--rtype` flag that changes the output format (CSV, Audacity, R, kaleidoscope, table). Only the default CSV format (`--rtype csv`) is supported here. Documenting this constraint explicitly — and providing an informative error message if, for example, a Raven/Audacity-format file is accidentally passed — would prevent silent incorrect parsing.
+
+- The function currently has no mechanism to pass additional BirdNET metadata (e.g., latitude/longitude, week number, or sensitivity settings) that some BirdNET output modes include. These are not needed for the current workflow but noting the limitation in `@details` would help users who expect those fields to be preserved.
+
+- The `@return` section documents `source_file` as "Basename of the source BirdNET result file" — but for the combined/Gradio format (data frame path with a `File` column), `source_file` is derived from `df[["File"]]`, not a CSV filename. In this case `source_file` and the `File` column may be the same value (the audio basename), which could be confusing. A note clarifying this distinction would help.
+
+- Neither internal helper has an `@examples` block. While `@noRd` suppresses them from the manual, having a minimal example in the comments aids future maintainers.
+```
+
+**read_image.R**
+
+* [x] reviewed
+
+- Line 246 and elsewhere: `df` is an existing function name, suggest changing to animl_df or similar.
+
+- Line 681: seems like documentation for installing and running species net isn't needed here?
+
+- Like `read_acoustic.R`, this reads image classication output from specific providers in csv or json format, not images directly. Suggest changing the file name, i.e. `read_image_classification()` or similar.
+
+- There's a lot of code repetition in here. Here's what claude has to say about it:
+
+```
+This file has more DRY violations than any other file reviewed. The same blocks are copy-pasted across three exported functions and their helpers with minimal or no variation:
+
+  1. **Directory / file resolution block** (`if (length(files) == 1L && dir.exists(files)) { ... } else { missing_files <- ... }`): Copied verbatim three times. Extract to an internal `.resolve_input_files(files, pattern, fn_name)` helper — this pattern was also duplicated in `read_acoustic.R` and is now repeated a further three times here.
+
+  2. **`top_n` filter block** (`do.call(rbind, lapply(split(...), function(g) { g[order(...)][seq_len(min(...)), ] }))`): Copied verbatim three times across the exported functions, and also present in `read_acoustic.R`. Extract to `.apply_top_n(df, group_col, score_col, top_n)`.
+
+  3. **`min_confidence` + `top_n` validation block:** The same three-line validation pattern for `min_confidence` and the same coerce-then-check pattern for `top_n` are repeated in all three exported functions. A shared `.validate_filter_args(min_confidence, top_n, fn_name)` helper (returning validated/coerced values) would eliminate this.
+
+  4. **Empty result `data.frame` constructors:** Each of the four internal helpers (`.parse_animl_file()`, `.parse_inat_cv_file()`, `.parse_wi_predictions()`, and the early-return in `.parse_wi_predictions()`) constructs its own empty `data.frame`. The schemas differ slightly (e.g., `taxon_rank` in iNat, `category` in WI, `coverage` in Animl), but base empty constructors for each could be extracted to named helpers: `.empty_animl_result()`, `.empty_inat_result()`, `.empty_wi_result()`.
+
+  5. **`genus` extraction regex:** `grepl("^[A-Z][a-z]+ [a-z]", nm)` followed by `sub("^(\\S+).*", "\\1", nm)` to extract the genus from a binomial is repeated in `.parse_animl_file()`, `.parse_inat_cv_file()`, and `.parse_wi_predictions()`. This logic was also present in `read_acoustic.R`. A single `.extract_genus(species_vec)` helper would eliminate all four instances across the two files.
+
+  6. **`requireNamespace("jsonlite", ...)` guard:** Duplicated at the top of both `read_inaturalist_cv_output()` and `read_wildlife_insights_output()`. Extract to `.check_jsonlite()`.
+```
+
+- claude also pointed out some areas for optimizations:
+
+```
+- **Repeated `do.call(rbind, ...)` pattern:** This pattern appears at least eight times across the file — in the main exported functions (combining parsed file results), in the `top_n` filter blocks, in `.parse_inat_cv_file()` (combining per-result rows), and in `.parse_wi_predictions()` (combining per-image and per-candidate rows). As noted in previous reviews, this is O(n²) for large inputs. For the Wildlife Insights parser in particular, there is a *nested* `do.call(rbind, ...)` (once per image, then again across images), which compounds the performance issue for batch JSONs with many images. Pre-allocating a flat list and calling `do.call(rbind, ...)` once at the outermost level would be more efficient.
+
+- **`lapply` over JSON results in `.parse_inat_cv_file()` and `.parse_wi_predictions()`:** Each iteration constructs a single-row `data.frame`. Building `data.frame`s one row at a time in a loop is the slowest possible approach. Extracting all fields into vectors first and constructing a single `data.frame` at the end (as done in `.parse_birdnet_file()` in the same package) would be substantially faster and more consistent in style.
+```
+
+- Claude had some additional comments:
+
+```
+- The package now has four `read_*` functions (including `read_birdnet_output()` from `read_acoustic.R`) that all share the same directory/file-resolution logic, the same `top_n` filter block, and the same `min_confidence` validation. These should be consolidated into shared internal helpers — ideally in a `utils-readers.R` file — before the package is released, or the maintenance burden will compound with each new reader added.
+
+- The three exported functions in this file are structurally parallel enough that a common internal engine (`.read_classifier_output(files, parser_fn, min_confidence, top_n, ...)`) could handle the shared scaffolding, with each format's unique parsing logic delegated to its own `parser_fn`. This would reduce the file from ~450 lines to roughly half that length while making the addition of new classifier formats (e.g., DeepFaune, MegaDetector standalone) straightforward.
+
+- `read_wildlife_insights_output()` notes that "SpeciesNet typically returns only the top prediction per image." If this is the common case, the `top_n` parameter adds little practical value for this function and the documentation note may set incorrect expectations. Confirming whether multi-candidate output is actually supported by the SpeciesNet JSON schema and, if not, replacing `top_n` with a `NULL` value and a note would reduce user confusion.
+
+- **Genus extraction regex** `^[A-Z][a-z]+ [a-z]`: This checks for a binomial with an uppercase first letter, lowercase genus remainder, space, and lowercase species epithet start. It correctly returns `NA` for single-word labels (`"empty"`, `"blank"`, `"human"`, `"Aves"` at genus level). However, it will fail for: (a) infraspecific names (`Canis lupus familiaris` — genus correctly extracted), (b) hybrid notations (`Anas × platyrhynchos` — fails the `[a-z]` check at position 3 of the epithet), and (c) some iNaturalist outputs where rank is coarser than species but the name is still a binomial-like string. These are edge cases but worth noting in the documentation.
+
+- **Potential shortcoming — Wildlife Insights batch JSON:** A single SpeciesNet JSON can contain thousands of images. The nested `lapply` + `do.call(rbind, ...)` structure in `.parse_wi_predictions()` will be slow for large batches due to quadratic copying. For production use with large camera trap deployments, a pre-allocated approach would be meaningfully faster.
+
+- For iNaturalist CV, the API endpoint documented (`POST .../computervision/score_image`) changed in iNaturalist API v2. The provided example uses the correct v2 URL. Users should be aware that this endpoint requires authentication (iNaturalist JWT token), and that the API has rate limits (~60 requests/minute for authenticated users). A note in `@details` about rate limiting would help users building batch processing workflows.
+
+- Camera trap images frequently contain multiple individuals or species in a single frame. MegaDetector crops each detected animal before passing to SpeciesNet, so a single image can yield multiple `observation_id` entries (one per crop). This is not explicitly documented in `read_animl_output()` but has important implications for downstream analysis — the `observation_id` stem would be the same for all crops from the same image if filenames are reused. If Animl encodes crop index in the filename (e.g., `IMG_001_crop1.jpg`), this is handled automatically; if not, users may unknowingly merge crops from the same image under one `observation_id`. A note in `@details` clarifying how crop filenames are handled would prevent silent errors.
+```
+
+**report_match.R**
+
+* [x] reviewed
+
+- claude had some comments, I don't have additional feedback:
+
+```
+- **`@param match_data`** states the data frame "must contain at least `observation_id` and `score`," but the function actually uses `score_original` (not `score`) for all score statistics. If `score_original` is absent, `score_stats` is silently `NULL` and the results text is empty. This discrepancy between the documented required column (`score`) and the actually used column (`score_original`) is a documentation bug and potentially a logic bug — it should be clarified which column is expected and why.
+
+- **`@param data_type`** states it "defaults to `"eDNA"` when column names suggest sequence data" — but the detection logic is not described. The three valid values (`"eDNA"`, `"image"`, `"acoustic"`) are listed but only `"eDNA"` has any effect on the generated text. It should be documented what difference (if any) `"image"` and `"acoustic"` make to the output beyond the `sample_desc` string.
+
+- **`@return`** describes a `report_section` object with four named elements (`methods`, `results`, `params`, `statistics`). It does not document that `results` can be `NULL` (when no score stats and no taxa count are available), nor that `params` may contain additional fields passed through from `rp` (the `report_params` attribute). This variability in the `params` list structure is important for consumers of the object.
+
+- The `@examples` block uses `\dontrun{}`, which is appropriate for a function requiring upstream network calls. However, a self-contained example using a manually constructed data frame with the required columns would allow users to explore the function without running BLAST, and would serve as implicit documentation of the expected input schema.
+  
+- The Roxygen block is present but noticeably thinner than the other files in this package. The `@param` entries are brief, the `@return` description omits important edge-case behaviour, and the `@examples` block is non-runnable. Given the rest of the package's documentation standard, this function's docs are below par and should be brought up to the same level before public release.
+
+- **`verbose` parameter unused:** The `verbose` parameter is declared in the function signature and documented (`"Print summary messages. Default FALSE"`) but never referenced in the function body. This is a bug — either the `verbose` guard should be added around `message()` calls, or the parameter should be removed. Shipping a function with an unused parameter is misleading to users.
+
+- The `params <- c(params, rp[!names(rp) %in% names(params)])` line at the end of the params block silently appends all fields from `report_params` that are not already in `params`. This is a reasonable merge strategy but means the `params` list in the returned object may contain fields not described in `@return` (e.g., `n_samples` from `blast_sequences()`'s `report_params`). This should be documented.
+
+- The `data_type` detection block only sets `data_type <- "eDNA"` and has no equivalent auto-detection for `"image"` or `"acoustic"`. If detection for those types is planned, a `# TODO` comment would communicate this intent. If not, the parameter description should clarify that auto-detection only applies to eDNA.
+
+- The `score_original` vs. `score` discrepancy is the highest-priority issue in this file. If `standardize_match_data()` renames `score` to `score_original`, that should be documented in `@param match_data` and the column name used here should be consistent with what the package actually produces. If `score` is the correct column name (matching `@param`), the function body should be updated to use it. The current state creates a silent failure mode where the results text is empty for any `match_data` that lacks `score_original`.
+
+- This function is relatively thin compared to its analogues in other packages. For a report-generation function to be genuinely useful, it likely needs: (a) richer statistics (e.g., proportion of observations with a match above threshold, distribution of top scores), and (b) citations — the `citations = NULL` argument to `TaxaTools::new_report_section()` is a placeholder that should reference the BLAST publication, BirdNET paper, or other method-appropriate citation depending on `data_type`.
+
+- Given that this function is the only reporting function in `TaxaMatch`, and the package supports eDNA, acoustic, and image data types, consider whether the function needs to be expanded to produce meaningfully different `methods_text` for each type. Currently `"image"` and `"acoustic"` only change the noun in `sample_desc` but do not adjust the methods narrative (e.g., no mention of confidence thresholds for acoustic/image, vs. E-value or percent identity for eDNA).
+
+- **Score reported as percentage (`%g%%`):** The results text reports scores with a `%` symbol (e.g., "Median top match score was 98.5%"). For eDNA/BLAST data, percent identity is correctly expressed as a percentage. However, for acoustic (BirdNET confidence 0–1) and image (Animl/iNaturalist confidence 0–1) data, the score is a probability, not a percentage. Appending `%` to a 0–1 confidence score would produce misleading output 
+(e.g., "Median top match score was 0.87%"). The results text formatting must be conditional on `data_type`.
+
+- **`testid` for marker detection:** If `testid` refers to the barcode marker (e.g., 12S, COI), its presence in the methods text is scientifically important for eDNA reporting — methods sections for eDNA studies must specify the target marker. However, the column name `testid` is not a standard convention in any major eDNA pipeline. If this column is generated by `standardize_match_data()`, its name should be documented; if it is a legacy or external convention, the documentation should clarify the expected values.
+
+- Reporting standards for eDNA metabarcoding (e.g., MIQE-eDNA guidelines, Thalinger et al. 2021) require reporting of: (a) the reference database version/date, (b) the BLAST algorithm version, and (c) the filtering thresholds applied. The current implementation captures (c) via `min_score` but not (a) or (b). Adding optional `database_version` and `algorithm_version` fields to `report_params` in `blast_sequences()` and surfacing them here would bring the output closer to community reporting standards.
+
+- For acoustic and image data types, the relevant reporting standards differ (e.g., BirdNET model version, training dataset, confidence threshold). The current function treats all three data types nearly identically in the methods text. Expanding the type-specific text generation — even modestly — would make the output substantially more useful for manuscript preparation.
+```
+
+**score_image_inat.R**
+
+* [x] reviewed
+
+- I don't see test files for this file? Are there any? Additionally, I did not run all the functions, as test data (images) were not made available. 
+
+- Line 27: this says files are non-recursively processed, but on first read parameter `recursive` seems to do just that.
+
+- Lines 57 and 243-245: why not just a concatenated string with the file structure instead of (possibly many) extra columns?
+
+- Lines 164-166: don't you need both or neither of `lat` and `lng`? Wouldn't it be more efficient to call `.extract_exif_info()` only when they are not supplied? Similar issue in lines 171-172.
+
+- Line 256: many functions in this suite of packages deliver empty but formatted data.frames. Why not do that here?
+
+- Line 408: should a warning be issued here?
+
+- Line 429: shouldn't west longitudes be negative? In my test case this turns it positive. Perhaps testing for if it's > 0 and west would be better. I should note that claude thinks the existing way is correct, stating that "`exifr` returns GPS coordinates as unsigned decimal degrees". However, in testing `exifr` returned signed floats, so it would be best to double check this behaviour before relying on the LMM.
+
+- Lines 432-440: suggest using curly braces with these if blocks  
+
+- Maybe I'm missing something, but `.resolve_image_files()` seems overly complex to me- why is the furthest common directory needed at all? Seems like a simple test of whether or not the specified image file(s) exist would suffice along with paths.
+
+- `.path_folder_components()` seems to me an odd way to store file info. Strings seem way simpler.
+
+- `.parse_inat_cv_response()` seems similar to `.parse_inat_cv_file()`, though they are not identical. Could one function be created for both use cases?
+
+- claude had some comments. Note that the one on regex may seem odd that it's referencing another suggestion, that's because I felt that it was too trifling to mention but now that multiple files use the same pattern I think it's a sensible suggestion. Comments below.
+
+```
+- **`Sys.sleep(0.2)` rate limiting:** Applied unconditionally after every request, including the last one. Moving the sleep to the top of the loop (before the request, skipping iteration 1) would avoid an unnecessary 0.2-second pause at the end of a batch. This is a cosmetic issue with negligible real-world impact.
+
+- **`@return` — score scale clarification:** The `@return` block correctly notes that scores are on iNaturalist's 0–100 softmax convention and warns against rescaling. This is important and well-placed. However, the `@details` section describes `freq_score` as "a thresholded presence indicator from the iNaturalist geomodel" and "not a raw frequency" — this should also appear as a note in the `@return` column description for `freq_score` since users scanning the return table may not read `@details` in full.
+
+- **`geo_prior_weight` interpretation:** The `@return` section defines `geo_prior_weight` as `combined_score / vision_score` and calls it "the continuous geographic prior signal." The `@details` section gives the formula. However, neither place warns users that `geo_prior_weight` is `NA` when `vision_score == 0` (a real case for taxa with very low vision scores). This edge case is handled correctly in the code but is undocumented.
+
+- **`@param recursive`:** Documented as applying "when `image_path` is a directory." It would be useful to note that when a vector of file paths is supplied, `recursive` is silently ignored. Currently a user supplying a mixed vector might be surprised.
+
+- **`@examples` block:** Absent. Unlike the other reader functions in this package, `score_image_inat()` has no `@examples` block — not even a `\dontrun{}` skeleton showing a minimal call. Given the API dependency, a `\dontrun{}` example is appropriate and should be added for consistency.
+
+- Note that this file is the only one in the package that uses `tibble` and `dplyr` explicitly in the function body (other files use base `data.frame` and `do.call(rbind, ...)`). The inconsistency is not wrong, but it should be a deliberate package-level decision, and the dependency should be declared in `DESCRIPTION`.
+
+- **`httr` vs. `httr2`:** This file uses `httr` (`httr::POST`, `httr::upload_file`, `httr::add_headers`, `httr::content`, `httr::status_code`), while `blast.R` in the same package uses `httr2`. Mixing both HTTP clients in one package adds unnecessary dependency weight and creates an inconsistent API surface for contributors. The package should standardize on one — `httr2` is the actively maintained successor and is already a declared dependency via `blast.R`.
+
+- **Genus extraction regex:** `grepl("^[A-Z][a-z]+ [a-z]", nm)` followed by `sub("^(\\S+).*", "\\1", nm)` appears in `.parse_inat_cv_response()` here, and was also present in `read_image.R` and `read_acoustic.R`. The package-wide `.extract_genus()` helper recommended in the `read_image.R` review would eliminate this fifth instance.
+
+- **File-not-found error message:** The `sprintf("score_image_inat: file(s) not found:\n  %s", paste(...))` pattern has been repeated across `blast.R`, `read_acoustic.R`, `read_image.R`, and now here. The package-wide `.resolve_input_files()` helper recommended in the `read_image.R` review would consolidate all five instances.
+
+- `has_lat` is used as a proxy for `has_lng` throughout the main loop (e.g., `if (has_lat) lng else exif_info$lng`). This is correct because the validation block ensures they are always both set or both `NULL`, but the asymmetry (using `has_lat` to gate `lng`) is a potential source of confusion if the validation logic is ever relaxed. Using `has_coords <- has_lat && has_lng` as a single flag would be clearer and more defensive.
+
+- `top_n <- as.integer(top_n)` coerces before checking `is.na(top_n)`, repeating the pattern flagged in `read_acoustic.R` and `read_image.R`. Type-check before coercion for consistency with `min_confidence` validation elsewhere in the package.
+
+- **`exifr` EXIF extraction:** Wrapped in `tryCatch`; `exifr` not available returns `empty` silently. GPS coordinate sign is corrected for S/W hemispheres. One edge case: if `GPSLatitudeRef` or `GPSLongitudeRef` is absent from EXIF, `lat_ref` and `lng_ref` will be `NA_character_`, and `identical(NA_character_, "S")` is `FALSE`, so the sign will not be flipped — which is the safe default (treating absent ref as N/E). This is correct behaviour but could be documented.
+
+- **`httr` dependency:** If the package standardizes on `httr2` (as recommended above), the `DESCRIPTION` file should be updated to remove `httr` and the imports in this file converted to `httr2` equivalents. `httr2::req_body_multipart()` replaces `httr::POST(..., encode = "multipart")`, and `httr2::resp_status()` / `httr2::resp_body_json()` replace `httr::status_code()` / `httr::content()`.
+
+- **Rate limiting:** `Sys.sleep(0.2)` gives a maximum throughput of 5 requests/second. The iNaturalist API documentation specifies a rate limit of 60 requests/minute (~1/second) for authenticated users. The current sleep is therefore 5× more conservative than necessary, which will matter for users processing large image collections. Consider reducing to `Sys.sleep(0.05)` or making the sleep duration a documented parameter, and adding a note about the rate limit to `@details`.
+
+- **Missing `@examples`:** As noted above, this is the only exported function in the package without at least a `\dontrun{}` example. A minimal skeleton showing the typical call pattern (file path, optional lat/lng, `top_n`) should be added.
+
+- **Score scale (0–100):** iNaturalist's CV API returns scores that sum to approximately 100 across all candidates, not 0–1 probabilities. The `@return` warning ("Do not rescale to 0–1 before passing to `evaluate_likelihoods()`") is important. However, this creates an inconsistency with the rest of the package: `read_inaturalist_cv_output()` in `read_image.R` returns scores on the 0–1 scale as parsed from saved JSON files, while `score_image_inat()` returns scores on the 0–100 scale directly from the live API. Whether the API actually returns values in 0–100 range or 0–1 range should be verified — the iNaturalist API v1 documentation and community reports suggest scores are in the 0–1 range (summing to ~1, not ~100). If so, the scale warning and the downstream `evaluate_likelihoods()` constraint may be based on a misunderstanding of the API response format, and this should be carefully confirmed against a real API response before release.
+
+- **Potential shortcoming — `observed_on` date format:** The EXIF date format `"YYYY:MM:DD HH:MM:SS"` is correctly parsed to `"YYYY-MM-DD"` via regex substitution. However, some cameras and software write dates in non-standard formats (e.g., `"YYYY-MM-DD HH:MM:SS"` or locale-specific formats). The guard `grepl("^\\d{4}:\\d{2}:\\d{2}", raw)` only catches the canonical EXIF format; other formats will silently return `NA_character_`. A broader set of format patterns (or a call to `as.Date()` with `tryFormats`) would improve robustness for heterogeneous camera trap datasets.
+
+- **Potential shortcoming — common ancestor path on Windows:** `.resolve_image_files()` splits directory paths on `.Platform$file.sep`. On Windows this is `\\`, but `normalizePath()` may return paths with either `/` or `\\` depending on context. Using `strsplit(dirs, "[/\\\\]")` (matching both separators) or `fs::path_split()` from the `fs` package would make the common-ancestor logic more robust across platforms.
+
+- The iNaturalist geomodel prior is trained on iNaturalist observation data, which has well-known geographic and taxonomic biases (urban bias, observer hotspot bias, charismatic species bias). The `@details` section does not mention these biases. For scientific applications — particularly rare or cryptic species — users should be aware that `combined_score` may underweight species that are genuinely present but underobserved on iNaturalist. A brief caveat in `@details` would be appropriate.
+
+- The "Score scale" concern raised above (0–100 vs. 0–1) is the highest-priority scientific correctness issue in this file. It should be verified against a live API response before public release. If scores are in fact 0–1 (as the parallel `read_inaturalist_cv_output()` function implies), the `@return` warning and any downstream scale-dependent logic in `evaluate_likelihoods()` must be updated accordingly.
+
+- For camera trap applications specifically, the iNaturalist CV model was primarily trained on human-submitted wildlife photographs (often close-range, well-lit, single subject). Camera trap images (infrared at night, wide-angle, animals partially occluded or distant) are out-of-distribution for the model, and confidence scores may be systematically lower or less well-calibrated than for standard photographs. A note in `@details` advising users to interpret scores from camera trap images with caution, and to consider supplementing with Animl/SpeciesNet (which are trained on camera trap data), would be scientifically responsible.
+```
+
+**sequence_input.R**
+
+* [x] reviewed
+
+- My usual comment about `df` applies here.
+
+- Lines 67-68: I'm not a domain expert here, but how commonly are attributes found in data of this type that are not not standard taxonomy or metadata columns but are numeric? Would enforcing `abundance_cols` for `data.frame` inputs be safer?
+
+- Line 158: following on from the last comment, is this truly an exhaustive list? Also, this is used in the following `if` block, suggest creating it conditionally only if used.
+
+- claude had some comments:
+
+```
+- In `.parse_semicolon_headers()`, the `do.call(rbind, lapply(...))` matrix-building block with padding logic is moderately complex and would benefit from a one-line comment explaining the padding strategy.
+
+- **`.parse_semicolon_headers()` — `do.call(rbind, lapply(...))`:** As flagged in previous reviews, this pattern is O(n²) for large inputs. For FASTA files with thousands of sequences this could be slow. Pre-allocating a character matrix (`matrix(NA_character_, nrow = n, ncol = 1 + n_ranks)`) and filling row-by-row would be more efficient and is actually the pattern used implicitly by `mat` at the bottom of the function — the `do.call(rbind, lapply(...))` step should be replaced with direct matrix construction.
+
+ - **`@param abundance_cols`** states that auto-detection finds "numeric columns that are not taxonomy or metadata." The list of excluded column names (`non_abundance_names` inside the function body) is not visible to the user. A note listing the most important excluded column names, or at minimum stating "see Details for the auto-detection rules," would help users debug unexpected abundance computation results.
+
+- **`@param taxonomy`** says the data frame must contain "a column matching sequences (for DADA2 input) or sequence identifiers (for FASTA input)" but does not specify the column name. The `.join_taxonomy()` helper requires a column named `"sequence"` or `"accession"` — this should be stated explicitly in `@param taxonomy`.
+
+- **`@return` for `read_sequence_table()`** does not mention the `accession` column that is added for FASTA input when `header_format = "none"`. Since this column drives taxonomy joining, its conditional presence should be documented.
+
+- **`filter_sequences()` — `len_range` used in the report block outside its defining scope:** `len_range` is created inside the `if (do_length)` block but referenced in `parts` below that block. This works correctly because R scoping rules make `len_range` accessible after the block closes, but it is poor practice — a reader scanning the `parts` block cannot see where `len_range` is defined without scanning upward. Initialising `len_range <- NULL` before the `if` block, or restructuring so the length-removal message is generated inside the block, would be cleaner.
+
+- Internal helpers use `# --- Internal: ...` comment headers rather than `@noRd` Roxygen blocks. This is a consistent style choice within the file. For package consistency (other files use `#' @noRd`), the helpers should use `@noRd` blocks — though this is a minor style issue rather than a functional one.
+
+- **`utils::globalVariables(c("abundance", "length"))`:** Used to suppress `R CMD CHECK` notes for NSE-like variable references. However, `abundance` and `length` do not appear to be used in NSE contexts in this file — they are accessed via standard `seq_df$abundance` and `seq_df$length` indexing, which does not trigger `R CMD CHECK` notes. If these declarations were added for a `dplyr`-based version of the code that was later refactored to base R, they may now be unnecessary and should be removed to avoid misleading future maintainers.
+
+- **`sprintf("%s_%0*d", id_prefix, pad, seq_len(n))` ASV ID generation:** This exact pattern (`pad <- nchar(as.character(n)); asv_ids <- sprintf(...)`) is duplicated in three helpers: `.read_esv_dataframe()`, `.read_dada2_matrix()`, and `.read_dna_stringset()`. Extract to an internal `.generate_asv_ids(n, id_prefix)` helper to eliminate the repetition and ensure consistent zero-padding behaviour across all input types.
+
+- **`data.frame(asv_id, sequence, length = nchar(sequences), abundance, stringsAsFactors = FALSE)` core output constructor:** Constructed independently in `.read_dada2_matrix()`, `.read_esv_dataframe()`, and `.read_dna_stringset()`. While each has minor variations, the core four columns are always the same. A `.build_core_seq_df(asv_ids, sequences, abundances)` helper would reduce repetition.
+
+- **`non_abundance_names` exclusion list:** Defined inside `.read_esv_dataframe()` as a local character vector. If this list needs to be extended in the future (e.g., when new provider formats are added), a maintainer must find and update this internal vector. Exporting it as a package-level constant (or at minimum an internal named vector at the top of the file) would make it easier to discover and maintain.
+
+- In `.read_esv_dataframe()`, the `lc_names` (lowercased) vector is used for all column matching, but the original `df` columns retain their original casing. This is correct and intentional (case-insensitive matching while preserving the original data). The `names(extra) <- tolower(names(extra))` at the end lowercases retained extra columns for output consistency — this is a good design choice but is not documented in `@details` or `@return`.
+
+- `.join_taxonomy()` calls `merge(..., all.x = TRUE, sort = FALSE)` and then manually re-sorts by `asv_id`. This is correct but the sort stability depends on `match()` returning a consistent ordering — which it does in base R. A comment noting this intent would be defensive.
+
+- `filter_sequences()` does not validate that `min_length` and `max_length` are positive integers when supplied directly (without `barcode_term`). Validation is presumably handled by `TaxaTools::resolve_barcode_lengths()`, but if that function does not validate, invalid values would propagate silently.
+
+- **Column name lowercasing:** All matching is done on `lc_names` (lowercased), so case differences in provider CSVs do not cause silent failures. However, if a provider uses `"Sequence"` and the user passes `sequence_col = "sequence"`, the match will succeed via `tolower()` — this is intentional and correct, but should be noted in `@param sequence_col`.
+
+- The `utils::globalVariables(c("abundance", "length"))` declaration should be audited and removed if these variables are not actually used in NSE contexts. As noted above, both appear to be accessed via `$` or `[` indexing, which does not require global variable suppression. Leaving unnecessary `globalVariables()` declarations can mask genuine NSE issues introduced later.
+
+- The `non_abundance_names` exclusion list in `.read_esv_dataframe()` is the most maintainability-sensitive part of the file. As the package integrates with more providers, this list will grow. Documenting its purpose and the expected format of entries (lowercase, exact match to column names after `tolower()`) would help future contributors extend it correctly.
+
+-  `filter_sequences()` silently skips abundance filtering when the `abundance` column is absent, with no warning. For a user who has a `seq_df` without an `abundance` column (e.g., from a non-standard provider CSV), this silent skip could be surprising. A `message()` noting "No 'abundance' column found; abundance filtering skipped" would improve transparency, consistent with the verbose reporting style used elsewhere in the function.
+
+ - **Potential shortcoming — no duplicate sequence handling in FASTA input:** If a FASTA file contains duplicate sequences (same DNA string, different headers), each is assigned its own `asv_id` and abundance. The DADA2 matrix path inherently deduplicates (sequences are column names). A user supplying a non-deduplicated FASTA (e.g., from a third-party source) may get inflated sequence counts. A warning when duplicate sequences are detected in FASTA input would alert users to this issue.
+
+- **Potential shortcoming — `abundance_cols` auto-detection may include unwanted columns:** The exclusion list in `non_abundance_names` is a heuristic. Provider CSVs with non-standard metadata column names (e.g., "SiteCode", "Replicate", "Method") that happen to be numeric could be incorrectly included in the abundance sum. The `message("Summed abundance across N sample columns")` is a useful signal, but logging the actual column names used (e.g., `message(sprintf("Summing: %s", paste(names(df)[abund_idx], collapse = ", ")))`) would allow users to verify the auto-detection result without inspecting the code.
+
+- **Potential shortcoming — no sequence character validation:** Neither `read_sequence_table()` nor `filter_sequences()` checks that sequences contain only valid IUPAC nucleotide characters. Non-DNA characters in sequence strings (e.g., spaces, numbers, or quality scores accidentally included) would produce incorrect `length` values and downstream BLAST failures. A simple `grepl("^[ACGTNacgtnRYSWKMBDHVryswkmbdhv-]+$", sequence)` check with a warning would catch the most common data quality issues.
+
+- **Length filter scope:** `filter_sequences()` filters on the `length` column if present, or computes it from `sequence` if not. If `length` was pre-computed from a different string (e.g., from a provider's reported length that includes gaps), the filter would be applied to an incorrect value. A note in `@details` recommending that users verify the `length` column against `nchar(sequence)` when using provider data frames would be appropriate.
+
+- For published eDNA metabarcoding workflows, the minimum abundance threshold is often reported as a methods parameter. The `filter_sequences()` function currently messages the result but does not set a `report_params` attribute analogous to `blast_sequences()`. Adding this attribute would allow `report_match()` (or a future `report_filter()`) to incorporate the filtering parameters into the automated methods text.
+
+- The `@details` section for `read_sequence_table()` mentions "Jonah Ventures tab+taxa CSV files" as an example data frame source. While helpful for users familiar with that provider, this is a proprietary format reference in a general-purpose function. A more generic description ("provider ASV tables with sample read counts in separate columns") with Jonah Ventures as one example would be more appropriate for a publicly released package.
+
+- The function does not currently support OTU tables (where rows are OTUs/ASVs and columns are samples — the transpose of the DADA2 convention). Many popular tools (QIIME2 biom format, SILVA SILVA SILVA SILVA SILVA SILVA mothur shared files) use row-per-sequence orientation. Adding a `transposed = FALSE` parameter or auto-detecting orientation based on whether sequences appear in row names vs. column names would significantly broaden compatibility.
+```
+
+**standardize_match_data.R**
+
+* [x] reviewed
+
+- Line 83: `data` is also a function in the utils package. Suggest renaming.
+
+- Line 205: perhaps this is done later, but it seems worth enforcing this instead of relying on run order.
+
+- claude had some comments:
+
+```
+- `filter_redundant_hypotheses()` is more complex and warrants closer attention. The nested loop (`for sid` → `for i` → `for j`) with its lineage-local redundancy check is the most algorithmically dense code in this package. The existing `@description` and the worked `@examples` block (which gives a concrete *Gobius* / *Acanthogobius* scenario) are excellent and substantially offset the complexity. However, the inner loop logic — specifically the `ri_in_present` / `cols_to_check` / `vals_i == vals_j` chain — would benefit from a short pseudocode comment explaining the invariant being tested: "Row i is redundant if and only if there exists a row j with a finer rank that shares all of row i's lineage column values up to and including rank_system[ri]."
+
+- One readability concern: step numbering jumps from `# --- 4.` to `# --- 4b.` then `# --- 5.`. The `4b` label signals that the coverage renaming was added after the initial design. Renumbering to 1–7 (or restructuring the coverage block into step 4) would restore a clean sequence.
+
+- **`filter_redundant_hypotheses()` — O(n²) inner loop:** The double `for` loop (over rows `i`, then over finer rows `j`) is O(n²) per observation. For observations with many hits (e.g., an eDNA query returning 100 BLAST hits at multiple ranks), this could be slow. A vectorised alternative — using `merge()` or `match()` to find finer rows sharing identical lineage key strings — would reduce this to O(n log n). For the typical case of ≤20 hits per observation this is not a practical concern, but the approach does not scale to large camera trap or acoustic datasets with thousands of detections per observation.
+
+- **`unlist(match_df[i, cols_to_check, drop = FALSE])`** inside the inner loop creates a named vector on every iteration. Coercing the relevant columns to a matrix once before the loop (`rank_mat <- as.matrix(match_df[, rank_cols_present, drop = FALSE])`) and indexing into the matrix by row would be faster and would avoid the `unlist()` overhead.
+
+- **`@param rank_system` in `filter_redundant_hypotheses()`:** States that each rank name "must match both an element of `taxon_name_rank` **and** a column name in `match_df`." However, the function does not stop if a rank in `rank_system` is absent from `match_df` — it silently skips via `rank_cols_present <- intersect(rank_system, names(match_df))`. This silent skip means a typo in a rank name (e.g., `"genuss"`) will not be caught. At minimum, a `warning()` when `rank_system` contains names not in `match_df` would alert users; ideally, this should be a `stop()` unless the discrepancy is expected.
+
+- **`@return` for `standardize_match_data()`:** States "All other input columns are retained unchanged." This is almost true, but `lowercase_names = TRUE` (the default) will rename all columns, including those the user did not explicitly touch. The `@return` should note this: "When `lowercase_names = TRUE` (default), all column names — including retained columns — are converted to lowercase."
+
+- **`.standard_match_ranks`:** Defined at package load time via `TaxaTools::extended_ranks`. This top-level assignment runs at `library()` time, which is an `R CMD CHECK`-flagged pattern (top-level code with side effects). It should be moved inside `.detect_rank_cols()` or wrapped in a `.onLoad()` hook, and documented with a `@noRd` comment explaining why it is package-level.
+
+- The one gap: `standardize_match_data()` documents `score_original` in `@return` as "Preserved unchanged throughout the pipeline; downstream functions add `score_norm`, `score_softmax`, and `score_likelihood` columns." These downstream column names are not part of this package and are not cross-referenced. A `@seealso` to the relevant TaxaLikely function would help users understand the full pipeline.
+
+- **Column-existence `stop()` pattern:** The pattern `if (!col %in% names(data)) stop(sprintf("'%s' not found in data.\n  Available columns: %s", col, paste(names(data), collapse = ", ")))` is repeated for `observation_id_col`, `score_col`, and `coverage_col`. A small internal helper `.check_col_exists(data, col, arg_name)` would eliminate all three instances and ensure the error message format is consistent.
+
+- **Collision-prevention `stop()` pattern:** The pattern `if (target %in% names(data)) stop(sprintf("Cannot rename '%s' to '%s': a column named '%s' already exists.", ...))` is repeated for `observation_id`, `score_original`, and `coverage`. Extracting `.check_rename_safe(data, from, to)` would consolidate these three instances.
+
+- **`rank_system` validation:** The same `if (!is.character(rank_system) || length(rank_system) == 0L) stop(...)` appears in both `standardize_match_data()` and `filter_redundant_hypotheses()`. An internal `.validate_rank_system(rank_system)` helper would make the check reusable.
+
+- The `core_map <- core_map[names(core_map) != unname(core_map)]` line (dropping identity renames) has no inline comment. The logic is non-obvious — add a brief note: "# Skip no-op renames (e.g. if observation_id_col is already 'observation_id')."
+ 
+- `filter_redundant_hypotheses()` warns about NA `observation_id` rows but does not warn about NA `taxon_name_rank` rows (which are silently handled by `is.na(ri)` inside the loop). A brief note in `@param match_df` about this behaviour would be useful.
+
+- **`.read_match_file()` — delimiter inference:** Infers `\t` for `.tsv` and `.txt`, `,` otherwise. A file with the wrong extension (e.g., a tab-delimited file saved as `.csv`) would be silently misread. A post-read sanity check (e.g., warning if only one column is detected) would catch the most common case.
+
+- **`col_map` passed to `TaxaTools::rename_cols()`:** The rename operation is delegated to an external function; validation of `col_map` format is the responsibility of that function. If `TaxaTools::rename_cols()` does not validate its input, malformed `col_map` values could produce confusing errors. A basic check (`is.character(col_map) && !is.null(names(col_map))`) in `standardize_match_data()` before the call would improve defensiveness.
+
+- The top-level `.standard_match_ranks <- TaxaTools::extended_ranks` assignment is the most important structural issue in this file. Running arbitrary code at package load time violates CRAN policy and will generate `R CMD CHECK` warnings. This should be addressed before CRAN submission, either by moving the assignment inside `.detect_rank_cols()` (called only when needed) or by registering it in `.onLoad()`.
+
+- `filter_redundant_hypotheses()` is missing from the file header comment at the top of the file (which lists only `standardize_match_data()` as an exported function). The header should be updated.
+
+-  The `@seealso` for `standardize_match_data()` lists `TaxaTools::create_taxon_names()` and `TaxaTools::rename_cols()` but not `filter_redundant_hypotheses()`, which is the natural next step. Adding it would help users discover the correct pipeline order.
+
+- **Potential shortcoming — column name case sensitivity in `filter_redundant_hypotheses()`:** The `@param` for `rank_system` notes that names must match column names "case-sensitively after `standardize_match_data()` has lowercased everything." If a user calls `filter_redundant_hypotheses()` on a data frame that has not been through `standardize_match_data()` (valid per the documentation of `filter_redundant_hypotheses()` itself), rank column names may not match the default `rank_system` values. The `rank_cols_present <- intersect(rank_system, names(match_df))` step will silently return an empty vector, and the function will remove nothing. A warning when `rank_cols_present` is empty (but `rank_system` is non-empty) would prevent silent no-ops.
+
+- **Potential shortcoming — multi-species ties:** If two species-level rows exist for the same `observation_id` with different species but the same genus and family (e.g., *Gobius paganellus* and *Gobius bucchichi*), neither genus row will be flagged as redundant because the function correctly retains both (since the lineage check matches both). This is biologically correct behaviour, but it means the function does not further disambiguate among candidate species. This is by design — disambiguation is the role of TaxaLikely — and should be documented in `@details` to set user expectations.
+ 
+- **Potential shortcoming — `file.choose()` in `standardize_match_data()`:** Interactive file selection (`data = NULL`) is inappropriate in non-interactive contexts (e.g., Rmd/Quarto documents, batch scripts, CI pipelines). Adding a check `if (!interactive()) stop("data = NULL requires an interactive session.")` before calling `file.choose()` would prevent hanging in automated contexts.
+
+- For eDNA reporting standards (Thalinger et al. 2021 minimum information guidelines), the `taxon_name_rank` column output by this function is essential for downstream reporting — it allows users to report what proportion of observations were resolved to species vs. genus vs. family level. The function correctly produces and preserves this column. A note in `@details` pointing users toward this use case would be a helpful addition for scientifically oriented users.
+
+- The `filter_redundant_hypotheses()` function is particularly valuable for eDNA workflows where BLAST may return both a species-level hit (e.g., *Oncorhynchus mykiss*) and a genus-level hit (*Oncorhynchus*) for the same query sequence, with the genus hit having a slightly different accession. Without this filtering step, TaxaLikely would treat the genus and species as independent competing hypotheses, inflating uncertainty. The `@note` section would be a good place to make this practical motivation explicit.
+```
+
+**TaxaMatch-package.R**
+
+* [x] reviewed
+
+- I don't have feedback here but claude does:
+
+```
+- **Missing exported functions from the section index:** Based on the files reviewed in this package, the following exported functions are absent from the package-level help page:
+    - `read_birdnet_output()` (from `read_acoustic.R`) — no section covers acoustic ingestion.
+    - `read_animl_output()`, `read_inaturalist_cv_output()`, `read_wildlife_insights_output()` (from `read_image.R`) — no section covers image classifier ingestion.
+    - `score_image_inat()` (from `score_image_inat.R`) — no section covers live API scoring.
+    These omissions mean a user consulting `?TaxaMatch` would not discover the acoustic and image ingestion functionality at all. An "Acoustic input" section and an "Image input" section (or a combined "Classifier input" section) should be added.
+
+- **Package description is narrow:** The `@description` ("Ingests raw match data from external tools (BLAST, image classifiers, acoustic recognizers) and produces a canonical match object for input to TaxaLikely. Also provides remote/local BLAST search and sequence filtering.") is accurate but does not mention the backbone conversion functionality (`convert_taxonomy_backbone()`), which is prominently documented in the Standardization section. Revising the description to "...standardizes taxonomy across reference backbones, and prepares a canonical match object..." would align it with the actual scope.
+
+- **`convert_taxonomy_backbone()` placement:** This function is listed under "Standardization" alongside `standardize_match_data()` and `filter_redundant_hypotheses()`. Given that backbone conversion is a distinct operation often applied selectively (not always required in every pipeline), it could reasonably have its own "Taxonomy" section. This is a minor organizational judgment call rather than a correctness issue.
+
+- **No workflow narrative:** Package-level documentation for analysis packages often includes a brief narrative showing the typical function call order (e.g., `read_sequence_table()` → `filter_sequences()` → `blast_sequences()` → `standardize_match_data()` → `filter_redundant_hypotheses()` → `report_match()`). A `@section Workflow:` block with a `\enumerate{}` list or a code snippet would significantly improve discoverability for new users. The existing `@details` workflow code blocks in individual function documentation are good, but a package-level overview is the conventional place to present the full pipeline picture.
+  
+- **`\itemize` vs. `\describe`:** The use of `\itemize` with `\item \code{\link{}} -- description` is functional but non-standard for function indexes. `\describe{ \item{\code{\link{}}}{ description } }` is the preferred Roxygen pattern for named-item lists in package documentation (as used in `@return` blocks throughout this package). This is a style preference, not a correctness issue, but it would improve visual rendering in the HTML reference manual.
+
+- The dash convention (`--`) used in item descriptions (`-- ingest DADA2, FASTA...`) is consistent throughout this file, but is inconsistent with the rest of the package's Roxygen documentation, which uses `—` em dashes or plain prose descriptions. Standardising to one convention package-wide would be cleaner.
+
+- **Missing `@importFrom` declarations:**
+  `TaxaMatch-package.R` is the conventional location for package-wide `@importFrom` and `@import` declarations that do not belong to a specific function. Reviewing the imports used across all files in this package (e.g., `httr`, `httr2`, `jsonlite`, `xml2`, `rentrez`, `Biostrings`, `rBLAST`, `exifr`, `tibble`, `dplyr`), it appears that most are declared locally in individual function files. This is acceptable, but any package-wide imports should be centralised here. Currently the file does not declare any — confirming there are no package-wide imports to consolidate — which is fine as long as the per-file declarations are complete.
+
+- This file contains no executable code. However, the package-level documentation should be verified to render correctly via `devtools::document()` and `devtools::check()`, particularly the `\code{\link{}}` cross-references, which will produce warnings during `R CMD CHECK` if any linked function does not exist or is not exported.
+
+- The following cross-references should be verified as correctly resolving:
+  - `read_sequence_table`, `filter_sequences`, `blast_sequences`, `standardize_match_data`, `filter_redundant_hypotheses`, `convert_taxonomy_backbone`, `report_match`.
+  - Cross-references for the missing functions (`read_birdnet_output`, etc.) cannot be added until those functions are confirmed exported and documented.
+
+- **Section omissions are the primary concern** for this file. A user opening `?TaxaMatch` after installing the package would see BLAST and sequence functions prominently listed, but would find no mention of BirdNET, Animl, iNaturalist CV, Wildlife Insights, or `score_image_inat()`. For a package whose stated purpose includes acoustic and image classifier ingestion, this is a meaningful discoverability gap.
+
+- The `@aliases TaxaMatch` declaration ensures that both `?TaxaMatch` and `?TaxaMatch-package` resolve to the same help page, which is correct R package documentation practice.
+
+- Consider adding a `@references` section citing the key upstream tools this package wraps: NCBI BLAST (Altschul et al. 1990), BirdNET (Kahl et al. 2021), Animl/MegaDetector (Beery et al. 2019), iNaturalist CV, and SpeciesNet/Wildlife Insights. Package-level citation guidance is a useful addition for scientific users who need to cite their analysis pipeline.
+
+- A `@seealso` pointing to the TaxaLikely package (the declared downstream consumer of TaxaMatch output) would complete the pipeline context for new users. If TaxaLikely is not yet public, a placeholder note (`"TaxaLikely (in preparation)"`) or an omission is fine, but this should be addressed before public release.
+
+- The missing acoustic and image sections are particularly relevant from a domain perspective. Wildlife acoustic monitoring (BirdNET) and camera trap image classification (Animl, SpeciesNet) are active and growing areas of applied biodiversity monitoring. A package description that foregrounds only eDNA/BLAST, while burying acoustic and image support in undiscoverable function files, misrepresents the package's actual scope to the biodiversity informatics community. Updating the section structure before release would correctly position TaxaMatch as a multi-modality biodiversity data ingestion tool.
+```
+
+**taxonomy_consistency.R**
+
+* [x] reviewed
+
+- I have no comments, but claude does:
+
+```
+- **The `__MISSING__` sentinel:** Used to make `NA`/blank values count as a distinct category when `na_as_inconsistent = TRUE`. The `.get_vals()` comment explains this clearly, but a reader who encounters `maj_val == "__MISSING__"` in the `majority_val` extraction without reading the helper first may be confused. A brief inline comment at that check ("# Revert sentinel to NA for output") would make the intent self-documenting at the point of use.
+
+- **`max(which(consistent))`:** This finds the *finest* consistent rank by taking the maximum index of the `TRUE` entries in the `consistent` logical vector (which is ordered coarse-to-fine). The logic is correct and elegant but non-obvious at first glance. A short comment — "# Last (finest) TRUE entry in coarse-to-fine order" — would help readers who do not immediately recognise that `max(which(...))` on a named logical vector is equivalent to "the finest consistent rank."
+
+- **`lapply(unique_ids, function(id) { idx <- which(obs_ids == id) ... })`:** The outer `lapply` iterates over every unique observation ID, and the inner `which(obs_ids == id)` scans the full `obs_ids` vector for each one — O(n × unique_obs). For a match object with thousands of rows and many unique observations, this is O(n²). Precomputing a grouped index (e.g., `split(seq_len(nrow(match_obj)), obs_ids)`) before the `lapply` would reduce this to O(n) and is the standard pattern for this type of grouped operation. Precomputing `split()` indices should be treated as a high-priority improvement before this function is used in production acoustic or camera trap pipelines, where individual "observations" can contain hundreds of candidate detections.
+
+
+- **`sort(table(vals), decreasing = TRUE)` per rank per observation:** `table()` + `sort()` is correct and readable but rebuilds a contingency table on every call. For the typical case of ≤ 20 candidates per observation and ≤ 7 rank columns this is negligible. For large acoustic or image datasets with many candidates per window it could become noticeable. No change needed for current use cases, but worth flagging for future scale-up.
+
+- **`@param rank_system`** documents auto-detection when `NULL` but does not document what happens when `rank_system` contains column names not present in `match_obj`. The code silently filters them via `rank_system <- rank_system[rank_system %in% names(match_obj)]`, which could leave the user with fewer ranks than intended. A note that "columns not present in `match_obj` are silently ignored; a `stop()` is raised if none remain" would set correct expectations. Alternatively, this silent filtering should produce a `warning()` when columns are dropped, consistent with the defensive style elsewhere in this package.
+
+- **`@param majority_threshold`** notes that values ≤ 0.5 are "technically valid but semantically unusual." Consider whether a `warning()` should be issued at runtime when `majority_threshold <= 0.5`, to alert users who may have entered an incorrect value (e.g., 0.5 meaning "majority" in everyday language but actually meaning "tie" in this context).
+
+- **`@return`** describes `rank_majority_fraction` but does not specify whether it is computed over *all* candidates or *non-blank* candidates. The code computes it over non-blank values (`n = length(vals)` after `.get_vals()` filters blanks when `na_as_inconsistent = FALSE`). This distinction matters when some candidates have missing rank values — the fraction could be 1.0 even if half the candidates are blank. This should be stated explicitly.
+
+- the `@return` block does not mention that `match_obj` is returned with all its original columns intact (only new columns are added). Other functions in this package document this explicitly; consistency would be helpful here.
+
+- **Closure `.get_vals` defined inside exported function:** The helper `.get_vals()` is defined inside `add_lowest_consistent_rank()` rather than as a package-internal function. This is correct R (closures over `na_as_inconsistent` are valid) but means `.get_vals` is recreated on every function call and is not independently testable. Extracting it as `.get_rank_vals(x, na_as_inconsistent)` at the package level would improve testability without losing any functionality, consistent with the `@noRd` helper pattern used throughout the rest of the package.
+
+- **Auto-detection of `rank_system`:** The same pattern — `canonical <- TaxaTools::extended_ranks; df_lower <- tolower(names(...)); found_lower <- intersect(canonical, df_lower); rank_system <- names(...)[match(found_lower, df_lower)]` — appears here and in `.detect_rank_cols()` inside `standardize_match_data.R`. The `.detect_rank_cols()` helper already exists in that file; it should be promoted to a package-internal helper (perhaps in a `utils.R` or similar) and called here instead of duplicating the logic.
+
+- **`rank_system` validation:** The `if (!is.character(rank_system) || length(rank_system) == 0L) stop(...)` pattern appears in `standardize_match_data()`, `filter_redundant_hypotheses()`, and implicitly here (guarded by the `rank_system %in% names(match_obj)` filter). A shared `.validate_rank_system()` helper was recommended in the `standardize_match_data.R` review and applies here as well.
+
+- The `names(per_obs_rank) <- unique_ids` assignment is redundant — `vapply()` with a named input list already returns a named vector. The explicit assignment does no harm but adds a line of noise. Same applies to `names(per_obs_majv)` and `names(per_obs_majf)`.
+
+- `per_obs_rank[obs_ids]` broadcast relies on R's named vector indexing, which is correct but has one edge case: if `obs_ids` contains a value not in `names(per_obs_rank)` (e.g., an `NA` observation ID), the result is silently `NA`. This is the correct behaviour given that `unique_ids` is derived from `obs_ids`, so no unmatched ID is possible — but a defensive `stopifnot` or assertion comment would make this invariant explicit.
+
+- **`__MISSING__` sentinel collision:** If a user's actual taxon names contain the string `"__MISSING__"`, the sentinel would be misinterpreted as a blank/NA placeholder. This is an extremely unlikely real-world case (no valid taxon name uses double underscores), but it is worth noting in a comment near the sentinel definition. Using a more collision-resistant sentinel (e.g., `"\u0000MISSING\u0000"`) would be safer, though arguably over-engineered for this use case.
+
+- **`which(obs_ids == id)` with NA `obs_ids`:** `NA == id` returns `NA`, not `TRUE` or `FALSE`, so `which(NA)` returns `integer(0)` — NA observation IDs are silently excluded from computation. This is the correct safe behaviour but is not documented. (The validation block only checks that `observation_id_col` exists, not that it contains no NAs.) A `warning()` for NA observation IDs, consistent with `filter_redundant_hypotheses()`, would be appropriate.
+
+- This function would benefit from being listed in the `TaxaMatch-package.R` file under the Standardization section, alongside `standardize_match_data()` and `filter_redundant_hypotheses()`. It is currently absent from the package index (as noted in the `TaxaMatch-package.R` review).
+
+- The performance issue with `which(obs_ids == id)` in the outer `lapply` (O(n²) per the Optimizations section) is the most practically important issue for scale-up. A one-line fix — precomputing `idx_list <- split(seq_len(nrow(match_obj)), obs_ids)` and replacing `which(obs_ids == id)` with `idx_list[[as.character(id)]]` — would make the function O(n) and is strongly recommended before the package is used on large acoustic or image datasets.
+
+- The `__MISSING__` sentinel approach for `na_as_inconsistent = TRUE` is creative but could be replaced by a more transparent design: rather than converting blanks to a sentinel string, keep the original logic of `.get_vals()` returning non-blank values only, and add a separate `has_blank` flag to signal whether any candidates were blank. This would make the majority fraction computation unambiguous (always denominated on non-blank values) and eliminate the sentinel entirely.
+
+- **Potential shortcoming — observations with a single candidate:** When `idx` has length 1, `table(vals)` has exactly one entry, `length(tab) == 1L` is `TRUE` in strict mode, and the rank is reported as consistent at all levels. This means every single-hit observation gets `lowest_consistent_rank = finest rank`. This is technically correct (a single candidate cannot disagree with itself) but may give users a false sense of resolution for poorly-matched observations. A note in `@details` clarifying this behaviour would set appropriate expectations.
+
+- **Potential shortcoming — blank propagation across ranks:** If a rank column (e.g., `family`) is entirely blank/NA for an observation, `.get_vals()` returns `character(0)` (in `na_as_inconsistent = FALSE` mode), and the rank is treated as consistent (`n == 0L → return TRUE`). This means a completely blank rank does not block the consistency determination from reaching finer ranks. For example, if all candidates have no family but agree on genus, `lowest_consistent_rank = "genus"`. This is a reasonable design choice (missing data should not prevent finer resolution), but it means the function can report `lowest_consistent_rank = "species"` even when all family-level assignments are missing, which could be misleading. A note in `@param na_as_inconsistent` or `@details` explaining this blank-propagation behaviour would help users interpret results.
+
+- **Potential shortcoming — `majority_threshold` and the denominator:** As noted in the Optimizations section, `rank_majority_fraction` is computed over non-blank values. If 8 of 10 candidates have no family assignment and 2 share "Gobiidae", `maj_frac = 1.0` and the rank would be called consistent at any threshold. Whether this is the correct interpretation depends on the scientific question. Users should be made aware of this via documentation.
+```
