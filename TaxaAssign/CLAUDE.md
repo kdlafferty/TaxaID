@@ -1,6 +1,50 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-10 (Session 150 -- expand_unreferenced_hypotheses() moved to TaxaLikely
+# Last updated: 2026-07-13 (Session 153 -- real bug found and fixed while debugging
+# PtConceptionWorkflow_12S.R against this ecosystem's recent breaking changes:
+# update_prior_from_consensus()'s Session 149 alpha/beta-consistency fix (which recomputes
+# prior_alpha/prior_beta to match a boosted prior_mean, preserving the original Beta
+# concentration) didn't clamp the boosted prior_mean away from the [0,1] boundary before
+# deriving the new alpha/beta. A confirmation quantile of exactly 1.0 -- common in practice,
+# since posterior_consensus() legitimately returns consensus_posterior = 1.0 for any
+# unambiguously resolved single-candidate donor observation -- produced
+# new_beta = (1 - 1) * phi = 0, which compute_posterior() correctly rejects ("N row(s) have
+# non-positive or non-finite prior_alpha/prior_beta"). This is a real regression introduced
+# by the Session 149 fix itself: the previous design never touched prior_alpha/prior_beta at
+# all (that omission was the bug Session 149 fixed), so this boundary case didn't exist
+# before. Fix: clamp the boosted prior_mean to [1e-9, 1-1e-9] before deriving new_alpha/
+# new_beta (new_prior_mean itself is left unclamped -- 1.0 is a legitimate point estimate;
+# only the Beta-shape derivation needs the clamp), mirroring the identical boundary-guard
+# pattern join_priors.R's own .make_ab() helper already uses for the same reason. 1 new
+# regression test reproduces the exact failure (a confirmation quantile of 1.0 must not
+# zero out prior_beta) and confirms compute_posterior() accepts the result at both
+# n_sims = 0 and n_sims > 0 (the Monte Carlo path is what the real failure surfaced on).
+# devtools::test() 548/548 (0 failures, up from 544), devtools::check() clean.
+# Previous update, 2026-07-12 (Session 152 -- real bug found and fixed via a full end-to-end live
+# run of inst/TaxaID_Workflow_Template_TEST.R (part of debugging the Template against the
+# ecosystem's recently-updated functions): posterior_consensus()'s internal
+# .extract_rank_values() had a genus-from-binomial fallback but no equivalent species-from-
+# taxon_name fallback. Whenever the input posterior_df had no explicit "species" column --
+# exactly TaxaLikely's real sequence/BLAST pathway's shape (only taxon_name/family/genus,
+# never a literal "species" column) -- consensus_posterior/consensus_confidence_score
+# silently computed to exactly 0 for every single-hypothesis resolved observation, even
+# though the winning candidate's own posterior_mean was correctly high (observed: 0.999,
+# 0.938, 1.0 for the three real Template test observations, all reported as
+# consensus_posterior = 0). consensus_taxon itself was unaffected -- .find_lca()'s
+# nrow(plausible) == 1 shortcut reads taxon_name/taxon_name_rank directly, a different code
+# path -- which is exactly why this went unnoticed: the final assigned taxon always looked
+# right, only the confidence columns were silently wrong. Also a real, separate test-coverage
+# gap: no test in test-posterior_consensus.R asserted on consensus_posterior's VALUE at all
+# before this session, only on consensus_taxon/consensus_rank/is_resolved -- despite most of
+# that file's own mock fixtures also omitting an explicit species column, so the bug's own
+# exact trigger condition was already present throughout the existing suite and still went
+# uncaught. Fix: added a species branch to .extract_rank_values() mirroring the existing
+# genus derivation (derive species = taxon_name when taxon_name_rank == "species", prefer an
+# explicit species column's non-NA values when present). 2 new regression tests added,
+# directly reproducing the real Template data's exact shape and confirming
+# consensus_posterior now equals the winner's posterior_mean instead of 0.
+# devtools::test() 544/544 (0 failures), devtools::check() 0 errors/0 warnings/0 notes.
+# Previous update, 2026-07-10 (Session 150 -- expand_unreferenced_hypotheses() moved to TaxaLikely
 # (package-placement fix, not a math change); TaxaAssign::expand_unreferenced_hypotheses() is now
 # a thin .Deprecated() forwarding wrapper. See TaxaID/CLAUDE.md's Session 150 note for the full
 # reasoning. devtools::test() 522/522 (0 failures; count differs from Session 149's 544 because
@@ -381,6 +425,12 @@ depends on which backbone the input taxonomy was verified against (Session 143).
 **Renormalization note:** cumulative proportions are renormalized (post-`min_posterior` filter)
 only for selecting the plausible set. The reported `consensus_posterior` is the raw sum of
 posteriors within the LCA taxon from all named hypotheses (pre-filter), so it is never inflated.
+**Session 152:** this sum depends on correctly matching rows to the LCA taxon via
+`.extract_rank_values()`, which now derives a species value from `taxon_name` when no
+explicit `species` column exists (mirroring its existing genus-from-binomial derivation) --
+previously this returned all-`NA` for that common real shape (TaxaLikely's sequence/BLAST
+pathway never has a `species` column), silently zeroing `consensus_posterior`/
+`consensus_confidence_score` for every single-hypothesis resolved observation.
 
 **`species_reference` (downranking):** after LCA, unresolved coarse-rank rows are downranked
 when the reference contains exactly one finer taxon at each step (recursive: family → genus →

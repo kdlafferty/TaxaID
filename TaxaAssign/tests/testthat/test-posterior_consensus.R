@@ -74,6 +74,52 @@ test_that("single genus-rank hypothesis resolves at genus", {
 
 
 # ==============================================================================
+# consensus_posterior computation (Session 152 bug fix)
+# ==============================================================================
+# .extract_rank_values() had a genus-from-binomial fallback but no equivalent
+# species-from-taxon_name fallback -- so whenever the input had no explicit
+# "species" column (TaxaLikely's real sequence/BLAST pathway never produces
+# one), consensus_posterior/consensus_confidence_score silently computed to
+# exactly 0 for a single-hypothesis resolved observation, even though the
+# winning candidate's own posterior_mean was correctly high. consensus_taxon
+# itself was unaffected (a different code path), which is why no existing
+# test here (none of which asserted on consensus_posterior's VALUE before
+# this section) caught it.
+
+test_that("consensus_posterior reflects the winner's posterior_mean, not 0, with no explicit species column", {
+  df <- make_posterior(
+    observation_id  = c("s1", "s1", "s1"),
+    taxon_name      = c("Oligocottus snyderi", "Leiocottus hirundo", "Oligocottus maculosus"),
+    taxon_name_rank = rep("species", 3),
+    hypothesis_type = rep("specific_candidate", 3),
+    posterior_mean  = c(0.9993, 0.0004, 0.0003)
+  )
+  expect_false("species" %in% names(df))
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_equal(out$consensus_taxon, "Oligocottus snyderi")
+  expect_equal(out$consensus_reason, "single")
+  expect_equal(out$consensus_posterior, 0.9993, tolerance = 1e-6)
+  expect_true(out$consensus_posterior > 0.5)
+})
+
+test_that("consensus_posterior sums only the winning LCA taxon's mass across all named hypotheses", {
+  # Two candidates, winner clears cumulative_threshold alone (single plausible),
+  # but named_all (pre-filter) still has both -- consensus_posterior must equal
+  # just the winner's own posterior_mean, not the sum of both.
+  df <- make_posterior(
+    observation_id  = c("s1", "s1"),
+    taxon_name      = c("Embiotoca jacksoni", "Phanerodon furcatus"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("specific_candidate", 2),
+    posterior_mean  = c(0.9385, 0.0615)
+  )
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_equal(out$consensus_taxon, "Embiotoca jacksoni")
+  expect_equal(out$consensus_posterior, 0.9385, tolerance = 1e-6)
+})
+
+
+# ==============================================================================
 # LCA logic
 # ==============================================================================
 

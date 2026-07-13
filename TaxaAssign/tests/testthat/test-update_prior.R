@@ -201,6 +201,27 @@ test_that("prior_alpha/prior_beta are recomputed consistently with a boosted pri
                s2_sp_a$prior_mean)
 })
 
+test_that("a confirmation_quantile of exactly 1.0 does not produce a zero prior_beta", {
+  # consensus_posterior = 1.0 is a real, common value -- any unambiguously
+  # resolved single-candidate donor observation produces it. Before the
+  # boundary clamp, new_beta = (1 - 1) * phi = 0, which compute_posterior()
+  # rejects (Session 152 bug, found live in PtConceptionWorkflow_12S.R).
+  result    <- .make_result()
+  consensus <- .make_consensus(s1_posterior = 1.0)
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+
+  expect_equal(s2_sp_a$prior_mean, 1.0)
+  expect_true(is.finite(s2_sp_a$prior_alpha) && s2_sp_a$prior_alpha > 0)
+  expect_true(is.finite(s2_sp_a$prior_beta)  && s2_sp_a$prior_beta  > 0)
+
+  # compute_posterior() must accept the recomputed Beta shape without erroring,
+  # including on the Monte Carlo path (n_sims > 0), which is what the real
+  # failure surfaced on.
+  expect_no_error(update_prior_from_consensus(result, consensus, n_sims = 100))
+})
+
 # ---- spatial_group_map: multi-member vs. single-observation spatial groups ---
 
 test_that("spatial_group_map blocks the boost when the confirming observation is a singleton", {

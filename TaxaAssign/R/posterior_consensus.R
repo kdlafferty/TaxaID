@@ -584,7 +584,10 @@ posterior_consensus <- function(posterior_df,
 #' Extract rank values from a hypothesis dataframe, deriving where possible
 #'
 #' Uses an explicit column when present; derives genus from a species binomial
-#' when the genus column is absent. All other missing columns return NA.
+#' when the genus column is absent, and derives species from `taxon_name`
+#' when the species column is absent (Session 152 -- see the species branch's
+#' own comment for why this was missing and what it silently broke). All
+#' other missing columns return NA.
 #' @noRd
 .extract_rank_values <- function(df, rank) {
   if (rank == "genus") {
@@ -593,6 +596,30 @@ posterior_consensus <- function(posterior_df,
       df$taxon_name_rank == "species", sub(" .*", "", df$taxon_name),
       ifelse(df$taxon_name_rank == "genus", df$taxon_name, NA_character_)
     )
+    if (rank %in% names(df)) {
+      vals <- as.character(df[[rank]])
+      return(ifelse(is.na(vals), derived, vals))
+    }
+    return(derived)
+  }
+
+  if (rank == "species") {
+    # Derive species from taxon_name as fallback for any NA values --
+    # taxon_name IS the species-level value whenever taxon_name_rank ==
+    # "species" (the binomial itself), mirroring the genus derivation above.
+    # Session 152: this branch was missing entirely (fell through to the
+    # generic "explicit column required" case below, returning all-NA
+    # whenever no literal "species" column existed) -- TaxaLikely's real
+    # sequence/BLAST pathway never produces one (only taxon_name/family/
+    # genus), so consensus_posterior/consensus_confidence_score silently
+    # computed to exactly 0 for every single-hypothesis resolved observation
+    # on that pathway, even though the winning candidate's own posterior_mean
+    # was correctly high. consensus_taxon itself was unaffected (.find_lca()'s
+    # nrow(plausible) == 1 shortcut reads taxon_name/taxon_name_rank directly,
+    # bypassing this function), which is why the bug was invisible unless the
+    # confidence columns were checked specifically. Found via a real end-to-end
+    # Template run using this exact data shape.
+    derived <- ifelse(df$taxon_name_rank == "species", df$taxon_name, NA_character_)
     if (rank %in% names(df)) {
       vals <- as.character(df[[rank]])
       return(ifelse(is.na(vals), derived, vals))

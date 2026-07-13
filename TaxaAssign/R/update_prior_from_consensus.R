@@ -331,8 +331,15 @@ update_prior_from_consensus <- function(result,
     phi       <- old_alpha + old_beta
     new_alpha <- old_alpha
     new_beta  <- old_beta
-    new_alpha[raise_mask] <- new_prior[raise_mask] * phi[raise_mask]
-    new_beta[raise_mask]  <- (1 - new_prior[raise_mask]) * phi[raise_mask]
+    # Clamp away from the [0,1] boundary before deriving alpha/beta -- a
+    # confirmation quantile of exactly 1.0 (common: posterior_consensus()
+    # legitimately returns consensus_posterior = 1.0 for any unambiguously
+    # resolved single-candidate donor observation) would otherwise produce
+    # new_beta = 0, which compute_posterior() rejects. Mirrors join_priors.R's
+    # .make_ab() clamp for the same boundary case.
+    clamped_prior <- pmin(pmax(new_prior[raise_mask], 1e-9), 1 - 1e-9)
+    new_alpha[raise_mask] <- clamped_prior * phi[raise_mask]
+    new_beta[raise_mask]  <- (1 - clamped_prior) * phi[raise_mask]
     unresolved_rows$prior_alpha[boost_mask] <- new_alpha
     unresolved_rows$prior_beta[boost_mask]  <- new_beta
   }
