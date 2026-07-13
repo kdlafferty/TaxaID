@@ -1,6 +1,55 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-11 (Session 151, once more -- ecosystem soundness-review item 16
+# Last updated: 2026-07-11 (Session 152 -- flag_contaminant()'s shrinkage denominator
+# changed from SAMPLE count to READ count (n_reads_total = taxon_field_reads +
+# taxon_control_reads, replacing n_field_present + n_controls_present), and
+# prior_weight's default changed 2 -> 20 to match the new read-equivalent units.
+# Session 151's own shrinkage design (0.5 target, applied to the already
+# depth-weighted field_rate/control_rate ratio) was correct -- the flaw, found by
+# live-testing the Template and both real PtConception workflows
+# (ecosystem_docs/REENTRY_PROMPT_session151_debug_template_and_12S_18S.md), was that
+# shrinking by SAMPLE count conflated a 2-read detection with a 500,000-read detection
+# whenever both happened to come from exactly one sample -- capping BOTH at the same
+# distance from 0.5 regardless of actual evidence strength. Concretely: with the
+# Session 151 default (prior_weight=2, samples), no taxon detected in 1-8 total samples
+# could ever reach "low" risk even with overwhelming read support, and the median real
+# taxon in both real PtConception datasets is detected in exactly 1 field sample -- so
+# 97% (12S) / 88% (18S) of taxa were capped at "moderate" purely as a sample-count
+# artifact, not because the evidence was actually ambiguous.
+# Two literature-informed alternatives (decontam's presence/absence prevalence test via
+# a hypergeometric test; a depth-weighted binomial-exact test) were prototyped first and
+# REJECTED after live-testing against real data: both are one-sided tests where
+# "0 control reads" trivially gives p=1 regardless of total evidence, so both degenerate
+# almost exactly back to the pre-151 hard-1.0 problem (verified: median score 1.0 on
+# both real datasets, undoing Session 151's whole point). A third alternative (Beta-
+# Binomial shrinkage toward the study's own depth-based background rate p0) was also
+# rejected: it requires anchoring to p0 explicitly and does NOT transfer across studies
+# with very different control:field depth ratios -- confirmed directly: it worked
+# reasonably on 12S (p0=0.00059) but missed the known real contaminant entirely on 18S
+# (p0 rounds to 0, only 1 control/54 field samples) at every prior strength tested.
+# Read-count-based shrinkage in the EXISTING depth-normalized rate space needed no new
+# anchor point (0.5 remains correct there) and was validated empirically at
+# prior_weight in {20, 50, 100, 500}: 100% of known "high"-risk taxa recovered with
+# ZERO false positives at every value, on BOTH real datasets, while far more
+# well-supported clean taxa correctly reach "low" instead of being capped at
+# "moderate" (12S: 330 -> 3263 "low"; 18S: 2503 -> 4140 "low", at the chosen
+# prior_weight=20). New `n_reads_total` output column exposes the quantity that now
+# drives shrinkage (n_field_present/n_controls_present/n_controls_total remain,
+# informational only, unchanged in meaning). Reason string now reports the read count
+# used for shrinkage alongside the existing sample-count context. Fully backward
+# compatible in shape (no new required params, same column set plus one addition);
+# NOT backward compatible in behavior (same as Session 151's own change) -- every
+# existing caller relying on the implicit default gets different scores/tiers.
+# devtools::test() 185/185 passing (0 failures, 2 pre-existing unrelated warnings in
+# review_assignments tests), including a new dedicated test constructing two taxa with
+# IDENTICAL sample-count evidence but very different read counts to confirm they now
+# score differently, plus rewritten TaxonA/sample_type_col tests reflecting the new
+# exact score values. devtools::check() 0 errors/0 warnings/0 notes. See
+# ecosystem_docs/REENTRY_PROMPT_session151_debug_template_and_12S_18S.md for the full
+# investigative record (the decontam-literature comparison, all three rejected
+# prototypes, and the real-data validation) and this file's own flag_contaminant()
+# Design section below for the current mechanism.
+# Previous update, same day (Session 151, once more -- ecosystem soundness-review item 16
 # (flag_handler()'s edge_proximity_score), the LAST of the review's 16 H-priority items,
 # fixed: new optional station_metadata param anchors group edges on real per-station
 # deploy/retrieve timestamps instead of the detection data's own min/max. The core flaw:
@@ -131,7 +180,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | Function | File | Status | Description |
 |----------|------|--------|-------------|
 | `.compute_contaminant_scores()` | `R/flag_contaminant.R` | Written | Internal: proportion-based control comparison algorithm |
-| `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control. **Session 151**: depth-weighted rates + Empirical Bayes shrinkage (`prior_weight`, default `2`) replace the old unweighted-mean/hard-0-1 formula; score documented as a ranked screening statistic, not a probability. |
+| `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control. **Session 151**: depth-weighted rates + Empirical Bayes shrinkage replace the old unweighted-mean/hard-0-1 formula; score documented as a ranked screening statistic, not a probability. **Session 152**: shrinkage denominator changed from sample count to read count (`prior_weight`, default `20`, now read-equivalent units) -- see "flag_contaminant() Design" below. |
 | `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts. **Session 151**: optional `station_metadata` param anchors edges on real deploy/retrieve timestamps instead of the data's own min/max (opt-in, backward compatible; see "flag_handler() Design" below). |
 | `.parse_datetimes()` | `R/flag_handler.R` | Written | Internal: auto-detect datetime format |
 | `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. |
@@ -164,33 +213,42 @@ frustrating than helpful; workflow scripts are more transparent.
 - `exclude_samples` -- remove samples from both control and field calculations
 - `contaminant_type` -- controls output column names (`{contaminant_type}_risk`, `{contaminant_type}_score`, `{contaminant_type}_reason`)
 - `score_thresholds` -- numeric(2), default `c(0.5, 0.9)`
-- `prior_weight` -- numeric, default `2` (**Session 151**). Shrinkage strength for the
-  final ratio toward 0.5; `0` disables shrinkage.
+- `prior_weight` -- numeric, default `20` (**Session 152**; read-equivalent units --
+  previously sample-equivalent units, default `2`, through Session 151). Shrinkage
+  strength for the final ratio toward 0.5; `0` disables shrinkage.
 
-**Algorithm:** `.compute_contaminant_scores()` (**Session 151**, ecosystem soundness-review
-item 15 -- see that function's roxygen "Depth-weighting and shrinkage" section for the full
-real-data motivation and the design bug found and fixed mid-implementation):
+**Algorithm:** `.compute_contaminant_scores()` (**Session 152** -- see that function's
+roxygen "Depth-weighting and shrinkage" and "Reads, not samples, as the shrinkage
+denominator" sections for the full real-data motivation, including three rejected
+alternatives):
 1. Depth-weighted rate per group: `field_rate`/`control_rate` = `sum(taxon reads in group) /
    sum(total reads across samples in that group)` -- a proportion from 500,000 reads now
    counts far more than one from 50. (The old unweighted per-sample-proportion mean is
    still computed as `mean_prop_field`/`mean_prop_control` for reference, but no longer
    drives the score.)
 2. Raw ratio: `field_rate / (field_rate + control_rate)`.
-3. Shrunk toward 0.5 (maximally uncertain) with weight `n_present / (n_present +
-   prior_weight)`, where `n_present` = total samples (field + control combined) in which
-   the taxon was detected -- same Empirical Bayes form used throughout this ecosystem
-   (e.g. `TaxaLikely::train_likelihood_model()`'s per-species shrinkage). Applied to the
-   FINAL ratio, not to `field_rate`/`control_rate` individually toward a shared reference
-   rate -- an earlier design shrunk each rate toward the taxon's own pooled (field+control)
-   rate, which let a taxon's own (usually much larger) field read volume leak into its
-   control-side prior and systematically understated genuinely clean taxa's scores whenever
-   field depth dominated control depth. Caught by actually running the test suite, not by
-   review alone.
-4. Taxa absent from controls no longer get an automatic exact 1.0 -- with few controls,
-   real absence is still real evidence, but shrinkage keeps the score below 1.0 in
-   proportion to how little total replication supports it.
+3. Shrunk toward 0.5 (maximally uncertain) with weight `n_reads_total / (n_reads_total +
+   prior_weight)`, where `n_reads_total` = total READS (field + control combined) for
+   that taxon -- same Empirical Bayes form used throughout this ecosystem (e.g.
+   `TaxaLikely::train_likelihood_model()`'s per-species shrinkage), but measured in
+   reads, not samples (**Session 152** -- Session 151 used sample count
+   `n_field_present + n_controls_present`, which conflated a 2-read detection with a
+   500,000-read detection whenever both came from one sample; see the CLAUDE.md session
+   note above for the real-data evidence and the three alternatives tried and rejected
+   before landing here). Applied to the FINAL ratio, not to `field_rate`/`control_rate`
+   individually toward a shared reference rate -- an earlier design shrunk each rate
+   toward the taxon's own pooled (field+control) rate, which let a taxon's own (usually
+   much larger) field read volume leak into its control-side prior and systematically
+   understated genuinely clean taxa's scores whenever field depth dominated control
+   depth. Caught by actually running the test suite, not by review alone.
+4. Taxa absent from controls no longer get an automatic exact 1.0 -- with little total
+   read support, real absence is still real evidence, but shrinkage keeps the score
+   below 1.0 in proportion to how little total evidence supports it. A taxon with
+   substantial read support (even from a single sample) converges close to its raw ratio.
 Score is documented as a ranked screening statistic, not a calibrated probability
-(the roxygen previously called it one).
+(the roxygen previously called it one). New `n_reads_total` output column (Session 152)
+exposes the read count that now drives shrinkage; `n_field_present`/`n_controls_present`/
+`n_controls_total` remain, informational only.
 
 ---
 

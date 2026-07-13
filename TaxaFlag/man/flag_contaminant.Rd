@@ -15,7 +15,7 @@ flag_contaminant(
   exclude_samples = NULL,
   contaminant_type = "lab_contaminant",
   score_thresholds = c(0.5, 0.9),
-  prior_weight = 2,
+  prior_weight = 20,
   verbose = TRUE
 )
 }
@@ -62,14 +62,15 @@ are \code{"high"} risk (probable contaminant); scores at or below the
 second are \code{"moderate"} risk; higher scores are \code{"low"} risk
 (likely a genuine detection). Default \code{c(0.5, 0.9)}.}
 
-\item{prior_weight}{Numeric (default \code{2}). Empirical Bayes shrinkage
-strength, in units of "equivalent samples" -- controls how strongly the
-final field-vs-control ratio is pulled toward 0.5 (maximally uncertain)
-when a taxon is detected in few samples overall. Higher values shrink
-harder (more conservative, less willing to call a rarely-detected taxon
-confidently clean or contaminated); \code{0} disables shrinkage
-entirely, restoring the raw depth-weighted ratio (still depth-weighted,
-unlike the pre-Session-151 default).}
+\item{prior_weight}{Numeric (default \code{20}). Empirical Bayes shrinkage
+strength, in units of "equivalent reads" (Session 152 -- see
+\code{.compute_contaminant_scores()}'s own documentation for why this
+changed from "equivalent samples" in Session 151). Controls how strongly
+the final field-vs-control ratio is pulled toward 0.5 (maximally
+uncertain) when a taxon has little total read support overall. Higher
+values shrink harder (more conservative, less willing to call a
+thinly-supported taxon confidently clean or contaminated); \code{0}
+disables shrinkage entirely, restoring the raw depth-weighted ratio.}
 
 \item{verbose}{Logical. Print summary messages. Default \code{TRUE}.}
 }
@@ -100,10 +101,15 @@ control samples.}
 \item{\code{control_rate}}{Depth-weighted detection rate in control
 samples, before shrinkage.}
 \item{\code{n_field_present}}{Number of field samples in which the taxon
-was detected.}
+was detected. Informational only since Session 152 -- does not drive
+the shrinkage weight (see \code{n_reads_total}).}
 \item{\code{n_controls_present}}{Number of controls in which the taxon was
-detected.}
+detected. Informational only since Session 152.}
 \item{\code{n_controls_total}}{Total number of controls.}
+\item{\code{n_reads_total}}{Total reads for this taxon across field +
+control samples combined (\code{Session 152}). This, not sample count,
+is what the shrinkage weight (\code{prior_weight}) is measured
+against -- see \code{.compute_contaminant_scores()} for why.}
 }
 }
 \description{
@@ -120,8 +126,9 @@ documentation has the full mechanism and the real-data motivation for
 it). Taxa with a higher rate in controls than field samples receive low
 scores (likely contaminants); taxa strongly favoring field samples
 receive scores approaching, but not reaching, 1.0 -- shrinkage means no
-taxon gets an absolute 0 or 1 score purely from being absent from a
-group with few samples.
+taxon gets an absolute 0 or 1 score purely from having little total read
+support (Session 152 -- shrinkage strength is measured in reads, not
+samples; see \code{.compute_contaminant_scores()}'s documentation).
 
 \strong{This score is a ranked screening statistic, not a calibrated
 probability.} Earlier versions of this documentation described it as

@@ -60,19 +60,21 @@ test_that("flag_contaminant returns one row per taxon", {
  expect_true("field_rate" %in% names(result))
  expect_true("control_rate" %in% names(result))
  expect_true("n_field_present" %in% names(result))
+ expect_true("n_reads_total" %in% names(result))
  # 5 unique taxa with non-zero reads
  expect_equal(nrow(result), 5L)
 })
 
 test_that("TaxonA (only in field) gets a high score approaching but not reaching 1.0", {
- # Session 151: shrinkage means "absent from controls" no longer means an
- # absolute 1.0 -- with only 2 controls total (n_present = 3 field + 0
- # control = 3) and the default prior_weight = 2, real but limited
- # replication pulls the score toward 0.5 from what would otherwise be an
- # exact 1.0 (raw_score, before shrinkage, is 1.0 since control_rate = 0).
- # This mock dataset is deliberately tiny (5 samples total) specifically to
- # exercise this small-n regime -- a real study with dozens of field
- # replicates would converge much closer to the raw ratio.
+ # Session 152: shrinkage means "absent from controls" no longer means an
+ # absolute 1.0 -- TaxonA has 1800 total reads (500+600+700 across 3 field
+ # samples) and 0 control reads, and the default prior_weight = 20
+ # (read-equivalent units since Session 152, previously sample-equivalent)
+ # pulls the score toward 0.5 from what would otherwise be an exact 1.0
+ # (raw_score, before shrinkage, is 1.0 since control_rate = 0). Because
+ # TaxonA has substantial READ support despite coming from only 3 samples,
+ # shrinkage barely moves it off 1.0 -- this is the intended fix: sample
+ # count alone (the pre-152 denominator) would have shrunk this far harder.
  result <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
@@ -82,8 +84,8 @@ test_that("TaxonA (only in field) gets a high score approaching but not reaching
  expect_equal(nrow(a_row), 1L)
  expect_true(a_row$lab_contaminant_score < 1.0)
  expect_true(a_row$lab_contaminant_score > 0.5)
- # w = 3/(3+2) = 0.6; score = 0.6*1.0 + 0.4*0.5 = 0.8
- expect_equal(a_row$lab_contaminant_score, 0.8, tolerance = 1e-6)
+ # w = 1800/(1800+20) = 0.9890110; score = 0.5 + 0.5*w = 0.9945055
+ expect_equal(a_row$lab_contaminant_score, 0.9945055, tolerance = 1e-6)
 })
 
 test_that("TaxonD (only in controls) gets a low score approaching but not reaching 0.0, risk 'high'", {
@@ -111,10 +113,41 @@ test_that("prior_weight = 0 disables shrinkage: TaxonA/TaxonD hit the exact un-s
  expect_equal(d_row$lab_contaminant_score, 0.0)
 })
 
-test_that("higher prior_weight shrinks a single-sample detection harder toward 0.5", {
- # TaxonD is detected in only 1 of 2 controls and absent from field --
- # sparse evidence, so it should be pulled toward the neutral 0.5 more
- # strongly as prior_weight increases.
+test_that("Session 152: shrinkage is read-count-based, not sample-count-based", {
+ # TaxonThin and TaxonRich are BOTH detected in exactly 1 field sample and 0
+ # controls -- identical evidence under the pre-152 sample-count scheme,
+ # which would have shrunk them identically. TaxonRich has far more reads,
+ # so read-count-based shrinkage should treat it as much better-supported
+ # (score closer to its raw ratio of 1.0) than TaxonThin. Separate
+ # single-taxon calls keep the field/control depth arithmetic simple.
+ df_thin <- data.frame(
+   event_id   = c("field_1", "blank_1"),
+   taxon_name = c("TaxonThin", "Other"),
+   n_reads    = c(5, 10),
+   stringsAsFactors = FALSE
+ )
+ df_rich <- data.frame(
+   event_id   = c("field_1", "blank_1"),
+   taxon_name = c("TaxonRich", "Other"),
+   n_reads    = c(50000, 10),
+   stringsAsFactors = FALSE
+ )
+ thin <- flag_contaminant(df_thin, control_samples = "blank_1", verbose = FALSE)
+ rich <- flag_contaminant(df_rich, control_samples = "blank_1", verbose = FALSE)
+ thin_row <- thin[thin$taxon_name == "TaxonThin", ]
+ rich_row <- rich[rich$taxon_name == "TaxonRich", ]
+ # Both have raw_score = 1.0 (absent from controls), n_field_present = 1,
+ # n_controls_present = 0 -- identical sample-count evidence. Read count
+ # differs enormously (5 vs 50000), so rich should score much closer to 1.0.
+ expect_true(rich_row$lab_contaminant_score > thin_row$lab_contaminant_score)
+ expect_equal(rich_row$lab_contaminant_risk, "low")
+ expect_equal(thin_row$lab_contaminant_risk, "moderate")
+})
+
+test_that("higher prior_weight shrinks a thin-read-count detection harder toward 0.5", {
+ # TaxonD has only 10 total reads (control-only) -- thin read support, so it
+ # should be pulled toward the neutral 0.5 more strongly as prior_weight
+ # (read-equivalent units since Session 152) increases.
  weak_shrink <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
@@ -124,7 +157,7 @@ test_that("higher prior_weight shrinks a single-sample detection harder toward 0
  strong_shrink <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
-   prior_weight    = 20,
+   prior_weight    = 200,
    verbose         = FALSE
  )
  d_weak   <- weak_shrink[weak_shrink$taxon_name == "TaxonD", "lab_contaminant_score"]
@@ -198,9 +231,11 @@ test_that("flag_contaminant works with sample_type_col", {
 
  expect_true("lab_contaminant_risk" %in% names(result))
  a_row <- result[result$taxon_name == "TaxonA", ]
- # Session 151: not "low" at this dataset's small sample size -- see the
- # dedicated TaxonA shrinkage test above for the exact value/reasoning.
- expect_equal(a_row$lab_contaminant_risk, "moderate")
+ # Session 152: "low" because shrinkage is now read-count-based and TaxonA
+ # has substantial read support (1800 reads) despite coming from only 3
+ # samples -- see the dedicated TaxonA shrinkage test above for the exact
+ # value/reasoning.
+ expect_equal(a_row$lab_contaminant_risk, "low")
 })
 
 
