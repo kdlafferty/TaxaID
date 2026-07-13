@@ -34,6 +34,23 @@ OUT_PREFIX <- "TaxaID_test"
   invisible(path)
 }
 
+# Helper: load a cached RDS if present, otherwise evaluate `expr` and save it.
+# Unlike a hand-written if/file.exists()/else block, the assignment always
+# happens on the caller's LHS (never inside a branch) -- there is no way for
+# a cache hit to leave the target object unset. `expr` is lazily evaluated,
+# so on a cache hit the (possibly slow/API-calling) code in `expr` never runs.
+# Usage: raw_gbif <- .cached("raw_gbif", download_gbif_occurrences(...))
+.cached <- function(tag, expr) {
+  path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_", tag, ".rds"))
+  if (file.exists(path)) {
+    message(sprintf("  Loading cached %s from disk (delete %s to force re-fetch).", tag, path))
+    return(readRDS(path))
+  }
+  obj <- expr
+  .save(obj, tag)
+  obj
+}
+
 # --- Taxonomic backbone IDs --------------------------------------------------
 fgs <- c("family", "genus", "species") #define a taxonomic rank system.
 MATCH_BACKBONE_ID <- 4L   # NCBI — backbone used by BLAST reference database
@@ -447,7 +464,13 @@ singleton_rows <- dplyr::bind_rows(lapply(group_geometry, function(gg) {
   group_members <- decontaminated_table[
     decontaminated_table$observation_id %in% gg$sites$observation_id, , drop = FALSE
   ]
+  # nzchar() guard, not just na.omit(): a low-confidence match can leave genus
+  # as an empty string rather than NA, and an empty string sent onward as a
+  # "taxon name" resolves to nonsense (confirmed on real PtConception data,
+  # where it reached fetch_ncbi_reference_sequences() below and crashed --
+  # see the empirical PtConceptionWorkflow_12S/18S_2 fix this mirrors).
   candidate_genera <- unique(stats::na.omit(group_members$genus))
+  candidate_genera <- candidate_genera[nzchar(candidate_genera)]
   if (length(candidate_genera) == 0L) return(NULL)
   tidyr::crossing(site_idx = seq_along(gg$geometry), taxon_name = candidate_genera) |>
     dplyr::mutate(geometry = gg$geometry[site_idx], rank_name = "genus") |>
@@ -499,14 +522,13 @@ message(sprintf(
   dplyr::n_distinct(round0_map$taxon_key[round0_map$rank_name == "genus"])
 ))
 
-occ_round0 <- TaxaFetch::fetch_occurrences_by_taxon(
+occ_round0 <- .cached("occ_round0", TaxaFetch::fetch_occurrences_by_taxon(
   taxon_geometry_map = round0_map[, c("taxon_key", "geometry")],
   year_range = YEAR_RANGE,
   limit      = GBIF_LIMIT,
   exclude_absent = TRUE,
-  basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
-  overwrite  = TRUE
-)
+  basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION")
+))
 
 occ_rounds <- list(occ_round0)
 
@@ -552,14 +574,13 @@ for (.round in seq_len(ESCALATION_MAX_LEVELS)) {
     .round, ESCALATION_MAX_LEVELS, dplyr::n_distinct(round_map$taxon_key)
   ))
 
-  occ_this_round <- TaxaFetch::fetch_occurrences_by_taxon(
+  occ_this_round <- .cached(paste0("occ_round", .round), TaxaFetch::fetch_occurrences_by_taxon(
     taxon_geometry_map = round_map[, c("taxon_key", "geometry")],
     year_range = YEAR_RANGE,
     limit      = GBIF_LIMIT,
     exclude_absent = TRUE,
-    basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
-    overwrite  = TRUE
-  )
+    basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION")
+  ))
   occ_rounds <- c(occ_rounds, list(occ_this_round))
 
   found_this_round <- unlist(lapply(unique(round_map$rank_name), function(r) {
@@ -907,7 +928,12 @@ match_obj <- decontaminated_table
 # not a fixed rule -- revisit if a different marker/study shows different
 # submission-length patterns.
 candidate_genera <- match_obj |>
-  dplyr::filter(!is.na(genus)) |>
+  # nzchar() guard, not just !is.na(): a low-confidence match can leave genus
+  # as an empty string rather than NA; an empty string sent to
+  # fetch_ncbi_reference_sequences() below as a "taxon name" crashes it
+  # (confirmed on real PtConception data -- see the empirical
+  # PtConceptionWorkflow_12S/18S_2 fix this mirrors).
+  dplyr::filter(!is.na(genus) & nzchar(genus)) |>
   dplyr::distinct(genus) |>
   dplyr::pull(genus)
 

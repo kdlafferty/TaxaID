@@ -1,7 +1,129 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-11 (Session 151, final entry, branch `main` -- ecosystem
+# Last updated: 2026-07-13 (Session 153 -- comparison + template-alignment pass across all
+# four real production workflow scripts (PtConceptionWorkflow_12S.R, PtConceptionWorkflow_
+# 18S_2.R, MuguFishWorkflow.R, MuguWilderFishWorkflow.R -- all outside this monorepo, not
+# under git). Prompted by the user noticing the 12S workflow filters contaminants in a
+# different order than inst/TaxaID_Workflow_Template_TEST.R; a systematic 4-way comparison
+# (one Explore agent per workflow, rubric built from reading the template directly) found
+# the same root problem in ALL FOUR: TaxaFlag::flag_contaminant() ran early and flagged
+# risk correctly, but nothing ever actually EXCLUDED high-risk rows before GBIF search,
+# reference-sequence fetch, or posterior computation -- only cosmetic annotation (or, for
+# both Mugu workflows, no filtering at all until the final export). Fixed identically
+# across all four: high-risk observation_ids are now excluded from the match/taxonomy
+# object immediately after flag_contaminant() runs, before anything downstream consumes
+# it. Per the user's explicit direction, split the work into two tracks: **Task A**
+# (this session, complete) applies every template-alignment fix that does NOT depend on
+# spatial/multi-site grouping to all four workflows; **Task B** (deferred, real per-sample
+# site metadata already confirmed to exist for the March 2021 12S/18S runs via
+# Dangermond_Sample_Metadata2_31Jan24.xlsx -- BioD/Cojo/Jalama, ~8km apart, genuinely
+# unused today) migrates the template's Sessions 137-139 spatial-grouping architecture
+# into new PtConceptionWorkflow_12S_multi_site.R / _18S_2_multi_site.R siblings, staged
+# separately; see ecosystem_docs/REENTRY_PROMPT_session153_multisite_workflow_migration.md.
+# The two Pt Conception workflows were renamed to *_single_site.R as part of Task A, ahead
+# of that future multi-site split; the two Mugu workflows keep their names (no multi-site
+# sibling planned).
+#
+# Task A specifics, all four workflows unless noted: (1) contaminant filtering, above.
+# (2) Backbone-conversion-ordering audited against the template's "convert once early,
+# convert again after restore_suppressed_candidates()" pattern -- genuinely needed only in
+# PtConceptionWorkflow_18S_2_single_site.R (was missing the second conversion entirely,
+# with a stale comment claiming it happened elsewhere); 12S and both Mugu workflows were
+# individually verified to already be backbone-consistent via a different, equally valid
+# mechanism (Mugu converts reference_df to GBIF *before* restoration, which is safe
+# specifically because its match_obj is already GBIF-backbone from the upstream match-
+# building scripts) -- confirmed by tracing each file's actual backbone state rather than
+# applying the template's exact pattern by rote, avoiding an unnecessary and potentially
+# corrupting double-conversion. (3) Reference-sequence fetch modernized to
+# TaxaLikely::fetch_ncbi_reference_sequences() everywhere: 12S/18S_2 replaced hand-rolled
+# rentrez::entrez_fetch() accession-reuse loops (no barcode-length filtering, so
+# mitogenomes could enter the reference set); both Mugu workflows swapped the
+# *deprecated* fetch_reference_sequences() name for the current one (confirmed a pure
+# forwarding wrapper, zero behavioral change). (4) evaluate_likelihoods()'s
+# ratio_threshold checked against the template's deliberate override (0, vs. the package
+# default 0.01) -- alpha=0.001 and train_likelihood_model()'s prior_weight=10.0 already
+# matched the template as package defaults and needed no change; ratio_threshold=0 was
+# missing from three of the four workflows (MuguFishWorkflow.R already had it) and was
+# added to match.
+#
+# Live-tested every actual change against real data (not just devtools::check() on
+# package source, since these are workflow scripts, not package functions) -- ran each
+# workflow's modified section against real cached upstream checkpoints, skipping only the
+# interactive Shiny review gadgets (review_spatial_flags()/plot_theta_map_interactive()/
+# define_search_polygon(), all called live/uncommented in these real scripts and all
+# blocking in a non-interactive session) that sit downstream of nothing this session
+# touched. This surfaced one real, previously-latent bug the static comparison alone would
+# have missed: candidate_genera derivation (`filter(!is.na(genus))`, copied faithfully
+# from the template's own Section 3/6a) doesn't exclude **empty-string** genus values,
+# only NA -- and this real 12S/18S_2 data has them (low-confidence BLAST/GBIF matches
+# leave genus = "" rather than NA). An empty string reached
+# fetch_ncbi_reference_sequences() as a literal taxon name and crashed it
+# (`retmax_cap[[taxa[i]]] : subscript out of bounds`). Fixed with an added `nzchar(genus)`
+# guard in both PtConception workflows; confirmed both Mugu workflows already had this
+# guard (`match_obj$genus != ""`) independently. **Fixed at the source, too**: the
+# identical unguarded pattern exists in inst/TaxaID_Workflow_Template_TEST.R at both the
+# escalation-ladder singleton-genus derivation (~line 467) and the Section 6a reference-
+# fetch derivation (~line 933) -- the template's own tiny 3-ASV bundled fixture never had
+# an empty-string genus to expose this, so every future workflow built from the template
+# would have inherited the same latent crash. Both fixed with the same guard.
+#
+# One real TaxaAssign package bug found and fixed along the way (see TaxaAssign/CLAUDE.md's
+# Session 153 note for full detail): update_prior_from_consensus()'s Session 149 alpha/
+# beta-consistency fix didn't clamp the boosted prior_mean away from the [0,1] boundary --
+# a confirmation quantile of exactly 1.0 (common: posterior_consensus() legitimately
+# returns 1.0 for any unambiguously resolved single-candidate donor) produced
+# prior_beta = 0, which compute_posterior() correctly rejects. This is a real regression
+# introduced by Session 149's own fix (the previous design never touched prior_alpha/
+# prior_beta at all). Fixed with the same boundary clamp join_priors.R's .make_ab() helper
+# already uses for the identical reason. devtools::test() 548/548 (up from 544),
+# devtools::check() clean.
+# Previous update, 2026-07-12 (Session 152 continued -- a full, real end-to-end live run of
+# inst/TaxaID_Workflow_Template_TEST.R (all 8 sections, real BLAST/GBIF-derived data/two
+# real Anthropic LLM calls/real NCBI reference fetch) completed successfully, confirming
+# the Template operates correctly with the ecosystem's full set of recently-updated
+# functions. Along the way found and fixed a real, previously-invisible bug:
+# TaxaAssign::posterior_consensus()'s internal .extract_rank_values() had a
+# genus-from-binomial fallback but no equivalent species-from-taxon_name fallback, so
+# consensus_posterior/consensus_confidence_score silently computed to exactly 0 for every
+# single-hypothesis resolved observation whenever the input lacked an explicit "species"
+# column -- exactly TaxaLikely's real sequence/BLAST pathway's shape. consensus_taxon
+# itself was unaffected (a different, already-correct code path), which is why this went
+# unnoticed; also surfaced a real test-coverage gap (no existing test asserted on
+# consensus_posterior's VALUE at all). Fixed by mirroring the existing genus derivation.
+# Two other real, separate findings surfaced during the same live-testing pass (not new
+# ecosystem-function bugs, but genuine gaps worth recording): (1) a corrupted
+# TaxaTools.rdb lazy-load database (fixed by clean reinstall, unrelated to any code
+# change); (2) TaxaFetch::fetch_gbif_occurrences() has no HTTP timeout on its underlying
+# rgbif::occ_data() call, so a family-level query needing GBIF-internal pagination can
+# stall indefinitely if one page request hangs -- confirmed reproducible three times
+# against the same real keys/geometry; not yet fixed, flagged for a future session.
+# devtools::test() 544/544 (TaxaAssign), devtools::check() 0/0/0. See TaxaAssign/CLAUDE.md's
+# Session 152 note for the posterior_consensus() fix detail.
+# Previous update, same day (Session 152, branch `main` -- live-testing the reentry plan
+# from ecosystem_docs/REENTRY_PROMPT_session151_debug_template_and_12S_18S.md surfaced a
+# real, substantial calibration problem in Session 151's own
+# TaxaFlag::flag_contaminant() fix: shrinking by SAMPLE count (not read count) capped 97%
+# (12S)/88% (18S) of real PtConception taxa at "moderate" risk regardless of how much
+# actual read evidence supported them, since the median real taxon in both datasets is
+# detected in exactly 1 field sample. Compared against the published contamination-
+# detection literature (decontam, metabaR, microDecon, occupancy models) at the user's
+# request before deciding on a fix -- two decontam-style hypothesis-test prototypes
+# (presence/absence hypergeometric; depth-weighted binomial-exact) were built and tested
+# against real data, then REJECTED: both are one-sided tests where zero control reads
+# trivially gives p=1 regardless of total evidence, reverting almost exactly to the
+# pre-151 problem. A third prototype (Beta-Binomial shrinkage toward a depth-based
+# background rate) was also rejected: it doesn't transfer across studies with different
+# control:field depth ratios (missed 18S's one known real contaminant entirely). The fix
+# that worked: keep Session 151's depth-weighted-rate/0.5-shrink-target design (it was
+# already correct) and change only what the shrinkage WEIGHT is measured in -- read count,
+# not sample count (`prior_weight` default `2` -> `20`, now read-equivalent units).
+# Validated at `prior_weight` in {20, 50, 100, 500}: 100% of known "high"-risk taxa
+# recovered with zero false positives at every value, on both real datasets, while far
+# more well-supported clean taxa correctly reach "low" (12S: 330 -> 3263; 18S: 2503 ->
+# 4140, at the chosen default of 20). `devtools::test()` 185/185, `devtools::check()`
+# clean. See TaxaFlag/CLAUDE.md's Session 152 note for the full investigative record.
+# Previous update, same day (Session 151, final entry, branch `main` -- ecosystem
 # soundness-review item 16 (TaxaFlag::flag_handler()'s edge_proximity_score) fixed,
 # closing out the full 16-item H-priority walk-through (ecosystem_docs/
 # STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md): **16 of 16 H-priority items now
@@ -871,3 +993,7 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 151 | `blast_sequences(score_range = 2)` → `8` | TaxaMatch | Behavioral default change (soundness-review item 14). The old 2-pt tolerance window could silently drop a query's true species from the output entirely whenever a confusable congener scored higher -- a real leave-one-out check against 3 real 12S reference datasets found this happened in 4/7 real congener-outscoring events (57%), worst gap 7.1 points. New default covers every observed gap with margin. Any caller relying on the implicit old default now retains more candidates per query (bounded by `max_hits`, unchanged at 20); two real workflow scripts hardcoding `score_range = 2` explicitly (`blast_sequences_workflow.R`, `workflow_fastq_to_match.R`) updated to `8`. `devtools::test()` 451/451, `devtools::check()` clean. |
 | 151 | `flag_contaminant()`'s `contaminant_score` formula changed; `prior_weight = 2` added | TaxaFlag | Behavioral change (soundness-review item 15), affects every existing caller since the score formula itself changed, not just a parameter default. Old: unweighted mean of per-sample proportions, hard 0.0/1.0 for taxa absent from one side. New: depth-weighted `field_rate`/`control_rate` (reads-weighted, not sample-count-weighted), Empirical-Bayes-shrunk toward 0.5 by total sample-count replication. `mean_prop_field`/`mean_prop_control` still returned (informational only); new `field_rate`/`control_rate`/`n_field_present` columns added. `prior_weight = 0` reproduces the old exact-0/1 boundary behavior on the new depth-weighted rates (not byte-identical to the pre-Session-151 formula, which used unweighted per-sample means). `devtools::test()` 169/169, `devtools::check()` clean. |
 | 151 | `flag_handler(station_metadata = NULL, deploy_col = "deploy_time", retrieve_col = "retrieve_time")` added; new `edge_anchor_source` output column | TaxaFlag | Additive, backward compatible (soundness-review item 16, the review's final H-priority item) -- no behavioral change for existing callers, since `station_metadata` defaults `NULL` and every one of the 36 pre-existing tests passes unchanged. When supplied, anchors group edges on real deploy/retrieve timestamps instead of the detection data's own min/max, fixing the flaw where the first/last genuine detection at a station was always scored maximally suspect. A group missing from `station_metadata` falls back to the old behavior with an explicit `warning()`. `devtools::test()` 181/181 (up from 169), `devtools::check()` clean. |
+| 152 | `flag_contaminant()`'s shrinkage denominator changed from sample count to read count; `prior_weight = 2` → `20` (now read-equivalent units) | TaxaFlag | Behavioral change, affects every existing caller. Found via live-testing `TaxaID_Workflow_Template_TEST.R` and both real PtConception workflows (`ecosystem_docs/REENTRY_PROMPT_session151_debug_template_and_12S_18S.md`): Session 151's sample-count shrinkage conflated a 2-read detection with a 500,000-read detection whenever both came from one sample, capping 97% (12S)/88% (18S) of real taxa at `"moderate"` regardless of actual evidence strength (median real taxon in both datasets: 1 field sample). Three alternatives (decontam-style hypergeometric/binomial prevalence tests; Beta-Binomial shrinkage toward a depth-based background rate) were prototyped against real 12S/18S data and rejected -- the first two degenerate to `p=1` whenever a taxon has zero control reads regardless of total evidence (reverting almost exactly to the pre-151 problem); the third doesn't transfer across studies with different control:field depth ratios (missed the known real 18S contaminant entirely). Read-count-based shrinkage in the existing depth-normalized rate space needed no new anchor point and was validated at `prior_weight` in `{20, 50, 100, 500}`: 100% of known `"high"`-risk taxa recovered with zero false positives at every value, on both real datasets. New `n_reads_total` output column exposes the quantity now driving shrinkage; `n_field_present`/`n_controls_present`/`n_controls_total` remain, informational only. `devtools::test()` 185/185, `devtools::check()` clean. |
+| 152 | `posterior_consensus()`'s internal `.extract_rank_values()` gains a species-from-`taxon_name` fallback | TaxaAssign | Behavioral bug fix, not a signature change. Found via a full real end-to-end run of `TaxaID_Workflow_Template_TEST.R`: `consensus_posterior`/`consensus_confidence_score` silently computed to exactly `0` for every single-hypothesis resolved observation whenever the input had no explicit `species` column (TaxaLikely's real sequence/BLAST pathway never produces one) -- confirmed against real Template output where the winning candidate's own `posterior_mean` was 0.999/0.938/1.0 but `consensus_posterior` read `0` for all three. `consensus_taxon` itself was unaffected (a different code path). Fix mirrors the function's existing genus-from-binomial derivation. `devtools::test()` 544/544, `devtools::check()` clean. |
+| 153 | `update_prior_from_consensus()`'s boosted `prior_mean` clamped to `[1e-9, 1-1e-9]` before deriving `prior_alpha`/`prior_beta` | TaxaAssign | Behavioral bug fix, not a signature change. A regression in Session 149's own alpha/beta-consistency fix: a confirmation quantile of exactly `1.0` (common in practice) produced `prior_beta = 0`, which `compute_posterior()` correctly rejects. `prior_mean` itself is left unclamped (`1.0` is a legitimate point estimate); only the Beta-shape derivation is clamped, mirroring `join_priors.R`'s `.make_ab()` boundary guard. Found live-testing `PtConceptionWorkflow_12S.R`. `devtools::test()` 548/548 (up from 544), `devtools::check()` clean. |
+| 153 | `candidate_genera`/singleton-genus derivation in `inst/TaxaID_Workflow_Template_TEST.R` gains an `nzchar(genus)` guard (two call sites: Section 3's escalation ladder, Section 6a's reference fetch) | TaxaID (template only, not a package function) | Behavioral bug fix. The prior `!is.na(genus)` filter let an empty-string genus (a real, common shape for low-confidence BLAST/GBIF matches) through as a literal taxon name, crashing `TaxaLikely::fetch_ncbi_reference_sequences()`. Never triggered by the template's own tiny bundled fixture; found live-testing the real `PtConceptionWorkflow_12S_single_site.R`/`_18S_2_single_site.R` workflows built from this pattern -- fixed at the source so future workflows built from the template don't inherit it. |
