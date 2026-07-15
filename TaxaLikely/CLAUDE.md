@@ -1,6 +1,94 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-11 (Session 151 continued once more -- ecosystem soundness-review
+# Last updated: 2026-07-14 (Session 155 -- new calibrate_query_noise() (+ helper
+# identify_confident_observations()) fixes a real, severe H1 calibration bug found while
+# debugging PtConceptionWorkflow_12S_single_site.R: train_likelihood_model() estimates H1
+# entirely from reference-vs-reference pairs (two clean NCBI accessions of the same
+# species compared to each other), which cannot see technical query-side noise (PCR/
+# sequencing/degradation/ASV-inference), so a genuinely correct match routinely scores
+# below the trained H1 mean and loses to the unreferenced hypotheses. Confirmed universal
+# on real 12S data: 46 of 47 species checked (98%) have their trained mu_score sitting
+# 0.6-1.2 points above their own real production median match score. Root cause hunted
+# carefully before fixing: same-individual/duplicate-accession contamination was tested
+# and REJECTED (restricting to the true MiFish-U amplicon window, 130-210bp, made ties
+# MORE common -- 80.6%, up from 39% unrestricted -- meaning short-barcode monomorphism is
+# real biology, not an artifact; censoring it would remove real signal); anchor_perfect
+# pseudo-data was tested and REJECTED (barely moves H1_Global_Mu, 99.961% -> 99.961%). The
+# real driver: genuine query-side technical noise that reference-vs-reference data
+# structurally cannot see, confirmed via TWO independent non-circular calibration sources
+# (a universal MiFish-primer contaminant -- human DNA, unambiguous true species -- and 46
+# real genera where TaxaExpect occurrence priors confirm exactly one locally-plausible
+# species) both landing on the same ~98.8% real median, ~1.2 points below the trained
+# mean. Marker-transferability explicitly checked and found NOT to hold: the identical
+# method run on real 18S data (thin: only 3 genera/152 confident observations, treat
+# cautiously) found the gap runs ~4.5 points/~74 mismatches vs 12S's ~1.2 points/~2
+# mismatches -- neither a fixed percentage nor a fixed absolute mismatch count transfers
+# between markers; this calibration must be re-run per marker/workflow, never reused.
+# calibrate_query_noise() estimates one marker-wide additive offset (median residual
+# across the confident set) and shifts H1_Global_Mu + every H1_Lookup$mu_score uniformly
+# -- H2/H3 means are defined relative to H1's mean so they move automatically, no separate
+# change needed. Live-validated end to end on the real 13,442-observation 12S dataset,
+# wired into PtConceptionWorkflow_12S_single_site.R (outside this monorepo, not under git)
+# as new Step 7b.5: mean H1 relative likelihood 0.140 -> 0.932, H1 win rate 1.0% -> 77.5%,
+# unreferenced_genus's share of wins 92.9% -> 1.1%. The original motivating case
+# (Sardinops sagax at 99.4% real match, previously losing to unreferenced_genus at raw
+# likelihood 1.0 vs H1's 0.147) now resolves correctly, winning outright at 1.0.
+# `devtools::test()` 667/667, `devtools::check()` clean.
+#
+# A matching sigma (variance) correction was attempted the same session and rejected
+# after real-data testing: applying the identical MAD-based ratio to H1_Sigma and every
+# H1_Lookup$sigma_score helped 0 of 13,442 real observations and hurt 4,878, in some cases
+# (including the Sardinops case) zeroing the correct species' H1 likelihood to exactly 0.
+# Root cause: the confident-observation set is selection-biased toward the *easiest*
+# cases (abundant, well-sampled genera, clean high-depth reads) and understates true
+# population-wide variability -- confirmed directly via a strong real correlation
+# (cor(log(n_confident_obs_per_genus), sd_of_residuals) = -0.90 across 24 real genera).
+# `calibrate_sigma` param added but defaults to FALSE (opt-in, documented negative
+# result) -- see this function's own roxygen "Sigma correction" section for the full
+# record, and TaxaID's memory system ([[project_bayesian_likelihood_calibration_2026_07]])
+# for the complete investigative history including the two rejected root-cause hypotheses.
+#
+# Session 155 continued: real per-observation DNA read depth (from the workflow's
+# `reads_long` table, aggregated per observation_id) confirmed the sigma problem's real
+# fix direction -- NOT a flat population-wide correction, but a genuine per-observation
+# quality covariate: cor(log(depth), |residual|) computed separately per genus (18 real
+# genera, n>=50 each) is consistently negative (range -0.37 to -0.76, mean -0.567) --
+# directly connects to and updates the existing [[project_quality_covariate_deferred]]
+# memory (TaxaAssign's confirmation-quantile design, evaluate_likelihoods()'s own
+# score_likelihood_cov, TaxaMatch's bbox_coverage all flagged there as needing exactly
+# this kind of real per-observation signal). New evidence_col/evidence_max_ratio params
+# added to both calibrate_query_noise() (computes reference_evidence, a global median
+# baseline from the confident set, at calibration time) and evaluate_likelihoods() (reads
+# that baseline at inference time -- deliberately decoupled so a single-observation
+# evaluate_likelihoods() call needs no recalibration). Produces a new parallel
+# score_likelihood_evidence output column (mirrors score_likelihood_cov's existing
+# precedent: point-estimate only, no Monte Carlo variant). Deliberately kept SEPARATE from
+# the existing coverage/min_coverage mechanism rather than overloading it, since coverage
+# is documented as bounded (0,1] while evidence_ratio is symmetric/unbounded around 1.0.
+# Two real problems found and one fixed via live-data testing, in sequence: (1) an
+# uncapped, symmetric 1/sqrt(evidence_ratio) scaling crashed the Sardinops case to exactly
+# 0 (735 real reads vs a baseline of 17 gave a ratio of 43.2, tightening sigma 6.6x enough
+# to Mahalanobis-reject a real, correctly-identified match) -- fixed with
+# evidence_max_ratio (default 1: never tighten sigma, only widen, mirroring
+# score_likelihood_cov's own already-safe convention). (2) NOT fixed, genuinely open: even
+# this safe, capped default is net slightly negative on the same real dataset (27 helped,
+# 2053 hurt) -- widening a Gaussian's sigma always lowers its peak density, which only
+# pays off for observations far from the mean, so uniformly widening every low-depth
+# observation (most of which are still decent, close-to-mean matches) does more harm than
+# good. The depth-noise correlation itself is real and validated; whether Gaussian
+# sigma-modulation is even the right way to use it is not resolved. Four untried
+# alternatives (borderline-only modulation, modulating the outlier-rejection alpha instead
+# of sigma, a heavier-tailed H1 likelihood, or leaving the mechanism built-but-unused for
+# now) recorded in [[project_evidence_ratio_sigma_reentry]] for whoever picks this up
+# next. `devtools::test()` 667/667, `devtools::check()` clean throughout both rounds.
+#
+# Not done this session: Job 2 (modeling unreferenced-relative likelihoods -- H2/H3's own
+# construction, as opposed to H1's calibration fixed here) not started at all. Rollout of
+# calibrate_query_noise() beyond PtConceptionWorkflow_12S_single_site.R to any other real
+# workflow (18S/18S_2/18S_phytoplankton single- and multi-site, Mugu, PtConception 12S
+# multi-site, the TaxaID_Workflow_Template_TEST.R template) not yet done -- user explicitly
+# asked to be reminded of this once tested here; still outstanding as of this writing.
+# Previous update, 2026-07-11 (Session 151 continued once more -- ecosystem soundness-review
 # item 13 (build_sequence_matrix()'s pairwise_distance_to_match) fixed: new opt-in
 # barcode_term param auto-resolves min_seq_len/max_seq_len via
 # TaxaTools::resolve_barcode_lengths() instead of the generic [100, 2000] default. This
@@ -242,6 +330,7 @@ to likelihood output downstream -- it is NOT part of the match object.
 | `score_likelihood_mean` | numeric | Mean across Monte Carlo simulations |
 | `score_likelihood_sd` | numeric | SD across simulations (0 if n_sims = 0) |
 | `score_likelihood_cov` | numeric | Coverage-adjusted point estimate: H1 sigma inflated by `1/sqrt(coverage)`; equals `score_likelihood` when coverage absent or = 1 |
+| `score_likelihood_evidence` | numeric | Evidence-adjusted point estimate (Session 155): H1 sigma scaled by `1/sqrt(evidence_ratio)` per candidate; equals `score_likelihood` when `evidence_col` absent or the model has no `reference_evidence` baseline. **Not validated as a net improvement even at the safe (widen-only) default** — see `TaxaLikely/CLAUDE.md`'s Session 155 note before relying on this column. |
 | `h2_delta_source` | character | `unreferenced_species`/`unreferenced_genus` rows only (`NA` for `specific_candidate`): `"genus_specific"` when the anchor candidate's genus had an `H2_Lookup` entry, `"global_fallback"` when it used the pooled `H2$delta`/`H3$delta` instead (includes every genus with only one referenced species). |
 
 **`$unresolved`** -- rows from the original `match_df` for any `observation_id` that
@@ -290,11 +379,18 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 |---|---|---|---|
 | `correct_training_bias()` | `R/correct_training_bias.R` | Written, wired, live-tested | Divides out an estimated training-count bias (`n_i`) from raw classifier scores before `unreferenced_candidates()`/`assign_scores()` run: `score_i / n_i^tau`. **Revised Session 127**: `tau` is now a single fixed global scalar (default `1.0`, user-tunable), not the Session 125 adaptive per-candidate `tau_i = n_i/(n_i+prior_weight)` — matches Menon et al. 2020's "logit adjustment" correction for long-tailed recognition (literature research found no support for a per-candidate adaptive exponent; the theoretically Fisher-consistent form applies one scalar uniformly). `prior_weight` parameter removed. Missing/zero counts still fall through to the uncorrected score (`tau_used = 0` for that row only) — a deliberate, documented deviation from strict logit adjustment, kept for the same practical reason as before (can't distinguish genuine rarity from a failed lookup). Overwrites `score_col` (default `"score_original"`) in place; preserves the pre-correction value in `score_uncorrected`; adds `n_used`, `tau_used` diagnostics. Pipeline placement: `raw scored_df → correct_training_bias() → unreferenced_candidates() → assign_scores()`. Unit-tested (27 expectations, synthetic fixture). **Wired into `image_acoustic_likelihood_workflow.R` Session 128** (both sections) and live-tested against real classifier output. **Resolved Session 129** (see that session's note below): the Session 128 image number was confounded by an unrelated `assign_scores()` bug; on clean, bug-fixed, 51-photo data, `tau ≈ 0` is optimal for image (correction should not be applied). **Session 133**: acoustic's Session 128/129 `tau ≈ 1`/`tau ≈ 3.6` result did NOT survive a properly powered re-test (24 species/8 confusable clusters/2487 real BirdNET detection windows, vs. the original 3-species/42-window pilot) — pooled acoustic optimum is now `tau ≈ 0` too, though per-cluster results are genuinely heterogeneous (5/8 clusters agree with `tau ≈ 0`; 2 clusters still prefer high `tau` even at ~150-170 windows each, unbracketed at the swept grid's edge). **No current real-data evidence supports `tau > 0` as a default for either data type.** **Session 151**: the package default was changed `1.0` -> `0` accordingly (ecosystem soundness-review item 11) — a caller who does nothing now gets no correction, matching every real result obtained so far, instead of a correction contradicted by every real result obtained so far. `tau` must still be calibrated per data type (and, per Session 133, possibly per taxon cluster) before being raised — see `TaxaLikely/inst/workflows/calibrate_training_bias_tau.R` and `ecosystem_docs/REENTRY_PROMPT_acoustic_tau_calibration_expanded.md` for full method detail. |
 
+### Query-side calibration (Session 155)
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `identify_confident_observations()` | `R/calibrate_query_noise.R` | Written, live-tested | Finds genera where `TaxaExpect` occurrence priors (`theta_mean`) confirm exactly one locally-plausible species, then returns the best-scoring row per `observation_id` for every real observation in one of those genera. Non-circular by construction — plausibility comes from independent occurrence/range data, not from the match scores or likelihood model being calibrated. |
+| `calibrate_query_noise()` | `R/calibrate_query_noise.R` | Written, wired, live-tested | Fixes a real, severe H1 mean-calibration bug: `train_likelihood_model()`'s H1 params come entirely from reference-vs-reference pairs, which cannot see query-side technical noise, so genuinely correct matches routinely score below the trained mean and lose to H2/H3. Estimates one marker-wide additive offset (median residual across the confident-observation set) and shifts `H1_Global_Mu` + every `H1_Lookup$mu_score` uniformly; `H2`/`H3` move automatically since their means are defined relative to H1's. Live-validated on real 12S PtConception data: H1 win rate 1.0% → 77.5% (13,442 real observations). **Do not reuse an offset across markers** — checked directly against real 18S data and found not to transfer as either a fixed percentage or fixed mismatch count. `calibrate_sigma` param (default `FALSE`) attempts an analogous variance correction — **tested and rejected**: helped 0/13,442 real observations, hurt 4,878, some to exactly 0 (confident-set selection bias toward easy/abundant genera understates true population variance). `evidence_col`/`evidence_max_ratio` (paired with the same params on `evaluate_likelihoods()`) is the follow-on per-observation attempt at the same variance problem — built, safe (crash fixed via `evidence_max_ratio` capping), but **not validated as a net improvement** even in the safe direction; see `TaxaLikely/CLAUDE.md`'s Session 155 note and `ecosystem_docs`/TaxaID memory system for the full record, including four untried alternative designs. |
+
 ### Inference (apply model to query observations)
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. Output includes `score_likelihood_cov`: coverage-adjusted point estimate inflating H1 sigma by `1/sqrt(coverage)` per candidate taxon (binomial SE prior); equals `score_likelihood` when coverage column is absent or all 1. **Session 151**: prefers `model_params$H2_Lookup`'s genus-specific H2 delta over the pooled global one when the anchor candidate's genus has an entry (H3 keeps its `+2.0` step on top of whichever delta H2 used); output gains `h2_delta_source` (`"genus_specific"`/`"global_fallback"`) so callers can identify rows that used the cruder pooled approximation. Backward compatible with `model_params` objects trained before this change (no `H2_Lookup` slot -> always `"global_fallback"`). |
+| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. Output includes `score_likelihood_cov`: coverage-adjusted point estimate inflating H1 sigma by `1/sqrt(coverage)` per candidate taxon (binomial SE prior); equals `score_likelihood` when coverage column is absent or all 1. **Session 151**: prefers `model_params$H2_Lookup`'s genus-specific H2 delta over the pooled global one when the anchor candidate's genus has an entry (H3 keeps its `+2.0` step on top of whichever delta H2 used); output gains `h2_delta_source` (`"genus_specific"`/`"global_fallback"`) so callers can identify rows that used the cruder pooled approximation. Backward compatible with `model_params` objects trained before this change (no `H2_Lookup` slot -> always `"global_fallback"`). **Session 155**: new `evidence_col`/`evidence_max_ratio` params, paired with `calibrate_query_noise(evidence_col=)`'s `reference_evidence` baseline — scales H1 sigma by `1/sqrt(evidence_ratio)` per candidate (a real per-observation quality covariate, e.g. DNA read depth), producing a new parallel `score_likelihood_evidence` column (same precedent as `score_likelihood_cov` — point estimate only). Deliberately separate from `coverage`/`min_coverage` (bounded `(0,1]`) since `evidence_ratio` is symmetric/unbounded around 1.0. `evidence_max_ratio` (default `1`) caps the *tightening* direction only — found necessary live: an uncapped ratio crashed a real high-depth observation's H1 likelihood to exactly 0. Even with the cap, **not validated as a net improvement** — see the Query-side calibration section above and `[[project_evidence_ratio_sigma_reentry]]` in TaxaID's memory system. |
 | `filter_top_hypotheses()` | `R/evaluate.R` | Written | Keep finest-rank candidates per query |
 
 ### Reference coverage

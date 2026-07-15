@@ -1,8 +1,8 @@
 utils::globalVariables(c(
   "p_med", "p_b", "score_logit", "gap_logit", "p_norm",
-  "raw_likelihood", "raw_likelihood_cov",
+  "raw_likelihood", "raw_likelihood_cov", "raw_likelihood_evidence",
   "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
-  "score_likelihood_cov",
+  "score_likelihood_cov", "score_likelihood_evidence",
   "hypothesis_type", "taxon_name", "taxon_name_rank",
   "observation_id", "Query_ID",
   ".data", "rank_score", "best_rank_score",
@@ -78,6 +78,8 @@ utils::globalVariables(c(
                                 logit_epsilon       = 1e-4,
                                 max_gap_ceiling     = 5.0,
                                 min_coverage        = NULL,
+                                evidence_col        = NULL,
+                                evidence_max_ratio  = 1,
                                 verbose             = FALSE) {
 
   names(candidate_df) <- tolower(names(candidate_df))
@@ -133,6 +135,8 @@ utils::globalVariables(c(
       p_med = stats::median(p_norm, na.rm = TRUE),
       dplyr::across(dplyr::any_of("coverage"),
                     ~ stats::median(.x, na.rm = TRUE)),
+      dplyr::across(dplyr::any_of(evidence_col),
+                    ~ stats::median(.x, na.rm = TRUE)),
       dplyr::across(dplyr::any_of(existing_rank_cols), dplyr::first),
       .groups = "drop"
     ) |>
@@ -143,14 +147,15 @@ utils::globalVariables(c(
 
   if (nrow(cand) == 0L) {
     return(data.frame(
-      hypothesis_type       = character(0),
-      taxon_name            = character(0),
-      taxon_name_rank       = character(0),
-      score_likelihood      = numeric(0),
-      score_likelihood_mean = numeric(0),
-      score_likelihood_sd   = numeric(0),
-      score_likelihood_cov  = numeric(0),
-      stringsAsFactors      = FALSE
+      hypothesis_type          = character(0),
+      taxon_name               = character(0),
+      taxon_name_rank          = character(0),
+      score_likelihood         = numeric(0),
+      score_likelihood_mean    = numeric(0),
+      score_likelihood_sd      = numeric(0),
+      score_likelihood_cov     = numeric(0),
+      score_likelihood_evidence = numeric(0),
+      stringsAsFactors         = FALSE
     ))
   }
 
@@ -188,7 +193,7 @@ utils::globalVariables(c(
 
   # ---- 4. LIKELIHOOD CALCULATOR (shared by point-estimate and MC sims) ------
   .calc_likelihoods <- function(s_vec, g_vec, p_raw, taxa_names, use_1d,
-                                cov_vec = NULL, genus_vec = NULL) {
+                                cov_vec = NULL, genus_vec = NULL, evidence_vec = NULL) {
     h1_vals <- numeric(length(s_vec))
     has_lookup <- !is.null(model_params$H1_Lookup) &&
       nrow(model_params$H1_Lookup) > 0L
@@ -236,6 +241,27 @@ utils::globalVariables(c(
       if (!is.null(cov_vec) && !is.na(cov_vec[i]) &&
           cov_vec[i] > 0 && cov_vec[i] < 1) {
         use_sigma[1L, 1L] <- use_sigma[1L, 1L] / sqrt(cov_vec[i])
+      }
+
+      # Evidence-quantity inflation/deflation: unlike coverage above, this can
+      # be symmetric in principle -- an observation with MORE supporting
+      # evidence than the model's calibration baseline (evidence_vec[i] > 1)
+      # would TIGHTEN sigma, not just widen it. Capped at evidence_max_ratio
+      # (default 1: never tighten, only widen) because uncapped tightening was
+      # found to crash H1 to zero for a real, correctly-identified, high-depth
+      # observation whose score wasn't EXACTLY at the trained mean (real
+      # biological/technical variability doesn't vanish just because evidence
+      # is abundant) -- the same failure mode `calibrate_query_noise()`'s
+      # rejected flat sigma correction hit, re-triggered per-observation. See
+      # evidence_vec here is that raw per-candidate quantity (e.g. DNA read
+      # depth, image detection count, acoustic recording duration) already
+      # divided by calibrate_query_noise()'s "reference_evidence" baseline, so
+      # a ratio of 1.0 means "typical" and is a no-op. Grounded in the same
+      # binomial-sampling argument as the coverage inflation above
+      # (SE(logit(score)) propto 1/sqrt(N)), applied to N = evidentiary
+      # quantity rather than alignment overlap fraction.
+      if (!is.null(evidence_vec) && !is.na(evidence_vec[i]) && evidence_vec[i] > 0) {
+        use_sigma[1L, 1L] <- use_sigma[1L, 1L] / sqrt(min(evidence_vec[i], evidence_max_ratio))
       }
 
       if (use_1d) {
@@ -323,11 +349,31 @@ utils::globalVariables(c(
                                     cov_vec = if (has_coverage) cand$coverage else NULL,
                                     genus_vec = genus_vec)
 
+  # Evidence-adjusted point estimate: scale sigma_score by 1/sqrt(evidence_ratio)
+  # for each candidate taxon, where evidence_ratio = the candidate's own raw
+  # evidence quantity (e.g. DNA read depth) divided by model_params$Query_
+  # Calibration$reference_evidence (a baseline set once, in bulk, by
+  # calibrate_query_noise() -- never re-derived here, so this works
+  # identically for a single-observation call as for a large batch). NULL
+  # (no-op, identical to primary) when evidence_col isn't supplied, isn't
+  # present in candidate_df, or the model was never calibrated with a
+  # reference_evidence baseline -- never guessed.
+  reference_evidence <- model_params$Query_Calibration$reference_evidence
+  has_evidence <- !is.null(evidence_col) && evidence_col %in% names(cand) &&
+    !is.null(reference_evidence) && !is.na(reference_evidence) && reference_evidence > 0
+  primary_evidence <- .calc_likelihoods(
+    cand$score_logit, cand$gap_logit, cand$p_med, cand$taxon_name,
+    use_1d = is_singleton,
+    evidence_vec = if (has_evidence) cand[[evidence_col]] / reference_evidence else NULL,
+    genus_vec = genus_vec
+  )
+
   # Build result rows for H1
   df_h1 <- cand |>
-    dplyr::mutate(hypothesis_type    = "specific_candidate",
-                  raw_likelihood     = primary$h1,
-                  raw_likelihood_cov = primary_cov$h1)
+    dplyr::mutate(hypothesis_type          = "specific_candidate",
+                  raw_likelihood           = primary$h1,
+                  raw_likelihood_cov       = primary_cov$h1,
+                  raw_likelihood_evidence  = primary_evidence$h1)
 
   # Build H2/H3 rows from the best candidate
   best_i   <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
@@ -342,9 +388,10 @@ utils::globalVariables(c(
   if (!is.null(finest) && finest %in% names(row_h2))
     row_h2[[finest]] <- NA_character_
   row_h2 <- TaxaTools::create_taxon_names(row_h2, rank_cols)
-  row_h2$hypothesis_type    <- "unreferenced_species"
-  row_h2$raw_likelihood     <- primary$h2
-  row_h2$raw_likelihood_cov <- primary$h2   # H2 sigma is global fixed; no inflation
+  row_h2$hypothesis_type         <- "unreferenced_species"
+  row_h2$raw_likelihood          <- primary$h2
+  row_h2$raw_likelihood_cov      <- primary$h2   # H2 sigma is global fixed; no inflation
+  row_h2$raw_likelihood_evidence <- primary$h2   # H2 sigma is global fixed; no inflation
   row_h2$h2_delta_source    <- primary$h2_delta_source
 
   row_h3 <- best_row
@@ -353,9 +400,10 @@ utils::globalVariables(c(
   if (!is.null(second) && second %in% names(row_h3))
     row_h3[[second]] <- NA_character_
   row_h3 <- TaxaTools::create_taxon_names(row_h3, rank_cols)
-  row_h3$hypothesis_type    <- "unreferenced_genus"
-  row_h3$raw_likelihood     <- primary$h3
-  row_h3$raw_likelihood_cov <- primary$h3   # H3 sigma is global fixed; no inflation
+  row_h3$hypothesis_type         <- "unreferenced_genus"
+  row_h3$raw_likelihood          <- primary$h3
+  row_h3$raw_likelihood_cov      <- primary$h3   # H3 sigma is global fixed; no inflation
+  row_h3$raw_likelihood_evidence <- primary$h3   # H3 sigma is global fixed; no inflation
   row_h3$h2_delta_source    <- primary$h2_delta_source
 
   res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
@@ -365,8 +413,9 @@ utils::globalVariables(c(
 
   res_agg <- res |>
     dplyr::group_by(hypothesis_type, taxon_name, taxon_name_rank) |>
-    dplyr::summarise(raw_likelihood     = max(raw_likelihood,     na.rm = TRUE),
-                     raw_likelihood_cov = max(raw_likelihood_cov, na.rm = TRUE),
+    dplyr::summarise(raw_likelihood          = max(raw_likelihood,          na.rm = TRUE),
+                     raw_likelihood_cov      = max(raw_likelihood_cov,      na.rm = TRUE),
+                     raw_likelihood_evidence = max(raw_likelihood_evidence, na.rm = TRUE),
                      # NA for specific_candidate rows (only H2/H3 rows carry this);
                      # each unreferenced_species/unreferenced_genus group has a
                      # single row, so first() is unambiguous.
@@ -374,15 +423,18 @@ utils::globalVariables(c(
                      .groups = "drop")
 
   # ---- 6. NORMALISE TO LIKELIHOOD RATIOS ------------------------------------
-  max_lik     <- max(res_agg$raw_likelihood,     na.rm = TRUE)
-  max_lik_cov <- max(res_agg$raw_likelihood_cov, na.rm = TRUE)
-  if (max_lik     == 0 || is.na(max_lik))     max_lik     <- 1
-  if (max_lik_cov == 0 || is.na(max_lik_cov)) max_lik_cov <- 1
+  max_lik          <- max(res_agg$raw_likelihood,          na.rm = TRUE)
+  max_lik_cov      <- max(res_agg$raw_likelihood_cov,      na.rm = TRUE)
+  max_lik_evidence <- max(res_agg$raw_likelihood_evidence, na.rm = TRUE)
+  if (max_lik          == 0 || is.na(max_lik))          max_lik          <- 1
+  if (max_lik_cov      == 0 || is.na(max_lik_cov))      max_lik_cov      <- 1
+  if (max_lik_evidence == 0 || is.na(max_lik_evidence)) max_lik_evidence <- 1
 
   res_agg <- res_agg |>
     dplyr::mutate(
-      score_likelihood     = raw_likelihood     / max_lik,
-      score_likelihood_cov = raw_likelihood_cov / max_lik_cov
+      score_likelihood          = raw_likelihood          / max_lik,
+      score_likelihood_cov      = raw_likelihood_cov      / max_lik_cov,
+      score_likelihood_evidence = raw_likelihood_evidence / max_lik_evidence
     ) |>
     dplyr::filter(
       score_likelihood >= ratio_threshold |
@@ -462,7 +514,7 @@ utils::globalVariables(c(
   res_agg |>
     dplyr::select(hypothesis_type, taxon_name, taxon_name_rank,
                   score_likelihood, score_likelihood_mean, score_likelihood_sd,
-                  score_likelihood_cov, h2_delta_source) |>
+                  score_likelihood_cov, score_likelihood_evidence, h2_delta_source) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
 
@@ -527,6 +579,33 @@ utils::globalVariables(c(
 #'   `NA` coverage values are always retained (treated as fully covered).
 #'   When `coverage` is absent from `match_df`, this parameter is silently
 #'   ignored.
+#' @param evidence_col Character or `NULL` (default `NULL`). Name of a column
+#'   in `match_df` giving each candidate's raw evidence quantity (e.g. DNA read
+#'   depth, image detection count, acoustic recording duration -- whatever is
+#'   appropriate for the data type). When supplied, `H1` sigma is scaled by
+#'   `1/sqrt(evidence_ratio)`, where `evidence_ratio` is this quantity divided
+#'   by `model_params$Query_Calibration$reference_evidence` -- a baseline set
+#'   once, in bulk, by [calibrate_query_noise()]`(evidence_col=)`. Unlike
+#'   `min_coverage`/coverage inflation above, this is symmetric: an
+#'   observation with *more* evidence than the baseline tightens sigma, not
+#'   just widens it for less. Produces `score_likelihood_evidence`, a parallel
+#'   point-estimate column (no Monte Carlo variant, matching
+#'   `score_likelihood_cov`'s own precedent) -- identical to `score_likelihood`
+#'   when `evidence_col` is absent, not present in a given candidate row, or
+#'   the model was never calibrated with a `reference_evidence` baseline;
+#'   never guessed. Works identically for a single-observation `match_df` as
+#'   for a large batch, since the baseline is read from `model_params`, not
+#'   re-derived from `match_df` itself.
+#' @param evidence_max_ratio Numeric (default `1`). Caps how much
+#'   `evidence_ratio` may *tighten* sigma (values above this are clipped to
+#'   it before the `1/sqrt()` scaling); widening for `evidence_ratio < 1` is
+#'   never capped. Default `1` means evidence never tightens sigma at all,
+#'   only widens -- found necessary empirically: an uncapped ratio crashed a
+#'   real, correctly-identified, high-depth observation's `H1` likelihood to
+#'   exactly 0 (its score wasn't precisely at the trained mean, and real
+#'   variability doesn't vanish just because evidence is abundant). Raise
+#'   above `1` only after validating on your own data, the same way the
+#'   uncapped version was tested and rejected here.
 #' @param verbose Logical (default `FALSE`). When `TRUE`, prints a message
 #'   each time a species falls back to global parameters (no species-specific
 #'   lookup entry found).
@@ -538,9 +617,10 @@ utils::globalVariables(c(
 #'       `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`
 #'       (`"specific_candidate"`, `"unreferenced_species"`, or `"unreferenced_genus"`),
 #'       `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`,
-#'       `score_likelihood_cov`, `h2_delta_source` (`"genus_specific"` or
-#'       `"global_fallback"` for `unreferenced_species`/`unreferenced_genus`
-#'       rows; `NA` for `specific_candidate` rows).  Rows where `taxon_name`
+#'       `score_likelihood_cov`, `score_likelihood_evidence`, `h2_delta_source`
+#'       (`"genus_specific"` or `"global_fallback"` for
+#'       `unreferenced_species`/`unreferenced_genus` rows; `NA` for
+#'       `specific_candidate` rows).  Rows where `taxon_name`
 #'       resolved to `NA` are excluded.  See Details for `score_likelihood_cov`
 #'       and `h2_delta_source`.}
 #'     \item{`$unresolved`}{Rows from `match_df` for any `observation_id` that
@@ -682,6 +762,8 @@ evaluate_likelihoods <- function(match_df,
                                  logit_epsilon       = 1e-4,
                                  max_gap_ceiling     = 5.0,
                                  min_coverage        = NULL,
+                                 evidence_col        = NULL,
+                                 evidence_max_ratio  = 1,
                                  verbose             = FALSE) {
   if (!is.data.frame(match_df))
     stop("match_df must be a data frame")
@@ -707,6 +789,7 @@ evaluate_likelihoods <- function(match_df,
     stop("rank_system must be a non-empty character vector (coarse to fine)")
 
   names(match_df) <- tolower(names(match_df))
+  if (!is.null(evidence_col)) evidence_col <- tolower(evidence_col)
 
   if (!"observation_id" %in% names(match_df))
     stop("match_df must have an 'observation_id' column")
@@ -740,6 +823,8 @@ evaluate_likelihoods <- function(match_df,
         logit_epsilon       = logit_epsilon,
         max_gap_ceiling     = max_gap_ceiling,
         min_coverage        = min_coverage,
+        evidence_col        = evidence_col,
+        evidence_max_ratio  = evidence_max_ratio,
         verbose             = verbose
       ),
       error = function(e) {
@@ -806,7 +891,8 @@ evaluate_likelihoods <- function(match_df,
   likelihoods <- dplyr::select(out, observation_id, taxon_name, taxon_name_rank,
                                hypothesis_type, score_likelihood,
                                score_likelihood_mean, score_likelihood_sd,
-                               score_likelihood_cov, h2_delta_source)
+                               score_likelihood_cov, score_likelihood_evidence,
+                               h2_delta_source)
 
   # Propagate is_restored from match_df when present.
   # For each (observation_id, taxon_name), is_restored = TRUE only when ALL

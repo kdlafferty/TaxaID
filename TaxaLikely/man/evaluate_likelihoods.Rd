@@ -16,6 +16,8 @@ evaluate_likelihoods(
   logit_epsilon = 1e-04,
   max_gap_ceiling = 5,
   min_coverage = NULL,
+  evidence_col = NULL,
+  evidence_max_ratio = 1,
   verbose = FALSE
 )
 }
@@ -74,6 +76,35 @@ Typical values: \code{0.8} (80\\% query coverage) for DNA BLAST results.
 When \code{coverage} is absent from \code{match_df}, this parameter is silently
 ignored.}
 
+\item{evidence_col}{Character or \code{NULL} (default \code{NULL}). Name of a column
+in \code{match_df} giving each candidate's raw evidence quantity (e.g. DNA read
+depth, image detection count, acoustic recording duration -- whatever is
+appropriate for the data type). When supplied, \code{H1} sigma is scaled by
+\code{1/sqrt(evidence_ratio)}, where \code{evidence_ratio} is this quantity divided
+by \code{model_params$Query_Calibration$reference_evidence} -- a baseline set
+once, in bulk, by \code{\link[=calibrate_query_noise]{calibrate_query_noise()}}\verb{(evidence_col=)}. Unlike
+\code{min_coverage}/coverage inflation above, this is symmetric: an
+observation with \emph{more} evidence than the baseline tightens sigma, not
+just widens it for less. Produces \code{score_likelihood_evidence}, a parallel
+point-estimate column (no Monte Carlo variant, matching
+\code{score_likelihood_cov}'s own precedent) -- identical to \code{score_likelihood}
+when \code{evidence_col} is absent, not present in a given candidate row, or
+the model was never calibrated with a \code{reference_evidence} baseline;
+never guessed. Works identically for a single-observation \code{match_df} as
+for a large batch, since the baseline is read from \code{model_params}, not
+re-derived from \code{match_df} itself.}
+
+\item{evidence_max_ratio}{Numeric (default \code{1}). Caps how much
+\code{evidence_ratio} may \emph{tighten} sigma (values above this are clipped to
+it before the \code{1/sqrt()} scaling); widening for \code{evidence_ratio < 1} is
+never capped. Default \code{1} means evidence never tightens sigma at all,
+only widens -- found necessary empirically: an uncapped ratio crashed a
+real, correctly-identified, high-depth observation's \code{H1} likelihood to
+exactly 0 (its score wasn't precisely at the trained mean, and real
+variability doesn't vanish just because evidence is abundant). Raise
+above \code{1} only after validating on your own data, the same way the
+uncapped version was tested and rejected here.}
+
 \item{verbose}{Logical (default \code{FALSE}). When \code{TRUE}, prints a message
 each time a species falls back to global parameters (no species-specific
 lookup entry found).}
@@ -86,9 +117,10 @@ hypothesis, suitable for input to \code{TaxaAssign::compute_posterior()}:
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type}
 (\code{"specific_candidate"}, \code{"unreferenced_species"}, or \code{"unreferenced_genus"}),
 \code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd},
-\code{score_likelihood_cov}, \code{h2_delta_source} (\code{"genus_specific"} or
-\code{"global_fallback"} for \code{unreferenced_species}/\code{unreferenced_genus}
-rows; \code{NA} for \code{specific_candidate} rows).  Rows where \code{taxon_name}
+\code{score_likelihood_cov}, \code{score_likelihood_evidence}, \code{h2_delta_source}
+(\code{"genus_specific"} or \code{"global_fallback"} for
+\code{unreferenced_species}/\code{unreferenced_genus} rows; \code{NA} for
+\code{specific_candidate} rows).  Rows where \code{taxon_name}
 resolved to \code{NA} are excluded.  See Details for \code{score_likelihood_cov}
 and \code{h2_delta_source}.}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
