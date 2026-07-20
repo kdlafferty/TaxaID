@@ -162,6 +162,17 @@ exists so a downstream consumer can distinguish it from a
 genuinely evidence-resolved species call, not to flag it as an
 error. \code{NA} when \code{winner_hypothesis_type} is \code{NA}; \code{FALSE}
 otherwise.}
+\item{\code{winner_absolute_fit_pvalue}}{Numeric. The winning hypothesis's
+own one-sided absolute-fit p-value, passed through unchanged from
+\code{TaxaLikely::evaluate_likelihoods()} -- answers "is this call's own
+fit believable in absolute terms," independent of how it compared to
+competing hypotheses. \code{NA} when \code{absolute_fit_pvalue} is absent from
+\code{posterior_df} (e.g. any upstream call that predates that column, or
+\code{assign_taxa_llm()} input) or when \code{consensus_taxon} is \code{NA}. Never
+changes \code{consensus_taxon}/\code{consensus_rank} itself -- a downstream
+consumer wanting to flag a weak-fit winner should read this column
+directly (see \code{TaxaFlag::add_posthoc_assessment()}'s
+\code{"unsupported_rank"} category).}
 }
 }
 \description{

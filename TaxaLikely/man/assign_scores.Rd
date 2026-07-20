@@ -59,12 +59,12 @@ Posteriors are proportional to priors.}
 \code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}}, which pre-imputes scores for
 restored rows.  No per-observation aggregation is performed.}
 \item{\code{"probability"}}{Neural-net softmax outputs (e.g., BirdNET
-multi-candidate output, iNaturalist CV scores) already on a 0–1 scale.
+multi-candidate output, iNaturalist CV scores) already on a 0-1 scale.
 H1 scores are ratio-normalized (\eqn{/} max) so the best candidate
 always receives \code{score_likelihood = 1.0}.  H2/H3 receive the
 median H1 \code{score_likelihood} among same-genus (H2) or same-family
 (H3) candidates; overall median as fallback.}
-\item{\code{"similarity_softmax"}}{Similarity scores (0–100 or 0–1) with
+\item{\code{"similarity_softmax"}}{Similarity scores (0-100 or 0-1) with
 no trained statistical model available.  Scores are normalized to (0,1)
 via \code{.normalize_scores()}, exponentiated
 (\eqn{e^{sharpness \times score_{norm}}}), then ratio-normalized.

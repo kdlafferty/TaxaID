@@ -1,5 +1,5 @@
 # tests/testthat/test-fetch.R
-# Tests for fetch_ncbi_reference_sequences() and read_reference_fasta() —
+# Tests for fetch_ncbi_reference_sequences() and read_reference_fasta() --
 # input validation only (network tests are separate)
 
 # ---- fetch_ncbi_reference_sequences validation --------------------------------
@@ -15,28 +15,6 @@ test_that("fetch_ncbi_reference_sequences errors on missing barcode_term", {
   expect_error(
     fetch_ncbi_reference_sequences(taxa = "Gadidae"),
     'argument "barcode_term" is missing'
-  )
-})
-
-# ---- fetch_reference_sequences() deprecated alias -----------------------------
-
-test_that("fetch_reference_sequences is deprecated but still forwards correctly", {
-  expect_warning(
-    expect_error(
-      fetch_reference_sequences(taxa = 123, barcode_term = "COI"),
-      "character"
-    ),
-    "deprecated"
-  )
-})
-
-test_that("fetch_reference_sequences forwards all arguments to the renamed function", {
-  expect_warning(
-    expect_error(
-      fetch_reference_sequences(taxa = "Gadidae"),
-      'argument "barcode_term" is missing'
-    ),
-    "deprecated"
   )
 })
 
@@ -267,6 +245,45 @@ test_that(".build_search_term ORs multiple barcode terms", {
   expect_true(grepl("12S\\[All Fields\\]", out))
   expect_true(grepl("16S\\[All Fields\\]", out))
   expect_true(grepl(" OR ", out))
+})
+
+test_that(".build_search_term ORs in ribosomal-subunit synonyms for bare 12S/16S", {
+  # Real, confirmed gap (Session 154 / Mugu debugging): many GenBank 12S/16S
+  # submissions describe the gene as "small/large subunit ribosomal RNA"
+  # rather than literally "12S"/"16S" -- a bare marker-name search misses
+  # them entirely. Regression-locks the fix, not just the pre-existing
+  # substring checks above (which still pass unchanged since "12S[All Fields]"
+  # remains one of several OR'd clauses).
+  bst <- TaxaLikely:::.build_search_term
+  out12 <- bst("Gadidae", "12S")
+  expect_true(grepl('"small subunit ribosomal RNA"\\[All Fields\\]', out12))
+  expect_true(grepl('"12S ribosomal RNA"\\[All Fields\\]', out12))
+  expect_true(grepl('"12S rRNA"\\[All Fields\\]', out12))
+
+  out16 <- bst("Gadidae", "16S")
+  expect_true(grepl('"large subunit ribosomal RNA"\\[All Fields\\]', out16))
+  expect_true(grepl('"16S ribosomal RNA"\\[All Fields\\]', out16))
+  expect_true(grepl('"16S rRNA"\\[All Fields\\]', out16))
+})
+
+test_that(".build_search_term does NOT apply ribosomal-subunit synonyms to 18S", {
+  # Deliberate scope limit: "small subunit ribosomal RNA" is ambiguous between
+  # mitochondrial 12S and nuclear 18S -- reusing it for 18S would trade missed
+  # true positives for new false positives, a different tradeoff needing its
+  # own design (not attempted here).
+  bst <- TaxaLikely:::.build_search_term
+  out18 <- bst("Gadidae", "18S")
+  expect_false(grepl("subunit ribosomal RNA", out18))
+  expect_true(grepl("18S\\[All Fields\\]", out18))
+})
+
+test_that(".build_search_term leaves GENE-tagged and primer-name terms unaffected by the synonym fix", {
+  bst <- TaxaLikely:::.build_search_term
+  expect_identical(bst("Gadidae", "COI"), "Gadidae[Organism] AND COI[GENE]")
+  expect_identical(
+    bst("Gadidae", "MiFishU"),
+    "Gadidae[Organism] AND (MiFishU[All Fields] OR 12S[All Fields])"
+  )
 })
 
 # ---- .parse_lat_lon (internal) ------------------------------------------------

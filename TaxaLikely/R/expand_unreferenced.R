@@ -76,15 +76,32 @@ utils::globalVariables(c("hypothesis_type"))
 #' @param unreferenced_df Data frame of unreferenced but plausible species.
 #'   Must contain columns `species` (binomial name), `genus`, and `family`.
 #'   Built from TaxaExpect rows confirmed as unreferenced by
-#'   [audit_barcode_coverage()].
+#'   [audit_barcode_coverage()]. May optionally contain an `observation_id`
+#'   column (Session 159): a row with `NA` (or when the column is absent
+#'   entirely) applies to every observation sharing its genus/family, the
+#'   original global-list behavior; a row with a real `observation_id`
+#'   applies only to that one observation. This lets a caller inject a
+#'   species that IS globally referenced (so it would never appear via
+#'   [audit_barcode_coverage()]) but lacks reference evidence covering one
+#'   specific query's region -- see
+#'   [restore_suppressed_candidates()]'s `check_regional_overlap` mechanism,
+#'   whose rejected congeners are returned in exactly this shape via
+#'   `attr(result, "regional_unreferenced")`.
 #'
 #' @return `likelihood_df` with generic `"unreferenced_species"` and
 #'   `"unreferenced_genus"` rows replaced by named species rows where matches
-#'   are found.  Column set is unchanged; new rows carry `NA` for any extra
-#'   columns in the input (e.g. `constraint_applied`).
+#'   are found.  Column set is unchanged; new rows carry `NA` for most extra
+#'   columns in the input (e.g. `constraint_applied`, which is genuinely
+#'   row-specific), except `score_likelihood_cov`, `score_likelihood_evidence`,
+#'   and `h2_delta_source` when present -- these, like `score_likelihood`/
+#'   `score_likelihood_mean`/`score_likelihood_sd`, describe the shared H2/H3
+#'   value itself (identical across every expanded species under one generic
+#'   row) rather than anything row-specific, so they are copied through too.
 #'
 #' @seealso [TaxaAssign::compute_posterior()], [evaluate_likelihoods()],
-#'   [audit_barcode_coverage()], [apply_coverage_constraints()]
+#'   [audit_barcode_coverage()], [apply_coverage_constraints()],
+#'   [restore_suppressed_candidates()] for the `check_regional_overlap`
+#'   mechanism that produces an observation-scoped `unreferenced_df` addition
 #'
 #' @examples
 #' \dontrun{
@@ -118,7 +135,9 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   miss_unref <- setdiff(needed_unref, tolower(names(unreferenced_df)))
   if (length(miss_unref) > 0L)
     stop(sprintf(
-      "unreferenced_df is missing required columns: %s. These are needed because unreferenced species expansion matches species to genera and uses family for higher-rank insertion.",
+      paste0("unreferenced_df is missing required columns: %s. These are needed because ",
+             "unreferenced species expansion matches species to genera and uses family for ",
+             "higher-rank insertion."),
       paste(miss_unref, collapse = ", ")
     ))
 
@@ -137,6 +156,17 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   unref           <- unreferenced_df
   unref$genus_lc  <- tolower(trimws(unref$genus))
   unref$family_lc <- tolower(trimws(unref$family))
+  # Session 159: observation_id is optional. A row with NA (or an absent
+  # column entirely) applies to every observation sharing its genus/family --
+  # the original, global-unreferenced-species-list behavior. A row with a
+  # real observation_id applies ONLY to that one observation. This is what
+  # lets restore_suppressed_candidates(check_regional_overlap = TRUE) inject
+  # a species that IS globally referenced (so it would never appear in a
+  # normal audit_barcode_coverage()-derived unreferenced_df) but has no
+  # reference evidence covering this SPECIFIC query's region -- without
+  # treating it as globally unreferenced for every other observation where
+  # it's a perfectly good, already-referenced H1 candidate.
+  if (!"observation_id" %in% names(unref)) unref$observation_id <- NA_character_
 
   # ---- split by hypothesis type -----------------------------------------------
   h1_rows <- dplyr::filter(likelihood_df, hypothesis_type == "specific_candidate")
@@ -179,11 +209,15 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
 
       if (h2_genus_lc %in% h1_genus_rank_lc) {
         # Genus already covered by a genus-rank specific_candidate -- drop all.
-        genus_sp_all <- unref[unref$genus_lc == h2_genus_lc, , drop = FALSE]
+        genus_sp_all <- unref[unref$genus_lc == h2_genus_lc &
+                              (is.na(unref$observation_id) | unref$observation_id == sid),
+                              , drop = FALSE]
         n_h2_covered     <- n_h2_covered     + max(nrow(genus_sp_all), 1L)
         n_h2_obs_covered <- n_h2_obs_covered + 1L
       } else {
-        genus_sp <- unref[unref$genus_lc == h2_genus_lc, , drop = FALSE]
+        genus_sp <- unref[unref$genus_lc == h2_genus_lc &
+                          (is.na(unref$observation_id) | unref$observation_id == sid),
+                          , drop = FALSE]
         if (nrow(genus_sp) > 0L) {
           # Species-level suppression: only drop species already H1 for this observation.
           already_h1 <- tolower(trimws(genus_sp$species)) %in% h1_species_lc
@@ -200,6 +234,13 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
               score_likelihood_sd   = h2$score_likelihood_sd[1L],
               stringsAsFactors      = FALSE
             )
+            # These, like the three likelihood columns above, are per-observation
+            # diagnostics describing the shared H2 value itself -- identical across
+            # every expanded species, not row-specific like constraint_applied --
+            # so they are copied through rather than left NA.
+            for (.col in c("score_likelihood_cov", "score_likelihood_evidence", "h2_delta_source")) {
+              if (.col %in% names(h2)) new_rows[[1L]][[.col]] <- h2[[.col]][1L]
+            }
             n_h2_species <- n_h2_species + nrow(genus_sp_keep)
           } else {
             # All unreferenced species in genus already H1 -- no expansion for this obs.
@@ -221,7 +262,8 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         unref$family_lc == h3_family_lc &
         !unref$genus_lc %in% h2_genus_lc &
         !tolower(trimws(unref$species)) %in% h1_species_lc &
-        !unref$genus_lc %in% h1_genus_rank_lc,
+        !unref$genus_lc %in% h1_genus_rank_lc &
+        (is.na(unref$observation_id) | unref$observation_id == sid),
         , drop = FALSE
       ]
 
@@ -229,7 +271,8 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         unref$family_lc == h3_family_lc &
         !unref$genus_lc %in% h2_genus_lc &
         (tolower(trimws(unref$species)) %in% h1_species_lc |
-         unref$genus_lc %in% h1_genus_rank_lc),
+         unref$genus_lc %in% h1_genus_rank_lc) &
+        (is.na(unref$observation_id) | unref$observation_id == sid),
         na.rm = TRUE
       )
 
@@ -244,6 +287,11 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
           score_likelihood_sd   = h3$score_likelihood_sd[1L],
           stringsAsFactors      = FALSE
         )
+        # See the matching H2 comment above -- these are shared per-observation
+        # diagnostics, not row-specific, so they are copied through too.
+        for (.col in c("score_likelihood_cov", "score_likelihood_evidence", "h2_delta_source")) {
+          if (.col %in% names(h3)) new_rows[[2L]][[.col]] <- h3[[.col]][1L]
+        }
         n_h3_species <- n_h3_species + nrow(family_sp)
       }
       # else: no locally-plausible unreferenced species -- drop the generic H3 row
@@ -253,12 +301,14 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   }
 
   expanded <- dplyr::bind_rows(result_list)
-  exp_types <- if (nrow(expanded) > 0L) expanded$hypothesis_type else character(0L)
+  .any_hyp_type <- function(x, hyp_type) {
+    nrow(x) > 0L && any(x$hypothesis_type == hyp_type)
+  }
   n_h2_generic_dropped <- nrow(h2_rows) -
-    sum(vapply(result_list, function(x) nrow(x) > 0L && any(x$hypothesis_type == "unreferenced_species"), logical(1L))) -
+    sum(vapply(result_list, .any_hyp_type, logical(1L), hyp_type = "unreferenced_species")) -
     n_h2_obs_covered
   n_h3_generic_dropped <- nrow(h3_rows) -
-    sum(vapply(result_list, function(x) nrow(x) > 0L && any(x$hypothesis_type == "unreferenced_genus"), logical(1L)))
+    sum(vapply(result_list, .any_hyp_type, logical(1L), hyp_type = "unreferenced_genus"))
 
   message(sprintf(
     paste0("expand_unreferenced_hypotheses: H2 -> %d named species rows ",

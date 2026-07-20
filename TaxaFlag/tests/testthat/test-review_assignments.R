@@ -239,6 +239,148 @@ test_that("graceful handling of partial LLM response", {
 
 
 # ===========================================================================
+# Retry-on-truncation and max_tokens
+# ===========================================================================
+
+test_that("truncated batch is recovered via automatic retry with smaller sub-batches", {
+  call_sizes <- integer(0)
+
+  retry_fn <- function(prompt_str, ...) {
+    # Only the "TAXA TO REVIEW:" block uses "- " lines for taxa; GUIDELINES
+    # above it also has "- " bullet lines, so slice those out first.
+    taxa_section <- sub("(?s).*TAXA TO REVIEW:\\n", "", prompt_str, perl = TRUE)
+    taxa_lines <- regmatches(taxa_section, gregexpr("(?m)^- (.+)$", taxa_section, perl = TRUE))[[1]]
+    n <- length(taxa_lines)
+    call_sizes <<- c(call_sizes, n)
+
+    build_obj <- function(line) {
+      name <- sub("^- ", "", line)
+      name <- sub("\\s*\\(.*\\)$", "", name)
+      sprintf(
+        '{"taxon_name": "%s", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+        name
+      )
+    }
+    objs <- vapply(taxa_lines, build_obj, character(1))
+
+    if (n > 2L) {
+      # Simulate a response cut off by max_tokens: only the first 2 objects,
+      # no closing bracket.
+      paste0("[\n", paste(objs[seq_len(2L)], collapse = ",\n"))
+    } else {
+      paste0("[\n", paste(objs, collapse = ",\n"), "\n]")
+    }
+  }
+
+  expect_silent(
+    result <- review_assignments(
+      df            = mock_consensus,
+      taxon_col     = "consensus_taxon",
+      context       = mock_context,
+      llm_fn        = retry_fn,
+      max_retries   = 3L,
+      pause_seconds = 0,
+      verbose       = FALSE
+    )
+  )
+
+  # 5 unique taxa truncate at batch size 5; retry-splitting keeps halving
+  # until every leaf batch is small enough (<=2) to return a complete response.
+  expect_false(any(is.na(result$habitat_plausibility)))
+  expect_true(any(call_sizes > 2L))
+  expect_true(any(call_sizes <= 2L))
+})
+
+test_that("hard llm_fn errors are not retried -- a smaller batch can't fix a broken call", {
+  call_count <- 0L
+  fail_fn <- function(prompt_str, ...) {
+    call_count <<- call_count + 1L
+    stop("API error")
+  }
+
+  expect_warning(
+    result <- review_assignments(
+      df            = mock_consensus,
+      taxon_col     = "consensus_taxon",
+      context       = mock_context,
+      llm_fn        = fail_fn,
+      max_retries   = 3L,
+      pause_seconds = 0,
+      verbose       = FALSE
+    ),
+    "LLM call failed"
+  )
+
+  expect_equal(call_count, 1L)
+  expect_true(all(is.na(result$habitat_plausibility)))
+})
+
+test_that("max_retries = 0 disables retry, matching pre-retry behavior", {
+  call_count <- 0L
+  partial_fn <- function(prompt_str, ...) {
+    call_count <<- call_count + 1L
+    '[
+      {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
+    ]'
+  }
+
+  expect_warning(
+    result <- review_assignments(
+      df            = mock_consensus,
+      taxon_col     = "consensus_taxon",
+      context       = mock_context,
+      llm_fn        = partial_fn,
+      max_retries   = 0L,
+      pause_seconds = 0,
+      verbose       = FALSE
+    ),
+    "omitted"
+  )
+
+  expect_equal(call_count, 1L)
+  bt <- result[result$consensus_taxon == "Bos taurus", ]
+  expect_true(is.na(bt$habitat_plausibility))
+})
+
+test_that("max_tokens is forwarded to llm_fn when supplied", {
+  captured <- NULL
+  capture_fn <- function(prompt_str, ...) {
+    captured <<- list(...)
+    mock_llm_fn(prompt_str)
+  }
+
+  review_assignments(
+    df         = mock_consensus,
+    taxon_col  = "consensus_taxon",
+    context    = mock_context,
+    llm_fn     = capture_fn,
+    max_tokens = 6000L,
+    verbose    = FALSE
+  )
+
+  expect_equal(captured$max_tokens, 6000L)
+})
+
+test_that("max_tokens defaults to NULL and is not forwarded to llm_fn", {
+  captured <- list(untouched = TRUE)
+  capture_fn <- function(prompt_str, ...) {
+    captured <<- list(...)
+    mock_llm_fn(prompt_str)
+  }
+
+  review_assignments(
+    df        = mock_consensus,
+    taxon_col = "consensus_taxon",
+    context   = mock_context,
+    llm_fn    = capture_fn,
+    verbose   = FALSE
+  )
+
+  expect_equal(length(captured), 0L)
+})
+
+
+# ===========================================================================
 # Input validation
 # ===========================================================================
 

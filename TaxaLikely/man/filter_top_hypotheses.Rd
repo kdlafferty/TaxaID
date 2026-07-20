@@ -20,8 +20,8 @@ Filtered version of \code{likelihood_df}.
 \description{
 After \code{evaluate_likelihoods()}, each query may have specific candidates at
 multiple ranks (e.g., both species- and genus-level hits).  This function
-retains only the finest-rank specific candidates — coarser candidates are
-redundant when a finer-rank hit exists — while keeping all
+retains only the finest-rank specific candidates -- coarser candidates are
+redundant when a finer-rank hit exists -- while keeping all
 \code{"unreferenced_species"} and \code{"unreferenced_genus"} rows.
 }
 \details{
@@ -34,7 +34,7 @@ every finer-rank row for the same genus in the same observation has
 workflows: the genus row is a real LCA-collapsed identification, and the
 species rows were added purely by restoration (not original BLAST hits).
 Preserving the genus row allows \code{\link[TaxaAssign:join_priors]{TaxaAssign::join_priors()}} to expand it into
-named species hypotheses — including locally-expected species absent from the
+named species hypotheses -- including locally-expected species absent from the
 reference library.  The all-restored species rows are simultaneously dropped
 to prevent double-counting after expansion.
 }

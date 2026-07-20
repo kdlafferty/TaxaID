@@ -140,7 +140,9 @@ trim_to_amplicon <- function(reference_df,
 
   if (is.null(primer_fwd)) {
     if (is.null(barcode_term))
-      stop("trim_to_amplicon: supply barcode_term (to look up a registered primer pair via TaxaTools::resolve_barcode_primers()), or supply primer_fwd/primer_rev directly.")
+      stop(paste0("trim_to_amplicon: supply barcode_term (to look up a registered primer pair ",
+                  "via TaxaTools::resolve_barcode_primers()), or supply primer_fwd/primer_rev ",
+                  "directly."))
     primer_info <- TaxaTools::resolve_barcode_primers(barcode_term)
     primer_fwd  <- primer_info$fwd
     primer_rev  <- primer_info$rev
@@ -148,7 +150,10 @@ trim_to_amplicon <- function(reference_df,
 
   if (is.null(min_len) || is.null(max_len)) {
     if (is.null(barcode_term))
-      stop("trim_to_amplicon: supply min_len and max_len directly, or barcode_term to auto-resolve them -- these determine which sequences are already barcode-length (left untouched) versus over-length (checked for the amplicon region).")
+      stop(paste0("trim_to_amplicon: supply min_len and max_len directly, or barcode_term to ",
+                  "auto-resolve them -- these determine which sequences are already ",
+                  "barcode-length (left untouched) versus over-length (checked for the ",
+                  "amplicon region)."))
   }
   lens    <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len = min_len, max_len = max_len)
   min_len <- lens[["min_bp"]]
@@ -203,7 +208,10 @@ trim_to_amplicon <- function(reference_df,
 
   if (verbose)
     message(sprintf(
-      "trim_to_amplicon: extracted the amplicon region from %d of %d over-length sequence(s); %d could not be trimmed (primer site(s) not found, or found an implausible span) and remain over-length -- these will still be excluded downstream by build_sequence_matrix()'s own min_seq_len/max_seq_len filter.",
+      paste0("trim_to_amplicon: extracted the amplicon region from %d of %d over-length ",
+             "sequence(s); %d could not be trimmed (primer site(s) not found, or found an ",
+             "implausible span) and remain over-length -- these will still be excluded ",
+             "downstream by build_sequence_matrix()'s own min_seq_len/max_seq_len filter."),
       n_trimmed, length(idx_to_check), length(idx_to_check) - n_trimmed
     ))
 

@@ -997,13 +997,73 @@ match_obj_restored <- TaxaMatch::convert_taxonomy_backbone(
 )
 
 # 6b. Train likelihood model --------------------------------------------------
+# score_transform = "sqrt_mismatch" (Session 158, TaxaLikely/CLAUDE.md): the
+# package's original logit scale gets genus-tightness qualitatively backwards
+# for unreferenced-relative (H2/H3) modeling -- a tight, hard-to-distinguish
+# genus can show HIGHER logit-scale congener variance than a loose one, the
+# opposite of the truth on the raw match-proportion scale, because logit's
+# derivative diverges fastest exactly where real barcode matches concentrate
+# (near 100% identity). Validated on real 12S congener data
+# (PtConceptionWorkflow_12S_single_site.R, outside this monorepo); this
+# template's own tiny bundled fixture is too small to re-validate the
+# direction independently, but the underlying mechanism is a property of the
+# transform, not of one specific dataset. H1's own fitting moves onto this
+# scale too, since H1/H2/H3 are compared via density ratios at one shared
+# point.
 lik_model <- TaxaLikely::train_likelihood_model(
-  raw_df       = seq_matrix,
-  rank_system  = c("family", "genus", "species"),
-  prior_weight = 10.0
+  raw_df          = seq_matrix,
+  rank_system     = c("family", "genus", "species"),
+  prior_weight    = 10.0,
+  score_transform = "sqrt_mismatch"
 )
 TaxaLikely::interpret_model(lik_model)
 .save(lik_model, "lik_model")
+
+# 6b.5. Real per-observation read depth (evidence_col quality covariate) ------
+# detections (Section 2.5) is reads_long already filtered to n_reads > 0 and
+# relabeled to the ASV_N observation_id convention used by match_obj_restored
+# -- used here as a real, non-circular per-observation quality signal (Session
+# 155/156, TaxaLikely/CLAUDE.md): low-depth ASVs are noisier, so their H1 sigma
+# can be selectively widened at inference time.
+read_depth_per_obs <- detections |>
+  dplyr::group_by(observation_id) |>
+  dplyr::summarise(read_depth = sum(n_reads, na.rm = TRUE), .groups = "drop")
+match_obj_restored <- match_obj_restored |>
+  dplyr::left_join(read_depth_per_obs, by = "observation_id")
+
+# 6b.6. Calibrate H1 to real query-vs-reference behavior ----------------------
+# train_likelihood_model() estimates H1 entirely from reference-vs-reference
+# pairs, which carry none of the technical noise (PCR/sequencing/degradation/
+# ASV-inference) a real query picks up -- so a genuinely correct match routinely
+# scores below the trained H1 mean, letting the unreferenced hypotheses
+# out-compete the correct referenced species. calibrate_query_noise() estimates
+# one marker-wide additive correction from observations whose species can be
+# identified with high confidence from taxaexpect_priors' occurrence data
+# (independent of match_obj's own scores, so this is non-circular), then shifts
+# H1_Global_Mu and H1_Lookup$mu_score uniformly -- H2/H3 (defined relative to
+# the shifted mean) move with it. Do not reuse this offset on a different
+# marker/dataset -- re-estimate per workflow (see TaxaLikely/CLAUDE.md).
+# evidence_col = "read_depth" additionally establishes the reference_evidence
+# baseline that evaluate_likelihoods()'s evidence-based sigma rescale reads
+# below. This template's tiny bundled fixture may not have enough confident
+# observations to clear calibrate_query_noise()'s min_confident_obs default --
+# if it warns and skips calibration, that's expected for this small a dataset,
+# not a bug.
+#
+# offset_form = "constant" is requested deliberately, NOT the package-default
+# affine ("linear") form: the bundled fixture has far too few referenced species
+# to fit the affine slope, so "linear" would only fall back to "constant" with a
+# warning. Real production workflows on adequately-referenced data should use the
+# default "linear" (level-aware) recalibration -- see the PtConception/Mugu
+# workflows and TaxaLikely supplemental methods Section 11A.
+lik_model <- TaxaLikely::calibrate_query_noise(
+  model_params = lik_model,
+  match_df     = match_obj_restored,
+  priors       = taxaexpect_priors,
+  evidence_col = "read_depth",
+  offset_form  = "constant"
+)
+.save(lik_model, "lik_model_calibrated")
 
 # 6c. Evaluate likelihoods ----------------------------------------------------
 # Session 121 (2026-06-26) inference improvements active by default:
@@ -1018,12 +1078,17 @@ TaxaLikely::interpret_model(lik_model)
 #                          comparison to H2/H3 likelihoods. Using ratio_threshold > 0
 #                          creates a cross-rank comparison (H1 vs H2/H3 density) that
 #                          can suppress legitimate but weak H1 matches.
+# evidence_col/evidence_max_ratio add a parallel score_likelihood_evidence
+# column (gated sigma rescale by real read depth) -- additive, does not change
+# what feeds join_priors()/compute_posterior() downstream.
 lik_result <- TaxaLikely::evaluate_likelihoods(
-  match_df        = match_obj_restored,
-  model_params    = lik_model,
-  rank_system     = c("family", "genus", "species"),
-  n_sims          = 200L,
-  ratio_threshold = 0
+  match_df           = match_obj_restored,
+  model_params       = lik_model,
+  rank_system        = c("family", "genus", "species"),
+  n_sims             = 200L,
+  ratio_threshold    = 0,
+  evidence_col       = "read_depth",
+  evidence_max_ratio = 1
 )
 message(sprintf("  %d likelihood rows; %d unresolved ESVs.",
                 nrow(lik_result$likelihoods),
@@ -1152,8 +1217,8 @@ posterior_df <- TaxaAssign::compute_posterior(
 .save(posterior_df, "posterior_df")
 
 consensus_df <- TaxaAssign::posterior_consensus(
-  posterior_df = posterior_df,
-  rank_system  = fgs
+  posterior_df        = posterior_df,
+  rank_system         = fgs
 )
 
 # Refine priors for still-unresolved observations using confirmed-present
@@ -1171,13 +1236,16 @@ posterior_df_refined <- TaxaAssign::update_prior_from_consensus(
 .save(posterior_df_refined, "posterior_df_refined")
 
 consensus_df <- TaxaAssign::posterior_consensus(
-  posterior_df = posterior_df_refined,
-  rank_system  = fgs
+  posterior_df        = posterior_df_refined,
+  rank_system         = fgs
 )
 
 # add_posthoc_assessment() needs a taxon x tier lookup -- taxaexpect_priors
 # already has taxon_name + model_tier (tier1/tier2/tier3_undetected) from
 # Section 5, so it can be passed directly as `tiers`.
+# absolute_fit_pvalue_col (default "winner_absolute_fit_pvalue", already
+# present from posterior_consensus()'s pass-through): informational only,
+# safe unconditionally (never changes consensus_taxon/consensus_rank).
 consensus_df <- TaxaFlag::add_posthoc_assessment(
   consensus_df = consensus_df,
   tiers        = taxaexpect_priors

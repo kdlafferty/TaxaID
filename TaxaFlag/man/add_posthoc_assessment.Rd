@@ -15,7 +15,9 @@ add_posthoc_assessment(
   likelihood_threshold = 0.5,
   finest_rank = "species",
   domestic_taxa = NULL,
-  domestic_prior_source = c("wild", "augmented")
+  domestic_prior_source = c("wild", "augmented"),
+  absolute_fit_pvalue_col = "winner_absolute_fit_pvalue",
+  weak_evidence_pvalue = 0.001
 )
 }
 \arguments{
@@ -73,23 +75,47 @@ re-labelled \code{"domestic_prior_caveat"}. \code{"augmented"} means the
 prior pipeline already incorporated known local domestic/synanthropic
 presence, so the low tier is treated as informative and no re-labelling
 happens. Ignored when \code{domestic_taxa} is \code{NULL}.}
+
+\item{absolute_fit_pvalue_col}{Character.  Column in \code{consensus_df}
+holding the winning hypothesis's own one-sided ABSOLUTE (not relative)
+goodness-of-fit p-value, passed through unchanged from
+\code{TaxaLikely::evaluate_likelihoods()} via
+\code{TaxaAssign::posterior_consensus()}'s \code{winner_absolute_fit_pvalue}
+column (default \code{"winner_absolute_fit_pvalue"}). When present and
+below \code{weak_evidence_pvalue}, the row is labelled
+\code{"unsupported_rank"} regardless of what the other signals say --
+see \code{@section Weak absolute evidence} below. Silently ignored (no
+error) when absent from \code{consensus_df} -- an optional upstream
+output, not required input.}
+
+\item{weak_evidence_pvalue}{Numeric in \code{[0, 1]} (default
+\code{0.001}).  Threshold for \code{absolute_fit_pvalue_col}: a value
+below this triggers \code{"unsupported_rank"}.  Not itself empirically
+validated against known real misidentification cases -- treat it as a
+starting point, not a calibrated constant.}
 }
 \value{
 \code{consensus_df} with one column appended:
 \describe{
 \item{\code{posthoc_assessment}}{Character.  One of: \code{"sensible"},
 \code{"limited_evidence"}, \code{"unexpected"}, \code{"suspect"},
-\code{"unprecedented"}, \code{"vague_rank"}, \code{"modeled"}, and
+\code{"unprecedented"}, \code{"vague_rank"}, \code{"modeled"},
 (only when \code{domestic_taxa} is supplied)
-\code{"domestic_prior_caveat"}.}
+\code{"domestic_prior_caveat"}, and (only when
+\code{absolute_fit_pvalue_col} is present in \code{consensus_df})
+\code{"unsupported_rank"}.}
 }
 }
 \description{
-Classifies each row of a \code{posterior_consensus()} output using two
-signals already present in the data: sequence-match evidence
+Classifies each row of a \code{posterior_consensus()} output using signals
+already present in the data: sequence-match evidence
 (\code{winner_likelihood}) and prior establishment status (taxon tier from
-\code{priors_combined}).  The result is a single categorical column
-\code{posthoc_assessment} suitable for filtering or LLM-assisted review.
+\code{priors_combined}) drive the base 3 x 2 classification below; an
+optional third, independent signal (\code{absolute_fit_pvalue_col},
+absolute rather than relative goodness of fit) can override any of those
+four categories -- see \code{@section Weak absolute evidence}. The result
+is a single categorical column \code{posthoc_assessment} suitable for
+filtering or LLM-assisted review.
 }
 \details{
 \strong{Classification logic (3 x 2 table):}
@@ -139,6 +165,39 @@ If your prior pipeline already augments occurrence data with known local
 domestic/synanthropic presence (rather than relying on raw GBIF/iNat), set
 \code{domestic_prior_source = "augmented"} to disable this re-labelling,
 since the low-tier signal is then informative on its own.
+}
+
+\section{Weak absolute evidence (\code{"unsupported_rank"})}{
+
+\code{winner_likelihood_col} is ratio-normalised WITHIN one observation
+(the best hypothesis is always exactly 1.0) -- it can read as strong
+evidence even when every candidate fit poorly in absolute terms, simply
+because nothing competitive existed to normalise against (e.g. a weak
+match winning by default with no real competition; a real motivating
+example, found on real data: 8 real PtConception 12S observations
+confidently identified as \emph{Urocyon cinereoargenteus}/\emph{Canis
+lupaster} -- real terrestrial canids -- at species level in a marine fish
+survey, each with \code{winner_absolute_fit_pvalue} ~ 0.002-0.004).
+\code{absolute_fit_pvalue_col} carries a different, absolute answer to a
+related question: is this call's own fit to its trained distribution
+believable at all, tested independently of any competing candidate. A
+value below \code{weak_evidence_pvalue} means the reported call's own
+evidence is weak in absolute terms -- this can happen even for a row the
+other four signals would call \code{"sensible"}, which is why this check
+runs last and can override any of them. Purely informational: never
+changes \code{consensus_taxon} or \code{consensus_rank} themselves, only
+how the existing values are labelled.
+
+2026-07-19: this replaced an earlier design comparing
+\code{TaxaLikely::evaluate_likelihoods()}'s \code{trusted_rank}
+ladder-walk output (via a \code{trusted_rank_col} param) against
+\code{consensus_rank_col}. That mechanism was found unreliable on real
+data: \code{trusted_rank} was computed for
+\code{evaluate_likelihoods()}'s own top-LIKELIHOOD hypothesis, which is
+not always the same hypothesis that wins the POSTERIOR reported here once
+priors are applied downstream (confirmed on a real 12S dataset: roughly
+30\\% mismatch). Reading \code{absolute_fit_pvalue_col} directly off the
+actual winning row has no such mismatch.
 }
 
 \examples{

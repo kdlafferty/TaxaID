@@ -1,6 +1,25 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-11 (Session 151 -- ecosystem soundness-review item 14
+# Last updated: 2026-07-16 (Session 159 -- blast_sequences() now retains subject-side
+# alignment coordinates (new `subject_start`/`subject_end` output columns), both the
+# remote (`.parse_blast_xml()`, extracts `Hsp_hit-from`/`Hsp_hit-to`) and local
+# (`.blast_local()`, adds `sstart send` to the rBLAST `-outfmt 6` field list) paths. Found
+# needed while debugging a real Mugu 12S misassignment (Fundulus parvipinnis vs F. lima):
+# TaxaLikely's new restore_suppressed_candidates(check_regional_overlap = TRUE) (same
+# session, see TaxaLikely/CLAUDE.md) needs to know WHERE within a query's top-hit reference
+# sequence the alignment actually fell, to tell whether a same-genus congener's OWN
+# reference covers the same genomic position or a different, non-overlapping one -- BLAST
+# already computes this (`Hsp_hit-from`/`Hsp_hit-to`), it was just never parsed or retained
+# anywhere downstream; only the query-side coordinates (`Hsp_query-from`/`-to`) were kept.
+# Purely additive -- `subject_start`/`subject_end` (1-based, BLAST tabular convention,
+# `subject_start > subject_end` on the minus strand) pass straight through
+# `.filter_blast_hits()` unchanged (row-filtering only, no column subsetting there) into
+# the final output; no existing column renamed or removed. 5 new tests (test-blast.R):
+# `.parse_blast_xml()` correctly extracts real hit-from/hit-to values (verified against the
+# exact real Fundulus lima case, position 515-613) and correctly returns NA when a fixture
+# HSP omits them (pre-existing test, unaffected). `devtools::test()` 64/64 in this file (up
+# from 59), `devtools::check()` 0 errors/0 warnings/0 notes.
+# Previous update, 2026-07-11 (Session 151 -- ecosystem soundness-review item 14
 # (blast_sequences()'s score_window) fixed: default score_range widened 2 -> 8, backed by
 # a new real-data leave-one-out check (diagnostics/score_window_leave_one_out.R at the
 # TaxaID root), not a guess. The review flagged that a fixed 2-point tolerance window can

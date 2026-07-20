@@ -37,6 +37,20 @@ occurrence/range data -- not from \code{match_df}'s own scores or the likelihood
 model being calibrated -- these observations can be treated as (very likely)
 correct species identifications without circularity.
 }
+\examples{
+match_df <- data.frame(
+  observation_id = paste0("Q", 1:5),
+  genus          = "Genusone",
+  score_original = c(95, 96, 94, 97, 93)
+)
+priors <- data.frame(
+  taxon_name      = "Genusone speciesa",
+  taxon_name_rank = "species",
+  theta_mean      = 0.5
+)
+identify_confident_observations(match_df, priors)
+
+}
 \seealso{
 \code{\link[=calibrate_query_noise]{calibrate_query_noise()}}
 }

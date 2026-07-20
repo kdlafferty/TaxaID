@@ -190,10 +190,8 @@ build_site_reference <- function(taxa,
     n_flagged   <- sum(errors$error_type == "likely_mislabeled", na.rm = TRUE)
     message(sprintf("  Flagged %d likely mislabeled sequence(s).", n_flagged))
     if (n_flagged > 0L) {
-      reference_df <- remove_flagged_references(reference_df |>
-        (\(df) { df$accession <- df$composite_id; df })(),
-        errors
-      )
+      reference_df$accession <- reference_df$composite_id
+      reference_df <- remove_flagged_references(reference_df, errors)
       reference_df$accession <- NULL
       message(sprintf("  Reference reduced to %d sequences after cleaning.", nrow(reference_df)))
     }
@@ -208,10 +206,10 @@ build_site_reference <- function(taxa,
 
   if (isTRUE(audit_coverage)) {
     message("Step 3/3: Auditing barcode coverage in NCBI...")
-    if (!"genus" %in% names(reference_df))
+    if (!"genus" %in% names(reference_df)) {
       warning("Column 'genus' not found in reference_df; coverage audit skipped.",
               call. = FALSE)
-    else {
+    } else {
       cov_result   <- audit_barcode_coverage(
         match_df     = reference_df,
         barcode_term = barcode_term,

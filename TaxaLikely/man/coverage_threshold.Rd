@@ -12,7 +12,7 @@ contain a \code{coverage} column.}
 
 \item{keep_frac}{Numeric scalar in (0, 1).  Target fraction of pairs to
 retain (default \code{0.95}).  The threshold is set at the
-\verb{(1 − keep_frac)} quantile so that approximately \code{keep_frac} of pairs
+\code{(1 - keep_frac)} quantile so that approximately \code{keep_frac} of pairs
 have \code{coverage >= threshold}.}
 }
 \value{
@@ -25,23 +25,23 @@ model        <- train_likelihood_model(ref_filtered)
 }\if{html}{\out{</div>}}
 }
 \description{
-Returns the \code{coverage} value at the \verb{(1 − keep_frac)} quantile of the
-pairwise reference dataset — the minimum coverage that retains approximately
+Returns the \code{coverage} value at the \code{(1 - keep_frac)} quantile of the
+pairwise reference dataset -- the minimum coverage that retains approximately
 \code{keep_frac} of pairs.  Provides a fast, data-driven starting point for
 coverage filtering when a full sweep via \code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}} is
 not needed.
 }
 \section{Method}{
 
-Setting \code{keep_frac = 0.95} computes \code{quantile(coverage, 0.05)} — the 5th
-percentile of the coverage distribution — as the filter threshold.  Pairs
+Setting \code{keep_frac = 0.95} computes \code{quantile(coverage, 0.05)} -- the 5th
+percentile of the coverage distribution -- as the filter threshold.  Pairs
 at or above this value are retained, discarding the bottom 5\% by coverage.
 }
 
 \section{Categorical coverage}{
 
 When \code{coverage} takes ten or fewer unique values (e.g., the five Xeno-canto
-quality grade levels A → 1.0, B → 0.8, C → 0.5, D → 0.3, E → 0.1), the
+quality grade levels A -> 1.0, B -> 0.8, C -> 0.5, D -> 0.3, E -> 0.1), the
 exact quantile rarely falls on an actual grade boundary.  The function snaps
 to the nearest unique value and emits a message reporting the achieved
 retention fraction so the caller can assess the approximation.
@@ -50,9 +50,9 @@ retention fraction so the caller can assess the approximation.
 \section{Relationship to \code{calibrate_coverage_filter()}}{
 
 \code{coverage_threshold()} is a one-liner convenience wrapper that ignores H1/H2
-structure.  When H1-based Pareto optimality matters — as it does for DNA
+structure.  When H1-based Pareto optimality matters -- as it does for DNA
 reference libraries where within-species pairs tend to have higher alignment
-coverage than cross-species pairs — prefer \code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}} and
+coverage than cross-species pairs -- prefer \code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}} and
 select the threshold that maximises \code{youden_j}.
 }
 

@@ -323,6 +323,57 @@ test_that("parse_blast_xml extracts hits from BLAST XML", {
   expect_equal(result$qcovs, c(100.0, 100.0))
   expect_true(all(!is.na(result$evalue)))
   expect_true(all(!is.na(result$bitscore)))
+  # sstart/send absent from this fixture's HSPs -- must come back NA, not error
+  expect_true(all(is.na(result$sstart)))
+  expect_true(all(is.na(result$send)))
+})
+
+test_that("parse_blast_xml extracts subject-side alignment coordinates (sstart/send)", {
+  # Real motivating case (Session 159): a query hitting a long subject (e.g. a
+  # complete mitogenome) needs its OWN alignment position within that subject
+  # retained, not just the subject's total length -- otherwise a downstream
+  # regional-overlap check can't tell two hits against the same long subject
+  # apart by genomic position.
+  skip_if_not_installed("xml2")
+
+  xml_text <- '<?xml version="1.0"?>
+  <BlastOutput>
+    <BlastOutput_iterations>
+      <Iteration>
+        <Iteration_iter-num>1</Iteration_iter-num>
+        <Iteration_query-def>ASV_300</Iteration_query-def>
+        <Iteration_query-len>99</Iteration_query-len>
+        <Iteration_hits>
+          <Hit>
+            <Hit_num>1</Hit_num>
+            <Hit_id>ref|NC_063692|</Hit_id>
+            <Hit_def>Fundulus lima mitochondrion, complete genome</Hit_def>
+            <Hit_accession>NC_063692</Hit_accession>
+            <Hit_len>16506</Hit_len>
+            <Hit_hsps>
+              <Hsp>
+                <Hsp_identity>98</Hsp_identity>
+                <Hsp_align-len>99</Hsp_align-len>
+                <Hsp_gaps>0</Hsp_gaps>
+                <Hsp_query-from>1</Hsp_query-from>
+                <Hsp_query-to>99</Hsp_query-to>
+                <Hsp_hit-from>515</Hsp_hit-from>
+                <Hsp_hit-to>613</Hsp_hit-to>
+                <Hsp_evalue>1e-40</Hsp_evalue>
+                <Hsp_bit-score>180.0</Hsp_bit-score>
+              </Hsp>
+            </Hit_hsps>
+          </Hit>
+        </Iteration_hits>
+      </Iteration>
+    </BlastOutput_iterations>
+  </BlastOutput>'
+
+  result <- .parse_blast_xml(xml_text)
+
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$sstart, 515L)
+  expect_equal(result$send, 613L)
 })
 
 test_that("parse_blast_xml handles status page gracefully", {

@@ -15,13 +15,28 @@ expand_unreferenced_hypotheses(likelihood_df, unreferenced_df)
 \item{unreferenced_df}{Data frame of unreferenced but plausible species.
 Must contain columns \code{species} (binomial name), \code{genus}, and \code{family}.
 Built from TaxaExpect rows confirmed as unreferenced by
-\code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}.}
+\code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}. May optionally contain an \code{observation_id}
+column (Session 159): a row with \code{NA} (or when the column is absent
+entirely) applies to every observation sharing its genus/family, the
+original global-list behavior; a row with a real \code{observation_id}
+applies only to that one observation. This lets a caller inject a
+species that IS globally referenced (so it would never appear via
+\code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}) but lacks reference evidence covering one
+specific query's region -- see
+\code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}}'s \code{check_regional_overlap} mechanism,
+whose rejected congeners are returned in exactly this shape via
+\code{attr(result, "regional_unreferenced")}.}
 }
 \value{
 \code{likelihood_df} with generic \code{"unreferenced_species"} and
 \code{"unreferenced_genus"} rows replaced by named species rows where matches
-are found.  Column set is unchanged; new rows carry \code{NA} for any extra
-columns in the input (e.g. \code{constraint_applied}).
+are found.  Column set is unchanged; new rows carry \code{NA} for most extra
+columns in the input (e.g. \code{constraint_applied}, which is genuinely
+row-specific), except \code{score_likelihood_cov}, \code{score_likelihood_evidence},
+and \code{h2_delta_source} when present -- these, like \code{score_likelihood}/
+\code{score_likelihood_mean}/\code{score_likelihood_sd}, describe the shared H2/H3
+value itself (identical across every expanded species under one generic
+row) rather than anything row-specific, so they are copied through too.
 }
 \description{
 Moved here from TaxaAssign (Session 150) -- this is the value-modeling half
@@ -108,5 +123,7 @@ expanded <- expand_unreferenced_hypotheses(
 }
 \seealso{
 \code{\link[TaxaAssign:compute_posterior]{TaxaAssign::compute_posterior()}}, \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}},
-\code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}, \code{\link[=apply_coverage_constraints]{apply_coverage_constraints()}}
+\code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}, \code{\link[=apply_coverage_constraints]{apply_coverage_constraints()}},
+\code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}} for the \code{check_regional_overlap}
+mechanism that produces an observation-scoped \code{unreferenced_df} addition
 }

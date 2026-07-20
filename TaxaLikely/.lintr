@@ -1,0 +1,30 @@
+linters: linters_with_defaults(
+    line_length_linter(120),
+    # Disabled package-wide, not per-file: both are near-100% false positives
+    # here, checked directly rather than assumed.
+    # - indentation_linter: flags ~250 sites across every R/ and tests/ file
+    #   (including brand-new test files written this session), all the same
+    #   "hanging indent a couple of spaces off the delimiter column" shape --
+    #   a house style choice (aligning continuation lines under `if (... ||`
+    #   conditions, aligned `=` in multi-arg calls), not inconsistency.
+    # - commented_code_linter: flags ~130 sites, verified by inspection to be
+    #   almost entirely the ecosystem's own "# function_name()" file/section
+    #   header convention (parses as a valid call) and deliberate commented-out
+    #   usage examples in workflow scripts -- not stale/dead code.
+    indentation_linter = NULL,
+    commented_code_linter = NULL
+  )
+encoding: "UTF-8"
+exclusions: list(
+    # H1_Lookup/H2_Lookup/H2/H3 mirror the taxa_model_params object's own
+    # documented slot names (see CLAUDE.md's "model_params Object" section) --
+    # renaming these local variables to snake_case would break the parallel
+    # with the returned list the reader needs to follow this function.
+    "R/train.R" = list(object_name_linter = c(864, 899, 984, 1000, 1008)),
+    # identify_confident_observations() is an exported, documented function
+    # name (31 chars) -- not worth a rename for a 30-char style limit.
+    "R/calibrate_query_noise.R" = list(object_length_linter = 52),
+    # A single unbroken semicolon-joined PR2 taxonomy-string example inside
+    # \code{} -- not sensibly splittable without altering what it documents.
+    "R/fetch.R" = list(line_length_linter = 1460)
+  )

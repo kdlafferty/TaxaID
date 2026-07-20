@@ -15,7 +15,7 @@
   )
 }
 
-# ---- compute_likelihoods() — "none" pathway ---------------------------------
+# ---- compute_likelihoods() -- "none" pathway ---------------------------------
 
 test_that("score_type='none': returns $likelihoods and $unresolved", {
   res <- compute_likelihoods(.make_cl_match(), score_type = "none")
@@ -42,7 +42,7 @@ test_that("score_type='none': likelihoods contains observation_id and hypothesis
   expect_true("hypothesis_type" %in% names(liks))
 })
 
-# ---- compute_likelihoods() — "probability" pathway -------------------------
+# ---- compute_likelihoods() -- "probability" pathway -------------------------
 
 test_that("score_type='probability': best H1 gets score_likelihood = 1", {
   res  <- compute_likelihoods(.make_cl_match(), score_type = "probability")
@@ -58,7 +58,7 @@ test_that("score_type='probability': score_method = 'probability'", {
   expect_true(all(liks$score_method == "probability"))
 })
 
-# ---- compute_likelihoods() — "similarity_softmax" pathway ------------------
+# ---- compute_likelihoods() -- "similarity_softmax" pathway ------------------
 
 test_that("score_type='similarity_softmax': returns valid likelihoods", {
   res  <- compute_likelihoods(.make_cl_match(),
@@ -71,7 +71,7 @@ test_that("score_type='similarity_softmax': returns valid likelihoods", {
                    na.rm = TRUE), 1.0, tolerance = 1e-9)
 })
 
-# ---- compute_likelihoods() — "similarity" pathway (requires model) ---------
+# ---- compute_likelihoods() -- "similarity" pathway (requires model) ---------
 
 test_that("score_type='similarity' without model_params stops with informative error", {
   expect_error(

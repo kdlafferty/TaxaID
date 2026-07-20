@@ -30,7 +30,7 @@ observation with all taxonomy columns set to \code{NA}.  Use when
 running \code{\link[=assign_scores]{assign_scores()}} without TaxaExpect priors (e.g., the LLM
 shortcut pathway) to absorb posterior mass from taxa outside all
 represented families.  Do \strong{not} set to \code{TRUE} when using
-TaxaExpect priors — the prior distribution already covers unrepresented
+TaxaExpect priors -- the prior distribution already covers unrepresented
 families.}
 }
 \value{
@@ -45,11 +45,11 @@ Given a canonical match object (one row per \code{observation_id} x reference
 accession), adds placeholder rows for taxon hypotheses absent from the
 reference database:
 \itemize{
-\item \code{"unreferenced_species"} — genus is represented in the
+\item \code{"unreferenced_species"} -- genus is represented in the
 reference but the species is not.
-\item \code{"unreferenced_genus"} — family is represented but the genus
+\item \code{"unreferenced_genus"} -- family is represented but the genus
 is not.
-\item \code{"unreferenced_family"} — optional catch-all (see
+\item \code{"unreferenced_family"} -- optional catch-all (see
 \code{include_unreferenced_family}).
 }
 }

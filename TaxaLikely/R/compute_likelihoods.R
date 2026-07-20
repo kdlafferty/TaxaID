@@ -1,6 +1,6 @@
 # ==============================================================================
-# model_likelihoods()   — bivariate-normal modeling step
-# compute_likelihoods() — orchestrating wrapper
+# model_likelihoods()   -- bivariate-normal modeling step
+# compute_likelihoods() -- orchestrating wrapper
 # ==============================================================================
 
 #' Apply the bivariate-normal model to produce score_likelihood values
@@ -112,19 +112,18 @@ model_likelihoods <- function(scored_df,
 
 
 # ==============================================================================
-# compute_likelihoods() — orchestrating wrapper
+# compute_likelihoods() -- orchestrating wrapper
 # ==============================================================================
 
 #' Compute likelihoods from a match object (unified pipeline wrapper)
 #'
 #' Orchestrates the three-step unified likelihood pipeline:
-#' [unreferenced_candidates()] → [assign_scores()] → [model_likelihoods()]
+#' [unreferenced_candidates()] -> [assign_scores()] -> [model_likelihoods()]
 #' (similarity pathway only).
 #'
 #' This is the recommended high-level entry point for new workflows.  For the
 #' bivariate-normal similarity pathway it is equivalent to
-#' [evaluate_likelihoods()].  For other data types it replaces
-#' \code{expand_consensus_candidates()} with a consistent interface.
+#' [evaluate_likelihoods()].
 #'
 #' @param match_df Data frame. Canonical match object from
 #'   \code{TaxaMatch::standardize_match_data()} or equivalent. Must contain
@@ -252,14 +251,7 @@ compute_likelihoods <- function(match_df,
     sc_df$hypothesis_type != "unreferenced_family"
   likelihoods <- sc_df[!has_na_name, , drop = FALSE]
 
-  # Identify required output columns (keep all present)
-  keep_cols <- intersect(
-    c("observation_id", "taxon_name", "taxon_name_rank", "hypothesis_type",
-      "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
-      "score_method"),
-    names(likelihoods)
-  )
-  # Retain all columns (not just keep_cols) — downstream may use extra cols
+  # Retain all columns (not just a fixed subset) -- downstream may use extra cols
   unresolved <- match_df[integer(0L), ]
 
   list(likelihoods = likelihoods, unresolved = unresolved)

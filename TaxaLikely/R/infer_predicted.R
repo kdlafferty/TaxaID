@@ -1,6 +1,6 @@
 # ==============================================================================
 # infer_predicted.R
-# TaxaLikely — Infer whether predicted sequences were excluded from BLAST ref
+# TaxaLikely -- Infer whether predicted sequences were excluded from BLAST ref
 # ==============================================================================
 
 #' Infer whether predicted sequences were excluded from the BLAST reference
@@ -8,7 +8,7 @@
 #' Examines accession numbers in a match object to determine whether the BLAST
 #' reference database included computationally predicted sequences (NCBI
 #' \code{XR_} and \code{XM_} RefSeq accessions).  Returns \code{TRUE} if
-#' predicted sequences appear to have been excluded — the correct value for
+#' predicted sequences appear to have been excluded -- the correct value for
 #' \code{\link{audit_barcode_coverage}}'s \code{exclude_predicted} argument
 #' when using curated databases (Jonah Ventures, SILVA, PR2, MIDORI).
 #' Returns \code{FALSE} if predicted sequences are present, or \code{NA} when
@@ -24,10 +24,10 @@
 #' @param verbose Logical.  If \code{TRUE} (default), emits a message
 #'   explaining the inference and its basis.
 #'
-#' @return A single logical: \code{TRUE} (exclude predicted — no
+#' @return A single logical: \code{TRUE} (exclude predicted -- no
 #'   \code{XR_}/\code{XM_} accessions found among NCBI-format accessions),
-#'   \code{FALSE} (do not exclude — predicted accessions are present in the
-#'   match object), or \code{NA} (cannot determine — no standard NCBI
+#'   \code{FALSE} (do not exclude -- predicted accessions are present in the
+#'   match object), or \code{NA} (cannot determine -- no standard NCBI
 #'   accessions found; set \code{exclude_predicted} explicitly).
 #'
 #' @details
@@ -70,7 +70,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Typical usage — result feeds directly into audit_barcode_coverage()
+#' # Typical usage -- result feeds directly into audit_barcode_coverage()
 #' ep <- infer_exclude_predicted(match_obj)
 #' coverage <- audit_barcode_coverage(
 #'   genus_species_audit,

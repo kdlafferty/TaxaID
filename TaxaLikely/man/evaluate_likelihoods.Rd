@@ -14,7 +14,7 @@ evaluate_likelihoods(
   n_sims = 0L,
   score_bounds = NULL,
   logit_epsilon = 1e-04,
-  max_gap_ceiling = 5,
+  max_gap_ceiling = NULL,
   min_coverage = NULL,
   evidence_col = NULL,
   evidence_max_ratio = 1,
@@ -29,7 +29,13 @@ accepted), \code{taxon_name}, \code{taxon_name_rank},
 and taxonomy columns matching \code{rank_system}.}
 
 \item{model_params}{Object of class \code{"taxa_model_params"} from
-\code{\link[=train_likelihood_model]{train_likelihood_model()}}.}
+\code{\link[=train_likelihood_model]{train_likelihood_model()}}. The scale H1/H2/H3 were trained on
+(\code{model_params$Score_Transform}, \code{"logit"} or \code{"sqrt_mismatch"}) is read
+automatically -- callers do not supply or track it separately.
+\code{evidence_col}/\code{min_coverage} work identically regardless of
+\code{Score_Transform}: their \verb{SE(transform(score)) propto 1/sqrt(N)}
+justification holds (with a different, \code{p}-dependent proportionality
+constant) for either scale, confirmed via the delta method.}
 
 \item{rank_system}{Character vector of rank names \strong{coarse to fine}
 (e.g., \code{c("family", "genus", "species")}). Default \code{NULL} auto-detects
@@ -79,17 +85,22 @@ ignored.}
 \item{evidence_col}{Character or \code{NULL} (default \code{NULL}). Name of a column
 in \code{match_df} giving each candidate's raw evidence quantity (e.g. DNA read
 depth, image detection count, acoustic recording duration -- whatever is
-appropriate for the data type). When supplied, \code{H1} sigma is scaled by
-\code{1/sqrt(evidence_ratio)}, where \code{evidence_ratio} is this quantity divided
-by \code{model_params$Query_Calibration$reference_evidence} -- a baseline set
-once, in bulk, by \code{\link[=calibrate_query_noise]{calibrate_query_noise()}}\verb{(evidence_col=)}. Unlike
-\code{min_coverage}/coverage inflation above, this is symmetric: an
+appropriate for the data type). When supplied, \code{H1} sigma is rescaled by
+a factor \code{1/sqrt(evidence_ratio)}, where \code{evidence_ratio} is this
+quantity divided by \code{model_params$Query_Calibration$reference_evidence}
+-- a baseline set once, in bulk, by \code{\link[=calibrate_query_noise]{calibrate_query_noise()}}\verb{(evidence_col=)}.
+Unlike \code{min_coverage}/coverage inflation above, this is symmetric: an
 observation with \emph{more} evidence than the baseline tightens sigma, not
-just widens it for less. Produces \code{score_likelihood_evidence}, a parallel
-point-estimate column (no Monte Carlo variant, matching
-\code{score_likelihood_cov}'s own precedent) -- identical to \code{score_likelihood}
-when \code{evidence_col} is absent, not present in a given candidate row, or
-the model was never calibrated with a \code{reference_evidence} baseline;
+just widens it for less. The rescale is only ever \strong{applied} when doing
+so is provably non-decreasing for the density at the query's own
+(pre-rescale) standardized distance from the species mean -- see
+\verb{@section Evidence-based sigma rescaling} below for the exact criterion
+and why it replaced an earlier unconditional version. Produces
+\code{score_likelihood_evidence}, a parallel point-estimate column (no Monte
+Carlo variant, matching \code{score_likelihood_cov}'s own precedent) --
+identical to \code{score_likelihood} when \code{evidence_col} is absent, not
+present in a given candidate row, the model was never calibrated with a
+\code{reference_evidence} baseline, or the gate criterion below isn't met;
 never guessed. Works identically for a single-observation \code{match_df} as
 for a large batch, since the baseline is read from \code{model_params}, not
 re-derived from \code{match_df} itself.}
@@ -102,8 +113,11 @@ only widens -- found necessary empirically: an uncapped ratio crashed a
 real, correctly-identified, high-depth observation's \code{H1} likelihood to
 exactly 0 (its score wasn't precisely at the trained mean, and real
 variability doesn't vanish just because evidence is abundant). Raise
-above \code{1} only after validating on your own data, the same way the
-uncapped version was tested and rejected here.}
+above \code{1} only after validating on your own data -- the gate described in
+\verb{@section Evidence-based sigma rescaling} protects the tightening
+direction using the same criterion as widening, but has not itself been
+validated against real over-tightening cases the way the widen-only
+default has been.}
 
 \item{verbose}{Logical (default \code{FALSE}). When \code{TRUE}, prints a message
 each time a species falls back to global parameters (no species-specific
@@ -120,7 +134,8 @@ hypothesis, suitable for input to \code{TaxaAssign::compute_posterior()}:
 \code{score_likelihood_cov}, \code{score_likelihood_evidence}, \code{h2_delta_source}
 (\code{"genus_specific"} or \code{"global_fallback"} for
 \code{unreferenced_species}/\code{unreferenced_genus} rows; \code{NA} for
-\code{specific_candidate} rows).  Rows where \code{taxon_name}
+\code{specific_candidate} rows), \code{absolute_fit_pvalue} (see
+\verb{@section Absolute fit}).  Rows where \code{taxon_name}
 resolved to \code{NA} are excluded.  See Details for \code{score_likelihood_cov}
 and \code{h2_delta_source}.}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
@@ -207,6 +222,53 @@ absent or equals 1 for all candidates, \code{score_likelihood_cov} is identical 
 \code{score_likelihood} to apply the coverage adjustment; compare the two columns
 to identify queries where coverage meaningfully shifts the likelihood ratios.
 
+\strong{Evidence-based sigma rescaling (\code{score_likelihood_evidence}) and its
+crossover gate:} An earlier version of \code{evidence_col} rescaled every
+candidate's H1 \code{sigma_score} unconditionally whenever \code{evidence_ratio < 1}
+(widening for low-evidence candidates, exactly like the coverage adjustment
+above). Tested against real 12S data, that version was net negative even
+capped at \code{evidence_max_ratio = 1} (27 real observations helped, 2053 hurt;
+mean H1 relative likelihood 0.899 -> 0.884). The reason is a basic property
+of the normal density, not an implementation defect: because a Gaussian must
+integrate to 1, widening its variance necessarily lowers its peak while
+raising its tails. For a variance rescaled by a factor \eqn{c} (\eqn{c > 1}
+widens, \eqn{c < 1} tightens), the log-density at a point \eqn{z} standard
+deviations from the species mean changes by exactly:
+\deqn{\Delta = -\tfrac{1}{2}\log(c) + \tfrac{1}{2}z^2\left(1 - \tfrac{1}{c}\right)}
+which is non-negative only when \eqn{z} is large enough (for widening) or
+small enough (for tightening) that the tail/peak tradeoff pays for itself.
+Because most low-evidence real observations are still decent, close-to-mean
+matches (small \eqn{z}), applying the widening formula to \emph{every}
+low-evidence candidate paid the peak-lowering cost far more often than it
+collected the tail-raising benefit -- exactly the pattern in the real-data
+result above. \code{evaluate_likelihoods()} now computes \eqn{\Delta} directly
+(using \eqn{z} standardized against whatever sigma is already in effect
+after the per-species floor and coverage inflation) and only applies the
+evidence rescale when \eqn{\Delta > 0} -- i.e., only where doing so is
+provably not going to lower the candidate's H1 density relative to leaving
+sigma untouched. This is an exact, closed-form condition, not a heuristic
+threshold, and it degrades gracefully to a no-op as \code{evidence_ratio}
+approaches 1 (nothing to gate). One caveat for multi-candidate queries: the
+gate is computed on the score-only marginal \eqn{z}, not the exact bivariate
+\verb{(score_logit, gap_logit)} crossover (only \code{sigma_score} is ever rescaled;
+the gap variance and score/gap covariance are untouched, so the true joint
+crossover would also depend on the correlation term) -- deliberately
+consistent with the score-only outlier test described above rather than a
+new, unvalidated 2D derivation. For singleton (1D) queries, where the
+density actually evaluated is exactly this univariate form, the gate is
+exact, not an approximation. This replaces the unconditional version, and has
+been re-validated end to end against the same real 12S PtConception dataset
+the unconditional version was tested on: 163 helped / 3 hurt across 24,857
+real H1 rows (vs. 27 helped / 2053 hurt for the unconditional version), mean
+H1 relative likelihood 0.8014 -> 0.8016 (vs. the unconditional version's real
+regression 0.899 -> 0.884). The 3 residual hurt cases were traced directly
+(via \code{mvtnorm::dmvnorm} on the real fitted parameters) to this score-only
+marginal approximation: each sits right at the marginal gate's own decision
+boundary, where the neglected score/gap covariance term flips the sign of
+the true joint density change relative to the marginal prediction. Bounded
+in practice (largest observed swing under 1\% of the score range) but a real,
+understood limitation of the approximation, not a bug.
+
 \strong{Genus-specific H2/H3 delta (\code{h2_delta_source}):}
 \code{H2$delta}/\code{H3$delta} are single values pooled across every genus seen
 during training, which treats a genus with unusually tight (cryptic-like)
@@ -226,6 +288,96 @@ case where the true taxon's nearest relative in evidence space (visual or
 acoustic mimicry/convergence) is not its nearest phylogenetic relative --
 see \code{inst/TaxaLikely_supplemental_methods.md} for that limitation.
 
+\strong{H2/H3 mean anchor and genus-specific variance (Session 158):} H2's
+mean is \verb{(anchor candidate's own resolved species mean) - delta}, not
+\code{H1_Global_Mu - delta} as in earlier versions -- a referenced species
+whose own trained mean sits above or below the population average is real
+information about how conserved or variable that lineage specifically is,
+and an unreferenced sister species should inherit it rather than being
+shifted from an unrelated population-wide baseline. When a genus-specific
+\code{H2_Lookup} entry exists, its own shrunk congener variance (\code{var_shrunk})
+is used for H2's sigma in place of the pooled global value -- genera whose
+species are hard to tell apart (small delta) also tend to show more
+\emph{consistent} divergence (lower variance), and genera whose species are
+easy to tell apart show more variable divergence; both the delta and the
+variance now reflect this per genus, on the same footing. Absent from
+\code{H2_Lookup} objects built before this session -- those fall back to the
+pooled global variance unchanged, exactly as before. See
+\code{train_likelihood_model()}'s \code{score_transform} documentation and
+\verb{[[project_job2_unreferenced_relatives]]} in the TaxaID memory system for
+why this required moving off the plain logit scale to be correctly
+signed: on real 12S congener data, the raw match-proportion scale shows
+tight genera have lower variance as expected (Pearson r = -0.55), but
+logit reverses this (r = +0.47) because nearly all real matches sit near
+100\% identity, exactly where logit's derivative diverges fastest.
+
+\strong{Monte Carlo uncertainty (\code{score_likelihood_mean}/\code{score_likelihood_sd}):}
+Represents genuine uncertainty in the likelihood estimate itself -- driven
+by how much reference data calibrated the trained mean being evaluated
+(\code{H1_Lookup$n_obs_species} for a specific candidate; \code{H2_Lookup$n_pairs}
+for a genus-specific H2/H3 delta, or \code{Stats$n_h2_pooled} when no
+genus-specific delta exists) -- not by resampling the query's own observed
+score around the population's overall spread (an earlier design, which
+answered a different question: how sensitive the density is to where the
+query happens to land, not how confidently the candidate's own mean is
+known). Each of the \code{n_sims} draws perturbs the candidate's trained mean by
+its own estimation uncertainty (\verb{Var(mean) ~= sigma^2/n}) and evaluates the
+query's real, fixed observed point against that draw. Practical
+consequence: a poorly-referenced species gets a wider \code{score_likelihood_sd}
+than a well-referenced one for the identical observed score, and
+\code{unreferenced_species}/\code{unreferenced_genus} rows -- which borrow a shifted
+mean rather than being directly observed -- are systematically wider than
+\code{specific_candidate} rows. Reuses whichever per-candidate sigma the
+evidence-adjusted point estimate already resolved (species floor +
+evidence gate, when applicable), so a low-depth candidate's evidence-widened
+sigma also widens its mean uncertainty here at no additional cost.
+Backward compatible: falls back to the previous (score-resampling)
+behavior when \code{model_params$H1_Lookup} has no \code{n_obs_species} column
+(i.e., any model trained before this mechanism was added).
+}
+\section{Absolute fit}{
+
+\code{absolute_fit_pvalue} answers a different question than \code{score_likelihood}
+does. \code{score_likelihood} compares candidates to EACH OTHER (H1 vs H2 vs
+H3) -- it can only ever say "this is the best of the hypotheses I was
+given," even when every hypothesis is, in an absolute sense, a poor match
+(e.g. a genuinely degraded query where the best specific candidate, its
+genus's unreferenced-species placeholder, AND its family's
+unreferenced-genus placeholder all score weakly -- the least-bad option
+still "wins" the relative comparison with nothing to signal that the win
+itself is not well-supported). This is a real, structural limitation of
+Bayesian model comparison over a candidate set that is not guaranteed to
+be exhaustive: renormalizing over an incomplete or uniformly-weak set
+cannot express "none of these fit well."
+
+\code{absolute_fit_pvalue} instead asks, independently for EVERY row (H1, H2,
+and H3 alike), whether the observed score is even consistent with THAT
+row's own trained distribution, in absolute terms -- reusing the same
+score-only, gap-excluded logic the \code{alpha} outlier gate already
+established (df = 1, gap excluded for the reason documented there), but
+\strong{one-sided, not two-sided}. \code{alpha}'s own test is deliberately two-sided
+(real 12S data calibrated it that way, see its own docs) because it is
+asking "is this candidate an outlier AT ALL." This question is narrower
+and asymmetric: a score BETTER than a hypothesis's own trained mean (e.g.
+an unusually clean, close-to-100\% match) is never a reason to distrust it
+-- only a score WORSE than expected is. A two-sided test would wrongly
+penalize an excellent match against a tightly-clustered (e.g. many
+near-identical reference accessions) species purely because its own mean
+sits slightly below the score transform's ceiling; \code{absolute_fit_pvalue}
+uses \code{P(Z <= z)} instead of the two-sided chi-squared, so it approaches 1
+(never fails) the further above the mean a score sits, and only drops
+toward 0 the further below. Every input is a parameter
+\code{train_likelihood_model()}/the point-estimate pass already computed -- no
+new model is fit and no new pass over reference data runs; this is pure
+reuse of already-resolved \code{H1_Lookup}/\code{H2}/\code{H2_Lookup}/\code{H3} mu/sigma.
+\code{absolute_fit_pvalue} is reported on every row (informational only -- it
+never zeroes a likelihood or changes which hypothesis wins). Downstream
+consumers that want to flag a winning call whose OWN fit is poor (even
+though it won the relative comparison) should read the winning row's
+\code{absolute_fit_pvalue} directly -- see \code{TaxaAssign::posterior_consensus()}'s
+\code{winner_absolute_fit_pvalue} pass-through and
+\code{TaxaFlag::add_posthoc_assessment()}'s \code{"unsupported_rank"} category.
+
 \strong{hypothesis_type values in output:}
 \itemize{
 \item \code{"specific_candidate"} -- referenced species with an explicit
@@ -237,6 +389,7 @@ species by \code{TaxaAssign::expand_unreferenced_hypotheses()}.
 \item \code{"unreferenced_genus"} -- placeholder for entirely absent genera.
 }
 }
+
 \examples{
 \dontrun{
 result <- evaluate_likelihoods(

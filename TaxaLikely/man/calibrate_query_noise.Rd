@@ -10,6 +10,8 @@ calibrate_query_noise(
   priors,
   plausibility_threshold = 0.001,
   min_confident_obs = 30L,
+  offset_form = c("linear", "constant"),
+  min_calib_species = 8L,
   calibrate_sigma = FALSE,
   evidence_col = NULL,
   logit_epsilon = 1e-04,
@@ -35,6 +37,28 @@ calibrate_query_noise(
 confident observations required to compute an offset. Below this, the
 function warns and returns \code{model_params} unchanged (offset = 0, sigma
 ratio = 1).}
+
+\item{offset_form}{Character (default \code{"linear"}). \code{"linear"} remaps each H1
+mean through a robustly-fit line \code{intercept + slope * trained_mean} (fit on
+per-species medians) -- a level-aware calibration that estimates, rather
+than assumes, how much per-species reference-scale structure transfers to
+the inference scale, and reduces to a pure additive offset when it fully
+transfers (slope = 1). It is the default because, across every real dataset
+tested (external-pipeline- and BLAST-scored DNA markers), the fitted slope
+collapsed toward 0 and a single calibrated location fit real query scores
+as well as or better than per-species-mean-plus-offset (see "Level-aware
+recalibration"). \code{"constant"} is the conservative opt-out -- one additive
+offset applied to every H1 mean (the package's original behavior),
+appropriate when you would rather retain per-species locations than collapse
+them on a location-only validation set. \code{"linear"} falls back to
+\code{"constant"} (with a warning) when fewer than \code{min_calib_species} confident
+species, or no spread of trained means, are available -- so a thin-reference
+marker (e.g. one with only a handful of referenced species) is handled
+safely without a caller having to special-case it.}
+
+\item{min_calib_species}{Integer (default \code{8L}). Minimum number of distinct
+confident species (spanning a range of trained means) required to fit the
+\code{offset_form = "linear"} line. Ignored when \code{offset_form = "constant"}.}
 
 \item{calibrate_sigma}{Logical (default \code{FALSE}). Also apply the
 MAD-based variance-scale correction described in the Sigma correction
@@ -78,10 +102,13 @@ many confident observations/genera it was based on.}
 \code{model_params}, with \code{H1_Global_Mu["score_logit"]} and
 \code{H1_Lookup$mu_score} shifted by the estimated offset; \code{H1_Sigma["score_logit", "score_logit"]} and every \code{H1_Lookup$sigma_score} scaled by the estimated
 variance ratio (unless \code{calibrate_sigma = FALSE}); and a new
-\verb{$Query_Calibration} slot recording \code{offset_logit}, \code{sigma_ratio},
+\verb{$Query_Calibration} slot recording \code{offset_logit}, \code{offset_form}
+(the form actually applied, which may be \code{"constant"} after a \code{"linear"}
+fallback), \code{slope}/\code{intercept} (the applied mean remap: \code{slope = 1},
+\code{intercept = offset_logit} for the constant form), \code{sigma_ratio},
 \code{reference_evidence} (\code{NA} unless \code{evidence_col} supplied),
 \code{n_confident_obs}, \code{n_confident_genera}, and \code{plausibility_threshold} for
-auditability. Unchanged (with \code{offset_logit = 0}, \code{sigma_ratio = 1},
+auditability. Unchanged (with \code{offset_logit = 0}, \code{offset_form = "constant"}, \code{slope = 1}, \code{intercept = 0}, \code{sigma_ratio = 1},
 \code{reference_evidence = NA}) if fewer than \code{min_confident_obs} confident
 observations are found.
 }
@@ -139,6 +166,66 @@ may be worth revisiting -- but do not enable it without validating on your
 own data first, the same way this was validated (and rejected) here.
 }
 
+\section{Level-aware recalibration (\code{offset_form = "linear"})}{
+
+The default \code{"constant"} form is correct only if the train-vs-inference
+scale gap is a pure location shift -- the same additive offset for every
+species, regardless of identity level. That assumption is exactly what a
+single additive offset \emph{cannot} check, and on real externally-scored 12S
+data it does not hold: the per-species H1 means estimated from
+\code{build_sequence_matrix()}'s DECIPHER reference-vs-reference MSA do not
+transfer to the external scoring scale at all. Regressing each confident
+species' required offset on its trained mean gives a slope near \code{-1} (i.e.,
+real correct-species query scores collapse toward one identity level
+regardless of what the reference MSA says that species' self-similarity is),
+and a single pooled inference-scale mean predicts real confident queries
+\emph{better} than "per-species trained mean + one offset" in cross-validation.
+\code{offset_form = "linear"} addresses this by remapping every H1 mean through a
+robustly-fit line \code{intercept + slope * trained_mean} (fit on per-species
+medians, weighted by observation count) instead of adding one constant. It
+is a strict generalization: \verb{slope = 1, intercept = offset} reproduces the
+constant form exactly, so it degrades to "constant offset" when the
+per-species structure \emph{does} transfer (\code{slope -> 1}) and to "one pooled
+inference location for all species" when it does not (\code{slope -> 0}, the real
+12S case). Only the H1 mean \emph{location} is remapped; the H2/H3
+congener-divergence deltas (defined relative to the H1 mean) and the gap
+feature -- the structure that actually discriminates between candidate
+species -- are untouched.
+
+One caveat governs why \code{"constant"} is retained as an opt-out rather than
+removed. The confident set is selection-biased toward abundant, well-sampled,
+easy genera, and by construction has exactly one plausible species per genus
+-- so it can measure absolute H1 \emph{location} fit but cannot directly test
+congener \emph{discrimination}. A \code{"linear"} fit whose slope collapses to 0 removes
+per-species location structure that is demonstrably not real on the inference
+scale, but that this validation set cannot independently confirm is safe to
+remove in hard congener-vs-congener cases. For that reason \code{"constant"}
+remains available for an analyst who would rather keep per-species locations
+than collapse them; \code{"linear"} is the default because on every real dataset
+examined the collapse was both indicated (slope near 0) and harmless-to-helpful
+for assignment, and because it reduces to \code{"constant"} automatically wherever
+the per-species means do transfer (slope near 1). \code{"linear"} requires at least
+\code{min_calib_species} confident species spanning a range of trained means; it
+falls back to \code{"constant"} with a warning otherwise.
+
+The collapse is not specific to the 12S external-pipeline data it was found
+on: across five real datasets (one external-pipeline 12S run and BLAST-scored
+12S, 16S, and COI datasets) the fitted slope stayed far from 1 (roughly
+\code{-0.28} to \code{0.02}), and cross-validation on the confident set found the
+per-species trained means added no inference-scale predictive value over a
+single pooled location -- so the reference-derived per-species locations do
+not survive a change of scoring instrument (BLAST or an unknown external
+tool alike). This is a post-hoc calibration against an independent,
+non-circular anchor set, analogous in spirit to Platt scaling for classifier
+outputs (Platt 1999) but linear-in-the-location rather than logistic, and it
+addresses a train-vs-inference \emph{dataset shift} (Quinonero-Candela et al.
+2009) that arises because percent identity is an operationally-defined
+quantity whose value for a fixed pair of sequences depends on the alignment
+method and denominator (May 2004; Raghava & Barton 2006). See
+\code{inst/TaxaLikely_supplemental_methods.md} Section 11A for the full derivation,
+the empirical result, and references.
+}
+
 \section{Scope}{
 
 This estimates one offset for the \emph{whole model} (i.e., one marker/dataset),
@@ -149,7 +236,13 @@ marker (or one primer set) for another: the size of this gap has been found
 to vary by roughly an order of magnitude between markers of different
 length and quality (see \code{TaxaLikely/CLAUDE.md} for the 12S/18S comparison
 this function's design was validated against) and does not transfer as
-either a fixed percentage or a fixed mismatch count.
+either a fixed percentage or a fixed mismatch count. The same applies
+across \code{score_transform} values (Session 158): the offset is estimated on
+whichever scale \code{model_params$Score_Transform} says the model was trained
+on (read automatically), but a \code{"logit"}-scale offset and a
+\code{"sqrt_mismatch"}-scale offset are different numbers in different units --
+never reuse one for the other, and always recompute after retraining with
+a different \code{score_transform}.
 }
 
 \examples{

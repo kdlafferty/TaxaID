@@ -49,6 +49,31 @@ utils::globalVariables(c(
     "vert01"   = "12S",  "vert02"   = "16S"
   )
 
+  # Bare mitochondrial rRNA marker names ("12S"/"16S") have neither a [GENE]
+  # field tag NOR a primer-name entry above, so with no fix they fall through
+  # to a bare "12S[All Fields]"/"16S[All Fields]" search -- which is unreliable:
+  # confirmed live against NCBI that a real, correctly-annotated, correctly-
+  # sized Fundulus parvipinnis 12S rRNA sequence (OQ846298, /product="small
+  # subunit ribosomal RNA") matches ZERO results for "12S[All Fields]" alone,
+  # purely because neither the record itself nor its own citation happens to
+  # contain the literal string "12S" anywhere -- while a near-identical
+  # congener submission (OP537863) WAS found, only because ITS linked
+  # citation was titled "12S barcoding of Texas fishes". Whether a genuine
+  # 12S/16S sequence is found was effectively down to incidental bibliographic
+  # metadata, not the sequence's own real content. "Small/large subunit
+  # ribosomal RNA" (SSU/LSU rRNA) are the standard, unambiguous synonyms for
+  # mitochondrial 12S/16S rRNA specifically (confirmed empirically too: this
+  # phrasing recovers 1 additional real Fundulus 12S record and 3 additional
+  # real Fundulus 16S records beyond what a bare marker-name search finds).
+  # Deliberately NOT extended to 18S: "small subunit ribosomal RNA" is
+  # ambiguous between mitochondrial 12S and NUCLEAR 18S, so reusing it there
+  # would trade missed true positives for new false positives -- a different
+  # risk profile needing its own design, not a copy of this fix.
+  marker_synonyms <- list(
+    "12s" = c('"12S ribosomal RNA"', '"12S rRNA"', '"small subunit ribosomal RNA"'),
+    "16s" = c('"16S ribosomal RNA"', '"16S rRNA"', '"large subunit ribosomal RNA"')
+  )
+
   bc_parts <- vapply(barcode_term, function(bt) {
     key <- tolower(trimws(bt))
     gene <- gene_map[key]
@@ -59,11 +84,15 @@ utils::globalVariables(c(
       # Primer name or unrecognised term: search [All Fields]
       primer_clause <- paste0(bt, "[All Fields]")
       # Also OR in the underlying locus if known
-      locus <- primer_to_locus[key]
-      if (!is.na(locus)) {
-        paste0("(", primer_clause, " OR ", locus, "[All Fields])")
+      locus     <- primer_to_locus[key]
+      synonyms  <- marker_synonyms[[key]]
+      clauses   <- primer_clause
+      if (!is.na(locus))       clauses <- c(clauses, paste0(locus, "[All Fields]"))
+      if (!is.null(synonyms))  clauses <- c(clauses, paste0(synonyms, "[All Fields]"))
+      if (length(clauses) > 1L) {
+        paste0("(", paste(clauses, collapse = " OR "), ")")
       } else {
-        primer_clause
+        clauses
       }
     }
   }, character(1L), USE.NAMES = FALSE)
@@ -111,7 +140,15 @@ utils::globalVariables(c(
         # entrez_summary returns a single item or a list of items
         if (!is.null(summ$uid)) summ <- list(summ)
 
-        res[[i]] <- do.call(rbind, lapply(summ, function(x) {
+        # dplyr::bind_rows(), not do.call(rbind, ...) -- a handful of real
+        # NCBI ESummary records can come back missing a field entirely
+        # (already handled per-field above via is.null() -> NA), but the
+        # real risk is heterogeneous per-record structure from rentrez
+        # itself under retry/partial-failure conditions; rbind() errors on
+        # any column mismatch where bind_rows() fills the gap with NA (same
+        # fix already applied to the BOLD fetch path, see fetch_bold_
+        # reference_sequences() below for the identical reasoning).
+        res[[i]] <- dplyr::bind_rows(lapply(summ, function(x) {
           data.frame(
             acc      = as.character(if (is.null(x$caption))  NA else x$caption),
             title    = as.character(if (is.null(x$title))    NA else x$title),
@@ -128,7 +165,7 @@ utils::globalVariables(c(
     }
   }
 
-  do.call(rbind, Filter(Negate(is.null), res))
+  dplyr::bind_rows(res)
 }
 
 
@@ -175,7 +212,16 @@ utils::globalVariables(c(
           as.data.frame(row, stringsAsFactors = FALSE)
         })
 
-        res[[i]] <- do.call(rbind, parsed)
+        # dplyr::bind_rows(), not do.call(rbind, ...) -- real NCBI taxonomy
+        # XML is not perfectly uniform across taxids (e.g. a merged/redirected
+        # taxon's <Taxon> node can carry a different internal shape), so
+        # `parsed`'s per-node data frames can't be guaranteed to share
+        # identical columns; rbind() hard-errors on any mismatch
+        # ("numbers of columns of arguments do not match", confirmed live
+        # against a real ~1300-genus PtConception 18S fetch), bind_rows()
+        # fills the gap with NA instead. Same fix as .fetch_summaries_
+        # batched() above and the BOLD fetch path.
+        res[[i]] <- dplyr::bind_rows(parsed)
         success  <- TRUE
       }, error = function(e) {
         if (attempt < 3L) Sys.sleep(attempt)
@@ -184,7 +230,7 @@ utils::globalVariables(c(
     Sys.sleep(.ncbi_delay())
   }
 
-  do.call(rbind, Filter(Negate(is.null), res))
+  dplyr::bind_rows(res)
 }
 
 
@@ -276,7 +322,7 @@ utils::globalVariables(c(
         xml_doc <- xml2::read_xml(xml_raw)
         nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
 
-        res[[i]] <- do.call(rbind, lapply(nodes, function(node) {
+        res[[i]] <- lapply(nodes, function(node) {
           acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
           quals <- xml2::xml_find_all(
             node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
@@ -295,7 +341,10 @@ utils::globalVariables(c(
             country      = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
             stringsAsFactors = FALSE
           )
-        }))
+        })
+        # dplyr::bind_rows(), not do.call(rbind, ...) -- same reasoning as
+        # .fetch_summaries_batched()/.fetch_taxonomy_map() above.
+        res[[i]] <- dplyr::bind_rows(res[[i]])
         success <- TRUE
       }, error = function(e) {
         if (attempt < 3L) Sys.sleep(attempt)
@@ -304,8 +353,12 @@ utils::globalVariables(c(
     Sys.sleep(.ncbi_delay())
   }
 
-  out <- do.call(rbind, Filter(Negate(is.null), res))
-  if (is.null(out)) empty else out
+  out <- dplyr::bind_rows(res)
+  # A 0-row/0-col result (no accessions resolved to any location at all)
+  # lacks even the column NAMES bind_rows() would otherwise infer from real
+  # data -- fall back to the pre-declared `empty` schema so callers can
+  # still rely on composite_id/lat/lon/country existing.
+  if (nrow(out) == 0L) empty else out
 }
 
 
@@ -344,8 +397,9 @@ utils::globalVariables(c(
 #' Renamed from `fetch_reference_sequences()` (Session 136) now that a second
 #' live-API reference source (`fetch_bold_reference_sequences()`, BOLD Systems)
 #' exists -- the old name didn't say NCBI anywhere, which stopped being safe
-#' once a second source existed. `fetch_reference_sequences()` remains
-#' available as a deprecated alias forwarding to this function.
+#' once a second source existed. The deprecated `fetch_reference_sequences()`
+#' forwarding alias was removed entirely in a later session (no real callers
+#' remained; see NAME_CHANGE_HISTORY.md).
 #'
 #' Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
 #' taxonomy via the NCBI taxonomy database, filters by sequence length and
@@ -437,6 +491,34 @@ utils::globalVariables(c(
 #'   (ESummary) nor `.fetch_taxonomy_map()` (taxonomy DB) -- the two record
 #'   types this function otherwise fetches -- carry these qualifiers, so this
 #'   is a genuinely separate fetch, not a free re-parse of existing output.
+#' @param keep_out_of_range Logical (default `FALSE`). When `TRUE`, sequences
+#'   outside `[eff_min_len, eff_max_len]` (e.g. complete mitogenomes) are kept
+#'   -- tagged via the new `in_barcode_range` output column -- instead of
+#'   being dropped, capped separately per species by
+#'   `max_out_of_range_per_species` so they never compete with in-range
+#'   sequences for the `max_per_species`/`max_per_genus` training-set budget.
+#'   Default `FALSE` preserves this function's original behavior exactly.
+#'   Exists so a caller needing to check whether a species has ANY real
+#'   sequence overlapping a specific genomic region (not just whether it has
+#'   some barcode-length reference) can do so locally against `reference_df`,
+#'   without a separate on-demand NCBI fetch -- see
+#'   [restore_suppressed_candidates()]'s regional-overlap check.
+#' @param max_out_of_range_per_species Integer (default `2L`). Cap on
+#'   out-of-range sequences retained per species when
+#'   `keep_out_of_range = TRUE`. Ignored otherwise.
+#' @param max_out_of_range_len Integer (default `200000L`). Upper bound on
+#'   how large a sequence can be to still be retained under
+#'   `keep_out_of_range = TRUE`. Without this, a well-sequenced species'
+#'   whole-genome scaffold (a real case found in production use: 111 million
+#'   bp, not a mitogenome) would be retained just as readily as a real
+#'   ~15-20kb mitogenome, making any later alignment against it
+#'   pathologically slow for no benefit -- a scaffold that large was never a
+#'   candidate for "the rescuable barcode region is embedded in this
+#'   over-length submission" the way a mitogenome or chloroplast genome is.
+#'   The default comfortably covers any real animal mitogenome or plant
+#'   chloroplast genome (~120-160kb) with margin, while excluding genome/
+#'   scaffold-scale sequences by orders of magnitude. Ignored when
+#'   `keep_out_of_range = FALSE`.
 #'
 #' @return A data frame (`reference_df`) with columns:
 #'   \describe{
@@ -444,11 +526,20 @@ utils::globalVariables(c(
 #'     \item{`sequence`}{DNA sequence string.}
 #'     \item{rank columns}{One column per rank in `rank_system`
 #'       (e.g., `family`, `genus`, `species`).}
+#'     \item{`in_barcode_range`}{Logical. `TRUE` for sequences within
+#'       `[eff_min_len, eff_max_len]`; `FALSE` for out-of-range sequences
+#'       retained only when `keep_out_of_range = TRUE` (always `TRUE` when
+#'       `keep_out_of_range = FALSE`, the default, since out-of-range rows
+#'       are dropped entirely in that case).}
+#'     \item{`slen`}{Integer. Sequence length as reported by NCBI, for
+#'       reference alongside `in_barcode_range`.}
 #'     \item{`lat`, `lon`, `country`}{Only when `include_location = TRUE`.
 #'       Collection location parsed from GenBank's `lat_lon`/`country`
 #'       qualifiers; `NA` when absent or unparseable.}
 #'   }
-#'   Ready for input to [build_sequence_matrix()].
+#'   Ready for input to [build_sequence_matrix()] (which applies its own,
+#'   independent length filter -- out-of-range rows kept here are excluded
+#'   from training there exactly as before this parameter existed).
 #'
 #' @seealso [read_reference_fasta()] for loading a local FASTA file,
 #'   [build_sequence_matrix()] for the next step
@@ -476,12 +567,16 @@ fetch_ncbi_reference_sequences <- function(taxa,
                                       priority_taxa   = NULL,
                                       max_sequences   = 10000L,
                                       min_per_taxon   = 50L,
-                                      blacklist_regex = "uncultured|environmental|predicted|vector|synthetic|unverified",
+                                      blacklist_regex = paste0("uncultured|environmental|predicted|",
+                                                               "vector|synthetic|unverified"),
                                       min_date        = NULL,
                                       max_date        = NULL,
                                       cache_dir       = tools::R_user_dir("TaxaLikely", "cache"),
                                       ncbi_api_key    = NULL,
-                                      include_location = FALSE) {
+                                      include_location = FALSE,
+                                      keep_out_of_range = FALSE,
+                                      max_out_of_range_per_species = 2L,
+                                      max_out_of_range_len = 200000L) {
 
   # --- Validate inputs --------------------------------------------------------
   if (!requireNamespace("rentrez", quietly = TRUE))
@@ -662,10 +757,16 @@ fetch_ncbi_reference_sequences <- function(taxa,
         date_sfx     <- gsub("[^0-9]", "", paste0(
                                if (is.null(min_date)) "X" else min_date, "_",
                                if (is.null(max_date)) "X" else max_date))
+        # oor_sfx (keep_out_of_range) included since the cached object is the
+        # FULLY post-filter/post-downsample result, not raw summaries -- a
+        # stale cache built with keep_out_of_range = FALSE genuinely lacks
+        # out-of-range rows, so a later TRUE call must not silently reuse it.
+        oor_sfx <- if (keep_out_of_range)
+          sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len) else ""
         p_cache_file <- file.path(cache_dir,
                                   paste0("priority_", safe_name, "_", safe_bc,
                                          "_l", eff_min_len, "_", eff_max_len,
-                                         "_d", date_sfx, "_meta.rds"))
+                                         "_d", date_sfx, oor_sfx, "_meta.rds"))
         if (file.exists(p_cache_file)) {
           message(sprintf("  %s: loading from cache", sp))
           priority_meta[[sp]] <- readRDS(p_cache_file)
@@ -709,10 +810,14 @@ fetch_ncbi_reference_sequences <- function(taxa,
       date_sfx2  <- gsub("[^0-9]", "", paste0(
                               if (is.null(min_date)) "X" else min_date, "_",
                               if (is.null(max_date)) "X" else max_date))
+      # See the priority-path's identical p_cache_file comment above for why
+      # keep_out_of_range must be part of this key.
+      oor_sfx2   <- if (keep_out_of_range)
+        sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len) else ""
       cache_file <- file.path(cache_dir,
                               paste0(safe_name, "_", safe_bc,
                                      "_l", eff_min_len, "_", eff_max_len,
-                                     "_d", date_sfx2, "_meta.rds"))
+                                     "_d", date_sfx2, oor_sfx2, "_meta.rds"))
       if (file.exists(cache_file)) {
         message(sprintf("  %s: loading from cache", taxa[i]))
         all_meta[[i]] <- readRDS(cache_file)
@@ -746,10 +851,35 @@ fetch_ncbi_reference_sequences <- function(taxa,
         next
       }
 
-      # Length filter (on summary metadata, before downloading sequences)
-      meta <- meta[!is.na(meta$slen) &
-                   meta$slen >= eff_min_len &
-                   meta$slen <= eff_max_len, , drop = FALSE]
+      # Length filter (on summary metadata, before downloading sequences).
+      # keep_out_of_range = TRUE retains out-of-range (e.g. mitogenome-length)
+      # sequences too, tagged via in_barcode_range, instead of dropping them --
+      # needed so a regional-overlap check (e.g. restore_suppressed_
+      # candidates()'s coverage check) has real reference sequence content to
+      # compare against for species whose only NCBI submission is over-length,
+      # without a separate on-demand fetch. Capped separately below
+      # (max_out_of_range_per_species) so out-of-range sequences never compete
+      # with in-range ones for the max_per_species training-set budget.
+      meta$in_barcode_range <- !is.na(meta$slen) &
+                               meta$slen >= eff_min_len &
+                               meta$slen <= eff_max_len
+      meta <- if (keep_out_of_range) {
+        # max_out_of_range_len bounds what "out-of-range but still worth
+        # keeping" means -- without this, a well-sequenced species' whole-
+        # genome scaffold (real case found in production use: 111 million bp,
+        # not a mitogenome) gets retained just as readily as a real ~16-20kb
+        # mitogenome, making any later alignment against it pathologically
+        # slow for no benefit (a scaffold that large was never a candidate
+        # for "the rescuable region is embedded in this over-length
+        # submission" the way a mitogenome or chloroplast genome is).
+        # Default 200,000bp comfortably covers any real animal mitogenome
+        # (~15-20kb) or plant chloroplast genome (~120-160kb) with margin,
+        # while excluding genome/scaffold-scale sequences (typically
+        # millions+ bp) by orders of magnitude.
+        meta[!is.na(meta$slen) & meta$slen <= max_out_of_range_len, , drop = FALSE]
+      } else {
+        meta[meta$in_barcode_range, , drop = FALSE]
+      }
 
       # Blacklist filter
       if (!is.null(blacklist_regex) && nchar(blacklist_regex) > 0L) {
@@ -794,20 +924,39 @@ fetch_ncbi_reference_sequences <- function(taxa,
         next
       }
 
-      # Stratified downsampling
+      # Stratified downsampling. in-range and out-of-range rows are sampled
+      # SEPARATELY so out-of-range sequences (capped by
+      # max_out_of_range_per_species below) never displace in-range
+      # training-set candidates within the max_per_species/max_per_genus
+      # budgets -- those budgets keep their existing pre-keep_out_of_range
+      # meaning entirely.
+      in_range_meta  <- meta[meta$in_barcode_range, , drop = FALSE]
+      out_range_meta <- meta[!meta$in_barcode_range, , drop = FALSE]
+
       if (!is.null(max_per_species) && finest_rank == "species") {
-        meta <- dplyr::group_by(meta, species)
-        meta <- dplyr::slice_sample(meta, n = max_per_species)
-        meta <- dplyr::ungroup(meta)
+        in_range_meta <- dplyr::group_by(in_range_meta, species)
+        in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_species)
+        in_range_meta <- dplyr::ungroup(in_range_meta)
       }
       if (!is.null(max_per_genus) && "genus" %in% tolower(rank_system)) {
-        meta <- dplyr::group_by(meta, genus)
-        meta <- dplyr::slice_sample(meta, n = max_per_genus)
-        meta <- dplyr::ungroup(meta)
+        in_range_meta <- dplyr::group_by(in_range_meta, genus)
+        in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_genus)
+        in_range_meta <- dplyr::ungroup(in_range_meta)
+      }
+      if (nrow(out_range_meta) > 0L && finest_rank == "species") {
+        out_range_meta <- dplyr::group_by(out_range_meta, species)
+        out_range_meta <- dplyr::slice_sample(out_range_meta, n = max_out_of_range_per_species)
+        out_range_meta <- dplyr::ungroup(out_range_meta)
       }
 
-      message(sprintf("  %s: %d sequences after filtering/downsampling",
-                      taxa[i], nrow(meta)))
+      meta <- dplyr::bind_rows(in_range_meta, out_range_meta)
+
+      message(sprintf("  %s: %d sequences after filtering/downsampling%s",
+                      taxa[i], nrow(meta),
+                      if (keep_out_of_range)
+                        sprintf(" (%d in-range, %d out-of-range)",
+                                sum(meta$in_barcode_range), sum(!meta$in_barcode_range))
+                      else ""))
 
       all_meta[[i]] <- meta
 
@@ -827,13 +976,24 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # Priority meta needs the same length/blacklist/taxonomy filtering applied
   # to family results. Process priority meta through the same pipeline.
   if (length(priority_meta) > 0L) {
-    priority_combined <- do.call(rbind, Filter(Negate(is.null), priority_meta))
+    # dplyr::bind_rows(), not do.call(rbind, ...) -- same real-data column-
+    # mismatch risk as the per-taxon combining above.
+    priority_combined <- dplyr::bind_rows(priority_meta)
     if (!is.null(priority_combined) && nrow(priority_combined) > 0L) {
-      # Length filter
-      priority_combined <- priority_combined[
-        !is.na(priority_combined$slen) &
+      # Length filter (see the family/genus path's identical comment above for
+      # why keep_out_of_range retains out-of-range rows, tagged, instead of
+      # dropping them)
+      priority_combined$in_barcode_range <- !is.na(priority_combined$slen) &
         priority_combined$slen >= eff_min_len &
-        priority_combined$slen <= eff_max_len, , drop = FALSE]
+        priority_combined$slen <= eff_max_len
+      priority_combined <- if (keep_out_of_range) {
+        # max_out_of_range_len bound -- see the family/genus path's identical
+        # comment above for why this is needed.
+        priority_combined[!is.na(priority_combined$slen) &
+                            priority_combined$slen <= max_out_of_range_len, , drop = FALSE]
+      } else {
+        priority_combined[priority_combined$in_barcode_range, , drop = FALSE]
+      }
       # Blacklist filter
       if (!is.null(blacklist_regex) && nchar(blacklist_regex) > 0L) {
         priority_combined <- priority_combined[
@@ -859,6 +1019,22 @@ fetch_ncbi_reference_sequences <- function(taxa,
                 TaxaTools::is_plausible_binomial(priority_combined$species),
                 , drop = FALSE]
             }
+            # Cap out-of-range rows per species (priority species otherwise
+            # get their full allocation, uncapped, by design -- but an
+            # unbounded number of mitogenome-length submissions per species
+            # is still worth bounding for the same reason as the family/
+            # genus path above).
+            if (keep_out_of_range && finest_rank == "species" &&
+                nrow(priority_combined) > 0L) {
+              p_in_range  <- priority_combined[priority_combined$in_barcode_range, , drop = FALSE]
+              p_out_range <- priority_combined[!priority_combined$in_barcode_range, , drop = FALSE]
+              if (nrow(p_out_range) > 0L) {
+                p_out_range <- dplyr::group_by(p_out_range, species)
+                p_out_range <- dplyr::slice_sample(p_out_range, n = max_out_of_range_per_species)
+                p_out_range <- dplyr::ungroup(p_out_range)
+              }
+              priority_combined <- dplyr::bind_rows(p_in_range, p_out_range)
+            }
           } else {
             priority_combined <- priority_combined[0L, , drop = FALSE]
           }
@@ -878,12 +1054,25 @@ fetch_ncbi_reference_sequences <- function(taxa,
     priority_combined <- NULL
   }
 
-  family_meta <- do.call(rbind, Filter(Negate(is.null), all_meta))
+  # dplyr::bind_rows(), not do.call(rbind, ...) -- this is the real crash
+  # site confirmed against a live ~1300-genus PtConception 18S fetch
+  # ("Error in rbind(deparse.level, ...) : numbers of columns of arguments
+  # do not match"): all_meta's per-genus data frames each go through their
+  # own independent taxonomy-merge/filter sequence (Sections 2026-07-19),
+  # and real NCBI taxonomy XML is not perfectly uniform across genera (see
+  # .fetch_taxonomy_map()'s own note above) -- any one genus with a
+  # slightly different resolved column set was enough to hard-error the
+  # WHOLE fetch, discarding every other genus's already-completed work.
+  family_meta <- dplyr::bind_rows(all_meta)
 
-  # Merge: priority first, then family (deduplicate by accession)
+  # Merge: priority first, then family (deduplicate by accession). Same
+  # dplyr::bind_rows() fix -- priority_combined and family_meta are built by
+  # separately-written code paths that aren't guaranteed to produce
+  # byte-identical column sets even when both are conceptually "the same
+  # shape."
   meta_parts <- Filter(Negate(is.null),
                        list(priority_combined, family_meta))
-  combined_meta <- if (length(meta_parts) > 0L) do.call(rbind, meta_parts) else NULL
+  combined_meta <- if (length(meta_parts) > 0L) dplyr::bind_rows(meta_parts) else NULL
 
   if (is.null(combined_meta) || nrow(combined_meta) == 0L) {
     message("No sequences passed all filters across all taxa.")
@@ -912,9 +1101,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # Strip version suffix from accessions in metadata for joining
   combined_meta$composite_id <- sub("\\.[0-9]+$", "", combined_meta$acc)
 
-  # Join sequences to taxonomy
+  # Join sequences to taxonomy. in_barcode_range/slen carried through so
+  # downstream consumers (e.g. a regional-overlap check) can distinguish
+  # properly-sized training-eligible sequences from out-of-range ones kept
+  # only when keep_out_of_range = TRUE.
   rank_cols <- tolower(rank_system)
-  keep_cols <- c("composite_id", rank_cols)
+  keep_cols <- c("composite_id", rank_cols, "in_barcode_range", "slen")
   lookup    <- combined_meta[!duplicated(combined_meta$composite_id), keep_cols,
                              drop = FALSE]
 
@@ -942,37 +1134,6 @@ fetch_ncbi_reference_sequences <- function(taxa,
                   dplyr::n_distinct(reference_df[[finest_rank]]),
                   finest_rank))
   reference_df
-}
-
-
-#' @rdname fetch_ncbi_reference_sequences
-#' @export
-fetch_reference_sequences <- function(taxa,
-                                      barcode_term,
-                                      rank_system     = c("family", "genus", "species"),
-                                      min_len         = NULL,
-                                      max_len         = NULL,
-                                      max_per_species = NULL,
-                                      max_per_genus   = NULL,
-                                      priority_taxa   = NULL,
-                                      max_sequences   = 10000L,
-                                      min_per_taxon   = 50L,
-                                      blacklist_regex = "uncultured|environmental|predicted|vector|synthetic|unverified",
-                                      min_date        = NULL,
-                                      max_date        = NULL,
-                                      cache_dir       = tools::R_user_dir("TaxaLikely", "cache"),
-                                      ncbi_api_key    = NULL,
-                                      include_location = FALSE) {
-  .Deprecated("fetch_ncbi_reference_sequences")
-  fetch_ncbi_reference_sequences(
-    taxa = taxa, barcode_term = barcode_term, rank_system = rank_system,
-    min_len = min_len, max_len = max_len, max_per_species = max_per_species,
-    max_per_genus = max_per_genus, priority_taxa = priority_taxa,
-    max_sequences = max_sequences, min_per_taxon = min_per_taxon,
-    blacklist_regex = blacklist_regex, min_date = min_date, max_date = max_date,
-    cache_dir = cache_dir, ncbi_api_key = ncbi_api_key,
-    include_location = include_location
-  )
 }
 
 
@@ -1395,9 +1556,10 @@ fetch_bold_reference_sequences <- function(taxa,
       quote          = "",  comment.char = "",
       stringsAsFactors = FALSE, fill = TRUE
     ),
-    error = function(e)
+    error = function(e) {
       stop(sprintf("Failed to read taxonomy file '%s': %s",
                    basename(taxonomy_file), conditionMessage(e)))
+    }
   )
 
   if (nrow(raw) == 0L)
@@ -1424,9 +1586,9 @@ fetch_bold_reference_sequences <- function(taxa,
     c(composite_id = raw$seq_id[i], row)
   })
 
-  out <- do.call(rbind, lapply(result_list, function(x) as.data.frame(
-    as.list(x), stringsAsFactors = FALSE
-  )))
+  out <- do.call(rbind, lapply(result_list, function(x) {
+    as.data.frame(as.list(x), stringsAsFactors = FALSE)
+  }))
   row.names(out) <- NULL
   out
 }

@@ -36,7 +36,7 @@ theoretically Fisher-consistent full correction; values above 1 apply
 stronger-than-theoretical correction (Menon et al.'s own tuned optimum
 on one benchmark was 2.6). Every real calibration run against this
 function's own real classifier output so far (image, and acoustic on a
-properly powered re-test) found \verb{tau ≈ 0} optimal -- raise it only
+properly powered re-test) found \verb{tau ~= 0} optimal -- raise it only
 after calibrating against real labeled data for your own data type
 (see Details).}
 }

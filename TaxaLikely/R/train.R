@@ -8,7 +8,8 @@ utils::globalVariables(c(
   "mu_score", "mu_gap", "sigma_score", "lookup_key", "rank",
   "score_logit_mean", "gap_logit_mean", "score_logit_var",
   "n_obs_species", "shrunk_mu_score", "shrunk_mu_gap", "shrunk_sigma",
-  "w", "species", "max_congener_score", "delta_emp", "n_pairs", "delta_shrunk"
+  "w", "species", "max_congener_score", "delta_emp", "n_pairs", "delta_shrunk",
+  "mean_cong", "var_cong", "var_shrunk"
 ))
 
 # ==============================================================================
@@ -195,9 +196,11 @@ flag_reference_errors <- function(raw_df,
 #' @noRd
 .prep_training_data <- function(raw_df,
                                 rank_system,
-                                score_bounds   = NULL,
-                                logit_epsilon  = 1e-4,
-                                max_gap_ceiling = 5.0) {
+                                score_bounds    = NULL,
+                                logit_epsilon   = 1e-4,
+                                max_gap_ceiling = NULL,
+                                score_transform = "logit") {
+  max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (!is.data.frame(raw_df))
     stop("raw_df must be a data frame")
   if (!is.character(rank_system) || length(rank_system) == 0L)
@@ -211,7 +214,9 @@ flag_reference_errors <- function(raw_df,
   missing_x <- setdiff(x_cols, names(raw_df))
   if (length(missing_x) > 0L) {
     stop(sprintf(
-      "rank_system columns not found in raw_df: %s. Expected columns with '.x'/'.y' suffixes (e.g., '%s'). Check that rank_system matches the taxonomy columns in your reference matrix.",
+      paste0("rank_system columns not found in raw_df: %s. Expected columns with '.x'/'.y' ",
+             "suffixes (e.g., '%s'). Check that rank_system matches the taxonomy columns in ",
+             "your reference matrix."),
       paste(missing_x, collapse = ", "), x_cols[1]
     ))
   }
@@ -251,15 +256,14 @@ flag_reference_errors <- function(raw_df,
     df_x, df_y
   )
 
-  # ---- STEP 2: LOGIT TRANSFORM ----------------------------------------------
-  # logit(0.01) = noise floor for foreign match scores; scores below 1%
-  # identity are treated as random noise and replaced with this floor value.
-  noise_floor_logit <- log(0.01 / (1 - 0.01))
+  # ---- STEP 2: SCORE TRANSFORM -----------------------------------------------
+  # noise floor: scores below 1% identity are treated as random noise and
+  # replaced with this floor value, on whichever scale score_transform picks.
+  noise_floor_logit <- .transform_p(0.01, score_transform, logit_epsilon)
 
   df_logit <- df_combined |>
     dplyr::mutate(
-      p_b         = pmin(pmax(p_norm, logit_epsilon), 1 - logit_epsilon),
-      score_logit = log(p_b / (1 - p_b))
+      score_logit = .transform_p(p_norm, score_transform, logit_epsilon)
     )
 
   # ---- STEP 3: FOREIGN STATS (max cross-species logit score per id_x) -------
@@ -364,7 +368,8 @@ flag_reference_errors <- function(raw_df,
   has_self_match <- any(df_logit$id_x == df_logit$id_y)
   if (length(missing_ids) > 0L && !has_self_match) {
     warning(sprintf(
-      "%d singleton reference(s) found but distance matrix lacks self-matches. Singleton score estimates will use global mean instead of self-match scores.",
+      paste0("%d singleton reference(s) found but distance matrix lacks self-matches. ",
+             "Singleton score estimates will use global mean instead of self-match scores."),
       length(missing_ids)
     ))
   }
@@ -478,10 +483,13 @@ flag_reference_errors <- function(raw_df,
 #'   (e.g., `c("family", "genus", "species")`). Default `NULL` auto-detects
 #'   from the `.x`-suffixed columns in `raw_df`.
 #' @param score_bounds Optional `c(min, max)` for score normalization.
-#' @param min_observed_sigma Numeric.  Floor on observed within-species score
-#'   variance (default `1.0`).  Prevents overfitting on species with very low
-#'   variance (e.g., a species with two nearly identical reference sequences).
-#'   In logit space, 1.0 corresponds to meaningful within-species variation.
+#' @param min_observed_sigma Numeric or `NULL` (default).  Floor on observed
+#'   within-species score variance.  Prevents overfitting on species with very
+#'   low variance (e.g., a species with two nearly identical reference
+#'   sequences).  `NULL` resolves to `1.0` for `score_transform = "logit"`
+#'   (in logit space, 1.0 corresponds to meaningful within-species variation)
+#'   or the equivalent rescaled value for `"sqrt_mismatch"` -- see
+#'   `score_transform` below.
 #' @param prior_weight Numeric.  Equivalent pseudo-sample size for Empirical
 #'   Bayes shrinkage toward the global mean.  Controls how strongly
 #'   species-specific estimates are regularized.  A value of 10 means each
@@ -504,25 +512,78 @@ flag_reference_errors <- function(raw_df,
 #'   its best foreign match is within 2 percentage points of its typical
 #'   self-match.  Lower values are stricter, flagging more sequences.
 #' @param logit_epsilon Numeric.  Logit-clipping value (default `1e-4`).
-#' @param max_gap_ceiling Numeric.  Gap cap (default `5.0`).  Caps gap at 5
-#'   logit units (roughly the gap between 99.3% and 50% identity) to prevent
-#'   extreme outliers from dominating model estimates.
+#'   Used only when `score_transform = "logit"`.
+#' @param max_gap_ceiling Numeric or `NULL` (default).  Gap cap.  `NULL`
+#'   resolves to `5.0` for `score_transform = "logit"` (roughly the gap
+#'   between 99.3% and 50% identity, in logit units) or `0.6234` for
+#'   `"sqrt_mismatch"` (the same 99.3%-vs-50% reference gap on that scale) --
+#'   prevents extreme outliers from dominating model estimates either way.
+#' @param score_transform Character, `"logit"` (default) or `"sqrt_mismatch"`.
+#'   The scale H1/H2/H3 are all modeled on -- must be shared across all three
+#'   hypotheses, since they are compared via density ratios at the same
+#'   observed point (a valid likelihood ratio requires one consistent scale;
+#'   mixing transforms across hypotheses would need an explicit
+#'   change-of-variables correction that this package does not implement).
+#'   `"logit"` (`log(p/(1-p))`) is the package's original scale. `"sqrt_mismatch"`
+#'   (`-sqrt(1-p)`) was added in Session 158 after real 12S congener data
+#'   showed `"logit"` gives a genuinely backwards answer for one of the
+#'   package's more novel claims: whether a genus's species are hard to tell
+#'   apart (small, consistent divergence) or easy to tell apart (larger,
+#'   more variable divergence). On the raw match-proportion scale, tight
+#'   genera show lower congener-score variance, as expected -- but under
+#'   `"logit"`, this can reverse sign, because nearly all real barcode
+#'   matches sit close to 100% identity, exactly where logit's derivative
+#'   diverges fastest. `"sqrt_mismatch"` treats divergence as a rare-event
+#'   count (few mismatches out of many aligned bases -- the regime real data
+#'   is actually in), for which square-root is the classical
+#'   variance-stabilizing transform; it recovers the correct qualitative
+#'   ordering where `"logit"` does not. See `evaluate_likelihoods()`'s own
+#'   documentation and `[[project_job2_unreferenced_relatives]]` in the
+#'   TaxaID memory system for the full empirical derivation, including why
+#'   several other standard transforms (probit, complementary log-log) were
+#'   checked and rejected. `"sqrt_mismatch"` is bounded to `[-1, 0]` rather
+#'   than unbounded like `"logit"` -- a Gaussian fit to it is technically an
+#'   approximation for that reason, but a mild one in practice, since real
+#'   observations concentrate near 0 (good matches), far from the -1
+#'   boundary. **Not yet ported to this scale**: `calibrate_query_noise()`
+#'   and `evaluate_likelihoods()`'s `evidence_col`/`min_coverage` mechanisms
+#'   all assume `"logit"` internally and will error rather than silently
+#'   produce wrong numbers if combined with a `"sqrt_mismatch"`-trained model.
 #'
 #' @return A named list (class `"taxa_model_params"`) with slots:
 #'   \describe{
 #'     \item{`H1_Lookup`}{Data frame with per-species parameters: `lookup_key`,
-#'       `rank`, `mu_score`, `mu_gap`, `sigma_score`.}
+#'       `rank`, `mu_score`, `mu_gap`, `sigma_score`, `n_obs_species` (number of
+#'       within-species reference sequences trained on -- used by
+#'       `evaluate_likelihoods()` to weight the Monte Carlo uncertainty of the
+#'       trained mean; see that function's own documentation).}
 #'     \item{`H1_Global_Mu`}{Named numeric vector: `score_logit`, `gap_logit`.}
 #'     \item{`H1_Sigma`}{2x2 covariance matrix for the global H1 distribution.}
+#'     \item{`Score_Transform`}{Character, `"logit"` or `"sqrt_mismatch"` --
+#'       the scale this model's H1/H2/H3 parameters were fit on. Read
+#'       automatically by `evaluate_likelihoods()`; callers should not need
+#'       to track or re-supply it.}
 #'     \item{`H2`}{List with `delta` and `sigma` for the missing-species
 #'       hypothesis (pooled across all genera).}
 #'     \item{`H3`}{List with `delta` and `sigma` for the missing-genus
 #'       hypothesis.}
-#'     \item{`H2_Lookup`}{Data frame (or `NULL`) with per-genus `H2` delta
-#'       estimates: `genus`, `n_pairs`, `delta_shrunk`. See "Per-genus delta
-#'       shrinkage" section below.}
+#'     \item{`H2_Lookup`}{Data frame (or `NULL`) with per-genus `H2` delta and
+#'       variance estimates: `genus`, `n_pairs`, `delta_shrunk`, `var_shrunk`
+#'       (Session 158). See "Per-genus delta shrinkage" section below.}
 #'     \item{`Stats`}{List of diagnostics (e.g., `AIC_Score` if lmer succeeded,
-#'       `n_species`, `n_singletons`).}
+#'       `n_species`, `n_singletons`, `n_h1_pooled` -- total sequences behind
+#'       the global H1 mean (informational only; NOT used as the Monte Carlo
+#'       uncertainty fallback -- see `prior_weight` below) -- and
+#'       `n_h2_pooled` -- foreign-match count behind the pooled global `H2`
+#'       delta, `NA` when too few foreign matches existed to estimate one
+#'       (also informational only). `prior_weight` -- the same value passed to
+#'       this call -- is what `evaluate_likelihoods()` actually uses as the
+#'       equivalent sample size for candidates with no species/genus-specific
+#'       reference data at all: the true pooled sample size (`n_h1_pooled`/
+#'       `n_h2_pooled`) reflects how well the GLOBAL average is known, not how
+#'       confidently that average applies to a candidate we have zero direct
+#'       data for, so using it directly would understate uncertainty exactly
+#'       where it should be largest.}
 #'     \item{`reference_errors`}{Data frame of flagged references (output of
 #'       \code{flag_reference_errors()}). Use with
 #'       \code{\link{remove_flagged_references}} to clean a match object.}
@@ -566,13 +627,18 @@ flag_reference_errors <- function(raw_df,
 train_likelihood_model <- function(raw_df,
                                    rank_system        = NULL,
                                    score_bounds       = NULL,
-                                   min_observed_sigma = 1.0,
+                                   min_observed_sigma = NULL,
                                    prior_weight       = 10.0,
                                    use_hierarchy      = TRUE,
                                    anchor_perfect     = TRUE,
                                    mislabel_threshold  = 0.02,
                                    logit_epsilon      = 1e-4,
-                                   max_gap_ceiling    = 5.0) {
+                                   max_gap_ceiling    = NULL,
+                                   score_transform    = "logit") {
+  score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))
+  max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
+  if (is.null(min_observed_sigma))
+    min_observed_sigma <- 1.0 * .transform_unit_ratio(score_transform)^2
   if (!is.data.frame(raw_df))
     stop("raw_df must be a data frame")
 
@@ -622,18 +688,21 @@ train_likelihood_model <- function(raw_df,
     rank_system     = rank_system,
     score_bounds    = score_bounds,
     logit_epsilon   = logit_epsilon,
-    max_gap_ceiling = max_gap_ceiling
+    max_gap_ceiling = max_gap_ceiling,
+    score_transform = score_transform
   )
 
   if (nrow(train_df) == 0L)
-    stop("Training data is empty after preprocessing. Check that raw_df contains valid pairwise match scores and that rank_system columns are present.")
+    stop(paste0("Training data is empty after preprocessing. Check that raw_df contains valid ",
+                "pairwise match scores and that rank_system columns are present."))
 
   h1_data <- dplyr::filter(train_df, rank_category == "1_Known_Species")
   n_species    <- dplyr::n_distinct(h1_data$rank_code_a)
   n_singletons <- sum(train_df$rank_category == "Singleton")
 
   if (nrow(h1_data) == 0L)
-    stop("No H1 (within-species) pairs found -- cannot train model. All sequences may be singletons (only one per species in the reference database).")
+    stop(paste0("No H1 (within-species) pairs found -- cannot train model. All sequences may ",
+                "be singletons (only one per species in the reference database)."))
 
   # ---- PSEUDO-DATA ANCHORING ------------------------------------------------
   # Anchoring is a form of informative pseudo-data, analogous to Bayesian
@@ -646,7 +715,7 @@ train_likelihood_model <- function(raw_df,
   # (e.g., logit(0.985)) and a perfect 100% match falls in the tail.
   n_anchors <- 0L
   if (anchor_perfect) {
-    perfect_logit <- log((1 - logit_epsilon) / logit_epsilon)
+    perfect_logit <- .transform_p(1, score_transform, logit_epsilon)
     real_pos_gaps <- h1_data$gap_logit[h1_data$gap_logit > 0]
     if (length(real_pos_gaps) == 0L || all(is.na(real_pos_gaps))) {
       anchor_gap <- max_gap_ceiling
@@ -762,7 +831,30 @@ train_likelihood_model <- function(raw_df,
       # Variance shrinkage via linear combination is an approximation to the
       # inverse-chi-squared posterior. Adequate for typical barcode reference
       # sizes (3-20 sequences per species).
-      shrunk_sigma    = sqrt(w * score_logit_var + (1 - w) * global_var_score)
+      #
+      # Session 158 fix: this used to take sqrt() of the shrunk variance
+      # before storing it, producing an SD-shaped number in a slot
+      # (`H1_Lookup$sigma_score`) that every downstream consumer -- the
+      # species floor comparison against `H1_Sigma` (a true covariance
+      # matrix, unaffected), the outlier chi-squared test, `dnorm(sd =
+      # sqrt(...))`, `dmvnorm(sigma = ...)` -- treats as a VARIANCE, applying
+      # its own sqrt() (or using it directly as a covariance diagonal entry)
+      # on top. Net effect: species-specific H1 candidates were evaluated
+      # against a variance equal to the FOURTH root of the intended shrunk
+      # variance, not its square root -- systematically tighter
+      # (overconfident) than the training data actually supports. This was
+      # invisible on the logit scale (shrunk variances ~1.5-2.5, where the
+      # extra sqrt is a ~15-25% correction, not obviously wrong-looking) and
+      # only became impossible to miss once Session 158's score_transform
+      # work put real variances on a much smaller natural scale (~0.01-0.1),
+      # where the same bug produces a 3-6x distortion. Confirmed directly:
+      # hand-reproduced this formula against real 12S training data and
+      # matched the shipped code's literal (buggy) output before concluding
+      # this was real, not a misreading. Fixed by storing the shrunk
+      # variance itself, with no extra sqrt -- consistent with
+      # `global_var_score`/`H1_Sigma` (always true variances) and with every
+      # downstream consumer's own expectation.
+      shrunk_sigma    = w * score_logit_var + (1 - w) * global_var_score
     )
 
   # Remove anchor pseudo-species from lookup
@@ -770,94 +862,150 @@ train_likelihood_model <- function(raw_df,
                                   rank_code_a != "ANCHOR_PERFECT")
 
   H1_Lookup <- tibble::tibble(
-    lookup_key  = species_params$rank_code_a,
-    rank        = rank_system[length(rank_system)],
-    mu_score    = species_params$shrunk_mu_score,
-    mu_gap      = species_params$shrunk_mu_gap,
-    sigma_score = species_params$shrunk_sigma
+    lookup_key     = species_params$rank_code_a,
+    rank           = rank_system[length(rank_system)],
+    mu_score       = species_params$shrunk_mu_score,
+    mu_gap         = species_params$shrunk_mu_gap,
+    sigma_score    = species_params$shrunk_sigma,
+    n_obs_species  = species_params$n_obs_species
   )
 
   # ---- H2 / H3 PARAMETERS ---------------------------------------------------
-  # H2 delta estimated from observed foreign-match scores in the training data.
-  # H3 delta = H2 delta + 2.0 (one additional rank step away).
+  # H2 delta AND variance are estimated from real CONGENER comparisons
+  # (max_congener_score: same-genus, different-species matches) wherever
+  # possible -- both the pooled default and the per-genus shrinkage below use
+  # this same, more specific population. (Session 158 fix: previously the
+  # pooled default alone used max_foreign_score -- matches to ANY other
+  # species in ANY genus -- a broader, noisier population than what the
+  # per-genus shrinkage was already comparing against, so a genus with NO
+  # congener data of its own fell back to a variance estimated from a subtly
+  # different, less relevant reference population than genera that DID have
+  # local data. Confirmed empirically to matter: the old pooled variance from
+  # max_foreign_score was 9.58 on real 12S data; the correctly-sourced
+  # congener-only pooled variance is 5.91.)
+  # H3 delta = H2 delta + 2.0 (one additional rank step away, unscaled here --
+  # see note at H3's own definition below for why this offset itself still
+  # needs a transform-aware equivalent).
   # Both sigma slots are 2x2 matrices for compatibility with dmvnorm.
+  unit_ratio <- .transform_unit_ratio(score_transform)
 
-  # Default H2 delta: 3 logit units ~ 95% vs 50% on the probability scale,
-  # a reasonable default for typical barcode markers (COI, 12S). Marker-specific
-  # tuning is handled automatically when sufficient foreign-match data exists
-  # (see empirical override below).
-  h2_delta_val <- 3.0
-  h2_var       <- 1.0   # default before empirical override
+  # Default H2 delta: 3 logit units ~ 95% vs 50% on the probability scale (or
+  # the transform_unit_ratio-rescaled equivalent) -- a reasonable default for
+  # typical barcode markers (COI, 12S) before any real congener data is seen.
+  # Marker-specific tuning is handled automatically when sufficient congener
+  # data exists (see empirical override below).
+  h2_delta_val <- 3.0 * unit_ratio
+  h2_var       <- 1.0 * unit_ratio^2   # default before empirical override
   H2_Lookup    <- NULL
+  n_h2_pooled  <- NA_integer_  # sample size behind h2_delta_val, for SE-of-delta use at inference
+  noise_floor_congener <- .transform_p(0.007, score_transform, logit_epsilon)
 
-  if (nrow(h1_data) > 5L && "max_foreign_score" %in% names(train_df)) {
-    # Filters extreme foreign-match scores below logit(0.007); prevents
-    # outliers from inflating H2 delta.
-    h2_source <- train_df[
-      train_df$rank_category == "1_Known_Species" &
-        train_df$max_foreign_score > -5.0,
+  if (nrow(h1_data) > 5L && "max_congener_score" %in% names(train_df)) {
+    h2_source_all <- train_df[train_df$rank_category == "1_Known_Species", ]
+
+    # Pooled default population: real congener comparisons only, filtered the
+    # same way the old max_foreign_score pool was (drop extreme low-identity
+    # outliers below the ~0.7% noise floor) so this remains comparable in
+    # spirit to the previous default.
+    congener_pool <- h2_source_all$max_congener_score[
+      !is.na(h2_source_all$max_congener_score) &
+        h2_source_all$max_congener_score > noise_floor_congener
     ]
-    h2_scores <- h2_source$max_foreign_score
-    if (length(h2_scores) > 2L) {
-      # Minimum H1-H2 separation of 0.5 ensures unreferenced-species
-      # hypothesis is always distinguishable from known-species hypothesis.
-      h2_delta_val <- max(0.5, mu_score_global - mean(h2_scores, na.rm = TRUE))
-      # Minimum H2 variance of 0.1 prevents degenerate zero-variance
-      # estimates when few foreign matches exist.
-      h2_var <- max(stats::var(h2_scores, na.rm = TRUE), 0.1)
 
-      # ---- PER-GENUS DELTA SHRINKAGE (Empirical Bayes, same form as H1) ----
-      # h2_delta_val above pools cross-species divergence across every genus
-      # in the training set, so a genus with unusually tight (cryptic-like)
-      # or unusually loose congeneric divergence gets the exact same constant
-      # as every other genus -- the model has no way to tell them apart.
-      # Where a genus has real congener pairs in the reference
-      # (max_congener_score, restricted to same-genus/different-species
-      # matches -- NA when the genus has no second referenced species at
-      # all), shrink a genus-specific delta toward the pooled value with the
-      # identical w = n / (n + prior_weight) form used for H1 species means
-      # above. Genera with no congener data (monotypic in the reference
-      # database, regardless of how many species the genus has in nature)
-      # simply get no lookup row and fall back to h2_delta_val unchanged --
-      # there is no local information to borrow, and none is invented.
-      if ("max_congener_score" %in% names(h2_source) &&
-          "rank_code_b" %in% names(h2_source)) {
-        genus_h2 <- h2_source |>
+    if (length(congener_pool) > 2L) {
+      n_h2_pooled <- length(congener_pool)
+      # Minimum H1-H2 separation ensures unreferenced-species hypothesis is
+      # always distinguishable from known-species hypothesis (rescaled from
+      # the original 0.5-logit-unit floor -- an ad hoc choice to begin with,
+      # kept proportionally consistent across transforms via unit_ratio
+      # rather than invented fresh per scale).
+      h2_delta_val <- max(0.5 * unit_ratio, mu_score_global - mean(congener_pool, na.rm = TRUE))
+      # Minimum H2 variance (rescaled from the original 0.1-logit-unit^2
+      # floor) prevents degenerate zero-variance estimates when few congener
+      # matches exist.
+      h2_var <- max(stats::var(congener_pool, na.rm = TRUE), 0.1 * unit_ratio^2)
+
+      # ---- PER-GENUS DELTA + VARIANCE SHRINKAGE (Empirical Bayes, same form
+      # as H1) ----------------------------------------------------------
+      # h2_delta_val/h2_var above pool cross-species divergence across every
+      # genus in the training set, so a genus with unusually tight
+      # (cryptic-like) or unusually loose congeneric divergence gets the
+      # exact same constants as every other genus -- the model has no way to
+      # tell them apart. Where a genus has real congener pairs in the
+      # reference (max_congener_score -- NA when the genus has no second
+      # referenced species at all), shrink a genus-specific delta AND
+      # variance toward the pooled values with the identical
+      # w = n / (n + prior_weight) form used for H1 species means above.
+      # Genera with no congener data (monotypic in the reference database,
+      # regardless of how many species the genus has in nature) simply get
+      # no lookup row and fall back to the pooled defaults unchanged -- there
+      # is no local information to borrow, and none is invented.
+      #
+      # Session 158: the genus-specific VARIANCE is new. Previously only the
+      # delta (mean shift) was genus-specific; the variance was always the
+      # single pooled value regardless of genus. Real data shows this
+      # matters directionally, not just in magnitude: on the raw match-
+      # proportion scale, a tight genus (species hard to tell apart, e.g.
+      # Sardinops: mean congener similarity 99.9%) has ~0 congener variance,
+      # while a loose genus (e.g. Symphurus: mean 90.5%) has real, much
+      # larger variance -- confirmed on real 12S congener data
+      # (Pearson r = -0.55 between per-genus mean similarity and variance).
+      # This is exactly why H2/H3 needed the score_transform fix above too:
+      # under plain logit, this relationship reverses sign (genuinely tight
+      # genera can appear MORE variable), an artifact of logit's diverging
+      # derivative near p=1 where nearly all real barcode matches sit -- see
+      # [[project_job2_unreferenced_relatives]] in the TaxaID memory system
+      # for the full empirical derivation.
+      if ("rank_code_b" %in% names(h2_source_all)) {
+        genus_h2 <- h2_source_all |>
           dplyr::filter(!is.na(rank_code_b), !is.na(max_congener_score)) |>
           dplyr::group_by(rank_code_b) |>
           dplyr::summarise(
-            n_pairs   = dplyr::n(),
-            delta_emp = mu_score_global - mean(max_congener_score, na.rm = TRUE),
-            .groups   = "drop"
+            n_pairs    = dplyr::n(),
+            mean_cong  = mean(max_congener_score, na.rm = TRUE),
+            var_cong   = stats::var(max_congener_score, na.rm = TRUE),
+            .groups    = "drop"
           ) |>
           dplyr::mutate(
+            delta_emp    = mu_score_global - mean_cong,
             w            = n_pairs / (n_pairs + prior_weight),
-            delta_shrunk = pmax(0.5, w * delta_emp + (1 - w) * h2_delta_val)
+            delta_shrunk = pmax(0.5 * unit_ratio, w * delta_emp + (1 - w) * h2_delta_val),
+            # var_cong is NA for genera with exactly 1 congener pair (no
+            # within-genus variance to estimate) -- shrinkage then reduces to
+            # the pooled value entirely (w * NA would propagate NA, so treat
+            # the local term as absent rather than undefined).
+            var_shrunk   = ifelse(
+              is.na(var_cong),
+              h2_var,
+              w * var_cong + (1 - w) * h2_var
+            )
           )
         if (nrow(genus_h2) > 0L) {
           H2_Lookup <- tibble::tibble(
             genus        = genus_h2$rank_code_b,
             n_pairs      = genus_h2$n_pairs,
-            delta_shrunk = genus_h2$delta_shrunk
+            delta_shrunk = genus_h2$delta_shrunk,
+            var_shrunk   = genus_h2$var_shrunk
           )
         }
       }
     }
   }
 
-  h2_sigma_mat <- matrix(c(h2_var, 0, 0, 1.0), ncol = 2L)
+  h2_sigma_mat <- matrix(c(h2_var, 0, 0, 1.0 * unit_ratio^2), ncol = 2L)
   rownames(h2_sigma_mat) <- colnames(h2_sigma_mat) <- c("score_logit", "gap_logit")
-  h3_sigma_mat <- diag(2)
+  h3_sigma_mat <- diag(2) * unit_ratio^2
   rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
 
-  H2 <- list(delta = h2_delta_val,           sigma = h2_sigma_mat)
-  # H3 delta = H2 delta + 2.0: heuristic representing one additional
-  # taxonomic rank step (genus-level mismatch vs species-level mismatch).
-  # Applied on top of whichever H2 delta -- pooled global or genus-specific
-  # via H2_Lookup -- is selected at inference time; see .evaluate_one_query().
-  # H3 itself has no genus-specific estimate (would need family-level
-  # congener data); low priority, noted as a possible future extension.
-  H3 <- list(delta = h2_delta_val + 2.0,     sigma = h3_sigma_mat)
+  H2 <- list(delta = h2_delta_val,                          sigma = h2_sigma_mat)
+  # H3 delta = H2 delta + 2.0 (logit units) / rescaled equivalent: heuristic
+  # representing one additional taxonomic rank step (genus-level mismatch vs
+  # species-level mismatch). Applied on top of whichever H2 delta -- pooled
+  # global or genus-specific via H2_Lookup -- is selected at inference time;
+  # see .evaluate_one_query(). H3 itself has no genus-specific estimate
+  # (would need family-level congener data); low priority, noted as a
+  # possible future extension.
+  H3 <- list(delta = h2_delta_val + 2.0 * unit_ratio,        sigma = h3_sigma_mat)
 
   message(sprintf(
     "Model trained: %d species, %d singletons. Global mu_score=%.2f, mu_gap=%.2f",
@@ -872,11 +1020,15 @@ train_likelihood_model <- function(raw_df,
       H2           = H2,
       H3           = H3,
       H2_Lookup    = H2_Lookup,
+      Score_Transform = score_transform,
       Stats        = list(
         AIC_Score    = aic_score,
         n_species    = n_species,
         n_singletons = n_singletons,
-        n_anchors    = n_anchors
+        n_anchors    = n_anchors,
+        n_h1_pooled  = sum(species_params$n_obs_species),
+        n_h2_pooled  = n_h2_pooled,
+        prior_weight = prior_weight
       ),
       reference_errors = errors
     ),

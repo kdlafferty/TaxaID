@@ -37,7 +37,7 @@ cat("=== Fetching 12S reference sequences ===\n")
 cat(sprintf("Taxa: %s\n", paste(TAXA, collapse = ", ")))
 cat(sprintf("Marker: %s\n\n", BARCODE_TERM))
 
-reference_df <- fetch_reference_sequences(
+reference_df <- fetch_ncbi_reference_sequences(
   taxa         = TAXA,
   barcode_term = BARCODE_TERM,
   rank_system  = RANK_SYSTEM,

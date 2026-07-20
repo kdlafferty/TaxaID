@@ -196,7 +196,7 @@ test_that("read_crabs_output: non-logical dereplicate stops", {
 })
 
 # ===========================================================================
-# read_reference_fasta() – taxonomy_file parameter (Tier 2)
+# read_reference_fasta() - taxonomy_file parameter (Tier 2)
 # ===========================================================================
 
 # Helper: write a minimal FASTA temp file

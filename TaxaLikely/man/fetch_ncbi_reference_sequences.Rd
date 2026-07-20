@@ -2,7 +2,6 @@
 % Please edit documentation in R/fetch.R
 \name{fetch_ncbi_reference_sequences}
 \alias{fetch_ncbi_reference_sequences}
-\alias{fetch_reference_sequences}
 \title{Fetch reference sequences from NCBI for model building}
 \usage{
 fetch_ncbi_reference_sequences(
@@ -16,31 +15,16 @@ fetch_ncbi_reference_sequences(
   priority_taxa = NULL,
   max_sequences = 10000L,
   min_per_taxon = 50L,
-  blacklist_regex = "uncultured|environmental|predicted|vector|synthetic|unverified",
+  blacklist_regex = paste0("uncultured|environmental|predicted|",
+    "vector|synthetic|unverified"),
   min_date = NULL,
   max_date = NULL,
   cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
   ncbi_api_key = NULL,
-  include_location = FALSE
-)
-
-fetch_reference_sequences(
-  taxa,
-  barcode_term,
-  rank_system = c("family", "genus", "species"),
-  min_len = NULL,
-  max_len = NULL,
-  max_per_species = NULL,
-  max_per_genus = NULL,
-  priority_taxa = NULL,
-  max_sequences = 10000L,
-  min_per_taxon = 50L,
-  blacklist_regex = "uncultured|environmental|predicted|vector|synthetic|unverified",
-  min_date = NULL,
-  max_date = NULL,
-  cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
-  ncbi_api_key = NULL,
-  include_location = FALSE
+  include_location = FALSE,
+  keep_out_of_range = FALSE,
+  max_out_of_range_per_species = 2L,
+  max_out_of_range_len = 200000L
 )
 }
 \arguments{
@@ -124,6 +108,37 @@ qualifiers. \code{NA} where the record has no collection-location metadata
 (ESummary) nor \code{.fetch_taxonomy_map()} (taxonomy DB) -- the two record
 types this function otherwise fetches -- carry these qualifiers, so this
 is a genuinely separate fetch, not a free re-parse of existing output.}
+
+\item{keep_out_of_range}{Logical (default \code{FALSE}). When \code{TRUE}, sequences
+outside \verb{[eff_min_len, eff_max_len]} (e.g. complete mitogenomes) are kept
+-- tagged via the new \code{in_barcode_range} output column -- instead of
+being dropped, capped separately per species by
+\code{max_out_of_range_per_species} so they never compete with in-range
+sequences for the \code{max_per_species}/\code{max_per_genus} training-set budget.
+Default \code{FALSE} preserves this function's original behavior exactly.
+Exists so a caller needing to check whether a species has ANY real
+sequence overlapping a specific genomic region (not just whether it has
+some barcode-length reference) can do so locally against \code{reference_df},
+without a separate on-demand NCBI fetch -- see
+\code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}}'s regional-overlap check.}
+
+\item{max_out_of_range_per_species}{Integer (default \code{2L}). Cap on
+out-of-range sequences retained per species when
+\code{keep_out_of_range = TRUE}. Ignored otherwise.}
+
+\item{max_out_of_range_len}{Integer (default \code{200000L}). Upper bound on
+how large a sequence can be to still be retained under
+\code{keep_out_of_range = TRUE}. Without this, a well-sequenced species'
+whole-genome scaffold (a real case found in production use: 111 million
+bp, not a mitogenome) would be retained just as readily as a real
+~15-20kb mitogenome, making any later alignment against it
+pathologically slow for no benefit -- a scaffold that large was never a
+candidate for "the rescuable barcode region is embedded in this
+over-length submission" the way a mitogenome or chloroplast genome is.
+The default comfortably covers any real animal mitogenome or plant
+chloroplast genome (~120-160kb) with margin, while excluding genome/
+scaffold-scale sequences by orders of magnitude. Ignored when
+\code{keep_out_of_range = FALSE}.}
 }
 \value{
 A data frame (\code{reference_df}) with columns:
@@ -132,18 +147,28 @@ A data frame (\code{reference_df}) with columns:
 \item{\code{sequence}}{DNA sequence string.}
 \item{rank columns}{One column per rank in \code{rank_system}
 (e.g., \code{family}, \code{genus}, \code{species}).}
+\item{\code{in_barcode_range}}{Logical. \code{TRUE} for sequences within
+\verb{[eff_min_len, eff_max_len]}; \code{FALSE} for out-of-range sequences
+retained only when \code{keep_out_of_range = TRUE} (always \code{TRUE} when
+\code{keep_out_of_range = FALSE}, the default, since out-of-range rows
+are dropped entirely in that case).}
+\item{\code{slen}}{Integer. Sequence length as reported by NCBI, for
+reference alongside \code{in_barcode_range}.}
 \item{\code{lat}, \code{lon}, \code{country}}{Only when \code{include_location = TRUE}.
 Collection location parsed from GenBank's \code{lat_lon}/\code{country}
 qualifiers; \code{NA} when absent or unparseable.}
 }
-Ready for input to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.
+Ready for input to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} (which applies its own,
+independent length filter -- out-of-range rows kept here are excluded
+from training there exactly as before this parameter existed).
 }
 \description{
 Renamed from \code{fetch_reference_sequences()} (Session 136) now that a second
 live-API reference source (\code{fetch_bold_reference_sequences()}, BOLD Systems)
 exists -- the old name didn't say NCBI anywhere, which stopped being safe
-once a second source existed. \code{fetch_reference_sequences()} remains
-available as a deprecated alias forwarding to this function.
+once a second source existed. The deprecated \code{fetch_reference_sequences()}
+forwarding alias was removed entirely in a later session (no real callers
+remained; see NAME_CHANGE_HISTORY.md).
 }
 \details{
 Searches NCBI nucleotide by taxon name and barcode marker, retrieves full

@@ -9,7 +9,7 @@ utils::globalVariables(c("score_norm", "score_softmax",
 # Fixed likelihood weight for unreferenced_family rows.
 # Analogous to the unknown_lik_weight in assign_taxa_llm() (0.05 * max exp-score,
 # which converges to ~0.05 at typical max-normalized scale).
-.UNREFERENCED_FAMILY_WEIGHT <- 0.05
+.unreferenced_family_weight <- 0.05
 
 #' Assign score_likelihood values to a hypotheses data frame
 #'
@@ -30,12 +30,12 @@ utils::globalVariables(c("score_norm", "score_softmax",
 #'     [restore_suppressed_candidates()], which pre-imputes scores for
 #'     restored rows.  No per-observation aggregation is performed.}
 #'   \item{\code{"probability"}}{Neural-net softmax outputs (e.g., BirdNET
-#'     multi-candidate output, iNaturalist CV scores) already on a 0–1 scale.
+#'     multi-candidate output, iNaturalist CV scores) already on a 0-1 scale.
 #'     H1 scores are ratio-normalized (\eqn{/} max) so the best candidate
 #'     always receives \code{score_likelihood = 1.0}.  H2/H3 receive the
 #'     median H1 \code{score_likelihood} among same-genus (H2) or same-family
 #'     (H3) candidates; overall median as fallback.}
-#'   \item{\code{"similarity_softmax"}}{Similarity scores (0–100 or 0–1) with
+#'   \item{\code{"similarity_softmax"}}{Similarity scores (0-100 or 0-1) with
 #'     no trained statistical model available.  Scores are normalized to (0,1)
 #'     via \code{.normalize_scores()}, exponentiated
 #'     (\eqn{e^{sharpness \times score_{norm}}}), then ratio-normalized.
@@ -127,7 +127,7 @@ assign_scores <- function(hypotheses_df,
 
   # ---- "none" pathway ---------------------------------------------------------
   if (score_type == "none") {
-    # Warn if score column exists with non-NA values — user may have passed
+    # Warn if score column exists with non-NA values -- user may have passed
     # wrong score_type
     if (score_col %in% names(hypotheses_df)) {
       h1_scores <- hypotheses_df[[score_col]][
@@ -135,7 +135,8 @@ assign_scores <- function(hypotheses_df,
       ]
       if (any(!is.na(h1_scores)))
         warning(sprintf(
-          "assign_scores: score_type = 'none' but column '%s' contains non-NA values. Scores will be ignored. If this is unintentional, change score_type.",
+          paste0("assign_scores: score_type = 'none' but column '%s' contains non-NA values. ",
+                 "Scores will be ignored. If this is unintentional, change score_type."),
           score_col
         ), call. = FALSE)
     }
@@ -192,7 +193,9 @@ assign_scores <- function(hypotheses_df,
   .unbounded_scale <- is.finite(.max_h1) && .max_h1 > 100
   if (.unbounded_scale && score_type %in% c("similarity", "similarity_softmax")) {
     message(sprintf(
-      "assign_scores: max %s value (%.1f) exceeds 100 -- treating as an unbounded score scale and normalizing each observation against its own candidate range, not a fixed 0-100 divisor.",
+      paste0("assign_scores: max %s value (%.1f) exceeds 100 -- treating as an unbounded score ",
+             "scale and normalizing each observation against its own candidate range, not a ",
+             "fixed 0-100 divisor."),
       score_col, .max_h1
     ))
   }
@@ -255,7 +258,7 @@ assign_scores <- function(hypotheses_df,
     h4_rows <- obs_rows[h4_mask, , drop = FALSE]
 
     if (nrow(h1_rows) == 0L) {
-      # No H1 — pass through unchanged (will have NA score_likelihood)
+      # No H1 -- pass through unchanged (will have NA score_likelihood)
       obs_rows$score_likelihood      <- NA_real_
       obs_rows$score_likelihood_mean <- NA_real_
       obs_rows$score_likelihood_sd   <- 0.0
@@ -360,8 +363,8 @@ assign_scores <- function(hypotheses_df,
 
     # ---- H4: fixed small weight (unreferenced_family) ------------------------
     if (nrow(h4_rows) > 0L) {
-      h4_rows$score_likelihood      <- .UNREFERENCED_FAMILY_WEIGHT
-      h4_rows$score_likelihood_mean <- .UNREFERENCED_FAMILY_WEIGHT
+      h4_rows$score_likelihood      <- .unreferenced_family_weight
+      h4_rows$score_likelihood_mean <- .unreferenced_family_weight
       h4_rows$score_likelihood_sd   <- 0.0
       h4_rows$score_method          <- score_type
       if (score_type == "similarity_softmax") {

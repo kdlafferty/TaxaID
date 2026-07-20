@@ -1,7 +1,372 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-13 (Session 153 -- comparison + template-alignment pass across all
+# Last updated: 2026-07-19, continued (Sonnet 5 -- separate, real fetch_ncbi_reference_
+# sequences() bug found live-testing PtConceptionWorkflow_18S_2_single_site.R's real,
+# full ~1300-genus reference fetch (unrelated to restore_suppressed_candidates() itself,
+# but found via the same test-drive effort): do.call(rbind, ...) combining per-genus/
+# per-batch NCBI results crashed the entire fetch ("numbers of columns of arguments do
+# not match") once real taxonomy XML resolved to slightly different columns across
+# genera -- the same failure class already fixed once for the BOLD fetch path, never
+# applied to NCBI. Fixed across 6 call sites (dplyr::bind_rows(), matching the existing
+# BOLD-path precedent). devtools::test() 0 failures (931, up from 910), devtools::check()
+# 0/0/0. See TaxaLikely/CLAUDE.md's top session note for the full record. Not yet
+# re-verified against the real fetch that found it (interrupted by the crash) -- left for
+# the user to retry.
+# Previous update, 2026-07-19 (Sonnet 5 -- second real performance bug found and fixed in
+# restore_suppressed_candidates(), this time from the user actually running the updated
+# PtConceptionWorkflow_12S_single_site.R against the real, full 13,442-observation dataset
+# and reporting a run still going after 70+ minutes. Root cause: the "free" Levels 1-3
+# hierarchy did a fresh linear scan over the whole seq_matrix (~3M rows) for every candidate
+# species, every call, with zero memoization -- R's own %in%/match() rebuilds its hash table
+# on every call rather than caching it, and Purpose A's unconditional genus-wide sweep
+# exposed this at genera Mugu never had (Sebastes, 107 species, vs. Fundulus's 20). Fixed
+# with a real accession-indexed lookup (R/restore_hierarchy.R's new .seq_matrix_partner_
+# index()/.seq_matrix_lookup()), built once per call instead of scanned per candidate.
+# Verified: the same real Sebastes case that took 17.64s per repeated anchor now takes 0.03s
+# (~590x); the full real 13,442-observation dataset went from 70+ minutes (still running
+# when interrupted) to 42.1 seconds. devtools::test() 0 failures (910, unchanged),
+# devtools::check() 0/0/0. See TaxaLikely/CLAUDE.md's top session note for the full record.
+# Previous update, 2026-07-18, continued yet further (Sonnet 5 -- test-drove the restore_
+# suppressed_candidates() redesign against two real motivating cases at the user's request
+# (Mugu Fundulus lima/parvipinnis; a newly-found PtConception Girella simplicidens/nigricans
+# analog) and found a real cost problem: both real anchors are themselves occurrence-
+# implausible (absent from taxaexpect_priors entirely -- exactly the case this function exists
+# to handle), which made the compute-budget ratio uncomputable and sent every genus congener to
+# Level 4's live alignment under Purpose A's prior-agnostic sweep (Fundulus: 20 species per
+# anchor; measured 275.8s for one marker, vs. the documented pre-redesign 38s baseline). Fixed
+# per the user's explicit design choice ("Option A with C as a backstop"): candidate_species_
+# filter restored as Level 4's own default cost gate (falls back to the ratio only for a
+# candidate not on it); new max_level4_per_anchor hard backstop cap (default 10L). Verified
+# against both real cases: correctness fully preserved (F. parvipinnis still wins at
+# 99.7-99.9% posterior, if anything stronger than before; G. nigricans still admitted at its
+# real ~98% score), cost cut ~4x (Fundulus) / ~3x (Girella). Rolled out the same day to all
+# four real production workflow scripts this whole redesign was validated against
+# (MuguFishWorkflow.R, MuguWilderFishWorkflow.R, PtConceptionWorkflow_12S_single_site.R,
+# PtConceptionWorkflow_18S_2_single_site.R -- all outside this monorepo, not under git): the
+# now-invalid detected = detected argument removed from each; both Mugu scripts additionally
+# gain model_params = lik_model (enabling Purpose A there, since lik_model is already trained
+# before the restore call in both -- not true for either PtConception script, which train
+# lik_model afterward, so Purpose A stays unavailable there without a larger reordering not
+# attempted this session). Four OTHER real PtConception files still call the old signature and
+# were flagged to the user, not touched: PtConceptionWorkflow_12S_multi_site.R (a real,
+# same-day-modified sibling) plus three older/secondary files. devtools::test() 0 failures
+# (910, up from 893), devtools::check() 0/0/0. See TaxaLikely/CLAUDE.md's top session note for
+# the full record and [[project_restore_suppressed_candidates_implementation]] in the memory
+# system.
+# Previous update, 2026-07-18, continued further (Sonnet 5 -- implemented
+# ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md end to end: TaxaLikely::
+# restore_suppressed_candidates() ground-up redesign, reframing its job from "restore candidates so
+# more can individually win" to "detect whether the anchor's apparent win is real or a suppression
+# artifact." New restoration_basis column ("competitive_score"/"plausible_prior"/"both") records
+# admission under Purpose A (prior-agnostic score-only outlier test, needs model_params) and/or
+# Purpose B (wide max_dist floor, gated by candidate_species_filter -- re-scoped to Purpose B only,
+# no longer gates all restoration). New score-sourcing hierarchy (R/restore_hierarchy.R) replaces
+# the old flat anchor_score - delta imputation with real, median-aggregated evidence (free
+# seq_matrix/model lookups for Levels 1-3, live Tier 2 alignment only at Level 4, now returning a
+# real percent-identity score via .check_regional_overlap()'s new return_detail mode). New opt-in
+# compute-budget mechanism (taxaexpect_priors) sizes Level 4 spend from the floor-vs-documented
+# occurrence-prior ratio, derived from posterior_consensus()'s min_posterior = 0.05
+# (R <= 19 -> worth spending; R > 19 or non-computable -> skip). BREAKING, intentionally: the scored
+# pathway is now a no-op without real evidence supplied (seq_matrix and/or check_regional_overlap +
+# model_params) -- the old default silently restored every same-genus congener regardless. No
+# production workflow (PtConception 12S/18S_2, both Mugu scripts) has been updated to the new
+# signature yet -- that rollout is a deliberate follow-on task, not attempted this session.
+# devtools::test() 0 failures (893, up from ~860), devtools::check() 0/0/0, reinstalled to
+# ~/Library/R/4.0/library. See TaxaLikely/CLAUDE.md's own top session note for the full record and
+# [[project_edge_case_error_taxa_design]] in the memory system for the design-conversation history
+# this implements.
+# Previous update, 2026-07-18 (Fable -- answered the foundational "is train_likelihood_model() trained
+# on data comparable to what it predicts?" question in ecosystem_docs/REENTRY_PROMPT_train_likelihood_
+# model_scoring_validity.md, then shipped a fix. Verdict on real 12S: the DECIPHER-MSA-trained H1
+# per-species means do NOT transfer to the external/undocumented inference scoring scale -- on the
+# 8,860-obs non-circular confident set, per-species required offset vs trained mean has slope ~ -1
+# (real queries collapse to ~one identity level regardless of the reference-MSA prediction), and a
+# single pooled inference mean beats "per-species mean + one offset" in 5-fold CV. A single additive
+# offset (calibrate_query_noise()'s original behavior) is therefore patching per-species structure
+# that isn't real on the inference scale. Fix: new opt-in TaxaLikely::calibrate_query_noise(
+# offset_form = "linear") level-aware recalibration (default "constant" = unchanged); remaps H1 means
+# through a robust line, collapsing to pooled-location when structure doesn't transfer and reducing to
+# the constant offset when it does; only H1 mean location moves, H2/H3 deltas + gap discriminators are
+# untouched. Real-12S H1 win rate 74.2% -> 76.3% via the shipped function. Opt-in because the confident
+# set can't test congener discrimination; not wired into any production workflow yet. TaxaLikely
+# devtools::test() 0 failures / check() 0-0-0, installed to ~/Library/R/4.0/library. See TaxaLikely/
+# CLAUDE.md's matching note and [[project_train_inference_scale_validity]] in the memory system.
+# Continued 2026-07-18: (1) GENERALITY confirmed on 4 more real datasets -- Mugu WilderFish 12S/16S/COI
+# (all BLAST-scored) collapse just like PtCon 12S (slopes -0.28/0.02/-0.21), which IS the clean
+# DECIPHER-vs-BLAST test the reentry doc's Q1 wanted (BLAST doesn't preserve DECIPHER per-species locations
+# either -> general aligner property, not a PercMatch artifact); PtCon 18S (2 referenced species) correctly
+# falls back to constant. (2) Manuscript-quality write-up added to TaxaLikely/inst/TaxaLikely_supplemental_
+# methods.md (new subsection 11A + 4 web-verified references: May 2004, Raghava & Barton 2006, Platt 1999,
+# Quinonero-Candela et al. 2009) + calibrate_query_noise() roxygen + Section 16 mapping. User is a
+# statistician -- references verified by search/fetch, not recited. offset_form=linear still not default,
+# not wired into workflows (user validating 12S posteriors first).
+# Previous update, 2026-07-17 (Session 159, PtConception rollout -- Task 1 of
+# ecosystem_docs/REENTRY_PROMPT_session159_regional_overlap_rollout.md, the other two
+# tasks (join_priors() coarse-rank question, broader 12S/16S/COI sanity pass) dropped
+# from scope at the user's request. Both real PtConceptionWorkflow_12S_single_site.R
+# and _18S_2_single_site.R (outside this monorepo, at ~/My Drive/Rscripts/eDNA/
+# PtConception/) now join each ESV's raw read-file sequence onto match_obj and call
+# restore_suppressed_candidates(check_regional_overlap=TRUE, sequence_col="sequence",
+# candidate_species_filter=...), with attr(match_obj, "regional_unreferenced") captured
+# before the post-restoration backbone conversion and folded into unreferenced_df --
+# same pattern Session 159 already established for Mugu. Live-tested against the real
+# cached 13,442-observation 12S checkpoint before touching the production scripts:
+# confirmed the mechanism has a REAL effect (2,118 congener rows rejected on
+# regional-overlap grounds across a random 2,000-observation sample, 33 restored as
+# real overlapping congeners), and surfaced two more real TaxaLikely performance bugs
+# via Rprof profiling -- Tier 2b's query-vs-anchor alignment recomputed once per
+# candidate species instead of once per (anchor, query_sequence), and (far larger)
+# Tier 1's "free" seq_matrix lookup re-stripping version suffixes via sub() over a
+# real ~3-million-row seq_matrix on every single call, >90% of total wall time.
+# Both fixed via align_cache (new keys, no signature change) -- see TaxaLikely/
+# CLAUDE.md's own Session 159 note for the fix detail. Real, timed result: 84s -> 6.8s
+# on a 300-observation subset; ~65min -> ~17min extrapolated for the full dataset, for
+# this one function call alone (the full production workflow includes many other
+# expensive steps not touched this session). devtools::test() all passing, reinstalled
+# to both R libraries, both workflow scripts parse cleanly -- but NOT yet run
+# end-to-end in production (would overwrite real checkpoints + make real GBIF/NCBI/LLM
+# API calls), left for the user to trigger. See
+# [[project_regional_overlap_gap_modeling]] in the memory system for the full record.
+# Previous update, 2026-07-16 (Session 159, continued yet further -- three more real bugs found
+# ONLY because the user pushed back with "I still get Fundulus lima" after being told the fix
+# was complete, and asked for a real diagnosis rather than accepting reassurance. Each was a
+# genuine correctness/performance bug in code from earlier the same session, not a stale-run
+# issue this time. (1) restore_suppressed_candidates()'s check_regional_overlap never even ran
+# for real 12S data: detect_suppressed_candidates() correctly found no GLOBAL suppression
+# pattern (real BLAST output with score_range=8 is a genuine mix of 240 true singletons and
+# 161 real multi-candidate ties, so no purity threshold clears its aggregate bar), so the
+# function's original top-level gate returned before the per-observation loop ever ran, for
+# ANY observation. Fixed by decoupling: when check_regional_overlap=TRUE, every observation is
+# checked regardless of the global verdict, safe because every addition is still gated on real
+# evidence. (2) That fix then ran for 15+ minutes on real data before being killed (confirmed
+# via `ps`, genuinely CPU-bound) -- 401 real observations reduced to only 71 distinct BLAST
+# anchors (one reused 113 times), but the alignment was being recomputed per OBSERVATION
+# instead of per (anchor, candidate) pair. Fixed with a memoizing align_cache. (3) Even
+# memoized, one real genus had 42 globally-referenced congeners, and checking all of them
+# against every anchor sharing that genus still meant 2,361 real alignment pairs -- fixed with
+# a new candidate_species_filter param that restricts candidates to a locally-plausible list
+# BEFORE any expensive work (using taxaexpect_priors$taxon_name, the same list already applied
+# downstream anyway). Real, timed result: 38 seconds for one marker, down from 15+ minutes.
+# Verified end-to-end against real saved data: ASV_300 now correctly carries two competing
+# hypotheses (F. lima specific_candidate + F. parvipinnis unreferenced_species) instead of
+# F. lima alone with posterior=1.0. Wired into both Mugu workflows; reinstalled to BOTH the
+# user and system R libraries after discovering mid-session that the Mugu scripts' own RStudio
+# session (outside the TaxaID project) may resolve either one. devtools::test() 768/768 (up
+# from 754), devtools::check() 0/0/0. See TaxaLikely/CLAUDE.md's matching note for full detail.
+# Previous update, 2026-07-16 (Session 159, final entries -- two more fixes closing out the
+# real Mugu F. lima/F. parvipinnis misassignment debugging thread this whole session's
+# work has been chasing. (1) fetch_ncbi_reference_sequences(keep_out_of_range = TRUE) had
+# no upper size bound -- found via a real 111,213,091bp whole-genome scaffold in the real
+# Mugu reference_df.rds; fixed with max_out_of_range_len = 200000L, folded into the cache
+# key too (which hadn't varied by keep_out_of_range at all -- a real staleness bug).
+# (2) Diagnosed why the user's real Mugu run "didn't change the outcome" even after the
+# check_regional_overlap fix was correctly rejecting F. parvipinnis per-observation: a
+# rejected congener was simply OMITTED from the candidate set rather than becoming a real
+# competing hypothesis, so F. lima won by default whenever nothing else was left. Built the
+# extension: restore_suppressed_candidates() now records what it rejects via
+# attr(result, "regional_unreferenced"); expand_unreferenced_hypotheses()'s unreferenced_df
+# gained an optional observation_id column so a globally-referenced-but-regionally-rejected
+# species can still compete as a named unreferenced_species hypothesis for just the one
+# query that rejected it, without being treated as globally unreferenced everywhere else.
+# Both additive/backward compatible. Wired into MuguFishWorkflow.R; MuguWilderFishWorkflow.R
+# deliberately left unwired (its own Step 8 never calls expand_unreferenced_hypotheses() at
+# all -- flagged as a pre-existing architecture gap for the user to decide on, not changed
+# unilaterally). devtools::test() 754/754 (up from 706), devtools::check() 0/0/0. See
+# TaxaLikely/CLAUDE.md's Session 159 final-entry note for the full record.
+# Previous update, 2026-07-16 (Session 159 -- real stale cross-package reference found and
+# fixed in both real Mugu production workflows (MuguFishWorkflow.R,
+# MuguWilderFishWorkflow.R -- outside this monorepo, not under git, at ~/My Drive/
+# Rscripts/eDNA/SepulvedaMugu/), found live: the user cleared their bbox cache to force a
+# fresh run and hit "'define_search_polygon' is not an exported object from
+# 'namespace:TaxaFetch'" -- reproduced directly. Root cause: define_search_polygon() moved
+# TaxaFetch -> TaxaTools back in Session 134b (no forwarding alias was left behind in
+# TaxaFetch, unlike this ecosystem's usual deprecated-wrapper rename pattern), and neither
+# Mugu script was ever updated to the new namespace after that move -- MuguFishWorkflow.R's
+# call sits behind a bbox-cache guard, so it had been silently skipped on every re-run
+# since Session 134b as long as a cached bbox.rds existed; MuguWilderFishWorkflow.R has no
+# such guard, so its call would fail on every single run, cache or not. Fixed by updating
+# both calls to TaxaTools::define_search_polygon(). While investigating, also directly
+# checked whether the two Mugu workflows share the BLANKS_MARCH-class bug just found and
+# fixed in both PtConception single-site scripts (empty/near-empty "recognized" blank
+# columns while real, substantially-read blanks go uncounted as field data) -- confirmed
+# they do NOT: MuguFishWorkflow.R/MuguWilderFishWorkflow.R's BLANK_IDS (4 numeric sample
+# IDs, X104433/X104456/X104480/X104495) rank #1/#2/#3/#8 of 63 real sample columns by total
+# read count (11K-344K reads vs. a ~698K median for real field samples) -- the correct
+# signature for genuine, functioning negative controls, not empty placeholders. No
+# separate sample-metadata spreadsheet exists for this dataset (unlike Dangermond's file
+# for PtConception) to independently cross-check completeness, but nothing found suggests
+# a missed blank the way the PtConception case had. No code change needed for Mugu's blank
+# identification.
+# Previous update, 2026-07-15 (Session 158 -- "Job 2": TaxaLikely's unreferenced-relative
+# (H2/H3) likelihood modeling, prompted by the user questioning a real posterior result
+# (three unreferenced Sardinops congeners all sharing an identical 0.566 likelihood) and
+# a stated intuition that tight genera (species hard to tell apart) should show LOWER,
+# more consistent divergence than loose genera, with the loose genera carrying MORE
+# uncertainty, not less. Testing this against real 12S congener data found the shipped
+# model gets it qualitatively BACKWARDS under the package's original logit scale (a real
+# genus-tightness reversal, not just an unvalidated default) -- traced to logit's
+# derivative diverging fastest exactly where real barcode data concentrates (near 100%
+# identity). Fixed by adding a new `score_transform` option
+# (`train_likelihood_model(score_transform = "sqrt_mismatch")`, Anscombe's classical
+# rare-event-count variance stabilizer, chosen after checking and rejecting probit and
+# complementary log-log too) that H1/H2/H3 all move onto together -- reproduces the
+# correct genus-tightness direction on real held-out cases via the actual package
+# functions, not just aggregate diagnostics. Also fixed: H2's mean now anchors on the
+# specific referenced species' own resolved mean rather than the population-wide
+# average; H2 gets a genus-specific variance (previously only the mean shift was
+# genus-specific); the pooled H2 default was quietly sourced from the wrong
+# (cross-any-genus, not same-genus) population. A third, larger, unrelated bug was found
+# and fixed along the way at the user's explicit request: `H1_Lookup$sigma_score` had
+# been storing the square root of the intended shrunk variance since this formula was
+# first written, silently understating every species-specific H1 candidate's true
+# uncertainty on BOTH the old and new score scales -- invisible on logit's larger natural
+# scale, unmissable once sqrt_mismatch's much smaller scale exposed it directly against a
+# hand computation. `devtools::test()` 696/696 (up from 670), `devtools::check()` 0/0/0
+# throughout. `score_transform = "logit"` remains the package default; `"sqrt_mismatch"`
+# is opt-in, not yet rolled into any production workflow. See TaxaLikely/CLAUDE.md's
+# Session 158 note and [[project_job2_unreferenced_relatives]] in the memory system for
+# the full empirical derivation, including why several other candidate transforms were
+# checked and rejected.
+# Previous update, 2026-07-14 (Session 157 -- redesigned TaxaLikely::evaluate_likelihoods()'s
+# score_likelihood_mean/score_likelihood_sd, prompted by the user stepping back from the
+# evidence_col/depth work in Session 156 to ask a more fundamental question: what should
+# "uncertainty around a likelihood estimate" actually mean, and does the existing n_sims
+# mechanism compute that? It didn't -- it resampled the query's OBSERVED score around the
+# global population dispersion (answering a sensitivity question, not a confidence-in-the-
+# estimate question) and never touched evidence_vec at all. Redesigned so
+# score_likelihood_sd instead reflects uncertainty in the TRAINED MEAN itself, driven by how
+# much reference data calibrated it (Var(mean) ~= sigma^2/n, the standard uncertainty-in-an-
+# estimated-mean result). train_likelihood_model() already computed n_obs_species (species
+# reference-sequence count) for Empirical Bayes shrinkage and then discarded it -- now
+# retained in H1_Lookup, with an analogous n_pairs-based treatment for H2/H3 (which
+# correctly get systematically wider uncertainty than H1, since they borrow a shifted mean
+# rather than being directly observed -- closing the user's explicit third ask, "add
+# variance for unreferenced taxa"). Mechanically this redirects the existing n_sims loop
+# (same asymptotic cost) rather than adding a new one, and reuses the already-computed
+# evidence-adjusted per-candidate sigma from Session 155/156, so that mechanism's
+# contribution to uncertainty falls out for free at zero extra cost -- resolving the
+# "should I care about evidence" question the user posed without building anything
+# evidence-specific. Fully backward compatible (falls back to the previous mechanism when a
+# model_params object predates n_obs_species); no new output columns; no changes needed in
+# TaxaAssign, since compute_posterior() already consumes these two columns for its own
+# Beta-prior Monte Carlo. Verified with 3 new regression tests (low-n vs high-n species,
+# low- vs high-n_pairs H2 delta, legacy fallback) plus a real-data check: retrained on the
+# real 12S seq_matrix, ran evaluate_likelihoods() on 300 real observations at n_sims=200
+# (11.2s, reasonable), confirmed median H1 sd (0.075) is meaningfully tighter than median
+# H2/H3 sd (0.119) on real data. devtools::test() 674/674 (up from 670), devtools::check()
+# 0/0/0. See TaxaLikely/CLAUDE.md's Session 157 note for the full derivation.
+# Previous update, 2026-07-14 (Session 156 -- direct continuation of Session 155's
+# evidence_col/evidence_max_ratio sigma-rescale mechanism in TaxaLikely::evaluate_likelihoods()
+# ([[project_evidence_ratio_sigma_reentry]]): that mechanism was safe but validated as net
+# negative even at its capped, widen-only default (27 helped, 2053 hurt on real 12S data).
+# Replaced the unconditional rescale with a closed-form crossover gate, derived (not
+# guessed) from the elementary fact that rescaling a Gaussian's variance by a factor c
+# changes its log-density at z standard deviations from the mean by exactly
+# -0.5*log(c) + 0.5*z^2*(1-1/c) -- widening (c>1) must lower the peak to raise the tails,
+# since the density still integrates to 1, so it only pays off once z is large enough; most
+# low-evidence real observations are still close-to-mean decent matches, which is exactly
+# why the old unconditional version hurt more often than it helped. The rescale is now
+# applied only when this quantity is provably >0 for that candidate -- verified numerically
+# against a live dnorm() call before shipping. Re-validated same session against the real
+# 12S PtConception dataset: 163 helped / 3 hurt across 24,857 real H1 rows (vs. the
+# unconditional version's 27 helped / 2053 hurt), mean H1 likelihood 0.8014 -> 0.8016 (flat-
+# to-slightly-positive, vs. the old real regression 0.899 -> 0.884). Traced the 3 residual
+# hurt cases directly to the gate's own documented score-only-marginal approximation (the
+# real score/gap covariance term is ignored by the gate but not by the density actually
+# evaluated) -- confirmed via direct mvtnorm::dmvnorm computation on the real numbers, bounded
+# to <1% swing, not a new bug. See TaxaLikely/CLAUDE.md's Session 156 note for the full
+# derivation, code location, and validation record.
+# Previous update, 2026-07-13 (Session 154 continued further -- confirmed and fixed the
+# identical BLANKS_MARCH-class bug in PtConceptionWorkflow_18S_2_single_site.R, prompted
+# by the user asking what to do next after the 12S fix and correctly guessing it would
+# recur (the March 18S and 12S runs share the same physical Barcodes). Confirmed directly:
+# BLANKS <- c("Blank1.1", "Blank2.1") -- "Blank1.1" has zero reads across every ESV in
+# this file, "Blank2.1" has only 16 (both effectively-empty placeholders); the same 4 real
+# Barcode-keyed blanks (2ONWVS29, S067819, PBPUPL5A, XTLNX5VZ) carry real, substantial
+# reads in this file too (749 / 2071 / 2103 / 59,298 respectively -- the 18S run has only
+# one replicate column per Barcode, simpler than 12S's 1-10 PCR replicates, but the same
+# real blanks matter). Fixed the same way as the 12S case: BLANKS's literal value
+# corrected (still a plain user-edited vector, same .resolve_base_barcode() cascade
+# reused) rather than any new inference mechanism. Live-verified against the real 18S read
+# file: 4 real blank event_ids now correctly identified
+# (X2ONWVS29.1/PBPUPL5A.1/S067819.1/XTLNX5VZ.1); Blank2.1 correctly falls through as
+# unresolved (not a real Barcode, its 16 reads are noise). Not yet re-run end to end (Step
+# 1's match_obj construction needs real TaxaMatch/TaxaTools calls not exercised by this
+# check) -- the user's call whether/when to re-run
+# PtConceptionWorkflow_18S_2_single_site.R with the fix. Both Mugu workflows
+# (MuguFishWorkflow.R, MuguWilderFishWorkflow.R) have NOT been checked for the same
+# pattern -- different dataset, own blank-identification logic, no evidence either way yet.
+# Previous update, same day (Session 154 continued -- Task B, Phase 2 of the multi-site
+# workflow migration (see ecosystem_docs/REENTRY_PROMPT_session153_multisite_workflow_
+# migration.md): PtConceptionWorkflow_12S_multi_site.R's Section 2.5 now joins the real
+# Dangermond_Sample_Metadata2_31Jan24.xlsx (March 2021 run, Barcode-keyed) and sets
+# spatial_group_id directly from each site row's own real Location (BioD/Cojo/Jalama) --
+# live-verified end to end against the real data (Steps 1-2.5 run for real, not just
+# parsed): 4 real spatial groups, BioD 10,944 / Jalama 1,756 / Cojo 1,615 / a fallback
+# group of 2,897 August-only rows (no confirmed August site metadata, falls through to
+# STUDY_LAT/STUDY_LON per the reentry prompt's explicit scope). Deviates from the reentry
+# prompt's plan in one deliberate way, found empirically before implementing: real data
+# shows 582 of 10,550 real-site ESVs (5.5%) are genuinely detected at MORE than one
+# Location (BioD+Cojo 205, BioD+Jalama 225, Cojo+Jalama 38, all three 114) --
+# TaxaMatch::assign_spatial_group() sets spatial_group_id by OBSERVATION_ID (moves ALL of
+# an ESV's site rows at once), so calling it once per Location would silently reassign a
+# genuinely multi-Location ESV's other site into whichever Location's call ran last.
+# Fixed by setting spatial_group_id directly per ROW from that row's own real Location
+# instead (no assign_spatial_group() call at all) -- correctly preserves these 582 ESVs as
+# separate site-rows in separate groups, ready for combine_multisite_priors() (Phase 5) to
+# recombine. Real read-file complication also found and solved: March's sample columns are
+# NOT bare Barcodes -- "<Barcode>.<replicate#>" (1-10 PCR replicates) or
+# "<Barcode>.<letter>.<replicate#>" (independent extraction replicates), plus read.csv's
+# leading-"X" mangling of digit-starting names (real Barcodes also legitimately start with
+# "X", so this can't be stripped unconditionally) -- a 4-step resolution cascade
+# (.resolve_base_barcode(), in both workflow files) resolves 498/500 real March sample
+# columns to a real Barcode. Step 8's update_prior_from_consensus(spatial_group_map =
+# site_table) call is NO LONGER a no-op now that real groups exist; a real open question
+# (the ~2,897 August-only fallback observations all share one coordinate and so also
+# read as one large "multi-member" group, even though they don't share a real site) is
+# flagged in-line at that call for Phase 3+, not resolved this session.
+#
+# A real, previously-unknown data-quality bug was found and fixed along the way, in BOTH
+# PtConceptionWorkflow_12S_single_site.R and _multi_site.R: BLANKS_MARCH = c("Blank1.0",
+# "Blank2.0") -- the March run's only recognized "blanks" -- turned out to be two literal
+# read-file columns with ZERO reads across every ESV in the file (empty placeholders, not
+# real controls), meaning the March run's contaminant detection had been running with
+# NO real March-run controls of its own, borrowing the August run's controls as the entire
+# control-side signal for both runs pooled. Meanwhile 4 real Barcode-keyed blanks
+# (2ONWVS29, S067819, PBPUPL5A, XTLNX5VZ -- flagged BagID == "BLANK" in the Dangermond
+# metadata, carrying real reads up to 46,752 in one ESV) were silently counted as ordinary
+# field data the whole time, since nothing cross-referenced the metadata for blank status
+# before this session wired that file in for the first time. Fixed by correcting
+# BLANKS_MARCH's literal value (still a plain, user-edited vector -- deliberately NOT
+# wrapped in an auto-inference function, per the user's explicit caution about brittleness
+# across studies with different metadata conventions) plus switching March's blank-match
+# logic to use the same barcode-resolution cascade. Live-verified: flag_contaminant()'s
+# control count rose from 24 (August-only) to 33; high-risk contaminant ESV count rose
+# from 22 to 43 on the same real 12S dataset -- a substantive change to
+# decontaminated_esv_data and therefore every downstream step. The _single_site.R script
+# already running in the user's RStudio session at the start of this work used the
+# pre-fix logic; re-running it is the user's call, not done automatically. A general,
+# NOT-yet-built design idea (cross-check/derive blank identification from site metadata
+# instead of a fully independent hand-typed list, so this class of gap is caught rather
+# than silently recurring per-workflow) is written up in ecosystem_docs/
+# REENTRY_metadata_driven_blank_detection.md for a future session -- deliberately not a
+# rigid package function, since metadata conventions vary per study and not every
+# workflow has one.
+# Previous update, same day (Session 154 -- Task B, Phase 1 of the multi-site workflow
+# migration: new PtConceptionWorkflow_12S_multi_site.R created from the _single_site
+# baseline (outside this monorepo, not under git, at ~/My Drive/Rscripts/eDNA/
+# PtConception/). Section 2.5 built a site_table (TaxaMatch::build_site_table()) covering
+# every ESV, but every row was deliberately given the SAME STUDY_LAT/STUDY_LON coordinate,
+# so the default exact-(lat,lon)-match grouping collapsed everyone into ONE
+# spatial_group_id -- a genuine no-op, not just an approximation: TaxaAssign::
+# update_prior_from_consensus()'s spatial_group_map restriction only gates on whether an
+# observation's group has >= 2 members, and with one group holding every observation,
+# every observation cleared that bar exactly as it would with spatial_group_map = NULL
+# (the _single_site call's own behavior). OUT_PREFIX changed to PtConMifishSchulteMulti so
+# this file's checkpoints never collide with _single_site's (confirmed no conflict with
+# the _single_site run active at session start). Fully superseded by Phase 2 above.
+# Previous update, 2026-07-13 (Session 153 -- comparison + template-alignment pass across all
 # four real production workflow scripts (PtConceptionWorkflow_12S.R, PtConceptionWorkflow_
 # 18S_2.R, MuguFishWorkflow.R, MuguWilderFishWorkflow.R -- all outside this monorepo, not
 # under git). Prompted by the user noticing the 12S workflow filters contaminants in a
@@ -710,7 +1075,7 @@ Functions confirmed recreated after the incident: `make_bbox_wkt`, `get_keys_fro
 | R version | R version 4.5.2 (2025-10-31) |
 | Primary IDE | RStudio |
 | Git remotes | `origin` → https://github.com/kdlafferty/TaxaID (public monorepo, Session 80) |
-| R library | `~/Library/R/4.0/library` — set via `R_LIBS_USER` in `~/.Renviron`, **not** `~/.Rprofile` (corrected Session 134b; see that session's TaxaTools/CLAUDE.md note). This project has its own `TaxaID.Rproj` + project-level `.Rprofile`, which RStudio sources *instead of* `~/.Rprofile` when the project is open — so `~/.Rprofile`'s own `.libPaths()` call (pointing at a directory that doesn't even exist, `~/Library/R/4.5-arm64/library`) never actually runs in this project. Confirmed directly: a real `R` session started from the project root resolves `.libPaths()[1]` to `~/Library/R/4.0/library`, and that's where `find.package()` finds every TaxaID package. `Rscript` (no project context) also lands here by default via `R_LIBS_USER`. The system default library (`/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/library`, i.e. `.Library`) is a same-R-version fallback, not the primary install target — don't rely on it matching what's actually loaded. |
+| R library | `~/Library/R/4.0/library` — set via `R_LIBS_USER` in `~/.Renviron`, **not** `~/.Rprofile` (corrected Session 134b; see that session's TaxaTools/CLAUDE.md note). This project has its own `TaxaID.Rproj` + project-level `.Rprofile`, which RStudio sources *instead of* `~/.Rprofile` when the project is open — so `~/.Rprofile`'s own `.libPaths()` call (pointing at a directory that doesn't even exist, `~/Library/R/4.5-arm64/library`) never actually runs in this project. Confirmed directly: a real `R` session started **from the project root** resolves `.libPaths()[1]` to `~/Library/R/4.0/library`, and that's where `find.package()` finds every TaxaID package. **CORRECTED Session 159** (the earlier claim below was wrong and cost real install time): a bare `Rscript -e '...'` invoked from an ARBITRARY directory (e.g. `cd`'d into a package's own subfolder, like `TaxaLikely/` or `TaxaMatch/`) does **NOT** reliably pick up `R_LIBS_USER` into `.libPaths()` on its own — confirmed directly, twice, the hard way: `devtools::install()` run this way silently installed to the **system default library** (`/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/library`, i.e. `.Library`) instead, even though `Sys.getenv("R_LIBS_USER")` correctly returned the right (unexpanded, `~`-relative) string the whole time. Root cause: it's specifically the **project-level `.Rprofile`** (sourced only when R starts with the TaxaID project as its working directory, or via the RStudio Project file) that wires `R_LIBS_USER` into `.libPaths()` -- not something R itself does automatically at every startup regardless of context. A plain `Rscript` run from inside a package subdirectory has no project context and skips that `.Rprofile` entirely. **Fix, confirmed working**: before calling `devtools::install()`/`devtools::load_all()` from a bare `Rscript` outside the project root, explicitly run `.libPaths(c(path.expand(Sys.getenv("R_LIBS_USER")), .libPaths()))` first (or `cd` to the TaxaID project root before invoking `Rscript`). Always verify after any Rscript-driven install with `dirname(find.package("<pkg>"))` — don't assume it landed in the right place. The system default library (`.Library`) is a same-R-version fallback that can silently accept an install without erroring, which is exactly what makes this mistake invisible until something checks `find.package()` directly. |
 | ANTHROPIC_API_KEY | Set in `~/.Renviron` |
 | GEMINI_API_KEY | Set in `~/.Renviron` — free tier; get key at aistudio.google.com/apikey |
 | OPENAI_API_KEY | Set in `~/.Renviron` — paid account required |
@@ -997,3 +1362,21 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 152 | `posterior_consensus()`'s internal `.extract_rank_values()` gains a species-from-`taxon_name` fallback | TaxaAssign | Behavioral bug fix, not a signature change. Found via a full real end-to-end run of `TaxaID_Workflow_Template_TEST.R`: `consensus_posterior`/`consensus_confidence_score` silently computed to exactly `0` for every single-hypothesis resolved observation whenever the input had no explicit `species` column (TaxaLikely's real sequence/BLAST pathway never produces one) -- confirmed against real Template output where the winning candidate's own `posterior_mean` was 0.999/0.938/1.0 but `consensus_posterior` read `0` for all three. `consensus_taxon` itself was unaffected (a different code path). Fix mirrors the function's existing genus-from-binomial derivation. `devtools::test()` 544/544, `devtools::check()` clean. |
 | 153 | `update_prior_from_consensus()`'s boosted `prior_mean` clamped to `[1e-9, 1-1e-9]` before deriving `prior_alpha`/`prior_beta` | TaxaAssign | Behavioral bug fix, not a signature change. A regression in Session 149's own alpha/beta-consistency fix: a confirmation quantile of exactly `1.0` (common in practice) produced `prior_beta = 0`, which `compute_posterior()` correctly rejects. `prior_mean` itself is left unclamped (`1.0` is a legitimate point estimate); only the Beta-shape derivation is clamped, mirroring `join_priors.R`'s `.make_ab()` boundary guard. Found live-testing `PtConceptionWorkflow_12S.R`. `devtools::test()` 548/548 (up from 544), `devtools::check()` clean. |
 | 153 | `candidate_genera`/singleton-genus derivation in `inst/TaxaID_Workflow_Template_TEST.R` gains an `nzchar(genus)` guard (two call sites: Section 3's escalation ladder, Section 6a's reference fetch) | TaxaID (template only, not a package function) | Behavioral bug fix. The prior `!is.na(genus)` filter let an empty-string genus (a real, common shape for low-confidence BLAST/GBIF matches) through as a literal taxon name, crashing `TaxaLikely::fetch_ncbi_reference_sequences()`. Never triggered by the template's own tiny bundled fixture; found live-testing the real `PtConceptionWorkflow_12S_single_site.R`/`_18S_2_single_site.R` workflows built from this pattern -- fixed at the source so future workflows built from the template don't inherit it. |
+| 2026-07-18 (Fable) | `calibrate_query_noise()` default `offset_form` flipped `"constant"` -> `"linear"`; wired into all 6 workflow call sites | TaxaLikely + workflows | Behavioral default change (unpublished pkg, so no external breakage). `"linear"` (affine, level-aware) is now the default after the generality test (5 real datasets) confirmed the per-species-means-don't-transfer collapse holds for BLAST- and external-scored DNA markers alike; `"constant"` retained as opt-out. Wired explicitly: `"linear"` in PtConceptionWorkflow_12S_single/_multi_site.R + Mugu{Fish,WilderFish}Workflow.R; `"constant"` in PtConceptionWorkflow_18S_2_single_site.R (only 2 referenced species -> affine unfittable) and inst/TaxaID_Workflow_Template_TEST.R (tiny fixture), both with comments. Real edge-case bug fixed en route: 1 confident species made `sd()` NA and crashed the fallback warning (`isTRUE()` guard added). `devtools::test()` 0 fail (423), `check()` 0/0/0. See TaxaLikely 11A. |
+| 2026-07-18 (Fable) | `calibrate_query_noise(offset_form = "linear"\|"constant", min_calib_species = 8L)` added | TaxaLikely | Additive, fully backward compatible (default `"constant"` = the original single-additive-offset behavior, byte-identical; all pre-existing tests unchanged). `"linear"` remaps every H1 mean through a robustly-fit `intercept + slope*trained_mean` line (per-species medians, weighted, evidence-range-clamped) instead of one constant — a level-aware generalization for train-vs-inference score-scale gaps that aren't a pure location shift. Motivated + validated on real 12S PtConception: the DECIPHER-MSA per-species H1 means do not transfer to the external `PercMatch` scoring scale (robust slope→0, per-species offset-vs-trained-mean slope ~ −1, single pooled mean beats "per-species + offset" in CV), H1 win rate 74.2%→76.3% via the shipped function. Only H1 mean location is remapped; H2/H3 congener-divergence deltas + gap feature (the discriminators) are untouched. Opt-in (the confident calibration set can't test congener discrimination); falls back to `"constant"` with a warning if `< min_calib_species` confident species. `$Query_Calibration` gains `offset_form`/`slope`/`intercept`. Not wired into any production workflow. See TaxaLikely/CLAUDE.md's 2026-07-18 note and `[[project_train_inference_scale_validity]]`. `devtools::test()` 0 failures (422), `devtools::check()` 0/0/0. |
+| 158 | `train_likelihood_model(score_transform = "logit"\|"sqrt_mismatch")` added; `H1_Lookup$sigma_score` bug fix; `H2_Lookup$var_shrunk` added; H2 mean anchor fixed | TaxaLikely | Additive param (default `"logit"`, fully backward compatible) + a real, pre-existing bug fix + two behavioral fixes to H2/H3's construction. `score_transform` lets H1/H2/H3 be modeled on `sqrt_mismatch` instead of `logit` -- found necessary because logit gives a qualitatively backwards answer for whether a genus's species are hard or easy to tell apart, confirmed on real 12S congener data (genuinely tight genera can show HIGHER logit-scale variance than loose ones, the opposite of the raw-proportion-scale truth). Independently, `H1_Lookup$sigma_score` had been storing `sqrt(shrunk variance)` instead of the variance itself since the formula was first written -- every species-specific H1 candidate's uncertainty has been systematically understated (evaluated against roughly the fourth root of the intended variance, not the square root) on both scales, for as long as this formula has existed. `devtools::test()` 696/696 (up from 670), `devtools::check()` clean. See TaxaLikely/CLAUDE.md's Session 158 note and `[[project_job2_unreferenced_relatives]]` for the full record. |
+| 158 (2026-07-16) | `calibrate_query_noise()`/`evaluate_likelihoods(evidence_col=, min_coverage=)` now work on `"sqrt_mismatch"`-trained models instead of erroring | TaxaLikely | Behavioral correction, not a signature change. The Session 158 guards blocking these mechanisms on non-`"logit"` models were based on a mistaken premise (delta-method re-derivation showed `SE(transform(score)) propto 1/sqrt(N)` holds for any transform, not just logit); found live-testing `sqrt_mismatch` against the real `PtConceptionWorkflow_12S_single_site.R`, which uses both. `devtools::test()` 698/698, `check()` clean. Wired into that real workflow (`train_likelihood_model(score_transform = "sqrt_mismatch")`). See `[[project_job2_unreferenced_relatives]]`'s "Correction (2026-07-16)" section. |
+| 158 (2026-07-16) | `expand_unreferenced_hypotheses()` now copies `score_likelihood_cov`/`score_likelihood_evidence`/`h2_delta_source` onto expanded H2/H3 rows when present | TaxaLikely | Behavioral change, not a signature change. Previously these were left `NA` on every expanded named-species row along with genuinely row-specific extra columns (e.g. `constraint_applied`) -- found live-testing the real `sqrt_mismatch` workflow run, where `h2_delta_source` read `NA` in post-`join_priors()` output instead of `"genus_specific"`/`"global_fallback"`. `devtools::test()` 706/706, `check()` clean. |
+| 157 | `train_likelihood_model()`'s `H1_Lookup` gains `n_obs_species`; `Stats` gains `n_h1_pooled`/`n_h2_pooled`/`prior_weight`; `evaluate_likelihoods()`'s `score_likelihood_mean`/`score_likelihood_sd` redesigned | TaxaLikely | Additive schema change + behavioral change to an existing output's meaning (not a signature change -- no new params on either function). `score_likelihood_sd` previously came from resampling the query's own observed score around the global H1 population dispersion; now it reflects shrinkage-consistent uncertainty in the trained mean itself (`Var = w^2*sigma^2/n`, `w` the same shrinkage weight as the point estimate), scaled by how much reference data calibrated it. Real-data live-testing the same day caught two real issues in the first version and both are fixed: (1) using naive (non-shrinkage-discounted) `sigma^2/n` overstated uncertainty for the many real species with only 2-3 reference sequences; (2) the true pooled training count was wrongly used as "n" for candidates/genera with NO local data at all, making them look MORE confident than well-referenced ones -- now uses `prior_weight` (the codebase's existing "equivalent sample size of the prior") instead, so H2/H3 are reliably wider than H1 again. Falls back to the exact previous behavior for any `model_params` trained before this change (missing `n_obs_species`). No change needed in `TaxaAssign::compute_posterior()`. `devtools::test()` 674/674 (up from 670), `devtools::check()` clean. |
+| 156 | `evaluate_likelihoods(evidence_col=)`'s H1 sigma rescale is now gated, not unconditional | TaxaLikely | Behavioral change, not a signature change (no new params). Session 155's rescale applied `1/sqrt(evidence_ratio)` to every candidate whenever `evidence_ratio < 1`, and was found net negative on real 12S data even at the widen-only default (27 helped, 2053 hurt) -- an elementary property of the Gaussian (widening variance must lower the peak while raising the tails, since the density still integrates to 1) meant most low-evidence real observations, being close-to-mean decent matches, paid the peak-lowering cost with no tail benefit. Now the rescale is applied only when an exact, closed-form criterion (`-0.5*log(c) + 0.5*z^2*(1-1/c) > 0`, `c` = variance-rescale factor, `z` = the candidate's own standardized distance from its trained mean) says doing so does not lower that candidate's density -- verified numerically against a live `dnorm()` call before shipping. Any existing caller passing `evidence_col` gets fewer, more conservative rescales than before (a strict subset of the previous behavior in the widen direction). `devtools::test()` 670/670 (up from 667), `devtools::check()` clean. **Re-validated against the real 12S PtConception dataset the unconditional version was tested on**: 163 helped / 3 hurt (vs. 27/2053), mean H1 likelihood 0.8014 -> 0.8016 (vs. the old regression 0.899 -> 0.884) -- see `TaxaLikely/CLAUDE.md`'s Session 156 note for the full result, including the 3 residual hurt cases traced to the gate's documented score-only-marginal approximation. **Wired into `PtConceptionWorkflow_12S_single_site.R`** (new Step 7a.6 + `evidence_col`/`evidence_max_ratio` added to the existing calibrate/evaluate calls) as an additive parallel diagnostic column only -- `join_priors()`/`compute_posterior()` still consume `score_likelihood`/`score_likelihood_mean` unchanged. Not yet live-run end to end in the full workflow, and not yet propagated to the `_multi_site` sibling or any other workflow. |
+| 159 (final entry) | `fetch_ncbi_reference_sequences(max_out_of_range_len = 200000L)` added | TaxaLikely | Additive param, fully backward compatible (only relevant when `keep_out_of_range = TRUE`). Fixes a real gap found in the real Mugu `reference_df.rds` (142MB, a 111,213,091bp whole-genome scaffold pulled in because `keep_out_of_range = TRUE` had no upper size bound at all). Also folded into the cache key, which previously didn't vary by `keep_out_of_range` at all (a real staleness bug). `devtools::test()` 754/754 (up from 706), `devtools::check()` clean. |
+| 159 (final entry) | `restore_suppressed_candidates()` gains `attr(result, "regional_unreferenced")`; `expand_unreferenced_hypotheses(unreferenced_df)` gains optional `observation_id` column | TaxaLikely | Additive, fully backward compatible -- no signature changes, existing callers unaffected. A congener rejected by `check_regional_overlap` is no longer just dropped; it's recorded (`observation_id`/`species`/`genus`/`family`) and returned as an attribute, in exactly the shape `expand_unreferenced_hypotheses()`'s new `observation_id`-scoped `unreferenced_df` rows expect (`NA`/absent = global, as before; a real `observation_id` restricts that row to one observation). Lets a species that IS globally referenced (so it would never appear via `audit_barcode_coverage()`) still compete as a named `unreferenced_species` hypothesis for the one query whose anchor doesn't overlap its reference. Closes the real "Mugu outcome didn't change" gap the earlier Session 159 entries left open -- see `TaxaLikely/CLAUDE.md`'s Session 159 final-entry note for the full record. Wired into `MuguFishWorkflow.R`; `MuguWilderFishWorkflow.R` deliberately NOT wired (its `.run_round1()` never calls `expand_unreferenced_hypotheses()` at all -- a pre-existing architecture gap flagged for the user, not fixed unilaterally). `devtools::test()` 754/754, `devtools::check()` clean. |
+| 2026-07-18 (Sonnet 5) | `restore_suppressed_candidates()` ground-up redesign: `detected`/`perfect_threshold`/`purity_threshold`/`singleton_threshold` params removed; `delta` now only affects the no-score pathway; `model_params`/`alpha`/`max_dist`/`taxaexpect_priors`/`grid_id_col`/`taxon_col`/`grid_col`/`theta_col`/`budget_ratio_cap` added; new `restoration_basis` output column; `candidate_species_filter` re-scoped to gate Purpose B only | TaxaLikely | **Breaking, intentionally**, for the scored pathway. Implements `ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md`. Every observation is now checked unconditionally (no longer gated by a globally detected suppression rule); admission splits into Purpose A (`"competitive_score"`, prior-agnostic score-only outlier test, needs `model_params`) and Purpose B (`"plausible_prior"`, wide `max_dist` floor, gated by `candidate_species_filter`), or `"both"`. Restored scores now come from a median-aggregated, cheap-to-expensive hierarchy (new `R/restore_hierarchy.R`) instead of a flat `anchor_score - delta`. **A bare call with no `seq_matrix`/`model_params`/`check_regional_overlap` is now correctly a no-op** -- the old default restored every same-genus congener unconditionally. `.check_regional_overlap()` gains a `return_detail = TRUE` mode (default `FALSE`, fully backward compatible) returning a real percent-identity `pid` alongside the overlap verdict. `attr(result, "regional_unreferenced")` gains a `basis` column (`"regional_reject"` vs `"no_reference_data"`, additive). `devtools::test()` 0 failures (893, up from ~860), `devtools::check()` 0/0/0. See `TaxaLikely/CLAUDE.md`'s top session note for the full record. **Superseded/extended same day** by the Option A/C cost-control revision (next row) and rolled out to production workflows then, not at the time this row was written. |
+| 2026-07-18 (Sonnet 5, continued) | `restore_suppressed_candidates()` Level 4 cost-control revision: `.worth_tier2_budget()` renamed `.worth_level4_check()`, gains `candidate_species_filter` param; new `max_level4_per_anchor` param (default `10L`) | TaxaLikely | Behavioral + signature change, found necessary by live-testing the redesign above against two real motivating cases (Mugu `Fundulus`, PtConception `Girella`) at the user's request. Both real anchors are themselves absent from `taxaexpect_priors` (correctly -- they're occurrence-implausible), which made the original ratio-only gate uncomputable and skip Level 4 for every candidate, including the one that matters; measured real cost of the resulting unrestricted sweep: 275.8s for one marker (vs. the pre-redesign 38s baseline). Fix: `candidate_species_filter` is Level 4's own default gate again (falls back to the ratio only for a candidate not on it) -- Levels 1-3 remain fully filter-independent, so this only affects the one expensive step. `max_level4_per_anchor` is an independent hard backstop cap. Verified against both real cases: cost cut ~4x (Fundulus) / ~3x (Girella), correctness preserved (if anything strengthened) in both. Rolled out same day to `MuguFishWorkflow.R`, `MuguWilderFishWorkflow.R`, `PtConceptionWorkflow_12S_single_site.R`, `PtConceptionWorkflow_18S_2_single_site.R` (all outside this monorepo). `devtools::test()` 0 failures (910, up from 893), `devtools::check()` 0/0/0. See `TaxaLikely/CLAUDE.md`'s top session note and `[[project_restore_suppressed_candidates_implementation]]` for the full record. |
+| 2026-07-19 (Sonnet 5) | `restore_suppressed_candidates()` performance fix: new `.seq_matrix_partner_index()`/`.seq_matrix_lookup()` in `R/restore_hierarchy.R`, Levels 0-3 rewired onto them | TaxaLikely | Behavioral (no signature change) -- found when the user actually ran the updated `PtConceptionWorkflow_12S_single_site.R` against the real, full 13,442-observation dataset and the restoration step was still running after 70+ minutes. Root cause: the free Levels 1-3 hierarchy did a fresh linear `%in%` scan over the whole `seq_matrix` (~3M rows) per candidate species per call, with zero memoization -- R's `%in%`/`match()` rebuilds its hash table on every call rather than caching it, and Purpose A's unconditional genus-wide sweep exposed this at real genera Mugu never had (`Sebastes`, 107 species, vs. `Fundulus`'s 20). Fix builds a real accession-indexed lookup once per call instead. Verified: a real repeated `Sebastes` anchor lookup went from 17.64s to 0.03s (~590x); the full real 13,442-observation dataset went from 70+ minutes (still running when interrupted) to 42.1 seconds. `devtools::test()` 0 failures (910, unchanged), `devtools::check()` 0/0/0. See `TaxaLikely/CLAUDE.md`'s top session note and `[[project_restore_suppressed_candidates_implementation]]` for the full record. |
+| 2026-07-19 (Sonnet 5) | `evaluate_likelihoods(min_rank_trust_pvalue = 0.001)` added; `$likelihoods` gains `absolute_fit_pvalue`/`trusted_rank`/`rank_trust_basis` | TaxaLikely | Additive, fully backward compatible -- no existing caller's behavior changes. The "rank-trust mechanism": answers whether the WINNING hypothesis's own absolute fit is believable (one-sided score-only test against its own trained mu/sigma), not just whether it beat the other candidates -- a real blind spot `score_likelihood` alone has, motivated by real PtConception contamination-pattern edge cases (Hylobatidae etc.) winning at likelihood=1.0 despite every specific candidate fitting poorly in absolute terms. Deliberately one-sided (unlike the existing, unchanged two-sided `alpha` gate) so a BETTER-than-typical match (e.g. a literal 100% identity hit) can never lose trust for being too good. See `TaxaLikely/CLAUDE.md`'s top session note for the full real-data validation record. Wired into `PtConceptionWorkflow_12S_single_site.R`'s `evaluate_likelihoods()` call (explicit `min_rank_trust_pvalue`, plus a new summary diagnostic message); not yet in any other workflow. |
+| 2026-07-19 (Sonnet 5) | `posterior_consensus(uprank_trust_pvalue = 0)` added; output gains `winner_absolute_fit_pvalue`/`winner_trusted_rank`/`winner_rank_trust_basis`; new `consensus_reason = "trust_upranked"` value | TaxaAssign | Additive, fully backward compatible -- default `0` means never act (a p-value is never `< 0`), matching this ecosystem's threshold-disables-at-its-own-boundary convention rather than a separate boolean. Consumes TaxaLikely's rank-trust mechanism (row above) to broaden `consensus_taxon`/`consensus_rank` when the winning hypothesis's own absolute fit fails AND the trusted rank is coarser than what LCA/disagreement logic already produced -- never narrower. Targets a case LCA upranking structurally cannot reach: a single hypothesis winning outright (`n_plausible = 1`), nothing to disagree with. Only a PARTIAL decoupling from TaxaLikely's own `min_rank_trust_pvalue` -- gates whether to act on the winner's raw p-value, but *where* to broaden to still comes from `winner_trusted_rank` as already computed upstream. Real-data validated against the full real 13,442-observation PtConception dataset (0 false positives on every known-good case; `0.001` is a complete no-op there, `0.01` catches a real previously-undetected bug -- 8 observations misreporting real terrestrial canid DNA at species level). Wired into `PtConceptionWorkflow_12S_single_site.R` at `uprank_trust_pvalue = 0.01`. See `TaxaAssign/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-19 (Sonnet 5) | `add_posthoc_assessment(trusted_rank_col = "winner_trusted_rank")` added; new `posthoc_assessment` category `"unsupported_rank"` | TaxaFlag | Additive, fully backward compatible -- silently skipped when `trusted_rank_col` absent from `consensus_df` (optional upstream output). Overrides ANY of the existing 3x2 tier x likelihood categories, including `"sensible"`, since `winner_likelihood`'s ratio-normalization (best hypothesis always exactly 1.0) can look like strong evidence even when every candidate fit poorly in absolute terms -- catches exactly that gap using TaxaLikely's rank-trust signal (two rows above), passed through by `TaxaAssign::posterior_consensus()` (row above). Purely informational -- never changes `consensus_taxon`/`consensus_rank` itself (that's `posterior_consensus()`'s own separate opt-in `uprank_trust_pvalue`). **Real bug found and fixed the same session** via a full real-data run: the first version used plain string inequality instead of comparing canonical rank order, mislabelling 48% of its own flagged rows (cases where `trusted_rank` was FINER than `consensus_rank`, not coarser -- not a real mismatch). Fixed with a new `.std_rank_order` constant; corrected real count 2,501/13,442 (18.6%). Wired into `PtConceptionWorkflow_12S_single_site.R`. See `TaxaFlag/CLAUDE.md`'s top session note. |
+| 2026-07-19 (Sonnet 5) | `fetch_reference_sequences()` and `audit_barcode_coverage_ncbi()` removed entirely (not just deprecated) | TaxaLikely | **Breaking**, but no real callers left. Both were `.Deprecated()` forwarding aliases from earlier renames (-> `fetch_ncbi_reference_sequences()` Session 136, -> `audit_barcode_coverage()` Session 113). Removed at the user's request after questioning why a not-yet-released package needed review/test coverage for a migration path with no external users. `audit_barcode_coverage_ncbi()` had zero real callers. `fetch_reference_sequences()` had 4 real in-monorepo callers (`TaxaAssign/vignettes/taxaid-ecosystem.Rmd`, `TaxaLikely/vignettes/score-to-likelihood.Rmd`, `diagnostics/Barcode_similarity_matrix.R`, `diagnostics/sandpiper_12S_similarity.R`) -- all four updated to the current name first. The two real external Mugu production workflows already called the current name (only a stale comment mentioned the old one, left as-is). `expand_consensus_candidates()` -- a different kind of deprecation, a superseded design pathway with its own teaching workflow rather than a plain rename -- deliberately left untouched. `devtools::test()` 0 failures, `devtools::check()` 0 errors/0 warnings/1 pre-existing environmental note. |
+| 2026-07-20 (Sonnet 5) | `evaluate_likelihoods(min_rank_trust_pvalue=)` removed; `$likelihoods` no longer has `trusted_rank`/`rank_trust_basis` | TaxaLikely | **Supersedes the two rows above adding this mechanism** (2026-07-19). `trusted_rank` was found to be computed off `evaluate_likelihoods()`'s own top-LIKELIHOOD hypothesis, not necessarily the hypothesis that wins the POSTERIOR once TaxaExpect priors are applied downstream -- confirmed a real ~30% mismatch rate on the real 12S PtConception dataset, plus a second cancellation bug where `posterior_consensus()`'s own downranking step could silently reverse a correct upranking. `absolute_fit_pvalue` itself (the per-row one-sided fit p-value everything was built on) is UNCHANGED and still computed on every row -- only the ladder-walk-to-a-trusted-rank built on top of it is gone. `posterior_consensus(uprank_trust_pvalue=)` and `add_posthoc_assessment()`'s `"unsupported_rank"` category (both added the two rows above) were updated the same day to read `absolute_fit_pvalue` directly off the winning row instead -- see `TaxaAssign/CLAUDE.md`'s and `TaxaFlag/CLAUDE.md`'s own same-day notes for those two changes; `winner_trusted_rank`/`winner_rank_trust_basis`/`trusted_rank_col` are correspondingly stale references in those two rows above, not live behavior. `devtools::test()` 0 failures, `devtools::check()` 0/0/1 (pre-existing environmental note). See `TaxaLikely/CLAUDE.md`'s top session note and `[[project_job2_unreferenced_relatives]]` for the full record. |
+| 2026-07-20 (Sonnet 5) | `expand_consensus_candidates()` removed entirely (not just deprecated) | TaxaLikely | **Breaking**, but no real callers left anywhere in the monorepo or the two real external Mugu/PtConception production workflows (confirmed by grep before deleting). Deprecated since Session 99 in favor of `unreferenced_candidates()` + `assign_scores()`; same "no external users yet" reasoning as the row above. Deleted `R/expand_consensus.R` (its only function), `tests/testthat/test-expand-consensus.R`, and its own dedicated teaching workflow `inst/workflows/expand_consensus_demo.R`. Fixed one stale cross-reference in `compute_likelihoods()`'s own roxygen. `devtools::test()` 0 failures, `devtools::check()` 0 errors/0 warnings/1 pre-existing environmental note. |

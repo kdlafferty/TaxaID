@@ -16,6 +16,8 @@ review_assignments(
   data_type = "eDNA",
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   taxa_per_call = 15L,
+  max_tokens = NULL,
+  max_retries = 2L,
   pause_seconds = 1,
   verbose = TRUE
 )
@@ -72,6 +74,24 @@ guidance in the LLM prompt.}
 \item{taxa_per_call}{Integer. Maximum taxa (or candidate sets) per LLM call.
 Default \code{15L}. Candidate-set entries are longer than single taxon
 names; consider reducing to 8--10 when using \code{plausible_taxa_col}.}
+
+\item{max_tokens}{Integer or \code{NULL}. Maximum response tokens requested
+from \code{llm_fn} (forwarded as \code{llm_fn(prompt, max_tokens = max_tokens)}
+whenever supplied). Default \code{NULL} -- does not pass \code{max_tokens}
+at all, so \code{llm_fn}'s own default applies (\code{3000L} for
+\code{TaxaTools::call_api()}). Raise this if \code{max_retries} alone
+isn't resolving truncation warnings for your data -- e.g. a long,
+multi-marker \code{marker} string can inflate per-taxon response length
+enough that even the smallest retry sub-batch still truncates.}
+
+\item{max_retries}{Integer. When a batch's LLM response is truncated,
+empty, or unparseable, the batch is automatically split in half and
+retried -- a smaller batch requests a proportionally shorter response,
+directly relieving token-budget pressure -- up to \code{max_retries}
+times before falling back to \code{NA} defaults for whatever's still
+missing. Does not apply to a hard \code{llm_fn} error (e.g. network/auth
+failure): a smaller batch can't fix that, so it is reported immediately
+without retrying. Default \code{2L}.}
 
 \item{pause_seconds}{Numeric. Seconds to pause between LLM calls.
 Default \code{1}.}

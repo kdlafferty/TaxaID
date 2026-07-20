@@ -1,15 +1,15 @@
 test_that(".normalize_scores: 0-100 scale auto-detected", {
   out <- TaxaLikely:::.normalize_scores(c(50, 75, 100))
   expect_true(all(out > 0 & out < 1))
-  expect_equal(out[3], 1 - 1e-6)        # 100 → clipped to 1 - epsilon
+  expect_equal(out[3], 1 - 1e-6)        # 100 -> clipped to 1 - epsilon
   expect_true(out[2] > out[1])           # monotone
 })
 
 test_that(".normalize_scores: 0-1 scale auto-detected", {
   out <- TaxaLikely:::.normalize_scores(c(0, 0.5, 1))
   expect_true(all(out > 0 & out < 1))
-  expect_equal(out[1], 1e-6)            # 0 → clipped to epsilon
-  expect_equal(out[3], 1 - 1e-6)        # 1 → clipped to 1 - epsilon
+  expect_equal(out[1], 1e-6)            # 0 -> clipped to epsilon
+  expect_equal(out[3], 1 - 1e-6)        # 1 -> clipped to 1 - epsilon
 })
 
 test_that(".normalize_scores: explicit bounds override auto-detection", {

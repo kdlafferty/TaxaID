@@ -1,4 +1,4 @@
-# build_sequence_matrix requires DECIPHER (Bioconductor — Suggests).
+# build_sequence_matrix requires DECIPHER (Bioconductor -- Suggests).
 # All online tests are guarded. Input validation and new-parameter offline tests
 # run without DECIPHER.
 
@@ -46,7 +46,7 @@ test_that("build_sequence_matrix: minimal two-sequence run succeeds", {
 })
 
 # ---------------------------------------------------------------------------
-# filter_unnamed — offline validation
+# filter_unnamed -- offline validation
 # ---------------------------------------------------------------------------
 
 test_that("build_sequence_matrix: filter_unnamed non-logical errors", {
@@ -61,7 +61,7 @@ test_that("build_sequence_matrix: filter_unnamed non-logical errors", {
 })
 
 # ---------------------------------------------------------------------------
-# max_seqs_per_taxon — offline validation
+# max_seqs_per_taxon -- offline validation
 # ---------------------------------------------------------------------------
 
 test_that("build_sequence_matrix: max_seqs_per_taxon < 2 errors", {
@@ -85,7 +85,7 @@ test_that("build_sequence_matrix: max_seqs_per_taxon non-numeric errors", {
 })
 
 # ---------------------------------------------------------------------------
-# Integration tests — require DECIPHER
+# Integration tests -- require DECIPHER
 # ---------------------------------------------------------------------------
 
 test_that("build_sequence_matrix: length filter drops short sequences", {
@@ -97,7 +97,7 @@ test_that("build_sequence_matrix: length filter drops short sequences", {
     species      = c("Sp a", "Sp b"),
     stringsAsFactors = FALSE
   )
-  # S1 is too short (< 100 bp); only S2 remains → should error
+  # S1 is too short (< 100 bp); only S2 remains -> should error
   expect_error(
     build_sequence_matrix(df, "species", min_seq_len = 100L),
     "Fewer than 2 sequences remained"
@@ -117,7 +117,7 @@ test_that("build_sequence_matrix: filter_unnamed removes blank-species sequences
                                filter_unnamed = TRUE)
   # S2 should be absent from all pairs
   expect_false(any(out$id_x == "S2" | out$id_y == "S2"))
-  # S1 and S3 remain: 2 sequences × (2-1) = 2 directed pairs
+  # S1 and S3 remain: 2 sequences x (2-1) = 2 directed pairs
   expect_equal(nrow(out), 2L)
 })
 
@@ -132,7 +132,7 @@ test_that("build_sequence_matrix: filter_unnamed = FALSE retains blank-species s
   )
   out <- build_sequence_matrix(df, "species", max_dist = 1.0,
                                filter_unnamed = FALSE)
-  # All 3 sequences → 3*(3-1) = 6 directed pairs
+  # All 3 sequences -> 3*(3-1) = 6 directed pairs
   expect_equal(nrow(out), 6L)
   # S2 appears in at least one pair
   expect_true(any(out$id_x == "S2" | out$id_y == "S2"))
@@ -156,7 +156,7 @@ test_that("build_sequence_matrix: filter_unnamed errors when all names blank", {
 test_that("build_sequence_matrix: max_seqs_per_taxon caps large species", {
   skip_if_not_installed("DECIPHER")
   skip_if_not_installed("Biostrings")
-  # 4 sequences for "Sp a", 1 for "Sp b" — cap at 2 for "Sp a"
+  # 4 sequences for "Sp a", 1 for "Sp b" -- cap at 2 for "Sp a"
   seqs <- c(.seq_a, .seq_b, .seq_c,
             paste(rep("ATGCATGCATTT", 10), collapse = ""),  # S4, Sp a
             paste(rep("GCTAGCTAGCTA", 10), collapse = ""))   # S5, Sp b
@@ -169,7 +169,7 @@ test_that("build_sequence_matrix: max_seqs_per_taxon caps large species", {
   set.seed(1L)
   out_capped <- build_sequence_matrix(df, "species", max_dist = 1.0,
                                       max_seqs_per_taxon = 2L)
-  # With cap=2 for Sp a + 1 for Sp b = 3 sequences → 3*(3-1) = 6 directed pairs
+  # With cap=2 for Sp a + 1 for Sp b = 3 sequences -> 3*(3-1) = 6 directed pairs
   # Uncapped (4 Sp a + 1 Sp b = 5 seqs) would give 5*4 = 20 directed pairs
   expect_lte(nrow(out_capped), 6L)
   # "Sp b" sequence (S5) must appear (it was under the cap)
@@ -187,7 +187,7 @@ test_that("build_sequence_matrix: max_seqs_per_taxon = NULL leaves all sequences
   )
   out_null <- build_sequence_matrix(df, "species", max_dist = 1.0,
                                     max_seqs_per_taxon = NULL)
-  # 2 sequences → 2*(2-1) = 2 directed pairs
+  # 2 sequences -> 2*(2-1) = 2 directed pairs
   expect_equal(nrow(out_null), 2L)
 })
 

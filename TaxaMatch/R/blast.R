@@ -78,6 +78,16 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #'     \item{alignment_length}{Alignment length}
 #'     \item{query_coverage}{Percent of query aligned}
 #'     \item{subject_length}{Subject sequence length}
+#'     \item{subject_start, subject_end}{Where within the subject/reference
+#'       sequence this hit's alignment falls (1-based, BLAST tabular
+#'       convention -- \code{subject_start > subject_end} on the minus
+#'       strand; use \code{pmin()}/\code{pmax()} for a directionless span).
+#'       Distinct from \code{subject_length} (the reference's TOTAL length):
+#'       lets a downstream consumer tell whether two hits against the SAME
+#'       long subject (e.g. a complete mitogenome) actually cover the same
+#'       genomic region or two unrelated ones -- see
+#'       \code{TaxaLikely::restore_suppressed_candidates(check_regional_overlap
+#'       = TRUE)}.}
 #'   }
 #'   If \code{resolve_taxonomy = TRUE}, taxonomy columns (\code{kingdom},
 #'   \code{phylum}, \code{class}, \code{order}, \code{family}, \code{genus},
@@ -328,6 +338,16 @@ blast_sequences <- function(seq_df,
     alignment_length = if ("length" %in% names(filtered)) filtered$length else NA_integer_,
     query_coverage   = if ("qcovs" %in% names(filtered)) filtered$qcovs else NA_real_,
     subject_length   = if ("slen" %in% names(filtered)) filtered$slen else NA_integer_,
+    # Where within the subject/reference sequence this hit's alignment
+    # actually falls -- distinct from subject_length (the reference's TOTAL
+    # length). Needed to tell whether two hits against the same long subject
+    # (e.g. a complete mitogenome) cover the same region or two unrelated
+    # ones. subject_start/subject_end are not normalized for strand
+    # (subject_start > subject_end on the minus strand, matching raw BLAST
+    # tabular convention) -- a consumer needing a directionless span should
+    # use pmin()/pmax() on them.
+    subject_start    = if ("sstart" %in% names(filtered)) filtered$sstart else NA_integer_,
+    subject_end      = if ("send" %in% names(filtered)) filtered$send else NA_integer_,
     stringsAsFactors = FALSE
   )
 
@@ -700,6 +720,16 @@ blast_sequences <- function(seq_df,
       gaps      <- as.integer(.xt("./Hsp_gaps"))
       qfrom     <- as.integer(.xt("./Hsp_query-from"))
       qto       <- as.integer(.xt("./Hsp_query-to"))
+      # Subject/hit-side alignment coordinates (Hsp_hit-from/-to) -- WHERE
+      # within the subject sequence this HSP actually aligns. Previously
+      # parsed nowhere in this function (only the query-side qfrom/qto were
+      # kept), even though BLAST already computes them -- needed so a
+      # downstream consumer can tell whether two different queries' hits
+      # against the SAME long subject (e.g. a complete mitogenome) actually
+      # cover the same genomic region or two unrelated ones (see TaxaLikely's
+      # restore_suppressed_candidates(check_regional_overlap = TRUE)).
+      sfrom     <- as.integer(.xt("./Hsp_hit-from"))
+      sto       <- as.integer(.xt("./Hsp_hit-to"))
       evalue    <- as.numeric(.xt("./Hsp_evalue"))
       bitscore  <- as.numeric(.xt("./Hsp_bit-score"))
 
@@ -721,6 +751,8 @@ blast_sequences <- function(seq_df,
         gapopen  = if (!is.na(gaps)) gaps else NA_integer_,
         evalue   = evalue,
         bitscore = bitscore,
+        sstart   = sfrom,
+        send     = sto,
         stringsAsFactors = FALSE
       )
     }
@@ -756,10 +788,15 @@ blast_sequences <- function(seq_df,
   # Open BLAST database
   bl <- rBLAST::blast(db = database, type = program)
 
-  # Custom output format for eDNA
+  # Custom output format for eDNA. sstart/send (subject-side alignment
+  # coordinates) added so a downstream consumer can tell whether two
+  # different queries' hits against the SAME long subject (e.g. a complete
+  # mitogenome) actually cover the same genomic region -- see
+  # .parse_blast_xml()'s identical addition for the remote path.
   custom_format <- paste(
     "qseqid", "sseqid", "sacc", "staxids", "pident", "length",
     "qlen", "slen", "qcovs", "mismatch", "gapopen", "evalue", "bitscore",
+    "sstart", "send",
     sep = " "
   )
 
@@ -775,7 +812,8 @@ blast_sequences <- function(seq_df,
 
   # Standardize column names (rBLAST returns named columns)
   expected_cols <- c("qseqid", "sseqid", "sacc", "staxids", "pident", "length",
-                     "qlen", "slen", "qcovs", "mismatch", "gapopen", "evalue", "bitscore")
+                     "qlen", "slen", "qcovs", "mismatch", "gapopen", "evalue", "bitscore",
+                     "sstart", "send")
 
   if (ncol(hits) == length(expected_cols) && is.null(names(hits))) {
     names(hits) <- expected_cols
@@ -1161,6 +1199,7 @@ NULL
     slen = integer(), qcovs = numeric(),
     mismatch = integer(), gapopen = integer(),
     evalue = numeric(), bitscore = numeric(),
+    sstart = integer(), send = integer(),
     stringsAsFactors = FALSE
   )
 }

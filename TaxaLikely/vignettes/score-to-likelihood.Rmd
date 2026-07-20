@@ -53,7 +53,7 @@ TaxaLikely provides two ways to build a `reference_df`:
 
 ```{r fetch-refs}
 # Option A: Fetch from NCBI by taxon + barcode marker
-reference_df <- fetch_reference_sequences(
+reference_df <- fetch_ncbi_reference_sequences(
  taxa         = c("Fundulidae", "Atherinopsidae", "Gobiidae"),
  barcode_term = "12S",
  max_per_species = 5,

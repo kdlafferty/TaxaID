@@ -39,7 +39,7 @@ AGG_FUN      <- median
 # ==============================================================================
 cat("=== Fetching sequences ===\n")
 
-reference_df <- fetch_reference_sequences(
+reference_df <- fetch_ncbi_reference_sequences(
   taxa         = TAXA,
   barcode_term = BARCODE_TERM,
   rank_system  = RANK_SYSTEM,

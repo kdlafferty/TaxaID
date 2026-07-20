@@ -1,6 +1,1082 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-14 (Session 155 -- new calibrate_query_noise() (+ helper
+# Last updated: 2026-07-20, continued (Sonnet 5 -- expand_consensus_candidates() removed
+# entirely (deprecated since Session 99, -> unreferenced_candidates() + assign_scores()),
+# same "no external users yet, don't keep an unneeded migration path" reasoning as the
+# fetch_reference_sequences()/audit_barcode_coverage_ncbi() removal two entries below.
+# Deleted R/expand_consensus.R (its only function, no shared internal helpers), tests/
+# testthat/test-expand-consensus.R, and its own dedicated teaching workflow inst/workflows/
+# expand_consensus_demo.R -- confirmed zero real callers anywhere in the monorepo or the
+# two real external Mugu/PtConception production workflows first (the only monorepo hits
+# were the function's own definition/tests/roxygen and an RStudio .Rproj.user session-cache
+# file, not real code). Fixed one stale cross-reference in compute_likelihoods()'s own
+# roxygen that named the now-deleted function. Also verified and updated
+# inst/review_function_inputs.R for BOTH this removal and the separately-made
+# evaluate_likelihoods() rank-trust simplification below (prompted by the user flagging
+# that change directly) -- Section 6's evaluate_likelihoods() example already correctly
+# showed only absolute_fit_pvalue (no trusted_rank/rank_trust_basis) by the time this
+# session reached it; confirmed by live-running the whole file end to end, 0 errors.
+# TaxaAssign/TaxaFlag's own downstream consumers checked directly (grep) and confirmed
+# already consistent with the simplified evaluate_likelihoods() -- no stale references to
+# the removed columns found in either package's live code. devtools::test() 0 failures,
+# devtools::check() 0 errors/0 warnings/1 pre-existing environmental note. One .lintr
+# exclusion line number corrected (drifted by +2 from the fetch.R edit two sessions back).
+# Previous update, 2026-07-20 (Sonnet 5 -- removed the rank-trust ladder-walk mechanism
+# entirely: evaluate_likelihoods() no longer has a min_rank_trust_pvalue param, and no
+# longer produces trusted_rank/rank_trust_basis columns. absolute_fit_pvalue (the
+# per-row, one-sided goodness-of-fit p-value each mechanism was built on) is unchanged
+# and still computed unconditionally -- only the ladder-walk built on top of it (deciding
+# a "trusted rank" by walking H1 -> H2 -> H3 coarser until one clears the threshold) is
+# gone. Prompted directly by the user pressure-testing the two downstream consumers this
+# same day: TaxaAssign::posterior_consensus()'s uprank_trust_pvalue and
+# TaxaFlag::add_posthoc_assessment()'s "unsupported_rank" category. Live diagnostics
+# against the user's own real 12S PtConception run found trusted_rank was computed for
+# evaluate_likelihoods()'s own top-LIKELIHOOD hypothesis for a query -- which is NOT
+# always the same hypothesis that wins the POSTERIOR once TaxaExpect priors are
+# multiplied in downstream (a real occurrence-prior-favored referenced species can win
+# the posterior while a generic unreferenced-congener placeholder briefly had the higher
+# raw likelihood) -- confirmed as a genuine ~30% mismatch rate on that real dataset, and
+# a second, independent cancellation problem where TaxaAssign::posterior_consensus()'s
+# own species_reference downranking step could silently reverse an upranking that HAD
+# fired correctly. The user's proposed fix, worked through together rather than assumed:
+# since absolute_fit_pvalue is already correctly anchored to whichever row a downstream
+# consumer treats as "the winner" (no re-derivation needed, no separate ladder-walk to go
+# stale), both downstream consumers can read it directly instead of relying on the
+# ladder-walk's output -- eliminating BOTH real bugs at once rather than patching either
+# one. Verified before removing anything: absolute_fit_pvalue's own one-sided design
+# (P(Z <= z), never penalizes a score better than the trained mean) was independently
+# confirmed safe for perfect/near-ceiling matches by re-reading .one_sided_fit_pvalue()'s
+# own roxygen and the code -- directly answering the user's own sharp question about
+# whether this substitution could misfire on exactly the cases it's meant to protect.
+# See TaxaAssign/CLAUDE.md's and TaxaFlag/CLAUDE.md's own same-day notes for the two
+# downstream consumer changes, and [[project_job2_unreferenced_relatives]] in the TaxaID
+# memory system for the full investigation record (the diagnostic script, the exact
+# mismatch numbers, and the worked Sardinops/Vulpes examples that surfaced this).
+# `devtools::test()` clean (0 failures) throughout; `devtools::check()` 0 errors/0
+# warnings/1 pre-existing environmental note. Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-19, continued yet further (Sonnet 5 -- removed two deprecated
+# forwarding aliases entirely, prompted by the user questioning why a package with no
+# external users yet needed review/test coverage for a rename migration path at all.
+# fetch_reference_sequences() (-> fetch_ncbi_reference_sequences(), Session 136) and
+# audit_barcode_coverage_ncbi() (-> audit_barcode_coverage(), Session 113) both deleted from
+# R/fetch.R and R/coverage.R (roxygen + function body), along with their dedicated test
+# coverage (test-audit-barcode-coverage-ncbi.R deleted entirely; test-fetch.R's two
+# deprecated-alias tests removed) and their sections in inst/review_function_inputs.R.
+# audit_barcode_coverage_ncbi() had zero real callers anywhere. fetch_reference_sequences()
+# did have 4 real in-monorepo callers -- TaxaAssign/vignettes/taxaid-ecosystem.Rmd,
+# TaxaLikely/vignettes/score-to-likelihood.Rmd, diagnostics/Barcode_similarity_matrix.R,
+# diagnostics/sandpiper_12S_similarity.R -- all four updated to call
+# fetch_ncbi_reference_sequences() directly before the alias was removed (confirmed with the
+# user first, since two of the four sit outside this package). Checked the two real external
+# production workflows too (MuguFishWorkflow.R, MuguWilderFishWorkflow.R, outside this
+# monorepo): both already call the new name; only a stale code comment mentioned the old one,
+# left as-is (harmless, not a real call). devtools::test() 0 failures, devtools::check() 0
+# errors/0 warnings/1 pre-existing environmental note (clock verification, unrelated).
+# expand_consensus_candidates() (a different kind of deprecation -- a superseded design
+# pathway with its own dedicated teaching workflow, inst/workflows/expand_consensus_demo.R,
+# not a simple rename) was deliberately NOT touched this pass -- flagged to the user as a
+# separate decision, not bundled into this one.
+# Previous update, 2026-07-19, continued further (Sonnet 5 -- review-prep catch-up pass, after
+# discovering (via file-mtime + date-stamp grep, prompted directly by the user) that three
+# other sessions had substantially reworked restore_suppressed_candidates() and evaluate_
+# likelihoods() since the review-prep pass documented below. (1) Deleted .audit_barcode_
+# coverage_legacy_() (R/coverage.R) -- confirmed genuinely unreachable ("retained for
+# reference, not called" per its own header, zero references anywhere in R/tests/man/NAMESPACE
+# outside its own definition) per the user's explicit request; removed the matching now-dead
+# .lintr line-number exclusions. (2) Moved inst/referencegapsinflies.pdf -> TaxaID root's
+# ecosystem_docs/referencegapsinflies.pdf (reference material for the reference-gap-modeling
+# work already documented there, not code -- doesn't belong in the built package). (3) Grepped
+# every exported function's current signature against review_function_inputs.R's assumptions;
+# confirmed the ONLY two behavioral/signature changes since this file's own last update were
+# restore_suppressed_candidates() (see the Session notes below for the full redesign) and
+# evaluate_likelihoods()'s new min_rank_trust_pvalue param -- everything else unchanged.
+# (4) Updated inst/review_function_inputs.R's own two examples: Section 10.2 now demonstrates
+# the new no-op-without-evidence default AND a seq_matrix+model_params call showing real
+# restoration_basis values ("both"/"plausible_prior", fixture reused verbatim from
+# tests/testthat/test-score-collapse.R's .simple_model_params()); Section 6.1 now displays the
+# new absolute_fit_pvalue/trusted_rank/rank_trust_basis columns (purely additive, the existing
+# fixture already exercised them correctly, just wasn't showing them). Live-executed the whole
+# file again after both edits -- confirmed both sections' output matches the redesign's
+# documented behavior exactly (no-op returns 1 row; nigricans admitted via "both", laevifrons
+# via "plausible_prior"). devtools::test()/check() reconfirmed clean after the coverage.R
+# deletion. No functional code changes made to restore_suppressed_candidates()/evaluate_
+# likelihoods() themselves this pass -- that work was already complete and validated (see the
+# three "Previous update, 2026-07-19"/"2026-07-18, continued..." entries immediately below).
+# Previous update, 2026-07-19, continued (Sonnet 5 -- real, unrelated NCBI-fetch bug found and
+# fixed while live-testing restore_suppressed_candidates() against PtConceptionWorkflow_
+# 18S_2_single_site.R's real, full ~1300-genus reference fetch (the first genuinely
+# large-scale live fetch_ncbi_reference_sequences() run in this whole test-drive; every
+# earlier validation used a pre-cached reference_df). Real error: "Error in rbind(deparse.
+# level, ...) : numbers of columns of arguments do not match", crashing the ENTIRE fetch
+# (discarding every already-completed genus's work) once one genus's real NCBI taxonomy XML
+# resolved to a slightly different column set than another's -- a genuine, real-data risk
+# with base rbind(), not a hypothetical one. This is the exact same failure class this
+# codebase already found and fixed once for the BOLD fetch path (see fetch_bold_reference_
+# sequences()'s own comment: "dplyr::bind_rows(), not rbind() -- BOLD's per-query TSV column
+# set can... rbind() errors on mismatched column counts") -- that lesson had just never been
+# applied to the NCBI path, which had no real-scale live testing to expose it until now.
+# Fixed by replacing every do.call(rbind, ...) combining per-taxon/per-batch results with
+# dplyr::bind_rows() across .fetch_summaries_batched(), .fetch_taxonomy_map(),
+# .fetch_locations_batched(), and the main fetch_ncbi_reference_sequences() body's
+# priority_combined/family_meta/combined_meta assembly -- 6 call sites total. Verified each
+# site's downstream NULL/nrow==0 handling still works correctly with bind_rows()'s different
+# empty-result semantics (returns a 0-row frame, not NULL) before changing it; .fetch_
+# locations_batched()'s pre-declared empty-schema fallback updated from an is.null() check to
+# nrow()==0 specifically because that one path relies on guaranteed column names even when
+# empty. devtools::test() 0 failures (931, up from 910), devtools::check() 0/0/0, reinstalled.
+# Not yet re-verified against the real full ~1300-genus fetch that found this (that run was
+# interrupted by the crash) -- left for the user to retry.
+# Previous update, 2026-07-19 (Sonnet 5 -- evaluate_likelihoods() gains the "rank-trust
+# mechanism": min_rank_trust_pvalue param (default 0.001) + absolute_fit_pvalue/
+# trusted_rank/rank_trust_basis output columns, grown out of a live design conversation
+# with the user starting from ecosystem_docs/REENTRY_PROMPT_degraded_species_likelihood_
+# thresholds.md. Answers a question score_likelihood structurally cannot: not "which
+# hypothesis is relatively best" but "is the WINNING hypothesis's own absolute fit
+# believable, or just the least-bad option among uniformly weak candidates" -- real,
+# concrete PtConception 12S cases motivated this (Hylobatidae/Lemuridae-contamination
+# rows winning at likelihood=1.0 despite every specific candidate scoring poorly in
+# absolute terms). Entirely "free": reuses only already-trained H1_Lookup/H2/H2_Lookup/H3
+# mu/sigma, no new model fit, no new pass over reference data -- walks the winning
+# hypothesis's own rank coarser (species->genus->family) until one clears a ONE-SIDED
+# score-only absolute-fit test, falling back to rank_system's own coarsest level once past
+# H3 (no H4+ parameterization exists, regardless of rank_system's length). The one-sided
+# design (vs. the existing, deliberately UNCHANGED two-sided `alpha` H1-zeroing gate) fixed
+# a real bug found before shipping: a two-sided test wrongly flags a BETTER-than-typical
+# match (e.g. literal 100% identity against a tightly-clustered/clonal-reference species) as
+# equally suspicious as a worse-than-typical one -- confirmed concretely (two-sided
+# p~=5.7e-07 vs one-sided p~=0.9999997 for the identical synthetic inputs) after the user
+# specifically asked whether the 2-tailed nature could distrust a highly-likely-correct
+# 100% match. Real-data validated on PtConMifishSchulte (13,442 real obs): the two real
+# contamination-pattern edge cases from [[project_edge_case_error_taxa_design]] correctly
+# cap at family across the ENTIRE threshold range tested (0.0001-0.5); the taxa whose
+# likelihood is genuinely strong but occurrence-implausible (Ovis aries, Salmo salar, etc. --
+# a different, deliberately out-of-scope prior-side problem) correctly do NOT get flagged,
+# confirming the two problem classes stay separated; false-escalation rate on 132 real
+# clean-match control observations is 0% up to threshold=0.2. Also found, incidentally: only
+# 44% of real posterior-resolved-to-species observations sampled also win on raw likelihood
+# alone -- the rest are resolved by the PRIOR, a real-data confirmation of the closed-world/
+# Bayes-completeness concern this mechanism grew out of. Param renamed twice during design
+# (rank_trust_alpha -> min_rank_trust_pvalue) before ever being used elsewhere -- final name
+# only, no NAME_CHANGE_HISTORY.md entry needed. devtools::test() 0 failures (931, up from
+# 910), devtools::check() 0/0/0, reinstalled to ~/Library/R/4.0/library. NOT yet wired into
+# any production workflow -- see this file's own Function Inventory entry for the full
+# validation record and the separate, already-abandoned Deliverable-2 (referenced-but-
+# excluded-candidate rate) investigation this session also revisited and declined to rebuild.
+# Previous update, 2026-07-19 (Sonnet 5 -- real second cost bug found and fixed in restore_
+# suppressed_candidates(), this time by the user actually running the redesigned
+# PtConceptionWorkflow_12S_single_site.R against the real, full 13,442-observation dataset
+# (226 genera present, some -- Sebastes -- with 100+ reference species, seq_matrix ~3M rows)
+# and reporting a run that was STILL GOING after 70+ minutes (confirmed via `ps`, genuinely
+# CPU-bound, not hung). Root cause, confirmed by direct profiling against the real data: the
+# "free" Levels 1-3 hierarchy (.resolve_hierarchy_score()) did a fresh id_x==/id_y %in%
+# linear scan over the WHOLE seq_matrix for every single candidate species, every single
+# call -- R's %in%/match() rebuilds its internal hash table over the right-hand side on
+# EVERY call, it does not cache across repeated calls against the same unchanging
+# seq_matrix. Under Purpose A's unconditional genus-wide sweep this scan runs once per
+# candidate per observation with ZERO memoization (unlike Level 4's align_cache). Measured
+# directly: one real Sebastes anchor against its 106 congeners took 19.06s (73.7% in
+# `%in%`), and a SECOND, identical anchor (simulating a repeat observation) took 17.64s
+# again -- confirming no caching benefit, and fully explaining the 70+-minute real run
+# (Mugu's largest genus, Fundulus, only had 20 species and a ~1.36M-row seq_matrix, never
+# exposing this -- the same class of bug Session 159 already fixed once for the OLD Tier 1
+# mechanism, but that fix only cached the id-STRIPPING step, not the actual per-accession
+# LOOKUP, which is what Purpose A's unconditional sweep newly exposed at scale).
+#
+# Fix: new .seq_matrix_partner_index()/.seq_matrix_lookup() in restore_hierarchy.R -- builds
+# a real accession-indexed lookup of every seq_matrix pair ONCE per restore_suppressed_
+# candidates() call (via split(), cached in align_cache like everything else here), so a
+# subsequent lookup for any one accession is a single list access, not a linear scan.
+# Levels 0-3 (.has_seq_matrix_presence(), Level 1 direct-accession, Level 2 species-pair,
+# Level 3's raw genus-wide fallback) all rewired onto this index; Level 3's fallback
+# double-counts each real pair (once from each side's own lookup) but this is exact, not
+# approximate -- doubling a value multiset uniformly leaves its median unchanged (verified:
+# median(c(x,x)) == median(x) for any x), confirmed empirically too (all 65 existing
+# score-collapse tests pass unchanged after the rewrite, byte-for-byte same results).
+#
+# Verified directly against the real data that exposed the bug: the same Sebastes anchor
+# that took 19.06s/17.64s now takes 1.55s (one-time index build, dominated by the already-
+# cached id-stripping step) / 0.03s (repeat anchor -- ~590x faster). Full real-scale
+# validation: the ENTIRE 13,442-observation PtConception 12S restore_suppressed_candidates()
+# call, exact real production parameters (check_regional_overlap=TRUE, sequence_col=
+# "sequence", candidate_species_filter=unique(taxaexpect_priors$taxon_name)), completed in
+# **42.1 seconds** -- down from 70+ minutes (and still running when the user interrupted
+# it), a >100x improvement, not an isolated microbenchmark result. 6,748 candidate rows
+# added across 3,863 observations, 6,014 congeners recorded in regional_unreferenced across
+# 1,430 observations -- real, substantial restoration activity confirmed, not a no-op that
+# happens to also be fast. devtools::test() 0 failures (910, unchanged), devtools::check()
+# 0/0/0, reinstalled to ~/Library/R/4.0/library. See
+# [[project_restore_suppressed_candidates_implementation]] in the memory system for the
+# full record, including how this was found (the user ran the actual updated
+# PtConceptionWorkflow_12S_single_site.R for real, not a synthetic test -- the second time
+# in two days a real end-to-end run surfaced a genuine performance bug no amount of
+# synthetic/small-scale testing had exposed).
+# Previous update, 2026-07-18, continued yet further (Sonnet 5 -- Level 4 cost-control redesign
+# ("Option A + C") for restore_suppressed_candidates(), prompted directly by live-testing the
+# redesign above against two real motivating cases the user asked to test-drive: Mugu
+# Fundulus lima/parvipinnis and a newly-found PtConception Girella simplicidens/nigricans
+# analog. Both real cases share the same structural trigger -- the ANCHOR species itself has
+# zero seq_matrix presence (F. lima's only refs are out-of-range mitogenomes; Girella
+# simplicidens/nigricans only have ~4000bp partial-mitogenome refs, never entered training) --
+# which routes EVERY genus congener to Level 4's live alignment under Purpose A's prior-
+# agnostic sweep, since the original compute-budget mechanism's ratio (R = P_anchor/P_candidate)
+# is uncomputable whenever the anchor itself is occurrence-implausible (exactly the case this
+# whole function exists to handle) and the original design skipped Level 4 for EVERY candidate
+# in that case, including the one that matters. Measured real cost of the unrestricted default:
+# restoring one marker's real Mugu 12S data took 275.8s (Fundulus's 20 species all live-aligned
+# against F. lima's 16kb mitogenome); the documented pre-redesign baseline for the same data was
+# 38s (candidate_species_filter-gated).
+#
+# Fix, per user design discussion ("Option A with C as a backstop"): (A) candidate_species_
+# filter is restored as Level 4's own DEFAULT gate -- a candidate on the filter (or ANY
+# candidate, when no filter is supplied at all) is always worth checking; a candidate NOT on
+# the filter falls back to the original ratio test (still correctly handles a real-prior
+# candidate a static filter happened to miss). This is a two-tier gate, not a replacement --
+# Levels 1-3 (the free hierarchy) remain completely filter-independent, so Purpose A's
+# genus-wide competitiveness detection is unaffected; only the one expensive step (Level 4) is
+# gated. Internal function renamed .worth_tier2_budget() -> .worth_level4_check() (its role
+# is broader than pure budget math now) and gains a candidate_species_filter param. (C) new
+# max_level4_per_anchor param (default 10L, Inf disables), a hard backstop cap on distinct
+# live-alignment attempts per anchor accession, independent of (A) -- insurance against a
+# large/absent filter or a permissive ratio still admitting unbounded candidates. New internal
+# .level4_attempt_allowed(), cache-keyed per anchor_accession in the same align_cache every
+# other Level 4 mechanism already uses.
+#
+# Verified against BOTH real motivating cases, not just synthetic tests: Fundulus goes from
+# ~19 live alignments per anchor down to 1 (F. parvipinnis, still correctly rejected on
+# position grounds -- direct query-vs-reference alignment confirmed independently this session
+# that OQ846298 genuinely doesn't cover this query's real hit window, 90% identity over only
+# 10bp vs F. lima's 98.98% over the full 98bp read -- not a mechanism artifact); Girella goes
+# from 8 wasted alignments down to 0, keeping the 1 that matters (G. nigricans, still correctly
+# admitted at its real ~98% score, restoration_basis = "both"). Full real pipeline reproduction
+# (restore -> calibrate_query_noise -> evaluate_likelihoods -> expand_unreferenced_hypotheses ->
+# join_priors -> compute_posterior -> posterior_consensus, all 397 real 12S Mugu observations,
+# real cached checkpoints, nothing written to production files): restore_suppressed_candidates()
+# 275.8s -> 66.5s (~4.1x), full pipeline 6.02min -> 2.44min (~2.5x), F. parvipinnis still wins
+# all 5 real target ASVs at 99.7-99.9% posterior (if anything stronger than both the unrestricted
+# redesign's 99.5-99.9% and the original pre-redesign 98.6-99.6% baseline), n_plausible = 1
+# throughout. See [[project_restore_suppressed_candidates_implementation]] in the memory system
+# for the full record, including the Girella case's own numbers and the design-brainstorm
+# options considered (a genus-wide Level 3 fallback loosening was proposed as an alternative,
+# Option B, and set aside in favor of A+C after the user's explicit choice).
+#
+# devtools::test() 0 failures (910, up from 893), devtools::check() 0/0/0, reinstalled to
+# ~/Library/R/4.0/library. Rolled out the same day to all four real production workflow scripts
+# this redesign was validated against (outside this monorepo, not under git):
+# MuguFishWorkflow.R, MuguWilderFishWorkflow.R (both gain model_params = lik_model too, enabling
+# Purpose A there since lik_model is already trained before the restore call in both --
+# PtConception's two scripts train lik_model AFTER restoration, so Purpose A stays unavailable
+# there without a larger reordering not attempted this session), PtConceptionWorkflow_
+# 12S_single_site.R, PtConceptionWorkflow_18S_2_single_site.R (all four: removed the now-invalid
+# detected = detected argument, updated comments with the real cost numbers). NOT updated,
+# flagged to the user rather than touched: PtConceptionWorkflow_12S_multi_site.R (a real, same-day-
+# modified sibling) and three older/secondary files (PtConceptionWorkflow_12S_test_genus_fix.R,
+# PtConception12S_regression_test.R, TaxaID_eDNA_Workflow_Template.R) all still call the old
+# detected = detected signature and will error if run as-is.
+# Previous update, 2026-07-18, continued further (Sonnet 5 -- implements
+# ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md end to end: a ground-up redesign of
+# restore_suppressed_candidates(), the first real code written against that design-discussion
+# document (see [[project_edge_case_error_taxa_design]] in the TaxaID memory system for the full
+# design-conversation record). Reframes the function's job from "restore candidates so more of them
+# can individually win" to "detect whether the anchor's apparent win is real or an artifact of
+# suppression," splitting admission into two purposes recorded in a new restoration_basis column:
+# "competitive_score" (Purpose A -- prior-agnostic, tight score-only outlier test, same mechanism
+# evaluate_likelihoods() already uses, needs model_params); "plausible_prior" (Purpose B -- wide
+# build_sequence_matrix()-max_dist floor, gated by candidate_species_filter, which is re-scoped to
+# Purpose B ONLY -- Purpose A now sweeps every genus congener for every observation regardless of
+# the filter, closing the old "candidate_species_filter silently zeroes all restoration" red flag);
+# "both" when a candidate clears both gates. New score-sourcing hierarchy (R/restore_hierarchy.R,
+# .resolve_hierarchy_score()/.has_seq_matrix_presence()/.worth_tier2_budget()) replaces the old flat
+# anchor_score - delta imputation: Level 0 precheck (does the anchor's SPECIES -- any of its own
+# accessions, not just the one anchor accession -- have ANY seq_matrix presence at all?) routes
+# straight to Level 4 when it fails; Levels 1-3 are free seq_matrix/model lookups (direct accession
+# pair, any-accession species pair, genus-typical divergence via model_params$H2_Lookup$delta_shrunk
+# preferred / raw genus-wide cross-species median as a no-model fallback); Level 4 is the only
+# expensive step (live Tier 2 alignment via .check_regional_overlap(..., return_detail = TRUE), new
+# opt-in mode returning a real percent-identity pid alongside the overlap verdict, read for free off
+# the same pwalign alignment object the position check already builds -- default PID1, confirmed
+# correct against the F. parvipinnis/F. lima case in the design doc). Every level aggregates by
+# MEDIAN when multiple qualifying values exist, never max (an upward-biased order statistic) or a
+# random pick. New opt-in compute-budget mechanism (taxaexpect_priors/grid_id_col/taxon_col/
+# grid_col/theta_col/budget_ratio_cap, default 19, derived from posterior_consensus()'s
+# min_posterior = 0.05) sizes Level 4 spend from the floor-vs-documented occurrence-prior ratio --
+# NULL taxaexpect_priors (default) disables the gate entirely. A candidate a restored row can't be
+# built for is recorded via attr(result, "regional_unreferenced") exactly as Session 159 already
+# did, now with an additional basis column distinguishing "regional_reject" (Level 4 ran, found no
+# overlap) from "no_reference_data" (no evidence could be gathered at all -- Level 0 failed and
+# Level 4 also came back empty or was budget-skipped), closing the design doc's Q9. The no-score
+# (Rule 3 / best_only) pathway is UNCHANGED -- there is no real score evidence to source Purpose A/B
+# from, so it still restores every (optionally filtered) congener with the old flat synthetic gap.
+#
+# BREAKING, INTENTIONALLY (not a bug): the pre-redesign version restored EVERY same-genus congener
+# unconditionally with a flat delta whenever a global suppression rule was detected (or unconditionally
+# checked every observation under check_regional_overlap = TRUE); this version restores NOTHING for the
+# scored pathway unless real evidence is supplied (seq_matrix for the free hierarchy levels, and/or
+# check_regional_overlap = TRUE for Level 4) -- a bare call with neither is now correctly a no-op,
+# closing red flags 1 and 2 (flat-delta imputation discarding real alignment evidence; a plausibility
+# filter silently zeroing all restoration) from the design doc's Section 1. Also removed entirely:
+# the `detected`/`perfect_threshold`/`purity_threshold`/`singleton_threshold` params -- every
+# observation is now checked unconditionally (Purpose A is prior-agnostic and was designed
+# specifically NOT to depend on a globally detected pipeline rule, closing red flag 4); detect_
+# suppressed_candidates() itself is unchanged and still useful as a standalone diagnostic, just no
+# longer consulted internally. New params: model_params (Purpose A's sigma source + Level 3's
+# model-preferred estimate), alpha (Purpose A's outlier-test cutoff, default 0.001, reusing
+# evaluate_likelihoods()'s own calibrated value), max_dist (Purpose B's floor, default 0.25, reusing
+# build_sequence_matrix()'s own default), taxaexpect_priors/grid_id_col/taxon_col/grid_col/theta_col/
+# budget_ratio_cap (the opt-in compute-budget mechanism). No production workflow (PtConception 12S/
+# 18S_2, both Mugu scripts) has been updated to this new signature yet -- all four currently call
+# check_regional_overlap = TRUE with candidate_species_filter set to a plausibility list, which under
+# the new semantics restricts Purpose B only and no longer bounds Purpose A's sweep or Level 4's cost
+# (that's now the compute-budget mechanism's job, opt-in via taxaexpect_priors, not wired into any
+# workflow this session) -- rolling this out is a deliberate follow-on task, not attempted here (per
+# the design doc's own Section 9, "Explicitly not started: implementation" -- now started, but the
+# workflow rollout remains a separate step).
+#
+# Red flags 3 (Tier 2 lacked a percent-identity output) and the Purpose A/B redesign itself (closing
+# 1, 2, 4) are resolved; red flag 5 (restored-row accession provenance always cites the first
+# reference row for a species; multi-way ties pick one arbitrary anchor row for the regional-overlap
+# check) remains explicitly open, as the design doc itself flagged it as deliberately deferred to a
+# future session, not blocking. Generality beyond the spot-checked genera/datasets (item 7) is an
+# ongoing caveat, not a one-shot resolution -- unchanged by this session.
+#
+# 16 new/rewritten test_that() blocks in test-score-collapse.R (62 total, up from 46) covering: the
+# no-op-without-evidence behavior change, seq_matrix-hierarchy-sourced imputation (0-100 and 0-1
+# scale) replacing the old delta-based assertions, median aggregation across multiple seq_matrix
+# pairs for the same congener, restoration_basis values (plausible_prior/competitive_score/both) via
+# a real model_params fixture, candidate_species_filter never gating Purpose A, Level 0 routing to
+# Level 4 when a species has zero seq_matrix presence anywhere, the compute-budget mechanism's three
+# real cases (R > cap, R <= cap, candidate absent from taxaexpect_priors entirely) plus its NULL-
+# disables-the-gate default, and .check_regional_overlap(return_detail = TRUE)'s three return
+# shapes (overlap + real pid; overlap = FALSE + pid = NA; overlap = NA + pid = NA). devtools::test()
+# 0 failures (893, up from ~860), devtools::check() 0 errors / 0 warnings / 0 notes. Reinstalled to
+# ~/Library/R/4.0/library. Not done this session: any production workflow rollout (see BREAKING note
+# above); red flag 5; a systematic (not spot-check) generality pass across markers/genera.
+# Previous update, 2026-07-18, continued (Sonnet 5 -- pre-code-review prep pass, following the
+# TaxaFetch Session 131/148 checklist: (1) ASCII sweep (~460 non-ASCII chars across 22 R/ and
+# tests/ files -- em-dash/en-dash/arrow/minus-sign, mechanically replaced; 4 math-symbol
+# occurrences (sigma, proportional-to, squared, times) fixed by hand with ASCII equivalents).
+# (2) Debris: deleted 2 superseded ad hoc inst/ scripts (test_session99.R -- fully superseded
+# by existing testthat coverage; test_infer_exclude_predicted.R -- its 4-scenario fixture had
+# no testthat equivalent, so ported into a new tests/testthat/test-infer-exclude-predicted.R
+# instead of just deleting). Flagged, not removed (needs the user's OK): inst/
+# referencegapsinflies.pdf (312KB, not referenced by any code/docs, not in .Rbuildignore --
+# looks like personal reading material, not generated debris) and R/coverage.R's
+# .audit_barcode_coverage_legacy_() (confirmed truly unreachable, "retained for reference, not
+# called" per its own header -- a real deletion candidate, left in place this session). (3) Real
+# test-coverage gap closed: grepped every exported name against tests/testthat/ and found SIX
+# functions with zero coverage anywhere -- audit_barcode_coverage_ncbi(), audit_inat_coverage(),
+# calibrate_coverage_filter(), coverage_threshold(), identify_confident_observations(),
+# infer_exclude_predicted(). All six now have real regression tests (5 new test files, ~70
+# new expectations total; audit_inat_coverage()/audit_barcode_coverage_ncbi() mocked offline
+# via local_mocked_bindings() on .inat_species_info()/audit_barcode_coverage(), matching this
+# package's existing .xc_recording_count() mocking convention). identify_confident_
+# observations() and audit_inat_coverage() also gained their first @examples (both missing
+# before this session). (4) Five real, small dead-code findings from a full lintr pass (new
+# .lintr, line_length_linter(120) + indentation_linter/commented_code_linter disabled
+# package-wide after confirming both are ~100% false positives here -- the former flags this
+# package's own deliberate multi-arg-alignment house style across every file including
+# brand-new ones, the latter flags the ecosystem's "# function_name()" file-header convention
+# and deliberate commented-out workflow examples, not stale code): unused local variables
+# `keep_cols` (compute_likelihoods.R), `agg_cols` (evaluate.R), `exp_types`
+# (expand_unreferenced.R), `n_per_obs` (score_collapse.R), and a duplicate `existing_rank_cols`
+# computation (unreferenced_candidates.R) -- all computed then never read again, removed.
+# Plus ~20 long stop()/warning()/message() strings wrapped via paste0() and a handful of
+# brace/comma/semicolon/quote style fixes in R/ (tests/inst/ left as-is -- same false-positive
+# categories, lower value to chase in fixture code). `devtools::test()`: 0 failures (up from
+# the prior session's count, +~70 new expectations across the 5 new test files).
+# `devtools::check()`: 0 errors/0 warnings/0 notes throughout. (5) Main deliverable:
+# `inst/review_function_inputs.R` added -- one runnable, REQUIRES-tagged section per each of
+# the package's 38 exported functions (mirrors TaxaFetch/inst/review_function_inputs.R's
+# format exactly), sourced cheapest-first from existing testthat fixtures reused verbatim,
+# this package's own roxygen @examples, and new small synthetic inputs only where neither
+# existed (Section 2's build_sequence_matrix() fixture was deliberately NOT hand-set -- a
+# genuinely truncated sequence produces real, non-constant DECIPHER coverage values so
+# Section 8's calibrate_coverage_filter()/coverage_threshold() have real signal to
+# demonstrate, not a single repeated number). Live-executed the entire file top to bottom
+# (not just written) -- found and fixed two real issues this way, not just by reading source:
+# assign_scores(score_type = "probability") genuinely requires 0-1-scale input (unlike
+# "similarity"/"similarity_softmax", which auto-detect any scale) and warned correctly when
+# fed the reused 0-100-scale fixture, so that one demo now rescales first; and a live NCBI
+# audit_reference_coverage() call hit one transient HTTP 502 mid-run, caught by that
+# function's own tryCatch with no effect on the final (correct, non-NA) result -- documented
+# in the file's own NON-DETERMINISM NOTE rather than treated as a bug. Every NETWORK section
+# (NCBI via rentrez, BOLD v5, iNaturalist) needs no credentials and ran directly; the one
+# NETWORK+AUTH section (Xeno-canto, fetch_xc_recording_locations()) is gated behind a
+# RUN_XC_FETCH flag (default FALSE) since a reviewer is unlikely to have a personal
+# XC_API_KEY. Not done this session: the security/algorithm review pass found no system()/
+# eval()/parse()/unzip() calls and confirmed every external API host is a hardcoded literal
+# (never built from externally-sourced metadata, unlike TaxaFetch's own DataONE SSRF finding)
+# -- a quick, not exhaustive, pass; a full `/security-review` was not run.
+# Previous update, 2026-07-18 (Fable -- answered the foundational train-vs-inference score-scale
+# validity question in ecosystem_docs/REENTRY_PROMPT_train_likelihood_model_scoring_validity.md
+# and shipped a level-aware calibration fix. Question: is a model whose H1 means are trained on
+# build_sequence_matrix()'s DECIPHER reference-vs-reference MSA p_match valid to apply to query
+# scores from a structurally different, undocumented external tool (PtConception 12S PercMatch)?
+# Empirical answer on the real 13,442-obs 12S data (8,860-obs non-circular confident set, from
+# identify_confident_observations()): the mismatch is REAL and, on this dataset, TOTAL. Per-species
+# required offset regressed on trained mean has slope ~ -1 (robust b -> 0, R^2 ~ 0.87 among lookup
+# species) -- real correct-species query scores collapse toward ~one identity level (~98.8%)
+# regardless of what the reference MSA says that species' self-similarity is, so the per-species
+# H1 LOCATION structure does not transfer to the external scoring scale at all. 5-fold CV: a single
+# pooled inference mean (RMSE 0.0280) beats the current "DECIPHER per-species mean + one additive
+# offset" (0.0304); per-species inference means add ~nothing (0.0278). So a single additive offset
+# is patching per-species structure that isn't real on the inference scale. FIX: new opt-in
+# `offset_form = c("constant","linear")` on calibrate_query_noise() (default "constant" =
+# byte-identical to before, all pre-existing tests unchanged). "linear" remaps every H1 mean through
+# a robustly-fit line intercept + slope*trained_mean (fit on per-species medians, weighted by obs
+# count, evidence-range-clamped) instead of adding one constant -- a strict generalization
+# (slope=1,intercept=offset == constant) that degrades to pooled-location when slope->0 (this data)
+# and to constant-offset when slope->1 (structure transfers). Only H1 mean LOCATION is remapped; the
+# H2/H3 congener-divergence deltas and gap feature -- the actual discriminators -- are untouched.
+# Validated via the SHIPPED function on real 12S: linear gives slope=0.02, H1_Lookup mu_score sd
+# 0.0095->0.0002 (collapse), H1 win rate 74.2%->76.3% (+2.1pts; 57 obs recovered unreferenced->correct
+# specific_candidate vs 9 lost, on a 2500-obs check). CAVEATS built in + documented: confident set is
+# selection-biased toward easy/abundant genera and by construction can't test congener DISCRIMINATION
+# (one plausible species per confident genus), so "linear" stays opt-in with a min_calib_species guard
+# (default 8L, falls back to "constant" with a warning) -- validate H1 win rate on your own data before
+# enabling. Still ONE dataset/one external tool; the clean DECIPHER-vs-BLAST-on-same-pairs test the
+# reentry doc's Q1 proposes remains not run. 5 new tests in test-calibrate_query_noise.R (default is
+# constant/backward-compat; linear recovers constant under a constant gap; linear collapses under a
+# constant-observed/no-transfer regime; too-few-species fallback). devtools::test() 0 failures (422
+# tests), devtools::check() 0/0/0, installed to ~/Library/R/4.0/library. NOT wired into any production
+# workflow (PtConceptionWorkflow_12S_single_site.R still calls calibrate_query_noise() with the default
+# constant form) -- left for the user to opt in after validating. See [[project_train_inference_scale_validity]]
+# in the TaxaID memory system for the full record.
+# GENERALITY + MANUSCRIPT WRITE-UP (2026-07-18, same session, continued): ran the non-circular
+# diagnostic on 4 more real datasets to test whether the "per-species DECIPHER means don't transfer"
+# finding is a PercMatch/12S artifact. It is not: linear slope stayed far from 1 on every dataset with
+# real per-species structure -- PtCon 12S (external) 0.02; Mugu WilderFish 12S/16S/COI, ALL BLAST-scored,
+# -0.28/0.02/-0.21 -- and pooled beat per-species+offset in CV wherever there was enough data. The Mugu
+# BLAST results are the clean DECIPHER-vs-BLAST comparison the reentry doc's Q1 asked for: BLAST doesn't
+# preserve DECIPHER's per-species locations either, so the mismatch is a general property of using a
+# different aligner at inference than at training, not specific to the unknown external tool. PtCon 18S
+# has only 2 referenced species, so `linear` correctly FALLS BACK to `constant` (min_calib_species guard
+# fires) -- the safe-fallback case working as designed. Then, at the user's request (they are a statistician,
+# wary of unsupported methods + explicit "don't hallucinate references"), wrote a manuscript-quality
+# description + defence into inst/TaxaLikely_supplemental_methods.md as new subsection 11A "Calibrating to
+# the inference-time score scale" (~965 words, 3 display equations) under the existing Section 11 calibration
+# discussion, plus 4 VERIFIED references (each confirmed by web search, DOIs fetched not guessed): May 2004
+# Structure 12(5):737-8 + Raghava & Barton 2006 BMC Bioinformatics 7:415 (percent identity is operationally
+# defined / method-dependent -- both protein-alignment papers, principle is general, stated honestly);
+# Platt 1999 (Platt scaling -- ours is the linear-Gaussian analog, not logistic); Quinonero-Candela et al.
+# 2009 Dataset Shift in ML, MIT Press (the train-vs-inference mismatch is a dataset/covariate shift). Core
+# framing for the manuscript: affine calibration NESTS the constant offset (slope=1 special case), so the
+# fitted slope is a reported DIAGNOSTIC not an assumption; slope~0 on real data means per-species reference
+# means don't transfer; only the H1 LOCATION is remapped (gap + H2/H3 deltas, the discriminators, untouched);
+# improvements minor but positive and never net-negative; components standard but the composition (affine
+# recalibration of an open-set barcode likelihood model to the inference-time scorer, anchored on independent
+# occurrence data) is to our knowledge novel. Also expanded calibrate_query_noise()'s roxygen @section with
+# the generality result + precedent framing + a cross-ref to Section 11A, and added a Section 16 mapping line.
+# devtools::document() clean.
+# ADOPTED (2026-07-18, same session): user chose to adopt linear. Package DEFAULT flipped to
+# offset_form = c("linear","constant") -- linear now default; constant kept as an opt-out (NOT hardcoded:
+# it encodes a real analyst judgment the location-only confident set can't settle -- keep vs collapse
+# per-species means for hard congener discrimination). Wired explicit offset_form into all 6 call sites:
+# "linear" in PtConceptionWorkflow_12S_single_site.R / _12S_multi_site.R and Mugu{Fish,WilderFish}Workflow.R
+# (BLAST/external, collapse confirmed); "constant" in PtConceptionWorkflow_18S_2_single_site.R (only 2
+# referenced species -> affine unfittable, would just warn+fallback) and inst/TaxaID_Workflow_Template_TEST.R
+# (tiny bundled fixture), each with an explanatory comment. Real edge-case bug found+fixed via the new
+# default-is-linear test: exactly 1 confident species makes sd(sp_agg$exp) NA, so `if(!exp_varies)` in the
+# fallback warning crashed -- fixed with isTRUE() (latent before: the linear branch never ran under the old
+# constant default). 2 new tests (default is linear; default falls back to constant on thin data).
+# devtools::test() 0 failures (423), devtools::check() 0/0/0, reinstalled to ~/Library/R/4.0/library. All 6
+# workflow scripts parse cleanly. User still validating 12S posteriors -- adoption is in place, may revisit.
+# Previous update, 2026-07-17 (Session 159, PtConception rollout -- Task 1 of
+# ecosystem_docs/REENTRY_PROMPT_session159_regional_overlap_rollout.md. Wired
+# check_regional_overlap=TRUE/sequence_col into both real PtConceptionWorkflow_12S/
+# _18S_2_single_site.R scripts (outside this monorepo). Live-testing against the real
+# cached 13,442-observation 12S checkpoint (pre-restoration match_obj/reference_df/
+# seq_matrix/taxaexpect_priors/reads_long) confirmed the mechanism has a REAL effect,
+# not a no-op -- 2,118 congener rows rejected on regional-overlap grounds across a
+# random 2,000-observation sample, 33 restored as real overlapping congeners -- but also
+# surfaced two more real .check_regional_overlap() performance bugs, found only by
+# profiling real data with Rprof, not by review: (1) Tier 2b's query-vs-anchor
+# alignment (deriving anchor_subject_range from query_sequence) depends only on
+# (anchor_accession, query_sequence), never on which candidate is being checked, but
+# restore_suppressed_candidates()'s vapply loop calls .check_regional_overlap() once
+# PER CANDIDATE SPECIES for a given observation -- an observation with several
+# congeners was redundantly re-running the identical alignment once per congener.
+# Fixed with a new query::<anchor>::<query_sequence> align_cache key, same pattern as
+# the existing (anchor,candidate) pair cache. (2) Far larger, found via Rprof after fix
+# (1) barely moved the needle: Tier 1's "free" seq_matrix lookup re-stripped version
+# suffixes off seq_matrix$id_x/id_y via sub() on EVERY SINGLE call -- with the real
+# ~3,042,480-row seq_matrix this data uses, that alone was >90% of total wall time,
+# an order of magnitude more than any real alignment cost. Fixed the same way: the
+# stripped ids (and reference_df's stripped composite_id) are now cached under fixed
+# keys in align_cache -- safe because align_cache is one environment per
+# restore_suppressed_candidates() call, so reference_df/seq_matrix never change during
+# its lifetime. Real, timed net effect: an anchor-clustered real 300-observation
+# subset dropped from 84s to 6.8s (~12x); a real RANDOM (more representative)
+# 2,000-observation subset ran in 153.5s, extrapolating to ~17 minutes for the full
+# 13,442-observation dataset for this one function call alone (down from an estimated
+# ~65 minutes pre-fix) -- not the full multi-hour production workflow, which includes
+# many other expensive steps. 2 new regression tests added (test-score-collapse.R),
+# each proving cache REUSE (not just population) by corrupting a pre-populated cached
+# value under its exact key and confirming the corrupted value -- not a fresh
+# recomputation -- drives the result. devtools::test() all passing (0 failures, same
+# pre-existing warnings/skips), reinstalled to both the user (~/Library/R/4.0/library)
+# and system R libraries. Both real workflow scripts parse cleanly
+# (parse()-verified) but have NOT yet been run end-to-end in production (would
+# overwrite real checkpoints and make real GBIF/NCBI/LLM API calls) -- left for the
+# user to trigger. See [[project_regional_overlap_gap_modeling]] in the TaxaID memory
+# system for the full record.
+# Previous update, 2026-07-16 (Session 159, continued yet further -- three more real bugs found
+# by actually running the fix against real Mugu data after telling the user it was done,
+# each caught only because the user reported "still get Fundulus lima" and pushed for a
+# real diagnosis rather than accepting a plausible-sounding fix. (1) restore_suppressed_
+# candidates() never even reached its per-observation loop for real 12S BLAST data
+# (score_range=8): detect_suppressed_candidates() correctly found NO global suppression
+# pattern (real data is a genuine mix -- 240/401 true singletons, 161/401 real ties -- so
+# no purity threshold clears its bar), so the function's original top-level gate
+# (`if (!detected$rule_detected) return(match_obj)`) short-circuited before check_
+# regional_overlap ever ran, for ANY observation, including ASV_300. Fixed: when
+# check_regional_overlap = TRUE, target_obs = all_obs unconditionally, decoupled from the
+# global rule verdict -- safe specifically because every addition is gated on real overlap
+# evidence, not a fabricated score. (2) Once that gate was removed, a live run against the
+# real 401-observation 12S dataset ran for 15+ minutes before being killed -- confirmed via
+# `ps` it was genuinely CPU-bound, not stuck. Root cause: .check_regional_overlap()'s Tier 2
+# alignment was recomputed once per OBSERVATION even when many observations shared the same
+# anchor (401 observations reduced to only 71 distinct anchors; one anchor alone was reused
+# 113 times). Fixed with a new align_cache environment (created once per restore_suppressed_
+# candidates() call, threaded through every .check_regional_overlap() call), memoizing the
+# (anchor, candidate) alignment result across the whole call -- the position-overlap decision
+# itself stays a cheap per-observation comparison against the cached alignment. (3) Even with
+# memoization, a real profiling pass found 2,361 distinct (anchor, candidate) pairs still
+# needed genuine Tier 2 alignment (one real genus alone had 42 referenced congeners, each
+# checked against every anchor sharing that genus) -- confirmed one real mitogenome-vs-
+# mitogenome alignment alone takes ~2.7s, so total cost was still dominated by checking
+# congeners with zero chance of being locally relevant. Fixed with a new candidate_species_
+# filter param that restricts other_species to a caller-supplied plausibility list BEFORE any
+# expensive work -- not a new judgment, just moving expand_unreferenced_hypotheses()'s own
+# downstream taxaexpect_priors filter earlier so the expensive check never runs on a congener
+# that gets discarded later anyway. Cut the real pair count to 416 (~6x) and real wall-clock
+# time for one marker to 38 seconds (confirmed timed, not estimated). Wired into both Mugu
+# workflows (candidate_species_filter = unique(taxaexpect_priors$taxon_name), already in
+# scope at the restore_suppressed_candidates() call site in both). Full chain verified
+# end-to-end against real saved data: ASV_300 now correctly carries TWO real hypotheses
+# (Fundulus lima specific_candidate likelihood=1.0; Fundulus parvipinnis unreferenced_species
+# likelihood=0.173) instead of F. lima alone with posterior=1.0 by default. devtools::test()
+# 768/768 (up from 754), devtools::check() 0/0/0. Installed to BOTH the user library
+# (~/Library/R/4.0/library) and the system library (/Library/Frameworks/.../Resources/
+# library) this round, after discovering (mid-session) that the user's own RStudio session
+# for the Mugu scripts -- which live outside the TaxaID project entirely -- may resolve
+# either one depending on project/.Rprofile context, and a prior single-library reinstall
+# had left a stale copy silently in play for a full ~2-hour production run. See the
+# "continued once more"/"continued further" notes below for the earlier rounds in this same
+# thread (search-term fix, keep_out_of_range, the regional-overlap mechanism itself, the
+# size-bound fix, and the original named-species extension).
+# Previous update, 2026-07-16 (Session 159, final entries -- two more fixes in the same
+# real Mugu Fundulus lima/parvipinnis debugging thread. (1) fetch_ncbi_reference_
+# sequences(keep_out_of_range = TRUE) had no upper size bound at all -- found via direct
+# inspection of the real Mugu reference_df.rds (142MB, one genus pulling in a 111,213,091bp
+# whole-genome/chromosome scaffold, not a mitogenome) after the user ran the real workflow
+# and reported the outcome hadn't changed. Fixed with a new max_out_of_range_len = 200000L
+# param (animal mitogenomes ~15-20kb, plant chloroplast genomes ~120-160kb, so 200kb keeps
+# real organelle genomes while excluding genome/scaffold-scale sequences), folded into both
+# length-filter locations and the cache key (which also didn't previously vary by
+# keep_out_of_range at all -- a real staleness bug fixed the same session). (2) Diagnosed
+# (via direct inspection of the real lik_result_12s.rds/consensus_final.rds) that the
+# check_regional_overlap fix WAS working correctly -- F. parvipinnis was being correctly
+# rejected/preserved per-observation exactly as designed -- but the real assignment outcome
+# for ASV_300/328/329/354/433 still didn't change, because a regionally-rejected congener
+# was simply OMITTED from the candidate set rather than becoming a real competing
+# hypothesis, so F. lima won by default with posterior=1.0 whenever it was the only named
+# species-level candidate left. This was exactly the "Current scope limit, not yet built"
+# the prior Session 159 entries had already flagged. Built the extension:
+# restore_suppressed_candidates() no longer silently drops a regionally-rejected congener --
+# it now records it (observation_id/species/genus/family) and returns it via
+# attr(result, "regional_unreferenced"). expand_unreferenced_hypotheses()'s unreferenced_df
+# gained an optional observation_id column (NA/absent = applies to every observation
+# sharing that genus/family, the original global behavior unchanged; a real observation_id
+# restricts that row to just one observation) -- exactly the shape needed to let a
+# GLOBALLY-referenced species (F. parvipinnis has a real NCBI accession, so it would never
+# appear in a normal audit_barcode_coverage()-derived unreferenced_df) still compete as a
+# named unreferenced_species hypothesis for the one specific query whose anchor doesn't
+# overlap its reference, while remaining an ordinary specific_candidate everywhere else.
+# Deliberately reuses expand_unreferenced_hypotheses()'s existing, already-tested
+# expansion/suppression machinery rather than building a parallel mechanism -- the shared
+# H2/H3 likelihood value it already copies onto every expanded species is reused unmodified.
+# Wired into MuguFishWorkflow.R: .build_scored_likelihoods() captures
+# attr(match_restored, "regional_unreferenced") immediately after restore_suppressed_
+# candidates() runs (before the dplyr::left_join() reassignment that follows, which does
+# not preserve custom attributes) and returns it; .run_round1() folds it into
+# unreferenced_df, through the SAME taxaexpect_priors/inat_confirmed plausibility filter
+# already applied to the global list, before calling expand_unreferenced_hypotheses().
+# MuguWilderFishWorkflow.R was NOT wired the same way -- its own Step 8 header comment
+# states no coverage audit or species-level unreferenced expansion happens there at all
+# ("H2/H3 generic rows... serve as the unreferenced-species/genus hypotheses" directly,
+# unexpanded), which appears to predate this session and looks stale (that workflow's
+# restore_suppressed_candidates(check_regional_overlap = TRUE) call already requires and
+# presumably has a real accession column, contradicting its own "no BLAST accessions"
+# comment) -- flagged for the user to decide on, not changed unilaterally, since adding
+# species-level expansion there is a real architecture change beyond this session's scope.
+# devtools::test() 754/754 (up from 706), devtools::check() 0/0/0 throughout.
+# Previous update, 2026-07-16 (Session 159 continued once more -- restore_suppressed_
+# candidates()'s regional-overlap check gains Tier 2b, a query-vs-reference fallback for
+# match objects with NO live BLAST step at all. Prompted directly by the user asking how
+# the Mugu fix (Tier 2a, needs TaxaMatch::blast_sequences()'s subject_start/subject_end)
+# applies to this ecosystem's PtConception 12S/18S workflows -- checked and confirmed those
+# workflows build match_obj from an EXTERNALLY pre-computed match table (PercMatch/
+# Accession columns from an outside wet-lab pipeline) that never runs through
+# blast_sequences() at all, so no BLAST alignment coordinates exist anywhere for them.
+# The ESV file itself also has no sequence column -- but the READ file (already loaded for
+# contaminant detection in Step 2 of those workflows) does carry a real per-ESV sequence
+# column, confirming the raw query DNA is available, just not currently wired to Step 7.
+#
+# New `sequence_col = NULL` param + new `query_sequence` param on the internal
+# `.check_regional_overlap()`: when Tier 2a's coordinates aren't available for an
+# observation but a raw query sequence is (via `sequence_col`), the anchor's own hit
+# position is now derived ON THE FLY -- a local pairwise alignment of the query sequence
+# against the anchor's own reference sequence (both already in memory, `reference_df`
+# already has the anchor's sequence when `keep_out_of_range = TRUE` was used to fetch it;
+# no NCBI call needed) -- then the SAME candidate-position-overlap logic as Tier 2a runs
+# on the derived range. This is a genuinely more general mechanism than Tier 2a, not just a
+# workaround: it doesn't depend on whether match_obj ever went through a live BLAST run.
+# Tier 2a is still tried first when both are available (cheaper, no extra alignment needed
+# to establish the anchor's own position); leaving `sequence_col = NULL` (the default)
+# means only Tier 1/2a run, per the user's explicit request that Tier-1-only stays the safe
+# default when neither input is supplied. Live-validated against the EXACT real Fundulus
+# case with zero subject_start/subject_end supplied at all -- correctly derives the query's
+# real position (515-613, matching the value independently confirmed via manual alignment
+# in the earlier Tier 2a work) and correctly rejects F. parvipinnis, same verdict as Tier
+# 2a produced with the coordinates supplied directly. 5 new tests (Tier 2b accept/reject/
+# Tier-2a-preferred-when-both-available unit tests using the same synthetic two-region
+# fixture, plus a `sequence_col`-driven `restore_suppressed_candidates()` integration test).
+# `devtools::test()` 734/734 (up from 729), `devtools::check()` 0 errors/0 warnings (1
+# pre-existing environmental NOTE, timestamp verification, unrelated).
+#
+# Real installation-path bug found and fixed the same session, separate from the code
+# itself: `devtools::install()` run via a bare `Rscript` from inside a package's own
+# subdirectory (not the TaxaID project root) had been silently landing in the SYSTEM
+# DEFAULT R library, not `~/Library/R/4.0/library` (the path the user's real RStudio
+# session actually uses, wired in only by the TaxaID project's own `.Rprofile`) -- meaning
+# every earlier "reinstall" this session had NOT actually been visible to the user's live
+# RStudio session at all. Confirmed and fixed by explicitly setting `.libPaths()` from
+# `R_LIBS_USER` before calling `devtools::install()`; both TaxaLikely and TaxaMatch
+# re-verified installed at the correct path via `find.package()` after. See `TaxaID/
+# CLAUDE.md`'s Developer Environment table for the corrected, detailed record -- the
+# previous documentation there was itself wrong about `Rscript` picking this up
+# automatically, and has been corrected too. Always verify any Rscript-driven install with
+# `find.package()` before trusting it landed in the right place.
+# Previous update, same day (Session 159 continued further -- regional-overlap check for
+# restore_suppressed_candidates(), closing out the real Fundulus (Mugu) misassignment
+# investigation this session's earlier .build_search_term() fix (below) started. Root
+# problem, precisely: restore_suppressed_candidates() adds every same-genus congener found
+# in reference_df as a competing specific_candidate, assuming any same-genus reference is
+# automatically a valid competitor -- wrong whenever the query's own real BLAST hit only
+# overlaps a congener's reference (e.g. a complete mitogenome) at a genomic position a
+# DIFFERENT congener's own reference sequence doesn't actually cover, even though that
+# second congener has SOME reference elsewhere in the marker. Confirmed on real data: the
+# real ASV's BLAST anchor (F. lima's mitogenome, NC_063692) hit at position 515-613; F.
+# parvipinnis's own real, correctly-sized 12S reference (OQ846298, now recoverable via this
+# session's earlier search-term fix) aligns to that SAME mitogenome at position 319-486 --
+# genuinely non-overlapping, so F. parvipinnis was never really a competing hypothesis for
+# this specific query, even though it IS validly referenced for other queries hitting the
+# real MiFish window.
+#
+# Fix: new `check_regional_overlap` param on restore_suppressed_candidates() (default
+# FALSE, fully backward compatible) skips restoring a congener unless there's real evidence
+# its reference overlaps the SAME position the query's own anchor hit, not just that it has
+# some reference somewhere. New internal `.check_regional_overlap()` (R/regional_overlap.R)
+# implements this via two tiers, both entirely reference-vs-reference -- NEITHER needs the
+# query's own raw DNA sequence, since transitivity (query aligns well to anchor, already
+# established by BLAST; does candidate's reference overlap the SAME anchor position?)
+# substitutes for it:
+#   Tier 1 (free): a lookup against `seq_matrix` (already computed once per genus by
+#     build_sequence_matrix() at TRAINING time, not per query) for an existing pairwise
+#     `coverage` value between the anchor accession and the candidate's accessions. Safe to
+#     treat "any overlap" as sufficient here (no position check needed) because
+#     build_sequence_matrix() only ever includes properly-sized sequences -- never a whole
+#     genome -- so a seq_matrix anchor can't have the "trivially contains every position"
+#     problem below.
+#   Tier 2 (fallback, only reached when the anchor itself isn't in seq_matrix -- e.g. it's a
+#     mitogenome excluded from training): a fresh local pairwise alignment directly against
+#     reference_df's own sequence content, no new NCBI fetch needed.
+#
+# Real design flaw found and fixed BEFORE landing, by testing the first Tier 2 draft
+# against the actual motivating case rather than assuming it worked: an initial version
+# checked only "does the candidate align anywhere in the anchor's full sequence," which is
+# nearly always true once the anchor is a whole genome (it necessarily contains every
+# sub-region of the gene, including the real MiFish window AND wherever this specific query
+# happened to hit) -- confirmed directly: F. parvipinnis's OQ846298 DOES align well to F.
+# lima's mitogenome (at 319-486), so the naive check wrongly returned TRUE for the exact
+# case it needed to reject. Real fix required knowing WHERE within the anchor the query
+# itself hit -- which nothing in the pipeline retained anywhere (see TaxaMatch/CLAUDE.md's
+# same-session note: `Hsp_hit-from`/`Hsp_hit-to`, BLAST's own subject-side alignment
+# coordinates, were computed by BLAST and then silently discarded by
+# TaxaMatch::blast_sequences()'s XML parser). Tier 2 now REQUIRES
+# `anchor_subject_range` (from match_obj's new `subject_start`/`subject_end` columns,
+# TaxaMatch Session 159) and only accepts a candidate whose OWN fresh alignment against the
+# anchor lands at a position overlapping that range -- verified against the exact real
+# numbers (region [319,486] vs [515,613]) before writing a single test.
+#
+# New `keep_out_of_range`/`max_out_of_range_per_species` params on
+# fetch_ncbi_reference_sequences() (this session's earlier work, see below) are what make
+# Tier 2 possible at all for a mitogenome-anchored query without a separate on-demand NCBI
+# fetch -- reference_df now retains a capped number of out-of-range sequences per species
+# (new `in_barcode_range` diagnostic column) specifically so this check has real sequence
+# content to align against, already in memory.
+#
+# Scope limit, explicit, not solved this session: a congener that fails the check is
+# currently just OMITTED from restoration, not converted into a NAMED
+# "unreferenced_species" hypothesis that evaluate_likelihoods() could still score via the
+# borrowed-likelihood (H2) mechanism -- that would need generalizing H2's currently-generic,
+# one-per-query anchoring to support multiple named unreferenced congeners per query, a
+# separate, larger design question flagged for later.
+#
+# 13 new tests (test-score-collapse.R): .check_regional_overlap() unit tests using a
+# synthetic two-region "genome" fixture (deterministic local-alignment behavior, no network
+# dependency) covering both the accept and reject cases plus NA fallbacks; integration tests
+# for restore_suppressed_candidates(check_regional_overlap = TRUE)'s validation errors,
+# skip-on-no-overlap, restore-on-real-overlap, and confirmed-unaffected default (FALSE)
+# behavior. `devtools::test()` 729/729 (up from 706 earlier this session), `devtools::check()`
+# 0 errors/0 warnings/0 notes. Live-validated against the exact real Fundulus numbers
+# (region overlap correctly rejects [319,486] vs [515,613], correctly accepts an overlapping
+# range) before the unit tests were written, not just after.
+# Previous update, same day (Session 159 continued -- .build_search_term()'s bare-marker-
+# name search fixed for 12S/16S, found while debugging a real Mugu workflow misassignment
+# (Fundulus parvipinnis vs F. lima). Root cause confirmed directly against live NCBI:
+# barcode_term = "12S"/"16S" have no [GENE] field tag entry and no primer_to_locus entry,
+# so they fell through to a bare "12S[All Fields]"/"16S[All Fields]" text search -- which
+# is unreliable, since whether a real, correctly-annotated, correctly-sized reference
+# sequence is found depends on incidental bibliographic metadata (does the record's OWN
+# linked citation happen to contain the literal string "12S"?), not the sequence's actual
+# content. Confirmed with a real pair: OQ846298 (F. parvipinnis, /product="small subunit
+# ribosomal RNA", 168bp, real MiFish-primer-amplified) matched ZERO results for
+# "12S[All Fields]" alone; a near-identical F. grandis record (OP537863, same /product
+# text) WAS found, only because its own citation was titled "12S barcoding of Texas
+# fishes" -- confirmed by comparing full GenBank flat files side by side, not guessed.
+# Fixed: new marker_synonyms list ORs in "12S/16S ribosomal RNA"/"12S/16S rRNA"/"small/
+# large subunit ribosomal RNA" (the standard, unambiguous SSU/LSU rRNA synonym convention
+# for mitochondrial 12S/16S specifically) alongside the bare marker-name clause, live-
+# verified to recover OQ846298 for F. parvipinnis. Deliberately NOT extended to 18S:
+# "small subunit ribosomal RNA" is ambiguous between mitochondrial 12S and NUCLEAR 18S,
+# so reusing it there would trade missed true positives for new false positives -- a
+# different tradeoff needing its own design. COI/cytb/ITS/rbcL/matK/trnL untouched --
+# already use the more precise [GENE] field-tag path, a different (and more reliable)
+# mechanism than free-text [All Fields], not affected by this gap. 10 new regression
+# tests (test-fetch.R): the synonym OR-clauses for 12S/16S, the deliberate 18S exclusion,
+# and exact-string checks confirming COI/primer-name paths are unchanged.
+# `devtools::test()` 706/706 unchanged pass count structure (was already 696 before this
+# session's other fix; +10 here), `devtools::check()` 0 errors/0 warnings/0 notes.
+# IMPORTANT OPERATIONAL NOTE: `fetch_ncbi_reference_sequences()`'s own `cache_dir` caches
+# per-genus NCBI results keyed by taxon+barcode_term STRING+length+date -- NOT by the
+# actual constructed search-query text -- so this fix does NOT take effect on a re-run
+# until those cache files are cleared (barcode_term itself, e.g. "12S", never changes).
+# Confirmed and cleared for the real Mugu case: 122 of 147 files under
+# ~/My Drive/Rscripts/eDNA/SepulvedaMugu/cache_reference/ (75 for 12S, 47 for 16S; the 25
+# COI files are unaffected and were left alone). Anyone else relying on a cached
+# `fetch_ncbi_reference_sequences(barcode_term = "12S"/"16S", ...)` result from before
+# this session needs the same cache-clearing step, or the fix will be silently bypassed.
+# Previous update, same day (Session 158 continued -- correction to the same session's
+# own note below: `calibrate_query_noise()`/`evidence_col`/`min_coverage` are NOT
+# permanently guarded against `score_transform = "sqrt_mismatch"` models. That framing
+# was wrong, found the moment the user tried to actually use it: testing
+# `sqrt_mismatch` against the real production workflow
+# (`PtConceptionWorkflow_12S_single_site.R`, which calls both `calibrate_query_noise()`
+# and `evaluate_likelihoods(evidence_col=)`) immediately reproduced the exact symptom
+# calibration is supposed to fix -- unreferenced Sardinops congeners at likelihood 1.0
+# outscoring the correct referenced species -- because the guards below simply blocked
+# calibration from running at all on a `sqrt_mismatch` model, not because the mechanism
+# is unsafe on that scale. Re-derived via the delta method whether the guards' implicit
+# premise (that `SE(transform(score)) propto 1/sqrt(N)` needs logit specifically) was
+# ever true: it isn't -- for any transform `f`, `Var(f(p_hat)) ~= [f'(p)]^2 *
+# Var(p_hat)`, and `Var(p_hat) ~ 1/N` regardless of `f`, so the `1/sqrt(N)` scaling
+# holds for `sqrt_mismatch` too (confirmed numerically: the ratio of the two
+# transforms' SE formulas is exactly constant across `N`). Fixed properly rather than
+# just removed: `calibrate_query_noise()`'s one genuinely hardcoded logit line now uses
+# `.transform_p()` (its verbose message uses the new `.untransform_p()` helper instead
+# of a hardcoded `plogis()`); `evaluate_likelihoods()`'s `stop()` guard on
+# `evidence_col`/`min_coverage` is removed and replaced with a comment recording the
+# corrected reasoning (`min_coverage`'s coverage-sigma-inflation remains an
+# unconditional widen either way -- a separate, pre-existing, already-documented
+# limitation, unrelated to this correction). The two `test-evaluate.R` blocks
+# asserting the old guards fire were rewritten to assert the mechanisms work with no
+# error on a `sqrt_mismatch` model instead; `test-calibrate_query_noise.R` similarly
+# rewritten from "guard fires" to "calibration works and produces scale-appropriate
+# offsets for both scales" (including an exact numeric check of the `sqrt_mismatch`
+# offset). `devtools::test()` 698/698 (up from 696), `devtools::check()` 0 errors/0
+# warnings (1 pre-existing environmental note). Package reinstalled. See
+# [[project_job2_unreferenced_relatives]]'s "Correction (2026-07-16)" section in the
+# TaxaID memory system for the full record -- treat that section, and this note, as
+# superseding the "deliberately NOT ported this session" language in the Session 158
+# note immediately below wherever the two disagree.
+# Previous update, 2026-07-15 (Session 158 -- "Job 2": modeling unreferenced-relative
+# (H2/H3) likelihoods, the second of the two jobs identified in Session 155
+# ([[project_bayesian_likelihood_calibration_2026_07]]) as separate design problems.
+# Started from a real observation the user flagged in real posterior output: three
+# named unreferenced Sardinops congeners all received the IDENTICAL likelihood
+# (0.566) -- correct in principle (a query score can't discriminate between species
+# with zero reference data), but the user's stated hunch was that the pooled H2/H3
+# machinery itself should still behave sensibly: unreferenced species should track
+# how well the REFERENCED relative matched (a surprisingly good/bad reference match
+# should propagate), and a genus where species are hard to tell apart (small,
+# consistent divergence) should differ systematically from one where they're easy to
+# tell apart (larger, more variable divergence) -- with the LATTER, not the former,
+# carrying more uncertainty.
+#
+# Two real, confirmed problems found by testing this intuition against real 12S
+# congener data, both fixed:
+#
+# (1) H2's mean anchored on the population-wide H1_Global_Mu, not the specific
+# referenced anchor species' own resolved mean -- so a species whose own trained
+# mean sits above or below average never passed that information to its own
+# unreferenced relatives' likelihood. Fixed: H2/H3 mean is now
+# `used_mu1[best_i] - delta`, the anchor candidate's own resolved species mean
+# (falls back to global mean when no species-specific entry exists, same as
+# before). Small effect size in isolation (~4.5% on the motivating case) but
+# directly addresses the user's stated intuition and costs nothing extra.
+#
+# (2) The bigger one: testing "should a tight genus's H2 differ from a loose
+# genus's H2" against real congener data (Sardinops, tight, mean congener
+# similarity 99.9%, real raw variance ~0; vs Symphurus, loose, mean 90.5%, real
+# variance meaningfully larger) found the CURRENT model gets this qualitatively
+# BACKWARDS: at the same real 99.4% match, logit gave Symphurus (loose) a HIGHER
+# H2/H1 ratio (2.79) than Sardinops (tight, 2.80 -- indistinguishable), when the
+# loose genus should show LOWER H2 competitiveness at a great match (congeners
+# there don't normally score that high) and the tight genus should show HIGHER
+# (its congeners routinely score just as well). Root-caused to the score
+# transform itself, not the genus-shrinkage logic: on the RAW match-proportion
+# scale, tight genera genuinely do show lower congener-score variance (Pearson
+# r = -0.55 across 87 real genera, robust to controlling for sample size), but
+# under logit this reverses sign (r = +0.47) because nearly all real barcode
+# matches sit within a few points of 100% identity, exactly where logit's
+# derivative (`1/(p(1-p))`) diverges fastest -- a small, real raw-scale
+# imprecision near the ceiling gets mechanically inflated into a large logit-scale
+# variance. Checked probit (worse, fastest-diverging of all) and complementary
+# log-log (flattest in absolute terms but same wrong sign) before landing on
+# `sqrt_mismatch` (`-sqrt(1-p)`, Anscombe's classical rare-event-count
+# stabilizer -- real data lives in the "few mismatches out of many aligned
+# bases" regime, for which square-root is the textbook transform): recovers the
+# correct sign (r = -0.25, weaker than raw but correctly signed and monotonic
+# across similarity quartiles) and, critically, reproduces the correct
+# DIRECTION on real held-out cases -- Sardinops H2/H1 = 1.68 (competitive, as a
+# tight genus should be) vs Symphurus H2/H1 = 0.65 (H1 clearly wins, as a loose
+# genus should show), via the actual package functions, not just aggregate
+# statistics.
+#
+# Implementation: new `score_transform` param on `train_likelihood_model()`
+# (`"logit"` default, `"sqrt_mismatch"` new), stored in `model_params$Score_
+# Transform` and read automatically by `evaluate_likelihoods()` -- H1/H2/H3 MUST
+# share one transform, since they're compared via density ratios at one shared
+# point (mixing transforms across hypotheses would need an explicit change-of-
+# variables/Jacobian correction that was deliberately not built, in favor of
+# moving H1's own core fitting onto the new scale too when `sqrt_mismatch` is
+# selected -- a user design decision made explicitly, not assumed). New
+# `H2_Lookup$var_shrunk` column: genus-specific H2 variance, shrunk toward a
+# properly-sourced (congener-only, not the old cross-any-genus) pooled default
+# with the identical `w = n/(n+prior_weight)` form already used for the delta.
+# Several small "logit-unit" magic numbers (H1-H2 minimum separation, H2 variance
+# floor, `min_observed_sigma`'s default, `max_gap_ceiling`'s default, the
+# perfect-match anchor value, the noise floor) are now resolved per-transform via
+# new shared helpers in `R/transform.R` rather than hardcoded. Satellite
+# mechanisms that assume logit specifically (`calibrate_query_noise()`,
+# `evidence_col`, `min_coverage`'s sigma inflation) now error clearly rather than
+# silently misapply on a `sqrt_mismatch`-trained model -- deliberately NOT ported
+# this session, flagged as explicit follow-up.
+#
+# A third, larger, unrelated bug was found and fixed along the way, at the
+# user's explicit request to fix it before continuing: `train_likelihood_model()`'s
+# per-species `shrunk_sigma` took an extra `sqrt()` of the already-shrunk variance
+# before storing it in `H1_Lookup$sigma_score` -- a slot every downstream consumer
+# (the species floor comparison against `H1_Sigma`, a true covariance matrix; the
+# outlier chi-squared test; `dnorm(sd = sqrt(...))`; `dmvnorm(sigma = ...)`) treats
+# as a variance, applying its own sqrt() (or using it directly as a covariance
+# diagonal entry) on top. Net effect, confirmed by hand-reproducing the real
+# training data: species-specific H1 candidates have been evaluated against the
+# FOURTH root of the intended variance, not the square root -- systematically
+# overconfident (too-narrow H1) for as long as this formula has existed, on BOTH
+# transforms. Invisible on logit (shrunk variances ~1.5-2.5, where the extra sqrt
+# is a "only" ~15-25% correction) until sqrt_mismatch's much smaller natural scale
+# (~0.01-0.1) made the same bug a 3-6x distortion, impossible to miss once
+# cross-checked against a hand computation. Fixed by removing the extra sqrt();
+# `H1_Lookup$sigma_score` (and, automatically, `calibrate_query_noise()`'s own
+# `calibrate_sigma` rescaling, which multiplies `sigma_score` by a proper variance
+# ratio and was ALSO silently inheriting this unit mismatch) are now true
+# variances throughout. All 681 pre-existing tests passed unchanged after this
+# fix (none pinned an exact `sigma_score` value), and a new regression test
+# hand-reproduces the corrected formula exactly against real training data.
+#
+# Verified at each stage, not just at the end: `devtools::test()` 696/696 (up from
+# 670 at session start), `devtools::check()` 0 errors/0 warnings/0 notes
+# throughout every intermediate commit-equivalent state. Real-data validation via
+# the actual package functions (not the exploratory hand-reproduction scripts used
+# to find and confirm the sign-reversal problem) on the real 12S PtConception
+# `seq_matrix`: Sardinops/Symphurus H2/H1 ratios reproduce the expected direction
+# under `sqrt_mismatch` and fail to discriminate under `logit`, both before and
+# after the sigma fix (numbers changed, qualitative story held both times).
+#
+# Not done this session, explicitly flagged as follow-up: porting
+# `calibrate_query_noise()`/`evidence_col`/`min_coverage` to `sqrt_mismatch`;
+# re-deriving the outlier alpha test's specific threshold for the new scale
+# (the FORM of the test is scale-invariant and needs no change, but `alpha =
+# 0.001`'s own calibration was tuned on real logit-scale data, not re-validated
+# here); rolling `score_transform = "sqrt_mismatch"` out to any production
+# workflow (still opt-in, `"logit"` remains the default); H3's own sigma is
+# still pooled, not genus-specific (would need family-level congener data,
+# same limitation as before this session). See
+# [[project_job2_unreferenced_relatives]] in the TaxaID memory system for the
+# full empirical derivation and design-discussion record.
+# Previous update, 2026-07-14 (Session 157 -- redesigned what score_likelihood_mean/
+# score_likelihood_sd actually represent, prompted by the user stepping back from the
+# evidence_col/depth work to ask a more fundamental question: what should the "error around"
+# a likelihood estimate even mean, and does the current n_sims mechanism compute that?
+# Traced the existing mechanism precisely: it resampled the QUERY'S OBSERVED score around the
+# global H1 population dispersion (model_sd_score) -- answering "how sensitive is this
+# density to where the query happens to land," not "how confidently do we know this
+# candidate's trained mean." It also never touched evidence_vec at all, so score_likelihood_sd
+# carried zero information about per-observation evidence quality regardless of the Session
+# 155/156 mechanism. User's explicit framing: focus on a good likelihood estimate (mean +
+# uncertainty) for referenced AND unreferenced candidates; don't chase per-query evidence
+# quality unless it's justified and cheap; keep compute minimal.
+#
+# Redesign: score_likelihood_sd now represents uncertainty in the TRAINED MEAN itself, driven
+# by how much reference data calibrated it -- Var(mean) ~= sigma^2/n, the standard
+# uncertainty-in-an-estimated-mean result. `train_likelihood_model()` already computed
+# `n_obs_species` (reference sequences per species) to do Empirical Bayes shrinkage, then
+# discarded it before it reached `H1_Lookup` -- now retained. Each Monte Carlo draw perturbs
+# the CANDIDATE'S TRAINED MEAN (not the observed score) by this uncertainty and evaluates the
+# query's real, fixed observed point against it; H2/H3 get the identical treatment using
+# `n_pairs` behind their genus-specific delta (already tracked in `H2_Lookup`) or the fully-
+# pooled foreign-match count when no genus-specific delta exists (new `Stats$n_h2_pooled`) --
+# so borrowed/unreferenced likelihoods correctly get MORE uncertainty than directly-observed
+# ones, satisfying the user's third ask ("add variance for unreferenced taxa") for free.
+# Mechanically this REDIRECTS the existing n_sims loop rather than adding to it -- same
+# n_sims x n_candidates cost as before, just perturbing the right random variable -- and reuses
+# `primary_evidence`'s already-resolved per-candidate sigma (species floor + evidence gate) as
+# the basis, so the Session 155/156 evidence mechanism's contribution to uncertainty falls out
+# automatically at zero extra cost, resolving the user's "should I care about evidence"
+# question without building anything evidence-specific. Fully backward compatible: falls back
+# to the exact previous (query-resampling) behavior when `model_params$H1_Lookup` lacks
+# `n_obs_species` (i.e., any model trained before this change).
+#
+# No new output columns and no changes needed in TaxaAssign: `compute_posterior()` already
+# consumes `score_likelihood_mean`/`score_likelihood_sd` for its own Beta-prior Monte Carlo, so
+# a correctly-motivated likelihood uncertainty now flows straight into posterior uncertainty.
+#
+# Verified three ways before calling this done: (1) two synthetic regression tests confirm a
+# poorly-referenced species (n=3) gets a larger sd than a well-referenced one (n=300) for
+# identical observed data, and a genus-specific H2 delta backed by 2 congener pairs gets a
+# larger sd than one backed by 500, both holding everything else fixed; (2) a third test
+# confirms the legacy fallback still fires (non-zero sd from the old mechanism) when
+# `n_obs_species` is absent; (3) real-data check: retrained on the real 12S seq_matrix
+# (n_obs_species ranges 2-10, Stats$n_h1_pooled/n_h2_pooled = 2294), ran evaluate_likelihoods()
+# on 300 real observations at n_sims=200 (11.2s -- extrapolates to ~8 min for the full 13,442,
+# comparable to before), and confirmed the intended shape held: median H1 sd 0.075 vs. median
+# H2/H3 sd 0.119 (unreferenced hypotheses genuinely wider), Sardinops still resolves cleanly.
+# `devtools::test()` 674/674 (up from 670), `devtools::check()` 0/0/0.
+#
+# Deliberately NOT done, per the user's explicit steer: no separate evidence-specific
+# uncertainty channel; no Student-t/heavier-tailed density family (the earlier, bigger reframe
+# considered and set aside as unnecessary complexity for what was actually being asked); no
+# change to score_likelihood_cov's identical, still-unaddressed pre-existing gap (it was never
+# reflected in score_likelihood_mean/sd either, before or after this change -- out of scope,
+# not touched). See TaxaID's memory system for the fuller design-discussion record.
+#
+# Live-testing correction, same day: the user ran the actual PtConceptionWorkflow_12S_single_
+# site.R end to end and got a real result that contradicted the design intent --
+# score_likelihood_sd came out large and roughly FLAT across H1/H2/H3 (medians 0.265 vs 0.241,
+# H2/H3 NOT reliably wider), instead of the tighter/H2-H3-wider pattern the small 300-
+# observation spot check above had shown. Root-caused to two real issues, both now fixed:
+# (1) H1's naive sigma^2/n treated each species' mean as if estimated purely from its own
+# n_obs_species observations, ignoring that the shrinkage estimator ALREADY blended it with the
+# well-known global mean -- with real n_obs_species mostly 2-3 in this database, naive sigma^2/n
+# gave implausibly large mean-SD (median ~0.76 logit units). Per the user's explicit direction
+# ("shrinkage should reduce the uncertainty"), the formula is now shrinkage-consistent:
+# Var(mean) = w^2 * sigma^2/n, where w = n/(n+prior_weight) is the SAME weight already used for
+# the point estimate -- recovers the naive SE as n grows, correctly shrinks toward near-zero as
+# n -> 0 (since at that limit the estimate IS almost entirely the well-known global mean).
+# (2) The pooled-fallback case (a candidate/genus with NO local reference/congener data at all)
+# was using the TRUE pooled training count (Stats$n_h1_pooled/n_h2_pooled, in the thousands) as
+# its "n" -- meaning a genus with zero congener data looked MORE confidently known than one with
+# substantial (but imperfect) local data, exactly backwards. Confirmed directly on real numbers:
+# a genus with 1 congener pair had implied delta-SD 3.09; the POOLED FALLBACK (n=2294) had
+# implied SD only 0.065 -- 47x too confident. Fixed: the fallback case now uses `prior_weight`
+# (this codebase's own "equivalent sample size of the prior," already used identically for the
+# shrinkage weight) instead of the true pooled count. New Stats$prior_weight field added
+# (train_likelihood_model()'s own prior_weight argument, retained for this purpose;
+# n_h1_pooled/n_h2_pooled kept as informational diagnostics only, no longer used as an
+# uncertainty fallback). Re-verified on the same real 300-observation subsample after both
+# fixes: H1 median sd 0.265 -> 0.064; H2/H3 median sd 0.241 -> 0.073 (meaningfully wider than
+# H1 again, as intended). Confirmed a second time by the user on the FULL real 13,442-
+# observation dataset (not just the 300-observation subsample), after a false alarm along the
+# way (their live session had loaded the package before reinstall, and lik_model itself was
+# stale/pre-fix -- retraining, not just restarting R, was required): H1 median sd 0.065 (mean
+# 0.068), H2/H3 median sd 0.070 (mean 0.098, max 0.422 vs H1's 0.343) -- H2/H3 meaningfully
+# wider than H1, especially in the tail, at full real scale. One existing synthetic test needed
+# correcting alongside this (not a
+# fixture bug from the formula change, a pre-existing structural blind spot in the test itself):
+# a dominant winner (score 95 vs 80/60) wins every simulation regardless of how its mean is
+# perturbed, so its normalized ratio is pinned at exactly 1.0 (sd=0) in every scenario --
+# rewritten with a close two-candidate competition (90 vs 88) so the winner can actually flip
+# between simulations, which is what exposes the underlying mean-uncertainty difference in the
+# normalized output; verified stable in the same direction across 5 independent seeds before
+# committing to one. `devtools::test()` 674/674, `devtools::check()` 0 errors/0 warnings (1
+# pre-existing environmental NOTE, timestamp verification, unrelated).
+# Previous update, 2026-07-14 (Session 156 -- evaluate_likelihoods()'s evidence_col sigma
+# rescale (Session 155) is no longer unconditional: a closed-form crossover gate now
+# decides, per candidate, whether the rescale can help before applying it, replacing the
+# uncapped-then-capped-but-still-net-negative version from the prior session (27 helped,
+# 2053 hurt on real 12S data even at the widen-only default -- see
+# [[project_evidence_ratio_sigma_reentry]]). Root cause worked out algebraically rather
+# than patched empirically: for a Gaussian, rescaling variance by a factor c changes
+# log-density at z standard deviations from the mean by exactly
+# -0.5*log(c) + 0.5*z^2*(1-1/c) -- because a Gaussian must integrate to 1, widening (c>1)
+# necessarily lowers the peak while raising the tails, so it only pays off once z is large
+# enough; verified numerically against a live dnorm() call before writing any production
+# code (delta formula matched log(dnorm_wide/dnorm_orig) to machine precision). Since most
+# low-evidence real observations are still close-to-mean, decent matches (small z), the
+# prior unconditional version paid the peak-lowering cost almost everywhere for a benefit
+# that only exists in the tail -- exactly the empirical pattern found. Fix: compute this
+# delta directly (not a pre-solved z* comparison) and only apply the rescale when
+# delta > 0 -- a single formula that correctly handles both the widen (evidence_ratio < 1)
+# and, for free, the tighten (evidence_ratio > 1, reachable only via a non-default
+# evidence_max_ratio) directions, since the earlier tighten path had no protection at all.
+# For multi-candidate queries the gate uses the score-only marginal z (only sigma_score is
+# ever rescaled; gap variance/covariance are untouched) -- deliberately consistent with the
+# existing score-only Mahalanobis outlier test's own precedent (same documented reasoning:
+# gap should inform relative weighting, not admissibility) rather than deriving a new,
+# unvalidated 2D crossover. For singleton (1D) queries, where the density evaluated really
+# is this exact univariate form, the gate is exact, not an approximation. Two new
+# regression tests confirm the gate blocks the rescale for a near-mean low-evidence
+# candidate and allows it for a far low-evidence candidate, using hand-verified z^2 vs z*^2
+# arithmetic against the actual model fixture. `devtools::test()` 670/670 (up from 667),
+# `devtools::check()` 0/0/0.
+#
+# Re-validated same session against the real 12S PtConception dataset (reconstructed
+# match_obj_restored from the saved match_obj/reference_df checkpoints, real per-ESV read
+# depth summed from reads_long, calibrate_query_noise(evidence_col=) run fresh to get an
+# internally-consistent offset + reference_evidence baseline in one pass): **163 helped, 3
+# hurt** across 24,857 real H1 rows (vs. the unconditional version's 27 helped/2053 hurt --
+# a ~54:1 reversal). Mean H1 relative likelihood 0.8014 -> 0.8016 (flat-to-slightly-positive,
+# vs. the old version's real regression 0.899 -> 0.884). H1 win rate unchanged at 77.5%
+# (expected: only 166/24,857 rows moved at all, none enough to flip a winner already
+# resolved by Session 155's mean fix). Sardinops still resolves correctly (1.0 both ways).
+# Traced all 3 hurt cases directly rather than waving them off: each sits right at the
+# gate's own decision boundary, where the documented score-only-marginal approximation (see
+# evaluate_likelihoods()'s own @details) has its known, deliberate blind spot -- the marginal
+# gate predicted a barely-positive delta (e.g. +0.0026 for one real case) while the TRUE
+# joint bivariate density (accounting for the real score/gap covariance term the marginal
+# ignores) actually decreased (log-delta -0.037), confirmed by direct `mvtnorm::dmvnorm`
+# computation on the real mu/sigma/point. Bounded and small in practice: max swing across
+# all 3 cases was 0.009 (under 1% of the score range). This is the cost of the approximation
+# working as expected, not a new bug -- an exact 2D crossover would close it but was
+# deliberately not attempted (bigger derivation for a correctness gain this real data shows
+# is already tiny). `score_likelihood_evidence` is now empirically validated as a real net
+# improvement on this dataset, not just theoretically safer. **Wired into
+# `PtConceptionWorkflow_12S_single_site.R`** (outside this monorepo, not under git) as new
+# Step 7a.6 (real per-ESV read depth summed from `reads_long`, joined onto
+# `match_obj_restored` as `read_depth`) plus `evidence_col`/`evidence_max_ratio` added to the
+# existing Step 7b.5/7c `calibrate_query_noise()`/`evaluate_likelihoods()` calls -- purely
+# additive, produces `score_likelihood_evidence` as a parallel diagnostic column exactly like
+# `score_likelihood_cov` already is. Deliberately NOT switched into what actually feeds
+# `join_priors()`/`compute_posterior()` downstream (still `score_likelihood`/
+# `score_likelihood_mean`) -- `score_likelihood_evidence` has no Monte Carlo variant, so
+# routing it into the real posterior would mean either extending the n_sims simulation to
+# cover it or dropping simulated uncertainty for the affected rows, a separate decision not
+# made this session. Not yet live-run end to end through the full workflow (only validated
+# via the isolated re-validation script above); not yet propagated to
+# `PtConceptionWorkflow_12S_multi_site.R` or any other marker/workflow.
+# Previous update, 2026-07-14 (Session 155 -- new calibrate_query_noise() (+ helper
 # identify_confident_observations()) fixes a real, severe H1 calibration bug found while
 # debugging PtConceptionWorkflow_12S_single_site.R: train_likelihood_model() estimates H1
 # entirely from reference-vs-reference pairs (two clean NCBI accessions of the same
@@ -349,7 +1425,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `fetch_ncbi_reference_sequences()` | `R/fetch.R` | Written | **Renamed from `fetch_reference_sequences()` (Session 136)** — old name kept as a deprecated forwarding alias (`.Deprecated()`, matches `audit_barcode_coverage_ncbi()`'s pattern); renamed because a second live-API reference source (BOLD) was planned and the old name didn't say NCBI anywhere. Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. **Session 135**: `include_location = FALSE` param — when `TRUE`, fetches each accession's full GBSeq XML record (`.fetch_locations_batched()`) and adds `lat`/`lon`/`country` columns parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); a genuinely separate NCBI round trip from the ESummary/taxonomy-XML fetches this function already does, neither of which carries those qualifiers. |
+| `fetch_ncbi_reference_sequences()` | `R/fetch.R` | Written | **Renamed from `fetch_reference_sequences()` (Session 136)** — old name kept as a deprecated forwarding alias (`.Deprecated()`, matches `audit_barcode_coverage_ncbi()`'s pattern); renamed because a second live-API reference source (BOLD) was planned and the old name didn't say NCBI anywhere. Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. **Session 135**: `include_location = FALSE` param — when `TRUE`, fetches each accession's full GBSeq XML record (`.fetch_locations_batched()`) and adds `lat`/`lon`/`country` columns parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); a genuinely separate NCBI round trip from the ESummary/taxonomy-XML fetches this function already does, neither of which carries those qualifiers. **Session 159**: `keep_out_of_range = FALSE` param — when `TRUE`, out-of-range (e.g. mitogenome-length) sequences are retained (new `in_barcode_range` diagnostic column) instead of dropped, capped per species by `max_out_of_range_per_species` (default `2L`) so they never compete with in-range sequences for the `max_per_species`/`max_per_genus` training-set budget. `build_sequence_matrix()`'s own independent length filter still excludes them from training exactly as before. Exists so `restore_suppressed_candidates(check_regional_overlap = TRUE)` has real sequence content to check for regional overlap without a separate on-demand fetch when a query's own top hit is an over-length reference (see that function's own Session 159 note). Also fixed the same session: `.build_search_term()`'s bare `barcode_term = "12S"`/`"16S"` now ORs in "small/large subunit ribosomal RNA" synonyms -- see the top-of-file Session 159 note for the full real-data-confirmed root cause. **Session 159 (final entry)**: `keep_out_of_range = TRUE` had no upper size bound at all -- found via a real 111,213,091bp whole-genome scaffold in the real Mugu `reference_df.rds` (142MB). New `max_out_of_range_len = 200000L` param caps it (real mitogenomes/chloroplast genomes stay under this; genome/scaffold-scale sequences don't), folded into both length-filter locations and the cache key (which also didn't vary by `keep_out_of_range` at all before this fix -- a real staleness bug). |
 | `fetch_bold_reference_sequences()` | `R/fetch.R` | Written | BOLD Systems reference-fetch analog. **Session 136**: talks directly to BOLD's real, live v5 Data Portal API (`portal.boldsystems.org/api`, confirmed via its own OpenAPI spec) via `httr2` -- does NOT wrap the `bold` R package, whose `bold_seqspec()`/`bold_identify()` target BOLD's now-permanently-retired v3/v4 API. 3-stage flow: `query/preprocessor` (resolve taxon → triplet) → `query` (submit → `query_id`) → `documents/{id}/download?format=tsv` (returns full result set, no pagination needed). No server-side marker/locus filter exists in BOLD's query API (only `tax`/`geo`/`ids`/`bin`/`recordsetcode` scopes) — `barcode_term` filters client-side on the returned `marker_code` column. Location (`coord`, bracketed `"[lat, lon]"` string, parsed by `.parse_bold_coord()`; `country/ocean`) comes free with every query, unlike NCBI which needs a separate round trip. Live-tested end to end (103 real sequences across 2 taxa, 84% real coordinate coverage). Internal helpers: `.bold_resolve_taxon()`, `.bold_submit_query()`, `.bold_fetch_documents()`, `.parse_bold_coord()`. |
 | `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
 | `trim_to_amplicon()` | `R/trim_to_amplicon.R` | Written | **Session 140.** In-silico PCR: locates forward/reverse primer-binding sites in over-length `reference_df` sequences (full mitogenomes, whole-genome scaffolds) and extracts just the amplicon, instead of `build_sequence_matrix()`'s length filter discarding the whole sequence -- the fix for a poorly-sampled species whose only GenBank record is over-length losing all reference representation. Standalone stage: `fetch_ncbi_reference_sequences()` → `trim_to_amplicon()` → `build_sequence_matrix()`. Sequences already within `[min_len, max_len]` are left untouched (most purpose-cut barcode submissions already have primers stripped at deposition, so attempting a match on them would often fail even though the sequence is fine). Primers resolved via `barcode_term` (`TaxaTools::resolve_barcode_primers()`) or supplied directly (`primer_fwd`/`primer_rev`) for any marker not yet in the registry. `Biostrings::matchPattern(fixed = "subject")` (both strands, via `reverseComplement()`) -- empirically confirmed `fixed = FALSE` produces spurious matches across long N-runs in draft sequences, while `fixed = "subject"` correctly treats subject ambiguity codes literally while still interpreting the primer's own IUPAC degeneracy. `max_mismatch_rate` (default `0.15`) tolerates real SNP variation at primer-binding sites. A matched pair implying a span outside `[min_len, max_len]` is rejected as an implausible pairing rather than accepted (guards against a spurious far-apart match producing a near-original-length "amplicon"). Per-sequence graceful fallback: unmatched/implausible sequences are left unchanged (still over-length) and flagged via `amplicon_trim_note`, so they fall through to `build_sequence_matrix()`'s existing length filter exactly as before -- this function only ever rescues sequences that would otherwise be lost, never removes ones that would otherwise be kept. Live-verified on a realistic simulated 16kb mitogenome containing an embedded real MiFish-U amplicon: correctly extracted a 172bp sequence (matching Miya et al. 2015's own reported mean amplicon length exactly) that would otherwise have been dropped outright. Deliberately narrow in scope -- not a CRABS reimplementation; primer registry is populated only for verified primer sets (currently MiFish-U/E), with an unregistered marker directed to supply primers directly or pre-trim with CRABS. Internal helper: `.extract_amplicon_one()`. **Session 141**: works out of the box for 6 more markers now that `barcode_primer_defaults` covers every mito/chloroplast marker in `barcode_length_defaults` (16S, COI, cytb, rbcL, matK, trnL) -- no code change needed here, since this function was already generic over any `barcode_term` with a registered pair. New tests confirm real, literature-verified COI-Folmer and rbcLa primer pairs correctly extract from an over-length synthetic sequence, plus a loop test covering all 6 new registry entries end-to-end. **Session 142**: now also supports `coi-leray` (the real mlCOIintF/dgHCO2198 eDNA mini-barcode) -- no code change needed, `barcode_term = "COI-Leray"` resolves through the same generic path. New test confirms correct extraction of a real, literature-verified Leray-fragment amplicon; bare `"COI"` now errors (ambiguous between `coi-folmer`/`coi-leray`) rather than guessing. |
@@ -362,7 +1438,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 |---|---|---|---|
 | `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output includes `coverage` column. New params (Session 112): `filter_unnamed = TRUE` drops sequences with blank/NA finest-rank (species) label before alignment — removes spurious within-species pairs (blank == blank) that dominated 18S databases (69% of pairs); `max_seqs_per_taxon = NULL` randomly subsamples sequences per species before alignment to prevent heavily-sequenced taxa (e.g. Ovis aries) from dominating the within-species distribution. Both operate pre-alignment, reducing DECIPHER computation time. Renamed from `build_reference_matrix()` Session 88. **Session 151**: `barcode_term = NULL` param — when supplied and `min_seq_len`/`max_seq_len` are left at their defaults, auto-resolves the length window via `TaxaTools::resolve_barcode_lengths(barcode_term)` instead of the generic `[100, 2000]` default (explicit lengths always override). Closes the Paralabrax footgun (below) ergonomically — a specific registered primer variant (e.g. `"MiFishU"`) gives a real amplicon-window guarantee; a bare marker name (e.g. `"12S"`) does not. |
 | `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
-| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. Empirical Bayes shrinkage weight `w = N/(N+prior_weight)` uses `N` = within-species SEQUENCE count (one row per sequence after `.prep_training_data()`'s `group_by(id_x) |> slice_max()` dedup), not raw pair count — confirmed empirically Session 151 after a soundness-review finding claimed otherwise (see that function's `N_Obs` doc note). **Session 151**: gained `@section Marker validation scope` — Framing B (this bivariate-normal form) is validated for 12S/18S only; run `diagnostics/seq_matrix_score_distribution.R` before trusting it on another marker. Also **Session 151**: `H2$delta` (the missing-species shift) is otherwise a single value pooled across every genus in the training set; where a genus has a real congener pair (`max_congener_score` from `.prep_training_data()`, distinct from the existing cross-any-genus `max_foreign_score`), a genus-specific delta is estimated and shrunk toward the pooled value via the same Empirical Bayes form as the per-species H1 means, stored in a new `H2_Lookup` slot. Genera with only one referenced species get no lookup row and fall back to the pooled delta unchanged. |
+| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. Empirical Bayes shrinkage weight `w = N/(N+prior_weight)` uses `N` = within-species SEQUENCE count (one row per sequence after `.prep_training_data()`'s `group_by(id_x) |> slice_max()` dedup), not raw pair count — confirmed empirically Session 151 after a soundness-review finding claimed otherwise (see that function's `N_Obs` doc note). **Session 151**: gained `@section Marker validation scope` — Framing B (this bivariate-normal form) is validated for 12S/18S only; run `diagnostics/seq_matrix_score_distribution.R` before trusting it on another marker. Also **Session 151**: `H2$delta` (the missing-species shift) is otherwise a single value pooled across every genus in the training set; where a genus has a real congener pair (`max_congener_score` from `.prep_training_data()`, distinct from the existing cross-any-genus `max_foreign_score`), a genus-specific delta is estimated and shrunk toward the pooled value via the same Empirical Bayes form as the per-species H1 means, stored in a new `H2_Lookup` slot. Genera with only one referenced species get no lookup row and fall back to the pooled delta unchanged. **Session 158**: new `score_transform` param (`"logit"` default, `"sqrt_mismatch"` new -- see this file's Session 158 note for the full derivation); `H2_Lookup` gains genus-specific `var_shrunk`; the pooled H2 delta/variance default now correctly sources from congener-only comparisons (was mixing in cross-any-genus data); fixed a real, pre-existing bug where `H1_Lookup$sigma_score` stored `sqrt(shrunk variance)` instead of the variance itself, understating every species-specific H1 candidate's true uncertainty since this formula was first written. **Session 157**: `H1_Lookup` gains `n_obs_species` (previously computed for shrinkage, then discarded); `Stats` gains `n_h1_pooled` (total sequences behind the global mean) and `n_h2_pooled` (foreign-match count behind the pooled global H2 delta) -- all three feed `evaluate_likelihoods()`'s redesigned Monte Carlo uncertainty (see that function's own Session 157 note). Purely additive; `model_params` objects trained before this change simply lack these fields and `evaluate_likelihoods()` falls back to its previous behavior. |
 
 ### Unified likelihood pipeline (new — Session 99)
 
@@ -384,13 +1460,13 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | Function | File | Status | Description |
 |---|---|---|---|
 | `identify_confident_observations()` | `R/calibrate_query_noise.R` | Written, live-tested | Finds genera where `TaxaExpect` occurrence priors (`theta_mean`) confirm exactly one locally-plausible species, then returns the best-scoring row per `observation_id` for every real observation in one of those genera. Non-circular by construction — plausibility comes from independent occurrence/range data, not from the match scores or likelihood model being calibrated. |
-| `calibrate_query_noise()` | `R/calibrate_query_noise.R` | Written, wired, live-tested | Fixes a real, severe H1 mean-calibration bug: `train_likelihood_model()`'s H1 params come entirely from reference-vs-reference pairs, which cannot see query-side technical noise, so genuinely correct matches routinely score below the trained mean and lose to H2/H3. Estimates one marker-wide additive offset (median residual across the confident-observation set) and shifts `H1_Global_Mu` + every `H1_Lookup$mu_score` uniformly; `H2`/`H3` move automatically since their means are defined relative to H1's. Live-validated on real 12S PtConception data: H1 win rate 1.0% → 77.5% (13,442 real observations). **Do not reuse an offset across markers** — checked directly against real 18S data and found not to transfer as either a fixed percentage or fixed mismatch count. `calibrate_sigma` param (default `FALSE`) attempts an analogous variance correction — **tested and rejected**: helped 0/13,442 real observations, hurt 4,878, some to exactly 0 (confident-set selection bias toward easy/abundant genera understates true population variance). `evidence_col`/`evidence_max_ratio` (paired with the same params on `evaluate_likelihoods()`) is the follow-on per-observation attempt at the same variance problem — built, safe (crash fixed via `evidence_max_ratio` capping), but **not validated as a net improvement** even in the safe direction; see `TaxaLikely/CLAUDE.md`'s Session 155 note and `ecosystem_docs`/TaxaID memory system for the full record, including four untried alternative designs. |
+| `calibrate_query_noise()` | `R/calibrate_query_noise.R` | Written, wired, live-tested | Fixes a real, severe H1 mean-calibration bug: `train_likelihood_model()`'s H1 params come entirely from reference-vs-reference pairs, which cannot see query-side technical noise, so genuinely correct matches routinely score below the trained mean and lose to H2/H3. Estimates one marker-wide additive offset (median residual across the confident-observation set) and shifts `H1_Global_Mu` + every `H1_Lookup$mu_score` uniformly; `H2`/`H3` move automatically since their means are defined relative to H1's. Live-validated on real 12S PtConception data: H1 win rate 1.0% → 77.5% (13,442 real observations). **Session 2026-07-18 (Fable):** new opt-in `offset_form = c("constant", "linear")` + `min_calib_species` (default `8L`). `"constant"` (default) = the single-additive-offset behavior above, byte-identical. `"linear"` remaps every H1 mean through a robustly-fit line `intercept + slope*trained_mean` (per-species medians, weighted, evidence-range-clamped) — a strict generalization for train-vs-inference scale gaps that aren't a pure location shift (found REAL and total on real 12S: DECIPHER per-species means don't transfer to the external `PercMatch` scale, robust slope→0, H1 win rate +2.1pts). Only H1 mean location is remapped; H2/H3 deltas + gap (the discriminators) untouched. Confident set can't test congener discrimination, so `"linear"` stays opt-in — validate H1 win rate before enabling; falls back to `"constant"` with a warning if `< min_calib_species` confident species. `$Query_Calibration` now also records `offset_form`/`slope`/`intercept`. See `[[project_train_inference_scale_validity]]`. **Do not reuse an offset across markers** — checked directly against real 18S data and found not to transfer as either a fixed percentage or fixed mismatch count. `calibrate_sigma` param (default `FALSE`) attempts an analogous variance correction — **tested and rejected**: helped 0/13,442 real observations, hurt 4,878, some to exactly 0 (confident-set selection bias toward easy/abundant genera understates true population variance). `evidence_col`/`evidence_max_ratio` (paired with the same params on `evaluate_likelihoods()`) is the follow-on per-observation attempt at the same variance problem — the Session 155 uncapped/capped versions were both tested and found net negative; **Session 156** replaced the unconditional rescale with a closed-form crossover gate (only rescales when doing so is provably non-decreasing for that candidate's density) — see `TaxaLikely/CLAUDE.md`'s Session 156 note and `[[project_evidence_ratio_sigma_reentry]]` for the derivation; not yet re-validated against the real 12S dataset the earlier versions were tested on. |
 
 ### Inference (apply model to query observations)
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. Output includes `score_likelihood_cov`: coverage-adjusted point estimate inflating H1 sigma by `1/sqrt(coverage)` per candidate taxon (binomial SE prior); equals `score_likelihood` when coverage column is absent or all 1. **Session 151**: prefers `model_params$H2_Lookup`'s genus-specific H2 delta over the pooled global one when the anchor candidate's genus has an entry (H3 keeps its `+2.0` step on top of whichever delta H2 used); output gains `h2_delta_source` (`"genus_specific"`/`"global_fallback"`) so callers can identify rows that used the cruder pooled approximation. Backward compatible with `model_params` objects trained before this change (no `H2_Lookup` slot -> always `"global_fallback"`). **Session 155**: new `evidence_col`/`evidence_max_ratio` params, paired with `calibrate_query_noise(evidence_col=)`'s `reference_evidence` baseline — scales H1 sigma by `1/sqrt(evidence_ratio)` per candidate (a real per-observation quality covariate, e.g. DNA read depth), producing a new parallel `score_likelihood_evidence` column (same precedent as `score_likelihood_cov` — point estimate only). Deliberately separate from `coverage`/`min_coverage` (bounded `(0,1]`) since `evidence_ratio` is symmetric/unbounded around 1.0. `evidence_max_ratio` (default `1`) caps the *tightening* direction only — found necessary live: an uncapped ratio crashed a real high-depth observation's H1 likelihood to exactly 0. Even with the cap, **not validated as a net improvement** — see the Query-side calibration section above and `[[project_evidence_ratio_sigma_reentry]]` in TaxaID's memory system. |
+| `evaluate_likelihoods()` | `R/evaluate.R` | Written | Apply model to all queries; outputs likelihood object. `verbose` param (default FALSE) logs species-specific param fallback. Output includes `score_likelihood_cov`: coverage-adjusted point estimate inflating H1 sigma by `1/sqrt(coverage)` per candidate taxon (binomial SE prior); equals `score_likelihood` when coverage column is absent or all 1. **Session 151**: prefers `model_params$H2_Lookup`'s genus-specific H2 delta over the pooled global one when the anchor candidate's genus has an entry (H3 keeps its `+2.0` step on top of whichever delta H2 used); output gains `h2_delta_source` (`"genus_specific"`/`"global_fallback"`) so callers can identify rows that used the cruder pooled approximation. Backward compatible with `model_params` objects trained before this change (no `H2_Lookup` slot -> always `"global_fallback"`). **Session 155**: new `evidence_col`/`evidence_max_ratio` params, paired with `calibrate_query_noise(evidence_col=)`'s `reference_evidence` baseline — scales H1 sigma by `1/sqrt(evidence_ratio)` per candidate (a real per-observation quality covariate, e.g. DNA read depth), producing a new parallel `score_likelihood_evidence` column (same precedent as `score_likelihood_cov` — point estimate only). Deliberately separate from `coverage`/`min_coverage` (bounded `(0,1]`) since `evidence_ratio` is symmetric/unbounded around 1.0. `evidence_max_ratio` (default `1`) caps the *tightening* direction only — found necessary live: an uncapped ratio crashed a real high-depth observation's H1 likelihood to exactly 0. **Session 156**: the rescale (either direction) is now additionally gated by an exact crossover condition on the candidate's own log-density (derived from the elementary fact that rescaling a Gaussian's variance by `c` changes its log-density at `z` SDs from the mean by `-0.5*log(c) + 0.5*z^2*(1-1/c)`) — only applied when that quantity is `> 0`. This replaces the Session 155 unconditional version, which was tested against real 12S data and found net negative even at the widen-only default (27 helped, 2053 hurt) because most low-evidence real observations are still close to their trained mean, where widening only lowers the peak with no compensating tail benefit. Re-validated against that same real dataset — see the Query-side calibration section above and `[[project_evidence_ratio_sigma_reentry]]` in TaxaID's memory system. **Session 157**: `score_likelihood_mean`/`score_likelihood_sd` (the Monte Carlo columns) are redesigned to represent uncertainty in the TRAINED MEAN (driven by `n_obs_species`/`n_pairs` -- how much reference data calibrated it), not a resampling of the observed query score around the population's overall spread (the previous, differently-motivated mechanism). H2/H3 get systematically wider uncertainty than H1, reflecting that they borrow rather than observe. Backward compatible (falls back to the previous mechanism when `model_params` lacks `n_obs_species`); no new output columns; `TaxaAssign::compute_posterior()` needs no changes since it already consumes these two columns. See this function's own Session 157 note for the full derivation and real-data validation. **Session 158**: reads `model_params$Score_Transform` automatically (no caller-supplied param); H2/H3's mean now anchors on the anchor candidate's own resolved species mean, not the population-wide global mean; uses genus-specific `H2_Lookup$var_shrunk` for H2's sigma when available; `evidence_col`/`min_coverage` now error immediately (not silently misapply) when combined with a `"sqrt_mismatch"`-trained model. See this file's Session 158 note for the full record. **2026-07-19 (Sonnet 5)**: new `min_rank_trust_pvalue` param (default `0.001`) + three new output columns (`absolute_fit_pvalue`, `trusted_rank`, `rank_trust_basis`) -- the "rank-trust mechanism", answering a different question than `score_likelihood` does: not "which hypothesis beats the others" but "is the WINNING hypothesis's own absolute fit believable, or is it just the least-bad option among uniformly weak candidates" (a real, structural blind spot of relative/Bayesian model comparison over a candidate set that isn't guaranteed exhaustive). Reuses only already-computed `H1_Lookup`/`H2`/`H2_Lookup`/`H3` mu/sigma -- no new model fit, no new pass over reference data. Walks from the winning hypothesis's own rank (species/genus/family) coarser until one clears `min_rank_trust_pvalue`'s own **one-sided** absolute-fit test (`P(Z<=z)`, `z=(x-mu)/sd`); falls back to `rank_system`'s own coarsest level with `rank_trust_basis="no_model_info"` once past H3 (no H4+ parameterization exists to test against, regardless of how many levels `rank_system` itself has). Deliberately one-sided, NOT a reuse of the existing (two-sided, unchanged) `alpha` H1-zeroing gate -- a two-sided test would wrongly flag a *better-than-typical* match (e.g. a literal 100% identity hit against a tightly-clustered/clonal-reference species) as equally suspicious as a worse-than-typical one; confirmed as a real, not hypothetical, bug during design (a synthetic case gave two-sided p~=5.7e-07, one-sided p~=0.9999997 for the identical inputs) and fixed before shipping. Real-data validated against PtConMifishSchulte (real PtConception 12S, 13,442 obs): the two real edge-case taxa from `[[project_edge_case_error_taxa_design]]` that best-fit-generic-family (Hylobatidae p=0.60, a Lemuridae/Vulpes contamination mess p=0.24) correctly cap at family across the ENTIRE `min_rank_trust_pvalue` sweep tested (0.0001-0.5); the taxa whose likelihood is genuinely strong but occurrence-implausible (Ovis aries, Cervus elaphus, Bison bison, Salmo salar, Sufflamen fraenatum, Fistularia commersonii -- a DIFFERENT, deliberately out-of-scope problem, see `[[project_edge_case_error_taxa_design]]`'s "prior-orphaned high-confidence match" pattern) correctly do NOT get flagged by this likelihood-only mechanism, confirming the two problems stay cleanly separated. False-escalation rate on 132 real raw-likelihood-driven H1-winning control observations: 0% up to `min_rank_trust_pvalue=0.2`, rising to only 1.5% at 0.4-0.5 (0.5 itself is a natural, provable breakdown point -- a one-sided p of exactly 0.5 means "sitting precisely at the trained mean," so alpha values approaching 0.5 start rejecting ~half of all genuinely normal matches by construction, not a "stricter" setting). Also surfaced a real, striking, unrelated finding along the way: only 44% (132/302) of real posterior-resolved-to-species PtConception observations sampled also win on RAW LIKELIHOOD alone -- for the rest, the PRIOR, not the likelihood, is what resolves the call to species level, a direct real-data confirmation of the closed-world/Bayes-completeness concern this whole mechanism grew out of. `devtools::test()` 0 failures (931, up from 910), `devtools::check()` 0/0/0, reinstalled to `~/Library/R/4.0/library`. Not yet wired into any production workflow. Session also investigated (not built, real dead end found first): extending `diagnostics/referenced_candidate_exclusion_rate*.R`'s already-abandoned "true species referenced but excluded from candidate set" rate estimate to Mugu's BLAST-scored data as a way around PtConception's external-scoring-tool noise problem -- blocked by Mugu's own match table lacking a `sequence` column (needed for real re-alignment) plus too few real observations (401) for a trustworthy rate; not pursued further. **REMOVED 2026-07-20**: `min_rank_trust_pvalue`/`trusted_rank`/`rank_trust_basis` are gone entirely -- `trusted_rank` was found unreliable on real data (computed for this function's own top-LIKELIHOOD hypothesis, not necessarily the hypothesis that wins the POSTERIOR downstream once priors are applied, a confirmed ~30% mismatch on a real 12S dataset). `absolute_fit_pvalue` itself (the per-row, one-sided p-value everything else was built on) is unchanged and still computed unconditionally; downstream consumers now read it directly instead of going through the ladder-walk. See this file's top session note and `[[project_job2_unreferenced_relatives]]`. |
 | `filter_top_hypotheses()` | `R/evaluate.R` | Written | Keep finest-rank candidates per query |
 
 ### Reference coverage
@@ -404,7 +1480,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `audit_inat_coverage()` | `R/coverage.R` | Written | **iNaturalist image coverage audit** (Session 119). Given a species list (prior taxa), queries iNat taxa API for each species: returns `n_observations`, `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced` list. Optional `match_df` annotates `in_match_data`. Optional `api_token` (env `INAT_API_TOKEN`; 401 → stop). 0.3s rate limit. Returns `list(census, unreferenced)` with same structure as `audit_barcode_coverage()`. Internal helpers: `.inat_species_info()`, `.xc_recording_count()`. |
 | `fetch_xc_recording_locations()` | `R/coverage.R` | Written | **Session 135.** Given one or more species names, returns per-recording `species`/`xc_id`/`lat`/`lon`/`country` from Xeno-canto v3 — the same API response `audit_acoustic_coverage(xc_recordings = TRUE)` already queries via `.xc_recording_count()`, but that function only ever read `numRecordings` off the body and discarded the `recordings` array's own `lat`/`lng`/`cnt` fields. Refactored the shared HTTP call into `.xc_recordings_raw()` (zero behavior change for `.xc_recording_count()`, confirmed by its own tests) and added `.xc_recording_locations()` as the per-recording extractor this function loops over (1s/species rate limit, matching `audit_acoustic_coverage()`'s own). `xc_id` is Xeno-canto's own catalog number, not a `TaxaMatch::build_site_table()`-ready `observation_id` — mapping it to a caller's BirdNET observation-id convention is left to the caller (harness-level concern, not attempted here). |
 | `apply_coverage_constraints()` | `R/coverage.R` | Written | Suppress or relabel "unreferenced_species" for fully-sampled genera. **Session 151**: `constraint_behavior` default changed `"zero"` -> `"relabel"` (non-destructive) — matches `TaxaAssign::run_bayesian_pipeline()`'s own already-established default; `"zero"` mode (opt-in) treats `audit_barcode_coverage()`'s `is_complete` as certain ground truth, which it isn't (NCBI-query estimate). See `@section Census confidence`. |
-| `expand_unreferenced_hypotheses()` | `R/expand_unreferenced.R` | Written | **Session 150: moved here from TaxaAssign.** Models likelihoods for named unreferenced species by copying/medianing the generic H2/H3 values (borrowed from referenced relatives), then expands genus/family placeholder rows into named species so they can join TaxaExpect priors directly. Still needs a TaxaExpect-derived `unreferenced_df` as input -- that's a data/workflow-ordering requirement only (build it, then call this function), not a package dependency, since this function never calls into TaxaExpect or TaxaAssign itself. `TaxaAssign::expand_unreferenced_hypotheses()` remains as a `.Deprecated()` forwarding wrapper. See `TaxaID/CLAUDE.md`'s Session 150 note for the full reasoning. |
+| `expand_unreferenced_hypotheses()` | `R/expand_unreferenced.R` | Written | **Session 150: moved here from TaxaAssign.** Models likelihoods for named unreferenced species by copying/medianing the generic H2/H3 values (borrowed from referenced relatives), then expands genus/family placeholder rows into named species so they can join TaxaExpect priors directly. Still needs a TaxaExpect-derived `unreferenced_df` as input -- that's a data/workflow-ordering requirement only (build it, then call this function), not a package dependency, since this function never calls into TaxaExpect or TaxaAssign itself. `TaxaAssign::expand_unreferenced_hypotheses()` remains as a `.Deprecated()` forwarding wrapper. **Session 158 (2026-07-16 correction):** `score_likelihood_cov`/`score_likelihood_evidence`/`h2_delta_source` are now copied from the generic H2/H3 row onto every expanded named-species row when present (previously left `NA` along with genuinely row-specific extra columns like `constraint_applied` -- found live-testing the real `sqrt_mismatch` workflow run, where `h2_delta_source` showed `NA` on expanded rows in post-`join_priors()` output instead of `"genus_specific"`/`"global_fallback"`). **Session 159 (final entry):** `unreferenced_df` gains an optional `observation_id` column -- a row with `NA` (or the column absent entirely) applies to every observation sharing its genus/family, the original global-list behavior, unchanged; a row with a real `observation_id` applies only to that one observation. Lets `restore_suppressed_candidates(check_regional_overlap = TRUE)`'s rejected congeners (returned via `attr(result, "regional_unreferenced")`, same species/genus/family/observation_id shape) compete as named H2 hypotheses for the one query that rejected them, without being treated as globally unreferenced everywhere else. Fully backward compatible -- no existing caller's behavior changes. See `TaxaID/CLAUDE.md`'s Session 150 note for the full package-placement reasoning. |
 
 ### Coverage quality calibration
 
@@ -415,16 +1491,16 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 ### No-score (prior-only) pathway
 
-| Function | File | Status | Description |
-|---|---|---|---|
-| `expand_consensus_candidates()` | `R/expand_consensus.R` | **Deprecated (Session 99)** | Use `unreferenced_candidates()` + `assign_scores()` instead. Deprecated with `.Deprecated()` notice in function body. |
+Use `unreferenced_candidates()` + `assign_scores()` (score_type = "none" or
+"probability"). `expand_consensus_candidates()` -- deprecated since Session
+99 -- was removed entirely 2026-07-20 (see this file's top session note).
 
 ### Score-collapse detection and restoration
 
 | Function | File | Status | Description |
 |---|---|---|---|
 | `detect_suppressed_candidates()` | `R/score_collapse.R` | Written | Diagnose which pipeline suppression rule(s) are active. Three rules: `"perfect_only"` (purity_threshold fraction of qualifying obs have only scores ≥ perfect_threshold); `"max_score_ties"` (multi-row obs all show uniform score); `"best_only"` (singleton_threshold fraction of obs have exactly 1 row). `purity_threshold` (default 0.99) and `perfect_threshold` (default 100) user-settable. Returns list: rule_detected, rules, individual logicals, diagnostic counts, example_observations. |
-| `restore_suppressed_candidates()` | `R/score_collapse.R` | Written | Append same-genus congeners from `reference_df` as `hypothesis_type = "suppressed_candidate"` rows. Targeting: Rules 2/3 → all observations; Rule 1 only → observations where all scores ≥ perfect_threshold. Score imputation: `delta` (default 0.5, auto-scaled 0–100 vs 0–1) subtracted from per-obs max score. No-score path: creates synthetic `score_original` column (H1 = 1.0, restored = 1.0 − delta/100); pass to `assign_scores(score_type = "direct")`. Returns match_obj with `is_restored` column. |
+| `restore_suppressed_candidates()` | `R/score_collapse.R` (+ `R/restore_hierarchy.R`) | Written | **Redesigned 2026-07-18** (`ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md`, see this file's own top session note for the full record) -- appends same-genus congeners from `reference_df` as `hypothesis_type = "suppressed_candidate"` rows, admitted under Purpose A (`restoration_basis = "competitive_score"`, prior-agnostic score-only outlier test, needs `model_params`) and/or Purpose B (`"plausible_prior"`, wide `max_dist` floor, gated by `candidate_species_filter`) -- every observation is checked unconditionally now, not gated by a detected pipeline rule. Score imputation sources from a cheap-to-expensive hierarchy (`R/restore_hierarchy.R`'s `.resolve_hierarchy_score()`/`.worth_level4_check()`), median-aggregated, not the old flat `anchor_score - delta`; `delta` now only affects the unchanged no-score (Rule 3) synthetic-score pathway. **Level 4 cost control, revised 2026-07-18 (Option A+C, see this file's own top session note):** `candidate_species_filter` is Level 4's own default gate again (falls back to the `taxaexpect_priors` ratio only for a candidate not on it); new `max_level4_per_anchor` param (default `10L`) is an independent hard backstop cap. Real, measured result on both motivating cases: Fundulus 275.8s -> 66.5s, Girella 7.0s -> 2.4s, correctness preserved (if anything strengthened) in both. No-score path: creates synthetic `score_original` column (H1 = 1.0, restored = 1.0 − delta/100); pass to `assign_scores(score_type = "direct")`. Returns match_obj with `is_restored`/`restoration_basis` columns. `detected`/`perfect_threshold`/`purity_threshold`/`singleton_threshold` params removed (no longer consulted -- `detect_suppressed_candidates()` itself is unchanged and still useful standalone). **BREAKING**: the scored pathway is now a no-op without real evidence (`seq_matrix` and/or `check_regional_overlap = TRUE`) -- see the top session note. The `.check_regional_overlap()`-based mechanics below (Tiers 1/2a/2b, `align_cache`, `candidate_species_filter`'s original performance-filter role) are historical -- **Session 159**: new opt-in `check_regional_overlap = FALSE` param -- when `TRUE`, a same-genus congener is only restored if there's real evidence its own reference overlaps the SAME genomic position as the observation's top-hit ("anchor") reference, not just that it has some reference somewhere in `reference_df`. Uses new internal `.check_regional_overlap()`, three ways to reach a verdict (Tier 1 the safe default, free `seq_matrix` lookup; Tier 2a, needs `subject_start`/`subject_end` from a live BLAST run; Tier 2b, new `sequence_col` param, derives the anchor's hit position on the fly from a raw query sequence when NO live BLAST step exists at all, e.g. this ecosystem's PtConception 12S/18S workflows -- see that helper's own header comment and this file's Session 159 notes for the full mechanism, including a real design flaw found and fixed before landing). Fully backward compatible; default `FALSE`/`sequence_col = NULL` behaves identically to before this feature existed. **Session 159 (final entry):** a congener rejected by `check_regional_overlap` is no longer just dropped -- it's now recorded (`observation_id`/`species`/`genus`/`family`, one row per rejection) and returned via `attr(result, "regional_unreferenced")` (`NULL` if nothing was ever rejected). Feed this straight into `expand_unreferenced_hypotheses()`'s `unreferenced_df` (its new `observation_id`-scoping, same session) to let a globally-referenced-but-regionally-rejected species still compete as a named `unreferenced_species` hypothesis for the one query that rejected it. Closes the real "outcome didn't change" gap the earlier Session 159 entries left open. **Session 159 (continued yet further):** three real bugs found live-testing against actual Mugu data. (1) The `check_regional_overlap` per-observation loop now runs for every observation when `check_regional_overlap = TRUE`, regardless of `detect_suppressed_candidates()`'s global verdict -- real BLAST data with a wide `score_range` is often a genuine mix of true singletons and real ties, so no global purity threshold fires even though individual singletons are exactly what this mechanism exists to help; safe because every addition is still evidence-gated. (2) New `align_cache` internal mechanism (an environment, created once per call) memoizes `.check_regional_overlap()`'s expensive per-`(anchor, candidate)` alignment across observations sharing an anchor -- fixes a real 15+-minute run (401 real observations, only 71 distinct anchors, one reused 113 times). (3) New `candidate_species_filter = NULL` param restricts which same-genus congeners get checked at all, before any expensive work -- without it, a genus with many globally-referenced species (real data: 42 in one genus) forces alignment against every one regardless of local relevance; passing `unique(taxaexpect_priors$taxon_name)` cut a real 2,361-pair run to 416 pairs and 38 seconds (timed, not estimated). `devtools::test()` 768/768 (up from 754), `devtools::check()` 0/0/0. **Session 159 (PtConception rollout, 2026-07-17):** two more real `.check_regional_overlap()` perf bugs found profiling real PtConception 12S data, both fixed via `align_cache` (same mechanism, new fixed/scoped keys, no signature change): Tier 2b's query-vs-anchor alignment was recomputed once per candidate species instead of once per (anchor, query_sequence); Tier 1's `seq_matrix` id-stripping `sub()` call was recomputed on every single call against the full `seq_matrix` (real data: ~3M rows) instead of once. The second was by far the larger cost (>90% of wall time in profiling). Real timed result: 84s → 6.8s on a 300-obs anchor-clustered subset; ~65min → ~17min extrapolated for the full 13,442-observation dataset. |
 
 **Motivation:** When BLAST uses a 100-percent rule (drop all sub-perfect hits when a perfect match exists), referenced congeners are silently suppressed. `evaluate_likelihoods()` sees only one H1 candidate (singleton mode — gap uninformative) and generates only generic `unreferenced_species` H2/H3 rows. `restore_suppressed_candidates()` replaces those generic placeholders with real referenced alternatives, enabling full bivariate-normal evaluation. See *Girella simplicidens* case (Session 101/103).
 
@@ -464,6 +1540,12 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | `.parse_taxonomy_tsv()` | `R/fetch.R` | Parse 2-column taxonomy TSV (QIIME2/RESCRIPt/SILVA/MIDORI2) → data frame for `read_reference_fasta(taxonomy_file=)`. Skips header rows; calls `.parse_tax_string()` on unique strings only (efficient for large files). |
 | `.parse_tax_string()` | `R/fetch.R` | Parse one semicolon-delimited taxonomy string; auto-detects prefix-style (`k__`, `d__`, etc.) vs positional format; maps to user-supplied `rank_system`. |
 | `.crabs_std_hierarchy` | `R/fetch.R` | Character constant: standard 7-level CRABS/NCBI rank order used for positional taxonomy-string parsing. |
+| `.resolve_hierarchy_score()` | `R/restore_hierarchy.R` | **2026-07-18.** Section 3a's score-sourcing hierarchy for `restore_suppressed_candidates()` -- Levels 1-3 (direct accession pair / any-accession species pair / genus-typical divergence), median-aggregated; returns unresolved when the Level 0 precheck fails, signalling the caller to try Level 4. |
+| `.has_seq_matrix_presence()` | `R/restore_hierarchy.R` | Level 0 precheck -- does a SPECIES (any of its own reference accessions) appear anywhere in `seq_matrix` at all. Species-level, not accession-level (a species' non-anchor accessions can still rescue Level 2). |
+| `.worth_level4_check()` | `R/restore_hierarchy.R` | **Renamed from `.worth_tier2_budget()`, 2026-07-18 (Option A cost-control redesign).** Level 4's own gate, two-tier: `TRUE` when `candidate_species_filter` is `NULL` or the candidate is on it (restored from the pre-redesign design, specifically for this one expensive step); otherwise falls back to the floor-vs-documented occurrence-prior ratio in `taxaexpect_priors` (`<= budget_ratio_cap`). Fixes a real gap the ratio-only version had: both real motivating anchors (`F. lima`, `Girella simplicidens`) are themselves absent from `taxaexpect_priors`, making the ratio uncomputable and the old version skip Level 4 for every candidate including the one that matters. |
+| `.level4_attempt_allowed()` | `R/restore_hierarchy.R` | **New, 2026-07-18 (Option C backstop).** Hard cap (`max_level4_per_anchor`, default `10L`, `Inf` disables) on distinct candidates getting a live Level 4 alignment per anchor accession, independent of `.worth_level4_check()`. Cache-keyed per `anchor_accession` in the shared `align_cache`. |
+| `.seq_matrix_partner_index()` / `.seq_matrix_lookup()` | `R/restore_hierarchy.R` | **New, 2026-07-19.** Real accession-indexed lookup of every `seq_matrix` pair, built once per call via `split()` and cached in `align_cache`, replacing Levels 0-3's old per-candidate linear `%in%` scan over the whole `seq_matrix` (R's `match()`/`%in%` rebuilds its hash table on every call, it doesn't cache across calls against an unchanging table). Found necessary live-testing the real 13,442-obs PtConception dataset (~590x faster on a repeated real `Sebastes` anchor; full dataset 70+min -> 42.1s). |
+| `.build_restored_row()` | `R/score_collapse.R` | Shared row-builder for `restore_suppressed_candidates()`'s scored and no-score pathways -- copies rank columns from the reference row, rebuilds `taxon_name`, sets the imputed score/`hypothesis_type`/`restoration_basis`, and the `RESTORED_<accession>` provenance. |
 
 ---
 
@@ -571,7 +1653,6 @@ which is skipped when DECIPHER/Biostrings are not installed.
 | test-compute-likelihoods.R | `compute_likelihoods()`, `model_likelihoods()` | Fully offline with minimal model_params fixture |
 | test-coverage.R | `audit_reference_coverage()`, `audit_acoustic_coverage()`, `apply_coverage_constraints()`, `calibrate_coverage_filter()`, `coverage_threshold()` | Fully offline |
 | test-evaluate.R | `evaluate_likelihoods()`, `filter_top_hypotheses()` | Fully offline |
-| test-expand-consensus.R | `expand_consensus_candidates()` (deprecated) | Fully offline; confirms deprecation warning fires |
 | test-fetch.R | `read_reference_fasta()`, `.parse_taxonomy_tsv()`, `.parse_tax_string()` | Fully offline; NCBI fetch tests skipped |
 | test-interpret.R | `interpret_model()` | Fully offline with minimal model_params fixture |
 | test-normalize.R | `.normalize_scores()` | Fully offline |
@@ -581,7 +1662,8 @@ which is skipped when DECIPHER/Biostrings are not installed.
 | test-train.R | `train_likelihood_model()`, `flag_reference_errors()` | Fully offline |
 | test-unreferenced-candidates.R | `unreferenced_candidates()` | Fully offline |
 | test-write-fasta.R | `write_reference_fasta()` | Fully offline |
-| test-score-collapse.R | `detect_suppressed_candidates()`, `restore_suppressed_candidates()` | 24 test_that blocks; fully offline; covers all 3 rules, purity_threshold, perfect_threshold, no-score path |
+| test-score-collapse.R | `detect_suppressed_candidates()`, `restore_suppressed_candidates()`, `.check_regional_overlap()` | 65 test_that blocks (up from 46, 2026-07-18 redesign + Option A/C cost-control revision); fully offline; covers all 3 detect rules, no-score path, check_regional_overlap (Tiers 1/2a/2b), `align_cache` memoization, `.check_regional_overlap(return_detail = TRUE)`'s pid output, the score-sourcing hierarchy (seq_matrix-based imputation, median aggregation, Level 0 routing to Level 4), Purpose A/B admission (`restoration_basis` values via a real `model_params` fixture), the `.worth_level4_check()` two-tier gate (`candidate_species_filter` default, ratio fallback for a candidate not on it), the `.level4_attempt_allowed()` per-anchor cap (`max_level4_per_anchor`), the `regional_unreferenced` attribute's `basis` column (`regional_reject` vs `no_reference_data`), and the no-evidence no-op behavior change |
+| test-expand_unreferenced.R | `expand_unreferenced_hypotheses()` | 20 test_that blocks; fully offline; covers H2/H3 expansion, species-level suppression, genus-rank suppression, extra-column passthrough, and the Session 159 `observation_id`-scoped unreferenced_df extension |
 
 ---
 

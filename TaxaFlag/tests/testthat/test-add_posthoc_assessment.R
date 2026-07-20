@@ -251,3 +251,73 @@ test_that("stops on non-character domestic_taxa", {
     "character vector or NULL"
   )
 })
+
+
+# ==============================================================================
+# absolute_fit_pvalue_col / "unsupported_rank" (weak absolute evidence)
+# ==============================================================================
+# Replaced 2026-07-19: the earlier trusted_rank-based design (comparing
+# TaxaLikely::evaluate_likelihoods()'s rank-trust ladder-walk output against
+# consensus_rank via canonical rank order) was found unreliable on real data
+# -- trusted_rank was computed for evaluate_likelihoods()'s own
+# top-LIKELIHOOD hypothesis, not necessarily the same hypothesis that wins
+# the POSTERIOR reported here once priors are applied downstream (~30%
+# mismatch on a real 12S dataset). absolute_fit_pvalue_col reads directly off
+# the actual winning row instead, with no ladder-walk to go stale.
+
+test_that("absolute_fit_pvalue_col absent (default): no unsupported_rank ever appears", {
+  out <- add_posthoc_assessment(.make_cons(), .make_tiers())
+  expect_false("unsupported_rank" %in% out$posthoc_assessment)
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "sensible")
+})
+
+test_that("absolute_fit_pvalue_col present but above weak_evidence_pvalue: no override", {
+  cons <- .make_cons()
+  cons$winner_absolute_fit_pvalue <- 0.5   # comfortably above the default 0.001
+  out <- add_posthoc_assessment(cons, .make_tiers())
+  expect_false("unsupported_rank" %in% out$posthoc_assessment)
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "sensible")
+})
+
+test_that("absolute_fit_pvalue_col below weak_evidence_pvalue overrides even a 'sensible' classification", {
+  cons <- .make_cons()
+  cons$winner_absolute_fit_pvalue <- 0.5
+  # obs1 (Oncorhynchus mykiss) would otherwise be "sensible" (tier1, lik=0.95) --
+  # but its own absolute fit is poor.
+  cons$winner_absolute_fit_pvalue[cons$observation_id == "obs1"] <- 0.0001
+  out <- add_posthoc_assessment(cons, .make_tiers())
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "unsupported_rank")
+  # Unaffected rows keep their original classification.
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs3"], "sensible")
+})
+
+test_that("absolute_fit_pvalue_col respects a custom column name", {
+  cons <- .make_cons()
+  cons$my_fit_pvalue <- 0.5
+  cons$my_fit_pvalue[cons$observation_id == "obs1"] <- 0.0001
+  out <- add_posthoc_assessment(cons, .make_tiers(), absolute_fit_pvalue_col = "my_fit_pvalue")
+  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "unsupported_rank")
+})
+
+test_that("absolute_fit_pvalue_col NA values do not trigger unsupported_rank", {
+  cons <- .make_cons()
+  cons$winner_absolute_fit_pvalue <- NA_real_
+  out <- add_posthoc_assessment(cons, .make_tiers())
+  expect_false("unsupported_rank" %in% out$posthoc_assessment)
+})
+
+test_that("weak_evidence_pvalue is user-tunable", {
+  cons <- .make_cons()
+  cons$winner_absolute_fit_pvalue <- 0.01
+  out_default <- add_posthoc_assessment(cons, .make_tiers())
+  out_loose   <- add_posthoc_assessment(cons, .make_tiers(), weak_evidence_pvalue = 0.05)
+  expect_false("unsupported_rank" %in% out_default$posthoc_assessment)
+  expect_true(all(out_loose$posthoc_assessment == "unsupported_rank"))
+})
+
+test_that("stops on invalid weak_evidence_pvalue", {
+  expect_error(
+    add_posthoc_assessment(.make_cons(), .make_tiers(), weak_evidence_pvalue = 1.5),
+    "weak_evidence_pvalue"
+  )
+})

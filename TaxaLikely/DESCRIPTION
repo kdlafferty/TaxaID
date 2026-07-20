@@ -27,6 +27,7 @@ Suggests:
     Biostrings,
     knitr,
     lme4,
+    pwalign,
     rentrez,
     rgbif,
     rmarkdown,

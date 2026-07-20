@@ -38,7 +38,7 @@ make_coverage <- function() {
 }
 
 # ===========================================================================
-# Part A: Input validation (fully offline — no mocks needed)
+# Part A: Input validation (fully offline -- no mocks needed)
 # ===========================================================================
 
 test_that("build_site_reference: error on empty taxa", {
@@ -71,7 +71,7 @@ test_that("build_site_reference: error on invalid output_dir type", {
 })
 
 # ===========================================================================
-# Part B: Mocked functional tests — no NCBI, flag_errors=FALSE
+# Part B: Mocked functional tests -- no NCBI, flag_errors=FALSE
 # ===========================================================================
 
 test_that("build_site_reference: returns named list with correct components", {
@@ -174,7 +174,7 @@ test_that("build_site_reference: flag_errors = TRUE errors when DECIPHER absent"
   skip_if(
     requireNamespace("DECIPHER", quietly = TRUE) &&
     requireNamespace("Biostrings", quietly = TRUE),
-    "DECIPHER + Biostrings installed — skipping absent-package test"
+    "DECIPHER + Biostrings installed -- skipping absent-package test"
   )
   local_mocked_bindings(
     fetch_ncbi_reference_sequences = function(...) make_ref_df(),
@@ -190,7 +190,7 @@ test_that("build_site_reference: flag_errors = TRUE errors when DECIPHER absent"
 })
 
 # ===========================================================================
-# Part E: fetch returns 0 rows → error
+# Part E: fetch returns 0 rows -> error
 # ===========================================================================
 
 test_that("build_site_reference: error when fetch returns 0 sequences", {

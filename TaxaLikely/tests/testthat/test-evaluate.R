@@ -96,6 +96,66 @@ test_that(".evaluate_one_query: n_sims > 0 produces non-zero sd", {
   expect_true(any(spec$score_likelihood_sd > 0))
 })
 
+test_that(".evaluate_one_query: n_sims sd reflects reference sample size (n_obs_species), not query resampling", {
+  # Session 157: score_likelihood_sd is redesigned to represent uncertainty in
+  # the TRAINED MEAN (driven by how much reference data calibrated it), not a
+  # resampling of the observed score. Two models identical except
+  # n_obs_species for the matched species: the poorly-referenced one (n=3)
+  # must show a LARGER sd than the well-referenced one (n=300), for the exact
+  # same observed data.
+  #
+  # Uses a CLOSE two-way competition (90 vs 88, not .make_match_df()'s default
+  # dominant 95 vs 80/60): when one candidate wins every single simulation
+  # regardless of how its mean is perturbed, its normalized ratio is pinned at
+  # exactly 1.0 (score_likelihood_sd = 0) either way, since normalization is
+  # by the per-simulation max -- a real structural property of the ratio, not
+  # a defect, but it means a dominant winner can never show this effect. A
+  # close competition lets the winner occasionally flip, which is what
+  # actually exposes the underlying mean uncertainty in the normalized output.
+  skip_if_not_installed("TaxaTools")
+  close_match_df <- .make_match_df()
+  close_match_df$score <- c(90.0, 88.0, 60.0)
+
+  params_low_n  <- .make_model_params()
+  params_low_n$H1_Lookup$n_obs_species  <- 3
+  params_low_n$Stats <- list(n_h1_pooled = 3, n_h2_pooled = NA_real_)
+
+  params_high_n <- .make_model_params()
+  params_high_n$H1_Lookup$n_obs_species <- 300
+  params_high_n$Stats <- list(n_h1_pooled = 300, n_h2_pooled = NA_real_)
+
+  set.seed(1)
+  out_low_n <- TaxaLikely:::.evaluate_one_query(
+    close_match_df, params_low_n, c("family", "genus", "species"),
+    n_sims = 1000L, ratio_threshold = 0, min_match_threshold = 0
+  )
+  set.seed(1)
+  out_high_n <- TaxaLikely:::.evaluate_one_query(
+    close_match_df, params_high_n, c("family", "genus", "species"),
+    n_sims = 1000L, ratio_threshold = 0, min_match_threshold = 0
+  )
+
+  sd_low_n  <- out_low_n[out_low_n$taxon_name == "Hybognathus nuchalis", "score_likelihood_sd"]
+  sd_high_n <- out_high_n[out_high_n$taxon_name == "Hybognathus nuchalis", "score_likelihood_sd"]
+  expect_true(sd_low_n > sd_high_n)
+})
+
+test_that(".evaluate_one_query: n_sims sd falls back to legacy (score-resampling) behavior when n_obs_species is absent", {
+  # model_params trained before this session has no n_obs_species column at
+  # all -- must reproduce the pre-existing behavior exactly (non-zero sd from
+  # resampling the observed score), not silently produce sd = 0.
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  expect_false("n_obs_species" %in% names(params$H1_Lookup))
+  set.seed(42)
+  out <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params, c("family", "genus", "species"),
+    n_sims = 20L
+  )
+  spec <- out[out$hypothesis_type == "specific_candidate", ]
+  expect_true(any(spec$score_likelihood_sd > 0))
+})
+
 test_that(".evaluate_one_query: min_match_threshold filters low scores", {
   skip_if_not_installed("TaxaTools")
   params  <- .make_model_params()
@@ -133,7 +193,7 @@ test_that(".evaluate_one_query: score-only alpha filter rejects extreme outlier,
   # score=5 on 0-100 scale -> normalized 0.05 -> logit(0.05)=-2.94 ->
   # d_sq=(4.5-(-2.94))^2/2.0=27.7 -> p~=0 << 0.001 -> alpha rejects.
   df_far <- .make_match_df()
-  df_far$score <- c(5, 3, 1)   # 0-100 scale; ~5% identity — extreme outlier
+  df_far$score <- c(5, 3, 1)   # 0-100 scale; ~5% identity -- extreme outlier
   out_far <- TaxaLikely:::.evaluate_one_query(df_far, params,
                                                c("family", "genus", "species"),
                                                ratio_threshold = 0, alpha = 0.001,
@@ -145,7 +205,7 @@ test_that(".evaluate_one_query: score-only alpha filter rejects extreme outlier,
 
 test_that(".evaluate_one_query: alpha filter uses score only, not gap (small-gap candidate retained)", {
   # A legitimate H1 candidate may have a tiny gap (confusable congener present) but a
-  # reasonable score. The outlier filter must NOT reject it based on the gap — only the
+  # reasonable score. The outlier filter must NOT reject it based on the gap -- only the
   # score dimension is tested. Verify by providing a scenario where the 2D Mahalanobis
   # would reject but the score-only test passes.
   # Fixture: mu_score=4.5, mu_gap=2.0, H1_Sigma=[[2,0.2],[0.2,1]].
@@ -165,6 +225,79 @@ test_that(".evaluate_one_query: alpha filter uses score only, not gap (small-gap
   # Despite the tiny gap, the H1 candidate should survive the outlier filter
   expect_true(nrow(spec) > 0L)
   expect_true(any(spec$score_likelihood > 0))
+})
+
+# ---- Absolute fit (absolute_fit_pvalue) -------------------------------------
+# absolute_fit_pvalue is reported per-row, independently of which hypothesis
+# wins -- it never changes score_likelihood or which hypothesis wins, only
+# annotates. (The rank-trust ladder-walk mechanism -- trusted_rank/
+# rank_trust_basis/min_rank_trust_pvalue -- was removed 2026-07-19: its only
+# consumers, TaxaAssign::posterior_consensus()'s uprank_trust_pvalue and
+# TaxaFlag::add_posthoc_assessment()'s "unsupported_rank" category, both moved
+# to reading absolute_fit_pvalue directly off the actual winning row instead,
+# which is simpler and avoids a real bug the ladder-walk had: trusted_rank was
+# computed for evaluate_likelihoods()'s own top-LIKELIHOOD hypothesis, which is
+# not always the same hypothesis that wins the POSTERIOR once priors are
+# applied downstream -- see [[project_job2_unreferenced_relatives]] in the
+# TaxaID memory system for the full investigation.)
+
+test_that(".evaluate_one_query: absolute_fit_pvalue column is present on every row", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  out <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params, c("family", "genus", "species")
+  )
+  expect_true("absolute_fit_pvalue" %in% names(out))
+  expect_false("trusted_rank" %in% names(out))
+  expect_false("rank_trust_basis" %in% names(out))
+})
+
+test_that(".evaluate_one_query: a score BETTER than the species mean is never penalized, no matter how tight sigma is (one-sided design)", {
+  # Directly exercises the bug the two-sided predecessor had: a literal-
+  # ceiling-scale match against a species with a very tight sigma and a mean
+  # noticeably below the ceiling. Confirmed numerically: two-sided would give
+  # ~5.7e-07 for this exact (mu, sigma, x) triple (see .one_sided_fit_pvalue()
+  # roxygen); one-sided gives ~0.9999997, comfortably passing every
+  # min_rank_trust_pvalue tested here up to a near-degenerate 0.99999.
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  params$H1_Lookup <- data.frame(
+    lookup_key  = "Hybognathus nuchalis",
+    rank        = "species",
+    mu_score    = -0.05,
+    mu_gap      = 2.0,
+    sigma_score = 0.0001,   # very tight, e.g. many near-identical accessions
+    stringsAsFactors = FALSE
+  )
+  df_perfect <- .make_match_df()
+  # score_logit for the top candidate must land at 0 (the sqrt_mismatch-style
+  # transform ceiling) to reproduce the motivating scenario; using the
+  # default logit transform here, so drive score_logit to 0 via p = 0.5 on
+  # the RAW (untransformed) score scale is not the point -- instead directly
+  # confirm via .evaluate_one_query() that a candidate whose OWN resolved
+  # score sits meaningfully above its trained mean is never flagged.
+  df_perfect$score <- c(99.99, 80, 60)   # near-ceiling match on the logit scale
+  out <- TaxaLikely:::.evaluate_one_query(df_perfect, params,
+                                           c("family", "genus", "species"),
+                                           ratio_threshold = 0, min_match_threshold = 0)
+  h1_row <- out[out$hypothesis_type == "specific_candidate" &
+                  out$taxon_name == "Hybognathus nuchalis", ]
+  expect_true(h1_row$absolute_fit_pvalue > 0.99)
+})
+
+test_that("evaluate_likelihoods: absolute_fit_pvalue column is present, no trusted_rank/rank_trust_basis", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  match_df2 <- .make_match_df()
+  match_df2$observation_id <- "ESV_002"
+  match_df2$score <- c(5, 3, 1)
+  both <- rbind(.make_match_df(), match_df2)
+
+  result <- evaluate_likelihoods(both, params, rank_system = c("family", "genus", "species"))
+  lik <- result$likelihoods
+  expect_true("absolute_fit_pvalue" %in% names(lik))
+  expect_false("trusted_rank" %in% names(lik))
+  expect_false("rank_trust_basis" %in% names(lik))
 })
 
 # ---- evaluate_likelihoods ---------------------------------------------------
@@ -205,6 +338,38 @@ test_that("evaluate_likelihoods: non-taxa_model_params errors", {
                "taxa_model_params")
 })
 
+test_that("evaluate_likelihoods: evidence_col works (no error) on a sqrt_mismatch model too (Session 158, corrected)", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  params$Score_Transform <- "sqrt_mismatch"
+  df <- .make_match_df()
+  df$depth <- 10
+  expect_no_error(
+    evaluate_likelihoods(df, params, c("family", "genus", "species"), evidence_col = "depth")
+  )
+})
+
+test_that("evaluate_likelihoods: min_coverage works (no error) on a sqrt_mismatch model too (Session 158, corrected)", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  params$Score_Transform <- "sqrt_mismatch"
+  df <- .make_match_df()
+  df$coverage <- 0.9
+  expect_no_error(
+    evaluate_likelihoods(df, params, c("family", "genus", "species"), min_coverage = 0.5)
+  )
+})
+
+test_that("evaluate_likelihoods: evidence_col/min_coverage guards do not fire for a logit model", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()  # Score_Transform absent -> defaults to logit
+  df <- .make_match_df()
+  df$depth <- 10
+  expect_no_error(
+    evaluate_likelihoods(df, params, c("family", "genus", "species"), evidence_col = "depth")
+  )
+})
+
 test_that("evaluate_likelihoods: $likelihoods has no NA taxon_name", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
@@ -232,7 +397,7 @@ test_that("evaluate_likelihoods: all-NA observation_id warns and appears in $unr
   expect_equal(nrow(out$likelihoods), 0L)
 })
 
-# (trivariate coverage path removed — coverage used as filter only)
+# (trivariate coverage path removed -- coverage used as filter only)
 
 # ---- score_likelihood_cov ---------------------------------------------------
 
@@ -259,6 +424,60 @@ test_that("score_likelihood_cov differs from score_likelihood for low-coverage H
                                 h1_rows$score_likelihood)))
   # score_likelihood_cov in [0, 1]
   expect_true(all(out$score_likelihood_cov >= 0 & out$score_likelihood_cov <= 1))
+})
+
+# ---- score_likelihood_evidence: crossover gate -------------------------------
+#
+# Session 156: the evidence-based sigma rescale only applies when doing so is
+# provably non-decreasing for the candidate's own H1 density (see
+# evaluate_likelihoods()'s "Evidence-based sigma rescaling" @details section
+# for the derivation). These fixtures use .make_model_params()'s
+# mu_score = 4.5, H1_Sigma[1,1] = 2.0, and a Query_Calibration$reference_evidence
+# of 10, giving evidence_ratio = 0.1 (var_scale = 1/sqrt(0.1) = 3.162,
+# z*^2 = log(3.162)/(1-1/3.162) = 1.68) for a depth of 1.
+
+.add_query_calibration <- function(params, reference_evidence) {
+  params$Query_Calibration <- list(reference_evidence = reference_evidence)
+  params
+}
+
+test_that("score_likelihood_evidence: gate blocks the rescale for a near-mean low-evidence candidate", {
+  skip_if_not_installed("TaxaTools")
+  params  <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
+  df_near <- .make_match_df()
+  df_near$depth <- c(1, 10, 10)   # top candidate: evidence_ratio = 1/10 = 0.1
+  # Top candidate score 95 -> logit(0.95)=2.94, z^2 = (4.5-2.94)^2/2.0 = 1.21,
+  # below z*^2 = 1.68 -- the gate must leave sigma (and thus the likelihood)
+  # unchanged even though evidence_ratio < 1.
+  out <- evaluate_likelihoods(df_near, params, c("family", "genus", "species"),
+                              ratio_threshold = 0, evidence_col = "depth")$likelihoods
+  h1 <- out[out$hypothesis_type == "specific_candidate" &
+              out$taxon_name == "Hybognathus nuchalis", ]
+  expect_equal(h1$score_likelihood_evidence, h1$score_likelihood)
+})
+
+test_that("score_likelihood_evidence: gate allows the rescale for a far low-evidence candidate", {
+  skip_if_not_installed("TaxaTools")
+  params <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
+  df_far <- .make_match_df()
+  df_far$score <- c(75, 50, 30)   # top candidate score logit(0.75)=1.10
+  df_far$depth <- c(1, 10, 10)    # top candidate: evidence_ratio = 0.1
+  # z^2 = (4.5-1.10)^2/2.0 = 5.79, above z*^2 = 1.68 -- the gate must apply
+  # the widened sigma, so the two columns differ for this candidate.
+  out <- evaluate_likelihoods(df_far, params, c("family", "genus", "species"),
+                              ratio_threshold = 0, min_match_threshold = 0,
+                              evidence_col = "depth")$likelihoods
+  h1 <- out[out$hypothesis_type == "specific_candidate" &
+              out$taxon_name == "Hybognathus nuchalis", ]
+  expect_false(isTRUE(all.equal(h1$score_likelihood_evidence, h1$score_likelihood)))
+})
+
+test_that("score_likelihood_evidence equals score_likelihood when evidence_col is absent", {
+  skip_if_not_installed("TaxaTools")
+  params <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
+  out <- evaluate_likelihoods(.make_match_df(), params,
+                              c("family", "genus", "species"))$likelihoods
+  expect_equal(out$score_likelihood_evidence, out$score_likelihood)
 })
 
 # ---- filter_top_hypotheses --------------------------------------------------
@@ -359,14 +578,14 @@ test_that("filter_top_hypotheses: does not preserve genus row when any species r
   out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
   spec <- out[out$hypothesis_type == "specific_candidate", ]
 
-  # Genus row should be dropped (G. nigricans is not restored → existing behaviour)
+  # Genus row should be dropped (G. nigricans is not restored -> existing behaviour)
   expect_false("genus" %in% spec$taxon_name_rank)
   # Both species rows should be kept
   expect_true("Girella nigricans"    %in% spec$taxon_name)
   expect_true("Girella simplicidens" %in% spec$taxon_name)
 })
 
-test_that("filter_top_hypotheses: is_restored absent → existing behaviour unchanged", {
+test_that("filter_top_hypotheses: is_restored absent -> existing behaviour unchanged", {
   # No is_restored column: genus row should be dropped as before
   df <- tibble::tibble(
     observation_id   = "ESV_001",
@@ -436,6 +655,34 @@ test_that(".evaluate_one_query: model_params without H2_Lookup slot falls back c
   expect_equal(h2_row$h2_delta_source, "global_fallback")
 })
 
+test_that(".evaluate_one_query: H2 sd reflects n_pairs behind its genus-specific delta (unreferenced taxa get more uncertainty)", {
+  # Session 157: H2/H3 borrow rather than directly observe -- a genus-specific
+  # delta backed by few congener pairs must produce a WIDER unreferenced_species
+  # sd than one backed by many, for the same observed data.
+  skip_if_not_installed("TaxaTools")
+  base <- .make_model_params()
+  base$H1_Lookup$n_obs_species <- 50
+  base$Stats <- list(n_h1_pooled = 50, n_h2_pooled = NA_real_)
+
+  params_low_pairs  <- .add_h2_lookup(base, "Hybognathus", delta_shrunk = 2.0, n_pairs = 2L)
+  params_high_pairs <- .add_h2_lookup(base, "Hybognathus", delta_shrunk = 2.0, n_pairs = 500L)
+
+  set.seed(7)
+  out_low <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params_low_pairs, c("family", "genus", "species"),
+    n_sims = 500L, ratio_threshold = 0
+  )
+  set.seed(7)
+  out_high <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params_high_pairs, c("family", "genus", "species"),
+    n_sims = 500L, ratio_threshold = 0
+  )
+
+  sd_low  <- out_low[out_low$hypothesis_type == "unreferenced_species", "score_likelihood_sd"]
+  sd_high <- out_high[out_high$hypothesis_type == "unreferenced_species", "score_likelihood_sd"]
+  expect_true(sd_low > sd_high)
+})
+
 test_that(".evaluate_one_query: specific_candidate rows carry NA h2_delta_source", {
   skip_if_not_installed("TaxaTools")
   params <- .add_h2_lookup(.make_model_params(), "Hybognathus", delta_shrunk = 1.0)
@@ -468,4 +715,34 @@ test_that(".evaluate_one_query: a smaller genus-specific delta raises H2 likelih
   h2_global <- out_global$score_likelihood[out_global$hypothesis_type == "unreferenced_species"]
   h2_local  <- out_local$score_likelihood[out_local$hypothesis_type == "unreferenced_species"]
   expect_gt(h2_local, h2_global)
+})
+
+test_that(".evaluate_one_query: H2 mean anchors on the ANCHOR SPECIES' own resolved mean, not the population-wide global mean (Session 158)", {
+  # A referenced species whose own trained mean differs from H1_Global_Mu is
+  # real information about how conserved/variable that specific lineage is --
+  # H2 (unreferenced sister species) should inherit it. Two models identical
+  # except the anchor's own species-specific mu_score; H1_Global_Mu and
+  # h2_delta held fixed. If H2 anchors on the SPECIES mean (fixed behavior),
+  # moving the species mean further from the observed query changes H2's
+  # likelihood. If it still anchored on H1_Global_Mu (old behavior), the two
+  # would be identical, since nothing about the global mean changed.
+  skip_if_not_installed("TaxaTools")
+  params_near <- .make_model_params()
+  params_near$H1_Lookup$mu_score <- 4.5   # observed query logit ~2.94; anchor at 4.5-3.0=1.5
+  params_far  <- .make_model_params()
+  params_far$H1_Lookup$mu_score  <- 8.0   # same delta shifts anchor to 8.0-3.0=5.0, farther from 2.94
+
+  out_near <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params_near, c("family", "genus", "species"), ratio_threshold = 0
+  )
+  out_far <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params_far, c("family", "genus", "species"), ratio_threshold = 0
+  )
+
+  h2_near <- out_near$score_likelihood[out_near$hypothesis_type == "unreferenced_species"]
+  h2_far  <- out_far$score_likelihood[out_far$hypothesis_type == "unreferenced_species"]
+  # Both scenarios share the identical H1_Global_Mu -- a difference here can
+  # only come from anchoring on the (deliberately varied) species mean.
+  expect_false(isTRUE(all.equal(h2_near, h2_far)))
+  expect_gt(h2_near, h2_far)
 })

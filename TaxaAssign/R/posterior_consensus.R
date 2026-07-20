@@ -112,7 +112,6 @@
 #'   consensus taxon. If exactly one, it downranks (recursively — e.g. family
 #'   to unique genus to unique species in one pass). Stops at any rank with
 #'   more than one option. Default `NULL` (no downranking).
-#'
 #' @details
 #' \strong{Threshold interaction:}
 #' \code{min_posterior} and \code{cumulative_threshold} work together:
@@ -230,6 +229,17 @@
 #'       genuinely evidence-resolved species call, not to flag it as an
 #'       error. `NA` when `winner_hypothesis_type` is `NA`; `FALSE`
 #'       otherwise.}
+#'     \item{`winner_absolute_fit_pvalue`}{Numeric. The winning hypothesis's
+#'       own one-sided absolute-fit p-value, passed through unchanged from
+#'       `TaxaLikely::evaluate_likelihoods()` -- answers "is this call's own
+#'       fit believable in absolute terms," independent of how it compared to
+#'       competing hypotheses. `NA` when `absolute_fit_pvalue` is absent from
+#'       `posterior_df` (e.g. any upstream call that predates that column, or
+#'       `assign_taxa_llm()` input) or when `consensus_taxon` is `NA`. Never
+#'       changes `consensus_taxon`/`consensus_rank` itself -- a downstream
+#'       consumer wanting to flag a weak-fit winner should read this column
+#'       directly (see `TaxaFlag::add_posthoc_assessment()`'s
+#'       `"unsupported_rank"` category).}
 #'   }
 #'
 #' @seealso [assign_taxa_llm()], [compute_posterior()],
@@ -452,6 +462,17 @@ posterior_consensus <- function(posterior_df,
   winner_likelihood     <- if ("score_likelihood"     %in% names(winner_row)) winner_row$score_likelihood[[1L]]     else NA_real_
   winner_likelihood_cov <- if ("score_likelihood_cov" %in% names(winner_row)) winner_row$score_likelihood_cov[[1L]] else NA_real_
 
+  # Absolute-fit pass-through (TaxaLikely::evaluate_likelihoods()'s absolute,
+  # not relative, goodness-of-fit test on the winning hypothesis). Optional
+  # upstream output -- NA when absent, e.g. any call predating that column
+  # or assign_taxa_llm() input, exactly like the columns above. A downstream
+  # consumer wanting to flag a weak-fit winner reads this directly (see
+  # TaxaFlag::add_posthoc_assessment()'s "unsupported_rank" category) --
+  # this column is purely informational and never changes consensus_taxon/
+  # consensus_rank here.
+  winner_absolute_fit_pvalue <- if ("absolute_fit_pvalue" %in% names(winner_row))
+    winner_row$absolute_fit_pvalue[[1L]] else NA_real_
+
   # winner_rank_expanded (Session 149): TRUE when the winning hypothesis came
   # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
   # i.e. every expanded candidate for that coarse-rank identification shares
@@ -468,7 +489,8 @@ posterior_consensus <- function(posterior_df,
     else identical(winner_hypothesis_type, "rank_expanded")
 
   # LCA among plausible hypotheses
-  lca         <- .find_lca(plausible, rank_system)
+  lca <- .find_lca(plausible, rank_system)
+
   finest_rank <- rank_system[length(rank_system)]
   is_resolved <- !is.na(lca$rank) && lca$rank == finest_rank
   consensus_reason <- lca$consensus_reason
@@ -519,6 +541,7 @@ posterior_consensus <- function(posterior_df,
     winner_likelihood_cov      = winner_likelihood_cov,
     winner_hypothesis_type     = winner_hypothesis_type,
     winner_rank_expanded       = winner_rank_expanded,
+    winner_absolute_fit_pvalue = winner_absolute_fit_pvalue,
     plausible_taxa       = I(list(plausible$taxon_name)),
     plausible_posteriors = I(list(stats::setNames(
       plausible[[posterior_col]], plausible$taxon_name
@@ -652,6 +675,7 @@ posterior_consensus <- function(posterior_df,
     winner_likelihood_cov      = NA_real_,
     winner_hypothesis_type     = NA_character_,
     winner_rank_expanded       = NA,
+    winner_absolute_fit_pvalue = NA_real_,
     plausible_taxa       = I(list(character(0))),
     plausible_posteriors = I(list(stats::setNames(numeric(0), character(0)))),
     stringsAsFactors     = FALSE

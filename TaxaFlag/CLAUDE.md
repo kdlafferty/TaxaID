@@ -1,6 +1,79 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-11 (Session 152 -- flag_contaminant()'s shrinkage denominator
+# Last updated: 2026-07-20 (Sonnet 5 -- add_posthoc_assessment()'s "unsupported_rank"
+# category (added the day before, see the Session 2026-07-19 note directly below)
+# redesigned: `trusted_rank_col` (default `"winner_trusted_rank"`, comparing rank ORDER
+# against `consensus_rank_col`) replaced by `absolute_fit_pvalue_col` (default
+# `"winner_absolute_fit_pvalue"`) + a new `weak_evidence_pvalue` threshold (default
+# `0.001`), comparing the p-value DIRECTLY rather than going through a rank comparison at
+# all. Same trigger position (Step 4, still overrides any of the 3x2-table categories
+# including "sensible"), same category name, much simpler logic -- no `.std_rank_order`
+# constant needed anymore (deleted). Prompted by the user pressure-testing yesterday's
+# `winner_trusted_rank`/`uprank_trust_pvalue` mechanism against their own real 12S run:
+# a live diagnostic confirmed `winner_trusted_rank` was computed upstream
+# (`TaxaLikely::evaluate_likelihoods()`) for that FUNCTION's own top-LIKELIHOOD
+# hypothesis, not necessarily the same hypothesis that wins the POSTERIOR reported by
+# `TaxaAssign::posterior_consensus()` here -- a confirmed ~30% mismatch on real data,
+# meaning `"unsupported_rank"` could fire (or fail to fire) based on the wrong
+# candidate's fit. `winner_absolute_fit_pvalue` doesn't have this problem: it is always
+# read directly off whichever row `posterior_consensus()` itself treated as the winner,
+# with no intermediate ladder-walk to go stale. `TaxaLikely::evaluate_likelihoods()`'s
+# entire `min_rank_trust_pvalue`/`trusted_rank`/`rank_trust_basis` mechanism was removed
+# the same day (see `TaxaLikely/CLAUDE.md`'s own top note) -- `absolute_fit_pvalue`
+# itself is unchanged and still computed unconditionally, only the ladder-walk built on
+# top of it is gone. Before implementing, independently re-confirmed
+# `absolute_fit_pvalue`'s one-sided design is safe for perfect/near-ceiling matches
+# (never penalizes a score better than the trained mean) -- directly answering the
+# user's own question about whether this substitution could misfire on exactly the
+# cases it's meant to catch. `devtools::test()` 208/208 (0 failures), `devtools::check()`
+# clean except the pre-existing, unrelated `build_review_covariates.R`
+# warning/note (confirmed via a fresh `check()` mentioning neither
+# `add_posthoc_assessment` nor this file). Reinstalled to `~/Library/R/4.0/library`.
+# See [[project_job2_unreferenced_relatives]] in the TaxaID memory system for the full
+# investigation record.
+# Previous update, 2026-07-19 (Sonnet 5 -- add_posthoc_assessment() gains a new
+# "unsupported_rank" category (Step 4, overrides any of the existing 3x2-table
+# categories including "sensible") + new trusted_rank_col param (default
+# "winner_trusted_rank", silently skipped when absent from consensus_df -- optional
+# upstream output, not required input). Consumes TaxaAssign::posterior_consensus()'s new
+# winner_trusted_rank pass-through (see TaxaAssign/CLAUDE.md), itself sourced from
+# TaxaLikely::evaluate_likelihoods()'s new rank-trust mechanism (TaxaLikely/CLAUDE.md).
+# Real motivation, not hypothetical: winner_likelihood_col is ratio-normalised WITHIN one
+# observation (best hypothesis always exactly 1.0 by construction) -- it can read as
+# strong evidence even when every candidate fit poorly in absolute terms, simply because
+# nothing competitive existed to normalise against (the real motivating case: a
+# contamination-pattern detection where every specific candidate species scores poorly
+# in absolute terms but the weakest-of-a-bad-lot still "wins" the relative comparison
+# outright, landing "sensible" under the old 3x2 logic alone if its prior tier happened
+# to be favorable). trusted_rank_col answers a genuinely different, absolute question
+# (does this call's own fit to its trained distribution actually hold up at the rank
+# being reported), and a mismatch overrides whatever the tier x likelihood table said.
+# Purely informational/additive -- never changes consensus_taxon/consensus_rank itself
+# (that's TaxaAssign::posterior_consensus()'s own separate, opt-in uprank_trust_pvalue
+# mechanism); backward compatible, zero behavior change for any consensus_df lacking the
+# new column. REAL BUG found and fixed the same session via a full real 13,442-observation
+# PtConception run (not caught by synthetic tests, which all used same-rank-family
+# fixtures): the first version used plain string inequality (trusted != consensus_rank),
+# which flagged 4,776 real rows -- but 48% (2,275) had trusted_rank FINER than
+# consensus_rank, meaning disagreement-based LCA logic had already coarsened the call
+# beyond what absolute fit alone requires (not "unsupported" at all, if anything more
+# conservative than necessary). Fixed with a new .std_rank_order canonical coarse-to-fine
+# constant (mirrors evaluate_likelihoods()'s own auto-detection list) so the mismatch only
+# fires when trusted_rank is COARSER than consensus_rank; corrected real count: 2,501/
+# 13,442 (18.6%). New regression test reproduces the exact real failure mode. 9 new tests
+# total in test-add_posthoc_assessment.R (42 total). devtools::test() 206/206 (0 failures,
+# up from 197), devtools::check(): 1 pre-existing warning + 1 pre-existing note in an
+# unrelated file (build_review_covariates.R, last touched 2026-07-14, not part of this
+# change) -- confirmed via git diff this session touched only add_posthoc_assessment.R/
+# .Rd/its test file. Reinstalled to ~/Library/R/4.0/library. Wired into
+# PtConceptionWorkflow_12S_single_site.R's add_posthoc_assessment() call
+# (trusted_rank_col = "winner_trusted_rank"). See TaxaAssign/CLAUDE.md's and
+# TaxaLikely/CLAUDE.md's own session notes for the paired posterior_consensus()
+# uprank_trust_pvalue wiring and the full real-data validation record, including the real
+# problem this combination caught: 8 real observations confidently called
+# Urocyon cinereoargenteus/Canis lupaster (terrestrial canids) at species level in this
+# marine 12S survey, absolute_fit_pvalue ~ 0.002-0.004.
+# Previous update, 2026-07-11 (Session 152 -- flag_contaminant()'s shrinkage denominator
 # changed from SAMPLE count to READ count (n_reads_total = taxon_field_reads +
 # taxon_control_reads, replacing n_field_present + n_controls_present), and
 # prior_weight's default changed 2 -> 20 to match the new read-equivalent units.
@@ -189,7 +262,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
 | `.recover_truncated_json()` | `R/review_assignments.R` | Written | Internal: salvage complete JSON objects from truncated LLM response |
 
-| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Eight categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`, and (Session 149) `"domestic_prior_caveat"` -- a strong-likelihood call to a user-specified `domestic_taxa` name that landed in tier2/tier3 purely from GBIF/iNat's under-indexing of captive organisms, not genuine rarity. Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. `domestic_taxa = NULL` (default, feature off) / `domestic_prior_source = "wild"` (default) vs `"augmented"` (opt-out when priors already account for domestic species). |
+| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Nine categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`, (Session 149) `"domestic_prior_caveat"` -- a strong-likelihood call to a user-specified `domestic_taxa` name that landed in tier2/tier3 purely from GBIF/iNat's under-indexing of captive organisms, not genuine rarity -- and `"unsupported_rank"` -- overrides ANY of the above (including `"sensible"`) when the winning hypothesis's own absolute fit is weak, catching a case `winner_likelihood`'s ratio-normalization structurally cannot see: a weak match winning "cleanly" only because nothing competitive existed to compare it against. **2026-07-20**: driven by `absolute_fit_pvalue_col` (default `"winner_absolute_fit_pvalue"`) below `weak_evidence_pvalue` (default `0.001`) -- a direct threshold check, no rank comparison. Replaces the 2026-07-19 `trusted_rank_col`/rank-order-comparison design, removed the same day it shipped after being found unreliable on real data (see this file's top session note). Silently skipped when `absolute_fit_pvalue_col` absent (optional upstream output). Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. `domestic_taxa = NULL` (default, feature off) / `domestic_prior_source = "wild"` (default) vs `"augmented"` (opt-out when priors already account for domestic species). |
 
 **Dropped (Session 62):** `flag_allochthonous()` and `flag_taxonomic_scope()` -- absorbed
 into `review_assignments()`. One LLM call covers habitat, geography, scope, contaminant
@@ -332,7 +405,7 @@ found yet, which is the only thing keeping this from being worse").
 | test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
 | test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
 | test-report_flags.R | `report_flags()` | Fully offline |
-| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 33 tests; covers all 8 categories (incl. Session 149's `domestic_prior_caveat`), tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank) |
+| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 44 tests; covers all 9 categories (incl. Session 149's `domestic_prior_caveat` and `unsupported_rank`, redesigned 2026-07-20 around `absolute_fit_pvalue_col`/`weak_evidence_pvalue`), tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank) |
 
 ---
 

@@ -48,7 +48,7 @@
 #' are, but they do not capture *how much* of each observation contributed to
 #' that score.  A 99% DNA identity computed from a 50 bp fragment of a 600 bp
 #' barcode is far less reliable than the same identity computed from a 580 bp
-#' overlap — yet both produce the same `p_match` value.  Similarly, a high
+#' overlap -- yet both produce the same `p_match` value.  Similarly, a high
 #' BirdNET confidence from a rain-soaked recording of a distant bird carries
 #' less information than the same score from a quiet, close-range recording.
 #'
@@ -69,8 +69,8 @@
 #'     relative to the unfiltered dataset.  Analogous to sensitivity in ROC
 #'     analysis.}
 #'   \item{`h2_retention`}{Fraction of cross-species (H2/H3) pairs retained.
-#'     Analogous to (1 − specificity).}
-#'   \item{`youden_j`}{Youden's J statistic: `h1_retention − h2_retention`.
+#'     Analogous to (1 - specificity).}
+#'   \item{`youden_j`}{Youden's J statistic: `h1_retention - h2_retention`.
 #'     Bounded from -1 to 1; equals 0 at the no-filter baseline and is
 #'     maximised at the Pareto-optimal threshold.  Treats H1 retention and
 #'     H2/H3 exclusion symmetrically and has no divide-by-zero edge case.
@@ -86,13 +86,13 @@
 #'
 #' @section Acoustic data note:
 #' Xeno-canto quality grades are properties of the *recording*, not the
-#' individual detection pair.  Every pair produced from the same recording —
-#' both H1 and H2/H3 — carries the same `coverage` value.  Filtering by
+#' individual detection pair.  Every pair produced from the same recording --
+#' both H1 and H2/H3 -- carries the same `coverage` value.  Filtering by
 #' coverage therefore removes entire recordings and excludes H1 and H2/H3
 #' pairs in equal proportion.  For acoustic reference data, `youden_j` and
 #' `discrimination` will be near-flat across thresholds.  Use `breadth` and
 #' `mean_h1_score` as the primary guides to decide which quality grades to
-#' include.  The function detects categorical coverage (≤ 10 unique values)
+#' include.  The function detects categorical coverage (<= 10 unique values)
 #' and emits a message in this case.
 #'
 #' @param ref_pairs Data frame.  Output of [build_sequence_matrix()].  Must
@@ -115,7 +115,7 @@
 #'     \item{`h2_pairs`}{Count of H2/H3 pairs retained at this threshold.}
 #'     \item{`h1_retention`}{`h1_pairs / total_h1_unfiltered`, range 0 to 1.}
 #'     \item{`h2_retention`}{`h2_pairs / total_h2_unfiltered`, range 0 to 1.}
-#'     \item{`youden_j`}{`h1_retention − h2_retention`.  Maximised at the
+#'     \item{`youden_j`}{`h1_retention - h2_retention`.  Maximised at the
 #'       Pareto-optimal threshold.  `NA` when H1/H2 classification is
 #'       unavailable.}
 #'     \item{`discrimination`}{`h1_retention / max(h2_retention, 1e-9)`.
@@ -208,7 +208,7 @@ calibrate_coverage_filter <- function(ref_pairs,
   n_queries_total <- length(unique(ref_pairs$id_x))
   cov_known       <- !is.na(ref_pairs$coverage)
 
-  total_h1 <- if (h1_available) sum( is_h1 & cov_known) else NA_integer_
+  total_h1 <- if (h1_available) sum(is_h1 & cov_known) else NA_integer_
   total_h2 <- if (h1_available) sum(!is_h1 & cov_known) else NA_integer_
 
   # ---- categorical coverage detection ----------------------------------------
@@ -276,36 +276,36 @@ calibrate_coverage_filter <- function(ref_pairs,
 
 #' Select a coverage threshold by target retention quantile
 #'
-#' Returns the `coverage` value at the `(1 − keep_frac)` quantile of the
-#' pairwise reference dataset — the minimum coverage that retains approximately
+#' Returns the `coverage` value at the `(1 - keep_frac)` quantile of the
+#' pairwise reference dataset -- the minimum coverage that retains approximately
 #' `keep_frac` of pairs.  Provides a fast, data-driven starting point for
 #' coverage filtering when a full sweep via [calibrate_coverage_filter()] is
 #' not needed.
 #'
 #' @section Method:
-#' Setting `keep_frac = 0.95` computes `quantile(coverage, 0.05)` — the 5th
-#' percentile of the coverage distribution — as the filter threshold.  Pairs
+#' Setting `keep_frac = 0.95` computes `quantile(coverage, 0.05)` -- the 5th
+#' percentile of the coverage distribution -- as the filter threshold.  Pairs
 #' at or above this value are retained, discarding the bottom 5% by coverage.
 #'
 #' @section Categorical coverage:
 #' When `coverage` takes ten or fewer unique values (e.g., the five Xeno-canto
-#' quality grade levels A → 1.0, B → 0.8, C → 0.5, D → 0.3, E → 0.1), the
+#' quality grade levels A -> 1.0, B -> 0.8, C -> 0.5, D -> 0.3, E -> 0.1), the
 #' exact quantile rarely falls on an actual grade boundary.  The function snaps
 #' to the nearest unique value and emits a message reporting the achieved
 #' retention fraction so the caller can assess the approximation.
 #'
 #' @section Relationship to `calibrate_coverage_filter()`:
 #' `coverage_threshold()` is a one-liner convenience wrapper that ignores H1/H2
-#' structure.  When H1-based Pareto optimality matters — as it does for DNA
+#' structure.  When H1-based Pareto optimality matters -- as it does for DNA
 #' reference libraries where within-species pairs tend to have higher alignment
-#' coverage than cross-species pairs — prefer [calibrate_coverage_filter()] and
+#' coverage than cross-species pairs -- prefer [calibrate_coverage_filter()] and
 #' select the threshold that maximises `youden_j`.
 #'
 #' @param ref_pairs Data frame.  Output of [build_sequence_matrix()].  Must
 #'   contain a `coverage` column.
 #' @param keep_frac Numeric scalar in (0, 1).  Target fraction of pairs to
 #'   retain (default `0.95`).  The threshold is set at the
-#'   `(1 − keep_frac)` quantile so that approximately `keep_frac` of pairs
+#'   `(1 - keep_frac)` quantile so that approximately `keep_frac` of pairs
 #'   have `coverage >= threshold`.
 #'
 #' @return A single numeric value: the coverage threshold.  Pairs at or above

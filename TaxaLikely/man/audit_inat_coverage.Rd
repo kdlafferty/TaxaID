@@ -57,7 +57,7 @@ For each species in \code{species_list}, queries the iNaturalist taxa API
 to retrieve the global observation count and determine whether the species
 is likely present in iNaturalist's computer vision (CV) training data.
 Species with fewer than \code{cv_threshold} observations are treated as
-\strong{unreferenced} for the image classification pathway — they can never
+\strong{unreferenced} for the image classification pathway -- they can never
 appear as CV candidates and must be handled as undetected taxa in
 \code{TaxaAssign::join_priors()}.
 }
@@ -82,6 +82,13 @@ butterflies almost always exceed it.
 \strong{Backbone note:} iNaturalist uses its own taxonomy; matched names
 may differ from GBIF. After retrieving results, run
 \code{TaxaMatch::convert_taxonomy_backbone()} if you need GBIF-aligned names.
+}
+\examples{
+\dontrun{
+cov <- audit_inat_coverage(c("Calidris mauri", "Limosa fedoa"))
+cov$census
+cov$unreferenced
+}
 }
 \seealso{
 \code{\link{audit_barcode_coverage}},

@@ -31,7 +31,7 @@ utils::globalVariables(c(
 #'   (e.g., `c("family", "genus", "species")`). Default `NULL`
 #'   auto-detects from columns in `reference_df`.
 #' @param max_dist Numeric (default `0.25`).  Pairs with distance above this
-#'   threshold are dropped to save memory.  Roughly, 0.25 ≈ 75% identity.
+#'   threshold are dropped to save memory.  Roughly, 0.25 ~= 75% identity.
 #'   The 75% identity threshold is a standard floor for retaining distantly
 #'   related taxa in barcode reference databases.
 #' @param min_seq_len Integer (default `100`).  Sequences shorter than this
@@ -69,7 +69,7 @@ utils::globalVariables(c(
 #' @param filter_unnamed Logical (default `TRUE`).  If `TRUE`, sequences whose
 #'   finest-rank taxonomy column (the last element of `rank_system`, typically
 #'   `species`) is blank (`""`) or `NA` are removed before alignment.  Blank
-#'   names produce spurious within-species pairs — two unidentified sequences
+#'   names produce spurious within-species pairs -- two unidentified sequences
 #'   both labelled `""` are classified as conspecific even though they may
 #'   represent entirely different taxa.  In a broad 18S reference database this
 #'   can account for the majority of apparent within-species pairs.  Set to
@@ -80,7 +80,7 @@ utils::globalVariables(c(
 #'   `set.seed()` before calling for reproducibility).  This prevents
 #'   heavily-sequenced model organisms or domestic species from dominating
 #'   the within-species distribution and thereby distorting model training.
-#'   For typical vertebrate barcode databases a value of `10L`–`20L` is
+#'   For typical vertebrate barcode databases a value of `10L`-`20L` is
 #'   sufficient; the resulting within-species pair counts per taxon are at most
 #'   `max_seqs_per_taxon * (max_seqs_per_taxon - 1) / 2`.  `NULL` disables
 #'   the cap (current behaviour).
@@ -88,7 +88,7 @@ utils::globalVariables(c(
 #' @return A data frame with one row per sequence pair within `max_dist`:
 #'   \describe{
 #'     \item{`id_x`, `id_y`}{`composite_id` values for each pair member.}
-#'     \item{`p_match`}{Match score (1 − distance), range (0, 1].}
+#'     \item{`p_match`}{Match score (1 - distance), range (0, 1].}
 #'     \item{`coverage`}{Alignment coverage: number of positions where both
 #'       sequences contribute a non-gap character, divided by the shorter
 #'       unaligned sequence length.  Range (0, 1].  Values near 1.0 indicate
@@ -129,12 +129,17 @@ build_sequence_matrix <- function(reference_df,
       min_seq_len <- len_bounds[["min_bp"]]
       max_seq_len <- len_bounds[["max_bp"]]
       message(sprintf(
-        "build_sequence_matrix: barcode_term '%s' resolved to length range [%d, %d] bp (TaxaTools::resolve_barcode_lengths()); pass min_seq_len/max_seq_len explicitly to override.",
+        paste0("build_sequence_matrix: barcode_term '%s' resolved to length range [%d, %d] bp ",
+               "(TaxaTools::resolve_barcode_lengths()); pass min_seq_len/max_seq_len explicitly ",
+               "to override."),
         paste(barcode_term, collapse = "/"), min_seq_len, max_seq_len
       ))
     } else {
       message(sprintf(
-        "build_sequence_matrix: barcode_term supplied but min_seq_len/max_seq_len were also set explicitly -- using [%d, %d] as given, NOT barcode_term's resolved range. This does not guarantee every retained sequence covers the same amplicon window.",
+        paste0("build_sequence_matrix: barcode_term supplied but min_seq_len/max_seq_len were ",
+               "also set explicitly -- using [%d, %d] as given, NOT barcode_term's resolved ",
+               "range. This does not guarantee every retained sequence covers the same amplicon ",
+               "window."),
         min_seq_len, max_seq_len
       ))
     }
@@ -196,7 +201,7 @@ build_sequence_matrix <- function(reference_df,
 
   # ---- 1b. IUPAC DNA FILTER --------------------------------------------------
   # Biostrings::DNAStringSet() throws a cryptic lookup-table error if a sequence
-  # contains non-IUPAC-DNA characters (e.g., 'E', 'F', 'I', 'L' — amino acid
+  # contains non-IUPAC-DNA characters (e.g., 'E', 'F', 'I', 'L' -- amino acid
   # codes returned when an accession resolves to a protein record or a corrupt
   # NCBI entry).  Filter these out with a clear message before hitting Biostrings.
   valid_iupac <- "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn-]+$"
@@ -205,7 +210,8 @@ build_sequence_matrix <- function(reference_df,
   if (n_invalid > 0L) {
     bad_ids <- head(df$composite_id[!is_valid], 5L)
     warning(sprintf(
-      "build_sequence_matrix: removed %d sequence(s) with non-IUPAC DNA characters %s(likely protein accessions or corrupt records).",
+      paste0("build_sequence_matrix: removed %d sequence(s) with non-IUPAC DNA characters %s",
+             "(likely protein accessions or corrupt records)."),
       n_invalid,
       sprintf("(e.g. %s) ", paste(bad_ids, collapse = ", "))
     ), call. = FALSE)
@@ -300,15 +306,15 @@ build_sequence_matrix <- function(reference_df,
 
   message(sprintf("Distance matrix complete (%.1fs)", proc.time()[["elapsed"]] - t1))
 
-  # Sparse extraction: only materialise pairs within max_dist (avoids N² intermediate)
+  # Sparse extraction: only materialise pairs within max_dist (avoids an N^2 intermediate)
   idx <- which(dist_m < max_dist & row(dist_m) != col(dist_m), arr.ind = TRUE)
 
   # ---- 3b. PAIRWISE ALIGNMENT COVERAGE ---------------------------------------
   # Coverage = number of positions where both sequences contribute a non-gap
   # character, divided by the shorter unaligned sequence length.  A score
   # computed over a short overlap is unreliable even when the matched bases are
-  # identical.  Pre-computing per-sequence gap masks (O(n × aln_width)) and
-  # looking up per sparse pair (O(pairs × aln_width)) is cheaper than
+  # identical.  Pre-computing per-sequence gap masks (O(n * aln_width)) and
+  # looking up per sparse pair (O(pairs * aln_width)) is cheaper than
   # re-parsing the alignment string for every pair individually.
   aln_str     <- as.character(aligned)     # named char vec of aligned sequences
   gap_masks   <- lapply(

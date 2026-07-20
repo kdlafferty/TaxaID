@@ -76,7 +76,7 @@ result <- evaluate_likelihoods(match_df, model)
 likelihoods <- result$likelihoods
 # Columns: observation_id, taxon_name, hypothesis_type,
 #           score_likelihood, score_likelihood_mean, score_likelihood_sd,
-#           score_likelihood_cov
+#           score_likelihood_cov, score_likelihood_evidence, h2_delta_source
 ```
 
 ## Loading Pre-built Reference Databases
@@ -290,7 +290,10 @@ matrix via DECIPHER; required for `flag_reference_errors()` and
 `train_likelihood_model()` - `flag_reference_errors()` -- detect mislabeled
 references - `train_likelihood_model()` -- fit hierarchical Bayesian model
 
-**Inference:** - `evaluate_likelihoods()` -- convert match scores to
+**Inference:** - `calibrate_query_noise()` -- correct H1's mean for
+query-vs-reference technical noise invisible to reference-vs-reference
+training pairs; optional `evidence_col` also establishes a baseline for
+`evaluate_likelihoods(evidence_col=)`'s gated sigma rescale - `evaluate_likelihoods()` -- convert match scores to
 likelihoods using a trained model - `filter_top_hypotheses()` -- keep
 finest-rank candidates per query - `unreferenced_candidates()` -- expand
 a consensus assignment with H2/H3 placeholder rows (no model required;
@@ -428,13 +431,27 @@ thresh <- coverage_threshold(ref_acoustic, keep_frac = 0.80)
 ## Statistical Design
 
 TaxaLikely models the joint distribution of two features -- the
-logit-transformed match score (absolute fit) and the gap to the best
+transformed match score (absolute fit) and the gap to the best
 alternative (relative uniqueness) -- as a bivariate normal for each
 hypothesis type:
 
--   **Score + gap features:** Raw scores are logit-transformed to an
-    unbounded domain; the gap is computed in logit space so that
-    differences near 100% are amplified appropriately
+-   **Score + gap features:** Raw scores are transformed to an
+    unbounded (or near-unbounded) domain; the gap is computed on the
+    same scale so that differences near 100% are amplified appropriately
+-   **Transform choice (`score_transform`):** `"logit"` (default,
+    `ln(p/(1-p))`) or `"sqrt_mismatch"` (`-sqrt(1-p)`, Anscombe's classical
+    rare-event-count variance stabilizer, applied to the match
+    *mismatch*). Logit's derivative diverges fastest exactly where real
+    barcode matches concentrate (near 100% identity), which was found to
+    reverse the sign of genus-tightness comparisons for the H2/H3
+    unreferenced-relative hypotheses below -- confirmed on real 12S congener
+    data (Pearson r = +0.465 under logit vs. the correct r = -0.55 on the raw
+    proportion scale). `sqrt_mismatch` recovers the correct direction
+    (r = -0.235) and is opt-in; H1/H2/H3 always share one transform (mixing
+    them would require an explicit change-of-variables correction that is
+    not implemented). See
+    [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md)
+    Section 3A-i for the full derivation and validation.
 -   **Bivariate normal likelihood:** The joint (score, gap) density
     captures interactions -- a small gap is more tolerable when the
     score is very high
@@ -470,13 +487,47 @@ hypothesis type:
 -   **H2/H3 offset distributions:** Unreferenced species and genus
     hypotheses use the H1 distribution shifted left by learned delta
     offsets, estimated from cross-species match scores in training
-    data
+    data. The mean anchors on the specific best-matching referenced
+    species' own resolved mean (not just the population-wide average), and
+    where a genus has a real congener pair, `H2_Lookup` supplies a
+    genus-specific delta and variance shrunk toward the pooled default,
+    rather than every genus sharing one pooled offset and width regardless
+    of how tightly or loosely its species cluster. `evaluate_likelihoods()`
+    marks each H2/H3 row with `h2_delta_source` (`"genus_specific"` or
+    `"global_fallback"`) so a row using the cruder pooled approximation can
+    be identified.
 -   **Perfect-match anchoring:** Synthetic 100% match pseudo-data
     prevent the "perfection penalty" where the Gaussian density peaks
     below 100%
--   **Monte Carlo uncertainty:** Score perturbation across simulations
-    yields `score_likelihood_mean` and `score_likelihood_sd`, measuring sensitivity
-    to measurement noise
+-   **Query-vs-reference noise calibration (`calibrate_query_noise()`):**
+    `train_likelihood_model()` estimates H1 entirely from reference-vs-reference
+    pairs (two clean, curated database accessions compared to each other),
+    which carries none of the technical noise (PCR/sequencing/degradation/
+    ASV-inference) a real query picks up -- so a genuinely correct match
+    routinely scores below the trained H1 mean and loses to the unreferenced
+    hypotheses. `calibrate_query_noise()` estimates one marker-wide additive
+    offset from observations whose species can be identified with high
+    confidence from independent occurrence-prior data (non-circular, since it
+    never touches the match scores or likelihood model being calibrated) and
+    shifts `H1_Global_Mu`/`H1_Lookup$mu_score` uniformly; H2/H3 move
+    automatically since their means are defined relative to H1's. This offset
+    does **not** transfer between markers or datasets and must be
+    re-estimated for each. An optional `evidence_col` (e.g. real per-observation
+    DNA read depth) additionally establishes a baseline that
+    `evaluate_likelihoods(evidence_col=)` uses to selectively widen H1 sigma
+    for lower-evidence observations, via a closed-form crossover gate (only
+    applied when doing so is provably non-decreasing for that candidate's
+    density) rather than an unconditional rescale.
+-   **Monte Carlo uncertainty:** Each candidate's *trained mean* (not the
+    query's own fixed, already-known observed score) is perturbed across
+    simulations by its shrinkage-consistent estimation uncertainty
+    (`Var(mu) ~= w^2 * sigma^2 / N`, using the same Empirical Bayes weight
+    `w` as the point estimate), and the query's real observed point is
+    re-evaluated against each draw. This yields `score_likelihood_mean` and
+    `score_likelihood_sd`, measuring how confidently the candidate's own
+    parameters are known -- H2/H3, which borrow a shifted mean rather than
+    observing their own species directly, correctly come out wider than a
+    well-referenced H1 candidate.
 -   **Alignment coverage filter (optional):** A `min_coverage` threshold
     can be passed to `evaluate_likelihoods()` to drop low-coverage candidates
     before scoring.  Use `calibrate_coverage_filter()` on the training matrix

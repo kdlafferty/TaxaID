@@ -2,7 +2,6 @@
 % Please edit documentation in R/coverage.R
 \name{audit_barcode_coverage}
 \alias{audit_barcode_coverage}
-\alias{audit_barcode_coverage_ncbi}
 \title{Identify unreferenced species for barcode-based taxonomic assignment}
 \usage{
 audit_barcode_coverage(
@@ -17,19 +16,6 @@ audit_barcode_coverage(
   ncbi_api_key = NULL,
   max_nuccore = 5000L,
   exclude_predicted = TRUE
-)
-
-audit_barcode_coverage_ncbi(
-  match_df,
-  barcode_term,
-  species_list = NULL,
-  min_len = NULL,
-  max_len = NULL,
-  max_date = NULL,
-  target_rank = "genus",
-  cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
-  ncbi_api_key = NULL,
-  max_nuccore = 5000L
 )
 }
 \arguments{
@@ -90,7 +76,7 @@ predicted sequences (NCBI title prefix \code{"PREDICTED:"}, typically
 \code{XR_} and \code{XM_} RefSeq accessions) are excluded from the barcode
 check.  Predicted sequences are absent from curated databases (SILVA, PR2,
 MIDORI) used by metabarcoding labs and do not represent experimentally
-validated barcodes — counting them inflates \code{has_seqs_not_in_ref} and
+validated barcodes -- counting them inflates \code{has_seqs_not_in_ref} and
 incorrectly suppresses unreferenced-species hypotheses for those taxa.
 Set \code{FALSE} only if you explicitly need to count predicted sequences.
 Mirrors the \code{blacklist_regex = "predicted"} default in

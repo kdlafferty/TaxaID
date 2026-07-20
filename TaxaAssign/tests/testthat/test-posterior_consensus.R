@@ -434,6 +434,58 @@ test_that("winner columns are NA_real_ in empty consensus rows", {
   expect_true(is.na(out$winner_likelihood_cov))
 })
 
+
+# ==============================================================================
+# winner_absolute_fit_pvalue
+# ==============================================================================
+# Removed 2026-07-19: winner_trusted_rank/winner_rank_trust_basis and the
+# uprank_trust_pvalue mechanism that consumed them. trusted_rank was computed
+# upstream (TaxaLikely::evaluate_likelihoods()) for the top-LIKELIHOOD
+# hypothesis, which is not always the same hypothesis that wins the
+# POSTERIOR here once priors are applied -- a real, confirmed-on-real-data
+# mismatch (~30% of cases on a real 12S dataset) that made uprank_trust_pvalue
+# unreliable in practice, compounded by a separate interaction where
+# species_reference's own downranking step could silently reverse an
+# upranking that DID fire correctly. winner_absolute_fit_pvalue does not have
+# either problem (it is always the actual posterior winner's own value) and
+# is simpler for a downstream consumer to use directly -- see
+# TaxaFlag::add_posthoc_assessment()'s "unsupported_rank" category and
+# [[project_job2_unreferenced_relatives]] in the TaxaID memory system for the
+# full investigation.
+
+test_that("winner_absolute_fit_pvalue present and NA when source column absent", {
+  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
+                        "specific_candidate", 0.9)
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  expect_true("winner_absolute_fit_pvalue" %in% names(out))
+  expect_true(is.na(out$winner_absolute_fit_pvalue))
+  expect_false("winner_trusted_rank" %in% names(out))
+  expect_false("winner_rank_trust_basis" %in% names(out))
+})
+
+test_that("winner_absolute_fit_pvalue carries through unchanged from source, never changes consensus_taxon/consensus_rank", {
+  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
+                        "specific_candidate", 0.9,
+                        genus = "Fundulus", family = "Fundulidae")
+  df$absolute_fit_pvalue <- 0.00001   # a terrible absolute fit
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_equal(out$winner_absolute_fit_pvalue, 0.00001)
+  # Purely informational -- consensus is unaffected regardless of how poor
+  # the winner's own absolute fit is.
+  expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
+  expect_equal(out$consensus_rank,  "species")
+})
+
+test_that("posterior_consensus() no longer accepts uprank_trust_pvalue", {
+  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
+                        "specific_candidate", 0.9)
+  expect_error(
+    posterior_consensus(df, rank_system = c("genus", "species"),
+                         uprank_trust_pvalue = 0.001),
+    "unused argument"
+  )
+})
+
 # ==============================================================================
 # winner_hypothesis_type / winner_rank_expanded (Session 149)
 # ==============================================================================

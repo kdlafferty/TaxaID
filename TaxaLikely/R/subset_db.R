@@ -300,7 +300,7 @@ subset_local_database <- function(fasta_path,
   result    <- merge(seq_df, sub_tax[, keep_cols, drop = FALSE],
                      by = "composite_id", all.x = TRUE, sort = FALSE)
 
-  # Canonical column order: composite_id, ranks (coarse→fine), sequence
+  # Canonical column order: composite_id, ranks (coarse->fine), sequence
   col_order <- c("composite_id", rank_cols, "sequence")
   result    <- result[, col_order[col_order %in% names(result)], drop = FALSE]
   row.names(result) <- NULL

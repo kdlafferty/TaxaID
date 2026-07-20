@@ -111,6 +111,16 @@ A data frame with one row per query x hit, containing:
 \item{alignment_length}{Alignment length}
 \item{query_coverage}{Percent of query aligned}
 \item{subject_length}{Subject sequence length}
+\item{subject_start, subject_end}{Where within the subject/reference
+sequence this hit's alignment falls (1-based, BLAST tabular
+convention -- \code{subject_start > subject_end} on the minus
+strand; use \code{pmin()}/\code{pmax()} for a directionless span).
+Distinct from \code{subject_length} (the reference's TOTAL length):
+lets a downstream consumer tell whether two hits against the SAME
+long subject (e.g. a complete mitogenome) actually cover the same
+genomic region or two unrelated ones -- see
+\code{TaxaLikely::restore_suppressed_candidates(check_regional_overlap
+      = TRUE)}.}
 }
 If \code{resolve_taxonomy = TRUE}, taxonomy columns (\code{kingdom},
 \code{phylum}, \code{class}, \code{order}, \code{family}, \code{genus},

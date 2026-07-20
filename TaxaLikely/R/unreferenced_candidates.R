@@ -8,11 +8,11 @@
 #' accession), adds placeholder rows for taxon hypotheses absent from the
 #' reference database:
 #' \itemize{
-#'   \item \code{"unreferenced_species"} — genus is represented in the
+#'   \item \code{"unreferenced_species"} -- genus is represented in the
 #'     reference but the species is not.
-#'   \item \code{"unreferenced_genus"} — family is represented but the genus
+#'   \item \code{"unreferenced_genus"} -- family is represented but the genus
 #'     is not.
-#'   \item \code{"unreferenced_family"} — optional catch-all (see
+#'   \item \code{"unreferenced_family"} -- optional catch-all (see
 #'     \code{include_unreferenced_family}).
 #' }
 #'
@@ -42,7 +42,7 @@
 #'   running [assign_scores()] without TaxaExpect priors (e.g., the LLM
 #'   shortcut pathway) to absorb posterior mass from taxa outside all
 #'   represented families.  Do \strong{not} set to \code{TRUE} when using
-#'   TaxaExpect priors — the prior distribution already covers unrepresented
+#'   TaxaExpect priors -- the prior distribution already covers unrepresented
 #'   families.
 #'
 #' @return A data frame with the same columns as \code{match_df}, plus
@@ -147,9 +147,7 @@ unreferenced_candidates <- function(match_df,
       anchor_row <- h1_rows[1L, , drop = FALSE]
     }
 
-    existing_rank_cols <- intersect(rank_cols, names(anchor_row))
-
-    # H2: unreferenced_species — finest rank → NA
+    # H2: unreferenced_species -- finest rank -> NA
     if (finest %in% names(anchor_row)) {
       row_h2 <- anchor_row
       row_h2[[finest]] <- NA_character_
@@ -161,7 +159,7 @@ unreferenced_candidates <- function(match_df,
       extra_rows[[k]] <- row_h2
     }
 
-    # H3: unreferenced_genus — two finest ranks → NA
+    # H3: unreferenced_genus -- two finest ranks -> NA
     if (!is.null(second) && second %in% names(anchor_row)) {
       row_h3 <- anchor_row
       if (finest %in% names(row_h3))  row_h3[[finest]]  <- NA_character_
@@ -174,7 +172,7 @@ unreferenced_candidates <- function(match_df,
       extra_rows[[k]] <- row_h3
     }
 
-    # H4: unreferenced_family — all rank columns → NA
+    # H4: unreferenced_family -- all rank columns -> NA
     if (include_unreferenced_family) {
       row_h4 <- anchor_row
       for (rc in rank_cols) {

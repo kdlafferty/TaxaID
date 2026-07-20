@@ -15,5 +15,6 @@
 ^trained_model\.rds$
 ^\.Rhistory$
 ^\.DS_Store$
+^\.lintr$
 ^DISCLAIMER\.md$
 ^GL_fish_errors\.csv$

@@ -30,7 +30,7 @@ contain:
 auto-detects from columns in \code{reference_df}.}
 
 \item{max_dist}{Numeric (default \code{0.25}).  Pairs with distance above this
-threshold are dropped to save memory.  Roughly, 0.25 ≈ 75\% identity.
+threshold are dropped to save memory.  Roughly, 0.25 ~= 75\% identity.
 The 75\% identity threshold is a standard floor for retaining distantly
 related taxa in barcode reference databases.}
 
@@ -45,7 +45,7 @@ and this argument is left at its default -- see \code{barcode_term} below.}
 \item{filter_unnamed}{Logical (default \code{TRUE}).  If \code{TRUE}, sequences whose
 finest-rank taxonomy column (the last element of \code{rank_system}, typically
 \code{species}) is blank (\code{""}) or \code{NA} are removed before alignment.  Blank
-names produce spurious within-species pairs — two unidentified sequences
+names produce spurious within-species pairs -- two unidentified sequences
 both labelled \code{""} are classified as conspecific even though they may
 represent entirely different taxa.  In a broad 18S reference database this
 can account for the majority of apparent within-species pairs.  Set to
@@ -57,7 +57,7 @@ alignment, chosen by random sampling using the current RNG state (set
 \code{set.seed()} before calling for reproducibility).  This prevents
 heavily-sequenced model organisms or domestic species from dominating
 the within-species distribution and thereby distorting model training.
-For typical vertebrate barcode databases a value of \code{10L}–\code{20L} is
+For typical vertebrate barcode databases a value of \code{10L}-\code{20L} is
 sufficient; the resulting within-species pair counts per taxon are at most
 \code{max_seqs_per_taxon * (max_seqs_per_taxon - 1) / 2}.  \code{NULL} disables
 the cap (current behaviour).}
@@ -93,7 +93,7 @@ pre-filter pattern it used.}
 A data frame with one row per sequence pair within \code{max_dist}:
 \describe{
 \item{\code{id_x}, \code{id_y}}{\code{composite_id} values for each pair member.}
-\item{\code{p_match}}{Match score (1 − distance), range (0, 1].}
+\item{\code{p_match}}{Match score (1 - distance), range (0, 1].}
 \item{\code{coverage}}{Alignment coverage: number of positions where both
 sequences contribute a non-gap character, divided by the shorter
 unaligned sequence length.  Range (0, 1].  Values near 1.0 indicate

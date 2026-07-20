@@ -113,7 +113,7 @@ match_df <- filter_redundant_hypotheses(match_df)
 library(TaxaLikely)
 
 # Fetch reference sequences from NCBI
-reference_df <- fetch_reference_sequences(
+reference_df <- fetch_ncbi_reference_sequences(
   taxa = unique(match_df$family),
   barcode_term = "MiFish",
   max_per_species = 5

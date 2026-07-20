@@ -58,6 +58,22 @@
 #' @param taxa_per_call Integer. Maximum taxa (or candidate sets) per LLM call.
 #'   Default \code{15L}. Candidate-set entries are longer than single taxon
 #'   names; consider reducing to 8--10 when using \code{plausible_taxa_col}.
+#' @param max_tokens Integer or \code{NULL}. Maximum response tokens requested
+#'   from \code{llm_fn} (forwarded as \code{llm_fn(prompt, max_tokens = max_tokens)}
+#'   whenever supplied). Default \code{NULL} -- does not pass \code{max_tokens}
+#'   at all, so \code{llm_fn}'s own default applies (\code{3000L} for
+#'   \code{TaxaTools::call_api()}). Raise this if \code{max_retries} alone
+#'   isn't resolving truncation warnings for your data -- e.g. a long,
+#'   multi-marker \code{marker} string can inflate per-taxon response length
+#'   enough that even the smallest retry sub-batch still truncates.
+#' @param max_retries Integer. When a batch's LLM response is truncated,
+#'   empty, or unparseable, the batch is automatically split in half and
+#'   retried -- a smaller batch requests a proportionally shorter response,
+#'   directly relieving token-budget pressure -- up to \code{max_retries}
+#'   times before falling back to \code{NA} defaults for whatever's still
+#'   missing. Does not apply to a hard \code{llm_fn} error (e.g. network/auth
+#'   failure): a smaller batch can't fix that, so it is reported immediately
+#'   without retrying. Default \code{2L}.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls.
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
@@ -116,6 +132,8 @@ review_assignments <- function(df,
                                data_type          = "eDNA",
                                llm_fn             = getOption("TaxaID.llm_fn", TaxaTools::call_api),
                                taxa_per_call      = 15L,
+                               max_tokens         = NULL,
+                               max_retries        = 2L,
                                pause_seconds      = 1,
                                verbose            = TRUE) {
 
@@ -255,20 +273,10 @@ review_assignments <- function(df,
                       b, n_batches, nrow(taxa_batch),
                       if (use_candidates) "candidate sets" else "taxa"))
 
-    prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker,
-                                   data_type, use_candidates)
-
-    raw <- tryCatch(
-      llm_fn(prompt),
-      error = function(e) {
-        warning(sprintf("LLM call failed for batch %d: %s. Using NA defaults.",
-                        b, conditionMessage(e)), call. = FALSE)
-        NULL
-      }
-    )
-
-    batch_results[[b]] <- .parse_review_response(
-      raw, taxa_batch, target_group, taxon_rank_col, use_candidates
+    batch_results[[b]] <- .review_batch_with_retry(
+      taxa_batch, ctx, target_group, marker, data_type, use_candidates,
+      llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
+      batch_label = as.character(b), max_retries = max_retries
     )
 
     if (b < n_batches) Sys.sleep(pause_seconds)
@@ -533,7 +541,94 @@ review_assignments <- function(df,
 }
 
 
+#' Call LLM for a Batch, Retrying with Smaller Sub-batches on Truncation/Failure
+#'
+#' A truncated, empty, or unparseable response is very often caused by the
+#' requested batch overflowing \code{llm_fn}'s response token budget --
+#' \code{taxa_per_call} is a single global knob, so the safest per-batch fix
+#' is to halve just the batch that actually failed and retry (a smaller batch
+#' asks for a proportionally shorter response, directly relieving the token
+#' pressure) rather than lowering \code{taxa_per_call} for the whole run.
+#' A hard \code{llm_fn} error (network/auth/etc.) is deliberately NOT retried
+#' this way -- a smaller batch can't fix a broken call, so that error is
+#' surfaced once, immediately, exactly as before this mechanism existed.
+#' @noRd
+.review_batch_with_retry <- function(taxa_batch, ctx, target_group, marker,
+                                     data_type, use_candidates, llm_fn,
+                                     max_tokens, taxon_rank_col, verbose,
+                                     pause_seconds, batch_label, max_retries,
+                                     depth = 0L) {
+
+  prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker,
+                                 data_type, use_candidates)
+
+  call_error <- NULL
+  raw <- tryCatch(
+    if (is.null(max_tokens)) llm_fn(prompt) else llm_fn(prompt, max_tokens = max_tokens),
+    error = function(e) {
+      call_error <<- conditionMessage(e)
+      NULL
+    }
+  )
+
+  if (!is.null(call_error)) {
+    warning(sprintf("LLM call failed for batch %s: %s. Using NA defaults.",
+                    batch_label, call_error), call. = FALSE)
+    result <- .parse_review_response(NULL, taxa_batch, target_group,
+                                     taxon_rank_col, use_candidates)
+    attr(result, "status")           <- NULL
+    attr(result, "pending_warnings") <- NULL
+    return(result)
+  }
+
+  parsed  <- .parse_review_response(raw, taxa_batch, target_group,
+                                    taxon_rank_col, use_candidates)
+  status  <- attr(parsed, "status")
+  pending <- attr(parsed, "pending_warnings")
+
+  can_retry <- status %in% c("truncated", "failed") &&
+    depth < max_retries && nrow(taxa_batch) > 1L
+
+  if (can_retry) {
+    if (verbose)
+      message(sprintf(
+        "  Batch %s %s (%d taxa) -- retrying as smaller sub-batches...",
+        batch_label,
+        if (status == "failed") "returned no usable content" else "was truncated",
+        nrow(taxa_batch)
+      ))
+    mid   <- ceiling(nrow(taxa_batch) / 2)
+    left  <- taxa_batch[seq_len(mid), , drop = FALSE]
+    right <- taxa_batch[(mid + 1L):nrow(taxa_batch), , drop = FALSE]
+
+    left_result <- .review_batch_with_retry(
+      left, ctx, target_group, marker, data_type, use_candidates, llm_fn,
+      max_tokens, taxon_rank_col, verbose, pause_seconds,
+      paste0(batch_label, "a"), max_retries, depth + 1L
+    )
+    Sys.sleep(pause_seconds)
+    right_result <- .review_batch_with_retry(
+      right, ctx, target_group, marker, data_type, use_candidates, llm_fn,
+      max_tokens, taxon_rank_col, verbose, pause_seconds,
+      paste0(batch_label, "b"), max_retries, depth + 1L
+    )
+    return(rbind(left_result, right_result))
+  }
+
+  for (w in pending) warning(w, call. = FALSE)
+  attr(parsed, "status")           <- NULL
+  attr(parsed, "pending_warnings") <- NULL
+  parsed
+}
+
+
 #' Parse LLM Review Response
+#'
+#' Never calls \code{warning()} directly. Returns the parsed result with two
+#' attributes -- \code{status} (\code{"complete"}, \code{"truncated"}, or
+#' \code{"failed"}) and \code{pending_warnings} (character vector of
+#' not-yet-emitted warning messages) -- so \code{.review_batch_with_retry()}
+#' can decide whether to retry with a smaller batch before emitting anything.
 #' @noRd
 .parse_review_response <- function(response, taxa_batch, target_group,
                                    taxon_rank_col, use_candidates = FALSE) {
@@ -554,9 +649,15 @@ review_assignments <- function(df,
     )
   }
 
+  .with_status <- function(result, status, pending_warnings = character(0)) {
+    attr(result, "status")           <- status
+    attr(result, "pending_warnings") <- pending_warnings
+    result
+  }
+
   if (is.null(response) || !nzchar(trimws(response))) {
-    warning("Empty LLM response. Returning NA defaults.", call. = FALSE)
-    return(make_default())
+    return(.with_status(make_default(), "failed",
+                        "Empty LLM response. Returning NA defaults."))
   }
 
   cleaned <- trimws(response)
@@ -593,26 +694,28 @@ review_assignments <- function(df,
   if (is.null(parsed) || !is.data.frame(parsed) || nrow(parsed) == 0L) {
     n <- nchar(trimws(response))
     tail_str <- if (n > 200L) substr(trimws(response), max(1L, n - 200L), n) else trimws(response)
-    warning(
-      "Could not parse LLM response as JSON. Returning NA defaults.\n",
-      "  Response length: ", n, " chars; ends with: ...", tail_str,
-      call. = FALSE
-    )
-    return(make_default())
+    return(.with_status(make_default(), "failed", sprintf(
+      "Could not parse LLM response as JSON. Returning NA defaults.\n  Response length: %d chars; ends with: ...%s",
+      n, tail_str
+    )))
   }
+
+  pending <- character(0)
+  status  <- "complete"
 
   n_recovered <- nrow(parsed)
   n_expected  <- length(expected_taxa)
-  if (n_recovered < n_expected)
-    warning(sprintf(
+  if (n_recovered < n_expected) {
+    status  <- "truncated"
+    pending <- c(pending, sprintf(
       "LLM response was truncated. Recovered %d of %d taxa from partial JSON.",
       n_recovered, n_expected
-    ), call. = FALSE)
+    ))
+  }
 
   if (!"taxon_name" %in% names(parsed)) {
-    warning("LLM response missing 'taxon_name' field. Returning NA defaults.",
-            call. = FALSE)
-    return(make_default())
+    return(.with_status(make_default(), "failed",
+                        "LLM response missing 'taxon_name' field. Returning NA defaults."))
   }
 
   .safe_col <- function(col_name) {
@@ -651,7 +754,20 @@ review_assignments <- function(df,
   # normalised fallback: if a result name doesn't match any expected name
   # exactly but matches one after normalisation, remap it to the canonical
   # expected name and warn so the caller can inspect.
-  .norm <- function(x) tolower(trimws(gsub("[.,;:]+$", "", trimws(x))))
+  # Also strips a trailing "(rank: ...)" annotation -- taxa_batch's own prompt
+  # rendering shows each taxon as "- Cottus (rank: Cottus aleuticus)" when
+  # taxon_rank_col is supplied, and "taxon_name: the exact taxon name as
+  # provided" can lead the LLM to echo the whole displayed string back,
+  # including the parenthetical, rather than just the bare name. Confirmed as
+  # a real failure mode 2026-07-14: an entire batch's taxon_name values came
+  # back as "Cottus (rank: Cottus aleuticus)" etc., which the previous
+  # punctuation-only normalisation couldn't recover -- every taxon in the
+  # batch was wrongly treated as omitted and filled with NA, regardless of how
+  # easy the taxon itself was to assess.
+  .norm <- function(x) {
+    x <- sub("(?i)\\s*\\(\\s*rank\\s*:.*\\)\\s*$", "", trimws(x), perl = TRUE)
+    tolower(trimws(gsub("[.,;:]+$", "", trimws(x))))
+  }
   expected_norm <- .norm(expected_taxa)
 
   unmatched_idx <- which(!result$taxon_name %in% expected_taxa)
@@ -667,18 +783,18 @@ review_assignments <- function(df,
       }
     }
     if (length(remapped) > 0L)
-      warning(sprintf(
+      pending <- c(pending, sprintf(
         "LLM returned %d name(s) that required normalised matching: %s",
         length(remapped), paste(remapped, collapse = "; ")
-      ), call. = FALSE)
+      ))
   }
 
   # Fill any remaining missing taxa (truly absent from LLM response) with NAs
   missing_taxa <- setdiff(expected_taxa, result$taxon_name)
   if (length(missing_taxa) > 0L) {
-    warning(sprintf("LLM omitted %d taxa. Filling with NA defaults: %s",
+    pending <- c(pending, sprintf("LLM omitted %d taxa. Filling with NA defaults: %s",
                     length(missing_taxa),
-                    paste(missing_taxa, collapse = ", ")), call. = FALSE)
+                    paste(missing_taxa, collapse = ", ")))
     missing_rows <- data.frame(
       taxon_name              = missing_taxa,
       habitat_plausibility    = NA_character_,
@@ -696,7 +812,7 @@ review_assignments <- function(df,
 
   result <- result[result$taxon_name %in% expected_taxa, , drop = FALSE]
 
-  result
+  .with_status(result, status, pending)
 }
 
 

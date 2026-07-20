@@ -81,14 +81,13 @@ Non-empty only when \code{score_type = "similarity"}.}
 }
 \description{
 Orchestrates the three-step unified likelihood pipeline:
-\code{\link[=unreferenced_candidates]{unreferenced_candidates()}} → \code{\link[=assign_scores]{assign_scores()}} → \code{\link[=model_likelihoods]{model_likelihoods()}}
+\code{\link[=unreferenced_candidates]{unreferenced_candidates()}} -> \code{\link[=assign_scores]{assign_scores()}} -> \code{\link[=model_likelihoods]{model_likelihoods()}}
 (similarity pathway only).
 }
 \details{
 This is the recommended high-level entry point for new workflows.  For the
 bivariate-normal similarity pathway it is equivalent to
-\code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}.  For other data types it replaces
-\code{expand_consensus_candidates()} with a consistent interface.
+\code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}.
 }
 \examples{
 \dontrun{

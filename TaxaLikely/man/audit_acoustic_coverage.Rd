@@ -62,7 +62,7 @@ as \code{unreferenced_taxa} to build H2 hypotheses for these species.}
 Checks which plausible species at a site are absent from an acoustic
 classifier's known species list (e.g., BirdNET's built-in list or a
 custom Xeno-canto model).  A species absent from the reference can never
-appear as a scored candidate — it is an \strong{unreferenced species} in the
+appear as a scored candidate -- it is an \strong{unreferenced species} in the
 acoustic context.
 }
 \details{

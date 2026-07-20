@@ -132,9 +132,10 @@ read_crabs_output <- function(file,
       quote = "", comment.char = "", stringsAsFactors = FALSE,
       fill = TRUE, na.strings = character(0L)
     ),
-    error = function(e)
+    error = function(e) {
       stop(sprintf("Failed to read CRABS file '%s': %s",
                    basename(file), conditionMessage(e)))
+    }
   )
 
   if (nrow(df) == 0L) {

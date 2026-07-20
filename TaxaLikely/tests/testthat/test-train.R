@@ -109,6 +109,43 @@ test_that("train_likelihood_model: H1_Lookup columns correct", {
                   %in% names(out$H1_Lookup)))
 })
 
+test_that("train_likelihood_model: H1_Lookup$sigma_score is a true variance, not its square root (Session 158)", {
+  # Regression test for a real, pre-existing bug: shrunk_sigma used to take
+  # sqrt() of the shrunk variance before storing it, so sigma_score held an
+  # SD-shaped number that every downstream consumer (evaluate_likelihoods(),
+  # the species floor comparison against H1_Sigma, a true covariance matrix)
+  # treats as a variance. Precisely reproduce the shrinkage formula from the
+  # same raw_df (via the internal .prep_training_data() this function itself
+  # calls) and confirm sigma_score matches the shrunk VARIANCE exactly, not
+  # its square root.
+  # min_observed_sigma deliberately NOT 1.0 (or 0): both are fixed points of
+  # sqrt() (sqrt(1) = 1, sqrt(0) = 0), which would make the old buggy
+  # (sqrt-applied) and fixed formulas coincide by degenerate accident if this
+  # tiny fixture's raw variance floors out exactly there.
+  df  <- .make_raw_df()
+  out <- train_likelihood_model(df, c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE,
+                                prior_weight = 10, min_observed_sigma = 4.0)
+
+  train_df <- TaxaLikely:::.prep_training_data(df, c("genus", "species"))
+  h1_data  <- train_df[train_df$rank_category == "1_Known_Species", ]
+  aa       <- h1_data[h1_data$rank_code_a == "Aa", ]
+
+  global_var <- max(stats::var(h1_data$score_logit, na.rm = TRUE), 4.0)
+  raw_var    <- max(stats::var(aa$score_logit, na.rm = TRUE), 4.0)
+  n          <- nrow(aa)
+  w          <- n / (n + 10)
+  expected_shrunk_variance <- w * raw_var + (1 - w) * global_var
+
+  aa_idx <- match("Aa", out$H1_Lookup$lookup_key)
+  expect_equal(out$H1_Lookup$sigma_score[aa_idx], expected_shrunk_variance)
+  # The old (buggy) behavior would have stored sqrt(expected_shrunk_variance)
+  # instead -- confirm the fix is NOT that value (guards against a future
+  # regression reintroducing the extra sqrt unnoticed).
+  expect_false(isTRUE(all.equal(out$H1_Lookup$sigma_score[aa_idx],
+                                 sqrt(expected_shrunk_variance))))
+})
+
 test_that("train_likelihood_model: H2$delta < H3$delta", {
   df <- .make_raw_df()
   out <- train_likelihood_model(df, c("genus", "species"),
@@ -124,26 +161,36 @@ test_that("train_likelihood_model: prior_weight validation", {
   )
 })
 
-# (trivariate coverage path removed — coverage used as filter only)
+# (trivariate coverage path removed -- coverage used as filter only)
 
 # ---- H2_Lookup: per-genus delta shrinkage ------------------------------------
 #
 # Fixture: genus "Fundulus" has two real congener species (lima,
 # heteroclitus, p_match = 0.90 to each other -- tight, "cryptic-like"
-# divergence) and genus "Distant" has one species (distantus, monotypic in
-# the reference) whose only foreign matches are the more distant Fundulus
-# cross-genus comparisons (p_match = 0.70). Within-species self-matches are
-# 0.97 for all three species. This lets the pooled-global delta (which mixes
-# Distant's uninformative cross-genus number into the average) be checked
-# against a Fundulus-specific delta estimated only from the real congener
-# pairs.
+# divergence); genus "Loose" has two real congener species (aa, bb,
+# p_match = 0.75 -- real congener data, but looser/more divergent than
+# Fundulus); genus "Distant" has one species (distantus, monotypic in the
+# reference) whose only foreign matches are more distant CROSS-GENUS
+# comparisons (p_match = 0.70, to Fundulus) -- Distant has no real congener
+# pair of its own. Within-species self-matches are 0.97 for all five
+# species. This lets (a) the pooled-global delta be checked as estimated
+# ONLY from real congener data (Fundulus + Loose), NOT contaminated by
+# Distant's uninformative cross-genus number (Session 158 fix -- previously
+# the pooled default used max_foreign_score, mixing exactly this kind of
+# cross-genus comparison in), and (b) Fundulus's tighter congener-specific
+# delta checked against Loose's looser one, on either side of the pooled
+# average.
 .make_genus_raw_df <- function() {
-  ids <- c("L1", "L2", "M1", "M2", "D1", "D2")
+  ids <- c("L1", "L2", "M1", "M2", "A1", "A2", "B1", "B2", "D1", "D2")
   species_map <- c(L1 = "lima", L2 = "lima",
                    M1 = "heteroclitus", M2 = "heteroclitus",
+                   A1 = "aa", A2 = "aa",
+                   B1 = "bb", B2 = "bb",
                    D1 = "distantus", D2 = "distantus")
   genus_map <- c(L1 = "Fundulus", L2 = "Fundulus",
                 M1 = "Fundulus", M2 = "Fundulus",
+                A1 = "Loose", A2 = "Loose",
+                B1 = "Loose", B2 = "Loose",
                 D1 = "Distant", D2 = "Distant")
 
   grid <- expand.grid(id_x = ids, id_y = ids, stringsAsFactors = FALSE)
@@ -154,18 +201,47 @@ test_that("train_likelihood_model: prior_weight validation", {
   grid$p_match <- mapply(function(x, y, sx, sy, gx, gy) {
     if (x == y) return(1.00)          # self-match
     if (sx == sy) return(0.97)        # within-species, different sequence
-    if (gx == gy) return(0.90)        # true congener (lima vs heteroclitus)
-    0.70                               # unrelated genus (Fundulus vs Distant)
+    if (gx == gy && gx == "Fundulus") return(0.90)  # tight true congener
+    if (gx == gy && gx == "Loose")    return(0.75)  # looser true congener
+    0.70                               # unrelated genus (any cross-genus pair)
   }, grid$id_x, grid$id_y, grid$species.x, grid$species.y,
   grid$genus.x, grid$genus.y)
   grid
 }
+
+test_that("train_likelihood_model: score_transform = 'sqrt_mismatch' trains end to end and evaluates (Session 158)", {
+  skip_if_not_installed("TaxaTools")
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE,
+                                score_transform = "sqrt_mismatch")
+  expect_equal(out$Score_Transform, "sqrt_mismatch")
+  # sqrt_mismatch's own default max_gap_ceiling (~0.6234) should have been
+  # resolved and applied -- gap values must never exceed it.
+  expect_true("var_shrunk" %in% names(out$H2_Lookup))
+
+  match_df <- data.frame(
+    observation_id = "Q1", score = 97.0, taxon_name = "lima",
+    taxon_name_rank = "species", genus = "Fundulus", species = "lima",
+    stringsAsFactors = FALSE
+  )
+  result <- evaluate_likelihoods(match_df, out, c("genus", "species"), ratio_threshold = 0)
+  expect_true(nrow(result$likelihoods) > 0L)
+  expect_true(all(result$likelihoods$score_likelihood >= 0 &
+                    result$likelihoods$score_likelihood <= 1))
+})
+
+test_that("train_likelihood_model: default score_transform ('logit') is fully backward compatible", {
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  expect_equal(out$Score_Transform, "logit")
+})
 
 test_that("train_likelihood_model: H2_Lookup created when congener pairs exist", {
   out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
                                 use_hierarchy = FALSE, anchor_perfect = FALSE)
   expect_false(is.null(out$H2_Lookup))
   expect_true("Fundulus" %in% out$H2_Lookup$genus)
+  expect_true("Loose" %in% out$H2_Lookup$genus)
 })
 
 test_that("train_likelihood_model: monotypic genus excluded from H2_Lookup", {
@@ -176,16 +252,37 @@ test_that("train_likelihood_model: monotypic genus excluded from H2_Lookup", {
   expect_false("Distant" %in% out$H2_Lookup$genus)
 })
 
+test_that("train_likelihood_model: pooled H2 delta is not contaminated by a monotypic genus's cross-genus comparison (Session 158)", {
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  # The pooled default is estimated from real congener data only (Fundulus's
+  # 0.90 and Loose's 0.75) -- Distant's cross-genus 0.70 comparisons must not
+  # pull it in this fixture's direction (a pooled delta contaminated by
+  # Distant would be LARGER -- more divergent -- than either real congener
+  # estimate implies, since 0.70 is the most divergent comparison of all).
+  fundulus_delta <- out$H2_Lookup$delta_shrunk[out$H2_Lookup$genus == "Fundulus"]
+  loose_delta     <- out$H2_Lookup$delta_shrunk[out$H2_Lookup$genus == "Loose"]
+  expect_lt(fundulus_delta, out$H2$delta)  # tighter than pooled
+  expect_gt(loose_delta,    out$H2$delta)  # looser than pooled
+})
+
 test_that("train_likelihood_model: genus-specific delta is shrunk below the pooled global delta for a tight congener pair", {
   out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
                                 use_hierarchy = FALSE, anchor_perfect = FALSE)
   fundulus_delta <- out$H2_Lookup$delta_shrunk[out$H2_Lookup$genus == "Fundulus"]
-  # Fundulus's real congener match (0.90) is much tighter than the pooled
-  # average (which also includes Distant's uninformative 0.70 cross-genus
-  # number), so the shrunk local delta should sit below the pooled global one.
+  # Fundulus's real congener match (0.90) is tighter than Loose's (0.75), so
+  # the pooled average of the two sits above Fundulus's own value -- the
+  # shrunk local delta should sit below the pooled global one.
   expect_lt(fundulus_delta, out$H2$delta)
   # ... but still shrunk toward it, not equal to the raw empirical estimate.
   expect_gt(fundulus_delta, 0.5)
+})
+
+test_that("train_likelihood_model: genus-specific H2 variance shrinkage (Session 158)", {
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  expect_true("var_shrunk" %in% names(out$H2_Lookup))
+  expect_true(all(out$H2_Lookup$var_shrunk > 0))
 })
 
 test_that("train_likelihood_model: H2_Lookup is NULL when rank_system has no genus level", {

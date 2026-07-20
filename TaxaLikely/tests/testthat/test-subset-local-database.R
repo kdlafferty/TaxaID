@@ -170,7 +170,7 @@ test_that("subset_local_database: require_species drops NA species rows", {
                           taxonomy_file = tax,
                           require_species = TRUE)
   )
-  # "NA" in species position → NA via .parse_tax_string; NO001 is dropped
+  # "NA" in species position -> NA via .parse_tax_string; NO001 is dropped
   expect_equal(nrow(ref), 1L)
   expect_equal(ref$composite_id, "HAS001")
 })
@@ -233,7 +233,7 @@ test_that("subset_local_database: warns and returns 0-row df when no taxa match"
 
 test_that("subset_local_database: warns when taxa in taxonomy but absent from FASTA", {
   # Only ACC001 in the FASTA; ACC002 present in taxonomy, missing from FASTA.
-  # Result: 1 sequence extracted (not 0), so no warning is expected — just 1 row returned.
+  # Result: 1 sequence extracted (not 0), so no warning is expected -- just 1 row returned.
   fasta <- make_fasta(SEQS["ACC001"])
   tax   <- make_tax_tsv(TAX_ROWS[1:2])  # ACC001 + ACC002 both Fundulidae
   ref <- suppressMessages(

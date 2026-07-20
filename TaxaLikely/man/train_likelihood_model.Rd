@@ -8,13 +8,14 @@ train_likelihood_model(
   raw_df,
   rank_system = NULL,
   score_bounds = NULL,
-  min_observed_sigma = 1,
+  min_observed_sigma = NULL,
   prior_weight = 10,
   use_hierarchy = TRUE,
   anchor_perfect = TRUE,
   mislabel_threshold = 0.02,
   logit_epsilon = 1e-04,
-  max_gap_ceiling = 5
+  max_gap_ceiling = NULL,
+  score_transform = "logit"
 )
 }
 \arguments{
@@ -27,10 +28,13 @@ from the \code{.x}-suffixed columns in \code{raw_df}.}
 
 \item{score_bounds}{Optional \code{c(min, max)} for score normalization.}
 
-\item{min_observed_sigma}{Numeric.  Floor on observed within-species score
-variance (default \code{1.0}).  Prevents overfitting on species with very low
-variance (e.g., a species with two nearly identical reference sequences).
-In logit space, 1.0 corresponds to meaningful within-species variation.}
+\item{min_observed_sigma}{Numeric or \code{NULL} (default).  Floor on observed
+within-species score variance.  Prevents overfitting on species with very
+low variance (e.g., a species with two nearly identical reference
+sequences).  \code{NULL} resolves to \code{1.0} for \code{score_transform = "logit"}
+(in logit space, 1.0 corresponds to meaningful within-species variation)
+or the equivalent rescaled value for \code{"sqrt_mismatch"} -- see
+\code{score_transform} below.}
 
 \item{prior_weight}{Numeric.  Equivalent pseudo-sample size for Empirical
 Bayes shrinkage toward the global mean.  Controls how strongly
@@ -57,28 +61,82 @@ minus its maximum cross-species match score is below negative
 its best foreign match is within 2 percentage points of its typical
 self-match.  Lower values are stricter, flagging more sequences.}
 
-\item{logit_epsilon}{Numeric.  Logit-clipping value (default \code{1e-4}).}
+\item{logit_epsilon}{Numeric.  Logit-clipping value (default \code{1e-4}).
+Used only when \code{score_transform = "logit"}.}
 
-\item{max_gap_ceiling}{Numeric.  Gap cap (default \code{5.0}).  Caps gap at 5
-logit units (roughly the gap between 99.3\% and 50\% identity) to prevent
-extreme outliers from dominating model estimates.}
+\item{max_gap_ceiling}{Numeric or \code{NULL} (default).  Gap cap.  \code{NULL}
+resolves to \code{5.0} for \code{score_transform = "logit"} (roughly the gap
+between 99.3\% and 50\% identity, in logit units) or \code{0.6234} for
+\code{"sqrt_mismatch"} (the same 99.3\%-vs-50\% reference gap on that scale) --
+prevents extreme outliers from dominating model estimates either way.}
+
+\item{score_transform}{Character, \code{"logit"} (default) or \code{"sqrt_mismatch"}.
+The scale H1/H2/H3 are all modeled on -- must be shared across all three
+hypotheses, since they are compared via density ratios at the same
+observed point (a valid likelihood ratio requires one consistent scale;
+mixing transforms across hypotheses would need an explicit
+change-of-variables correction that this package does not implement).
+\code{"logit"} (\code{log(p/(1-p))}) is the package's original scale. \code{"sqrt_mismatch"}
+(\code{-sqrt(1-p)}) was added in Session 158 after real 12S congener data
+showed \code{"logit"} gives a genuinely backwards answer for one of the
+package's more novel claims: whether a genus's species are hard to tell
+apart (small, consistent divergence) or easy to tell apart (larger,
+more variable divergence). On the raw match-proportion scale, tight
+genera show lower congener-score variance, as expected -- but under
+\code{"logit"}, this can reverse sign, because nearly all real barcode
+matches sit close to 100\% identity, exactly where logit's derivative
+diverges fastest. \code{"sqrt_mismatch"} treats divergence as a rare-event
+count (few mismatches out of many aligned bases -- the regime real data
+is actually in), for which square-root is the classical
+variance-stabilizing transform; it recovers the correct qualitative
+ordering where \code{"logit"} does not. See \code{evaluate_likelihoods()}'s own
+documentation and \verb{[[project_job2_unreferenced_relatives]]} in the
+TaxaID memory system for the full empirical derivation, including why
+several other standard transforms (probit, complementary log-log) were
+checked and rejected. \code{"sqrt_mismatch"} is bounded to \verb{[-1, 0]} rather
+than unbounded like \code{"logit"} -- a Gaussian fit to it is technically an
+approximation for that reason, but a mild one in practice, since real
+observations concentrate near 0 (good matches), far from the -1
+boundary. \strong{Not yet ported to this scale}: \code{calibrate_query_noise()}
+and \code{evaluate_likelihoods()}'s \code{evidence_col}/\code{min_coverage} mechanisms
+all assume \code{"logit"} internally and will error rather than silently
+produce wrong numbers if combined with a \code{"sqrt_mismatch"}-trained model.}
 }
 \value{
 A named list (class \code{"taxa_model_params"}) with slots:
 \describe{
 \item{\code{H1_Lookup}}{Data frame with per-species parameters: \code{lookup_key},
-\code{rank}, \code{mu_score}, \code{mu_gap}, \code{sigma_score}.}
+\code{rank}, \code{mu_score}, \code{mu_gap}, \code{sigma_score}, \code{n_obs_species} (number of
+within-species reference sequences trained on -- used by
+\code{evaluate_likelihoods()} to weight the Monte Carlo uncertainty of the
+trained mean; see that function's own documentation).}
 \item{\code{H1_Global_Mu}}{Named numeric vector: \code{score_logit}, \code{gap_logit}.}
 \item{\code{H1_Sigma}}{2x2 covariance matrix for the global H1 distribution.}
+\item{\code{Score_Transform}}{Character, \code{"logit"} or \code{"sqrt_mismatch"} --
+the scale this model's H1/H2/H3 parameters were fit on. Read
+automatically by \code{evaluate_likelihoods()}; callers should not need
+to track or re-supply it.}
 \item{\code{H2}}{List with \code{delta} and \code{sigma} for the missing-species
 hypothesis (pooled across all genera).}
 \item{\code{H3}}{List with \code{delta} and \code{sigma} for the missing-genus
 hypothesis.}
-\item{\code{H2_Lookup}}{Data frame (or \code{NULL}) with per-genus \code{H2} delta
-estimates: \code{genus}, \code{n_pairs}, \code{delta_shrunk}. See "Per-genus delta
-shrinkage" section below.}
+\item{\code{H2_Lookup}}{Data frame (or \code{NULL}) with per-genus \code{H2} delta and
+variance estimates: \code{genus}, \code{n_pairs}, \code{delta_shrunk}, \code{var_shrunk}
+(Session 158). See "Per-genus delta shrinkage" section below.}
 \item{\code{Stats}}{List of diagnostics (e.g., \code{AIC_Score} if lmer succeeded,
-\code{n_species}, \code{n_singletons}).}
+\code{n_species}, \code{n_singletons}, \code{n_h1_pooled} -- total sequences behind
+the global H1 mean (informational only; NOT used as the Monte Carlo
+uncertainty fallback -- see \code{prior_weight} below) -- and
+\code{n_h2_pooled} -- foreign-match count behind the pooled global \code{H2}
+delta, \code{NA} when too few foreign matches existed to estimate one
+(also informational only). \code{prior_weight} -- the same value passed to
+this call -- is what \code{evaluate_likelihoods()} actually uses as the
+equivalent sample size for candidates with no species/genus-specific
+reference data at all: the true pooled sample size (\code{n_h1_pooled}/
+\code{n_h2_pooled}) reflects how well the GLOBAL average is known, not how
+confidently that average applies to a candidate we have zero direct
+data for, so using it directly would understate uncertainty exactly
+where it should be largest.}
 \item{\code{reference_errors}}{Data frame of flagged references (output of
 \code{flag_reference_errors()}). Use with
 \code{\link{remove_flagged_references}} to clean a match object.}

@@ -34,6 +34,19 @@ utils::globalVariables(c(
 #'
 #' @seealso [calibrate_query_noise()]
 #'
+#' @examples
+#' match_df <- data.frame(
+#'   observation_id = paste0("Q", 1:5),
+#'   genus          = "Genusone",
+#'   score_original = c(95, 96, 94, 97, 93)
+#' )
+#' priors <- data.frame(
+#'   taxon_name      = "Genusone speciesa",
+#'   taxon_name_rank = "species",
+#'   theta_mean      = 0.5
+#' )
+#' identify_confident_observations(match_df, priors)
+#'
 #' @importFrom dplyr filter mutate group_by summarise pull slice_max ungroup n
 #' @export
 identify_confident_observations <- function(match_df,
@@ -148,6 +161,64 @@ identify_confident_observations <- function(match_df,
 #' may be worth revisiting -- but do not enable it without validating on your
 #' own data first, the same way this was validated (and rejected) here.
 #'
+#' @section Level-aware recalibration (`offset_form = "linear"`):
+#' The default `"constant"` form is correct only if the train-vs-inference
+#' scale gap is a pure location shift -- the same additive offset for every
+#' species, regardless of identity level. That assumption is exactly what a
+#' single additive offset *cannot* check, and on real externally-scored 12S
+#' data it does not hold: the per-species H1 means estimated from
+#' `build_sequence_matrix()`'s DECIPHER reference-vs-reference MSA do not
+#' transfer to the external scoring scale at all. Regressing each confident
+#' species' required offset on its trained mean gives a slope near `-1` (i.e.,
+#' real correct-species query scores collapse toward one identity level
+#' regardless of what the reference MSA says that species' self-similarity is),
+#' and a single pooled inference-scale mean predicts real confident queries
+#' *better* than "per-species trained mean + one offset" in cross-validation.
+#' `offset_form = "linear"` addresses this by remapping every H1 mean through a
+#' robustly-fit line `intercept + slope * trained_mean` (fit on per-species
+#' medians, weighted by observation count) instead of adding one constant. It
+#' is a strict generalization: `slope = 1, intercept = offset` reproduces the
+#' constant form exactly, so it degrades to "constant offset" when the
+#' per-species structure *does* transfer (`slope -> 1`) and to "one pooled
+#' inference location for all species" when it does not (`slope -> 0`, the real
+#' 12S case). Only the H1 mean *location* is remapped; the H2/H3
+#' congener-divergence deltas (defined relative to the H1 mean) and the gap
+#' feature -- the structure that actually discriminates between candidate
+#' species -- are untouched.
+#'
+#' One caveat governs why `"constant"` is retained as an opt-out rather than
+#' removed. The confident set is selection-biased toward abundant, well-sampled,
+#' easy genera, and by construction has exactly one plausible species per genus
+#' -- so it can measure absolute H1 *location* fit but cannot directly test
+#' congener *discrimination*. A `"linear"` fit whose slope collapses to 0 removes
+#' per-species location structure that is demonstrably not real on the inference
+#' scale, but that this validation set cannot independently confirm is safe to
+#' remove in hard congener-vs-congener cases. For that reason `"constant"`
+#' remains available for an analyst who would rather keep per-species locations
+#' than collapse them; `"linear"` is the default because on every real dataset
+#' examined the collapse was both indicated (slope near 0) and harmless-to-helpful
+#' for assignment, and because it reduces to `"constant"` automatically wherever
+#' the per-species means do transfer (slope near 1). `"linear"` requires at least
+#' `min_calib_species` confident species spanning a range of trained means; it
+#' falls back to `"constant"` with a warning otherwise.
+#'
+#' The collapse is not specific to the 12S external-pipeline data it was found
+#' on: across five real datasets (one external-pipeline 12S run and BLAST-scored
+#' 12S, 16S, and COI datasets) the fitted slope stayed far from 1 (roughly
+#' `-0.28` to `0.02`), and cross-validation on the confident set found the
+#' per-species trained means added no inference-scale predictive value over a
+#' single pooled location -- so the reference-derived per-species locations do
+#' not survive a change of scoring instrument (BLAST or an unknown external
+#' tool alike). This is a post-hoc calibration against an independent,
+#' non-circular anchor set, analogous in spirit to Platt scaling for classifier
+#' outputs (Platt 1999) but linear-in-the-location rather than logistic, and it
+#' addresses a train-vs-inference *dataset shift* (Quinonero-Candela et al.
+#' 2009) that arises because percent identity is an operationally-defined
+#' quantity whose value for a fixed pair of sequences depends on the alignment
+#' method and denominator (May 2004; Raghava & Barton 2006). See
+#' `inst/TaxaLikely_supplemental_methods.md` Section 11A for the full derivation,
+#' the empirical result, and references.
+#'
 #' @section Scope:
 #' This estimates one offset for the *whole model* (i.e., one marker/dataset),
 #' not a per-species correction -- there usually isn't enough confident-genus
@@ -157,7 +228,13 @@ identify_confident_observations <- function(match_df,
 #' to vary by roughly an order of magnitude between markers of different
 #' length and quality (see `TaxaLikely/CLAUDE.md` for the 12S/18S comparison
 #' this function's design was validated against) and does not transfer as
-#' either a fixed percentage or a fixed mismatch count.
+#' either a fixed percentage or a fixed mismatch count. The same applies
+#' across `score_transform` values (Session 158): the offset is estimated on
+#' whichever scale `model_params$Score_Transform` says the model was trained
+#' on (read automatically), but a `"logit"`-scale offset and a
+#' `"sqrt_mismatch"`-scale offset are different numbers in different units --
+#' never reuse one for the other, and always recompute after retraining with
+#' a different `score_transform`.
 #'
 #' @param model_params Object of class `"taxa_model_params"` from
 #'   [train_likelihood_model()].
@@ -173,6 +250,26 @@ identify_confident_observations <- function(match_df,
 #'   confident observations required to compute an offset. Below this, the
 #'   function warns and returns `model_params` unchanged (offset = 0, sigma
 #'   ratio = 1).
+#' @param offset_form Character (default `"linear"`). `"linear"` remaps each H1
+#'   mean through a robustly-fit line `intercept + slope * trained_mean` (fit on
+#'   per-species medians) -- a level-aware calibration that estimates, rather
+#'   than assumes, how much per-species reference-scale structure transfers to
+#'   the inference scale, and reduces to a pure additive offset when it fully
+#'   transfers (slope = 1). It is the default because, across every real dataset
+#'   tested (external-pipeline- and BLAST-scored DNA markers), the fitted slope
+#'   collapsed toward 0 and a single calibrated location fit real query scores
+#'   as well as or better than per-species-mean-plus-offset (see "Level-aware
+#'   recalibration"). `"constant"` is the conservative opt-out -- one additive
+#'   offset applied to every H1 mean (the package's original behavior),
+#'   appropriate when you would rather retain per-species locations than collapse
+#'   them on a location-only validation set. `"linear"` falls back to
+#'   `"constant"` (with a warning) when fewer than `min_calib_species` confident
+#'   species, or no spread of trained means, are available -- so a thin-reference
+#'   marker (e.g. one with only a handful of referenced species) is handled
+#'   safely without a caller having to special-case it.
+#' @param min_calib_species Integer (default `8L`). Minimum number of distinct
+#'   confident species (spanning a range of trained means) required to fit the
+#'   `offset_form = "linear"` line. Ignored when `offset_form = "constant"`.
 #' @param calibrate_sigma Logical (default `FALSE`). Also apply the
 #'   MAD-based variance-scale correction described in the Sigma correction
 #'   section below. **Empirically made results worse on the one real dataset
@@ -212,10 +309,14 @@ identify_confident_observations <- function(match_df,
 #'   `H1_Lookup$mu_score` shifted by the estimated offset; `H1_Sigma["score_logit",
 #'   "score_logit"]` and every `H1_Lookup$sigma_score` scaled by the estimated
 #'   variance ratio (unless `calibrate_sigma = FALSE`); and a new
-#'   `$Query_Calibration` slot recording `offset_logit`, `sigma_ratio`,
+#'   `$Query_Calibration` slot recording `offset_logit`, `offset_form`
+#'   (the form actually applied, which may be `"constant"` after a `"linear"`
+#'   fallback), `slope`/`intercept` (the applied mean remap: `slope = 1`,
+#'   `intercept = offset_logit` for the constant form), `sigma_ratio`,
 #'   `reference_evidence` (`NA` unless `evidence_col` supplied),
 #'   `n_confident_obs`, `n_confident_genera`, and `plausibility_threshold` for
-#'   auditability. Unchanged (with `offset_logit = 0`, `sigma_ratio = 1`,
+#'   auditability. Unchanged (with `offset_logit = 0`, `offset_form =
+#'   "constant"`, `slope = 1`, `intercept = 0`, `sigma_ratio = 1`,
 #'   `reference_evidence = NA`) if fewer than `min_confident_obs` confident
 #'   observations are found.
 #'
@@ -237,13 +338,26 @@ calibrate_query_noise <- function(model_params,
                                    priors,
                                    plausibility_threshold = 1e-3,
                                    min_confident_obs      = 30L,
+                                   offset_form             = c("linear", "constant"),
+                                   min_calib_species      = 8L,
                                    calibrate_sigma         = FALSE,
                                    evidence_col            = NULL,
                                    logit_epsilon           = 1e-4,
                                    verbose                 = TRUE) {
+  offset_form <- match.arg(offset_form)
   if (!inherits(model_params, "taxa_model_params"))
     stop("calibrate_query_noise: 'model_params' must be a 'taxa_model_params' object from train_likelihood_model().",
          call. = FALSE)
+
+  # Session 158: reads model_params$Score_Transform and applies the matching
+  # transform via .transform_p() (see below) -- the offset/residual/sigma-
+  # ratio computation itself is scale-agnostic arithmetic (differences,
+  # medians, ratios), so no other part of this function needed to change.
+  # Only the reference-vs-reference-vs-real-query NOISE MAGNITUDE (the
+  # estimated offset itself) is marker/scale-specific and must be
+  # (re-)estimated per model, never reused across markers OR across
+  # transforms -- unchanged from this function's existing "Scope" guidance.
+  model_score_transform <- model_params$Score_Transform %||% "logit"
 
   confident <- identify_confident_observations(
     match_df, priors, plausibility_threshold = plausibility_threshold
@@ -261,6 +375,9 @@ calibrate_query_noise <- function(model_params,
     ), call. = FALSE)
     model_params$Query_Calibration <- list(
       offset_logit            = 0,
+      offset_form             = "constant",
+      slope                   = 1,
+      intercept               = 0,
       sigma_ratio              = 1,
       reference_evidence       = NA_real_,
       n_confident_obs         = nrow(confident),
@@ -272,8 +389,7 @@ calibrate_query_noise <- function(model_params,
 
   p_raw <- confident[[score_col]]
   p_norm <- if (max(p_raw, na.rm = TRUE) > 1) p_raw / 100 else p_raw
-  p_b <- pmin(pmax(p_norm, logit_epsilon), 1 - logit_epsilon)
-  observed_logit <- log(p_b / (1 - p_b))
+  observed_logit <- .transform_p(p_norm, model_score_transform, logit_epsilon)
 
   global_mu_score <- as.numeric(model_params$H1_Global_Mu["score_logit"])
   lookup_idx <- match(confident$confident_species, model_params$H1_Lookup$lookup_key)
@@ -285,6 +401,77 @@ calibrate_query_noise <- function(model_params,
 
   residuals <- observed_logit - expected_logit
   offset <- stats::median(residuals, na.rm = TRUE)
+
+  # --- Recalibration map: trained mean -> inference-scale mean ---------------
+  # "constant" (default): new_mean = old_mean + offset -- one additive shift,
+  # the package's original behavior. Correct only if the train-vs-inference
+  # scale gap is a pure LOCATION shift (same for every species).
+  #
+  # "linear": new_mean = intercept + slope * old_mean, fit robustly from the
+  # confident set. Generalizes the constant form (which is exactly slope = 1,
+  # intercept = offset) to a scale gap that depends on the identity level. On
+  # real externally-scored 12S data the per-species trained means (from
+  # DECIPHER's reference-vs-reference MSA) were found NOT to transfer to the
+  # external scoring scale at all -- a robust fit drives slope -> 0, i.e. real
+  # correct-species query scores collapse to ~one identity level regardless of
+  # what the reference MSA says that species' self-similarity is, so a single
+  # additive offset is patching per-species structure that isn't real on the
+  # inference scale (see @section Level-aware recalibration). The fit is on
+  # PER-SPECIES medians (inherently robust to per-observation outliers,
+  # weighted by observation count) rather than raw per-observation points, and
+  # only the H1 mean LOCATION is remapped -- the H2/H3 congener-divergence
+  # deltas (relative to the H1 mean) and gap structure that actually
+  # discriminate between candidates are untouched.
+  recal_form <- offset_form
+  slope     <- 1
+  intercept <- offset
+  if (recal_form == "linear") {
+    sp_df <- data.frame(
+      sp  = confident$confident_species,
+      obs = observed_logit,
+      exp = expected_logit,
+      stringsAsFactors = FALSE
+    )
+    sp_df <- sp_df[is.finite(sp_df$obs) & is.finite(sp_df$exp) & !is.na(sp_df$sp),
+                   , drop = FALSE]
+    sp_agg <- stats::aggregate(cbind(obs, exp) ~ sp, data = sp_df,
+                               FUN = stats::median)
+    sp_n <- as.numeric(table(sp_df$sp)[sp_agg$sp])
+    enough_species <- nrow(sp_agg) >= min_calib_species
+    # isTRUE() guards the single-species case, where sd() of one value is NA
+    # (otherwise `if (!exp_varies)` below would error on a missing logical).
+    exp_varies     <- isTRUE(stats::sd(sp_agg$exp) > 1e-8)
+    if (enough_species && exp_varies) {
+      fit_lin   <- stats::lm(obs ~ exp, data = sp_agg, weights = sp_n)
+      intercept <- unname(stats::coef(fit_lin)[1L])
+      slope     <- unname(stats::coef(fit_lin)[2L])
+    } else {
+      warning(sprintf(
+        paste0("calibrate_query_noise: offset_form = 'linear' needs >= %d confident species ",
+               "spanning a range of trained means; only %d usable%s. Falling back to constant ",
+               "offset."),
+        min_calib_species, nrow(sp_agg),
+        if (!exp_varies) " (trained means don't vary across them)" else ""
+      ), call. = FALSE)
+      recal_form <- "constant"
+      slope      <- 1
+      intercept  <- offset
+    }
+  }
+
+  # Clamp remapped means to the range we actually have query evidence for
+  # (linear form only -- a safety rail against linear extrapolation for a
+  # species whose trained mean lies far outside the confident set's range;
+  # the constant form is a rigid shift and never needs it, so its behavior is
+  # left byte-identical to before this parameter existed).
+  obs_iqr   <- stats::IQR(observed_logit, na.rm = TRUE)
+  clamp_lo  <- min(observed_logit, na.rm = TRUE) - obs_iqr
+  clamp_hi  <- max(observed_logit, na.rm = TRUE) + obs_iqr
+  recal_mean <- if (recal_form == "linear") {
+    function(m) pmin(pmax(intercept + slope * m, clamp_lo), clamp_hi)
+  } else {
+    function(m) m + offset
+  }
 
   global_sigma_score <- model_params$H1_Sigma["score_logit", "score_logit"]
   sigma_ratio <- if (calibrate_sigma) {
@@ -305,7 +492,8 @@ calibrate_query_noise <- function(model_params,
       reference_evidence <- stats::median(evidence_vals, na.rm = TRUE)
       if (is.na(reference_evidence) || reference_evidence <= 0) {
         warning(sprintf(
-          "calibrate_query_noise: median '%s' among confident observations is NA or <= 0. No evidence-ratio baseline computed.",
+          paste0("calibrate_query_noise: median '%s' among confident observations is NA or ",
+                 "<= 0. No evidence-ratio baseline computed."),
           evidence_col
         ), call. = FALSE)
         reference_evidence <- NA_real_
@@ -313,14 +501,18 @@ calibrate_query_noise <- function(model_params,
     }
   }
 
-  model_params$H1_Global_Mu["score_logit"] <- global_mu_score + offset
-  model_params$H1_Lookup$mu_score <- model_params$H1_Lookup$mu_score + offset
+  new_global_mu <- recal_mean(global_mu_score)
+  model_params$H1_Global_Mu["score_logit"] <- new_global_mu
+  model_params$H1_Lookup$mu_score <- recal_mean(model_params$H1_Lookup$mu_score)
 
   model_params$H1_Sigma["score_logit", "score_logit"] <- global_sigma_score * sigma_ratio
   model_params$H1_Lookup$sigma_score <- model_params$H1_Lookup$sigma_score * sigma_ratio
 
   model_params$Query_Calibration <- list(
     offset_logit           = offset,
+    offset_form            = recal_form,
+    slope                  = slope,
+    intercept              = intercept,
     sigma_ratio             = sigma_ratio,
     reference_evidence      = reference_evidence,
     n_confident_obs        = nrow(confident),
@@ -333,10 +525,19 @@ calibrate_query_noise <- function(model_params,
       "calibrate_query_noise: offset = %.3f logit units (%d confident observations across %d genera).",
       offset, nrow(confident), n_confident_genera
     ))
+    if (recal_form == "linear") {
+      message(sprintf(
+        paste0("  offset_form = 'linear': trained_mean -> %.4f + %.4f * trained_mean ",
+               "(slope ~ 0 => per-species trained means don't transfer to the inference scale; ",
+               "~ 1 => equivalent to a constant offset)."),
+        intercept, slope
+      ))
+    }
     message(sprintf(
       "  H1_Global_Mu[\"score_logit\"]: %.3f -> %.3f (%.2f%% -> %.2f%%)",
-      global_mu_score, global_mu_score + offset,
-      100 * plogis(global_mu_score), 100 * plogis(global_mu_score + offset)
+      global_mu_score, new_global_mu,
+      100 * .untransform_p(global_mu_score, model_score_transform),
+      100 * .untransform_p(new_global_mu, model_score_transform)
     ))
     if (calibrate_sigma) {
       message(sprintf(

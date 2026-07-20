@@ -34,7 +34,7 @@ A data frame with one row per threshold and columns:
 \item{\code{h2_pairs}}{Count of H2/H3 pairs retained at this threshold.}
 \item{\code{h1_retention}}{\code{h1_pairs / total_h1_unfiltered}, range 0 to 1.}
 \item{\code{h2_retention}}{\code{h2_pairs / total_h2_unfiltered}, range 0 to 1.}
-\item{\code{youden_j}}{\verb{h1_retention − h2_retention}.  Maximised at the
+\item{\code{youden_j}}{\code{h1_retention - h2_retention}.  Maximised at the
 Pareto-optimal threshold.  \code{NA} when H1/H2 classification is
 unavailable.}
 \item{\code{discrimination}}{\code{h1_retention / max(h2_retention, 1e-9)}.
@@ -56,7 +56,7 @@ Match scores (\code{p_match}) measure how similar two sequences or audio clips
 are, but they do not capture \emph{how much} of each observation contributed to
 that score.  A 99\% DNA identity computed from a 50 bp fragment of a 600 bp
 barcode is far less reliable than the same identity computed from a 580 bp
-overlap — yet both produce the same \code{p_match} value.  Similarly, a high
+overlap -- yet both produce the same \code{p_match} value.  Similarly, a high
 BirdNET confidence from a rain-soaked recording of a distant bird carries
 less information than the same score from a quiet, close-range recording.
 
@@ -79,8 +79,8 @@ observations are completely excluded from training.}
 relative to the unfiltered dataset.  Analogous to sensitivity in ROC
 analysis.}
 \item{\code{h2_retention}}{Fraction of cross-species (H2/H3) pairs retained.
-Analogous to (1 − specificity).}
-\item{\code{youden_j}}{Youden's J statistic: \verb{h1_retention − h2_retention}.
+Analogous to (1 - specificity).}
+\item{\code{youden_j}}{Youden's J statistic: \code{h1_retention - h2_retention}.
 Bounded from -1 to 1; equals 0 at the no-filter baseline and is
 maximised at the Pareto-optimal threshold.  Treats H1 retention and
 H2/H3 exclusion symmetrically and has no divide-by-zero edge case.
@@ -98,13 +98,13 @@ lower-scoring) H1 pairs are removed.}
 \section{Acoustic data note}{
 
 Xeno-canto quality grades are properties of the \emph{recording}, not the
-individual detection pair.  Every pair produced from the same recording —
-both H1 and H2/H3 — carries the same \code{coverage} value.  Filtering by
+individual detection pair.  Every pair produced from the same recording --
+both H1 and H2/H3 -- carries the same \code{coverage} value.  Filtering by
 coverage therefore removes entire recordings and excludes H1 and H2/H3
 pairs in equal proportion.  For acoustic reference data, \code{youden_j} and
 \code{discrimination} will be near-flat across thresholds.  Use \code{breadth} and
 \code{mean_h1_score} as the primary guides to decide which quality grades to
-include.  The function detects categorical coverage (≤ 10 unique values)
+include.  The function detects categorical coverage (<= 10 unique values)
 and emits a message in this case.
 }
 
