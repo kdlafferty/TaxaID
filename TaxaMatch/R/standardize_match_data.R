@@ -1,11 +1,49 @@
 # ==============================================================================
 # standardize_match_data.R
 # TaxaMatch — Standardize raw match data to canonical match object
+#
+# Exported functions:
+#   standardize_match_data()      Rename/derive columns into the canonical match object
+#   filter_redundant_hypotheses() Drop coarser-rank rows superseded by finer-rank rows
+#
+# Internal helpers (@noRd):
+#   .read_match_file()     Read a CSV/TSV match data file
+#   .detect_rank_cols()    Auto-detect taxonomic rank columns
+#   .check_col_exists()    Shared "column not found" validation
+#   .check_rename_safe()   Shared rename-collision guard
+#   .validate_rank_system() Shared rank_system input validation
 # ==============================================================================
 
-# Extended rank list from TaxaTools (canonical source of truth).
-# Used for auto-detection when rank_system = NULL.
-.standard_match_ranks <- TaxaTools::extended_ranks
+#' Stop with a consistent "column not found" message
+#' @noRd
+.check_col_exists <- function(data, col, arg_name) {
+  if (!col %in% names(data)) {
+    stop(sprintf("`%s` '%s' not found in data.\n  Available columns: %s",
+                 arg_name, col, paste(names(data), collapse = ", ")))
+  }
+  invisible(TRUE)
+}
+
+#' Stop if renaming `from` to `to` would collide with an existing column
+#' @noRd
+.check_rename_safe <- function(data, from, to) {
+  if (from != to && to %in% names(data)) {
+    stop(sprintf(
+      "Cannot rename '%s' to '%s': a column named '%s' already exists.",
+      from, to, to
+    ))
+  }
+  invisible(TRUE)
+}
+
+#' Validate a rank_system argument shared by multiple functions in this file
+#' @noRd
+.validate_rank_system <- function(rank_system) {
+  if (!is.character(rank_system) || length(rank_system) == 0L) {
+    stop("`rank_system` must be a non-empty character vector.")
+  }
+  invisible(TRUE)
+}
 
 #' Standardize Raw Match Data to Canonical Match Object
 #'
@@ -59,11 +97,20 @@
 #'     throughout the pipeline; downstream functions add `score_norm`, `score_softmax`, and
 #'     `score_likelihood` columns as transformations are applied.}
 #'   \item{`taxon_name`}{Most specific non-NA taxon name (derived).}
-#'   \item{`taxon_name_rank`}{Rank of `taxon_name`, lowercase (derived).}
+#'   \item{`taxon_name_rank`}{Rank of `taxon_name`, lowercase (derived). Useful
+#'     for reporting what proportion of observations resolved to
+#'     species/genus/family level, per eDNA minimum-information reporting
+#'     guidelines (e.g. Thalinger et al. 2021).}
 #' }
-#' All other input columns are retained unchanged.
+#' All other input columns are retained unchanged -- **except** that when
+#' `lowercase_names = TRUE` (the default), every column name in the output,
+#' including retained ones, is converted to lowercase; the underlying data
+#' is untouched, only the names.
 #'
-#' @seealso [TaxaTools::create_taxon_names()], [TaxaTools::rename_cols()]
+#' @seealso [TaxaTools::create_taxon_names()], [TaxaTools::rename_cols()],
+#'   [filter_redundant_hypotheses()] (the natural next pipeline step, when
+#'   BLAST/classifier output returns both a species- and genus-level hit for
+#'   the same lineage)
 #'
 #' @examples
 #' \dontrun{
@@ -90,6 +137,10 @@ standardize_match_data <- function(data             = NULL,
 
   # --- 1. Load data -----------------------------------------------------------
   if (is.null(data)) {
+    if (!interactive()) {
+      stop("`data = NULL` requires an interactive session (opens file.choose()). ",
+           "Pass a data frame or file path in non-interactive contexts (Rmd/Quarto, batch scripts, CI).")
+    }
     path <- file.choose()
     data <- .read_match_file(path)
   } else if (is.character(data) && length(data) == 1L) {
@@ -103,6 +154,9 @@ standardize_match_data <- function(data             = NULL,
   if (!is.logical(lowercase_names) || length(lowercase_names) != 1L || is.na(lowercase_names)) {
     stop("`lowercase_names` must be TRUE or FALSE.")
   }
+  if (!is.null(col_map) && (!is.character(col_map) || is.null(names(col_map)))) {
+    stop("`col_map` must be a named character vector (or NULL), e.g. c(\"OldName\" = \"new_name\").")
+  }
 
   # --- Validate column name arguments ----------------------------------------
   if (!is.character(observation_id_col) || length(observation_id_col) != 1L || !nzchar(observation_id_col)) {
@@ -111,33 +165,17 @@ standardize_match_data <- function(data             = NULL,
   if (!is.character(score_col) || length(score_col) != 1L || !nzchar(score_col)) {
     stop("`score_col` must be a single non-empty character string.")
   }
-  if (!observation_id_col %in% names(data)) {
-    stop(sprintf("`observation_id_col` '%s' not found in data.\n  Available columns: %s",
-                 observation_id_col, paste(names(data), collapse = ", ")))
-  }
-  if (!score_col %in% names(data)) {
-    stop(sprintf("`score_col` '%s' not found in data.\n  Available columns: %s",
-                 score_col, paste(names(data), collapse = ", ")))
-  }
+  .check_col_exists(data, observation_id_col, "observation_id_col")
+  .check_col_exists(data, score_col, "score_col")
 
   # --- 3. Optional extra renames (before core renames) -----------------------
   if (!is.null(col_map)) {
     data <- TaxaTools::rename_cols(data, col_map = col_map)
   }
 
-  # --- 4. Rename observation_id and score -----------------------------------------
-  if (observation_id_col != "observation_id" && "observation_id" %in% names(data)) {
-    stop(sprintf(
-      "Cannot rename '%s' to 'observation_id': a column named 'observation_id' already exists.",
-      observation_id_col
-    ))
-  }
-  if (score_col != "score_original" && "score_original" %in% names(data)) {
-    stop(sprintf(
-      "Cannot rename '%s' to 'score_original': a column named 'score_original' already exists.",
-      score_col
-    ))
-  }
+  # --- 4. Rename observation_id and score -------------------------------------
+  .check_rename_safe(data, observation_id_col, "observation_id")
+  .check_rename_safe(data, score_col, "score_original")
 
   core_map <- stats::setNames(c("observation_id", "score_original"), c(observation_id_col, score_col))
   # Drop identity renames to avoid spurious rename_cols warnings
@@ -146,24 +184,18 @@ standardize_match_data <- function(data             = NULL,
     data <- TaxaTools::rename_cols(data, col_map = core_map)
   }
 
-  # --- 4b. Rename coverage column (optional) ---------------------------------
+  # --- 5. Rename coverage column (optional) -----------------------------------
   if (!is.null(coverage_col)) {
     if (!is.character(coverage_col) || length(coverage_col) != 1L || !nzchar(coverage_col))
       stop("`coverage_col` must be a single non-empty character string or NULL.")
-    if (!coverage_col %in% names(data))
-      stop(sprintf("`coverage_col` '%s' not found in data.\n  Available columns: %s",
-                   coverage_col, paste(names(data), collapse = ", ")))
+    .check_col_exists(data, coverage_col, "coverage_col")
+    .check_rename_safe(data, coverage_col, "coverage")
     if (coverage_col != "coverage") {
-      if ("coverage" %in% names(data))
-        stop(sprintf(
-          "Cannot rename '%s' to 'coverage': a column named 'coverage' already exists.",
-          coverage_col
-        ))
       names(data)[names(data) == coverage_col] <- "coverage"
     }
   }
 
-  # --- 5. Detect or validate taxonomy rank columns ---------------------------
+  # --- 6. Detect or validate taxonomy rank columns ----------------------------
   if (is.null(rank_system)) {
     rank_system <- .detect_rank_cols(data)
     if (length(rank_system) == 0L) {
@@ -176,15 +208,13 @@ standardize_match_data <- function(data             = NULL,
     message(sprintf("standardize_match_data: detected rank columns: %s",
                     paste(rank_system, collapse = ", ")))
   } else {
-    if (!is.character(rank_system) || length(rank_system) == 0L) {
-      stop("`rank_system` must be a non-empty character vector.")
-    }
+    .validate_rank_system(rank_system)
   }
 
-  # --- 6. Derive taxon_name + taxon_name_rank --------------------------------
+  # --- 7. Derive taxon_name + taxon_name_rank ---------------------------------
   data <- TaxaTools::create_taxon_names(data, rank_system)
 
-  # --- 7. Optionally lowercase all column names (last step) ------------------
+  # --- 8. Optionally lowercase all column names (last step) -------------------
   if (lowercase_names) names(data) <- tolower(names(data))
 
   data
@@ -209,16 +239,33 @@ standardize_match_data <- function(data             = NULL,
 #' @param match_df A data frame with at minimum the columns `observation_id`,
 #'   `taxon_name_rank`, and one column for each rank named in `rank_system`.
 #'   Rows whose `taxon_name_rank` is not found in `rank_system` are retained
-#'   unchanged and a warning is emitted listing the unrecognised values.
+#'   unchanged and a warning is emitted listing the unrecognised values. Rows
+#'   with `NA` `taxon_name_rank` are also silently retained (no warning) --
+#'   they cannot be compared against `rank_system` at all. Two species-level
+#'   rows for different species sharing the same genus/family (e.g.
+#'   *Gobius paganellus* and *Gobius bucchichi*) are both retained and
+#'   neither's genus row is dropped -- this function only removes strictly
+#'   redundant ancestor rows, not competing same-rank candidates
+#'   (disambiguating those is TaxaLikely's job).
 #' @param rank_system Character vector of taxonomic rank names in
 #'   **coarsest-to-finest** order. Defaults to
 #'   `c("kingdom","phylum","class","order","family","genus","species")`.
 #'   Each name must match both an element of `taxon_name_rank` **and** a column
 #'   name in `match_df` (case-sensitive after `standardize_match_data()` has
-#'   lowercased everything).
+#'   lowercased everything) -- if `match_df` has not been through
+#'   `standardize_match_data()`, rank column names may not match this
+#'   default and no rows will be removed (a `warning()` is issued when none
+#'   of `rank_system` matches a `match_df` column at all).
 #'
 #' @return A data frame with the same columns as `match_df` but with redundant
 #'   higher-rank rows removed. Row order and all other attributes are preserved.
+#'
+#' @note This is particularly valuable for eDNA workflows where BLAST may
+#'   return both a species-level hit (e.g. *Oncorhynchus mykiss*) and a
+#'   genus-level hit (*Oncorhynchus*, from a different accession) for the
+#'   same query. Without this filtering step, TaxaLikely would treat the
+#'   genus and species rows as independent competing hypotheses, inflating
+#'   uncertainty that the data doesn't actually support.
 #'
 #' @examples
 #' df <- data.frame(
@@ -245,9 +292,7 @@ filter_redundant_hypotheses <- function(
 ) {
   # --- validate inputs --------------------------------------------------------
   if (!is.data.frame(match_df)) stop("`match_df` must be a data frame.")
-  if (!is.character(rank_system) || length(rank_system) == 0L) {
-    stop("`rank_system` must be a non-empty character vector.")
-  }
+  .validate_rank_system(rank_system)
   required_cols <- c("observation_id", "taxon_name_rank")
   missing_req <- setdiff(required_cols, names(match_df))
   if (length(missing_req) > 0L) {
@@ -268,11 +313,30 @@ filter_redundant_hypotheses <- function(
 
   # --- identify rank columns present in both rank_system and match_df ----------
   rank_cols_present <- intersect(rank_system, names(match_df))
+  if (length(rank_cols_present) == 0L) {
+    warning(
+      "filter_redundant_hypotheses: none of `rank_system` matches a column ",
+      "name in `match_df` -- no rows will be removed. This usually means ",
+      "`match_df` has not been through standardize_match_data() (which ",
+      "lowercases column names to match the default rank_system), or ",
+      "rank_system contains a typo."
+    )
+  } else if (length(rank_cols_present) < length(rank_system)) {
+    warning(sprintf(
+      "filter_redundant_hypotheses: rank_system name(s) not found as a column in match_df (check for typos): %s",
+      paste(setdiff(rank_system, rank_cols_present), collapse = ", ")
+    ))
+  }
 
   # --- assign numeric rank scores ---------------------------------------------
   rank_score <- match(match_df$taxon_name_rank, rank_system)  # NA for unknown ranks
 
   # --- identify redundant rows ------------------------------------------------
+  # Invariant: row i is redundant if and only if there exists a row j in the
+  # same observation_id with a strictly finer rank than i that shares all of
+  # row i's own lineage column values, from the coarsest rank up to and
+  # including rank_system[rank_score[i]] -- i.e. j's ancestry passes through
+  # exactly the taxon row i names, so i adds no information beyond j.
   n <- nrow(match_df)
   redundant <- logical(n)
 
@@ -335,22 +399,44 @@ filter_redundant_hypotheses <- function(
 # ==============================================================================
 
 #' Read a match data file (CSV or tab-delimited)
+#'
+#' Delimiter is inferred from the file extension (\code{.tsv}/\code{.txt} ->
+#' tab, otherwise comma) -- a file with the "wrong" extension for its actual
+#' delimiter (e.g. a tab-delimited file saved as \code{.csv}) would otherwise
+#' be silently misread as one column. A post-read check warns when only one
+#' column is detected, the most common symptom of this.
 #' @noRd
 .read_match_file <- function(path) {
   if (!file.exists(path)) stop(sprintf("File not found: %s", path))
   ext <- tolower(tools::file_ext(path))
   sep <- if (ext %in% c("tsv", "txt")) "\t" else ","
-  utils::read.csv(path, sep = sep, stringsAsFactors = FALSE, check.names = FALSE)
+  result <- utils::read.csv(path, sep = sep, stringsAsFactors = FALSE, check.names = FALSE)
+  if (ncol(result) == 1L) {
+    warning(sprintf(
+      paste0(
+        "%s parsed to a single column using delimiter '%s' (inferred from ",
+        "the .%s extension); if the file actually uses a different ",
+        "delimiter, rename it or read it manually first."
+      ),
+      basename(path), if (sep == "\t") "\\t" else sep, ext
+    ), call. = FALSE)
+  }
+  result
 }
 
 #' Auto-detect taxonomic rank columns in a data frame
 #'
-#' Matches column names case-insensitively against `.standard_match_ranks` and
-#' returns the matching column names in hierarchical order (broadest first).
+#' Matches column names case-insensitively against
+#' \code{TaxaTools::extended_ranks} and returns the matching column names in
+#' hierarchical order (broadest first). \code{TaxaTools::extended_ranks} is
+#' read here (inside the function, called only when needed) rather than at
+#' package load time -- top-level code with side effects at attach time is
+#' an R CMD CHECK-flagged pattern.
 #' @noRd
 .detect_rank_cols <- function(df) {
+  standard_match_ranks <- TaxaTools::extended_ranks
   df_lower    <- tolower(names(df))
-  found_lower <- intersect(.standard_match_ranks, df_lower)  # preserves rank order
+  found_lower <- intersect(standard_match_ranks, df_lower)  # preserves rank order
   if (length(found_lower) == 0L) return(character(0))
   names(df)[match(found_lower, df_lower)]  # original (possibly mixed-case) names
 }

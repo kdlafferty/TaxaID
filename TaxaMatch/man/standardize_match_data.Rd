@@ -61,9 +61,15 @@ A data frame with at minimum:
 throughout the pipeline; downstream functions add \code{score_norm}, \code{score_softmax}, and
 \code{score_likelihood} columns as transformations are applied.}
 \item{\code{taxon_name}}{Most specific non-NA taxon name (derived).}
-\item{\code{taxon_name_rank}}{Rank of \code{taxon_name}, lowercase (derived).}
+\item{\code{taxon_name_rank}}{Rank of \code{taxon_name}, lowercase (derived). Useful
+for reporting what proportion of observations resolved to
+species/genus/family level, per eDNA minimum-information reporting
+guidelines (e.g. Thalinger et al. 2021).}
 }
-All other input columns are retained unchanged.
+All other input columns are retained unchanged -- \strong{except} that when
+\code{lowercase_names = TRUE} (the default), every column name in the output,
+including retained ones, is converted to lowercase; the underlying data
+is untouched, only the names.
 }
 \description{
 Reads raw match data (from a data frame or file), renames the observation
@@ -89,5 +95,8 @@ match_obj <- standardize_match_data(
 
 }
 \seealso{
-\code{\link[TaxaTools:create_taxon_names]{TaxaTools::create_taxon_names()}}, \code{\link[TaxaTools:rename_cols]{TaxaTools::rename_cols()}}
+\code{\link[TaxaTools:create_taxon_names]{TaxaTools::create_taxon_names()}}, \code{\link[TaxaTools:rename_cols]{TaxaTools::rename_cols()}},
+\code{\link[=filter_redundant_hypotheses]{filter_redundant_hypotheses()}} (the natural next pipeline step, when
+BLAST/classifier output returns both a species- and genus-level hit for
+the same lineage)
 }

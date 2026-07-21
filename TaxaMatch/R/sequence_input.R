@@ -1,8 +1,65 @@
-utils::globalVariables(c("abundance", "length"))
-
 # ==============================================================================
 # read_sequence_table() — Ingest DADA2 sequence table or FASTA file
 # ==============================================================================
+
+# Non-abundance column names excluded from abundance_cols auto-detection.
+# Module-level (not rebuilt inside .read_esv_dataframe() on every call) so
+# it can be found and extended without hunting inside the function body as
+# new provider formats are added. Entries must be lowercase, matched exactly
+# against tolower(names(df)) -- see .read_esv_dataframe()'s auto-detect branch.
+.non_abundance_col_names <- c(
+  TaxaTools::standard_ranks,
+  "sequence", "esv", "asv", "asv_id", "esv_id", "observation_id", "accession",
+  "identifier", "pctmatch", "percmatch", "score", "numspp", "testid",
+  "taxon_name", "taxon_name_rank"
+)
+
+#' Generate zero-padded ASV identifiers
+#'
+#' Shared by \code{.read_esv_dataframe()}, \code{.read_dada2_matrix()}, and
+#' \code{.read_dna_stringset()} to keep zero-padding behavior consistent
+#' across all three input paths.
+#' @noRd
+.generate_asv_ids <- function(n, id_prefix) {
+  pad <- nchar(as.character(n))
+  sprintf("%s_%0*d", id_prefix, pad, seq_len(n))
+}
+
+#' Build the core 4-column sequence table output (asv_id/sequence/length/abundance)
+#'
+#' Also warns (does not error) on sequences containing non-IUPAC nucleotide
+#' characters, and on duplicate sequences -- both are common, easy-to-miss
+#' data-quality issues in externally supplied FASTA/provider files.
+#' @noRd
+.build_core_seq_df <- function(asv_ids, sequences, abundances) {
+  bad_chars <- !grepl("^[ACGTNacgtnRYSWKMBDHVryswkmbdhv-]*$", sequences)
+  if (any(bad_chars)) {
+    warning(sprintf(
+      paste0(
+        "%d sequence(s) contain characters outside the standard IUPAC ",
+        "nucleotide alphabet; length/downstream BLAST results may be affected."
+      ),
+      sum(bad_chars)
+    ), call. = FALSE)
+  }
+  dup_seq <- duplicated(sequences)
+  if (any(dup_seq)) {
+    warning(sprintf(
+      paste0(
+        "%d duplicate sequence(s) found (same DNA string, different entries); ",
+        "each retains its own asv_id/abundance rather than being merged."
+      ),
+      sum(dup_seq)
+    ), call. = FALSE)
+  }
+  data.frame(
+    asv_id    = asv_ids,
+    sequence  = sequences,
+    length    = nchar(sequences),
+    abundance = abundances,
+    stringsAsFactors = FALSE
+  )
+}
 
 #' Read Sequence Data into a Tidy ASV Table
 #'
@@ -21,19 +78,29 @@ utils::globalVariables(c("abundance", "length"))
 #'       computed.
 #'   }
 #' @param sequence_col For data frame input: name of the column containing
-#'   DNA sequences. Default \code{"sequence"}.
+#'   DNA sequences. Default \code{"sequence"}. Matching is case-insensitive
+#'   (all column names are lowercased internally for matching), though the
+#'   returned columns other than the four core ones are lowercased in the
+#'   output regardless of their original casing in \code{data}.
 #' @param observation_id_col For data frame input: name of an existing observation/ESV
 #'   identifier column to use as \code{asv_id}. If \code{NULL} (default),
 #'   sequential IDs are generated using \code{id_prefix}.
 #' @param abundance_cols For data frame input: character vector of column names
 #'   containing per-sample read counts to sum for total abundance. If
 #'   \code{NULL} (default), numeric columns that are not taxonomy or metadata
-#'   are auto-detected. If no abundance columns are found, abundance is set
-#'   to 1 per row.
+#'   are auto-detected against an internal exclusion list (case-insensitive
+#'   exact match against standard taxonomy ranks plus common ID/score column
+#'   names -- see \code{.non_abundance_col_names} in the package source for
+#'   the exact list). If no abundance columns are found, abundance is set
+#'   to 1 per row. A \code{message()} reports which columns were summed (or
+#'   that none were found), so unexpected auto-detection results can be
+#'   diagnosed without inspecting the code.
 #' @param taxonomy Optional data frame with taxonomy for each sequence. Must
-#'   contain a column matching sequences (for DADA2 input) or sequence
-#'   identifiers (for FASTA input). See Details. Ignored for data frame input
-#'   (taxonomy columns are retained directly).
+#'   contain a column named \code{"sequence"} (for DADA2/DNAStringSet input,
+#'   matched against the sequence itself) or \code{"accession"} (for FASTA
+#'   input, matched against the header's first whitespace-delimited token).
+#'   See Details. Ignored for data frame input (taxonomy columns are
+#'   retained directly).
 #' @param header_format For FASTA input only: how to parse taxonomy from
 #'   sequence headers. \code{"semicolon"} expects
 #'   \code{accession;kingdom;phylum;class;order;family;genus;species}.
@@ -50,24 +117,37 @@ utils::globalVariables(c("abundance", "length"))
 #'   }
 #'   If taxonomy is provided (via \code{taxonomy} argument, parsed from FASTA
 #'   headers, or present in a data frame input), taxonomy columns are appended.
+#'   For FASTA/\code{DNAStringSet} input with \code{header_format = "none"}
+#'   (the default), an \code{accession} column is also added (the header's
+#'   first whitespace-delimited token) -- this column drives taxonomy joining
+#'   via the \code{taxonomy} argument's \code{"accession"} key.
 #'
 #' @details
 #' **DADA2 input:** The standard DADA2 sequence table is a matrix where rows are
 #' samples, columns are ASV sequences (the column names are the literal DNA
 #' strings), and cells are integer read counts. \code{read_sequence_table()}
 #' collapses across samples to get total abundance per unique sequence.
+#' Rows are expected to be samples and columns sequences (DADA2's own
+#' convention); a transposed OTU-table-style matrix (rows = OTUs/ASVs,
+#' columns = samples, as used by QIIME2's biom format or mothur shared
+#' files) is not auto-detected and will be misread.
 #'
 #' **FASTA input:** Accepts a file path (extensions .fasta, .fa, .fna, .fas) or
 #' a \code{Biostrings::DNAStringSet} object. Abundance is set to 1 per sequence
 #' unless the header contains abundance information (e.g., \code{;size=42}).
+#' Sequences are not validated to contain only IUPAC nucleotide characters;
+#' a \code{warning()} is issued (not an error) when non-IUPAC characters or
+#' duplicate sequences are found.
 #'
 #' **Data frame input:** Accepts any data frame with a column containing DNA
-#' sequences. Common sources include Jonah Ventures tab+taxa CSV files, or any
-#' provider's ESV/ASV table. Abundance is computed by summing across
-#' \code{abundance_cols}. If not specified, the function auto-detects numeric
-#' columns that are not standard taxonomy or metadata columns. Taxonomy columns
-#' (kingdom, phylum, class, order, family, genus, species) and other non-numeric
-#' columns are retained in the output.
+#' sequences. Common sources include provider ASV/ESV tables with sample read
+#' counts in separate columns (e.g. Jonah Ventures tab+taxa CSV files).
+#' Abundance is computed by summing across \code{abundance_cols}. If not
+#' specified, the function auto-detects numeric columns that are not standard
+#' taxonomy or metadata columns -- see \code{@param abundance_cols} for the
+#' auto-detection rule. Taxonomy columns (kingdom, phylum, class, order,
+#' family, genus, species) and other non-numeric columns are retained in the
+#' output.
 #'
 #' **Taxonomy:** Can be supplied three ways:
 #' \enumerate{
@@ -129,38 +209,29 @@ read_sequence_table <- function(data,
 
 # --- Internal: Data frame (ESV table from provider) ---------------------------
 
-.read_esv_dataframe <- function(df, sequence_col, observation_id_col,
+#' @noRd
+.read_esv_dataframe <- function(esv_df, sequence_col, observation_id_col,
                                 abundance_cols, id_prefix) {
-  # Lowercase column names for matching
-  orig_names <- names(df)
+  # Lowercase column names for matching (case-insensitive), while the
+  # original esv_df columns retain their original casing throughout.
+  orig_names <- names(esv_df)
   lc_names   <- tolower(orig_names)
 
   # Find sequence column
   seq_idx <- match(tolower(sequence_col), lc_names)
   if (is.na(seq_idx))
     stop(sprintf("Column '%s' not found in data frame", sequence_col))
-  sequences <- as.character(df[[seq_idx]])
+  sequences <- as.character(esv_df[[seq_idx]])
 
   # Find or generate ASV IDs
   if (!is.null(observation_id_col)) {
     id_idx <- match(tolower(observation_id_col), lc_names)
     if (is.na(id_idx))
       stop(sprintf("Column '%s' not found in data frame", observation_id_col))
-    asv_ids <- as.character(df[[id_idx]])
+    asv_ids <- as.character(esv_df[[id_idx]])
   } else {
-    n <- nrow(df)
-    pad <- nchar(as.character(n))
-    asv_ids <- sprintf("%s_%0*d", id_prefix, pad, seq_len(n))
+    asv_ids <- .generate_asv_ids(nrow(esv_df), id_prefix)
   }
-
-  # Determine abundance columns
-  # Known non-abundance columns: taxonomy, metadata, sequence, IDs, scores
-  non_abundance_names <- c(
-    TaxaTools::standard_ranks,
-    "sequence", "esv", "asv", "asv_id", "esv_id", "observation_id", "accession",
-    "identifier", "pctmatch", "percmatch", "score", "numspp", "testid",
-    "taxon_name", "taxon_name_rank"
-  )
 
   if (!is.null(abundance_cols)) {
     # User-specified abundance columns
@@ -171,9 +242,11 @@ read_sequence_table <- function(data,
     abund_idx <- abund_idx[!is.na(abund_idx)]
   } else {
     # Auto-detect: numeric columns not in the known non-abundance set
+    # (.non_abundance_col_names, module-level -- see its own definition for
+    # the maintenance note on extending it for new provider formats)
     abund_idx <- which(
-      vapply(df, is.numeric, logical(1L)) &
-        !lc_names %in% non_abundance_names &
+      vapply(esv_df, is.numeric, logical(1L)) &
+        !lc_names %in% .non_abundance_col_names &
         !seq_along(lc_names) %in% c(seq_idx)
     )
     # Also exclude the observation_id column if provided
@@ -185,21 +258,18 @@ read_sequence_table <- function(data,
 
   # Compute abundance
   if (length(abund_idx) > 0L) {
-    abundances <- as.integer(rowSums(df[, abund_idx, drop = FALSE], na.rm = TRUE))
-    message(sprintf("Summed abundance across %d sample columns", length(abund_idx)))
+    abundances <- as.integer(rowSums(esv_df[, abund_idx, drop = FALSE], na.rm = TRUE))
+    message(sprintf(
+      "Summed abundance across %d sample column(s): %s",
+      length(abund_idx), paste(orig_names[abund_idx], collapse = ", ")
+    ))
   } else {
-    abundances <- rep(1L, nrow(df))
+    abundances <- rep(1L, nrow(esv_df))
     message("No abundance columns detected. Setting abundance = 1 per row.")
   }
 
   # Build core output
-  result <- data.frame(
-    asv_id    = asv_ids,
-    sequence  = sequences,
-    length    = nchar(sequences),
-    abundance = abundances,
-    stringsAsFactors = FALSE
-  )
+  result <- .build_core_seq_df(asv_ids, sequences, abundances)
 
   # Retain taxonomy and other metadata columns (exclude sequence, ID, abundance)
   exclude_idx <- c(seq_idx, abund_idx)
@@ -209,8 +279,10 @@ read_sequence_table <- function(data,
   keep_idx <- setdiff(seq_along(orig_names), exclude_idx)
 
   if (length(keep_idx) > 0L) {
-    extra <- df[, keep_idx, drop = FALSE]
-    # Lowercase the retained column names for consistency
+    extra <- esv_df[, keep_idx, drop = FALSE]
+    # Lowercase the retained column names for consistency with the rest of
+    # this package's column-naming convention (case-insensitive matching in,
+    # lowercase out) -- deliberate, not an oversight.
     names(extra) <- tolower(names(extra))
     result <- cbind(result, extra)
   }
@@ -221,6 +293,7 @@ read_sequence_table <- function(data,
 
 # --- Internal: DADA2 matrix ---------------------------------------------------
 
+#' @noRd
 .read_dada2_matrix <- function(mat, id_prefix) {
   if (is.null(colnames(mat)))
     stop("DADA2 sequence table must have DNA sequences as column names")
@@ -228,30 +301,18 @@ read_sequence_table <- function(data,
   sequences <- colnames(mat)
   abundances <- as.integer(colSums(mat))
 
-  n <- length(sequences)
-  pad <- nchar(as.character(n))
-
-  data.frame(
-    asv_id    = sprintf("%s_%0*d", id_prefix, pad, seq_len(n)),
-    sequence  = sequences,
-    length    = nchar(sequences),
-    abundance = abundances,
-    stringsAsFactors = FALSE
-  )
+  .build_core_seq_df(.generate_asv_ids(length(sequences), id_prefix), sequences, abundances)
 }
 
 
 # --- Internal: FASTA file path ------------------------------------------------
 
+#' @noRd
 .read_fasta_file <- function(path, header_format, id_prefix) {
   if (!file.exists(path))
     stop(sprintf("FASTA file not found: %s", path))
 
-  if (!requireNamespace("Biostrings", quietly = TRUE))
-    stop(
-      "Package 'Biostrings' is required to read FASTA files. ",
-      "Install with: BiocManager::install('Biostrings')"
-    )
+  .check_pkg("Biostrings", "BiocManager::install('Biostrings')")
 
   dna <- Biostrings::readDNAStringSet(path)
   .read_dna_stringset(dna, header_format, id_prefix)
@@ -260,11 +321,11 @@ read_sequence_table <- function(data,
 
 # --- Internal: DNAStringSet object --------------------------------------------
 
+#' @noRd
 .read_dna_stringset <- function(dna, header_format, id_prefix) {
   sequences <- as.character(dna)
   headers   <- names(dna)
   n <- length(sequences)
-  pad <- nchar(as.character(n))
 
   # Try to extract abundance from headers (e.g., ";size=42")
   abundances <- vapply(headers, function(h) {
@@ -278,13 +339,7 @@ read_sequence_table <- function(data,
     val
   }, integer(1L), USE.NAMES = FALSE)
 
-  result <- data.frame(
-    asv_id    = sprintf("%s_%0*d", id_prefix, pad, seq_len(n)),
-    sequence  = sequences,
-    length    = nchar(sequences),
-    abundance = abundances,
-    stringsAsFactors = FALSE
-  )
+  result <- .build_core_seq_df(.generate_asv_ids(n, id_prefix), sequences, abundances)
 
   # Parse taxonomy from semicolon-delimited headers if requested
   if (header_format == "semicolon") {
@@ -304,6 +359,7 @@ read_sequence_table <- function(data,
 # --- Internal: parse semicolon-delimited FASTA headers ------------------------
 # Format: accession;kingdom;phylum;class;order;family;genus;species
 
+#' @noRd
 .parse_semicolon_headers <- function(headers) {
   if (length(headers) == 0L) {
     return(data.frame(accession = character(0), stringsAsFactors = FALSE))
@@ -323,13 +379,17 @@ read_sequence_table <- function(data,
   # Standard rank names for positions 2..8
   rank_names <- TaxaTools::standard_ranks
   n_ranks <- min(n_fields - 1L, length(rank_names))
+  n_cols  <- 1L + n_ranks
 
-  mat <- do.call(rbind, lapply(parts, function(p) {
-    # Pad short headers with NA
-    out <- rep(NA_character_, 1L + n_ranks)
-    out[seq_along(p[seq_len(1L + n_ranks)])] <- p[seq_len(min(length(p), 1L + n_ranks))]
-    out
-  }))
+  # Pre-allocated character matrix, filled row by row -- avoids the O(n^2)
+  # do.call(rbind, lapply(...)) growth pattern for FASTA files with many
+  # sequences. Rows shorter than n_cols (fewer semicolon-delimited fields
+  # than expected) are left NA-padded on the right.
+  mat <- matrix(NA_character_, nrow = length(parts), ncol = n_cols)
+  for (i in seq_along(parts)) {
+    p <- parts[[i]][seq_len(min(length(parts[[i]]), n_cols))]
+    mat[i, seq_along(p)] <- p
+  }
 
   df <- as.data.frame(mat, stringsAsFactors = FALSE)
   colnames(df) <- c("accession", rank_names[seq_len(n_ranks)])
@@ -343,6 +403,7 @@ read_sequence_table <- function(data,
 
 # --- Internal: join external taxonomy to sequence table -----------------------
 
+#' @noRd
 .join_taxonomy <- function(seq_df, taxonomy) {
   tax_names <- tolower(names(taxonomy))
   names(taxonomy) <- tax_names
@@ -361,7 +422,9 @@ read_sequence_table <- function(data,
     return(seq_df)
   }
 
-  # Restore original row order by asv_id
+  # Restore original row order by asv_id. Relies on match() returning a
+  # stable, deterministic ordering for repeated/tied asv_id values, which
+  # base R guarantees (first-match position).
   merged <- merged[order(match(merged$asv_id, seq_df$asv_id)), ]
   rownames(merged) <- NULL
   merged
@@ -393,17 +456,33 @@ read_sequence_table <- function(data,
 #'   singletons).
 #'
 #' @return A filtered data frame (same structure as input). A message reports
-#'   how many sequences were removed and why.
+#'   how many sequences were removed and why. An \code{attr(out,
+#'   "report_params")} list (\code{min_length}, \code{max_length},
+#'   \code{min_abundance}, \code{n_retained}) is also attached, mirroring
+#'   \code{blast_sequences()}'s own \code{report_params} attribute, so
+#'   downstream reporting functions can incorporate the filtering
+#'   parameters into automated methods text.
 #'
 #' @details
 #' Singletons (sequences observed only once across all samples) are commonly
 #' removed in eDNA workflows because they are enriched for PCR/sequencing
-#' errors. The default \code{min_abundance = 2} removes these.
+#' errors. The default \code{min_abundance = 2} removes these. When
+#' \code{seq_df} has no \code{abundance} column, abundance filtering is
+#' silently skipped with a \code{message()} (not a warning or error).
 #'
 #' When \code{barcode_term} is supplied, length bounds are resolved from an
 #' internal lookup table covering common eDNA markers (12S, 16S, COI, ITS,
 #' etc.). These are intentionally broad ranges that exclude obvious non-target
 #' amplicons while retaining genuine length variation.
+#'
+#' The length filter operates on \code{seq_df$length} if present, computing
+#' it from \code{seq_df$sequence} otherwise. If \code{length} was
+#' pre-computed by an upstream step from a different string (e.g. a
+#' provider's reported length that includes alignment gaps), the filter is
+#' applied to that value, not to \code{nchar(sequence)} -- verify the two
+#' agree when using a provider-supplied data frame directly (not one
+#' produced by \code{read_sequence_table()}, which always derives
+#' \code{length} from \code{sequence} itself).
 #'
 #' @examples
 #' \dontrun{
@@ -446,6 +525,7 @@ filter_sequences <- function(seq_df,
 
   # --- Length filtering -------------------------------------------------------
   do_length <- !is.null(barcode_term) || !is.null(min_length) || !is.null(max_length)
+  len_range <- NULL
 
   if (do_length) {
     len_range <- TaxaTools::resolve_barcode_lengths(barcode_term, min_length, max_length)
@@ -463,6 +543,9 @@ filter_sequences <- function(seq_df,
     seq_df <- seq_df[keep_abund, ]
   } else {
     n_abund_removed <- 0L
+    if (!is.null(min_abundance) && !"abundance" %in% names(seq_df)) {
+      message("No 'abundance' column found; abundance filtering skipped.")
+    }
   }
 
   # --- Report -----------------------------------------------------------------
@@ -485,5 +568,16 @@ filter_sequences <- function(seq_df,
   }
 
   rownames(seq_df) <- NULL
+
+  # Mirrors blast_sequences()'s report_params attribute, letting a future
+  # report_filter() (or report_match()) incorporate filtering parameters
+  # into automated methods text.
+  attr(seq_df, "report_params") <- list(
+    min_length    = if (!is.null(len_range)) len_range[1L] else NULL,
+    max_length    = if (!is.null(len_range)) len_range[2L] else NULL,
+    min_abundance = min_abundance,
+    n_retained    = n_end
+  )
+
   seq_df
 }

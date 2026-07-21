@@ -27,7 +27,10 @@ computed.
 }}
 
 \item{sequence_col}{For data frame input: name of the column containing
-DNA sequences. Default \code{"sequence"}.}
+DNA sequences. Default \code{"sequence"}. Matching is case-insensitive
+(all column names are lowercased internally for matching), though the
+returned columns other than the four core ones are lowercased in the
+output regardless of their original casing in \code{data}.}
 
 \item{observation_id_col}{For data frame input: name of an existing observation/ESV
 identifier column to use as \code{asv_id}. If \code{NULL} (default),
@@ -36,13 +39,20 @@ sequential IDs are generated using \code{id_prefix}.}
 \item{abundance_cols}{For data frame input: character vector of column names
 containing per-sample read counts to sum for total abundance. If
 \code{NULL} (default), numeric columns that are not taxonomy or metadata
-are auto-detected. If no abundance columns are found, abundance is set
-to 1 per row.}
+are auto-detected against an internal exclusion list (case-insensitive
+exact match against standard taxonomy ranks plus common ID/score column
+names -- see \code{.non_abundance_col_names} in the package source for
+the exact list). If no abundance columns are found, abundance is set
+to 1 per row. A \code{message()} reports which columns were summed (or
+that none were found), so unexpected auto-detection results can be
+diagnosed without inspecting the code.}
 
 \item{taxonomy}{Optional data frame with taxonomy for each sequence. Must
-contain a column matching sequences (for DADA2 input) or sequence
-identifiers (for FASTA input). See Details. Ignored for data frame input
-(taxonomy columns are retained directly).}
+contain a column named \code{"sequence"} (for DADA2/DNAStringSet input,
+matched against the sequence itself) or \code{"accession"} (for FASTA
+input, matched against the header's first whitespace-delimited token).
+See Details. Ignored for data frame input (taxonomy columns are
+retained directly).}
 
 \item{header_format}{For FASTA input only: how to parse taxonomy from
 sequence headers. \code{"semicolon"} expects
@@ -62,6 +72,10 @@ A data frame with columns:
 }
 If taxonomy is provided (via \code{taxonomy} argument, parsed from FASTA
 headers, or present in a data frame input), taxonomy columns are appended.
+For FASTA/\code{DNAStringSet} input with \code{header_format = "none"}
+(the default), an \code{accession} column is also added (the header's
+first whitespace-delimited token) -- this column drives taxonomy joining
+via the \code{taxonomy} argument's \code{"accession"} key.
 }
 \description{
 Converts a DADA2 sequence table (matrix), a FASTA file, or a data frame
@@ -73,18 +87,27 @@ row per unique sequence.
 samples, columns are ASV sequences (the column names are the literal DNA
 strings), and cells are integer read counts. \code{read_sequence_table()}
 collapses across samples to get total abundance per unique sequence.
+Rows are expected to be samples and columns sequences (DADA2's own
+convention); a transposed OTU-table-style matrix (rows = OTUs/ASVs,
+columns = samples, as used by QIIME2's biom format or mothur shared
+files) is not auto-detected and will be misread.
 
 \strong{FASTA input:} Accepts a file path (extensions .fasta, .fa, .fna, .fas) or
 a \code{Biostrings::DNAStringSet} object. Abundance is set to 1 per sequence
 unless the header contains abundance information (e.g., \code{;size=42}).
+Sequences are not validated to contain only IUPAC nucleotide characters;
+a \code{warning()} is issued (not an error) when non-IUPAC characters or
+duplicate sequences are found.
 
 \strong{Data frame input:} Accepts any data frame with a column containing DNA
-sequences. Common sources include Jonah Ventures tab+taxa CSV files, or any
-provider's ESV/ASV table. Abundance is computed by summing across
-\code{abundance_cols}. If not specified, the function auto-detects numeric
-columns that are not standard taxonomy or metadata columns. Taxonomy columns
-(kingdom, phylum, class, order, family, genus, species) and other non-numeric
-columns are retained in the output.
+sequences. Common sources include provider ASV/ESV tables with sample read
+counts in separate columns (e.g. Jonah Ventures tab+taxa CSV files).
+Abundance is computed by summing across \code{abundance_cols}. If not
+specified, the function auto-detects numeric columns that are not standard
+taxonomy or metadata columns -- see \code{@param abundance_cols} for the
+auto-detection rule. Taxonomy columns (kingdom, phylum, class, order,
+family, genus, species) and other non-numeric columns are retained in the
+output.
 
 \strong{Taxonomy:} Can be supplied three ways:
 \enumerate{

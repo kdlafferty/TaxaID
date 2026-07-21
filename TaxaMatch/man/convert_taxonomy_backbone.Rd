@@ -14,7 +14,8 @@ convert_taxonomy_backbone(
   original_col = "taxon_name_original",
   backbone_col = "taxonomy_backbone",
   collision_col = "taxonomy_collision",
-  verify_fn = TaxaTools::verify_taxon_names
+  verify_fn = TaxaTools::verify_taxon_names,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -56,15 +57,28 @@ conversion outcome (default \code{"taxonomy_collision"}). Created if absent.}
 accept a character vector as its first argument and a \code{backbone_id}
 argument; must return a data frame with columns \code{user_supplied_name},
 \code{matched_name}, \code{classification_path}, \code{classification_ranks}, and
-\code{verified}. Default: \link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names}. Override for
-offline testing via dependency injection.}
+\code{verified} (logical: \code{TRUE} when the name resolved in the target
+backbone, \code{FALSE}/\code{NA} otherwise). Default: \link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names}.
+Override for offline testing via dependency injection. The call is
+wrapped in \code{tryCatch()}; a failure (e.g. network unavailable, API
+rate-limited) raises a clear error naming the likely cause rather than
+propagating whatever uninformative error the API layer produced.}
+
+\item{verbose}{Logical. Print the backbone column mapping summary message
+at the end. Default \code{TRUE}. \code{warning()}s for inconsistent taxonomy are
+always issued regardless of this setting.}
 }
 \value{
 \code{match_df} with rank columns potentially updated, plus \code{backbone_col},
 \code{collision_col}, and (when \code{update_taxon_name = TRUE}) \code{original_col}
-columns added. The attribute \code{backbone_cols} is set: a named list
-mapping \code{"backbone_N_cols"} to the rank column names that were subject
-to conversion.
+columns added -- \code{backbone_col}/\code{collision_col} are created if absent
+and left unchanged (not overwritten) if already present, which matters
+for iterative/multi-pass pipeline use. The attribute \code{backbone_cols} is
+set: a named list mapping \code{"backbone_N_cols"} to the rank column names
+that were subject to conversion, e.g.
+\code{list(backbone_11_cols = c("order", "family"), backbone_4_cols = c("kingdom", "phylum"))}.
+Because R uses copy-on-modify semantics, the caller's original
+\code{match_df} object is untouched; the return value must be (re)assigned.
 }
 \description{
 Looks up each unique taxon name in \code{match_df[[taxon_col]]} against a target
@@ -99,7 +113,26 @@ species (e.g. NCBI places \emph{Girella nigricans} in Girellidae; GBIF places
 it in Kyphosidae). Call \code{convert_taxonomy_backbone()} on your match object
 before passing it to \code{\link[=filter_redundant_hypotheses]{filter_redundant_hypotheses()}} or to
 \code{\link[TaxaAssign:join_priors]{TaxaAssign::join_priors()}} when the prior expansion taxonomy was built
-from a different backbone.
+from a different backbone. For eDNA metabarcoding specifically, WoRMS
+(backbone 9) is the authoritative backbone for marine species; GBIF (11)
+is the more general default for terrestrial/mixed studies.
+
+Lookup is by taxon \emph{name}, not ID (the correct approach for cross-backbone
+conversion, since IDs are backbone-specific), which means homonyms --
+the same name used for unrelated taxa in different kingdoms, e.g. \emph{Morus}
+(a plant genus, mulberry, and a bird genus, gannets) -- can resolve to the
+more common usage rather than the intended one. Filter to a single kingdom
+before conversion, or verify results for known homonymous genera. Each
+unique \code{taxon_col} value is also resolved independently (no genus-up
+cascade): if a species name is not found in the target backbone, that
+row's hierarchy is left unchanged even when the genus or family \emph{is}
+present in the target -- whether that is the desired behavior depends on
+the use case.
+
+Whitespace-only taxon names (e.g. \code{" "}) are treated as present, not
+blank, by the \code{nzchar()} checks used throughout (\code{nzchar(" ")} is \code{TRUE});
+if this is a realistic data-quality issue for your input, \code{trimws()} your
+\code{taxon_col} before calling.
 }
 \examples{
 \dontrun{

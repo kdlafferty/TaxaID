@@ -9,11 +9,21 @@ report_match(match_data, data_type = NULL, verbose = FALSE)
 \arguments{
 \item{match_data}{Data frame. Match results from \code{\link{blast_sequences}}
 or \code{\link{standardize_match_data}}. Must contain at least
-\code{observation_id} and \code{score}.}
+\code{observation_id} and \code{score_original} -- the canonical raw
+score column name produced by \code{standardize_match_data()} (see the
+package's "Canonical Match Object" documentation), not \code{score}. A
+\code{match_data} lacking \code{score_original} is accepted without
+error but produces no score statistics and empty results text.}
 
 \item{data_type}{Character or \code{NULL}. One of \code{"eDNA"},
-\code{"image"}, \code{"acoustic"}. If \code{NULL}, defaults to
-\code{"eDNA"} when column names suggest sequence data.}
+\code{"image"}, \code{"acoustic"}. If \code{NULL}, auto-detected as
+\code{"eDNA"} when \code{match_data} has an \code{accession} or
+\code{alignment_length} column (both BLAST-specific); otherwise stays
+\code{NULL} and the methods/results text uses generic wording. There is
+currently no auto-detection for \code{"image"}/\code{"acoustic"} --
+pass these explicitly. \code{data_type} also controls whether the
+results text formats scores as a percentage (see \code{@return}'s
+\code{results} entry).}
 
 \item{verbose}{Logical. Print summary messages. Default \code{FALSE}.}
 }
@@ -21,8 +31,20 @@ or \code{\link{standardize_match_data}}. Must contain at least
 A \code{report_section} object with:
 \describe{
 \item{methods}{Template text describing matching approach.}
-\item{results}{Template text summarizing match statistics.}
-\item{params}{Named list of matching parameters.}
+\item{results}{Template text summarizing match statistics, or
+\code{NULL} when \code{match_data} has neither \code{score_original}
+nor a taxon-name column to summarize. Scores are formatted as a
+percentage only when \code{data_type == "eDNA"} (percent identity is
+always 0-100 for BLAST); for \code{"image"}/\code{"acoustic"} (whose
+score scale varies by classifier -- 0-1 for BirdNET/Animl, 0-100 for
+iNaturalist CV) the raw score value is reported unlabeled rather than
+guessing a scale.}
+\item{params}{Named list of matching parameters (\code{method},
+\code{database}, \code{min_score}, \code{marker} when available). May
+contain additional fields passed through unchanged from
+\code{attr(match_data, "report_params")} (e.g. \code{n_samples} from
+\code{blast_sequences()}) whenever that attribute carries fields not
+already named above.}
 \item{statistics}{Named list of summary counts and scores.}
 }
 }
@@ -32,6 +54,16 @@ Summarizes the match data produced by TaxaMatch into a structured
 into \code{TaxaTools::assemble_report()} for a unified pipeline report.
 }
 \examples{
+# Self-contained example (no BLAST call needed)
+hits <- data.frame(
+  observation_id = c("ASV1", "ASV1", "ASV2"),
+  score_original  = c(98.5, 91.2, 99.1),
+  taxon_name      = c("Girella nigricans", "Girella simplicidens",
+                      "Oncorhynchus mykiss")
+)
+sec <- report_match(hits, data_type = "eDNA")
+print(sec)
+
 \dontrun{
 hits <- blast_sequences(seq_df, method = "remote")
 sec <- report_match(hits)

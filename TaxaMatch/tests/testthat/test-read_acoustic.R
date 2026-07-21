@@ -38,7 +38,9 @@ test_that("read_birdnet_output() builds observation_id from file stem + window",
   out <- read_birdnet_output(tmp)
   stem <- sub("\\.BirdNET$", "",
               tools::file_path_sans_ext(tools::file_path_sans_ext(basename(tmp))))
-  expect_equal(out$observation_id, paste0(stem, "_0-3"))
+  # Fixed 1-decimal-place formatting (not bare paste0() on the raw numeric)
+  # keeps observation_id stable across platforms/R versions
+  expect_equal(out$observation_id, paste0(stem, "_0.0-3.0"))
 })
 
 test_that("read_birdnet_output() min_confidence filters correctly", {

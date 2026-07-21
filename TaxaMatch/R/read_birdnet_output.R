@@ -1,5 +1,5 @@
 # ==============================================================================
-# read_acoustic.R
+# read_birdnet_output.R
 # TaxaMatch -- Ingest acoustic classifier output into the match object format
 #
 # Exported functions:
@@ -7,7 +7,20 @@
 #
 # Internal helpers (@noRd):
 #   .parse_birdnet_file()   Read and validate a single BirdNET CSV
+#   .parse_birdnet_df()     Parse an already-loaded BirdNET data frame
+#   .empty_birdnet_result() Shared 0-row constructor for the "no detections" case
 # ==============================================================================
+
+#' @noRd
+.empty_birdnet_result <- function() {
+  data.frame(
+    observation_id = character(0), score = numeric(0),
+    species = character(0), genus = character(0),
+    common_name = character(0), start_s = numeric(0),
+    end_s = numeric(0), source_file = character(0),
+    stringsAsFactors = FALSE
+  )
+}
 
 
 # ==============================================================================
@@ -42,16 +55,24 @@
 #'   species, containing:
 #'   \describe{
 #'     \item{`observation_id`}{Unique identifier combining file stem and time
-#'       window: `"{file_stem}_{start_s}-{end_s}"`. Pass as
-#'       `observation_id_col` to [standardize_match_data()].}
+#'       window: `"{file_stem}_{start_s}-{end_s}"`, with `start_s`/`end_s`
+#'       formatted to a fixed 1 decimal place so the same window produces the
+#'       same ID across platforms/R versions. Pass as `observation_id_col` to
+#'       [standardize_match_data()].}
 #'     \item{`score`}{BirdNET confidence (0–1). Pass as `score_col` to
 #'       [standardize_match_data()].}
 #'     \item{`species`}{Full scientific binomial as reported by BirdNET.}
-#'     \item{`genus`}{Genus name (first word of `species`).}
+#'     \item{`genus`}{Genus name (first word of `species`); `NA` for
+#'       non-standard binomial formats.}
 #'     \item{`common_name`}{English common name.}
 #'     \item{`start_s`}{Detection window start time in seconds.}
 #'     \item{`end_s`}{Detection window end time in seconds.}
-#'     \item{`source_file`}{Basename of the source BirdNET result file.}
+#'     \item{`source_file`}{For the file-path input path, the basename of the
+#'       source BirdNET result CSV. For the combined/Gradio data-frame input
+#'       path, there is no CSV path to report (the data frame was already
+#'       loaded before being passed in); this is instead the audio filename
+#'       stem from the `File` column, which may equal that column's own
+#'       value and should not be assumed to be a CSV filename.}
 #'   }
 #'
 #' @details
@@ -69,7 +90,18 @@
 #' column containing the audio file path. When a `File` column is present,
 #' the `observation_id` stem is derived from the audio filename in that column
 #' rather than the CSV filename, so detections from different recordings remain
-#' distinct even in a single combined export.
+#' distinct even in a single combined export -- except when two different
+#' recordings happen to share the same basename (e.g. `recording.wav` from
+#' different directories), which produces colliding `observation_id` stems; a
+#' `warning()` is issued when this is detected in the `File` column.
+#'
+#' Only the default CSV output (`--rtype csv`, or the equivalent legacy
+#' default) is supported. BirdNET-Analyzer v2.4+'s `--rtype` flag can produce
+#' other formats (Audacity, R, kaleidoscope, table); passing one of those
+#' files here will fail the required-column check with an uninformative
+#' column list rather than a format-specific error. Per-recording metadata
+#' some BirdNET output modes include (latitude/longitude, week number,
+#' sensitivity) is not read or preserved.
 #'
 #' Each row is one candidate species detection within a 3-second window
 #' (BirdNET's default segment length). Multiple rows per window occur when
@@ -83,10 +115,12 @@
 #' multiple detections per window is important for model training.
 #'
 #' **Taxonomy:** `genus` is derived as the first word of BirdNET's scientific
-#' name. `species` is the full binomial. For the full taxonomic hierarchy
-#' (family, order, class), run [TaxaTools::verify_taxon_names()] and
-#' [TaxaTools::change_backbone()] on the `species` column after
-#' standardization, then re-run [standardize_match_data()].
+#' name (`NA` for non-standard binomial formats such as hybrid notations or
+#' undescribed-species placeholders). `species` is the full binomial. For the
+#' full taxonomic hierarchy (family, order, class), run
+#' [TaxaTools::verify_taxon_names()] and [convert_taxonomy_backbone()] on the
+#' `species` column after standardization, then re-run
+#' [standardize_match_data()].
 #'
 #' **Downstream workflow:**
 #' ```r
@@ -141,16 +175,7 @@ read_birdnet_output <- function(files,
       "file paths, a single directory path, or a BirdNET results data frame."
     )
   }
-  if (!is.numeric(min_confidence) || length(min_confidence) != 1L ||
-      is.na(min_confidence)) {
-    stop("read_birdnet_output: 'min_confidence' must be a length-1 numeric.")
-  }
-  if (!is.null(top_n)) {
-    top_n <- as.integer(top_n)
-    if (is.na(top_n) || top_n < 1L) {
-      stop("read_birdnet_output: 'top_n' must be a positive integer or NULL.")
-    }
-  }
+  top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_birdnet_output")
 
   # ---- data frame path -------------------------------------------------------
   if (is.data.frame(files)) {
@@ -168,12 +193,8 @@ read_birdnet_output <- function(files,
       }
     } else {
       missing_files <- files[!file.exists(files)]
-      if (length(missing_files) > 0L) {
-        stop(sprintf(
-          "read_birdnet_output: file(s) not found:\n  %s",
-          paste(missing_files, collapse = "\n  ")
-        ))
-      }
+      if (length(missing_files) > 0L)
+        .stop_missing_files(missing_files, "read_birdnet_output")
     }
 
     # ---- read each file ------------------------------------------------------
@@ -187,14 +208,8 @@ read_birdnet_output <- function(files,
   # ---- apply filters ---------------------------------------------------------
   out <- out[!is.na(out$score) & out$score >= min_confidence, , drop = FALSE]
 
-  if (!is.null(top_n)) {
-    # Within each observation_id keep top-n by score (descending)
-    out <- do.call(rbind, lapply(split(out, out$observation_id), function(g) {
-      g[order(g$score, decreasing = TRUE), ][seq_len(min(nrow(g), top_n)), ,
-                                              drop = FALSE]
-    }))
-    rownames(out) <- NULL
-  }
+  out <- .apply_top_n(out, "observation_id", "score", top_n)
+  rownames(out) <- NULL
 
   out
 }
@@ -235,21 +250,23 @@ read_birdnet_output <- function(files,
   if (nrow(df) == 0L) {
     message(sprintf("read_birdnet_output: '%s' has no detections (empty file).",
                     basename(f)))
-    return(data.frame(
-      observation_id = character(0),
-      score          = numeric(0),
-      species        = character(0),
-      genus          = character(0),
-      common_name    = character(0),
-      start_s        = numeric(0),
-      end_s          = numeric(0),
-      source_file    = character(0),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_birdnet_result())
   }
 
   start_vals <- as.numeric(df[["Start (s)"]])
   end_vals   <- as.numeric(df[["End (s)"]])
+  conf_vals  <- as.numeric(df[["Confidence"]])
+  .warn_na_coercion(df[["Start (s)"]], start_vals, "Start (s)", basename(f))
+  .warn_na_coercion(df[["End (s)"]], end_vals, "End (s)", basename(f))
+  .warn_na_coercion(df[["Confidence"]], conf_vals, "Confidence", basename(f))
+
+  bad_window <- !is.na(start_vals) & !is.na(end_vals) & end_vals <= start_vals
+  if (any(bad_window)) {
+    warning(sprintf(
+      "read_birdnet_output: '%s' has %d row(s) with End (s) <= Start (s); keeping as-is.",
+      basename(f), sum(bad_window)
+    ))
+  }
 
   # Derive recording stem for observation_id.
   # Two supported formats:
@@ -259,8 +276,13 @@ read_birdnet_output <- function(files,
   if ("File" %in% names(df)) {
     # Use audio filename stem from the "File" column, per row
     stem_vals <- tools::file_path_sans_ext(basename(trimws(df[["File"]])))
+    .warn_duplicate_basenames(df[["File"]], "read_birdnet_output")
   } else {
-    # Strip .csv, .results, .BirdNET suffixes from the CSV filename
+    # Strip .csv, .results, .BirdNET suffixes from the CSV filename. Kept as
+    # a permissive chained strip (not a single fixed-suffix regex) since this
+    # function also accepts arbitrary file paths that may not follow the
+    # ".BirdNET.results.csv" convention -- a single regex anchored on that
+    # exact suffix would leave the extension attached for anything else.
     stem_base <- tools::file_path_sans_ext(
       tools::file_path_sans_ext(basename(f))
     )
@@ -269,10 +291,10 @@ read_birdnet_output <- function(files,
   }
 
   data.frame(
-    observation_id = paste0(stem_vals, "_", start_vals, "-", end_vals),
-    score          = as.numeric(df[["Confidence"]]),
+    observation_id = paste0(stem_vals, "_", .fmt_time(start_vals), "-", .fmt_time(end_vals)),
+    score          = conf_vals,
     species        = trimws(df[["Scientific name"]]),
-    genus          = sub("^(\\S+).*", "\\1", trimws(df[["Scientific name"]])),
+    genus          = .extract_genus(trimws(df[["Scientific name"]])),
     common_name    = trimws(df[["Common name"]]),
     start_s        = start_vals,
     end_s          = end_vals,
@@ -323,24 +345,27 @@ read_birdnet_output <- function(files,
 
   if (nrow(df) == 0L) {
     message("read_birdnet_output: data frame has no rows (empty).")
-    return(data.frame(
-      observation_id = character(0),
-      score          = numeric(0),
-      species        = character(0),
-      genus          = character(0),
-      common_name    = character(0),
-      start_s        = numeric(0),
-      end_s          = numeric(0),
-      source_file    = character(0),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_birdnet_result())
   }
 
   start_vals <- as.numeric(df[["Start (s)"]])
   end_vals   <- as.numeric(df[["End (s)"]])
+  conf_vals  <- as.numeric(df[["Confidence"]])
+  .warn_na_coercion(df[["Start (s)"]], start_vals, "Start (s)", "read_birdnet_output")
+  .warn_na_coercion(df[["End (s)"]], end_vals, "End (s)", "read_birdnet_output")
+  .warn_na_coercion(df[["Confidence"]], conf_vals, "Confidence", "read_birdnet_output")
+
+  bad_window <- !is.na(start_vals) & !is.na(end_vals) & end_vals <= start_vals
+  if (any(bad_window)) {
+    warning(sprintf(
+      "read_birdnet_output: data frame has %d row(s) with End (s) <= Start (s); keeping as-is.",
+      sum(bad_window)
+    ))
+  }
 
   if ("File" %in% names(df)) {
     stem_vals <- tools::file_path_sans_ext(basename(trimws(df[["File"]])))
+    .warn_duplicate_basenames(df[["File"]], "read_birdnet_output")
   } else {
     stop(
       "read_birdnet_output: data frame has no 'File' column. ",
@@ -350,13 +375,17 @@ read_birdnet_output <- function(files,
   }
 
   data.frame(
-    observation_id = paste0(stem_vals, "_", start_vals, "-", end_vals),
-    score          = as.numeric(df[["Confidence"]]),
+    observation_id = paste0(stem_vals, "_", .fmt_time(start_vals), "-", .fmt_time(end_vals)),
+    score          = conf_vals,
     species        = trimws(df[["Scientific name"]]),
-    genus          = sub("^(\\S+).*", "\\1", trimws(df[["Scientific name"]])),
+    genus          = .extract_genus(trimws(df[["Scientific name"]])),
     common_name    = trimws(df[["Common name"]]),
     start_s        = start_vals,
     end_s          = end_vals,
+    # No underlying CSV path exists for the pre-loaded-data-frame input path
+    # (that is the point of accepting a data frame directly) -- this is the
+    # audio filename stem from the "File" column, not a CSV basename, unlike
+    # .parse_birdnet_file()'s source_file. See @return's source_file note.
     source_file    = tools::file_path_sans_ext(basename(trimws(df[["File"]]))),
     stringsAsFactors = FALSE
   )

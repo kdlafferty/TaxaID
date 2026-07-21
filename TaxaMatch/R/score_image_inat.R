@@ -20,11 +20,15 @@
 #' reflects iNaturalist's geomodel prior; the ratio
 #' \code{combined_score / vision_score} (\code{geo_prior_weight}) recovers the
 #' implicit geographic prior weight for each taxon at that location.
+#' \code{geo_prior_weight} is \code{NA} when \code{vision_score == 0} (a real
+#' case for taxa with very low vision-classifier confidence).
 #'
 #' @param image_path Character. Path to a single JPEG or PNG image file, a
 #'   character vector of image file paths, or a path to a directory. When a
 #'   directory is given, all \code{.jpg}, \code{.jpeg}, and \code{.png} files
-#'   (non-recursive) are processed.
+#'   are processed -- non-recursively by default; set \code{recursive = TRUE}
+#'   to scan subdirectories. \code{recursive} is silently ignored when
+#'   \code{image_path} is a file vector rather than a directory.
 #' @param lat Numeric. Latitude in decimal degrees (optional). When supplied,
 #'   this value is used for all images and overrides any EXIF-derived latitude.
 #'   Must be supplied together with \code{lng}.
@@ -50,7 +54,9 @@
 #'   \code{genus}, \code{common_name}, \code{iconic_taxon_name},
 #'   \code{taxon_id}, \code{n_observations} (global iNat observation count for
 #'   the taxon — not location-filtered), \code{vision_score},
-#'   \code{combined_score}, \code{freq_score},
+#'   \code{combined_score}, \code{freq_score} (a thresholded presence
+#'   indicator from the iNaturalist geomodel, not a raw frequency; see
+#'   Details),
 #'   \code{geo_prior_weight} (\code{combined_score / vision_score}; the
 #'   continuous geographic prior signal), \code{lat}, \code{lng},
 #'   \code{observed_on} (per-image location/date metadata), and zero or more
@@ -95,8 +101,29 @@
 #' \strong{Authentication:} Tokens expire periodically. If you receive a 401
 #' error, regenerate your token at
 #' \code{https://www.inaturalist.org/users/api_token}.
+#'
+#' \strong{Rate limiting:} Requests to non-final images are throttled to
+#' iNaturalist's documented authenticated-user limit of 60 requests/minute.
+#'
+#' \strong{Known biases:} the iNaturalist geomodel prior is trained on
+#' iNaturalist observation data, which carries well-known geographic and
+#' taxonomic biases (urban bias, observer hotspot bias, charismatic-species
+#' bias) -- \code{combined_score} may underweight rare or cryptic species
+#' that are genuinely present but underobserved on iNaturalist. The CV model
+#' itself is trained primarily on human-submitted wildlife photographs
+#' (close-range, well-lit, single subject); camera trap images (infrared,
+#' wide-angle, partially occluded or distant subjects) are out-of-distribution
+#' for it, and scores may be systematically lower or less well-calibrated
+#' than for standard photographs. Consider supplementing camera trap workflows
+#' with \code{read_animl_output()} (SpeciesNet), which is trained on camera
+#' trap data.
 #' @seealso [read_inaturalist_cv_output()], [convert_taxonomy_backbone()],
 #'   [standardize_match_data()]
+#' @examples
+#' \dontrun{
+#' img <- "path/to/photo.jpg"
+#' result <- score_image_inat(img, lat = 34.41, lng = -119.86, top_n = 5)
+#' }
 #' @export
 score_image_inat <- function(
     image_path,
@@ -123,7 +150,8 @@ score_image_inat <- function(
   if (has_lat != has_lng) {
     stop("`lat` and `lng` must both be supplied or both be NULL.")
   }
-  if (has_lat) {
+  has_coords <- has_lat && has_lng
+  if (has_coords) {
     if (!is.numeric(lat) || length(lat) != 1L || is.na(lat))
       stop("`lat` must be a single non-NA numeric value.")
     if (!is.numeric(lng) || length(lng) != 1L || is.na(lng))
@@ -139,8 +167,10 @@ score_image_inat <- function(
   }
 
   # ---- validate top_n --------------------------------------------------------
+  if (!is.numeric(top_n) || length(top_n) != 1L || is.na(top_n))
+    stop("`top_n` must be a single numeric value.")
   top_n <- as.integer(top_n)
-  if (is.na(top_n) || top_n < 1L)
+  if (top_n < 1L)
     stop("`top_n` must be a positive integer.")
 
   # ---- resolve image files ---------------------------------------------------
@@ -153,6 +183,18 @@ score_image_inat <- function(
   # ---- path folder components ------------------------------------------------
   folder_df <- .path_folder_components(files, base_dir)
 
+  # EXIF lookup is only needed for whichever of lat/lng/observed_on the user
+  # did not supply directly -- skip the exiftool call entirely otherwise.
+  need_exif <- !has_coords || is.null(observed_on)
+  if (need_exif && !requireNamespace("exifr", quietly = TRUE)) {
+    warning(
+      "score_image_inat: `exifr` is not installed; EXIF-derived lat/lng/",
+      "observed_on will be NA for images where these were not supplied ",
+      "directly. Install with install.packages('exifr').",
+      call. = FALSE
+    )
+  }
+
   # ---- process each image ----------------------------------------------------
   all_rows <- vector("list", length(files))
 
@@ -161,9 +203,9 @@ score_image_inat <- function(
     obs_id <- tools::file_path_sans_ext(basename(f))
 
     # Resolve per-image lat/lng/date: user arg > EXIF > NULL
-    exif_info <- .extract_exif_info(f)
-    img_lat  <- if (has_lat)              lat         else exif_info$lat
-    img_lng  <- if (has_lat)              lng         else exif_info$lng
+    exif_info <- if (need_exif) .extract_exif_info(f) else NULL
+    img_lat  <- if (has_coords)            lat         else exif_info$lat
+    img_lng  <- if (has_coords)            lng         else exif_info$lng
     img_date <- if (!is.null(observed_on)) observed_on else exif_info$observed_on
 
     # Build multipart body: always include image; add optional fields
@@ -187,7 +229,9 @@ score_image_inat <- function(
         NULL
       }
     )
-    Sys.sleep(0.2)  # avoid rate limits on large batches
+    # iNaturalist documents a 60 requests/minute limit for authenticated
+    # users (~1 req/sec); skip the trailing sleep after the last request.
+    if (i < length(files)) Sys.sleep(1.0)
 
     if (is.null(resp)) {
       all_rows[[i]] <- NULL
@@ -253,7 +297,12 @@ score_image_inat <- function(
   non_null <- Filter(Negate(is.null), all_rows)
   if (length(non_null) == 0L) {
     message("score_image_inat: no results returned for any image.")
-    return(tibble::tibble())
+    empty <- .parse_inat_cv_response(list(results = list()), top_n = 0L)
+    empty$observation_id <- character(0)
+    empty$lat            <- numeric(0)
+    empty$lng            <- numeric(0)
+    empty$observed_on    <- character(0)
+    return(empty)
   }
 
   out <- dplyr::bind_rows(non_null)
@@ -310,10 +359,7 @@ score_image_inat <- function(
   # Single file or vector of files
   missing_files <- image_path[!file.exists(image_path)]
   if (length(missing_files) > 0L)
-    stop(sprintf(
-      "score_image_inat: file(s) not found:\n  %s",
-      paste(missing_files, collapse = "\n  ")
-    ))
+    .stop_missing_files(missing_files, "score_image_inat")
 
   not_image <- image_path[!grepl(img_pattern, image_path, ignore.case = TRUE)]
   if (length(not_image) > 0L)
@@ -411,33 +457,39 @@ score_image_inat <- function(
     exifr::read_exif(
       path,
       tags = c("GPSLatitude", "GPSLongitude",
-               "GPSLatitudeRef", "GPSLongitudeRef",
                "DateTimeOriginal", "CreateDate")
     ),
     error = function(e) NULL
   )
   if (is.null(exif) || nrow(exif) == 0L) return(empty)
 
-  # Latitude (already decimal degrees in exifr output)
+  # exifr::read_exif() already returns GPSLatitude/GPSLongitude as SIGNED
+  # decimal degrees (negative for S/W) -- confirmed directly against a real
+  # exiftool-written fixture with known S-latitude/W-longitude coordinates
+  # (see inst/taxamatch_review_response.md). GPSLatitudeRef/GPSLongitudeRef
+  # are read alongside for informational purposes only; do NOT re-apply the
+  # sign here, or a correctly-signed S/W value gets flipped back to positive.
   lat_val <- tryCatch(as.numeric(exif$GPSLatitude[[1L]]), error = function(e) NA_real_)
-  lat_ref <- tryCatch(as.character(exif$GPSLatitudeRef[[1L]]), error = function(e) NA_character_)
-  if (!is.na(lat_val) && identical(lat_ref, "S")) lat_val <- -lat_val
-
-  # Longitude
   lng_val <- tryCatch(as.numeric(exif$GPSLongitude[[1L]]), error = function(e) NA_real_)
-  lng_ref <- tryCatch(as.character(exif$GPSLongitudeRef[[1L]]), error = function(e) NA_character_)
-  if (!is.na(lng_val) && identical(lng_ref, "W")) lng_val <- -lng_val
 
-  # Date: "YYYY:MM:DD HH:MM:SS" → "YYYY-MM-DD"
+  # Date: canonical EXIF "YYYY:MM:DD HH:MM:SS" -> "YYYY-MM-DD"; also accepts
+  # an already-ISO "YYYY-MM-DD..." string, in case a non-standard writer
+  # produced one. Any other format returns NA rather than guessing.
   date_str <- tryCatch({
-    raw <- if (!is.null(exif$DateTimeOriginal) && !is.na(exif$DateTimeOriginal[[1L]]))
+    raw <- if (!is.null(exif$DateTimeOriginal) && !is.na(exif$DateTimeOriginal[[1L]])) {
       exif$DateTimeOriginal[[1L]]
-    else if (!is.null(exif$CreateDate) && !is.na(exif$CreateDate[[1L]]))
+    } else if (!is.null(exif$CreateDate) && !is.na(exif$CreateDate[[1L]])) {
       exif$CreateDate[[1L]]
-    else NA_character_
-    if (!is.na(raw) && grepl("^\\d{4}:\\d{2}:\\d{2}", raw))
+    } else {
+      NA_character_
+    }
+    if (!is.na(raw) && grepl("^\\d{4}:\\d{2}:\\d{2}", raw)) {
       sub("^(\\d{4}):(\\d{2}):(\\d{2}).*", "\\1-\\2-\\3", raw)
-    else NA_character_
+    } else if (!is.na(raw) && grepl("^\\d{4}-\\d{2}-\\d{2}", raw)) {
+      substr(raw, 1L, 10L)
+    } else {
+      NA_character_
+    }
   }, error = function(e) NA_character_)
 
   list(lat = lat_val, lng = lng_val, observed_on = date_str)
@@ -493,12 +545,12 @@ score_image_inat <- function(
     nobs <- if (!is.null(tx[["observations_count"]])) as.integer(tx[["observations_count"]]) else NA_integer_
 
     # Derive genus from name:
-    #   rank == "species"  → first word of binomial
-    #   rank == "genus"    → full name
-    #   otherwise          → NA
+    #   rank == "species": first word of binomial (via .extract_genus())
+    #   rank == "genus": full name
+    #   otherwise: NA
     genus_val <- if (!is.na(nm) && !is.na(rank)) {
-      if (identical(rank, "species") && grepl("^[A-Z][a-z]+ [a-z]", nm)) {
-        sub("^(\\S+).*", "\\1", nm)
+      if (identical(rank, "species")) {
+        .extract_genus(nm)
       } else if (identical(rank, "genus")) {
         nm
       } else {

@@ -70,8 +70,33 @@
 #'     All rows are \code{FALSE} when \code{lowest_consistent_rank} is
 #'     \code{NA}.}
 #' }
+#'   All original columns of \code{match_obj} are retained unchanged; only
+#'   the columns above are added.
 #'
-#' @examples
+#' @details
+#' **Edge cases:** An observation with a single candidate row is always fully consistent
+#' at every rank (nothing to disagree with), so
+#' \code{lowest_consistent_rank} resolves to the finest rank in
+#' \code{rank_system} regardless of how well-supported that single
+#' candidate actually is -- this can give a false sense of resolution for a
+#' genuinely weak match.
+#'
+#' A rank column that is entirely blank/\code{NA} for an observation counts
+#' as trivially consistent (no disagreement is possible with zero non-blank
+#' values), which does not block finer ranks from being evaluated. If all
+#' candidates lack a \code{family} value but agree on \code{genus}, this
+#' function can report \code{lowest_consistent_rank = "species"} even though
+#' every \code{family} value is missing -- this is deliberate (missing data
+#' should not prevent resolving finer ranks that ARE populated), but it
+#' means a "consistent" result does not imply every coarser rank was
+#' actually checked against real data.
+#'
+#' Internally, \code{na_as_inconsistent = TRUE} mode uses the sentinel
+#' string \code{"__MISSING__"} to make blanks/NAs count as their own
+#' category. If any real taxon name in your data literally equals
+#' \code{"__MISSING__"}, it would be misinterpreted as a blank placeholder
+#' -- an extremely unlikely collision in practice.
+#'
 #' m <- data.frame(
 #'   observation_id = rep("obs1", 4),
 #'   order   = rep("Sessilia", 4),
@@ -112,14 +137,21 @@ add_lowest_consistent_rank <- function(match_obj,
         majority_threshold > 1)
       stop("add_lowest_consistent_rank: 'majority_threshold' must be a single ",
            "number in (0, 1].", call. = FALSE)
+    if (majority_threshold <= 0.5)
+      warning(
+        "add_lowest_consistent_rank: majority_threshold <= 0.5 is technically ",
+        "valid but semantically unusual -- with 2 candidate values evenly ",
+        "split, both would qualify as 'the majority'. If you meant 'a ",
+        "majority of candidates agree' in the everyday sense, use a value ",
+        "> 0.5.", call. = FALSE
+      )
   }
 
   # ---- auto-detect rank_system ------------------------------------------------
   if (is.null(rank_system)) {
-    canonical   <- TaxaTools::extended_ranks
-    df_lower    <- tolower(names(match_obj))
-    found_lower <- intersect(canonical, df_lower)
-    rank_system <- names(match_obj)[match(found_lower, df_lower)]
+    # Shared with standardize_match_data.R's own auto-detection (same
+    # TaxaTools::extended_ranks matching logic) rather than duplicating it.
+    rank_system <- .detect_rank_cols(match_obj)
     if (length(rank_system) < 2L)
       stop("add_lowest_consistent_rank: could not auto-detect rank_system. ",
            "Supply it explicitly, e.g. ",
@@ -127,10 +159,16 @@ add_lowest_consistent_rank <- function(match_obj,
            call. = FALSE)
   }
 
+  rank_system_orig <- rank_system
   rank_system <- rank_system[rank_system %in% names(match_obj)]
   if (length(rank_system) == 0L)
     stop("add_lowest_consistent_rank: none of the rank_system columns found ",
          "in match_obj.", call. = FALSE)
+  if (length(rank_system) < length(rank_system_orig))
+    warning(sprintf(
+      "add_lowest_consistent_rank: rank_system name(s) not found in match_obj and silently ignored: %s",
+      paste(setdiff(rank_system_orig, rank_system), collapse = ", ")
+    ), call. = FALSE)
 
   # ---- helper: extract values to compare --------------------------------------
   # In strict mode (na_as_inconsistent = FALSE): returns only non-blank values.
@@ -151,8 +189,19 @@ add_lowest_consistent_rank <- function(match_obj,
   unique_ids   <- unique(obs_ids)
   majority_mode <- !is.null(majority_threshold)
 
+  # Precomputed once (split() groups row indices by obs_ids in one pass)
+  # rather than re-scanning the full obs_ids vector with which(obs_ids == id)
+  # inside the lapply below -- the latter is O(n x unique_obs), which matters
+  # for large acoustic/camera-trap datasets with thousands of candidates per
+  # observation. split() drops NA-valued groups entirely (matching
+  # which(obs_ids == NA)'s existing behavior of never matching anything,
+  # since NA == NA is NA, not TRUE): idx_list[[as.character(NA)]] is
+  # therefore NULL, and subsetting by NULL below produces the same empty
+  # result as the old integer(0) from which().
+  idx_list <- split(seq_len(nrow(match_obj)), obs_ids)
+
   per_obs_list <- lapply(unique_ids, function(id) {
-    idx <- which(obs_ids == id)
+    idx <- idx_list[[as.character(id)]]
 
     rank_results <- lapply(rank_system, function(rc) {
       vals <- .get_vals(match_obj[[rc]][idx])
@@ -176,6 +225,8 @@ add_lowest_consistent_rank <- function(match_obj,
       }
 
       list(consistent   = consistent,
+           # Revert sentinel to NA for output -- "__MISSING__" is an internal
+           # .get_vals() marker, never a value we want to surface.
            majority_val  = if (maj_val == "__MISSING__") NA_character_ else maj_val,
            majority_frac = maj_frac)
     })
@@ -189,6 +240,8 @@ add_lowest_consistent_rank <- function(match_obj,
                   majority_frac = NA_real_))
     }
 
+    # rank_system is ordered coarse-to-fine, so the LAST (highest-index) TRUE
+    # entry in `consistent` is the finest rank that still passes.
     best_idx <- max(which(consistent))
     list(rank          = rank_system[best_idx],
          majority_val  = rank_results[[best_idx]]$majority_val,
@@ -197,8 +250,10 @@ add_lowest_consistent_rank <- function(match_obj,
   names(per_obs_list) <- unique_ids
 
   # ---- extract broadcast vectors ----------------------------------------------
+  # vapply() over the named per_obs_list already returns a vector named by
+  # unique_ids (matching names(per_obs_list) set above) -- no separate
+  # names<-() assignment needed here.
   per_obs_rank <- vapply(per_obs_list, `[[`, character(1L), "rank")
-  names(per_obs_rank) <- unique_ids
 
   # ---- broadcast lowest_consistent_rank to all rows --------------------------
   match_obj[["lowest_consistent_rank"]] <- per_obs_rank[obs_ids]
@@ -207,8 +262,6 @@ add_lowest_consistent_rank <- function(match_obj,
   if (majority_mode) {
     per_obs_majv <- vapply(per_obs_list, `[[`, character(1L), "majority_val")
     per_obs_majf <- vapply(per_obs_list, `[[`, double(1L),    "majority_frac")
-    names(per_obs_majv) <- unique_ids
-    names(per_obs_majf) <- unique_ids
 
     match_obj[["rank_majority_value"]]    <- per_obs_majv[obs_ids]
     match_obj[["rank_majority_fraction"]] <- per_obs_majf[obs_ids]

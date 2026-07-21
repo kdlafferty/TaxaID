@@ -1,5 +1,5 @@
 # ==============================================================================
-# read_image.R
+# read_image_classifiers.R
 # TaxaMatch -- Ingest image classifier output into the match object format
 #
 # Exported functions:
@@ -12,7 +12,41 @@
 #   .pivot_wide_animl()         Pivot pred1/score1...predN/scoreN to long format
 #   .parse_inat_cv_file()       Parse one iNaturalist CV JSON file
 #   .parse_wi_predictions()     Parse SpeciesNet/Wildlife Insights JSON
+#   .empty_animl_result()       Shared 0-row constructor for read_animl_output()
+#   .empty_inat_result()        Shared 0-row constructor for read_inaturalist_cv_output()
+#   .empty_wi_result()          Shared 0-row constructor for read_wildlife_insights_output()
 # ==============================================================================
+
+#' @noRd
+.empty_animl_result <- function() {
+  data.frame(
+    observation_id = character(0), score = numeric(0),
+    species = character(0), genus = character(0),
+    common_name = character(0), source_file = character(0),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @noRd
+.empty_inat_result <- function() {
+  data.frame(
+    observation_id = character(0), score = numeric(0),
+    species = character(0), genus = character(0),
+    common_name = character(0), taxon_rank = character(0),
+    source_file = character(0),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @noRd
+.empty_wi_result <- function() {
+  data.frame(
+    observation_id = character(0), score = numeric(0),
+    species = character(0), genus = character(0),
+    category = character(0), source_file = character(0),
+    stringsAsFactors = FALSE
+  )
+}
 
 
 # ==============================================================================
@@ -102,7 +136,13 @@
 #' **observation_id encoding:** Each image (or bounding box crop, if cropped
 #' images are used) is one `observation_id`. Multiple species candidates for
 #' the same image share the same `observation_id`, enabling TaxaLikely's gap
-#' metric (top-1 minus top-2 confidence) to operate correctly.
+#' metric (top-1 minus top-2 confidence) to operate correctly. A camera trap
+#' image with multiple detected individuals/species yields multiple crops
+#' from MegaDetector, each a separate `observation_id` -- if Animl encodes
+#' the crop index in the filename (e.g. `IMG_001_crop1.jpg`), these are
+#' handled automatically; if the same filename is reused across crops, they
+#' will collide under one `observation_id` (a `warning()` is issued when
+#' duplicate image basenames are detected in `file_col`).
 #'
 #' **Taxonomy:** `genus` is derived as the first word of the species column.
 #' For the full taxonomic hierarchy (family, order), run
@@ -168,14 +208,7 @@ read_animl_output <- function(files,
     if (is.na(n_candidates) || n_candidates < 1L)
       stop("read_animl_output: 'n_candidates' must be a positive integer or NULL.")
   }
-  if (!is.numeric(min_confidence) || length(min_confidence) != 1L ||
-      is.na(min_confidence))
-    stop("read_animl_output: 'min_confidence' must be a length-1 numeric.")
-  if (!is.null(top_n)) {
-    top_n <- as.integer(top_n)
-    if (is.na(top_n) || top_n < 1L)
-      stop("read_animl_output: 'top_n' must be a positive integer or NULL.")
-  }
+  top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_animl_output")
   if (!is.null(bbox_cols)) {
     if (!is.character(bbox_cols) || length(bbox_cols) != 2L)
       stop("read_animl_output: 'bbox_cols' must be a length-2 character vector, e.g. c(w = 'bbox_w', h = 'bbox_h').")
@@ -191,12 +224,8 @@ read_animl_output <- function(files,
     }
   } else {
     missing_files <- files[!file.exists(files)]
-    if (length(missing_files) > 0L) {
-      stop(sprintf(
-        "read_animl_output: file(s) not found:\n  %s",
-        paste(missing_files, collapse = "\n  ")
-      ))
-    }
+    if (length(missing_files) > 0L)
+      .stop_missing_files(missing_files, "read_animl_output")
   }
 
   # ---- read each file --------------------------------------------------------
@@ -216,14 +245,8 @@ read_animl_output <- function(files,
 
   # ---- apply filters ---------------------------------------------------------
   out <- out[!is.na(out$score) & out$score >= min_confidence, , drop = FALSE]
-
-  if (!is.null(top_n)) {
-    out <- do.call(rbind, lapply(split(out, out$observation_id), function(g) {
-      g[order(g$score, decreasing = TRUE), ][seq_len(min(nrow(g), top_n)), ,
-                                              drop = FALSE]
-    }))
-    rownames(out) <- NULL
-  }
+  out <- .apply_top_n(out, "observation_id", "score", top_n)
+  rownames(out) <- NULL
 
   out
 }
@@ -243,7 +266,7 @@ read_animl_output <- function(files,
                                common_name_col, n_candidates,
                                bbox_cols = NULL) {
 
-  df <- tryCatch(
+  animl_df <- tryCatch(
     utils::read.csv(f, check.names = FALSE, stringsAsFactors = FALSE),
     error = function(e) {
       stop(sprintf("read_animl_output: could not read '%s': %s",
@@ -252,7 +275,7 @@ read_animl_output <- function(files,
   )
 
   # ---- check file_col --------------------------------------------------------
-  if (!file_col %in% names(df)) {
+  if (!file_col %in% names(animl_df)) {
     stop(sprintf(
       paste0(
         "read_animl_output: file '%s' is missing required column '%s'.\n",
@@ -264,7 +287,7 @@ read_animl_output <- function(files,
 
   # ---- wide vs long ----------------------------------------------------------
   if (!is.null(n_candidates)) {
-    df <- .pivot_wide_animl(df, f, file_col, species_col, score_col,
+    animl_df <- .pivot_wide_animl(animl_df, f, file_col, species_col, score_col,
                              common_name_col, n_candidates)
     # After pivot, columns are named "file_col", "species_col", "score_col",
     # "common_name_col" with the actual column values renamed to standard names
@@ -276,7 +299,7 @@ read_animl_output <- function(files,
     # Long format: columns must exist directly
     missing_cols <- setdiff(
       c(file_col, species_col, score_col),
-      names(df)
+      names(animl_df)
     )
     if (length(missing_cols) > 0L) {
       stop(sprintf(
@@ -291,41 +314,29 @@ read_animl_output <- function(files,
     species_actual     <- species_col
     score_actual       <- score_col
     common_name_actual <- if (!is.null(common_name_col) &&
-                               common_name_col %in% names(df))
+                               common_name_col %in% names(animl_df))
       common_name_col else NULL
   }
 
-  if (nrow(df) == 0L) {
+  if (nrow(animl_df) == 0L) {
     message(sprintf(
       "read_animl_output: '%s' has no detections (empty file).", basename(f)
     ))
-    return(data.frame(
-      observation_id = character(0),
-      score          = numeric(0),
-      species        = character(0),
-      genus          = character(0),
-      common_name    = character(0),
-      source_file    = character(0),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_animl_result())
   }
 
   # ---- build observation_id from image filename stem -------------------------
-  img_paths <- trimws(as.character(df[[file_col]]))
+  img_paths <- trimws(as.character(animl_df[[file_col]]))
   # Strip all extensions (handles .jpg, .JPG, .tif, .tiff, etc.)
   img_stem  <- tools::file_path_sans_ext(basename(img_paths))
+  .warn_duplicate_basenames(img_paths, "read_animl_output")
 
-  species_vals <- trimws(as.character(df[[species_actual]]))
-  score_vals   <- suppressWarnings(as.numeric(df[[score_actual]]))
+  species_vals <- trimws(as.character(animl_df[[species_actual]]))
+  score_vals   <- suppressWarnings(as.numeric(animl_df[[score_actual]]))
   common_vals  <- if (!is.null(common_name_actual))
-    trimws(as.character(df[[common_name_actual]])) else rep(NA_character_, nrow(df))
+    trimws(as.character(animl_df[[common_name_actual]])) else rep(NA_character_, nrow(animl_df))
 
-  # Derive genus: first word of species binomial; NA for non-binomial labels
-  genus_vals <- ifelse(
-    grepl("^[A-Z][a-z]+ [a-z]", species_vals),
-    sub("^(\\S+).*", "\\1", species_vals),
-    NA_character_
-  )
+  genus_vals <- .extract_genus(species_vals)
 
   # Compute coverage from bounding box area (optional) -------------------------
   # bbox_w * bbox_h gives the fractional area of the image occupied by the
@@ -336,14 +347,14 @@ read_animl_output <- function(files,
       bbox_cols[["w"]] else bbox_cols[[1L]]
     h_col <- if (!is.null(names(bbox_cols)) && "h" %in% names(bbox_cols))
       bbox_cols[["h"]] else bbox_cols[[2L]]
-    if (!w_col %in% names(df) || !h_col %in% names(df)) {
+    if (!w_col %in% names(animl_df) || !h_col %in% names(animl_df)) {
       warning(sprintf(
         "read_animl_output: bbox_cols '%s'/'%s' not found in '%s'; coverage set to NA.",
         w_col, h_col, basename(f)
       ), call. = FALSE)
-      rep(NA_real_, nrow(df))
+      rep(NA_real_, nrow(animl_df))
     } else {
-      suppressWarnings(as.numeric(df[[w_col]]) * as.numeric(df[[h_col]]))
+      suppressWarnings(as.numeric(animl_df[[w_col]]) * as.numeric(animl_df[[h_col]]))
     }
   } else {
     NULL
@@ -369,15 +380,15 @@ read_animl_output <- function(files,
 
 #' Pivot wide Animl format (pred1/score1 ... predN/scoreN) to long format
 #' @noRd
-.pivot_wide_animl <- function(df, f, file_col, species_prefix, score_prefix,
+.pivot_wide_animl <- function(animl_df, f, file_col, species_prefix, score_prefix,
                                common_name_col, n_candidates) {
 
   # Build expected column names
   pred_cols  <- paste0(species_prefix, seq_len(n_candidates))
   score_cols <- paste0(score_prefix,   seq_len(n_candidates))
 
-  missing_pred  <- setdiff(pred_cols,  names(df))
-  missing_score <- setdiff(score_cols, names(df))
+  missing_pred  <- setdiff(pred_cols,  names(animl_df))
+  missing_score <- setdiff(score_cols, names(animl_df))
   if (length(missing_pred) > 0L || length(missing_score) > 0L) {
     stop(sprintf(
       paste0(
@@ -392,21 +403,21 @@ read_animl_output <- function(files,
   }
 
   # Pivot: replicate each row n_candidates times
-  n_rows  <- nrow(df)
+  n_rows  <- nrow(animl_df)
   indices <- rep(seq_len(n_rows), times = n_candidates)
 
-  long <- df[indices, , drop = FALSE]
+  long <- animl_df[indices, , drop = FALSE]
   rownames(long) <- NULL
 
   long[[".animl_species"]] <- unlist(
-    lapply(seq_len(n_candidates), function(k) df[[pred_cols[k]]]),
+    lapply(seq_len(n_candidates), function(k) animl_df[[pred_cols[k]]]),
     use.names = FALSE
   )
   long[[".animl_score"]] <- unlist(
-    lapply(seq_len(n_candidates), function(k) df[[score_cols[k]]]),
+    lapply(seq_len(n_candidates), function(k) animl_df[[score_cols[k]]]),
     use.names = FALSE
   )
-  if (!is.null(common_name_col) && common_name_col %in% names(df)) {
+  if (!is.null(common_name_col) && common_name_col %in% names(animl_df)) {
     long[[".animl_common_name"]] <- long[[common_name_col]]
   } else {
     long[[".animl_common_name"]] <- NA_character_
@@ -430,8 +441,12 @@ read_animl_output <- function(files,
 #'
 #' Each JSON file should be the raw API response for one image, saved to disk
 #' after calling the iNaturalist API endpoint
-#' `POST https://api.inaturalist.org/v2/computervision/score_image`.
-#' See the `@details` section for a minimal API call example.
+#' `POST https://api.inaturalist.org/v1/computervision/score_image` --
+#' confirmed live and working (returning HTTP 200 with real results) as of
+#' this package's [score_image_inat()], which calls the same v1 endpoint
+#' directly rather than saving JSON to disk first. See the `@details`
+#' section for a minimal API call example for the save-to-disk path this
+#' function reads.
 #'
 #' @param files Character vector. Paths to iNaturalist CV JSON files.
 #'   Alternatively, a path to a directory: all `*.json` files in that
@@ -450,8 +465,13 @@ read_animl_output <- function(files,
 #'     \item{`observation_id`}{Unique identifier derived from the JSON filename
 #'       stem (the name you gave the saved response file, ideally the image
 #'       filename stem).}
-#'     \item{`score`}{iNaturalist CV score (0--1) as selected by
-#'       `score_type`.}
+#'     \item{`score`}{iNaturalist CV score, passed through unchanged from the
+#'       saved JSON's `score_type` field. The live API returns scores on
+#'       iNaturalist's 0--100 softmax convention (candidates for one image
+#'       sum to approximately 100, not 1) -- confirmed directly against the
+#'       real API (see [score_image_inat()]'s matching `@return` note); do
+#'       not assume a 0--1 scale or rescale before passing to
+#'       `TaxaLikely::evaluate_likelihoods()`.}
 #'     \item{`species`}{Scientific name (binomial) if the API returned a
 #'       species-rank taxon; coarser name otherwise.}
 #'     \item{`genus`}{Genus name (first word of `species`). `NA` for
@@ -469,7 +489,7 @@ read_animl_output <- function(files,
 #' ```r
 #' # Requires httr2 and jsonlite
 #' img_path <- "field_images/IMG_001.jpg"
-#' resp <- httr2::request("https://api.inaturalist.org/v2") |>
+#' resp <- httr2::request("https://api.inaturalist.org/v1") |>
 #'   httr2::req_url_path("/computervision/score_image") |>
 #'   httr2::req_body_multipart(
 #'     image    = curl::form_file(img_path),
@@ -479,7 +499,9 @@ read_animl_output <- function(files,
 #' json_path <- sub("\\.jpg$", ".json", img_path)
 #' writeLines(httr2::resp_body_string(resp), json_path)
 #' ```
-#' Then: `read_inaturalist_cv_output("field_images/")`.
+#' Then: `read_inaturalist_cv_output("field_images/")`. The endpoint is
+#' rate-limited (documented at 60 requests/minute for authenticated users);
+#' pace calls accordingly when generating many JSON files in a batch.
 #'
 #' **Species rank filtering:** iNaturalist CV returns suggestions at any rank
 #' (species, genus, family, ...). Filter before standardizing:
@@ -498,14 +520,16 @@ read_animl_output <- function(files,
 #' @export
 #'
 #' @examples
-#' # Minimal synthetic iNaturalist CV JSON
+#' # Minimal synthetic iNaturalist CV JSON. Real API responses score
+#' # candidates on a 0-100 scale (see @return); this synthetic fixture uses
+#' # a couple of plausible values to demonstrate parsing, not a real response.
 #' tmp <- tempfile(fileext = ".json")
 #' writeLines(
 #'   '{"results":[
-#'      {"combined_score":0.87,"score":0.91,
+#'      {"combined_score":72.4,"score":68.1,
 #'       "taxon":{"name":"Danaus plexippus","rank":"species",
 #'                "preferred_common_name":"Monarch"}},
-#'      {"combined_score":0.07,"score":0.06,
+#'      {"combined_score":5.3,"score":4.7,
 #'       "taxon":{"name":"Limenitis archippus","rank":"species",
 #'                "preferred_common_name":"Viceroy"}}
 #'   ]}',
@@ -519,23 +543,13 @@ read_inaturalist_cv_output <- function(files,
                                         min_confidence = 0,
                                         top_n          = NULL) {
 
-  if (!requireNamespace("jsonlite", quietly = TRUE))
-    stop(paste0(
-      "read_inaturalist_cv_output: package 'jsonlite' is required. ",
-      "Install it with: install.packages('jsonlite')"
-    ))
+  .check_pkg("jsonlite")
 
   score_type <- match.arg(score_type)
 
   if (!is.character(files) || length(files) == 0L)
     stop("read_inaturalist_cv_output: 'files' must be a non-empty character vector or directory path.")
-  if (!is.numeric(min_confidence) || length(min_confidence) != 1L || is.na(min_confidence))
-    stop("read_inaturalist_cv_output: 'min_confidence' must be a single numeric value.")
-  if (!is.null(top_n)) {
-    top_n <- as.integer(top_n)
-    if (is.na(top_n) || top_n < 1L)
-      stop("read_inaturalist_cv_output: 'top_n' must be a positive integer or NULL.")
-  }
+  top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_inaturalist_cv_output")
 
   # ---- resolve directory vs file list ----------------------------------------
   if (length(files) == 1L && dir.exists(files)) {
@@ -547,10 +561,7 @@ read_inaturalist_cv_output <- function(files,
   } else {
     missing_files <- files[!file.exists(files)]
     if (length(missing_files) > 0L)
-      stop(sprintf(
-        "read_inaturalist_cv_output: file(s) not found:\n  %s",
-        paste(missing_files, collapse = "\n  ")
-      ))
+      .stop_missing_files(missing_files, "read_inaturalist_cv_output")
   }
 
   # ---- parse each file -------------------------------------------------------
@@ -567,14 +578,8 @@ read_inaturalist_cv_output <- function(files,
 
   # ---- apply filters ---------------------------------------------------------
   out <- out[!is.na(out$score) & out$score >= min_confidence, , drop = FALSE]
-
-  if (!is.null(top_n)) {
-    out <- do.call(rbind, lapply(split(out, out$observation_id), function(g) {
-      g[order(g$score, decreasing = TRUE), ][seq_len(min(nrow(g), top_n)), ,
-                                              drop = FALSE]
-    }))
-    rownames(out) <- NULL
-  }
+  out <- .apply_top_n(out, "observation_id", "score", top_n)
+  rownames(out) <- NULL
 
   out
 }
@@ -598,16 +603,7 @@ read_inaturalist_cv_output <- function(files,
     message(sprintf(
       "read_inaturalist_cv_output: '%s' has no results.", basename(f)
     ))
-    return(data.frame(
-      observation_id = character(0),
-      score          = numeric(0),
-      species        = character(0),
-      genus          = character(0),
-      common_name    = character(0),
-      taxon_rank     = character(0),
-      source_file    = character(0),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_inat_result())
   }
 
   rows <- lapply(results, function(r) {
@@ -616,8 +612,7 @@ read_inaturalist_cv_output <- function(files,
     nm   <- if (!is.null(tx[["name"]])) as.character(tx[["name"]]) else NA_character_
     rank <- if (!is.null(tx[["rank"]])) tolower(as.character(tx[["rank"]])) else NA_character_
     cn   <- if (!is.null(tx[["preferred_common_name"]])) as.character(tx[["preferred_common_name"]]) else NA_character_
-    genus_val <- if (!is.na(nm) && grepl("^[A-Z][a-z]+ [a-z]", nm))
-      sub("^(\\S+).*", "\\1", nm) else NA_character_
+    genus_val <- .extract_genus(nm)
     data.frame(
       observation_id = obs_id,
       score          = sc,
@@ -726,21 +721,11 @@ read_wildlife_insights_output <- function(files,
                                            label_col      = "label",
                                            score_col      = "score") {
 
-  if (!requireNamespace("jsonlite", quietly = TRUE))
-    stop(paste0(
-      "read_wildlife_insights_output: package 'jsonlite' is required. ",
-      "Install it with: install.packages('jsonlite')"
-    ))
+  .check_pkg("jsonlite")
 
   if (!is.character(files) || length(files) == 0L)
     stop("read_wildlife_insights_output: 'files' must be a non-empty character vector or directory path.")
-  if (!is.numeric(min_confidence) || length(min_confidence) != 1L || is.na(min_confidence))
-    stop("read_wildlife_insights_output: 'min_confidence' must be a single numeric value.")
-  if (!is.null(top_n)) {
-    top_n <- as.integer(top_n)
-    if (is.na(top_n) || top_n < 1L)
-      stop("read_wildlife_insights_output: 'top_n' must be a positive integer or NULL.")
-  }
+  top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_wildlife_insights_output")
 
   # ---- resolve directory vs file list ----------------------------------------
   if (length(files) == 1L && dir.exists(files)) {
@@ -752,10 +737,7 @@ read_wildlife_insights_output <- function(files,
   } else {
     missing_files <- files[!file.exists(files)]
     if (length(missing_files) > 0L)
-      stop(sprintf(
-        "read_wildlife_insights_output: file(s) not found:\n  %s",
-        paste(missing_files, collapse = "\n  ")
-      ))
+      .stop_missing_files(missing_files, "read_wildlife_insights_output")
   }
 
   # ---- parse each file -------------------------------------------------------
@@ -771,27 +753,13 @@ read_wildlife_insights_output <- function(files,
 
   if (is.null(out) || nrow(out) == 0L) {
     message("read_wildlife_insights_output: no predictions found across all files.")
-    return(data.frame(
-      observation_id = character(0),
-      score          = numeric(0),
-      species        = character(0),
-      genus          = character(0),
-      category       = character(0),
-      source_file    = character(0),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_wi_result())
   }
 
   # ---- apply filters ---------------------------------------------------------
   out <- out[!is.na(out$score) & out$score >= min_confidence, , drop = FALSE]
-
-  if (!is.null(top_n)) {
-    out <- do.call(rbind, lapply(split(out, out$observation_id), function(g) {
-      g[order(g$score, decreasing = TRUE), ][seq_len(min(nrow(g), top_n)), ,
-                                              drop = FALSE]
-    }))
-    rownames(out) <- NULL
-  }
+  out <- .apply_top_n(out, "observation_id", "score", top_n)
+  rownames(out) <- NULL
 
   out
 }
@@ -813,18 +781,11 @@ read_wildlife_insights_output <- function(files,
     message(sprintf(
       "read_wildlife_insights_output: '%s' has no 'predictions' field.", basename(f)
     ))
-    return(data.frame(
-      observation_id = character(0),
-      score          = numeric(0),
-      species        = character(0),
-      genus          = character(0),
-      category       = character(0),
-      source_file    = character(0),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_wi_result())
   }
 
   img_names <- names(preds)
+  .warn_duplicate_basenames(img_names, "read_wildlife_insights_output")
   rows <- vector("list", length(img_names))
   for (i in seq_along(img_names)) {
     img_key    <- img_names[[i]]
@@ -836,8 +797,7 @@ read_wildlife_insights_output <- function(files,
       nm  <- if (!is.null(p[[label_col]])) as.character(p[[label_col]]) else NA_character_
       sc  <- if (!is.null(p[[score_col]])) suppressWarnings(as.numeric(p[[score_col]])) else NA_real_
       cat <- if (!is.null(p[["category"]])) as.character(p[["category"]]) else NA_character_
-      genus_val <- if (!is.na(nm) && grepl("^[A-Z][a-z]+ [a-z]", nm))
-        sub("^(\\S+).*", "\\1", nm) else NA_character_
+      genus_val <- .extract_genus(nm)
       data.frame(
         observation_id = obs_id,
         score          = sc,

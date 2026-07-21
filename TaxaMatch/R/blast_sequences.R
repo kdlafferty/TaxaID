@@ -1,4 +1,11 @@
+# NSE column names referenced via non-standard evaluation below (the
+# `pident ~ qseqid` formula interface to stats::aggregate() in
+# .filter_blast_hits(), plus bare `$`-free references elsewhere in this
+# file) would otherwise trip an R CMD CHECK "no visible binding" note.
 utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
+
+#' @importFrom TaxaTools %||%
+NULL
 
 # ==============================================================================
 # blast_sequences() -- Query NCBI BLAST (remote or local) for top matches
@@ -52,9 +59,12 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #'   submission (default \code{20L}). Larger batches reduce API overhead but
 #'   risk timeout on NCBI's server. NCBI handles multi-FASTA queries.
 #' @param email Character. Email address sent to NCBI (required by their usage
-#'   policy for remote BLAST). Default \code{NULL}.
-#' @param ncbi_api_key Character. Optional NCBI API key for higher rate limits.
-#'   Default \code{NULL}.
+#'   policy for remote BLAST). Defaults to the \code{NCBI_EMAIL} environment
+#'   variable (unset by default); a \code{warning()} is issued for remote
+#'   BLAST when neither is available.
+#' @param ncbi_api_key Character. Optional NCBI API key for higher rate
+#'   limits. Defaults to the \code{NCBI_API_KEY} environment variable (unset
+#'   by default).
 #' @param resolve_taxonomy Logical. If \code{TRUE} (default), resolve NCBI
 #'   taxonomy IDs to full lineage (kingdom through species) and append taxonomy
 #'   columns to the output.
@@ -72,7 +82,13 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #'   \describe{
 #'     \item{observation_id}{Query identifier (from \code{asv_id})}
 #'     \item{accession}{Subject accession}
-#'     \item{score}{Percent identity (0-100 scale)}
+#'     \item{score}{Percent identity (0-100 scale), computed as
+#'       \code{round(100 * identity / align_len, 2)} from HSP fields (the
+#'       standard NCBI definition). This is \emph{alignment} identity over
+#'       the aligned region, not sequence identity over the full query
+#'       length. For multi-HSP alignments only the highest-scoring HSP is
+#'       used, which may under- or over-estimate true coverage for
+#'       fragmented/chimeric reads.}
 #'     \item{evalue}{E-value}
 #'     \item{bitscore}{Bit score}
 #'     \item{alignment_length}{Alignment length}
@@ -95,6 +111,10 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #'   \code{lat}, \code{lon}, and \code{country} columns are appended.
 #'
 #'   This output is ready for \code{\link{standardize_match_data}}.
+#'
+#'   An \code{attr(out, "report_params")} list (\code{method}, \code{database},
+#'   \code{min_score}, \code{n_samples}) is also attached, consumed by
+#'   \code{\link{report_match}}.
 #'
 #' @details
 #' ## Score window algorithm
@@ -159,7 +179,18 @@ utils::globalVariables(c("qseqid", "pident", "slen", "staxids", "max_pident"))
 #' Uses the NCBI BLAST URL API with proper rate limiting (minimum 10 seconds
 #' between submissions). Sequences are submitted in batches of
 #' \code{batch_size}. The function polls for results with exponential backoff.
-#' An \code{email} is required by NCBI usage policy.
+#' An \code{email} is required by NCBI usage policy. Remote BLAST results can
+#' vary over time as the NCBI \code{nt} database is updated; for
+#' reproducibility, consider recording the query date (or a specific database
+#' version, retrievable via NCBI Entrez) alongside results used in scientific
+#' workflows.
+#'
+#' \code{max_target_seqs} does not guarantee the best-scoring hits are
+#' returned first -- NCBI's BLAST truncates its internal hit list before
+#' scoring is complete (Shah et al. 2018, \emph{Bioinformatics}), so a low
+#' value can cause the true top hit to be missed. The default (\code{100L})
+#' is reasonable for most barcode-length queries; raise it for taxonomically
+#' dense searches.
 #'
 #' ## Local BLAST
 #'
@@ -186,8 +217,8 @@ blast_sequences <- function(seq_df,
                             max_subject_length = NULL,
                             max_target_seqs = 100L,
                             batch_size = 20L,
-                            email = NULL,
-                            ncbi_api_key = NULL,
+                            email = Sys.getenv("NCBI_EMAIL", unset = ""),
+                            ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                             resolve_taxonomy = TRUE,
                             resolve_location = FALSE,
                             verbose = TRUE) {
@@ -234,10 +265,30 @@ blast_sequences <- function(seq_df,
   if (!is.logical(resolve_location) || length(resolve_location) != 1L ||
       is.na(resolve_location))
     stop("resolve_location must be TRUE or FALSE")
+  if (!is.numeric(max_target_seqs) || length(max_target_seqs) != 1L ||
+      is.na(max_target_seqs) || max_target_seqs < 1L)
+    stop("max_target_seqs must be a positive integer")
+  if (!is.numeric(batch_size) || length(batch_size) != 1L ||
+      is.na(batch_size) || batch_size < 1L)
+    stop("batch_size must be a positive integer")
+
+  # Empty-string env-var defaults (email/ncbi_api_key) mean "not supplied".
+  if (identical(email, "")) email <- NULL
+  if (identical(ncbi_api_key, "")) ncbi_api_key <- NULL
 
   max_hits <- as.integer(max_hits)
   max_target_seqs <- as.integer(max_target_seqs)
   batch_size <- as.integer(batch_size)
+
+  if (max_target_seqs < max_hits)
+    warning(sprintf(
+      paste0(
+        "max_target_seqs (%d) is smaller than max_hits (%d); BLAST will ",
+        "never return enough hits per query to reach the max_hits cap. ",
+        "Consider raising max_target_seqs."
+      ),
+      max_target_seqs, max_hits
+    ))
 
   # --- Resolve subject length bounds ------------------------------------------
   subject_len_range <- NULL
@@ -415,8 +466,7 @@ blast_sequences <- function(seq_df,
 
 .blast_remote <- function(seq_df, database, program, max_target_seqs,
                           batch_size, email, ncbi_api_key, verbose) {
-  if (!requireNamespace("httr2", quietly = TRUE))
-    stop("Package 'httr2' is required for remote BLAST. Install with: install.packages('httr2')")
+  .check_pkg("httr2")
 
   base_url <- "https://blast.ncbi.nlm.nih.gov/blast/Blast.cgi"
 
@@ -665,8 +715,7 @@ blast_sequences <- function(seq_df,
 #' @noRd
 .parse_blast_xml <- function(xml_text) {
   # Parse NCBI BLAST XML output into a data frame matching .empty_raw_hits() schema
-  if (!requireNamespace("xml2", quietly = TRUE))
-    stop("Package 'xml2' is required for parsing BLAST XML output.")
+  .check_pkg("xml2")
 
   # Check for HTML status page instead of XML
   if (grepl("QBlastInfoBegin", xml_text) && !grepl("<BlastOutput>", xml_text)) {
@@ -770,16 +819,8 @@ blast_sequences <- function(seq_df,
 # ==============================================================================
 
 .blast_local <- function(seq_df, database, program, max_target_seqs, verbose) {
-  if (!requireNamespace("rBLAST", quietly = TRUE))
-    stop(
-      "Package 'rBLAST' is required for local BLAST. ",
-      "Install with: BiocManager::install('rBLAST')"
-    )
-  if (!requireNamespace("Biostrings", quietly = TRUE))
-    stop(
-      "Package 'Biostrings' is required for local BLAST. ",
-      "Install with: BiocManager::install('Biostrings')"
-    )
+  .check_pkg("rBLAST", "BiocManager::install('rBLAST')")
+  .check_pkg("Biostrings", "BiocManager::install('Biostrings')")
 
   # Create DNAStringSet from sequences
   dna <- Biostrings::DNAStringSet(seq_df$sequence)
@@ -891,12 +932,8 @@ blast_sequences <- function(seq_df,
 
 #' @noRd
 .resolve_taxonomy <- function(taxids, ncbi_api_key = NULL, verbose = TRUE) {
-  if (!requireNamespace("rentrez", quietly = TRUE))
-    stop("Package 'rentrez' is required for taxonomy resolution. ",
-         "Install with: install.packages('rentrez')")
-  if (!requireNamespace("xml2", quietly = TRUE))
-    stop("Package 'xml2' is required for taxonomy resolution. ",
-         "Install with: install.packages('xml2')")
+  .check_pkg("rentrez")
+  .check_pkg("xml2")
 
   if (!is.null(ncbi_api_key))
     rentrez::set_entrez_key(ncbi_api_key)
@@ -989,17 +1026,29 @@ blast_sequences <- function(seq_df,
 # ==============================================================================
 
 #' @noRd
+.empty_acc_taxonomy_result <- function() {
+  data.frame(accession = character(), kingdom = character(),
+             phylum = character(), class = character(),
+             order = character(), family = character(),
+             genus = character(), species = character(),
+             stringsAsFactors = FALSE)
+}
+
+#' @noRd
 .resolve_taxonomy_by_acc <- function(accessions, ncbi_api_key = NULL,
                                                verbose = TRUE) {
-  if (!requireNamespace("rentrez", quietly = TRUE))
-    stop("Package 'rentrez' is required for taxonomy resolution.")
-  if (!requireNamespace("xml2", quietly = TRUE))
-    stop("Package 'xml2' is required for taxonomy resolution.")
+  .check_pkg("rentrez")
+  .check_pkg("xml2")
 
   if (!is.null(ncbi_api_key))
     rentrez::set_entrez_key(ncbi_api_key)
 
-  # Step 1: Look up taxids from accessions via nucleotide summary
+  # Step 1: Look up taxids from accessions via nucleotide summary.
+  # 100 accessions/batch keeps the "[ACCN]" OR-query comfortably under
+  # NCBI's request-size limits; entrez_search() posts the query rather than
+  # appending it to the URL, so the classic GET-URL-length ceiling does not
+  # apply, but very long individual accession strings could still add up --
+  # not observed in production use of this batch size to date.
   batch_size <- 100L
   batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
   acc_taxid_map <- list()
@@ -1037,11 +1086,7 @@ blast_sequences <- function(seq_df,
   }
 
   if (length(acc_taxid_map) == 0L) {
-    return(data.frame(accession = character(), kingdom = character(),
-                      phylum = character(), class = character(),
-                      order = character(), family = character(),
-                      genus = character(), species = character(),
-                      stringsAsFactors = FALSE))
+    return(.empty_acc_taxonomy_result())
   }
 
   # Step 2: Resolve taxids to full taxonomy
@@ -1050,11 +1095,7 @@ blast_sequences <- function(seq_df,
   tax_map <- .resolve_taxonomy(taxids, ncbi_api_key, verbose)
 
   if (is.null(tax_map) || nrow(tax_map) == 0L) {
-    return(data.frame(accession = character(), kingdom = character(),
-                      phylum = character(), class = character(),
-                      order = character(), family = character(),
-                      genus = character(), species = character(),
-                      stringsAsFactors = FALSE))
+    return(.empty_acc_taxonomy_result())
   }
 
   # Step 3: Build accession -> taxonomy mapping
@@ -1120,10 +1161,8 @@ blast_sequences <- function(seq_df,
                       lon = numeric(0L), country = character(0L),
                       stringsAsFactors = FALSE)
 
-  if (!requireNamespace("rentrez", quietly = TRUE))
-    stop("Package 'rentrez' is required for location resolution.")
-  if (!requireNamespace("xml2", quietly = TRUE))
-    stop("Package 'xml2' is required for location resolution.")
+  .check_pkg("rentrez")
+  .check_pkg("xml2")
 
   if (!is.null(ncbi_api_key))
     rentrez::set_entrez_key(ncbi_api_key)
@@ -1180,11 +1219,6 @@ blast_sequences <- function(seq_df,
   out <- do.call(rbind, Filter(Negate(is.null), res))
   if (is.null(out)) empty else out
 }
-
-
-# ==============================================================================
-#' @importFrom TaxaTools %||%
-NULL
 
 
 # ==============================================================================

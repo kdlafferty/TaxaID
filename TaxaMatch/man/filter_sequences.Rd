@@ -33,7 +33,12 @@ singletons).}
 }
 \value{
 A filtered data frame (same structure as input). A message reports
-how many sequences were removed and why.
+how many sequences were removed and why. An \code{attr(out,
+  "report_params")} list (\code{min_length}, \code{max_length},
+\code{min_abundance}, \code{n_retained}) is also attached, mirroring
+\code{blast_sequences()}'s own \code{report_params} attribute, so
+downstream reporting functions can incorporate the filtering
+parameters into automated methods text.
 }
 \description{
 Removes sequences that fall outside acceptable length bounds or below a
@@ -43,12 +48,23 @@ a barcode marker name or specified manually.
 \details{
 Singletons (sequences observed only once across all samples) are commonly
 removed in eDNA workflows because they are enriched for PCR/sequencing
-errors. The default \code{min_abundance = 2} removes these.
+errors. The default \code{min_abundance = 2} removes these. When
+\code{seq_df} has no \code{abundance} column, abundance filtering is
+silently skipped with a \code{message()} (not a warning or error).
 
 When \code{barcode_term} is supplied, length bounds are resolved from an
 internal lookup table covering common eDNA markers (12S, 16S, COI, ITS,
 etc.). These are intentionally broad ranges that exclude obvious non-target
 amplicons while retaining genuine length variation.
+
+The length filter operates on \code{seq_df$length} if present, computing
+it from \code{seq_df$sequence} otherwise. If \code{length} was
+pre-computed by an upstream step from a different string (e.g. a
+provider's reported length that includes alignment gaps), the filter is
+applied to that value, not to \code{nchar(sequence)} -- verify the two
+agree when using a provider-supplied data frame directly (not one
+produced by \code{read_sequence_table()}, which always derives
+\code{length} from \code{sequence} itself).
 }
 \examples{
 \dontrun{

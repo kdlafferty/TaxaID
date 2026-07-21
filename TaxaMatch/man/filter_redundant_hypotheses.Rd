@@ -13,14 +13,24 @@ filter_redundant_hypotheses(
 \item{match_df}{A data frame with at minimum the columns \code{observation_id},
 \code{taxon_name_rank}, and one column for each rank named in \code{rank_system}.
 Rows whose \code{taxon_name_rank} is not found in \code{rank_system} are retained
-unchanged and a warning is emitted listing the unrecognised values.}
+unchanged and a warning is emitted listing the unrecognised values. Rows
+with \code{NA} \code{taxon_name_rank} are also silently retained (no warning) --
+they cannot be compared against \code{rank_system} at all. Two species-level
+rows for different species sharing the same genus/family (e.g.
+\emph{Gobius paganellus} and \emph{Gobius bucchichi}) are both retained and
+neither's genus row is dropped -- this function only removes strictly
+redundant ancestor rows, not competing same-rank candidates
+(disambiguating those is TaxaLikely's job).}
 
 \item{rank_system}{Character vector of taxonomic rank names in
 \strong{coarsest-to-finest} order. Defaults to
 \code{c("kingdom","phylum","class","order","family","genus","species")}.
 Each name must match both an element of \code{taxon_name_rank} \strong{and} a column
 name in \code{match_df} (case-sensitive after \code{standardize_match_data()} has
-lowercased everything).}
+lowercased everything) -- if \code{match_df} has not been through
+\code{standardize_match_data()}, rank column names may not match this
+default and no rows will be removed (a \code{warning()} is issued when none
+of \code{rank_system} matches a \code{match_df} column at all).}
 }
 \value{
 A data frame with the same columns as \code{match_df} but with redundant
@@ -37,6 +47,14 @@ the same \code{observation_id}. A genus row for a different lineage (e.g.,
 Should be called \strong{after} \code{\link[=standardize_match_data]{standardize_match_data()}} (or any step that
 populates \code{taxon_name_rank}) so that rank labels are already in the canonical
 lowercase form used by \code{rank_system}.
+}
+\note{
+This is particularly valuable for eDNA workflows where BLAST may
+return both a species-level hit (e.g. \emph{Oncorhynchus mykiss}) and a
+genus-level hit (\emph{Oncorhynchus}, from a different accession) for the
+same query. Without this filtering step, TaxaLikely would treat the
+genus and species rows as independent competing hypotheses, inflating
+uncertainty that the data doesn't actually support.
 }
 \examples{
 df <- data.frame(

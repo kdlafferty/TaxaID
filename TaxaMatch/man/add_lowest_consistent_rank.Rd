@@ -57,6 +57,8 @@ that rank are \code{FALSE} (missing data, not a contradiction).
 All rows are \code{FALSE} when \code{lowest_consistent_rank} is
 \code{NA}.}
 }
+All original columns of \code{match_obj} are retained unchanged; only
+the columns above are added.
 }
 \description{
 For each observation, finds the finest taxonomic rank that has a single
@@ -84,24 +86,48 @@ Three additional columns are added (see \strong{Value}).
 candidate set seen by \code{\link[TaxaLikely]{evaluate_likelihoods}()}.  Do
 so before the likelihood step, and inspect the flagged rows before discarding
 them.
-}
-\examples{
+
+\strong{Edge cases:} An observation with a single candidate row is always fully consistent
+at every rank (nothing to disagree with), so
+\code{lowest_consistent_rank} resolves to the finest rank in
+\code{rank_system} regardless of how well-supported that single
+candidate actually is -- this can give a false sense of resolution for a
+genuinely weak match.
+
+A rank column that is entirely blank/\code{NA} for an observation counts
+as trivially consistent (no disagreement is possible with zero non-blank
+values), which does not block finer ranks from being evaluated. If all
+candidates lack a \code{family} value but agree on \code{genus}, this
+function can report \code{lowest_consistent_rank = "species"} even though
+every \code{family} value is missing -- this is deliberate (missing data
+should not prevent resolving finer ranks that ARE populated), but it
+means a "consistent" result does not imply every coarser rank was
+actually checked against real data.
+
+Internally, \code{na_as_inconsistent = TRUE} mode uses the sentinel
+string \code{"__MISSING__"} to make blanks/NAs count as their own
+category. If any real taxon name in your data literally equals
+\code{"__MISSING__"}, it would be misinterpreted as a blank placeholder
+-- an extremely unlikely collision in practice.
+
 m <- data.frame(
-  observation_id = rep("obs1", 4),
-  order   = rep("Sessilia", 4),
-  family  = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
-  genus   = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
-  species = c("Amphibalanus improvisus", "Semibalanus balanoides",
-              "Balanus balanus", "Chthamalus fragilis")
+observation_id = rep("obs1", 4),
+order   = rep("Sessilia", 4),
+family  = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
+genus   = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
+species = c("Amphibalanus improvisus", "Semibalanus balanoides",
+"Balanus balanus", "Chthamalus fragilis")
 )
-# Strict mode: lowest consistent rank = order (3 different families)
-add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"))
-
-# Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 → family is consistent
-add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"),
-                            majority_threshold = 0.75)
-
 }
+\section{Strict mode: lowest consistent rank = order (3 different families)}{
+add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"))
+}
+
+\section{Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 → family is consistent}{
+add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"),
+majority_threshold = 0.75)
+}
+
 \seealso{
 \code{\link[=standardize_match_data]{standardize_match_data()}}, \code{\link[=filter_redundant_hypotheses]{filter_redundant_hypotheses()}}
 }

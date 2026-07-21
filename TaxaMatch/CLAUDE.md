@@ -1,6 +1,73 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-16 (Session 159 -- blast_sequences() now retains subject-side
+# Last updated: 2026-07-20 (Sonnet 5 -- full code + domain review response against
+# inst/taxamatch_review.Rmd (10 files: blast.R, convert_taxonomy_backbone.R,
+# read_acoustic.R, read_image.R, report_match.R, score_image_inat.R,
+# sequence_input.R, standardize_match_data.R, TaxaMatch-package.R,
+# taxonomy_consistency.R), findings and response recorded in
+# inst/taxamatch_review_response.md (new file, following the TaxaFetch review
+# response's format). Following the review's own file-rename suggestions, 3 files
+# renamed to match their single exported function: blast.R -> blast_sequences.R,
+# read_acoustic.R -> read_birdnet_output.R, read_image.R ->
+# read_image_classifiers.R (holds 3 related image-classifier readers).
+#
+# Two real bugs found via LIVE verification (not just code reading), both in
+# score_image_inat.R: (1) .extract_exif_info()'s manual S/W sign-flip logic
+# double-applied the hemisphere sign -- exifr::read_exif() already returns signed
+# decimal degrees (confirmed against a real exiftool-written fixture with known
+# S-latitude/W-longitude), so the existing code silently flipped a
+# correctly-negative value back to positive for every Southern-hemisphere
+# latitude and Western-hemisphere longitude. Fixed by trusting exifr's own sign
+# and removing the redundant re-flip. (2) Confirmed live against the real iNaturalist
+# CV API (fresh token, real image, HTTP 200) that scores are on a 0-100 scale
+# (combined_score ~53.8, top-10 sum ~84.4, not summing to ~1) -- score_image_inat.R's
+# own doc was already correct, but read_image.R's read_inaturalist_cv_output()
+# roxygen showed a fabricated 0-1-scale example and an @return claiming "(0-1)",
+# both fixed; the v2 API endpoint referenced in that file's doc example was also
+# corrected to v1 (the endpoint confirmed live-working, and what score_image_inat.R
+# itself actually calls).
+#
+# Most other fixes are DRY consolidation (new R/utils_shared.R: .check_pkg(),
+# .extract_genus(), .stop_missing_files(), .validate_min_conf_top_n(),
+# .apply_top_n(), .warn_na_coercion(), .warn_duplicate_basenames(), .fmt_time() --
+# applied across blast_sequences.R, read_birdnet_output.R,
+# read_image_classifiers.R, score_image_inat.R, sequence_input.R), real doc/logic
+# bugs (report_match.R's score_original-vs-score doc mismatch and unused verbose
+# param; the "%g%%" score formatting that would have printed "0.87%" for a 0-1
+# acoustic/image confidence score; standardize_match_data.R's top-level
+# `.standard_match_ranks <- TaxaTools::extended_ranks` package-load-time side
+# effect, an R CMD CHECK/CRAN-policy issue, moved inside `.detect_rank_cols()`),
+# and a handful of cheap, real perf fixes (taxonomy_consistency.R's
+# add_lowest_consistent_rank() replaced a which(obs_ids == id) O(n x unique_obs)
+# rescan with a precomputed split() index; sequence_input.R's
+# .parse_semicolon_headers() replaced a do.call(rbind, lapply(...)) growth
+# pattern with a pre-allocated matrix). read_birdnet_output.R's observation_id
+# now formats start_s/end_s to a fixed 1 decimal place (was bare numeric-to-string
+# coercion, which can render inconsistently across platforms/R versions) --
+# the one behavioral change with an existing-test update (test-read_acoustic.R's
+# expected ID string). One design item deliberately declined: renaming
+# standardize_match_data()'s `data` parameter (base R's `data()` function name) --
+# unlike the internal `df` renames applied elsewhere, this is a public,
+# already-shipped parameter name and renaming it would be a breaking signature
+# change for every call site using `data = ...`.
+#
+# devtools::test() 456/456 (0 failures, 0 warnings -- one real false-positive-
+# generating warning bug in my own first attempt at .warn_duplicate_basenames()
+# found and fixed via this same test run: it flagged legitimate long-format data
+# -- the same image path repeated across multiple candidate-species rows -- as a
+# basename collision; fixed to check (basename, full path) pairs, not raw
+# basenames, before warning). devtools::check() 0 errors/0 warnings/0 notes.
+# lintr: 0 issues in every file this session touched (verified via a filtered
+# lint_package() run scoped to just those files); the ~20 object_usage_linter
+# false positives from cross-file utils_shared.R helper calls were confirmed
+# real-and-correct via codetools::checkUsage() on the loaded namespace (same
+# false-positive class TaxaFetch's own CLAUDE.md already documents for
+# lint_package()'s per-file static analysis) and suppressed via whole-file
+# .lintr exclusions (not per-line, given the number of new cross-file call sites
+# and this ecosystem's own documented line-number-drift risk with per-line
+# exclusions). Reinstalled to ~/Library/R/4.0/library.
+#
+# Previous update, 2026-07-16 (Session 159 -- blast_sequences() now retains subject-side
 # alignment coordinates (new `subject_start`/`subject_end` output columns), both the
 # remote (`.parse_blast_xml()`, extracts `Hsp_hit-from`/`Hsp_hit-to`) and local
 # (`.blast_local()`, adds `sstart send` to the rBLAST `-outfmt 6` field list) paths. Found
@@ -145,7 +212,7 @@ Raw column names vary by source — `standardize_match_data()` handles the renam
 - **Output:** CSV with species, confidence, bounding boxes; multi-level taxonomy fallback (species → genus → family when confidence is low)
 - **Export formats:** CSV, COCO JSON, Timelapse CSV, folder organization
 - **Score interpretation:** CNN confidence (0-1); NOT comparable to BLAST % identity — requires separate likelihood model calibration in TaxaLikely
-- **Ingest function:** `read_animl_output()` — implemented in `R/read_image.R` (Session 93)
+- **Ingest function:** `read_animl_output()` — implemented in `R/read_image_classifiers.R` (Session 93)
 - **Reference:** https://docs.animl.camera/
 
 ### Acoustic recognizer details (BirdNET — Complete)
@@ -155,7 +222,7 @@ Raw column names vary by source — `standardize_match_data()` handles the renam
 - **Score interpretation:** CNN confidence (0-1); same calibration caveat as image classifiers
 - **Species coverage:** ~6,000+ bird species; species list is queryable (reference DB equivalent for completeness audits)
 - **R interfaces:** BirdNET-R, warbleR (acoustic analysis), or direct Python CLI
-- **Ingest function:** `read_birdnet_output()` — implemented in `R/read_acoustic.R` (Session 93)
+- **Ingest function:** `read_birdnet_output()` — implemented in `R/read_birdnet_output.R` (Session 93)
 - **Reference:** https://birdnet.cornell.edu/
 
 ### Design notes for non-sequence data types
@@ -200,17 +267,17 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `blast_sequences()` | R/blast.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution. **Session 135**: `resolve_location = FALSE` param — when `TRUE`, fetches each unique hit accession's full GBSeq XML record (`.resolve_locations_by_acc()`) and appends `lat`/`lon`/`country` parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); independent of `resolve_taxonomy` (taxonomy comes from the NCBI taxonomy DB, location from the full nucleotide record — neither fetch gives you the other). **Session 151**: `score_range` default widened `2` → `8` — a leave-one-out check against 3 real 12S reference datasets found the old 2-pt window silently dropped the true species in 4/7 real congener-outscoring events; see roxygen's "Score window validation" section and `diagnostics/score_window_leave_one_out.R`. |
+| `blast_sequences()` | R/blast_sequences.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution. **Session 135**: `resolve_location = FALSE` param — when `TRUE`, fetches each unique hit accession's full GBSeq XML record (`.resolve_locations_by_acc()`) and appends `lat`/`lon`/`country` parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); independent of `resolve_taxonomy` (taxonomy comes from the NCBI taxonomy DB, location from the full nucleotide record — neither fetch gives you the other). **Session 151**: `score_range` default widened `2` → `8` — a leave-one-out check against 3 real 12S reference datasets found the old 2-pt window silently dropped the true species in 4/7 real congener-outscoring events; see roxygen's "Score window validation" section and `diagnostics/score_window_leave_one_out.R`. |
 
 ### Image and acoustic input
 
 | Function | File | Status | Description |
 |---|---|---|---|
 | `score_image_inat()` | R/score_image_inat.R | Complete | Submit image(s) directly to iNaturalist CV API; returns canonical match object. Accepts single file, file vector, or directory. Per-image EXIF lat/lng/date extraction (requires `exifr` Suggests). User-supplied `lat`/`lng`/`observed_on` override EXIF and apply to all images. Outputs `observation_id`, `taxon_name`, `taxon_name_rank`, `score_original` (= `combined_score`), `genus`, `common_name`, `iconic_taxon_name`, `taxon_id`, `n_observations`, `vision_score`, `combined_score`, `freq_score`, `geo_prior_weight` (= combined/vision), `lat`, `lng`, `observed_on`, `folder_1`/`folder_2`/... (nested path metadata). Requires `httr` (Imports), `tibble`, `dplyr`. `exifr` in Suggests. Run `convert_taxonomy_backbone()` + `fill_higher_ranks()` before `join_priors()`. |
-| `read_animl_output()` | R/read_image.R | Complete | Ingest Animl CSV export (MegaDetector + SpeciesNet); map confidence + taxonomy to match object. Accepts long format (default) or wide format via `n_candidates`. Configurable column names via `file_col`, `species_col`, `score_col`. `observation_id` = image filename stem. `min_confidence` and `top_n` filters. |
-| `read_inaturalist_cv_output()` | R/read_image.R | Complete | Ingest saved iNaturalist CV API JSON response files (one JSON per image). `score_type` = `"combined_score"` (default) or `"score"`. Returns `observation_id`, `score`, `species`, `genus`, `common_name`, `taxon_rank`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
-| `read_wildlife_insights_output()` | R/read_image.R | Complete | Ingest SpeciesNet / Wildlife Insights batch predictions JSON (one JSON may cover many images). `label_col = "label"`, `score_col = "score"` (configurable for older formats). Returns `observation_id`, `score`, `species`, `genus`, `category`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
-| `read_birdnet_output()` | R/read_acoustic.R | Complete | Ingest BirdNET-Analyzer CSV (detections × species × confidence); map to match object. Accepts file vector or directory path. `observation_id = "{file_stem}_{start_s}-{end_s}"`. `min_confidence` and `top_n` filters. |
+| `read_animl_output()` | R/read_image_classifiers.R | Complete | Ingest Animl CSV export (MegaDetector + SpeciesNet); map confidence + taxonomy to match object. Accepts long format (default) or wide format via `n_candidates`. Configurable column names via `file_col`, `species_col`, `score_col`. `observation_id` = image filename stem. `min_confidence` and `top_n` filters. |
+| `read_inaturalist_cv_output()` | R/read_image_classifiers.R | Complete | Ingest saved iNaturalist CV API JSON response files (one JSON per image). `score_type` = `"combined_score"` (default) or `"score"`. Returns `observation_id`, `score`, `species`, `genus`, `common_name`, `taxon_rank`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
+| `read_wildlife_insights_output()` | R/read_image_classifiers.R | Complete | Ingest SpeciesNet / Wildlife Insights batch predictions JSON (one JSON may cover many images). `label_col = "label"`, `score_col = "score"` (configurable for older formats). Returns `observation_id`, `score`, `species`, `genus`, `category`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
+| `read_birdnet_output()` | R/read_birdnet_output.R | Complete | Ingest BirdNET-Analyzer CSV (detections × species × confidence); map to match object. Accepts file vector or directory path. `observation_id = "{file_stem}_{start_s}-{end_s}"`. `min_confidence` and `top_n` filters. |
 
 ### Site table and spatial grouping (Sessions 134, 134b)
 
@@ -234,17 +301,18 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Description |
 |---|---|---|
-| `.resolve_taxonomy()` | R/blast.R | NCBI taxid to full lineage (kingdom-species) via rentrez + xml2 |
-| `.resolve_locations_by_acc()` | R/blast.R | **Session 135.** Accession → `lat`/`lon`/`country` via full GBSeq XML record (`db="nucleotide", rettype="gb", retmode="xml"`) — the record type `.resolve_taxonomy()`/`.resolve_taxonomy_by_acc()` never touch. Accessions passed directly as `id`, no search/summary round trip. |
-| `.parse_lat_lon()` | R/blast.R | **Session 135.** Parses INSDC `lat_lon` qualifier strings (`"36.789 N 121.947 W"`) into signed decimal `c(lat=, lon=)`. Deliberately duplicated from TaxaLikely's identical helper (`R/fetch.R`) rather than shared — matches this ecosystem's existing pre-manuscript stance on small NCBI-fetcher overlap (see `project_blast_ncbi_fetcher_todo` memory / TaxaLikely's Session 115 note). |
-| `.parse_taxonomy_xml()` | R/blast.R | Parse NCBI taxonomy XML response |
-| `.blast_remote()` | R/blast.R | Remote NCBI BLAST URL API with batching, rate limiting, RID polling |
-| `.blast_local()` | R/blast.R | Local BLAST via rBLAST wrapper |
-| `.filter_blast_hits()` | R/blast.R | Score window algorithm: min_score + query coverage + subject length + score_range + max_hits |
-| `.parse_blast_xml()` | R/blast.R | Parse BLAST XML output into standardized hit data frame |
-| `.resolve_taxonomy_from_accessions()` | R/blast.R | Accession-to-taxonomy bridge when taxids unavailable (XML format) |
-| *(removed — Session 57)* | R/sequence_input.R, R/blast.R | `.barcode_length_defaults` and `.resolve_barcode_lengths_local()` moved to TaxaTools; now `TaxaTools::resolve_barcode_lengths()` |
+| `.resolve_taxonomy()` | R/blast_sequences.R | NCBI taxid to full lineage (kingdom-species) via rentrez + xml2 |
+| `.resolve_locations_by_acc()` | R/blast_sequences.R | **Session 135.** Accession → `lat`/`lon`/`country` via full GBSeq XML record (`db="nucleotide", rettype="gb", retmode="xml"`) — the record type `.resolve_taxonomy()`/`.resolve_taxonomy_by_acc()` never touch. Accessions passed directly as `id`, no search/summary round trip. |
+| `.parse_lat_lon()` | R/blast_sequences.R | **Session 135.** Parses INSDC `lat_lon` qualifier strings (`"36.789 N 121.947 W"`) into signed decimal `c(lat=, lon=)`. Deliberately duplicated from TaxaLikely's identical helper (`R/fetch.R`) rather than shared — matches this ecosystem's existing pre-manuscript stance on small NCBI-fetcher overlap (see `project_blast_ncbi_fetcher_todo` memory / TaxaLikely's Session 115 note). |
+| `.parse_taxonomy_xml()` | R/blast_sequences.R | Parse NCBI taxonomy XML response |
+| `.blast_remote()` | R/blast_sequences.R | Remote NCBI BLAST URL API with batching, rate limiting, RID polling |
+| `.blast_local()` | R/blast_sequences.R | Local BLAST via rBLAST wrapper |
+| `.filter_blast_hits()` | R/blast_sequences.R | Score window algorithm: min_score + query coverage + subject length + score_range + max_hits |
+| `.parse_blast_xml()` | R/blast_sequences.R | Parse BLAST XML output into standardized hit data frame |
+| `.resolve_taxonomy_from_accessions()` | R/blast_sequences.R | Accession-to-taxonomy bridge when taxids unavailable (XML format) |
+| *(removed — Session 57)* | R/sequence_input.R, R/blast_sequences.R | `.barcode_length_defaults` and `.resolve_barcode_lengths_local()` moved to TaxaTools; now `TaxaTools::resolve_barcode_lengths()` |
 | `.parse_semicolon_headers()` | R/sequence_input.R | Parse FASTA headers: accession;kingdom;...;species |
+| `.check_pkg()`, `.extract_genus()`, `.stop_missing_files()`, `.validate_min_conf_top_n()`, `.apply_top_n()`, `.warn_na_coercion()`, `.warn_duplicate_basenames()`, `.fmt_time()` | R/utils_shared.R | **2026-07-20, new file.** Shared internal helpers consolidating patterns duplicated across the `read_*()`/`blast_sequences()`/`score_image_inat()` ingest functions (package-review response, see top-of-file session note). |
 
 ---
 
@@ -277,7 +345,7 @@ plausible candidates.
 ## Barcode Length Defaults
 
 **Session 57 (Prompt 16):** Local copies of `.barcode_length_defaults` and
-`.resolve_barcode_lengths_local()` removed from `R/sequence_input.R` and `R/blast.R`.
+`.resolve_barcode_lengths_local()` removed from `R/sequence_input.R` and `R/blast_sequences.R`.
 Now uses `TaxaTools::barcode_length_defaults` and `TaxaTools::resolve_barcode_lengths()`
 (single source of truth). See TaxaTools CLAUDE.md for the full barcode length table.
 

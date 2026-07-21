@@ -16,23 +16,55 @@
 #'
 #' @param match_data Data frame. Match results from \code{\link{blast_sequences}}
 #'   or \code{\link{standardize_match_data}}. Must contain at least
-#'   \code{observation_id} and \code{score}.
+#'   \code{observation_id} and \code{score_original} -- the canonical raw
+#'   score column name produced by \code{standardize_match_data()} (see the
+#'   package's "Canonical Match Object" documentation), not \code{score}. A
+#'   \code{match_data} lacking \code{score_original} is accepted without
+#'   error but produces no score statistics and empty results text.
 #' @param data_type Character or \code{NULL}. One of \code{"eDNA"},
-#'   \code{"image"}, \code{"acoustic"}. If \code{NULL}, defaults to
-#'   \code{"eDNA"} when column names suggest sequence data.
+#'   \code{"image"}, \code{"acoustic"}. If \code{NULL}, auto-detected as
+#'   \code{"eDNA"} when \code{match_data} has an \code{accession} or
+#'   \code{alignment_length} column (both BLAST-specific); otherwise stays
+#'   \code{NULL} and the methods/results text uses generic wording. There is
+#'   currently no auto-detection for \code{"image"}/\code{"acoustic"} --
+#'   pass these explicitly. \code{data_type} also controls whether the
+#'   results text formats scores as a percentage (see \code{@return}'s
+#'   \code{results} entry).
 #' @param verbose Logical. Print summary messages. Default \code{FALSE}.
 #'
 #' @return A \code{report_section} object with:
 #' \describe{
 #'   \item{methods}{Template text describing matching approach.}
-#'   \item{results}{Template text summarizing match statistics.}
-#'   \item{params}{Named list of matching parameters.}
+#'   \item{results}{Template text summarizing match statistics, or
+#'     \code{NULL} when \code{match_data} has neither \code{score_original}
+#'     nor a taxon-name column to summarize. Scores are formatted as a
+#'     percentage only when \code{data_type == "eDNA"} (percent identity is
+#'     always 0-100 for BLAST); for \code{"image"}/\code{"acoustic"} (whose
+#'     score scale varies by classifier -- 0-1 for BirdNET/Animl, 0-100 for
+#'     iNaturalist CV) the raw score value is reported unlabeled rather than
+#'     guessing a scale.}
+#'   \item{params}{Named list of matching parameters (\code{method},
+#'     \code{database}, \code{min_score}, \code{marker} when available). May
+#'     contain additional fields passed through unchanged from
+#'     \code{attr(match_data, "report_params")} (e.g. \code{n_samples} from
+#'     \code{blast_sequences()}) whenever that attribute carries fields not
+#'     already named above.}
 #'   \item{statistics}{Named list of summary counts and scores.}
 #' }
 #'
 #' @seealso \code{\link{blast_sequences}}, \code{\link{standardize_match_data}}
 #'
 #' @examples
+#' # Self-contained example (no BLAST call needed)
+#' hits <- data.frame(
+#'   observation_id = c("ASV1", "ASV1", "ASV2"),
+#'   score_original  = c(98.5, 91.2, 99.1),
+#'   taxon_name      = c("Girella nigricans", "Girella simplicidens",
+#'                       "Oncorhynchus mykiss")
+#' )
+#' sec <- report_match(hits, data_type = "eDNA")
+#' print(sec)
+#'
 #' \dontrun{
 #' hits <- blast_sequences(seq_df, method = "remote")
 #' sec <- report_match(hits)
@@ -129,18 +161,36 @@ report_match <- function(match_data,
     sprintf("Samples (n = %s)", format(n_samples, big.mark = ","))
   }
 
+  # Score scale varies by data type: eDNA percent identity is always 0-100,
+  # so "%" formatting is safe there (and is the historical default when
+  # data_type is unknown/NULL). Image/acoustic classifier confidence scores
+  # do NOT have one universal scale across sources (BirdNET/Animl are 0-1;
+  # iNaturalist CV is 0-100) -- reporting a raw, unlabeled value avoids
+  # asserting a scale this function cannot verify from match_data alone.
+  is_pct_scale <- is.null(data_type) || identical(data_type, "eDNA")
+
   match_desc <- sprintf("were matched using %s", method)
   if (!is.null(database)) {
     match_desc <- paste0(match_desc, sprintf(" against %s", database))
   }
   if (!is.null(min_score)) {
-    match_desc <- paste0(match_desc,
-                         sprintf(" with a minimum score threshold of %g%%", min_score))
+    match_desc <- paste0(
+      match_desc,
+      if (is_pct_scale) sprintf(" with a minimum score threshold of %g%%", min_score)
+      else sprintf(" with a minimum score threshold of %g", min_score)
+    )
   }
   match_desc <- paste0(match_desc, ".")
 
   if (!is.null(marker)) {
     match_desc <- paste0(match_desc, sprintf(" Target marker: %s.", marker))
+  }
+
+  if (identical(data_type, "acoustic") || identical(data_type, "image")) {
+    match_desc <- paste0(
+      match_desc,
+      " Candidates are ranked by classifier confidence score, not percent sequence identity."
+    )
   }
 
   methods_text <- paste(sample_desc, match_desc)
@@ -149,12 +199,21 @@ report_match <- function(match_data,
   results_parts <- character(0L)
 
   if (!is.null(score_stats)) {
-    results_parts <- c(results_parts, sprintf(
-      "Median top match score was %g%% (range: %g%%-%g%%).",
-      score_stats$median_top_score,
-      score_stats$min_top_score,
-      score_stats$max_top_score
-    ))
+    results_parts <- c(results_parts, if (is_pct_scale) {
+      sprintf(
+        "Median top match score was %g%% (range: %g%%-%g%%).",
+        score_stats$median_top_score,
+        score_stats$min_top_score,
+        score_stats$max_top_score
+      )
+    } else {
+      sprintf(
+        "Median top match score was %g (range: %g-%g).",
+        score_stats$median_top_score,
+        score_stats$min_top_score,
+        score_stats$max_top_score
+      )
+    })
   }
 
   if (!is.na(n_taxa)) {
@@ -170,13 +229,37 @@ report_match <- function(match_data,
     NULL
   }
 
+  if (verbose) {
+    message(sprintf(
+      "report_match: %s, %d sample(s), %s taxa, %s.",
+      if (!is.null(data_type)) data_type else "unknown data_type",
+      n_samples,
+      if (!is.na(n_taxa)) n_taxa else "unknown",
+      if (!is.null(score_stats)) "score statistics computed" else "no score_original column found"
+    ))
+  }
+
+  # BLAST is the only method this function currently has a citable reference
+  # for; image/acoustic classifier citations depend on which specific tool
+  # produced match_data, which this function cannot determine from the data
+  # alone.
+  citations <- if (identical(method, "BLAST") || identical(method, "remote BLAST") ||
+                    identical(method, "local BLAST")) {
+    paste0(
+      "Altschul SF, Gish W, Miller W, Myers EW, Lipman DJ (1990). Basic ",
+      "local alignment search tool. Journal of Molecular Biology, 215(3), 403-410."
+    )
+  } else {
+    NULL
+  }
+
   # --- Construct report_section -----------------------------------------------
   TaxaTools::new_report_section(
     package    = "TaxaMatch",
     section    = "match",
     methods    = methods_text,
     results    = results_text,
-    citations  = NULL,
+    citations  = citations,
     params     = params,
     statistics = statistics
   )

@@ -58,14 +58,26 @@
 #'   accept a character vector as its first argument and a `backbone_id`
 #'   argument; must return a data frame with columns `user_supplied_name`,
 #'   `matched_name`, `classification_path`, `classification_ranks`, and
-#'   `verified`. Default: [TaxaTools::verify_taxon_names]. Override for
-#'   offline testing via dependency injection.
+#'   `verified` (logical: `TRUE` when the name resolved in the target
+#'   backbone, `FALSE`/`NA` otherwise). Default: [TaxaTools::verify_taxon_names].
+#'   Override for offline testing via dependency injection. The call is
+#'   wrapped in `tryCatch()`; a failure (e.g. network unavailable, API
+#'   rate-limited) raises a clear error naming the likely cause rather than
+#'   propagating whatever uninformative error the API layer produced.
+#' @param verbose Logical. Print the backbone column mapping summary message
+#'   at the end. Default `TRUE`. `warning()`s for inconsistent taxonomy are
+#'   always issued regardless of this setting.
 #'
 #' @return `match_df` with rank columns potentially updated, plus `backbone_col`,
 #'   `collision_col`, and (when `update_taxon_name = TRUE`) `original_col`
-#'   columns added. The attribute `backbone_cols` is set: a named list
-#'   mapping `"backbone_N_cols"` to the rank column names that were subject
-#'   to conversion.
+#'   columns added -- `backbone_col`/`collision_col` are created if absent
+#'   and left unchanged (not overwritten) if already present, which matters
+#'   for iterative/multi-pass pipeline use. The attribute `backbone_cols` is
+#'   set: a named list mapping `"backbone_N_cols"` to the rank column names
+#'   that were subject to conversion, e.g.
+#'   `list(backbone_11_cols = c("order", "family"), backbone_4_cols = c("kingdom", "phylum"))`.
+#'   Because R uses copy-on-modify semantics, the caller's original
+#'   `match_df` object is untouched; the return value must be (re)assigned.
 #'
 #' @note
 #' This function issues one API call to `verify_fn` covering all unique
@@ -77,7 +89,26 @@
 #' it in Kyphosidae). Call `convert_taxonomy_backbone()` on your match object
 #' before passing it to [TaxaMatch::filter_redundant_hypotheses()] or to
 #' [TaxaAssign::join_priors()] when the prior expansion taxonomy was built
-#' from a different backbone.
+#' from a different backbone. For eDNA metabarcoding specifically, WoRMS
+#' (backbone 9) is the authoritative backbone for marine species; GBIF (11)
+#' is the more general default for terrestrial/mixed studies.
+#'
+#' Lookup is by taxon *name*, not ID (the correct approach for cross-backbone
+#' conversion, since IDs are backbone-specific), which means homonyms --
+#' the same name used for unrelated taxa in different kingdoms, e.g. *Morus*
+#' (a plant genus, mulberry, and a bird genus, gannets) -- can resolve to the
+#' more common usage rather than the intended one. Filter to a single kingdom
+#' before conversion, or verify results for known homonymous genera. Each
+#' unique `taxon_col` value is also resolved independently (no genus-up
+#' cascade): if a species name is not found in the target backbone, that
+#' row's hierarchy is left unchanged even when the genus or family *is*
+#' present in the target -- whether that is the desired behavior depends on
+#' the use case.
+#'
+#' Whitespace-only taxon names (e.g. `" "`) are treated as present, not
+#' blank, by the `nzchar()` checks used throughout (`nzchar(" ")` is `TRUE`);
+#' if this is a realistic data-quality issue for your input, `trimws()` your
+#' `taxon_col` before calling.
 #'
 #' @seealso [TaxaTools::verify_taxon_names()], [TaxaTools::clean_taxon_names()]
 #'
@@ -106,7 +137,8 @@ convert_taxonomy_backbone <- function(
   original_col       = "taxon_name_original",
   backbone_col       = "taxonomy_backbone",
   collision_col      = "taxonomy_collision",
-  verify_fn          = TaxaTools::verify_taxon_names
+  verify_fn          = TaxaTools::verify_taxon_names,
+  verbose            = TRUE
 ) {
 
   # ---------------------------------------------------------------------------
@@ -148,10 +180,59 @@ convert_taxonomy_backbone <- function(
     return(match_df)
   }
 
+  # classification_path/classification_ranks are parsed on "|" below; a
+  # taxon name that itself contains "|" would corrupt that parse.
+  pipe_names <- unique_names[grepl("|", unique_names, fixed = TRUE)]
+  if (length(pipe_names) > 0L) {
+    warning(sprintf(
+      paste0(
+        "convert_taxonomy_backbone: %d taxon name(s) contain '|' (the ",
+        "classification_path delimiter), which may corrupt rank parsing: %s"
+      ),
+      length(pipe_names), paste(utils::head(pipe_names, 5L), collapse = ", ")
+    ))
+  }
+
   # ---------------------------------------------------------------------------
   # Query target backbone (single batched API call on unique names)
   # ---------------------------------------------------------------------------
-  verified <- verify_fn(unique_names, backbone_id = target_backbone_id)
+  verified <- tryCatch(
+    verify_fn(unique_names, backbone_id = target_backbone_id),
+    error = function(e) {
+      stop(
+        "convert_taxonomy_backbone: verify_fn call failed -- check network ",
+        "access, the target_backbone_id, or provide a local verify_fn. ",
+        "Original error: ", conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
+
+  if (anyDuplicated(verified$user_supplied_name) > 0L) {
+    stop(
+      "convert_taxonomy_backbone: verify_fn returned duplicate ",
+      "user_supplied_name values; cannot uniquely match rows back to ",
+      "`match_df`. This indicates a verify_fn contract violation."
+    )
+  }
+
+  # A quick sanity check on the delimiter assumption: if rank_system has
+  # more than one entry but not a single non-NA classification_path/
+  # classification_ranks value contains the "|" delimiter, verify_fn's
+  # response format has likely changed (or a custom verify_fn doesn't
+  # follow the documented contract).
+  non_na_path  <- stats::na.omit(verified$classification_path)
+  non_na_ranks <- stats::na.omit(verified$classification_ranks)
+  if (length(rank_system) > 1L && length(non_na_path) > 0L &&
+      !any(grepl("|", non_na_path, fixed = TRUE)) &&
+      !any(grepl("|", non_na_ranks, fixed = TRUE))) {
+    warning(
+      "convert_taxonomy_backbone: none of verify_fn's classification_path/",
+      "classification_ranks values contain the expected '|' delimiter; ",
+      "rank extraction below will likely return all-NA. Confirm verify_fn's ",
+      "output format matches the documented contract."
+    )
+  }
 
   # Strip authority strings from matched names
   verified$matched_name_clean <- TaxaTools::clean_taxon_names(verified$matched_name)
@@ -166,11 +247,16 @@ convert_taxonomy_backbone <- function(
   ranks_list <- strsplit(verified$classification_ranks, "|", fixed = TRUE)
 
   for (rk in rank_system) {
-    verified[[paste0("target_", rk)]] <- mapply(function(path, ranks) {
+    raw_vals <- mapply(function(path, ranks) {
       if (length(ranks) == 1L && is.na(ranks)) return(NA_character_)
       idx <- match(rk, ranks)
       if (is.na(idx) || idx > length(path)) NA_character_ else path[[idx]]
     }, path_list, ranks_list, USE.NAMES = FALSE)
+    # Strip authority strings here too (not just from matched_name) --
+    # otherwise a classification_path entry carrying an authority string
+    # can register a false "changed" collision against an already-clean
+    # original rank value that names the same taxon.
+    verified[[paste0("target_", rk)]] <- TaxaTools::clean_taxon_names(raw_vals)
   }
 
   # ---------------------------------------------------------------------------
@@ -320,9 +406,9 @@ convert_taxonomy_backbone <- function(
   } else {
     taxon_col
   }
-  has_name     <- !is.na(match_df[[name_ref_col]]) & nzchar(match_df[[name_ref_col]])
+  has_orig_name <- !is.na(match_df[[name_ref_col]]) & nzchar(match_df[[name_ref_col]])
   n_changed   <- sum(n_changed_per_row > 0L)
-  n_not_found <- sum(!found_mask & has_name)
+  n_not_found <- sum(!found_mask & has_orig_name)
   n_issues    <- n_changed + n_not_found
   if (n_issues > 0L) {
     warning(sprintf(
@@ -350,7 +436,8 @@ convert_taxonomy_backbone <- function(
   msg_lines <- vapply(names(bbone_attr), function(nm) {
     sprintf("  %s: %s", nm, paste(bbone_attr[[nm]], collapse = ", "))
   }, character(1L))
-  message("Backbone column mapping:\n", paste(msg_lines, collapse = "\n"))
+  if (verbose)
+    message("Backbone column mapping:\n", paste(msg_lines, collapse = "\n"))
 
   match_df
 }
