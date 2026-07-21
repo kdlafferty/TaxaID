@@ -29,8 +29,12 @@
 # clean except the pre-existing, unrelated `build_review_covariates.R`
 # warning/note (confirmed via a fresh `check()` mentioning neither
 # `add_posthoc_assessment` nor this file). Reinstalled to `~/Library/R/4.0/library`.
-# See [[project_job2_unreferenced_relatives]] in the TaxaID memory system for the full
-# investigation record.
+# See [[project_rank_trust_mechanism_removed]] in the TaxaID memory system for the full
+# investigation record. `add_posthoc_assessment()`'s `"unsupported_rank"` category is
+# the intended end state here, not an interim step -- it already says "the evidence may
+# be too weak to be confident at the reported rank," which is all that was wanted; no
+# further work to suggest a specific replacement rank is planned (confirmed with the
+# user, who found an earlier draft of this note over-scoped).
 # Previous update, 2026-07-19 (Sonnet 5 -- add_posthoc_assessment() gains a new
 # "unsupported_rank" category (Step 4, overrides any of the existing 3x2-table
 # categories including "sensible") + new trusted_rank_col param (default

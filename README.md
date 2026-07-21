@@ -683,6 +683,11 @@ Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and
 Ovaskainen, O. (2017). Unbiased probabilistic taxonomic classification
 for DNA barcoding. *Bioinformatics*, 33(19), 2997--3005.
 
+Somervuo, P., Yu, D.W., Xu, C.C.Y., Ji, Y., Hultman, J., Wirta, H. and
+Ovaskainen, O. (2017). Quantifying uncertainty of taxonomic placement
+in DNA barcoding and metabarcoding. *Methods in Ecology and Evolution*,
+8(4), 398--407.
+
 Tabak, M.A., Norouzzadeh, M.S., Wolfson, D.W., Sweeney, S.J.,
 Vercauteren, K.C., Snow, N.P., Halseth, J.M., Di Salvo, P.A.,
 Lewis, J.S., White, M.D., Teton, B., Beasley, J.C., Schlichting,
