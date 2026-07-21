@@ -11,11 +11,14 @@ utils::globalVariables(c(
 #' Filter GBIF Occurrence Records by Quality
 #'
 #' Removes low-quality rows from a raw GBIF occurrence download. Applies up
-#' to six sequential filters: coordinate completeness, basis of record,
+#' to nine sequential filters: coordinate completeness, basis of record,
 #' geospatial issue codes, coordinate uncertainty, coordinate decimal-place
-#' precision, and eDNA/metabarcoding keyword removal. Each filter is applied
-#' only when the relevant column is present; absent columns produce an
-#' informational message and are skipped rather than causing an error.
+#' precision, eDNA/metabarcoding keyword removal, and three
+#' \code{CoordinateCleaner}-backed checks (identical lat/lon, near-zero
+#' coordinates, near GBIF headquarters). Each filter is applied only when
+#' the relevant column (or package) is present; absent columns or an
+#' unavailable optional package produce an informational message and are
+#' skipped rather than causing an error.
 #'
 #' @param data A data frame of GBIF occurrence records. Must contain
 #'   \code{decimalLatitude} and \code{decimalLongitude}.
@@ -69,6 +72,23 @@ utils::globalVariables(c(
 #'   }
 #'   Recommended: \code{2} or \code{3} for habitat grids on the order of
 #'   a few hundred metres to a kilometre.
+#' @param exclude_equal_coords Logical. If \code{TRUE} (default), records
+#'   where \code{decimalLatitude} exactly equals \code{decimalLongitude}
+#'   are removed (\code{CoordinateCleaner::cc_equ()}) -- a common
+#'   data-entry/field-swap signature. Skipped with a message if the
+#'   \code{CoordinateCleaner} package is not installed.
+#' @param exclude_near_zero Logical. If \code{TRUE} (default), records near
+#'   the (0, 0) "Null Island" point are removed
+#'   (\code{CoordinateCleaner::cc_zero()}), using that function's own
+#'   default buffer. This catches near-zero coordinates that fall short of
+#'   GBIF's own exact-zero \code{ZERO_COORDINATE} issue flag. Skipped with a
+#'   message if \code{CoordinateCleaner} is not installed.
+#' @param exclude_near_gbif_hq Logical. If \code{TRUE} (default), records
+#'   near GBIF's Copenhagen headquarters are removed
+#'   (\code{CoordinateCleaner::cc_gbif()}), using that function's own
+#'   default buffer -- catches a known GBIF pathology where a failed
+#'   geocode silently defaults to GBIF's own office coordinates. Skipped
+#'   with a message if \code{CoordinateCleaner} is not installed.
 #'
 #' @return The input data frame with low-quality rows removed. Column
 #'   structure is unchanged. A summary message reports the number of
@@ -77,9 +97,18 @@ utils::globalVariables(c(
 #' @details
 #' \strong{Filter order:} Coordinates -> absent occurrences -> basis of record
 #' -> issue codes -> coordinate uncertainty -> coordinate decimal-place
-#' precision -> eDNA -> species-level requirement.
+#' precision -> eDNA -> species-level requirement -> CoordinateCleaner checks
+#' (equal coordinates / near-zero / near GBIF HQ).
 #' Applying cheaper filters first reduces unnecessary string operations on
 #' large datasets.
+#'
+#' \strong{CoordinateCleaner checks use that package's own defaults:} this
+#' function deliberately does not hard-code \code{cc_zero()}'s buffer or
+#' \code{cc_gbif()}'s HQ coordinates/buffer itself -- both are called
+#' directly with only \code{lon}/\code{lat}/\code{value} supplied, so any
+#' future correction to those defaults in \code{CoordinateCleaner} is
+#' inherited automatically rather than silently diverging from a
+#' hand-copied constant.
 #'
 #' \strong{Verifying issue codes in your data:}
 #' \preformatted{
@@ -111,6 +140,14 @@ utils::globalVariables(c(
 #' # Disable the uncertainty filter
 #' clean <- filter_gbif_quality(gbif_raw, max_coord_uncertainty = Inf)
 #'
+#' # Disable the CoordinateCleaner-backed checks (e.g. package not installed)
+#' clean <- filter_gbif_quality(
+#'   gbif_raw,
+#'   exclude_equal_coords = FALSE,
+#'   exclude_near_zero    = FALSE,
+#'   exclude_near_gbif_hq = FALSE
+#' )
+#'
 #' # Compare thresholds
 #' nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = 500))
 #' nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = 1000))
@@ -130,7 +167,10 @@ filter_gbif_quality <- function(
                                "COORDINATE_PRECISION_INVALID"),
     max_coord_uncertainty  = 500,
     max_coord_decimal_places = NULL,
-    require_species        = FALSE
+    require_species        = FALSE,
+    exclude_equal_coords   = TRUE,
+    exclude_near_zero      = TRUE,
+    exclude_near_gbif_hq   = TRUE
 ) {
 
   # --- Input checks -----------------------------------------------------------
@@ -291,6 +331,49 @@ filter_gbif_quality <- function(
         message(sprintf(
           "  Removed %d records with no species-level identification.",
           n_current - n_after
+        ))
+      }
+    }
+  }
+
+  # --- 9. CoordinateCleaner checks (equal coords / near-zero / near GBIF HQ) --
+  if ((exclude_equal_coords || exclude_near_zero || exclude_near_gbif_hq) &&
+      nrow(data) > 0L) {
+    if (!requireNamespace("CoordinateCleaner", quietly = TRUE)) {
+      message(
+        "filter_gbif_quality: package 'CoordinateCleaner' not installed -- ",
+        "skipping equal-coordinate/near-zero/near-GBIF-HQ checks."
+      )
+    } else {
+      n_before_cc <- nrow(data)
+      keep        <- rep(TRUE, n_before_cc)
+      if (exclude_equal_coords) {
+        keep <- keep & CoordinateCleaner::cc_equ(
+          x = data, lon = "decimalLongitude", lat = "decimalLatitude",
+          value = "flagged", verbose = FALSE
+        )
+      }
+      if (exclude_near_zero) {
+        keep <- keep & CoordinateCleaner::cc_zero(
+          x = data, lon = "decimalLongitude", lat = "decimalLatitude",
+          value = "flagged", verbose = FALSE
+        )
+      }
+      if (exclude_near_gbif_hq) {
+        keep <- keep & CoordinateCleaner::cc_gbif(
+          x = data, lon = "decimalLongitude", lat = "decimalLatitude",
+          value = "flagged", verbose = FALSE
+        )
+      }
+      data    <- data[keep, , drop = FALSE]
+      n_after <- nrow(data)
+      if (n_after < n_before_cc) {
+        message(sprintf(
+          paste0(
+            "  Removed %d records via CoordinateCleaner checks ",
+            "(equal coordinates / near-zero / near GBIF HQ)."
+          ),
+          n_before_cc - n_after
         ))
       }
     }

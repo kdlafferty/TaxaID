@@ -12,9 +12,12 @@
 #' @param keys Integer or numeric vector. GBIF taxon usage keys. Typically the
 #'   output of \code{\link{get_keys_from_context}} or
 #'   \code{rgbif::name_backbone()}. Duplicates are removed before processing.
-#' @param geometry Character. A WKT polygon string defining the geographic
-#'   search area. Use \code{\link{make_bbox_wkt}} to generate from a centre
-#'   lat/lon and radius.
+#' @param geometry Character or \code{NULL}. A WKT polygon string defining
+#'   the geographic search area. Use \code{\link{make_bbox_wkt}} to generate
+#'   from a centre lat/lon and radius. \code{NULL} issues an unrestricted
+#'   global search instead -- useful for pulling a species' full range as a
+#'   reference cloud (e.g. \code{\link{check_geographic_outliers}}), not for
+#'   routine regional fetches.
 #' @param year_range Character. Year range for the GBIF query, formatted as
 #'   \code{"YYYY,YYYY"}, e.g. \code{"2000,2024"}. Passed directly to
 #'   \code{rgbif::occ_data(year = ...)}.
@@ -148,8 +151,10 @@ fetch_gbif_occurrences <- function(keys,
   if (length(keys) == 0L) {
     stop("fetch_gbif_occurrences: 'keys' is empty after removing NAs.")
   }
-  if (!is.character(geometry) || length(geometry) != 1L) {
-    stop("fetch_gbif_occurrences: 'geometry' must be a single WKT string.")
+  if (!is.null(geometry) &&
+      (!is.character(geometry) || length(geometry) != 1L)) {
+    stop("fetch_gbif_occurrences: 'geometry' must be a single WKT string, ",
+         "or NULL for an unrestricted global search.")
   }
 
   orig_keys <- keys  # full set; preserved for checkpoint signature
@@ -199,18 +204,25 @@ fetch_gbif_occurrences <- function(keys,
       pause_between_keys = pause_between_keys,
       max_retries        = max_retries
     )
-    if (!is.null(chunk_result$records) && nrow(chunk_result$records) > 0L) {
-      results[[i]] <- chunk_result$records
-    }
-    global_pos <- global_pos + length(chunk_keys)
-
     if (chunk_result$aborted) {
-      # Save checkpoint (remaining = keys not yet started, i.e., future chunks)
-      if (!is.null(checkpoint_path) && global_pos < length(keys)) {
+      # A chunk that aborted partway through has an unknown number of its
+      # own keys actually completed -- global_pos (from BEFORE this chunk)
+      # is used as-is rather than advanced by the chunk's full size, so the
+      # whole chunk (including any keys that succeeded before the failure)
+      # is re-attempted on resume. This avoids two real failure modes a
+      # naive "always advance by chunk size" count previously had: (1) an
+      # incorrect "no checkpoint exists" message even when one legitimately
+      # does (this chunk's global_pos coincidentally lands on length(keys));
+      # (2) genuine silent data loss if the very FIRST chunk of a run
+      # aborts partway through, before any prior chunk had a chance to
+      # checkpoint. This chunk's own partial records (if any) are discarded
+      # in favor of a clean re-fetch on resume, rather than risk duplicate
+      # rows for keys that both partially succeeded here and get re-fetched.
+      if (!is.null(checkpoint_path)) {
         remaining <- keys[(global_pos + 1L):length(keys)]
         saveRDS(list(
           partial_records = dplyr::bind_rows(c(list(prior_records),
-                                               results[seq_len(i)])),
+                                               results[seq_len(i - 1L)])),
           remaining_keys  = remaining,
           keys_total      = orig_keys,
           timestamp       = Sys.time()
@@ -231,6 +243,11 @@ fetch_gbif_occurrences <- function(keys,
         )
       }
     }
+
+    if (!is.null(chunk_result$records) && nrow(chunk_result$records) > 0L) {
+      results[[i]] <- chunk_result$records
+    }
+    global_pos <- global_pos + length(chunk_keys)
 
     # Save checkpoint after each completed chunk (so future abort can resume
     # from here). Signature is baked into the filename -- changed parameters
@@ -319,11 +336,12 @@ fetch_gbif_occurrences <- function(keys,
 .gbif_checkpoint_path <- function(cache_dir, keys, geometry, year_range, limit) {
   if (is.null(cache_dir)) return(NULL)
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  geometry_len <- if (is.null(geometry)) 0L else nchar(geometry)
   sig <- sprintf(
     "%dk_s%d_g%d_%s_l%d",
     length(keys),
     as.integer(sum(as.numeric(keys)) %% 1e9),
-    nchar(geometry),
+    geometry_len,
     gsub("[^0-9]", "", year_range),
     as.integer(limit)
   )
@@ -338,7 +356,7 @@ fetch_gbif_occurrences <- function(keys,
 #' hierarchy, and returns the combined results for the chunk.
 #'
 #' @param keys_chunk Integer vector of keys for this chunk.
-#' @param geometry WKT string.
+#' @param geometry WKT string, or NULL for an unrestricted global search.
 #' @param year_range Character year range e.g. \code{"2000,2024"}.
 #' @param limit Integer per-key record limit.
 #' @param global_pos Integer. Offset into the full key list for progress

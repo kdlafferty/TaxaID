@@ -145,6 +145,34 @@ test_that("warns and returns empty tibble when no records pass", {
   expect_equal(nrow(out), 0L)
 })
 
+test_that("geometry = NULL issues an unrestricted global search", {
+  skip_if_not_installed("rgbif")
+  captured_geometry <- "unset"
+  local_mocked_bindings(
+    occ_data = function(taxonKey, geometry, ...) {
+      captured_geometry <<- geometry
+      .make_occ_resp(taxonKey)
+    },
+    .package = "rgbif"
+  )
+  out <- fetch_gbif_occurrences(keys = 1L, geometry = NULL,
+                                pause_seconds = 0, cache_dir = NULL)
+  expect_true(is.null(captured_geometry))
+  expect_true(is.data.frame(out))
+})
+
+test_that(".gbif_checkpoint_path handles NULL geometry without error", {
+  path <- TaxaFetch:::.gbif_checkpoint_path(
+    cache_dir  = tempdir(),
+    keys       = c(1L, 2L),
+    geometry   = NULL,
+    year_range = "2000,2024",
+    limit      = 100L
+  )
+  expect_true(is.character(path))
+  expect_true(grepl("_g0_", path))
+})
+
 # =============================================================================
 # Chunking behaviour
 # =============================================================================
@@ -236,6 +264,45 @@ test_that("records kept when no hierarchy columns are present (can't validate)",
 # =============================================================================
 # Error handling -- exhausted retries abort the run (no silent skipping)
 # =============================================================================
+
+test_that("checkpoint's remaining_keys includes the failed key itself, not just keys after its whole chunk", {
+  # Regression test for a real production bug (2026-07-20, found via a real
+  # GBIF timeout mid-run): the checkpoint-save path previously computed
+  # global_pos AFTER adding the whole aborting chunk's size, so the key that
+  # actually failed (and any others in that same chunk queued after it) were
+  # silently excluded from remaining_keys -- never retried on resume, a
+  # direct violation of this function's own "never silently skip a key"
+  # design (see the module-level error-handling comment above .fetch_chunk).
+  skip_if_not_installed("rgbif")
+  cache_dir <- tempfile("gbif_ckpt_test_")
+  dir.create(cache_dir)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+
+  local_mocked_bindings(
+    occ_data = function(taxonKey, ...) {
+      if (taxonKey == 4L) stop("simulated API error")
+      .make_occ_resp(taxonKey)
+    },
+    .package = "rgbif"
+  )
+  # 5 keys, chunk_size = 2 -> chunks [1,2], [3,4], [5]; key 4 (2nd key of the
+  # 2nd chunk) fails after key 3 succeeds within the same chunk.
+  expect_error(
+    fetch_gbif_occurrences(keys = 1L:5L, geometry = .bbox, chunk_size = 2L,
+                           pause_seconds = 0, cache_dir = cache_dir),
+    regexp = "aborted"
+  )
+
+  ckpt_files <- list.files(cache_dir, pattern = "^gbif_fetch_", full.names = TRUE)
+  expect_length(ckpt_files, 1L)
+  ckpt <- readRDS(ckpt_files[1])
+  expect_true(4L %in% ckpt$remaining_keys)
+  # The whole aborting chunk [3,4] is re-attempted on resume (not just key 4
+  # onward) -- key 3's own partial success within that chunk is deliberately
+  # discarded rather than risk duplicate rows on resume; see the fix's own
+  # comment in fetch_gbif_occurrences.R for why.
+  expect_setequal(ckpt$remaining_keys, c(3L, 4L, 5L))
+})
 
 test_that("a failing key aborts the run with an error (no silent partial results)", {
   skip_if_not_installed("rgbif")

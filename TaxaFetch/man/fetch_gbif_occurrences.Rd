@@ -22,9 +22,12 @@ fetch_gbif_occurrences(
 output of \code{\link{get_keys_from_context}} or
 \code{rgbif::name_backbone()}. Duplicates are removed before processing.}
 
-\item{geometry}{Character. A WKT polygon string defining the geographic
-search area. Use \code{\link{make_bbox_wkt}} to generate from a centre
-lat/lon and radius.}
+\item{geometry}{Character or \code{NULL}. A WKT polygon string defining
+the geographic search area. Use \code{\link{make_bbox_wkt}} to generate
+from a centre lat/lon and radius. \code{NULL} issues an unrestricted
+global search instead -- useful for pulling a species' full range as a
+reference cloud (e.g. \code{\link{check_geographic_outliers}}), not for
+routine regional fetches.}
 
 \item{year_range}{Character. Year range for the GBIF query, formatted as
 \code{"YYYY,YYYY"}, e.g. \code{"2000,2024"}. Passed directly to

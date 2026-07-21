@@ -1,6 +1,71 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-09 (Session 148 -- full code + domain review against
+# Last updated: 2026-07-20, continued yet further (Sonnet 5 -- a real GBIF API timeout during
+# the user's own re-verification of the cc_outl() fix (below) surfaced a second, independent
+# real bug in fetch_gbif_occurrences()'s checkpoint logic, pre-existing, unrelated to today's
+# other changes. With keys split into chunks, global_pos was advanced by the FULL chunk size
+# even when a chunk aborted partway through -- so the checkpoint's remaining_keys was computed
+# from a position AFTER the whole aborted chunk, silently excluding the very key that failed
+# (and any others queued after it in that same chunk) from ever being retried on resume: a
+# real violation of this function's own stated "never silently skip a key" design. Also
+# produced a misleading "Enable cache_dir for resumable fetches" message on the user's actual
+# run even though cache_dir WAS enabled and a real checkpoint HAD been saved after the prior
+# chunk -- global_pos coincidentally landed exactly on length(keys), making the (buggy)
+# resumability check evaluate false. Fixed: the abort check now runs BEFORE global_pos is
+# advanced past the aborting chunk, and the checkpoint's remaining_keys re-includes the WHOLE
+# aborting chunk (not just the failed key onward) so a resume cleanly re-fetches it rather than
+# risk duplicate rows from any partial success within it. New regression test asserts the
+# failed key is present in the saved remaining_keys (it wasn't, under the old logic). No user
+# action needed for the checkpoint file from the actual failed run -- resuming with the same
+# call still works, since that specific abort happened to land after a real prior-chunk
+# checkpoint. devtools::test() 0 failures (487, up from 483), devtools::check() 0/0/0.
+# Reinstalled to ~/Library/R/4.0/library. See this file's Session Notes for the full record.
+# Previous update, 2026-07-20, continued (Sonnet 5 -- real production bug found and fixed on
+# check_geographic_outliers()'s FIRST live run, wired into MuguFishWorkflow.R/
+# MuguWilderFishWorkflow.R the same day: CoordinateCleaner::cc_outl()'s "distance" method
+# silently switches EVERY species in a single call to a coarser "raster approximation" (its
+# own term) whenever ANY ONE species in that call has >=10,000 records -- confirmed directly
+# from cc_outl()'s own source (`if (any(record_numbers >= 10000)) warning("Using raster
+# approximation.")`, scoped to the whole call, not per species). check_geographic_outliers()
+# batches every locally-rare species into one cc_outl() call for efficiency, but a species
+# rare in the LOCAL bbox can still be globally common -- one such species in the real
+# ~51-species/193,458-record Mugu batch silently degraded every other species' precision,
+# clearing a real, obvious ~9,000km outlier (the exact motivating Mugu Pseudotolithus
+# epipercus/La Jolla case). Found live with the user: two hypotheses tested and refuted first
+# (a gbifID type mismatch between download_gbif_occurrences()'s bit64::integer64 output and
+# fetch_gbif_occurrences()'s character output -- ruled out directly, match() handles the
+# coercion correctly even unattached; a species-crossing distance bug -- ruled out via a
+# synthetic decoy-species reproduction) before the user's own diagnostic re-run surfaced the
+# literal "Using raster approximation" warning, which traced directly to cc_outl()'s source.
+# Fixed: cc_outl() now called once PER SPECIES instead of once for the whole batch, so the
+# raster-mode decision is scoped to each species' own record count. New regression test
+# (mocks CoordinateCleaner::cc_outl() directly, asserts one call per species) added rather
+# than trying to synthesize a 10,000+ row fixture to reproduce the raster branch itself --
+# the original unit tests (max ~17 rows) never exercised this path at all, the same "check
+# dataset scale before trusting synthetic tests generalize" lesson this ecosystem has hit
+# before (see TaxaLikely's restore_suppressed_candidates() history). devtools::test() 0
+# failures (483, up from 481), devtools::check() 0/0/0. Reinstalled to
+# ~/Library/R/4.0/library. See this file's Session Notes for the full record.
+# Previous update, 2026-07-20 (Sonnet 5 -- new check_geographic_outliers(): for GBIF species
+# with few records inside a bbox-scoped local search (default threshold n<5), fetches that
+# species' unrestricted global GBIF distribution (fetch_gbif_occurrences(geometry = NULL),
+# newly supported -- geometry was previously a required WKT string; a real nchar(NULL)
+# checkpoint-signature bug was fixed alongside it) and runs CoordinateCleaner::cc_outl()
+# against it, flagging a local record that's a geographic outlier relative to the species'
+# real range (the general version of Mugu's real Pseudotolithus epipercus/La Jolla case --
+# see [[project_edge_case_error_taxa_design]]). filter_gbif_quality() also gains three new
+# CoordinateCleaner-backed checks (cc_equ/cc_zero/cc_gbif), default TRUE -- a real behavioral
+# default change for every existing caller, not just an addition (see that function's
+# Function Inventory entry below for the affected real call sites). CoordinateCleaner added
+# to Suggests only, deliberately -- its cc_sea()/cc_coun()/cc_urb() functions need terra/
+# rnaturalearth, but those three don't fit this ecosystem (marine-eDNA-hostile or already
+# redundant with GBIF's own issue-code filtering) and aren't used; the functions actually
+# called here don't need those dependencies. check_inat_range() (Session 118) found MISSING
+# from this file's own Function Inventory table and Next Steps TODO list while working
+# nearby -- real doc drift, corrected same session, not implemented new. devtools::test()
+# 0 failures (481, up from 459), devtools::check() 0 errors/0 warnings/0 notes. Reinstalled
+# to ~/Library/R/4.0/library.
+# Previous update, 2026-07-09 (Session 148 -- full code + domain review against
 # inst/Code and Domain Review 2.Rmd, findings and fixes in taxafetch_review.Rmd at the
 # TaxaID root. Two real, fixed issues: an SSRF gap in the DataONE pipeline (data_url read
 # verbatim from third-party EML metadata with no host restriction -- fixed via a
@@ -54,11 +119,13 @@ non-interactive-vs-interactive comparison.
 | `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK. **Session 140:** drops rows with a duplicate non-`NA` `gbifID` (first kept) when that column is present -- defense-in-depth against double-counting the same GBIF record, since no earlier step in the GBIF pipeline dedupes by key. | Complete | R/stack_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box (scripted, non-interactive) | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys. **Session 148:** its `HIGHERRANK`-recovery path (`.recover_higherrank()`) now narrows `rgbif::name_lookup()` hits to the row's own kingdom (when available) before majority-voting a `nubKey`, closing a homonym-misresolution gap; the resulting `matchType = "LOOKUP_RECOVERED"` is now documented and included in the "review these rows" advice. | Complete | R/get_keys_from_context.R |
-| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. | Complete | R/fetch_gbif_occurrences.R |
+| `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. **2026-07-20:** `geometry` now accepts `NULL` for an unrestricted global search (previously required a WKT string); the checkpoint-signature helper's `nchar(NULL)` bug (returned `integer(0)`, would have broken `sprintf`) fixed alongside it. Added for `check_geographic_outliers()`, below. **2026-07-20, continued:** real, pre-existing checkpoint bug fixed, found via a real GBIF timeout mid-run -- `global_pos` was previously advanced by a chunk's FULL size even when that chunk aborted partway through, so the saved checkpoint's `remaining_keys` silently excluded the key that actually failed (and any others queued after it in the same chunk), meaning it would never be retried on resume. Also caused a misleading "Enable cache_dir for resumable fetches" message on a real run where `cache_dir` genuinely was enabled and a checkpoint genuinely had been saved. Fixed: abort check now runs before `global_pos` advances past the aborting chunk; the checkpoint re-includes the WHOLE aborting chunk (not just the failed key onward) so resume can't produce duplicate rows from a partial in-chunk success. | Complete | R/fetch_gbif_occurrences.R |
 | `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility — implemented and verified working (Session 131; a Session 129 note here previously claimed otherwise, incorrectly); (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` should reference SIMPLE_CSV's native `issue` (singular) name if customized — the function renames the output column to `issues` regardless. | Complete | R/download_gbif_occurrences.R |
 | `get_gbif_occurrences()` | **Session 129 — recommended entry point**, not a replacement for the two functions above (neither is modified). Picks `fetch_gbif_occurrences()` vs `download_gbif_occurrences()` by `key_threshold` (default 50, matching both functions' own documented guidance and the manual dispatch pattern the Layer-1 tutorial already used) and standardizes both paths to one column contract. `rank_filter = "species"` (default) is a post-fetch filter only — neither GBIF API exposes a taxonomic-rank predicate to filter server-side. `columns = "standard"` (default) / `"all"` / custom vector. `familyKey`/`genusKey` are `NA` on the download path — SIMPLE_CSV doesn't carry them at all, not fixable by this wrapper. Translates the wrapper's canonical `issues` column name back to SIMPLE_CSV's native `issue` when building `select_cols` for the download path (needed because `select_cols` matches at import time, before `download_gbif_occurrences()`'s own rename runs) — this is the only issue/issues handling the wrapper does; see `download_gbif_occurrences()`'s entry above for the Session 131 correction to a false "cross-path bug" claimed here previously. | Complete | R/get_gbif_occurrences.R |
 | `fetch_occurrences_by_taxon()` | **Session 140 — taxon-centric batched fetch.** Groups a fetch scope (one row per (site, candidate taxon) pair: `taxon_key` + `geometry` WKT) by taxon key instead of by observation/site: unions each taxon key's own geometry via `sf::st_union()` (dissolving the duplicate-record risk when two site boxes for the same taxon overlap), then combines different taxon keys that end up with an identical unioned geometry into one multi-key `get_gbif_occurrences()` call (`combine_shared_geometry = TRUE`, default). Neither `get_gbif_occurrences()` nor its own backends are modified — this is a pure call-grouping layer above it. Does not expose `rgbif`'s `geom_big`/`geom_size`/`geom_n` WKT-complexity escape valve and does not characterize GBIF's real WKT-size ceiling (documented as a known limitation, not silently masked). See `ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md` for the full design discussion this implements. | Complete | R/fetch_occurrences_by_taxon.R |
-| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement. **Session 148:** the eDNA-exclusion pattern narrowed to `edna`/`environmental dna`/`metabarcod` -- dropped the generic `bulk sample`/`water sample` phrases, which risked over-excluding legitimate non-eDNA presence data. | Complete | R/filter_gbif_quality.R |
+| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement → CoordinateCleaner checks. **Session 148:** the eDNA-exclusion pattern narrowed to `edna`/`environmental dna`/`metabarcod` -- dropped the generic `bulk sample`/`water sample` phrases, which risked over-excluding legitimate non-eDNA presence data. **2026-07-20 (behavioral default change):** new filter step 9 calls `CoordinateCleaner::cc_equ()`/`cc_zero()`/`cc_gbif()` (identical lat/lon, near-(0,0), near GBIF's Copenhagen HQ) via new `exclude_equal_coords`/`exclude_near_zero`/`exclude_near_gbif_hq` params, each default `TRUE`. Uses that package's own internal buffer defaults rather than hand-copied constants -- see the function's own roxygen `@details` for why. Skips with a message (not an error) if `CoordinateCleaner` is not installed, matching every other optional-column/optional-package filter in this function. Every real in-repo caller (`TaxaExpect::build_priors()`, `TaxaExpect/inst/workflows/generate_priors_workflow.R`, `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`, `TaxaWizard/inst/graph/snippets/taxa_to_occ.R`) calls with no override, so all now pick up the new checks automatically wherever `CoordinateCleaner` happens to be installed. | Complete | R/filter_gbif_quality.R |
+| `check_geographic_outliers()` | **2026-07-20, new.** Flags bbox-scoped occurrence records that are geographic outliers against a species' own global GBIF distribution -- the generic version of "single citizen-science record from the wrong continent slips into a local species list" (motivating real case: Mugu's *Pseudotolithus epipercus*, an African species with one errant La Jolla observation, see `[[project_edge_case_error_taxa_design]]` in the memory system). For species with fewer than `min_local_n` (default 5) local records, fetches that species' unrestricted global occurrences via `fetch_gbif_occurrences(geometry = NULL)` and runs `CoordinateCleaner::cc_outl()` (`method = "distance"`, `tdi = 1000` km default) **once per species** against its own global cloud. Well-supported local species are never checked -- the global fetch is the expensive step. **2026-07-20, same-day fix (real production bug, first live run):** originally called `cc_outl()` once across the WHOLE batch of rare species combined -- that function's `"distance"` method silently switches every species in a single call to a coarser raster approximation whenever any ONE species in that call has >=10,000 records, and a locally-rare species can still be globally common. This let one common species in a real ~51-species Mugu batch silently degrade every other species' precision, clearing a real, obvious ~9,000km outlier (the exact motivating *Pseudotolithus epipercus* case). Fixed by scoping each `cc_outl()` call to one species at a time. Adds `local_n`/`global_n_unique`/`outlier_status` columns; `outlier_status` is always one of `"not_tested_sufficient_local_data"` / `"insufficient_global_data"` / `"outlier"` / `"consistent"` -- never a bare logical, so "not tested" and "tested and passed" stay distinct (mirrors `check_inat_range()`'s `range_status` convention, immediately below). `min_occs` (default 7, matching `cc_outl()`'s own default) is enforced explicitly rather than trusted to `cc_outl()`'s own silent-pass-below-threshold behavior, since that function's own warning about it is suppressed here (redundant with the structured status column). Requires `CoordinateCleaner` (`Suggests`, hard error if missing -- no sensible fallback exists, unlike `filter_gbif_quality()`'s graceful per-check skip). | Complete | R/check_geographic_outliers.R |
+| `check_inat_range()` | Point-in-polygon range check against iNaturalist geomodel range polygons, for the dark-diversity use case (eDNA detections absent from the occurrence database, checked for range plausibility as a prior-boost signal). Implemented Session 118 -- **missing from this table until 2026-07-20**, a real doc-drift gap; see the corrected Next Steps entry below. Returns `in_range`, `range_status` (`"in_range"`/`"out_of_range"`/`"taxon_not_found"`/`"no_polygon"`), `n_observations`, `iconic_taxon_name`, `inat_kingdom`. Evidence is asymmetric by design: `in_range = FALSE` must not suppress a prior (false negatives are common for aquatic/marine taxa given low iNaturalist observer effort there) -- worth remembering before using this as a fallback alongside `check_geographic_outliers()`, whose primary use case (12S/18S fish eDNA) is exactly the domain this function is weakest in. Downstream: `TaxaAssign::adjust_inat_range_priors()`. | Complete | R/check_inat_range.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
 | `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble. **Session 148:** `occurrenceStatus` is now `NA` (not `"absent"`) when neither `ABUNDANCE` nor `BIOMAS` parses to a number, since an unparseable/missing value is not a confirmed non-detection. | Complete | R/biotime_fetch.R |
 | `screen_eml_columns()` | Fetch EML; check bbox overlap; detect lat/lon columns | Complete | R/dataone_eml_screen.R |
@@ -133,6 +200,8 @@ get_keys_from_context() → get_gbif_occurrences()           [Session 129: picks
                             ↳ fetch_gbif_occurrences()      [≤~50 keys, no account]
                             ↳ download_gbif_occurrences()   [100s–1000s keys, account required]
                         → filter_gbif_quality()
+                        → check_geographic_outliers()   [optional, 2026-07-20 -- species below
+                                                          min_local_n only; needs CoordinateCleaner]
 ```
 
 **Session 140 -- taxon-centric batched fetch (a scope-building layer above `get_gbif_occurrences()`):**
@@ -220,8 +289,9 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 4. ~~GITA multi-table functions~~ — dropped: `rename_cols()` + `stack_occurrences()` cover the same use case (Session 63)
 5. ~~Data source citation capture~~ — implemented (Session 63): `bibliographicCitation` column added to `fetch_gbif_occurrences()`, `standardize_dataone_occurrences()`, `read_biotime_study()`; PDF pipeline already had it via `search_literature()`
 6. ~~ReefCheck + Reef Life Survey~~ — resolved (Session 64): both already in GBIF (RLS global reef fish dataset, RCCA rocky reef dataset, Reef Check Taiwan). No separate fetch functions needed.
-7. **`check_inat_range()`** — TODO (Session 117). Implementation prompt: `TaxaFetch/inat_range_prompt.md`. Checks dark diversity taxa (eDNA detections absent from occurrence database) against iNaturalist geomodel range polygons. Returns `in_range`, `range_status`, `n_observations`, `iconic_taxon_name`. Rate-limit only the taxa API step (not S3 GeoJSON fetches). Requires `sf` in Imports. Downstream: `adjust_inat_range_priors()` in TaxaAssign (planned) applies prior boost for `in_range = TRUE` taxa above the dark diversity floor.
-8. **`score_image_inat()`** — TODO (Session 117). Implementation prompt: `TaxaFetch/inat_cv_api_prompt.md`. Submits image to iNaturalist CV API; returns ranked taxon suggestions with `vision_score`, `combined_score`, `freq_score`, `geo_prior_weight` (= combined/vision ratio — iNat's continuous location prior weight). Enables image-based match objects as input to TaxaAssign. Requires `httr` in Imports (verify). `geo_prior_weight` is the continuous analogue of `check_inat_range()` binary range signal, for the image classification pathway.
+7. ~~`check_inat_range()`~~ — implemented Session 118 (`R/check_inat_range.R`); this Next Steps entry and the Function Inventory table above both went stale until corrected 2026-07-20 -- see `[[project_inat_image_analyzer]]` in the memory system.
+8. **`score_image_inat()`** — implemented Session 119, but lives in **TaxaMatch**, not this package -- see that package's own CLAUDE.md. Not tracked further here.
+9. **`check_geographic_outliers()`** — implemented 2026-07-20 (`R/check_geographic_outliers.R`), see the Function Inventory table above.
 
 ---
 
@@ -229,8 +299,9 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 
 | File | Functions covered | Notes |
 |---|---|---|
-| test-fetch_gbif_occurrences.R | `fetch_gbif_occurrences()` | Mocked rgbif; covers 429 retry/backoff |
-| test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline |
+| test-fetch_gbif_occurrences.R | `fetch_gbif_occurrences()`, `.gbif_checkpoint_path()` | Mocked rgbif; covers 429 retry/backoff; 2026-07-20 added `geometry = NULL` global-search coverage |
+| test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline; 2026-07-20 added `cc_equ`/`cc_zero` CoordinateCleaner-check coverage (real package calls, `skip_if_not_installed`) |
+| test-check_geographic_outliers.R | `check_geographic_outliers()` | 2026-07-20, **new file**. Mocks `rgbif::occ_data` (same layer as test-fetch_gbif_occurrences.R) so the real `fetch_gbif_occurrences()` and `CoordinateCleaner::cc_outl()` both run underneath -- genuine end-to-end coverage of the outlier/insufficient-data/consistent three-way split, not just the plumbing. Same-day addition: a regression test mocking `CoordinateCleaner::cc_outl()` directly to assert it's called once per species (not once for the whole batch) -- guards the real raster-approximation bug found on first live use; deliberately not a synthetic 10,000+ row fixture, which would be slow and still wouldn't exercise the actual bug (that needed real GBIF data's clustering, not synthetic data -- see Session Notes) |
 | test-get_keys_from_context.R | `get_keys_from_context()`, `.recover_higherrank()` | Mocked rgbif; Session 148 added kingdom-narrowing coverage via a synthetic mixed-kingdom fixture |
 | test-make_bbox_wkt.R | `make_bbox_wkt()` | Fully offline |
 | test-stack_occurrences.R | `stack_occurrences()` | 22 tests; fully offline |
@@ -250,6 +321,7 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | TaxaTools | LLM provider functions, taxonomy helpers | Imports |
 | httr2 | API calls (PASTA Solr, OpenAlex, Nominatim) | Imports |
 | rgbif | GBIF backbone + occurrence download | Suggests |
+| CoordinateCleaner | `cc_equ`/`cc_zero`/`cc_gbif` in `filter_gbif_quality()`; `cc_outl()` in `check_geographic_outliers()` | Suggests (2026-07-20). Deliberately not `Imports` -- its own heavy deps (`terra`, `rnaturalearth`) are needed only by the `cc_sea()`/`cc_coun()`/`cc_urb()` functions this ecosystem doesn't use (poor fit for marine eDNA / redundant with existing GBIF-issue-code filtering); the functions actually used here don't need them. |
 | data.table | Fast TSV import for `download_gbif_occurrences()` | Suggests |
 | dplyr | Data manipulation | Imports |
 | stringr | String operations | Imports |
@@ -270,6 +342,214 @@ below and TaxaTools/CLAUDE.md).
 ---
 
 ## Session Notes
+
+**2026-07-20, continued yet further (Sonnet 5): `fetch_gbif_occurrences()` checkpoint bug -- found via a real GBIF timeout**
+
+Branch not tracked. Direct continuation: after the `cc_outl()` per-species fix (below), the
+user re-verified it against the real Mugu data with a targeted re-run
+(`raw_gbif %>% filter_gbif_quality(...) %>% check_geographic_outliers(cache_dir =
+CACHE_DIR_GBIF_GLOBAL)`). That run hit a real GBIF API timeout on key 43 of 51
+(`Timeout was reached [api.gbif.org]: Operation too slow`) -- an external, environmental
+failure, not a code bug. But the resulting error message was: `"fetch_gbif_occurrences:
+fetch aborted early.\n  Enable cache_dir for resumable fetches."`, even though the user HAD
+passed `cache_dir = CACHE_DIR_GBIF_GLOBAL`.
+
+- **Root cause, found by re-reading `fetch_gbif_occurrences()`'s chunk loop directly:** with
+  51 keys and the default `chunk_size = 20`, chunks are `[1-20]`, `[21-40]`, `[41-51]` (11
+  keys); key 43 is the 3rd key of the 3rd chunk. `global_pos <- global_pos + length(chunk_keys)`
+  ran unconditionally, BEFORE the abort check -- so on this chunk's abort, `global_pos` jumped
+  from 40 to `40 + 11 = 51`, exactly `length(keys)`. The abort branch's own resumability check
+  (`global_pos < length(keys)`) then evaluated `FALSE`, routing to the generic "enable
+  cache_dir" message instead of the "progress saved" one, even though a real checkpoint HAD
+  already been written after chunk 2 completed (`global_pos = 40 < 51` was true then).
+- **A more serious problem than the misleading message, found by tracing the logic further:**
+  the same `global_pos`-after-full-chunk computation is ALSO used to build the checkpoint's own
+  `remaining_keys` (`keys[(global_pos + 1L):length(keys)]`) in the branch where a checkpoint
+  IS saved. Using a post-chunk `global_pos` there means `remaining_keys` always starts AFTER
+  the whole aborting chunk -- silently excluding the specific key that failed, and any others
+  queued after it in that same chunk, from `remaining_keys` entirely. On resume, that key would
+  never be retried again. This directly contradicts the function's own documented design
+  ("Any exhausted retry aborts immediately (no silent skipping)") -- the abort itself wasn't
+  silent, but a retried key being permanently dropped from the retry set would have been.
+- **Fix:** moved the abort check to run BEFORE `global_pos` advances past the aborting chunk,
+  so checkpoint computations always use the position from the START of that chunk. The whole
+  aborting chunk (not just the failed key onward) is included in `remaining_keys` on resume,
+  deliberately discarding any of that chunk's own partial success (e.g. key 3 succeeding before
+  key 4 failed) in favor of a clean re-fetch -- avoids any risk of duplicate rows from a key
+  that both partially succeeded pre-abort and gets refetched.
+- **New regression test** (`test-fetch_gbif_occurrences.R`): 5 keys, `chunk_size = 2`, key 4
+  (2nd key of the 2nd chunk, after key 3 succeeds within the same chunk) mocked to fail --
+  asserts the saved checkpoint's `remaining_keys` includes key 4 itself (it didn't, under the
+  old logic) and, per the fix's own re-fetch-whole-chunk design, keys 3-5 together.
+- **Practical note for the user's own blocked run:** no action needed for the checkpoint file
+  from the actual failed run specifically -- that abort happened to land right after chunk 2's
+  real checkpoint save, so simply re-running the same `fetch_gbif_occurrences()`/
+  `check_geographic_outliers()` call resumes from key 41 rather than restarting. The fix
+  matters for the general case (e.g. a timeout in the very FIRST chunk of a run, before any
+  prior chunk had a chance to checkpoint, which the old logic could have silently mishandled).
+- `devtools::test()` 0 failures (487, up from 483), `devtools::check()` 0/0/0. Reinstalled to
+  `~/Library/R/4.0/library`.
+
+**2026-07-20, continued (Sonnet 5): real production bug found on `check_geographic_outliers()`'s first live run**
+
+Branch not tracked. Direct continuation of the same-day work below: the function was wired
+into `MuguFishWorkflow.R`/`MuguWilderFishWorkflow.R` (outside this monorepo, not under git)
+and run for real against the full Mugu dataset -- the very first live test. The user's own
+result was the tell: `Pseudotolithus epipercus` -- the exact motivating case for this whole
+mechanism (an African species with one errant citizen-science record in La Jolla) -- came
+back `outlier_status = "consistent"`, not `"outlier"`. The literal case the function exists
+to catch wasn't caught, on the first real run.
+
+- **Two hypotheses tested and refuted before finding the real cause**, both live-verified
+  with actual R code rather than asserted: (1) a `gbifID` type mismatch between
+  `download_gbif_occurrences()`'s output (`bit64::integer64`, via `data.table::fread()`
+  inferring the type for GBIF IDs exceeding 32-bit range) and `fetch_gbif_occurrences()`'s
+  output (plain character, via `rgbif`) -- tested directly with a realistic reproduction
+  (`fread()`-typed `integer64` vector subset via a logical mask, `match()`ed against a
+  character vector, at the real scale); `match()` correctly coerces and finds every match
+  even with `bit64` never explicitly attached (`MuguFishWorkflow.R` doesn't `library(bit64)`).
+  Not the bug. (2) A species-crossing distance computation in `cc_outl()` (i.e. the "distance"
+  method comparing across species when other rare species have geographically nearby points)
+  -- tested with a synthetic "decoy species" reproduction placing points near California
+  alongside the real 12-point *P. epipercus* global cloud; `cc_outl()` correctly restricted
+  distance comparisons to same-species pairs regardless. Not the bug.
+- **The user's own diagnostic re-run of the real, full batch surfaced the actual cause
+  directly**: `Warning message: ... Using raster approximation.` Read `cc_outl()`'s own
+  source (`print(CoordinateCleaner::cc_outl)`) rather than guessing further --
+  `record_numbers <- unlist(lapply(splist, nrow)); if (any(record_numbers >= 10000) |
+  thinning) { warning("Using raster approximation."); ras <- ras_create(...) }` -- confirmed
+  this check is scoped to the WHOLE call (`any()` across every species' `splist` entry), not
+  per species. `check_geographic_outliers()` batches every locally-rare species into one
+  `cc_outl()` call for fetch efficiency; the real Mugu batch was 51 species / 193,458 total
+  records, meaning at least one locally-rare-but-globally-common species pushed the whole
+  call onto the coarser raster path, degrading precision for every other species sharing the
+  call -- including the sparse, obviously-isolated *P. epipercus* data.
+- **Fix verified two ways before shipping:** (1) direct source reading confirmed the
+  mechanism unambiguously; (2) a synthetic reproduction (the real 12-point *P. epipercus*
+  cloud plus a synthetic 10,500-row uniform-random "common species") confirmed the warning
+  genuinely fires in a batched call of this shape -- though this particular synthetic
+  "common species" wasn't extreme enough to flip the final flag from `FALSE` to `TRUE`,
+  meaning the real failure depends on the actual clustered shape of real GBIF data in a way
+  a quick synthetic test couldn't fully reproduce. Shipped the fix anyway on the strength of
+  the source-level mechanism plus the real production evidence, rather than insisting on a
+  synthetic repro of the exact wrong-answer case -- the per-species-call design is strictly
+  more conservative regardless (a species-crossing raster decision has no legitimate reason
+  to exist in this function at all).
+- **Fix:** `CoordinateCleaner::cc_outl()` now called once PER SPECIES (looping over
+  `unique(global_occ$species)`) instead of once for the combined batch, so the raster-mode
+  decision is scoped to each species' own record count -- exactly where `cc_outl()`'s own
+  design intends it. R-level loop overhead is negligible next to the GBIF fetch itself.
+- **New regression test** (`test-check_geographic_outliers.R`) mocks
+  `CoordinateCleaner::cc_outl()` directly and asserts it receives exactly one species per
+  call -- encodes the fix permanently without needing a slow, hard-to-construct 10,000+ row
+  fixture to reproduce the raster branch itself. The original test suite (max ~17 rows
+  across all fixtures) never exercised this code path at all -- clean `devtools::test()`
+  gave false confidence, the same "check dataset scale before trusting synthetic tests
+  generalize" lesson this ecosystem has hit before with `restore_suppressed_candidates()`
+  (see `[[project_restore_suppressed_candidates_implementation]]` in the memory system) --
+  worth remembering as a recurring pattern, not a one-off.
+- `devtools::test()` 0 failures (483, up from 481), `devtools::check()` 0/0/0. Reinstalled to
+  `~/Library/R/4.0/library`. Not yet re-run end-to-end against the real full Mugu dataset with
+  the fix in place -- left for the user, since it involves real GBIF API calls and would
+  overwrite the real `_geo_outlier_check.rds` checkpoint (delete it first, or it'll load the
+  stale pre-fix result via the workflow's own `.use_cache()` gate).
+
+**2026-07-20 (Sonnet 5): `check_geographic_outliers()` -- geographic-outlier detection for rare-in-bbox species**
+
+Branch not tracked (no git repo at the monorepo root in this session's environment).
+Prompted by the user's real Mugu edge case (*Pseudotolithus epipercus*, an African species
+with a single errant citizen-science observation in La Jolla, `COORDINATE_REPROJECTION_
+SUSPICIOUS`/`CONTINENT_DERIVED_FROM_COORDINATES`/`TAXON_ID_NOT_FOUND` in its `issues` field)
+asking for a *generic* fix, not a fix for that one species -- see
+`[[project_edge_case_error_taxa_design]]` in the memory system for the fuller design
+conversation this implements.
+
+- **Design arc, briefly:** considered (1) trusting GBIF's own `issues` quality flags more --
+  rejected as weak/non-generalizing, those three codes describe GBIF's own geoprocessing
+  history, not species-range plausibility; (2) `TaxaFetch::check_inat_range()`
+  (point-in-polygon against iNaturalist's range model) -- real and reusable, but its own
+  documented caveat (false negatives common for aquatic/marine taxa given low iNat observer
+  effort there) makes it a poor primary signal for this ecosystem's dominant 12S/18S fish
+  eDNA use case; kept as a secondary/fallback idea, not built this session; (3) a
+  self-referential geographic-outlier test -- the one built. Initially scoped as "does this
+  species' own already-fetched occurrence cloud contain an isolated point," but the user
+  corrected the premise: `get_gbif_occurrences()`'s search is always bbox-scoped, so a local
+  pull never contains the wider distribution needed to test against, and a *global*
+  distance-matrix package like `CoordinateCleaner` fetching worldwide data for every
+  candidate species would be needlessly expensive. Real fix: gate the (expensive) global
+  fetch to only species with few *local* (bbox) records -- exactly the "singleton in our
+  bounding box" case the user meant by "suspicious of singletons," not a global-record-count
+  reading.
+- **`CoordinateCleaner` adoption, narrowed twice:** first considered hand-rolling
+  `cc_outl()`'s logic to avoid the package's `terra`/`rnaturalearth` dependency weight; a full
+  function-by-function inventory (sourced from the live CRAN reference manual, not memory)
+  showed those two heavy deps are needed only by `cc_sea()`/`cc_coun()`/`cc_urb()` -- exactly
+  the functions that don't fit this ecosystem (marine-hostile, or redundant with
+  `COUNTRY_COORDINATE_MISMATCH` already in `filter_gbif_quality()`'s `bad_issues`) -- while
+  the useful functions (`cc_outl`, `cc_equ`, `cc_zero`, `cc_gbif`, plus `cc_cen`/`cc_cap`/
+  `cc_inst` for a possible future session) either need no reference data or only the
+  package's own small bundled tables. `Suggests`-gated the whole package rather than hand-roll
+  anything. Second correction, same session: an attempt to hand-replicate `cc_zero()`'s/
+  `cc_gbif()`'s buffer defaults for `filter_gbif_quality()`'s new checks hit genuinely
+  conflicting numbers across sources (and a fabricated-looking GBIF-HQ coordinate from a web
+  search) -- since `CoordinateCleaner` was already an accepted `Suggests` dependency for
+  `cc_outl()`, there was no remaining reason to reimplement three more functions with
+  constants that couldn't be verified; switched to calling `cc_equ()`/`cc_zero()`/`cc_gbif()`
+  directly, using the package's own internal defaults.
+- **`fetch_gbif_occurrences(geometry = NULL)`:** required for the global re-fetch step;
+  confirmed via direct code read (not assumed) that this was NOT previously supported --
+  `geometry` had a hard `is.character()`/length-1 validation with no `NULL` path,  even
+  though the underlying `rgbif::occ_data()` call natively supports an unrestricted search.
+  Relaxed the check; found and fixed a real latent bug in the same area while there --
+  `.gbif_checkpoint_path()`'s `nchar(geometry)` would have returned `integer(0)` for `NULL`
+  geometry, breaking its `sprintf("%d", ...)` checkpoint-filename signature on the very first
+  call. `get_gbif_occurrences()` needed no change -- it has no geometry validation of its own
+  and just forwards the value through.
+- **`check_geographic_outliers()` (new function, `R/check_geographic_outliers.R`):** tallies
+  local (bbox) record counts per species; for species below `min_local_n` (default `5L`),
+  fetches that species' global distribution via `fetch_gbif_occurrences(geometry = NULL)`
+  (all rare species batched into one call, reusing that function's existing chunking/retry/
+  checkpoint machinery) and runs `CoordinateCleaner::cc_outl(method = "distance", tdi = 1000)`
+  against the combined cloud. Adds `local_n`/`global_n_unique`/`outlier_status` columns.
+  `outlier_status` is deliberately 4-valued, never a bare logical --
+  `"not_tested_sufficient_local_data"` / `"insufficient_global_data"` / `"outlier"` /
+  `"consistent"` -- mirroring `check_inat_range()`'s `range_status` convention, so "we
+  couldn't check" is never silently folded into "we checked and it's fine." `min_occs`
+  (default `7L`, matching `cc_outl()`'s own default) is re-checked explicitly against the
+  real global count rather than trusted to `cc_outl()`'s own silent-pass-below-threshold
+  behavior; that function's own console warning about it is suppressed (`suppressWarnings()`)
+  since it's redundant with the structured status column this function already returns.
+- **Testing:** all three changes covered offline. `test-fetch_gbif_occurrences.R` gained a
+  `geometry = NULL` case (mocked `rgbif::occ_data`, asserts the captured argument is
+  genuinely `NULL`) and a direct `.gbif_checkpoint_path()` unit test. `test-filter_gbif_
+  quality.R` gained real (not mocked) `CoordinateCleaner` calls for the equal-coordinate and
+  near-zero cases, `skip_if_not_installed`-guarded, plus the standard missing-package
+  skip-with-message test mirroring the existing `rgbif` pattern. New `test-check_geographic_
+  outliers.R` mocks only `rgbif::occ_data` (the network boundary) so the real
+  `fetch_gbif_occurrences()` and real `CoordinateCleaner::cc_outl()` both run underneath --
+  genuine coverage of all three `outlier_status` outcomes (an isolated point flagged, a
+  too-sparse species correctly reported as untested rather than silently passed, a point
+  inside its real cluster left alone), not just the plumbing between them.
+  `CoordinateCleaner` (3.0.1) installed and verified loadable before running any of this.
+  `devtools::document()`/`test()`/`check()` all clean: 481 expectations (up from 459), 0
+  failures; 0 errors/0 warnings/0 notes. Reinstalled to `~/Library/R/4.0/library`.
+- **Real call-site impact:** `filter_gbif_quality()`'s three new checks default `TRUE`, so
+  every existing in-repo caller (`TaxaExpect::build_priors()`, `TaxaExpect/inst/workflows/
+  generate_priors_workflow.R`, `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`,
+  `TaxaWizard/inst/graph/snippets/taxa_to_occ.R`) now applies them automatically wherever
+  `CoordinateCleaner` happens to be installed -- a behavioral default change, not just an
+  addition; logged in `TaxaID/CLAUDE.md`'s breaking-changes table. `check_geographic_
+  outliers()` itself is new and not yet wired into any production workflow (PtConception/
+  Mugu, outside this monorepo) -- that rollout, plus a possible follow-on session adding
+  `cc_cen()`/`cc_cap()`/`cc_inst()` (country-centroid/capital/biodiversity-institution
+  proximity checks, scoped but not built this session), are both left open.
+- **Found, not fixed (pre-existing, out of scope):** `filter_gbif_quality()`'s steps 7
+  (eDNA) and 8 (species-level requirement) never reassign `n_current` after removing rows,
+  so if both steps remove rows in the same call, step 8's printed "Removed N records" message
+  can overcount by including step 7's removals too. Cosmetic (affects only the informational
+  message, not the actual filtering result or `data` itself) and pre-existing, not touched
+  by this session's own step 9, which computes its own accurate before/after count instead
+  of relying on the stale variable.
 
 **Session 148 (2026-07-09): full code + domain review (`inst/Code and Domain Review 2.Rmd`)**
 

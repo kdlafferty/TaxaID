@@ -360,6 +360,62 @@ test_that("skips eDNA filter with message when no detectable columns present", {
 })
 
 # =============================================================================
+# Filter 9: CoordinateCleaner checks (equal coords / near-zero / near GBIF HQ)
+# =============================================================================
+
+test_that("skips CoordinateCleaner checks with message when package not installed", {
+  skip_if(requireNamespace("CoordinateCleaner", quietly = TRUE),
+          "CoordinateCleaner is installed; skipping missing-package test")
+  df <- .make_coords_only()
+  expect_message(
+    filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                        bad_issues = character(0), max_coord_uncertainty = Inf),
+    regexp = "CoordinateCleaner.*not installed"
+  )
+})
+
+test_that("removes records with identical lat/lon (cc_equ)", {
+  skip_if_not_installed("CoordinateCleaner")
+  df <- data.frame(
+    decimalLatitude  = c(34.5, 10.0, 35.0),
+    decimalLongitude = c(-120.0, 10.0, -119.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_near_zero = FALSE, exclude_near_gbif_hq = FALSE)
+  expect_equal(nrow(out), 2L)
+  expect_false(any(out$decimalLatitude == out$decimalLongitude))
+})
+
+test_that("removes records near (0,0) (cc_zero)", {
+  skip_if_not_installed("CoordinateCleaner")
+  df <- data.frame(
+    decimalLatitude  = c(34.5, 0.01, 35.0),
+    decimalLongitude = c(-120.0, 0.02, -119.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_gbif_hq = FALSE)
+  expect_equal(nrow(out), 2L)
+})
+
+test_that("exclude_equal_coords/near_zero/near_gbif_hq = FALSE skips all three checks", {
+  skip_if_not_installed("CoordinateCleaner")
+  df <- data.frame(
+    decimalLatitude  = c(10.0, 0.01),
+    decimalLongitude = c(10.0, 0.02),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE)
+  expect_equal(nrow(out), 2L)
+})
+
+# =============================================================================
 # Output structure
 # =============================================================================
 
