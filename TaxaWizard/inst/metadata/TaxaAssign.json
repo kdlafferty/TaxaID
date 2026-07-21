@@ -76,7 +76,7 @@
       "description": "Simple score-based consensus: min_score + gap + rank_thresholds -> LCA. No model/priors needed.",
       "inputs": [
         {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object"},
-        {"name": "rank_thresholds", "type": "named_numeric", "required": false, "default": "c(species=98, genus=95, family=90, order=85)", "description": "Score thresholds per rank. Defaults to the conventional GITA/Jonah Ventures thresholds -- pass NULL to disable rank capping entirely. Auto-rescaled by /100 if the match score column looks like a 0-1 proportion rather than 0-100 percent identity."},
+        {"name": "rank_thresholds", "type": "named_numeric", "required": false, "default": "c(species=98, genus=95, family=90, phylum=85)", "description": "Score thresholds per rank. Defaults to the conventional GITA/Jonah Ventures thresholds -- pass NULL to disable rank capping entirely. Auto-rescaled by /100 if the match score column looks like a 0-1 proportion rather than 0-100 percent identity. Fourth tier is phylum, not order (corrected 2026-07-20) -- the corroborating literature's 85% value is phylum-level."},
         {"name": "min_score", "type": "numeric", "required": false, "default": 0, "description": "Minimum score to consider. Note: min_score alone provides little species-vs-congener discrimination -- rank_thresholds does that job."},
         {"name": "max_gap", "type": "numeric", "required": false, "description": "Maximum score gap for species-level"},
         {"name": "rank_system", "type": "character_vector", "required": false, "description": "Rank order for LCA"}

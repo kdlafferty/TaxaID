@@ -42,7 +42,7 @@ SET_SEED <- 42L
 THRESHOLD_GRID <- seq(70, 100, by = 1)   # percent-identity scale, matching min_score/score_threshold
 
 CURRENT_DEFAULTS <- c(score_consensus_min_score = 0, assign_taxa_llm_score_threshold = 80)
-GITA_JV_THRESHOLDS <- c(species = 98, genus = 95, family = 90, order = 85)  # documented conventional thresholds
+GITA_JV_THRESHOLDS <- c(species = 98, genus = 95, family = 90, phylum = 85)  # documented conventional thresholds (4th tier corrected order->phylum 2026-07-20)
 # ---------------------------------------------------------------------------
 
 library(ggplot2)

@@ -241,15 +241,20 @@ consensus_final
 #
 # Uses the match_df loaded in Section 1 (before likelihood modelling).
 # Thresholds follow common eDNA conventions (GITA pipeline / Jonah Ventures):
-#   species >= 98%, genus >= 95%, family >= 90%, order >= 85%
+#   species >= 98%, genus >= 95%, family >= 90%, phylum >= 85%
+# (the 85% tier is phylum-level in the literature it's corroborated by, not
+# order-level -- corrected 2026-07-20, see score_consensus()'s own roxygen)
 #
 # max_gap = 1: all hits within 1% of the top score contribute to the LCA.
+# Note: this call's rank_system (family/genus/species only) never reaches
+# the phylum tier either way -- same no-op as the old order=85 default had
+# for this narrower rank ladder.
 
 score_con <- score_consensus(
   match_df        = match_obj,
   min_score       = 80,
   max_gap         = 1,
-  rank_thresholds = c(species = 98, genus = 95, family = 90, order = 85),
+  rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85),
   whitelist       = NULL,
   score_col       = "score_original",
   rank_system     = c("family", "genus", "species")

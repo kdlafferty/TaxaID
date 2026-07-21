@@ -8,7 +8,7 @@ score_consensus(
   match_df,
   min_score = 0,
   max_gap = Inf,
-  rank_thresholds = c(species = 98, genus = 95, family = 90, order = 85),
+  rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85),
   whitelist = NULL,
   score_col = "score_original",
   rank_system = NULL
@@ -45,9 +45,14 @@ threshold the top score meets.  If the top score fails all thresholds, the
 sample is unresolvable.  Applied independently of the LCA — so even if all
 hits agree on species, the consensus is demoted to genus if the top score
 is below the species threshold.
-Default \code{c(species = 98, genus = 95, family = 90, order = 85)} -- the
+Default \code{c(species = 98, genus = 95, family = 90, phylum = 85)} -- the
 conventional GITA/Jonah Ventures thresholds (changed from \code{NULL} on
-2026-07-09; see Details). Pass \code{rank_thresholds = NULL} explicitly to
+2026-07-09; see Details). The fourth tier is labeled \code{phylum}, not
+\code{order} (corrected 2026-07-20) -- the literature this 85\% value is
+corroborated by (Ransome et al. 2017, Elbrecht et al. 2017, and others,
+as compiled in Pappalardo et al. 2025 and \code{ecosystem_docs/ AQUARIUM_BENCHMARK_DESIGN.md}) treats 85\% as a phylum-level cutoff, and
+no widely-cited genuine order-level COI threshold was found to
+substitute in its place. Pass \code{rank_thresholds = NULL} explicitly to
 disable rank capping entirely (restores the pre-2026-07-09 default
 behavior). If \code{score_col}'s values look like a 0-1 proportion scale
 (max <= 1) rather than 0-100 percent-identity, the default is

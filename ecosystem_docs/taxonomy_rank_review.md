@@ -204,7 +204,10 @@ and works with any ordered set of ranks. Default is `c("kingdom", "phylum", "cla
 ### 2.3 `rank_thresholds` in `score_consensus()` — partially generalized
 
 **Current state:** Default `rank_thresholds = c(species = 98, genus = 95,
-family = 90, order = 85)`. These are named by rank, so the function works with
+family = 90, phylum = 85)` (fourth tier corrected from `order` to `phylum`
+2026-07-20 -- the literature this 85% value is corroborated by treats it as a
+phylum-level cutoff, and no genuine order-level COI threshold was found to
+substitute in). These are named by rank, so the function works with
 any rank system. However, only 4 ranks have defaults.
 
 **Assessment:** The defaults are conventional for DNA barcoding. Users working with

@@ -95,9 +95,15 @@ utils::globalVariables(c("score_val"))
 #'   sample is unresolvable.  Applied independently of the LCA — so even if all
 #'   hits agree on species, the consensus is demoted to genus if the top score
 #'   is below the species threshold.
-#'   Default `c(species = 98, genus = 95, family = 90, order = 85)` -- the
+#'   Default `c(species = 98, genus = 95, family = 90, phylum = 85)` -- the
 #'   conventional GITA/Jonah Ventures thresholds (changed from `NULL` on
-#'   2026-07-09; see Details). Pass `rank_thresholds = NULL` explicitly to
+#'   2026-07-09; see Details). The fourth tier is labeled `phylum`, not
+#'   `order` (corrected 2026-07-20) -- the literature this 85% value is
+#'   corroborated by (Ransome et al. 2017, Elbrecht et al. 2017, and others,
+#'   as compiled in Pappalardo et al. 2025 and `ecosystem_docs/
+#'   AQUARIUM_BENCHMARK_DESIGN.md`) treats 85% as a phylum-level cutoff, and
+#'   no widely-cited genuine order-level COI threshold was found to
+#'   substitute in its place. Pass `rank_thresholds = NULL` explicitly to
 #'   disable rank capping entirely (restores the pre-2026-07-09 default
 #'   behavior). If `score_col`'s values look like a 0-1 proportion scale
 #'   (max <= 1) rather than 0-100 percent-identity, the default is
@@ -186,7 +192,7 @@ score_consensus <- function(match_df,
                             min_score       = 0,
                             max_gap         = Inf,
                             rank_thresholds = c(species = 98, genus = 95,
-                                               family = 90, order = 85),
+                                               family = 90, phylum = 85),
                             whitelist       = NULL,
                             score_col       = "score_original",
                             rank_system     = NULL) {
@@ -213,7 +219,7 @@ score_consensus <- function(match_df,
 
   # --- Auto-scale rank_thresholds if score_col looks like a 0-1 proportion --
   # rank_thresholds defaults to the conventional GITA/Jonah Ventures 0-100
-  # percent-identity thresholds (species=98, genus=95, family=90, order=85;
+  # percent-identity thresholds (species=98, genus=95, family=90, phylum=85;
   # see TaxaAssign/CLAUDE.md). score_consensus() itself is scale-agnostic
   # (min_score's own doc: "97 for percent identity, 0.97 for proportion"), so
   # applying a 0-100-scale default blindly to 0-1-scale data would silently

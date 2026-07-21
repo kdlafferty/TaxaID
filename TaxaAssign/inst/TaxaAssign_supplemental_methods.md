@@ -489,7 +489,7 @@ many conventional algorithms:
 2.  **Maximum gap** (`max_gap`, default NULL): if the gap between the
     top two scores exceeds this value, accept the top candidate.
 3.  **Rank thresholds**: rank-specific minimum scores (default: species
-    ≥ 98, genus ≥ 95, family ≥ 90, order ≥ 85). Accept at the finest
+    ≥ 98, genus ≥ 95, family ≥ 90, phylum ≥ 85). Accept at the finest
     rank where the top candidate exceeds the threshold.
 4.  **Whitelist**: if a trusted species list is provided, candidates not
     on the list are penalized.

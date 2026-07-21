@@ -294,7 +294,9 @@ cat("Elapsed:", round(difftime(Sys.time(), t0, units = "secs"), 2), "sec\n")
 #
 # Thresholds below follow the common eDNA convention (e.g., GITA functions,
 # Jonah Ventures pipeline):
-#   species >= 98%, genus >= 95%, family >= 90%, order >= 85%
+#   species >= 98%, genus >= 95%, family >= 90%, phylum >= 85%
+# (the 85% tier is phylum-level in the literature it's corroborated by, not
+# order-level -- corrected 2026-07-20, see score_consensus()'s own roxygen)
 #
 # max_gap = 1: all hits within 1% of the top score contribute to the LCA.
 #   This is the "top-hit tie-breaking" logic used by most BLAST-LCA pipelines.
@@ -317,7 +319,7 @@ score_con_thresholds <- score_consensus(
   match_df,
   min_score       = 100,       # drop hits below 80% (same as score_threshold above)
   max_gap         = 0,        # include all hits within 1% of best score for LCA
-  rank_thresholds = c(species = 98, genus = 95, family = 90, order = 85),
+  rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85),
   whitelist       = NULL,     # set to a plausible taxon list if available
   score_col       = "score_original",
   rank_system     = c("family", "genus", "species")
