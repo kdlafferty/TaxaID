@@ -341,7 +341,6 @@ test_that("returns a data frame with expected DwC columns on valid input", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, bbox,
-    gbif_hashes  = NULL,
     verbose      = FALSE,
     odm_variable = "DENSITY"
   )
@@ -361,7 +360,7 @@ test_that("filters to odm_variable rows only", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
 
   if (!is.null(result)) {
@@ -377,7 +376,7 @@ test_that("falls back to all rows when odm_variable absent", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
 
   expect_true(is.data.frame(result))
@@ -391,7 +390,7 @@ test_that("returns NULL when observation entity is missing", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   expect_null(result)
 })
@@ -403,7 +402,7 @@ test_that("returns NULL when location entity is missing", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   expect_null(result)
 })
@@ -415,7 +414,7 @@ test_that("returns NULL when taxon entity is missing", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   expect_null(result)
 })
@@ -429,7 +428,7 @@ test_that("returns NULL when location table has no coordinate rows", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   expect_null(result)
 })
@@ -442,7 +441,7 @@ test_that("coerces numeric location_id in obs to character for join", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   expect_true(is.data.frame(result))
   expect_gt(nrow(result), 0L)
@@ -456,7 +455,7 @@ test_that("bbox filter removes out-of-range records", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, tiny_bbox,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   expect_null(result)  # .finalize_entity returns NULL when 0 rows survive bbox
 })
@@ -469,7 +468,7 @@ test_that("entity name matching is case-insensitive", {
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   expect_true(is.data.frame(result))
 })
@@ -491,7 +490,7 @@ test_that("prefers exact entity name match over partial (obs vs observation_anci
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei_with_anc, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
-    gbif_hashes = NULL, verbose = FALSE, odm_variable = "DENSITY"
+    verbose = FALSE, odm_variable = "DENSITY"
   )
   # Should still work — exact "observation" preferred over "observation_ancillary"
   expect_true(is.data.frame(result))

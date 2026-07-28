@@ -220,6 +220,7 @@ if (nrow(filtered_occ) == 0) {
 }
 
 all_occurrences <- TaxaFetch::stack_occurrences(filtered_occ)
+all_occurrences <- TaxaFetch::dedupe_occurrences(all_occurrences)
 if (!"taxon_name" %in% names(all_occurrences)) {
   all_occurrences <- TaxaTools::create_taxon_names(all_occurrences)
 }

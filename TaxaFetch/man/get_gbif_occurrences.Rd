@@ -109,6 +109,22 @@ filters to species-rank records. This is a thin wrapper -- neither
 underlying function is modified; see Details for why they stay separate.
 }
 \details{
+\strong{Why GBIF, and not a separate fetcher per citizen-science/museum
+platform:} GBIF is an aggregator, not just one more data source among
+many -- it already ingests and republishes records from eBird,
+iNaturalist, Observation.org, OBIS, and most natural history museum/
+herbarium collections, each as its own registered dataset/publisher,
+alongside data GBIF itself mobilizes directly. Any record from those
+platforms that has been published to GBIF already arrives through this
+one function with no extra code -- writing a dedicated fetcher for one of
+those platforms would just re-fetch a subset of what this call already
+returns. A separate, platform-specific function is only justified when
+that platform has data GBIF genuinely does not carry -- e.g.
+\code{\link{check_inat_range}} calls iNaturalist's own geomodel API for
+range polygons, a data type no GBIF occurrence record includes at all,
+rather than duplicating iNaturalist's occurrence records themselves
+(already available here via GBIF).
+
 \strong{Why a wrapper, not one merged function:} the two backends have
 genuinely different execution models. \code{fetch_gbif_occurrences} is
 client-paced with per-key retries and needs no GBIF account; its cost

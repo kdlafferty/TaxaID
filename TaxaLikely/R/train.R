@@ -570,6 +570,22 @@ flag_reference_errors <- function(raw_df,
 #'     \item{`H2_Lookup`}{Data frame (or `NULL`) with per-genus `H2` delta and
 #'       variance estimates: `genus`, `n_pairs`, `delta_shrunk`, `var_shrunk`
 #'       (Session 158). See "Per-genus delta shrinkage" section below.}
+#'     \item{`Confusion_Risk_Curves`}{List (or `NULL`) of genus-/family-equal-
+#'       weighted, Empirical-Bayes-shrunk per-rank score curves, read by
+#'       `evaluate_likelihoods()` to compute its `species_confusion_risk`/
+#'       `genus_confusion_risk`/`family_confusion_risk` output columns -- a
+#'       model-independent, score-only diagnostic of the risk that the raw
+#'       match score is equally well explained by a confusable congener/
+#'       confamilial/cross-family relative at the rank a hypothesis resolved
+#'       to, distinct from this model's own trained bivariate-normal
+#'       likelihood. `NULL` when `rank_system` has fewer than 2 levels or the
+#'       required taxonomy columns aren't usable (`species_confusion_risk`/
+#'       `genus_confusion_risk`/`family_confusion_risk` are then simply `NA`,
+#'       never an error). See
+#'       `.compute_rank_score_curves()`'s own documentation for the exact
+#'       structure, and `compute_rank_thresholds()` for the sibling function
+#'       that derives `TaxaAssign::score_consensus()`'s `rank_thresholds`
+#'       from the same underlying curves.}
 #'     \item{`Stats`}{List of diagnostics (e.g., `AIC_Score` if lmer succeeded,
 #'       `n_species`, `n_singletons`, `n_h1_pooled` -- total sequences behind
 #'       the global H1 mean (informational only; NOT used as the Monte Carlo
@@ -681,6 +697,26 @@ train_likelihood_model <- function(raw_df,
 
   bad_ids <- errors$id_x[errors$error_type == "likely_mislabeled"]
   raw_clean <- dplyr::filter(raw_df, !id_x %in% bad_ids, !id_y %in% bad_ids)
+
+  # ---- CONFUSION-RISK CURVES (2026-07-23) ------------------------------------
+  # Genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank score curves
+  # (diagnostics/score_floor_roc_sweep.R's reference implementation, made
+  # real via .compute_rank_score_curves()) -- computed once at training time
+  # and stored below, not recomputed from a raw seq_matrix on every inference
+  # call. Feeds evaluate_likelihoods()'s species_confusion_risk/
+  # genus_confusion_risk/family_confusion_risk columns. NULL when rank_system
+  # is too short (< 2 levels) or the required taxonomy columns aren't usable
+  # -- those three output columns are then simply NA, never an error.
+  confusion_risk_curves <- tryCatch(
+    .compute_rank_score_curves(raw_clean, rank_system, prior_weight = prior_weight),
+    error = function(e) {
+      warning(sprintf(
+        "Failed to compute confusion-risk curves (%s); species_confusion_risk/genus_confusion_risk/family_confusion_risk will be unavailable.",
+        conditionMessage(e)
+      ))
+      NULL
+    }
+  )
 
   message("Preparing training data...")
   train_df <- .prep_training_data(
@@ -907,22 +943,77 @@ train_likelihood_model <- function(raw_df,
     # same way the old max_foreign_score pool was (drop extreme low-identity
     # outliers below the ~0.7% noise floor) so this remains comparable in
     # spirit to the previous default.
-    congener_pool <- h2_source_all$max_congener_score[
-      !is.na(h2_source_all$max_congener_score) &
-        h2_source_all$max_congener_score > noise_floor_congener
-    ]
+    congener_keep <- !is.na(h2_source_all$max_congener_score) &
+      h2_source_all$max_congener_score > noise_floor_congener
+    congener_df   <- h2_source_all[congener_keep, , drop = FALSE]
+    congener_pool <- congener_df$max_congener_score
 
     if (length(congener_pool) > 2L) {
       n_h2_pooled <- length(congener_pool)
+
+      # ---- OPTIONAL lme4 HIERARCHY FOR THE POOLED CONGENER MEAN -------------
+      # Mirrors the H1_Global_Mu hierarchy fit above, for the identical reason:
+      # a naive row-weighted mean(congener_pool) is dominated by whichever
+      # genus contributes the most reference sequences to this pool. Confirmed
+      # as a real, measurable (not hypothetical) bias on real 12S data:
+      # Sebastes is only 7% of congener_pool rows (the per-sequence "best
+      # congener match" collapse above already dilutes its much larger ~31%
+      # share of raw pairwise comparisons), but its congeners are so close to
+      # indistinguishable (its own genus-specific delta hits the 0.5-unit
+      # floor) that including it row-weighted still pulls the pooled mean
+      # toward "congeners are more competitive than a typical genus" by
+      # ~8-9% relative to a genus-equal-weighted estimate. A random-intercept
+      # model absorbs this the same way it already does for H1_Global_Mu --
+      # the fixed intercept estimates the population-average GENUS mean, not
+      # the row-weighted pooled mean. Falls back to the naive pooled mean
+      # under the same conditions H1's own hierarchy fit already falls back
+      # under (use_hierarchy = FALSE, too few rank levels, lme4 unavailable,
+      # too few genera, or non-convergence) -- same graceful-degradation
+      # contract as H1, never a hard requirement.
+      lmer_h2_mean <- NULL
+      if (use_hierarchy && length(code_cols) >= 2L &&
+          requireNamespace("lme4", quietly = TRUE)) {
+        genus_col_h2 <- code_cols[-1L][1]
+        n_genera_h2  <- length(unique(congener_df[[genus_col_h2]]))
+        if (n_genera_h2 >= 10L) {
+          random_terms_h2 <- paste0("(1 | ", code_cols[-1L], ")", collapse = " + ")
+          formula_h2 <- stats::as.formula(
+            sprintf("max_congener_score ~ 1 + %s", random_terms_h2)
+          )
+          tryCatch({
+            fit_h2 <- lme4::lmer(formula_h2, data = congener_df,
+                                 control = lme4::lmerControl(optimizer = "bobyqa"))
+            lmer_h2_mean <- lme4::fixef(fit_h2)[["(Intercept)"]]
+          }, error = function(e) {
+            message(sprintf(
+              "lme4 fit failed for pooled H2 delta (%s) -- falling back to row-weighted mean",
+              conditionMessage(e)
+            ))
+          })
+        } else {
+          message(sprintf(
+            "Skipping lme4 hierarchy for pooled H2 delta: only %d genera with congener data (need >= 10).",
+            n_genera_h2
+          ))
+        }
+      }
+      congener_pool_mean <- if (!is.null(lmer_h2_mean)) {
+        lmer_h2_mean
+      } else {
+        mean(congener_pool, na.rm = TRUE)
+      }
+
       # Minimum H1-H2 separation ensures unreferenced-species hypothesis is
       # always distinguishable from known-species hypothesis (rescaled from
       # the original 0.5-logit-unit floor -- an ad hoc choice to begin with,
       # kept proportionally consistent across transforms via unit_ratio
       # rather than invented fresh per scale).
-      h2_delta_val <- max(0.5 * unit_ratio, mu_score_global - mean(congener_pool, na.rm = TRUE))
+      h2_delta_val <- max(0.5 * unit_ratio, mu_score_global - congener_pool_mean)
       # Minimum H2 variance (rescaled from the original 0.1-logit-unit^2
       # floor) prevents degenerate zero-variance estimates when few congener
-      # matches exist.
+      # matches exist. Left row-weighted/naive, matching H1's own
+      # global_var_score above -- the hierarchy fit only ever corrects the
+      # MEAN (both here and for H1), not the variance.
       h2_var <- max(stats::var(congener_pool, na.rm = TRUE), 0.1 * unit_ratio^2)
 
       # ---- PER-GENUS DELTA + VARIANCE SHRINKAGE (Empirical Bayes, same form
@@ -1020,6 +1111,7 @@ train_likelihood_model <- function(raw_df,
       H2           = H2,
       H3           = H3,
       H2_Lookup    = H2_Lookup,
+      Confusion_Risk_Curves = confusion_risk_curves,
       Score_Transform = score_transform,
       Stats        = list(
         AIC_Score    = aic_score,

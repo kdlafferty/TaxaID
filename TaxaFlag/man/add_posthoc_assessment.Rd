@@ -16,8 +16,12 @@ add_posthoc_assessment(
   finest_rank = "species",
   domestic_taxa = NULL,
   domestic_prior_source = c("wild", "augmented"),
-  absolute_fit_pvalue_col = "winner_absolute_fit_pvalue",
-  weak_evidence_pvalue = 0.001
+  own_rank_confusion_risk_col = "winner_own_rank_confusion_risk",
+  high_confusion_risk_threshold = 0.5,
+  winner_prior_col = "winner_prior",
+  winner_record_col = "winner_has_occurrence_record",
+  consensus_prior_col = "consensus_prior",
+  expected_prior_threshold = 0.5
 )
 }
 \arguments{
@@ -76,45 +80,70 @@ prior pipeline already incorporated known local domestic/synanthropic
 presence, so the low tier is treated as informative and no re-labelling
 happens. Ignored when \code{domestic_taxa} is \code{NULL}.}
 
-\item{absolute_fit_pvalue_col}{Character.  Column in \code{consensus_df}
-holding the winning hypothesis's own one-sided ABSOLUTE (not relative)
-goodness-of-fit p-value, passed through unchanged from
-\code{TaxaLikely::evaluate_likelihoods()} via
-\code{TaxaAssign::posterior_consensus()}'s \code{winner_absolute_fit_pvalue}
-column (default \code{"winner_absolute_fit_pvalue"}). When present and
-below \code{weak_evidence_pvalue}, the row is labelled
-\code{"unsupported_rank"} regardless of what the other signals say --
-see \code{@section Weak absolute evidence} below. Silently ignored (no
-error) when absent from \code{consensus_df} -- an optional upstream
-output, not required input.}
+\item{own_rank_confusion_risk_col}{Character.  Column in \code{consensus_df}
+holding \code{TaxaLikely::evaluate_likelihoods()}'s
+\code{own_rank_confusion_risk} value for the winning hypothesis, passed
+through unchanged from \code{TaxaAssign::posterior_consensus()}'s
+\code{winner_own_rank_confusion_risk} column (default
+\code{"winner_own_rank_confusion_risk"}).  See \code{@section
+  Confusion-risk flag} below.  Silently ignored (no error,
+\code{confusion_risk_flag} is all \code{NA}) when absent from
+\code{consensus_df} -- an optional upstream output, not required input.}
 
-\item{weak_evidence_pvalue}{Numeric in \code{[0, 1]} (default
-\code{0.001}).  Threshold for \code{absolute_fit_pvalue_col}: a value
-below this triggers \code{"unsupported_rank"}.  Not itself empirically
-validated against known real misidentification cases -- treat it as a
-starting point, not a calibrated constant.}
+\item{high_confusion_risk_threshold}{Numeric in \code{[0, 1]} (default
+\code{0.5}).  \code{own_rank_confusion_risk_col} values ABOVE this
+threshold are flagged \code{"high_confusion_risk"} (HIGHER means MORE
+confusable, i.e. weaker evidence for this diagnostic -- see
+\code{@section Confusion-risk flag}).  Not itself empirically
+validated -- a defensible midpoint, not a calibrated constant.}
+
+\item{winner_prior_col}{Character.  Column in \code{consensus_df} holding
+the winning hypothesis's own occurrence prior (default
+\code{"winner_prior"}, from \code{TaxaAssign::posterior_consensus()}).
+Drives \code{primary_plausibility}.}
+
+\item{winner_record_col}{Character.  Column indicating whether the winning
+hypothesis's taxon carries a real occurrence record at all (default
+\code{"winner_has_occurrence_record"}).  This, NOT a low prior value, is
+what makes a call \code{"unprecedented"}.}
+
+\item{consensus_prior_col}{Character.  Column holding the highest prior
+among recorded members of the consensus taxon (default
+\code{"consensus_prior"}).  \code{NA} there means no member has an
+occurrence record -- the consensus-scope never-reported signal.}
+
+\item{expected_prior_threshold}{Numeric in \code{[0, 1]} (default
+\code{0.5}).  At or above this prior a recorded taxon is
+\code{"expected"}; below it, \code{"unexpected"}.}
 }
 \value{
-\code{consensus_df} with one column appended:
+\code{consensus_df} with four columns appended:
 \describe{
 \item{\code{posthoc_assessment}}{Character.  One of: \code{"sensible"},
 \code{"limited_evidence"}, \code{"unexpected"}, \code{"suspect"},
 \code{"unprecedented"}, \code{"vague_rank"}, \code{"modeled"},
-(only when \code{domestic_taxa} is supplied)
-\code{"domestic_prior_caveat"}, and (only when
-\code{absolute_fit_pvalue_col} is present in \code{consensus_df})
-\code{"unsupported_rank"}.}
+and (only when \code{domestic_taxa} is supplied)
+\code{"domestic_prior_caveat"}.}
+\item{\code{confusion_risk_flag}}{Character.  \code{"high_confusion_risk"}
+when \code{own_rank_confusion_risk_col}'s value exceeds
+\code{high_confusion_risk_threshold}, \code{"low_confusion_risk"}
+otherwise, \code{NA} when the value itself is \code{NA} or
+\code{own_rank_confusion_risk_col} is absent from \code{consensus_df}.
+See \code{@section Confusion-risk flag} above.}
+\item{\code{primary_plausibility}, \code{consensus_plausibility}}{
+Character.  Occurrence plausibility of \code{primary_taxon} and of
+\code{consensus_taxon}: \code{"expected"}, \code{"unexpected"},
+\code{"unprecedented"}, or \code{"not_modeled"} when nothing is
+computable.  \code{NA} when the required source columns are absent
+from \code{consensus_df}.}
 }
 }
 \description{
 Classifies each row of a \code{posterior_consensus()} output using signals
 already present in the data: sequence-match evidence
 (\code{winner_likelihood}) and prior establishment status (taxon tier from
-\code{priors_combined}) drive the base 3 x 2 classification below; an
-optional third, independent signal (\code{absolute_fit_pvalue_col},
-absolute rather than relative goodness of fit) can override any of those
-four categories -- see \code{@section Weak absolute evidence}. The result
-is a single categorical column \code{posthoc_assessment} suitable for
+\code{priors_combined}) drive the base 3 x 2 classification below. The
+result is a single categorical column \code{posthoc_assessment} suitable for
 filtering or LLM-assisted review.
 }
 \details{
@@ -167,37 +196,67 @@ domestic/synanthropic presence (rather than relying on raw GBIF/iNat), set
 since the low-tier signal is then informative on its own.
 }
 
-\section{Weak absolute evidence (\code{"unsupported_rank"})}{
+\section{Confusion-risk flag (\code{confusion_risk_flag})}{
 
-\code{winner_likelihood_col} is ratio-normalised WITHIN one observation
-(the best hypothesis is always exactly 1.0) -- it can read as strong
-evidence even when every candidate fit poorly in absolute terms, simply
-because nothing competitive existed to normalise against (e.g. a weak
-match winning by default with no real competition; a real motivating
-example, found on real data: 8 real PtConception 12S observations
-confidently identified as \emph{Urocyon cinereoargenteus}/\emph{Canis
-lupaster} -- real terrestrial canids -- at species level in a marine fish
-survey, each with \code{winner_absolute_fit_pvalue} ~ 0.002-0.004).
-\code{absolute_fit_pvalue_col} carries a different, absolute answer to a
-related question: is this call's own fit to its trained distribution
-believable at all, tested independently of any competing candidate. A
-value below \code{weak_evidence_pvalue} means the reported call's own
-evidence is weak in absolute terms -- this can happen even for a row the
-other four signals would call \code{"sensible"}, which is why this check
-runs last and can override any of them. Purely informational: never
-changes \code{consensus_taxon} or \code{consensus_rank} themselves, only
-how the existing values are labelled.
+A THIRD, deliberately SEPARATE signal from \code{posthoc_assessment}
+above. \code{TaxaLikely::evaluate_likelihoods()}'s
+\code{species_confusion_risk}/\code{genus_confusion_risk}/
+\code{family_confusion_risk} (passed through here via
+\code{own_rank_confusion_risk_col}) is a model-independent, score-ONLY
+diagnostic: given the winning candidate's own raw match score, how often
+would a REAL congener/confamilial/cross-family pair score this high or
+higher? HIGHER values mean MORE confusable, i.e. WEAKER evidence for the
+resolved rank -- a genuine risk-style metric (high=concern), unlike
+\code{score_likelihood}/\code{posterior_mean}/\code{confidence_score}
+elsewhere in this ecosystem, which are all high=good -- see
+\code{evaluate_likelihoods()}'s own \code{@section Confusion risk} for
+the full interpretation. (\code{flag_contaminant()}'s
+\code{observation_validity} is NOT an example of this convention, despite
+an earlier version of this note claiming otherwise -- it is a high=good
+confidence score, renamed 2026-07-24 from \code{contaminant_score} for
+exactly this reason; see that function's own docs.)
 
-2026-07-19: this replaced an earlier design comparing
-\code{TaxaLikely::evaluate_likelihoods()}'s \code{trusted_rank}
-ladder-walk output (via a \code{trusted_rank_col} param) against
-\code{consensus_rank_col}. That mechanism was found unreliable on real
-data: \code{trusted_rank} was computed for
-\code{evaluate_likelihoods()}'s own top-LIKELIHOOD hypothesis, which is
-not always the same hypothesis that wins the POSTERIOR reported here once
-priors are applied downstream (confirmed on a real 12S dataset: roughly
-30\\% mismatch). Reading \code{absolute_fit_pvalue_col} directly off the
-actual winning row has no such mismatch.
+This is deliberately kept as its OWN column rather than folded into
+\code{posthoc_assessment}'s override chain. The cautionary precedent here
+is the \code{trusted_rank} ladder-walk
+mechanism (built 2026-07-19, removed 2026-07-20 after a real ~30\\%
+likelihood/posterior-winner mismatch plus a downranking-cancellation bug --
+see \code{[[project_rank_trust_mechanism_removed]]} in the TaxaID memory
+system): a mechanism that recomputes or overrides an existing categorical
+judgment is exactly the shape that broke there. \code{species_confusion_risk}
+and friends are meant to stay a plain continuous value a downstream
+consumer (a human reviewer, or an LLM-based review function) reads and
+acts on directly -- \code{confusion_risk_flag} is a convenience threshold
+on top of that raw value for quick filtering, not a replacement for
+reading \code{winner_species_confusion_risk}/\code{winner_genus_confusion_risk}/
+\code{winner_family_confusion_risk}/\code{winner_own_rank_confusion_risk}
+directly, and it never overrides or interacts with \code{posthoc_assessment}.
+(Renamed 2026-07-23 from \code{score_support_flag}/\code{weak_score_support}/
+\code{adequate_score_support} to match the direction the underlying values
+actually have -- no math changed, only the names.)
+}
+
+\section{Occurrence plausibility (\code{primary_plausibility}/\code{consensus_plausibility})}{
+
+An ordinal answer to "how expected is this taxon here?", reported for
+\code{primary_taxon} and \code{consensus_taxon} separately and
+\strong{alongside} the other columns -- never gating them, which is the
+specific defect \code{"vague_rank"} has (it short-circuits classification
+entirely for any non-species rank).
+
+\code{"unprecedented"} is driven by RECORD PRESENCE, never by a low prior
+value.  A never-reported taxon and a genuine singleton can carry the same
+numeric prior -- both land on the dark-diversity floor -- while meaning
+opposite things, so no threshold on the value can separate them.  Verified
+on real data: 547 candidate rows carried no occurrence record yet a prior
+above the floor, one reaching 0.975 because its dark-diversity group had
+only three members; thresholding value alone would have called that
+\code{"expected"}.
+
+The \code{0.5} break does two jobs at once, which is why it was preferred
+to a fitted cutoff: it is directly interpretable (the taxon is at least as
+likely present as absent), and it falls in a genuinely empty region of the
+real prior distribution (nothing between 0.0865 and 0.966 -- an 11x gap).
 }
 
 \examples{

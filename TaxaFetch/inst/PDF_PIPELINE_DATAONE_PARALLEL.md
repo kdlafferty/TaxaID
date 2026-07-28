@@ -343,8 +343,10 @@ pass `scientificName` as-is to `verify_taxon_names()` downstream.
 
 These DataONE patterns have no PDF equivalent and should not be added:
 
-- **`gbif_snapshot_path` / deduplication**: PDF records are primary literature,
-  not repackaged GBIF data. No dedup step.
+- **GBIF-snapshot deduplication**: PDF records are primary literature, not
+  repackaged GBIF data. `fetch_dataone_occurrences()`'s own snapshot-file dedup
+  was removed 2026-07-23 (superseded by `stack_occurrences()`'s
+  `collapse_duplicate_occasions`); no PDF-side equivalent is needed either way.
 - **`extra_dwc_map`**: The PDF extraction prompt is a natural language template,
   not a regex column map. There is no user-extensible mapping layer.
 - **`bbox` filter on output**: DataONE filters out `NA`-coordinate rows via bbox.

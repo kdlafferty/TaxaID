@@ -110,18 +110,74 @@
       "scaling_note": "Fast; JSON parsing only"
     },
     {
-      "name": "read_wildlife_insights_output",
-      "description": "Read SpeciesNet / Wildlife Insights batch predictions JSON into match object format",
+      "name": "read_speciesnet_output",
+      "description": "Read real SpeciesNet CLI (google/cameratrapai) predictions_json batch output into match object format. Rank-aware: taxon_rank lands wherever SpeciesNet's own conservative rollup landed (species down to class)",
       "inputs": [
-        {"name": "data", "type": "file_path", "required": true, "description": "Path to Wildlife Insights batch predictions JSON file"},
-        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
-        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N predictions per image"},
-        {"name": "label_col", "type": "character", "required": false, "default": "label", "description": "Key for species label in predictions"},
-        {"name": "score_col", "type": "character", "required": false, "default": "score", "description": "Key for confidence score in predictions"}
+        {"name": "files", "type": "file_path|character_vector", "required": true, "description": "Path to SpeciesNet predictions_json file, directory of JSON files, or character vector of paths"},
+        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0, "description": "Minimum classification score to retain"},
+        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N candidates per image (SpeciesNet returns at most 5)"},
+        {"name": "include_coverage", "type": "logical", "required": false, "default": false, "description": "Add coverage/detection_conf columns from MegaDetector bounding boxes"},
+        {"name": "min_detection_conf", "type": "numeric", "required": false, "default": 0, "description": "Minimum MegaDetector detection confidence to be eligible as the representative detection (only used when include_coverage=true)"}
       ],
-      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, category columns"},
+      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, family, order, class, common_name, taxon_rank, ensemble_prediction, ensemble_prediction_score, ensemble_prediction_source, lat, lon, country columns"},
       "scaling": "linear",
       "scaling_note": "Fast; JSON parsing only"
+    },
+    {
+      "name": "build_site_table",
+      "description": "Build a per-observation site table (observation_id, lat, lon, spatial_group_id) for spatial grouping. Reads embedded lat/lng from match_df directly if present (e.g. image EXIF GPS); otherwise requires a separately supplied site_df (e.g. from join_event_site_metadata())",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "Match/detection data with an id_col column; embedded lat/lng columns used automatically if present"},
+        {"name": "site_df", "type": "data.frame", "required": false, "default": null, "description": "Required only when match_df has no embedded lat/lng. Must have id_col, lat, lon columns (one or more rows per observation -- an observation detected at multiple sites gets multiple rows)"},
+        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation"}
+      ],
+      "output": {"type": "site_table", "description": "Data frame with id_col, lat, lon, observed_on, spatial_group_id (initially one default group per exact lat/lon match), spatial_group_N, is_default_group"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "group_observations_by_bbox",
+      "description": "Interactively draw bounding-box/polygon groups over a site_table's observations, overwriting the default exact-lat/lon spatial_group_id with user-drawn groups. Requires an interactive session (Shiny gadget)",
+      "inputs": [
+        {"name": "sites", "type": "site_table", "required": true, "description": "Output of build_site_table()"},
+        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation"},
+        {"name": "lat_col", "type": "character", "required": false, "default": "lat", "description": "Latitude column"},
+        {"name": "lon_col", "type": "character", "required": false, "default": "lon", "description": "Longitude column"},
+        {"name": "tile", "type": "character", "required": false, "default": "Esri.OceanBasemap", "description": "Leaflet basemap tile provider"}
+      ],
+      "output": {"type": "site_table", "description": "Input with spatial_group_id/spatial_group_N updated from user-drawn groups. Anything left ungrouped becomes its own single-observation group -- never dropped"},
+      "scaling": "linear",
+      "scaling_note": "Interactive; time depends on number of groups the user draws, not data size"
+    },
+    {
+      "name": "assign_spatial_group",
+      "description": "Non-interactive alternative to group_observations_by_bbox() -- manually assign a known spatial_group_id to a set of observation_ids (e.g. groups already known from site metadata)",
+      "inputs": [
+        {"name": "sites", "type": "site_table", "required": true, "description": "Output of build_site_table() (must already have spatial_group_id/spatial_group_N columns)"},
+        {"name": "observation_ids", "type": "character_vector", "required": true, "description": "Observation IDs to (re)assign"},
+        {"name": "spatial_group_id", "type": "character", "required": true, "description": "Group label to assign to these observations"},
+        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation"}
+      ],
+      "output": {"type": "site_table", "description": "Input with the specified observations reassigned to spatial_group_id"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "join_event_site_metadata",
+      "description": "Build a site_df (for build_site_table()'s site_df argument) from an event-level detections table joined against a user-maintained site-metadata table. Generalizes this ecosystem's blank-identification lookup-table pattern to carry site coordinates",
+      "inputs": [
+        {"name": "detections", "type": "data.frame", "required": true, "description": "Event-level detections table"},
+        {"name": "site_metadata", "type": "data.frame", "required": true, "description": "User-maintained table mapping event_col to site lat/lon"},
+        {"name": "event_col", "type": "character", "required": false, "default": "event_id", "description": "Column identifying the collection event in both tables"},
+        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation in detections"},
+        {"name": "lat_col", "type": "character", "required": false, "default": "lat", "description": "Latitude column in site_metadata"},
+        {"name": "lon_col", "type": "character", "required": false, "default": "lon", "description": "Longitude column in site_metadata"},
+        {"name": "observed_on_col", "type": "character", "required": false, "default": "observed_on", "description": "Observation date column"},
+        {"name": "control_samples", "type": "character_vector", "required": false, "default": null, "description": "Event IDs to exclude as controls/blanks"}
+      ],
+      "output": {"type": "data.frame", "description": "site_df ready for build_site_table(site_df=)"},
+      "scaling": "linear",
+      "scaling_note": "Fast; join operation"
     }
   ]
 }

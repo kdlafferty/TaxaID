@@ -51,6 +51,18 @@
       "output": {"type": "consensus_result", "description": "List with main_habitat, ecoregion, habitat_proportions"},
       "scaling": "linear",
       "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "flag_institution_candidates",
+      "description": "Classification stage (pure, no interaction, no removal) for filter_gbif_quality()'s institution_flag column -- tiers flagged records by crossing the matched institution's real type (Herbarium/Botanic_garden/Zoo/Museum/University/Research_centre) against the record's kingdom. Mirrors flag_habitat_inconsistencies()'s classify-then-review pattern",
+      "inputs": [
+        {"name": "data", "type": "occurrences_df", "required": true, "description": "Output of filter_gbif_quality() -- must have institution_flag and institution_type columns"},
+        {"name": "kingdom_col", "type": "character", "required": false, "default": "kingdom", "description": "Column with the record's kingdom"},
+        {"name": "suspicion_rules", "type": "list", "required": false, "default": null, "description": "Optional custom institution-type-x-kingdom suspicion rules; NULL uses the built-in defaults"}
+      ],
+      "output": {"type": "occurrences_df", "description": "Input with one additional column, institution_suspicion: 'high'/'low'/'ambiguous' for a flagged record (institution_flag = TRUE); NA for every other record (never conflates 'not evaluated' with a real category)"},
+      "scaling": "linear",
+      "scaling_note": "Fast; vectorised lookup"
     }
   ]
 }

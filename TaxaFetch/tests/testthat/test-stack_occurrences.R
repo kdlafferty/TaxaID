@@ -3,6 +3,10 @@
 #   - single-frame input (no error)
 #   - NULL filtering
 #   - tibble return
+#
+# Deduplication tests (gbifID exact match, collapse_duplicate_occasions) moved
+# to test-dedupe_occurrences.R (2026-07-23) -- stack_occurrences() now only
+# combines and labels rows, it never removes any.
 
 .make_occ <- function(n = 3L, id_prefix = "A") {
   tibble::tibble(
@@ -132,7 +136,7 @@ test_that("stack_occurrences: columns present in some frames but not others are 
   expect_true(is.na(result$extra_col[result$occurrenceID == "B1"]))
 })
 
-test_that("stack_occurrences: duplicate gbifID rows across sources are dropped, first kept", {
+test_that("stack_occurrences: never removes duplicate gbifID rows -- that's dedupe_occurrences()'s job", {
   df1 <- tibble::tibble(
     gbifID           = c("1", "2"),
     decimalLatitude  = c(34.40, 34.41),
@@ -143,29 +147,8 @@ test_that("stack_occurrences: duplicate gbifID rows across sources are dropped, 
     decimalLatitude  = c(34.41, 34.47),
     decimalLongitude = c(-120.40, -120.36)
   )
-  expect_message(
-    result <- stack_occurrences(df1, df2),
-    "dropped 1 record"
-  )
-  expect_equal(nrow(result), 3L)
-  expect_equal(sort(result$gbifID), c("1", "2", "3"))
-})
-
-test_that("stack_occurrences: NA gbifID rows are never deduped against each other", {
-  df <- tibble::tibble(
-    gbifID           = c(NA_character_, NA_character_, "5"),
-    decimalLatitude  = c(34.0, 34.1, 34.2),
-    decimalLongitude = c(-119.0, -119.1, -119.2)
-  )
-  result <- stack_occurrences(df)
-  expect_equal(nrow(result), 3L)
-})
-
-test_that("stack_occurrences: no gbifID column -- dedup step is a no-op", {
-  df1 <- .make_occ(2L, "A")
-  df2 <- .make_occ(2L, "A")  # duplicate occurrenceID values, but no gbifID column
   result <- stack_occurrences(df1, df2)
-  expect_equal(nrow(result), 4L)
+  expect_equal(nrow(result), 4L)  # not deduped -- stack_occurrences() only combines
 })
 
 test_that("stack_occurrences: workflow list pattern (pdf_occ_list_clean) works end-to-end", {

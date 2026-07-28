@@ -1,6 +1,140 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-20 (Sonnet 5 -- posterior_consensus() loses uprank_trust_pvalue and
+# Last updated: 2026-07-28, later (Opus 5 -- posterior_consensus() gains two columns
+# supporting Axis 1 (occurrence plausibility): winner_has_occurrence_record (logical) and
+# consensus_prior (numeric). Same split as Axis 2 -- numerics here, categorical in
+# TaxaFlag::add_posthoc_assessment().
+#
+# The load-bearing design point, from the user's own definition ("unprecedented = a taxon
+# that has never been reported; a singleton is NOT unprecedented even though it may have
+# the same prior value"): record presence and prior VALUE are different signals and
+# neither substitutes for the other. Verified on real Mugu data before designing --
+# 0 of 1014 floor-prior rows carry a model_tier, but 547 rows carry NO tier yet a prior
+# ABOVE the floor, one reaching 0.975 because its dark-diversity group had only three
+# members. Thresholding the prior value alone would have called that never-reported taxon
+# "expected". Hence winner_has_occurrence_record as an explicit signal rather than a lower
+# cutoff. (model_tier is populated only for taxa with a real occurrence record; a
+# dark-diversity or floor fallback leaves it NA. Also confirmed: tier3_undetected never
+# lands on a named taxon -- 0 rows -- as the old reentry doc claimed.)
+#
+# consensus_prior is the HIGHEST prior among candidates that both carry an occurrence
+# record AND fall inside the consensus taxon; NA when none do, so NA doubles as the
+# consensus-scope never-reported signal and no second presence column is needed. MAX is
+# deliberate, not convenience: the question is "is this GROUP expected here", and a group
+# is expected if any member is -- max is the tightest valid lower bound on P(at least one
+# member present) without assuming independence. A sum would double-count shared
+# occurrence evidence; a mean would dilute a common member with its rare congeners. This
+# is explicitly NOT the mass-conserving hierarchical prior over a coarse taxon that
+# TaxaExpect does not yet provide (see [[project_dark_diversity_redesign]] Issue 3) -- it
+# is a best-member statement and is documented as such, per the previous reentry doc's own
+# warning not to build a fake consensus-taxon prior to unblock this work.
+#
+# Real full-dataset verification: 616 observations in 1.3 s. 14 primary-scope and 11
+# consensus-scope unprecedented. devtools::test() 567 pass / 0 fail; devtools::check()
+# 0 errors / 0 warnings / 0 notes. Reinstalled.
+# Previous update, 2026-07-28 (Opus 5 -- winner_absolute_fit_pvalue REMOVED from
+# posterior_consensus(), following TaxaLikely's removal of the underlying
+# absolute_fit_pvalue column. See [[project_absolute_fit_pvalue_retired]] in the TaxaID
+# memory system for the audit that drove it (written BEFORE the removal, at the user's
+# request, so the decision can be revisited). Purely a pass-through column with no
+# behavior attached, so nothing else in this package changes. The surviving
+# winner_*_confusion_risk pass-throughs are unaffected and keep the identical
+# optional-upstream-output contract. devtools::test() 567 pass / 0 fail (down from 574 --
+# the 7 removed are that column's own tests); devtools::check() 0 errors / 0 warnings /
+# 1 note (pre-existing environmental timestamp). Reinstalled.
+# Previous update, 2026-07-27 (Opus 5 -- posterior_consensus() gains three additive columns
+# implementing Axis 2 of the add_posthoc_assessment() axes redesign (see
+# TaxaFlag/REENTRY_PROMPT_axis2_multifactor_diagnostic_redesign.md, whose top now carries a
+# FALSIFIED banner for the `Ds`/`P` plan these columns replace). Axis 2 asks two questions, and
+# the existing winner_*_confusion_risk pass-throughs can only answer the first:
+#   1. Could a relative have looked this good?      -> *_confusion_risk
+#   2. Did any plausible relative actually compete? -> the new counts
+# A confusion-risk value describes the marker's discriminating power for a taxon in the
+# abstract and never sees this observation's candidate set, so on its own it cannot distinguish
+# "won a real contest" from "won by default because nothing locally plausible was ever in the
+# running" -- the latter being a reference-database representation gap that no threshold on the
+# existing candidates can detect (the real Sciaenidae/ASV_382 case that motivated this).
+#
+# NEW COLUMNS (all additive, present in the main path and in .empty_consensus_row()'s NA
+# fallback; no signature change, no new parameter, no new data input):
+#  - consensus_confusion_risk: the same confusion-risk quantity, rank-matched to
+#    consensus_rank rather than to primary_taxon's own rank (which is what
+#    winner_own_rank_confusion_risk reports). When the LCA has climbed to genus or family the
+#    species-level value answers the wrong question. Differs from winner_own_rank on 72/606
+#    real rows, so the rank-matching does real work rather than duplicating an existing column.
+#  - primary_n_plausible_competitors / consensus_n_plausible_competitors: how many
+#    locally-plausible RIVAL candidates actually competed.
+#
+# THREE DESIGN POINTS, deliberate -- do not "fix" without re-reading:
+#  (a) "Plausible" is read off `model_tier` (supplied upstream by join_priors() from TaxaExpect
+#      priors), NOT off prior_mean's value. A taxon never reported locally has model_tier = NA
+#      while a genuine singleton has a real tier, even though both can share the same numeric
+#      floor prior -- which is exactly the Axis-1 "a singleton is not unprecedented" distinction,
+#      and prior_mean alone cannot express it. This is also why no new join/param/network call
+#      was needed: the signal is already on the post-join_priors rows.
+#  (b) Counted over every NAMED hypothesis (pre-min_posterior/cumulative_threshold), not the
+#      post-filter plausible set -- a candidate that competed and lost still competed. Mirrors
+#      consensus_posterior's own documented precedent for using named_all.
+#  (c) The row's OWN taxon is excluded from its count (assistant's call, flagged to the user for
+#      review). Whether the winner itself is plausible is a prior-side question already answered
+#      by winner_prior; keeping the two independent is the point of the axes redesign. So a
+#      count of 0 means "nothing plausible to lose to", never "the winner is implausible".
+#
+# REAL-DATA VERIFICATION (the full real 616-observation MuguWilderFish posteriors object, all
+# three markers, via the real all_posteriors_r2 checkpoint): 1.4 SECONDS for 616 observations --
+# negligible added overhead, which was an explicit user requirement for the PtConception
+# workflows. 58% of observations won with zero plausible rivals. The counts discriminate the
+# investigation's own anchor cases unprompted: ASV_371 (Salmonidae) and ASV_382 (Sciaenidae) --
+# both flagged by the user as "why was no local congener proposed here?" -- come back with 0
+# plausible rivals, while the Gobiidae the user confirmed as genuinely plausible
+# (ASV_363/430/463) each have 1. A cross-tab of Axis 2 tier x rival count surfaces a cell no
+# single column could: 77 real observations are `discriminating` AND had 0 rivals (looks clean,
+# never actually competed).
+#
+# Axis 2 tier names/breaks settled with the user: < 0.05 `discriminating` / 0.05-0.5 `weak` /
+# >= 0.5 `indistinguishable`. Both breaks are interpretable statements about a genuine one-sided
+# tail probability rather than fitted cutoffs, and both populate well on all three markers (12S
+# species 15/31/54%, 16S 14/44/42%, COI 33/9/58%). NOTE the polarity runs OPPOSITE to the
+# earlier goodness_of_fit tiers -- here HIGH = worse.
+#
+# 9 new tests in test-posterior_consensus.R (108 in that file, up from 99). devtools::test() 574
+# pass / 0 fail; devtools::check() 0 errors / 0 warnings / 0 notes. Reinstalled to
+# ~/Library/R/4.0/library. NOT done: the TaxaFlag categorical column that would consume these
+# (names approved, but which column drives it and whether it replaces the existing
+# confusion_risk_flag were left as a real decision rather than a guess -- the user explicitly
+# warned against column inflation); no workflow rewired; nothing re-run end to end.
+# Previous update, 2026-07-23, later same day (Sonnet 5 -- renamed posterior_consensus()'s
+# winner_species_support/winner_genus_support/winner_family_support/winner_own_rank_support ->
+# *_confusion_risk, matching the same-day TaxaLikely/TaxaFlag renames -- see TaxaID/CLAUDE.md's
+# top session note for the full cross-package record. Pure rename, no math changed. The note
+# below (same day, earlier) describes the original implementation and now uses the corrected
+# names throughout.
+# Previous update, 2026-07-23 (Sonnet 5 -- implements both tasks of ecosystem_docs/REENTRY_PROMPT_
+# score_support_posthoc_and_rank_thresholds.md (full cross-package record in TaxaID/CLAUDE.md's
+# top session note). Task 1: posterior_consensus() gains winner_species_confusion_risk/
+# winner_genus_confusion_risk/winner_family_confusion_risk/winner_own_rank_confusion_risk, mirroring the existing
+# winner_absolute_fit_pvalue pass-through pattern exactly (read from the winning row, NA when
+# TaxaLikely::evaluate_likelihoods()'s new species_confusion_risk/genus_confusion_risk/family_confusion_risk/
+# own_rank_confusion_risk columns are absent from posterior_df, present in both the main result path
+# and .empty_consensus_row()'s NA-filled fallback). Task 2: score_consensus(rank_thresholds=)
+# loses its Session 147 GITA/Jonah Ventures default entirely -- now a required argument, no
+# default, errors immediately if omitted, mirroring join_priors(backbone_id=)'s exact
+# missing()/cli::cli_abort() precedent (Session 143) rather than continuing to ship a
+# plausible-looking but potentially-wrong universal constant (this function has no way to know
+# what marker/data type score_col was scored against). The error message points at two options:
+# supply real thresholds directly, or derive marker-specific ones via the new
+# TaxaLikely::compute_rank_thresholds() (per-rank Youden's J on a real seq_matrix -- see that
+# package's own top session note). Passing rank_thresholds = NULL explicitly still means
+# "disable rank capping" unchanged, since that's an explicit value, not an omission. Real
+# call-site survey (already done in the reentry doc) turned out to need less fixing than
+# flagged: both TaxaAssign_llm_workflow.R calls (score_con_wilder/score_con_JV) already passed
+# rank_thresholds = NULL EXPLICITLY, so neither actually relied on the removed default and
+# neither needed a code change -- only one bare score_consensus(match_df) call in
+# vignettes/taxaid-ecosystem.Rmd and ~20 test-file call sites (mostly testing gap/whitelist/LCA
+# behavior unrelated to rank capping, needed rank_thresholds = NULL added explicitly to keep
+# exercising what they actually test) were updated. devtools::test() 0 failures (256, up from
+# 255), devtools::check() 0 errors/0 warnings/0 notes. Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-20 (Sonnet 5 -- posterior_consensus() loses uprank_trust_pvalue and
 # the winner_trusted_rank/winner_rank_trust_basis pass-through columns entirely, one day
 # after they were added (see the Session 2026-07-19 note directly below for the original
 # design). winner_absolute_fit_pvalue is UNCHANGED and still present -- only the
@@ -337,9 +471,9 @@ or be user-supplied from outside the ecosystem.
 | `expand_unreferenced_hypotheses()` | **Deprecated (Session 150).** Moved to `TaxaLikely::expand_unreferenced_hypotheses()` -- this function models likelihoods for unreferenced taxa, which belongs next to `TaxaLikely::unreferenced_candidates()`, not in the posterior-computation package. Now a thin `.Deprecated()` forwarding wrapper only. | Deprecated | R/expand_unreferenced.R |
 | `suggest_unreferenced_species()` | LLM-first unreferenced species detection: plausible species per genus → reference-check → unreferenced vector; optional family expansion. data_type param ("eDNA"/"acoustic"/"image") routes to NCBI queries (eDNA) or set-membership check vs reference_species (acoustic/image). | Complete | R/suggest_unreferenced_species.R |
 | `assign_taxa_llm()` | LLM-shortcut pipeline: score-based likelihoods + LLM priors → posteriors. **Session 145:** merge/rescale/Beta-construction step factored into new internal `.merge_llm_priors()` helper (deterministic, no LLM calls -- enables cheap re-sweeping against a fixed LLM response). Empirical sensitivity findings for `score_sharpness`/`unknown_lik_weight`/`prior_phi`/`absent_detection_prob` in its own `@details`. | Complete | R/assign_taxa_llm.R |
-| `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id`. **Session 149:** adds `winner_hypothesis_type`/`winner_rank_expanded` columns -- `winner_rank_expanded = TRUE` flags a species-level `consensus_taxon` that was decided entirely by occurrence-prior mass among `join_priors()`-manufactured `"rank_expanded"` candidates sharing one inherited likelihood, not by real sequence/image/acoustic evidence. **2026-07-19 (removed 2026-07-20):** added `winner_absolute_fit_pvalue`/`winner_trusted_rank`/`winner_rank_trust_basis` pass-through columns + opt-in `uprank_trust_pvalue` param, broadening `consensus_taxon`/`consensus_rank` when the winner's own absolute fit was poor. `winner_trusted_rank`/`winner_rank_trust_basis` and `uprank_trust_pvalue` were removed the next day -- found unreliable on real data (the underlying `trusted_rank` was computed for a different hypothesis than the one that actually wins the posterior here ~30% of the time) and separately prone to being silently reversed by `species_reference`'s own downranking step. `winner_absolute_fit_pvalue` remains, unchanged, as the column downstream consumers should use directly (see `TaxaFlag::add_posthoc_assessment()`'s `absolute_fit_pvalue_col`). See this file's own top session note. | Complete | R/posterior_consensus.R |
+| `posterior_consensus()` | LCA-based consensus from posterior dataframe; one row per `observation_id`. **Session 149:** adds `winner_hypothesis_type`/`winner_rank_expanded` columns -- `winner_rank_expanded = TRUE` flags a species-level `consensus_taxon` that was decided entirely by occurrence-prior mass among `join_priors()`-manufactured `"rank_expanded"` candidates sharing one inherited likelihood, not by real sequence/image/acoustic evidence. **2026-07-19 (removed 2026-07-20):** added `winner_absolute_fit_pvalue`/`winner_trusted_rank`/`winner_rank_trust_basis` pass-through columns + opt-in `uprank_trust_pvalue` param, broadening `consensus_taxon`/`consensus_rank` when the winner's own absolute fit was poor. `winner_trusted_rank`/`winner_rank_trust_basis` and `uprank_trust_pvalue` were removed the next day -- found unreliable on real data (the underlying `trusted_rank` was computed for a different hypothesis than the one that actually wins the posterior here ~30% of the time) and separately prone to being silently reversed by `species_reference`'s own downranking step. `winner_absolute_fit_pvalue` remains, unchanged, as the column downstream consumers should use directly (see `TaxaFlag::add_posthoc_assessment()`'s `absolute_fit_pvalue_col`). See this file's own top session note. **2026-07-23:** gains `winner_species_confusion_risk`/`winner_genus_confusion_risk`/`winner_family_confusion_risk`/`winner_own_rank_confusion_risk` -- same optional-pass-through contract as `winner_absolute_fit_pvalue`, sourced from `TaxaLikely::evaluate_likelihoods()`'s new score-only, model-independent `*_support` columns (LOWER = stronger evidence). See `TaxaLikely/CLAUDE.md`'s matching note. | Complete | R/posterior_consensus.R |
 | `add_slash_taxon()` | Appends `slash_taxon_name` (ornithological slash-species notation; NA for singletons/unresolved) and `irreducible_consensus` (TRUE when the candidate set can't be further decomposed elsewhere in the dataset) to `posterior_consensus()` output. **Session 123:** when `consensus_taxon` is present, also adds `consensus_OTU` (single reporting label — `slash_taxon_name` when non-NA, else `consensus_taxon`) and `primary_taxon` (`consensus_OTU` reduced to one taxon by dropping everything after the first `/` or ` + `) — logic previously hand-duplicated identically in 3 real workflows. | Complete | R/slash_taxon.R |
-| `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id`. **Session 147:** `rank_thresholds` default changed `NULL` → `c(species=98, genus=95, family=90, order=85)` (the conventional GITA/JV thresholds) after an ROC sweep against real 12S reference data showed `min_score`/`max_gap` alone provide essentially no species-vs-congener discrimination -- a caller with no explicit `rank_thresholds` previously got zero protection against confusing a species with its congener. Auto-rescales by /100 if `score_col` looks like a 0-1 proportion scale. Pass `rank_thresholds = NULL` to restore old behavior. **2026-07-20:** fourth tier relabeled `order` → `phylum` -- the literature this 85% value is corroborated by (Ransome et al. 2017 and others, per `ecosystem_docs/AQUARIUM_BENCHMARK_DESIGN.md`) treats it as a phylum-level cutoff, not order-level; no genuine order-level COI threshold exists to substitute in. Numerically identical, label-only fix. | Complete | R/score_consensus.R |
+| `score_consensus()` | Conventional score-based consensus (min_score, max_gap, rank_thresholds, whitelist); one row per `observation_id`. **Session 147:** `rank_thresholds` default changed `NULL` → `c(species=98, genus=95, family=90, order=85)` (the conventional GITA/JV thresholds) after an ROC sweep against real 12S reference data showed `min_score`/`max_gap` alone provide essentially no species-vs-congener discrimination -- a caller with no explicit `rank_thresholds` previously got zero protection against confusing a species with its congener. Auto-rescales by /100 if `score_col` looks like a 0-1 proportion scale. Pass `rank_thresholds = NULL` to restore old behavior. **2026-07-20:** fourth tier relabeled `order` → `phylum` -- the literature this 85% value is corroborated by (Ransome et al. 2017 and others, per `ecosystem_docs/AQUARIUM_BENCHMARK_DESIGN.md`) treats it as a phylum-level cutoff, not order-level; no genuine order-level COI threshold exists to substitute in. Numerically identical, label-only fix. **2026-07-23:** `rank_thresholds` loses its default entirely -- now required, no default, errors immediately if omitted (mirrors `join_priors(backbone_id=)`'s precedent). No single fixed threshold set is safe to assume since this function has no way to know the marker/data type. Error message points at supplying real thresholds directly or deriving marker-specific ones via the new `TaxaLikely::compute_rank_thresholds()`. Pass `rank_thresholds = NULL` explicitly to disable rank capping (unchanged meaning). | Complete | R/score_consensus.R |
 | `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()`. **Session 134:** optional `spatial_group_map` param (`observation_id`/`spatial_group_id`) restricts both the confirmation source and the update target to observations sharing a `spatial_group_id` with >= 1 other observation (a multi-member spatial group) -- observations in a single-observation spatial group (whether a genuine single observation or one that fell outside a drawn group, per `TaxaMatch::group_observations_by_bbox()` -- there's no separate naming for these, just a singleton group) are always returned unchanged, since another unrelated observation's confirmed presence says nothing about them. **Session 149:** the fixed `presence_multiplier` (removed) replaced by `confirmation_quantile`/`min_confirmation_confidence` -- for each confirmed species, the confirmation_quantile-th quantile (default 0.9) of confirming donors' `consensus_posterior` substitutes for `prior_mean` (never lowering it) only when it clears `min_confirmation_confidence` (default 0.8, set to 0 to disable). `prior_alpha`/`prior_beta` are now recomputed consistently with a boosted `prior_mean` (preserving the original concentration), fixing a latent inconsistency with `compute_posterior()`'s Monte Carlo path. | Complete | R/update_prior_from_consensus.R |
 | `build_context()` | Auto-populate `ctx` (ecoregion, main_habitat, date) from taxon names via TaxaHabitat + LLM synthesis | Complete | R/build_context.R |
 | `generate_report()` | Publication-ready Methods + Results text; hybrid template (Methods) + LLM (Results) with template fallback | Complete | R/generate_report.R |
@@ -481,7 +615,9 @@ posterior_consensus(posterior_df,
 **Output:** one row per `observation_id` with columns: `consensus_taxon`, `consensus_rank`,
 `consensus_reason`, `is_resolved`, `consensus_posterior`, `consensus_confidence_score`,
 `n_plausible`, `winner_prior`, `winner_likelihood`, `winner_likelihood_cov`,
-`winner_hypothesis_type`, `winner_rank_expanded`,
+`winner_hypothesis_type`, `winner_rank_expanded`, `winner_absolute_fit_pvalue`,
+`winner_species_confusion_risk`, `winner_genus_confusion_risk`, `winner_family_confusion_risk`,
+`winner_own_rank_confusion_risk` (2026-07-23, see below),
 `plausible_taxa` (list), `plausible_posteriors` (list).
 `consensus_reason` values: `"unanimous"` (all plausible agree at finest rank), `"single"`
 (only one plausible hypothesis), `"lca"` (multiple plausible, LCA at coarser rank), or `NA`.
@@ -531,6 +667,17 @@ data.frame (Bayesian workflow) or an `unreferenced_species_result` object (LLM w
 uses `attr(x, "plausible")`, which includes referenced species the LLM flagged as plausible).
 Conservative: stops at any rank with >1 option. `downranked = TRUE` flags changed rows.
 
+**`winner_species_confusion_risk`/`winner_genus_confusion_risk`/`winner_family_confusion_risk`/
+`winner_own_rank_confusion_risk`** (2026-07-23): pass-through of
+`TaxaLikely::evaluate_likelihoods()`'s new `species_confusion_risk`/`genus_confusion_risk`/
+`family_confusion_risk`/`own_rank_confusion_risk` columns for the winning row -- same optional-upstream-
+output contract as `winner_absolute_fit_pvalue` (`NA` when the source column is absent from
+`posterior_df`, or `consensus_taxon` is `NA`). A model-independent, score-ONLY diagnostic:
+LOWER values mean STRONGER evidence for the resolved rank (a one-sided tail probability, not
+the usual higher-is-better sense) -- see `TaxaLikely::evaluate_likelihoods()`'s own
+`@section Confusion risk` for the full interpretation. Purely informational, never changes
+`consensus_taxon`/`consensus_rank`.
+
 **Internal helpers:** `.consensus_one_sample()`, `.find_lca()`, `.extract_rank_values()`,
 `.empty_consensus_row()`, `.build_species_ref()`, `.downrank_consensus()`.
 
@@ -542,10 +689,10 @@ Conservative: stops at any rank with >1 option. `downranked = TRUE` flags change
 score_consensus(match_df,
                 min_score       = 0,
                 max_gap         = Inf,
-                rank_thresholds = NULL,
                 whitelist       = NULL,
                 score_col       = "score_original",
-                rank_system     = NULL)
+                rank_system     = NULL,
+                rank_thresholds)
 ```
 
 **Output:** one row per `observation_id` with columns: `consensus_taxon`, `consensus_rank`,
@@ -559,10 +706,15 @@ top score per sample; (3) LCA of retained hits; (4) cap rank by `rank_thresholds
 (finest rank whose threshold the top score meets); (5) uprank to whitelist if consensus
 taxon absent.
 
-**Conventional eDNA thresholds (GITA / Jonah Ventures):**
-`rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85)`
-(fourth tier corrected `order` → `phylum` 2026-07-20; see the Function
-Inventory row above and `ecosystem_docs/AQUARIUM_BENCHMARK_DESIGN.md`)
+**`rank_thresholds` has NO DEFAULT (2026-07-23)** -- moved to the end of the signature and
+required; errors immediately (`missing()` + `cli::cli_abort()`, mirroring
+`join_priors(backbone_id=)`'s exact Session 143 precedent) if omitted, since this function
+has no way to know the marker/data type `score_col` was scored against. Supply either your
+own thresholds (e.g. the conventional GITA/Jonah Ventures
+`c(species = 98, genus = 95, family = 90, phylum = 85)`, fourth tier corrected `order` ->
+`phylum` 2026-07-20) or marker-specific ones derived from real reference data via the new
+`TaxaLikely::compute_rank_thresholds()`. Pass `rank_thresholds = NULL` explicitly (a real
+value, not an omission) to disable rank-based capping entirely.
 
 **Reuses** `.find_lca()` and `.extract_rank_values()` from `posterior_consensus.R`.
 

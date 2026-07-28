@@ -37,7 +37,7 @@ timestamp within each group to flag. Default \code{30}.}
 
 \item{handler_taxa}{Character vector or \code{NULL}. If supplied, only
 these taxa are flagged (e.g., \code{"Homo sapiens"}). Other taxa
-within the interval receive a score but are flagged \code{"likely"}.
+within the interval receive a score but are flagged \code{"valid"}.
 If \code{NULL}, all taxa within the interval are flagged. Default
 \code{NULL}.}
 
@@ -58,12 +58,16 @@ the true equipment-retrieval timestamp. Default \code{"retrieve_time"}.}
 \value{
 The input data frame with four columns appended:
 \describe{
-\item{\code{flag_handler}}{Character. \code{"likely"} (valid detection),
-\code{"possible"}, or \code{"unlikely"} (probable handler artifact).}
-\item{\code{flag_handler_score}}{Numeric 0--1. 1.0 for detections
+\item{\code{validity_flag}}{Character. \code{"valid"} (genuine
+detection), \code{"questionable_handling"}, or
+\code{"invalid_handling"} (probable handler artifact). Fixed column
+name across every TaxaFlag flag_*() mechanism -- see
+\code{@section Unified validity schema} above.}
+\item{\code{observation_validity}}{Numeric 0--1. 1.0 for detections
 outside the interval; decreasing toward 0 as the detection approaches
-the min/max timestamp.}
-\item{\code{flag_handler_reason}}{Character. Plain-English explanation.}
+the min/max timestamp. Higher = more likely genuine, lower = more
+likely a handler artifact.}
+\item{\code{validity_reason}}{Character. Plain-English explanation.}
 \item{\code{edge_anchor_source}}{Character. \code{"station_metadata"}
 (real deploy/retrieve times used) or \code{"detection_data_fallback"}
 (data-derived min/max used -- see "Edge anchoring" above).}
@@ -103,6 +107,22 @@ discount rows accordingly. When \code{station_metadata} is not supplied
 at all, every row is fallback -- \code{handler_taxa} remains the primary
 real protection in that case, since it already restricts flagging to a
 caller-nominated taxon list regardless of edge-anchor quality.
+}
+
+\section{Unified validity schema (2026-07-24)}{
+
+Output column NAMES are fixed (\code{observation_validity}/
+\code{validity_flag}/\code{validity_reason}) rather than
+\code{flag_handler}/\code{flag_handler_score}/\code{flag_handler_reason}
+as in earlier versions -- matches \code{\link{flag_contaminant}}'s own
+same-day rename, so every TaxaFlag flag_*() mechanism shares one schema
+(the "one column, type-qualified values" pattern
+\code{\link{add_posthoc_assessment}} already used). No change to the
+underlying score/threshold math -- this is a pure naming/schema change.
+\code{report_flags()} was updated to auto-detect this schema (in addition
+to the naming era it already supported) by inspecting
+\code{validity_flag}'s values, not just the column's presence, since the
+column name alone no longer identifies which check produced it.
 }
 
 \examples{

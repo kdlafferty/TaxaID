@@ -189,13 +189,17 @@ for (nm in names(biotime_occ_list)) {
 #
 # stack_occurrences() accepts any mix of BioTime, DataONE, GBIF, and PDF
 # tibbles. It adds point_id and reports record counts per source. Columns
-# present in one source but absent in another get NA.
+# present in one source but absent in another get NA. It never removes rows
+# -- follow it with dedupe_occurrences() regardless of how many sources you
+# combine (worth doing even for BioTime alone, e.g. against an accidental
+# double-load of the same study).
 #
 # Uncomment the block that applies to your situation.
 # ==============================================================================
 
 # --- BioTime only (single study) ---------------------------------------------
 biotime_occ <- stack_occurrences(biotime_occ_list)
+biotime_occ <- dedupe_occurrences(biotime_occ)
 message(sprintf("Stage 3: %d total BioTime records.", nrow(biotime_occ)))
 
 # --- BioTime + DataONE -------------------------------------------------------

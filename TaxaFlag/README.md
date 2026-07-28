@@ -185,11 +185,20 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (for LLM provider functions and report assembly)
--   An LLM API key is needed for `review_assignments()`
+-   An Application Programming Interface (API) key for an LLM provider
+    (Anthropic Claude, Google Gemini, OpenAI, or local Ollama -- see
+    TaxaTools) is needed for `review_assignments()`
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>

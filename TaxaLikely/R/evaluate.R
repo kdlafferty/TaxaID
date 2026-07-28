@@ -8,42 +8,13 @@ utils::globalVariables(c(
   ".data", "rank_score", "best_rank_score",
   "coverage",
   "is_restored", ".genus", ".all_restored", "h2_delta_source",
-  "absolute_fit_pvalue"
+  "species_confusion_risk", "genus_confusion_risk", "family_confusion_risk",
+  "own_rank_confusion_risk"
 ))
 
 # ==============================================================================
 # MODULE D: INFERENCE
 # ==============================================================================
-
-#' Score-only ONE-SIDED absolute-fit p-value (rank-trust mechanism only)
-#'
-#' `P(Z <= z)`, `z = (x - mu) / sqrt(sigma_11)` -- deliberately one-sided,
-#' unlike the existing H1 outlier gate's two-sided chi-squared test (kept
-#' byte-identical, inline, where that gate is applied -- see its own comment).
-#' A score BELOW the hypothesis's own trained mean gets a small p (correctly
-#' read as "worse than expected, don't trust"); a score AT the mean gets
-#' p = 0.5; a score ABOVE the mean -- a BETTER than typical match -- gets p
-#' approaching 1 and can NEVER fail, no matter how far above.
-#'
-#' This matters concretely: the two-sided form this replaced would flag a
-#' literal 100% identity match against a well-sampled, tightly-clustered
-#' (e.g. many near-identical NCBI accessions) species as an outlier purely
-#' because that species' own trained mean sits slightly below the score
-#' transform's ceiling and the deviation-in-the-good-direction was squared
-#' exactly like a deviation-in-the-bad-direction -- e.g. mu = -0.05,
-#' sigma = 0.0001 (sqrt_mismatch scale, real values), x = 0 (literal 100%
-#' identity): two-sided p ~= 5.7e-07 (fails even the strict default alpha),
-#' one-sided p ~= 0.9999997 (never fails). A perfect match should never lose
-#' trust for being too good -- only for being worse than the hypothesis
-#' predicts. `NA` when sigma is unusable (missing or non-positive) rather
-#' than erroring, since a candidate can legitimately lack a resolvable
-#' variance (e.g. no H2_Lookup entry and no pooled H2 sigma).
-#'
-#' @noRd
-.one_sided_fit_pvalue <- function(x, mu, sigma_11) {
-  if (is.na(x) || is.na(mu) || is.na(sigma_11) || sigma_11 <= 0) return(NA_real_)
-  stats::pnorm((x - mu) / sqrt(sigma_11), lower.tail = TRUE)
-}
 
 #' Evaluate H1/H2/H3 likelihoods for a single query
 #'
@@ -94,7 +65,7 @@ utils::globalVariables(c(
 #'   `score_likelihood_sd`, `score_likelihood_cov`, `h2_delta_source`
 #'   (`"genus_specific"` or `"global_fallback"` for `unreferenced_species`/
 #'   `unreferenced_genus` rows; `NA` for `specific_candidate` rows),
-#'   `absolute_fit_pvalue`, sorted by `score_likelihood_mean` descending.
+#'   sorted by `score_likelihood_mean` descending.
 #'
 #' @noRd
 .evaluate_one_query <- function(candidate_df,
@@ -118,6 +89,10 @@ utils::globalVariables(c(
   # package's rank_system convention. Used to look up a genus-specific H2
   # delta in model_params$H2_Lookup when available.
   genus_rank_col <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NA_character_
+  # Rank two coarser than the finest -- family, by convention. Used for the
+  # genus_confusion_risk/family_confusion_risk columns (see
+  # model_params$Confusion_Risk_Curves and .lookup_confusion_risk_value()).
+  family_rank_col <- if (length(rank_cols) >= 3L) rank_cols[length(rank_cols) - 2L] else NA_character_
 
   score_col <- if ("p_match"        %in% names(candidate_df)) "p_match" else
     if ("score_original" %in% names(candidate_df)) "score_original" else
@@ -188,12 +163,18 @@ utils::globalVariables(c(
       hypothesis_type          = character(0),
       taxon_name               = character(0),
       taxon_name_rank          = character(0),
+      raw_likelihood           = numeric(0),
+      raw_likelihood_cov       = numeric(0),
+      raw_likelihood_evidence  = numeric(0),
       score_likelihood         = numeric(0),
       score_likelihood_mean    = numeric(0),
       score_likelihood_sd      = numeric(0),
       score_likelihood_cov     = numeric(0),
       score_likelihood_evidence = numeric(0),
-      absolute_fit_pvalue     = numeric(0),
+      species_confusion_risk          = numeric(0),
+      genus_confusion_risk            = numeric(0),
+      family_confusion_risk           = numeric(0),
+      own_rank_confusion_risk         = numeric(0),
       stringsAsFactors         = FALSE
     ))
   }
@@ -268,7 +249,6 @@ utils::globalVariables(c(
                                 cov_vec = NULL, genus_vec = NULL, evidence_vec = NULL,
                                 mu_override = NULL, delta_override = NULL) {
     h1_vals      <- numeric(length(s_vec))
-    h1_pvals     <- rep(NA_real_, length(s_vec))
     used_mu1     <- rep(NA_real_, length(s_vec))
     used_sigma1  <- rep(NA_real_, length(s_vec))
     used_tau_sq1 <- rep(NA_real_, length(s_vec))
@@ -418,18 +398,6 @@ utils::globalVariables(c(
       if (!is.null(mu_override) && !is.na(mu_override[i]))
         use_mu[1L] <- mu_override[i]
 
-      # ONE-SIDED absolute-fit p-value -- computed for BOTH the singleton (1D)
-      # and multi-candidate (bivariate) cases, unlike the TWO-SIDED `alpha`
-      # action-gate below which has only ever applied to the bivariate case.
-      # Purely informational here (feeds `absolute_fit_pvalue`/the rank-trust
-      # mechanism, see evaluate_likelihoods()'s own section) and never
-      # changes h1_vals[i] -- the existing `alpha` gate's own two-sided test
-      # and behavior (bivariate-only zeroing) are left completely unchanged
-      # below, computed independently, not derived from this value. See
-      # .one_sided_fit_pvalue()'s own header for why these two tests are
-      # deliberately different, not just a naming split of the same number.
-      h1_pvals[i] <- .one_sided_fit_pvalue(s_vec[i], use_mu[1L], use_sigma[1L, 1L])
-
       if (use_1d) {
         h1_vals[i] <- stats::dnorm(s_vec[i],
                                    mean = use_mu[1L],
@@ -441,11 +409,8 @@ utils::globalVariables(c(
         # see this parameter's own @param alpha docs for the real Cyprinidae/
         # coastal-species numbers that calibration was based on). Kept
         # byte-identical to that calibration -- computed independently of
-        # h1_pvals above, not derived from it, since a two-sided test
-        # legitimately answers a different question ("is this candidate an
-        # outlier AT ALL, in either direction") than the one-sided
-        # `absolute_fit_pvalue` above answers ("is this candidate WORSE than
-        # its own hypothesis predicts"). The gap measures how well-separated
+        # the confusion-risk columns, which answer a different question.
+        # The gap measures how well-separated
         # H1 is from alternatives -- a small gap (confusable congener
         # present) is correctly handled by the bivariate density below, which
         # returns a lower H1 value. Including the gap in the outlier check
@@ -466,7 +431,6 @@ utils::globalVariables(c(
     best_i <- which.max(s_vec)
     if (length(best_i) == 0L || all(s_vec == 0)) {
       return(list(h1 = h1_vals, h2 = 0, h3 = 0, h2_delta_source = "global_fallback",
-                  h1_pval = h1_pvals, h2_pval = NA_real_, h3_pval = NA_real_,
                   used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
                   used_h2_delta = h2_delta, used_h2_tau_sq = NA_real_))
     }
@@ -553,16 +517,7 @@ utils::globalVariables(c(
       h3_val <- mvtnorm::dmvnorm(best_pt, mean = h3_mu, sigma = h3_sigma)
     }
 
-    # ONE-SIDED absolute-fit p-values for H2/H3, at the anchor candidate's own
-    # observed score -- same form as h1_pvals above (see
-    # .one_sided_fit_pvalue()'s own header), just pointed at each
-    # hypothesis's own (already-resolved) mean/sigma. Purely informational
-    # (rank-trust mechanism); never gates h2_val/h3_val.
-    h2_pval <- .one_sided_fit_pvalue(best_pt[1L], h2_mu[1L], use_h2_sigma[1L, 1L])
-    h3_pval <- .one_sided_fit_pvalue(best_pt[1L], h3_mu[1L], h3_sigma[1L, 1L])
-
     list(h1 = h1_vals, h2 = h2_val, h3 = h3_val, h2_delta_source = delta_source,
-         h1_pval = h1_pvals, h2_pval = h2_pval, h3_pval = h3_pval,
          used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
          used_h2_delta = resolved_h2_delta, used_h2_tau_sq = resolved_h2_tau_sq)
   }
@@ -609,8 +564,7 @@ utils::globalVariables(c(
     dplyr::mutate(hypothesis_type          = "specific_candidate",
                   raw_likelihood           = primary$h1,
                   raw_likelihood_cov       = primary_cov$h1,
-                  raw_likelihood_evidence  = primary_evidence$h1,
-                  absolute_fit_pvalue      = primary$h1_pval)
+                  raw_likelihood_evidence  = primary_evidence$h1)
 
   # Build H2/H3 rows from the best candidate
   best_i   <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
@@ -630,7 +584,6 @@ utils::globalVariables(c(
   row_h2$raw_likelihood_cov      <- primary$h2   # H2 sigma is global fixed; no inflation
   row_h2$raw_likelihood_evidence <- primary$h2   # H2 sigma is global fixed; no inflation
   row_h2$h2_delta_source    <- primary$h2_delta_source
-  row_h2$absolute_fit_pvalue <- primary$h2_pval
 
   row_h3 <- best_row
   if (!is.null(finest) && finest %in% names(row_h3))
@@ -643,24 +596,91 @@ utils::globalVariables(c(
   row_h3$raw_likelihood_cov      <- primary$h3   # H3 sigma is global fixed; no inflation
   row_h3$raw_likelihood_evidence <- primary$h3   # H3 sigma is global fixed; no inflation
   row_h3$h2_delta_source    <- primary$h2_delta_source
-  row_h3$absolute_fit_pvalue <- primary$h3_pval
 
   res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
 
   # Re-derive taxon_name for H1 rows too (ensures consistency with TaxaTools)
   res <- TaxaTools::create_taxon_names(res, rank_cols)
 
+  # ---- CONFUSION-RISK COLUMNS (2026-07-23) -----------------------------------
+  # species_confusion_risk/genus_confusion_risk/family_confusion_risk: a
+  # model-independent, score-ONLY diagnostic of the risk that the raw match
+  # score is equally well explained by a confusable relative at the rank a
+  # hypothesis resolved to (P(a real congener/confamilial/cross-family pair
+  # would score this high or higher), read off model_params$
+  # Confusion_Risk_Curves -- see .lookup_confusion_risk_value()'s own header
+  # for why HIGHER values mean MORE confusable, i.e. WEAKER evidence for the
+  # call, matching this ecosystem's existing high=concern convention, e.g.
+  # TaxaFlag::flag_contaminant()'s contaminant_score). Evaluated per row at
+  # THAT row's own genus/family (H2 rows retain genus; H3 rows retain family
+  # only) and its own observed score (best_row's p_med for H2/H3, i.e. the
+  # anchor's score) -- res still carries genus_rank_col/family_rank_col
+  # columns at this point (only nulled by create_taxon_names for
+  # taxon_name/taxon_name_rank purposes, not the raw taxonomy columns
+  # themselves). NA whenever the model has no Confusion_Risk_Curves for that
+  # tier, or this row's own genus/family is NA (H3 rows always lack a genus;
+  # family_confusion_risk only needs family, present for all three hypothesis
+  # types when rank_system carries one at all).
+  confusion_risk_curves <- model_params$Confusion_Risk_Curves
+  n_res <- nrow(res)
+  genus_vals_res  <- if (!is.na(genus_rank_col)  && genus_rank_col  %in% names(res))
+    res[[genus_rank_col]]  else rep(NA_character_, n_res)
+  family_vals_res <- if (!is.na(family_rank_col) && family_rank_col %in% names(res))
+    res[[family_rank_col]] else rep(NA_character_, n_res)
+  obs_pct_res <- res$p_med * 100
+
+  res$species_confusion_risk <- if (!is.null(confusion_risk_curves) && !is.null(confusion_risk_curves$species)) {
+    vapply(seq_len(n_res), function(i) {
+      if (is.na(genus_vals_res[i])) return(NA_real_)
+      .lookup_confusion_risk_value(obs_pct_res[i], genus_vals_res[i],
+                           confusion_risk_curves$species$fpr_by_genus_shrunk,
+                           confusion_risk_curves$species$fpr_pooled)
+    }, numeric(1))
+  } else rep(NA_real_, n_res)
+
+  res$genus_confusion_risk <- if (!is.null(confusion_risk_curves) && !is.null(confusion_risk_curves$genus)) {
+    vapply(seq_len(n_res), function(i) {
+      if (is.na(family_vals_res[i])) return(NA_real_)
+      .lookup_confusion_risk_value(obs_pct_res[i], family_vals_res[i],
+                           confusion_risk_curves$genus$fpr_by_family_shrunk,
+                           confusion_risk_curves$genus$fpr_pooled)
+    }, numeric(1))
+  } else rep(NA_real_, n_res)
+
+  res$family_confusion_risk <- if (!is.null(confusion_risk_curves) && !is.null(confusion_risk_curves$family)) {
+    vapply(seq_len(n_res), function(i)
+      .lookup_confusion_risk_value(obs_pct_res[i], NA_character_, NULL, confusion_risk_curves$family$fpr_pooled),
+      numeric(1))
+  } else rep(NA_real_, n_res)
+
   res_agg <- res |>
     dplyr::group_by(hypothesis_type, taxon_name, taxon_name_rank) |>
     dplyr::summarise(raw_likelihood          = max(raw_likelihood,          na.rm = TRUE),
                      raw_likelihood_cov      = max(raw_likelihood_cov,      na.rm = TRUE),
                      raw_likelihood_evidence = max(raw_likelihood_evidence, na.rm = TRUE),
+                     species_confusion_risk = dplyr::first(species_confusion_risk),
+                     genus_confusion_risk   = dplyr::first(genus_confusion_risk),
+                     family_confusion_risk  = dplyr::first(family_confusion_risk),
                      # NA for specific_candidate rows (only H2/H3 rows carry this);
                      # each unreferenced_species/unreferenced_genus group has a
                      # single row, so first() is unambiguous.
                      h2_delta_source    = dplyr::first(h2_delta_source),
-                     absolute_fit_pvalue = dplyr::first(absolute_fit_pvalue),
                      .groups = "drop")
+
+  # own_rank_confusion_risk: convenience column pointing at whichever of the
+  # three *_confusion_risk values matches this row's OWN resolved rank
+  # (species_confusion_risk for specific_candidate, genus_confusion_risk for
+  # unreferenced_species, family_confusion_risk for unreferenced_genus) --
+  # species_confusion_risk/genus_confusion_risk/family_confusion_risk
+  # themselves are always populated (where computable) for every row
+  # regardless of hypothesis_type, so a reviewer can also see e.g. "resolved
+  # to species, but genus_confusion_risk is also high."
+  res_agg$own_rank_confusion_risk <- dplyr::case_when(
+    res_agg$hypothesis_type == "specific_candidate"   ~ res_agg$species_confusion_risk,
+    res_agg$hypothesis_type == "unreferenced_species" ~ res_agg$genus_confusion_risk,
+    res_agg$hypothesis_type == "unreferenced_genus"   ~ res_agg$family_confusion_risk,
+    TRUE ~ NA_real_
+  )
 
   # ---- 6. NORMALISE TO LIKELIHOOD RATIOS ------------------------------------
   max_lik          <- max(res_agg$raw_likelihood,          na.rm = TRUE)
@@ -810,12 +830,13 @@ utils::globalVariables(c(
 
   res_agg |>
     dplyr::select(hypothesis_type, taxon_name, taxon_name_rank,
+                  raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
                   score_likelihood, score_likelihood_mean, score_likelihood_sd,
                   score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
-                  absolute_fit_pvalue) |>
+                  species_confusion_risk, genus_confusion_risk, family_confusion_risk,
+                  own_rank_confusion_risk) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
-
 
 #' Convert match scores to likelihoods for all queries
 #'
@@ -928,14 +949,25 @@ utils::globalVariables(c(
 #'       hypothesis, suitable for input to `TaxaAssign::compute_posterior()`:
 #'       `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`
 #'       (`"specific_candidate"`, `"unreferenced_species"`, or `"unreferenced_genus"`),
+#'       `raw_likelihood`, `raw_likelihood_cov`, `raw_likelihood_evidence` (the
+#'       bivariate-normal density -- `mvtnorm::dmvnorm()` over `(score_logit,
+#'       gap_logit)` jointly -- BEFORE ratio-normalization against the best
+#'       candidate in the same observation; `score_likelihood` etc. below are
+#'       each `raw_likelihood / max(raw_likelihood)` within that observation.
+#'       Because `score_likelihood` is always exactly 1.0 for a candidate with
+#'       no real competitor, it cannot say whether a "winning" match is
+#'       actually a good absolute fit -- `raw_likelihood` can, and is
+#'       comparable across observations within one trained model/marker in a
+#'       way the ratio never was; not calibration-free in an absolute sense
+#'       (still evaluated against `H1_Lookup`'s calibrated or uncalibrated
+#'       mu/sigma), but a within-marker relative comparison such as "above or
+#'       below this marker's own median" sidesteps that),
 #'       `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`,
 #'       `score_likelihood_cov`, `score_likelihood_evidence`, `h2_delta_source`
 #'       (`"genus_specific"` or `"global_fallback"` for
 #'       `unreferenced_species`/`unreferenced_genus` rows; `NA` for
-#'       `specific_candidate` rows), `absolute_fit_pvalue` (see
-#'       `@section Absolute fit`).  Rows where `taxon_name`
-#'       resolved to `NA` are excluded.  See Details for `score_likelihood_cov`
-#'       and `h2_delta_source`.}
+#'       `specific_candidate` rows), plus the `*_confusion_risk` columns
+#'       described under \strong{Confusion risk} below.}
 #'     \item{`$unresolved`}{Rows from `match_df` for any `observation_id` that
 #'       produced no usable likelihoods (empty data frame if none).  Pass to
 #'       a second call of `evaluate_likelihoods()` with a coarser
@@ -1117,58 +1149,57 @@ utils::globalVariables(c(
 #' behavior when `model_params$H1_Lookup` has no `n_obs_species` column
 #' (i.e., any model trained before this mechanism was added).
 #'
-#' @section Absolute fit:
-#' `absolute_fit_pvalue` answers a different question than `score_likelihood`
-#' does. `score_likelihood` compares candidates to EACH OTHER (H1 vs H2 vs
-#' H3) -- it can only ever say "this is the best of the hypotheses I was
-#' given," even when every hypothesis is, in an absolute sense, a poor match
-#' (e.g. a genuinely degraded query where the best specific candidate, its
-#' genus's unreferenced-species placeholder, AND its family's
-#' unreferenced-genus placeholder all score weakly -- the least-bad option
-#' still "wins" the relative comparison with nothing to signal that the win
-#' itself is not well-supported). This is a real, structural limitation of
-#' Bayesian model comparison over a candidate set that is not guaranteed to
-#' be exhaustive: renormalizing over an incomplete or uniformly-weak set
-#' cannot express "none of these fit well."
+#' @section Confusion risk:
+#' `species_confusion_risk`/`genus_confusion_risk`/`family_confusion_risk` are
+#' an independent, model-independent diagnostic --
+#' deliberately score-only and model-free, rather than a second application
+#' of this function's own trained bivariate-normal likelihood. Each answers,
+#' at its own rank: given this row's raw match score and its own genus (for
+#' `species_confusion_risk`) or family (for `genus_confusion_risk`), how
+#' often would a REAL congener/confamilial pair score this high or higher,
+#' in this training reference database? Read off
+#' `model_params$Confusion_Risk_Curves` (genus-/family-equal-weighted,
+#' Empirical-Bayes-shrunk curves computed once by
+#' `train_likelihood_model()`, not recomputed here -- see that function's
+#' own `Confusion_Risk_Curves` documentation and
+#' `diagnostics/score_floor_roc_sweep.R`, the reference implementation these
+#' curves are built from).
 #'
-#' `absolute_fit_pvalue` instead asks, independently for EVERY row (H1, H2,
-#' and H3 alike), whether the observed score is even consistent with THAT
-#' row's own trained distribution, in absolute terms -- reusing the same
-#' score-only, gap-excluded logic the `alpha` outlier gate already
-#' established (df = 1, gap excluded for the reason documented there), but
-#' **one-sided, not two-sided**. `alpha`'s own test is deliberately two-sided
-#' (real 12S data calibrated it that way, see its own docs) because it is
-#' asking "is this candidate an outlier AT ALL." This question is narrower
-#' and asymmetric: a score BETTER than a hypothesis's own trained mean (e.g.
-#' an unusually clean, close-to-100% match) is never a reason to distrust it
-#' -- only a score WORSE than expected is. A two-sided test would wrongly
-#' penalize an excellent match against a tightly-clustered (e.g. many
-#' near-identical reference accessions) species purely because its own mean
-#' sits slightly below the score transform's ceiling; `absolute_fit_pvalue`
-#' uses `P(Z <= z)` instead of the two-sided chi-squared, so it approaches 1
-#' (never fails) the further above the mean a score sits, and only drops
-#' toward 0 the further below. Every input is a parameter
-#' `train_likelihood_model()`/the point-estimate pass already computed -- no
-#' new model is fit and no new pass over reference data runs; this is pure
-#' reuse of already-resolved `H1_Lookup`/`H2`/`H2_Lookup`/`H3` mu/sigma.
-#' `absolute_fit_pvalue` is reported on every row (informational only -- it
-#' never zeroes a likelihood or changes which hypothesis wins). Downstream
-#' consumers that want to flag a winning call whose OWN fit is poor (even
-#' though it won the relative comparison) should read the winning row's
-#' `absolute_fit_pvalue` directly -- see `TaxaAssign::posterior_consensus()`'s
-#' `winner_absolute_fit_pvalue` pass-through and
-#' `TaxaFlag::add_posthoc_assessment()`'s `"unsupported_rank"` category.
+#' **Higher means MORE confusable, i.e. WEAKER evidence for the rank in
+#' question** -- matching this ecosystem's existing high=concern convention
+#' for risk-style metrics (e.g. `TaxaFlag::flag_contaminant()`'s
+#' `contaminant_score`), not the higher-is-better convention `score_likelihood`/
+#' `posterior_mean`/`confidence_score` use. These are one-sided tail
+#' probabilities (a p-value-like quantity for the null hypothesis "this is
+#' just a confusable relative"): `species_confusion_risk = 0.97` at a given
+#' score means a real congener would score this high 97% of the time too --
+#' high confusion risk, weak evidence the species call is correct -- while
+#' `species_confusion_risk = 0.02` at the same score means a real congener
+#' almost never scores this high -- low confusion risk, strong evidence.
+#' (Renamed 2026-07-23 from `species_support`/etc. after noticing the
+#' original name inverted this convention -- "support" implied
+#' higher-is-better while the values themselves behave the opposite way;
+#' no math changed, only the name.) `family_confusion_risk` has no grouping
+#' variable (a single, ungrouped cross-family rate) since no rank exists
+#' above family to equal-weight by. `own_rank_confusion_risk` is a
+#' convenience column pointing at whichever of the three matches this row's
+#' own `hypothesis_type` (`species_confusion_risk` for `specific_candidate`,
+#' `genus_confusion_risk` for `unreferenced_species`, `family_confusion_risk`
+#' for `unreferenced_genus`) -- but all three are populated for every row
+#' (where computable) regardless of `hypothesis_type`, so a reviewer can
+#' also see e.g. "resolved to species, but genus_confusion_risk is also
+#' high, meaning even the genus call is shaky."
 #'
-#' \strong{hypothesis_type values in output:}
-#' \itemize{
-#'   \item \code{"specific_candidate"} -- referenced species with an explicit
-#'     match in the query data.
-#'   \item \code{"unreferenced_species"} -- placeholder for species absent from
-#'     the reference database but whose genus is represented. These rows have
-#'     generic taxon_name (the genus name) and can be expanded into named
-#'     species by \code{TaxaAssign::expand_unreferenced_hypotheses()}.
-#'   \item \code{"unreferenced_genus"} -- placeholder for entirely absent genera.
-#' }
+#' Purely informational -- never zeroes
+#' a likelihood or changes which hypothesis wins. `NA` when
+#' `model_params$Confusion_Risk_Curves` lacks the relevant tier (e.g.
+#' `rank_system` too short) or this row's own genus/family is unresolved
+#' (e.g. `unreferenced_genus` rows have no genus, so `species_confusion_risk`
+#' is always `NA` there). See `TaxaAssign::posterior_consensus()`'s
+#' `winner_species_confusion_risk`/`winner_genus_confusion_risk`/
+#' `winner_family_confusion_risk`/`winner_own_rank_confusion_risk`
+#' pass-through for how a downstream consumer reads these off the winning
+#' row.
 #'
 #' @references
 #' Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
@@ -1357,10 +1388,14 @@ evaluate_likelihoods <- function(match_df,
   }
 
   likelihoods <- dplyr::select(out, observation_id, taxon_name, taxon_name_rank,
-                               hypothesis_type, score_likelihood,
+                               hypothesis_type,
+                               raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
+                               score_likelihood,
                                score_likelihood_mean, score_likelihood_sd,
                                score_likelihood_cov, score_likelihood_evidence,
-                               h2_delta_source, absolute_fit_pvalue)
+                               h2_delta_source,
+                               species_confusion_risk, genus_confusion_risk, family_confusion_risk,
+                               own_rank_confusion_risk)
 
   # Propagate is_restored from match_df when present.
   # For each (observation_id, taxon_name), is_restored = TRUE only when ALL
@@ -1379,7 +1414,6 @@ evaluate_likelihoods <- function(match_df,
 
   list(likelihoods = likelihoods, unresolved = unresolved)
 }
-
 
 #' Keep only the finest-rank specific candidates per query
 #'

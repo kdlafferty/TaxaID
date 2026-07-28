@@ -123,6 +123,22 @@ hypothesis.}
 \item{\code{H2_Lookup}}{Data frame (or \code{NULL}) with per-genus \code{H2} delta and
 variance estimates: \code{genus}, \code{n_pairs}, \code{delta_shrunk}, \code{var_shrunk}
 (Session 158). See "Per-genus delta shrinkage" section below.}
+\item{\code{Confusion_Risk_Curves}}{List (or \code{NULL}) of genus-/family-equal-
+weighted, Empirical-Bayes-shrunk per-rank score curves, read by
+\code{evaluate_likelihoods()} to compute its \code{species_confusion_risk}/
+\code{genus_confusion_risk}/\code{family_confusion_risk} output columns -- a
+model-independent, score-only diagnostic of the risk that the raw
+match score is equally well explained by a confusable congener/
+confamilial/cross-family relative at the rank a hypothesis resolved
+to, distinct from this model's own trained bivariate-normal
+likelihood. \code{NULL} when \code{rank_system} has fewer than 2 levels or the
+required taxonomy columns aren't usable (\code{species_confusion_risk}/
+\code{genus_confusion_risk}/\code{family_confusion_risk} are then simply \code{NA},
+never an error). See
+\code{.compute_rank_score_curves()}'s own documentation for the exact
+structure, and \code{compute_rank_thresholds()} for the sibling function
+that derives \code{TaxaAssign::score_consensus()}'s \code{rank_thresholds}
+from the same underlying curves.}
 \item{\code{Stats}}{List of diagnostics (e.g., \code{AIC_Score} if lmer succeeded,
 \code{n_species}, \code{n_singletons}, \code{n_h1_pooled} -- total sequences behind
 the global H1 mean (informational only; NOT used as the Monte Carlo

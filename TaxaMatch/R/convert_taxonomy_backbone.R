@@ -25,6 +25,41 @@
 #' A `taxonomy_backbone` column records which backbone the row's hierarchy
 #' was drawn from (`"backbone_N"` for found rows, source label for not-found rows).
 #'
+#' @section Rank correction on fallback (2026-07-25):
+#' When a row's own `taxon_name_rank` has no matching target-backbone value
+#' at that same rank (e.g. a row claims `"species"` but the target only
+#' resolved this name to genus), `match_df[[taxon_col]]` falls back to the
+#' coarser resolved name -- and `taxon_name_rank` is now corrected to match
+#' it, using `verify_fn`'s `matched_rank` column when present (silently
+#' skipped for a `verify_fn` that predates it, e.g. injected for offline
+#' testing). Real motivating case: an informally-named NCBI reference
+#' ("Inu sp. 1 sensu Shibukawa et al., 2020.") resolves against GBIF to the
+#' genus `Luciogobius` (a synonym relationship -- GBIF's own backbone
+#' considers `"Inu"` Snyder 1909 a synonym of `Luciogobius` Gill 1859; NCBI's
+#' own taxonomy does not) with no species-level entry to fill. Before this
+#' fix, `taxon_name` was correctly demoted to the genus but
+#' `taxon_name_rank` silently stayed `"species"` -- a downstream slash-name
+#' builder then treated the bare genus as if it were a complete binomial and
+#' manufactured a fabricated pseudo-binomial (`"Inu Inu"`) from it. Confirmed
+#' backbone-general, not GBIF-specific, before shipping -- see
+#' `TaxaTools::verify_taxon_names()`'s own `@section Synonym resolution and
+#' rank correctness`.
+#'
+#' **Finer rank columns are also cleared on the same rows** (e.g. `species`
+#' set to `NA` when the row is demoted to genus), not just
+#' `taxon_name`/`taxon_name_rank`. Found necessary by testing against a real
+#' production workflow, not by inspection alone: the per-column fallback
+#' (documented above) deliberately keeps each rank column's own cleaned
+#' original value when the target backbone has no replacement for it --
+#' correct for a column that genuinely didn't change, but it left a stale,
+#' semantically-invalid value (`species = "Inu"`) in place even after
+#' `taxon_name`/`taxon_name_rank` were correctly demoted. Any code that
+#' re-derives a name from rank columns after calling this function (e.g. a
+#' second `TaxaTools::create_taxon_names()` call, a real step some
+#' production workflows already run "to re-derive taxon_name after backbone
+#' conversion") would otherwise see `species` still populated, apply
+#' "most specific non-NA rank wins", and silently undo the correction.
+#'
 #' An R attribute `backbone_cols` is set on the returned data frame recording
 #' which rank columns were subject to backbone conversion. A summary message
 #' is also printed.
@@ -59,7 +94,11 @@
 #'   argument; must return a data frame with columns `user_supplied_name`,
 #'   `matched_name`, `classification_path`, `classification_ranks`, and
 #'   `verified` (logical: `TRUE` when the name resolved in the target
-#'   backbone, `FALSE`/`NA` otherwise). Default: [TaxaTools::verify_taxon_names].
+#'   backbone, `FALSE`/`NA` otherwise). An optional `matched_rank` column
+#'   (the rank `matched_name` actually resolved at) enables the rank
+#'   correction described below; a `verify_fn` without it is still fully
+#'   supported, just without that correction. Default:
+#'   [TaxaTools::verify_taxon_names].
 #'   Override for offline testing via dependency injection. The call is
 #'   wrapped in `tryCatch()`; a failure (e.g. network unavailable, API
 #'   rate-limited) raises a clear error naming the likely cause rather than
@@ -109,6 +148,18 @@
 #' blank, by the `nzchar()` checks used throughout (`nzchar(" ")` is `TRUE`);
 #' if this is a realistic data-quality issue for your input, `trimws()` your
 #' `taxon_col` before calling.
+#'
+#' @section Not-found rows are cleaned too:
+#' When a taxon is not found in the target backbone, its original rank
+#' columns and `taxon_col` value are still run through
+#' [TaxaTools::clean_taxon_names()] before being used as the output value --
+#' previously only target-backbone-matched values were cleaned, so an exotic
+#' name that failed to resolve (e.g. a compound hybrid-formula name straight
+#' from a raw reference-database accession label,
+#' `"((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"`)
+#' passed through completely unmodified. This does NOT change which names are
+#' sent to `verify_fn` or which rows count as "found" -- only the fallback
+#' value's formatting.
 #'
 #' @seealso [TaxaTools::verify_taxon_names()], [TaxaTools::clean_taxon_names()]
 #'
@@ -296,6 +347,24 @@ convert_taxonomy_backbone <- function(
   original_ranks <- match_df[, rank_cols_present, drop = FALSE]
 
   # ---------------------------------------------------------------------------
+  # Cleaned fallback values -- used whenever a row's taxon was NOT found in the
+  # target backbone (found_mask FALSE). Only the target-backbone-matched values
+  # (matched_name_clean, target_<rank>, above) were ever run through
+  # clean_taxon_names() before this fix -- a taxon that failed to resolve in the
+  # target backbone (e.g. a compound hybrid-formula name straight from a raw
+  # reference-database accession label, such as
+  # "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata")
+  # fell through with its messy original value untouched, purely because the
+  # target backbone had nothing to offer for it. clean_taxon_names() is a no-op
+  # on already-clean values, so this is safe for the common case too.
+  # Deliberately does NOT change unique_names/verify_fn's input above -- the set
+  # of names looked up, and which rows count as "found", is unaffected; only the
+  # not-found fallback value itself is cleaned.
+  # ---------------------------------------------------------------------------
+  taxon_col_clean_fallback <- TaxaTools::clean_taxon_names(match_df[[taxon_col]])
+  rank_clean_fallback <- lapply(original_ranks, TaxaTools::clean_taxon_names)
+
+  # ---------------------------------------------------------------------------
   # Vectorised collision detection
   # changed_matrix[i, j] = TRUE when rank j was different in the target backbone
   # (target not NA, original not NA, and values differ)
@@ -354,7 +423,7 @@ convert_taxonomy_backbone <- function(
   for (rk in rank_cols_present) {
     target_vals      <- verified[[paste0("target_", rk)]][lookup_idx]
     has_target       <- found_mask & !is.na(target_vals)
-    match_df[[rk]]   <- ifelse(has_target, target_vals, match_df[[rk]])
+    match_df[[rk]]   <- ifelse(has_target, target_vals, rank_clean_fallback[[rk]])
   }
 
   # ---------------------------------------------------------------------------
@@ -378,24 +447,87 @@ convert_taxonomy_backbone <- function(
         rank_vals[valid] <- target_mat[cbind(lookup_idx[valid], rank_col_idx[valid])]
       }
 
+      # A row's own taxon_name_rank has no target value at that SAME rank --
+      # e.g. the row claims "species" but the target backbone only resolved
+      # this name to genus (a real case: an informally-named reference
+      # sequence like "Inu sp. 1 sensu Shibukawa et al., 2020." matches
+      # GBIF's genus "Luciogobius", a synonym relationship, with no
+      # species-level entry to fill target_species). used_fallback marks
+      # these rows so taxon_name_rank can be corrected below, alongside the
+      # name itself.
+      used_fallback <- found_mask & (is.na(rank_vals) | !nzchar(rank_vals))
+
       # Prefer rank-specific value (authority-free from classification_path);
       # fall back to matched_name_clean for ranks not in rank_system.
       new_names <- ifelse(
         found_mask & !is.na(rank_vals) & nzchar(rank_vals),
         rank_vals,
-        ifelse(found_mask, verified$matched_name_clean[lookup_idx], match_df[[taxon_col]])
+        ifelse(found_mask, verified$matched_name_clean[lookup_idx], taxon_col_clean_fallback)
       )
     } else {
+      used_fallback <- found_mask
       new_names <- ifelse(
         found_mask,
         verified$matched_name_clean[lookup_idx],
-        match_df[[taxon_col]]
+        taxon_col_clean_fallback
       )
     }
 
     # Only update where we have a valid non-empty new name
     update_mask          <- found_mask & !is.na(new_names) & nzchar(new_names)
-    match_df[[taxon_col]] <- ifelse(update_mask, new_names, match_df[[taxon_col]])
+    match_df[[taxon_col]] <- ifelse(update_mask, new_names, taxon_col_clean_fallback)
+
+    # ---------------------------------------------------------------------
+    # Correct taxon_name_rank for fallback rows, AND clear rank columns
+    # finer than the corrected rank.
+    #
+    # Without the taxon_name_rank correction, a row whose name just got
+    # replaced by a coarser-rank fallback value (matched_name_clean) keeps
+    # its OLD, now-stale rank label -- e.g. taxon_name = "Luciogobius" (a
+    # genus) reported with taxon_name_rank still "species", the exact
+    # mislabeling that let a downstream slash-name builder manufacture a
+    # fabricated pseudo-binomial ("Inu Inu") from a bare genus name.
+    #
+    # The finer-column clearing is a SEPARATE, necessary second half, found
+    # only by testing this against a real production workflow: the
+    # per-column rank fallback above (rank_clean_fallback) deliberately
+    # keeps each individual rank column's own cleaned original value when
+    # the target backbone has no replacement for it -- correct for a column
+    # that genuinely didn't change, but for THIS row it left
+    # match_df$species = "Inu" in place even after taxon_name/
+    # taxon_name_rank were correctly demoted to the genus "Luciogobius".
+    # Anything that re-derives a name from rank columns after this point
+    # (e.g. a second TaxaTools::create_taxon_names() call -- a real,
+    # existing step in production Mugu-workflow scripts, not a
+    # hypothetical) sees species still populated, "most specific non-NA
+    # rank wins", and silently reverts the correction. Clearing every rank
+    # column finer than matched_rank closes this regardless of what any
+    # downstream code does with the result.
+    #
+    # matched_rank (verify_taxon_names(), 2026-07-25) is the authoritative
+    # rank the match actually resolved at -- only used where the fallback
+    # fired and a corrected rank is available, so a row whose own rank's
+    # target value WAS found is left completely untouched by either half of
+    # this block. Silently skipped (not an error) when verified lacks
+    # matched_rank -- e.g. a custom verify_fn supplied for offline testing
+    # that predates it.
+    # ---------------------------------------------------------------------
+    if ("matched_rank" %in% names(verified)) {
+      matched_ranks     <- verified$matched_rank[lookup_idx]
+      update_rank_mask  <- update_mask & used_fallback &
+                            !is.na(matched_ranks) & nzchar(matched_ranks)
+      if (any(update_rank_mask)) {
+        match_df$taxon_name_rank[update_rank_mask] <- matched_ranks[update_rank_mask]
+
+        matched_rank_pos <- match(matched_ranks, rank_system)
+        for (j in seq_along(rank_system)) {
+          rk <- rank_system[j]
+          if (!rk %in% rank_cols_present) next
+          clear_mask <- update_rank_mask & !is.na(matched_rank_pos) & (j > matched_rank_pos)
+          if (any(clear_mask)) match_df[[rk]][clear_mask] <- NA_character_
+        }
+      }
+    }
   }
 
   # ---------------------------------------------------------------------------

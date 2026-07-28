@@ -523,14 +523,6 @@ eval_result <- evaluate_likelihoods(make_match_df_eval(), make_model_params_eval
 eval_result$likelihoods
 nrow(eval_result$unresolved)
 
-# absolute_fit_pvalue: REPORTING-only, per row -- never changes
-# score_likelihood or which hypothesis wins. One-sided score-only fit test
-# (P(Z <= z) against that row's own trained mu/sigma): a score better than the
-# trained mean never fails, only a score worse than expected drops toward 0.
-# Downstream consumers (TaxaAssign::posterior_consensus()'s
-# winner_absolute_fit_pvalue pass-through, TaxaFlag::add_posthoc_assessment()'s
-# "unsupported_rank" category) read the WINNING row's own value directly.
-eval_result$likelihoods[, c("taxon_name", "hypothesis_type", "absolute_fit_pvalue")]
 
 ## ---- filter_top_hypotheses() ---- OFFLINE -----------------------------------
 filtered <- filter_top_hypotheses(eval_result$likelihoods,

@@ -5,16 +5,24 @@
 # Exported functions:
 #   read_animl_output()              Ingest Animl (camera trap) CSV results
 #   read_inaturalist_cv_output()     Ingest iNaturalist CV API JSON responses
-#   read_wildlife_insights_output()  Ingest SpeciesNet / Wildlife Insights JSON
+#   read_speciesnet_output()         Ingest real SpeciesNet CLI predictions_json
+#     NOTE (2026-07-23): replaces the removed read_wildlife_insights_output(),
+#     which targeted a dict-keyed-by-filename JSON shape that matched neither
+#     the real Wildlife Insights platform (bulk downloads are a CSV bundle,
+#     not JSON) nor the real current SpeciesNet CLI (google/cameratrapai;
+#     predictions is a LIST, not a dict) -- see TaxaMatch/CLAUDE.md's
+#     2026-07-23 note. Zero real callers existed at removal time.
 #
 # Internal helpers (@noRd):
-#   .parse_animl_file()         Read and validate a single Animl CSV
-#   .pivot_wide_animl()         Pivot pred1/score1...predN/scoreN to long format
-#   .parse_inat_cv_file()       Parse one iNaturalist CV JSON file
-#   .parse_wi_predictions()     Parse SpeciesNet/Wildlife Insights JSON
+#   .parse_animl_file()              Read and validate a single Animl CSV
+#   .pivot_wide_animl()              Pivot pred1/score1...predN/scoreN to long format
+#   .parse_inat_cv_file()            Parse one iNaturalist CV JSON file
+#   .parse_speciesnet_predictions()  Parse one SpeciesNet predictions_json file
+#   .parse_speciesnet_label()        Parse a uuid;class;order;family;genus;species;common_name label
+#   .speciesnet_detection_coverage() bbox coverage from an image's MegaDetector detections
 #   .empty_animl_result()       Shared 0-row constructor for read_animl_output()
 #   .empty_inat_result()        Shared 0-row constructor for read_inaturalist_cv_output()
-#   .empty_wi_result()          Shared 0-row constructor for read_wildlife_insights_output()
+#   .empty_speciesnet_result()  Shared 0-row constructor for read_speciesnet_output()
 # ==============================================================================
 
 #' @noRd
@@ -37,17 +45,6 @@
     stringsAsFactors = FALSE
   )
 }
-
-#' @noRd
-.empty_wi_result <- function() {
-  data.frame(
-    observation_id = character(0), score = numeric(0),
-    species = character(0), genus = character(0),
-    category = character(0), source_file = character(0),
-    stringsAsFactors = FALSE
-  )
-}
-
 
 # ==============================================================================
 # read_animl_output
@@ -629,103 +626,193 @@ read_inaturalist_cv_output <- function(files,
 
 
 # ==============================================================================
-# read_wildlife_insights_output
+# read_speciesnet_output
 # ==============================================================================
 
-#' Read Wildlife Insights / SpeciesNet JSON Results into a Match Object
+#' @noRd
+.empty_speciesnet_result <- function(include_coverage = FALSE) {
+  out <- data.frame(
+    observation_id = character(0), score = numeric(0),
+    species = character(0), genus = character(0), family = character(0),
+    order = character(0), class = character(0), common_name = character(0),
+    taxon_rank = character(0),
+    ensemble_prediction = character(0), ensemble_prediction_score = numeric(0),
+    ensemble_prediction_source = character(0),
+    lat = numeric(0), lon = numeric(0), country = character(0),
+    source_file = character(0),
+    stringsAsFactors = FALSE
+  )
+  if (isTRUE(include_coverage)) {
+    out$coverage <- numeric(0)
+    out$detection_conf <- numeric(0)
+  }
+  out
+}
+
+#' Read SpeciesNet Batch Classification Results into a Match Object
 #'
-#' Reads one or more JSON output files from the SpeciesNet Python classifier
-#' (used by Wildlife Insights and standalone) and returns a tidy data frame
-#' in match object format, ready for [standardize_match_data()] and downstream
-#' TaxaLikely processing.
+#' Reads one or more real SpeciesNet CLI (`google/cameratrapai`,
+#' `python -m speciesnet.scripts.run_model --predictions_json=...`) batch
+#' prediction JSON files and returns a tidy data frame in match object
+#' format, ready for [standardize_match_data()] and downstream TaxaLikely
+#' processing.
 #'
-#' **Supported format:** SpeciesNet v2+ batch output JSON, which contains a
-#' top-level `"predictions"` object keyed by image filename, with each value
-#' being a list of prediction objects.  A single JSON file can describe many
-#' images.
-#'
-#' @param files Character vector. Paths to SpeciesNet/Wildlife Insights JSON
-#'   files.  Alternatively, a path to a directory: all `*.json` files are
-#'   read.  A single JSON file may contain predictions for multiple images.
-#' @param min_confidence Numeric. Detections below this score are dropped.
-#'   Default `0` (keep all).
+#' @param files Character vector. Paths to SpeciesNet `predictions_json`
+#'   output files. Alternatively, a path to a directory: all `*.json` files
+#'   in that directory (non-recursive) are read. A single file's top-level
+#'   `predictions` array may cover many images.
+#' @param min_confidence Numeric. Candidates below this classification score
+#'   are dropped. Default `0` (keep all).
 #' @param top_n Integer or `NULL`. If supplied, only the top `n` candidates
-#'   (by confidence) per image are retained. Default `NULL` (keep all).
-#' @param label_col Character. Name of the label/species field inside each
-#'   prediction object.  Default `"label"` (SpeciesNet v2 format).
-#'   Use `"species"` for older exports.
-#' @param score_col Character. Name of the confidence field inside each
-#'   prediction object.  Default `"score"`.
+#'   (by score) per image are retained -- SpeciesNet's own classifier already
+#'   returns at most 5. Default `NULL` (keep all up to 5).
+#' @param include_coverage Logical. If `TRUE`, adds a `coverage` column
+#'   (bounding-box area fraction, `bbox_w * bbox_h`) and a `detection_conf`
+#'   column, taken from the image's highest-confidence MegaDetector
+#'   `"animal"` detection (SpeciesNet detection category `"1"`) -- an
+#'   image-quality analog to BLAST `qcovs`, matching [read_animl_output()]'s
+#'   `bbox_cols` convention. `NA` for images with no qualifying detection.
+#'   Default `FALSE`.
+#' @param min_detection_conf Numeric. Only used when `include_coverage =
+#'   TRUE`: detections below this MegaDetector confidence are not eligible
+#'   to be the representative detection. Default `0`.
 #'
-#' @return A data frame with one row per image x candidate species, containing:
+#' @return A data frame with one row per image x candidate species,
+#'   containing:
 #'   \describe{
-#'     \item{`observation_id`}{Image filename stem (derived from the key in
-#'       the `"predictions"` object).}
-#'     \item{`score`}{SpeciesNet confidence (0--1).}
-#'     \item{`species`}{Species binomial as returned by SpeciesNet. May be
-#'       `"blank"`, `"human"`, or other non-wildlife labels — filter these
-#'       before proceeding.}
-#'     \item{`genus`}{Genus name (first word of `species`). `NA` for
-#'       non-binomial labels.}
-#'     \item{`category`}{Detection category from the SpeciesNet output (e.g.,
-#'       `"animal"`, `"blank"`, `"human"`, `"vehicle"`). `NA` if absent.}
+#'     \item{`observation_id`}{Unique identifier derived from the image
+#'       filename stem (`filepath`, path stripped, extension(s) stripped).}
+#'     \item{`score`}{SpeciesNet classifier confidence (0--1) for this
+#'       candidate, from the RAW top-5 `classifications` block --
+#'       pre-geofencing, pre-taxonomic-rollup. This is deliberately NOT the
+#'       same as `ensemble_prediction_score` (see `@details`).}
+#'     \item{`species`, `genus`, `family`, `order`, `class`}{Parsed from
+#'       SpeciesNet's own `uuid;class;order;family;genus;species;common_name`
+#'       label string. Any of these may be `NA` -- SpeciesNet's own
+#'       classifier taxonomy has 2000+ labels spanning every rank from class
+#'       down to species. `species` is the full binomial (genus + epithet,
+#'       genus capitalized); the raw label's own species field is the
+#'       epithet only.}
+#'     \item{`common_name`}{Common name from the label string, or the
+#'       non-taxonomic label itself (`"animal"`, `"blank"`, `"vehicle"`,
+#'       `"human"`) when no taxonomic rank is populated.}
+#'     \item{`taxon_rank`}{Finest populated rank among `species`/`genus`/
+#'       `family`/`order`/`class`; `NA` for a non-taxonomic candidate.}
+#'     \item{`ensemble_prediction`, `ensemble_prediction_score`,
+#'       `ensemble_prediction_source`}{SpeciesNet's own final answer for the
+#'       WHOLE IMAGE (constant across every candidate row for that image) --
+#'       the label string's own common name, plus the ensemble's confidence
+#'       and which internal component produced it (e.g. `"classifier"`,
+#'       `"detector"`, `"geofence"`). Kept as reference/diagnostic metadata;
+#'       NOT used to build `species`/`score` above -- see `@details`.}
+#'     \item{`lat`, `lon`, `country`}{From the prediction's optional
+#'       `latitude`/`longitude`/`country` fields, when SpeciesNet was run
+#'       with geographic context. `NA` otherwise. Feed directly to
+#'       [build_site_table()] (already in the canonical `lat`/`lon` names).}
+#'     \item{`coverage`, `detection_conf`}{Only present when
+#'       `include_coverage = TRUE`; see that parameter.}
 #'     \item{`source_file`}{Basename of the source JSON file.}
 #'   }
 #'
 #' @details
-#' **Running SpeciesNet:** SpeciesNet is a Python package from Google /
-#' Wildlife Insights:
+#' **Why `classifications`, not `prediction`:** SpeciesNet's ensemble
+#' deliberately rolls a prediction up to genus/family/order/class/kingdom
+#' whenever species-level confidence is insufficient (Markoff & Galaktionovs
+#' 2025, arXiv:2510.14594 -- precision over recall by design). The raw top-5
+#' `classifications` block is the classifier's OWN candidate list, computed
+#' before that rollup and before geofencing -- it still carries
+#' species-level signal that the ensemble's own `prediction` field has
+#' already discarded. This function treats `classifications` as the primary
+#' multi-candidate source (mirroring [blast_sequences()]/
+#' [read_animl_output()]'s multiple-hypotheses-per-query shape) precisely so
+#' that species-level candidates reach TaxaLikely/TaxaAssign's own
+#' prior-informed resolution instead of being silently pre-resolved by
+#' SpeciesNet's conservative rollup. `ensemble_prediction`/
+#' `ensemble_prediction_score` are retained only as reference metadata (e.g.
+#' to compare against what TaxaID's own posterior later resolves to), not as
+#' an alternative candidate source.
+#'
+#' **Filtering non-wildlife detections:** SpeciesNet assigns non-taxonomic
+#' labels (`"animal"`, `"blank"`, `"human"`, `"vehicle"`) when no wildlife
+#' taxon is identified, and a `"no cv result"` placeholder when the
+#' classifier itself failed. All of these have `taxon_rank = NA`. Filter
+#' before standardizing:
+#' ```r
+#' match_df <- read_speciesnet_output("speciesnet_predictions.json") |>
+#'   dplyr::filter(!is.na(taxon_rank))
+#' ```
+#'
+#' **Running SpeciesNet:**
 #' ```bash
 #' pip install speciesnet
 #' python -m speciesnet.scripts.run_model \
 #'   --folders /path/to/images \
-#'   --predictions_json speciesnet_output.json
+#'   --predictions_json speciesnet_predictions.json
 #' ```
-#' Then read the output:
+#' Then:
 #' ```r
-#' match_df <- read_wildlife_insights_output("speciesnet_output.json") |>
-#'   subset(!species %in% c("blank", "human", "vehicle")) |>
+#' match_df <- read_speciesnet_output("speciesnet_predictions.json") |>
+#'   dplyr::filter(!is.na(taxon_rank)) |>
 #'   standardize_match_data(
 #'     observation_id_col = "observation_id",
 #'     score_col          = "score",
-#'     rank_system        = c("genus", "species")
+#'     rank_system        = c("class", "order", "family", "genus", "species")
 #'   )
 #' ```
 #'
-#' **Multiple candidates:** SpeciesNet typically returns only the top
-#' prediction per image (one row per image). If your output has multiple
-#' candidates per image, use `top_n` to control how many are retained.
+#' **Label format:** SpeciesNet's label strings are confirmed directly
+#' against the shipped taxonomy file
+#' (`data/model_package/taxonomy_release.txt` in `google/cameratrapai`):
+#' `uuid;class;order;family;genus;species;common_name`, e.g.
+#' `"...;amphibia;anura;bufonidae;rhinella;marina;cane toad"`. Any of the 5
+#' taxonomic fields may be empty (coarser rollup); this function normalizes
+#' both an empty field and the literal `"no cv result"` placeholder to `NA`.
 #'
 #' @seealso [read_animl_output()], [standardize_match_data()]
 #'
 #' @export
 #'
 #' @examples
-#' # Minimal synthetic SpeciesNet JSON
+#' # Minimal synthetic SpeciesNet CLI JSON (real label format, uuids shortened)
 #' tmp <- tempfile(fileext = ".json")
 #' writeLines(
-#'   '{"predictions":{
-#'      "IMG_001.jpg":[
-#'        {"label":"Odocoileus virginianus","score":0.94,"category":"animal"}],
-#'      "IMG_002.jpg":[
-#'        {"label":"blank","score":0.99,"category":"blank"}]
-#'   }}',
+#'   '{"predictions":[
+#'      {"filepath":"IMG_001.jpg",
+#'       "classifications":{
+#'         "classes":[
+#'           "u1;amphibia;anura;bufonidae;rhinella;marina;cane toad",
+#'           "u2;amphibia;anura;ranidae;;;true frogs"],
+#'         "scores":[0.87,0.06]},
+#'       "detections":[{"category":"1","conf":0.95,"bbox":[0.1,0.1,0.3,0.4]}],
+#'       "prediction":"u1;amphibia;anura;bufonidae;rhinella;marina;cane toad",
+#'       "prediction_score":0.87,"prediction_source":"classifier"},
+#'      {"filepath":"IMG_002.jpg",
+#'       "classifications":{
+#'         "classes":["u3;;;;;;blank"],
+#'         "scores":[0.99]},
+#'       "prediction":"u3;;;;;;blank",
+#'       "prediction_score":0.99,"prediction_source":"detector"}
+#'   ]}',
 #'   tmp
 #' )
-#' result <- read_wildlife_insights_output(tmp)
+#' result <- read_speciesnet_output(tmp)
 #' head(result)
 #' unlink(tmp)
-read_wildlife_insights_output <- function(files,
-                                           min_confidence = 0,
-                                           top_n          = NULL,
-                                           label_col      = "label",
-                                           score_col      = "score") {
+read_speciesnet_output <- function(files,
+                                    min_confidence      = 0,
+                                    top_n               = NULL,
+                                    include_coverage    = FALSE,
+                                    min_detection_conf  = 0) {
 
   .check_pkg("jsonlite")
 
   if (!is.character(files) || length(files) == 0L)
-    stop("read_wildlife_insights_output: 'files' must be a non-empty character vector or directory path.")
-  top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_wildlife_insights_output")
+    stop("read_speciesnet_output: 'files' must be a non-empty character vector or directory path.")
+  top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_speciesnet_output")
+  if (!is.logical(include_coverage) || length(include_coverage) != 1L || is.na(include_coverage))
+    stop("read_speciesnet_output: 'include_coverage' must be a single logical value.")
+  if (!is.numeric(min_detection_conf) || length(min_detection_conf) != 1L || is.na(min_detection_conf))
+    stop("read_speciesnet_output: 'min_detection_conf' must be a single numeric value.")
 
   # ---- resolve directory vs file list ----------------------------------------
   if (length(files) == 1L && dir.exists(files)) {
@@ -733,28 +820,31 @@ read_wildlife_insights_output <- function(files,
                         full.names = TRUE, recursive = FALSE,
                         ignore.case = TRUE)
     if (length(files) == 0L)
-      stop("read_wildlife_insights_output: no *.json files found in directory.")
+      stop("read_speciesnet_output: no *.json files found in directory.")
   } else {
     missing_files <- files[!file.exists(files)]
     if (length(missing_files) > 0L)
-      .stop_missing_files(missing_files, "read_wildlife_insights_output")
+      .stop_missing_files(missing_files, "read_speciesnet_output")
   }
 
-  # ---- parse each file -------------------------------------------------------
+  # ---- parse each file --------------------------------------------------------
   rows_all <- vector("list", length(files))
   for (i in seq_along(files)) {
-    rows_all[[i]] <- .parse_wi_predictions(
+    rows_all[[i]] <- .parse_speciesnet_predictions(
       files[[i]],
-      label_col = label_col,
-      score_col = score_col
+      include_coverage   = include_coverage,
+      min_detection_conf = min_detection_conf
     )
   }
   out <- do.call(rbind, rows_all)
 
   if (is.null(out) || nrow(out) == 0L) {
-    message("read_wildlife_insights_output: no predictions found across all files.")
-    return(.empty_wi_result())
+    message("read_speciesnet_output: no predictions found across all files.")
+    return(.empty_speciesnet_result(include_coverage))
   }
+
+  .warn_duplicate_basenames(out$.filepath, "read_speciesnet_output")
+  out$.filepath <- NULL
 
   # ---- apply filters ---------------------------------------------------------
   out <- out[!is.na(out$score) & out$score >= min_confidence, , drop = FALSE]
@@ -765,13 +855,13 @@ read_wildlife_insights_output <- function(files,
 }
 
 
-#' Parse SpeciesNet/Wildlife Insights JSON predictions from one file
+#' Parse one SpeciesNet predictions_json file's "predictions" array
 #' @noRd
-.parse_wi_predictions <- function(f, label_col, score_col) {
+.parse_speciesnet_predictions <- function(f, include_coverage, min_detection_conf) {
   parsed <- tryCatch(
     jsonlite::fromJSON(f, simplifyVector = FALSE),
     error = function(e) {
-      stop(sprintf("read_wildlife_insights_output: could not parse '%s': %s",
+      stop(sprintf("read_speciesnet_output: could not parse '%s': %s",
                    basename(f), conditionMessage(e)))
     }
   )
@@ -779,38 +869,187 @@ read_wildlife_insights_output <- function(files,
   preds <- parsed[["predictions"]]
   if (is.null(preds) || length(preds) == 0L) {
     message(sprintf(
-      "read_wildlife_insights_output: '%s' has no 'predictions' field.", basename(f)
+      "read_speciesnet_output: '%s' has no 'predictions' field.", basename(f)
     ))
-    return(.empty_wi_result())
+    return(NULL)
   }
 
-  img_names <- names(preds)
-  .warn_duplicate_basenames(img_names, "read_wildlife_insights_output")
-  rows <- vector("list", length(img_names))
-  for (i in seq_along(img_names)) {
-    img_key    <- img_names[[i]]
-    obs_id     <- tools::file_path_sans_ext(basename(img_key))
-    candidates <- preds[[img_key]]
-    if (!is.list(candidates) || length(candidates) == 0L) next
+  rows <- lapply(preds, function(p) {
+    filepath <- p[["filepath"]]
+    if (is.null(filepath) || !nzchar(trimws(as.character(filepath)))) return(NULL)
+    obs_id <- tools::file_path_sans_ext(basename(as.character(filepath)))
 
-    img_rows <- lapply(candidates, function(p) {
-      nm  <- if (!is.null(p[[label_col]])) as.character(p[[label_col]]) else NA_character_
-      sc  <- if (!is.null(p[[score_col]])) suppressWarnings(as.numeric(p[[score_col]])) else NA_real_
-      cat <- if (!is.null(p[["category"]])) as.character(p[["category"]]) else NA_character_
-      genus_val <- .extract_genus(nm)
-      data.frame(
-        observation_id = obs_id,
-        score          = sc,
-        species        = nm,
-        genus          = genus_val,
-        category       = cat,
-        source_file    = basename(f),
-        stringsAsFactors = FALSE
-      )
-    })
-    rows[[i]] <- do.call(rbind, img_rows)
-  }
+    classes <- p[["classifications"]][["classes"]]
+    scores  <- p[["classifications"]][["scores"]]
+    if (is.null(classes) || length(classes) == 0L) return(NULL)
+
+    labels     <- vapply(classes, as.character, character(1L))
+    score_vals <- vapply(scores, function(s) suppressWarnings(as.numeric(s)), numeric(1L))
+    tax <- .parse_speciesnet_label(labels)
+
+    ens_label  <- p[["prediction"]]
+    ens_common <- if (!is.null(ens_label)) {
+      .parse_speciesnet_label(as.character(ens_label))$common_name
+    } else {
+      NA_character_
+    }
+
+    lat_val <- p[["latitude"]]
+    lat_val <- if (is.null(lat_val)) NA_real_ else as.numeric(lat_val)
+    lon_val <- p[["longitude"]]
+    lon_val <- if (is.null(lon_val)) NA_real_ else as.numeric(lon_val)
+    country_val <- p[["country"]]
+    country_val <- if (is.null(country_val)) NA_character_ else as.character(country_val)
+
+    df <- data.frame(
+      .filepath      = as.character(filepath),
+      observation_id = obs_id,
+      score          = score_vals,
+      species        = tax$species,
+      genus          = tax$genus,
+      family         = tax$family,
+      order          = tax$order,
+      class          = tax$class,
+      common_name    = tax$common_name,
+      taxon_rank     = tax$taxon_rank,
+      ensemble_prediction        = ens_common,
+      ensemble_prediction_score  = if (is.null(p[["prediction_score"]])) NA_real_ else as.numeric(p[["prediction_score"]]),
+      ensemble_prediction_source = if (is.null(p[["prediction_source"]])) NA_character_ else as.character(p[["prediction_source"]]),
+      lat            = lat_val,
+      lon            = lon_val,
+      country        = country_val,
+      source_file    = basename(f),
+      stringsAsFactors = FALSE
+    )
+
+    if (isTRUE(include_coverage)) {
+      cov <- .speciesnet_detection_coverage(p[["detections"]], min_detection_conf)
+      df$coverage       <- cov$coverage
+      df$detection_conf <- cov$detection_conf
+    }
+
+    df
+  })
+
   rows <- rows[!vapply(rows, is.null, logical(1L))]
   if (length(rows) == 0L) return(NULL)
   do.call(rbind, rows)
+}
+
+
+#' Parse SpeciesNet's uuid;class;order;family;genus;species;common_name label
+#'
+#' Real format confirmed directly against the shipped taxonomy file
+#' (`data/model_package/taxonomy_release.txt` in `google/cameratrapai`): 7
+#' semicolon-delimited fields. Any of the 5 taxonomic fields (class..species)
+#' may be empty when the ensemble's prediction is rolled up to a coarser
+#' rank; the non-taxonomic labels (`"animal"`/`"blank"`/`"vehicle"`) leave
+#' all 5 empty, and `"no cv result"` (the `"unknown"` placeholder) repeats
+#' that literal string in all 5 instead of leaving them empty -- both are
+#' normalized to NA here. `species` in the raw label is the epithet only
+#' (e.g. `"marina"` for `"Rhinella marina"`); genus is capitalized and
+#' combined with the epithet into a proper binomial in the returned
+#' `species` column.
+#' @noRd
+.parse_speciesnet_label <- function(labels) {
+  n <- length(labels)
+  if (n == 0L) {
+    return(data.frame(
+      class = character(0), order = character(0), family = character(0),
+      genus = character(0), species = character(0), common_name = character(0),
+      taxon_rank = character(0), stringsAsFactors = FALSE
+    ))
+  }
+
+  clean <- function(x) {
+    x <- trimws(x)
+    ifelse(!nzchar(x) | x == "no cv result", NA_character_, x)
+  }
+
+  parts <- strsplit(labels, ";", fixed = TRUE)
+  ok <- lengths(parts) == 7L
+  if (any(!ok)) {
+    warning(sprintf(
+      paste0(
+        "read_speciesnet_output: %d label(s) did not have the expected 7 ",
+        "semicolon-delimited fields ('uuid;class;order;family;genus;",
+        "species;common_name'); taxonomy left NA for those candidates."
+      ),
+      sum(!ok)
+    ), call. = FALSE)
+  }
+
+  class_v <- order_v <- family_v <- genus_v <- epithet_v <- common_v <-
+    rep(NA_character_, n)
+
+  if (any(ok)) {
+    m <- do.call(rbind, parts[ok])
+    class_v[ok]   <- clean(m[, 2])
+    order_v[ok]   <- clean(m[, 3])
+    family_v[ok]  <- clean(m[, 4])
+    genus_v[ok]   <- clean(m[, 5])
+    epithet_v[ok] <- clean(m[, 6])
+    common_v[ok]  <- clean(m[, 7])
+  }
+
+  genus_cap <- ifelse(
+    is.na(genus_v), NA_character_,
+    paste0(toupper(substr(genus_v, 1, 1)), substr(genus_v, 2, nchar(genus_v)))
+  )
+  species_v <- ifelse(
+    !is.na(genus_cap) & !is.na(epithet_v),
+    paste(genus_cap, epithet_v), NA_character_
+  )
+
+  taxon_rank <- ifelse(
+    !is.na(species_v), "species", ifelse(
+      !is.na(genus_cap), "genus", ifelse(
+        !is.na(family_v), "family", ifelse(
+          !is.na(order_v), "order", ifelse(
+            !is.na(class_v), "class", NA_character_)))))
+
+  data.frame(
+    class = class_v, order = order_v, family = family_v,
+    genus = genus_cap, species = species_v, common_name = common_v,
+    taxon_rank = taxon_rank,
+    stringsAsFactors = FALSE
+  )
+}
+
+
+#' Compute coverage/detection_conf from an image's MegaDetector detections
+#'
+#' Coverage is bbox width*height (fractional image area, MegaDetector's own
+#' normalized `[xmin, ymin, width, height]` convention) for the
+#' highest-confidence `"animal"` (category `"1"`) detection clearing
+#' `min_detection_conf`. `NA` if there are no detections, none are category
+#' `"1"`, or none clear the threshold.
+#' @noRd
+.speciesnet_detection_coverage <- function(detections, min_detection_conf) {
+  if (is.null(detections) || length(detections) == 0L) {
+    return(list(coverage = NA_real_, detection_conf = NA_real_))
+  }
+  animal_dets <- Filter(function(d) {
+    cat_val <- d[["category"]]
+    !is.null(cat_val) && as.character(cat_val) == "1"
+  }, detections)
+  if (length(animal_dets) == 0L) {
+    return(list(coverage = NA_real_, detection_conf = NA_real_))
+  }
+  confs <- vapply(animal_dets, function(d) {
+    cv <- d[["conf"]]
+    if (is.null(cv)) NA_real_ else as.numeric(cv)
+  }, numeric(1L))
+  eligible <- which(!is.na(confs) & confs >= min_detection_conf)
+  if (length(eligible) == 0L) {
+    return(list(coverage = NA_real_, detection_conf = NA_real_))
+  }
+  best <- eligible[which.max(confs[eligible])]
+  bbox <- animal_dets[[best]][["bbox"]]
+  cov <- if (!is.null(bbox) && length(bbox) == 4L) {
+    as.numeric(bbox[[3]]) * as.numeric(bbox[[4]])
+  } else {
+    NA_real_
+  }
+  list(coverage = cov, detection_conf = confs[best])
 }

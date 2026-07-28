@@ -1,7 +1,354 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-20, continued yet further (Sonnet 5 -- a real GBIF timeout during the
+# Last updated: 2026-07-28 (Sonnet 5 -- generate_domestic_food_priors() re-implemented
+# around the match-list-gated architecture the user confirmed 2026-07-24 (this session
+# picked back up after a multi-day gap; the name-normalization/kingdom-cross-check work
+# already shipped 2026-07-24 was a real but separate improvement, not the redesign
+# itself). New `match_list_taxa` param (taxa with real likelihoods this run) gates all
+# four fixed/supplied channels to the intersection and drives an automatic open-
+# discovery residual step for genuinely unanticipated cultivated species, restricted to
+# `phylum %in% c("Streptophyta","Tracheophyta")` and deliberately NOT pre-restricted to
+# any known list. New 4th fixed list `known_cultivar_taxa` (216 species) plus a much
+# larger `food_species_taxa` default (449, up from 20) -- both drawn from the CSV
+# cross-reference classification work already done 2026-07-24, cleaned further this
+# session (13 cultivated-food-fungi species and one bred cereal found mixed into the
+# source "cultivar" list were moved into `food_species_taxa`). New
+# `cultivar_evidence_source` output column distinguishes the three ways a
+# `prior_source_type = "domestic_plant"` row can arise. All four real production
+# workflows rewired to source `match_list_taxa`/`taxonomy` from each script's own match
+# object -- the 12S script's call had to move to after `match_obj_restored` is
+# finalized, since that object didn't exist yet at the call's original location. A real
+# zero-column-tibble bug (from `dplyr::bind_rows()` of all-empty channels) and a test-
+# suite hazard (existing tests not zeroing out the new 4th channel, one hanging past
+# 120s on live network calls) were both found and fixed live. `devtools::test()` 0
+# failures (536, up from 481), `devtools::check()` 0/0/0. Reinstalled to
+# ~/Library/R/4.0/library. See `TaxaExpect/CLAUDE.md`'s top session note and
+# `[[project_taxaflag_domestic_species_floor_note]]` for the full record.
+# Previous update, 2026-07-25, later same day (Sonnet 5 -- closed a real consistency gap the
+# user asked to double-check after the same-day verify_taxon_names()/convert_taxonomy_
+# backbone() fix (see this file's own note directly below): TaxaTools::fill_higher_ranks()
+# was checked for the same class of bug and found NOT to have the exact "Inu Inu"
+# fabrication issue (it's genus-only by design, never touches matched_name), but a live
+# check confirmed a real, related gap -- its `genus` output stayed the locally-extracted
+# query string even when the backbone flagged it as a synonym (e.g. "Inu", not corrected
+# to "Luciogobius" the way convert_taxonomy_backbone() now is). Traced a concrete
+# consequence: TaxaAssign::join_priors()'s .expand_coarse_rank_rows() does an exact-string
+# match between a likelihood-side coarse taxon_name (now correctly resolved to the current
+# name, post the earlier fix) and expansion_taxonomy's genus column (built via
+# fill_higher_ranks()) -- before today, both sides agreed on the synonym form by
+# coincidence; after fixing only one side, that join would have started silently failing,
+# losing real occurrence-based coarse-rank species expansion for affected taxa. Fixed:
+# fill_higher_ranks() now corrects `genus` to the backbone's resolved name whenever a
+# lookup shows it's a synonym cleanly resolved at genus rank, restoring agreement between
+# the two functions. Separately, escalate_taxonomic_rank() was checked and confirmed to
+# have NO analogous issue at all -- it never reads matched_name, and looks up each rank by
+# NAME (not by trusting the caller's current_rank to index a specific position), so a
+# rank mismatch degrades to an honest NA rather than a fabricated value; no changes needed.
+# TaxaTools devtools::test() 829/829 (up from 824), devtools::check() 0/0/0, reinstalled.
+# Live-reverified against the real Inu case post-reinstall. See TaxaTools/CLAUDE.md's own
+# same-day note for the full record.
+# Previous update, 2026-07-25 (Sonnet 5 -- fixed a real "Inu Inu" fabricated-pseudo-binomial
+# artifact the user found in real Mugu review_assignments() output, tracing a full chain
+# from TaxaFlag through TaxaAssign to its true root in TaxaTools/TaxaMatch. Real chain,
+# each link independently confirmed against live data before the next was investigated:
+# (1) TaxaFlag::review_assignments()'s LLM reviewer speculated "possibly a canid
+# contaminant" for a taxon named "Inu Inu" -- purely a lexical association ("inu" is
+# Japanese for dog), since the LLM has no access to the underlying match evidence, not a
+# real finding -- prompting the user to ask where "Inu Inu" itself came from. (2) Traced
+# to TaxaAssign::add_slash_taxon()'s .make_slash_name(): a single-word taxon_name with no
+# space (the mislabeled bare genus "Luciogobius"... no, "Inu") falls back to using the
+# whole string as BOTH genus and epithet when building a mixed-genus slash label,
+# producing "Inu Inu". (3) Traced further to TaxaMatch::convert_taxonomy_backbone():
+# taxon_name correctly fell back to a coarser resolved name ("Luciogobius", GBIF's
+# genus-only match) when no species-level target existed, but taxon_name_rank kept its
+# stale "species" label -- so the bare genus was reported AS IF still species-level. (4)
+# Traced to the true root, TaxaTools::verify_taxon_names(): the underlying NCBI reference
+# ("Inu sp. 1 sensu Shibukawa et al., 2020.", a real informally-named goby) resolves
+# against GBIF's backbone to genus "Luciogobius" via a genuine SYNONYM relationship --
+# GBIF considers "Inu" Snyder 1909 a synonym of "Luciogobius" Gill 1859 -- but
+# verify_taxon_names() read GNVerifier's matchedName (the synonym form) instead of
+# currentName (the accepted form) despite the API's own isSynonym flag saying to prefer
+# it, AND had no way to report that the match only resolved to genus rank at all. A
+# second, independent bug was found and fixed in the same function while there: the
+# authority-stripping regex only captured "genus + at most one lowercase word," silently
+# truncating any subspecies-rank match to a binomial (confirmed live: "Delphinus delphis
+# ponticus Barabash, 1935" -> "Delphinus delphis", dropping the subspecies epithet).
+#
+# Fixed at the two correct layers, not just patched at the symptom: TaxaTools::
+# verify_taxon_names() now sources matched_name from GNVerifier's own
+# matchedCanonicalSimple/currentCanonicalSimple fields (authority-free, rank-complete,
+# no local regex) and prefers the current name when isSynonym is TRUE; gains new
+# matched_rank (the rank the match ACTUALLY resolved at) and is_synonym output columns.
+# TaxaMatch::convert_taxonomy_backbone() now uses matched_rank to correct
+# taxon_name_rank whenever the name itself falls back to a coarser value, closing the
+# gap that let a genus-only match keep a stale species-level label. Verified backbone-
+# general, not GBIF-specific, before shipping either fix: live-queried the same real
+# name across 5 backbones (Catalogue of Life, ITIS, NCBI, WoRMS, GBIF) -- matched_rank is
+# normalised identically by GNVerifier across all of them (a mechanism, not a GBIF
+# quirk); is_synonym/currentName differ in real underlying DATA by backbone (NCBI's own
+# taxonomy genuinely does not consider "Inu" a synonym at all -- a real cross-authority
+# disagreement, not a bug), and since `dataSources` scopes every verify_taxon_names()
+# call to exactly one backbone, the fix always reports that one backbone's own answer,
+# never blending or overriding one backbone's judgment with another's. `backbone_id = 4`
+# (NCBI) bypasses this API path entirely (`.verify_via_ncbi()`) and so never gets
+# synonym resolution, but gets matched_rank identically via a shared helper.
+#
+# Both packages: devtools::test() clean (TaxaTools 824/824 up from ~818; TaxaMatch
+# 504/504, convert_taxonomy_backbone.R's own file 43/43 up from 41), devtools::check()
+# 0/0/0 both, both reinstalled to ~/Library/R/4.0/library. New tests directly reproduce
+# the real Inu case (both the genus-synonym-resolution case and the subspecies-truncation
+# case) rather than only synthetic fixtures. See TaxaTools/CLAUDE.md's and TaxaMatch/
+# CLAUDE.md's own top session notes for the full per-package record, and the Recent
+# Breaking Changes table below for the exact signature/behavior changes.
+# Previous update, 2026-07-24 (Sonnet 5 -- two fixes from continued design discussion on the
+# domestic/food-species priors work: (1) TaxaMatch::convert_taxonomy_backbone() now cleans
+# its not-found (fallback-to-original) path via TaxaTools::clean_taxon_names(), not just the
+# target-backbone-matched path -- found because the user asked why a compound hybrid-formula
+# name ("((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata", a real
+# NCBI reference accession label) reached match_obj$taxon_name/species completely unmodified
+# during the 18S residual-count exercise. (2) TaxaFetch::fetch_inat_occurrences() gains
+# inat_kingdom + TaxaExpect::generate_domestic_food_priors() gains a kingdom cross-check
+# against it, prompted by the user directly asking whether iNaturalist's own taxonomic
+# backbone (distinct from NCBI/GBIF) could cause a name search to resolve to the wrong
+# organism -- confirmed real (a cross-kingdom homonym is possible via iNat's single-best-
+# text-match search), so a mismatch now discards the local-evidence boost (not the fixed-
+# list category itself) rather than trusting a possibly-wrong hit. All three packages
+# devtools::test()/check() clean (TaxaMatch 500/500, TaxaFetch 541/541, TaxaExpect 495/495,
+# all 0/0/0). Reinstalled to ~/Library/R/4.0/library. See each package's own CLAUDE.md top
+# session note for the full record.
+# Previous update, 2026-07-24, later same day (Sonnet 5 -- TaxaFlag::flag_contaminant()/
+# flag_handler() redesigned around a unified observation_validity/validity_flag/
+# validity_reason schema (replacing contaminant_score/{type}_risk/{type}_reason and
+# flag_handler/flag_handler_score/flag_handler_reason), closing out the two names the
+# 2026-07-23 polarity audit had flagged but deferred. A real correction was made mid-design:
+# the audit had mischaracterized both as "high=more risk" -- verified directly against
+# source before touching any file and found actually HIGH=GOOD/genuine, LOW=likely
+# contaminant/handler artifact; a "_risk"-style rename would have been actively backwards,
+# not just a missed improvement. Final schema, reached through several rounds of user
+# brainstorming (autonomous_operation_score -> validity_score -> observation_validity),
+# then a further simplification (single column + type-qualified companion value, matching
+# add_posthoc_assessment()'s existing "one column, many type-qualified string values"
+# precedent): observation_validity (numeric 0-1, high=good), validity_flag ("valid"/
+# "questionable_{type}"/"invalid_{type}"), validity_reason. contaminant_type no longer
+# parameterizes column NAMES (verified first that no real workflow used that multi-call-
+# merge capability) -- the type now lives in validity_flag's VALUE instead.
+# report_flags() gained a third, additive auto-detection branch reading the type qualifier
+# out of validity_flag's values, alongside its two pre-existing naming-era branches.
+# Same day, wired into both real PtConception production workflows
+# (PtConceptionWorkflow_12S_single_site.R, PtConceptionWorkflow_18S_2_single_site.R --
+# outside this monorepo, not under git), replacing every real lab_contaminant_risk/score
+# reference with the new schema; 18S_2's own pre-existing Session-101 cached-RDS name-
+# migration block was extended (not replaced) with a second branch forward-migrating
+# lab_contaminant_risk/score/reason values to the new schema, verified against both real
+# cached *_contaminant_flags.rds checkpoints (12S 43/10300/3254, 18S 1/18693/2503
+# high/moderate/low -- both still pre-2026-07-24 schema, confirming the migration path is
+# genuinely exercised). devtools::test() 0 failures (123, up from 119), devtools::check()
+# 0 errors/0 warnings (1 pre-existing, unrelated warning+note, untouched). Both workflow
+# files parse cleanly; not yet run end to end (would trigger live GBIF/NCBI/LLM calls) --
+# left for the user to trigger. See TaxaFlag/CLAUDE.md's top session note for the full
+# record.
+# Previous update, 2026-07-23, later same day (Sonnet 5 -- renamed the whole
+# species_support/genus_support/family_support/own_rank_support family (TaxaLikely),
+# their TaxaAssign::posterior_consensus() winner_* pass-through, and TaxaFlag's
+# score_support_flag mechanism -- all to a "*_confusion_risk" naming, prompted by the user
+# noticing the original names inverted this ecosystem's own polarity convention: every
+# other risk-style metric here (TaxaFlag::flag_contaminant()'s contaminant_score, {type}_
+# risk columns) already uses HIGH = MORE of the named concern, but "*_support" implied the
+# opposite (higher = more backing) while the values themselves are one-sided tail
+# probabilities (P(a confusable congener/confamilial/cross-family relative would score
+# this high or higher)) -- i.e. HIGH = MORE confusable = WEAKER evidence, backwards from
+# what the name suggested. Considered taking the complement (1 - value) instead, framing
+# it as a "confidence" -- rejected: that would invite the classic p-value fallacy
+# (conflating 1-p with an actual posterior probability of correctness), since these are
+# genuine empirical tail probabilities, not calibrated confidences. Pure rename, NO math
+# changed: `species_support`->`species_confusion_risk`, `genus_support`->
+# `genus_confusion_risk`, `family_support`->`family_confusion_risk`, `own_rank_support`->
+# `own_rank_confusion_risk` (TaxaLikely::evaluate_likelihoods()); `model_params$
+# Support_Curves`->`Confusion_Risk_Curves` and `.lookup_support_value()`->
+# `.lookup_confusion_risk_value()` (TaxaLikely, internal); `winner_species_support`/etc.
+# -> `winner_species_confusion_risk`/etc. (TaxaAssign::posterior_consensus()); TaxaFlag::
+# add_posthoc_assessment()'s `score_support_flag`->`confusion_risk_flag`,
+# `own_rank_support_col`->`own_rank_confusion_risk_col`,
+# `weak_score_support_threshold`->`high_confusion_risk_threshold`, and its two flag
+# values `"weak_score_support"`/`"adequate_score_support"` ->
+# `"high_confusion_risk"`/`"low_confusion_risk"`. Re-verified end to end against the same
+# real Mugu 12S data used to validate the original implementation (same numbers, new
+# names). `devtools::test()` 0 failures on all three touched packages (TaxaLikely 463,
+# TaxaAssign 256, TaxaFlag 119 -- TaxaFlag gained no new tests, existing ones renamed
+# in place); `devtools::check()` 0/0/0 on TaxaLikely (1 pre-existing unrelated timestamp
+# NOTE only) and TaxaAssign, TaxaFlag's pre-existing unrelated `build_review_covariates.R`
+# warning+note untouched. Reinstalled to `~/Library/R/4.0/library`. Also wired
+# `TaxaLikely::compute_rank_thresholds()` into both real Mugu production workflows
+# (`MuguFishWorkflow.R`/`MuguWilderFishWorkflow.R`, outside this monorepo, not under git,
+# backed up first as `*.bak_pre_rank_thresholds`): each marker's `score_con` call now uses
+# thresholds derived from that marker's own `seq_matrix` (cached the same way as
+# `lik_model`) instead of one hardcoded GITA/JV vector applied uniformly across markers --
+# real derived values differ meaningfully by marker (COI species=98/genus=89/family=87 vs.
+# 12S 99/97/93 vs. 16S 99/96/96), confirming the pooled-threshold approach really was
+# wrong for at least COI. Verified via a standalone simulation against real cached
+# `seq_matrix`/`match` objects for all three markers (not yet run through the actual
+# production scripts end to end, to avoid triggering live NCBI/GBIF calls without asking).
+# See each touched package's own CLAUDE.md for its own note.
+# Previous update, 2026-07-23, same day, yet another follow-up (Sonnet 5 -- TaxaFetch::
+# dedupe_occurrences() split out of stack_occurrences() entirely, prompted by a user
+# naming/design critique: "stack_occurrences" implies pure combination, so bundling
+# dedup logic inside it risked a single-source caller reading the name, concluding
+# stacking didn't apply to them, and skipping deduplication altogether -- confirmed via
+# the documented GBIF-only pipeline (get_gbif_occurrences() -> filter_gbif_quality(), no
+# stack_occurrences() call at all) and confirmed NOT new to this session's own
+# collapse_duplicate_occasions addition (the pre-existing Session 140 gbifID dedup has
+# the identical single-frame blind spot). Both mechanisms moved into new
+# dedupe_occurrences(data, ...), which takes one frame (stacked or not);
+# stack_occurrences() now only row-binds + adds point_id. Every real call site across
+# the monorepo updated to add an explicit dedupe_occurrences() call, including
+# TaxaExpect::build_priors() (real package code) and 8 inst/vignette files spanning
+# TaxaAssign/TaxaExpect/TaxaFetch -- necessary since the pre-existing gbifID protection
+# would otherwise silently vanish for every caller. devtools::test() 0 failures (563, up
+# from 553), devtools::check() 0/0/0. See TaxaFetch/CLAUDE.md's top session note.
+# Previous update, 2026-07-23, continued yet further (Sonnet 5 -- TaxaHabitat::
+# review_institution_flags() built, closing out the institution-review feature deferred
+# earlier the same session. Deliberately scoped DOWN from review_spatial_flags() (~950 lines)
+# given real datasets here are small (single view, no bulk-select, single-level undo). Shows
+# the flagged occurrence AND its matched institution's own location together on one map (a new
+# institution_lon/institution_lat pair added to filter_gbif_quality()'s institution columns to
+# support this), so a reviewer can see directly whether a record sits at the institution or
+# genuinely nearby it. Every record starts "keep" -- nothing discarded without review. No test
+# file, matching review_spatial_flags()'s own precedent for interactive gadgets in this
+# ecosystem; relied on careful manual review instead. A real ASCII-policy violation (Unicode
+# arrow/bullet characters) was caught by devtools::check() itself and fixed before shipping.
+# Wired into all 5 real production workflow scripts (2 Mugu + 3 PtConception) using the exact
+# convention review_spatial_flags() already established in those same files -- a plain inline
+# call, sound alert, elapsed-time tracking, gated so workflows with nothing flagged skip the
+# section. devtools::test()/check() clean both packages. Not yet run live -- the user's call.
+# See TaxaHabitat/CLAUDE.md's top session note and [[project_geographic_outlier_check]] for
+# the full record.
+# Previous update, 2026-07-23, continued once more (Sonnet 5 -- implements both tasks from
+# ecosystem_docs/REENTRY_PROMPT_score_support_posthoc_and_rank_thresholds.md, after
+# confirming the two open design questions with the user first (package placement in
+# TaxaLikely near evaluate_likelihoods(); EB-shrunk curves stored in model_params$
+# Support_Curves, computed once by train_likelihood_model() rather than recomputed per
+# query; all three *_support values always populated, plus an own_rank_support
+# convenience column). Task 1: new internal TaxaLikely::.compute_rank_score_curves()
+# (R/support_curves.R) makes diagnostics/score_floor_roc_sweep.R's genus-/family-equal-
+# weighted, Empirical-Bayes-shrunk per-rank TPR/FPR curves real package machinery;
+# train_likelihood_model() stores them in Support_Curves; evaluate_likelihoods() gains
+# species_support/genus_support/family_support/own_rank_support (a model-independent,
+# score-ONLY diagnostic, deliberately separate from the model-based absolute_fit_pvalue --
+# LOWER values mean STRONGER evidence, a p-value-like quantity, not the usual higher-is-
+# better "support" sense); TaxaAssign::posterior_consensus() gains the matching
+# winner_*_support pass-through columns (same pattern as winner_absolute_fit_pvalue);
+# TaxaFlag::add_posthoc_assessment() gains a new, deliberately SEPARATE score_support_flag
+# column (not folded into posthoc_assessment's override chain -- the trusted_rank
+# ladder-walk's 2026-07-20 removal is the cautionary precedent for why a recomputing/
+# overriding mechanism was avoided here). Task 2: TaxaAssign::score_consensus(
+# rank_thresholds=) loses its GITA/Jonah Ventures default entirely -- now required, errors
+# with guidance (mirrors join_priors(backbone_id=)'s exact missing()/cli_abort() precedent)
+# pointing at either supplying real thresholds or deriving marker-specific ones via the new
+# TaxaLikely::compute_rank_thresholds() (per-rank Youden's J, sharing the same curve
+# machinery as Task 1). Real call-site survey from the reentry doc turned out to need less
+# fixing than flagged: both TaxaAssign_llm_workflow.R calls already passed
+# rank_thresholds = NULL EXPLICITLY (not omitted), so neither broke; only one vignette call
+# and ~20 test call sites needed rank_thresholds = NULL added. TaxaWizard's TaxaAssign.json
+# metadata entry updated to required=true with the new guidance. devtools::test() clean on
+# all four touched packages (TaxaLikely 463, TaxaAssign 256, TaxaFlag 119, TaxaWizard 70,
+# 0 failures each); devtools::check() 0 errors/0 warnings/0 notes on TaxaLikely/TaxaAssign/
+# TaxaWizard, TaxaFlag has 1 pre-existing warning+note in build_review_covariates.R
+# (untouched this session, confirmed via git diff). All four reinstalled via
+# ecosystem_docs/install_all.R, verified at ~/Library/R/4.0/library. See the Recent
+# Breaking Changes table below for the four new rows, and each touched package's own
+# CLAUDE.md for its own top session note.
+# Previous update, 2026-07-23, continued yet further (Sonnet 5 -- TaxaFetch::stack_occurrences()
+# gains collapse_duplicate_occasions (default TRUE): collapses rows sharing the same species x
+# date x rounded-location combination, catching repeat citizen-science reports of one detection
+# occasion (e.g. many eBird checklists for one rare-bird-alert individual, many iNaturalist
+# uploads from one bioblitz) across DIFFERENT records/platforms -- the existing gbifID dedup
+# (Session 140) can't touch these since each is a genuinely distinct GBIF record. Defaulted on
+# after verifying directly (per the user's request, not assumed) that TaxaExpect::
+# prepare_model_dataframe() counts raw records as both the binomial numerator (n_species) and
+# shared effort denominator (n_total_at_site) -- uncollapsed repeat reports inflate a species'
+# modeled relative detection frequency directly, and this ecosystem's occupancy-style priors
+# should be keyed on detection occasions, not report counts. devtools::test() 0 failures (549,
+# up from 539), devtools::check() 0/0/0. See TaxaFetch/CLAUDE.md's top session note.
+# SAME DAY, immediate follow-up: fetch_dataone_occurrences(gbif_snapshot_path=) removed entirely
+# (zero real callers anywhere in the monorepo, superseded by and less safe than the new
+# collapse_duplicate_occasions step above -- it coalesced missing name/date/coords to blank/zero
+# before hashing instead of skipping incomplete rows). gbif_hashes removed from 5 internal call
+# sites; .load_gbif_hashes()/.deduplicate_against_gbif() deleted. devtools::test() 0 failures
+# (553, up from 549), devtools::check() 0/0/0.
+# Previous update, 2026-07-23 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_domestic_food_
+# species_priors.md's three-vector domestic/food design: TaxaFetch::fetch_inat_occurrences()
+# (new -- counts real local iNaturalist observations, with captive/quality_grade filters that
+# can surface casual-grade cultivated/captive records GBIF-style indexing excludes) plus
+# TaxaExpect::generate_domestic_food_priors() (new -- domestic_animal_taxa/food_species_taxa
+# fixed vectors with populated defaults; candidate_plant_taxa deliberately has no default list,
+# per the reentry prompt's CSV-overlap finding that Cultivated_plants.csv/Food_Plants_Taxonomy.csv
+# are the same underlying list at two processing stages, not a usable food-vs-ornamental split --
+# a plant candidate only gets a prior row when a live iNat casual-grade check finds real local
+# evidence for it). Output rows carry a real taxon_name, a new prior_source_type categorical
+# column, and model_tier = "tier_domestic_food". Reflects the reentry prompt's corrected finding
+# that Homo sapiens sequence resolution already works fine on real PtConception 12S data
+# regardless of prior magnitude -- this fix's value is the categorical flag plus help for
+# weaker/degraded matches, not sequence-level resolution -- and does not address cross-genus
+# reference gaps (Bison bison/Bos taurus). Both packages devtools::test() 0 failures (TaxaFetch
+# 539/539 up from 506, TaxaExpect 481/481 up from 445), devtools::check() 0/0/0 both. Reinstalled
+# to ~/Library/R/4.0/library. See TaxaFetch/CLAUDE.md's and TaxaExpect/CLAUDE.md's own top
+# session notes for the full record, and [[project_taxaflag_domestic_species_floor_note]] in the
+# memory system.
+# Previous update, 2026-07-23, continued yet further (Sonnet 5 -- TaxaFetch::filter_gbif_quality()'s
+# institution check redesigned to flag, never remove, after the user reviewed the real 29
+# flagged Mugu records and found several likely-genuine observations (live fish near a
+# university botanical garden pond) alongside likely-genuine errors -- proximity to an
+# institution can't be auto-removed the way the other five CoordinateCleaner checks can, since
+# field stations/marine labs are often sited exactly where good habitat is. Renamed
+# exclude_institution -> flag_institution; flagged rows are RETAINED with 4 new columns
+# instead of moving to removed_records. New TaxaHabitat::flag_institution_candidates()
+# classifies flagged rows "high"/"low"/"ambiguous" by crossing the matched institution's real
+# type against the record's kingdom, mirroring flag_habitat_inconsistencies()'s existing
+# classify-then-review two-stage pattern -- deliberately, after a design discussion comparing
+# TaxaHabitat vs. TaxaMatch as the right home (TaxaHabitat won: same pipeline lane as the GBIF
+# reference-occurrence data this operates on, and "archived vs. wild" is fundamentally a
+# habitat question). A real bug (all-NA logical-index subsetting for institution matches with
+# no recorded type) was found and fixed before shipping. The interactive map review gadget
+# (review_institution_flags(), meant to mirror review_spatial_flags()) is intentionally
+# deferred -- scoped in detail, not built, given real time constraints raised mid-session.
+# devtools::test() 0 failures (TaxaFetch 515/515, TaxaHabitat 158/158), devtools::check() 0/0/0
+# both packages. See TaxaFetch/CLAUDE.md's and TaxaHabitat/CLAUDE.md's top session notes, and
+# [[project_geographic_outlier_check]] in the memory system for the full record and resume
+# point.
+# Previous update, 2026-07-23, continued (Sonnet 5 -- filter_gbif_quality() redesigned around a
+# full removal audit trail, prompted by the user noticing the new cc_cen/cc_cap/cc_inst checks
+# (below) produced no visible output, then explicitly widening scope from "just the
+# CoordinateCleaner step" to all nine filters: repair mistaken exclusions, surface real GBIF
+# data-quality problems worth reporting back to GBIF, and make two users' differing filter
+# arguments produce comparable results. attr(result, "removed_records") is always present (a
+# data frame, possibly zero rows, never NULL), every original column plus filter_reason --
+# GBIF-issue-code and CoordinateCleaner removals get the SPECIFIC matched code/check(s), not
+# just a generic tag (verified: (0.01, 0.01) simultaneously trips both cc_equ and cc_zero,
+# reason = "equal_coordinates;near_zero"). Return contract unchanged (still just the cleaned
+# data frame) -- purely additive via attr(). Internals fully rewritten to explicit keep-masks,
+# which incidentally fixed a real pre-existing message-accuracy bug (steps 7/8 never refreshed
+# a stale count variable, flagged but left alone 2026-07-20). A real "split-string sprintf"
+# bug (this file's own documented footgun) was caught in my own first draft before shipping,
+# by re-reading the diff rather than trusting it. devtools::test() 0 failures (506, up from
+# 494), devtools::check() 0/0/0. See TaxaFetch/CLAUDE.md's top session note for the full
+# record.
+# Previous update, 2026-07-23 (Sonnet 5 -- closed out the two deferred pieces from the 2026-07-20
+# geographic-outlier design thread. (1) filter_gbif_quality() gains the three CoordinateCleaner
+# checks originally deferred as needing reference data (cc_cen/cc_cap/cc_inst -- near a country/
+# province centroid, national capital, biodiversity institution), each called with only lon/
+# lat/value so their ref = NULL default resolves to that package's own bundled data (verified
+# via source inspection, no network call); confirmed via source that none of the three share
+# cc_outl()'s record-count-triggered raster-approximation batching risk. Benchmarked at Mugu's
+# real ~122k-row scale: 1.37s, no performance concern. New tests pull REAL coordinates live from
+# CoordinateCleaner's own bundled reference data rather than guessing values, avoiding the
+# earlier problem where hand-replicating cc_zero()/cc_gbif()'s buffers hit conflicting numbers.
+# (2) check_geographic_outliers() wired into all three real PtConception workflow scripts
+# (outside this monorepo, not under git), the same pattern already validated on both real Mugu
+# workflows -- not yet run against real PtConception data. devtools::test() 0 failures (494, up
+# from 487), devtools::check() 0/0/0. See TaxaFetch/CLAUDE.md's top session note for the full
+# record.
+# Previous update, 2026-07-20, continued yet further (Sonnet 5 -- a real GBIF timeout during the
 # user's own re-verification of the cc_outl() fix surfaced a second, independent, pre-existing
 # bug in fetch_gbif_occurrences()'s checkpoint logic: global_pos was advanced by a chunk's FULL
 # size even when that chunk aborted partway through, so the checkpoint's remaining_keys was
@@ -1438,4 +1785,32 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-07-20 (Sonnet 5) | `check_geographic_outliers()` added | TaxaFetch | New function, `R/check_geographic_outliers.R`. For species with few local (bbox-scoped) GBIF records (`min_local_n`, default `5L`), fetches that species' global distribution (`fetch_gbif_occurrences(geometry = NULL)`, row above) and flags local records that are geographic outliers against it via `CoordinateCleaner::cc_outl()` -- the generic fix for a real Mugu misidentification case (an African species with one errant citizen-science record in La Jolla), see `[[project_edge_case_error_taxa_design]]`. Adds `local_n`/`global_n_unique`/`outlier_status` columns; `outlier_status` is always one of `"not_tested_sufficient_local_data"`/`"insufficient_global_data"`/`"outlier"`/`"consistent"`, never a bare logical. Requires `CoordinateCleaner` (hard error if missing, no fallback exists). Wired into `MuguFishWorkflow.R`/`MuguWilderFishWorkflow.R` the same day -- see the next row for a real bug found on that first live run. See `TaxaFetch/CLAUDE.md`'s top session note for the full design record, including why `CoordinateCleaner` was adopted via `Suggests` rather than hand-rolled. |
 | 2026-07-20, continued (Sonnet 5) | `check_geographic_outliers()`: `CoordinateCleaner::cc_outl()` now called once per species instead of once for the whole rare-species batch | TaxaFetch | **Behavioral bug fix, not a signature change.** Found on the row above's very first live run (wired into the real Mugu workflows the same day): `cc_outl()`'s `"distance"` method silently switches EVERY species in a single call to a coarser raster approximation whenever ANY ONE species in that call has >=10,000 records (confirmed directly from `cc_outl()`'s own source) -- a locally-rare species can still be globally common, so the real ~51-species/193,458-record Mugu batch had one common species silently degrade every other species' precision, clearing a real, obvious ~9,000km outlier (the exact motivating *Pseudotolithus epipercus* case -- it came back `"consistent"` instead of `"outlier"` on the first run). Two other hypotheses (a `gbifID` type mismatch between `download_gbif_occurrences()`'s `bit64::integer64` output and `fetch_gbif_occurrences()`'s character output; a species-crossing distance computation) were tested directly and refuted before finding the real cause. New regression test mocks `cc_outl()` directly to assert one call per species. `devtools::test()` 0 failures (483, up from 481), `devtools::check()` 0/0/0. **Any `check_geographic_outliers()` result computed before this fix is unreliable and should be recomputed** -- delete any cached `..._geo_outlier_check.rds` checkpoint before re-running. See `TaxaFetch/CLAUDE.md`'s top session note for the full diagnostic record. |
 | 2026-07-20, continued yet further (Sonnet 5) | `fetch_gbif_occurrences()`'s checkpoint `remaining_keys` now correctly includes a chunk's own failed key on abort | TaxaFetch | **Behavioral bug fix, not a signature change.** Found via a real GBIF timeout during the user's own re-verification of the row above's fix. `global_pos` was previously advanced by a chunk's FULL size even when that chunk aborted partway through, so the checkpoint's `remaining_keys` (computed from that post-chunk position) silently excluded the specific key that failed -- and any others queued after it in the same chunk -- from ever being retried on resume, contradicting this function's own "never silently skip a key" design. Also produced a misleading `"Enable cache_dir for resumable fetches"` message on a real run where `cache_dir` genuinely was enabled and a real checkpoint had already been saved after the prior chunk. Fixed: the abort check now runs before `global_pos` advances past the aborting chunk; the whole aborting chunk (not just the failed key onward) is re-included in `remaining_keys` on resume, deliberately discarding any of that chunk's own partial pre-abort success to avoid duplicate rows. New regression test (5 keys, `chunk_size = 2`, 2nd key of the 2nd chunk mocked to fail) asserts the failed key is present in the saved checkpoint. `devtools::test()` 0 failures (487, up from 483), `devtools::check()` 0/0/0. See `TaxaFetch/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-23 (Sonnet 5) | `filter_gbif_quality()` gains a 10th/11th/12th check (`exclude_country_centroid`/`exclude_capital`/`exclude_institution`, each default `TRUE`) | TaxaFetch | **Behavioral, not signature.** Calls `CoordinateCleaner::cc_cen()`/`cc_cap()`/`cc_inst()` (near a country/province centroid, national capital, biodiversity institution) when installed; skips with a message otherwise, same convention as `cc_equ`/`cc_zero`/`cc_gbif`. All three resolve their `ref = NULL` default to bundled `countryref`/`institutions` data (no network call, confirmed via source). Every existing caller listed in the `cc_equ`/`cc_zero`/`cc_gbif` row above now also applies these three automatically; pass all three `FALSE` (alongside the earlier three) to restore pre-2026-07-20 behavior fully. Benchmarked at 122k rows: 1.37s, no performance concern. `devtools::test()` 0 failures (494, up from 487), `devtools::check()` 0/0/0. See `TaxaFetch/CLAUDE.md`'s top session note. |
+| 2026-07-23, continued (Sonnet 5) | `filter_gbif_quality()` gains `attr(result, "removed_records")` | TaxaFetch | **Additive, fully backward compatible** -- the return value itself is unchanged (still just the cleaned data frame); this is purely a new attribute, not a second return value or signature change. Always present (a data frame, possibly zero rows, never `NULL`), one row per record removed by ANY of the nine filter steps, every original column preserved plus a new `filter_reason` column. Most steps get a single fixed reason string; the GBIF issue-code filter and the six `CoordinateCleaner` checks get per-row detail instead (the specific matched `bad_issues` code; every `CoordinateCleaner` check that flagged a given record, joined with `;` for a simultaneous multi-check hit). Internals fully rewritten to explicit keep-masks (no more `dplyr::filter()`) to support this -- incidentally fixed a real pre-existing bug (steps 7/8 never refreshed a stale count variable used only for the console message, found but left alone 2026-07-20). `devtools::test()` 0 failures (506, up from 494), `devtools::check()` 0/0/0. See `TaxaFetch/CLAUDE.md`'s top session note for the full record, including a real "split-string sprintf" bug caught in the first draft before shipping. |
+| 2026-07-23, continued yet further (Sonnet 5) | `filter_gbif_quality()`: `exclude_institution` renamed `flag_institution`; institution-flagged records are RETAINED with 4 new columns, never moved to `removed_records` | TaxaFetch | **Behavioral default change AND signature change (rename).** No existing caller was passing `exclude_institution=` explicitly (all real in-repo callers use defaults), so the rename has no real fallout. Default `TRUE` unchanged, but the meaning flips: proximity to a biodiversity institution is no longer treated as an unambiguous data-entry error like the other five `CoordinateCleaner` checks -- it gets `institution_flag`/`institution_name`/`institution_type`/`institution_dist_m` columns on the retained data instead (via new internal `.nearest_institution()`, since `cc_inst(value="flagged")` only returns a boolean). Motivated by the user reviewing the real 29 flagged Mugu records directly and finding several likely-genuine field observations (live fish near a university botanical garden pond) mixed with likely-genuine errors -- field stations are often sited exactly where good habitat is, so this specific check needs a human decision, not a silent drop. The other five checks are unaffected and still auto-remove; they now run as their own step (9) before institution flagging (step 10), so a record failing both is removed and never reaches the flagging step. `devtools::test()` 0 failures (515, up from 506), `devtools::check()` 0/0/0. |
+| 2026-07-23, continued yet further (Sonnet 5) | `TaxaHabitat::flag_institution_candidates()` added | TaxaHabitat | New function, `R/flag_institution_candidates.R`. Classification stage (pure, no interaction, no removal) for the `institution_flag` column above -- tiers flagged records "high"/"low"/"ambiguous" by crossing the matched institution's real `type` (verified via `CoordinateCleaner::institutions`, not guessed) against the record's own `kingdom`. Mirrors `flag_habitat_inconsistencies()`'s existing role ahead of an interactive review gadget. The gadget itself (`review_institution_flags()`, meant to mirror `review_spatial_flags()`) is scoped in detail but deliberately **not yet built** -- real time constraints raised mid-session; see `TaxaHabitat/CLAUDE.md`'s top session note and `[[project_geographic_outlier_check]]` for the exact resume point. A real bug (all-NA logical-index subsetting for a flagged record whose matched institution has no recorded type) was found and fixed before shipping -- caught by the console summary message itself printing wrong counts. `devtools::test()` 0 failures (158, up from 142), `devtools::check()` 0/0/0. |
 | 2026-07-20 (Sonnet 5) | `score_consensus(rank_thresholds=)` default's fourth tier relabeled `order` → `phylum` | TaxaAssign | **Behavioral, not signature** -- numerically identical default (`85`), label-only fix. The user caught that the Session 147 default (`c(species=98, genus=95, family=90, order=85)`) mislabels its fourth tier: the literature this 85% value is corroborated by (Ransome et al. 2017 and others, compiled independently the same day in `ecosystem_docs/AQUARIUM_BENCHMARK_DESIGN.md`'s COI threshold table) treats 85% as a **phylum**-level cutoff, not order-level, and that same literature survey found no widely-cited genuine order-level COI threshold to substitute in its place -- so the fix is a relabel (`order=85` → `phylum=85`), not an added 5th tier. Verified before relabeling that this doesn't silently break the mechanism: `TaxaTools::detect_ranks()`'s standard rank ladder already includes `"phylum"` (`kingdom, phylum, class, order, family, genus, species`), and real production `match_df` data (confirmed on the bundled `TaxaID_test_BLAST.rds` fixture) carries a populated `phylum` column, so the auto-detected `rank_system` still reaches this tier exactly as `order` did. The two real workflow scripts' own `score_consensus()` calls (`TaxaAssign_bayesian_workflow.R`, `TaxaAssign_llm_workflow.R`) pass an explicit `rank_system = c("family", "genus", "species")` that excludes both `order` and `phylum` -- so for those two calls specifically, the fourth tier was already a no-op before this change and remains one after, unaffected either way. Propagated to `TaxaAssign/man/score_consensus.Rd` (regenerated), `TaxaWizard/inst/metadata/TaxaAssign.json`, `TaxaAssign_supplemental_methods.md`, and the `STATISTICAL_COMPONENT_CATALOG.md`/`STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`/`taxonomy_rank_review.md` reference docs; historical session notes describing the original Session 147 default are left as-is (a record of past state, not current documentation). `devtools::test()` unaffected (no test asserts on the tier name). See `TaxaAssign/CLAUDE.md`'s Function Inventory row for `score_consensus()`. |
+| 2026-07-23 (Sonnet 5) | `read_speciesnet_output()` added | TaxaMatch | Additive, new exported function (`R/read_image_classifiers.R`). Ingests real SpeciesNet CLI (`google/cameratrapai`) `predictions_json` batch output -- label format (`uuid;class;order;family;genus;species;common_name`) verified directly against the shipped taxonomy file, not assumed. Treats the raw top-5 `classifications` block as the primary multi-candidate source rather than the ensemble's already-rolled-up `prediction` field, informed by Markoff & Galaktionovs 2025 (arXiv:2510.14594) confirming SpeciesNet's taxonomic rollup is a deliberate precision-over-recall design choice. Along the way, found that `read_wildlife_insights_output()` (existing function, same file) targets a JSON shape that matches neither the real Wildlife Insights platform (CSV bulk downloads, not JSON) nor the real SpeciesNet CLI (`predictions` is a list, not a dict) -- see next row. `devtools::check()` 0/0/1 (pre-existing environmental note) at the time this function was added. See `TaxaMatch/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-23 (Sonnet 5, continued) | `read_wildlife_insights_output()` removed entirely (not deprecated) | TaxaMatch | **Breaking**, but zero real callers found anywhere in the monorepo via grep (only its own tests, README examples, and TaxaWizard template snippets/prompts) -- same zero-caller-removal bar as `fetch_reference_sequences()`/`audit_barcode_coverage_ncbi()`/`expand_consensus_candidates()`. Its dict-keyed-by-filename JSON assumption matched neither real candidate source checked (real Wildlife Insights platform downloads are CSV, not JSON; real SpeciesNet CLI's `predictions` is a list, not a dict) -- a prior code review (`TaxaMatch/inst/taxamatch_review.Rmd`) had already flagged suspicion about this exact premise, never resolved until this session. Superseded by `read_speciesnet_output()` (row above). Dependents repointed: `TaxaMatch-package.R`, both READMEs, `TaxaWizard/inst/graph/workflow_graph.json` (2 edges), `.../snippets/image_to_match.R`, `.../snippets/image_refs_to_matrix.R`, `.../prompts/phase_classify.md`, `.../metadata/TaxaMatch.json`, `.../metadata/TaxaLikely.json`. `devtools::test()` TaxaMatch 494/494 (down from 508, 14 tests removed with the function), TaxaWizard 367/367 unaffected; `devtools::check()` TaxaMatch 0 errors/0 warnings/0 notes. See `TaxaMatch/CLAUDE.md`'s top session note for the full record, including a separately-flagged (not fixed) `data=`-vs-`files=` parameter-name drift found in TaxaWizard's metadata while repointing these snippets. |
+| 2026-07-23 (Sonnet 5) | `fetch_inat_occurrences()` added | TaxaFetch | Additive, new exported function (`R/fetch_inat_occurrences.R`). Counts real local iNaturalist observation records (not a range-polygon test like `check_inat_range()`) via `/v1/observations`, with `captive`/`quality_grade` filters that can surface casual-grade cultivated/captive records GBIF-style indexing excludes. Non-GBIF occurrence source for `TaxaExpect::generate_domestic_food_priors()` (next row). Implements `ecosystem_docs/REENTRY_PROMPT_domestic_food_species_priors.md`. `devtools::test()` 0 failures (539, up from 506), `devtools::check()` 0/0/0. |
+| 2026-07-23 (Sonnet 5, continued) | `generate_domestic_food_priors()` added | TaxaExpect | Additive, new exported function (`R/generate_domestic_food_priors.R`). Implements the reentry prompt's three-vector design: `domestic_animal_taxa`/`food_species_taxa` (fixed, pre-populated defaults) plus `candidate_plant_taxa` (no default list -- only produces a row when a live `fetch_inat_occurrences(quality_grade="casual")` check finds real local cultivated evidence, since the reentry prompt's own CSV-overlap finding showed the two candidate source files it considered are the same underlying list at two processing stages, not a genuine food-vs-ornamental split). Output rows carry a real `taxon_name` (unlike `generate_undetected_diversity()`'s anonymous proxies), a new `prior_source_type` categorical column, and `model_tier = "tier_domestic_food"`. Does not address cross-genus reference gaps (`Bison bison`/`Bos taurus`) -- see the reentry prompt's corrected `Homo sapiens` finding for why this fix's value is the categorical flag plus help for weaker matches, not sequence-level resolution. `devtools::test()` 0 failures (481, up from 445), `devtools::check()` 0/0/0. |
+| 2026-07-23 (Sonnet 5, continued yet further) | `stack_occurrences(collapse_duplicate_occasions = TRUE)` added | TaxaFetch | **Behavioral default change, not just an addition.** Collapses rows sharing the same `taxon_col`/`date_col`/rounded-`lat_col`/`lon_col` combination -- catches repeat citizen-science reports of one detection occasion (e.g. many eBird checklists for one rare-bird-alert individual, many iNaturalist uploads from one bioblitz) across DIFFERENT records/platforms, which the existing `gbifID` dedup (Session 140) cannot touch since each is a genuinely distinct GBIF record. Default `TRUE` because `TaxaExpect::prepare_model_dataframe()` (verified directly before implementing, per the user's explicit request) counts raw records as both the binomial numerator (`n_species`) and shared effort denominator (`n_total_at_site`) -- uncollapsed repeat reports inflate a species' modeled relative detection frequency directly, and occupancy-style priors should be keyed on detection occasions, not report counts. Content-based match (not exact-ID); a row missing any key component is always kept; silent no-op when `taxon_col`/`date_col` aren't present, matching the `gbifID` step's own convention -- no existing test regressed, since no pre-existing fixture carries an `eventDate`/`year`/`month`/`day` column. Set `collapse_duplicate_occasions = FALSE` to restore the pre-2026-07-23 one-row-per-raw-report behavior. `devtools::test()` 0 failures (549, up from 539), `devtools::check()` 0/0/0. See `TaxaFetch/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-23 (Sonnet 5, same day, immediate follow-up) | `fetch_dataone_occurrences(gbif_snapshot_path=)` removed entirely | TaxaFetch | **Breaking, but zero real callers** (grepped the whole monorepo -- same "no external users" bar already used for `fetch_reference_sequences()`/`expand_consensus_candidates()`/`read_wildlife_insights_output()`). Prompted by the user asking, right after the row above shipped, whether it makes any existing dedup redundant: the `gbifID` step is NOT redundant (catches an exact-duplicate GBIF record with `NA` `scientificName`/`eventDate`, which the content-based step above deliberately never touches) but this DataONE-vs-GBIF-snapshot dedup (`.load_gbif_hashes()`/`.deduplicate_against_gbif()`, same key formula) IS -- and was actually less safe than the row above (it coalesced missing name/date/lat/lon to `""`/`0` before hashing, risking spurious matches on incomplete data, the opposite of the new step's design). `gbif_hashes` removed from 5 internal call sites (`.process_one_dataset()`/`.finalize_entity()`/`.attempt_odm_join()`); the two helper functions deleted; roxygen repointed at `stack_occurrences(collapse_duplicate_occasions=)`. `devtools::test()` 0 failures (553, up from 549), `devtools::check()` 0/0/0. See `TaxaFetch/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-23 (Sonnet 5, same day, yet another follow-up) | `dedupe_occurrences()` added; `stack_occurrences()` no longer removes any rows | TaxaFetch | **Breaking, real consequence for every existing caller.** Prompted by a user naming/design critique: "stack_occurrences" implies pure combination, so bundling dedup inside it risks a single-source caller skipping the call (and its dedup) entirely -- confirmed not hypothetical (the documented GBIF-only pipeline never calls `stack_occurrences()` at all) and not new to this session's own `collapse_duplicate_occasions` addition (the pre-existing Session 140 `gbifID` dedup has the identical single-frame blind spot). Both mechanisms moved (user's explicit choice, via `AskUserQuestion`) into new `dedupe_occurrences(data, ...)`, which takes a single frame (stacked or not) -- `stack_occurrences()` now only row-binds + adds `point_id`, row count always exactly the sum of inputs. **Because the pre-existing `gbifID` dedup moved too, every real caller of `stack_occurrences()` silently loses that protection unless updated** -- found via grep and fixed: `TaxaExpect::build_priors()` (real package code, `dedupe_occurrences()` now runs unconditionally, not just when `supplemental_occurrences` was stacked), plus 8 `inst/`/vignette files across `TaxaAssign`, `TaxaExpect`, and `TaxaFetch` (including the root `inst/TaxaID_Workflow_Template_TEST.R` and the Layer-1 teaching script's single-GBIF-source Variant A -- exactly the case this change targets). `devtools::test()` 0 failures (563, up from 553), `devtools::check()` 0 errors/0 warnings/0 notes. See `TaxaFetch/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-23 (Sonnet 5) | `train_likelihood_model()` gains `Support_Curves`; `evaluate_likelihoods()` gains `species_support`/`genus_support`/`family_support`/`own_rank_support`; `compute_rank_thresholds()` added | TaxaLikely | Additive, fully backward compatible -- no signature changes on either existing function; new columns/slot are simply absent-safe (`NA`/`NULL`) when not computable. Implements the `score_support_posthoc_and_rank_thresholds` reentry doc's Task 1 (the design decisions: package placement in TaxaLikely near `evaluate_likelihoods()`; EB-shrunk curves computed once by `train_likelihood_model()` and stored in `model_params$Support_Curves`, not recomputed per query; all three `*_support` values always populated where computable, plus an `own_rank_support` convenience column). New internal `.compute_rank_score_curves()` (`R/support_curves.R`) makes `diagnostics/score_floor_roc_sweep.R`'s genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank TPR/FPR curves real package machinery, shared by both consumers. `species_support`/`genus_support`/`family_support` are a model-independent, score-ONLY diagnostic (P(a real congener/confamilial/cross-family pair would score this high or higher) -- LOWER is stronger evidence), deliberately separate from `absolute_fit_pvalue` (which is model-based). `compute_rank_thresholds(seq_matrix, ...)` is the new exported, marker-agnostic Youden's-J threshold deriver `TaxaAssign::score_consensus()`'s new required-arg error message (next row) points at. `devtools::test()` 0 failures (463), `devtools::check()` 0/0/0. See `TaxaLikely/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-23 (Sonnet 5, continued) | `posterior_consensus()` gains `winner_species_support`/`winner_genus_support`/`winner_family_support`/`winner_own_rank_support` | TaxaAssign | Additive, fully backward compatible -- mirrors the existing `winner_absolute_fit_pvalue` pass-through pattern exactly (read from the winning row, `NA` when the source column is absent from `posterior_df`, present in both the main result path and `.empty_consensus_row()`'s NA-filled fallback). Passes through TaxaLikely's new `species_support`/`genus_support`/`family_support`/`own_rank_support` columns (row above) unchanged. `devtools::test()` 0 failures (256, up from 255), `devtools::check()` 0/0/0. |
+| 2026-07-23 (Sonnet 5, continued further) | `add_posthoc_assessment()` gains `score_support_flag` + `own_rank_support_col`/`weak_score_support_threshold` params | TaxaFlag | Additive, fully backward compatible -- a genuinely SEPARATE new column, not folded into `posthoc_assessment`'s override chain the way `"unsupported_rank"` is. Deliberate design choice per the reentry doc's own cautionary precedent: the `trusted_rank` ladder-walk (built 2026-07-19, removed 2026-07-20 -- see `[[project_rank_trust_mechanism_removed]]`) showed what goes wrong when a mechanism recomputes/overrides an existing categorical judgment; `score_support_flag` stays a plain additive threshold on `winner_own_rank_support` (`"weak_score_support"` above `weak_score_support_threshold`, default `0.5`; `"adequate_score_support"` otherwise; `NA` when the source column is absent) that never interacts with `posthoc_assessment`. `devtools::test()` 0 failures (119, up from 112), `devtools::check()` 0 errors/0 warnings (1 pre-existing, unrelated warning + note in `build_review_covariates.R`, not touched this session). |
+| 2026-07-23 (Sonnet 5, continued yet further) | `score_consensus(rank_thresholds=)` loses its default | TaxaAssign | **Breaking, intentionally.** `rank_thresholds` is now a required argument (no default, errors immediately if omitted) -- mirrors `join_priors(backbone_id=)`'s exact precedent (Session 143: same `missing()` + `cli::cli_abort()` pattern, same "no safe universal default" reasoning). The Session 147 GITA/Jonah Ventures default (`c(species=98, genus=95, family=90, phylum=85)`) is removed, not just changed, since this function has no way to know the marker or data type `score_col` was scored against. The error message points at two options: supply real thresholds directly, or derive marker-specific ones via the new `TaxaLikely::compute_rank_thresholds()` (row above). Passing `rank_thresholds = NULL` explicitly still means "disable rank capping" -- unchanged, since that's an explicit value, not an omission. Real call-site survey (from the reentry doc): both `TaxaAssign_llm_workflow.R` calls flagged as "would break" (`score_con_wilder`/`score_con_JV`) turned out to already pass `rank_thresholds = NULL` EXPLICITLY, so neither needed a code change -- only `vignettes/taxaid-ecosystem.Rmd`'s one bare `score_consensus(match_df)` call and ~20 test-file call sites (mostly unrelated to rank-threshold behavior, needed `rank_thresholds = NULL` added to keep exercising what they actually test) were updated. `devtools::test()` 0 failures (256), `devtools::check()` 0/0/0. See `TaxaAssign/CLAUDE.md`'s top session note for the full record. |
+| 2026-07-23 (Sonnet 5, later same day) | `species_support`/`genus_support`/`family_support`/`own_rank_support` -> `species_confusion_risk`/`genus_confusion_risk`/`family_confusion_risk`/`own_rank_confusion_risk`; `model_params$Support_Curves` -> `Confusion_Risk_Curves` | TaxaLikely | **Breaking rename, no math changed.** The user noticed the original names inverted this ecosystem's own high=concern convention for risk-style metrics (e.g. `TaxaFlag::flag_contaminant()`'s `contaminant_score`) -- "support" implied higher=better while the values are one-sided tail probabilities where HIGHER means MORE confusable with a congener/confamilial/cross-family relative, i.e. WEAKER evidence. Taking the complement (`1 - value`) was considered and rejected (would invite the p-value fallacy, conflating `1-p` with a calibrated confidence). Internal `.lookup_support_value()` -> `.lookup_confusion_risk_value()` too. See `TaxaID/CLAUDE.md`'s top session note and `TaxaLikely/CLAUDE.md`'s matching note for the full record. |
+| 2026-07-23 (Sonnet 5, later same day) | `posterior_consensus()`'s `winner_species_support`/`winner_genus_support`/`winner_family_support`/`winner_own_rank_support` -> `winner_species_confusion_risk`/`winner_genus_confusion_risk`/`winner_family_confusion_risk`/`winner_own_rank_confusion_risk` | TaxaAssign | **Breaking rename, no math changed** -- same reasoning and same session as the TaxaLikely row above; pure pass-through columns renamed to match their upstream source. |
+| 2026-07-23 (Sonnet 5, later same day) | `add_posthoc_assessment()`'s `score_support_flag` -> `confusion_risk_flag`; `own_rank_support_col` -> `own_rank_confusion_risk_col`; `weak_score_support_threshold` -> `high_confusion_risk_threshold`; flag values `"weak_score_support"`/`"adequate_score_support"` -> `"high_confusion_risk"`/`"low_confusion_risk"` | TaxaFlag | **Breaking rename, no math changed** -- same reasoning and same session as the two rows above. |
+| 2026-07-24 (Sonnet 5) | `flag_contaminant()`'s `contaminant_score`/`{contaminant_type}_risk`/`{contaminant_type}_reason` -> fixed-name `observation_validity`/`validity_flag`/`validity_reason`; `flag_handler()`'s `flag_handler`/`flag_handler_score`/`flag_handler_reason` -> the same three names | TaxaFlag | **Breaking rename + signature-adjacent change** (`contaminant_type` no longer changes output column names, only the type qualifier embedded in `validity_flag`'s value, e.g. `"invalid_lab_contaminant"`). Both functions now share identical column names -- verified safe since they operate on different data modalities (per-taxon eDNA vs. per-detection camera-trap) and no real workflow merges them. `report_flags()` gained a third, additive detection branch reading the type out of `validity_flag`'s values. See `TaxaFlag/CLAUDE.md`'s top session note for the full record, including the mid-design correction of the 2026-07-23 audit's "high=risk" mischaracterization of both metrics (actually high=good/genuine). `devtools::test()` 0 failures (123, up from 119), `devtools::check()` clean (1 pre-existing unrelated warning+note). |
+| 2026-07-24, same day (Sonnet 5) | Both real PtConception workflows (`PtConceptionWorkflow_12S_single_site.R`, `PtConceptionWorkflow_18S_2_single_site.R`) updated for the row above | (workflow scripts, not a package) | Every real `lab_contaminant_risk`/`lab_contaminant_score` reference (Step 2 filter, Step 6/9 provenance joins, 12S's final `accurate_precise_consensus` filter) updated to `validity_flag`/`observation_validity`. `PtConceptionWorkflow_18S_2_single_site.R`'s pre-existing Session-101 cached-RDS name-migration block extended (not replaced) with a second branch forward-migrating old values to the new schema, so a pre-2026-07-24 cached `_contaminant_flags.rds` stays readable. Verified against both real cached checkpoints (12S 43/10300/3254, 18S 1/18693/2503 high/moderate/low, both still pre-2026-07-24 schema). Both files backed up first (`*.bak_pre_validity_schema`, not under git) and parse cleanly; not yet run end to end. |
+| 2026-07-24 (Sonnet 5) | `convert_taxonomy_backbone()`'s not-found fallback value now cleaned via `clean_taxon_names()` | TaxaMatch | **Behavioral, not signature.** Previously only the target-backbone-matched path (`matched_name`/`target_<rank>`) was cleaned; a taxon not found in the target backbone passed through with its raw original value untouched. Found via a real compound hybrid-formula NCBI accession label (`"((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"`) surfacing unmodified in `match_obj$species` during the domestic/food-priors residual-count exercise on real 18S data. Does not change which names are sent to `verify_fn` or which rows count as "found" -- only the not-found fallback value's formatting. `devtools::test()` 0 failures (500, up from 496), `devtools::check()` 0/0/0. |
+| 2026-07-24 (Sonnet 5, continued) | `fetch_inat_occurrences()` gains `inat_kingdom`; `generate_domestic_food_priors()` gains an iNaturalist kingdom cross-check | TaxaFetch, TaxaExpect | Additive. `fetch_inat_occurrences()`'s new `inat_kingdom` (via `.iconic_to_kingdom()`, same lookup `check_inat_range()` uses) lets a caller detect a possible cross-kingdom homonym -- iNaturalist resolves names against its own curated taxonomy, distinct from both NCBI and GBIF. `generate_domestic_food_priors()` now cross-checks it against a candidate's known kingdom (opt-in, requires a `kingdom` column in the `taxonomy` argument); on a mismatch, discards the local-evidence boost (`n_local -> NA`, `warning()`) without removing the candidate's fixed-list category. New output columns `inat_kingdom`/`inat_kingdom_mismatch`, always present. `devtools::test()` 0 failures (TaxaFetch 541/541 up from 539, TaxaExpect 495/495 up from 481), `devtools::check()` 0/0/0 both. |
+| 2026-07-25 (Sonnet 5) | `verify_taxon_names()` gains `matched_rank`/`is_synonym`; `matched_name` now sourced from GNVerifier's `matchedCanonicalSimple`/`currentCanonicalSimple` instead of a local authority-stripping regex | TaxaTools | **Behavioral, not signature -- but a real output change for two classes of input.** (1) Any subspecies-rank match: previously silently truncated to a binomial by the old regex (confirmed: `"Delphinus delphis ponticus Barabash, 1935"` -> `"Delphinus delphis"`, dropping the subspecies epithet); now correctly preserved. (2) Any name whose best backbone match is a taxonomic synonym (`is_synonym = TRUE`): `matched_name` now reports the backbone's currently-accepted name instead of the synonym form (e.g. `"Inu"` -> `"Luciogobius"` under GBIF). New `matched_rank` reports the rank the match actually resolved at, independent of what rank the query implied. Verified backbone-general (not GBIF-specific) via a live 5-backbone comparison (Catalogue of Life/ITIS/NCBI/WoRMS/GBIF) before shipping -- see `TaxaTools/CLAUDE.md`'s top session note. `backbone_id = 4` never reaches this code path (`.verify_via_ncbi()` instead) and so never gets synonym resolution, but does get `matched_rank`. `devtools::test()` 0 failures (824, up from ~818), `devtools::check()` 0/0/0. |
+| 2026-07-25 (Sonnet 5, continued) | `convert_taxonomy_backbone()` now corrects `taxon_name_rank` (not just `taxon_name`) when a row's own claimed rank has no matching target value | TaxaMatch | **Behavioral, not signature.** Closes the "Inu Inu" fabricated-pseudo-binomial bug: previously, when `taxon_name` fell back to a coarser resolved name (e.g. a genus-only match), `taxon_name_rank` kept its stale, now-wrong rank label -- a bare genus reported as if still species-level, which a downstream slash-name builder (`TaxaAssign::add_slash_taxon()`) then treated as a malformed binomial and duplicated into a fabricated name. Uses `TaxaTools::verify_taxon_names()`'s new `matched_rank` column (row above); silently skipped (not an error) for a `verify_fn` that predates it, e.g. one injected for offline testing -- confirmed via a dedicated backward-compatibility test. `devtools::test()` 0 failures (`test-convert_taxonomy_backbone.R` 43/43 up from 41, full suite 504/504), `devtools::check()` 0/0/0. |
+| 2026-07-25 (Sonnet 5, later same day) | `fill_higher_ranks()`'s `genus` output now corrected to the backbone's resolved name for a genus-level synonym | TaxaTools | **Behavioral, not signature.** Companion fix to the two rows above, prompted by the user asking to double-check `fill_higher_ranks()` for the same issue. Previously `genus` was always the locally-extracted query string, even when the backbone flagged it as a synonym -- meaning it could disagree with `convert_taxonomy_backbone()`'s (now-corrected) output for the same taxon. Real consequence found: `TaxaAssign::join_priors()`'s `.expand_coarse_rank_rows()` exact-string-matches a likelihood-side coarse `taxon_name` against `expansion_taxonomy`'s `genus` column (built via `fill_higher_ranks()`) -- a disagreement here silently drops real occurrence-based coarse-rank species expansion for the affected taxon, falling back to the dark-diversity floor. `genus` is now corrected only when `matched_rank == "genus"` specifically (defensive against trusting a coarser-rank resolution as a genus substitution); silently skipped when `verify_fn`'s response lacks `matched_rank`. `devtools::test()` 0 failures (829, up from 824), `devtools::check()` 0/0/0. `escalate_taxonomic_rank()` was also checked and found to have no analogous issue -- no code change there. |
+| 2026-07-25 (Sonnet 5, later still) | `convert_taxonomy_backbone()` now also clears rank columns finer than a row's corrected rank (e.g. `species` -> `NA` when demoted to genus) | TaxaMatch | **Behavioral, not signature -- closes a real regression found only by testing against production, not by inspection.** The `taxon_name_rank` fix (row above) worked in isolation, but the real `Mugu_Match_from_BLAST.R` script calls `TaxaTools::create_taxon_names()` a SECOND time immediately after `convert_taxonomy_backbone()` to re-derive `taxon_name` from rank columns -- and since the finer `species` column still held its stale, per-column-fallback-cleaned value (`"Inu"`), that second call applied "most specific non-NA rank wins" and silently reverted the whole fix back to the wrong species-level label. Confirmed live against the real accession (`LC765844`): `taxon_name`/`taxon_name_rank` were briefly correct right after `convert_taxonomy_backbone()` but wrong again by the time `match_12s.rds` was saved. Now every rank column finer than the corrected rank is cleared to `NA` on the same rows, so any re-derivation downstream -- this one or a future one -- can't resurrect the stale value. `genus` itself is untouched (it's AT the corrected rank, not finer). `devtools::test()` 0 failures (`test-convert_taxonomy_backbone.R` 47/47 up from 43, full suite 508/508), `devtools::check()` 0/0/0. Separately: diagnosing this surfaced a real, still-open library-path issue -- the user's live session (a different RStudio project, no project-level `.Rprofile`) kept resolving `TaxaMatch` to the system default library instead of `~/Library/R/4.0/library` even after `.rs.restartR()`; worked around via `devtools::load_all()` directly on the source, root cause not fully resolved. |
+| 2026-07-28 (Sonnet 5) | `generate_domestic_food_priors()`: `known_cultivar_taxa` param added; `match_list_taxa`/`taxaexpect_priors` params added; `food_species_taxa` default extended 20 -> 449 species | TaxaExpect | **Additive (new params, `NULL`/default-preserving), plus a behavioral default change** (the larger `food_species_taxa` default checks more species when `match_list_taxa` is not supplied). Implements the match-list-gated architecture confirmed with the user 2026-07-24: `match_list_taxa` (taxa with real likelihoods this run) gates all four fixed/supplied channels to the intersection and drives an automatic open-discovery residual step (unreferenced match-list taxa, `phylum %in% c("Streptophyta","Tracheophyta")`, deliberately not pre-restricted to any known list) using the new `taxaexpect_priors` param to exclude already-modelled taxa. New `cultivar_evidence_source` output column (`"known_list"`/`"candidate_supplied"`/`"inat_confirmed"`) distinguishes the three ways a `prior_source_type = "domestic_plant"` row can arise. `match_list_taxa = NULL` (default) preserves the original 2026-07-23 unrestricted behavior exactly. `devtools::test()` 0 failures (536, up from 481), `devtools::check()` 0/0/0. |
+| 2026-07-28, same day (Sonnet 5) | All four real production workflows (`PtConceptionWorkflow_12S_single_site.R`, `PtConceptionWorkflow_18S_2_single_site.R`, `MuguFishWorkflow.R`, `MuguWilderFishWorkflow.R`) rewired for the row above | (workflow scripts, not a package) | `match_list_taxa`/`taxonomy` now sourced from each script's own match object (`match_obj_restored` for 12S -- required relocating the call to after that object is finalized, since it didn't exist yet at the original Step-5 call site; `match_obj` for 18S_2; `match_taxonomy`/`esv_expanded` for the two Mugu scripts, both already available early, no relocation needed). The 18S_2 script's ad hoc `candidate_plant_taxa` sourcing (GBIF-occurrence-derived sampling-group restriction) is fully superseded by the open-discovery residual step and removed. All four parse cleanly; not yet run end to end (real GBIF/NCBI/iNat/LLM API calls, real checkpoints -- the user's call). |

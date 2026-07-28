@@ -65,6 +65,14 @@
 #' \strong{Grid cell popups} show: theta mean and SD, number of observations,
 #' model tier, and any active flags (effort, extrapolation, Jeffreys fallback).
 #'
+#' \strong{Best suited to multi-grid predictions:} this gadget is built to
+#' compare predicted theta across several grid cells at once (spatial
+#' pattern, hotspots, extrapolation risk). When a taxon x habitat selection
+#' resolves to a single grid cell, the map shows a warning banner, since one
+#' point has no spatial pattern to explore -- a printed summary of the prior
+#' table (or \code{plot_theta_map()}'s static output) is usually more
+#' informative for that case.
+#'
 #' \strong{Requirements:} Packages \code{shiny}, \code{miniUI}, and
 #' \code{leaflet} must be installed. Only works in interactive RStudio sessions.
 #'
@@ -204,10 +212,21 @@ plot_theta_map_interactive <- function(
     pr <- pr[!bad_coords, ]
   }
 
+  # --- Grid cell half-width ----------------------------------------------------
+  # A fixed property of the grid every grid_id was built from -- computed once
+  # from the FULL centroid set, never per-selection. Inferring it from
+  # whichever centroids happen to be currently selected (as an earlier version
+  # of this function did) breaks whenever the selection has only 1-2 points
+  # that aren't true grid neighbors (e.g. two sites hundreds of km apart): the
+  # inferred half-width blows up to roughly half that distance, drawing one
+  # huge rectangle instead of correctly-sized ones for each cell.
+  all_lat_ctr <- sort(unique(pr$lat_ctr))
+  grid_hw     <- if (length(all_lat_ctr) >= 2L) min(diff(all_lat_ctr)) / 2 else 0.05
+
   # --- Initial dropdown / checkbox state --------------------------------------
   all_taxa      <- sort(unique(pr$taxon_name))
   default_taxon <- all_taxa[1L]
-  default_habs  <- sort(unique(pr$habitat[pr$taxon_name == default_taxon]))
+  default_habs  <- sort(unique(pr$habitat[pr$taxon_name %in% default_taxon]))
 
   # --- UI ---------------------------------------------------------------------
   ui <- miniUI::miniPage(
@@ -279,7 +298,7 @@ plot_theta_map_interactive <- function(
 
     # Update habitat checkboxes when taxon changes — select all by default
     shiny::observeEvent(input$taxon, {
-      habs <- sort(unique(pr$habitat[pr$taxon_name == input$taxon]))
+      habs <- sort(unique(pr$habitat[pr$taxon_name %in% input$taxon]))
       shiny::updateCheckboxGroupInput(session, "habitat",
                                       choices  = habs,
                                       selected = habs)
@@ -287,7 +306,7 @@ plot_theta_map_interactive <- function(
 
     # All / None buttons
     shiny::observeEvent(input$select_all_hab, {
-      habs <- sort(unique(pr$habitat[pr$taxon_name == input$taxon]))
+      habs <- sort(unique(pr$habitat[pr$taxon_name %in% input$taxon]))
       shiny::updateCheckboxGroupInput(session, "habitat", selected = habs)
     })
     shiny::observeEvent(input$clear_hab, {
@@ -296,7 +315,7 @@ plot_theta_map_interactive <- function(
 
     # Filtered priors for current taxon x selected habitats
     pr_sel <- shiny::reactive({
-      pr[pr$taxon_name == input$taxon & pr$habitat %in% input$habitat, ]
+      pr[pr$taxon_name %in% input$taxon & pr$habitat %in% input$habitat, ]
     })
 
     # Filtered occurrences for current taxon x selected habitats
@@ -307,17 +326,6 @@ plot_theta_map_interactive <- function(
         sub <- sub[sub$habitat %in% input$habitat, ]
       }
       sub
-    })
-
-    # Infer grid half-width from centroid spacing in filtered data
-    cell_hw <- shiny::reactive({
-      lats <- sort(unique(pr_sel()$lat_ctr))
-      if (length(lats) >= 2L) {
-        min(diff(lats)) / 2
-      } else {
-        all_lats <- sort(unique(pr$lat_ctr))
-        if (length(all_lats) >= 2L) min(diff(all_lats)) / 2 else 0.05
-      }
     })
 
     # Build popups for grid cells
@@ -364,23 +372,28 @@ plot_theta_map_interactive <- function(
 
     # Initial map render — zoom to default taxon x all habitats extent
     output$map <- leaflet::renderLeaflet({
-      d_init    <- pr[pr$taxon_name == default_taxon & pr$habitat %in% default_habs, ]
-      lats_init <- sort(unique(d_init$lat_ctr))
-      hw_init   <- if (length(lats_init) >= 2L) min(diff(lats_init)) / 2 else 0.05
+      d_init    <- pr[pr$taxon_name %in% default_taxon & pr$habitat %in% default_habs, ]
       leaflet::leaflet() |>
         leaflet::addProviderTiles(tile) |>
         leaflet::fitBounds(
-          lng1 = min(d_init$lon_ctr, na.rm = TRUE) - hw_init,
-          lat1 = min(d_init$lat_ctr, na.rm = TRUE) - hw_init,
-          lng2 = max(d_init$lon_ctr, na.rm = TRUE) + hw_init,
-          lat2 = max(d_init$lat_ctr, na.rm = TRUE) + hw_init
+          lng1 = min(d_init$lon_ctr, na.rm = TRUE) - grid_hw,
+          lat1 = min(d_init$lat_ctr, na.rm = TRUE) - grid_hw,
+          lng2 = max(d_init$lon_ctr, na.rm = TRUE) + grid_hw,
+          lat2 = max(d_init$lat_ctr, na.rm = TRUE) + grid_hw
         )
+    })
+
+    # Number of distinct spatial grid cells in the current selection -- a
+    # taxon x habitat selection can have many rows sharing one grid_id (grid_id
+    # encodes location only, never habitat), so this is NOT nrow(pr_sel()).
+    n_cells <- shiny::reactive({
+      length(unique(pr_sel()$grid_id))
     })
 
     # Update rectangles and points when selection changes
     shiny::observe({
       d   <- pr_sel()
-      hw  <- cell_hw()
+      hw  <- grid_hw
       pop <- grid_popup()
 
       proxy <- leaflet::leafletProxy("map")
@@ -428,6 +441,28 @@ plot_theta_map_interactive <- function(
         labFormat = leaflet::labelFormat(digits = 3),
         opacity  = 0.9
       )
+
+      # Single-grid-cell warning — this gadget is built to compare theta
+      # across several cells; one cell has no spatial pattern to show. Based
+      # on distinct grid_id count (n_cells()), not nrow(d): a single site with
+      # several selected habitats produces many rows all sharing one grid_id.
+      if (n_cells() == 1L) {
+        proxy <- leaflet::addControl(
+          map      = proxy,
+          position = "topright",
+          html     = paste0(
+            "<div style='background:#fff3cd;border:1px solid #ffe69c;",
+            "border-radius:4px;padding:6px 10px;max-width:220px;",
+            "font-size:11px;line-height:1.4;color:#664d03;'>",
+            "<b>Single grid cell</b><br/>",
+            "This heat map explorer is built for comparing predicted ",
+            "distributions across multiple grid cells. Only one grid ",
+            "cell is present for this selection, so the map may not be ",
+            "very instructive.",
+            "</div>"
+          )
+        )
+      }
 
       # Occurrence points
       sub <- occ_sel()
@@ -513,7 +548,7 @@ plot_theta_map_interactive <- function(
         shiny::p(
           sprintf("Habitats: %s", hab_str),
           shiny::br(),
-          sprintf("Grid cells: %d", nrow(d)),
+          sprintf("Grid cells: %d", n_cells()),
           shiny::br(),
           sprintf("theta range: %.3f \u2013 %.3f", min(d$theta), max(d$theta)),
           shiny::br(),
@@ -523,7 +558,14 @@ plot_theta_map_interactive <- function(
                            sprintf("Total obs: %d", sum(d$n_obs, na.rm = TRUE)))
           else NULL,
           style = "font-size:11px;line-height:1.7;margin:0;"
-        )
+        ),
+        if (n_cells() == 1L)
+          shiny::p(
+            "This explorer is built for comparing theta across multiple ",
+            "grid cells. A single cell may not be very instructive.",
+            style = "font-size:11px;line-height:1.5;margin:6px 0 0;color:#664d03;"
+          )
+        else NULL
       )
     })
 
@@ -550,7 +592,11 @@ plot_theta_map_interactive <- function(
 #' @noRd
 .parse_grid_id <- function(grid_id) {
   x         <- sub("^Grid_", "", grid_id)
-  parts     <- regmatches(x, regexpr("^[^_]+", x))
+  # sub(), not regmatches(regexpr(...)): regmatches() silently DROPS any
+  # element with no match (e.g. NA input) instead of returning NA, which
+  # desyncs parts/lon_parts' lengths from grid_id's whenever any input is
+  # NA or malformed. sub() always preserves length (NA stays NA in place).
+  parts     <- sub("_.*$", "", x)
   lon_parts <- sub("^[^_]+_", "", x)
 
   parse_coord <- function(s) {

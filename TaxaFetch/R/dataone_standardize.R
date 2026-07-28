@@ -18,8 +18,6 @@ utils::globalVariables(c(
 #   .download_data_table()          HTTP fetch + delim detection + read
 #   .standardize_to_dwc()           Rename, type-coerce, construct eventDate
 #   .filter_to_bbox_df()            Keep records within bounding box
-#   .load_gbif_hashes()             Build hash set from GBIF snapshot for dedup
-#   .deduplicate_against_gbif()     Remove records matching a GBIF hash set
 #   .attempt_odm_join()             Join ODM observation+location+taxon tables
 #   .process_one_dataset()          Single-dataset pipeline (EML -> tidy tibble)
 #
@@ -113,11 +111,6 @@ utils::globalVariables(c(
 #'   \code{south}, \code{north} (decimal degrees). Records outside this box
 #'   are removed. Example:
 #'   \code{list(west = -121.0, east = -118.5, south = 33.5, north = 35.0)}.
-#' @param gbif_snapshot_path Character or \code{NULL}. Path to a GBIF
-#'   occurrence download in tab-separated format. When provided, records whose
-#'   combination of \code{scientificName}, \code{eventDate}, and rounded
-#'   coordinates (3 d.p.) match a GBIF record are removed. \code{NULL}
-#'   (default) skips deduplication.
 #' @param extra_dwc_map A \code{data.frame} with columns \code{pattern} and
 #'   \code{dwc_term}, prepended before the default map so dataset-specific
 #'   patterns take priority. \code{NULL} (default) uses the built-in map only.
@@ -169,8 +162,16 @@ utils::globalVariables(c(
 #' \code{year}/\code{month}/\code{day} are present, \code{eventDate} is
 #' constructed from them.
 #'
-#' \strong{Deduplication hash key:}
-#' \code{tolower(scientificName)|eventDate|round(lat,3)|round(lon,3)}.
+#' \strong{Cross-source deduplication:} this function does not dedupe against
+#' GBIF itself (a prior \code{gbif_snapshot_path} parameter that did this was
+#' removed 2026-07-23 -- it had zero real callers and was superseded by a
+#' safer, more general mechanism). If you combine this output with GBIF
+#' occurrences (e.g. via \code{\link{get_gbif_occurrences}}), pass both to
+#' \code{\link{stack_occurrences}}, whose
+#' \code{collapse_duplicate_occasions} (default \code{TRUE}) collapses
+#' records describing the same species x date x location detection occasion
+#' across sources -- see that function's Details for why this is preferred
+#' over a static, separately-loaded GBIF snapshot file.
 #'
 #' @seealso \code{\link{search_dataone}}, \code{\link{fetch_dataone_eml}},
 #'   \code{\link{stack_occurrences}}
@@ -178,12 +179,12 @@ utils::globalVariables(c(
 #' @importFrom httr2 request req_timeout req_perform resp_body_string
 #' @importFrom xml2 read_xml xml_ns_strip xml_find_all xml_find_first xml_text
 #' @importFrom dplyr mutate rename select filter bind_rows any_of all_of
-#'   coalesce n_distinct left_join
+#'   n_distinct left_join
 #' @importFrom stats setNames
 #' @importFrom tibble as_tibble
 #' @importFrom cli cli_progress_bar cli_progress_update cli_progress_done
 #' @importFrom stringr str_to_lower str_trim str_pad str_count
-#' @importFrom readr read_delim read_tsv
+#' @importFrom readr read_delim
 #' @export
 #'
 #' @examples
@@ -194,14 +195,8 @@ utils::globalVariables(c(
 #' # Single dataset smoke test
 #' occ <- fetch_dataone_occurrences(candidates$id[1], bbox)
 #'
-#' # Full run without GBIF dedup
+#' # Full run
 #' occ <- fetch_dataone_occurrences(candidates$id, bbox)
-#'
-#' # With GBIF deduplication
-#' occ <- fetch_dataone_occurrences(
-#'   candidates$id, bbox,
-#'   gbif_snapshot_path = "~/data/gbif_sbchannel.csv"
-#' )
 #'
 #' # Fix a non-standard column name
 #' extra <- data.frame(
@@ -214,7 +209,6 @@ utils::globalVariables(c(
 #' }
 fetch_dataone_occurrences <- function(dataset_ids,
                                       bbox,
-                                      gbif_snapshot_path = NULL,
                                       extra_dwc_map      = NULL,
                                       timeout            = 120L,
                                       site_lookup        = NULL,
@@ -258,14 +252,12 @@ fetch_dataone_occurrences <- function(dataset_ids,
     .default_dwc_map
   }
 
-  gbif_hashes <- .load_gbif_hashes(gbif_snapshot_path, verbose = verbose)
-
   pb <- cli::cli_progress_bar("Fetching DataONE datasets",
                                total = length(dataset_ids))
   results <- lapply(dataset_ids, function(id) {
     cli::cli_progress_update(id = pb)
     tryCatch(
-      .process_one_dataset(id, bbox, dwc_map, gbif_hashes, verbose,
+      .process_one_dataset(id, bbox, dwc_map, verbose,
                             timeout = timeout, site_lookup = site_lookup,
                             odm_variable = odm_variable),
       error = function(e) {
@@ -697,64 +689,6 @@ fetch_dataone_occurrences <- function(dataset_ids,
 }
 
 
-#' Build deduplication hash set from a GBIF snapshot
-#'
-#' Hash key: tolower(scientificName) | eventDate | round(lat,3) | round(lon,3)
-#' Returns NULL if no path provided or file not found.
-#'
-#' @noRd
-.load_gbif_hashes <- function(gbif_path, verbose = TRUE) {
-  if (is.null(gbif_path)) return(NULL)
-  if (!file.exists(gbif_path)) {
-    warning(sprintf(
-      ".load_gbif_hashes: file not found: %s -- skipping deduplication.",
-      gbif_path
-    ), call. = FALSE)
-    return(NULL)
-  }
-  if (verbose) message("Loading GBIF snapshot: ", gbif_path)
-
-  gbif <- readr::read_tsv(gbif_path, show_col_types = FALSE, quote = "")
-
-  name_col <- dplyr::coalesce(gbif$species, gbif$scientificName,
-                               rep("", nrow(gbif)))
-  date_col <- dplyr::coalesce(gbif$eventDate, rep("", nrow(gbif)))
-  lat_col  <- dplyr::coalesce(gbif$decimalLatitude,  rep(0, nrow(gbif)))
-  lon_col  <- dplyr::coalesce(gbif$decimalLongitude, rep(0, nrow(gbif)))
-
-  hashes <- paste(tolower(stringr::str_trim(name_col)), date_col,
-                  round(lat_col, 3), round(lon_col, 3), sep = "|")
-
-  if (verbose) {
-    message(sprintf("  %d unique hashes from %d GBIF records",
-                    length(unique(hashes)), nrow(gbif)))
-  }
-  unique(hashes)
-}
-
-
-#' Remove records matching a GBIF hash set
-#'
-#' @noRd
-.deduplicate_against_gbif <- function(df, gbif_hashes) {
-  if (is.null(gbif_hashes)) return(df)
-
-  name_col <- dplyr::coalesce(df$scientificName, rep("", nrow(df)))
-  date_col <- dplyr::coalesce(df$eventDate,      rep("", nrow(df)))
-  lat_col  <- dplyr::coalesce(df$decimalLatitude,  rep(0, nrow(df)))
-  lon_col  <- dplyr::coalesce(df$decimalLongitude, rep(0, nrow(df)))
-
-  record_hashes <- paste(tolower(stringr::str_trim(name_col)), date_col,
-                         round(lat_col, 3), round(lon_col, 3), sep = "|")
-
-  n_before <- nrow(df)
-  out      <- df[!record_hashes %in% gbif_hashes, ]
-  message(sprintf("    GBIF dedup: %d \u2192 %d records (%d removed)",
-                  n_before, nrow(out), n_before - nrow(out)))
-  out
-}
-
-
 # -- EML fixed-site coordinate helpers -----------------------------------------
 
 #' Extract named point sites from EML geographicCoverage nodes
@@ -997,12 +931,12 @@ fetch_dataone_occurrences <- function(dataset_ids,
 }
 
 
-#' Standardize, bbox-filter, dedup, and return a tibble for one entity data frame
+#' Standardize, bbox-filter, and return a tibble for one entity data frame
 #'
 #' Shared by both self-contained complete entities and DwC Archive join results.
 #'
 #' @noRd
-.finalize_entity <- function(raw_df, mapping, meta, bbox, gbif_hashes, verbose) {
+.finalize_entity <- function(raw_df, mapping, meta, bbox, verbose) {
   std <- tryCatch(
     .standardize_to_dwc(raw_df, mapping, meta),
     error = function(e) {
@@ -1015,12 +949,6 @@ fetch_dataone_occurrences <- function(dataset_ids,
   std <- .filter_to_bbox_df(std, bbox)
   if (nrow(std) == 0L) {
     if (verbose) message("    No records within bbox \u2014 skipping entity.")
-    return(NULL)
-  }
-
-  std <- .deduplicate_against_gbif(std, gbif_hashes)
-  if (nrow(std) == 0L) {
-    if (verbose) message("    All records matched GBIF \u2014 skipping entity.")
     return(NULL)
   }
 
@@ -1037,7 +965,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .process_one_dataset <- function(dataset_id, bbox, dwc_map,
-                                 gbif_hashes, verbose, timeout = 120L,
+                                 verbose, timeout = 120L,
                                  site_lookup = NULL, odm_variable = "DENSITY") {
 
   if (verbose) message(sprintf("\nProcessing: %s", str_trunc_safe(dataset_id, 70)))
@@ -1137,7 +1065,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   for (ei in entity_info) {
     if (!isTRUE(ei$category == "complete") || is.null(ei$raw)) next
-    result <- .finalize_entity(ei$raw, ei$mapping, meta, bbox, gbif_hashes, verbose)
+    result <- .finalize_entity(ei$raw, ei$mapping, meta, bbox, verbose)
     if (!is.null(result)) entity_results[[ei$ename]] <- result
   }
 
@@ -1167,7 +1095,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
         if (is.null(merged)) next
         merged_mapping <- .map_columns_to_dwc(names(merged), dwc_map)
         result <- .finalize_entity(merged, merged_mapping, meta,
-                                   bbox, gbif_hashes, verbose)
+                                   bbox, verbose)
         if (!is.null(result)) {
           jname <- paste0(sei$ename, " + ", oei$ename)
           entity_results[[jname]] <- result
@@ -1321,7 +1249,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
       if (is.null(injected)) next
       inj_mapping <- .map_columns_to_dwc(names(injected), dwc_map)
       result <- .finalize_entity(injected, inj_mapping, meta,
-                                 bbox, gbif_hashes, verbose)
+                                 bbox, verbose)
       if (!is.null(result)) entity_results[[ei$ename]] <- result
     }
   }
@@ -1336,7 +1264,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
   # per taxon x location x date.
   if (length(entity_results) == 0L) {
     odm_result <- .attempt_odm_join(entity_info, dwc_map, meta,
-                                    bbox, gbif_hashes, verbose,
+                                    bbox, verbose,
                                     odm_variable = odm_variable)
     if (!is.null(odm_result)) entity_results[["ODM"]] <- odm_result
   }
@@ -1362,7 +1290,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .attempt_odm_join <- function(entity_info, dwc_map, meta,
-                               bbox, gbif_hashes, verbose,
+                               bbox, verbose,
                                odm_variable = "DENSITY") {
 
   enames_lower <- tolower(vapply(entity_info, `[[`, "", "ename"))
@@ -1536,7 +1464,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   # ---- finalize -------------------------------------------------------------
   final_mapping <- .map_columns_to_dwc(names(merged), dwc_map)
-  .finalize_entity(merged, final_mapping, meta, bbox, gbif_hashes, verbose)
+  .finalize_entity(merged, final_mapping, meta, bbox, verbose)
 }
 
 

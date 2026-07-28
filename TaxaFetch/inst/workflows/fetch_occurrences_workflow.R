@@ -207,6 +207,11 @@ if (nrow(gbif_occurrences) == 0) {
 }
 
 all_occurrences <- TaxaFetch::stack_occurrences(gbif_occurrences)
+# dedupe_occurrences() is worth calling here even with a single GBIF source --
+# GBIF aggregates eBird/iNaturalist/Observation.org/etc., so one fetch can
+# already contain repeat reports of the same detection occasion. See
+# ?TaxaFetch::dedupe_occurrences.
+all_occurrences <- TaxaFetch::dedupe_occurrences(all_occurrences)
 message(sprintf("  %d occurrence records retained (Variant A).", nrow(all_occurrences)))
 
 # --- END VARIANT A ------------------------------------------------------------
@@ -257,6 +262,7 @@ message(sprintf("  %d occurrence records retained (Variant A).", nrow(all_occurr
 # # extra_source$datasource <- "MySource"
 #
 # all_occurrences <- TaxaFetch::stack_occurrences(gbif_std)  # add extra_source here once standardized
+# all_occurrences <- TaxaFetch::dedupe_occurrences(all_occurrences)
 # message(sprintf("  %d occurrence records retained (Variant B).", nrow(all_occurrences)))
 #
 # # TODO: sampling_group assignment goes here in a future session -- see note above.

@@ -20,5 +20,22 @@ priors <- TaxaExpect::generate_full_priors(
   new_sites = model_data
 )
 saveRDS(model_fit, {{model_save_path}})
+
+# Optional: add named domestic/commensal-animal and food-species priors --
+# GBIF/iNaturalist occurrence data structurally under-counts these species
+# (pets, livestock, garden/crop plants), so without this they get the same
+# tiny floor prior as a genuinely implausible candidate. Set
+# {{include_domestic_priors}} to FALSE to skip this step entirely.
+if (isTRUE({{include_domestic_priors}})) {
+  domestic_priors <- TaxaExpect::generate_domestic_food_priors(
+    model_obj = model_fit,
+    lat       = {{lat}},
+    lng       = {{lon}},
+    grid_id   = NA_character_
+  )
+  priors <- dplyr::bind_rows(priors, domestic_priors)
+  message("Added ", nrow(domestic_priors), " domestic/food-species prior row(s)")
+}
+
 message("Generated priors for ", length(unique(priors$taxon_name)), " taxa")
 priors

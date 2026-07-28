@@ -37,6 +37,58 @@
       "output": {"type": "numeric", "description": "Recommended grid size in degrees"},
       "scaling": "linear",
       "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "prepare_model_dataframe",
+      "description": "Prepare gridded occurrence data for biodiversity model fitting -- computes per-taxon presence/absence and shared effort denominator (n_total_at_site) per grid cell",
+      "inputs": [
+        {"name": "data", "type": "distributions", "required": true, "description": "Gridded occurrence data with grid_id, lat_r, lon_r, habitat_col, taxon_name"},
+        {"name": "covariates", "type": "character_vector", "required": false, "default": "c('lat_r','lon_r')", "description": "Spatial covariate columns"},
+        {"name": "habitat_col", "type": "character", "required": false, "default": "main_habitat", "description": "Habitat column; NULL disables habitat modeling"},
+        {"name": "cor_threshold", "type": "numeric", "required": false, "default": 0.7, "description": "Drop a covariate if correlated above this with another"},
+        {"name": "sampling_group_col", "type": "character", "required": false, "default": null, "description": "Column identifying which detection PROCESS/METHOD each row belongs to (e.g. 'fish' vs 'birds' vs 'phytoplankton'). When supplied, n_total_at_site is computed group-aware (split-and-recombine internally) so effort isn't pooled across incomparable sampling processes. NOT the same as a physical site/spatial_group_id"}
+      ],
+      "output": {"type": "model_data", "description": "Data frame ready for compute_moran_basis()/train_biodiversity_model() (or train_biodiversity_model_by_group() when sampling_group_col was supplied)"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "train_biodiversity_model_by_group",
+      "description": "Fits one biodiversity model PER sampling_group_col value instead of pooling every taxon into one model. Required when data spans multiple detection processes with different effort -- train_biodiversity_model() itself refuses multi-group data",
+      "inputs": [
+        {"name": "data", "type": "distributions", "required": true, "description": "Raw gridded occurrence data (NOT pre-processed by prepare_model_dataframe() -- this function re-derives model data per group internally)"},
+        {"name": "formula", "type": "formula", "required": true, "description": "Model formula, typically from screen_spatial_formula()$formula run once on the full/combined data"},
+        {"name": "sampling_group_col", "type": "character", "required": true, "description": "Column identifying detection process/method groups. Required -- for ungrouped data use train_biodiversity_model() directly"},
+        {"name": "covariates", "type": "character_vector", "required": false, "default": "c('lat_r','lon_r')", "description": "Spatial covariate columns"},
+        {"name": "habitat_col", "type": "character", "required": false, "default": "main_habitat", "description": "Habitat column"},
+        {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon column"},
+        {"name": "response", "type": "character", "required": false, "default": "theta", "description": "'theta' or 'psi'"},
+        {"name": "min_obs_threshold", "type": "integer", "required": false, "default": 5, "description": "Minimum observations to attempt a group fit"},
+        {"name": "effort_threshold", "type": "integer", "required": false, "default": 10, "description": "Minimum total effort to attempt a group fit"},
+        {"name": "min_positive_rows", "type": "integer", "required": false, "default": 50, "description": "Minimum positive-detection rows to attempt a group fit"}
+      ],
+      "output": {"type": "list", "description": "Named list of biofreq_model objects, one per sampling_group_col value. Groups that fail to fit (too sparse) are dropped with a warning, not an error"},
+      "scaling": "linear",
+      "scaling_note": "One model fit per group; seconds to minutes depending on number of groups"
+    },
+    {
+      "name": "generate_domestic_food_priors",
+      "description": "Adds named Beta(alpha, beta) prior rows for domestic/commensal animal species, human food/crop species, and (optionally) candidate cultivated plants -- a non-GBIF prior source using live iNaturalist casual-grade evidence, for the gap where occurrence-database indexing structurally under-counts captive/cultivated organisms. Output is bind_rows()-compatible with generate_full_priors()'s taxaexpect_priors",
+      "inputs": [
+        {"name": "model_obj", "type": "biofreq_model", "required": true, "description": "Output of train_biodiversity_model() (or one element of train_biodiversity_model_by_group()'s list); used only for N_total and habitat_col so these rows sit on the same theta scale as the rest of taxaexpect_priors"},
+        {"name": "lat", "type": "numeric", "required": true, "description": "Query site latitude for the iNaturalist search"},
+        {"name": "lng", "type": "numeric", "required": true, "description": "Query site longitude for the iNaturalist search"},
+        {"name": "grid_id", "type": "character", "required": false, "default": "NA_character_", "description": "Grid cell identifier attached to every output row, for joining into taxaexpect_priors"},
+        {"name": "domestic_animal_taxa", "type": "character_vector", "required": false, "description": "Domestic/commensal animal taxon names. Default is a pre-populated starting list (dog, cat, cow, sheep, pig, chicken, horse, Homo sapiens, etc.). Set to character(0) to disable this channel"},
+        {"name": "food_species_taxa", "type": "character_vector", "required": false, "description": "Human food/crop species taxon names, a separate contamination category from domestic_animal_taxa (food-handling/lab-bench contamination, not pet/livestock). Default is a pre-populated starting list. Set to character(0) to disable"},
+        {"name": "candidate_plant_taxa", "type": "character_vector", "required": false, "default": null, "description": "Candidate plant-kingdom taxa (e.g. from your study's own plant-kingdom BLAST/GBIF matches) to check for real local cultivated/casual-grade iNaturalist evidence. Default NULL (channel disabled, no live iNaturalist calls made unless supplied)"},
+        {"name": "radius_km", "type": "numeric", "required": false, "default": 50, "description": "iNaturalist search radius"},
+        {"name": "taxonomy", "type": "data.frame", "required": false, "default": null, "description": "Optional taxon_name + rank columns (incl. kingdom) joined onto the result. Supplying a kingdom column enables an iNaturalist cross-kingdom-homonym check"},
+        {"name": "api_token", "type": "character", "required": false, "description": "iNaturalist API token; defaults to the INAT_API_TOKEN environment variable"}
+      ],
+      "output": {"type": "data.frame", "description": "One row per resolved domestic/food/plant taxon: taxon_name (always populated, unlike generate_undetected_diversity()'s anonymous proxies), grid_id, alpha, beta, theta_mean, theta_sd, model_tier ('tier_domestic_food'), prior_source_type ('domestic_animal'/'food_species'/'domestic_plant'), inat_n_observations_local, inat_kingdom, inat_kingdom_mismatch"},
+      "scaling": "api_limited",
+      "scaling_note": "iNaturalist API; seconds to ~1 min depending on how many candidate_plant_taxa are supplied"
     }
   ]
 }

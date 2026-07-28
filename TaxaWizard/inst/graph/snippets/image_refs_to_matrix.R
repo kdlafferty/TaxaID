@@ -8,7 +8,7 @@
 #
 # image_classifier_output: classifier output on those same reference images
 #   (from read_animl_output(), read_inaturalist_cv_output(), etc.)
-#   Set classifier to one of: "animl", "inaturalist_cv", "wildlife_insights"
+#   Set classifier to one of: "animl", "inaturalist_cv", "speciesnet"
 
 images_meta <- {{images_meta}}   # ground-truth labels data frame
 
@@ -18,10 +18,10 @@ image_raw <- switch(.classifier,
     data = {{input_var}}, min_confidence = 0.05, top_n = 5L),
   inaturalist_cv = TaxaMatch::read_inaturalist_cv_output(
     data = {{input_var}}, min_confidence = 0.05, top_n = 5L),
-  wildlife_insights = TaxaMatch::read_wildlife_insights_output(
-    data = {{input_var}}, min_confidence = 0.05, top_n = 5L),
+  speciesnet = TaxaMatch::read_speciesnet_output(
+    files = {{input_var}}, min_confidence = 0.05, top_n = 5L),
   stop("Unknown classifier '", .classifier,
-       "'. Use 'animl', 'inaturalist_cv', or 'wildlife_insights'.", call. = FALSE)
+       "'. Use 'animl', 'inaturalist_cv', or 'speciesnet'.", call. = FALSE)
 )
 
 image_matrix <- TaxaLikely::build_image_reference(

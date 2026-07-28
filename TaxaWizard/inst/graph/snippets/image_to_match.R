@@ -1,7 +1,7 @@
 # Edge: image_classifier_output -> match_df
 # Source: TaxaMatch read_animl_output() / read_inaturalist_cv_output() /
-#         read_wildlife_insights_output()
-# Set classifier to one of: "animl", "inaturalist_cv", "wildlife_insights"
+#         read_speciesnet_output()
+# Set classifier to one of: "animl", "inaturalist_cv", "speciesnet"
 
 .classifier <- {{classifier}}
 
@@ -16,13 +16,13 @@ image_raw <- switch(.classifier,
     min_confidence = {{min_confidence}},
     top_n          = {{top_n}}
   ),
-  wildlife_insights = TaxaMatch::read_wildlife_insights_output(
-    data           = {{input_var}},
+  speciesnet = TaxaMatch::read_speciesnet_output(
+    files          = {{input_var}},
     min_confidence = {{min_confidence}},
     top_n          = {{top_n}}
   ),
   stop("Unknown classifier '", .classifier,
-       "'. Use 'animl', 'inaturalist_cv', or 'wildlife_insights'.", call. = FALSE)
+       "'. Use 'animl', 'inaturalist_cv', or 'speciesnet'.", call. = FALSE)
 )
 
 if (nrow(image_raw) == 0L) {

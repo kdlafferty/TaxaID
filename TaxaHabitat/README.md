@@ -21,8 +21,9 @@ results. `flag_habitat_inconsistencies()` provides an interactive map
 that makes errant classifications easy to spot and correct.
 
 A key feature of TaxaHabitat is the ability to review and proof
-occupancy data. Even well-curated data like GBIF have a high frequency
-of location errors. By mapping points by habitat type, users can easily
+occupancy data. Even well-curated data like GBIF (Global Biodiversity
+Information Facility; GBIF Secretariat, Copenhagen, Denmark) have a
+high frequency of location errors. By mapping points by habitat type, users can easily
 view which observations have incorrect coordinates. The function
 review_spatial_flags(occurrences_flagged) is designed to flag errant
 points for removal before model building begins. TaxaHabitat thus can be
@@ -142,8 +143,13 @@ alongside the habitat consensus.
 
 `flag_habitat_inconsistencies()` checks whether each occurrence record
 is spatially consistent with its assigned habitat using vector polygons
-(Natural Earth land/ocean boundaries) and raster bathymetry (GEBCO).
-Each record is classified into a physical zone:
+(Natural Earth land/ocean boundaries; a public-domain map dataset
+maintained by volunteer cartographers with support from the North
+American Cartographic Information Society, naturalearthdata.com) and
+raster bathymetry (GEBCO, the General Bathymetric Chart of the Oceans;
+maintained by the GEBCO Compilation Group and hosted by the British
+Oceanographic Data Centre, Liverpool, United Kingdom). Each record is
+classified into a physical zone:
 
 | Zone           | Definition                                |
 |----------------|-------------------------------------------|
@@ -164,16 +170,23 @@ for manual inspection and correction.
 ## LLM Integration
 
 TaxaHabitat uses the `llm_fn` pattern from TaxaTools. The default
-provider is `call_anthropic_api()`, but any compatible provider works:
+provider is `call_anthropic_api()` (Anthropic Claude; Anthropic PBC,
+San Francisco, California), but any compatible provider works:
 
 ``` r
 # Use Gemini instead
 raw_text <- TaxaTools::prompt_api(prompt, llm_fn = TaxaTools::call_gemini_api)
 ```
 
+`call_gemini_api()` calls Google Gemini (Google LLC, Mountain View,
+California); other supported providers include OpenAI (OpenAI OpCo,
+LLC, San Francisco, California) and local Ollama (Ollama, Palo Alto,
+California) -- see TaxaTools.
+
 ## API Keys
 
-Requires an LLM API key (Anthropic by default). See the TaxaTools [API
+Requires an Application Programming Interface (API) key for at least
+one LLM provider (Anthropic by default). See the TaxaTools [API
 Setup vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
 ## Vignettes
@@ -200,7 +213,7 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (for LLM provider functions)
 -   An LLM API key is required for habitat assignment via
     `build_habitat_prompt()`
@@ -208,4 +221,11 @@ taxonomic assignment: U.S. Geological Survey software release,
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>

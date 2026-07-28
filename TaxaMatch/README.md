@@ -22,8 +22,11 @@ raw scores may be mistaken for probabilities, leading to overconfident
 or inconsistent assignments.
 
 TaxaMatch can also produce match tables from raw sequence data via
-NCBI BLAST, though most users will start from an existing
-bioinformatics pipeline.
+NCBI (National Center for Biotechnology Information, U.S. National
+Library of Medicine, National Institutes of Health, Bethesda,
+Maryland) BLAST (Basic Local Alignment Search Tool; Altschul et al.
+1990), though most users will start from an existing bioinformatics
+pipeline.
 
 ## Supported Data Types
 
@@ -91,8 +94,10 @@ match_df <- filter_redundant_hypotheses(match_df)
 
 ## Acoustic Workflow
 
-BirdNET-Analyzer is a free Python tool from the Cornell Lab of
-Ornithology that classifies bird vocalizations in audio files.
+BirdNET-Analyzer is a free tool, written in Python (Python Software
+Foundation, Wilmington, Delaware), from the Cornell Lab of Ornithology
+(Cornell University, Ithaca, New York) that classifies bird
+vocalizations in audio files.
 
 **Install BirdNET-Analyzer** (requires Python 3.9+, \~100 MB model
 download):
@@ -149,16 +154,21 @@ default produces up to 3 detections per 3-second window. Use
 `top_n = 1` to keep only the best candidate per window.
 
 **Reference training workflow:** Download ground-truth recordings from
-Xeno-canto with `TaxaLikely::fetch_reference_recordings()`, run
-BirdNET-Analyzer on the downloaded audio, then join detections back to
-the known species via `source_file` to label H1/H2/H3 training
-examples.
+Xeno-canto (Xeno-canto Foundation, Netherlands, with support from
+Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>) with
+`TaxaLikely::fetch_reference_recordings()`, run BirdNET-Analyzer on the
+downloaded audio, then join detections back to the known species via
+`source_file` to label H1/H2/H3 training examples.
 
 ## Camera Trap Image Workflow
 
-Animl (MegaDetector + SpeciesNet) is an R package on CRAN that
-classifies camera trap images. Install it with
-`install.packages("animl")` (requires Python ≥ 3.12 via `reticulate`).
+`animl` (Swanson and Tobler; Conservation Technology Lab, San Diego
+Zoo Wildlife Alliance, San Diego, California) is an R package on CRAN
+that wraps MegaDetector (Microsoft AI for Earth; Microsoft
+Corporation, Redmond, Washington) and SpeciesNet (Google LLC, Mountain
+View, California) to classify camera trap images. Install it with
+`install.packages("animl")` (requires Python \>= 3.12 via
+`reticulate`).
 
 **Read Animl results into match object format:**
 
@@ -237,12 +247,16 @@ The match object format is classifier-agnostic. Three dedicated reader
 functions are available; any other tool that returns a species label
 and a confidence score per image can be adapted manually.
 
-**iNaturalist computer vision (direct submission)** — `score_image_inat()` submits
-image files directly to the iNaturalist CV API and returns a match object in one
-step. Supply a directory, file vector, or single image. If images have GPS EXIF
-metadata, location is read automatically; otherwise supply `lat`, `lng`, and
-`observed_on`. Scores are in iNaturalist's 0--100 softmax scale (do not rescale).
-Requires an iNaturalist API token (`INAT_API_TOKEN` environment variable; free account).
+**iNaturalist computer vision (direct submission)** — iNaturalist (a joint
+initiative of the California Academy of Sciences and the National
+Geographic Society, San Francisco, California). `score_image_inat()`
+submits image files directly to the iNaturalist CV API and returns a
+match object in one step. Supply a directory, file vector, or single
+image. If images have GPS EXIF metadata, location is read
+automatically; otherwise supply `lat`, `lng`, and `observed_on`. Scores
+are in iNaturalist's 0--100 softmax scale (do not rescale). Requires an
+iNaturalist API token (`INAT_API_TOKEN` environment variable; free
+account).
 
 ``` r
 match_df <- score_image_inat(
@@ -267,21 +281,24 @@ inat_df <- read_inaturalist_cv_output(
 ) |> subset(taxon_rank == "species")
 ```
 
-**Wildlife Insights / SpeciesNet** (Google/WCS) processes camera trap
-images with the open-source SpeciesNet Python model. Use
-`read_wildlife_insights_output()` on the batch predictions JSON:
+**SpeciesNet** (Google, `google/cameratrapai`) processes camera trap
+images with an EfficientNetV2-M classifier + MegaDetector ensemble, covering
+2,000+ labels spanning any taxonomic rank (species down to class) plus
+non-animal categories. Use `read_speciesnet_output()` on the batch
+predictions JSON:
 
 ``` r
 # Run SpeciesNet: python -m speciesnet.scripts.run_model \
-#   --folders images/ --predictions_json speciesnet_output.json
-wi_df <- read_wildlife_insights_output(
-  "speciesnet_output.json",
+#   --folders images/ --predictions_json speciesnet_predictions.json
+sn_df <- read_speciesnet_output(
+  "speciesnet_predictions.json",
   min_confidence = 0.3
-) |> subset(!species %in% c("blank", "human", "vehicle"))
+) |> subset(!is.na(taxon_rank))
 ```
 
-**InsectNet** (He et al. 2025; <https://insectapp.las.iastate.edu>)
-targets insects (2,526 species, 17 orders) with 96.4% top-1 accuracy.
+**InsectNet** (He et al. 2025; Iowa State University, Ames, Iowa;
+<https://insectapp.las.iastate.edu>) targets insects (2,526 species,
+17 orders) with 96.4% top-1 accuracy.
 Unlike the classifiers above, it returns *conformal prediction sets*
 rather than a single ranked-confidence list — a set of species
 guaranteed to contain the true species with ≥97.5% probability. It
@@ -297,7 +314,7 @@ exists at time of writing.
 | Animl / SpeciesNet | `read_animl_output()` | Confidence 0--1 | `animl` (CRAN) |
 | iNaturalist CV (direct) | `score_image_inat()` | Softmax 0--100 | Free API (token required) |
 | iNaturalist CV (saved JSON) | `read_inaturalist_cv_output()` | Softmax 0--1 | `rinat` (indirect) |
-| Wildlife Insights / SpeciesNet | `read_wildlife_insights_output()` | Confidence 0--1 | Python `speciesnet` |
+| SpeciesNet (`google/cameratrapai`) | `read_speciesnet_output()` | Confidence 0--1 | Python `speciesnet` |
 | InsectNet | *(not yet compatible)* | Conformal sets | Web app only |
 
 ## Downstream Tools
@@ -350,14 +367,44 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (foundation package, installed first)
 -   httr2 and rentrez (for remote NCBI BLAST)
--   Biostrings and rBLAST (optional; for local BLAST)
+-   Biostrings and rBLAST (Hahsler and Nagar 2019; optional, for local
+    BLAST)
 -   Python 3.9+ and birdnetlib (`pip3 install birdnetlib`; optional,
     for acoustic analysis via BirdNET-Analyzer)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J.
+(1990). Basic local alignment search tool. *Journal of Molecular
+Biology*, 215(3), 403--410.
+
+Hahsler, M. and Nagar, A. (2019). rBLAST: R Interface for the Basic
+Local Alignment Search Tool. R package.
+<https://github.com/mhahsler/rBLAST>
+
+He, S., Li, Y., Wang, Y., Galloway, B., Li, H., Liu, S., Huang, C.,
+Hart, T.J. and Zhao, Z. (2025). InsectNet: automated insect
+identification from around the world. *PNAS Nexus*, 4(1), pgae575.
+<https://doi.org/10.1093/pnasnexus/pgae575>
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>
+
+Tabak, M.A., Norouzzadeh, M.S., Wolfson, D.W., Sweeney, S.J.,
+Vercauteren, K.C., Snow, N.P., Halseth, J.M., Di Salvo, P.A., Lewis,
+J.S., White, M.D., Teton, B., Beasley, J.C., Schlichting, P.E.,
+Boughton, R.K., Wight, B., Newkirk, E.S., Ivan, J.S., Odell, E.A.,
+Brook, R.K., Lukacs, P.M., Moeller, A.K., Mandeville, E.G., Clune, J.
+and Miller, R.S. (2019). Machine learning to classify animal species
+in camera trap images: applications in ecology. *Methods in Ecology
+and Evolution*, 10(4), 585--590.

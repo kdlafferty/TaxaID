@@ -13,5 +13,6 @@ occurrences <- TaxaFetch::fetch_gbif_occurrences(
   limit      = {{gbif_limit}}
 )
 occurrences <- TaxaFetch::filter_gbif_quality(occurrences)
+occurrences <- TaxaFetch::dedupe_occurrences(occurrences)
 message("Fetched ", nrow(occurrences), " occurrence records")
 occurrences

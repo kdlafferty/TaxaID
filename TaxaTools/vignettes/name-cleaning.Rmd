@@ -11,7 +11,13 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = FALSE
+  eval = FALSE,
+  # purl = FALSE is load-bearing, not redundant with eval = FALSE.
+  # R CMD check's "running R code from vignettes" step TANGLES the vignette
+  # (knitr::purl()) and sources the result -- purl() honours purl=, not eval=,
+  # so without this a documentation-only vignette still executes during check
+  # and errors on objects its prose never defines.
+  purl = FALSE
 )
 ```
 

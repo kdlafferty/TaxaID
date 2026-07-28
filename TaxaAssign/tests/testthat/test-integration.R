@@ -234,7 +234,7 @@ test_that("expand_unreferenced output feeds into compute_posterior and score_con
     species   = c("Fundulus lima", "Fundulus parvipinnis"),
     stringsAsFactors = FALSE
   )
-  scon <- score_consensus(match_like, min_score = 80, max_gap = 5)
+  scon <- score_consensus(match_like, min_score = 80, max_gap = 5, rank_thresholds = NULL)
   expect_equal(nrow(scon), 1L)
   expect_true("consensus_taxon" %in% names(scon))
 })

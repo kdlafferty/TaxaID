@@ -68,7 +68,7 @@ RUN_LLM_CALLS             <- TRUE    # screen_pdf_structure() / call_api_pdf() -
 # SECTION 1 -- GBIF pipeline
 # make_bbox_wkt() -> get_keys_from_context() -> get_gbif_occurrences()
 #   (-> fetch_gbif_occurrences() / download_gbif_occurrences() / fetch_occurrences_by_taxon())
-#   -> filter_gbif_quality() -> stack_occurrences() -> report_fetch()
+#   -> filter_gbif_quality() -> stack_occurrences() -> dedupe_occurrences() -> report_fetch()
 # ==============================================================================
 
 ## ---- make_bbox_wkt() ---- OFFLINE, pure function ---------------------------
@@ -181,6 +181,11 @@ occ_b <- tibble(
 )
 stacked <- stack_occurrences(occ_a, occ_b)
 stacked
+
+## ---- dedupe_occurrences() ---- OFFLINE, pure function ------------------------
+# Fixture pattern reused from tests/testthat/test-dedupe_occurrences.R
+deduped <- dedupe_occurrences(stacked)
+deduped
 
 ## ---- report_fetch() ---- OFFLINE, pure function -----------------------------
 # Fixture reused from tests/testthat/test-report_fetch.R

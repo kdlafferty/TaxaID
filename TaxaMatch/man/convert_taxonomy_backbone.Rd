@@ -58,7 +58,11 @@ accept a character vector as its first argument and a \code{backbone_id}
 argument; must return a data frame with columns \code{user_supplied_name},
 \code{matched_name}, \code{classification_path}, \code{classification_ranks}, and
 \code{verified} (logical: \code{TRUE} when the name resolved in the target
-backbone, \code{FALSE}/\code{NA} otherwise). Default: \link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names}.
+backbone, \code{FALSE}/\code{NA} otherwise). An optional \code{matched_rank} column
+(the rank \code{matched_name} actually resolved at) enables the rank
+correction described below; a \code{verify_fn} without it is still fully
+supported, just without that correction. Default:
+\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names}.
 Override for offline testing via dependency injection. The call is
 wrapped in \code{tryCatch()}; a failure (e.g. network unavailable, API
 rate-limited) raises a clear error naming the likely cause rather than
@@ -98,10 +102,6 @@ unchanged. Label is \code{"backbone_N"} when \code{source_backbone_id} is suppli
 
 A \code{taxonomy_backbone} column records which backbone the row's hierarchy
 was drawn from (\code{"backbone_N"} for found rows, source label for not-found rows).
-
-An R attribute \code{backbone_cols} is set on the returned data frame recording
-which rank columns were subject to backbone conversion. A summary message
-is also printed.
 }
 \note{
 This function issues one API call to \code{verify_fn} covering all unique
@@ -134,6 +134,60 @@ blank, by the \code{nzchar()} checks used throughout (\code{nzchar(" ")} is \cod
 if this is a realistic data-quality issue for your input, \code{trimws()} your
 \code{taxon_col} before calling.
 }
+\section{Rank correction on fallback (2026-07-25)}{
+
+When a row's own \code{taxon_name_rank} has no matching target-backbone value
+at that same rank (e.g. a row claims \code{"species"} but the target only
+resolved this name to genus), \code{match_df[[taxon_col]]} falls back to the
+coarser resolved name -- and \code{taxon_name_rank} is now corrected to match
+it, using \code{verify_fn}'s \code{matched_rank} column when present (silently
+skipped for a \code{verify_fn} that predates it, e.g. injected for offline
+testing). Real motivating case: an informally-named NCBI reference
+("Inu sp. 1 sensu Shibukawa et al., 2020.") resolves against GBIF to the
+genus \code{Luciogobius} (a synonym relationship -- GBIF's own backbone
+considers \code{"Inu"} Snyder 1909 a synonym of \code{Luciogobius} Gill 1859; NCBI's
+own taxonomy does not) with no species-level entry to fill. Before this
+fix, \code{taxon_name} was correctly demoted to the genus but
+\code{taxon_name_rank} silently stayed \code{"species"} -- a downstream slash-name
+builder then treated the bare genus as if it were a complete binomial and
+manufactured a fabricated pseudo-binomial (\code{"Inu Inu"}) from it. Confirmed
+backbone-general, not GBIF-specific, before shipping -- see
+\code{TaxaTools::verify_taxon_names()}'s own \verb{@section Synonym resolution and rank correctness}.
+
+\strong{Finer rank columns are also cleared on the same rows} (e.g. \code{species}
+set to \code{NA} when the row is demoted to genus), not just
+\code{taxon_name}/\code{taxon_name_rank}. Found necessary by testing against a real
+production workflow, not by inspection alone: the per-column fallback
+(documented above) deliberately keeps each rank column's own cleaned
+original value when the target backbone has no replacement for it --
+correct for a column that genuinely didn't change, but it left a stale,
+semantically-invalid value (\code{species = "Inu"}) in place even after
+\code{taxon_name}/\code{taxon_name_rank} were correctly demoted. Any code that
+re-derives a name from rank columns after calling this function (e.g. a
+second \code{TaxaTools::create_taxon_names()} call, a real step some
+production workflows already run "to re-derive taxon_name after backbone
+conversion") would otherwise see \code{species} still populated, apply
+"most specific non-NA rank wins", and silently undo the correction.
+
+An R attribute \code{backbone_cols} is set on the returned data frame recording
+which rank columns were subject to backbone conversion. A summary message
+is also printed.
+}
+
+\section{Not-found rows are cleaned too}{
+
+When a taxon is not found in the target backbone, its original rank
+columns and \code{taxon_col} value are still run through
+\code{\link[TaxaTools:clean_taxon_names]{TaxaTools::clean_taxon_names()}} before being used as the output value --
+previously only target-backbone-matched values were cleaned, so an exotic
+name that failed to resolve (e.g. a compound hybrid-formula name straight
+from a raw reference-database accession label,
+\code{"((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"})
+passed through completely unmodified. This does NOT change which names are
+sent to \code{verify_fn} or which rows count as "found" -- only the fallback
+value's formatting.
+}
+
 \examples{
 \dontrun{
 # Convert a BLAST match object (NCBI backbone, backbone_id = 4) to GBIF (11)

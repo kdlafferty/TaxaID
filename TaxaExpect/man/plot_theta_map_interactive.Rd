@@ -92,6 +92,14 @@ to match the selected habitats using \code{occurrence_habitat_col} in
 \strong{Grid cell popups} show: theta mean and SD, number of observations,
 model tier, and any active flags (effort, extrapolation, Jeffreys fallback).
 
+\strong{Best suited to multi-grid predictions:} this gadget is built to
+compare predicted theta across several grid cells at once (spatial
+pattern, hotspots, extrapolation risk). When a taxon x habitat selection
+resolves to a single grid cell, the map shows a warning banner, since one
+point has no spatial pattern to explore -- a printed summary of the prior
+table (or \code{plot_theta_map()}'s static output) is usually more
+informative for that case.
+
 \strong{Requirements:} Packages \code{shiny}, \code{miniUI}, and
 \code{leaflet} must be installed. Only works in interactive RStudio sessions.
 }

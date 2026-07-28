@@ -76,7 +76,7 @@
       "description": "Simple score-based consensus: min_score + gap + rank_thresholds -> LCA. No model/priors needed.",
       "inputs": [
         {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object"},
-        {"name": "rank_thresholds", "type": "named_numeric", "required": false, "default": "c(species=98, genus=95, family=90, phylum=85)", "description": "Score thresholds per rank. Defaults to the conventional GITA/Jonah Ventures thresholds -- pass NULL to disable rank capping entirely. Auto-rescaled by /100 if the match score column looks like a 0-1 proportion rather than 0-100 percent identity. Fourth tier is phylum, not order (corrected 2026-07-20) -- the corroborating literature's 85% value is phylum-level."},
+        {"name": "rank_thresholds", "type": "named_numeric", "required": true, "description": "Score thresholds per rank (e.g. c(species=98, genus=95, family=90)). No default (2026-07-23) -- errors if omitted, since the correct thresholds depend on marker/data type and no single value is safe to assume. Either supply real thresholds (e.g. the conventional GITA/Jonah Ventures c(species=98, genus=95, family=90, phylum=85)), derive marker-specific ones via TaxaLikely::compute_rank_thresholds() on your own reference data, or pass NULL explicitly to disable rank capping entirely. Auto-rescaled by /100 if the match score column looks like a 0-1 proportion rather than 0-100 percent identity."},
         {"name": "min_score", "type": "numeric", "required": false, "default": 0, "description": "Minimum score to consider. Note: min_score alone provides little species-vs-congener discrimination -- rank_thresholds does that job."},
         {"name": "max_gap", "type": "numeric", "required": false, "description": "Maximum score gap for species-level"},
         {"name": "rank_system", "type": "character_vector", "required": false, "description": "Rank order for LCA"}
@@ -112,18 +112,28 @@
     },
     {
       "name": "join_priors",
-      "description": "Join TaxaExpect priors to likelihood table by taxon_name + site",
+      "description": "Join TaxaExpect priors to a likelihood table by taxon_name + site. 'site' can be a single-site list OR a multi-site data frame -- see the site input below. When using the multi-site data-frame form, ALWAYS follow with combine_multisite_priors() before compute_posterior(), since an observation detected at more than one site produces one joined row per site",
       "inputs": [
-        {"name": "likelihoods_df", "type": "data.frame", "required": true, "description": "Likelihood table from evaluate_likelihoods()"},
-        {"name": "priors_df", "type": "data.frame", "required": true, "description": "Prior table from TaxaExpect"},
-        {"name": "grid_id", "type": "character", "required": true, "description": "Grid cell to match"},
-        {"name": "main_habitat", "type": "character", "required": true, "description": "Habitat to match"},
-        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks for joining"},
+        {"name": "likelihoods", "type": "data.frame", "required": true, "description": "Likelihood table from evaluate_likelihoods()"},
+        {"name": "taxaexpect_priors", "type": "data.frame", "required": true, "description": "Prior table from TaxaExpect (build_priors()/generate_full_priors()/generate_domestic_food_priors())"},
+        {"name": "site", "type": "list|data.frame", "required": false, "default": null, "description": "Single-site form: list(lat=, lon=, main_habitat=) or list(grid_id=, main_habitat=) -- applied to every observation. Multi-site form (data frame): columns observation_id, grid_id, main_habitat, OR observation_id, lat, lon, main_habitat -- one or more rows per observation_id. main_habitat is always required in either form"},
+        {"name": "taxonomy_lookup", "type": "data.frame", "required": false, "default": null, "description": "Optional taxon_name -> taxonomy-rank lookup (e.g. match_df) for species with likelihoods but absent from taxaexpect_priors"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks for joining, coarsest to finest. NULL auto-detects from likelihoods columns"},
         {"name": "backbone_id", "type": "integer", "required": true, "description": "Taxonomic backbone for taxonomy fallback fill. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."}
       ],
-      "output": {"type": "data.frame", "description": "Likelihood table with prior columns added"},
+      "output": {"type": "data.frame", "description": "Likelihood table with prior columns (prior_alpha, prior_beta, grid_id, main_habitat, ...) added. Multi-site form: one row PER SITE per (observation_id, taxon_name) -- pass through combine_multisite_priors() before compute_posterior()"},
       "scaling": "linear",
       "scaling_note": "Fast; merge operation"
+    },
+    {
+      "name": "combine_multisite_priors",
+      "description": "Combines duplicate (observation_id, taxon_name) rows produced by join_priors()'s multi-site data-frame path -- an observation detected at more than one site -- via precision-weighted logit combination. Correctly discounts a low-confidence/sparse-data site rather than a plain average or product. Single-site candidates pass through unchanged with n_sites_combined = 1",
+      "inputs": [
+        {"name": "joined", "type": "data.frame", "required": true, "description": "Output of join_priors() with the multi-site data-frame 'site' argument -- must have observation_id, taxon_name, taxon_name_rank, grid_id, main_habitat, prior_alpha, prior_beta columns"}
+      ],
+      "output": {"type": "data.frame", "description": "Input with one row per (observation_id, taxon_name, taxon_name_rank), plus n_sites_combined (integer) and combined_sites (character, sites that were combined) columns. Ready for compute_posterior()"},
+      "scaling": "linear",
+      "scaling_note": "Fast; group + combine operation"
     },
     {
       "name": "suggest_unreferenced_species",

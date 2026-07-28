@@ -253,71 +253,176 @@ test_that("stops on non-character domestic_taxa", {
 })
 
 
-# ==============================================================================
-# absolute_fit_pvalue_col / "unsupported_rank" (weak absolute evidence)
-# ==============================================================================
-# Replaced 2026-07-19: the earlier trusted_rank-based design (comparing
-# TaxaLikely::evaluate_likelihoods()'s rank-trust ladder-walk output against
-# consensus_rank via canonical rank order) was found unreliable on real data
-# -- trusted_rank was computed for evaluate_likelihoods()'s own
-# top-LIKELIHOOD hypothesis, not necessarily the same hypothesis that wins
-# the POSTERIOR reported here once priors are applied downstream (~30%
-# mismatch on a real 12S dataset). absolute_fit_pvalue_col reads directly off
-# the actual winning row instead, with no ladder-walk to go stale.
-
-test_that("absolute_fit_pvalue_col absent (default): no unsupported_rank ever appears", {
+test_that("confusion_risk_flag is NA when own_rank_confusion_risk_col is absent", {
   out <- add_posthoc_assessment(.make_cons(), .make_tiers())
-  expect_false("unsupported_rank" %in% out$posthoc_assessment)
-  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "sensible")
+  expect_true("confusion_risk_flag" %in% names(out))
+  expect_true(all(is.na(out$confusion_risk_flag)))
 })
 
-test_that("absolute_fit_pvalue_col present but above weak_evidence_pvalue: no override", {
+test_that("confusion_risk_flag classifies above/below high_confusion_risk_threshold", {
   cons <- .make_cons()
-  cons$winner_absolute_fit_pvalue <- 0.5   # comfortably above the default 0.001
+  cons$winner_own_rank_confusion_risk <- 0.9   # high risk (weak evidence)
+  cons$winner_own_rank_confusion_risk[cons$observation_id == "obs2"] <- 0.1  # low risk (strong evidence)
   out <- add_posthoc_assessment(cons, .make_tiers())
-  expect_false("unsupported_rank" %in% out$posthoc_assessment)
-  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "sensible")
+  expect_equal(out$confusion_risk_flag[out$observation_id == "obs1"], "high_confusion_risk")
+  expect_equal(out$confusion_risk_flag[out$observation_id == "obs2"], "low_confusion_risk")
 })
 
-test_that("absolute_fit_pvalue_col below weak_evidence_pvalue overrides even a 'sensible' classification", {
+test_that("confusion_risk_flag is NA for NA own_rank_confusion_risk values", {
   cons <- .make_cons()
-  cons$winner_absolute_fit_pvalue <- 0.5
-  # obs1 (Oncorhynchus mykiss) would otherwise be "sensible" (tier1, lik=0.95) --
-  # but its own absolute fit is poor.
-  cons$winner_absolute_fit_pvalue[cons$observation_id == "obs1"] <- 0.0001
+  cons$winner_own_rank_confusion_risk <- NA_real_
   out <- add_posthoc_assessment(cons, .make_tiers())
-  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "unsupported_rank")
-  # Unaffected rows keep their original classification.
-  expect_equal(out$posthoc_assessment[out$observation_id == "obs3"], "sensible")
+  expect_true(all(is.na(out$confusion_risk_flag)))
 })
 
-test_that("absolute_fit_pvalue_col respects a custom column name", {
+test_that("own_rank_confusion_risk_col respects a custom column name", {
   cons <- .make_cons()
-  cons$my_fit_pvalue <- 0.5
-  cons$my_fit_pvalue[cons$observation_id == "obs1"] <- 0.0001
-  out <- add_posthoc_assessment(cons, .make_tiers(), absolute_fit_pvalue_col = "my_fit_pvalue")
-  expect_equal(out$posthoc_assessment[out$observation_id == "obs1"], "unsupported_rank")
+  cons$my_risk <- 0.9
+  out <- add_posthoc_assessment(cons, .make_tiers(), own_rank_confusion_risk_col = "my_risk")
+  expect_true(all(out$confusion_risk_flag == "high_confusion_risk"))
 })
 
-test_that("absolute_fit_pvalue_col NA values do not trigger unsupported_rank", {
-  cons <- .make_cons()
-  cons$winner_absolute_fit_pvalue <- NA_real_
-  out <- add_posthoc_assessment(cons, .make_tiers())
-  expect_false("unsupported_rank" %in% out$posthoc_assessment)
+test_that("confusion_risk_flag never overrides posthoc_assessment", {
+  # The two are deliberately independent columns, not one override chain:
+  # changing the confusion risk must leave posthoc_assessment untouched.
+  cons_hi <- .make_cons(); cons_hi$winner_own_rank_confusion_risk <- 0.9
+  cons_lo <- .make_cons(); cons_lo$winner_own_rank_confusion_risk <- 0.01
+  out_hi <- add_posthoc_assessment(cons_hi, .make_tiers())
+  out_lo <- add_posthoc_assessment(cons_lo, .make_tiers())
+  expect_equal(out_hi$posthoc_assessment, out_lo$posthoc_assessment)
+  expect_true(all(out_hi$confusion_risk_flag == "high_confusion_risk"))
+  expect_true(all(out_lo$confusion_risk_flag == "low_confusion_risk"))
 })
 
-test_that("weak_evidence_pvalue is user-tunable", {
-  cons <- .make_cons()
-  cons$winner_absolute_fit_pvalue <- 0.01
-  out_default <- add_posthoc_assessment(cons, .make_tiers())
-  out_loose   <- add_posthoc_assessment(cons, .make_tiers(), weak_evidence_pvalue = 0.05)
-  expect_false("unsupported_rank" %in% out_default$posthoc_assessment)
-  expect_true(all(out_loose$posthoc_assessment == "unsupported_rank"))
-})
-
-test_that("stops on invalid weak_evidence_pvalue", {
+test_that("stops on invalid high_confusion_risk_threshold", {
   expect_error(
-    add_posthoc_assessment(.make_cons(), .make_tiers(), weak_evidence_pvalue = 1.5),
-    "weak_evidence_pvalue"
+    add_posthoc_assessment(.make_cons(), .make_tiers(), high_confusion_risk_threshold = 1.5),
+    "high_confusion_risk_threshold"
+  )
+})
+
+test_that("stops on invalid own_rank_confusion_risk_col", {
+  expect_error(
+    add_posthoc_assessment(.make_cons(), .make_tiers(), own_rank_confusion_risk_col = 5),
+    "own_rank_confusion_risk_col"
+  )
+})
+
+
+# ==============================================================================
+# Axis 1: occurrence plausibility (2026-07-28)
+#   primary_plausibility / consensus_plausibility
+# ==============================================================================
+# The load-bearing design point: "unprecedented" is driven by RECORD PRESENCE,
+# never by a low prior value. A never-reported taxon and a genuine singleton
+# can carry the SAME numeric prior (both land on the dark-diversity floor)
+# while meaning opposite things -- so no threshold on the value can separate
+# them, and these tests pin that.
+
+.make_plaus_cons <- function(prior = c(0.9, 0.01, 9.17e-06),
+                              record = c(TRUE, TRUE, FALSE),
+                              cons_prior = c(0.9, 0.01, NA_real_)) {
+  data.frame(
+    observation_id               = c("obs1", "obs2", "obs3"),
+    consensus_taxon              = c("Aa one", "Bb one", "Cc one"),
+    consensus_rank               = rep("species", 3),
+    winner_likelihood            = rep(0.9, 3),
+    winner_prior                 = prior,
+    winner_has_occurrence_record = record,
+    consensus_prior              = cons_prior,
+    stringsAsFactors = FALSE
+  )
+}
+.plaus_tiers <- function() data.frame(
+  taxon_name = c("Aa one", "Bb one", "Cc one"),
+  model_tier = c("tier1", "tier2", "tier2"),
+  stringsAsFactors = FALSE
+)
+
+test_that("both plausibility columns are always appended", {
+  out <- add_posthoc_assessment(.make_plaus_cons(), .plaus_tiers())
+  expect_true(all(c("primary_plausibility", "consensus_plausibility") %in% names(out)))
+})
+
+test_that("plausibility splits expected/unexpected at the prior threshold", {
+  out <- add_posthoc_assessment(.make_plaus_cons(), .plaus_tiers())
+  expect_equal(out$primary_plausibility[out$observation_id == "obs1"], "expected")    # 0.9
+  expect_equal(out$primary_plausibility[out$observation_id == "obs2"], "unexpected")  # 0.01
+})
+
+test_that("a taxon with NO occurrence record is unprecedented regardless of its prior", {
+  # The real-data case this exists for: no record, but a dark-diversity group
+  # of only a few members gives it a HIGH prior. Value-thresholding alone would
+  # call this "expected"; record presence must win.
+  cons <- .make_plaus_cons(prior = c(0.9, 0.01, 0.975),
+                           record = c(TRUE, TRUE, FALSE),
+                           cons_prior = c(0.9, 0.01, NA_real_))
+  out <- add_posthoc_assessment(cons, .plaus_tiers())
+  expect_equal(out$primary_plausibility[out$observation_id == "obs3"], "unprecedented")
+})
+
+test_that("a singleton at the floor is NOT unprecedented -- it has a record", {
+  # Same numeric prior as obs3 above, opposite meaning. This is the whole
+  # reason record presence is a separate signal.
+  cons <- .make_plaus_cons(prior = c(0.9, 9.17e-06, 9.17e-06),
+                           record = c(TRUE, TRUE, FALSE),
+                           cons_prior = c(0.9, 9.17e-06, NA_real_))
+  out <- add_posthoc_assessment(cons, .plaus_tiers())
+  expect_equal(out$primary_plausibility[out$observation_id == "obs2"], "unexpected")
+  expect_equal(out$primary_plausibility[out$observation_id == "obs3"], "unprecedented")
+})
+
+test_that("consensus_prior = NA means unprecedented at consensus scope", {
+  out <- add_posthoc_assessment(.make_plaus_cons(), .plaus_tiers())
+  expect_equal(out$consensus_plausibility[out$observation_id == "obs3"], "unprecedented")
+  expect_equal(out$consensus_plausibility[out$observation_id == "obs1"], "expected")
+})
+
+test_that("the two scopes can disagree", {
+  # Winner itself has no record, but a recorded member of the consensus taxon
+  # does -- primary unprecedented, consensus unexpected.
+  cons <- .make_plaus_cons(prior = c(0.9, 0.01, 9.17e-06),
+                           record = c(TRUE, TRUE, FALSE),
+                           cons_prior = c(0.9, 0.01, 0.02))
+  out <- add_posthoc_assessment(cons, .plaus_tiers())
+  expect_equal(out$primary_plausibility[out$observation_id == "obs3"], "unprecedented")
+  expect_equal(out$consensus_plausibility[out$observation_id == "obs3"], "unexpected")
+})
+
+test_that("expected_prior_threshold is user-tunable", {
+  cons <- .make_plaus_cons(prior = c(0.9, 0.01, 9.17e-06))
+  strict <- add_posthoc_assessment(cons, .plaus_tiers(), expected_prior_threshold = 0.95)
+  expect_equal(strict$primary_plausibility[strict$observation_id == "obs1"], "unexpected")
+  loose  <- add_posthoc_assessment(cons, .plaus_tiers(), expected_prior_threshold = 0.005)
+  expect_equal(loose$primary_plausibility[loose$observation_id == "obs2"], "expected")
+})
+
+test_that("plausibility is not_modeled when the record flag is NA, and NA when columns are absent", {
+  cons <- .make_plaus_cons(record = c(NA, TRUE, FALSE))
+  out <- add_posthoc_assessment(cons, .plaus_tiers())
+  expect_equal(out$primary_plausibility[out$observation_id == "obs1"], "not_modeled")
+
+  bare <- .make_plaus_cons()
+  bare$winner_has_occurrence_record <- NULL
+  bare$consensus_prior <- NULL
+  out2 <- add_posthoc_assessment(bare, .plaus_tiers())
+  expect_true(all(is.na(out2$primary_plausibility)))
+  expect_true(all(is.na(out2$consensus_plausibility)))
+})
+
+test_that("plausibility never alters posthoc_assessment", {
+  base <- add_posthoc_assessment(.make_plaus_cons(), .plaus_tiers())$posthoc_assessment
+  alt  <- add_posthoc_assessment(
+    .make_plaus_cons(prior = c(1e-9, 1e-9, 1e-9), record = c(FALSE, FALSE, FALSE),
+                     cons_prior = c(NA_real_, NA_real_, NA_real_)),
+    .plaus_tiers())$posthoc_assessment
+  expect_equal(base, alt)
+})
+
+test_that("stops on invalid expected_prior_threshold", {
+  expect_error(
+    add_posthoc_assessment(.make_plaus_cons(), .plaus_tiers(),
+                           expected_prior_threshold = 1.5),
+    "expected_prior_threshold"
   )
 })

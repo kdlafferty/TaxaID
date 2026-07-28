@@ -26,7 +26,7 @@ make_match <- function(observation_id, taxon_name, taxon_name_rank, score,
 test_that("single species above min_score resolves", {
   df <- make_match("s1", "Cottus bairdii", "species", 99,
                    genus = "Cottus", family = "Cottidae")
-  out <- score_consensus(df, min_score = 97,
+  out <- score_consensus(df, min_score = 97, rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Cottus bairdii")
   expect_equal(out$consensus_rank, "species")
@@ -38,7 +38,7 @@ test_that("single species above min_score resolves", {
 test_that("all hits below min_score returns NA", {
   df <- make_match("s1", "Cottus bairdii", "species", 90,
                    genus = "Cottus", family = "Cottidae")
-  out <- score_consensus(df, min_score = 97,
+  out <- score_consensus(df, min_score = 97, rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   expect_true(is.na(out$consensus_taxon))
   expect_equal(out$n_retained, 0L)
@@ -57,7 +57,7 @@ test_that("max_gap keeps only hits within gap of top score", {
     make_match("s1", "Leptocottus armatus", "species", 95,
                genus = "Leptocottus", family = "Cottidae")
   )
-  out <- score_consensus(df, max_gap = 1,
+  out <- score_consensus(df, max_gap = 1, rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   # Top two within 1% gap -> genus-level LCA (both Cottus)
   expect_equal(out$consensus_taxon, "Cottus")
@@ -73,7 +73,7 @@ test_that("max_gap = 0 keeps only exact top score", {
     make_match("s1", "Cottus asper", "species", 98.9,
                genus = "Cottus", family = "Cottidae")
   )
-  out <- score_consensus(df, max_gap = 0,
+  out <- score_consensus(df, max_gap = 0, rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Cottus bairdii")
   expect_true(out$is_resolved)
@@ -91,7 +91,8 @@ test_that("hits from different genera resolve to family", {
     make_match("s1", "Leptocottus armatus", "species", 99,
                genus = "Leptocottus", family = "Cottidae")
   )
-  out <- score_consensus(df, rank_system = c("family", "genus", "species"))
+  out <- score_consensus(df, rank_thresholds = NULL,
+                         rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Cottidae")
   expect_equal(out$consensus_rank, "family")
   expect_false(out$is_resolved)
@@ -155,6 +156,7 @@ test_that("whitelist keeps consensus when taxon is in whitelist", {
   df <- make_match("s1", "Cottus bairdii", "species", 99,
                    genus = "Cottus", family = "Cottidae")
   out <- score_consensus(df, whitelist = c("Cottus bairdii", "Cottus asper"),
+                         rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Cottus bairdii")
   expect_false(out$whitelist_capped)
@@ -164,6 +166,7 @@ test_that("whitelist upranks to genus when species not in whitelist", {
   df <- make_match("s1", "Cottus bairdii", "species", 99,
                    genus = "Cottus", family = "Cottidae")
   out <- score_consensus(df, whitelist = c("Cottus", "Leptocottus"),
+                         rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Cottus")
   expect_equal(out$consensus_rank, "genus")
@@ -174,6 +177,7 @@ test_that("whitelist returns NA when no rank matches whitelist", {
   df <- make_match("s1", "Cottus bairdii", "species", 99,
                    genus = "Cottus", family = "Cottidae")
   out <- score_consensus(df, whitelist = c("Salmo", "Oncorhynchus"),
+                         rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   expect_true(is.na(out$consensus_taxon))
   expect_true(out$whitelist_capped)
@@ -192,7 +196,8 @@ test_that("multiple samples processed independently", {
     make_match("s2", "Cottus bairdii", "species", 97,
                genus = "Cottus", family = "Cottidae")
   )
-  out <- score_consensus(df, rank_system = c("family", "genus", "species"))
+  out <- score_consensus(df, rank_thresholds = NULL,
+                         rank_system = c("family", "genus", "species"))
   expect_equal(nrow(out), 2L)
   expect_equal(out$consensus_taxon[out$observation_id == "s1"], "Cottus bairdii")
   expect_equal(out$consensus_rank[out$observation_id == "s2"], "genus")
@@ -226,7 +231,7 @@ test_that("genus derived from species binomial when genus column absent", {
     make_match("s1", "Cottus bairdii", "species", 99, family = "Cottidae"),
     make_match("s1", "Cottus asper", "species", 98.5, family = "Cottidae")
   )
-  out <- score_consensus(df, max_gap = 1,
+  out <- score_consensus(df, max_gap = 1, rank_thresholds = NULL,
                          rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Cottus")
   expect_equal(out$consensus_rank, "genus")
@@ -236,21 +241,26 @@ test_that("genus derived from species binomial when genus column absent", {
 # Input validation
 # ==============================================================================
 
+test_that("missing rank_thresholds errors with guidance", {
+  df <- make_match("s1", "A", "species", 99)
+  expect_error(score_consensus(df), "rank_thresholds.*must be specified explicitly")
+})
+
 test_that("missing required columns errors", {
   df <- data.frame(observation_id = "s1", taxon_name = "A", stringsAsFactors = FALSE)
-  expect_error(score_consensus(df), "missing required column")
+  expect_error(score_consensus(df, rank_thresholds = NULL), "missing required column")
 })
 
 test_that("non-numeric score errors", {
   df <- data.frame(observation_id = "s1", taxon_name = "A",
                    taxon_name_rank = "species", score_original = "high",
                    stringsAsFactors = FALSE)
-  expect_error(score_consensus(df), "must be numeric")
+  expect_error(score_consensus(df, rank_thresholds = NULL), "must be numeric")
 })
 
 test_that("negative max_gap errors", {
   df <- make_match("s1", "A", "species", 99)
-  expect_error(score_consensus(df, max_gap = -1), "non-negative")
+  expect_error(score_consensus(df, max_gap = -1, rank_thresholds = NULL), "non-negative")
 })
 
 # ==============================================================================
@@ -264,7 +274,8 @@ test_that("duplicate accessions for same taxon counted once in n_taxa", {
     make_match("s1", "Cottus bairdii", "species", 98.5,
                genus = "Cottus", family = "Cottidae")
   )
-  out <- score_consensus(df, rank_system = c("family", "genus", "species"))
+  out <- score_consensus(df, rank_thresholds = NULL,
+                         rank_system = c("family", "genus", "species"))
   expect_equal(out$n_retained, 2L)
   expect_equal(out$n_taxa, 1L)
   expect_equal(out$consensus_taxon, "Cottus bairdii")
@@ -279,7 +290,7 @@ test_that("custom score_col works", {
     genus           = "Cottus",
     stringsAsFactors = FALSE
   )
-  out <- score_consensus(df, score_col = "pct_identity",
+  out <- score_consensus(df, score_col = "pct_identity", rank_thresholds = NULL,
                          rank_system = c("genus", "species"))
   expect_equal(out$consensus_taxon, "Cottus bairdii")
 })

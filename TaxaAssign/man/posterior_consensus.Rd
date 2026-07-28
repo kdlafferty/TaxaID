@@ -162,17 +162,84 @@ exists so a downstream consumer can distinguish it from a
 genuinely evidence-resolved species call, not to flag it as an
 error. \code{NA} when \code{winner_hypothesis_type} is \code{NA}; \code{FALSE}
 otherwise.}
-\item{\code{winner_absolute_fit_pvalue}}{Numeric. The winning hypothesis's
-own one-sided absolute-fit p-value, passed through unchanged from
-\code{TaxaLikely::evaluate_likelihoods()} -- answers "is this call's own
-fit believable in absolute terms," independent of how it compared to
-competing hypotheses. \code{NA} when \code{absolute_fit_pvalue} is absent from
-\code{posterior_df} (e.g. any upstream call that predates that column, or
-\code{assign_taxa_llm()} input) or when \code{consensus_taxon} is \code{NA}. Never
-changes \code{consensus_taxon}/\code{consensus_rank} itself -- a downstream
-consumer wanting to flag a weak-fit winner should read this column
-directly (see \code{TaxaFlag::add_posthoc_assessment()}'s
-\code{"unsupported_rank"} category).}
+\item{\code{winner_species_confusion_risk}, \code{winner_genus_confusion_risk},
+\code{winner_family_confusion_risk}, \code{winner_own_rank_confusion_risk}}{Numeric. A
+SECOND, model-independent diagnostic alongside
+\code{TaxaLikely::evaluate_likelihoods()}'s \code{species_confusion_risk}/
+\code{genus_confusion_risk}/\code{family_confusion_risk}/\code{own_rank_confusion_risk}
+columns on the winning row. Each is a one-sided tail probability: how
+often would a REAL congener/confamilial/cross-family pair score this
+high or higher, given the winning candidate's own raw match score --
+HIGHER values mean MORE confusable, i.e. WEAKER evidence for that
+rank (see \code{evaluate_likelihoods()}'s own \verb{@section Confusion risk}
+for the full interpretation). All three of
+\code{winner_species_confusion_risk}/\code{winner_genus_confusion_risk}/
+\code{winner_family_confusion_risk} are populated
+(where computable) regardless of \code{winner_hypothesis_type};
+\code{winner_own_rank_confusion_risk} is a convenience pointer at whichever
+matches the winner's own resolved rank. \code{NA} when the source
+column is absent from \code{posterior_df} (e.g. any upstream call
+predating these columns) or when \code{consensus_taxon} is \code{NA}. Purely
+informational -- never changes \code{consensus_taxon}/\code{consensus_rank}.}
+\item{\code{consensus_confusion_risk}}{Numeric. The same confusion-risk
+quantity, but rank-matched to \code{consensus_rank} rather than to
+\code{primary_taxon}'s own rank (which is what
+\code{winner_own_rank_confusion_risk} reports). When the LCA has climbed
+to genus or family, the species-level value answers the wrong
+question -- this one asks "could a confamilial genus (or a different
+family) have scored this well", matching the rank actually being
+reported. \code{NA} when \code{consensus_rank} is \code{NA}, is coarser than family,
+or the corresponding source column is absent.}
+\item{\code{primary_n_plausible_competitors},
+\code{consensus_n_plausible_competitors}}{Integer. How many
+locally-plausible RIVAL candidates this observation actually competed
+against -- the question a confusion-risk value structurally cannot
+answer, since it describes the marker's discriminating power for a
+taxon in the abstract and never sees this observation's candidate
+set. Read the two together: a low confusion risk means a relative
+\emph{could not} have looked this good, while a non-zero competitor count
+means a plausible relative \emph{was actually given the chance} to. A
+count of \code{0} with an otherwise clean-looking call is the signature of
+a reference-database representation gap -- the locally plausible
+relatives were never in the candidate pool at all, so no threshold
+applied to the existing candidates could have caught it.
+"Plausible" means the candidate carries a real occurrence record,
+read off \code{model_tier} (supplied by \code{\link[=join_priors]{join_priors()}} from TaxaExpect
+priors) rather than off \code{prior_mean}'s value: a taxon never reported
+locally has \code{model_tier = NA}, while a genuine singleton has a real
+tier, even though both can share the same numeric floor prior.
+Counted over every named hypothesis for the observation, before
+\code{min_posterior}/\code{cumulative_threshold} filtering (a candidate that
+competed and lost still competed), and EXCLUDING the row's own taxon
+-- whether the winner itself is plausible is a prior-side question
+already answered by \code{winner_prior}. A count of \code{0} therefore means
+"nothing plausible to lose to", never "the winner is implausible".
+The \code{primary_} version counts rival taxa; the \code{consensus_} version
+counts distinct plausible groups at \code{consensus_rank} (rival genera
+when the LCA landed at genus, rival families at family), reducing to
+the \code{primary_} count at species rank. Both are \code{NA} when
+\code{posterior_df} carries no \code{model_tier} column.}
+\item{\code{winner_has_occurrence_record}, \code{consensus_prior}}{Support for
+the prior/occurrence-plausibility axis, answering what
+\code{winner_prior}'s VALUE cannot: has this taxon ever been reported
+here at all? A never-reported taxon and a genuine singleton can
+carry the SAME numeric prior (both land on the dark-diversity
+floor) while meaning opposite things, so presence is read off
+\code{model_tier} rather than inferred from a low prior.
+\code{winner_has_occurrence_record} is \code{TRUE} when the winning
+hypothesis carries a real occurrence record, \code{NA} when
+\code{posterior_df} has no \code{model_tier} column.
+\code{consensus_prior} is the HIGHEST prior among candidates that both
+carry an occurrence record and fall inside the consensus taxon --
+\code{NA} when none do, so \code{NA} doubles as the consensus-scope
+never-reported signal. Max is used deliberately: a group is
+expected here if any member is, making max the tightest valid lower
+bound on P(at least one member present) without assuming
+independence (a sum would double-count shared occurrence evidence;
+a mean would dilute a common member with its rare congeners). It is
+explicitly a best-member statement, NOT the mass-conserving
+hierarchical prior over a coarse taxon that TaxaExpect does not yet
+provide.}
 }
 }
 \description{

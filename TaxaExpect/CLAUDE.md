@@ -1,6 +1,114 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-11 (Session 149, one more continuation -- generate_full_priors()'s
+# Last updated: 2026-07-28 (Sonnet 5 -- generate_domestic_food_priors() re-implemented
+# around the match-list-gated architecture confirmed with the user 2026-07-24 but not
+# built until now. Two new params: match_list_taxa (character vector of taxa with real
+# likelihoods this run -- e.g. unique(match_obj$taxon_name[taxon_name_rank=="species"]);
+# NULL preserves the original unrestricted behavior exactly) and taxaexpect_priors
+# (optional, used only to shrink the open-discovery residual pool). New 4th fixed-list
+# channel, known_cultivar_taxa (216 species, patched immediately like the other two
+# fixed lists -- no live check required), built from the same food-crop-genus
+# cross-reference as the newly-extended food_species_taxa default (449 species, up from
+# 20 -- both baked in from the scratch CSV classification work done 2026-07-24, cleaned
+# further this session: 13 cultivated-food-fungi species found mixed into the source
+# CSVs moved from known_cultivar_taxa into food_species_taxa, one bred cereal
+# (Triticosecale) moved the same way, one non-ASCII entry dropped). New output columns:
+# cultivar_evidence_source ("known_list"/"candidate_supplied"/"inat_confirmed" -- lets
+# a caller tell apart the fixed-list patch, a user-supplied confirmed candidate, and an
+# open-discovery-confirmed candidate, all three sharing prior_source_type =
+# "domestic_plant" per the user's explicit choice). The open-discovery residual step
+# (match-list taxa not already covered by a fixed list or an existing named prior,
+# restricted to phylum %in% c("Streptophyta","Tracheophyta")) is deliberately NOT
+# pre-restricted to known_cultivar_taxa or any other list -- the user caught this as a
+# self-defeating design in an earlier draft, since the whole point of a live check is to
+# catch what nothing anticipated. Real bug found and fixed during testing: when all four
+# fixed/supplied channels are empty, dplyr::bind_rows() of all-empty/NULL inputs produces
+# a zero-COLUMN tibble, not just zero rows -- candidates$taxon_name then errored
+# downstream once match_list_taxa gating tried to reference it; fixed by giving the
+# empty-candidates branch an explicit schema. Test file fully rewritten (91 tests, up
+# from 50) -- also fixes a real test-suite hazard found live: several existing tests
+# didn't zero out the new known_cultivar_taxa channel and weren't mocking
+# fetch_inat_occurrences() in one case, so they silently iterated the (now large) default
+# list against a real or accidentally-broad mock, hanging one test run past 120s.
+# All four real production workflows (PtConceptionWorkflow_12S/18S_2_single_site.R,
+# MuguFishWorkflow.R, MuguWilderFishWorkflow.R) rewired: match_list_taxa/taxonomy now
+# sourced from each workflow's own match object (match_obj_restored for 12S -- required
+# relocating the call to after that object is finalized, since it didn't exist yet at
+# the call's original Step-5 location; match_obj for 18S_2; match_taxonomy/esv_expanded
+# for the two Mugu scripts, both already available early). The 18S_2 script's ad hoc
+# candidate_plant_taxa sourcing (GBIF-occurrence-derived sampling-group restriction) is
+# fully superseded by the open-discovery residual step and removed. All four workflows
+# parse cleanly; not run live (real GBIF/NCBI/iNat/LLM API calls, real checkpoints --
+# the user's call). devtools::test() 0 failures (536, up from 481), devtools::check()
+# 0/0/0. Reinstalled to ~/Library/R/4.0/library. See
+# [[project_taxaflag_domestic_species_floor_note]] for the full record.
+# Previous update, 2026-07-24, later same day (Sonnet 5 -- generate_domestic_food_priors()
+# candidate names normalized via TaxaTools::clean_taxon_names() before becoming a row's
+# taxon_name, prompted by the user directly catching that .default_domestic_animal_taxa's
+# subspecies trinomials ("Sus scrofa domesticus", "Gallus gallus domesticus", etc.)
+# contradict the ecosystem's own binomial-only convention. Confirmed a real bug, not just
+# a style inconsistency: TaxaTools::clean_taxon_names() truncates every name to genus +
+# epithet only, discarding a third token -- so a real query resolving to "Sus scrofa"
+# (post-cleaning, as everything else in this pipeline is) would never exact-match a prior
+# row of "Sus scrofa domesticus" in TaxaAssign::join_priors()'s taxon_name join
+# (join_priors.R:855), silently producing NO domestic prior for exactly the taxa (pig,
+# chicken, dog, mallard, turkey, rabbit -- 6 of 13 default domestic_animal_taxa entries)
+# most likely to show up as food/lab contamination. Two fixes: (1) the 6 trinomial
+# defaults corrected to binomials ("Canis lupus familiaris" -> "Canis lupus" also found
+# and fixed, missed on the first pass and caught by a new defaults-sanity test); food_
+# species_taxa's "Fragaria x ananassa" also fixed to "Fragaria ananassa" (same root cause
+# -- clean_taxon_names() treats a bare "x" token as a hybrid-formula abbreviation and
+# collapses to genus-only). (2) Defense-in-depth: ALL candidate names (defaults and any
+# user-supplied override) are now run through TaxaTools::clean_taxon_names() right after
+# the three channels are combined, before deduplication -- so this can't silently recur
+# if the list is edited again. A name that cannot be cleaned to a valid binomial/genus is
+# dropped with a warning() rather than passed through raw. New requireNamespace("TaxaTools")
+# guard added (package already sat in Suggests, same pattern build_priors.R already uses).
+# 6 new tests (default-vector sanity check for stray trinomials/hybrid-formula names;
+# trinomial-in/binomial-out; hybrid-formula normalization; uncleanable-name-dropped-with-
+# warning). devtools::test() 0 failures (501, up from 495), devtools::check() 0/0/0.
+# Not yet reinstalled -- see the "To apply these changes" block at the end of this session.
+# Previous update, 2026-07-24 (Sonnet 5 -- generate_domestic_food_priors() gains an
+# iNaturalist kingdom cross-check, prompted directly by the user asking whether iNat's
+# own taxonomic backbone (distinct from NCBI/GBIF) could silently resolve a name to the
+# wrong organism. Real risk, confirmed: iNat's /v1/taxa search takes the single best text
+# match, so a cross-kingdom homonym is possible, if rare. New optional mechanism (opt-in
+# via `taxonomy`'s `kingdom` column, built into a lookup BEFORE the candidate loop so
+# each candidate's own kingdom is available at check time): compares the candidate's
+# known kingdom against TaxaFetch::fetch_inat_occurrences()'s new `inat_kingdom` column;
+# on a mismatch, discards the local-evidence boost (n_local -> NA, warning emitted) but
+# never removes the fixed-list category itself -- only the confidence a likely-wrong
+# local hit would have added. New output columns `inat_kingdom`/`inat_kingdom_mismatch`,
+# always present (NA/FALSE when not checkable, i.e. no `kingdom` column supplied).
+# devtools::test() 0 failures (495, up from 481), devtools::check() 0/0/0. Reinstalled to
+# ~/Library/R/4.0/library. See TaxaFetch/CLAUDE.md's matching note for the `inat_kingdom`
+# building block, and TaxaMatch/CLAUDE.md's same-day note for the companion
+# convert_taxonomy_backbone() fallback-cleaning fix from the same design conversation
+# (a real match_obj$taxon_name/species had passed through with an uncleaned compound
+# hybrid-formula name, found while investigating why the domestic/food residual count on
+# real 18S data looked wrong).
+# Previous update, 2026-07-23 (Sonnet 5 -- implements the three-vector domestic/food design from
+# ecosystem_docs/REENTRY_PROMPT_domestic_food_species_priors.md. New generate_domestic_food_priors():
+# domestic_animal_taxa/food_species_taxa are fixed, pre-populated (but user-overridable) vectors;
+# candidate_plant_taxa is deliberately NOT a fixed default list (the reentry prompt's own
+# CSV-overlap finding -- Cultivated_plants.csv/Food_Plants_Taxonomy.csv turned out to be the same
+# underlying list at two processing stages, not a usable food-vs-ornamental split -- so a plant
+# candidate only gets a prior row when TaxaFetch::fetch_inat_occurrences(quality_grade="casual")
+# finds real local cultivated-grade evidence for it). Output rows carry a real taxon_name (unlike
+# generate_undetected_diversity()'s anonymous proxies) plus a new prior_source_type categorical
+# column ("domestic_animal"/"food_species"/"domestic_plant") for downstream systematic handling,
+# and model_tier = "tier_domestic_food" (deliberately distinct from "tier3_undetected"). Theta
+# construction reuses this function's own N_total scale via an ESS-based alpha/beta (baseline ess
+# for domestic_animal/food_species even with zero local iNat evidence; capped evidence boost via
+# max_ess when local iNat presence is found) -- documented as a heuristic, not yet empirically
+# calibrated against real contamination data. Explicitly does NOT fix cross-genus reference gaps
+# (e.g. Bison bison/Bos taurus) -- see the reentry prompt's corrected Homo sapiens finding, folded
+# into [[project_taxaflag_domestic_species_floor_note]]: this function's value is the categorical
+# flag plus help for weaker/degraded matches, not sequence-level resolution (which already works
+# fine on strong matches regardless of prior magnitude). devtools::test() 0 failures (481, up from
+# 445), devtools::check() 0/0/0. Reinstalled to ~/Library/R/4.0/library. See TaxaFetch/CLAUDE.md's
+# matching note for the new fetch_inat_occurrences() building block.
+# Previous update, 2026-07-11 (Session 149, one more continuation -- generate_full_priors()'s
 # jeffreys_fallback (item 6, last untouched TaxaExpect H-priority soundness row) fixed:
 # moment_match() no longer discards a finite point-estimate mean for the agnostic Jeffreys
 # mean of 0.5 when phi (precision) is unusable -- it now builds a diffuse Beta at that SAME
@@ -90,6 +198,7 @@ and prior generation only.
 | `train_biodiversity_model_by_group()` | **Session 149, new.** Splits raw occurrence data by `sampling_group_col` and runs `prepare_model_dataframe()` + `train_biodiversity_model()` once per group (each with its own effort denominator and covariate scaling); returns a named list of `biofreq_model` objects. Recommended entry point for broad-marker data (e.g. 18S) spanning multiple detection processes. Each group's fit is wrapped in `tryCatch()` (added after real-data testing found a single failing group crashed the whole call) -- failed groups are dropped with a `warning()` naming them, not fatal. | Complete | R/train_biodiversity_model_by_group.R |
 | `compute_adaptive_sampling_groups()` | **Session 149, new.** Automated alternative to hand-classifying `sampling_group`: greedily merges taxa up a taxonomic rank hierarchy (`rank_system`, finest first, e.g. `c("order","class","phylum")`) until each group's mean per-site record count clears `min_n`, never merging across the ceiling rank (default phylum). Analogous to "stratum collapsing" in survey methodology; structurally similar to `TaxaAssign::join_priors()`'s hierarchical dark-diversity grouping but merges bottom-up on a sample-size criterion rather than descending top-down on singleton presence. Groups still below `min_n` even at the ceiling are finalized anyway (never escalated further) and flagged via `sampling_group_below_min_n`. Feed its output into `prepare_model_dataframe(sampling_group_col=)`/`train_biodiversity_model_by_group()` the same as a manually-supplied grouping. | Complete | R/compute_adaptive_sampling_groups.R |
 | `generate_undetected_diversity()` | Tier 3 proxy priors: singleton mirrors + global floor | Complete | R/generate_undetected_diversity.R |
+| `generate_domestic_food_priors()` | **2026-07-23, new.** Non-GBIF prior source for domestic/commensal animal, food/crop, and cultivated-plant species -- named rows (real `taxon_name`, unlike the Tier 3 proxies above) with a `prior_source_type` categorical column and `model_tier = "tier_domestic_food"`. Implements `ecosystem_docs/REENTRY_PROMPT_domestic_food_species_priors.md`. **2026-07-24:** gains an iNaturalist kingdom cross-check -- when `taxonomy` supplies a `kingdom` column, a candidate's known kingdom is compared against `fetch_inat_occurrences()`'s `inat_kingdom`; a mismatch (likely a cross-backbone homonym) discards the local-evidence boost without removing the fixed-list category. **2026-07-28, re-implemented around match-list gating:** `domestic_animal_taxa`/`food_species_taxa` (now 449 species, up from 20) are fixed vectors checked immediately; new 4th fixed list `known_cultivar_taxa` (216 species) likewise patched immediately (`cultivar_evidence_source = "known_list"`); `candidate_plant_taxa` requires real local iNat evidence (`cultivar_evidence_source = "candidate_supplied"`); new `match_list_taxa` param (taxa with real likelihoods this run) gates all four channels to the intersection and drives an automatic open-discovery residual step (unreferenced match-list taxa, restricted to `phylum %in% c("Streptophyta","Tracheophyta")`, deliberately NOT pre-restricted to any known list -- `cultivar_evidence_source = "inat_confirmed"`) using a new `taxaexpect_priors` param to exclude already-modelled taxa. `match_list_taxa = NULL` (default) preserves the original unrestricted behavior exactly. | Complete | R/generate_domestic_food_priors.R |
 | `generate_full_priors()` | Predict theta at all taxon × site × habitat; return Beta(alpha, beta) prior table | Complete | R/generate_full_priors.R |
 
 ### High-level wrapper
@@ -188,6 +297,26 @@ and prior generation only.
 - Singleton mirrors: one proxy per singleton in training data; ESS controls diffuseness (`alpha = theta_obs * ESS`, `beta = (1 - theta_obs) * ESS`).
 - Global floor: `Beta(1, N_total - 1)`; falls back to Jeffreys `Beta(0.5, 0.5)` when `N_total < jeffreys_threshold`.
 - Returns tibble with `source_taxon_name` audit column linking each singleton mirror back to the observed species it was derived from. When `taxonomy` is supplied, also carries the joined taxonomy columns.
+
+### `generate_domestic_food_priors(model_obj, lat, lng, grid_id = NA, domestic_animal_taxa = <defaults>, food_species_taxa = <defaults>, known_cultivar_taxa = <defaults>, candidate_plant_taxa = NULL, match_list_taxa = NULL, taxaexpect_priors = NULL, radius_km = 50, ess = 5, max_ess = 50, taxonomy = NULL)`
+- Reads only `model_obj$N_total`/`model_obj$meta$habitat_col` (not a full model dependency) so
+  output rows sit on the same theta scale as `generate_undetected_diversity()`.
+- Output is `dplyr::bind_rows()`-compatible with `generate_full_priors()`'s output (or with
+  `generate_undetected_diversity()`'s, modulo `model_tier`/the new `prior_source_type`/
+  `cultivar_evidence_source` columns) -- append it to your final priors table directly rather
+  than routing it through `generate_full_priors(undetected = ...)`, which assumes anonymous
+  placeholder rows.
+- `match_list_taxa` (e.g. `unique(match_obj$taxon_name[match_obj$taxon_name_rank == "species"])`)
+  gates all four channels to the intersection AND drives the automatic open-discovery residual
+  step -- pass it in a real workflow to avoid checking hundreds of default-list species that
+  were never even candidates this run. `NULL` (default) checks every fixed-list entry
+  unconditionally, matching this function's original (2026-07-23) behavior.
+- The open-discovery step needs `taxonomy` with a `phylum` column to scope itself safely
+  (`Streptophyta`/`Tracheophyta` -- both spellings needed, see
+  `TaxaMatch::convert_taxonomy_backbone()`'s per-column NCBI fallback); without it, it's
+  skipped with a message, not silently run unrestricted.
+- See the function's own roxygen for the full channel-by-channel design rationale and what this
+  does NOT fix (cross-genus reference gaps, e.g. `Bison bison`/`Bos taurus`).
 
 ### `generate_full_priors(model_obj, new_sites, undetected = NULL, min_phi = 2, theta_epsilon = 1e-6)`
 - `new_sites` must have: `grid_id`, `lat_r`, `lon_r`, `<habitat_col>` — unless `model_obj` was trained

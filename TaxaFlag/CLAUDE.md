@@ -1,6 +1,194 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-20 (Sonnet 5 -- add_posthoc_assessment()'s "unsupported_rank"
+# Last updated: 2026-07-28, later (Opus 5 -- add_posthoc_assessment() gains Axis 1:
+# primary_plausibility and consensus_plausibility, each one of "expected"/"unexpected"/
+# "unprecedented"/"not_modeled". Four new params (winner_prior_col, winner_record_col,
+# consensus_prior_col, expected_prior_threshold = 0.5), all with defaults matching
+# TaxaAssign::posterior_consensus()'s real column names and silently skipped (NA output,
+# no error) when absent -- this function's established optional-upstream-output
+# convention.
+#
+# "unprecedented" is driven by RECORD PRESENCE, never by a low prior value -- see
+# TaxaAssign/CLAUDE.md's same-day note for the real-data evidence (a never-reported taxon
+# and a genuine singleton can carry the identical floor prior while meaning opposite
+# things, so no threshold on the value can separate them).
+#
+# The 0.5 break was chosen over a fitted cutoff because it does two jobs at once: it is
+# directly interpretable (the taxon is at least as likely present as absent) AND it falls
+# in a genuinely empty region of the real prior distribution -- nothing between 0.0865 and
+# 0.966, an 11x gap. Same reasoning as Axis 2's 0.05/0.5 breaks.
+#
+# Reported ALONGSIDE the other columns, never gating them -- which is the specific defect
+# "vague_rank" has. Measured on the real 616-observation Mugu dataset: 109 observations
+# get "vague_rank" from posthoc_assessment and are therefore left unassessed entirely
+# (it short-circuits every non-species rank); Axis 1 classifies all 109 (78 expected,
+# 22 unexpected, 9 unprecedented). That is the original ASV_379/Chaenogobius bug this
+# whole redesign exists to fix, now demonstrably closed.
+#
+# Anchor validation -- Axis 1 reproduces the user's own domain judgment unprompted: both
+# taxa they independently called genuinely suspect (ASV_379 Chaenogobius, ASV_30
+# Prosopium) come out "unprecedented", as do ASV_371 Salmonidae (their read: a food item,
+# not a wild population) and ASV_382 Sciaenidae (their read: all candidates implausible);
+# the CA-native tidewater-goby-bearing ASV_463 Gobiidae comes out "expected".
+#
+# Primary and consensus scopes disagree on only 3/616 real observations (vs Axis 2's
+# 23/606) -- reported as two columns per the user's explicit requirement that both axes
+# carry primary_taxon and consensus_taxon versions. 10 new tests (239 total, up from 222),
+# including the two that pin the design: a no-record taxon with a HIGH prior must be
+# unprecedented, and a singleton at the floor must NOT be. Full real pipeline
+# (posterior_consensus -> add_posthoc_assessment, 616 obs) runs in 1.5 s.
+# devtools::test() 239 pass / 0 fail; devtools::check() 0 errors, with the pre-existing
+# build_review_covariates.R warning + .data note unchanged. Reinstalled.
+# Previous update, 2026-07-28 (Opus 5 -- add_posthoc_assessment() loses the
+# "unsupported_rank" category and both params that drove it (absolute_fit_pvalue_col,
+# weak_evidence_pvalue), following TaxaLikely's removal of the underlying
+# absolute_fit_pvalue column. Decisive evidence: the category fired on 0 of 606 real Mugu
+# observations at its shipped 0.001 default and is absent from real posthoc_assessment
+# output entirely -- it has never once classified a real row. See
+# [[project_absolute_fit_pvalue_retired]] for the full audit (written before the removal,
+# at the user's request, to keep revival possible).
+#
+# confusion_risk_flag is UNTOUCHED and still present. One test
+# ("confusion_risk_flag never overrides posthoc_assessment") was rewritten rather than
+# deleted -- it had been asserting non-interference by pinning the OTHER column to
+# "unsupported_rank"; it now demonstrates the same property directly, by confirming that
+# changing the confusion risk leaves posthoc_assessment identical.
+#
+# Also: REENTRY_PROMPT_*.md added to .Rbuildignore (they were tripping R CMD check's
+# top-level-files note). vignettes/quality-flagging.Rmd deliberately NOT given the
+# purl = FALSE fix applied to the other 9 ecosystem vignettes -- it has no global
+# eval = FALSE and genuinely evaluates. devtools::test() 222 pass / 0 fail;
+# devtools::check() 0 errors, with the pre-existing build_review_covariates.R
+# warning + .data note unchanged (confirmed untouched). Reinstalled.
+# Previous update, 2026-07-24, later still (Sonnet 5 -- review_assignments() wired up to
+# TaxaAssign::posterior_consensus()/add_slash_taxon() columns that postdate when this
+# function was originally written, prompted by the user asking to tabulate which newer
+# consensus columns weren't being taken into account. Four new params, all additive/
+# backward-compatible (non-NULL defaults matching the real producer column names,
+# silently skipped -- not an error -- when that column is absent from df, matching
+# add_posthoc_assessment()'s own established convention for this kind of optional
+# pass-through column): consensus_posterior_col ("consensus_posterior"), winner_prior_col
+# ("winner_prior"), winner_rank_expanded_col ("winner_rank_expanded"),
+# plausible_posteriors_col ("plausible_posteriors"). When present, a compact "[...]"
+# annotation is appended to each taxon's line in the LLM prompt: median pipeline
+# posterior/occurrence prior across every row sharing that taxon/candidate-set label (so
+# the LLM's ecological plausibility judgment can be checked against the pipeline's own
+# statistical confidence), a note when the winning call came from join_priors()'s
+# coarse-rank expansion with no real sequence discrimination, and -- for multi-candidate
+# slash/plus labels -- each candidate's own averaged posterior weight (so review_comment
+# can speak to the specific weaker member instead of the undifferentiated group). New
+# GUIDELINES bullet tells the LLM what the bracket means and how to use it (flag
+# disagreement, don't defer to it). Deliberately did NOT wire in consensus_reason/
+# is_resolved/n_plausible/winner_likelihood(_cov)/winner_absolute_fit_pvalue/the four
+# winner_*_confusion_risk columns/taxon_changed -- either redundant with what
+# add_posthoc_assessment() already does numerically, or judged not worth the added prompt
+# tokens for this function's specific (ecological plausibility, not statistical
+# confidence) job. Separately, fixed a real label-drift risk found during the same
+# discussion: the candidate-set path's label builder (.build_candidate_label(), a
+# documented duplicate of add_slash_taxon()'s .make_slash_name()) had no equivalent of
+# add_slash_taxon()'s downranked-row NA-clearing logic, so the two could produce DIFFERENT
+# labels for the same row once species_reference downranking was in play. Now prefers
+# df$consensus_OTU (add_slash_taxon()'s own already-computed, already-correct label) when
+# present, falling back to the independent rebuild only when absent -- closing the drift
+# without adding a hard TaxaAssign package dependency. Both new helpers
+# (.summarise_pipeline_context()/.summarise_candidate_weights()) group via split() (O(n))
+# rather than a per-label linear scan, to stay cheap on large datasets. Verified with an
+# offline mocked-llm_fn smoke test (median aggregation, rank-expanded flag, and candidate
+# weights all confirmed correct against hand-computed expected values) in addition to the
+# full test suite. devtools::test() 232/232 (0 failures, unchanged from before -- no
+# existing test's df carries these new columns, so backward compatibility is exercised by
+# the existing suite passing unchanged), devtools::check() 0 errors/0 warnings (1
+# pre-existing, unrelated warning+note in build_review_covariates.R, confirmed untouched
+# via git diff). Not yet wired into any real production workflow -- both real PtConception
+# review_assignments() calls would need to be updated to pass a consensus_df carrying
+# these columns (currently upstream of add_slash_taxon() in at least one of the two
+# workflows; not verified this session) before the new context would actually appear in a
+# live LLM call.
+# Previous update, 2026-07-24, later same day (Sonnet 5 -- the unified validity schema below
+# (observation_validity/validity_flag/validity_reason) wired into both real PtConception
+# production workflows (PtConceptionWorkflow_12S_single_site.R,
+# PtConceptionWorkflow_18S_2_single_site.R -- outside this monorepo, not under git, at
+# ~/My Drive/Rscripts/eDNA/PtConception/), backed up first as *.bak_pre_validity_schema.
+# Every real lab_contaminant_risk/lab_contaminant_score reference at each file's Step 2
+# filter, Step 6/9 provenance joins, and (12S only) the final accurate_precise_consensus
+# filter updated to validity_flag == "invalid_lab_contaminant" / observation_validity;
+# deliberately left untouched: contamination_risk/spatial_flag/*_plausibility (unrelated
+# columns from review_assignments()/flag_habitat_inconsistencies(), confirmed by tracing
+# each column's real source before editing, not by name similarity alone). 18S_2's own
+# pre-existing Session 101 name-migration block (upgrading a cached RDS's old
+# flag_lab_contaminant naming forward) was EXTENDED, not replaced, with a second branch
+# migrating lab_contaminant_risk/score/reason values forward to the new schema
+# ("high"/"moderate"/"low" -> "invalid_lab_contaminant"/"questionable_lab_contaminant"/
+# "valid") -- verified against both real cached *_contaminant_flags.rds checkpoints (12S:
+# 43/10300/3254 high/moderate/low; 18S: 1/18693/2503), which are themselves still on the
+# pre-2026-07-24 schema, confirming the migration path is genuinely exercised, not
+# speculative. Also confirmed the freshly-installed flag_contaminant() itself now emits
+# the new schema directly (live-tested against a small synthetic case) -- an initial
+# verification attempt without explicitly setting R_LIBS_USER showed the OLD schema,
+# which was the documented bare-Rscript library footgun, not a real regression; resolved
+# by setting .libPaths() explicitly per that footgun's known fix. Both workflow files
+# parse cleanly (parse() check); not yet run end to end (would trigger live GBIF/NCBI/LLM
+# calls) -- left for the user to trigger.
+# Previous update, 2026-07-24 (Sonnet 5 -- flag_contaminant()/flag_handler() redesigned around a
+# unified observation_validity/validity_flag/validity_reason schema, closing out the polarity
+# audit's two flagged-but-deferred names (contaminant_score, flag_handler_score) from
+# 2026-07-23. Real correction found mid-design: both were mischaracterized in the original
+# audit as "high=more risk" (matching contaminant_risk-style naming) -- verified directly
+# against source and actually HIGH=GOOD/genuine, LOW=likely contaminant or handler artifact
+# (contaminant_score's own roxygen: "Taxa with a higher rate in controls than field samples
+# receive low scores"). Renaming them to a "_risk" suffix would have been a backwards, actively
+# WRONG fix, not merely a missed opportunity -- caught by reading the real case_when()/
+# threshold logic before touching any file, not by trusting the prior day's audit conclusion.
+# Final schema (both functions now share it, matching add_posthoc_assessment()'s existing
+# "one column, type-qualified values" precedent rather than inventing a new pattern):
+# observation_validity (numeric 0-1, high=good, was contaminant_score/flag_handler_score);
+# validity_flag (character: "valid"/"questionable_{type}"/"invalid_{type}", was
+# {contaminant_type}_risk's high/moderate/low and flag_handler's likely/possible/unlikely);
+# validity_reason (was {contaminant_type}_reason/flag_handler_reason). contaminant_type's
+# column-NAME-parameterization (e.g. lab_contaminant_risk vs positive_control_risk, letting two
+# calls coexist on the same taxa) is gone -- verified first that neither real PtConception
+# workflow uses that multi-call pattern -- the type now lives in validity_flag's VALUE instead
+# (e.g. "invalid_lab_contaminant"), matching flag_handler()'s fixed-name convention. Kept the
+# existing 3-tier severity (not collapsed to binary) per explicit user direction, so no
+# information is lost relative to the old high/moderate/low or likely/possible/unlikely scales.
+# report_flags() gained a THIRD auto-detection branch (validity_flag-based, additive to the two
+# pre-existing naming eras it already supported) since column names alone no longer identify
+# which check produced a flag -- reads the type qualifier out of the VALUE instead. Also fixed
+# a real citation error in add_posthoc_assessment()'s own confusion_risk_flag docs (written
+# 2026-07-23), which had cited contaminant_score as a "high=concern" precedent -- backwards,
+# now corrected. devtools::test() 0 failures (123, up from 119 -- 4 new report_flags() tests for
+# the new detection branch), devtools::check() 0 errors/0 warnings (1 pre-existing, unrelated
+# warning+note in build_review_covariates.R, untouched). Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-23, later same day (Sonnet 5 -- renamed add_posthoc_assessment()'s
+# score_support_flag -> confusion_risk_flag (+ own_rank_support_col -> own_rank_confusion_risk_col,
+# weak_score_support_threshold -> high_confusion_risk_threshold, and the two flag values
+# "weak_score_support"/"adequate_score_support" -> "high_confusion_risk"/"low_confusion_risk"),
+# matching the same-day TaxaLikely/TaxaAssign renames -- see TaxaID/CLAUDE.md's top session
+# note for the full cross-package record. Pure rename, no math changed; 7 tests renamed in
+# place (not new), same 119 total. The note below (same day, earlier) describes the original
+# implementation and now uses the corrected names throughout.
+# Previous update, 2026-07-23 (Sonnet 5 -- add_posthoc_assessment() gains a new, deliberately
+# SEPARATE confusion_risk_flag column (own_rank_confusion_risk_col default "winner_own_rank_confusion_risk",
+# high_confusion_risk_threshold default 0.5) implementing Task 1's TaxaFlag wiring from
+# ecosystem_docs/REENTRY_PROMPT_score_support_posthoc_and_rank_thresholds.md (full
+# cross-package record in TaxaID/CLAUDE.md's top session note). Reads
+# TaxaAssign::posterior_consensus()'s new winner_own_rank_confusion_risk pass-through (itself sourced
+# from TaxaLikely::evaluate_likelihoods()'s new species_confusion_risk/genus_confusion_risk/family_confusion_risk --
+# a model-independent, score-ONLY diagnostic where LOWER values mean STRONGER evidence).
+# Deliberately kept as its OWN new column rather than folded into posthoc_assessment's existing
+# override chain the way "unsupported_rank" is -- the explicit design rationale, documented in
+# a new @section Confusion-risk flag, is the trusted_rank ladder-walk's own cautionary precedent
+# (built 2026-07-19, removed 2026-07-20 after a real ~30% mismatch + a downranking-cancellation
+# bug, see [[project_rank_trust_mechanism_removed]]): a mechanism that recomputes/overrides an
+# existing categorical judgment is exactly the shape that broke there, so confusion_risk_flag
+# stays a plain additive threshold that never interacts with posthoc_assessment. 7 new tests
+# added to test-add_posthoc_assessment.R (119 total, up from 112) covering the NA-when-absent
+# case, above/below-threshold classification, NA-propagation, custom column name, non-
+# interaction with posthoc_assessment, and both new input-validation errors. devtools::test()
+# 0 failures (119), devtools::check() 0 errors/0 warnings (1 pre-existing, unrelated warning +
+# note in build_review_covariates.R, confirmed untouched this session via git diff).
+# Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-20 (Sonnet 5 -- add_posthoc_assessment()'s "unsupported_rank"
 # category (added the day before, see the Session 2026-07-19 note directly below)
 # redesigned: `trusted_rank_col` (default `"winner_trusted_rank"`, comparing rank ORDER
 # against `consensus_rank_col`) replaced by `absolute_fit_pvalue_col` (default
@@ -257,16 +445,16 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | Function | File | Status | Description |
 |----------|------|--------|-------------|
 | `.compute_contaminant_scores()` | `R/flag_contaminant.R` | Written | Internal: proportion-based control comparison algorithm |
-| `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control. **Session 151**: depth-weighted rates + Empirical Bayes shrinkage replace the old unweighted-mean/hard-0-1 formula; score documented as a ranked screening statistic, not a probability. **Session 152**: shrinkage denominator changed from sample count to read count (`prior_weight`, default `20`, now read-equivalent units) -- see "flag_contaminant() Design" below. |
-| `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts. **Session 151**: optional `station_metadata` param anchors edges on real deploy/retrieve timestamps instead of the data's own min/max (opt-in, backward compatible; see "flag_handler() Design" below). |
+| `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control. **Session 151**: depth-weighted rates + Empirical Bayes shrinkage replace the old unweighted-mean/hard-0-1 formula; score documented as a ranked screening statistic, not a probability. **Session 152**: shrinkage denominator changed from sample count to read count (`prior_weight`, default `20`, now read-equivalent units) -- see "flag_contaminant() Design" below. **2026-07-24**: output columns renamed to the unified schema -- `observation_validity` (was `{contaminant_type}_score`, high=good, unchanged direction/math), `validity_flag` (was `{contaminant_type}_risk`; values now `"valid"`/`"questionable_{contaminant_type}"`/`"invalid_{contaminant_type}"`, was `"low"`/`"moderate"`/`"high"`), `validity_reason` (was `{contaminant_type}_reason`). Column NAMES no longer vary by `contaminant_type` -- the type now lives in `validity_flag`'s value instead. |
+| `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts. **Session 151**: optional `station_metadata` param anchors edges on real deploy/retrieve timestamps instead of the data's own min/max (opt-in, backward compatible; see "flag_handler() Design" below). **2026-07-24**: output columns renamed to the same unified schema as `flag_contaminant()` -- `observation_validity` (was `flag_handler_score`, high=good, unchanged direction/math), `validity_flag` (was `flag_handler`; values now `"valid"`/`"questionable_handling"`/`"invalid_handling"`, was `"likely"`/`"possible"`/`"unlikely"`), `validity_reason` (was `flag_handler_reason`). `edge_anchor_source` unchanged. |
 | `.parse_datetimes()` | `R/flag_handler.R` | Written | Internal: auto-detect datetime format |
-| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. |
+| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. **2026-07-24**: gains `consensus_posterior_col`/`winner_prior_col`/`winner_rank_expanded_col`/`plausible_posteriors_col` (all optional, silently skipped when absent) -- when present, appends a compact pipeline-confidence/occurrence-prior/rank-expanded/candidate-weight annotation to each taxon's LLM prompt line, so the LLM's ecological judgment can be checked against the pipeline's own statistics. Also now prefers `df$consensus_OTU` (from `TaxaAssign::add_slash_taxon()`) for candidate-set labels when present, instead of always rebuilding independently -- closes a label-drift risk on downranked rows. |
 | `.normalise_context()` | `R/review_assignments.R` | Written | Internal: normalise build_context() or named list to standard fields |
 | `.build_review_prompt()` | `R/review_assignments.R` | Written | Internal: construct structured LLM prompt |
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
 | `.recover_truncated_json()` | `R/review_assignments.R` | Written | Internal: salvage complete JSON objects from truncated LLM response |
 
-| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Nine categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`, (Session 149) `"domestic_prior_caveat"` -- a strong-likelihood call to a user-specified `domestic_taxa` name that landed in tier2/tier3 purely from GBIF/iNat's under-indexing of captive organisms, not genuine rarity -- and `"unsupported_rank"` -- overrides ANY of the above (including `"sensible"`) when the winning hypothesis's own absolute fit is weak, catching a case `winner_likelihood`'s ratio-normalization structurally cannot see: a weak match winning "cleanly" only because nothing competitive existed to compare it against. **2026-07-20**: driven by `absolute_fit_pvalue_col` (default `"winner_absolute_fit_pvalue"`) below `weak_evidence_pvalue` (default `0.001`) -- a direct threshold check, no rank comparison. Replaces the 2026-07-19 `trusted_rank_col`/rank-order-comparison design, removed the same day it shipped after being found unreliable on real data (see this file's top session note). Silently skipped when `absolute_fit_pvalue_col` absent (optional upstream output). Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. `domestic_taxa = NULL` (default, feature off) / `domestic_prior_source = "wild"` (default) vs `"augmented"` (opt-out when priors already account for domestic species). |
+| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Nine categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`, (Session 149) `"domestic_prior_caveat"` -- a strong-likelihood call to a user-specified `domestic_taxa` name that landed in tier2/tier3 purely from GBIF/iNat's under-indexing of captive organisms, not genuine rarity -- and `"unsupported_rank"` -- overrides ANY of the above (including `"sensible"`) when the winning hypothesis's own absolute fit is weak, catching a case `winner_likelihood`'s ratio-normalization structurally cannot see: a weak match winning "cleanly" only because nothing competitive existed to compare it against. **2026-07-20**: driven by `absolute_fit_pvalue_col` (default `"winner_absolute_fit_pvalue"`) below `weak_evidence_pvalue` (default `0.001`) -- a direct threshold check, no rank comparison. Replaces the 2026-07-19 `trusted_rank_col`/rank-order-comparison design, removed the same day it shipped after being found unreliable on real data (see this file's top session note). Silently skipped when `absolute_fit_pvalue_col` absent (optional upstream output). Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. `domestic_taxa = NULL` (default, feature off) / `domestic_prior_source = "wild"` (default) vs `"augmented"` (opt-out when priors already account for domestic species). **2026-07-23**: gains a SECOND appended output column, `confusion_risk_flag` (`own_rank_confusion_risk_col` default `"winner_own_rank_confusion_risk"`, `high_confusion_risk_threshold` default `0.5`) -- `"high_confusion_risk"`/`"low_confusion_risk"`/`NA`, deliberately NOT part of the `posthoc_assessment` override chain (see this file's top session note for why). |
 
 **Dropped (Session 62):** `flag_allochthonous()` and `flag_taxonomic_scope()` -- absorbed
 into `review_assignments()`. One LLM call covers habitat, geography, scope, contaminant
@@ -409,7 +597,7 @@ found yet, which is the only thing keeping this from being worse").
 | test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
 | test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
 | test-report_flags.R | `report_flags()` | Fully offline |
-| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 44 tests; covers all 9 categories (incl. Session 149's `domestic_prior_caveat` and `unsupported_rank`, redesigned 2026-07-20 around `absolute_fit_pvalue_col`/`weak_evidence_pvalue`), tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank) |
+| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 51 tests (up from 44, 2026-07-23); covers all 9 `posthoc_assessment` categories (incl. Session 149's `domestic_prior_caveat` and `unsupported_rank`, redesigned 2026-07-20 around `absolute_fit_pvalue_col`/`weak_evidence_pvalue`), tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank); 2026-07-23 adds the new `confusion_risk_flag` column (NA-when-absent, above/below-threshold classification, NA propagation, custom column name, non-interaction with `posthoc_assessment`, input validation) |
 
 ---
 

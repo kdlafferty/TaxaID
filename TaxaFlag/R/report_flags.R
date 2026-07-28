@@ -71,11 +71,37 @@ report_flags <- function(flagged_data,
   # Review metadata columns: review_confidence, review_comment, etc.
   review_cols <- grep("^review_", all_cols, value = TRUE)
 
+  # Unified validity schema (2026-07-24, flag_contaminant()/flag_handler()):
+  # every TaxaFlag flag_*() mechanism now shares one literal column name
+  # (validity_flag), so -- unlike every earlier naming era above, where the
+  # COLUMN NAME itself identified which check produced it -- the check type
+  # here has to be read out of the VALUES ("valid" / "questionable_{type}" /
+  # "invalid_{type}"). This is additive to, not a replacement for, the two
+  # naming eras above (a data frame built from an older flag_contaminant()/
+  # flag_handler() call still detects correctly via the branches above).
+  validity_flag_present <- "validity_flag" %in% all_cols
+  validity_bad_values <- if (validity_flag_present) {
+    vals <- flagged_data$validity_flag
+    unique(vals[!is.na(vals) & vals != "valid"])
+  } else {
+    character(0L)
+  }
+  validity_types <- unique(sub("^(questionable|invalid)_", "", validity_bad_values))
+
   flag_types <- character(0L)
-  if (length(contaminant_cols) > 0L)  flag_types <- c(flag_types, "contamination")
-  if (length(handler_cols) > 0L)      flag_types <- c(flag_types, "handler artifacts")
+  if (length(contaminant_cols) > 0L || any(grepl("contaminant", validity_types)))
+    flag_types <- c(flag_types, "contamination")
+  if (length(handler_cols) > 0L || any(grepl("handling", validity_types)))
+    flag_types <- c(flag_types, "handler artifacts")
   if (length(plausibility_cols) > 0L) flag_types <- c(flag_types, "plausibility review")
   if (length(review_cols) > 0L)       flag_types <- c(flag_types, "expert review")
+  # Any validity_type not already covered above (e.g. a future flag_*()
+  # mechanism this function doesn't have specific wording for yet) still
+  # counts toward "flagging was applied", generically.
+  other_validity_types <- validity_types[
+    !grepl("contaminant", validity_types) & !grepl("handling", validity_types)
+  ]
+  if (length(other_validity_types) > 0L) flag_types <- c(flag_types, "quality validity checks")
   flag_types <- unique(flag_types)
 
   # --- Count flagged assignments ----------------------------------------------
@@ -100,6 +126,16 @@ report_flags <- function(flagged_data,
     }
   }
 
+  # Unified validity schema (2026-07-24): one breakdown entry per distinct
+  # non-"valid" value actually present (e.g. "invalid_lab_contaminant: 12,
+  # questionable_lab_contaminant: 5") -- finer-grained than the old
+  # one-count-per-column convention above, since severity is now carried in
+  # the value rather than being a separate per-column concept.
+  for (val in validity_bad_values) {
+    n_flagged <- sum(flagged_data$validity_flag == val, na.rm = TRUE)
+    if (n_flagged > 0L) flag_counts[[val]] <- n_flagged
+  }
+
   # Review: check for review_confidence == "low"
   if ("review_confidence" %in% all_cols) {
     n_low_conf <- sum(flagged_data$review_confidence == "low", na.rm = TRUE)
@@ -110,17 +146,23 @@ report_flags <- function(flagged_data,
     c(contaminant_cols, handler_cols, plausibility_cols),
     all_cols
   )
-  total_flagged <- if (length(all_flag_cols) > 0L) {
+  old_era_flagged <- if (length(all_flag_cols) > 0L) {
     # Unique rows where at least one flag column triggered
     flag_matrix <- vapply(all_flag_cols, .is_flagged, logical(n_total))
     if (is.matrix(flag_matrix)) {
-      sum(rowSums(flag_matrix, na.rm = TRUE) > 0L)
+      rowSums(flag_matrix, na.rm = TRUE) > 0L
     } else {
-      sum(flag_matrix, na.rm = TRUE)
+      flag_matrix
     }
   } else {
-    0L
+    rep(FALSE, n_total)
   }
+  validity_flagged <- if (validity_flag_present) {
+    !is.na(flagged_data$validity_flag) & flagged_data$validity_flag != "valid"
+  } else {
+    rep(FALSE, n_total)
+  }
+  total_flagged <- sum(old_era_flagged | validity_flagged, na.rm = TRUE)
 
   # --- Statistics -------------------------------------------------------------
   statistics <- list(

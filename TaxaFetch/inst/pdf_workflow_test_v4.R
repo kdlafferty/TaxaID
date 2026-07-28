@@ -594,6 +594,9 @@ for (nm in names(pdf_occ_list_clean)) {
 # stack_occurrences() row-binds per-paper tibbles, adds point_id, reports
 # record counts per source. Compatible with downstream habitat assignment,
 # spatial QAQC, and combination with DataONE/GBIF via stack_occurrences().
+# dedupe_occurrences() then removes any duplicate records (e.g. the same
+# observation reported in more than one paper) -- stack_occurrences() itself
+# never removes rows.
 # ==============================================================================
 
 if (length(pdf_occ_list_clean) == 0L) {
@@ -601,6 +604,7 @@ if (length(pdf_occ_list_clean) == 0L) {
 } else {
 
   all_pdf_occ <- stack_occurrences(pdf_occ_list_clean)
+  all_pdf_occ <- dedupe_occurrences(all_pdf_occ)
 
   message(sprintf("\nTotal occurrence records: %d", nrow(all_pdf_occ)))
 

@@ -293,6 +293,92 @@ test_that("both backbone_id and fallback_backbone_id = NULL skips all API calls"
 })
 
 # =============================================================================
+# Genus correction (2026-07-25) -- keeps this function consistent with
+# TaxaMatch::convert_taxonomy_backbone()'s current-name preference, closing a
+# real gap where the two functions could report DIFFERENT genus labels for
+# the same taxon, silently breaking TaxaAssign::join_priors()'s exact-string
+# genus/family match between the likelihood side and the priors side.
+# =============================================================================
+
+.make_verified_synonym <- function(query_genus, resolved_genus, family) {
+  tibble::tibble(
+    user_supplied_name   = query_genus,
+    matched_name          = resolved_genus,
+    matched_rank          = "genus",
+    is_synonym            = TRUE,
+    classification_path  = paste0("Animalia|Chordata|", family, "|", resolved_genus),
+    classification_ranks = "kingdom|phylum|family|genus",
+    score                = 1.0,
+    verified             = TRUE
+  )
+}
+
+test_that("genus is corrected to the backbone's resolved name for a genus-level synonym", {
+  # Real motivating case: "Inu sp. 1 sensu Shibukawa et al., 2020." extracts
+  # genus = "Inu" locally; GBIF resolves "Inu" as a synonym of "Luciogobius".
+  local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      .make_verified_synonym("Inu", "Luciogobius", "Gobiidae")
+    },
+    .package = "TaxaTools"
+  )
+  out <- fill_higher_ranks(
+    "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    local_sources        = list(),
+    backbone_id          = 11L,
+    fallback_backbone_id = NULL,
+    verbose              = FALSE
+  )
+  expect_equal(out$genus, "Luciogobius")
+  expect_equal(out$family, "Gobiidae")
+})
+
+test_that("genus is left unchanged when the API response has no matched_rank column (backward compat)", {
+  # Same synonym scenario, but with a verify_fn shaped like every
+  # pre-2026-07-25 mock in this file (no matched_rank/is_synonym) --
+  # confirms old behavior (genus stays the locally-extracted string) is
+  # fully preserved for any verify_taxon_names() implementation that
+  # predates the fix.
+  local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      .make_verified("Inu", "Gobiidae")  # matched_name = "Inu" too, no matched_rank
+    },
+    .package = "TaxaTools"
+  )
+  out <- fill_higher_ranks(
+    "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    local_sources        = list(),
+    backbone_id          = 11L,
+    fallback_backbone_id = NULL,
+    verbose              = FALSE
+  )
+  expect_equal(out$genus, "Inu")  # unchanged, as before this fix
+  expect_equal(out$family, "Gobiidae")
+})
+
+test_that("genus is unchanged when matched_rank is present but not \"genus\"", {
+  # Defensive case: a lookup that resolved to a coarser rank than genus
+  # should not be trusted as a genus substitution.
+  local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      row <- .make_verified("Inu", "Gobiidae")
+      row$matched_rank <- "family"
+      row$is_synonym   <- NA
+      row
+    },
+    .package = "TaxaTools"
+  )
+  out <- fill_higher_ranks(
+    "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    local_sources        = list(),
+    backbone_id          = 11L,
+    fallback_backbone_id = NULL,
+    verbose              = FALSE
+  )
+  expect_equal(out$genus, "Inu")
+})
+
+# =============================================================================
 # Internal helpers
 # =============================================================================
 

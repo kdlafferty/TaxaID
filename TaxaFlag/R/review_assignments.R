@@ -38,6 +38,45 @@
 #'   receive \code{NA} review columns. When \code{irreducible_consensus} is
 #'   absent, all unique candidate sets are reviewed with a message. Ignored
 #'   when \code{plausible_taxa_col = NULL}. Default \code{TRUE}.
+#' @param consensus_posterior_col Character or \code{NULL}. Column name for
+#'   \code{TaxaAssign::posterior_consensus()}'s \code{consensus_posterior} --
+#'   the pipeline's own statistical confidence in the winning taxon. When
+#'   present, the median value across every row sharing a taxon/candidate-set
+#'   label is shown to the LLM as context (e.g. \code{"pipeline
+#'   posterior=0.81"}), so a sharp disagreement between the pipeline's
+#'   confidence and the LLM's ecological plausibility judgment can be
+#'   surfaced in \code{review_comment}. Purely additive text -- never changes
+#'   which rows are reviewed or any output column. Silently skipped when the
+#'   named column is absent from \code{df}. Default
+#'   \code{"consensus_posterior"} (matches \code{posterior_consensus()}'s own
+#'   output). Set to \code{NULL} to disable.
+#' @param winner_prior_col Character or \code{NULL}. Column name for
+#'   \code{posterior_consensus()}'s \code{winner_prior} -- the occurrence-
+#'   database prior for the winning taxon. Same treatment as
+#'   \code{consensus_posterior_col}: shown as median context (e.g.
+#'   \code{"occurrence prior=0.42"}), silently skipped when absent. Default
+#'   \code{"winner_prior"}. Set to \code{NULL} to disable.
+#' @param winner_rank_expanded_col Character or \code{NULL}. Column name for
+#'   \code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
+#'   when the winning species-level call was manufactured by
+#'   \code{join_priors()}'s coarse-rank expansion from occurrence-prior mass
+#'   alone, with no direct sequence/image/acoustic evidence discriminating
+#'   between candidates. When \code{TRUE} for any row sharing a label, a note
+#'   to that effect is added to the LLM's context, since this changes how
+#'   much weight the identification itself deserves. Silently skipped when
+#'   absent. Default \code{"winner_rank_expanded"}. Set to \code{NULL} to
+#'   disable.
+#' @param plausible_posteriors_col Character or \code{NULL}. Column name for
+#'   \code{posterior_consensus()}'s \code{plausible_posteriors} list column
+#'   (per-candidate posterior weights, positionally aligned with
+#'   \code{plausible_taxa_col}). Only used when \code{plausible_taxa_col} is
+#'   supplied. When present, each multi-candidate label's per-candidate
+#'   weights are averaged across every row sharing that label and shown to
+#'   the LLM (e.g. \code{"candidate weights: Bos javanicus 72\%, Bos
+#'   primigenius 28\%"}), so \code{review_comment} can speak to the specific
+#'   weaker member instead of the group as an undifferentiated set. Silently
+#'   skipped when absent. Default \code{"plausible_posteriors"}. Set to
+#'   \code{NULL} to disable.
 #' @param context Named list or data frame describing the study context.
 #'   Recognised fields: \code{geography} (or \code{ecoregion}),
 #'   \code{habitat} (or \code{main_habitat}), \code{date}. A
@@ -94,6 +133,23 @@
 #'   \item{\code{review_comment}}{Free-text note, or \code{NA}}
 #' }
 #'
+#' @section Pipeline context:
+#' When \code{consensus_posterior_col}/\code{winner_prior_col}/
+#' \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} match real
+#' columns in \code{df} (the defaults match \code{TaxaAssign::
+#' posterior_consensus()}'s own output names), a compact \code{"[...]"}
+#' annotation is appended to each taxon's line in the LLM prompt -- the
+#' pipeline's own median statistical confidence/occurrence prior for that
+#' taxon, a note when the winning call was resolved by occurrence-prior
+#' tie-break alone (no direct sequence evidence), and, for multi-candidate
+#' sets, each candidate's averaged posterior weight. This lets the LLM's
+#' free-text \code{review_comment} flag a disagreement between the
+#' pipeline's own confidence and its ecological judgment. It is purely
+#' additive: it never changes which rows are reviewed, the dedup key, or any
+#' output column, and adds only a few tokens per taxon to the prompt. Set any
+#' of the four params to \code{NULL} to disable; all four are silently
+#' skipped (not an error) when the named column is absent from \code{df}.
+#'
 #' @seealso \code{\link{flag_contaminant}} for data-driven contaminant
 #'   detection, \code{\link{flag_handler}} for temporal proximity flagging,
 #'   \code{TaxaAssign::add_slash_taxon()} to add \code{irreducible_consensus}
@@ -126,6 +182,10 @@ review_assignments <- function(df,
                                taxon_rank_col     = NULL,
                                plausible_taxa_col = NULL,
                                irreducible_only   = TRUE,
+                               consensus_posterior_col  = "consensus_posterior",
+                               winner_prior_col         = "winner_prior",
+                               winner_rank_expanded_col = "winner_rank_expanded",
+                               plausible_posteriors_col = "plausible_posteriors",
                                context,
                                target_group       = NULL,
                                marker             = NULL,
@@ -149,6 +209,22 @@ review_assignments <- function(df,
   if (!is.null(plausible_taxa_col) && !plausible_taxa_col %in% names(df))
     stop(sprintf("Column '%s' not found in df.", plausible_taxa_col), call. = FALSE)
 
+  # Pipeline-context column-name params are deliberately NOT validated for
+  # presence in df -- unlike taxon_rank_col/plausible_taxa_col above, these
+  # have non-NULL defaults matching TaxaAssign::posterior_consensus()'s own
+  # output names, so an explicit-presence check would break every existing
+  # caller whose df predates these columns. Silently skipped instead (see
+  # .summarise_pipeline_context()); only the parameter TYPE is checked here.
+  for (col_param in list(consensus_posterior_col, winner_prior_col,
+                         winner_rank_expanded_col, plausible_posteriors_col)) {
+    if (!is.null(col_param) && (!is.character(col_param) || length(col_param) != 1L))
+      stop(paste(
+        "'consensus_posterior_col', 'winner_prior_col',",
+        "'winner_rank_expanded_col', and 'plausible_posteriors_col' must",
+        "each be a single character string or NULL."
+      ), call. = FALSE)
+  }
+
   if (missing(context) || is.null(context))
     stop("'context' is required. Supply a named list or build_context() output.",
          call. = FALSE)
@@ -171,12 +247,23 @@ review_assignments <- function(df,
     taxa_sets <- lapply(raw_sets, function(x) sort(unique(x[!is.na(x) & nzchar(x)])))
     n_cands   <- lengths(taxa_sets)
 
-    # Build display labels (slash notation)
-    cand_labels <- vapply(seq_along(taxa_sets), function(i) {
-      if (n_cands[i] == 0L) return(NA_character_)
-      if (n_cands[i] == 1L) return(taxa_sets[[i]])
-      .build_candidate_label(taxa_sets[[i]])
-    }, character(1L))
+    # Build display labels (slash notation). Prefer a pre-computed label from
+    # TaxaAssign::add_slash_taxon() when present -- its slash-name logic
+    # clears the label to NA (falling back to consensus_taxon) for downranked
+    # rows where the plausible-genera set no longer matches consensus_taxon,
+    # a case .build_candidate_label() below cannot detect on its own (it only
+    # sees plausible_taxa, not downranked/consensus_taxon). Rebuilding
+    # independently risks producing a DIFFERENT label than add_slash_taxon()
+    # would for the same row.
+    cand_labels <- if ("consensus_OTU" %in% names(df)) {
+      df[["consensus_OTU"]]
+    } else {
+      vapply(seq_along(taxa_sets), function(i) {
+        if (n_cands[i] == 0L) return(NA_character_)
+        if (n_cands[i] == 1L) return(taxa_sets[[i]])
+        .build_candidate_label(taxa_sets[[i]])
+      }, character(1L))
+    }
 
     # Determine which rows to review
     if (irreducible_only) {
@@ -246,6 +333,36 @@ review_assignments <- function(df,
       taxa_info <- data.frame(taxon_name = taxa, taxon_rank = NA_character_,
                               stringsAsFactors = FALSE)
     }
+  }
+
+  # --- Optional pipeline-context annotation ---------------------------------
+  # Purely additive text shown to the LLM (median pipeline posterior /
+  # occurrence prior / rank-expanded flag / averaged candidate weights across
+  # every row sharing a label) -- never changes which rows are reviewed, the
+  # dedup key, or any output column. Grouping is O(n) via split(), not a
+  # per-label linear scan, to stay cheap regardless of dataset size.
+  label_vec_full <- if (use_candidates) cand_labels else df[[taxon_col]]
+
+  pipeline_ctx <- .summarise_pipeline_context(
+    label_vec_full, df, consensus_posterior_col, winner_prior_col,
+    winner_rank_expanded_col
+  )
+  weight_ctx <- if (use_candidates && !is.null(plausible_posteriors_col) &&
+                    plausible_posteriors_col %in% names(df)) {
+    .summarise_candidate_weights(label_vec_full, df[[plausible_posteriors_col]])
+  } else {
+    NULL
+  }
+
+  if (!is.null(pipeline_ctx) || !is.null(weight_ctx)) {
+    pn <- if (!is.null(pipeline_ctx))
+      pipeline_ctx$pipeline_note[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]
+    else rep(NA_character_, nrow(taxa_info))
+    wn <- if (!is.null(weight_ctx))
+      weight_ctx$weight_note[match(taxa_info$taxon_name, weight_ctx$taxon_name)]
+    else rep(NA_character_, nrow(taxa_info))
+    wn <- ifelse(is.na(wn), NA_character_, paste0("candidate weights: ", wn))
+    taxa_info$pipeline_note <- .combine_notes(pn, wn)
   }
 
   if (verbose)
@@ -348,6 +465,93 @@ review_assignments <- function(df,
 }
 
 
+#' Summarise Pipeline Confidence Context per Unique Taxon/Candidate-Set Label
+#'
+#' Aggregates \code{TaxaAssign::posterior_consensus()}'s confidence columns
+#' (when present) across every \code{df} row sharing a taxon/candidate-set
+#' label into one compact annotation string per unique label, so the LLM
+#' reviewing a taxon sees the pipeline's OWN statistical confidence alongside
+#' its ecological judgment -- without inflating the prompt with one value per
+#' observation. Median is used (not mean) for robustness against a handful of
+#' outlier observations sharing a common label. Grouping is done once via
+#' \code{split()} (O(n)), not a per-label linear scan (O(n * unique labels)).
+#' @noRd
+.summarise_pipeline_context <- function(label_vec, df, consensus_posterior_col,
+                                        winner_prior_col, winner_rank_expanded_col) {
+  has_post  <- !is.null(consensus_posterior_col)  && consensus_posterior_col  %in% names(df)
+  has_prior <- !is.null(winner_prior_col)         && winner_prior_col         %in% names(df)
+  has_rexp  <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(df)
+  if (!has_post && !has_prior && !has_rexp) return(NULL)
+
+  keep <- !is.na(label_vec)
+  if (!any(keep)) return(NULL)
+
+  groups <- split(which(keep), label_vec[keep])
+
+  notes <- vapply(groups, function(rows) {
+    parts <- character(0)
+    if (has_post) {
+      v <- stats::median(df[[consensus_posterior_col]][rows], na.rm = TRUE)
+      if (!is.na(v)) parts <- c(parts, sprintf("pipeline posterior=%.2f", v))
+    }
+    if (has_prior) {
+      v <- stats::median(df[[winner_prior_col]][rows], na.rm = TRUE)
+      if (!is.na(v)) parts <- c(parts, sprintf("occurrence prior=%.2f", v))
+    }
+    if (has_rexp && isTRUE(any(df[[winner_rank_expanded_col]][rows], na.rm = TRUE))) {
+      parts <- c(parts, paste0(
+        "species-level ID from occurrence-prior tie-break, ",
+        "no direct sequence discrimination"
+      ))
+    }
+    if (length(parts) == 0L) NA_character_ else paste(parts, collapse = "; ")
+  }, character(1L))
+
+  data.frame(taxon_name = names(groups), pipeline_note = unname(notes),
+             stringsAsFactors = FALSE)
+}
+
+
+#' Summarise Per-Candidate Posterior Weights for Multi-Candidate Labels
+#'
+#' For each unique multi-candidate label (contains \code{"/"} or \code{"+"}),
+#' averages the per-candidate posterior weight (from
+#' \code{posterior_consensus()}'s \code{plausible_posteriors} list column)
+#' across every \code{df} row sharing that label, so the LLM sees which
+#' specific member of the slash/plus group carries the most evidence rather
+#' than assessing an unweighted set. Singleton labels are skipped -- there is
+#' nothing to weight. Grouping via \code{split()} (O(n)), matching
+#' \code{.summarise_pipeline_context()}.
+#' @noRd
+.summarise_candidate_weights <- function(label_vec, post_list) {
+  is_multi <- !is.na(label_vec) & grepl("[/+]", label_vec)
+  if (!any(is_multi)) return(NULL)
+
+  groups <- split(which(is_multi), label_vec[is_multi])
+
+  notes <- vapply(groups, function(rows) {
+    vecs <- post_list[rows]
+    vecs <- vecs[lengths(vecs) > 0L]
+    if (length(vecs) == 0L) return(NA_character_)
+    all_vals <- unlist(vecs, use.names = TRUE)
+    agg <- sort(tapply(all_vals, names(all_vals), mean, na.rm = TRUE), decreasing = TRUE)
+    paste(sprintf("%s %.0f%%", names(agg), agg * 100), collapse = ", ")
+  }, character(1L))
+
+  data.frame(taxon_name = names(groups), weight_note = unname(notes),
+             stringsAsFactors = FALSE)
+}
+
+
+#' Combine Two Optional Note Strings
+#' @noRd
+.combine_notes <- function(a, b) {
+  ifelse(is.na(a) & is.na(b), NA_character_,
+  ifelse(is.na(a), b,
+  ifelse(is.na(b), a, paste0(a, "; ", b))))
+}
+
+
 #' Normalise Context to Standard Fields
 #' @noRd
 .normalise_context <- function(context) {
@@ -418,7 +622,7 @@ review_assignments <- function(df,
     tr <- taxa_batch$taxon_rank[i]
     rank_str <- if (!is.na(tr) && nchar(tr) > 0) tr else NULL
 
-    if (use_candidates && grepl("[/+]", tn)) {
+    base <- if (use_candidates && grepl("[/+]", tn)) {
       # Multi-candidate entry
       if (!is.null(rank_str)) {
         sprintf("- %s (unresolved candidates; consensus rank: %s)", tn, rank_str)
@@ -433,6 +637,14 @@ review_assignments <- function(df,
         sprintf("- %s", tn)
       }
     }
+
+    # Optional pipeline-context annotation (see .summarise_pipeline_context()/
+    # .summarise_candidate_weights()) -- absent/NA for any batch built
+    # without it, so this is a no-op unless review_assignments()'s *_col
+    # params found a matching column.
+    note <- if ("pipeline_note" %in% names(taxa_batch)) taxa_batch$pipeline_note[i] else NA_character_
+    if (!is.na(note)) base <- paste0(base, " [", note, "]")
+    base
   }, character(1))
 
   taxa_block <- paste(taxa_lines, collapse = "\n")
@@ -519,7 +731,13 @@ review_assignments <- function(df,
     'relatives that better fit the context.\n',
     '- ', contaminant_guideline, '\n',
     '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
-    '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n\n',
+    '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
+    '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
+    'pipeline\'s OWN confidence for this call (posterior/occurrence prior/candidate ',
+    'weights), not your input. Use it to flag disagreement between the pipeline\'s ',
+    'confidence and your own ecological judgment in review_comment -- e.g. a low ',
+    'pipeline posterior alongside your own "likely" rating is worth a note -- but do ',
+    'not let it override your independent plausibility assessment itself.\n\n',
     'EXAMPLE OUTPUT FORMAT:\n',
     '[\n',
     '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',

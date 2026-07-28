@@ -11,17 +11,31 @@ ecosystem. Provides taxonomic name handling, LLM provider functions, and
 shared utilities used by all downstream TaxaID packages.
 
 One of the most difficult aspects of biodiversity science is
-standardizing taxonomic information. The taxize package was long the
-standard tool for this, but it is no longer maintained. TaxaTools
-replaces and extends that functionality: it cleans, verifies, and
-standardizes taxonomic names across multiple backbones (GBIF, NCBI,
-WoRMS, Catalogue of Life). Nomenclature inconsistencies between data
-sources can cause false negatives when priors and likelihoods fail to
+standardizing taxonomic information. The taxize package (Chamberlain
+and Szocs 2013) was long the standard tool for this, but it is no
+longer maintained. TaxaTools replaces and extends that functionality:
+it cleans, verifies, and standardizes taxonomic names across multiple
+backbones (GBIF, the Global Biodiversity Information Facility; GBIF
+Secretariat, Copenhagen, Denmark; NCBI, the National Center for
+Biotechnology Information, U.S. National Library of Medicine, National
+Institutes of Health, Bethesda, Maryland; WoRMS, the World Register of
+Marine Species, Flanders Marine Institute (VLIZ), Ostend, Belgium;
+Catalogue of Life, hosted by Naturalis Biodiversity Center, Leiden,
+Netherlands). For example, a species name spelled or formatted
+differently across two of these backbones (e.g. an author citation or
+subspecies suffix present in one source but not another) will fail to
+join, and TaxaTools's cleaning and verification functions exist to
+prevent this: nomenclature inconsistencies between data sources can
+otherwise cause false negatives when priors and likelihoods fail to
 join on mismatched names. TaxaTools also provides a unified interface
-for calling large language models (LLMs) from R, with support for
-Anthropic Claude, Google Gemini, OpenAI, and local Ollama models.
-LLM-assisted functions can draft Methods and Results text for scientific
-papers describing how a user arrived at a particular consensus.
+for calling large language models (LLMs) from R (R Core Team 2025; see
+Software Requirements, below), with support for Anthropic Claude
+(Anthropic PBC, San Francisco, California), Google Gemini (Google LLC,
+Mountain View, California), OpenAI (OpenAI OpCo, LLC, San Francisco,
+California), and local Ollama (Ollama, Palo Alto, California) models.
+LLM-assisted functions can draft Methods and Results text for
+scientific papers describing how a user arrived at a particular
+consensus.
 
 ## Features
 
@@ -33,13 +47,16 @@ papers describing how a user arrived at a particular consensus.
     scientific names with optional backbone verification
     (`common_to_scientific()`); useful when classifier output lacks
     scientific names
--   **Backbone translation** -- move names between taxonomic backbones
+-   **Backbone translation** -- re-verify a taxon name against a
+    different taxonomic backbone and translate its classification into
+    that backbone's own naming/ranking conventions (e.g. converting a
+    GBIF-verified name and classification to its NCBI equivalent)
     (`change_backbone()`)
--   **Column standardization** -- rename columns to DarwinCore
-    conventions (`rename_cols()`)
+-   **Column standardization** -- rename columns to Darwin Core
+    conventions (Wieczorek et al. 2012) (`rename_cols()`)
 -   **LLM providers** -- unified interface to Anthropic Claude, Google
-    Gemini, OpenAI, Azure OpenAI (DOI network/VPN required), and local
-    Ollama models
+    Gemini, OpenAI, Azure OpenAI (Microsoft Corporation, Redmond,
+    Washington; DOI network/VPN required), and local Ollama models
 -   **Text generation** -- LLM-assisted drafting of Methods and Results
     sections (`draft_methods_text()`, `draft_results_text()`)
 -   **Report assembly** -- combine per-package report sections into a
@@ -123,7 +140,8 @@ Full list: <https://verifier.globalnames.org/>
 
 ## API Keys
 
-Several TaxaID functions require API keys. See the [API Setup
+Several TaxaID functions require Application Programming Interface
+(API) keys. See the [API Setup
 vignette](vignettes/api-setup.Rmd) for where to get keys and how to
 configure them in `~/.Renviron`.
 
@@ -146,9 +164,9 @@ configure them in `~/.Renviron`.
 
 TaxaID outputs are compatible with the **`taxaRaw` and `taxaFinal`
 classes** of the [FAIRe eDNA metadata
-checklist](https://github.com/FAIR-eDNA/FAIRe_checklist) (Takahashi et
-al. 2025,
-[doi:[10.1002/edn3.70100](doi:%5B10.1002/edn3.70100){.uri}](<https://doi.org/10.1002/edn3.70100>)).
+checklist](https://github.com/FAIR-eDNA/FAIRe_checklist)
+(<https://fair-edna.github.io/index.html>; Takahashi et al. 2025,
+<https://doi.org/10.1002/edn3.70100>).
 
 Use `to_faire()` to convert any TaxaID match, likelihood, or posterior
 data frame to FAIRe-compatible column names before export or submission:
@@ -185,7 +203,9 @@ probabilistic taxonomic assignment. All other packages depend on it for
 name handling and LLM access.
 
 **Ecosystem:** TaxaTools -\> TaxaFetch -\> TaxaHabitat -\> TaxaExpect
--\> TaxaAssign / TaxaMatch -\> TaxaLikely -\> TaxaAssign -\> TaxaFlag
+-\> TaxaAssign / TaxaMatch -\> TaxaLikely -\> TaxaAssign -\> TaxaFlag.
+TaxaWizard sits outside this dependency chain (standalone; generates
+scripts that call the other packages).
 
 See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
@@ -212,12 +232,37 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   An API key for at least one LLM provider (Anthropic, Google Gemini,
     OpenAI, or Ollama) is needed for text generation functions
--   rgbif (for GBIF backbone census; in Suggests)
+-   rgbif (Chamberlain et al. 2025; for GBIF backbone census; in
+    Suggests)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+Chamberlain, S. and Szocs, E. (2013). taxize: taxonomic search and
+retrieval in R. *F1000Research*, 2:191.
+<https://doi.org/10.12688/f1000research.2-191.v2>
+
+Chamberlain, S., Barve, V., Mcglinn, D., Oldoni, D., Desmet, P.,
+Geffert, L. and Ram, K. (2025). rgbif: Interface to the Global
+Biodiversity Information Facility API. R package.
+<https://CRAN.R-project.org/package=rgbif>
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>
+
+Takahashi, M. et al. (2025). FAIRe eDNA metadata checklist.
+*Environmental DNA*. <https://doi.org/10.1002/edn3.70100>
+
+Wieczorek, J., Bloom, D., Guralnick, R., Blum, S., Doring, M., et al.
+(2012). Darwin Core: An Evolving Community-Developed Biodiversity Data
+Standard. *PLoS ONE*, 7(1), e29715.
+<https://doi.org/10.1371/journal.pone.0029715>

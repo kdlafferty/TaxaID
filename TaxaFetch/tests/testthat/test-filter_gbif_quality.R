@@ -411,17 +411,234 @@ test_that("exclude_equal_coords/near_zero/near_gbif_hq = FALSE skips all three c
   out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
                               bad_issues = character(0), max_coord_uncertainty = Inf,
                               exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
-                              exclude_near_gbif_hq = FALSE)
+                              exclude_near_gbif_hq = FALSE,
+                              exclude_country_centroid = FALSE, exclude_capital = FALSE,
+                              flag_institution = FALSE)
   expect_equal(nrow(out), 2L)
+})
+
+test_that("removes a record at a real country centroid (cc_cen)", {
+  skip_if_not_installed("CoordinateCleaner")
+  ref <- CoordinateCleaner::countryref[CoordinateCleaner::countryref$type == "country", ]
+  ref <- ref[!is.na(ref$centroid.lon) & !is.na(ref$centroid.lat), ][1, ]
+  df <- data.frame(
+    decimalLatitude  = c(ref$centroid.lat, 34.5),
+    decimalLongitude = c(ref$centroid.lon, -120.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_capital = FALSE,
+                              flag_institution = FALSE)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$decimalLongitude, -120.0)
+})
+
+test_that("removes a record at a real national capital (cc_cap)", {
+  skip_if_not_installed("CoordinateCleaner")
+  ref <- CoordinateCleaner::countryref[!is.na(CoordinateCleaner::countryref$capital.lon) &
+                                       !is.na(CoordinateCleaner::countryref$capital.lat), ][1, ]
+  df <- data.frame(
+    decimalLatitude  = c(ref$capital.lat, 34.5),
+    decimalLongitude = c(ref$capital.lon, -120.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              flag_institution = FALSE)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$decimalLongitude, -120.0)
+})
+
+test_that("flags (does NOT remove) a record near a real biodiversity institution (cc_inst)", {
+  skip_if_not_installed("CoordinateCleaner")
+  ref <- CoordinateCleaner::institutions[!is.na(CoordinateCleaner::institutions$decimalLongitude) &
+                                         !is.na(CoordinateCleaner::institutions$decimalLatitude), ][1, ]
+  df <- data.frame(
+    decimalLatitude  = c(ref$decimalLatitude, 34.5),
+    decimalLongitude = c(ref$decimalLongitude, -120.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE)
+  # Both rows retained -- institution proximity never removes anything
+  expect_equal(nrow(out), 2L)
+  expect_equal(out$institution_flag, c(TRUE, FALSE))
+  expect_equal(out$institution_name[1], ref$name)
+  expect_equal(out$institution_type[1], ref$type)
+  expect_true(out$institution_dist_m[1] < 100)
+  expect_equal(out$institution_lon[1], ref$decimalLongitude)
+  expect_equal(out$institution_lat[1], ref$decimalLatitude)
+  expect_true(is.na(out$institution_name[2]))
+  expect_true(is.na(out$institution_lon[2]))
+  expect_true(is.na(out$institution_lat[2]))
+})
+
+test_that("flag_institution = FALSE skips institution flagging entirely", {
+  skip_if_not_installed("CoordinateCleaner")
+  ref <- CoordinateCleaner::institutions[!is.na(CoordinateCleaner::institutions$decimalLongitude) &
+                                         !is.na(CoordinateCleaner::institutions$decimalLatitude), ][1, ]
+  df <- data.frame(
+    decimalLatitude  = c(ref$decimalLatitude, 34.5),
+    decimalLongitude = c(ref$decimalLongitude, -120.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE, flag_institution = FALSE)
+  expect_equal(nrow(out), 2L)
+  expect_false("institution_flag" %in% names(out))
+})
+
+test_that("exclude_country_centroid/capital = FALSE skips those two checks", {
+  skip_if_not_installed("CoordinateCleaner")
+  ref <- CoordinateCleaner::countryref[CoordinateCleaner::countryref$type == "country", ]
+  ref <- ref[!is.na(ref$centroid.lon) & !is.na(ref$centroid.lat), ][1, ]
+  df <- data.frame(
+    decimalLatitude  = c(ref$centroid.lat, 34.5),
+    decimalLongitude = c(ref$centroid.lon, -120.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE, flag_institution = FALSE)
+  expect_equal(nrow(out), 2L)
+})
+
+test_that("a record near both a removal-check trigger and an institution is removed, not flagged", {
+  # Step 9 (removal) runs before step 10 (institution flagging) -- a record
+  # that fails a removal check never reaches the institution step at all.
+  skip_if_not_installed("CoordinateCleaner")
+  df <- data.frame(
+    decimalLatitude  = c(0.01, 34.5),
+    decimalLongitude = c(0.01, -120.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE)
+  expect_equal(nrow(out), 1L)
+  removed <- attr(out, "removed_records")
+  expect_equal(nrow(removed), 1L)
+})
+
+# =============================================================================
+# removed_records attribute
+# =============================================================================
+
+test_that("removed_records is present with 0 rows when nothing is removed", {
+  df <- data.frame(
+    decimalLatitude  = c(34.5, 35.0),
+    decimalLongitude = c(-120.0, -119.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE, flag_institution = FALSE)
+  removed <- attr(out, "removed_records")
+  expect_false(is.null(removed))
+  expect_equal(nrow(removed), 0L)
+  expect_true("filter_reason" %in% names(removed))
+})
+
+test_that("removed_records captures rows dropped for missing coordinates", {
+  df <- data.frame(
+    decimalLatitude  = c(34.5, NA),
+    decimalLongitude = c(-120.0, -119.0),
+    gbifID           = c("1", "2"),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE, flag_institution = FALSE)
+  removed <- attr(out, "removed_records")
+  expect_equal(nrow(removed), 1L)
+  expect_equal(removed$gbifID, "2")
+  expect_equal(removed$filter_reason, "missing_coordinates")
+})
+
+test_that("removed_records reports the specific matched GBIF issue code", {
+  df <- data.frame(
+    decimalLatitude  = c(34.5, 35.0),
+    decimalLongitude = c(-120.0, -119.0),
+    issues           = c(NA, "SOME_OTHER_CODE;COORDINATE_OUT_OF_RANGE"),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              max_coord_uncertainty = Inf,
+                              bad_issues = c("COORDINATE_OUT_OF_RANGE", "ZERO_COORDINATE"),
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE, flag_institution = FALSE)
+  removed <- attr(out, "removed_records")
+  expect_equal(nrow(removed), 1L)
+  expect_equal(removed$filter_reason, "flagged_issue_code:COORDINATE_OUT_OF_RANGE")
+})
+
+test_that("removed_records joins multiple simultaneous CoordinateCleaner reasons with ';'", {
+  skip_if_not_installed("CoordinateCleaner")
+  # (0.01, 0.01) is simultaneously an equal-coordinate record AND near (0,0)
+  df <- data.frame(
+    decimalLatitude  = c(0.01, 34.5),
+    decimalLongitude = c(0.01, -120.0),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE, flag_institution = FALSE)
+  removed <- attr(out, "removed_records")
+  expect_equal(nrow(removed), 1L)
+  reasons <- strsplit(removed$filter_reason, ";")[[1]]
+  expect_setequal(reasons, c("equal_coordinates", "near_zero"))
+})
+
+test_that("removed_records preserves original columns (e.g. for reporting back to GBIF)", {
+  df <- data.frame(
+    decimalLatitude  = c(34.5, NA),
+    decimalLongitude = c(-120.0, -119.0),
+    gbifID           = c("1", "2"),
+    datasetKey       = c("dsA", "dsB"),
+    stringsAsFactors = FALSE
+  )
+  out <- filter_gbif_quality(df, basis_keep = character(0), exclude_edna = FALSE,
+                              bad_issues = character(0), max_coord_uncertainty = Inf,
+                              exclude_equal_coords = FALSE, exclude_near_zero = FALSE,
+                              exclude_near_gbif_hq = FALSE, exclude_country_centroid = FALSE,
+                              exclude_capital = FALSE, flag_institution = FALSE)
+  removed <- attr(out, "removed_records")
+  expect_true(all(c("gbifID", "datasetKey") %in% names(removed)))
+  expect_equal(removed$datasetKey, "dsB")
 })
 
 # =============================================================================
 # Output structure
 # =============================================================================
 
-test_that("column structure is unchanged after filtering", {
+test_that("original columns are preserved after filtering (institution columns added, not substituted)", {
   df  <- .make_gbif()
   out <- filter_gbif_quality(df)
+  expect_true(all(names(df) %in% names(out)))
+})
+
+test_that("column structure is unchanged when flag_institution = FALSE", {
+  df  <- .make_gbif()
+  out <- filter_gbif_quality(df, flag_institution = FALSE)
   expect_equal(names(out), names(df))
 })
 

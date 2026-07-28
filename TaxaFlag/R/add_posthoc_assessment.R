@@ -5,11 +5,8 @@ utils::globalVariables(character(0))
 #' Classifies each row of a \code{posterior_consensus()} output using signals
 #' already present in the data: sequence-match evidence
 #' (\code{winner_likelihood}) and prior establishment status (taxon tier from
-#' \code{priors_combined}) drive the base 3 x 2 classification below; an
-#' optional third, independent signal (\code{absolute_fit_pvalue_col},
-#' absolute rather than relative goodness of fit) can override any of those
-#' four categories -- see \code{@section Weak absolute evidence}. The result
-#' is a single categorical column \code{posthoc_assessment} suitable for
+#' \code{priors_combined}) drive the base 3 x 2 classification below. The
+#' result is a single categorical column \code{posthoc_assessment} suitable for
 #' filtering or LLM-assisted review.
 #'
 #' \strong{Classification logic (3 x 2 table):}
@@ -103,63 +100,116 @@ utils::globalVariables(character(0))
 #'   prior pipeline already incorporated known local domestic/synanthropic
 #'   presence, so the low tier is treated as informative and no re-labelling
 #'   happens. Ignored when \code{domestic_taxa} is \code{NULL}.
-#' @param absolute_fit_pvalue_col Character.  Column in \code{consensus_df}
-#'   holding the winning hypothesis's own one-sided ABSOLUTE (not relative)
-#'   goodness-of-fit p-value, passed through unchanged from
-#'   \code{TaxaLikely::evaluate_likelihoods()} via
-#'   \code{TaxaAssign::posterior_consensus()}'s \code{winner_absolute_fit_pvalue}
-#'   column (default \code{"winner_absolute_fit_pvalue"}). When present and
-#'   below \code{weak_evidence_pvalue}, the row is labelled
-#'   \code{"unsupported_rank"} regardless of what the other signals say --
-#'   see \code{@section Weak absolute evidence} below. Silently ignored (no
-#'   error) when absent from \code{consensus_df} -- an optional upstream
-#'   output, not required input.
-#' @param weak_evidence_pvalue Numeric in \code{[0, 1]} (default
-#'   \code{0.001}).  Threshold for \code{absolute_fit_pvalue_col}: a value
-#'   below this triggers \code{"unsupported_rank"}.  Not itself empirically
-#'   validated against known real misidentification cases -- treat it as a
-#'   starting point, not a calibrated constant.
+#' @param own_rank_confusion_risk_col Character.  Column in \code{consensus_df}
+#'   holding \code{TaxaLikely::evaluate_likelihoods()}'s
+#'   \code{own_rank_confusion_risk} value for the winning hypothesis, passed
+#'   through unchanged from \code{TaxaAssign::posterior_consensus()}'s
+#'   \code{winner_own_rank_confusion_risk} column (default
+#'   \code{"winner_own_rank_confusion_risk"}).  See \code{@section
+#'   Confusion-risk flag} below.  Silently ignored (no error,
+#'   \code{confusion_risk_flag} is all \code{NA}) when absent from
+#'   \code{consensus_df} -- an optional upstream output, not required input.
+#' @param high_confusion_risk_threshold Numeric in \code{[0, 1]} (default
+#'   \code{0.5}).  \code{own_rank_confusion_risk_col} values ABOVE this
+#'   threshold are flagged \code{"high_confusion_risk"} (HIGHER means MORE
+#'   confusable, i.e. weaker evidence for this diagnostic -- see
+#'   \code{@section Confusion-risk flag}).  Not itself empirically
+#'   validated -- a defensible midpoint, not a calibrated constant.
 #'
-#' @section Weak absolute evidence (\code{"unsupported_rank"}):
-#' \code{winner_likelihood_col} is ratio-normalised WITHIN one observation
-#' (the best hypothesis is always exactly 1.0) -- it can read as strong
-#' evidence even when every candidate fit poorly in absolute terms, simply
-#' because nothing competitive existed to normalise against (e.g. a weak
-#' match winning by default with no real competition; a real motivating
-#' example, found on real data: 8 real PtConception 12S observations
-#' confidently identified as \emph{Urocyon cinereoargenteus}/\emph{Canis
-#' lupaster} -- real terrestrial canids -- at species level in a marine fish
-#' survey, each with \code{winner_absolute_fit_pvalue} ~ 0.002-0.004).
-#' \code{absolute_fit_pvalue_col} carries a different, absolute answer to a
-#' related question: is this call's own fit to its trained distribution
-#' believable at all, tested independently of any competing candidate. A
-#' value below \code{weak_evidence_pvalue} means the reported call's own
-#' evidence is weak in absolute terms -- this can happen even for a row the
-#' other four signals would call \code{"sensible"}, which is why this check
-#' runs last and can override any of them. Purely informational: never
-#' changes \code{consensus_taxon} or \code{consensus_rank} themselves, only
-#' how the existing values are labelled.
+#' @section Confusion-risk flag (\code{confusion_risk_flag}):
+#' A THIRD, deliberately SEPARATE signal from \code{posthoc_assessment}
+#' above. \code{TaxaLikely::evaluate_likelihoods()}'s
+#' \code{species_confusion_risk}/\code{genus_confusion_risk}/
+#' \code{family_confusion_risk} (passed through here via
+#' \code{own_rank_confusion_risk_col}) is a model-independent, score-ONLY
+#' diagnostic: given the winning candidate's own raw match score, how often
+#' would a REAL congener/confamilial/cross-family pair score this high or
+#' higher? HIGHER values mean MORE confusable, i.e. WEAKER evidence for the
+#' resolved rank -- a genuine risk-style metric (high=concern), unlike
+#' \code{score_likelihood}/\code{posterior_mean}/\code{confidence_score}
+#' elsewhere in this ecosystem, which are all high=good -- see
+#' \code{evaluate_likelihoods()}'s own \code{@section Confusion risk} for
+#' the full interpretation. (\code{flag_contaminant()}'s
+#' \code{observation_validity} is NOT an example of this convention, despite
+#' an earlier version of this note claiming otherwise -- it is a high=good
+#' confidence score, renamed 2026-07-24 from \code{contaminant_score} for
+#' exactly this reason; see that function's own docs.)
 #'
-#' 2026-07-19: this replaced an earlier design comparing
-#' \code{TaxaLikely::evaluate_likelihoods()}'s \code{trusted_rank}
-#' ladder-walk output (via a \code{trusted_rank_col} param) against
-#' \code{consensus_rank_col}. That mechanism was found unreliable on real
-#' data: \code{trusted_rank} was computed for
-#' \code{evaluate_likelihoods()}'s own top-LIKELIHOOD hypothesis, which is
-#' not always the same hypothesis that wins the POSTERIOR reported here once
-#' priors are applied downstream (confirmed on a real 12S dataset: roughly
-#' 30\% mismatch). Reading \code{absolute_fit_pvalue_col} directly off the
-#' actual winning row has no such mismatch.
+#' This is deliberately kept as its OWN column rather than folded into
+#' \code{posthoc_assessment}'s override chain. The cautionary precedent here
+#' is the \code{trusted_rank} ladder-walk
+#' mechanism (built 2026-07-19, removed 2026-07-20 after a real ~30\%
+#' likelihood/posterior-winner mismatch plus a downranking-cancellation bug --
+#' see \code{[[project_rank_trust_mechanism_removed]]} in the TaxaID memory
+#' system): a mechanism that recomputes or overrides an existing categorical
+#' judgment is exactly the shape that broke there. \code{species_confusion_risk}
+#' and friends are meant to stay a plain continuous value a downstream
+#' consumer (a human reviewer, or an LLM-based review function) reads and
+#' acts on directly -- \code{confusion_risk_flag} is a convenience threshold
+#' on top of that raw value for quick filtering, not a replacement for
+#' reading \code{winner_species_confusion_risk}/\code{winner_genus_confusion_risk}/
+#' \code{winner_family_confusion_risk}/\code{winner_own_rank_confusion_risk}
+#' directly, and it never overrides or interacts with \code{posthoc_assessment}.
+#' (Renamed 2026-07-23 from \code{score_support_flag}/\code{weak_score_support}/
+#' \code{adequate_score_support} to match the direction the underlying values
+#' actually have -- no math changed, only the names.)
 #'
-#' @return \code{consensus_df} with one column appended:
+#' @param winner_prior_col Character.  Column in \code{consensus_df} holding
+#'   the winning hypothesis's own occurrence prior (default
+#'   \code{"winner_prior"}, from \code{TaxaAssign::posterior_consensus()}).
+#'   Drives \code{primary_plausibility}.
+#' @param winner_record_col Character.  Column indicating whether the winning
+#'   hypothesis's taxon carries a real occurrence record at all (default
+#'   \code{"winner_has_occurrence_record"}).  This, NOT a low prior value, is
+#'   what makes a call \code{"unprecedented"}.
+#' @param consensus_prior_col Character.  Column holding the highest prior
+#'   among recorded members of the consensus taxon (default
+#'   \code{"consensus_prior"}).  \code{NA} there means no member has an
+#'   occurrence record -- the consensus-scope never-reported signal.
+#' @param expected_prior_threshold Numeric in \code{[0, 1]} (default
+#'   \code{0.5}).  At or above this prior a recorded taxon is
+#'   \code{"expected"}; below it, \code{"unexpected"}.
+#'
+#' @section Occurrence plausibility (\code{primary_plausibility}/\code{consensus_plausibility}):
+#' An ordinal answer to "how expected is this taxon here?", reported for
+#' \code{primary_taxon} and \code{consensus_taxon} separately and
+#' \strong{alongside} the other columns -- never gating them, which is the
+#' specific defect \code{"vague_rank"} has (it short-circuits classification
+#' entirely for any non-species rank).
+#'
+#' \code{"unprecedented"} is driven by RECORD PRESENCE, never by a low prior
+#' value.  A never-reported taxon and a genuine singleton can carry the same
+#' numeric prior -- both land on the dark-diversity floor -- while meaning
+#' opposite things, so no threshold on the value can separate them.  Verified
+#' on real data: 547 candidate rows carried no occurrence record yet a prior
+#' above the floor, one reaching 0.975 because its dark-diversity group had
+#' only three members; thresholding value alone would have called that
+#' \code{"expected"}.
+#'
+#' The \code{0.5} break does two jobs at once, which is why it was preferred
+#' to a fitted cutoff: it is directly interpretable (the taxon is at least as
+#' likely present as absent), and it falls in a genuinely empty region of the
+#' real prior distribution (nothing between 0.0865 and 0.966 -- an 11x gap).
+#'
+#' @return \code{consensus_df} with four columns appended:
 #' \describe{
 #'   \item{\code{posthoc_assessment}}{Character.  One of: \code{"sensible"},
 #'     \code{"limited_evidence"}, \code{"unexpected"}, \code{"suspect"},
 #'     \code{"unprecedented"}, \code{"vague_rank"}, \code{"modeled"},
-#'     (only when \code{domestic_taxa} is supplied)
-#'     \code{"domestic_prior_caveat"}, and (only when
-#'     \code{absolute_fit_pvalue_col} is present in \code{consensus_df})
-#'     \code{"unsupported_rank"}.}
+#'     and (only when \code{domestic_taxa} is supplied)
+#'     \code{"domestic_prior_caveat"}.}
+#'   \item{\code{confusion_risk_flag}}{Character.  \code{"high_confusion_risk"}
+#'     when \code{own_rank_confusion_risk_col}'s value exceeds
+#'     \code{high_confusion_risk_threshold}, \code{"low_confusion_risk"}
+#'     otherwise, \code{NA} when the value itself is \code{NA} or
+#'     \code{own_rank_confusion_risk_col} is absent from \code{consensus_df}.
+#'     See \code{@section Confusion-risk flag} above.}
+#'   \item{\code{primary_plausibility}, \code{consensus_plausibility}}{
+#'     Character.  Occurrence plausibility of \code{primary_taxon} and of
+#'     \code{consensus_taxon}: \code{"expected"}, \code{"unexpected"},
+#'     \code{"unprecedented"}, or \code{"not_modeled"} when nothing is
+#'     computable.  \code{NA} when the required source columns are absent
+#'     from \code{consensus_df}.}
 #' }
 #'
 #' @examples
@@ -213,8 +263,12 @@ add_posthoc_assessment <- function(
     finest_rank           = "species",
     domestic_taxa         = NULL,
     domestic_prior_source = c("wild", "augmented"),
-    absolute_fit_pvalue_col = "winner_absolute_fit_pvalue",
-    weak_evidence_pvalue  = 0.001) {
+    own_rank_confusion_risk_col   = "winner_own_rank_confusion_risk",
+    high_confusion_risk_threshold = 0.5,
+    winner_prior_col              = "winner_prior",
+    winner_record_col             = "winner_has_occurrence_record",
+    consensus_prior_col           = "consensus_prior",
+    expected_prior_threshold      = 0.5) {
 
   domestic_prior_source <- match.arg(domestic_prior_source)
 
@@ -241,9 +295,18 @@ add_posthoc_assessment <- function(
   if (!is.null(domestic_taxa) && !is.character(domestic_taxa))
     stop("add_posthoc_assessment: 'domestic_taxa' must be a character vector or NULL.",
          call. = FALSE)
-  if (!is.numeric(weak_evidence_pvalue) || length(weak_evidence_pvalue) != 1L ||
-      is.na(weak_evidence_pvalue) || weak_evidence_pvalue < 0 || weak_evidence_pvalue > 1)
-    stop("add_posthoc_assessment: 'weak_evidence_pvalue' must be a single number in [0, 1].",
+  if (!is.character(own_rank_confusion_risk_col) || length(own_rank_confusion_risk_col) != 1L)
+    stop("add_posthoc_assessment: 'own_rank_confusion_risk_col' must be a single character string.",
+         call. = FALSE)
+  if (!is.numeric(high_confusion_risk_threshold) || length(high_confusion_risk_threshold) != 1L ||
+      is.na(high_confusion_risk_threshold) || high_confusion_risk_threshold < 0 ||
+      high_confusion_risk_threshold > 1)
+    stop("add_posthoc_assessment: 'high_confusion_risk_threshold' must be a single number in [0, 1].",
+         call. = FALSE)
+  if (!is.numeric(expected_prior_threshold) || length(expected_prior_threshold) != 1L ||
+      is.na(expected_prior_threshold) || expected_prior_threshold < 0 ||
+      expected_prior_threshold > 1)
+    stop("add_posthoc_assessment: 'expected_prior_threshold' must be a single number in [0, 1].",
          call. = FALSE)
 
   # ---- build tier lookup -------------------------------------------------------
@@ -306,40 +369,74 @@ add_posthoc_assessment <- function(
     }
   }
 
-  # Step 4: unsupported_rank (weak absolute evidence) -- overrides ANY of the
-  # above, including "sensible", since it answers a different question.
-  # winner_likelihood_col is ratio-normalised WITHIN the observation (best
-  # hypothesis = 1.0 by construction) -- it can be lik_ok = TRUE even when
-  # every candidate fit poorly in absolute terms, if there was nothing
-  # competitive to normalise against (see TaxaLikely::evaluate_likelihoods()'s
-  # absolute_fit_pvalue). absolute_fit_pvalue_col carries the WINNING
-  # candidate's own one-sided absolute goodness-of-fit p-value -- a value
-  # below weak_evidence_pvalue means the reported call's own fit is poor in
-  # absolute terms, regardless of how strong the relative likelihood or
-  # occurrence prior looked. Purely informational -- never changes
-  # consensus_taxon/consensus_rank. Silently skipped (no error) when
-  # absolute_fit_pvalue_col is absent from consensus_df -- an optional
-  # upstream output, not required input, since most existing consensus_df
-  # objects predate it.
-  #
-  # 2026-07-19: replaced the earlier trusted_rank-based design (comparing
-  # TaxaLikely::evaluate_likelihoods()'s rank-trust ladder-walk output against
-  # consensus_rank via canonical rank order) with this simpler, more reliable
-  # direct threshold check. The ladder-walk's trusted_rank was computed for
-  # evaluate_likelihoods()'s own top-LIKELIHOOD hypothesis, which is not
-  # always the same hypothesis that wins the POSTERIOR reported here once
-  # priors are applied downstream -- confirmed on real data (~30% mismatch on
-  # a real 12S dataset), making the old design unreliable in a way this one
-  # is not: absolute_fit_pvalue is always read directly off the actual
-  # winning row, with no intermediate ladder-walk to go stale. See
-  # [[project_job2_unreferenced_relatives]] in the TaxaID memory system for
-  # the full investigation.
-  if (absolute_fit_pvalue_col %in% names(consensus_df)) {
-    fit_pvalue <- as.numeric(consensus_df[[absolute_fit_pvalue_col]])
-    mismatch_mask <- !is.na(fit_pvalue) & fit_pvalue < weak_evidence_pvalue
-    assessment[mismatch_mask] <- "unsupported_rank"
+  # ---- confusion_risk_flag (2026-07-23) -- a THIRD, deliberately SEPARATE
+  # column, not part of the posthoc_assessment override chain above. See
+  # @section Confusion-risk flag for the full design rationale (kept plain
+  # and additive per the trusted_rank ladder-walk's own cautionary
+  # precedent, rather than a fourth override tier).
+  confusion_risk_flag <- rep(NA_character_, n)
+  if (own_rank_confusion_risk_col %in% names(consensus_df)) {
+    risk_val <- as.numeric(consensus_df[[own_rank_confusion_risk_col]])
+    high_mask <- !is.na(risk_val) & risk_val > high_confusion_risk_threshold
+    low_mask  <- !is.na(risk_val) & risk_val <= high_confusion_risk_threshold
+    confusion_risk_flag[high_mask] <- "high_confusion_risk"
+    confusion_risk_flag[low_mask]  <- "low_confusion_risk"
   }
 
-  consensus_df$posthoc_assessment <- assessment
+  # ---- Axis 1: occurrence plausibility (2026-07-28) ---------------------------
+  # `primary_plausibility` / `consensus_plausibility` -- one ordinal answer to
+  # "how expected is this taxon here?", reported ALONGSIDE the other columns
+  # rather than gating them (the specific defect `vague_rank` has: it
+  # short-circuits classification entirely for any non-species rank).
+  #
+  # Three states, plus `not_modeled` when nothing is computable:
+  #   unprecedented -- never reported here at all
+  #   unexpected    -- reported, but locally uncommon
+  #   expected      -- at least as likely present as absent
+  #
+  # `unprecedented` is driven by RECORD PRESENCE, never by a low prior value.
+  # A never-reported taxon and a genuine singleton can carry the same numeric
+  # prior (both land on the dark-diversity floor) while meaning opposite
+  # things, so no threshold on the prior can separate them -- verified on real
+  # Mugu data, where 547 rows carry no occurrence record yet a prior above the
+  # floor, one reaching 0.975 because its dark-diversity group had only three
+  # members. Thresholding value alone would have called that "expected".
+  #
+  # The 0.5 break is doing two jobs at once, which is why it was chosen over a
+  # fitted cutoff: it is directly interpretable (the taxon is at least as
+  # likely present as absent) AND it falls in a genuinely empty region of the
+  # real prior distribution (nothing between 0.0865 and 0.966 -- an 11x gap).
+  .plausibility <- function(prior, has_record) {
+    out <- rep("not_modeled", length(prior))
+    known <- !is.na(has_record)
+    out[known & !has_record] <- "unprecedented"
+    ok <- known & has_record & !is.na(prior)
+    out[ok & prior >= expected_prior_threshold] <- "expected"
+    out[ok & prior <  expected_prior_threshold] <- "unexpected"
+    out
+  }
+
+  primary_plausibility <- rep(NA_character_, n)
+  if (winner_prior_col %in% names(consensus_df) &&
+      winner_record_col %in% names(consensus_df)) {
+    primary_plausibility <- .plausibility(
+      as.numeric(consensus_df[[winner_prior_col]]),
+      as.logical(consensus_df[[winner_record_col]])
+    )
+  }
+
+  # Consensus scope: `consensus_prior` is NA exactly when no member of the
+  # consensus taxon carries an occurrence record, so NA IS the never-reported
+  # signal here -- no separate presence column is needed or passed.
+  consensus_plausibility <- rep(NA_character_, n)
+  if (consensus_prior_col %in% names(consensus_df)) {
+    cp <- as.numeric(consensus_df[[consensus_prior_col]])
+    consensus_plausibility <- .plausibility(cp, !is.na(cp))
+  }
+
+  consensus_df$posthoc_assessment    <- assessment
+  consensus_df$confusion_risk_flag   <- confusion_risk_flag
+  consensus_df$primary_plausibility   <- primary_plausibility
+  consensus_df$consensus_plausibility <- consensus_plausibility
   consensus_df
 }

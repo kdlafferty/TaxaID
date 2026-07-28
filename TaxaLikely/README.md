@@ -46,7 +46,8 @@ three hypothesis types:
 devtools::install("path/to/TaxaTools")
 devtools::install("path/to/TaxaLikely")
 
-# Bioconductor dependency for reference matrix building
+# Bioconductor (Gentleman et al. 2004) dependency for reference matrix
+# building -- DECIPHER (Wright 2016)
 BiocManager::install("DECIPHER")
 ```
 
@@ -55,7 +56,9 @@ BiocManager::install("DECIPHER")
 ``` r
 library(TaxaLikely)
 
-# 1. Fetch reference sequences from NCBI
+# 1. Fetch reference sequences from NCBI (National Center for
+# Biotechnology Information, U.S. National Library of Medicine,
+# National Institutes of Health, Bethesda, Maryland)
 reference_df <- fetch_ncbi_reference_sequences(
   taxa = c("Fundulidae", "Gobiidae"),
   barcode_term = "12S",
@@ -339,7 +342,10 @@ matrix. The function's applicability depends on the data source:
 |---|---|---|
 | **NCBI nucleotide** (via `fetch_ncbi_reference_sequences()`) | **Yes — recommended** | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. Use routinely. |
 | **Curated libraries** (CRUX, custom expert-built FASTA) | **Optional** | Lower mislabeling rate than NCBI, but flagging is still worth running. If your library has a quality column, use that filter instead. |
-| **Xeno-canto bird sounds** (acoustic) | **No** | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Use `quality = c("A", "B")` in `fetch_reference_recordings()` instead. Hard-case recordings flagged by the mislabel detector may be legitimate. |
+| **Xeno-canto**\* bird sounds (acoustic) | **No** | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Use `quality = c("A", "B")` in `fetch_reference_recordings()` instead. Hard-case recordings flagged by the mislabel detector may be legitimate. |
+
+\* Xeno-canto (Xeno-canto Foundation, Netherlands, with support from
+Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>).
 | **Camera trap images** (Animl/SpeciesNet) | **Untested — potentially useful** | Camera trap ground-truth labeling has different error modes from DNA (occlusion, blur, multiple animals, handler setup). The score-distribution mislabel signal should still be informative in principle — a consistently low-scoring "within-species" pair is suspect regardless of data type — but systematic evaluation has not been done. See the Image Workflow section below. |
 
 ## Reference Coverage Quality Filtering
@@ -777,13 +783,32 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (foundation package, installed first)
--   DECIPHER and Biostrings (Bioconductor; required for
-    `build_sequence_matrix()` only)
--   rentrez and xml2 (for NCBI reference fetching and coverage auditing)
+-   DECIPHER (Wright 2016) and Biostrings (Bioconductor, Gentleman et
+    al. 2004; required for `build_sequence_matrix()` only)
+-   rentrez and xml2 (for NCBI reference fetching and coverage
+    auditing)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+Gentleman, R.C., Carey, V.J., Bates, D.M., Bolstad, B., Dettling, M.,
+Dudoit, S., Ellis, B., Gautier, L., Ge, Y., Gentry, J., Hornik, K.,
+Hothorn, T., Huber, W., Iacus, S., Irizarry, R., Leisch, F., Li, C.,
+Maechler, M., Rossini, A.J., Sawitzki, G., Smith, C., Smyth, G.,
+Tierney, L., Yang, J.Y.H. and Zhang, J. (2004). Bioconductor: open
+software development for computational biology and bioinformatics.
+*Genome Biology*, 5, R80.
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>
+
+Wright, E.S. (2016). Using DECIPHER v2.0 to analyze big biological
+sequence data in R. *The R Journal*, 8(1), 352--359.

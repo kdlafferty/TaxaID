@@ -95,3 +95,73 @@ test_that("report_flags percentage is correct", {
   expect_equal(sec$statistics$n_flagged, 3L)
   expect_true(grepl("30\\.0%", sec$results))
 })
+
+# ===========================================================================
+# Unified validity schema (2026-07-24) -- flag_contaminant()/flag_handler()
+# now share one literal column name (validity_flag), so detection has to
+# read the check type out of the VALUES ("invalid_{type}"/
+# "questionable_{type}"), not the column name. Additive to, not a
+# replacement for, the two naming eras tested above.
+# ===========================================================================
+
+test_that("report_flags detects the unified validity schema (contaminant)", {
+  df <- data.frame(
+    observation_id       = paste0("S", 1:5),
+    observation_validity = c(0.9, 0.9, 0.1, 0.6, 0.9),
+    validity_flag         = c("valid", "valid", "invalid_lab_contaminant",
+                              "questionable_lab_contaminant", "valid"),
+    stringsAsFactors      = FALSE
+  )
+
+  sec <- report_flags(df)
+  expect_true("contamination" %in% sec$params$flag_types)
+  expect_equal(sec$statistics$n_total, 5L)
+  expect_equal(sec$statistics$n_flagged, 2L)  # invalid + questionable
+  expect_equal(sec$statistics$flag_counts[["invalid_lab_contaminant"]], 1L)
+  expect_equal(sec$statistics$flag_counts[["questionable_lab_contaminant"]], 1L)
+})
+
+test_that("report_flags detects the unified validity schema (handler)", {
+  df <- data.frame(
+    observation_id       = paste0("S", 1:4),
+    observation_validity = c(1.0, 0.0, 1.0, 0.6),
+    validity_flag         = c("valid", "invalid_handling", "valid",
+                              "questionable_handling"),
+    stringsAsFactors      = FALSE
+  )
+
+  sec <- report_flags(df)
+  expect_true("handler artifacts" %in% sec$params$flag_types)
+  expect_equal(sec$statistics$n_flagged, 2L)
+})
+
+test_that("report_flags: unified validity schema with all-valid rows reports zero flags", {
+  df <- data.frame(
+    observation_id       = paste0("S", 1:3),
+    observation_validity = rep(1.0, 3),
+    validity_flag         = rep("valid", 3),
+    stringsAsFactors      = FALSE
+  )
+
+  sec <- report_flags(df)
+  expect_equal(sec$statistics$n_flagged, 0L)
+  expect_true(grepl("none were flagged", sec$results))
+})
+
+test_that("report_flags: unified validity schema still works alongside an old-era column", {
+  # Confirms the new schema doesn't regress the pre-existing naming eras --
+  # a data frame could plausibly carry both if built from different-vintage
+  # checkpoints.
+  df <- data.frame(
+    observation_id       = paste0("S", 1:4),
+    flag_lab              = c("likely", "unlikely", "likely", "likely"),
+    observation_validity = c(1.0, 1.0, 0.0, 1.0),
+    validity_flag         = c("valid", "valid", "invalid_handling", "valid"),
+    stringsAsFactors      = FALSE
+  )
+
+  sec <- report_flags(df)
+  expect_true("contamination" %in% sec$params$flag_types)
+  expect_true("handler artifacts" %in% sec$params$flag_types)
+  expect_equal(sec$statistics$n_flagged, 2L)  # row 2 (old-era) + row 3 (new-era)
+})

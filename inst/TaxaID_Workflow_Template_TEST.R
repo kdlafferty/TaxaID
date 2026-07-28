@@ -611,6 +611,7 @@ additional_occurrences<-
 
 all_occurrences <-
   TaxaFetch::stack_occurrences(additional_occurrences,gbif_occurrences)|> #creates point_id
+  TaxaFetch::dedupe_occurrences() |>
   TaxaTools::create_taxon_names(rank_system = fgs) |>
   filter(taxon_name_rank == "species") |>
   dplyr::select(any_of(c("point_id","decimalLatitude", "decimalLongitude",
@@ -1243,9 +1244,6 @@ consensus_df <- TaxaAssign::posterior_consensus(
 # add_posthoc_assessment() needs a taxon x tier lookup -- taxaexpect_priors
 # already has taxon_name + model_tier (tier1/tier2/tier3_undetected) from
 # Section 5, so it can be passed directly as `tiers`.
-# absolute_fit_pvalue_col (default "winner_absolute_fit_pvalue", already
-# present from posterior_consensus()'s pass-through): informational only,
-# safe unconditionally (never changes consensus_taxon/consensus_rank).
 consensus_df <- TaxaFlag::add_posthoc_assessment(
   consensus_df = consensus_df,
   tiers        = taxaexpect_priors

@@ -47,7 +47,7 @@
 #'   timestamp within each group to flag. Default \code{30}.
 #' @param handler_taxa Character vector or \code{NULL}. If supplied, only
 #'   these taxa are flagged (e.g., \code{"Homo sapiens"}). Other taxa
-#'   within the interval receive a score but are flagged \code{"likely"}.
+#'   within the interval receive a score but are flagged \code{"valid"}.
 #'   If \code{NULL}, all taxa within the interval are flagged. Default
 #'   \code{NULL}.
 #' @param station_metadata Data frame or \code{NULL} (default). One row per
@@ -61,14 +61,32 @@
 #'   the true equipment-retrieval timestamp. Default \code{"retrieve_time"}.
 #' @param verbose Logical. Print summary messages. Default \code{TRUE}.
 #'
+#' @section Unified validity schema (2026-07-24):
+#' Output column NAMES are fixed (\code{observation_validity}/
+#' \code{validity_flag}/\code{validity_reason}) rather than
+#' \code{flag_handler}/\code{flag_handler_score}/\code{flag_handler_reason}
+#' as in earlier versions -- matches \code{\link{flag_contaminant}}'s own
+#' same-day rename, so every TaxaFlag flag_*() mechanism shares one schema
+#' (the "one column, type-qualified values" pattern
+#' \code{\link{add_posthoc_assessment}} already used). No change to the
+#' underlying score/threshold math -- this is a pure naming/schema change.
+#' \code{report_flags()} was updated to auto-detect this schema (in addition
+#' to the naming era it already supported) by inspecting
+#' \code{validity_flag}'s values, not just the column's presence, since the
+#' column name alone no longer identifies which check produced it.
+#'
 #' @return The input data frame with four columns appended:
 #' \describe{
-#'   \item{\code{flag_handler}}{Character. \code{"likely"} (valid detection),
-#'     \code{"possible"}, or \code{"unlikely"} (probable handler artifact).}
-#'   \item{\code{flag_handler_score}}{Numeric 0--1. 1.0 for detections
+#'   \item{\code{validity_flag}}{Character. \code{"valid"} (genuine
+#'     detection), \code{"questionable_handling"}, or
+#'     \code{"invalid_handling"} (probable handler artifact). Fixed column
+#'     name across every TaxaFlag flag_*() mechanism -- see
+#'     \code{@section Unified validity schema} above.}
+#'   \item{\code{observation_validity}}{Numeric 0--1. 1.0 for detections
 #'     outside the interval; decreasing toward 0 as the detection approaches
-#'     the min/max timestamp.}
-#'   \item{\code{flag_handler_reason}}{Character. Plain-English explanation.}
+#'     the min/max timestamp. Higher = more likely genuine, lower = more
+#'     likely a handler artifact.}
+#'   \item{\code{validity_reason}}{Character. Plain-English explanation.}
 #'   \item{\code{edge_anchor_source}}{Character. \code{"station_metadata"}
 #'     (real deploy/retrieve times used) or \code{"detection_data_fallback"}
 #'     (data-derived min/max used -- see "Edge anchoring" above).}
@@ -229,17 +247,19 @@ flag_handler <- function(df,
   }
 
   # --- Assign flags ---
-  df$flag_handler <- dplyr::case_when(
+  # Fixed column name + type-qualified values (2026-07-24) -- see
+  # @section Unified validity schema.
+  df$validity_flag <- dplyr::case_when(
     is.na(df$handler_score)  ~ NA_character_,
-    df$handler_score >= 1.0  ~ "likely",
-    df$handler_score >= 0.5  ~ "possible",
-    TRUE                     ~ "unlikely"
+    df$handler_score >= 1.0  ~ "valid",
+    df$handler_score >= 0.5  ~ "questionable_handling",
+    TRUE                     ~ "invalid_handling"
   )
 
-  df$flag_handler_score <- df$handler_score
+  df$observation_validity <- df$handler_score
 
   # --- Build reason strings ---
-  df$flag_handler_reason <- ifelse(
+  df$validity_reason <- ifelse(
     is.na(df$handler_score), NA_character_,
     ifelse(df$handler_score >= 1.0,
            sprintf("%.1f min from nearest edge; outside %d-min interval",
@@ -258,12 +278,12 @@ flag_handler <- function(df,
   df$handler_score    <- NULL
 
   if (verbose) {
-    n_unlikely <- sum(df$flag_handler == "unlikely", na.rm = TRUE)
-    n_possible <- sum(df$flag_handler == "possible", na.rm = TRUE)
-    n_likely   <- sum(df$flag_handler == "likely",   na.rm = TRUE)
-    n_na       <- sum(is.na(df$flag_handler))
-    message(sprintf("flag_handler: %d rows flagged: %d unlikely, %d possible, %d likely, %d NA.",
-                    nrow(df), n_unlikely, n_possible, n_likely, n_na))
+    n_invalid      <- sum(df$validity_flag == "invalid_handling", na.rm = TRUE)
+    n_questionable <- sum(df$validity_flag == "questionable_handling", na.rm = TRUE)
+    n_valid        <- sum(df$validity_flag == "valid", na.rm = TRUE)
+    n_na           <- sum(is.na(df$validity_flag))
+    message(sprintf("flag_handler: %d rows flagged: %d invalid, %d questionable, %d valid, %d NA.",
+                    nrow(df), n_invalid, n_questionable, n_valid, n_na))
   }
 
   df

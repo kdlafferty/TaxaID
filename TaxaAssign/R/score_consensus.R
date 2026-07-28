@@ -88,27 +88,30 @@ utils::globalVariables(c("score_val"))
 #'   sample).  All hits within `max_gap` of the best score contribute to the
 #'   LCA.  For example, `max_gap = 1` keeps all hits within 1 unit of the top
 #'   score.  Default `Inf` (all hits above `min_score` contribute).
-#' @param rank_thresholds Named numeric vector or `NULL`.  Maps rank names to
+#' @param rank_thresholds Named numeric vector, or `NULL`.  Maps rank names to
 #'   minimum scores, e.g. `c(species = 97, genus = 95, family = 90)`.  After
 #'   the LCA is computed, the consensus is capped at the finest rank whose
 #'   threshold the top score meets.  If the top score fails all thresholds, the
 #'   sample is unresolvable.  Applied independently of the LCA — so even if all
 #'   hits agree on species, the consensus is demoted to genus if the top score
 #'   is below the species threshold.
-#'   Default `c(species = 98, genus = 95, family = 90, phylum = 85)` -- the
-#'   conventional GITA/Jonah Ventures thresholds (changed from `NULL` on
-#'   2026-07-09; see Details). The fourth tier is labeled `phylum`, not
-#'   `order` (corrected 2026-07-20) -- the literature this 85% value is
-#'   corroborated by (Ransome et al. 2017, Elbrecht et al. 2017, and others,
-#'   as compiled in Pappalardo et al. 2025 and `ecosystem_docs/
-#'   AQUARIUM_BENCHMARK_DESIGN.md`) treats 85% as a phylum-level cutoff, and
-#'   no widely-cited genuine order-level COI threshold was found to
-#'   substitute in its place. Pass `rank_thresholds = NULL` explicitly to
-#'   disable rank capping entirely (restores the pre-2026-07-09 default
-#'   behavior). If `score_col`'s values look like a 0-1 proportion scale
-#'   (max <= 1) rather than 0-100 percent-identity, the default is
-#'   automatically rescaled by /100 (with an informational message) --
-#'   pass your own already-scaled `rank_thresholds` to silence this.
+#'   **No default -- errors if omitted (2026-07-23).** This function has no
+#'   way to know the marker or even whether `score_col` holds a DNA/image/
+#'   acoustic score, so no single fixed threshold set is safe to assume for
+#'   every caller (see Details for why the earlier GITA/Jonah Ventures
+#'   default, `c(species = 98, genus = 95, family = 90, phylum = 85)`, was
+#'   removed rather than kept as a default). Supply one of:
+#'   (1) your own thresholds, on whichever scale `score_col` uses (percent
+#'   identity or 0-1 proportion -- see the auto-rescale note below), or
+#'   (2) marker-specific thresholds derived from your own reference data via
+#'   `TaxaLikely::compute_rank_thresholds()` (per-rank Youden's J on a
+#'   `build_sequence_matrix()`-style pairwise distance matrix). Pass
+#'   `rank_thresholds = NULL` explicitly to disable rank capping entirely.
+#'   If `score_col`'s values look like a 0-1 proportion scale (max <= 1)
+#'   rather than 0-100 percent-identity, a supplied 0-100-scale
+#'   `rank_thresholds` is automatically rescaled by /100 (with an
+#'   informational message) -- pass your own already-scaled
+#'   `rank_thresholds` to silence this.
 #' @param whitelist Character vector or `NULL`.  Plausible taxon names (any
 #'   rank).  When supplied, the consensus taxon must appear in this list;
 #'   otherwise the consensus is upranked to the coarsest rank where a
@@ -121,28 +124,36 @@ utils::globalVariables(c("score_val"))
 #'   standard columns present in `match_df` are detected automatically.
 #'
 #' @details
-#' \strong{Why `rank_thresholds` defaults to non-`NULL` (2026-07-09):}
+#' \strong{Why `rank_thresholds` has no default (2026-07-23, supersedes the
+#' 2026-07-09 GITA/Jonah Ventures default):}
 #' `min_score` and `max_gap` alone provide essentially no protection against
 #' confusing a species with its closest congener -- an ROC-style sweep against
 #' real 12S reference data found true-positive (within-species) and
 #' false-positive (congeneric) rates track almost identically up to a ~97
-#' percent-identity threshold (see `diagnostics/score_floor_roc_sweep.R`). This
-#' is a real limitation of percent-identity thresholds generally, and this
-#' function's non-`NULL` default does not fix it -- it is not meant to (see
-#' the Purpose section above). What the default DOES fix: before this change,
-#' a caller who did not explicitly pass `rank_thresholds` got `NULL`, i.e. no
-#' rank-capping step at all -- a permissive behavior no actual conventional
-#' pipeline uses, since every real fixed-threshold workflow this function is
-#' meant to reproduce (GITA, Jonah Ventures, etc.) applies per-rank score
-#' thresholds. So the un-guarded default was not a more faithful reproduction
-#' of a real pipeline -- it was an accidental, no-pipeline-actually-does-this
-#' behavior of TaxaID's own reproduction code. Defaulting to the conventional
-#' thresholds makes `score_consensus()` correctly reproduce a real workflow's
-#' behavior out of the box, rather than silently mimicking nothing that
-#' exists. Pass `rank_thresholds = NULL` explicitly only if the specific
-#' pipeline you're mirroring genuinely has no rank-threshold step (rare), or
-#' your own published thresholds if they differ from the GITA/Jonah Ventures
-#' convention.
+#' percent-identity threshold (see `diagnostics/score_floor_roc_sweep.R`).
+#' This is a real limitation of percent-identity thresholds generally --
+#' `rank_thresholds` is what does the real species-level discrimination this
+#' function offers, which is exactly why a caller getting NO thresholds at
+#' all (the pre-2026-07-09 `NULL` default) was a real gap.
+#'
+#' The 2026-07-09 fix picked ONE fixed threshold set (the conventional
+#' GITA/Jonah Ventures percent-identity convention) as the default. That
+#' default was itself later found unsafe to assume universally: this
+#' function has no way to know what marker `score_col` was scored against,
+#' or even whether the data is DNA, image, or acoustic evidence at all --
+#' the real, calibrated threshold for "98% identity means species-level
+#' confidence" is a property of the SPECIFIC marker and reference database,
+#' not a universal constant (mirrors `TaxaAssign::join_priors()`'s
+#' `backbone_id` precedent: no safe default exists when the correct value
+#' depends on data the function itself cannot see). Rather than continue
+#' shipping a plausible-looking but potentially-wrong default, the function
+#' now requires the caller to make this choice explicitly -- either supplying
+#' real thresholds directly, or deriving marker-specific ones from real
+#' reference data via `TaxaLikely::compute_rank_thresholds()` (which uses
+#' the identical genus-/family-equal-weighted, Empirical-Bayes-shrunk
+#' per-rank Youden's J logic `diagnostics/score_floor_roc_sweep.R`
+#' prototyped). Pass `rank_thresholds = NULL` explicitly only if the specific
+#' pipeline you're mirroring genuinely has no rank-threshold step (rare).
 #'
 #' @return A data frame with one row per `observation_id`:
 #'   \describe{
@@ -191,13 +202,25 @@ utils::globalVariables(c("score_val"))
 score_consensus <- function(match_df,
                             min_score       = 0,
                             max_gap         = Inf,
-                            rank_thresholds = c(species = 98, genus = 95,
-                                               family = 90, phylum = 85),
                             whitelist       = NULL,
                             score_col       = "score_original",
-                            rank_system     = NULL) {
+                            rank_system     = NULL,
+                            rank_thresholds) {
 
   # --- Input validation -------------------------------------------------------
+  if (missing(rank_thresholds)) {
+    cli::cli_abort(c(
+      "{.arg rank_thresholds} must be specified explicitly.",
+      "i" = "There is no safe default: this function has no way to know the \\
+      marker or data type {.field score_col} was scored against, so no \\
+      single fixed threshold set is safe to assume. Either supply your own \\
+      named vector (e.g. {.code c(species = 98, genus = 95, family = 90)}), \\
+      derive marker-specific thresholds from your own reference data via \\
+      {.fn TaxaLikely::compute_rank_thresholds}, or pass \\
+      {.code rank_thresholds = NULL} explicitly to disable rank-based \\
+      capping entirely."
+    ))
+  }
   required <- c("observation_id", "taxon_name", "taxon_name_rank", score_col)
   missing_cols <- setdiff(required, names(match_df))
   if (length(missing_cols) > 0)
@@ -218,11 +241,12 @@ score_consensus <- function(match_df,
   }
 
   # --- Auto-scale rank_thresholds if score_col looks like a 0-1 proportion --
-  # rank_thresholds defaults to the conventional GITA/Jonah Ventures 0-100
-  # percent-identity thresholds (species=98, genus=95, family=90, phylum=85;
-  # see TaxaAssign/CLAUDE.md). score_consensus() itself is scale-agnostic
+  # A caller-supplied rank_thresholds is commonly written on the 0-100
+  # percent-identity scale (e.g. the conventional GITA/Jonah Ventures
+  # thresholds species=98, genus=95, family=90, phylum=85; see
+  # TaxaAssign/CLAUDE.md). score_consensus() itself is scale-agnostic
   # (min_score's own doc: "97 for percent identity, 0.97 for proportion"), so
-  # applying a 0-100-scale default blindly to 0-1-scale data would silently
+  # applying 0-100-scale thresholds blindly to 0-1-scale data would silently
   # make every observation unresolvable (no score could ever clear a
   # threshold of 85+). Detect and rescale, following the same
   # `if (max(x) > 1) treat-as-percent else treat-as-proportion` convention

@@ -11,7 +11,13 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = FALSE
+  eval = FALSE,
+  # purl = FALSE is load-bearing, not redundant with eval = FALSE.
+  # R CMD check's "running R code from vignettes" step TANGLES the vignette
+  # (knitr::purl()) and sources the result -- purl() honours purl=, not eval=,
+  # so without this a documentation-only vignette still executes during check
+  # and errors on objects its prose never defines.
+  purl = FALSE
 )
 ```
 
@@ -298,8 +304,14 @@ Both pathways produce posterior-based consensus. You can also run a conventional
 score-based consensus for comparison:
 
 ```{r compare}
-# Score-based consensus (no model needed)
-score_cons <- score_consensus(match_df)
+# Score-based consensus (no model needed). rank_thresholds has no default --
+# these are the conventional GITA/Jonah Ventures percent-identity thresholds;
+# derive marker-specific ones from your own reference data instead via
+# TaxaLikely::compute_rank_thresholds().
+score_cons <- score_consensus(
+  match_df,
+  rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85)
+)
 
 # Compare
 comparison <- merge(

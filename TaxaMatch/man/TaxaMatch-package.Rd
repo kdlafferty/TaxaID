@@ -29,7 +29,7 @@ DNAStringSet
 Image and acoustic pathways skip steps 1-3, calling one of
 \code{\link{score_image_inat}()}, \code{\link{read_animl_output}()},
 \code{\link{read_inaturalist_cv_output}()},
-\code{\link{read_wildlife_insights_output}()}, or
+\code{\link{read_speciesnet_output}()}, or
 \code{\link{read_birdnet_output}()} directly, then proceeding from step 4.
 }
 
@@ -58,8 +58,8 @@ live iNaturalist CV API}
 SpeciesNet) camera trap CSV results}
 \item{\code{\link{read_inaturalist_cv_output}}}{Ingest saved
 iNaturalist CV API JSON responses}
-\item{\code{\link{read_wildlife_insights_output}}}{Ingest SpeciesNet /
-Wildlife Insights batch prediction JSON}
+\item{\code{\link{read_speciesnet_output}}}{Ingest real SpeciesNet CLI
+(\code{google/cameratrapai}) batch prediction JSON}
 }
 }
 
@@ -104,9 +104,9 @@ Beery S, Morris D, Yang S (2019). Efficient pipeline for camera trap image
 review. arXiv:1907.06772. (MegaDetector, consumed by
 \code{\link{read_animl_output}})
 
-iNaturalist Computer Vision API and SpeciesNet / Wildlife Insights:
+iNaturalist Computer Vision API and SpeciesNet:
 see \code{\link{score_image_inat}}, \code{\link{read_inaturalist_cv_output}},
-and \code{\link{read_wildlife_insights_output}} for the specific
+and \code{\link{read_speciesnet_output}} for the specific
 endpoints/formats each function targets.
 }
 \seealso{

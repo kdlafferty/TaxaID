@@ -8,10 +8,10 @@ score_consensus(
   match_df,
   min_score = 0,
   max_gap = Inf,
-  rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85),
   whitelist = NULL,
   score_col = "score_original",
-  rank_system = NULL
+  rank_system = NULL,
+  rank_thresholds
 )
 }
 \arguments{
@@ -38,27 +38,6 @@ sample).  All hits within \code{max_gap} of the best score contribute to the
 LCA.  For example, \code{max_gap = 1} keeps all hits within 1 unit of the top
 score.  Default \code{Inf} (all hits above \code{min_score} contribute).}
 
-\item{rank_thresholds}{Named numeric vector or \code{NULL}.  Maps rank names to
-minimum scores, e.g. \code{c(species = 97, genus = 95, family = 90)}.  After
-the LCA is computed, the consensus is capped at the finest rank whose
-threshold the top score meets.  If the top score fails all thresholds, the
-sample is unresolvable.  Applied independently of the LCA — so even if all
-hits agree on species, the consensus is demoted to genus if the top score
-is below the species threshold.
-Default \code{c(species = 98, genus = 95, family = 90, phylum = 85)} -- the
-conventional GITA/Jonah Ventures thresholds (changed from \code{NULL} on
-2026-07-09; see Details). The fourth tier is labeled \code{phylum}, not
-\code{order} (corrected 2026-07-20) -- the literature this 85\% value is
-corroborated by (Ransome et al. 2017, Elbrecht et al. 2017, and others,
-as compiled in Pappalardo et al. 2025 and \code{ecosystem_docs/ AQUARIUM_BENCHMARK_DESIGN.md}) treats 85\% as a phylum-level cutoff, and
-no widely-cited genuine order-level COI threshold was found to
-substitute in its place. Pass \code{rank_thresholds = NULL} explicitly to
-disable rank capping entirely (restores the pre-2026-07-09 default
-behavior). If \code{score_col}'s values look like a 0-1 proportion scale
-(max <= 1) rather than 0-100 percent-identity, the default is
-automatically rescaled by /100 (with an informational message) --
-pass your own already-scaled \code{rank_thresholds} to silence this.}
-
 \item{whitelist}{Character vector or \code{NULL}.  Plausible taxon names (any
 rank).  When supplied, the consensus taxon must appear in this list;
 otherwise the consensus is upranked to the coarsest rank where a
@@ -71,6 +50,31 @@ Default \code{"score_original"}.}
 \item{rank_system}{Character vector of taxonomy column names, coarse to
 fine (e.g. \code{c("family", "genus", "species")}).  If \code{NULL} (default),
 standard columns present in \code{match_df} are detected automatically.}
+
+\item{rank_thresholds}{Named numeric vector, or \code{NULL}.  Maps rank names to
+minimum scores, e.g. \code{c(species = 97, genus = 95, family = 90)}.  After
+the LCA is computed, the consensus is capped at the finest rank whose
+threshold the top score meets.  If the top score fails all thresholds, the
+sample is unresolvable.  Applied independently of the LCA — so even if all
+hits agree on species, the consensus is demoted to genus if the top score
+is below the species threshold.
+\strong{No default -- errors if omitted (2026-07-23).} This function has no
+way to know the marker or even whether \code{score_col} holds a DNA/image/
+acoustic score, so no single fixed threshold set is safe to assume for
+every caller (see Details for why the earlier GITA/Jonah Ventures
+default, \code{c(species = 98, genus = 95, family = 90, phylum = 85)}, was
+removed rather than kept as a default). Supply one of:
+(1) your own thresholds, on whichever scale \code{score_col} uses (percent
+identity or 0-1 proportion -- see the auto-rescale note below), or
+(2) marker-specific thresholds derived from your own reference data via
+\code{TaxaLikely::compute_rank_thresholds()} (per-rank Youden's J on a
+\code{build_sequence_matrix()}-style pairwise distance matrix). Pass
+\code{rank_thresholds = NULL} explicitly to disable rank capping entirely.
+If \code{score_col}'s values look like a 0-1 proportion scale (max <= 1)
+rather than 0-100 percent-identity, a supplied 0-100-scale
+\code{rank_thresholds} is automatically rescaled by /100 (with an
+informational message) -- pass your own already-scaled
+\code{rank_thresholds} to silence this.}
 }
 \value{
 A data frame with one row per \code{observation_id}:
@@ -122,28 +126,36 @@ This function does not require a trained likelihood model or priors.  It is
 the conventional approach used in most metabarcoding and BLAST-based
 pipelines.
 
-\strong{Why \code{rank_thresholds} defaults to non-\code{NULL} (2026-07-09):}
+\strong{Why \code{rank_thresholds} has no default (2026-07-23, supersedes the
+2026-07-09 GITA/Jonah Ventures default):}
 \code{min_score} and \code{max_gap} alone provide essentially no protection against
 confusing a species with its closest congener -- an ROC-style sweep against
 real 12S reference data found true-positive (within-species) and
 false-positive (congeneric) rates track almost identically up to a ~97
-percent-identity threshold (see \code{diagnostics/score_floor_roc_sweep.R}). This
-is a real limitation of percent-identity thresholds generally, and this
-function's non-\code{NULL} default does not fix it -- it is not meant to (see
-the Purpose section above). What the default DOES fix: before this change,
-a caller who did not explicitly pass \code{rank_thresholds} got \code{NULL}, i.e. no
-rank-capping step at all -- a permissive behavior no actual conventional
-pipeline uses, since every real fixed-threshold workflow this function is
-meant to reproduce (GITA, Jonah Ventures, etc.) applies per-rank score
-thresholds. So the un-guarded default was not a more faithful reproduction
-of a real pipeline -- it was an accidental, no-pipeline-actually-does-this
-behavior of TaxaID's own reproduction code. Defaulting to the conventional
-thresholds makes \code{score_consensus()} correctly reproduce a real workflow's
-behavior out of the box, rather than silently mimicking nothing that
-exists. Pass \code{rank_thresholds = NULL} explicitly only if the specific
-pipeline you're mirroring genuinely has no rank-threshold step (rare), or
-your own published thresholds if they differ from the GITA/Jonah Ventures
-convention.
+percent-identity threshold (see \code{diagnostics/score_floor_roc_sweep.R}).
+This is a real limitation of percent-identity thresholds generally --
+\code{rank_thresholds} is what does the real species-level discrimination this
+function offers, which is exactly why a caller getting NO thresholds at
+all (the pre-2026-07-09 \code{NULL} default) was a real gap.
+
+The 2026-07-09 fix picked ONE fixed threshold set (the conventional
+GITA/Jonah Ventures percent-identity convention) as the default. That
+default was itself later found unsafe to assume universally: this
+function has no way to know what marker \code{score_col} was scored against,
+or even whether the data is DNA, image, or acoustic evidence at all --
+the real, calibrated threshold for "98\% identity means species-level
+confidence" is a property of the SPECIFIC marker and reference database,
+not a universal constant (mirrors \code{TaxaAssign::join_priors()}'s
+\code{backbone_id} precedent: no safe default exists when the correct value
+depends on data the function itself cannot see). Rather than continue
+shipping a plausible-looking but potentially-wrong default, the function
+now requires the caller to make this choice explicitly -- either supplying
+real thresholds directly, or deriving marker-specific ones from real
+reference data via \code{TaxaLikely::compute_rank_thresholds()} (which uses
+the identical genus-/family-equal-weighted, Empirical-Bayes-shrunk
+per-rank Youden's J logic \code{diagnostics/score_floor_roc_sweep.R}
+prototyped). Pass \code{rank_thresholds = NULL} explicitly only if the specific
+pipeline you're mirroring genuinely has no rank-threshold step (rare).
 }
 \section{Purpose -- why this function exists alongside the Bayesian pathway}{
 

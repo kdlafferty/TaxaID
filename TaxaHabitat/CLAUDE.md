@@ -1,6 +1,89 @@
 # CLAUDE.md — TaxaHabitat
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-01 (Session 123 — Layer-1 workflow script added: inst/workflows/assign_habitat_workflow.R)
+# Last updated: 2026-07-27 (Sonnet 5 -- geographic-outlier/institution-flag thread CLOSED OUT.
+# Final bug was in a workflow script (MuguFishWorkflow.R), not this package -- a stale
+# checkpoint .rds predating institution_flag's existence was being silently reloaded over the
+# fresh, correct filter_gbif_quality() output; fixed by deleting the one stale file. User
+# confirmed after re-running: "institution flag seems to be operating well." Closing
+# verification: devtools::test() 158/158 (0 failures, includes flag_institution_candidates()),
+# devtools::check() 0 errors/0 warnings/0 notes, no non-ASCII characters in either new source
+# file. review_institution_flags() has no test file by design (matches review_spatial_flags()'s
+# own precedent -- interactive Shiny/leaflet gadgets aren't unit-tested here). No other
+# unresolved issues from this thread. See [[project_geographic_outlier_check]] for the full
+# record. Previous update, 2026-07-23, continued yet further (Sonnet 5 -- real bug found on
+# review_institution_flags()'s FIRST live use, by the user in the real Mugu workflow:
+# occurrence markers all rendered black regardless of keep/remove decision, not matching the
+# legend. Root cause confirmed empirically (not guessed): the color vector
+# (decision_color[dec[sub_pts$point_id]]) carries names inherited from the indexing
+# operation, and leaflet's htmlwidgets JSON layer serializes a NAMED character vector as a
+# keyed JS object rather than a per-point array -- duplicate "keep"/"remove" keys silently
+# collapse, so the browser-side per-marker color assignment breaks entirely and falls back to
+# an undefined/black default. Verified directly by comparing the actual JSON leaflet builds
+# for named vs. unnamed color vectors before shipping the fix (unname() around the color
+# lookup). Also addressed three real usability points from the same live-test: institution
+# markers switched from leaflet's bundled pin icon to a smaller (point_radius * 0.5), distinct
+# blue circle marker (was obscuring nearby occurrence points); occurrence markers reduced to
+# point_radius * 0.75 (were large enough to visually stack when geographically close); map now
+# calls fitBounds() to frame the actual flagged-point extent on open (previously used
+# leaflet's arbitrary default view) and raises maxZoom to 20 on both the base map and the tile
+# layer (previously uncapped by us but effectively limited by leaflet's own conservative
+# default). devtools::test()/check() clean. Reinstalled.
+# Previous update, 2026-07-23, continued (Sonnet 5 -- review_institution_flags() added, the
+# interactive-gadget half of the institution-review pair deferred earlier the same session.
+# Deliberately scoped DOWN from review_spatial_flags() (~950 lines) given the real dataset
+# here is small (tens of flagged records, not thousands): single view (no rectangle
+# bulk-select), no habitat-reassignment-equivalent action, single-level undo. Shows two point
+# layers together -- the flagged occurrence (colored circle, green=keep/red=remove) and its
+# own matched institution's location (leaflet's bundled default pin marker, no external icon
+# asset needed) -- so a reviewer can see directly whether a record sits AT an institution or
+# genuinely nearby it (the "Avila Pier vs. inland SLO campus" ambiguity that motivated this
+# whole feature). Every flagged record starts as "keep" -- nothing is ever discarded just by
+# opening the gadget or clicking Done without reviewing. shiny::paneViewer(), never
+# dialogViewer(), per this ecosystem's own documented leaflet-gadget footgun. No test file
+# (matches review_spatial_flags()'s own precedent -- interactive gadgets requiring a live
+# session aren't unit-tested in this ecosystem); relied on careful manual code review instead,
+# since devtools::test()/check() can't exercise Shiny/leaflet server logic. Real ASCII-policy
+# violation caught by devtools::check() itself before shipping (a Unicode arrow + bullet
+# characters in gadget HTML strings), fixed with \\u2192/\\u25cf escapes matching this
+# ecosystem's own established convention (review_spatial_flags() already uses the same
+# escapes for the same reason). filter_gbif_quality() gained two more institution columns
+# (institution_lon/institution_lat -- the matched institution's OWN coordinates, needed for
+# the two-layer map, not previously stored) as a direct prerequisite. Wired into ALL FIVE real
+# production workflow scripts (2 Mugu + 3 PtConception, outside this monorepo) using the
+# EXACT convention already established for review_spatial_flags() in these same files (a
+# plain inline call within the linear script -- these scripts are run interactively
+# section-by-section by the user, not batch-executed -- with a system() sound alert and
+# elapsed-time tracking around the gadget call), gated on `any(institution_flag %in% TRUE)`
+# so workflows with nothing flagged skip the section entirely rather than erroring.
+# devtools::test() 0 failures (TaxaFetch 553, TaxaHabitat 158, both unchanged by this gadget
+# addition itself), devtools::check() 0/0/0 both packages. Reinstalled. Not yet run live by
+# the user -- these are real Shiny/leaflet gadgets, genuinely exercising them is the user's
+# call, not something verifiable from a non-interactive session.
+# Previous update, 2026-07-23 (Sonnet 5 -- flag_institution_candidates() added, classification-
+# stage half of a new two-stage QAQC pair for TaxaFetch::filter_gbif_quality()'s institution
+# proximity flag (that function now flags near-institution records rather than removing them,
+# same day, see TaxaFetch/CLAUDE.md -- prompted by a real Mugu false-positive: live fish
+# records near a university botanical garden pond, not archived specimens). This function
+# tiers those flags "high"/"low"/"ambiguous" by crossing the matched institution's real `type`
+# (Herbarium/Botanic_garden/Zoo/Museum/University/Research_centre -- verified via
+# CoordinateCleaner::institutions directly, not guessed) against the record's own kingdom --
+# a herbarium match matters for a plant, not a fish. Deliberately mirrors
+# flag_habitat_inconsistencies()'s existing role (pure classification, no interaction, no rows
+# removed) ahead of a still-to-be-built interactive review gadget
+# (review_institution_flags(), meant to mirror review_spatial_flags() -- same two-layer-overlay/
+# paneViewer/audit-trail pattern, showing the flagged occurrence AND its matched institution's
+# own location together). The gadget is the intentionally-deferred half of this feature --
+# scoped in detail but not built, given real time constraints raised mid-session; see
+# [[project_geographic_outlier_check]] in the memory system for the exact resume point,
+# including the full architectural discussion (why TaxaHabitat over TaxaMatch, why flag-then-
+# split over remove-then-restore). A real bug was found and fixed before shipping: comparing
+# suspicion_rules$institution_type == t when a record's own matched institution has NO recorded
+# type (real data -- e.g. some real Scripps Institution of Oceanography matches) produces an
+# all-NA logical index, which subsets to NA rather than zero, silently producing
+# institution_suspicion = NA instead of the documented "ambiguous" fallback -- caught by the
+# console summary message itself printing "NA high, NA low, NA ambiguous" rather than real
+# counts. devtools::test() 0 failures (158, up from 142), devtools::check() 0/0/0. Reinstalled
+# to ~/Library/R/4.0/library.
 
 ---
 
@@ -33,6 +116,8 @@ TaxaHabitat depends on TaxaTools for LLM provider functions
 | `consensus_habitat()` | R/assign_habitat_biological.R | Complete | Assemblage-level consensus habitat from per-species weights; modal ecoregion extraction. Returns one-row data frame. (Session 46) |
 | `flag_habitat_inconsistencies()` | R/flag_habitat_inconsistencies.R | Complete | Flag occurrences inconsistent with habitat |
 | `review_spatial_flags()` | R/review_spatial_flags.R | Complete | Interactive Shiny review of spatial flags |
+| `flag_institution_candidates()` | R/flag_institution_candidates.R | Complete (2026-07-23) | Classification stage for `TaxaFetch::filter_gbif_quality()`'s `institution_flag` column -- tiers "high"/"low"/"ambiguous" by crossing matched institution `type` against record `kingdom`. Pure function, no interaction, no removal (mirrors `flag_habitat_inconsistencies()`). |
+| `review_institution_flags()` | R/review_institution_flags.R | Complete (2026-07-23) | Interactive Shiny/leaflet review of `flag_institution_candidates()`'s tiers -- click a flagged record to toggle Keep/Remove, matched institution shown as a second map layer. Deliberately scoped down from `review_spatial_flags()` (single view, no bulk-select, single-level undo) given real datasets here are small. Every record starts "keep." Wired into all 5 real production workflow scripts (2 Mugu + 3 PtConception). |
 | (plot helpers) | R/utils_plot.R | Complete | Internal plotting utilities |
 | `.detect_habitat_cols()` | R/assign_habitat_biological.R | Internal | Shared habitat column detection logic used by `assign_habitat_biological()` and `consensus_habitat()` |
 

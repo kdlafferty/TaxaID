@@ -52,9 +52,9 @@ test_that("flag_contaminant returns one row per taxon", {
    verbose         = FALSE
  )
 
- expect_true("lab_contaminant_risk" %in% names(result))
- expect_true("lab_contaminant_score" %in% names(result))
- expect_true("lab_contaminant_reason" %in% names(result))
+ expect_true("validity_flag" %in% names(result))
+ expect_true("observation_validity" %in% names(result))
+ expect_true("validity_reason" %in% names(result))
  expect_true("mean_prop_field" %in% names(result))
  expect_true("mean_prop_control" %in% names(result))
  expect_true("field_rate" %in% names(result))
@@ -82,22 +82,22 @@ test_that("TaxonA (only in field) gets a high score approaching but not reaching
  )
  a_row <- result[result$taxon_name == "TaxonA", ]
  expect_equal(nrow(a_row), 1L)
- expect_true(a_row$lab_contaminant_score < 1.0)
- expect_true(a_row$lab_contaminant_score > 0.5)
+ expect_true(a_row$observation_validity < 1.0)
+ expect_true(a_row$observation_validity > 0.5)
  # w = 1800/(1800+20) = 0.9890110; score = 0.5 + 0.5*w = 0.9945055
- expect_equal(a_row$lab_contaminant_score, 0.9945055, tolerance = 1e-6)
+ expect_equal(a_row$observation_validity, 0.9945055, tolerance = 1e-6)
 })
 
-test_that("TaxonD (only in controls) gets a low score approaching but not reaching 0.0, risk 'high'", {
+test_that("TaxonD (only in controls) gets a low score approaching but not reaching 0.0, flag 'invalid_lab_contaminant'", {
  result <- flag_contaminant(
    df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
  d_row <- result[result$taxon_name == "TaxonD", ]
- expect_true(d_row$lab_contaminant_score > 0.0)
- expect_true(d_row$lab_contaminant_score < 0.5)
- expect_equal(d_row$lab_contaminant_risk, "high")
+ expect_true(d_row$observation_validity > 0.0)
+ expect_true(d_row$observation_validity < 0.5)
+ expect_equal(d_row$validity_flag, "invalid_lab_contaminant")
 })
 
 test_that("prior_weight = 0 disables shrinkage: TaxonA/TaxonD hit the exact un-shrunk 1.0/0.0 boundary", {
@@ -109,8 +109,8 @@ test_that("prior_weight = 0 disables shrinkage: TaxonA/TaxonD hit the exact un-s
  )
  a_row <- result[result$taxon_name == "TaxonA", ]
  d_row <- result[result$taxon_name == "TaxonD", ]
- expect_equal(a_row$lab_contaminant_score, 1.0)
- expect_equal(d_row$lab_contaminant_score, 0.0)
+ expect_equal(a_row$observation_validity, 1.0)
+ expect_equal(d_row$observation_validity, 0.0)
 })
 
 test_that("Session 152: shrinkage is read-count-based, not sample-count-based", {
@@ -139,9 +139,9 @@ test_that("Session 152: shrinkage is read-count-based, not sample-count-based", 
  # Both have raw_score = 1.0 (absent from controls), n_field_present = 1,
  # n_controls_present = 0 -- identical sample-count evidence. Read count
  # differs enormously (5 vs 50000), so rich should score much closer to 1.0.
- expect_true(rich_row$lab_contaminant_score > thin_row$lab_contaminant_score)
- expect_equal(rich_row$lab_contaminant_risk, "low")
- expect_equal(thin_row$lab_contaminant_risk, "moderate")
+ expect_true(rich_row$observation_validity > thin_row$observation_validity)
+ expect_equal(rich_row$validity_flag, "valid")
+ expect_equal(thin_row$validity_flag, "questionable_lab_contaminant")
 })
 
 test_that("higher prior_weight shrinks a thin-read-count detection harder toward 0.5", {
@@ -160,8 +160,8 @@ test_that("higher prior_weight shrinks a thin-read-count detection harder toward
    prior_weight    = 200,
    verbose         = FALSE
  )
- d_weak   <- weak_shrink[weak_shrink$taxon_name == "TaxonD", "lab_contaminant_score"]
- d_strong <- strong_shrink[strong_shrink$taxon_name == "TaxonD", "lab_contaminant_score"]
+ d_weak   <- weak_shrink[weak_shrink$taxon_name == "TaxonD", "observation_validity"]
+ d_strong <- strong_shrink[strong_shrink$taxon_name == "TaxonD", "observation_validity"]
  # Stronger shrinkage pulls the score up from near-0 toward 0.5
  expect_true(d_strong > d_weak)
 })
@@ -187,8 +187,8 @@ test_that("TaxonB (high in controls, low in field) gets low score", {
  )
  b_row <- result[result$taxon_name == "TaxonB", ]
  # B: field prop ~ 0.005-0.01, control prop ~ 0.5+
- expect_true(b_row$lab_contaminant_score < 0.5)
- expect_equal(b_row$lab_contaminant_risk, "high")
+ expect_true(b_row$observation_validity < 0.5)
+ expect_equal(b_row$validity_flag, "invalid_lab_contaminant")
 })
 
 test_that("result is sorted by score (contaminants first)", {
@@ -197,7 +197,7 @@ test_that("result is sorted by score (contaminants first)", {
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
- scores <- result$lab_contaminant_score
+ scores <- result$observation_validity
  expect_true(all(diff(scores) >= 0))
 })
 
@@ -207,8 +207,8 @@ test_that("scores are between 0 and 1", {
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
- expect_true(all(result$lab_contaminant_score >= 0 &
-                 result$lab_contaminant_score <= 1))
+ expect_true(all(result$observation_validity >= 0 &
+                 result$observation_validity <= 1))
 })
 
 
@@ -229,21 +229,24 @@ test_that("flag_contaminant works with sample_type_col", {
    verbose         = FALSE
  )
 
- expect_true("lab_contaminant_risk" %in% names(result))
+ expect_true("validity_flag" %in% names(result))
  a_row <- result[result$taxon_name == "TaxonA", ]
- # Session 152: "low" because shrinkage is now read-count-based and TaxonA
+ # Session 152: "valid" because shrinkage is now read-count-based and TaxonA
  # has substantial read support (1800 reads) despite coming from only 3
  # samples -- see the dedicated TaxonA shrinkage test above for the exact
  # value/reasoning.
- expect_equal(a_row$lab_contaminant_risk, "low")
+ expect_equal(a_row$validity_flag, "valid")
 })
 
 
 # ===========================================================================
-# contaminant_type controls column names
+# contaminant_type controls validity_flag's VALUES (2026-07-24: column names
+# are now fixed across every TaxaFlag flag_*() mechanism; contaminant_type
+# is embedded in the flag VALUE instead -- see flag_contaminant()'s own
+# "Unified validity schema" section)
 # ===========================================================================
 
-test_that("contaminant_type controls output column names", {
+test_that("contaminant_type is embedded in validity_flag's values, not the column name", {
  result <- flag_contaminant(
    df               = mock_long,
    control_samples  = c("blank_1", "blank_2"),
@@ -251,10 +254,15 @@ test_that("contaminant_type controls output column names", {
    verbose          = FALSE
  )
 
- expect_true("field_contaminant_risk" %in% names(result))
- expect_true("field_contaminant_score" %in% names(result))
- expect_true("field_contaminant_reason" %in% names(result))
- expect_false("lab_contaminant_risk" %in% names(result))
+ # Column names are always the same, regardless of contaminant_type.
+ expect_true("validity_flag" %in% names(result))
+ expect_true("observation_validity" %in% names(result))
+ expect_true("validity_reason" %in% names(result))
+
+ # But the flag VALUES reflect field_contaminant, not the default lab_contaminant.
+ d_row <- result[result$taxon_name == "TaxonD", ]
+ expect_equal(d_row$validity_flag, "invalid_field_contaminant")
+ expect_false(any(grepl("lab_contaminant", result$validity_flag)))
 })
 
 test_that("positive_control type works", {
@@ -265,7 +273,9 @@ test_that("positive_control type works", {
    verbose          = FALSE
  )
 
- expect_true("positive_control_risk" %in% names(result))
+ expect_true("validity_flag" %in% names(result))
+ d_row <- result[result$taxon_name == "TaxonD", ]
+ expect_equal(d_row$validity_flag, "invalid_positive_control")
 })
 
 
@@ -293,7 +303,7 @@ test_that("exclude_samples removes samples from proportion calculation", {
  e_one  <- result_one[result_one$taxon_name == "TaxonE", ]
 
  # TaxonE should have higher score when blank_2 (where it appears) is excluded
- expect_true(e_one$lab_contaminant_score > e_both$lab_contaminant_score)
+ expect_true(e_one$observation_validity > e_both$observation_validity)
 })
 
 
@@ -301,8 +311,8 @@ test_that("exclude_samples removes samples from proportion calculation", {
 # Custom score thresholds
 # ===========================================================================
 
-test_that("custom score_thresholds change risk assignments", {
- # With very strict thresholds, more taxa become "high" risk
+test_that("custom score_thresholds change validity_flag assignments", {
+ # With very strict thresholds, more taxa become "invalid_lab_contaminant"
  result_strict <- flag_contaminant(
    df               = mock_long,
    control_samples  = c("blank_1", "blank_2"),
@@ -316,9 +326,9 @@ test_that("custom score_thresholds change risk assignments", {
    verbose         = FALSE
  )
 
- n_high_strict  <- sum(result_strict$lab_contaminant_risk == "high")
- n_high_default <- sum(result_default$lab_contaminant_risk == "high")
- expect_true(n_high_strict >= n_high_default)
+ n_invalid_strict  <- sum(result_strict$validity_flag == "invalid_lab_contaminant")
+ n_invalid_default <- sum(result_default$validity_flag == "invalid_lab_contaminant")
+ expect_true(n_invalid_strict >= n_invalid_default)
 })
 
 
@@ -333,7 +343,7 @@ test_that("reason strings contain expected information", {
    verbose         = FALSE
  )
 
- reasons <- result$lab_contaminant_reason
+ reasons <- result$validity_reason
  expect_true(all(grepl("field rate", reasons)))
  expect_true(all(grepl("control rate", reasons)))
  expect_true(all(grepl("detected in", reasons)))

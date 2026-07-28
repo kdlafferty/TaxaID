@@ -3,14 +3,14 @@
   "description": "Convert match scores to likelihoods using hierarchical Bayesian model; reference QC",
   "functions": [
     {
-      "name": "fetch_reference_sequences",
-      "description": "Search NCBI by taxon + barcode marker -> reference_df with taxonomy",
+      "name": "fetch_ncbi_reference_sequences",
+      "description": "Search NCBI by taxon + barcode marker -> reference_df with taxonomy. Renamed from fetch_reference_sequences() (Session 136, old name fully removed 2026-07-19, no deprecated alias remains)",
       "inputs": [
         {"name": "taxa", "type": "character_vector", "required": true, "description": "Taxon names to search"},
         {"name": "barcode_term", "type": "character", "required": true, "description": "Barcode marker (e.g., '12S', 'COI')"},
-        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks to resolve"},
+        {"name": "rank_system", "type": "character_vector", "required": false, "default": "c('family','genus','species')", "description": "Taxonomy ranks to resolve"},
         {"name": "cache_dir", "type": "file_path", "required": false, "description": "Directory for resumable cache"},
-        {"name": "max_per_species", "type": "integer", "required": false, "default": 50, "description": "Max sequences per species"},
+        {"name": "max_per_species", "type": "integer", "required": false, "default": null, "description": "Max sequences per species (NULL = no per-species cap)"},
         {"name": "priority_taxa", "type": "character_vector", "required": false, "default": null, "description": "Species names from match data to prioritize (fully represented even when subsampling)"},
         {"name": "max_sequences", "type": "integer", "required": false, "default": 10000, "description": "Total sequence download budget; subsamples proportionally if exceeded"},
         {"name": "min_per_taxon", "type": "integer", "required": false, "default": 50, "description": "Minimum sequences per taxon when subsampling"}
@@ -67,7 +67,7 @@
     },
     {
       "name": "fetch_reference_recordings",
-      "description": "Fetch bird sound recordings from Xeno-canto API v3 for acoustic reference model training. Acoustic analog of fetch_reference_sequences()",
+      "description": "Fetch bird sound recordings from Xeno-canto API v3 for acoustic reference model training. Acoustic analog of fetch_ncbi_reference_sequences()",
       "inputs": [
         {"name": "species", "type": "character_vector", "required": true, "description": "Bird species names to search"},
         {"name": "quality", "type": "character_vector", "required": false, "default": ["A", "B"], "description": "Xeno-canto quality grades to accept (A=best, E=worst)"},
@@ -97,7 +97,7 @@
       "name": "build_image_reference",
       "description": "Image analog of build_acoustic_reference(). Joins image classifier detections to user-supplied ground-truth image labels; labels H1/H2/H3. Train one model per testid (classifier/camera type)",
       "inputs": [
-        {"name": "image_df", "type": "match_df", "required": true, "description": "Image classifier output from read_animl_output(), read_inaturalist_cv_output(), or read_wildlife_insights_output()"},
+        {"name": "image_df", "type": "match_df", "required": true, "description": "Image classifier output from read_animl_output(), read_inaturalist_cv_output(), or read_speciesnet_output()"},
         {"name": "images_meta", "type": "data.frame", "required": true, "description": "Ground-truth labels: requires image_path + taxonomy rank columns. Optional: testid (classifier/camera type), quality (0-1)"},
         {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks (coarse-to-fine)"}
       ],
@@ -157,7 +157,7 @@
       "name": "build_sequence_matrix",
       "description": "Align sequences and compute pairwise distance matrix",
       "inputs": [
-        {"name": "reference_df", "type": "reference_df", "required": true, "description": "From fetch_reference_sequences() or read_reference_fasta()"},
+        {"name": "reference_df", "type": "reference_df", "required": true, "description": "From fetch_ncbi_reference_sequences(), fetch_bold_reference_sequences(), or read_reference_fasta()"},
         {"name": "rank_system", "type": "character_vector", "required": true, "description": "Taxonomy ranks (coarse-to-fine)"}
       ],
       "output": {"type": "reference_matrix", "description": "Pairwise distance matrix with taxonomy"},

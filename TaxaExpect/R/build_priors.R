@@ -400,6 +400,16 @@ build_priors <- function(
                                   occurrences$decimalLongitude, sep = "_")
   }
 
+  # Dedup regardless of whether supplemental data was stacked -- duplicate
+  # records (same GBIF ID, or repeat citizen-science reports of one detection
+  # occasion) can already exist within a single occurrence fetch, not just
+  # when combining sources. See TaxaFetch::dedupe_occurrences().
+  n_before_dedup <- nrow(occurrences)
+  occurrences    <- TaxaFetch::dedupe_occurrences(occurrences)
+  if (nrow(occurrences) < n_before_dedup) {
+    .msg(sprintf("  %d total records after deduplication.", nrow(occurrences)))
+  }
+
   # Ensure taxon_name column exists
   if (!"taxon_name" %in% names(occurrences)) {
     available_ranks <- intersect(rank_system, names(occurrences))

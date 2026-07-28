@@ -223,9 +223,10 @@ test_that("multi-input edges produce full Bayesian path", {
   dna_bayes <- bayes_paths[has_dna_model]
   for (p in dna_bayes) {
     expect_true("seq_to_match" %in% p$edges)
-    # Priors via wrapper or manual
+    # Priors via wrapper or manual (single-model or grouped-by-sampling-process)
     has_priors <- "taxa_to_priors_wrapper" %in% p$edges ||
-                  "dist_to_priors" %in% p$edges
+                  "dist_to_priors" %in% p$edges ||
+                  "dist_to_priors_by_group" %in% p$edges
     expect_true(has_priors, info = "Bayesian path needs priors")
   }
 

@@ -21,6 +21,8 @@
 #        c. Rename columns to a common convention (rename_to_dwc)
 #        d. Tag datasource column
 #   2. Stack all sources (stack_occurrences)
+#   3. Remove duplicate records (dedupe_occurrences) -- do this even with
+#      only one source; see the NOTES below
 #
 # NOTES:
 #   - Repeat Step 1 for every additional source before calling stack_occurrences
@@ -32,6 +34,12 @@
 #   - point_id is created automatically by stack_occurrences()
 #   - Tag your GBIF data with datasource = "GBIF" before stacking so that
 #     record provenance is preserved throughout the pipeline
+#   - stack_occurrences() only combines rows -- it never removes any, even
+#     duplicates. Always follow it with dedupe_occurrences(), which is worth
+#     calling EVEN WITH A SINGLE SOURCE: a single GBIF pull can already
+#     contain overlapping-query duplicates or repeat citizen-science reports
+#     of one detection (GBIF aggregates eBird/iNaturalist/Observation.org/
+#     etc.). See ?dedupe_occurrences.
 #
 # DEPENDENCIES:
 #   TaxaFetch, TaxaTools, dplyr
@@ -46,8 +54,8 @@ library(dplyr)
 # =============================================================================
 # Edit this section for your project. Add or remove source blocks as needed.
 # At minimum supply one GBIF source and one supplemental source; if you only
-# have GBIF data, skip to Step 2 and pass gbif_std alone to stack_occurrences()
-# (though combining a single frame is not necessary — just use it directly).
+# have GBIF data, you don't need stack_occurrences() at all -- but you still
+# need dedupe_occurrences(gbif_std), see Step 3's note below.
 # =============================================================================
 
 
@@ -138,6 +146,8 @@ additional_data_std <- rename_cols(
 #   - Check coordinate columns are present in every frame
 #   - bind_rows() all frames (columns aligned by name; missing = NA)
 #   - Add point_id (decimalLatitude_decimalLongitude)
+# It does NOT remove duplicates -- call dedupe_occurrences() afterward (see
+# below) even if you end up passing only one frame here.
 
 occurrence_data <- stack_occurrences(
   gbif_std,
@@ -146,6 +156,12 @@ occurrence_data <- stack_occurrences(
   # edna_2023_std,
   # museum_records_std
 )
+
+# Remove duplicate records: an exact gbifID match, and repeat citizen-science
+# reports of the same species x date x location detection occasion (e.g.
+# several eBird checklists for one rare-bird-alert individual) -- see
+# ?dedupe_occurrences.
+occurrence_data <- dedupe_occurrences(occurrence_data)
 
 # Quick check
 message(sprintf(

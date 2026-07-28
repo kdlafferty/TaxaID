@@ -172,6 +172,7 @@ if (DEBUG_MODE) {
     }
 
     .fallback_occurrences <- TaxaFetch::stack_occurrences(.fallback_filtered)
+    .fallback_occurrences <- TaxaFetch::dedupe_occurrences(.fallback_occurrences)
 
     # KNOWN GAP: TaxaFetch::stack_occurrences() on unmodified GBIF columns
     # (species/genus/family/...) does not produce a taxon_name column -- every

@@ -1,6 +1,168 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-20 (Sonnet 5 -- full code + domain review response against
+# Last updated: 2026-07-25, later same day (Sonnet 5 -- convert_taxonomy_backbone() now
+# ALSO clears rank columns finer than a row's corrected rank (e.g. species -> NA when a
+# row is demoted to genus), not just taxon_name/taxon_name_rank -- found only by the user
+# actually testing the same-day taxon_name_rank fix (row directly below) against the real
+# Mugu_Match_from_BLAST.R production script, not by inspection. Root cause: that script
+# calls TaxaTools::create_taxon_names() a SECOND time immediately after convert_taxonomy_
+# backbone(), specifically to re-derive taxon_name from rank columns after backbone
+# conversion (a real, existing step, not hypothetical). The per-column rank fallback
+# (documented, unchanged) deliberately keeps species = "Inu sp. 1 sensu..." in place when
+# GBIF has no species-level target for it -- correct in isolation, but that second
+# create_taxon_names() call then saw species still populated, applied "most specific
+# non-NA rank wins", and silently REVERTED the whole taxon_name_rank fix back to the wrong
+# species-level label. Confirmed live against the real accession (LC765844): after the
+# first fix alone, taxon_name/taxon_name_rank were briefly correct ("Luciogobius"/"genus")
+# immediately after convert_taxonomy_backbone() but reverted to ("Inu"/"species") by the
+# time match_12s.rds was saved. Fixed by clearing every rank column finer than
+# matched_rank on the same rows the name/rank correction already applies to -- so ANY
+# downstream re-derivation (this one, or a future one) sees a genuinely NA species column
+# and can't accidentally resurrect the stale value. genus itself is untouched by this
+# clearing (it's AT the corrected rank, not finer than it) -- confirmed already correctly
+# updated to "Luciogobius" by the pre-existing per-column mechanism regardless (GBIF did
+# resolve a real target_genus), only species (no target available) needed either fix. New
+# dedicated regression test reproduces the exact two-call sequence
+# (convert_taxonomy_backbone() then create_taxon_names()) that exposed this in production.
+# devtools::test() 0 failures (test-convert_taxonomy_backbone.R 47/47 up from 43, full
+# suite 508/508), devtools::check() 0/0/0. Reinstalled to ~/Library/R/4.0/library.
+#
+# Separately, real friction diagnosing this: the user's live RStudio session (a different
+# project, SepulvedaMugu.Rproj, with no project-level .Rprofile of its own) kept loading
+# TaxaMatch from the SYSTEM DEFAULT library
+# (/Library/Frameworks/R.framework/.../Resources/library) instead of ~/Library/R/4.0/
+# library, even after .rs.restartR() -- confirmed directly (`.libPaths()` showed only the
+# system path; `any(grepl("matched_rank", deparse(body(TaxaMatch::convert_taxonomy_
+# backbone))))` was FALSE in their session while TRUE when checked independently with
+# .libPaths() forced to the correct directory). Root cause not fully resolved this
+# session -- ~/.Renviron correctly sets R_LIBS_USER and ~/.Rprofile was already fixed in
+# an earlier session (no longer clobbers .libPaths()), so something else in this specific
+# project's startup chain still isn't landing right. Worked around by using
+# devtools::load_all() directly on both package source directories instead of relying on
+# library()/the installed copy at all -- confirmed working. A durable fix (a project-level
+# .Rprofile for SepulvedaMugu.Rproj, mirroring what the TaxaID project has) was offered to
+# the user but not yet implemented -- flagged for a future session if this recurs.
+# Previous update, 2026-07-25 (Sonnet 5 -- convert_taxonomy_backbone() now corrects
+# taxon_name_rank on fallback, closing the second half of a real "Inu Inu" fabricated-
+# pseudo-binomial artifact found in real Mugu output. Root cause: when a row's own
+# taxon_name_rank has no matching target-backbone value at that same rank (a real case:
+# an informally-named NCBI reference resolves against GBIF to genus "Luciogobius" only,
+# no species-level entry -- see TaxaTools/CLAUDE.md's same-day note for the full
+# investigation, including why this is a synonym relationship GBIF's backbone recognizes
+# and NCBI's own taxonomy does not), taxon_name correctly fell back to the coarser
+# matched_name_clean value, but taxon_name_rank silently kept its stale, now-wrong rank
+# label -- reporting a bare genus ("Luciogobius") as if it were still species-level. A
+# downstream slash-name builder (TaxaAssign::add_slash_taxon()'s .make_slash_name())
+# then treated that mislabeled single-word name as if it needed splitting into genus+
+# epithet and manufactured a fabricated doubled binomial ("Inu Inu") from it -- the exact
+# symptom the user first spotted in real review_assignments() output. Fixed using
+# TaxaTools::verify_taxon_names()'s new matched_rank column (same-day companion fix,
+# reports the rank a match ACTUALLY resolved at): when the taxon_name fallback fires, the
+# row's own claimed rank was wrong, so taxon_name_rank is now corrected to matched_rank
+# alongside the name itself -- a small, targeted addition (~15 lines), not a rewrite of
+# the existing rank_col_idx logic, which is left untouched for the common case where a
+# row's own claimed rank DOES have a valid target. Gracefully skipped (not an error) when
+# `verified` lacks matched_rank -- e.g. a verify_fn injected for offline testing that
+# predates this change -- confirmed via a dedicated backward-compatibility test using
+# exactly the shape every pre-existing mock verify_fn in this file already has. 2 new
+# tests reproduce the real Inu case directly (one confirming the fix engages, one
+# confirming it's a no-op without matched_rank). devtools::test() 43/43 in
+# test-convert_taxonomy_backbone.R (up from 41), full suite 504/504, devtools::check()
+# 0/0/0. Reinstalled to ~/Library/R/4.0/library. See TaxaTools/CLAUDE.md's matching
+# same-day note for the upstream fix and the full multi-backbone verification record, and
+# TaxaID/CLAUDE.md's Recent Breaking Changes table for the cross-package summary.
+# Previous update, 2026-07-24 (Sonnet 5 -- convert_taxonomy_backbone() now cleans the
+# not-found (fallback-to-original) path too via TaxaTools::clean_taxon_names(), not just
+# the target-backbone-matched path. Found while reviewing the domestic/food-priors
+# residual-count exercise on real PtConception 18S data: a compound hybrid-formula taxon
+# name straight from a raw NCBI reference accession label
+# ("((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata") reached
+# match_obj$taxon_name/species completely unmodified. Traced to source: this function
+# already called clean_taxon_names() on matched_name/target_<rank> (the successfully-
+# verified path) but never on the value used when the target backbone has no match for an
+# exotic name -- the raw original passed straight through. Fixed via new
+# taxon_col_clean_fallback/rank_clean_fallback (clean_taxon_names() applied once to the
+# original values, used wherever the not-found fallback is referenced) -- deliberately
+# does NOT change what's sent to verify_fn or which rows count as "found"; only the
+# fallback value's formatting changes. clean_taxon_names()'s existing bracket-strip +
+# 3-token split already handles this case correctly once given the chance to run
+# (produces "Citrus unshiu" for the example above). 4 new tests
+# (test-convert_taxonomy_backbone.R), including a verification that found/not-found
+# classification itself is unchanged. devtools::test() 0 failures (500, up from 496),
+# devtools::check() 0/0/0. Reinstalled to ~/Library/R/4.0/library. See TaxaExpect/CLAUDE.md's
+# and TaxaFetch/CLAUDE.md's matching notes for the companion iNaturalist-backbone-mismatch
+# fix from the same design conversation.
+# Previous update, 2026-07-23 (Sonnet 5 -- new read_speciesnet_output(), prompted by the
+# user asking whether TaxaFetch was "missing an opportunity to use SpeciesNet" after a
+# Gemini-drafted function (a placeholder parser, own comment admitted guessing at field
+# names, plus a locally-redefined %||% that violates this ecosystem's TaxaTools-import
+# convention). Design worked through with the user step by step rather than built from
+# the draft: (1) package placement corrected to TaxaMatch (classifier-output ingestion),
+# not TaxaFetch (occurrence acquisition); (2) confirmed TaxaMatch already has
+# read_animl_output()/read_wildlife_insights_output() for SpeciesNet-adjacent sources,
+# so the question became whether either was a sufficient substitute for the real,
+# current SpeciesNet CLI; (3) checked the real Wildlife Insights platform's own docs
+# (bulk downloads are a CSV bundle -- images.csv/sequences.csv, not JSON at all) and the
+# real Animl cloud platform's export docs (CSV drops bounding boxes entirely, exports
+# only the single "winning" reviewed label per object, excludes unreviewed images) --
+# both are lossy/non-matching relative to real SpeciesNet output, so a new function was
+# warranted, not redundant; (4) the user surfaced Markoff & Galaktionovs 2025
+# (arXiv:2510.14594, written by Animal Detect's own CTO/CEO) mid-design, which confirmed
+# SpeciesNet's taxonomic rollup to genus/family/order/class/kingdom is a deliberate
+# precision-over-recall ensemble behavior, not an edge case -- directly settling the
+# "what to extract" question: the raw top-5 `classifications` block (pre-rollup,
+# pre-geofencing) is the right primary multi-candidate source for TaxaLikely's scored
+# pathway, not the already-conservative `prediction` field, since this ecosystem's own
+# Bayesian coarse-rank-resolution machinery (join_priors()/TaxaExpect priors/TaxaLikely
+# H2-H3) is arguably a more principled way to do what Animal Detect's own bespoke
+# CLIP+triplet-loss re-classification system is patching for (their own paper's
+# "Current limitations" section names "Bayesian confidence intervals" as future work).
+# The exact real label format (`uuid;class;order;family;genus;species;common_name`,
+# 7 semicolon-delimited fields) was pulled directly from the shipped taxonomy file
+# (`data/model_package/taxonomy_release.txt` in `google/cameratrapai`) rather than
+# assumed from the README's paraphrase -- verified against real rollup examples at
+# every rank (species/genus/family/order/class) plus the non-taxonomic placeholders
+# ("blank"/"animal"/"vehicle"/"no cv result") before writing tests. New
+# read_speciesnet_output() + .parse_speciesnet_label()/.speciesnet_detection_coverage()
+# helpers in R/read_image_classifiers.R; optional include_coverage/min_detection_conf
+# mirrors read_animl_output()'s existing bbox_cols->coverage convention. Along the way,
+# a real, previously undetected gap was found in read_wildlife_insights_output(): its
+# dict-keyed-by-filename JSON assumption doesn't match either real candidate source
+# checked this session (real Wildlife Insights is CSV; real SpeciesNet CLI's
+# `predictions` is a LIST, not a dict) -- and a prior code review
+# (inst/taxamatch_review.Rmd, Session ~20260720) had already flagged suspicion about
+# this exact function's premise ("Confirming whether multi-candidate output is actually
+# supported by the SpeciesNet JSON schema" was left as an open question, never
+# resolved). Zero real callers found anywhere in the monorepo via grep (only its own
+# tests, README, and TaxaWizard template snippets/prompts) -- the user confirmed
+# removal outright (matching this ecosystem's established zero-caller-removal bar,
+# e.g. fetch_reference_sequences()/audit_barcode_coverage_ncbi()/
+# expand_consensus_candidates()) rather than deprecation, since read_speciesnet_output()
+# is a real replacement for its one claimed real-world use case. Removed: the function,
+# .parse_wi_predictions()/.empty_wi_result() helpers, and its 14-test block from
+# test-read_image.R. Repointed the same session: TaxaMatch-package.R (3 refs), both
+# READMEs (root + package), TaxaWizard's workflow_graph.json (2 edges),
+# snippets/image_to_match.R, snippets/image_refs_to_matrix.R, prompts/phase_classify.md,
+# metadata/TaxaMatch.json (full entry replaced with read_speciesnet_output()'s real
+# signature), metadata/TaxaLikely.json (one description reference). Historical/frozen
+# records left untouched per this ecosystem's own convention (a record of past state,
+# not current documentation): inst/taxamatch_review.Rmd,
+# inst/taxamatch_review_response.md, ecosystem_docs/parameter_audit_2026-07-06*.md.
+# Found along the way while rewriting the two TaxaWizard image snippets: EVERY existing
+# read_*() entry in TaxaWizard's own metadata/TaxaMatch.json uses `"name": "data"` as
+# the first input parameter, but every real read_*() function in this file actually
+# takes `files` as its first argument (`data` isn't even a valid formal for
+# read_animl_output()/read_birdnet_output()/read_inaturalist_cv_output() -- would error
+# "unused argument" if a generated script actually called it) -- the same class of
+# drift already flagged in [[project_taxawizard_metadata_drift]]. Fixed narrowly for
+# the code touched this session (the new speciesnet branch in both snippets correctly
+# uses `files =`; read_speciesnet_output()'s own metadata entry uses `"name": "files"`)
+# but the pre-existing animl/inaturalist_cv/birdnet metadata entries and snippet
+# branches were left as-is -- out of scope for this session, the broader audit item
+# stands. devtools::test() 494/494 TaxaMatch (508 minus 14 removed), TaxaWizard 367/367
+# unaffected; devtools::check() TaxaMatch 0 errors/0 warnings/0 notes. Reinstall still
+# pending.
+# Previous update, 2026-07-20 (Sonnet 5 -- full code + domain review response against
 # inst/taxamatch_review.Rmd (10 files: blast.R, convert_taxonomy_backbone.R,
 # read_acoustic.R, read_image.R, report_match.R, score_image_inat.R,
 # sequence_input.R, standardize_match_data.R, TaxaMatch-package.R,
@@ -276,7 +438,8 @@ likelihood output downstream — it is NOT part of the match object.
 | `score_image_inat()` | R/score_image_inat.R | Complete | Submit image(s) directly to iNaturalist CV API; returns canonical match object. Accepts single file, file vector, or directory. Per-image EXIF lat/lng/date extraction (requires `exifr` Suggests). User-supplied `lat`/`lng`/`observed_on` override EXIF and apply to all images. Outputs `observation_id`, `taxon_name`, `taxon_name_rank`, `score_original` (= `combined_score`), `genus`, `common_name`, `iconic_taxon_name`, `taxon_id`, `n_observations`, `vision_score`, `combined_score`, `freq_score`, `geo_prior_weight` (= combined/vision), `lat`, `lng`, `observed_on`, `folder_1`/`folder_2`/... (nested path metadata). Requires `httr` (Imports), `tibble`, `dplyr`. `exifr` in Suggests. Run `convert_taxonomy_backbone()` + `fill_higher_ranks()` before `join_priors()`. |
 | `read_animl_output()` | R/read_image_classifiers.R | Complete | Ingest Animl CSV export (MegaDetector + SpeciesNet); map confidence + taxonomy to match object. Accepts long format (default) or wide format via `n_candidates`. Configurable column names via `file_col`, `species_col`, `score_col`. `observation_id` = image filename stem. `min_confidence` and `top_n` filters. |
 | `read_inaturalist_cv_output()` | R/read_image_classifiers.R | Complete | Ingest saved iNaturalist CV API JSON response files (one JSON per image). `score_type` = `"combined_score"` (default) or `"score"`. Returns `observation_id`, `score`, `species`, `genus`, `common_name`, `taxon_rank`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
-| `read_wildlife_insights_output()` | R/read_image_classifiers.R | Complete | Ingest SpeciesNet / Wildlife Insights batch predictions JSON (one JSON may cover many images). `label_col = "label"`, `score_col = "score"` (configurable for older formats). Returns `observation_id`, `score`, `species`, `genus`, `category`, `source_file`. `min_confidence`, `top_n` filters. Requires `jsonlite`. |
+| ~~`read_wildlife_insights_output()`~~ | R/read_image_classifiers.R | **Removed, 2026-07-23** | Targeted a dict-keyed-by-filename JSON shape that matched neither the real Wildlife Insights platform (CSV bulk downloads, not JSON) nor the real SpeciesNet CLI (`predictions` is a list, not a dict) -- see this file's 2026-07-23 note. Zero real callers anywhere in the monorepo (grep-confirmed). Removed outright (not deprecated, per this ecosystem's established zero-caller-removal bar); superseded by `read_speciesnet_output()` below. Dependents repointed the same session: `TaxaWizard/inst/graph/workflow_graph.json` (2 edges), `.../snippets/image_to_match.R`, `.../snippets/image_refs_to_matrix.R`, `.../prompts/phase_classify.md`, `.../metadata/TaxaMatch.json`, `.../metadata/TaxaLikely.json`, both READMEs. |
+| `read_speciesnet_output()` | R/read_image_classifiers.R | Complete, 2026-07-23 | Ingest real SpeciesNet CLI (`google/cameratrapai`) `predictions_json` output. Verified directly against the shipped taxonomy file (`data/model_package/taxonomy_release.txt`): labels are `uuid;class;order;family;genus;species;common_name`, 7 semicolon-delimited fields, any of the 5 taxonomic fields may be empty (SpeciesNet's own conservative taxonomic rollup). Treats the raw top-5 `classifications` block (pre-rollup, pre-geofencing) as the primary multi-candidate source, not the already-rolled-up `prediction` field -- see roxygen `@details` for the rationale (informed by Markoff & Galaktionovs 2025, arXiv:2510.14594). Returns `observation_id`, `score`, `species`, `genus`, `family`, `order`, `class`, `common_name`, `taxon_rank`, `ensemble_prediction`/`ensemble_prediction_score`/`ensemble_prediction_source` (per-image ensemble metadata, repeated across candidate rows), `lat`/`lon`/`country`, `source_file`. `min_confidence`, `top_n` filters. Optional `include_coverage`/`min_detection_conf` add `coverage`/`detection_conf` from MegaDetector `detections` bboxes (mirrors `read_animl_output()`'s `bbox_cols` convention). Requires `jsonlite`. 52 new tests, all against real label strings pulled from the shipped taxonomy file (not synthetic guesses). |
 | `read_birdnet_output()` | R/read_birdnet_output.R | Complete | Ingest BirdNET-Analyzer CSV (detections × species × confidence); map to match object. Accepts file vector or directory path. `observation_id = "{file_stem}_{start_s}-{end_s}"`. `min_confidence` and `top_n` filters. |
 
 ### Site table and spatial grouping (Sessions 134, 134b)
@@ -295,7 +458,7 @@ likelihood output downstream — it is NOT part of the match object.
 | `standardize_match_data()` | R/standardize_match_data.R | Written | Rename columns, derive `taxon_name`, validate structure |
 | `filter_redundant_hypotheses()` | R/standardize_match_data.R | Written | Drop higher-rank rows superseded by finer-rank rows within the same lineage and sample |
 | `add_lowest_consistent_rank()` | R/taxonomy_consistency.R | Written | Per-observation: find finest rank with a single unambiguous value across all candidate rows. `majority_threshold` param (numeric in (0,1]) switches to majority mode — consistent when top value reaches threshold. Majority mode adds `rank_majority_value`, `rank_majority_fraction`, `is_rank_outlier` columns. `na_as_inconsistent` controls NA handling. Auto-detects `rank_system` from `TaxaTools::extended_ranks`. |
-| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Vectorized: `match()`-based index into verified table — ~100× faster than row-by-row loop for large data frames. Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. NOTE: generic utility — move to TaxaTools after manuscript review. |
+| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Vectorized: `match()`-based index into verified table — ~100× faster than row-by-row loop for large data frames. Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. **2026-07-24:** the not-found fallback value is now also cleaned via `TaxaTools::clean_taxon_names()` (previously only the target-backbone-matched path was) — fixes a real case where an exotic compound hybrid-formula name from a raw NCBI accession label passed through completely uncleaned when GBIF had no match for it. Does not change which rows count as "found." **2026-07-25:** `taxon_name_rank` is now corrected (not just `taxon_name`) when a row's own claimed rank has no matching target value and falls back to a coarser resolved name — uses `verify_taxon_names()`'s new `matched_rank` column when present, silently skipped otherwise (backward compatible). Closes the "Inu Inu" fabricated-pseudo-binomial bug. **2026-07-25, later same day:** rank columns FINER than the corrected rank are now also cleared to `NA` on the same rows (e.g. `species` when demoted to genus) — closes a real regression found by testing against production (`Mugu_Match_from_BLAST.R`'s own second `create_taxon_names()` call was silently reverting the rank fix by reading the still-populated, now-stale `species` column). See this file's top session note. NOTE: generic utility — move to TaxaTools after manuscript review. |
 
 ### Internal helpers
 

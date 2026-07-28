@@ -4,7 +4,13 @@
 \alias{verify_taxon_names}
 \title{Verify Taxon Names Against a Taxonomic Backbone}
 \usage{
-verify_taxon_names(name_list, backbone_id, batch_size = 500, timeout_sec = 30)
+verify_taxon_names(
+  name_list,
+  backbone_id,
+  batch_size = 500,
+  timeout_sec = 30,
+  fallback_backbone_id = 11L
+)
 }
 \arguments{
 \item{name_list}{A character vector of taxon names to verify. Duplicates
@@ -20,16 +26,59 @@ is 500 to stay safely within limits.}
 
 \item{timeout_sec}{Integer. Seconds to wait before the API request times
 out. Default is 30.}
+
+\item{fallback_backbone_id}{Integer. Only used when \code{backbone_id = 4}
+(NCBI). NCBI's direct lookup is an exact string search with no typo
+tolerance -- a single misspelled letter
+returns zero hits even via its own synonym fallback. When that happens,
+this backbone's Global Names Verifier API is queried instead purely to
+suggest a corrected spelling, which is then re-resolved through NCBI
+itself (the correction is never accepted from this backbone directly, so
+NCBI's own classification -- the reason the direct bypass exists at all --
+is preserved). Default \code{11} (GBIF). Must not be \code{4}.}
 }
 \value{
 A tibble with one row per input name and the following columns:
 \describe{
 \item{user_supplied_name}{The original name as supplied.}
-\item{matched_name}{The best-matched name returned by the backbone (genus
-and species epithet only; authorship strings are stripped), or
-\code{NA} if no match was found.}
+\item{matched_name}{The best-matched name at whatever rank the backbone
+actually resolved it to (authorship strings stripped; a genus-only
+match returns a bare genus, a subspecies-level match returns the full
+trinomial), or \code{NA} if no match was found. When the backbone
+itself flags the match as a taxonomic synonym (\code{is_synonym =
+    TRUE}), this is the backbone's OWN currently-accepted name, not the
+(possibly outdated) synonym form that was actually queried -- see
+\code{is_synonym} below. Sourced from the Global Names Verifier API's
+own canonical-name fields, not a local regex, so it is not vulnerable
+to truncating a trinomial to a binomial the way a naive
+genus-plus-one-epithet parse would.}
+\item{matched_rank}{Character. The taxonomic rank \code{matched_name}
+itself was actually resolved at (e.g. \code{"species"},
+\code{"genus"}, \code{"subspecies"}) -- the last rank present in
+\code{classification_ranks}. Use this, not an assumption carried over
+from whatever rank the input name was expected to be, to decide how to
+use \code{matched_name} downstream: a query submitted as a species
+binomial can genuinely resolve only to genus (e.g. an informally-named
+taxon with no species-level backbone entry), and treating the returned
+name as still species-level in that case silently corrupts a
+genus-only name into a fabricated pseudo-binomial. \code{NA} when no
+match was found.}
+\item{is_synonym}{Logical. \code{TRUE} when the backbone's own best match
+for this name is a taxonomic synonym of a currently-accepted name (in
+which case \code{matched_name} already reports the accepted form, not
+the synonym). \code{NA} when unknown (no match, an API failure, or --
+for \code{backbone_id = 4} specifically -- always, since NCBI's direct
+lookup path does not expose synonym relationships the way the Global
+Names Verifier path does). Synonymy is a property of the SPECIFIC
+backbone queried, not a universal fact -- the same name can be a
+synonym under one backbone's own taxonomic opinion and not another's
+(confirmed directly: GBIF/Catalogue of Life/WoRMS all flag \code{"Inu"}
+Snyder 1909 as a synonym of \code{"Luciogobius"} Gill 1859, while NCBI's
+own taxonomy does not consider it one at all). This column always
+reflects whichever single \code{backbone_id} was actually queried.}
 \item{classification_path}{Pipe-delimited classification path from the
-backbone (e.g., \code{"Animalia|Chordata|..."}).}
+backbone (e.g., \code{"Animalia|Chordata|..."}). Already reflects the
+currently-accepted lineage even when the query matched a synonym.}
 \item{classification_ranks}{Pipe-delimited rank labels corresponding to
 \code{classification_path}.}
 \item{score}{Backbone match confidence score between 0 and 1. Higher is
@@ -39,6 +88,12 @@ ecosystem (e.g., percent identity from BLAST).}
 \item{verified}{Logical. \code{TRUE} if the API returned a result,
 \code{FALSE} if the API failed and fallback values were used. Always
 check rows where \code{verified = FALSE}.}
+\item{fuzzy_corrected}{Logical. Only present when \code{backbone_id = 4}.
+\code{TRUE} if this name was not found by NCBI's own exact search and
+was instead matched after a fuzzy-spelling correction suggested by
+\code{fallback_backbone_id} (see that parameter). Always review these
+rows before trusting them -- a fuzzy match confirms a plausible
+correction, not a certain one.}
 }
 }
 \description{
@@ -62,8 +117,29 @@ downstream.
 
 Name changes suggested by the backbone should always be manually
 confirmed before accepting them -- automated synonym resolution can be
-incorrect.
+incorrect. This applies doubly to \code{fuzzy_corrected = TRUE} rows: a
+fuzzy match can also (rarely) land on a different, genuinely distinct
+taxon rather than fixing a typo.
 }
+\section{Synonym resolution and rank correctness (backbone-general, not GBIF-specific)}{
+
+Verified directly against the live API across five backbones (Catalogue of
+Life, ITIS, NCBI, WoRMS, GBIF) with the same query before this section was
+written: \code{matched_rank} (derived from \code{classificationRanks}) and
+\code{isSynonym}/\code{currentName} (used to prefer the accepted name over
+a synonym) are fields the Global Names Verifier API itself normalises
+identically across every backbone it aggregates -- nothing here is
+GBIF-specific code. What genuinely varies by backbone is the underlying
+taxonomic \emph{opinion} (whether a given name counts as a synonym at all), not
+the mechanism for reading it. Because \code{dataSources} scopes every call
+to exactly one backbone, this always reports that one backbone's own
+answer -- it never blends or overrides one backbone's judgment with
+another's. \code{backbone_id = 4} (NCBI) does not go through this API path
+at all (see \code{.verify_via_ncbi()}) and so never gets synonym
+resolution, but its own \code{matched_rank} is populated identically from
+its own classification lineage.
+}
+
 \examples{
 \dontrun{
 names <- c("Homo sapiens", "Mus musculus", "Tyranosaurus rex")

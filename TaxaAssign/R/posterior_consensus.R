@@ -229,17 +229,84 @@
 #'       genuinely evidence-resolved species call, not to flag it as an
 #'       error. `NA` when `winner_hypothesis_type` is `NA`; `FALSE`
 #'       otherwise.}
-#'     \item{`winner_absolute_fit_pvalue`}{Numeric. The winning hypothesis's
-#'       own one-sided absolute-fit p-value, passed through unchanged from
-#'       `TaxaLikely::evaluate_likelihoods()` -- answers "is this call's own
-#'       fit believable in absolute terms," independent of how it compared to
-#'       competing hypotheses. `NA` when `absolute_fit_pvalue` is absent from
-#'       `posterior_df` (e.g. any upstream call that predates that column, or
-#'       `assign_taxa_llm()` input) or when `consensus_taxon` is `NA`. Never
-#'       changes `consensus_taxon`/`consensus_rank` itself -- a downstream
-#'       consumer wanting to flag a weak-fit winner should read this column
-#'       directly (see `TaxaFlag::add_posthoc_assessment()`'s
-#'       `"unsupported_rank"` category).}
+#'     \item{`winner_species_confusion_risk`, `winner_genus_confusion_risk`,
+#'       `winner_family_confusion_risk`, `winner_own_rank_confusion_risk`}{Numeric. A
+#'       SECOND, model-independent diagnostic alongside
+#'       `TaxaLikely::evaluate_likelihoods()`'s `species_confusion_risk`/
+#'       `genus_confusion_risk`/`family_confusion_risk`/`own_rank_confusion_risk`
+#'       columns on the winning row. Each is a one-sided tail probability: how
+#'       often would a REAL congener/confamilial/cross-family pair score this
+#'       high or higher, given the winning candidate's own raw match score --
+#'       HIGHER values mean MORE confusable, i.e. WEAKER evidence for that
+#'       rank (see `evaluate_likelihoods()`'s own `@section Confusion risk`
+#'       for the full interpretation). All three of
+#'       `winner_species_confusion_risk`/`winner_genus_confusion_risk`/
+#'       `winner_family_confusion_risk` are populated
+#'       (where computable) regardless of `winner_hypothesis_type`;
+#'       `winner_own_rank_confusion_risk` is a convenience pointer at whichever
+#'       matches the winner's own resolved rank. `NA` when the source
+#'       column is absent from `posterior_df` (e.g. any upstream call
+#'       predating these columns) or when `consensus_taxon` is `NA`. Purely
+#'       informational -- never changes `consensus_taxon`/`consensus_rank`.}
+#'     \item{`consensus_confusion_risk`}{Numeric. The same confusion-risk
+#'       quantity, but rank-matched to `consensus_rank` rather than to
+#'       `primary_taxon`'s own rank (which is what
+#'       `winner_own_rank_confusion_risk` reports). When the LCA has climbed
+#'       to genus or family, the species-level value answers the wrong
+#'       question -- this one asks "could a confamilial genus (or a different
+#'       family) have scored this well", matching the rank actually being
+#'       reported. `NA` when `consensus_rank` is `NA`, is coarser than family,
+#'       or the corresponding source column is absent.}
+#'     \item{`primary_n_plausible_competitors`,
+#'       `consensus_n_plausible_competitors`}{Integer. How many
+#'       locally-plausible RIVAL candidates this observation actually competed
+#'       against -- the question a confusion-risk value structurally cannot
+#'       answer, since it describes the marker's discriminating power for a
+#'       taxon in the abstract and never sees this observation's candidate
+#'       set. Read the two together: a low confusion risk means a relative
+#'       *could not* have looked this good, while a non-zero competitor count
+#'       means a plausible relative *was actually given the chance* to. A
+#'       count of `0` with an otherwise clean-looking call is the signature of
+#'       a reference-database representation gap -- the locally plausible
+#'       relatives were never in the candidate pool at all, so no threshold
+#'       applied to the existing candidates could have caught it.
+#'       "Plausible" means the candidate carries a real occurrence record,
+#'       read off `model_tier` (supplied by [join_priors()] from TaxaExpect
+#'       priors) rather than off `prior_mean`'s value: a taxon never reported
+#'       locally has `model_tier = NA`, while a genuine singleton has a real
+#'       tier, even though both can share the same numeric floor prior.
+#'       Counted over every named hypothesis for the observation, before
+#'       `min_posterior`/`cumulative_threshold` filtering (a candidate that
+#'       competed and lost still competed), and EXCLUDING the row's own taxon
+#'       -- whether the winner itself is plausible is a prior-side question
+#'       already answered by `winner_prior`. A count of `0` therefore means
+#'       "nothing plausible to lose to", never "the winner is implausible".
+#'       The `primary_` version counts rival taxa; the `consensus_` version
+#'       counts distinct plausible groups at `consensus_rank` (rival genera
+#'       when the LCA landed at genus, rival families at family), reducing to
+#'       the `primary_` count at species rank. Both are `NA` when
+#'       `posterior_df` carries no `model_tier` column.}
+#'     \item{`winner_has_occurrence_record`, `consensus_prior`}{Support for
+#'       the prior/occurrence-plausibility axis, answering what
+#'       `winner_prior`'s VALUE cannot: has this taxon ever been reported
+#'       here at all? A never-reported taxon and a genuine singleton can
+#'       carry the SAME numeric prior (both land on the dark-diversity
+#'       floor) while meaning opposite things, so presence is read off
+#'       `model_tier` rather than inferred from a low prior.
+#'       `winner_has_occurrence_record` is `TRUE` when the winning
+#'       hypothesis carries a real occurrence record, `NA` when
+#'       `posterior_df` has no `model_tier` column.
+#'       `consensus_prior` is the HIGHEST prior among candidates that both
+#'       carry an occurrence record and fall inside the consensus taxon --
+#'       `NA` when none do, so `NA` doubles as the consensus-scope
+#'       never-reported signal. Max is used deliberately: a group is
+#'       expected here if any member is, making max the tightest valid lower
+#'       bound on P(at least one member present) without assuming
+#'       independence (a sum would double-count shared occurrence evidence;
+#'       a mean would dilute a common member with its rare congeners). It is
+#'       explicitly a best-member statement, NOT the mass-conserving
+#'       hierarchical prior over a coarse taxon that TaxaExpect does not yet
+#'       provide.}
 #'   }
 #'
 #' @seealso [assign_taxa_llm()], [compute_posterior()],
@@ -462,16 +529,23 @@ posterior_consensus <- function(posterior_df,
   winner_likelihood     <- if ("score_likelihood"     %in% names(winner_row)) winner_row$score_likelihood[[1L]]     else NA_real_
   winner_likelihood_cov <- if ("score_likelihood_cov" %in% names(winner_row)) winner_row$score_likelihood_cov[[1L]] else NA_real_
 
-  # Absolute-fit pass-through (TaxaLikely::evaluate_likelihoods()'s absolute,
-  # not relative, goodness-of-fit test on the winning hypothesis). Optional
-  # upstream output -- NA when absent, e.g. any call predating that column
-  # or assign_taxa_llm() input, exactly like the columns above. A downstream
-  # consumer wanting to flag a weak-fit winner reads this directly (see
-  # TaxaFlag::add_posthoc_assessment()'s "unsupported_rank" category) --
-  # this column is purely informational and never changes consensus_taxon/
-  # consensus_rank here.
-  winner_absolute_fit_pvalue <- if ("absolute_fit_pvalue" %in% names(winner_row))
-    winner_row$absolute_fit_pvalue[[1L]] else NA_real_
+  # Confusion-risk pass-through (TaxaLikely::evaluate_likelihoods()'s
+  # species_confusion_risk/genus_confusion_risk/family_confusion_risk/
+  # own_rank_confusion_risk -- a model-independent diagnostic read directly
+  # off the actual winning row rather than recomputed here. Optional
+  # upstream output: NA when the source column is
+  # absent (e.g. any call predating these columns, or assign_taxa_llm()
+  # input). Purely informational -- never changes consensus_taxon/
+  # consensus_rank. See TaxaFlag::add_posthoc_assessment()'s confusion-risk
+  # wiring for how a downstream consumer reads these.
+  winner_species_confusion_risk <- if ("species_confusion_risk" %in% names(winner_row))
+    winner_row$species_confusion_risk[[1L]] else NA_real_
+  winner_genus_confusion_risk <- if ("genus_confusion_risk" %in% names(winner_row))
+    winner_row$genus_confusion_risk[[1L]] else NA_real_
+  winner_family_confusion_risk <- if ("family_confusion_risk" %in% names(winner_row))
+    winner_row$family_confusion_risk[[1L]] else NA_real_
+  winner_own_rank_confusion_risk <- if ("own_rank_confusion_risk" %in% names(winner_row))
+    winner_row$own_rank_confusion_risk[[1L]] else NA_real_
 
   # winner_rank_expanded (Session 149): TRUE when the winning hypothesis came
   # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
@@ -490,6 +564,122 @@ posterior_consensus <- function(posterior_df,
 
   # LCA among plausible hypotheses
   lca <- .find_lca(plausible, rank_system)
+
+  # --- Discrimination diagnostics (2026-07-27) ----------------------------
+  # Two questions the winner_*_confusion_risk columns above cannot answer on
+  # their own, because a confusion-risk value describes the marker's
+  # discriminating power for that taxon in the abstract and never sees this
+  # observation's actual candidate set:
+  #   1. Could a relative have looked this good?       -> *_confusion_risk
+  #   2. Did any plausible relative actually compete?  -> the counts below
+  # Read together they separate "won a real contest" from "won by default
+  # because nothing locally plausible was ever in the running" -- the latter
+  # being a reference-database representation gap, not evidence of a good
+  # match, and not something any threshold on the existing candidates can
+  # detect (see the Sciaenidae case in
+  # TaxaFlag/REENTRY_PROMPT_axis2_multifactor_diagnostic_redesign.md).
+  #
+  # "Plausible" is read off `model_tier` (supplied upstream by join_priors()
+  # from TaxaExpect priors), NOT off prior_mean's value: a taxon with no local
+  # occurrence record at all has `model_tier = NA`, while a genuine singleton
+  # has a real tier -- even though both can share the same numeric floor
+  # prior. That is exactly the "never reported here" vs "reported once"
+  # distinction, and prior_mean alone cannot express it. Absent column ->
+  # NA, matching the optional-upstream-output contract used by the
+  # confusion-risk pass-throughs.
+  #
+  # Counted over `named_all` (every named hypothesis for this observation),
+  # not the post-filter `plausible` set -- a candidate that competed and lost
+  # still competed. Same reasoning as consensus_posterior below, which also
+  # uses named_all so the value is independent of min_posterior and
+  # cumulative_threshold.
+  #
+  # The row's OWN taxon is excluded from its own count. Whether the winner
+  # itself is plausible is a prior-side question already answered by
+  # winner_prior; keeping that separate from "how many plausible rivals did it
+  # beat" is deliberate, so the two read as independent signals. A count of 0
+  # therefore means "nothing plausible to lose to", never "the winner is
+  # implausible".
+  has_tier   <- "model_tier" %in% names(named_all)
+  plaus_mask <- if (has_tier) !is.na(named_all$model_tier) else NULL
+
+  winner_taxon <- if ("taxon_name" %in% names(winner_row))
+    as.character(winner_row$taxon_name[[1L]]) else NA_character_
+
+  primary_n_plausible_competitors <- if (has_tier) {
+    others <- if (is.na(winner_taxon)) rep(TRUE, nrow(named_all)) else
+      is.na(named_all$taxon_name) | named_all$taxon_name != winner_taxon
+    as.integer(sum(plaus_mask & others, na.rm = TRUE))
+  } else NA_integer_
+
+  # Consensus-scoped version: distinct plausible groups at the LCA's own rank,
+  # excluding the consensus taxon itself. At species rank this reduces to the
+  # primary count; at genus/family it counts rival genera/families, which is
+  # the rank-appropriate reading of "did it compete".
+  consensus_n_plausible_competitors <- if (has_tier && !is.na(lca$rank) && !is.na(lca$taxon)) {
+    grp <- .extract_rank_values(named_all, lca$rank)
+    if (is.null(grp)) NA_integer_ else {
+      ok <- plaus_mask & !is.na(grp) & grp != lca$taxon
+      as.integer(length(unique(grp[which(ok)])))
+    }
+  } else NA_integer_
+
+  # --- Occurrence-plausibility support (2026-07-28) -----------------------
+  # Two columns supporting the prior/occurrence-plausibility axis, which asks
+  # a question `winner_prior`'s VALUE cannot answer on its own: has this taxon
+  # ever been reported here at all?
+  #
+  # A taxon that has never been reported and a genuine singleton can carry the
+  # SAME numeric prior -- both land on the dark-diversity floor -- but they
+  # mean opposite things ("no evidence it occurs here" vs "recorded once").
+  # `model_tier` separates them: it is populated only for taxa with a real
+  # occurrence record, and is NA for a candidate that fell through to the
+  # floor or to a hierarchical dark-diversity group prior. Verified on real
+  # Mugu data: 0 of 1014 floor-prior rows carry a tier, while 547 rows have no
+  # tier yet a prior ABOVE the floor (one reaching 0.975, because its
+  # dark-diversity group had only 3 members) -- so thresholding the prior
+  # value alone would call a never-reported taxon "expected". Hence a separate
+  # presence signal rather than a lower cutoff.
+  winner_has_occurrence_record <- if (has_tier)
+    !is.na(winner_row$model_tier[[1L]]) else NA
+  # `consensus_prior`: the highest prior among candidates that (a) carry a real
+  # occurrence record and (b) fall inside the consensus taxon. NA when no
+  # member qualifies -- so NA doubles as the consensus-scope "never reported"
+  # signal, needing no separate logical.
+  #
+  # MAX, deliberately -- not sum, not mean. The question is "is this GROUP
+  # expected here", and a group is expected if any member is: max is the
+  # tightest valid lower bound on P(at least one member present) without
+  # assuming independence. Summing would double-count shared occurrence
+  # evidence; averaging would dilute a genuinely common member with its rare
+  # congeners. This is explicitly NOT the mass-conserving hierarchical prior
+  # over a coarse taxon that TaxaExpect does not yet provide -- it is a
+  # best-member statement, and is documented as such rather than presented as
+  # the group's total probability mass.
+  consensus_prior <- if (has_tier && !is.na(lca$rank) && !is.na(lca$taxon) &&
+                         "prior_mean" %in% names(named_all)) {
+    grp_p <- .extract_rank_values(named_all, lca$rank)
+    if (is.null(grp_p)) NA_real_ else {
+      in_grp <- plaus_mask & !is.na(grp_p) & grp_p == lca$taxon
+      vals <- named_all$prior_mean[which(in_grp)]
+      vals <- vals[!is.na(vals)]
+      if (length(vals) == 0L) NA_real_ else max(vals)
+    }
+  } else NA_real_
+
+  # Confusion risk matched to the CONSENSUS rank, rather than to
+  # primary_taxon's own rank (which is what winner_own_rank_confusion_risk
+  # reports). When the LCA has climbed to genus or family, the species-level
+  # value is answering the wrong question.
+  consensus_confusion_risk <- {
+    cr_col <- switch(as.character(lca$rank),
+                     species = "species_confusion_risk",
+                     genus   = "genus_confusion_risk",
+                     family  = "family_confusion_risk",
+                     NA_character_)
+    if (!is.na(cr_col) && cr_col %in% names(winner_row))
+      winner_row[[cr_col]][[1L]] else NA_real_
+  }
 
   finest_rank <- rank_system[length(rank_system)]
   is_resolved <- !is.na(lca$rank) && lca$rank == finest_rank
@@ -541,7 +731,15 @@ posterior_consensus <- function(posterior_df,
     winner_likelihood_cov      = winner_likelihood_cov,
     winner_hypothesis_type     = winner_hypothesis_type,
     winner_rank_expanded       = winner_rank_expanded,
-    winner_absolute_fit_pvalue = winner_absolute_fit_pvalue,
+    winner_species_confusion_risk     = winner_species_confusion_risk,
+    winner_genus_confusion_risk       = winner_genus_confusion_risk,
+    winner_family_confusion_risk      = winner_family_confusion_risk,
+    winner_own_rank_confusion_risk    = winner_own_rank_confusion_risk,
+    consensus_confusion_risk          = consensus_confusion_risk,
+    primary_n_plausible_competitors   = primary_n_plausible_competitors,
+    consensus_n_plausible_competitors = consensus_n_plausible_competitors,
+    winner_has_occurrence_record      = winner_has_occurrence_record,
+    consensus_prior                   = consensus_prior,
     plausible_taxa       = I(list(plausible$taxon_name)),
     plausible_posteriors = I(list(stats::setNames(
       plausible[[posterior_col]], plausible$taxon_name
@@ -675,7 +873,15 @@ posterior_consensus <- function(posterior_df,
     winner_likelihood_cov      = NA_real_,
     winner_hypothesis_type     = NA_character_,
     winner_rank_expanded       = NA,
-    winner_absolute_fit_pvalue = NA_real_,
+    winner_species_confusion_risk     = NA_real_,
+    winner_genus_confusion_risk       = NA_real_,
+    winner_family_confusion_risk      = NA_real_,
+    winner_own_rank_confusion_risk    = NA_real_,
+    consensus_confusion_risk          = NA_real_,
+    primary_n_plausible_competitors   = NA_integer_,
+    consensus_n_plausible_competitors = NA_integer_,
+    winner_has_occurrence_record      = NA,
+    consensus_prior                   = NA_real_,
     plausible_taxa       = I(list(character(0))),
     plausible_posteriors = I(list(stats::setNames(numeric(0), character(0)))),
     stringsAsFactors     = FALSE

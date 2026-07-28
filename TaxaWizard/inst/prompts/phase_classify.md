@@ -48,7 +48,7 @@ Respond with a single JSON object. No text outside the JSON.
 
 **image_classifier_output vs match_df:** The user has camera trap classifier output files. This is NOT match_df yet.
 
-- input_type = **"image_classifier_output"** when: the user has raw output files from Animl (CSV), iNaturalist CV (JSON files), or Wildlife Insights/SpeciesNet (batch predictions JSON). The workflow will call the appropriate reader function (`read_animl_output()`, `read_inaturalist_cv_output()`, `read_wildlife_insights_output()`).
+- input_type = **"image_classifier_output"** when: the user has raw output files from Animl (CSV), iNaturalist CV (JSON files), or SpeciesNet CLI (`google/cameratrapai` batch predictions JSON). The workflow will call the appropriate reader function (`read_animl_output()`, `read_inaturalist_cv_output()`, `read_speciesnet_output()`).
 - input_type = "match_df" ONLY when the classifier data has ALREADY been read into R and is in the standardized format.
 
 **match_df vs consensus_df:** The key question is whether the user has raw match scores (multiple candidate taxa per sample with scores) or already-resolved single assignments (one taxon per sample).

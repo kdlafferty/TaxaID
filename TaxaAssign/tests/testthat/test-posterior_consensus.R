@@ -435,46 +435,6 @@ test_that("winner columns are NA_real_ in empty consensus rows", {
 })
 
 
-# ==============================================================================
-# winner_absolute_fit_pvalue
-# ==============================================================================
-# Removed 2026-07-19: winner_trusted_rank/winner_rank_trust_basis and the
-# uprank_trust_pvalue mechanism that consumed them. trusted_rank was computed
-# upstream (TaxaLikely::evaluate_likelihoods()) for the top-LIKELIHOOD
-# hypothesis, which is not always the same hypothesis that wins the
-# POSTERIOR here once priors are applied -- a real, confirmed-on-real-data
-# mismatch (~30% of cases on a real 12S dataset) that made uprank_trust_pvalue
-# unreliable in practice, compounded by a separate interaction where
-# species_reference's own downranking step could silently reverse an
-# upranking that DID fire correctly. winner_absolute_fit_pvalue does not have
-# either problem (it is always the actual posterior winner's own value) and
-# is simpler for a downstream consumer to use directly -- see
-# TaxaFlag::add_posthoc_assessment()'s "unsupported_rank" category and
-# [[project_job2_unreferenced_relatives]] in the TaxaID memory system for the
-# full investigation.
-
-test_that("winner_absolute_fit_pvalue present and NA when source column absent", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.9)
-  out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  expect_true("winner_absolute_fit_pvalue" %in% names(out))
-  expect_true(is.na(out$winner_absolute_fit_pvalue))
-  expect_false("winner_trusted_rank" %in% names(out))
-  expect_false("winner_rank_trust_basis" %in% names(out))
-})
-
-test_that("winner_absolute_fit_pvalue carries through unchanged from source, never changes consensus_taxon/consensus_rank", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.9,
-                        genus = "Fundulus", family = "Fundulidae")
-  df$absolute_fit_pvalue <- 0.00001   # a terrible absolute fit
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
-  expect_equal(out$winner_absolute_fit_pvalue, 0.00001)
-  # Purely informational -- consensus is unaffected regardless of how poor
-  # the winner's own absolute fit is.
-  expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
-  expect_equal(out$consensus_rank,  "species")
-})
 
 test_that("posterior_consensus() no longer accepts uprank_trust_pvalue", {
   df <- make_posterior("s1", "Fundulus parvipinnis", "species",
@@ -566,4 +526,120 @@ test_that("invalid min_posterior raises error", {
                "min_posterior")
   expect_error(posterior_consensus(df, min_posterior = 1.0),
                "min_posterior")
+})
+
+
+# ==============================================================================
+# Discrimination diagnostics (2026-07-27):
+#   consensus_confusion_risk / primary_n_plausible_competitors /
+#   consensus_n_plausible_competitors
+# ==============================================================================
+
+# Fixture: one observation, four species candidates across two genera in one
+# family. `model_tier` marks which candidates have a real local occurrence
+# record -- NA means "never reported here", which is what makes a candidate
+# implausible for these counts.
+make_competitor_df <- function(model_tier = c("tier1", "tier2", NA, NA),
+                                posterior_mean = c(0.55, 0.20, 0.15, 0.10)) {
+  df <- data.frame(
+    observation_id  = rep("obs1", 4),
+    taxon_name      = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    taxon_name_rank = rep("species", 4),
+    hypothesis_type = rep("specific_candidate", 4),
+    posterior_mean  = posterior_mean,
+    genus           = c("Aa", "Aa", "Bb", "Bb"),
+    family          = rep("Fam1", 4),
+    species         = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    model_tier      = model_tier,
+    species_confusion_risk = rep(0.10, 4),
+    genus_confusion_risk   = rep(0.30, 4),
+    family_confusion_risk  = rep(0.60, 4),
+    stringsAsFactors = FALSE
+  )
+  df
+}
+
+test_that("the three new diagnostic columns are always present", {
+  out <- posterior_consensus(make_competitor_df(),
+                             rank_system = c("family", "genus", "species"),
+                             min_posterior = 0, cumulative_threshold = 1)
+  expect_true(all(c("consensus_confusion_risk",
+                    "primary_n_plausible_competitors",
+                    "consensus_n_plausible_competitors") %in% names(out)))
+})
+
+test_that("primary_n_plausible_competitors counts plausible RIVALS, excluding the winner", {
+  # Winner is "Aa one" (tier1). The only other plausible candidate is "Aa two".
+  out <- posterior_consensus(make_competitor_df(),
+                             rank_system = c("family", "genus", "species"),
+                             min_posterior = 0, cumulative_threshold = 1)
+  expect_equal(out$primary_n_plausible_competitors, 1L)
+})
+
+test_that("a win with no plausible rival at all reports 0, not 1", {
+  # Only the winner itself is plausible -> nothing to lose to.
+  out <- posterior_consensus(make_competitor_df(model_tier = c("tier1", NA, NA, NA)),
+                             rank_system = c("family", "genus", "species"),
+                             min_posterior = 0, cumulative_threshold = 1)
+  expect_equal(out$primary_n_plausible_competitors, 0L)
+})
+
+test_that("an implausible winner still reports its plausible rivals (axes stay independent)", {
+  # Winner "Aa one" is NOT plausible, but two rivals are. The count describes
+  # the rivals, not the winner -- winner plausibility is winner_prior's job.
+  out <- posterior_consensus(make_competitor_df(model_tier = c(NA, "tier1", "tier2", NA)),
+                             rank_system = c("family", "genus", "species"),
+                             min_posterior = 0, cumulative_threshold = 1)
+  expect_equal(out$primary_n_plausible_competitors, 2L)
+})
+
+test_that("counts use every named hypothesis, not just the post-filter plausible set", {
+  # min_posterior = 0.5 keeps only the winner in `plausible`, but the rival
+  # still competed and must still be counted.
+  out <- posterior_consensus(make_competitor_df(),
+                             rank_system = c("family", "genus", "species"),
+                             min_posterior = 0.5, cumulative_threshold = 0.9)
+  expect_equal(out$n_plausible, 1L)
+  expect_equal(out$primary_n_plausible_competitors, 1L)
+})
+
+test_that("consensus_n_plausible_competitors counts rival GROUPS at the consensus rank", {
+  # Force a genus-level LCA by making the two genera tie, and make one
+  # candidate in each genus plausible -> exactly 1 rival genus.
+  df <- make_competitor_df(model_tier = c("tier1", NA, "tier1", NA),
+                           posterior_mean = c(0.30, 0.20, 0.30, 0.20))
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                             min_posterior = 0, cumulative_threshold = 1)
+  expect_equal(out$consensus_rank, "family")   # LCA climbs past genus
+  # At family rank both candidates are in Fam1, so there is no rival family.
+  expect_equal(out$consensus_n_plausible_competitors, 0L)
+})
+
+test_that("consensus_confusion_risk is matched to consensus_rank, not the winner's own rank", {
+  # Species-level consensus: one candidate dominates, so the cumulative
+  # threshold admits only it and the LCA stays at species.
+  out_sp <- posterior_consensus(
+    make_competitor_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01)),
+    rank_system = c("family", "genus", "species"))
+  expect_equal(out_sp$consensus_rank, "species")
+  expect_equal(out_sp$consensus_confusion_risk, 0.10)
+
+  # Family-level consensus -> family value, NOT the species one.
+  df <- make_competitor_df(posterior_mean = c(0.30, 0.20, 0.30, 0.20))
+  out_fam <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                                 min_posterior = 0, cumulative_threshold = 1)
+  expect_equal(out_fam$consensus_rank, "family")
+  expect_equal(out_fam$consensus_confusion_risk, 0.60)
+  expect_equal(out_fam$winner_species_confusion_risk, 0.10)  # unchanged
+})
+
+test_that("counts are NA (not 0) when posterior_df carries no model_tier column", {
+  df <- make_competitor_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  df$model_tier <- NULL
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_true(is.na(out$primary_n_plausible_competitors))
+  expect_true(is.na(out$consensus_n_plausible_competitors))
+  # confusion risk is independent of model_tier and must still be reported
+  expect_equal(out$consensus_rank, "species")
+  expect_equal(out$consensus_confusion_risk, 0.10)
 })

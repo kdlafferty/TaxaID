@@ -11,8 +11,10 @@ of the [TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
 
 Bayes' Theorem improves taxonomic assignment by considering the prior
 probability that a hypothesized taxon occurs at the sampling location.
-TaxaExpect estimates these priors from occurrence records (from
-TaxaFetch or user-supplied data). Although occurrence data are often
+TaxaExpect estimates these priors from occurrence records -- typically
+GBIF (Global Biodiversity Information Facility; GBIF Secretariat,
+Copenhagen, Denmark) records fetched via TaxaFetch, or user-supplied
+data. Although occurrence data are often
 sparse and biased, they are usually sufficient to distinguish among taxa
 with similar match scores but very different geographic ranges.
 
@@ -199,12 +201,28 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
--   glmmTMB (for hierarchical biodiversity models)
+-   R (\>= 4.1.0; R Core Team 2025)
+-   glmmTMB (Brooks et al. 2017; for hierarchical biodiversity models)
 -   TaxaTools, TaxaFetch, TaxaHabitat (for the `build_priors()`
     high-level wrapper; in Suggests)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+Brooks, M.E., Kristensen, K., van Benthem, K.J., Magnusson, A., Berg,
+C.W., Nielsen, A., Skaug, H.J., Machler, M. and Bolker, B.M. (2017).
+glmmTMB balances speed and flexibility among packages for zero-inflated
+generalized linear mixed modeling. *The R Journal*, 9(2), 378--400.
+
+Dray, S., Legendre, P. and Peres-Neto, P.R. (2006). Spatial modelling: a
+comprehensive framework for principal coordinate analysis of neighbour
+matrices (PCNM). *Ecological Modelling*, 196(3-4), 483--493.
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>

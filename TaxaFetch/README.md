@@ -10,9 +10,13 @@ Taxonomic assignments are more accurate when they consider which
 species are plausible at the sampling location. Without this context,
 classifiers frequently assign detections to ecologically implausible
 taxa. TaxaFetch compiles species occurrence records from multiple
-sources -- GBIF, DataONE, BioTIME, and published literature -- and
-combines them into a standardized format for downstream habitat
-assignment (TaxaHabitat) and prior estimation (TaxaExpect).
+sources -- GBIF (Global Biodiversity Information Facility; GBIF
+Secretariat, Copenhagen, Denmark), DataONE (Data Observation Network
+for Earth; University of New Mexico, Albuquerque, New Mexico), BioTIME
+(database maintained by the University of St Andrews, St Andrews,
+Scotland, United Kingdom), and published literature -- and combines
+them into a standardized format for downstream habitat assignment
+(TaxaHabitat) and prior estimation (TaxaExpect).
 
 ## Data Sources
 
@@ -21,7 +25,7 @@ assignment (TaxaHabitat) and prior estimation (TaxaExpect).
 | **GBIF** | `fetch_gbif_occurrences()` | Global occurrence records via download API |
 | **DataONE** | `fetch_dataone_occurrences()` | Ecological datasets from DataONE repositories |
 | **BioTIME** | `read_biotime_study()` | Time-series biodiversity data |
-| **Literature** | `search_literature()` | OpenAlex scholarly search + PDF download |
+| **Literature** | `search_literature()` | OpenAlex (operated by OurResearch, a nonprofit organization) scholarly search + PDF download |
 | **PDFs** | `extract_pdf_text()` | Extract occurrence data from published PDFs |
 
 ## Installation
@@ -111,12 +115,26 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (foundation package, installed first)
--   rgbif (for GBIF occurrence queries)
--   An LLM API key is needed for literature screening and PDF extraction
+-   rgbif (Chamberlain et al. 2025; for GBIF occurrence queries)
+-   An Application Programming Interface (API) key is needed for
+    literature screening and PDF extraction (Anthropic Claude, Google
+    Gemini, OpenAI, or local Ollama -- see TaxaTools)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+Chamberlain, S., Barve, V., Mcglinn, D., Oldoni, D., Desmet, P.,
+Geffert, L. and Ram, K. (2025). rgbif: Interface to the Global
+Biodiversity Information Facility API. R package.
+<https://CRAN.R-project.org/package=rgbif>
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>

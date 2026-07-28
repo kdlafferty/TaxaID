@@ -7,11 +7,15 @@
 Biologists increasingly measure biodiversity from sequence, sound,
 and image data, yet current pipelines can have high false-positive and
 false-negative rates for taxonomic assignment. TaxaID is a modular
-ecosystem of nine R packages that improve taxonomic assignment
-accuracy. A typical input is a table of candidate matches for each
-observation (sequence, image, or acoustic recording) previously
-obtained by querying a reference library. TaxaID can implement
-traditional score-threshold approaches, but its main advances are to:
+ecosystem of nine packages for the R programming language (R Core Team
+2025; see Table 2, Software Requirements) that improve taxonomic
+assignment accuracy. A typical input is a table of candidate matches
+for each observation (sequence, image, or acoustic recording)
+previously obtained by querying a reference library. TaxaID can
+implement traditional score-threshold approaches (e.g., a fixed
+percent-identity cutoff paired with lowest-common-ancestor assignment,
+as in galaxy-tool-lca; Beentjes et al. 2019 -- see Related Software,
+below), but its main advances are to:
 
 1.  screen for reference-database errors,
 2.  detect taxa missing from the reference library,
@@ -30,19 +34,23 @@ comprehensive:
 
 -   **Traditional workflow** -- Select a consensus taxon using score
     thresholds and/or a lowest common ancestor.
--   **LLM-shortcut workflow** -- Use large language models (Anthropic
-    Claude, Google Gemini, OpenAI, or local Ollama) to rapidly estimate
-    priors and generate consensus assignments.
+-   **LLM-shortcut workflow** -- Use large language models (LLMs) --
+    Anthropic Claude (Anthropic PBC, San Francisco, California), Google
+    Gemini (Google LLC, Mountain View, California), OpenAI (OpenAI
+    OpCo, LLC, San Francisco, California), or local Ollama (Ollama,
+    Palo Alto, California) -- to rapidly estimate priors and generate
+    consensus assignments.
 -   **Bayesian workflow** -- Train a likelihood model on reference data,
-    build spatially explicit priors from GBIF occurrences, and compute
-    posteriors via Monte Carlo simulation.
+    build spatially explicit priors from GBIF (Global Biodiversity
+    Information Facility; GBIF Secretariat, Copenhagen, Denmark)
+    occurrences, and compute posteriors via Monte Carlo simulation.
 
 These workflows converge at the same posterior consensus step, enabling
 direct comparison of model-based and LLM-based assignments.
 
 Many TaxaID functions can use large language models (LLMs), though
-most have non-LLM alternatives. LLM integration requires an API key
-(see below).
+most have non-LLM alternatives. LLM integration requires an
+Application Programming Interface (API) key (see below).
 
 ### Common Errors in Taxonomic Assignment
 
@@ -57,20 +65,23 @@ is highly sensitive to confidence threshold settings (Fairbairn et al.
 --- a 0.95 score does not mean 95% confidence (Dussert et al. 2025),
 and the same match percentage can be diagnostic for one taxon group but
 ambiguous for another (Ficetola et al. 2015). These errors fall into
-three categories: false positives (wrong taxon assigned), false
-negatives (correct taxon missed), and combined errors where one taxon's
-false positive is another's false negative.
+three categories: false positives (FP; wrong taxon assigned), false
+negatives (FN; correct taxon missed), and combined errors where one
+taxon's false positive is another's false negative. FP/FN labels below
+mark which category each error mechanism produces.
 
-#### Reference quality
+#### Reference database quality
 
-**Reference mislabeling** (FP) — Mislabeled sequences or images in the
-reference database produce confident wrong assignments that propagate to
-every query matching that reference. *TaxaLikely detects mislabels
-before model training and removes them from match data.*
+**Reference mislabeling** (FP) — Mislabeled sequences or images already
+present in the reference database produce confident wrong assignments
+that propagate to every query matching that reference. *TaxaLikely
+detects mislabels before model training and removes them from match
+data.*
 
-**Missing reference redirect** (FP + FN) — When the true species is
-absent from the reference library, its detections are assigned to the
-closest relative — a false positive for that relative and a false
+**Missing reference redirect** (FP + FN) — The reference database itself
+is incomplete: when the true species has no entry in the reference
+library at all, its detections are assigned to the closest relative that
+does have an entry — a false positive for that relative and a false
 negative for the true species. Reference library gaps are geographically
 biased, systematically affecting some regions and taxa more than others
 (Marques et al. 2021). *TaxaLikely models the expected score
@@ -79,12 +90,15 @@ plausible missing species.*
 
 #### Score interpretation
 
-**Overconfident species assignment** (FP + FN) — Uncalibrated raw scores
-are taken at face value; even a 100% match may be ambiguous at species
-rank if competing candidates score nearly as well. *TaxaLikely's
-calibrated likelihoods reveal that a high score with a small gap to
-alternatives has low species-level likelihood, regardless of the raw
-score.*
+**Overconfident species assignment** (FP + FN) — Even when the correct
+species IS present in the reference database, its raw match score is
+uncalibrated and taken at face value; a 100% match may still be
+ambiguous at species rank if competing candidates score nearly as well.
+Unlike the reference-gap problems above, this error arises purely from
+how scores are interpreted, not from what the reference database
+contains. *TaxaLikely's calibrated likelihoods reveal that a high score
+with a small gap to alternatives has low species-level likelihood,
+regardless of the raw score.*
 
 **Overly strict thresholds** (FN) — Conservative score cutoffs discard
 correct assignments that fall just below arbitrary thresholds. *TaxaID's
@@ -125,14 +139,24 @@ most of these error types post-assignment.*
 ### Ecosystem Packages
 
 1.  **TaxaTools** cleans and standardizes taxonomic names across
-    backbones (GBIF, NCBI, WoRMS, Catalogue of Life) and provides a
-    unified interface for calling LLMs from R.
+    backbones (GBIF; NCBI, the National Center for Biotechnology
+    Information, U.S. National Library of Medicine, National Institutes
+    of Health, Bethesda, Maryland; WoRMS, the World Register of Marine
+    Species, Flanders Marine Institute (VLIZ), Ostend, Belgium;
+    Catalogue of Life, hosted by Naturalis Biodiversity Center, Leiden,
+    Netherlands) and provides a unified interface for calling LLMs from
+    R.
 2.  **TaxaFetch** acquires species occurrence records from GBIF,
-    DataONE, BioTIME, and published literature.
+    DataONE (Data Observation Network for Earth; University of New
+    Mexico, Albuquerque, New Mexico), BioTIME (University of St
+    Andrews, St Andrews, Scotland, United Kingdom), and published
+    literature.
 3.  **TaxaHabitat** classifies taxa into habitat categories using
     LLM-based biological consensus and flags spatial outliers.
 4.  **TaxaMatch** standardizes match tables from external tools (BLAST,
-    camera-trap classifiers, acoustic detectors) into a common format.
+    the Basic Local Alignment Search Tool -- Altschul et al. 1990,
+    hosted by NCBI; camera-trap classifiers; acoustic detectors) into a
+    common format.
 5.  **TaxaLikely** converts match scores into calibrated likelihoods
     using a hierarchical Bayesian model trained on the reference
     library. It also audits references for mislabels and coverage gaps.
@@ -214,10 +238,11 @@ extends to image and acoustic data via TaxaMatch score
 standardization.
 
 The galaxy-tool-lca tool (Beentjes et al. 2019;
-<https://github.com/naturalis/galaxy-tool-lca>) is a widely used
-Python tool for LCA-based taxonomic assignment from BLAST results,
-particularly for freshwater macroinvertebrate eDNA and fungal ITS
-metabarcoding. Its core algorithm — filtering BLAST hits by identity,
+<https://github.com/naturalis/galaxy-tool-lca>) is a widely used tool,
+written in Python (Python Software Foundation, Wilmington, Delaware),
+for LCA-based taxonomic assignment from BLAST results, particularly for
+freshwater macroinvertebrate eDNA and fungal Internal Transcribed
+Spacer (ITS) metabarcoding. Its core algorithm — filtering BLAST hits by identity,
 bitscore, and query coverage, then finding the lowest common ancestor
 among passing hits — is conceptually similar to TaxaID's
 `score_consensus()`. A notable strength of galaxy-tool-lca is its
@@ -233,7 +258,9 @@ partially address this upstream by filtering on coverage in TaxaMatch
 before passing match data to TaxaLikely; incorporating coverage as a
 third dimension in the likelihood model is a potential future
 enhancement. The analogous quality signal for acoustic reference data
-is the Xeno-canto quality grade (A–E per recording), which
+is the Xeno-canto (Xeno-canto Foundation, Netherlands, with support
+from Naturalis Biodiversity Center, Leiden;
+<https://xeno-canto.org/>) quality grade (A–E per recording), which
 `TaxaLikely::fetch_reference_recordings()` already uses to filter
 reference recordings before model training.
 
@@ -247,11 +274,16 @@ TaxaLikely process.
 | Tool | Taxa scope | Score output | Spatial priors | Unreferenced taxa | R access |
 |---|---|---|---|---|---|
 | **TaxaID (image path)** | Any (classifier-agnostic) | Calibrated likelihoods → Bayesian posteriors | Yes (GBIF + habitat) | Yes (coverage audit) | Native |
-| animl / SpeciesNet (Tabak et al. 2019; Wildlife Insights) | Camera trap mammals | Confidence (0--1), top-5; rollup ensemble | No | No | `animl` R package |
+| animl / SpeciesNet (Tabak et al. 2019; Wildlife Insights\*) | Camera trap mammals | Confidence (0--1), top-5; rollup ensemble | No | No | `animl` R package |
 | iNaturalist computer vision | General wildlife (108,000+ taxa) | Softmax (0--1), top-10; genus/family fallback | Limited (app UI only) | No | `rinat` (indirect) |
 | InsectNet (He et al. 2025) | Insects (2,526 spp, 17 orders) | Conformal prediction sets; OOD energy score | No | Limited (OOD flag) | Web app only |
 | Seek / iNaturalist mobile | General wildlife | Community consensus | No | No | None |
-| Wildlife Insights (WCS/Google) | Camera trap wildlife | Confidence (0--1), rollup ensemble | No | No | None (web platform) |
+| Wildlife Insights\* | Camera trap wildlife | Confidence (0--1), rollup ensemble | No | No | None (web platform) |
+
+\* Wildlife Insights is a collaboration led by Conservation International
+(Arlington, Virginia) with Google LLC (Mountain View, California), the
+Wildlife Conservation Society (Bronx Zoo, Bronx, New York), WWF, the
+Smithsonian Institution, and others.
 
 TaxaID is downstream of, not competing with, these classifiers. The
 key point is that raw confidence scores from neural networks are
@@ -260,10 +292,14 @@ uncalibrated softmax outputs — a 90% confidence score does not mean a
 fitting a generative model to a labeled reference set of images with
 known species identity, capturing the full score distribution for
 correct matches (H1), wrong-species matches (H2), and absent-species
-responses (H3). Animl results are read directly by
-`TaxaMatch::read_animl_output()`; iNaturalist CV JSON output is read by
-`TaxaMatch::read_inaturalist_cv_output()`; Wildlife Insights / SpeciesNet
-batch predictions are read by `TaxaMatch::read_wildlife_insights_output()`.
+responses (H3). `animl` (Conservation Technology Lab, San Diego Zoo
+Wildlife Alliance, San Diego, California) results are read directly by
+`TaxaMatch::read_animl_output()`; iNaturalist (a joint initiative of
+the California Academy of Sciences and the National Geographic
+Society, San Francisco, California) CV JSON output is read by
+`TaxaMatch::read_inaturalist_cv_output()`; SpeciesNet CLI
+(`google/cameratrapai`; Google LLC, Mountain View, California) batch
+predictions are read by `TaxaMatch::read_speciesnet_output()`.
 For acoustic and image data, TaxaLikely acts as a post-classifier
 calibration layer: classifier output is standardized to `match_df`
 by TaxaMatch, then `unreferenced_candidates()` + `assign_scores()`
@@ -614,6 +650,10 @@ firm, or product names is for descriptive purposes only and does not
 imply endorsement by the U.S. Government.
 
 # References
+
+Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J.
+(1990). Basic local alignment search tool. *Journal of Molecular
+Biology*, 215(3), 403--410.
 
 Beentjes, K.K., Speksnijder, A.G.C.L., Schilthuizen, M., Hoogeveen,
 M. and van der Hoorn, B.B. (2019). The effects of spatial scale and

@@ -11,6 +11,12 @@
 #' so a forgotten \code{\link[TaxaTools]{rename_cols}} call is caught immediately rather
 #' than producing a frame full of \code{NA} coordinates.
 #'
+#' This function only combines and labels rows -- it does not remove, filter,
+#' or aggregate anything, including duplicate records. Call
+#' \code{\link{dedupe_occurrences}} afterward (or on a single, unstacked
+#' source -- deduplication is relevant even without combining anything, see
+#' that function's Details) to remove duplicate/redundant records.
+#'
 #' @param ... One or more data frames to combine, \emph{or} a single named
 #'   list of data frames (the pattern used in the PDF and DataONE workflow
 #'   scripts, e.g. \code{stack_occurrences(pdf_occ_list_clean)}).  When a
@@ -23,7 +29,9 @@
 #'
 #' @return A single tibble containing all rows from every input frame with
 #'   an additional \code{point_id} column appended, formed by pasting
-#'   \code{lat_col} and \code{lon_col} separated by \code{"_"}.
+#'   \code{lat_col} and \code{lon_col} separated by \code{"_"}. No rows are
+#'   removed -- the row count is always the sum of the input frames' row
+#'   counts.
 #'
 #' @details
 #' \strong{Single-frame input:} When only one data frame is supplied (or a
@@ -45,17 +53,7 @@
 #' frame it will be overwritten in the combined output so that all rows use a
 #' consistent format.
 #'
-#' \strong{gbifID deduplication:} If the combined frame has a \code{gbifID}
-#' column, rows with a duplicated non-\code{NA} \code{gbifID} are dropped
-#' (first occurrence kept). This is defense-in-depth against the same GBIF
-#' record being counted twice -- e.g. two separately-issued queries with
-#' overlapping search geometry, or a genuinely coincidental overlap between
-#' separately-fetched taxa -- since neither
-#' \code{\link{get_gbif_occurrences}} nor \code{\link{filter_gbif_quality}}
-#' dedupe records themselves. Sources without a \code{gbifID} column (e.g.
-#' literature or DataONE occurrences) are unaffected.
-#'
-#' @seealso \code{\link[TaxaTools]{rename_cols}}
+#' @seealso \code{\link[TaxaTools]{rename_cols}}, \code{\link{dedupe_occurrences}}
 #'
 #' @importFrom dplyr bind_rows
 #' @export
@@ -64,12 +62,17 @@
 #' \dontrun{
 #' # Two sources passed directly
 #' all_occ <- stack_occurrences(gbif_occ, dataone_occ)
+#' all_occ <- dedupe_occurrences(all_occ)
 #'
 #' # From a list (workflow pattern)
 #' all_occ <- stack_occurrences(pdf_occ_list_clean)
 #'
-#' # Single source -- point_id added, no error
+#' # Single source -- point_id added, no error. dedupe_occurrences() is still
+#' # worth calling here: a single GBIF pull can already contain repeat
+#' # citizen-science reports of one detection, or overlapping-query gbifID
+#' # duplicates -- see dedupe_occurrences()'s Details.
 #' all_occ <- stack_occurrences(gbif_occ)
+#' all_occ <- dedupe_occurrences(all_occ)
 #' }
 
 stack_occurrences <- function(...,
@@ -119,18 +122,6 @@ stack_occurrences <- function(...,
   # --- Bind and add point_id ---------------------------------------------------
   combined          <- dplyr::bind_rows(frames)
   combined$point_id <- paste(combined[[lat_col]], combined[[lon_col]], sep = "_")
-
-  # --- Dedup by gbifID (defense-in-depth; see @details) ------------------------
-  if ("gbifID" %in% names(combined)) {
-    is_dup <- duplicated(combined$gbifID) & !is.na(combined$gbifID)
-    if (any(is_dup)) {
-      message(sprintf(
-        "stack_occurrences: dropped %d record(s) with a duplicate gbifID.",
-        sum(is_dup)
-      ))
-      combined <- combined[!is_dup, , drop = FALSE]
-    }
-  }
 
   n_per_frame <- vapply(frames, nrow, integer(1L))
 

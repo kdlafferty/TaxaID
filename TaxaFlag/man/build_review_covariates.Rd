@@ -77,9 +77,10 @@ covariates. \code{NULL} omits these columns entirely.}
 
 \item{contaminant_cols}{Character vector. Columns from
 \code{contaminant_df} to join onto the result (default
-\code{"control_rate"}). Common additions: \code{"field_rate"}, or the
-\code{contaminant_type}-prefixed risk/score columns (e.g.
-\code{"lab_contaminant_risk"}).}
+\code{"control_rate"}). Common additions: \code{"field_rate"}, or
+\code{flag_contaminant()}'s own \code{"observation_validity"}/
+\code{"validity_flag"} columns (2026-07-24 -- fixed names now, no
+longer prefixed by \code{contaminant_type}; see that function's docs).}
 
 \item{extra_covariate_cols}{Character vector or \code{NULL} (default).
 Additional columns to carry through unchanged from

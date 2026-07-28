@@ -130,14 +130,24 @@ A named list with two components:
 hypothesis, suitable for input to \code{TaxaAssign::compute_posterior()}:
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type}
 (\code{"specific_candidate"}, \code{"unreferenced_species"}, or \code{"unreferenced_genus"}),
+\code{raw_likelihood}, \code{raw_likelihood_cov}, \code{raw_likelihood_evidence} (the
+bivariate-normal density -- \code{mvtnorm::dmvnorm()} over \verb{(score_logit, gap_logit)} jointly -- BEFORE ratio-normalization against the best
+candidate in the same observation; \code{score_likelihood} etc. below are
+each \code{raw_likelihood / max(raw_likelihood)} within that observation.
+Because \code{score_likelihood} is always exactly 1.0 for a candidate with
+no real competitor, it cannot say whether a "winning" match is
+actually a good absolute fit -- \code{raw_likelihood} can, and is
+comparable across observations within one trained model/marker in a
+way the ratio never was; not calibration-free in an absolute sense
+(still evaluated against \code{H1_Lookup}'s calibrated or uncalibrated
+mu/sigma), but a within-marker relative comparison such as "above or
+below this marker's own median" sidesteps that),
 \code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd},
 \code{score_likelihood_cov}, \code{score_likelihood_evidence}, \code{h2_delta_source}
 (\code{"genus_specific"} or \code{"global_fallback"} for
 \code{unreferenced_species}/\code{unreferenced_genus} rows; \code{NA} for
-\code{specific_candidate} rows), \code{absolute_fit_pvalue} (see
-\verb{@section Absolute fit}).  Rows where \code{taxon_name}
-resolved to \code{NA} are excluded.  See Details for \code{score_likelihood_cov}
-and \code{h2_delta_source}.}
+\code{specific_candidate} rows), plus the \verb{*_confusion_risk} columns
+described under \strong{Confusion risk} below.}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
 produced no usable likelihoods (empty data frame if none).  Pass to
 a second call of \code{evaluate_likelihoods()} with a coarser
@@ -335,59 +345,58 @@ Backward compatible: falls back to the previous (score-resampling)
 behavior when \code{model_params$H1_Lookup} has no \code{n_obs_species} column
 (i.e., any model trained before this mechanism was added).
 }
-\section{Absolute fit}{
+\section{Confusion risk}{
 
-\code{absolute_fit_pvalue} answers a different question than \code{score_likelihood}
-does. \code{score_likelihood} compares candidates to EACH OTHER (H1 vs H2 vs
-H3) -- it can only ever say "this is the best of the hypotheses I was
-given," even when every hypothesis is, in an absolute sense, a poor match
-(e.g. a genuinely degraded query where the best specific candidate, its
-genus's unreferenced-species placeholder, AND its family's
-unreferenced-genus placeholder all score weakly -- the least-bad option
-still "wins" the relative comparison with nothing to signal that the win
-itself is not well-supported). This is a real, structural limitation of
-Bayesian model comparison over a candidate set that is not guaranteed to
-be exhaustive: renormalizing over an incomplete or uniformly-weak set
-cannot express "none of these fit well."
+\code{species_confusion_risk}/\code{genus_confusion_risk}/\code{family_confusion_risk} are
+an independent, model-independent diagnostic --
+deliberately score-only and model-free, rather than a second application
+of this function's own trained bivariate-normal likelihood. Each answers,
+at its own rank: given this row's raw match score and its own genus (for
+\code{species_confusion_risk}) or family (for \code{genus_confusion_risk}), how
+often would a REAL congener/confamilial pair score this high or higher,
+in this training reference database? Read off
+\code{model_params$Confusion_Risk_Curves} (genus-/family-equal-weighted,
+Empirical-Bayes-shrunk curves computed once by
+\code{train_likelihood_model()}, not recomputed here -- see that function's
+own \code{Confusion_Risk_Curves} documentation and
+\code{diagnostics/score_floor_roc_sweep.R}, the reference implementation these
+curves are built from).
 
-\code{absolute_fit_pvalue} instead asks, independently for EVERY row (H1, H2,
-and H3 alike), whether the observed score is even consistent with THAT
-row's own trained distribution, in absolute terms -- reusing the same
-score-only, gap-excluded logic the \code{alpha} outlier gate already
-established (df = 1, gap excluded for the reason documented there), but
-\strong{one-sided, not two-sided}. \code{alpha}'s own test is deliberately two-sided
-(real 12S data calibrated it that way, see its own docs) because it is
-asking "is this candidate an outlier AT ALL." This question is narrower
-and asymmetric: a score BETTER than a hypothesis's own trained mean (e.g.
-an unusually clean, close-to-100\% match) is never a reason to distrust it
--- only a score WORSE than expected is. A two-sided test would wrongly
-penalize an excellent match against a tightly-clustered (e.g. many
-near-identical reference accessions) species purely because its own mean
-sits slightly below the score transform's ceiling; \code{absolute_fit_pvalue}
-uses \code{P(Z <= z)} instead of the two-sided chi-squared, so it approaches 1
-(never fails) the further above the mean a score sits, and only drops
-toward 0 the further below. Every input is a parameter
-\code{train_likelihood_model()}/the point-estimate pass already computed -- no
-new model is fit and no new pass over reference data runs; this is pure
-reuse of already-resolved \code{H1_Lookup}/\code{H2}/\code{H2_Lookup}/\code{H3} mu/sigma.
-\code{absolute_fit_pvalue} is reported on every row (informational only -- it
-never zeroes a likelihood or changes which hypothesis wins). Downstream
-consumers that want to flag a winning call whose OWN fit is poor (even
-though it won the relative comparison) should read the winning row's
-\code{absolute_fit_pvalue} directly -- see \code{TaxaAssign::posterior_consensus()}'s
-\code{winner_absolute_fit_pvalue} pass-through and
-\code{TaxaFlag::add_posthoc_assessment()}'s \code{"unsupported_rank"} category.
+\strong{Higher means MORE confusable, i.e. WEAKER evidence for the rank in
+question} -- matching this ecosystem's existing high=concern convention
+for risk-style metrics (e.g. \code{TaxaFlag::flag_contaminant()}'s
+\code{contaminant_score}), not the higher-is-better convention \code{score_likelihood}/
+\code{posterior_mean}/\code{confidence_score} use. These are one-sided tail
+probabilities (a p-value-like quantity for the null hypothesis "this is
+just a confusable relative"): \code{species_confusion_risk = 0.97} at a given
+score means a real congener would score this high 97\% of the time too --
+high confusion risk, weak evidence the species call is correct -- while
+\code{species_confusion_risk = 0.02} at the same score means a real congener
+almost never scores this high -- low confusion risk, strong evidence.
+(Renamed 2026-07-23 from \code{species_support}/etc. after noticing the
+original name inverted this convention -- "support" implied
+higher-is-better while the values themselves behave the opposite way;
+no math changed, only the name.) \code{family_confusion_risk} has no grouping
+variable (a single, ungrouped cross-family rate) since no rank exists
+above family to equal-weight by. \code{own_rank_confusion_risk} is a
+convenience column pointing at whichever of the three matches this row's
+own \code{hypothesis_type} (\code{species_confusion_risk} for \code{specific_candidate},
+\code{genus_confusion_risk} for \code{unreferenced_species}, \code{family_confusion_risk}
+for \code{unreferenced_genus}) -- but all three are populated for every row
+(where computable) regardless of \code{hypothesis_type}, so a reviewer can
+also see e.g. "resolved to species, but genus_confusion_risk is also
+high, meaning even the genus call is shaky."
 
-\strong{hypothesis_type values in output:}
-\itemize{
-\item \code{"specific_candidate"} -- referenced species with an explicit
-match in the query data.
-\item \code{"unreferenced_species"} -- placeholder for species absent from
-the reference database but whose genus is represented. These rows have
-generic taxon_name (the genus name) and can be expanded into named
-species by \code{TaxaAssign::expand_unreferenced_hypotheses()}.
-\item \code{"unreferenced_genus"} -- placeholder for entirely absent genera.
-}
+Purely informational -- never zeroes
+a likelihood or changes which hypothesis wins. \code{NA} when
+\code{model_params$Confusion_Risk_Curves} lacks the relevant tier (e.g.
+\code{rank_system} too short) or this row's own genus/family is unresolved
+(e.g. \code{unreferenced_genus} rows have no genus, so \code{species_confusion_risk}
+is always \code{NA} there). See \code{TaxaAssign::posterior_consensus()}'s
+\code{winner_species_confusion_risk}/\code{winner_genus_confusion_risk}/
+\code{winner_family_confusion_risk}/\code{winner_own_rank_confusion_risk}
+pass-through for how a downstream consumer reads these off the winning
+row.
 }
 
 \examples{

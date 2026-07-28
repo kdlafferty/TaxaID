@@ -184,12 +184,21 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (foundation package)
 -   TaxaLikely and TaxaExpect (for the Bayesian workflow; in Suggests)
--   An LLM API key is needed for the LLM-shortcut workflow
+-   An Application Programming Interface (API) key for an LLM provider
+    (Anthropic Claude, Google Gemini, OpenAI, or local Ollama -- see
+    TaxaTools) is needed for the LLM-shortcut workflow
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>

@@ -1,6 +1,194 @@
 # CLAUDE.md — TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-20, continued yet further (Sonnet 5 -- a real GBIF API timeout during
+# Last updated: 2026-07-27 (Sonnet 5 -- geographic-outlier/institution-flag thread CLOSED OUT.
+# Final live-testing bug, found by the user re-running MuguFishWorkflow.R (OUT_PREFIX =
+# "MuguWilderFish_blast"): gbif_occurrences$institution_flag came back NULL, not just FALSE.
+# Not a package bug -- the workflow script's own `if (file.exists(geo_outlier_path)) {
+# gbif_occurrences <- readRDS(...) }` checkpoint branch was silently loading a stale
+# MuguWilderFish_blast_geo_outlier_check.rds (dated 2026-07-23 15:42, predating
+# institution_flag's existence on filter_gbif_quality()'s output), overwriting the correct,
+# freshly-computed object from moments earlier in the same run. Same general "workflow
+# checkpoint can go stale relative to updated package code" class of bug this ecosystem has
+# hit before -- not fixable in the package itself. Fix: delete the one stale .rds, re-run.
+# User confirmed afterward: "institution flag seems to be operating well." Closing
+# verification pass: devtools::test() 565/565 (0 failures), devtools::check() 0 errors/0
+# warnings/0 notes, no non-ASCII characters in any of the five new/modified source files
+# across TaxaFetch+TaxaHabitat. No other unresolved issues from this thread. See
+# [[project_geographic_outlier_check]] for the full record. Previous update, 2026-07-24
+# (Sonnet 5 -- fetch_inat_occurrences() gains inat_kingdom
+# (derived from iNaturalist's own iconic_taxon_name via the same .iconic_to_kingdom()
+# lookup check_inat_range() already uses). Prompted by the user asking directly whether
+# iNaturalist's own taxonomic backbone (distinct from both NCBI and GBIF) could cause a
+# name search to resolve to the wrong organism -- confirmed real: iNat's /v1/taxa search
+# takes the single best text match, so a homonym across kingdoms is possible, if rare
+# (check_inat_range() already guards against exactly this for its own use case, but
+# fetch_inat_occurrences() didn't expose the signal needed to do the same). Consumed by
+# TaxaExpect::generate_domestic_food_priors()'s new kingdom cross-check (see that
+# package's CLAUDE.md) -- a caller can now compare a candidate's own known kingdom
+# against what iNaturalist actually resolved to before trusting the result. Purely
+# additive (new column, no signature change). devtools::test() 0 failures (541, up from
+# 539), devtools::check() 0/0/0. Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-23, same day, yet another follow-up (Sonnet 5 -- dedupe_occurrences()
+# split out of stack_occurrences() entirely, new file R/dedupe_occurrences.R. Prompted by the
+# user's naming/design critique right after collapse_duplicate_occasions shipped: the name
+# "stack_occurrences" implies pure row-combination, and bundling dedup logic inside a function
+# named "stack" creates a real risk that a caller with only ONE data source reads the name,
+# concludes stacking doesn't apply to them, and skips deduplication entirely -- exactly the
+# documented GBIF-only pipeline pattern (get_gbif_occurrences() -> filter_gbif_quality(), no
+# stack_occurrences() call at all). Confirmed this isn't hypothetical or new: the pre-existing
+# gbifID dedup (Session 140) has the IDENTICAL blind spot (a single fetch_gbif_occurrences()
+# call querying overlapping taxon keys can already produce duplicate gbifIDs within one
+# un-stacked frame) -- so both mechanisms moved, not just the new one, per the user's explicit
+# choice. stack_occurrences() now only combines frames + adds point_id (row count is always
+# exactly the sum of inputs); dedupe_occurrences(data, ...) takes a single frame (stacked or
+# not) and runs both checks. Every real call site across the monorepo found via grep and
+# updated to add an explicit dedupe_occurrences() call: TaxaExpect::build_priors() (package
+# code, runs unconditionally regardless of whether supplemental_occurrences was stacked),
+# TaxaAssign/TaxaExpect/TaxaFetch inst/ workflow scripts (6 files), the root
+# inst/TaxaID_Workflow_Template_TEST.R, the data-acquisition.Rmd vignette, and
+# review_function_inputs.R -- all now call dedupe_occurrences() explicitly, including every
+# single-source case, closing the exact blind spot this change exists to fix. Pipeline
+# diagrams and Function Inventory below updated to match. devtools::test() 0 failures (563, up
+# from 553 -- test-stack_occurrences.R's dedup tests moved+adapted into new
+# test-dedupe_occurrences.R, 24 tests there), devtools::check() 0 errors/0 warnings/0 notes.
+# See this file's Session Notes for the full record.
+# Previous update, 2026-07-23, continued yet further (Sonnet 5 -- stack_occurrences() gains
+# collapse_duplicate_occasions (default TRUE), prompted by a user design discussion starting
+# from "does anything dedup redundant occurrence records" and landing on a real, concrete
+# scenario: a rare-bird alert drawing dozens of independent eBird checklists for one
+# individual, or a bioblitz producing a dozen independent iNaturalist uploads of one local
+# population -- each a genuinely distinct GBIF record (so the existing gbifID step, Session
+# 140, can't touch them) but not a distinct detection OCCASION. Verified before building --
+# not assumed -- that this actually matters to a real downstream consumer:
+# TaxaExpect::prepare_model_dataframe() counts raw records (dplyr::n()) as both n_species (the
+# binomial numerator) and n_total_at_site (the shared effort denominator), so uncollapsed
+# repeat reports of one individual inflate that species' modeled relative detection frequency
+# directly, not just its raw record count. New params taxon_col ("scientificName")/date_col
+# ("eventDate", falls back to year/month/day when absent -- needed since get_gbif_occurrences()'s
+# "standard" columns carry year/month/day but not eventDate itself)/coord_precision (3 d.p.,
+# reusing the same key formula fetch_dataone_occurrences() used to use for its own GBIF-snapshot
+# dedup -- see below, that mechanism was removed the same session as now-redundant). Content-based
+# match, not exact-ID -- a row missing any key component is always kept, never dropped on
+# incomplete information; silent no-op when taxon_col/date_col aren't present at all, matching the
+# gbifID step's own established convention (no new-column-missing message spam). Default TRUE, not
+# opt-in, because this IS the correct occupancy-modeling semantics for what TaxaExpect actually
+# consumes -- "was the species documented here, on this occasion" not "how many people documented
+# it" -- confirmed with the user before defaulting it on rather than assumed. 9 new tests in
+# test-stack_occurrences.R (collapse across different platforms/case-insensitive taxon match,
+# distinct-date/species/location never collapsed, missing-key-component rows always kept,
+# year/month/day fallback, opt-out via collapse_duplicate_occasions = FALSE, silent no-op with no
+# taxon/date columns, custom taxon_col/date_col). devtools::test() 0 failures (549, up from 539),
+# devtools::check() 0 errors/0 warnings/1 note (pre-existing clock-check NOTE).
+# SAME DAY, immediate follow-up: the user asked whether this new step makes any EXISTING dedup
+# redundant. Answer, worked through explicitly: the gbifID step is NOT redundant (it catches an
+# exact-duplicate GBIF record with NA scientificName/eventDate, which collapse_duplicate_occasions
+# deliberately never touches) -- but fetch_dataone_occurrences(gbif_snapshot_path=)'s own
+# GBIF-snapshot dedup (.load_gbif_hashes()/.deduplicate_against_gbif(), same key formula) IS
+# redundant for the realistic combined pipeline (fetch GBIF + fetch DataONE + stack_occurrences()),
+# and actually less safe (it coalesced missing name/date/lat/lon to ""/0 before hashing, so two
+# incomplete records could spuriously match, the opposite of the new step's never-drop-on-
+# incomplete-info design). Grepped the whole monorepo first: zero real callers ever passed
+# gbif_snapshot_path, same "no external users" bar already used to remove fetch_reference_
+# sequences()/expand_consensus_candidates()/read_wildlife_insights_output(). User confirmed
+# removal (not just documenting the overlap, not fixing the coalesce gap in place). Removed:
+# gbif_snapshot_path param + gbif_hashes threaded through .process_one_dataset()/.finalize_entity()/
+# .attempt_odm_join() (5 internal call sites) + .load_gbif_hashes()/.deduplicate_against_gbif()
+# themselves; roxygen @details/@examples updated to point at stack_occurrences()'s
+# collapse_duplicate_occasions instead; unused dplyr::coalesce/readr::read_tsv @importFrom entries
+# dropped from this file now that nothing in it calls them. devtools::test() 0 failures (553, up
+# from 549 -- net +4 after removing the params from 11 existing test call sites, no dedicated
+# tests existed for the two deleted internal helpers themselves), devtools::check() 0 errors/0
+# warnings/1 note (same pre-existing clock-check NOTE).
+# Previous update, 2026-07-23 (Sonnet 5 -- new fetch_inat_occurrences(), implementing
+# ecosystem_docs/REENTRY_PROMPT_domestic_food_species_priors.md's non-GBIF occurrence source.
+# Unlike check_inat_range() (point-in-polygon against a thresholded range geomodel),
+# this counts real individual iNaturalist observation records near a point via the
+# /v1/observations search endpoint, with explicit captive ("any"/"true"/"false") and
+# quality_grade ("any"/"casual"/"needs_id"/"research") filters -- quality_grade = "casual"
+# (or captive = "true") is where standard GBIF-style occurrence indexing structurally
+# excludes/under-indexes captive pets/livestock and cultivated/ornamental plants, exactly
+# the gap this function exists to surface. Reuses .inat_taxon_id() (check_inat_range.R,
+# same package) for name resolution rather than reimplementing it; a single per_page=1
+# request per taxon reads iNaturalist's own total_results field, so no per-record download
+# is needed. Consumed by TaxaExpect::generate_domestic_food_priors() -- see that package's
+# CLAUDE.md for the full three-vector design this implements. devtools::test() 0 failures
+# (539, up from 506), devtools::check() 0/0/0. Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-23, continued yet further (Sonnet 5 -- filter_gbif_quality()'s
+# institution check split out from the other five CoordinateCleaner removal checks: it now
+# FLAGS, never removes. Prompted directly by the user reviewing the real 29 Mugu institution
+# matches and recognizing a structural problem cc_inst() can't resolve on its own -- field
+# stations/marine labs are often sited exactly where good habitat is (the live-fish-near-a-
+# university-botanical-garden-pond case), so proximity alone can't be auto-removed the way an
+# equal-coordinate or near-GBIF-HQ match can. `exclude_institution` renamed `flag_institution`
+# (default TRUE still, but now means "flag" not "remove" -- no existing caller was passing it
+# explicitly, so no real fallout). Institution-flagged rows are RETAINED with four new columns
+# (institution_flag/name/type/dist_m) rather than moving to removed_records; step 9 (the other
+# five checks) now runs first, so a record failing BOTH a removal check and the institution
+# check is removed, never reaching the flagging step at all. New .nearest_institution() internal
+# helper (haversine against CoordinateCleaner::institutions, only for already-flagged rows) 
+# recovers which specific institution matched, since cc_inst(value="flagged") only returns a
+# boolean. New TaxaHabitat::flag_institution_candidates() (classify stage, mirrors
+# flag_habitat_inconsistencies()'s role) tiers flagged rows "high"/"low"/"ambiguous" by
+# crossing the matched institution's real type (Herbarium/Botanic_garden/Zoo/Museum/University/
+# Research_centre -- verified via source, not guessed) against the record's kingdom; a real bug
+# (all-NA logical-index subsetting, not the count in the summary message alone) was found and
+# fixed for records whose matched institution has no recorded type. The interactive map review
+# gadget (mirroring review_spatial_flags(), ~950 lines) is intentionally NOT built yet -- scoped
+# but deferred given real time constraints flagged mid-session; see TaxaHabitat/CLAUDE.md and
+# [[project_geographic_outlier_check]] for the resume point. devtools::test() 0 failures (515,
+# up from 506), devtools::check() 0/0/0. Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-23, continued (Sonnet 5 -- filter_gbif_quality() redesigned around a
+# full removal audit trail, prompted by the user asking why the new cc_cen/cc_cap/cc_inst
+# checks (below) produced no visible output columns, then explicitly wanting to see what got
+# removed and why -- both to catch/repair mistakenly-excluded records and as raw material for
+# reporting real GBIF data-quality problems (bad georeferencing, institution/centroid-snapped
+# coordinates) back to GBIF, plus as transparency when two users' filter arguments diverge.
+# Scope grew from "just the CoordinateCleaner step" to all nine filter steps at the user's own
+# request. New: attr(result, "removed_records") is ALWAYS present (a data frame, possibly zero
+# rows, never NULL) with every original column plus filter_reason -- "missing_coordinates",
+# "absent_occurrence", "basis_of_record", "flagged_issue_code:<code>" (which bad_issues code
+# specifically matched, not just that one did), "coordinate_uncertainty",
+# "coordinate_decimal_precision", "edna_keyword", "no_species_id", or one-or-more of
+# "equal_coordinates"/"near_zero"/"near_gbif_hq"/"country_centroid"/"capital"/"institution"
+# joined with ";" when a record fails more than one CoordinateCleaner check at once (real,
+# tested case: (0.01, 0.01) is simultaneously equal-coordinate AND near-zero). Internals fully
+# rewritten (each step now computes an explicit keep mask instead of piping through
+# dplyr::filter()) -- this let me fix, for free, a real pre-existing bug flagged but left alone
+# on 2026-07-20: steps 7/8 never reassigned the stale n_current tracking variable, so their
+# printed "Removed N records" message could overcount when both steps removed rows in the same
+# call; the new mask-based counting has no equivalent staleness to have. Return contract is
+# still just the cleaned data frame (fully backward compatible) -- removed_records is purely
+# additive via attr(). 5 new tests, including a real double-simultaneous-CC-reason case. A real
+# bug caught in my own first draft before shipping: the exact "split-string sprintf" footgun
+# already documented in this file's own Known Footguns section (multiple string args passed to
+# sprintf() alongside the real one, silently not concatenated) -- caught by re-reading my own
+# diff rather than trusting it, fixed with paste0() before sprintf(), matching every other
+# multi-line message already in this function. Benchmarked at real Mugu scale (132k rows) under
+# an artificial ~80%-removal stress test (far harsher than real GBIF data, which removed ~7.5%
+# on the actual Mugu run): 11.7s, up from 1.37s on the earlier zero-removal benchmark -- a real,
+# expected cost (each step now subsets both kept and removed rows, not just kept), not a
+# concern for a function that isn't called in a tight loop. devtools::test() 0 failures (506,
+# up from 494), devtools::check() 0/0/0. Reinstalled to ~/Library/R/4.0/library.
+# Previous update, 2026-07-23 (Sonnet 5 -- filter_gbif_quality() gains the three CoordinateCleaner
+# checks deferred from the original design conversation: cc_cen()/cc_cap()/cc_inst() (near a
+# country/province centroid, near a national capital, near a biodiversity institution), all
+# three called with only lon/lat/value supplied so their ref = NULL default resolves to that
+# package's own bundled countryref/institutions data automatically -- confirmed via direct
+# source inspection, no network call, no hand-copied buffer/reference constants (same principle
+# already applied to cc_equ/cc_zero/cc_gbif). Confirmed these three don't share cc_outl()'s
+# record-count-triggered raster-approximation risk -- they're plain per-row point-in-buffer
+# tests against a fixed external reference set, no species-conditional branching at all.
+# Benchmarked at Mugu's real ~122k-row scale: 1.37s, no performance concern (the reference data
+# is cropped to the query's own bounding box before the buffer test, so cost doesn't scale with
+# row count). New tests use REAL coordinates pulled live from CoordinateCleaner's own bundled
+# countryref/institutions data rather than guessed values, so correctness holds regardless of
+# the package's exact buffer defaults. check_geographic_outliers() also wired into all three
+# real PtConception workflow scripts (PtConceptionWorkflow_12S_single_site.R, _18S_2_single_
+# site.R, _12S_multi_site.R -- outside this monorepo, not under git) using the identical pattern
+# already validated on both real Mugu workflows, not yet run live against real PtConception
+# data. devtools::test() 0 failures (494, up from 487), devtools::check() 0/0/0. Reinstalled to
+# ~/Library/R/4.0/library. See this file's Session Notes for the full record.
+# Previous update, 2026-07-20, continued yet further (Sonnet 5 -- a real GBIF API timeout during
 # the user's own re-verification of the cc_outl() fix (below) surfaced a second, independent
 # real bug in fetch_gbif_occurrences()'s checkpoint logic, pre-existing, unrelated to today's
 # other changes. With keys split into chunks, global_pos was advanced by the FULL chunk size
@@ -100,6 +288,22 @@ Occurrence data acquisition (GBIF, DataONE, PDF, literature search) and source c
 Habitat assignment and spatial QAQC are now in **TaxaHabitat**. LLM provider functions are
 now in **TaxaTools**. Split from TaxaExpect in Session 19; further split in Session 28.
 
+**Why GBIF is the primary occurrence source (not a per-platform fetcher per source):**
+GBIF is an *aggregator* -- it already ingests and republishes records from eBird,
+iNaturalist, Observation.org, OBIS, and most natural history museum/herbarium
+collections, each as its own registered dataset/publisher, alongside GBIF's own directly
+mobilized data. A record originating on any of those platforms that has been published to
+GBIF already flows into TaxaFetch through the existing `get_gbif_occurrences()` pipeline
+with no extra code. Building a separate per-platform fetcher (an Observation.org-specific
+function, an eBird-specific function, etc.) would be redundant for any data those
+platforms already publish to GBIF -- the one GBIF-facing function is deliberately meant to
+cover many public data sources at once. A dedicated non-GBIF fetcher is only justified for
+a source with data GBIF genuinely lacks (not yet aggregated, embargoed, or offering richer
+fields than its GBIF-published subset) -- iNaturalist's `check_inat_range()` is exactly
+this kind of case: it hits iNaturalist's own geomodel API for range polygons, which GBIF's
+occurrence records do not carry at all, rather than duplicating iNaturalist's occurrence
+data (already available via GBIF).
+
 **Dependency chain:** TaxaTools → TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign/TaxaMatch
 
 ---
@@ -116,16 +320,18 @@ non-interactive-vs-interactive comparison.
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK. **Session 140:** drops rows with a duplicate non-`NA` `gbifID` (first kept) when that column is present -- defense-in-depth against double-counting the same GBIF record, since no earlier step in the GBIF pipeline dedupes by key. | Complete | R/stack_occurrences.R |
+| `stack_occurrences()` | Row-bind occurrence data frames; accepts list OR `...`; drops NULL; adds `point_id`; single-frame OK. **Never removes any rows** -- deduplication is `dedupe_occurrences()`'s job (see below), a deliberate split (2026-07-23) from this function's original combined design. Row count is always exactly the sum of the input frames' row counts. | Complete | R/stack_occurrences.R |
+| `dedupe_occurrences()` | **2026-07-23, new -- split out of `stack_occurrences()`.** Takes a single data frame (stacked or not) and removes duplicates via two independent mechanisms: (1) exact-`gbifID` match (moved from `stack_occurrences()`, Session 140 origin) -- defense-in-depth against the same GBIF record being counted twice (overlapping search geometry, coincidental multi-taxon overlap); (2) `collapse_duplicate_occasions` (default `TRUE`, moved from `stack_occurrences()`, 2026-07-23 origin) -- content-based match on `taxon_col` (default `scientificName`, case-insensitive) x `date_col` (default `eventDate`, falls back to `year`/`month`/`day`) x `lat_col`/`lon_col` rounded to `coord_precision` (default 3 d.p.), catching repeat reports of one detection occasion across DIFFERENT records/platforms/observers (e.g. several eBird checklists for one rare-bird-alert individual, several iNaturalist uploads from one bioblitz) that the `gbifID` check can't touch since each is a genuinely distinct record. **Why a separate function, not a `stack_occurrences()` param:** both mechanisms can fire within a SINGLE, un-stacked source (one `get_gbif_occurrences()` call can already contain overlapping-key `gbifID` duplicates or multi-platform occasion duplicates, since GBIF itself aggregates eBird/iNaturalist/Observation.org/etc.) -- bundling dedup inside a function literally named "stack" invited a real risk that a single-source caller would read the name, conclude stacking didn't apply to them, and skip deduplication entirely (raised by the user directly). Motivated by `TaxaExpect::prepare_model_dataframe()` counting raw records as both the binomial numerator (`n_species`) and shared effort denominator (`n_total_at_site`) -- uncollapsed repeat reports inflate a species' modeled relative detection frequency directly. Content-based match, so a row missing any key component is always kept; silent no-op when a check's key columns aren't present at all. Refreshes a `report_params` attribute's `n_records` (and adds `n_duplicates_removed`) if present. | Complete | R/dedupe_occurrences.R |
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box (scripted, non-interactive) | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys. **Session 148:** its `HIGHERRANK`-recovery path (`.recover_higherrank()`) now narrows `rgbif::name_lookup()` hits to the row's own kingdom (when available) before majority-voting a `nubKey`, closing a homonym-misresolution gap; the resulting `matchType = "LOOKUP_RECOVERED"` is now documented and included in the "review these rows" advice. | Complete | R/get_keys_from_context.R |
 | `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. **2026-07-20:** `geometry` now accepts `NULL` for an unrestricted global search (previously required a WKT string); the checkpoint-signature helper's `nchar(NULL)` bug (returned `integer(0)`, would have broken `sprintf`) fixed alongside it. Added for `check_geographic_outliers()`, below. **2026-07-20, continued:** real, pre-existing checkpoint bug fixed, found via a real GBIF timeout mid-run -- `global_pos` was previously advanced by a chunk's FULL size even when that chunk aborted partway through, so the saved checkpoint's `remaining_keys` silently excluded the key that actually failed (and any others queued after it in the same chunk), meaning it would never be retried on resume. Also caused a misleading "Enable cache_dir for resumable fetches" message on a real run where `cache_dir` genuinely was enabled and a checkpoint genuinely had been saved. Fixed: abort check now runs before `global_pos` advances past the aborting chunk; the checkpoint re-includes the WHOLE aborting chunk (not just the failed key onward) so resume can't produce duplicate rows from a partial in-chunk success. | Complete | R/fetch_gbif_occurrences.R |
 | `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility — implemented and verified working (Session 131; a Session 129 note here previously claimed otherwise, incorrectly); (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` should reference SIMPLE_CSV's native `issue` (singular) name if customized — the function renames the output column to `issues` regardless. | Complete | R/download_gbif_occurrences.R |
 | `get_gbif_occurrences()` | **Session 129 — recommended entry point**, not a replacement for the two functions above (neither is modified). Picks `fetch_gbif_occurrences()` vs `download_gbif_occurrences()` by `key_threshold` (default 50, matching both functions' own documented guidance and the manual dispatch pattern the Layer-1 tutorial already used) and standardizes both paths to one column contract. `rank_filter = "species"` (default) is a post-fetch filter only — neither GBIF API exposes a taxonomic-rank predicate to filter server-side. `columns = "standard"` (default) / `"all"` / custom vector. `familyKey`/`genusKey` are `NA` on the download path — SIMPLE_CSV doesn't carry them at all, not fixable by this wrapper. Translates the wrapper's canonical `issues` column name back to SIMPLE_CSV's native `issue` when building `select_cols` for the download path (needed because `select_cols` matches at import time, before `download_gbif_occurrences()`'s own rename runs) — this is the only issue/issues handling the wrapper does; see `download_gbif_occurrences()`'s entry above for the Session 131 correction to a false "cross-path bug" claimed here previously. | Complete | R/get_gbif_occurrences.R |
 | `fetch_occurrences_by_taxon()` | **Session 140 — taxon-centric batched fetch.** Groups a fetch scope (one row per (site, candidate taxon) pair: `taxon_key` + `geometry` WKT) by taxon key instead of by observation/site: unions each taxon key's own geometry via `sf::st_union()` (dissolving the duplicate-record risk when two site boxes for the same taxon overlap), then combines different taxon keys that end up with an identical unioned geometry into one multi-key `get_gbif_occurrences()` call (`combine_shared_geometry = TRUE`, default). Neither `get_gbif_occurrences()` nor its own backends are modified — this is a pure call-grouping layer above it. Does not expose `rgbif`'s `geom_big`/`geom_size`/`geom_n` WKT-complexity escape valve and does not characterize GBIF's real WKT-size ceiling (documented as a known limitation, not silently masked). See `ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md` for the full design discussion this implements. | Complete | R/fetch_occurrences_by_taxon.R |
-| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement → CoordinateCleaner checks. **Session 148:** the eDNA-exclusion pattern narrowed to `edna`/`environmental dna`/`metabarcod` -- dropped the generic `bulk sample`/`water sample` phrases, which risked over-excluding legitimate non-eDNA presence data. **2026-07-20 (behavioral default change):** new filter step 9 calls `CoordinateCleaner::cc_equ()`/`cc_zero()`/`cc_gbif()` (identical lat/lon, near-(0,0), near GBIF's Copenhagen HQ) via new `exclude_equal_coords`/`exclude_near_zero`/`exclude_near_gbif_hq` params, each default `TRUE`. Uses that package's own internal buffer defaults rather than hand-copied constants -- see the function's own roxygen `@details` for why. Skips with a message (not an error) if `CoordinateCleaner` is not installed, matching every other optional-column/optional-package filter in this function. Every real in-repo caller (`TaxaExpect::build_priors()`, `TaxaExpect/inst/workflows/generate_priors_workflow.R`, `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`, `TaxaWizard/inst/graph/snippets/taxa_to_occ.R`) calls with no override, so all now pick up the new checks automatically wherever `CoordinateCleaner` happens to be installed. | Complete | R/filter_gbif_quality.R |
+| `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement → CoordinateCleaner checks. **Session 148:** the eDNA-exclusion pattern narrowed to `edna`/`environmental dna`/`metabarcod` -- dropped the generic `bulk sample`/`water sample` phrases, which risked over-excluding legitimate non-eDNA presence data. **2026-07-20 (behavioral default change):** new filter step 9 calls `CoordinateCleaner::cc_equ()`/`cc_zero()`/`cc_gbif()` (identical lat/lon, near-(0,0), near GBIF's Copenhagen HQ) via new `exclude_equal_coords`/`exclude_near_zero`/`exclude_near_gbif_hq` params, each default `TRUE`. Uses that package's own internal buffer defaults rather than hand-copied constants -- see the function's own roxygen `@details` for why. Skips with a message (not an error) if `CoordinateCleaner` is not installed, matching every other optional-column/optional-package filter in this function. Every real in-repo caller (`TaxaExpect::build_priors()`, `TaxaExpect/inst/workflows/generate_priors_workflow.R`, `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`, `TaxaWizard/inst/graph/snippets/taxa_to_occ.R`) calls with no override, so all now pick up the new checks automatically wherever `CoordinateCleaner` happens to be installed. **2026-07-23:** the three checks originally deferred (Tier 2, needing bundled reference data rather than being fully self-contained) are now also in: `exclude_country_centroid`/`exclude_capital`/`exclude_institution` call `CoordinateCleaner::cc_cen()`/`cc_cap()`/`cc_inst()`, each default `TRUE`, same skip-with-message-if-absent convention, same "use the package's own defaults, don't hand-copy them" principle. All three resolve their `ref = NULL` default to bundled `countryref`/`institutions` data automatically (confirmed via source inspection -- no network call). Unlike `cc_outl()` (used by `check_geographic_outliers()`), none of these three branch on record count or species, so they don't share that function's batching risk; benchmarked at 1.37s for 122k rows (Mugu's real scale) -- cost doesn't grow with row count since the reference data is cropped to the query's own bbox first. Filter order is now nine steps deep: filter step 9 covers all six `CoordinateCleaner` checks together. Every real in-repo caller above picks these three up automatically too, same as the first three. **2026-07-23, continued:** every removed row across all nine filter steps is now preserved, not just counted -- `attr(result, "removed_records")` is always present (never `NULL`, possibly zero rows), one row per removed record with every original column plus `filter_reason` (per-filter tag; GBIF issue-code and CoordinateCleaner removals get the SPECIFIC matched code/check(s), e.g. `"flagged_issue_code:COORDINATE_OUT_OF_RANGE"` or `"equal_coordinates;near_zero"` for a double-hit). Return value itself is unchanged (still just the cleaned data frame) -- fully backward compatible, purely additive via `attr()`. Prompted by the user wanting to (a) audit/repair mistakenly-excluded records, (b) surface real GBIF data-quality problems worth reporting back to GBIF (every removed row keeps `gbifID`/`datasetKey` for exactly that), (c) make two users' differing filter arguments produce comparable, inspectable results rather than silently different ones. Internals fully rewritten to explicit keep-masks (no more `dplyr::filter()`), which incidentally fixed a real pre-existing message-accuracy bug (steps 7/8 never refreshed a stale count variable). **2026-07-23, continued yet further (behavioral default change, signature change):** `exclude_institution` renamed `flag_institution` (default `TRUE` unchanged) and split out of the other five `CoordinateCleaner` checks -- it now **flags, never removes**. Retained rows near a biodiversity institution get four new columns (`institution_flag`, `institution_name`, `institution_type`, `institution_dist_m`, via new internal `.nearest_institution()`) instead of moving to `removed_records`; `"institution"` can no longer appear as a `filter_reason` value. The other five checks (now their own step 9, run before institution flagging as step 10) are unaffected -- a record failing both a removal check and the institution check is removed and never reaches the flagging step. Consumed by `TaxaHabitat::flag_institution_candidates()`. **2026-07-23, continued yet further:** `.nearest_institution()` gained two more columns, `institution_lon`/`institution_lat` -- the matched institution's OWN coordinates (distinct from the record's own), needed so `TaxaHabitat::review_institution_flags()` can plot the flagged record and its matched institution together on one map without re-querying `CoordinateCleaner::institutions` itself. Six institution columns total now. | Complete | R/filter_gbif_quality.R |
 | `check_geographic_outliers()` | **2026-07-20, new.** Flags bbox-scoped occurrence records that are geographic outliers against a species' own global GBIF distribution -- the generic version of "single citizen-science record from the wrong continent slips into a local species list" (motivating real case: Mugu's *Pseudotolithus epipercus*, an African species with one errant La Jolla observation, see `[[project_edge_case_error_taxa_design]]` in the memory system). For species with fewer than `min_local_n` (default 5) local records, fetches that species' unrestricted global occurrences via `fetch_gbif_occurrences(geometry = NULL)` and runs `CoordinateCleaner::cc_outl()` (`method = "distance"`, `tdi = 1000` km default) **once per species** against its own global cloud. Well-supported local species are never checked -- the global fetch is the expensive step. **2026-07-20, same-day fix (real production bug, first live run):** originally called `cc_outl()` once across the WHOLE batch of rare species combined -- that function's `"distance"` method silently switches every species in a single call to a coarser raster approximation whenever any ONE species in that call has >=10,000 records, and a locally-rare species can still be globally common. This let one common species in a real ~51-species Mugu batch silently degrade every other species' precision, clearing a real, obvious ~9,000km outlier (the exact motivating *Pseudotolithus epipercus* case). Fixed by scoping each `cc_outl()` call to one species at a time. Adds `local_n`/`global_n_unique`/`outlier_status` columns; `outlier_status` is always one of `"not_tested_sufficient_local_data"` / `"insufficient_global_data"` / `"outlier"` / `"consistent"` -- never a bare logical, so "not tested" and "tested and passed" stay distinct (mirrors `check_inat_range()`'s `range_status` convention, immediately below). `min_occs` (default 7, matching `cc_outl()`'s own default) is enforced explicitly rather than trusted to `cc_outl()`'s own silent-pass-below-threshold behavior, since that function's own warning about it is suppressed here (redundant with the structured status column). Requires `CoordinateCleaner` (`Suggests`, hard error if missing -- no sensible fallback exists, unlike `filter_gbif_quality()`'s graceful per-check skip). | Complete | R/check_geographic_outliers.R |
 | `check_inat_range()` | Point-in-polygon range check against iNaturalist geomodel range polygons, for the dark-diversity use case (eDNA detections absent from the occurrence database, checked for range plausibility as a prior-boost signal). Implemented Session 118 -- **missing from this table until 2026-07-20**, a real doc-drift gap; see the corrected Next Steps entry below. Returns `in_range`, `range_status` (`"in_range"`/`"out_of_range"`/`"taxon_not_found"`/`"no_polygon"`), `n_observations`, `iconic_taxon_name`, `inat_kingdom`. Evidence is asymmetric by design: `in_range = FALSE` must not suppress a prior (false negatives are common for aquatic/marine taxa given low iNaturalist observer effort there) -- worth remembering before using this as a fallback alongside `check_geographic_outliers()`, whose primary use case (12S/18S fish eDNA) is exactly the domain this function is weakest in. Downstream: `TaxaAssign::adjust_inat_range_priors()`. | Complete | R/check_inat_range.R |
+| `fetch_inat_occurrences()` | **2026-07-23, new.** Counts real local iNaturalist observation records (not a range-polygon test) via `/v1/observations`, with explicit `captive` (`"any"`/`"true"`/`"false"`) and `quality_grade` (`"any"`/`"casual"`/`"needs_id"`/`"research"`) filters -- `quality_grade = "casual"` or `captive = "true"` surfaces exactly the captive/cultivated organisms standard GBIF-style indexing excludes. Reuses `.inat_taxon_id()` (this file) for name resolution; a single `per_page = 1` request per taxon reads `total_results` directly, no per-record download needed. **2026-07-24:** gains `inat_kingdom` (via `.iconic_to_kingdom()`, same lookup `check_inat_range()` uses) so a caller can detect a possible cross-kingdom homonym mismatch -- iNaturalist resolves names against its own curated taxonomy, not NCBI's or GBIF's. Non-GBIF occurrence source for `TaxaExpect::generate_domestic_food_priors()` -- see that package's CLAUDE.md for the full design, including how it consumes `inat_kingdom`. | Complete | R/fetch_inat_occurrences.R |
 | `report_fetch()` | Generate `report_section` summarizing occurrence fetch results for `assemble_report()` | Complete | R/report_fetch.R |
 | `read_biotime_study()` | Read a BioTime study CSV into a standardized occurrence tibble. **Session 148:** `occurrenceStatus` is now `NA` (not `"absent"`) when neither `ABUNDANCE` nor `BIOMAS` parses to a number, since an unparseable/missing value is not a confirmed non-detection. | Complete | R/biotime_fetch.R |
 | `screen_eml_columns()` | Fetch EML; check bbox overlap; detect lat/lon columns | Complete | R/dataone_eml_screen.R |
@@ -133,7 +339,7 @@ non-interactive-vs-interactive comparison.
 | `print.dataone_preview()` | S3 print method | Complete | R/dataone_preview.R |
 | `search_dataone()` | Legacy convenience search | Complete | R/dataone_occurrence_search.R |
 | `fetch_dataone_eml()` | Fetch and parse EML XML for one PASTA dataset ID | Complete | R/dataone_occurrence_search.R |
-| `fetch_dataone_occurrences()` | Download occurrence records; six-pass architecture | Complete | R/dataone_standardize.R |
+| `fetch_dataone_occurrences()` | Download occurrence records; six-pass architecture. **2026-07-23:** `gbif_snapshot_path` (its own GBIF-vs-DataONE content-based dedup) removed -- zero real callers, superseded by `stack_occurrences(collapse_duplicate_occasions=)`, which does the same key-formula check more safely (never matches on incomplete data) on the in-memory combined output. | Complete | R/dataone_standardize.R |
 | `harvest_dataone_catalog()` | Paginated full PASTA Solr harvest; disk-cached | Complete | R/dataone_catalog.R |
 | `build_geo_prompt()` | Build `geo_prompt` S3 for LLM geographic screening — DataONE path only | Complete | R/dataone_geo_screening.R |
 | `parse_geo_screening_response()` | Parse YES/NO LLM response → filtered candidate tibble | Complete | R/dataone_geo_screening.R |
@@ -189,6 +395,7 @@ non-interactive-vs-interactive comparison.
 ```
 harvest_dataone_catalog() → build_geo_prompt() → build_taxon_screen_prompt()
   → screen_eml_columns() → preview_dataone_occurrences() → fetch_dataone_occurrences()
+  → dedupe_occurrences()
 ```
 
 ### GBIF pipeline
@@ -200,6 +407,9 @@ get_keys_from_context() → get_gbif_occurrences()           [Session 129: picks
                             ↳ fetch_gbif_occurrences()      [≤~50 keys, no account]
                             ↳ download_gbif_occurrences()   [100s–1000s keys, account required]
                         → filter_gbif_quality()
+                        → dedupe_occurrences()          [2026-07-23 -- call this even with a
+                                                          single GBIF source; see its own entry
+                                                          below for why]
                         → check_geographic_outliers()   [optional, 2026-07-20 -- species below
                                                           min_local_n only; needs CoordinateCleaner]
 ```
@@ -212,21 +422,25 @@ fetch_occurrences_by_taxon()   [unions each taxon key's own geometry, combines
                                  taxa sharing identical geometry, one call per
                                  group via get_gbif_occurrences()]
   ↓
-stack_occurrences()             [row-bind + gbifID dedup, Session 140]
+stack_occurrences()             [row-bind only, Session 140/2026-07-23]
+  ↓
+dedupe_occurrences()             [gbifID + collapse_duplicate_occasions, 2026-07-23]
 ```
-Use this instead of calling `get_gbif_occurrences()` directly whenever the
-fetch scope spans more than one site/observation and search areas can
-overlap or coincide -- see `fetch_occurrences_by_taxon()`'s own entry above
-and `inst/TaxaID_Workflow_Template_TEST.R` Section 3 for a worked example
-(multi-member cluster + single-observation escalation ladder, unified into
-one taxon-key map).
+Use `fetch_occurrences_by_taxon()` instead of calling `get_gbif_occurrences()`
+directly whenever the fetch scope spans more than one site/observation and
+search areas can overlap or coincide -- see `fetch_occurrences_by_taxon()`'s
+own entry above and `inst/TaxaID_Workflow_Template_TEST.R` Section 3 for a
+worked example (multi-member cluster + single-observation escalation ladder,
+unified into one taxon-key map). `dedupe_occurrences()` is always the last
+step regardless -- see its own entry below for why it's separate from
+`stack_occurrences()` and needed even for a single source.
 
 ### Literature + PDF pipeline
 ```
 search_literature() → build_taxon_screen_prompt(geo_scope=...) [optional]
   → download_literature_pdfs() → extract_pdf_text() → screen_pdf_structure()
   → build_pdf_extract_prompt() → call_api_pdf() → parse_pdf_extract_response()
-  → stack_occurrences()
+  → stack_occurrences() → dedupe_occurrences()
 ```
 
 After TaxaFetch: pass occurrence data to **TaxaHabitat** for habitat assignment.
@@ -300,11 +514,13 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | File | Functions covered | Notes |
 |---|---|---|
 | test-fetch_gbif_occurrences.R | `fetch_gbif_occurrences()`, `.gbif_checkpoint_path()` | Mocked rgbif; covers 429 retry/backoff; 2026-07-20 added `geometry = NULL` global-search coverage |
-| test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline; 2026-07-20 added `cc_equ`/`cc_zero` CoordinateCleaner-check coverage (real package calls, `skip_if_not_installed`) |
+| test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline; 2026-07-20 added `cc_equ`/`cc_zero` CoordinateCleaner-check coverage (real package calls, `skip_if_not_installed`); 2026-07-23 added `cc_cen`/`cc_cap`/`cc_inst` coverage using REAL coordinates pulled live from `CoordinateCleaner::countryref`/`institutions` at test time, not guessed/hardcoded -- correctness holds regardless of the package's exact buffer defaults; 2026-07-23 continued: 5 new tests for the `removed_records` attribute (always-present-with-0-rows case, missing-coordinates case, specific-matched-issue-code case, a real double-simultaneous-CC-reason case at (0.01, 0.01), original-column preservation); 2026-07-23 continued yet further: institution tests rewritten for flag-not-remove (asserts row retained + 4 new columns populated, not asserts row removed), a `flag_institution = FALSE` skip test, a removal-check-runs-before-institution-flagging ordering test |
 | test-check_geographic_outliers.R | `check_geographic_outliers()` | 2026-07-20, **new file**. Mocks `rgbif::occ_data` (same layer as test-fetch_gbif_occurrences.R) so the real `fetch_gbif_occurrences()` and `CoordinateCleaner::cc_outl()` both run underneath -- genuine end-to-end coverage of the outlier/insufficient-data/consistent three-way split, not just the plumbing. Same-day addition: a regression test mocking `CoordinateCleaner::cc_outl()` directly to assert it's called once per species (not once for the whole batch) -- guards the real raster-approximation bug found on first live use; deliberately not a synthetic 10,000+ row fixture, which would be slow and still wouldn't exercise the actual bug (that needed real GBIF data's clustering, not synthetic data -- see Session Notes) |
+| test-fetch_inat_occurrences.R | `fetch_inat_occurrences()`, `.inat_observation_count()` | 2026-07-23, **new file**. Mirrors test-check_inat_range.R's mocking strategy (`local_mocked_bindings()` on `.inat_taxon_id()`/`.inat_observation_count()`, then `httr::GET`/`status_code`/`content` for the internal helper directly); 24 tests, fully offline |
 | test-get_keys_from_context.R | `get_keys_from_context()`, `.recover_higherrank()` | Mocked rgbif; Session 148 added kingdom-narrowing coverage via a synthetic mixed-kingdom fixture |
 | test-make_bbox_wkt.R | `make_bbox_wkt()` | Fully offline |
-| test-stack_occurrences.R | `stack_occurrences()` | 22 tests; fully offline |
+| test-stack_occurrences.R | `stack_occurrences()` | Fully offline; 2026-07-23 -- dedup-related tests moved to test-dedupe_occurrences.R, since `stack_occurrences()` no longer removes any rows |
+| test-dedupe_occurrences.R | `dedupe_occurrences()` | **2026-07-23, new file** -- split out of test-stack_occurrences.R. Fully offline; covers `gbifID` exact match, `collapse_duplicate_occasions` content match (single-source and post-`stack_occurrences()` cases), missing-key-component preservation, `year`/`month`/`day` fallback, custom `taxon_col`/`date_col`/`lat_col`/`lon_col`, and `report_params` attribute refresh |
 | test-report_fetch.R | `report_fetch()` | Fully offline |
 | test-biotime_fetch.R | `read_biotime_study()` | Fully offline; Session 148 added NA-vs-absent `occurrenceStatus` coverage |
 | test-dataone_standardize.R | `fetch_dataone_occurrences()`, `.is_trusted_pasta_url()`, `.download_data_table()` | Mocked DataONE API; Session 148 added SSRF host-allowlist coverage |
@@ -342,6 +558,336 @@ below and TaxaTools/CLAUDE.md).
 ---
 
 ## Session Notes
+
+**2026-07-23, same day, yet another follow-up (Sonnet 5): `dedupe_occurrences()` split out of `stack_occurrences()` -- naming/design critique from the user**
+
+Direct continuation, same day: right after `gbif_snapshot_path` was removed (entry below),
+the user raised a naming/architecture concern about `stack_occurrences()` itself, unprompted
+by any bug -- a genuine design review, not a bug report. Their point, close to verbatim: the
+name "stack_occurrences" implies pure row-combination (possibly even column standardization,
+though it never did that), and bundling dedup logic inside a function named "stack" risks a
+real failure mode -- a caller with only ONE data source reads the name, reasonably concludes
+"stacking" doesn't apply to them, and skips the call (and therefore its dedup) entirely.
+
+**Confirmed this is not hypothetical before doing anything** -- checked the actual documented
+GBIF-only pipeline in this file: `get_gbif_occurrences() -> filter_gbif_quality()`, with
+`stack_occurrences()` appearing only in the multi-source diagrams. A single-source GBIF
+caller following this file's own documented pattern would never call `stack_occurrences()` at
+all. **Also confirmed the risk isn't new, or specific to the feature just shipped**: the
+pre-existing `gbifID` exact-match dedup (Session 140, not added this session) has the
+identical blind spot -- a single `fetch_gbif_occurrences()` call querying multiple
+overlapping taxon keys can already produce duplicate `gbifID`s within one un-stacked frame,
+before any combination happens. Reported this finding to the user rather than silently
+patching only the new feature; they confirmed (via `AskUserQuestion`) that both mechanisms
+should move, not just `collapse_duplicate_occasions`.
+
+**Design:** `stack_occurrences()` reverts to a pure combine step -- row-bind + `point_id`
+only. Row count is now always exactly the sum of the input frames' row counts, stated
+explicitly in the `@return` doc so this invariant is discoverable without reading source. New
+`R/dedupe_occurrences.R` (`dedupe_occurrences(data, collapse_duplicate_occasions = TRUE,
+taxon_col = "scientificName", date_col = "eventDate", lat_col = "decimalLatitude", lon_col =
+"decimalLongitude", coord_precision = 3L)`) takes a single data frame -- stacked or not -- and
+runs both checks (moved verbatim, no logic changes: `gbifID` exact match, then
+`collapse_duplicate_occasions`'s content-based occasion collapse). Also refreshes a
+`report_params` attribute's `n_records` and adds `n_duplicates_removed` when the input
+carries one (e.g. from `stack_occurrences()`), so `report_fetch()`'s params list doesn't go
+stale after dedup runs.
+
+**Function name chosen via `AskUserQuestion`** (`dedupe_occurrences()` over
+`collapse_duplicate_occurrences()`/`clean_occurrences()`) -- direct, matches this package's
+existing naming style, unambiguous about what it does regardless of source count (unlike
+either alternative, which were either more verbose or vaguer about scope).
+
+**Every real call site across the monorepo found via grep and updated** (not left as a
+silent regression) -- this was the necessary consequence of moving the pre-existing `gbifID`
+dedup, which every real caller of `stack_occurrences()` got "for free" and automatically
+before this change:
+- `TaxaExpect::build_priors()` (`R/build_priors.R`) -- real package code, not a demo script.
+  `dedupe_occurrences()` now runs unconditionally after the `point_id`-ensure block,
+  regardless of whether `supplemental_occurrences` was supplied/stacked, matching the
+  "single source still needs dedup" principle this whole change is about.
+- `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`,
+  `TaxaExpect/inst/workflows/generate_priors_workflow.R`,
+  `inst/TaxaID_Workflow_Template_TEST.R` (the root master template),
+  `TaxaFetch/inst/Merge_sources_workflow.R`, `TaxaFetch/inst/pdf_workflow_test_v4.R`,
+  `TaxaFetch/inst/biotime_workflow.R`, `TaxaFetch/inst/workflows/fetch_occurrences_workflow.R`
+  (the Layer-1 teaching script, both Variant A active code and Variant B's commented
+  template) -- all gained an explicit `dedupe_occurrences()` call immediately after their
+  `stack_occurrences()` call, including the single-source cases (`fetch_occurrences_workflow.R`
+  Variant A is exactly the single-GBIF-source case this whole redesign targets).
+  `Merge_sources_workflow.R`'s own header comments and the "if you only have GBIF data, skip
+  to Step 2" note (the literal advice that would have told a reader to skip dedup) rewritten
+  to state the new requirement directly.
+- `TaxaFetch/vignettes/data-acquisition.Rmd` and `TaxaFetch/inst/review_function_inputs.R`
+  (the dev-utility script exercising every exported function's inputs offline) both updated
+  for consistency and documentation accuracy, even though neither is a live production
+  pipeline.
+- `TaxaHabitat/inst/workflows/assign_habitat_workflow.R` and
+  `TaxaFetch/inst/dataone_quickstart.R` checked and left alone -- both only *mention*
+  `stack_occurrences()` in prose/comments, neither has a real call site.
+
+**Testing:** `test-stack_occurrences.R`'s dedup-specific tests (gbifID exact match,
+`collapse_duplicate_occasions` content match, missing-key-component preservation,
+`year`/`month`/`day` fallback, custom `taxon_col`/`date_col`, `collapse_duplicate_occasions =
+FALSE`) moved into new `test-dedupe_occurrences.R` and adapted to call `dedupe_occurrences()`
+directly -- some exercising it on a single, unstacked frame specifically (the scenario this
+whole redesign is about), others on a `stack_occurrences()`-combined frame first (the
+cross-source case). `test-stack_occurrences.R` itself now only covers pure combination
+behavior; its old gbifID test renamed to assert `stack_occurrences()` does NOT dedupe (a
+direct regression guard for the split itself). Two new tests added for the `report_params`
+refresh behavior. `devtools::test()` 0 failures, `devtools::check()` 0 errors/0 warnings/1
+note (pre-existing clock-check artifact) -- see this file's top session note for exact counts.
+
+**2026-07-23, same day, immediate follow-up (Sonnet 5): `fetch_dataone_occurrences(gbif_snapshot_path=)` removed -- superseded by `stack_occurrences()`'s new dedup**
+
+Direct continuation of the entry immediately below: right after shipping
+`collapse_duplicate_occasions`, the user asked whether it makes any *existing* dedup
+redundant. Worked through both candidates explicitly rather than guessing:
+
+- **`gbifID` step (Session 140): NOT redundant, kept as-is.** It catches an exact-duplicate
+  GBIF record whose `scientificName`/`eventDate` happen to be `NA` -- `collapse_duplicate_
+  occasions` deliberately never drops a row with an incomplete key, so it would miss exactly
+  this case. The two steps cover different failure modes.
+- **`fetch_dataone_occurrences(gbif_snapshot_path=)`'s own dedup (`.load_gbif_hashes()`/
+  `.deduplicate_against_gbif()`): redundant, removed.** Same key formula
+  (`tolower(scientificName)|eventDate|round(lat,3)|round(lon,3)`), but for the realistic
+  combined pipeline (fetch GBIF + fetch DataONE + `stack_occurrences()`), the new step now
+  does the identical cross-check automatically on the in-memory data. Two things pushed this
+  past "overlapping" to "remove it": (1) grepped the whole monorepo -- **zero real callers**
+  ever passed `gbif_snapshot_path`, the same "no external users" bar already used to remove
+  `fetch_reference_sequences()`/`expand_consensus_candidates()`/`read_wildlife_insights_
+  output()`; (2) it was actually the *weaker* of the two mechanisms -- `.load_gbif_hashes()`/
+  `.deduplicate_against_gbif()` coalesced a missing name/date to `""` and missing lat/lon to
+  `0` before hashing, so two incomplete records could spuriously collide, the opposite of
+  `collapse_duplicate_occasions`'s deliberate never-match-on-incomplete-data design. The one
+  thing it covered that the new step can't -- deduping against an external GBIF snapshot file
+  not otherwise fetched live in the same session -- had no real caller exercising it either.
+
+User confirmed full removal (not merely documenting the overlap, and not fixing the coalesce
+gap in place, both offered as alternatives). Removed: `gbif_snapshot_path` param on
+`fetch_dataone_occurrences()`; `gbif_hashes` threaded through `.process_one_dataset()` /
+`.finalize_entity()` / `.attempt_odm_join()` (5 internal call sites across the file, including
+two recursive `.finalize_entity()` calls from the DwC-Archive-join and ODM-join branches);
+`.load_gbif_hashes()` and `.deduplicate_against_gbif()` themselves deleted entirely. Roxygen
+`@details`/`@examples` on `fetch_dataone_occurrences()` rewritten to point at
+`stack_occurrences()`'s `collapse_duplicate_occasions` instead of describing a mechanism that
+no longer exists. Now-unused `dplyr::coalesce`/`readr::read_tsv` `@importFrom` entries dropped
+from this file's own roxygen (confirmed via grep neither is called anywhere else in
+`dataone_standardize.R`; `read_tsv` is still used, namespaced, in `download_gbif_occurrences.R`
+-- unaffected). 11 internal-helper test call sites in `test-dataone_standardize.R` (all
+`.attempt_odm_join()` tests) had their now-invalid `gbif_hashes = NULL` argument removed; no
+dedicated tests existed for the two deleted helpers themselves, since they were never
+`@export`ed. Also fixed a now-stale cross-reference in `inst/PDF_PIPELINE_DATAONE_PARALLEL.md`
+that named the removed parameter directly.
+
+`devtools::test()` 0 failures (553, up from 549 -- net +4 despite removing 11 arguments, since
+none of those were separate expectations), `devtools::check()` 0 errors/0 warnings/1 note (the
+same pre-existing "unable to verify current time" clock-check artifact). Not yet re-verified
+against a real DataONE fetch (no real caller ever used the removed parameter, so no real
+workflow needed updating either).
+
+**2026-07-23, continued yet further (Sonnet 5): `stack_occurrences()` gains `collapse_duplicate_occasions` -- redundant citizen-science reports vs. TaxaExpect's occupancy semantics**
+
+Branch not tracked. Prompted by a user question about whether TaxaFetch already removes
+redundant occurrence records, which led to a design discussion rather than a quick lookup:
+the existing `gbifID` dedup (Session 140) only catches the *identical* GBIF record entering
+twice (an exact-ID match), and `fetch_dataone_occurrences(gbif_snapshot_path=)`'s content-based
+dedup only compares DataONE against a manually-supplied GBIF snapshot -- neither runs
+automatically when combining sources in `stack_occurrences()` itself, and neither catches the
+scenario the user actually raised: a rare-bird alert drawing dozens of independent eBird
+checklists for one individual, or a bioblitz producing a dozen independent iNaturalist uploads
+of one local population. Each of those is a genuinely distinct GBIF record (different
+`gbifID`, different `occurrenceID`, often a different underlying dataset/publisher entirely)
+-- so the existing dedup step is structurally blind to it -- but is not a distinct detection
+**occasion**.
+
+**The key reframe, from the user:** the right question for this ecosystem's occupancy-style
+priors isn't "how many people documented a species" but "was the species documented, per
+number of documentations" -- i.e. the unit of evidence should be the detection occasion
+(species x site x date), not the report. This is standard occupancy-modeling semantics
+(MacKenzie-style detection histories are built per site-visit, not per observer), and it
+reframes what looked like a weakness of a naive content-based dedup (it could wrongly collapse
+two people independently photographing two different individuals of a common species at the
+same rounded location on the same day) into the actual intent: occupancy modeling doesn't care
+about individual count, only presence, so collapsing multiple simultaneous reports of a
+detection down to one row is correct, not lossy.
+
+**Verified against the real downstream consumer before implementing, per the user's explicit
+request ("check TaxaExpect first, then implement it")** -- rather than assuming the occupancy
+framing was actually load-bearing anywhere: read `TaxaExpect::prepare_model_dataframe()`
+directly (`R/prepare_model_dataframe.R`). Confirmed `n_species` (the binomial numerator for a
+taxon at a site) and `n_total_at_site` (the shared effort denominator across every taxon at
+that site) are both literal `dplyr::n()` **raw record counts** -- not presence/absence
+indicators. This means the redundant-report problem is not hypothetical or only a modeling
+nicety: an uncollapsed burst of duplicate reports for one species inflates that species'
+`n_species` directly (and dilutes every other species' apparent frequency slightly, since
+`n_total_at_site` sums across all taxa at the site) -- a real, mechanistic distortion of
+TaxaExpect's actual model inputs, not just redundant bookkeeping.
+
+**Implementation** (`R/stack_occurrences.R`): new `collapse_duplicate_occasions` param,
+default `TRUE` (not opt-in -- confirmed with the user this is the correct default given what
+TaxaExpect actually consumes, not assumed). Collapses rows sharing an identical combination of
+`taxon_col` (default `"scientificName"`, case-insensitive/trimmed) x `date_col` (default
+`"eventDate"`, falling back to a constructed `"YYYY-MM-DD"` from `year`/`month`/`day` when
+`eventDate` is absent -- needed because `get_gbif_occurrences()`'s `"standard"` column set
+carries `year`/`month`/`day` but not `eventDate` itself) x `lat_col`/`lon_col` rounded to
+`coord_precision` (default `3`, reusing the exact key formula already validated in
+`fetch_dataone_occurrences(gbif_snapshot_path=)`'s cross-source dedup:
+`tolower(scientificName)|eventDate|round(lat,3)|round(lon,3)`). Confirmed via a source check
+that every current TaxaFetch source (GBIF, DataONE, BioTime, literature/PDF) already emits
+`scientificName`/`eventDate` under those exact names, so the defaults need no per-source
+override in practice.
+
+Deliberately content-based, not exact-ID like the `gbifID` step: a row missing any key
+component (no taxon, no date and no year/month/day, or either coordinate) is always kept,
+never dropped on incomplete information -- this can only produce false negatives (a real
+duplicate occasion missed, e.g. differing date precision across platforms), never false
+positives, since two records agreeing on species/date/location to ~100 m are extremely
+unlikely to be genuinely independent occasions. Silent no-op when `taxon_col`/`date_col`
+aren't present at all in the combined frame, matching the `gbifID` step's own established
+convention (no "column not found" message noise on every call) -- confirmed this doesn't
+regress any pre-existing test, since none of the existing fixtures carry an `eventDate`/
+`year`/`month`/`day` column at all. `collapse_duplicate_occasions = FALSE` is the escape
+hatch for a caller who deliberately wants raw report-level/reporting-volume data instead of
+TaxaExpect's occupancy framing.
+
+9 new tests in `test-stack_occurrences.R`: cross-platform collapse (different
+`occurrenceID`/dataset, same occasion, case-insensitive taxon match), genuinely distinct
+dates/species/locations never collapsed, rows missing a key component always kept, the
+`year`/`month`/`day` fallback (GBIF standard-column shape), `collapse_duplicate_occasions =
+FALSE` preserving every raw report, silent no-op with no taxon/date columns present, and
+custom `taxon_col`/`date_col` overrides. `devtools::test()` 0 failures (549, up from 539),
+`devtools::check()` 0 errors/0 warnings/1 note (pre-existing "unable to verify current time"
+clock-check artifact, unrelated). Cross-referenced in `TaxaFetch/R/get_gbif_occurrences.R`'s
+own `@details` (the GBIF-as-aggregator rationale added earlier this session) and
+`TaxaExpect::prepare_model_dataframe()` via `@seealso`, so a future reader lands on the
+mechanistic reason directly rather than just the mechanism. Not yet propagated to any real
+production workflow script (Mugu/PtConception, outside this monorepo) -- those already call
+`stack_occurrences()` with no override, so they pick up the new default behavior
+automatically the next time they're run with a reinstalled package, but this was not
+separately verified against real multi-platform GBIF data this session.
+
+**2026-07-23, continued (Sonnet 5): `filter_gbif_quality()` redesigned around a full removal audit trail**
+
+Branch not tracked. Direct continuation: after the `cc_cen()`/`cc_cap()`/`cc_inst()` work
+below, the user ran the real Mugu data and noticed no new output columns from the three new
+checks, asking whether they'd actually run. Answer: yes, but `filter_gbif_quality()` (like
+every filter before it) just silently drops rows -- no annotation, ever, for any of its nine
+steps. The user's follow-up reframed this as a real gap, not just a one-off question: seeing
+*which* records got removed and *why* would let a user re-assess/repair mistaken exclusions,
+double as raw material for reporting genuine GBIF data-quality problems back to GBIF, and
+make two users' differing filter arguments produce comparable results instead of silently
+different ones. Scoped initially to just the `CoordinateCleaner` step, then explicitly
+widened by the user to cover all nine filters.
+
+- **Design:** `attr(result, "removed_records")` -- always present (a data frame, possibly
+  zero rows, never `NULL`), one row per removed record, every original column preserved
+  (`gbifID`/`datasetKey` included, specifically for the "report it to GBIF" use case) plus a
+  new `filter_reason` column. Most steps get a single fixed reason string
+  (`"missing_coordinates"`, `"absent_occurrence"`, `"basis_of_record"`,
+  `"coordinate_uncertainty"`, `"coordinate_decimal_precision"`, `"edna_keyword"`,
+  `"no_species_id"`). Two steps get richer, per-row detail because the fixed string alone
+  would lose real information: the GBIF issue-code filter reports the SPECIFIC `bad_issues`
+  code that matched (`"flagged_issue_code:COORDINATE_OUT_OF_RANGE"`, not just that some code
+  did -- a record's `issues` field can contain codes outside `bad_issues` too, so this
+  disambiguates); the `CoordinateCleaner` step reports every check that flagged a given
+  record, joined with `;` (`"equal_coordinates;near_zero"`), since several checks run
+  against the same surviving data and a record can fail more than one at once -- verified
+  with a real constructed case, `(0.01, 0.01)`, which is simultaneously an equal-coordinate
+  record AND near `(0,0)`.
+- **Return contract unchanged:** `filter_gbif_quality()` still returns just the cleaned data
+  frame, exactly as every existing caller already expects -- `removed_records` is purely
+  additive via `attr()`, not a second return value, so nothing downstream needs to change to
+  keep working.
+- **Internals fully rewritten**, not just extended: every step now computes an explicit
+  `keep` logical mask instead of piping through `dplyr::filter()`, since capturing the
+  removed rows needs that mask directly. This incidentally fixed a real, pre-existing bug
+  found but deliberately left alone on 2026-07-20 (out of scope at the time): steps 7
+  (eDNA) and 8 (species-level requirement) never reassigned the `n_current` tracking
+  variable after removing rows, so the printed "Removed N records" message could overcount
+  if both steps removed rows in the same call (comparing against a stale pre-step-6 count).
+  The new mask-based counting (`sum(!keep)` at each step, computed fresh) has no equivalent
+  staleness to inherit -- fixed as a natural side effect of the rewrite, not a separate patch.
+- **A real bug caught in my own first draft, before it shipped:** the `CoordinateCleaner`
+  step's summary message split a single format string across multiple `sprintf()`
+  arguments -- exactly the "split-string sprintf" footgun already documented in this file's
+  own Known Footguns section (`sprintf()` does not concatenate multiple string arguments;
+  only the first is used as the format, the rest are silently treated as substitution
+  values). Caught by re-reading my own diff rather than trusting it compiled cleanly; fixed
+  with `paste0()` before `sprintf()`, matching every other multi-line message already in
+  this function.
+- **Testing:** all 50 pre-existing tests pass unchanged against the rewritten internals
+  (confirms behavioral equivalence, not just "it runs"). 5 new tests added for
+  `removed_records` itself: always-present-with-0-rows, a simple missing-coordinates case,
+  the specific-matched-issue-code case, the real double-simultaneous-`CoordinateCleaner`-
+  reason case, and original-column preservation (`gbifID`/`datasetKey`).
+- **Performance re-verified, not assumed, given the internals changed substantially:**
+  re-benchmarked at Mugu's real 132k-row scale, this time under a deliberately harsh
+  synthetic ~80%-removal stress test (far worse than real GBIF data -- the actual Mugu run
+  removed ~7.5%) -- 11.7s, up from the earlier zero-removal benchmark's 1.37s. A real,
+  expected cost (each step now subsets both kept and removed rows, not just kept once), not
+  a concern for a function that isn't in a hot loop.
+- `devtools::test()` 0 failures (506, up from 494), `devtools::check()` 0/0/0. Reinstalled
+  to `~/Library/R/4.0/library`.
+
+**2026-07-23 (Sonnet 5): deferred `cc_cen()`/`cc_cap()`/`cc_inst()` checks added; `check_geographic_outliers()` wired into PtConception**
+
+Branch not tracked. Two pieces of work, both direct continuations of the 2026-07-20 design/
+debugging thread above, picked up after the user confirmed both real bugs fixed and the
+mechanism working end to end on real Mugu data.
+
+- **`cc_cen()`/`cc_cap()`/`cc_inst()` added to `filter_gbif_quality()`** -- the "Tier 2"
+  checks deferred from the original design conversation specifically because they need
+  reference data (country/province centroids, national capitals, ~10,000 biodiversity
+  institution locations) rather than being trivially self-contained like `cc_equ`/`cc_zero`/
+  `cc_gbif`. Verified via direct source inspection (`deparse(body(cc_cen))` etc., not the
+  docs alone) that all three resolve their own `ref = NULL` default to `CoordinateCleaner`'s
+  bundled `countryref`/`institutions` data objects automatically -- no download, no network
+  call, matching `cc_outl()`'s own already-established self-contained behavior. Also
+  confirmed these three do NOT share `cc_outl()`'s record-count-triggered raster-
+  approximation risk (the bug fixed 2026-07-20): they're plain per-row point-in-buffer tests
+  against a fixed external reference set, with no species grouping or record-count branching
+  in their source at all. New params `exclude_country_centroid`/`exclude_capital`/
+  `exclude_institution`, each default `TRUE`, called with only `lon`/`lat`/`value` supplied
+  (same "don't hand-copy the package's own defaults" principle already applied to
+  `cc_equ`/`cc_zero`/`cc_gbif`) -- avoids re-running into the earlier problem where an
+  attempt to replicate `cc_zero()`'s/`cc_gbif()`'s exact buffer values hit conflicting
+  numbers across sources.
+- **Performance verified before shipping, not assumed:** benchmarked `filter_gbif_quality()`
+  with all six `CoordinateCleaner` checks against a synthetic ~122,000-row dataset (matching
+  Mugu's real scale) -- 1.37 seconds. Confirms the reference-data-cropped-to-bbox design
+  keeps cost independent of row count, same reasoning already used to conclude no analogous
+  batching bug exists here.
+- **New tests use REAL reference coordinates, not guessed ones**: each test pulls an actual
+  row directly from `CoordinateCleaner::countryref`/`institutions` at test-run time (e.g.
+  `CoordinateCleaner::countryref[CoordinateCleaner::countryref$type == "country", ][1, ]`)
+  rather than hand-typing a coordinate believed to be close enough -- guarantees correctness
+  regardless of the package's exact buffer defaults, the same lesson learned the hard way
+  with `cc_zero()`/`cc_gbif()` on 2026-07-20. All pre-existing fixtures (Southern California
+  test coordinates, none near a real centroid/capital/institution) still pass unchanged with
+  the new checks on by default -- confirms no coincidental overlap.
+- **`check_geographic_outliers()` wired into all three real, actively-maintained PtConception
+  workflow scripts** (outside this monorepo, not under git, at
+  `~/My Drive/Rscripts/eDNA/PtConception/`): `PtConceptionWorkflow_12S_single_site.R`,
+  `PtConceptionWorkflow_18S_2_single_site.R`, `PtConceptionWorkflow_12S_multi_site.R` -- the
+  identical pattern already validated end-to-end on both real Mugu workflows (new
+  `CACHE_DIR_GBIF_GLOBAL` constant, a `..._geo_outlier_check.rds` checkpoint using each
+  file's own existing `file.exists()` caching convention, outlier-status-based row removal
+  immediately after `filter_gbif_quality()`). All three PtConception scripts share the same
+  `OUT_DIR`, so `CACHE_DIR_GBIF_GLOBAL` is shared across them too -- safe, since
+  `fetch_gbif_occurrences()`'s own checkpoint filenames are signature-based (keyed on the
+  exact species-key set, not just the directory), and sharing lets sibling scripts targeting
+  the same study region reuse each other's global-species fetches. Two other PtConception
+  scripts checked and deliberately left untouched: `PtConceptionWorkflow_12S_test_genus_fix.R`
+  doesn't call `filter_gbif_quality()` at all (not relevant); `TaxaID_eDNA_Workflow_Template.R`
+  does, but reads as a template/scaffold script rather than one of the real per-study
+  production workflows -- flagged for the user's own call, not touched.
+- All three edited PtConception files parse cleanly (`parse(file = ...)`, no execution --
+  these require real GBIF/LLM API calls and would overwrite real checkpoints, so live-running
+  them is the user's call, same as the Mugu wiring). **Not yet run against real PtConception
+  data.**
+- `devtools::test()` 0 failures (494, up from 487), `devtools::check()` 0/0/0. Reinstalled to
+  `~/Library/R/4.0/library`.
 
 **2026-07-20, continued yet further (Sonnet 5): `fetch_gbif_occurrences()` checkpoint bug -- found via a real GBIF timeout**
 

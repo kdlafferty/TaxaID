@@ -1,6 +1,134 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-06-08 (Session 104 — TaxaFlag metadata updated: add_posthoc_assessment added; stale column names fixed)
+# Last updated: 2026-07-24, continued (Sonnet 5 -- graph EXPANSION, direct follow-up to the
+# metadata-drift sync pass below: the user asked for the 5 flagged-but-not-fixed capabilities
+# to actually be wired into workflow_graph.json as new nodes/edges, not just documented as a
+# gap. New node: site_table (per-observation spatial_group_id table). New edges:
+# match_to_site_table (match_df -> site_table, build_site_table()+group_observations_by_bbox());
+# taxa_to_occ_checked (taxa -> occurrences alternative with check_geographic_outliers());
+# dist_to_priors_by_group (distributions -> priors alternative, train_biodiversity_model_by_group()
+# for sampling_group_col-style detection-PROCESS grouping -- deliberately renamed from an
+# initial "dist_to_priors_multisite" draft after realizing mid-implementation that
+# sampling_group_col (detection-method grouping, e.g. fish vs birds vs phytoplankton) and
+# site_table's spatial_group_id (physical-site grouping) are two INDEPENDENT axes, not the
+# same mechanism -- conflating them would have produced a working-looking but conceptually
+# wrong edge); lik_prior_to_post_multisite (likelihoods+priors+site_table -> posteriors,
+# join_priors()'s multi-site data-frame `site` path + combine_multisite_priors() +
+# compute_posterior() -- the specific combine_multisite_priors() wiring the user named
+# directly). Existing edges extended in place (snippet + functions list, no topology change):
+# dist_to_priors and dist_to_priors_by_group both gain an optional generate_domestic_food_priors()
+# step (domestic/commensal-animal + food-species priors, gated by a boolean placeholder);
+# occ_to_std gains a flag_institution_candidates() classification step (gated on
+# institution_flag being present -- silently skipped otherwise); taxa_to_priors_wrapper and
+# match_to_consensus_bayes both gain a description caveat that neither wrapper covers
+# domestic-food-priors / multi-site combination (build_priors()/run_bayesian_pipeline() were
+# checked directly and confirmed NOT to call generate_domestic_food_priors()/
+# combine_multisite_priors() internally). A real, substantial pre-existing metadata-drift bug
+# was found and fixed along the way (not part of the plan, found while writing correct docs
+# for the new multi-site join_priors() call): metadata/TaxaAssign.json's join_priors entry
+# still described a completely different, non-existent signature
+# (likelihoods_df/priors_df/grid_id/main_habitat as flat top-level required args) -- the real
+# function takes likelihoods/taxaexpect_priors/site (site being a list OR a multi-site data
+# frame, with grid_id/main_habitat living INSIDE it) -- rewritten to match reality. New
+# metadata entries added: TaxaMatch.json (build_site_table, group_observations_by_bbox,
+# assign_spatial_group, join_event_site_metadata), TaxaExpect.json (prepare_model_dataframe,
+# train_biodiversity_model_by_group, generate_domestic_food_priors -- prepare_model_dataframe
+# had NO entry at all before this session despite being called in the pre-existing
+# dist_to_priors edge, a separate pre-existing gap left as-is beyond adding this one),
+# TaxaAssign.json (combine_multisite_priors), TaxaFetch.json (check_geographic_outliers),
+# TaxaHabitat.json (flag_institution_candidates). Live path-computation smoke test confirmed
+# every new node/edge is actually reachable (e.g. `sequences -> posteriors` now yields 30
+# paths, up from 6, spanning both the single-site and multi-site lik_prior_to_post variants
+# and both priors-building strategies) -- not just JSON-valid but graph-reachable. One
+# pre-existing test (test-graph.R's "multi-input edges produce full Bayesian path") needed a
+# one-line update to recognize dist_to_priors_by_group as a valid priors source alongside the
+# two it already knew about -- a legitimate consequence of a genuinely new alternative path,
+# not a design flaw. devtools::test() 0 failures (855, up from 367 -- the jump is expected
+# combinatorial growth in path-enumeration tests, not new test files), devtools::check()
+# 0 errors/0 warnings/0 notes. Also corrected the Workflow Graph section's long-stale
+# "20 nodes / 22 edges" claim (dated to Session 69's original build, never updated through
+# many later additions) to the current true count (28 nodes / 38 edges / 34 snippets).
+# Previous update, 2026-07-24 (Sonnet 5 -- metadata-drift assessment + sync pass, prompted by the
+# user asking how well TaxaWizard understands the many recent ecosystem changes. Cross-checked
+# workflow_graph.json/snippets/inst/metadata/*.json against every package's real current
+# exports (NAMESPACE) and the ecosystem CLAUDE.md's Recent Breaking Changes table. Found and
+# fixed: (1) BROKEN -- workflow_graph.json's reference_df node + taxa_to_refs edge, and
+# metadata/TaxaLikely.json, still named the fully-removed fetch_reference_sequences()
+# (deleted 2026-07-19, see TaxaID/CLAUDE.md) instead of fetch_ncbi_reference_sequences();
+# taxa_to_refs.R's own snippet CODE was already correct (called the right function), so
+# generated scripts using this path were fine -- only the graph/metadata registry was stale.
+# (2) BROKEN, silent-wrong-answer risk -- consensus_to_flagged.R's snippet and
+# metadata/TaxaFlag.json's flag_contaminant()/flag_handler() entries still assumed the
+# pre-2026-07-24 {contaminant_type}_risk/_score/_reason and handler_risk/_score/_reason column
+# names; TaxaFlag::flag_contaminant()/flag_handler() were renamed to a fixed
+# observation_validity/validity_flag/validity_reason schema THE SAME DAY (see TaxaFlag/
+# CLAUDE.md's top session note) -- contaminant_type now only changes the qualifier embedded in
+# validity_flag's VALUE, not any column name. A script generated from the old snippet would
+# have silently reported "0 high-risk contaminants" always (paste0(contaminant_type, "_risk")
+# resolves to a column that no longer exists, so the sum() over it is always 0) rather than
+# erroring -- fixed the snippet to read validity_flag directly. add_posthoc_assessment()'s
+# metadata entry was also substantially behind (missing domestic_taxa/domestic_prior_source,
+# absolute_fit_pvalue_col/weak_evidence_pvalue -> unsupported_rank, own_rank_confusion_risk_col/
+# high_confusion_risk_threshold -> confusion_risk_flag, all added across the 2026-07-19 through
+# 2026-07-23 sessions) -- updated to the current signature. (3) Real correctness gap, not
+# breaking -- TaxaFetch::stack_occurrences() stopped deduplicating entirely on 2026-07-23
+# (dedupe_occurrences() split out); taxa_to_occ.R's snippet (the one live caller of
+# filter_gbif_quality() in this package) had no dedup step at all even before that split.
+# TaxaFetch's own CLAUDE.md now says explicitly "call dedupe_occurrences() even for a single
+# GBIF source" -- added that call to the snippet + the taxa_to_occ edge's function list + a new
+# metadata/TaxaFetch.json entry for dedupe_occurrences(). Also refreshed metadata/TaxaFetch.json's
+# filter_gbif_quality()/stack_occurrences() entries, both badly stale (wrong max_coord_uncertainty
+# default, no mention of removed_records attr, flag_institution, or any CoordinateCleaner checks).
+# NOT done this session, flagged as open follow-up work instead of attempted blind: several real
+# functions/capabilities added since roughly Session 134-140 have NO graph representation at
+# all -- TaxaAssign::combine_multisite_priors() (required after join_priors() for the multi-site
+# "site" data-frame path, added Session 138, still entirely missing from the graph), the
+# site-table/spatial-grouping toolchain (TaxaMatch::build_site_table()/group_observations_by_bbox()/
+# join_event_site_metadata()/assign_spatial_group()), TaxaFetch::check_geographic_outliers(),
+# TaxaFetch::fetch_inat_occurrences() + TaxaExpect::generate_domestic_food_priors() (the whole
+# domestic/food-species-priors path, added 2026-07-23), and TaxaHabitat::flag_institution_candidates().
+# These aren't drift (nothing in the graph claims to cover them) -- they're capabilities the
+# conversational workflow builder simply can't route to yet, which needs new graph nodes/edges (a
+# design decision, not a sync fix) -- scoped but not attempted this session. The *_support ->
+# *_confusion_risk rename (2026-07-23) and the new winner_*_confusion_risk/winner_absolute_fit_pvalue
+# pass-through output columns (TaxaAssign::posterior_consensus()) were checked and found to have
+# NEVER been referenced anywhere in TaxaWizard's metadata (correctly -- optional/additive output
+# columns, not required inputs), so there was nothing to rename; skipped adding them as a
+# low-value completeness pass. devtools::test() 0 failures (367/367, unchanged -- no test asserts
+# on these specific snippet/metadata contents), devtools::check() run to confirm no regressions.
+# Previous update, 2026-07-23, continued (Sonnet 5 -- metadata/TaxaAssign.json's score_consensus
+# entry updated for TaxaAssign::score_consensus(rank_thresholds=)'s new required-arg behavior
+# (no default, errors if omitted -- see TaxaAssign/CLAUDE.md's matching note): the
+# rank_thresholds input flipped "required": false/"default": "c(species=98,...)" ->
+# "required": true, description rewritten to point at either supplying real thresholds or
+# deriving marker-specific ones via the new TaxaLikely::compute_rank_thresholds(), or passing
+# NULL explicitly to disable rank capping. inst/graph/snippets/match_to_consensus_score.R
+# needed no change -- it already always forwards a templated {{rank_thresholds}} value the
+# Phase 3 parameterize step fills in, so making the metadata entry required simply means the
+# interview always asks for it now rather than silently accepting an omission. Validated
+# inst/metadata/TaxaAssign.json still parses (jsonlite::fromJSON) after the edit.
+# devtools::test() 0 failures (70), devtools::check() 0/0/0.
+# Previous update, 2026-07-23 (Sonnet 5 -- repointed from TaxaMatch's removed
+# read_wildlife_insights_output() to the new read_speciesnet_output() (see
+# TaxaMatch/CLAUDE.md's 2026-07-23 note): workflow_graph.json's two "wildlife_insights"
+# function-list entries (image_to_match, image_refs_to_matrix edges) -> "speciesnet";
+# both edges' snippet files (image_to_match.R, image_refs_to_matrix.R) gained a
+# "speciesnet" switch branch calling TaxaMatch::read_speciesnet_output() in place of
+# the removed "wildlife_insights" branch; metadata/TaxaMatch.json's function entry
+# replaced wholesale with read_speciesnet_output()'s real signature;
+# metadata/TaxaLikely.json's build_image_reference() input description updated; and
+# prompts/phase_classify.md's input-type guidance re-worded. Found, but deliberately
+# NOT fixed (out of scope, flagged for the existing metadata-drift audit item instead):
+# every read_*() entry in metadata/TaxaMatch.json lists its first input as `"name":
+# "data"`, but the real functions (read_animl_output()/read_birdnet_output()/
+# read_inaturalist_cv_output()) all take `files` as their first argument -- `data`
+# isn't even a valid formal, so a script generated from these snippets' pre-existing
+# "animl"/"inaturalist_cv" branches would error with "unused argument" if run. The
+# new "speciesnet" branch added this session correctly uses `files =` (matching
+# read_speciesnet_output()'s real signature); the three pre-existing branches were
+# left as-is. See [[project_taxawizard_metadata_drift]] in the memory system.
+# devtools::test() 367/367 unaffected. Previous update, 2026-06-08 (Session 104 —
+# TaxaFlag metadata updated: add_posthoc_assessment added; stale column names fixed)
 
 ---
 
@@ -50,13 +178,14 @@ JSON (stored as full structured response in history).
 
 ### Workflow Graph
 
-`inst/graph/workflow_graph.json` defines:
-- **20 nodes**: 6 inputs, 9 intermediates, 5 outputs
-- **22 edges**: each maps to specific TaxaID functions + a code snippet file
+`inst/graph/workflow_graph.json` defines (2026-07-24 count, corrected from a long-stale
+"20 nodes / 22 edges" claim dating to Session 69's original build):
+- **28 nodes**: 10 inputs, 12 intermediates, 6 outputs
+- **38 edges**: each maps to specific TaxaID functions + a code snippet file
 - **Wrapper edges**: `build_priors()`, `run_llm_pipeline()`, `run_bayesian_pipeline()`
   flagged with `"wrapper": true`
 
-`inst/graph/snippets/*.R` -- 22 code snippet files with `{{placeholder}}` params
+`inst/graph/snippets/*.R` -- 34 code snippet files with `{{placeholder}}` params
 extracted from real battle-tested workflow scripts.
 
 Path computation handles multi-input edges (e.g., `match_to_consensus_bayes`

@@ -234,6 +234,70 @@ test_that("backbone_col is source_label for not-found rows", {
 })
 
 # ===========================================================================
+# Not-found rows are cleaned too (fallback-cleaning fix)
+# ===========================================================================
+
+# A compound hybrid-formula name, exactly the real shape found in a raw NCBI
+# reference-database accession label (e.g. citrus cultivar hybrids) -- not
+# found in the target backbone, so it takes the fallback path.
+.hybrid_match_df <- data.frame(
+  observation_id = "ESV_005",
+  taxon_name     = "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata",
+  genus          = "Citrus",
+  species        = "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata",
+  score_original = 91.0,
+  stringsAsFactors = FALSE
+)
+
+test_that("not-found taxon_col value is cleaned, not passed through raw", {
+  result <- suppressWarnings(convert_taxonomy_backbone(
+    .hybrid_match_df,
+    target_backbone_id = 11,
+    source_backbone_id = 4,
+    rank_system         = c("genus", "species"),
+    verify_fn           = .mock_verify_gbif
+  ))
+  expect_equal(result$taxon_name, "Citrus unshiu")
+  expect_equal(result$taxon_name_original,
+               "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata")
+})
+
+test_that("not-found rank column value is cleaned, not passed through raw", {
+  result <- suppressWarnings(convert_taxonomy_backbone(
+    .hybrid_match_df,
+    target_backbone_id = 11,
+    source_backbone_id = 4,
+    rank_system         = c("genus", "species"),
+    verify_fn           = .mock_verify_gbif
+  ))
+  expect_equal(result$species, "Citrus unshiu")
+})
+
+test_that("cleaning the fallback does not change which rows count as found", {
+  result <- suppressWarnings(convert_taxonomy_backbone(
+    .ncbi_match_df,
+    target_backbone_id = 11,
+    source_backbone_id = 4,
+    verify_fn          = .mock_verify_gbif
+  ))
+  # Same found/not-found split as before this fix -- only ESV_004 not found.
+  expect_equal(result$taxonomy_backbone,
+               c("backbone_11", "backbone_11", "backbone_11", "backbone_4"))
+})
+
+test_that("already-clean not-found values are unaffected (no-op case)", {
+  result <- suppressWarnings(convert_taxonomy_backbone(
+    .ncbi_match_df,
+    target_backbone_id = 11,
+    source_backbone_id = 4,
+    verify_fn          = .mock_verify_gbif
+  ))
+  nf_row <- result[result$observation_id == "ESV_004", ]
+  expect_equal(nf_row$taxon_name, "Nonexistent taxon")
+  expect_equal(nf_row$genus, "Nonexistent")
+})
+
+# ===========================================================================
 # update_taxon_name
 # ===========================================================================
 
@@ -267,6 +331,139 @@ test_that("update_taxon_name = TRUE does not add authority to genus-level taxon_
     verify_fn          = .mock_verify_genus_authority
   )
   expect_equal(result$taxon_name, "Atherinops")
+})
+
+test_that("taxon_name_rank is corrected on fallback when verify_fn supplies matched_rank", {
+  # Real motivating case (2026-07-25): an NCBI reference labelled
+  # "Inu sp. 1 sensu Shibukawa et al., 2020." (an informally-named goby)
+  # claims taxon_name_rank = "species", but GBIF only resolves it to the
+  # genus "Luciogobius" (a real synonym relationship -- see
+  # TaxaTools::verify_taxon_names()'s Synonym resolution section) -- no
+  # species-level target value exists, so taxon_name falls back to
+  # matched_name_clean. Before this fix, taxon_name_rank stayed "species"
+  # even though the reported name was now a bare genus -- exactly the
+  # mislabeling that let a downstream slash-name builder manufacture a
+  # fabricated pseudo-binomial ("Inu Inu") from it.
+  .mock_verify_genus_only_synonym <- function(name_list, backbone_id) {
+    row <- .make_verified_row(
+      "Inu sp. 1 sensu Shibukawa et al., 2020.",
+      "Luciogobius",
+      "Animalia|Chordata|Perciformes|Gobiidae|Luciogobius",
+      "kingdom|phylum|order|family|genus"
+    )
+    row$matched_rank <- "genus"
+    row$is_synonym   <- TRUE
+    row
+  }
+  df_inu <- data.frame(
+    observation_id  = "ESV_INU",
+    taxon_name      = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    taxon_name_rank = "species",
+    order           = "Gobiiformes",
+    family          = "Gobiidae",
+    genus           = "Inu",
+    species         = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    stringsAsFactors = FALSE
+  )
+  result <- suppressWarnings(convert_taxonomy_backbone(
+    df_inu,
+    target_backbone_id = 11,
+    source_backbone_id = 4,
+    update_taxon_name  = TRUE,
+    verify_fn           = .mock_verify_genus_only_synonym
+  ))
+  expect_equal(result$taxon_name, "Luciogobius")
+  expect_equal(result$taxon_name_rank, "genus")
+  # The species RANK COLUMN must also be cleared, not just taxon_name/
+  # taxon_name_rank -- a stale species = "Inu sp. 1 sensu..." left in place
+  # here is what let a real production workflow's own re-derivation step
+  # (a second TaxaTools::create_taxon_names() call) silently undo this fix;
+  # see the dedicated regression test below.
+  expect_true(is.na(result$species))
+  # genus was already correctly updated to "Luciogobius" by the pre-existing
+  # per-column rank mechanism (GBIF resolved a real target_genus) -- only
+  # species (no target available at that rank) needed the new fix.
+  expect_equal(result$genus, "Luciogobius")
+})
+
+test_that("a second create_taxon_names() call does not undo the rank correction", {
+  # Real regression, found only by testing against a real production
+  # workflow (Mugu_Match_from_BLAST.R), not by inspection: that script calls
+  # TaxaTools::create_taxon_names() a second time immediately after
+  # convert_taxonomy_backbone(), specifically to re-derive taxon_name from
+  # rank columns following backbone conversion. Before the species-column
+  # clearing above, that second call saw species still populated with the
+  # stale "Inu sp. 1 sensu..." value, applied "most specific non-NA rank
+  # wins", and silently reverted taxon_name/taxon_name_rank back to the
+  # wrong species-level label -- completely undoing the fix one call
+  # earlier. This test reproduces that exact two-call sequence.
+  .mock_verify_genus_only_synonym <- function(name_list, backbone_id) {
+    row <- .make_verified_row(
+      "Inu sp. 1 sensu Shibukawa et al., 2020.",
+      "Luciogobius",
+      "Animalia|Chordata|Perciformes|Gobiidae|Luciogobius",
+      "kingdom|phylum|order|family|genus"
+    )
+    row$matched_rank <- "genus"
+    row$is_synonym   <- TRUE
+    row
+  }
+  df_inu <- data.frame(
+    observation_id  = "ESV_INU",
+    taxon_name      = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    taxon_name_rank = "species",
+    order           = "Gobiiformes",
+    family          = "Gobiidae",
+    genus           = "Inu",
+    species         = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    stringsAsFactors = FALSE
+  )
+  result <- suppressWarnings(convert_taxonomy_backbone(
+    df_inu,
+    target_backbone_id = 11,
+    source_backbone_id = 4,
+    update_taxon_name  = TRUE,
+    verify_fn           = .mock_verify_genus_only_synonym
+  ))
+  result2 <- TaxaTools::create_taxon_names(
+    result, rank_system = c("order", "family", "genus", "species")
+  )
+  expect_equal(result2$taxon_name, "Luciogobius")
+  expect_equal(result2$taxon_name_rank, "genus")
+})
+
+test_that("taxon_name_rank is left unchanged on fallback when verify_fn has no matched_rank (backward compat)", {
+  # Same genus-only-resolution scenario as above, but using a verify_fn shaped
+  # like every pre-2026-07-25 mock in this file (no matched_rank column) --
+  # confirms old behavior (taxon_name updates, taxon_name_rank does not) is
+  # fully preserved for any verify_fn that predates the fix.
+  .mock_verify_genus_only_legacy <- function(name_list, backbone_id) {
+    .make_verified_row(
+      "Inu sp. 1 sensu Shibukawa et al., 2020.",
+      "Luciogobius",
+      "Animalia|Chordata|Perciformes|Gobiidae|Luciogobius",
+      "kingdom|phylum|order|family|genus"
+    )
+  }
+  df_inu <- data.frame(
+    observation_id  = "ESV_INU",
+    taxon_name      = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    taxon_name_rank = "species",
+    order           = "Gobiiformes",
+    family          = "Gobiidae",
+    genus           = "Inu",
+    species         = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    stringsAsFactors = FALSE
+  )
+  result <- suppressWarnings(convert_taxonomy_backbone(
+    df_inu,
+    target_backbone_id = 11,
+    source_backbone_id = 4,
+    update_taxon_name  = TRUE,
+    verify_fn           = .mock_verify_genus_only_legacy
+  ))
+  expect_equal(result$taxon_name, "Luciogobius")
+  expect_equal(result$taxon_name_rank, "species")  # unchanged, as before this fix
 })
 
 test_that("update_taxon_name = TRUE cleans authority from matched_name", {

@@ -1,5 +1,37 @@
 # Reentry prompt: domestic/commensal/food-species priors
 
+**FULLY IMPLEMENTED 2026-07-28 (Sonnet 5).** The 2026-07-23 implementation below was
+real but incomplete: it checked every fixed-list species unconditionally, with no
+connection to whether a taxon was ever actually detected. Re-implemented around a
+match-list-gated architecture (confirmed with the user 2026-07-24, built 2026-07-28):
+`generate_domestic_food_priors(match_list_taxa=, taxaexpect_priors=)` now gates all
+fixed-list channels to the intersection with real match-list taxa and drives an
+automatic open-discovery residual step (unreferenced match-list taxa restricted to
+`phylum %in% c("Streptophyta","Tracheophyta")`, deliberately NOT pre-restricted to any
+known list -- an earlier draft tried that and the user caught it as self-defeating). A
+4th fixed list, `known_cultivar_taxa` (216 species), and a much larger
+`food_species_taxa` default (449 species) were built from a real CSV cross-reference
+classification pass -- see `[[project_taxaflag_domestic_species_floor_note]]` (memory)
+for the full record, including two real bugs found and fixed along the way
+(`convert_taxonomy_backbone()`'s uncleaned fallback names; a possible iNaturalist
+cross-backbone homonym mismatch). All four real production workflows are rewired. Still
+NOT fixed: the `Bison bison`/`Bos taurus` cross-genus gap (needs its own design), and
+none of the four workflows has been run end to end against real data yet.
+
+**IMPLEMENTED 2026-07-23 (Sonnet 5), superseded by the above.** `TaxaFetch::fetch_inat_occurrences()` (new
+non-GBIF occurrence-count source, captive/quality_grade-aware) +
+`TaxaExpect::generate_domestic_food_priors()` (the three-channel design below, built
+as new functions rather than in-place edits to existing ones). Resolved the "single
+table vs separate lists" open question in favor of a `prior_source_type` categorical
+column on freshly generated rows. `domestic_animal_taxa`/`food_species_taxa` got
+drafted defaults (see the function's roxygen); `candidate_plant_taxa` deliberately has
+NO default vector, per this file's own CSV-overlap finding below -- a plant candidate
+only gets a prior row when a live iNat casual-grade check finds real local evidence.
+Does NOT fix the Bison bison/Bos taurus cross-genus gap described below -- that still
+needs its own design. See `[[project_taxaflag_domestic_species_floor_note]]` (memory)
+and `TaxaFetch/CLAUDE.md`/`TaxaExpect/CLAUDE.md`'s top session notes for the full record.
+The rest of this document is kept as the original design record.
+
 **From:** the same design conversation as
 `REENTRY_PROMPT_degraded_species_likelihood_thresholds.md` (2026-07-17-ish,
 grown out of the real PtConception 12S "obvious errors" edge-case review —

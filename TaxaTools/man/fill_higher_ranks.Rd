@@ -37,7 +37,12 @@ A tibble with one row per element of \code{taxon_names} (preserving
 duplicates and order), with columns:
 \describe{
 \item{\code{taxon_name}}{The original input name.}
-\item{\code{genus}}{First word of \code{taxon_name}.}
+\item{\code{genus}}{First word of \code{taxon_name}, EXCEPT when an API lookup
+resolved that genus to a backbone-flagged synonym at genus rank --
+in that case the backbone's own currently-accepted genus name is
+returned instead (2026-07-25; see \verb{@section Genus correction}
+below). Local-source-only lookups (no API call needed) always keep
+the locally-extracted genus unchanged.}
 \item{\code{family}}{Looked-up family, or \code{NA} if unresolved.}
 }
 A warning is issued for any names whose family could not be resolved after
@@ -69,6 +74,28 @@ a species absent from NCBI is still resolved provided its genus is present
 \strong{Column name conflicts in local sources} (e.g. a source has both \code{genus}
 and \code{Genus}) are handled by \code{tolower(names(...))} before joining.
 }
+\section{Genus correction (2026-07-25)}{
+
+Before this fix, \code{genus} was always the locally-extracted first word of
+\code{taxon_name}, even when the API lookup showed that genus was a taxonomic
+synonym under the queried backbone -- e.g. an informally-named reference
+("Inu sp. 1 sensu Shibukawa et al., 2020.") extracted \code{genus = "Inu"},
+and stayed \code{"Inu"} even though GBIF's own backbone resolves it to the
+currently-accepted genus \code{"Luciogobius"}. This mattered beyond cosmetics:
+\code{TaxaAssign::join_priors()} joins this function's \code{genus}/\code{family} output
+against a likelihood-side coarse-rank \code{taxon_name} (produced by
+\code{TaxaMatch::convert_taxonomy_backbone()}, which -- also as of 2026-07-25
+-- prefers the current name over a synonym) via an EXACT STRING match. If
+the two functions disagreed on which form to report for the same genus,
+that join silently failed and the observation lost its coarse-rank
+species expansion entirely, falling back to the dark-diversity floor
+instead of real occurrence-based priors. \code{genus} is now corrected to the
+backbone's resolved name whenever an API lookup found one cleanly at
+genus rank, keeping this function consistent with
+\code{convert_taxonomy_backbone()}. Verified backbone-general (both NCBI and
+GBIF checked live for the real "Inu" case) before shipping.
+}
+
 \examples{
 \dontrun{
 unreferenced_df <- fill_higher_ranks(

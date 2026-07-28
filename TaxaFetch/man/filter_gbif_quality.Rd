@@ -17,7 +17,10 @@ filter_gbif_quality(
   require_species = FALSE,
   exclude_equal_coords = TRUE,
   exclude_near_zero = TRUE,
-  exclude_near_gbif_hq = TRUE
+  exclude_near_gbif_hq = TRUE,
+  exclude_country_centroid = TRUE,
+  exclude_capital = TRUE,
+  flag_institution = TRUE
 )
 }
 \arguments{
@@ -100,38 +103,122 @@ near GBIF's Copenhagen headquarters are removed
 default buffer -- catches a known GBIF pathology where a failed
 geocode silently defaults to GBIF's own office coordinates. Skipped
 with a message if \code{CoordinateCleaner} is not installed.}
+
+\item{exclude_country_centroid}{Logical. If \code{TRUE} (default),
+records near a country or province centroid are removed
+(\code{CoordinateCleaner::cc_cen()}), using that function's own
+default buffer and bundled reference data (\code{test = "both"}) --
+catches coarse/administrative-level georeferencing that silently
+snapped to a centroid instead of a true locality. Skipped with a
+message if \code{CoordinateCleaner} is not installed.}
+
+\item{exclude_capital}{Logical. If \code{TRUE} (default), records near a
+national capital are removed (\code{CoordinateCleaner::cc_cap()}),
+using that function's own default buffer and bundled reference data --
+a related, wider-radius version of the same coarse-georeferencing
+pathology \code{exclude_country_centroid} targets. Skipped with a
+message if \code{CoordinateCleaner} is not installed.}
+
+\item{flag_institution}{Logical. If \code{TRUE} (default), records near a
+biodiversity institution (museum, zoo, herbarium, university) are
+\strong{flagged, not removed} (\code{CoordinateCleaner::cc_inst()}),
+using that function's own default buffer and bundled ~10,000-location
+reference table. Unlike every other \code{CoordinateCleaner} check in
+this function, proximity to an institution is not treated as an
+unambiguous error: field stations and marine labs are frequently sited
+exactly where good habitat is, so a nearby record may be a genuine wild
+observation, not an archived/captive specimen -- that judgment call
+needs a human (and often a map), not a silent drop. Adds six columns
+to the \strong{retained} data (see Value): \code{institution_flag},
+\code{institution_name}, \code{institution_type},
+\code{institution_dist_m}, \code{institution_lon}, \code{institution_lat}
+(the matched institution's own location, distinct from the record's own
+coordinates -- lets a downstream map-review tool plot both together).
+Skipped with a message if \code{CoordinateCleaner} is not installed.}
 }
 \value{
 The input data frame with low-quality rows removed. Column
 structure is unchanged. A summary message reports the number of
 records retained.
+
+Every removed record is also preserved, not just counted:
+\code{attr(result, "removed_records")} is a data frame with the same
+columns as the input plus \code{filter_reason}, one row per removed
+record (always present, possibly zero rows -- never \code{NULL}, so it
+can be inspected unconditionally). \code{filter_reason} identifies
+which filter removed the record: \code{"missing_coordinates"},
+\code{"absent_occurrence"}, \code{"basis_of_record"},
+\code{"flagged_issue_code:<code>"} (the specific \code{bad_issues} code
+that matched, not just that one did), \code{"coordinate_uncertainty"},
+\code{"coordinate_decimal_precision"}, \code{"edna_keyword"},
+\code{"no_species_id"}, or one or more of \code{"equal_coordinates"} /
+\code{"near_zero"} / \code{"near_gbif_hq"} / \code{"country_centroid"} /
+\code{"capital"} joined with \code{";"} when a \code{CoordinateCleaner}
+record was flagged by more than one of those five checks at once. A
+record is removed by exactly the filter that catches it first (filters
+run sequentially -- see Details), except within the
+\code{CoordinateCleaner} removal step itself, where several checks run
+against the same surviving data and any that flag a given record are
+all recorded together. Institution proximity is deliberately never a
+\code{filter_reason} value -- see the next paragraph.
+
+Separately, the \strong{retained} data frame itself gains six columns
+when \code{flag_institution = TRUE} (the default):
+\code{institution_flag} (logical), \code{institution_name},
+\code{institution_type}, \code{institution_dist_m} (metres, to the
+nearest match), and \code{institution_lon}/\code{institution_lat} (that
+institution's own coordinates). Unlike everything in
+\code{removed_records}, these rows are never removed -- proximity to a
+biodiversity institution is flagged
+for human review, not treated as an automatic error. See
+\code{flag_institution}'s own documentation below for why.
 }
 \description{
 Removes low-quality rows from a raw GBIF occurrence download. Applies up
-to nine sequential filters: coordinate completeness, basis of record,
-geospatial issue codes, coordinate uncertainty, coordinate decimal-place
-precision, eDNA/metabarcoding keyword removal, and three
-\code{CoordinateCleaner}-backed checks (identical lat/lon, near-zero
-coordinates, near GBIF headquarters). Each filter is applied only when
-the relevant column (or package) is present; absent columns or an
-unavailable optional package produce an informational message and are
-skipped rather than causing an error.
+to twelve sequential filters: coordinate completeness, absent occurrences,
+basis of record, geospatial issue codes, coordinate uncertainty,
+coordinate decimal-place precision, eDNA/metabarcoding keyword removal,
+species-level requirement, and six \code{CoordinateCleaner}-backed checks
+(identical lat/lon, near-zero coordinates, near GBIF headquarters, near a
+country/province centroid, near a national capital, near a biodiversity
+institution). Each filter is applied only when the relevant column (or
+package) is present; absent columns or an unavailable optional package
+produce an informational message and are skipped rather than causing an
+error.
 }
 \details{
 \strong{Filter order:} Coordinates -> absent occurrences -> basis of record
 -> issue codes -> coordinate uncertainty -> coordinate decimal-place
-precision -> eDNA -> species-level requirement -> CoordinateCleaner checks
-(equal coordinates / near-zero / near GBIF HQ).
+precision -> eDNA -> species-level requirement -> CoordinateCleaner removal
+checks (equal coordinates / near-zero / near GBIF HQ / near a country or
+province centroid / near a national capital) -> institution flagging
+(retained, not removed).
 Applying cheaper filters first reduces unnecessary string operations on
 large datasets.
 
+\strong{Why keep the removed records at all:} two users who ran this
+function with different arguments (a different \code{max_coord_uncertainty},
+a different \code{bad_issues} set, \code{CoordinateCleaner} installed or
+not) can otherwise get silently different results with no way to compare
+notes. \code{attr(result, "removed_records")} makes that difference
+inspectable rather than invisible, and doubles as a direct list of
+candidate real GBIF data-quality problems (mislabelled coordinates,
+institution/centroid-snapped georeferencing) worth reporting back to the
+original data provider -- every original column, including \code{gbifID}
+and \code{datasetKey}, is preserved on each removed record for exactly
+that purpose.
+
 \strong{CoordinateCleaner checks use that package's own defaults:} this
-function deliberately does not hard-code \code{cc_zero()}'s buffer or
-\code{cc_gbif()}'s HQ coordinates/buffer itself -- both are called
-directly with only \code{lon}/\code{lat}/\code{value} supplied, so any
-future correction to those defaults in \code{CoordinateCleaner} is
-inherited automatically rather than silently diverging from a
-hand-copied constant.
+function deliberately does not hard-code any of \code{cc_zero()}'s,
+\code{cc_gbif()}'s, \code{cc_cen()}'s, \code{cc_cap()}'s, or
+\code{cc_inst()}'s buffers, reference coordinates, or reference data
+itself -- all are called directly with only \code{lon}/\code{lat}/
+\code{value} supplied (\code{cc_cen()}/\code{cc_cap()}/\code{cc_inst()}
+resolve their own \code{ref = NULL} default to that package's bundled
+\code{countryref}/\code{institutions} data automatically, with no network
+call), so any future correction to those defaults in
+\code{CoordinateCleaner} is inherited automatically rather than silently
+diverging from a hand-copied constant.
 
 \strong{Verifying issue codes in your data:}
 \preformatted{
@@ -150,6 +237,10 @@ rounded while the other is precise.
 # Default filters (500 m uncertainty threshold, no decimal-place filter)
 clean <- filter_gbif_quality(gbif_raw)
 
+# See exactly what got removed and why
+removed <- attr(clean, "removed_records")
+table(removed$filter_reason)
+
 # Stricter: require at least 3 decimal places (~111 m) in at least one coord
 clean <- filter_gbif_quality(gbif_raw, max_coord_decimal_places = 3)
 
@@ -159,10 +250,17 @@ clean <- filter_gbif_quality(gbif_raw, max_coord_uncertainty = Inf)
 # Disable the CoordinateCleaner-backed checks (e.g. package not installed)
 clean <- filter_gbif_quality(
   gbif_raw,
-  exclude_equal_coords = FALSE,
-  exclude_near_zero    = FALSE,
-  exclude_near_gbif_hq = FALSE
+  exclude_equal_coords     = FALSE,
+  exclude_near_zero        = FALSE,
+  exclude_near_gbif_hq     = FALSE,
+  exclude_country_centroid = FALSE,
+  exclude_capital          = FALSE,
+  flag_institution         = FALSE
 )
+
+# Institution-flagged records are RETAINED, not removed -- review them
+clean[clean$institution_flag \%in\% TRUE,
+      c("species", "institution_name", "institution_type", "institution_dist_m")]
 
 # Compare thresholds
 nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = 500))

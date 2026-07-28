@@ -32,6 +32,23 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #' For positive controls, the interpretation is inverted: taxa from the
 #' positive control appearing in field samples indicate cross-contamination.
 #'
+#' @section Unified validity schema (2026-07-24):
+#' Output column NAMES are fixed (\code{observation_validity}/
+#' \code{validity_flag}/\code{validity_reason}) rather than parameterized by
+#' \code{contaminant_type} as in earlier versions (which produced
+#' \code{{contaminant_type}_score}/\code{_risk}/\code{_reason}) -- every
+#' TaxaFlag flag_*() mechanism (see also \code{\link{flag_handler}}) now
+#' shares this one schema, matching the "one column, type-qualified values"
+#' pattern \code{\link{add_posthoc_assessment}} already used. The
+#' \code{contaminant_type} string still appears, just in \code{validity_flag}'s
+#' VALUES (\code{"invalid_{contaminant_type}"}/\code{"questionable_
+#' {contaminant_type}"}) instead of in a column name. No change to the
+#' underlying score/threshold math -- this is a pure naming/schema change.
+#' \code{report_flags()} was updated to auto-detect this schema (in addition
+#' to the two earlier naming eras it already supported) by inspecting
+#' \code{validity_flag}'s values, not just the column's presence, since the
+#' column name alone no longer identifies which check produced it.
+#'
 #' @param df Data frame in long format with at minimum columns for sample
 #'   identification, taxon identification, and read counts.
 #' @param event_col Character. Column name identifying collection events
@@ -54,16 +71,20 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #'   both control and field calculations. Use to remove e.g. extraction controls
 #'   when analysing PCR controls, or vice versa. Default \code{NULL}.
 #' @param contaminant_type Character. Label for the type of contamination
-#'   being assessed. Controls output column names:
-#'   \code{{contaminant_type}_risk}, \code{{contaminant_type}_score},
-#'   \code{{contaminant_type}_reason}. Common values: \code{"lab_contaminant"},
+#'   being assessed, embedded in \code{validity_flag}'s values (e.g.
+#'   \code{"invalid_lab_contaminant"}) -- see \code{@return} below. Does NOT
+#'   change output column NAMES (2026-07-24 -- see Details); those are now
+#'   fixed (\code{observation_validity}/\code{validity_flag}/
+#'   \code{validity_reason}) so every TaxaFlag flag_*() mechanism shares one
+#'   schema. Common values: \code{"lab_contaminant"},
 #'   \code{"field_contaminant"}, \code{"positive_control"}. Default
 #'   \code{"lab_contaminant"}.
 #' @param score_thresholds Numeric vector of length 2. Thresholds for
-#'   converting scores to risk values. Scores at or below the first value
-#'   are \code{"high"} risk (probable contaminant); scores at or below the
-#'   second are \code{"moderate"} risk; higher scores are \code{"low"} risk
-#'   (likely a genuine detection). Default \code{c(0.5, 0.9)}.
+#'   converting \code{observation_validity} to \code{validity_flag}. Values
+#'   at or below the first are \code{"invalid_{contaminant_type}"} (probable
+#'   contaminant); at or below the second, \code{"questionable_{contaminant_type}"};
+#'   higher values are \code{"valid"} (likely a genuine detection). Default
+#'   \code{c(0.5, 0.9)}.
 #' @param prior_weight Numeric (default \code{20}). Empirical Bayes shrinkage
 #'   strength, in units of "equivalent reads" (Session 152 -- see
 #'   \code{.compute_contaminant_scores()}'s own documentation for why this
@@ -75,20 +96,23 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #'   disables shrinkage entirely, restoring the raw depth-weighted ratio.
 #' @param verbose Logical. Print summary messages. Default \code{TRUE}.
 #'
-#' @return A data frame with one row per taxon, sorted by score (most
-#'   likely contaminants first). Columns:
+#' @return A data frame with one row per taxon, sorted by
+#'   \code{observation_validity} (most likely contaminants first). Columns:
 #' \describe{
 #'   \item{\code{{taxon_col}}}{Taxon identifier (from input).}
-#'   \item{\code{flag_{contaminant_type}_score}}{Numeric 0--1. Empirical
+#'   \item{\code{observation_validity}}{Numeric 0--1. Empirical
 #'     Bayes-shrunk ratio of the depth-weighted field rate to the total
-#'     (field + control) rate. Higher = more likely a real detection.
-#'     Approaches, but does not reach, 1.0 for taxa absent from controls --
-#'     see Details. A ranked screening statistic, not a calibrated
-#'     probability.}
-#'   \item{\code{{contaminant_type}_risk}}{Character. \code{"high"} (probable
-#'     contaminant), \code{"moderate"} (uncertain), or \code{"low"} (likely
-#'     genuine detection). Higher = more contamination risk.}
-#'   \item{\code{flag_{contaminant_type}_reason}}{Character. Plain-English
+#'     (field + control) rate. Higher = more likely a real, genuine
+#'     detection; lower = more likely a contaminant. Approaches, but does
+#'     not reach, 1.0 for taxa absent from controls -- see Details. A ranked
+#'     screening statistic, not a calibrated probability.}
+#'   \item{\code{validity_flag}}{Character. \code{"invalid_{contaminant_type}"}
+#'     (probable contaminant), \code{"questionable_{contaminant_type}"}
+#'     (uncertain), or \code{"valid"} (likely genuine detection) -- see
+#'     \code{@section Unified validity schema} above. Fixed column name
+#'     across every TaxaFlag flag_*() mechanism; the specific type of concern
+#'     lives in the value, not the column name.}
+#'   \item{\code{validity_reason}}{Character. Plain-English
 #'     explanation including depth-weighted rates and control detection counts.}
 #'   \item{\code{mean_prop_field}}{Informational only, does not drive the
 #'     score (Session 151): unweighted mean of within-sample proportions in
@@ -234,17 +258,21 @@ flag_contaminant <- function(df,
     prior_weight = prior_weight
   )
 
-  # --- Apply thresholds to get risk levels ---
+  # --- Apply thresholds to get validity levels ---
   # score = shrunk field rate / (shrunk field rate + shrunk control rate);
-  # low score = probable contaminant = high risk
+  # low score = probable contaminant = "invalid_{contaminant_type}". Type
+  # qualifier embedded in the VALUE (2026-07-24), not the column name -- see
+  # @section Unified validity schema.
+  invalid_label      <- paste0("invalid_", contaminant_type)
+  questionable_label <- paste0("questionable_", contaminant_type)
   scores$flag <- dplyr::case_when(
-    scores$contaminant_score <= score_thresholds[1] ~ "high",
-    scores$contaminant_score <= score_thresholds[2] ~ "moderate",
-    TRUE ~ "low"
+    scores$contaminant_score <= score_thresholds[1] ~ invalid_label,
+    scores$contaminant_score <= score_thresholds[2] ~ questionable_label,
+    TRUE ~ "valid"
   )
 
   # --- Build reason strings ---
-  # Reports the depth-weighted rates that actually drive contaminant_score
+  # Reports the depth-weighted rates that actually drive observation_validity
   # (Session 151), not the old unweighted mean_prop_field/mean_prop_control
   # (still returned, but purely informational -- see roxygen).
   scores$reason <- sprintf(
@@ -255,9 +283,10 @@ flag_contaminant <- function(df,
   )
 
   # --- Build per-taxon result ---
-  flag_col    <- paste0(contaminant_type, "_risk")
-  score_col   <- paste0(contaminant_type, "_score")
-  reason_col  <- paste0(contaminant_type, "_reason")
+  # Fixed column names (2026-07-24) -- see @section Unified validity schema.
+  flag_col    <- "validity_flag"
+  score_col   <- "observation_validity"
+  reason_col  <- "validity_reason"
 
   result <- data.frame(
     taxon            = scores$taxon,
@@ -285,11 +314,11 @@ flag_contaminant <- function(df,
   rownames(result) <- NULL
 
   if (verbose) {
-    n_high     <- sum(result[[flag_col]] == "high")
-    n_moderate <- sum(result[[flag_col]] == "moderate")
-    n_low      <- sum(result[[flag_col]] == "low")
-    message(sprintf("  %d taxa scored: %d high risk, %d moderate risk, %d low risk.",
-                    nrow(result), n_high, n_moderate, n_low))
+    n_invalid      <- sum(result[[flag_col]] == invalid_label)
+    n_questionable <- sum(result[[flag_col]] == questionable_label)
+    n_valid        <- sum(result[[flag_col]] == "valid")
+    message(sprintf("  %d taxa scored: %d invalid (%s), %d questionable, %d valid.",
+                    nrow(result), n_invalid, contaminant_type, n_questionable, n_valid))
   }
 
   result

@@ -1,6 +1,81 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-06 (Session 142 — barcode_primer_defaults gains coi-leray
+# Last updated: 2026-07-25, later same day (Sonnet 5 -- fill_higher_ranks() now corrects
+# `genus` (not just `family`) to the backbone's resolved name when an API lookup shows the
+# queried genus is a taxonomic synonym at genus rank, closing a real consistency gap the
+# user asked to double-check after the same-day verify_taxon_names()/convert_taxonomy_
+# backbone() fix (see this file's own note directly below and TaxaMatch/CLAUDE.md's
+# matching note). Before this fix, fill_higher_ranks() always returned genus as the
+# locally-extracted first word of the input name, UNCHANGED even when the API response
+# showed it was a synonym -- live-confirmed: querying the real "Inu" case under GBIF
+# returned genus="Inu"/family="Gobiidae" even though verify_taxon_names("Inu",
+# backbone_id=11) directly returns matched_name="Luciogobius". This wasn't just cosmetic:
+# traced a real consuming call site, TaxaAssign::join_priors()'s .expand_coarse_rank_rows()
+# (R/join_priors.R ~line 137-139), which does an EXACT STRING match between a likelihood-
+# side coarse taxon_name (now correctly "Luciogobius" post the convert_taxonomy_backbone()
+# fix) and expansion_taxonomy's genus column (built via fill_higher_ranks() on
+# taxaexpect_priors$taxon_name) -- before today's TaxaMatch fix, both sides agreed on the
+# synonym form by coincidence; after it, only one side was corrected, so the join would
+# have started silently failing for any taxon in this situation, losing real occurrence-
+# based coarse-rank expansion and falling back to the dark-diversity floor instead.
+# Fixed by having .lookup_family_from_backbone() (R/fill_higher_ranks.R) return a new
+# resolved_genus field alongside the existing query-genus join key (genus stays the LOOKUP
+# key so the left_join() back into `work` still works; resolved_genus is coalesced into
+# work$genus only where a match was actually found, keeping genus correction and family
+# resolution in lockstep) -- substitution only applied when matched_rank == "genus"
+# specifically (defensive: never trust a resolved name at a coarser rank as a genus
+# substitution). Gracefully skipped (genus passes through unchanged) when verify_fn's
+# response has no matched_rank column, same backward-compat contract as the
+# convert_taxonomy_backbone() fix. 3 new tests (genus corrected for a real synonym case;
+# genus unchanged with a pre-2026-07-25-shaped mock response; genus unchanged when
+# matched_rank is present but not "genus"). Live-reverified against the real Inu case
+# post-reinstall: fill_higher_ranks() now correctly returns genus="Luciogobius" under
+# GBIF, matching convert_taxonomy_backbone()'s own output for the same taxon.
+# devtools::test() 0 failures (829, up from 824), devtools::check() 0/0/0. Reinstalled to
+# ~/Library/R/4.0/library. escalate_taxonomic_rank() was also checked and found to have NO
+# analogous issue -- it never reads matched_name at all, and walks classification_path by
+# NAMED rank rather than trusting current_rank to index a specific position, so a
+# rank/synonym mismatch degrades to an honest NA rather than a wrong value; no changes
+# needed there.
+# Previous update, 2026-07-25 (Sonnet 5 -- verify_taxon_names() gains matched_rank/is_synonym
+# columns and internally corrects two real name-quality bugs, prompted by a real "Inu Inu"
+# fabricated-pseudo-binomial artifact the user found in real Mugu output (see TaxaFlag/
+# TaxaAssign/TaxaMatch's own same-day session notes for the full debugging chain that led
+# here). Root cause traced precisely: an NCBI reference sequence labelled "Inu sp. 1 sensu
+# Shibukawa et al., 2020." (an informally-named goby) resolves against GBIF to genus
+# "Luciogobius" -- GBIF's own backbone considers "Inu" Snyder 1909 a taxonomic SYNONYM of
+# "Luciogobius" Gill 1859 -- with no species-level entry to fill. Two real, separate bugs
+# in this function fed that: (1) matched_name was read from GNVerifier's matchedName field
+# (the synonym form, "Inu") rather than currentName (the accepted form, "Luciogobius") even
+# when the API's own isSynonym flag said to prefer it; (2) the local strip_authority()
+# regex (genus + AT MOST one lowercase word) silently truncated any subspecies-rank match
+# to a binomial -- confirmed live: "Delphinus delphis ponticus Barabash, 1935" ->
+# "Delphinus delphis", dropping "ponticus" entirely. Fixed by switching from
+# strip_authority(matchedName) to GNVerifier's own matchedCanonicalSimple/
+# currentCanonicalSimple fields directly (already authority-free, already rank-complete,
+# no local regex needed) and preferring the current field when isSynonym is TRUE. New
+# matched_rank column (derived via new .last_classification_rank() helper, shared by both
+# the GNVerifier-API path and the NCBI-direct-bypass path) reports the rank the match
+# ACTUALLY resolved at -- fixes the second half of the Inu bug (TaxaMatch::
+# convert_taxonomy_backbone() had no way to know a match came back genus-only rather than
+# species-level, so it kept reporting a stale "species" rank label on a bare genus name;
+# see that package's own same-day note for the consuming-side fix). Verified backbone-
+# general, not GBIF-specific, before shipping: live-queried the SAME real query across 5
+# backbones (Catalogue of Life, ITIS, NCBI, WoRMS, GBIF) -- matched_rank/matchedCardinality
+# are normalised identically by GNVerifier across all of them; isSynonym/currentName are
+# populated identically in MECHANISM but differ in real, substantive DATA (NCBI's own
+# taxonomy does not consider "Inu" a synonym at all, a genuine cross-authority disagreement,
+# not a bug) -- confirming the fix is built entirely from already-backbone-scoped GNVerifier
+# fields with no GBIF-specific code anywhere. backbone_id=4 (NCBI) never reaches this API
+# path at all (uses .verify_via_ncbi() instead, which has no synonym data to draw on) --
+# its own matched_rank is populated identically via the shared helper regardless. 6 new
+# live/online tests added (this file's existing established convention -- no offline mock
+# infrastructure exists here), including a direct reproduction of the real Inu case and the
+# real subspecies-truncation case. devtools::test() 824/824 (up from ~818), devtools::check()
+# 0/0/0. Reinstalled to ~/Library/R/4.0/library. See TaxaMatch/CLAUDE.md's same-day note for
+# the convert_taxonomy_backbone() consuming-side fix, and TaxaID/CLAUDE.md's Recent Breaking
+# Changes table for the full cross-package record.
+# Previous update, 2026-07-06 (Session 142 — barcode_primer_defaults gains coi-leray
 # (mlCOIintF/dgHCO2198, Leray et al. 2013 / Meyer 2003), the actual eDNA-relevant COI
 # mini-barcode -- pairs Leray's own inosine-free forward primer with Meyer's inosine-free
 # degenerate reverse primer (not Geller et al. 2013's jgHCO2198, which uses inosine and has
@@ -58,7 +133,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `verify_taxon_names()` | Verify names against a taxonomic backbone via Global Names Verifier API; batched; returns `user_supplied_name`, `matched_name`, `classification_path`, `classification_ranks`, `score`, `verified`. `matched_name` contains genus + epithet only — authority strings stripped at parse time. | Complete | R/verify_taxon_names.R |
+| `verify_taxon_names()` | Verify names against a taxonomic backbone via Global Names Verifier API; batched; returns `user_supplied_name`, `matched_name`, `matched_rank`, `is_synonym`, `classification_path`, `classification_ranks`, `score`, `verified`. **2026-07-25**: `matched_name` now sourced from GNVerifier's own `matchedCanonicalSimple`/`currentCanonicalSimple` fields (authority-free, rank-complete) rather than a local regex — preserves a full trinomial at subspecies rank (previously silently truncated to a binomial) and prefers the backbone's currently-accepted name over a synonym when `is_synonym = TRUE`. New `matched_rank` reports the rank the match actually resolved at (may be coarser than the query implied — e.g. a species-level query resolving only to genus). Backbone-general, not GBIF-specific: `matched_rank` is normalised identically by GNVerifier across every backbone; `is_synonym`/`currentName` reflect each backbone's own real taxonomic opinion (verified: NCBI and GBIF can genuinely disagree on whether a name is a synonym). `backbone_id = 4` (NCBI) bypasses this API entirely (`.verify_via_ncbi()`) and never gets synonym data, but still gets `matched_rank`. | Complete | R/verify_taxon_names.R |
 | `create_taxon_names()` | Add `taxon_name` and `taxon_name_rank` columns from separate rank columns; case-insensitive column matching; most-specific non-NA rank wins | Complete | R/create_taxon_names.R |
 | `clean_taxon_names()` | Normalise, deduplicate, and filter a character vector of taxon names; removes NA, non-capital-initial, abbreviations, bracket artefacts; converts underscore-encoded binomials (`Genus_epithet`) to space-separated (Jonah Ventures / SILVA pipelines) | Complete | R/clean_taxon_names.R |
 | `change_backbone()` | Post-process `verify_taxon_names()` output; rename source/translated name columns; parse pipe-delimited classification into wide rank columns | Complete | R/change_backbone.R |
@@ -125,7 +200,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `common_to_scientific()` | Convert a character vector of common names to scientific names via LLM, with optional backbone verification via `verify_taxon_names()`. Params: `taxonomic_group`, `location`, `verify`, `backbone_id`, `llm_fn`. Returns data frame with `common_name`, `scientific_name`, `verified`, `matched_name`. | Complete | R/common_names.R |
-| `fill_higher_ranks()` | Given a character vector of taxon names (typically species binomials), extract `genus` and look up `family` via a priority chain: (1) local data frames (`local_sources`), (2) primary backbone via `verify_taxon_names()` at genus level (`backbone_id = 4L`), (3) fallback backbone (`fallback_backbone_id = 11L`). Returns tibble with `taxon_name`, `genus`, `family`; warns for unresolved taxa. Internal helpers: `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_classified_rank()`. | Complete | R/fill_higher_ranks.R |
+| `fill_higher_ranks()` | Given a character vector of taxon names (typically species binomials), extract `genus` and look up `family` via a priority chain: (1) local data frames (`local_sources`), (2) primary backbone via `verify_taxon_names()` at genus level (`backbone_id = 4L`), (3) fallback backbone (`fallback_backbone_id = 11L`). Returns tibble with `taxon_name`, `genus`, `family`; warns for unresolved taxa. **2026-07-25**: `genus` is now corrected to the backbone's resolved name (not just the locally-extracted query genus) whenever an API lookup shows it's a taxonomic synonym at genus rank -- keeps this function consistent with `convert_taxonomy_backbone()`'s current-name preference, closing a real gap that silently broke `TaxaAssign::join_priors()`'s exact-string genus/family match. Backward compatible when `verify_fn`'s response lacks `matched_rank`. Internal helpers: `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_classified_rank()`. | Complete | R/fill_higher_ranks.R |
 | `escalate_taxonomic_rank()` | The escalation-ladder function (Session 137 reentry plan, Phase 1): given `taxon_name` at `current_rank`, resolves its full classification via `verify_taxon_names()` and returns the name at the next coarser rank in `rank_system` (default `standard_ranks`) -- e.g. broadening a genus with no reference sequences/occurrence records to its family. Walks up to `max_levels` (default `2L`) rank levels within one call if an intermediate rank is itself absent from the classification path (e.g. genus straight to order when family is missing), so callers get one escalation step per retry-loop iteration rather than a fixed single-rank hop. Same primary/fallback backbone pattern as `fill_higher_ranks()` (`backbone_id = 4L` NCBI, `fallback_backbone_id = 11L` GBIF). Returns `list(taxon_name, rank)`, both `NA` if already at the coarsest rank or nothing resolves within `max_levels`. Only walks the hierarchy -- has no notion of whether a fetch at any rank returned data; that's the caller's retry loop. Live-verified against real NCBI data for the PtConception 12S validation cases (*Rhacochilus*, *Embiotoca caryi* -> family `Embiotocidae`) and the bobcat-photo case (*Lynx* -> family `Felidae`). | Complete | R/escalate_taxonomic_rank.R |
 | `parse_classification_path()` | Extract one rank value from the pipe-delimited `classification_path` and `classification_ranks` columns returned by `verify_taxon_names()`. Params: `path`, `ranks`, `target_rank`. Returns `NA_character_` if rank absent. Thin wrapper around `.extract_classified_rank()`; use with `mapply()` for column-level parsing. | Complete | R/fill_higher_ranks.R |
 | `scientific_to_common()` | Convert scientific names to English common names. Backbone sources: GBIF (backbone_id=11, via rgbif) or ITIS (backbone_id=3, via taxize). LLM fallback when backbone returns nothing or backbone_id=NULL. `location` param biases LLM toward regionally appropriate names. Batches LLM calls (20/batch). Returns `scientific_name`, `common_name`, `common_name_alternatives` (semicolon-delimited), `source` ("gbif"/"itis"/"llm"/"none"), `backbone_id`. | Complete | R/common_names.R |

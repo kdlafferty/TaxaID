@@ -12,11 +12,12 @@
         {"name": "control_types", "type": "character_vector", "required": false, "description": "Values in sample_type_col that identify controls"},
         {"name": "event_col", "type": "character", "required": false, "default": "event_id", "description": "Column identifying L1 collection events (not observation_id)"},
         {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Column with taxon names"},
-        {"name": "reads_col", "type": "character", "required": false, "description": "Column with read counts for proportion-based scoring"},
-        {"name": "contaminant_type", "type": "character", "required": false, "default": "lab", "description": "'lab', 'field', or 'positive' — controls output column prefix ({type}_risk, {type}_score, {type}_reason)"},
-        {"name": "score_thresholds", "type": "numeric", "required": false, "default": "c(0.5, 0.9)", "description": "Two-element vector defining moderate/low risk boundaries"}
+        {"name": "reads_col", "type": "character", "required": false, "default": "n_reads", "description": "Column with read counts; drives depth-weighted field_rate/control_rate"},
+        {"name": "contaminant_type", "type": "character", "required": false, "default": "lab_contaminant", "description": "2026-07-24: no longer changes output COLUMN NAMES (those are now fixed: observation_validity/validity_flag/validity_reason). Only changes the qualifier embedded in validity_flag's value, e.g. 'invalid_lab_contaminant' vs 'invalid_positive_control'"},
+        {"name": "score_thresholds", "type": "numeric", "required": false, "default": "c(0.5, 0.9)", "description": "Two-element vector defining invalid/questionable/valid boundaries on observation_validity"},
+        {"name": "prior_weight", "type": "numeric", "required": false, "default": 20, "description": "Empirical-Bayes shrinkage weight toward 0.5, in read-equivalent units (Session 152 -- was sample-count units through Session 151)"}
       ],
-      "output": {"type": "flagged_df", "description": "Per-taxon summary with {type}_risk (high/moderate/low), {type}_score (0-1; higher = more likely genuine), and {type}_reason columns"},
+      "output": {"type": "flagged_df", "description": "Per-taxon summary with fixed columns observation_validity (numeric 0-1, high = genuine), validity_flag ('valid' / 'questionable_{contaminant_type}' / 'invalid_{contaminant_type}'), validity_reason, plus informational field_rate/control_rate/n_reads_total/n_field_present/n_controls_present/n_controls_total. contaminant_type's value is embedded in validity_flag, not the column name."},
       "scaling": "linear",
       "scaling_note": "Fast; proportion-based comparison"
     },
@@ -29,9 +30,12 @@
         {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon column"},
         {"name": "group_col", "type": "character", "required": false, "description": "Column for grouping (e.g., camera station); min/max computed per group"},
         {"name": "interval_minutes", "type": "numeric", "required": false, "default": 30, "description": "Minutes before/after session edges to flag"},
-        {"name": "handler_taxa", "type": "character_vector", "required": false, "description": "Taxa indicating handler presence (default: Homo sapiens)"}
+        {"name": "handler_taxa", "type": "character_vector", "required": false, "description": "Taxa indicating handler presence (default: Homo sapiens)"},
+        {"name": "station_metadata", "type": "data.frame", "required": false, "default": null, "description": "Optional per-group deploy_time/retrieve_time table; anchors edges on real deploy/retrieve times instead of the detection data's own min/max. Requires group_col"},
+        {"name": "deploy_col", "type": "character", "required": false, "default": "deploy_time", "description": "Column in station_metadata with deployment timestamp"},
+        {"name": "retrieve_col", "type": "character", "required": false, "default": "retrieve_time", "description": "Column in station_metadata with retrieval timestamp"}
       ],
-      "output": {"type": "flagged_df", "description": "Input with handler_risk, handler_score, and handler_reason columns added"},
+      "output": {"type": "flagged_df", "description": "Input with fixed columns observation_validity (numeric 0-1, high = genuine), validity_flag ('valid'/'questionable_handling'/'invalid_handling'), validity_reason, edge_anchor_source ('station_metadata' or 'detection_data_fallback') added. Same column names as flag_contaminant() (2026-07-24 unified schema)"},
       "scaling": "linear",
       "scaling_note": "Fast; temporal proximity check"
     },
@@ -57,15 +61,19 @@
     },
     {
       "name": "add_posthoc_assessment",
-      "description": "Classify each consensus assignment by prior tier × sequence-match evidence into a single posthoc_assessment column. Requires winner_likelihood from posterior_consensus() and tiers from priors_combined. Run before review_assignments() to identify which rows need expert review.",
+      "description": "Classify each consensus assignment by prior tier × sequence-match evidence into a single posthoc_assessment column, plus two separate additive flag columns. Requires winner_likelihood from posterior_consensus() and tiers from priors_combined. Run before review_assignments() to identify which rows need expert review.",
       "inputs": [
         {"name": "consensus_df", "type": "consensus_df", "required": true, "description": "Output of posterior_consensus() with winner_likelihood, consensus_taxon, and consensus_rank columns"},
         {"name": "tiers", "type": "data.frame", "required": true, "description": "Taxon-tier lookup; typically bind_rows(priors_observed, priors_undetected) from TaxaExpect; tier3_undetected rows come from generate_undetected_diversity()"},
         {"name": "winner_likelihood_col", "type": "character", "required": false, "default": "winner_likelihood", "description": "Column holding the winner's ratio-normalised likelihood; pass 'winner_likelihood_cov' for coverage-adjusted value"},
         {"name": "likelihood_threshold", "type": "numeric", "required": false, "default": 0.5, "description": "Threshold for 'supported' vs 'limited' evidence; below this, winner had < half the sequence density of the best hypothesis"},
-        {"name": "finest_rank", "type": "character", "required": false, "default": "species", "description": "Rank at which tier lookups are valid; rows with coarser or NA rank receive vague_rank"}
+        {"name": "finest_rank", "type": "character", "required": false, "default": "species", "description": "Rank at which tier lookups are valid; rows with coarser or NA rank receive vague_rank"},
+        {"name": "domestic_taxa", "type": "character_vector", "required": false, "default": null, "description": "Optional taxa known domestic/synanthropic (occurrence-database floor-prior artifact); relabels a strong-likelihood + database-driven-low-tier call as domestic_prior_caveat instead of unprecedented/unexpected"},
+        {"name": "domestic_prior_source", "type": "character", "required": false, "default": "wild", "description": "'wild' or 'augmented' — whether the tier lookup already accounts for domestic taxa"},
+        {"name": "own_rank_confusion_risk_col", "type": "character", "required": false, "default": "winner_own_rank_confusion_risk", "description": "Column with the winner's own-rank confusion-risk value (from TaxaLikely::evaluate_likelihoods()/posterior_consensus() pass-through; renamed from *_support 2026-07-23, HIGH = more confusable = weaker evidence)"},
+        {"name": "high_confusion_risk_threshold", "type": "numeric", "required": false, "default": 0.5, "description": "Above this, confusion_risk_flag is set to 'high_confusion_risk' (separate additive column, never overrides posthoc_assessment)"}
       ],
-      "output": {"type": "consensus_df", "description": "Input with posthoc_assessment column appended. Values: sensible (tier1+supported), limited_evidence (tier1+limited), unexpected (tier2+supported), suspect (tier2+limited OR not-in-tiers+limited), unprecedented (tier3+supported), vague_rank (non-species rank), modeled (NA likelihood)"},
+      "output": {"type": "consensus_df", "description": "Input with posthoc_assessment column appended. Values: sensible (tier1+supported), limited_evidence (tier1+limited), unexpected (tier2+supported), suspect (tier2+limited OR not-in-tiers+limited), unprecedented (tier3+supported), vague_rank (non-species rank), modeled (NA likelihood), domestic_prior_caveat (domestic_taxa override). Also adds separate, additive confusion_risk_flag ('high_confusion_risk'/'low_confusion_risk'/NA) -- never folded into posthoc_assessment itself"},
       "scaling": "linear",
       "scaling_note": "Fast; vectorised lookup — runs on full consensus_df before filtering for review"
     }

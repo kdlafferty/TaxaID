@@ -26,8 +26,11 @@ install.packages("shiny")                  # optional, for browser/viewer mode
 devtools::install("path/to/TaxaWizard")
 ```
 
-Requires an LLM API key (Anthropic by default). See the TaxaTools [API
-Setup vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
+Requires an Application Programming Interface (API) key for an LLM
+provider (Anthropic Claude -- Anthropic PBC, San Francisco, California
+-- by default; Google Gemini, OpenAI, or local Ollama are also
+supported via TaxaTools). See the TaxaTools [API Setup
+vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
 ## Quick Start
 
@@ -47,19 +50,27 @@ The assistant asks about your data type, available inputs, and analysis
 goals, then generates a script tailored to your path through the TaxaID
 pipeline. Supported workflow paths include:
 
--   **eDNA / metabarcoding** — DADA2 seqtab or FASTA → BLAST →
-    likelihood model → Bayesian or LLM assignment
--   **Acoustic** — BirdNET-Analyzer CSV output → match data; or
-    Xeno-canto reference recordings + BirdNET → acoustic likelihood
-    model
--   **Camera trap / image** — Animl, iNaturalist CV, or Wildlife Insights
-    output → match data; or labeled reference images → image likelihood
-    model
+-   **eDNA / metabarcoding** — DADA2 seqtab or FASTA → BLAST (Basic
+    Local Alignment Search Tool; Altschul et al. 1990, hosted by NCBI,
+    the National Center for Biotechnology Information, U.S. National
+    Library of Medicine, National Institutes of Health, Bethesda,
+    Maryland) → likelihood model → Bayesian or LLM assignment
+-   **Acoustic** — BirdNET-Analyzer (Cornell Lab of Ornithology,
+    Cornell University, Ithaca, New York) CSV output → match data; or
+    Xeno-canto (Xeno-canto Foundation, Netherlands) reference
+    recordings + BirdNET → acoustic likelihood model
+-   **Camera trap / image** — `animl` (Conservation Technology Lab, San
+    Diego Zoo Wildlife Alliance, San Diego, California), iNaturalist CV
+    (a joint initiative of the California Academy of Sciences and the
+    National Geographic Society, San Francisco, California), or
+    SpeciesNet (Google LLC, Mountain View, California) output → match
+    data; or labeled reference images → image likelihood model
 -   **Reference library building** — taxa names (from TaxaExpect or
     user-supplied) → site-specific NCBI reference library; or load a
     local CRABS or FASTA database
--   **Occurrence-based priors** — taxa + location → GBIF occurrences →
-    habitat → spatially explicit priors
+-   **Occurrence-based priors** — taxa + location → GBIF (Global
+    Biodiversity Information Facility; GBIF Secretariat, Copenhagen,
+    Denmark) occurrences → habitat → spatially explicit priors
 -   **Assignment convergence** — any combination of the above →
     likelihoods + priors → posteriors → consensus → report
 
@@ -114,7 +125,7 @@ taxonomic assignment: U.S. Geological Survey software release,
 
 ## Software Requirements
 
--   R (\>= 4.1.0)
+-   R (\>= 4.1.0; R Core Team 2025)
 -   An LLM API key (Anthropic recommended) is required for the
     conversational engine
 -   shiny (for browser/viewer chat interface and generated apps; in
@@ -123,4 +134,15 @@ taxonomic assignment: U.S. Geological Survey software release,
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
+San Francisco, California).
+
+## References
+
+Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J.
+(1990). Basic local alignment search tool. *Journal of Molecular
+Biology*, 215(3), 403--410.
+
+R Core Team (2025). R: A Language and Environment for Statistical
+Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,
+Austria. <https://www.r-project.org>

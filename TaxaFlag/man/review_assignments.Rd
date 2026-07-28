@@ -10,6 +10,10 @@ review_assignments(
   taxon_rank_col = NULL,
   plausible_taxa_col = NULL,
   irreducible_only = TRUE,
+  consensus_posterior_col = "consensus_posterior",
+  winner_prior_col = "winner_prior",
+  winner_rank_expanded_col = "winner_rank_expanded",
+  plausible_posteriors_col = "plausible_posteriors",
   context,
   target_group = NULL,
   marker = NULL,
@@ -48,6 +52,49 @@ by \code{TaxaAssign::add_slash_taxon()}), only candidate sets where
 receive \code{NA} review columns. When \code{irreducible_consensus} is
 absent, all unique candidate sets are reviewed with a message. Ignored
 when \code{plausible_taxa_col = NULL}. Default \code{TRUE}.}
+
+\item{consensus_posterior_col}{Character or \code{NULL}. Column name for
+\code{TaxaAssign::posterior_consensus()}'s \code{consensus_posterior} --
+the pipeline's own statistical confidence in the winning taxon. When
+present, the median value across every row sharing a taxon/candidate-set
+label is shown to the LLM as context (e.g. \code{"pipeline
+  posterior=0.81"}), so a sharp disagreement between the pipeline's
+confidence and the LLM's ecological plausibility judgment can be
+surfaced in \code{review_comment}. Purely additive text -- never changes
+which rows are reviewed or any output column. Silently skipped when the
+named column is absent from \code{df}. Default
+\code{"consensus_posterior"} (matches \code{posterior_consensus()}'s own
+output). Set to \code{NULL} to disable.}
+
+\item{winner_prior_col}{Character or \code{NULL}. Column name for
+\code{posterior_consensus()}'s \code{winner_prior} -- the occurrence-
+database prior for the winning taxon. Same treatment as
+\code{consensus_posterior_col}: shown as median context (e.g.
+\code{"occurrence prior=0.42"}), silently skipped when absent. Default
+\code{"winner_prior"}. Set to \code{NULL} to disable.}
+
+\item{winner_rank_expanded_col}{Character or \code{NULL}. Column name for
+\code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
+when the winning species-level call was manufactured by
+\code{join_priors()}'s coarse-rank expansion from occurrence-prior mass
+alone, with no direct sequence/image/acoustic evidence discriminating
+between candidates. When \code{TRUE} for any row sharing a label, a note
+to that effect is added to the LLM's context, since this changes how
+much weight the identification itself deserves. Silently skipped when
+absent. Default \code{"winner_rank_expanded"}. Set to \code{NULL} to
+disable.}
+
+\item{plausible_posteriors_col}{Character or \code{NULL}. Column name for
+\code{posterior_consensus()}'s \code{plausible_posteriors} list column
+(per-candidate posterior weights, positionally aligned with
+\code{plausible_taxa_col}). Only used when \code{plausible_taxa_col} is
+supplied. When present, each multi-candidate label's per-candidate
+weights are averaged across every row sharing that label and shown to
+the LLM (e.g. \code{"candidate weights: Bos javanicus 72\%, Bos
+  primigenius 28\%"}), so \code{review_comment} can speak to the specific
+weaker member instead of the group as an undifferentiated set. Silently
+skipped when absent. Default \code{"plausible_posteriors"}. Set to
+\code{NULL} to disable.}
 
 \item{context}{Named list or data frame describing the study context.
 Recognised fields: \code{geography} (or \code{ecoregion}),
@@ -133,6 +180,25 @@ Works with any data frame containing a taxon column -- not restricted to
 TaxaAssign output. Context (geography, habitat) can be supplied as a
 \code{build_context()} object from TaxaAssign, or as a simple named list.
 }
+\section{Pipeline context}{
+
+When \code{consensus_posterior_col}/\code{winner_prior_col}/
+\code{winner_rank_expanded_col}/\code{plausible_posteriors_col} match real
+columns in \code{df} (the defaults match \code{TaxaAssign::
+posterior_consensus()}'s own output names), a compact \code{"[...]"}
+annotation is appended to each taxon's line in the LLM prompt -- the
+pipeline's own median statistical confidence/occurrence prior for that
+taxon, a note when the winning call was resolved by occurrence-prior
+tie-break alone (no direct sequence evidence), and, for multi-candidate
+sets, each candidate's averaged posterior weight. This lets the LLM's
+free-text \code{review_comment} flag a disagreement between the
+pipeline's own confidence and its ecological judgment. It is purely
+additive: it never changes which rows are reviewed, the dedup key, or any
+output column, and adds only a few tokens per taxon to the prompt. Set any
+of the four params to \code{NULL} to disable; all four are silently
+skipped (not an error) when the named column is absent from \code{df}.
+}
+
 \examples{
 \dontrun{
 # Standard review (consensus taxon only)

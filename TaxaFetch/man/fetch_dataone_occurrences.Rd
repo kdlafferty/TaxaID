@@ -7,7 +7,6 @@
 fetch_dataone_occurrences(
   dataset_ids,
   bbox,
-  gbif_snapshot_path = NULL,
   extra_dwc_map = NULL,
   timeout = 120L,
   site_lookup = NULL,
@@ -24,12 +23,6 @@ e.g. \code{c("knb-lter-sbc.17.18", "knb-lter-sbc.50.9")}.}
 \code{south}, \code{north} (decimal degrees). Records outside this box
 are removed. Example:
 \code{list(west = -121.0, east = -118.5, south = 33.5, north = 35.0)}.}
-
-\item{gbif_snapshot_path}{Character or \code{NULL}. Path to a GBIF
-occurrence download in tab-separated format. When provided, records whose
-combination of \code{scientificName}, \code{eventDate}, and rounded
-coordinates (3 d.p.) match a GBIF record are removed. \code{NULL}
-(default) skips deduplication.}
 
 \item{extra_dwc_map}{A \code{data.frame} with columns \code{pattern} and
 \code{dwc_term}, prepended before the default map so dataset-specific
@@ -95,8 +88,16 @@ normalized to ISO 8601 (\code{YYYY-MM-DD}). If absent but
 \code{year}/\code{month}/\code{day} are present, \code{eventDate} is
 constructed from them.
 
-\strong{Deduplication hash key:}
-\code{tolower(scientificName)|eventDate|round(lat,3)|round(lon,3)}.
+\strong{Cross-source deduplication:} this function does not dedupe against
+GBIF itself (a prior \code{gbif_snapshot_path} parameter that did this was
+removed 2026-07-23 -- it had zero real callers and was superseded by a
+safer, more general mechanism). If you combine this output with GBIF
+occurrences (e.g. via \code{\link{get_gbif_occurrences}}), pass both to
+\code{\link{stack_occurrences}}, whose
+\code{collapse_duplicate_occasions} (default \code{TRUE}) collapses
+records describing the same species x date x location detection occasion
+across sources -- see that function's Details for why this is preferred
+over a static, separately-loaded GBIF snapshot file.
 }
 \examples{
 \dontrun{
@@ -106,14 +107,8 @@ candidates <- search_dataone(bbox, scope = "knb-lter-sbc")
 # Single dataset smoke test
 occ <- fetch_dataone_occurrences(candidates$id[1], bbox)
 
-# Full run without GBIF dedup
+# Full run
 occ <- fetch_dataone_occurrences(candidates$id, bbox)
-
-# With GBIF deduplication
-occ <- fetch_dataone_occurrences(
-  candidates$id, bbox,
-  gbif_snapshot_path = "~/data/gbif_sbchannel.csv"
-)
 
 # Fix a non-standard column name
 extra <- data.frame(

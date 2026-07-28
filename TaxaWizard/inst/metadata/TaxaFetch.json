@@ -41,26 +41,45 @@
     },
     {
       "name": "filter_gbif_quality",
-      "description": "Filter GBIF records by coordinate quality, basis of record, etc.",
+      "description": "Filter GBIF records by coordinate quality, basis of record, GBIF issue codes, and (if CoordinateCleaner installed) equal-coordinate/near-zero/near-GBIF-HQ/near-country-centroid/near-capital checks. Institution proximity is FLAGGED (flag_institution=TRUE default), never auto-removed",
       "inputs": [
-        {"name": "df", "type": "occurrences_df", "required": true, "description": "GBIF occurrence data frame"},
-        {"name": "max_coord_uncertainty", "type": "numeric", "required": false, "default": 10000, "description": "Max coordinate uncertainty in meters"}
+        {"name": "data", "type": "occurrences_df", "required": true, "description": "GBIF occurrence data frame"},
+        {"name": "max_coord_uncertainty", "type": "numeric", "required": false, "default": 500, "description": "Max coordinate uncertainty in meters"},
+        {"name": "exclude_absent", "type": "logical", "required": false, "default": true, "description": "Remove occurrenceStatus = 'ABSENT' rows (systematic-survey non-detections)"},
+        {"name": "require_species", "type": "logical", "required": false, "default": false, "description": "Set TRUE when querying by family/genus key, to drop genus-only rows lacking a species value"},
+        {"name": "flag_institution", "type": "logical", "required": false, "default": true, "description": "2026-07-23 rename from exclude_institution: proximity to a biodiversity institution is now FLAGGED (institution_flag/institution_name/institution_type/institution_dist_m columns added, row retained), never removed -- field stations/marine labs are often sited exactly where good habitat is"}
       ],
-      "output": {"type": "occurrences_df", "description": "Filtered occurrences"},
+      "output": {"type": "occurrences_df", "description": "Filtered occurrences (institution-flagged rows retained with 4 new columns). attr(result, 'removed_records') is always present (2026-07-23) -- a data frame, possibly zero rows, of every removed record plus a filter_reason column explaining why"},
       "scaling": "linear",
-      "scaling_note": "Fast; row filtering"
+      "scaling_note": "Fast; row filtering. ~1.4s at 122k rows with all CoordinateCleaner checks on"
     },
     {
       "name": "stack_occurrences",
-      "description": "Row-bind occurrence data frames from multiple sources; attach report_params with citations",
+      "description": "Row-bind occurrence data frames from multiple sources; attach report_params with citations. 2026-07-23: NO LONGER deduplicates -- row count is always exactly the sum of the inputs. Always follow with dedupe_occurrences(), even for a single source",
       "inputs": [
         {"name": "...", "type": "occurrences_df", "required": true, "description": "One or more occurrence data frames"},
         {"name": "lat_col", "type": "character", "required": false, "default": "decimalLatitude", "description": "Latitude column name"},
         {"name": "lon_col", "type": "character", "required": false, "default": "decimalLongitude", "description": "Longitude column name"}
       ],
-      "output": {"type": "occurrences_df", "description": "Combined occurrence data frame with citations attribute"},
+      "output": {"type": "occurrences_df", "description": "Combined occurrence data frame with citations attribute. Never removes rows -- call dedupe_occurrences() next"},
       "scaling": "linear",
       "scaling_note": "Fast; row binding"
+    },
+    {
+      "name": "dedupe_occurrences",
+      "description": "2026-07-23, new -- split out of stack_occurrences(). Removes duplicates from a single occurrence data frame (stacked or not) via (1) exact gbifID match and (2) collapse_duplicate_occasions, a content-based match on taxon x date x rounded lat/lon that catches repeat citizen-science reports of one detection occasion across DIFFERENT records/platforms (e.g. many eBird checklists for one rare-bird alert). Call this even after a single-source fetch -- one GBIF call querying overlapping taxon keys can already contain duplicates",
+      "inputs": [
+        {"name": "data", "type": "occurrences_df", "required": true, "description": "A single occurrence data frame (output of stack_occurrences() or a direct fetch)"},
+        {"name": "collapse_duplicate_occasions", "type": "logical", "required": false, "default": true, "description": "Content-based occasion collapse (taxon x date x rounded lat/lon). Default TRUE because TaxaExpect::prepare_model_dataframe() counts raw records as both n_species and n_total_at_site -- uncollapsed repeat reports inflate a species' modeled detection frequency directly"},
+        {"name": "taxon_col", "type": "character", "required": false, "default": "scientificName", "description": "Taxon column for the content-based match"},
+        {"name": "date_col", "type": "character", "required": false, "default": "eventDate", "description": "Date column; falls back to year/month/day when absent"},
+        {"name": "lat_col", "type": "character", "required": false, "default": "decimalLatitude", "description": "Latitude column"},
+        {"name": "lon_col", "type": "character", "required": false, "default": "decimalLongitude", "description": "Longitude column"},
+        {"name": "coord_precision", "type": "integer", "required": false, "default": 3, "description": "Decimal places to round lat/lon to before matching"}
+      ],
+      "output": {"type": "occurrences_df", "description": "Deduplicated occurrence data frame. A row missing any key component is always kept (never dropped on incomplete data)"},
+      "scaling": "linear",
+      "scaling_note": "Fast; content-based row matching"
     },
     {
       "name": "search_literature",
@@ -72,6 +91,22 @@
       "output": {"type": "data.frame", "description": "Literature search results with screening columns"},
       "scaling": "api_limited",
       "scaling_note": "OpenAlex API; requires OPENALEX_API_KEY"
+    },
+    {
+      "name": "check_geographic_outliers",
+      "description": "For species with few LOCAL (bbox-scoped) records, fetches that species' GLOBAL GBIF distribution and flags local records that are geographic outliers against it (e.g. one mis-georeferenced citizen-science record from the wrong continent). Well-supported local species are skipped -- the global fetch is the expensive step. Requires the CoordinateCleaner package",
+      "inputs": [
+        {"name": "local_occurrences", "type": "occurrences_df", "required": true, "description": "Bbox-scoped occurrence data, typically post filter_gbif_quality()/dedupe_occurrences()"},
+        {"name": "min_local_n", "type": "integer", "required": false, "default": 5, "description": "Species with fewer than this many local records are checked against their global distribution"},
+        {"name": "min_occs", "type": "integer", "required": false, "default": 7, "description": "Minimum global record count required to run the outlier test at all"},
+        {"name": "method", "type": "character", "required": false, "default": "distance", "description": "CoordinateCleaner::cc_outl() method"},
+        {"name": "tdi", "type": "numeric", "required": false, "default": 1000, "description": "Distance threshold in km for the outlier test"},
+        {"name": "year_range", "type": "character", "required": false, "default": "2000,2024", "description": "Year range for the global GBIF fetch, e.g. '2000,2024'"},
+        {"name": "cache_dir", "type": "file_path", "required": false, "description": "Directory for resumable global-fetch cache"}
+      ],
+      "output": {"type": "occurrences_df", "description": "Input with local_n, global_n_unique, outlier_status columns added. outlier_status is always one of 'not_tested_sufficient_local_data' / 'insufficient_global_data' / 'outlier' / 'consistent' -- never a bare logical. Rows are NOT removed automatically; filter outlier_status != 'outlier' explicitly"},
+      "scaling": "api_limited",
+      "scaling_note": "GBIF API; only species below min_local_n trigger an extra global fetch"
     }
   ]
 }
