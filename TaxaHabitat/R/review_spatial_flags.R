@@ -76,12 +76,10 @@
 #' occurrences_clean <- dplyr::filter(reviewed, spatial_flag == "likely")
 #'   }
 #'
-#' @seealso \code{\link{flag_habitat_inconsistencies}},
-#'   \code{select_habitat_outliers()},
-#'   \code{plot_habitat_points_interactive()}
+#' @seealso \code{\link{flag_habitat_inconsistencies}}
 #'
 #' @importFrom stats setNames
-#' @importFrom leaflet.extras addDrawToolbar drawRectangleOptions drawShapeOptions editToolbarOptions removeDrawToolbar
+#' @importFrom leaflet.extras addDrawToolbar drawRectangleOptions drawShapeOptions removeDrawToolbar
 #' @export
 #'
 #' @examples
@@ -402,6 +400,53 @@ review_spatial_flags <- function(
   )
 
   # --------------------------------------------------------------------------
+  # 4b. Shared draw-toolbar / marker helpers
+  #
+  #     Closures over pal/point_radius (defined above), reused by the initial
+  #     render and by every handler that redraws a marker after an override.
+  # --------------------------------------------------------------------------
+
+  .add_draw_toolbar <- function(target) {
+    leaflet.extras::addDrawToolbar(
+      target,
+      targetGroup      = "drawn",
+      rectangleOptions = leaflet.extras::drawRectangleOptions(
+        shapeOptions = leaflet.extras::drawShapeOptions(fillOpacity = 0.1, color = "#333", weight = 1)
+      ),
+      polylineOptions = FALSE, polygonOptions = FALSE,
+      circleOptions   = FALSE, markerOptions  = FALSE,
+      circleMarkerOptions = FALSE, editOptions = FALSE
+    )
+  }
+
+  .reset_draw_toolbar <- function(proxy) {
+    leaflet.extras::removeDrawToolbar(proxy, clearFeatures = TRUE)
+    .add_draw_toolbar(proxy)
+  }
+
+  .add_habitat_marker <- function(target, row, color, group) {
+    leaflet::addCircleMarkers(
+      target,
+      lng          = row$lon,
+      lat          = row$lat,
+      layerId      = row$point_id,
+      radius       = point_radius,
+      color        = color,
+      fillColor    = color,
+      fillOpacity  = 0.8,
+      opacity      = 0.9,
+      weight       = 1,
+      label        = shiny::HTML(row$tooltip),
+      labelOptions = leaflet::labelOptions(
+        style     = list("font-size" = "12px", "padding" = "4px 6px"),
+        direction = "auto",
+        delay     = 600L
+      ),
+      group        = group
+    )
+  }
+
+  # --------------------------------------------------------------------------
   # 5. Server
   # --------------------------------------------------------------------------
 
@@ -497,21 +542,7 @@ review_spatial_flags <- function(
         m <- leaflet::hideGroup(m, h)
       }
 
-      m <- leaflet.extras::addDrawToolbar(
-        m,
-        targetGroup         = "drawn",
-        rectangleOptions    = leaflet.extras::drawRectangleOptions(
-          shapeOptions = leaflet.extras::drawShapeOptions(
-            fillOpacity = 0.1, color = "#333", weight = 1
-          )
-        ),
-        polylineOptions     = FALSE,
-        polygonOptions      = FALSE,
-        circleOptions       = FALSE,
-        markerOptions       = FALSE,
-        circleMarkerOptions = FALSE,
-        editOptions         = FALSE
-      )
+      m <- .add_draw_toolbar(m)
       m
     })
 
@@ -673,17 +704,7 @@ review_spatial_flags <- function(
         proxy <- leaflet::leafletProxy("map")
         for (pid in in_box_ids) proxy <- leaflet::removeMarker(proxy, layerId = pid)
 
-        leaflet.extras::removeDrawToolbar(leaflet::leafletProxy("map"), clearFeatures = TRUE)
-        leaflet.extras::addDrawToolbar(
-          leaflet::leafletProxy("map"),
-          targetGroup      = "drawn",
-          rectangleOptions = leaflet.extras::drawRectangleOptions(
-            shapeOptions = leaflet.extras::drawShapeOptions(fillOpacity = 0.1, color = "#333", weight = 1)
-          ),
-          polylineOptions = FALSE, polygonOptions = FALSE,
-          circleOptions   = FALSE, markerOptions  = FALSE,
-          circleMarkerOptions = FALSE, editOptions = FALSE
-        )
+        .reset_draw_toolbar(leaflet::leafletProxy("map"))
 
       } else {
         selected_point(NULL)
@@ -835,25 +856,7 @@ review_spatial_flags <- function(
 
         row   <- pts[pts$point_id == pid_i, ][1L, ]
         proxy <- leaflet::removeMarker(proxy, layerId = pid_i)
-        proxy <- leaflet::addCircleMarkers(
-          proxy,
-          lng          = row$lon,
-          lat          = row$lat,
-          layerId      = pid_i,
-          radius       = point_radius,
-          color        = new_col,
-          fillColor    = new_col,
-          fillOpacity  = 0.8,
-          opacity      = 0.9,
-          weight       = 1,
-          label        = shiny::HTML(row$tooltip),
-          labelOptions = leaflet::labelOptions(
-            style     = list("font-size" = "12px", "padding" = "4px 6px"),
-            direction = "auto",
-            delay     = 600L
-          ),
-          group        = new_hab
-        )
+        proxy <- .add_habitat_marker(proxy, row, new_col, new_hab)
       }
 
       history(hist)
@@ -862,17 +865,7 @@ review_spatial_flags <- function(
       cur_reasons(rs)
 
       if (!is.null(pids)) {
-        leaflet.extras::removeDrawToolbar(leaflet::leafletProxy("map"), clearFeatures = TRUE)
-        leaflet.extras::addDrawToolbar(
-          leaflet::leafletProxy("map"),
-          targetGroup      = "drawn",
-          rectangleOptions = leaflet.extras::drawRectangleOptions(
-            shapeOptions = leaflet.extras::drawShapeOptions(fillOpacity = 0.1, color = "#333", weight = 1)
-          ),
-          polylineOptions = FALSE, polygonOptions = FALSE,
-          circleOptions   = FALSE, markerOptions  = FALSE,
-          circleMarkerOptions = FALSE, editOptions = FALSE
-        )
+        .reset_draw_toolbar(leaflet::leafletProxy("map"))
       }
 
       selected_point(NULL)
@@ -905,48 +898,12 @@ review_spatial_flags <- function(
 
         old_col <- if (last$old_habitat %in% names(pal)) pal[[last$old_habitat]] else "#aaaaaa"
         row     <- pts[pts$point_id == last$point_id, ][1L, ]
-        leaflet::leafletProxy("map") |>
-          leaflet::removeMarker(layerId = last$point_id) |>
-          leaflet::addCircleMarkers(
-            lng          = row$lon,
-            lat          = row$lat,
-            layerId      = last$point_id,
-            radius       = point_radius,
-            color        = old_col,
-            fillColor    = old_col,
-            fillOpacity  = 0.8,
-            opacity      = 0.9,
-            weight       = 1,
-            label        = shiny::HTML(row$tooltip),
-            labelOptions = leaflet::labelOptions(
-              style     = list("font-size" = "12px", "padding" = "4px 6px"),
-              direction = "auto",
-              delay     = 600L
-            ),
-            group        = last$old_habitat
-          )
+        proxy   <- leaflet::removeMarker(leaflet::leafletProxy("map"), layerId = last$point_id)
+        .add_habitat_marker(proxy, row, old_col, last$old_habitat)
       } else if (last$old_flag == tolower(input$view_mode)) {
         row     <- pts[pts$point_id == last$point_id, ][1L, ]
         cur_col <- if (row$habitat %in% names(pal)) pal[[row$habitat]] else "#aaaaaa"
-        leaflet::leafletProxy("map") |>
-          leaflet::addCircleMarkers(
-            lng          = row$lon,
-            lat          = row$lat,
-            layerId      = row$point_id,
-            radius       = point_radius,
-            color        = cur_col,
-            fillColor    = cur_col,
-            fillOpacity  = 0.8,
-            opacity      = 0.9,
-            weight       = 1,
-            label        = shiny::HTML(row$tooltip),
-            labelOptions = leaflet::labelOptions(
-              style     = list("font-size" = "12px", "padding" = "4px 6px"),
-              direction = "auto",
-              delay     = 600L
-            ),
-            group        = row$habitat
-          )
+        .add_habitat_marker(leaflet::leafletProxy("map"), row, cur_col, row$habitat)
       }
     })
 

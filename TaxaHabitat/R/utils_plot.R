@@ -2,8 +2,6 @@
 # Shared internal helpers for plot and review functions
 #
 # Used by:
-#   plot_habitat_points_interactive()
-#   select_habitat_outliers()
 #   review_spatial_flags()
 #
 # None of these functions are exported.

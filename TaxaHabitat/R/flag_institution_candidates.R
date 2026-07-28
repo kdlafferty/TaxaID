@@ -120,22 +120,22 @@ flag_institution_candidates <- function(
   flagged_type    <- data$institution_type[is_flagged]
   flagged_kingdom <- data[[kingdom_col]][is_flagged]
 
-  tier <- mapply(function(t, k) {
+  tier <- mapply(function(type, k) {
     # A record's own matched institution can genuinely have no recorded
     # `type` (real CoordinateCleaner::institutions rows do -- e.g. some
     # Scripps Institution of Oceanography matches). `suspicion_rules$
-    # institution_type == t` with t = NA produces an all-NA logical index,
-    # which subsets to NA elements rather than zero -- without this guard,
-    # such a record silently gets institution_suspicion = NA instead of the
-    # documented "ambiguous" fallback. Guard suspicion_rules$institution_type
-    # on the other side too, in case a caller-supplied rules table has its
-    # own NA institution_type row.
-    if (is.na(t)) return("ambiguous")
+    # institution_type == type` with type = NA produces an all-NA logical
+    # index, which subsets to NA elements rather than zero -- without this
+    # guard, such a record silently gets institution_suspicion = NA instead
+    # of the documented "ambiguous" fallback. Guard suspicion_rules$
+    # institution_type on the other side too, in case a caller-supplied
+    # rules table has its own NA institution_type row.
+    if (is.na(type)) return("ambiguous")
 
     exact <- suspicion_rules$suspicion[
       !is.na(suspicion_rules$institution_type) &
       !is.na(suspicion_rules$kingdom) &
-      suspicion_rules$institution_type == t &
+      suspicion_rules$institution_type == type &
       suspicion_rules$kingdom == k
     ]
     if (length(exact) > 0L) return(exact[[1]])
@@ -143,7 +143,7 @@ flag_institution_candidates <- function(
     wildcard <- suspicion_rules$suspicion[
       !is.na(suspicion_rules$institution_type) &
       is.na(suspicion_rules$kingdom) &
-      suspicion_rules$institution_type == t
+      suspicion_rules$institution_type == type
     ]
     if (length(wildcard) > 0L) return(wildcard[[1]])
 

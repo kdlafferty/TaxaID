@@ -15,9 +15,9 @@
 #' The function adds four columns to the input dataframe, repeated for every
 #' row sharing the same location, so the dataframe structure and row count are
 #' unchanged. The augmented object can be passed directly to
-#' \code{plot_habitat_points_interactive(flag_col = "spatial_flag")} for
-#' visual review, and filtered numerically using \code{dist_to_coast_km} and
-#' \code{elevation_m} before passing to \code{select_habitat_outliers()}.
+#' \code{\link{review_spatial_flags}} for interactive visual review, and
+#' filtered numerically using \code{dist_to_coast_km} and \code{elevation_m}
+#' for a non-interactive workflow.
 #'
 #' @section Physical zone classification:
 #' Land/ocean classification uses Natural Earth country polygons (vector),
@@ -38,8 +38,11 @@
 #' }
 #'
 #' @section Freshwater habitats:
-#' Habitats whose IUCN L1 name contains "Wetland", "Aquatic", or "Freshwater"
-#' are silently assigned \code{spatial_flag = "likely"} with reason
+#' Habitats classified as the \code{"freshwater"} realm (via the scheme's own
+#' \code{realm} column when present, or by name pattern -- matching
+#' "freshwater", "wetland", "aquatic", "lake", "river", "stream", "pond",
+#' "marsh", "bog", "fen", or "riparian") are silently assigned
+#' \code{spatial_flag = "likely"} with reason
 #' \code{"freshwater habitat not spatially verified"}. This avoids false
 #' positives for a common and genuinely hard-to-check class.
 #'
@@ -94,8 +97,7 @@
 #'     numeric context (e.g. distance inland, depth).}
 #' }
 #'
-#' @seealso \code{plot_habitat_points_interactive()},
-#'   \code{select_habitat_outliers()}
+#' @seealso \code{\link{review_spatial_flags}}
 #'
 #' @importFrom terra rast vect extract
 #' @importFrom sf st_as_sf st_transform st_distance st_intersection st_union
@@ -113,12 +115,8 @@
 #'   coast_buffer_m = 1000
 #' )
 #'
-#' # Review on the map
-#' plot_habitat_points_interactive(
-#'   dplyr::filter(occurrences_flagged, spatial_flag != "likely"),
-#'   flag_col = "spatial_flag",
-#'   tile     = "Esri.OceanBasemap"
-#' )
+#' # Review interactively
+#' review_spatial_flags(occurrences_flagged)
 #'
 #' # Filter numerically
 #' likely_errors <- dplyr::filter(

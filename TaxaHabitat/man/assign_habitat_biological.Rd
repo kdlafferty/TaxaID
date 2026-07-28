@@ -92,8 +92,6 @@ provided it meets a minimum consensus threshold.
 }
 \details{
 This is a fallback method for when spatial polygon layers are unavailable.
-If you have a habitat shapefile, use \code{assign_habitat_to_points()}
-instead.
 
 \strong{How weighted consensus works:}
 For each point, the function joins occurrence records to the habitat weight
@@ -134,7 +132,6 @@ result |> dplyr::filter(main_habitat == "Other") |>
 }
 }
 \seealso{
-\code{assign_habitat_to_points()} (spatial polygon method),
 \code{\link{parse_hierarchical_habitat_response}},
 \code{\link{build_habitat_prompt}}, \code{prepare_model_dataframe()}
 }

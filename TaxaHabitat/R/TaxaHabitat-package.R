@@ -21,6 +21,10 @@
 #' @section Spatial quality control:
 #' \itemize{
 #'   \item \code{\link{flag_habitat_inconsistencies}} -- flag spatial outliers
+#'   \item \code{\link{flag_institution_candidates}} -- tier records flagged
+#'     as near a biodiversity institution by suspicion
+#'   \item \code{\link{review_institution_flags}} -- interactive review of
+#'     institution-proximity flags
 #' }
 #'
 #' @section Reporting:

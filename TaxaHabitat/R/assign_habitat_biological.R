@@ -7,8 +7,6 @@
 #' provided it meets a minimum consensus threshold.
 #'
 #' This is a fallback method for when spatial polygon layers are unavailable.
-#' If you have a habitat shapefile, use \code{assign_habitat_to_points()}
-#' instead.
 #'
 #' @param data A dataframe of occurrence records. Must contain columns named
 #'   by \code{point_id_col} and \code{taxon_col}.
@@ -90,13 +88,10 @@
 #' mean(unique(data$taxon_name) \%in\% habitats_df$taxon_name)
 #' }
 #'
-#' @seealso \code{assign_habitat_to_points()} (spatial polygon method),
-#'   \code{\link{parse_hierarchical_habitat_response}},
+#' @seealso \code{\link{parse_hierarchical_habitat_response}},
 #'   \code{\link{build_habitat_prompt}}, \code{prepare_model_dataframe()}
 #'
-#' @importFrom dplyr left_join group_by summarise mutate filter arrange
-#'   slice select ungroup n distinct n_distinct
-#' @importFrom rlang sym !!
+#' @importFrom dplyr n_distinct
 #' @export
 #'
 #' @examples
@@ -174,12 +169,12 @@ assign_habitat_biological <- function(data,
   # ---------------------------------------------------------------------------
   # Identify habitat weight columns
   # ---------------------------------------------------------------------------
-  det <- .detect_habitat_cols(habitats_df, habitat_cols, taxon_col,
-                              caller = "assign_habitat_biological")
-  habitats_df  <- det$habitats_df
-  habitat_cols <- det$habitat_cols
-  has_other_weight <- det$has_other_weight
-  has_best_guess   <- det$has_best_guess
+  hab_cols_info <- .detect_habitat_cols(habitats_df, habitat_cols, taxon_col,
+                                        caller = "assign_habitat_biological")
+  habitats_df  <- hab_cols_info$habitats_df
+  habitat_cols <- hab_cols_info$habitat_cols
+  has_other_weight <- hab_cols_info$has_other_weight
+  has_best_guess   <- hab_cols_info$has_best_guess
 
   # ---------------------------------------------------------------------------
   # Coverage report
@@ -505,10 +500,10 @@ consensus_habitat <- function(habitats_df,
   }
 
   # --- Detect habitat columns ---
-  det <- .detect_habitat_cols(habitats_df, habitat_cols, taxon_col,
-                              caller = "consensus_habitat")
-  habitats_df  <- det$habitats_df
-  habitat_cols <- det$habitat_cols
+  hab_cols_info <- .detect_habitat_cols(habitats_df, habitat_cols, taxon_col,
+                                        caller = "consensus_habitat")
+  habitats_df  <- hab_cols_info$habitats_df
+  habitat_cols <- hab_cols_info$habitat_cols
 
   # --- De-duplicate to one row per taxon ---
   habitats_df <- habitats_df[!duplicated(habitats_df[[taxon_col]]), , drop = FALSE]

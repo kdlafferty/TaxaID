@@ -119,7 +119,5 @@ occurrences_clean <- dplyr::filter(reviewed, spatial_flag == "likely")
 }
 }
 \seealso{
-\code{\link{flag_habitat_inconsistencies}},
-\code{select_habitat_outliers()},
-\code{plot_habitat_points_interactive()}
+\code{\link{flag_habitat_inconsistencies}}
 }

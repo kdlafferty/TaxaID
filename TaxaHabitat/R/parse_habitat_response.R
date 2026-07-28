@@ -6,7 +6,6 @@
 #   parse_hierarchical_habitat_response()   Provider-neutral habitat response parser
 #
 # Internal helpers (all @noRd):
-#   .is_two_level()                  Check if scheme has L1 + L2 columns
 #   .validate_habitat_scheme_local() Validate bare dataframe as habitat scheme
 #   .is_two_level_local()            .is_two_level for bare-dataframe path
 #   .strip_and_extract_csv()         Remove fences, find header, trim preamble/postamble
@@ -372,15 +371,6 @@ parse_hierarchical_habitat_response <- function(raw_text,
 # ==============================================================================
 # Internal helpers
 # ==============================================================================
-
-
-#' Local .is_two_level: scheme has l1_name + l2_name columns with values
-#' @noRd
-.is_two_level <- function(scheme) {
-  if (is.null(scheme)) return(FALSE)
-  all(c("l1_name", "l2_name") %in% names(scheme)) &&
-    any(!is.na(scheme$l2_name))
-}
 
 
 #' Local scheme validator used when a bare dataframe is passed as habitat_scheme.

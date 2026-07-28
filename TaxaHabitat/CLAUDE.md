@@ -1,6 +1,53 @@
 # CLAUDE.md — TaxaHabitat
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-27 (Sonnet 5 -- geographic-outlier/institution-flag thread CLOSED OUT.
+# Last updated: 2026-07-28 (Sonnet 5 -- code-review-prep pass against inst/Code and Domain
+# Review 2.Rmd's 5-question rubric (tidyverse style / base-R name collisions / DRY-KISS /
+# naming clarity / doc accuracy), read-only findings gathered by a review agent first, then
+# implemented after user sign-off. One real correctness bug found and fixed: .is_two_level()
+# was defined TWICE with DIFFERENT logic -- once in build_habitat_prompt.R (correct, guards
+# empty-string l2_name via nzchar/trimws) and once, apparently a stale leftover, in
+# parse_habitat_response.R (missing that guard, never actually called from its own file --
+# that file already has its own correctly-named .is_two_level_local() for its real bare-
+# dataframe path). With no Collate: field, only one definition survives in the namespace,
+# so build_habitat_prompt.R's own two call sites (.collapse_to_model_habitats(),
+# .build_single_prompt()) were silently running the OTHER file's (wrong) logic --
+# invisible to every existing test since no fixture used an empty-string (as opposed to NA)
+# l2_name. Fixed by deleting the dead duplicate. Also fixed: two base-R name collisions
+# (`det` shadowing base::det() in assign_habitat_biological.R x2, `t` shadowing base::t() in
+# a flag_institution_candidates.R mapply closure -- both cosmetic, renamed to
+# hab_cols_info/type); three references to functions that don't exist anywhere in the
+# package (assign_habitat_to_points(), plot_habitat_points_interactive(),
+# select_habitat_outliers() -- referenced in roxygen/@seealso/@examples/a utils_plot.R
+# header comment across 4 files, apparently planned-but-never-built or removed without
+# cleanup) stripped and replaced with real @seealso pointers to review_spatial_flags();
+# stale unused @importFrom declarations trimmed (assign_habitat_biological.R's dplyr
+# import cut from 13 unused functions down to the one actually called, n_distinct; its
+# rlang import dropped entirely, which also required dropping rlang from DESCRIPTION
+# Imports once devtools::check() flagged it as newly-unused; review_spatial_flags.R's
+# unused editToolbarOptions import dropped); flag_habitat_inconsistencies.R's Freshwater
+# habitats doc section updated to match what .realm()'s regex actually matches (was
+# listing only Wetland/Aquatic/Freshwater, code also matches lake/river/stream/pond/
+# marsh/bog/fen/riparian); TaxaHabitat-package.R's Spatial quality control section gained
+# the two institution-flag functions it was missing. Also extracted two DRY helpers in
+# review_spatial_flags.R (a live, untested-by-design Shiny/leaflet gadget wired into 5 real
+# production workflows -- extra care taken to keep every call byte-for-byte equivalent,
+# not just shorter): .add_draw_toolbar()/.reset_draw_toolbar() collapse 3 duplicated
+# leaflet.extras::addDrawToolbar()+removeDrawToolbar() blocks; .add_habitat_marker()
+# collapses 3 of the file's 4 duplicated single-point addCircleMarkers() calls (the 4th,
+# in the initial render loop, is genuinely different -- multi-row, data=/formula-based --
+# and was correctly left alone). Both helpers are closures defined just above `server <-
+# function(...)`, matching the file's existing pattern of closing over pal/point_radius/pts
+# from the enclosing scope rather than becoming new package-level .noRd helpers requiring
+# extra parameter-passing. devtools::document() clean, devtools::test() 158/158 (0
+# failures, unchanged -- confirms the .is_two_level() fix didn't change any exercised
+# behavior, consistent with no existing fixture distinguishing the two definitions),
+# devtools::check() 0 errors/0 warnings/0 notes (was 1 note, the newly-unused rlang import,
+# until DESCRIPTION was fixed). Reinstalled to ~/Library/R/4.0/library. review_spatial_flags()
+# was NOT live-tested this session (would require an interactive Shiny session) -- the DRY
+# refactor there is verified by careful reading and byte-for-byte argument preservation, not
+# by running the gadget; flagging this as the one part of this pass worth a live smoke-test
+# before the next real workflow run that exercises it.
+# Previous update, 2026-07-27 (Sonnet 5 -- geographic-outlier/institution-flag thread CLOSED OUT.
 # Final bug was in a workflow script (MuguFishWorkflow.R), not this package -- a stale
 # checkpoint .rds predating institution_flag's existence was being silently reloaded over the
 # fresh, correct filter_gbif_quality() output; fixed by deleting the one stale file. User
