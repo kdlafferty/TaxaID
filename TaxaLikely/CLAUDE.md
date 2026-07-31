@@ -1,6 +1,42 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-28 (Opus 5 -- absolute_fit_pvalue REMOVED entirely, along with the
+# Last updated: 2026-07-30 (Sonnet 5 -- full code + domain review against `inst/Code and
+# Domain Review 2.Rmd`, findings + fixes recorded in `inst/taxalikely_review.Rmd` (moved
+# there from a monorepo-root DRAFT after this session's fixes, matching TaxaFetch's own
+# `inst/taxafetch_review.Rmd` precedent). 9 low/low-medium findings, 0 vulnerabilities, 0
+# domain-review findings -- all 9 fixed this session. Six were purely cosmetic (a drifted
+# `.lintr` exclusion for `R/train.R`'s object-name lints, now `c(901, 936, 1076, 1092,
+# 1100)`; 6 residual brace/semicolon/line-length lints; the local `df` variable renamed to
+# `ref_seqs`/`seq_df`/`crabs_df` in `build_sequence.R`/`trim_to_amplicon.R`/`read_crabs.R`
+# respectively, since it shadowed `stats::df()`). Two were real DRY refactors: `R/coverage.R`'s
+# `.audit_one_genus_reverse()` had two near-duplicate ~25-line NCBI species-enumeration
+# blocks, factored into a new `.ncbi_species_enumerate()` -- careful comparison found the
+# two blocks were NOT byte-identical (the primary-source block warned on failure, the
+# fallback block failed silently), preserved via a new `warn_on_error` parameter rather
+# than silently picking one behavior; `R/fetch.R`'s four hand-rolled 3-attempt retry loops
+# (`.fetch_summaries_batched()`/`.fetch_taxonomy_map()`/`.fetch_fasta_batched()`/
+# `.fetch_locations_batched()`) were confirmed genuinely identical and factored into
+# `.retry_fetch()` with no behavioral parameterization needed. One was a real, if
+# currently-harmless, fragility fix: `R/interpret.R`'s `interpret_model()` had outer
+# scalars `mu_score`/`mu_gap` sharing a name with `H1_Lookup`'s real per-species columns of
+# the same name, relying on tidy-eval data-mask precedence inside a later `dplyr::mutate()`
+# to resolve correctly -- renamed the outer scalars to `global_mu_score`/`global_mu_gap`,
+# left `H1_Lookup`'s own columns (a real, ecosystem-wide name) untouched. `DESCRIPTION`
+# gained `Depends: R (>= 4.1.0)` (a live `R CMD build` warning had been auto-detecting this
+# from the package's own `|>`/`\(...)` usage in 7 files; confirmed gone after the fix).
+# `inst/TaxaLikely_workflow.R`'s line 252 hardcoded personal path replaced with the same
+# `system.file()`-based pattern already used a few lines above for the companion `.rds`.
+# Two stale cached `.rds` files (`inst/real_matrix.rds`, `inst/real_likelihoods.rds`,
+# already `.Rbuildignore`d, tied to that superseded workflow script) deleted after
+# confirming via a whole-monorepo grep that nothing in TaxaLikely itself reads them (two
+# references exist in TaxaAssign's own separate workflow scripts, flagged not touched).
+# `devtools::test()` 925/925 (0 failures, 9 expected warnings, 1 environment skip --
+# unchanged by this session, no test added or removed), `devtools::check()` 0 errors/0
+# warnings/0 notes (down from the pre-fix `R CMD build` dependency warning),
+# `lintr::lint_package()` 0 hits in `R/` (down from 12; 214 total package-wide, down from
+# 226). Reinstalled to `~/Library/R/4.0/library`. See `inst/taxalikely_review.Rmd` for the
+# full record.
+# Previous update, 2026-07-28 (Opus 5 -- absolute_fit_pvalue REMOVED entirely, along with the
 # internal .one_sided_fit_pvalue() helper it was built on. User decision after an audit
 # they requested to avoid column creep; a revival memory was written FIRST at their
 # explicit request -- see [[project_absolute_fit_pvalue_retired]] in the TaxaID memory

@@ -55,20 +55,20 @@ interpret_model <- function(model_params, print_report = TRUE) {
 
   .inv_logit <- function(x) 1 / (1 + exp(-x))
 
-  mu_score <- model_params$H1_Global_Mu[["score_logit"]]
-  mu_gap   <- model_params$H1_Global_Mu[["gap_logit"]]
+  global_mu_score <- model_params$H1_Global_Mu[["score_logit"]]
+  global_mu_gap   <- model_params$H1_Global_Mu[["gap_logit"]]
   sd_score <- if (!is.null(model_params$H1_Sigma))
     sqrt(model_params$H1_Sigma["score_logit", "score_logit"])
   else NA_real_
 
   # ---- H1 global profile ----------------------------------------------------
-  mean_score_pct    <- round(.inv_logit(mu_score) * 100, 2)
-  runner_up_pct     <- round(.inv_logit(mu_score - mu_gap) * 100, 2)
+  mean_score_pct    <- round(.inv_logit(global_mu_score) * 100, 2)
+  runner_up_pct     <- round(.inv_logit(global_mu_score - global_mu_gap) * 100, 2)
   effective_gap_pct <- round(mean_score_pct - runner_up_pct, 2)
 
   # ---- H2 / H3 expected scores ----------------------------------------------
-  h2_logit <- mu_score - model_params$H2$delta
-  h3_logit <- mu_score - model_params$H3$delta
+  h2_logit <- global_mu_score - model_params$H2$delta
+  h3_logit <- global_mu_score - model_params$H3$delta
   h2_pct   <- round(.inv_logit(h2_logit) * 100, 2)
   h3_pct   <- round(.inv_logit(h3_logit) * 100, 2)
 
@@ -92,7 +92,7 @@ interpret_model <- function(model_params, print_report = TRUE) {
 
   global_h1 <- data.frame(
     metric         = c("mean match score", "mean runner-up gap", "score tolerance (SD)"),
-    value_logit    = round(c(mu_score, mu_gap, sd_score), 2),
+    value_logit    = round(c(global_mu_score, global_mu_gap, sd_score), 2),
     value_pct      = c(mean_score_pct, effective_gap_pct, NA_real_),
     stringsAsFactors = FALSE
   )

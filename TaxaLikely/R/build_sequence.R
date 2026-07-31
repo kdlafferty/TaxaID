@@ -192,11 +192,11 @@ build_sequence_matrix <- function(reference_df,
                  paste(missing_ranks, collapse = ", ")))
 
   # ---- 1. CLEAN & DEDUPLICATE -----------------------------------------------
-  df <- reference_df |>
+  ref_seqs <- reference_df |>
     dplyr::filter(!is.na(sequence), nchar(sequence) > 0L) |>
     dplyr::distinct(composite_id, .keep_all = TRUE)
 
-  if (nrow(df) < 2L)
+  if (nrow(ref_seqs) < 2L)
     stop("Fewer than 2 valid sequences in reference_df after deduplication")
 
   # ---- 1b. IUPAC DNA FILTER --------------------------------------------------
@@ -205,20 +205,20 @@ build_sequence_matrix <- function(reference_df,
   # codes returned when an accession resolves to a protein record or a corrupt
   # NCBI entry).  Filter these out with a clear message before hitting Biostrings.
   valid_iupac <- "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn-]+$"
-  is_valid    <- grepl(valid_iupac, df$sequence)
+  is_valid    <- grepl(valid_iupac, ref_seqs$sequence)
   n_invalid   <- sum(!is_valid)
   if (n_invalid > 0L) {
-    bad_ids <- head(df$composite_id[!is_valid], 5L)
+    bad_ids <- head(ref_seqs$composite_id[!is_valid], 5L)
     warning(sprintf(
       paste0("build_sequence_matrix: removed %d sequence(s) with non-IUPAC DNA characters %s",
              "(likely protein accessions or corrupt records)."),
       n_invalid,
       sprintf("(e.g. %s) ", paste(bad_ids, collapse = ", "))
     ), call. = FALSE)
-    df <- df[is_valid, , drop = FALSE]
+    ref_seqs <- ref_seqs[is_valid, , drop = FALSE]
   }
 
-  if (nrow(df) < 2L)
+  if (nrow(ref_seqs) < 2L)
     stop("Fewer than 2 valid DNA sequences in reference_df after IUPAC filter")
 
   # ---- 1c. FILTER UNNAMED FINEST-RANK TAXA ------------------------------------
@@ -226,8 +226,8 @@ build_sequence_matrix <- function(reference_df,
   # training pairs.  In broad 18S reference databases, blank species names can
   # account for the majority of apparent within-species pairs.
   finest_rank <- rank_cols[length(rank_cols)]
-  if (filter_unnamed && finest_rank %in% names(df)) {
-    finest_vals <- df[[finest_rank]]
+  if (filter_unnamed && finest_rank %in% names(ref_seqs)) {
+    finest_vals <- ref_seqs[[finest_rank]]
     is_named    <- !is.na(finest_vals) & nchar(trimws(finest_vals)) > 0L
     n_unnamed   <- sum(!is_named)
     if (n_unnamed > 0L) {
@@ -235,9 +235,9 @@ build_sequence_matrix <- function(reference_df,
         "build_sequence_matrix: removed %d sequence(s) with blank/NA '%s' (filter_unnamed = TRUE).",
         n_unnamed, finest_rank
       ))
-      df <- df[is_named, , drop = FALSE]
+      ref_seqs <- ref_seqs[is_named, , drop = FALSE]
     }
-    if (nrow(df) < 2L)
+    if (nrow(ref_seqs) < 2L)
       stop("Fewer than 2 sequences remained after filtering unnamed sequences")
   }
 
@@ -246,8 +246,8 @@ build_sequence_matrix <- function(reference_df,
   # prevent heavily-sequenced species from dominating the within-species
   # distribution.  Uses the caller's RNG state; call set.seed() beforehand for
   # reproducibility.
-  if (!is.null(max_seqs_per_taxon) && finest_rank %in% names(df)) {
-    finest_vals <- df[[finest_rank]]
+  if (!is.null(max_seqs_per_taxon) && finest_rank %in% names(ref_seqs)) {
+    finest_vals <- ref_seqs[[finest_rank]]
     unique_taxa <- unique(finest_vals)
     over_cap    <- unique_taxa[
       vapply(unique_taxa, function(tx) sum(finest_vals == tx), integer(1L)) > max_seqs_per_taxon
@@ -257,19 +257,19 @@ build_sequence_matrix <- function(reference_df,
         rows <- which(finest_vals == tx)
         if (length(rows) > max_seqs_per_taxon) sample(rows, max_seqs_per_taxon) else rows
       }), use.names = FALSE)
-      df <- df[sort(keep_rows), , drop = FALSE]
+      ref_seqs <- ref_seqs[sort(keep_rows), , drop = FALSE]
       message(sprintf(
         "build_sequence_matrix: capped %d taxon/taxa to <= %d sequences per '%s'.",
         length(over_cap), max_seqs_per_taxon, finest_rank
       ))
     }
-    if (nrow(df) < 2L)
+    if (nrow(ref_seqs) < 2L)
       stop("Fewer than 2 sequences remained after thinning to max_seqs_per_taxon")
   }
 
   # ---- 2. LENGTH FILTER -------------------------------------------------------
-  dna <- Biostrings::DNAStringSet(df$sequence)
-  names(dna) <- df$composite_id
+  dna <- Biostrings::DNAStringSet(ref_seqs$sequence)
+  names(dna) <- ref_seqs$composite_id
 
   widths    <- Biostrings::width(dna)
   valid_idx <- widths >= min_seq_len & widths <= max_seq_len
@@ -279,8 +279,8 @@ build_sequence_matrix <- function(reference_df,
     message(sprintf("Dropped %d sequence(s) outside length range [%d, %d]",
                     n_dropped, min_seq_len, max_seq_len))
 
-  dna <- dna[valid_idx]
-  df  <- df[valid_idx, , drop = FALSE]
+  dna      <- dna[valid_idx]
+  ref_seqs <- ref_seqs[valid_idx, , drop = FALSE]
 
   if (length(dna) < 2L)
     stop(sprintf(
@@ -345,8 +345,8 @@ build_sequence_matrix <- function(reference_df,
   )
 
   # ---- 4. MERGE TAXONOMY METADATA --------------------------------------------
-  present_rank_cols <- intersect(rank_cols, names(df))
-  lookup <- dplyr::select(df, composite_id, dplyr::all_of(present_rank_cols))
+  present_rank_cols <- intersect(rank_cols, names(ref_seqs))
+  lookup <- dplyr::select(ref_seqs, composite_id, dplyr::all_of(present_rank_cols))
 
   out <- dist_tbl |>
     dplyr::left_join(lookup, by = c("id_x" = "composite_id")) |>

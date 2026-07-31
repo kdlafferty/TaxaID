@@ -118,6 +118,43 @@ utils::globalVariables(c(
 }
 
 
+#' Retry a single fetch/parse attempt closure up to max_attempts times
+#'
+#' Shared retry shape for `.fetch_summaries_batched()`/`.fetch_taxonomy_map()`/
+#' `.fetch_fasta_batched()`/`.fetch_locations_batched()`, each of which
+#' hand-rolled an identical 3-attempt linear-backoff loop around one NCBI
+#' round trip. `fn` is a zero-argument closure that performs one attempt
+#' (fetch + parse) and returns that attempt's result; any error it throws is
+#' caught and retried, with `Sys.sleep(attempt)` between attempts (no sleep
+#' after the final attempt). On exhaustion, all four original call sites
+#' failed silently (no warning/error, the caller's pre-allocated slot for
+#' this batch simply stayed at its initial empty value) -- `success = FALSE`
+#' preserves that: the caller must check it before using `value` (see
+#' `@return`).
+#' @param fn Zero-argument closure performing one fetch attempt.
+#' @param max_attempts Integer (default `3L`), matching every original call
+#'   site.
+#' @return `list(value, success)` -- `value` is `fn()`'s result on success
+#'   (`NULL` if every attempt failed); `success` is `TRUE` only if some
+#'   attempt succeeded.
+#' @noRd
+.retry_fetch <- function(fn, max_attempts = 3L) {
+  attempt <- 0L
+  success <- FALSE
+  value   <- NULL
+  while (attempt < max_attempts && !success) {
+    attempt <- attempt + 1L
+    tryCatch({
+      value   <- fn()
+      success <- TRUE
+    }, error = function(e) {
+      if (attempt < max_attempts) Sys.sleep(attempt)
+    })
+  }
+  list(value = value, success = success)
+}
+
+
 #' Fetch NCBI summaries in batches (lightweight: accession, taxid, length)
 #' @noRd
 .fetch_summaries_batched <- function(search_obj, batch_size = 200L) {
@@ -126,43 +163,36 @@ utils::globalVariables(c(
   res    <- vector("list", length(starts))
 
   for (i in seq_along(starts)) {
-    attempt <- 0L
-    success <- FALSE
-    while (attempt < 3L && !success) {
-      attempt <- attempt + 1L
-      tryCatch({
-        summ <- rentrez::entrez_summary(
-          db          = "nucleotide",
-          web_history = search_obj$web_history,
-          retstart    = starts[i],
-          retmax      = batch_size
-        )
-        # entrez_summary returns a single item or a list of items
-        if (!is.null(summ$uid)) summ <- list(summ)
+    result <- .retry_fetch(function() {
+      summ <- rentrez::entrez_summary(
+        db          = "nucleotide",
+        web_history = search_obj$web_history,
+        retstart    = starts[i],
+        retmax      = batch_size
+      )
+      # entrez_summary returns a single item or a list of items
+      if (!is.null(summ$uid)) summ <- list(summ)
 
-        # dplyr::bind_rows(), not do.call(rbind, ...) -- a handful of real
-        # NCBI ESummary records can come back missing a field entirely
-        # (already handled per-field above via is.null() -> NA), but the
-        # real risk is heterogeneous per-record structure from rentrez
-        # itself under retry/partial-failure conditions; rbind() errors on
-        # any column mismatch where bind_rows() fills the gap with NA (same
-        # fix already applied to the BOLD fetch path, see fetch_bold_
-        # reference_sequences() below for the identical reasoning).
-        res[[i]] <- dplyr::bind_rows(lapply(summ, function(x) {
-          data.frame(
-            acc      = as.character(if (is.null(x$caption))  NA else x$caption),
-            title    = as.character(if (is.null(x$title))    NA else x$title),
-            taxid    = as.character(if (is.null(x$taxid))    NA else x$taxid),
-            slen     = as.numeric(if (is.null(x$slen))       NA else x$slen),
-            organism = as.character(if (is.null(x$organism)) NA else x$organism),
-            stringsAsFactors = FALSE
-          )
-        }))
-        success <- TRUE
-      }, error = function(e) {
-        if (attempt < 3L) Sys.sleep(attempt)
-      })
-    }
+      # dplyr::bind_rows(), not do.call(rbind, ...) -- a handful of real
+      # NCBI ESummary records can come back missing a field entirely
+      # (already handled per-field above via is.null() -> NA), but the
+      # real risk is heterogeneous per-record structure from rentrez
+      # itself under retry/partial-failure conditions; rbind() errors on
+      # any column mismatch where bind_rows() fills the gap with NA (same
+      # fix already applied to the BOLD fetch path, see fetch_bold_
+      # reference_sequences() below for the identical reasoning).
+      dplyr::bind_rows(lapply(summ, function(x) {
+        data.frame(
+          acc      = as.character(if (is.null(x$caption))  NA else x$caption),
+          title    = as.character(if (is.null(x$title))    NA else x$title),
+          taxid    = as.character(if (is.null(x$taxid))    NA else x$taxid),
+          slen     = as.numeric(if (is.null(x$slen))       NA else x$slen),
+          organism = as.character(if (is.null(x$organism)) NA else x$organism),
+          stringsAsFactors = FALSE
+        )
+      }))
+    })
+    if (result$success) res[[i]] <- result$value
   }
 
   dplyr::bind_rows(res)
@@ -176,57 +206,50 @@ utils::globalVariables(c(
   res     <- vector("list", length(batches))
 
   for (i in seq_along(batches)) {
-    attempt <- 0L
-    success <- FALSE
-    while (attempt < 3L && !success) {
-      attempt <- attempt + 1L
-      tryCatch({
-        xml_raw <- rentrez::entrez_fetch(
-          db = "taxonomy", id = batches[[i]], rettype = "xml"
+    result <- .retry_fetch(function() {
+      xml_raw <- rentrez::entrez_fetch(
+        db = "taxonomy", id = batches[[i]], rettype = "xml"
+      )
+      xml_doc <- xml2::read_xml(xml_raw)
+      nodes   <- xml2::xml_find_all(xml_doc, "//TaxaSet/Taxon")
+
+      parsed <- lapply(nodes, function(node) {
+        this_id   <- xml2::xml_text(xml2::xml_find_first(node, "./TaxId"))
+        this_sci  <- xml2::xml_text(xml2::xml_find_first(node, "./ScientificName"))
+        this_rank <- xml2::xml_text(xml2::xml_find_first(node, "./Rank"))
+
+        row <- stats::setNames(
+          as.list(rep(NA_character_, length(desired_ranks))), desired_ranks
         )
-        xml_doc <- xml2::read_xml(xml_raw)
-        nodes   <- xml2::xml_find_all(xml_doc, "//TaxaSet/Taxon")
+        row$taxid <- this_id
 
-        parsed <- lapply(nodes, function(node) {
-          this_id   <- xml2::xml_text(xml2::xml_find_first(node, "./TaxId"))
-          this_sci  <- xml2::xml_text(xml2::xml_find_first(node, "./ScientificName"))
-          this_rank <- xml2::xml_text(xml2::xml_find_first(node, "./Rank"))
+        # Parse lineage
+        lineage_nodes <- xml2::xml_find_all(node, "./LineageEx/Taxon")
+        l_ranks <- xml2::xml_text(xml2::xml_find_first(lineage_nodes, "./Rank"))
+        l_names <- xml2::xml_text(xml2::xml_find_first(lineage_nodes, "./ScientificName"))
 
-          row <- stats::setNames(
-            as.list(rep(NA_character_, length(desired_ranks))), desired_ranks
-          )
-          row$taxid <- this_id
+        for (k in seq_along(l_ranks)) {
+          if (l_ranks[k] %in% desired_ranks) row[[l_ranks[k]]] <- l_names[k]
+        }
 
-          # Parse lineage
-          lineage_nodes <- xml2::xml_find_all(node, "./LineageEx/Taxon")
-          l_ranks <- xml2::xml_text(xml2::xml_find_first(lineage_nodes, "./Rank"))
-          l_names <- xml2::xml_text(xml2::xml_find_first(lineage_nodes, "./ScientificName"))
+        # The node's own rank
+        if (this_rank %in% desired_ranks) row[[this_rank]] <- this_sci
 
-          for (k in seq_along(l_ranks)) {
-            if (l_ranks[k] %in% desired_ranks) row[[l_ranks[k]]] <- l_names[k]
-          }
-
-          # The node's own rank
-          if (this_rank %in% desired_ranks) row[[this_rank]] <- this_sci
-
-          as.data.frame(row, stringsAsFactors = FALSE)
-        })
-
-        # dplyr::bind_rows(), not do.call(rbind, ...) -- real NCBI taxonomy
-        # XML is not perfectly uniform across taxids (e.g. a merged/redirected
-        # taxon's <Taxon> node can carry a different internal shape), so
-        # `parsed`'s per-node data frames can't be guaranteed to share
-        # identical columns; rbind() hard-errors on any mismatch
-        # ("numbers of columns of arguments do not match", confirmed live
-        # against a real ~1300-genus PtConception 18S fetch), bind_rows()
-        # fills the gap with NA instead. Same fix as .fetch_summaries_
-        # batched() above and the BOLD fetch path.
-        res[[i]] <- dplyr::bind_rows(parsed)
-        success  <- TRUE
-      }, error = function(e) {
-        if (attempt < 3L) Sys.sleep(attempt)
+        as.data.frame(row, stringsAsFactors = FALSE)
       })
-    }
+
+      # dplyr::bind_rows(), not do.call(rbind, ...) -- real NCBI taxonomy
+      # XML is not perfectly uniform across taxids (e.g. a merged/redirected
+      # taxon's <Taxon> node can carry a different internal shape), so
+      # `parsed`'s per-node data frames can't be guaranteed to share
+      # identical columns; rbind() hard-errors on any mismatch
+      # ("numbers of columns of arguments do not match", confirmed live
+      # against a real ~1300-genus PtConception 18S fetch), bind_rows()
+      # fills the gap with NA instead. Same fix as .fetch_summaries_
+      # batched() above and the BOLD fetch path.
+      dplyr::bind_rows(parsed)
+    })
+    if (result$success) res[[i]] <- result$value
     Sys.sleep(.ncbi_delay())
   }
 
@@ -241,20 +264,13 @@ utils::globalVariables(c(
   chunks  <- vector("character", length(batches))
 
   for (i in seq_along(batches)) {
-    attempt <- 0L
-    success <- FALSE
-    while (attempt < 3L && !success) {
-      attempt <- attempt + 1L
-      tryCatch({
-        chunks[i] <- rentrez::entrez_fetch(
-          db = "nucleotide", id = batches[[i]],
-          rettype = "fasta", retmode = "text"
-        )
-        success <- TRUE
-      }, error = function(e) {
-        if (attempt < 3L) Sys.sleep(attempt)
-      })
-    }
+    result <- .retry_fetch(function() {
+      rentrez::entrez_fetch(
+        db = "nucleotide", id = batches[[i]],
+        rettype = "fasta", retmode = "text"
+      )
+    })
+    if (result$success) chunks[i] <- result$value
     Sys.sleep(.ncbi_delay())
   }
 
@@ -311,45 +327,38 @@ utils::globalVariables(c(
   res     <- vector("list", length(batches))
 
   for (i in seq_along(batches)) {
-    attempt <- 0L
-    success <- FALSE
-    while (attempt < 3L && !success) {
-      attempt <- attempt + 1L
-      tryCatch({
-        xml_raw <- rentrez::entrez_fetch(
-          db = "nucleotide", id = batches[[i]], rettype = "gb", retmode = "xml"
+    result <- .retry_fetch(function() {
+      xml_raw <- rentrez::entrez_fetch(
+        db = "nucleotide", id = batches[[i]], rettype = "gb", retmode = "xml"
+      )
+      xml_doc <- xml2::read_xml(xml_raw)
+      nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
+
+      rows <- lapply(nodes, function(node) {
+        acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
+        quals <- xml2::xml_find_all(
+          node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
         )
-        xml_doc <- xml2::read_xml(xml_raw)
-        nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
+        qnames <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_name"))
+        qvals  <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_value"))
 
-        res[[i]] <- lapply(nodes, function(node) {
-          acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
-          quals <- xml2::xml_find_all(
-            node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
-          )
-          qnames <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_name"))
-          qvals  <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_value"))
+        lat_lon_raw <- qvals[qnames == "lat_lon"]
+        country_raw <- qvals[qnames == "country"]
+        ll <- .parse_lat_lon(if (length(lat_lon_raw) > 0L) lat_lon_raw[1L] else NA_character_)
 
-          lat_lon_raw <- qvals[qnames == "lat_lon"]
-          country_raw <- qvals[qnames == "country"]
-          ll <- .parse_lat_lon(if (length(lat_lon_raw) > 0L) lat_lon_raw[1L] else NA_character_)
-
-          data.frame(
-            composite_id = acc,
-            lat          = ll[["lat"]],
-            lon          = ll[["lon"]],
-            country      = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
-            stringsAsFactors = FALSE
-          )
-        })
-        # dplyr::bind_rows(), not do.call(rbind, ...) -- same reasoning as
-        # .fetch_summaries_batched()/.fetch_taxonomy_map() above.
-        res[[i]] <- dplyr::bind_rows(res[[i]])
-        success <- TRUE
-      }, error = function(e) {
-        if (attempt < 3L) Sys.sleep(attempt)
+        data.frame(
+          composite_id = acc,
+          lat          = ll[["lat"]],
+          lon          = ll[["lon"]],
+          country      = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
+          stringsAsFactors = FALSE
+        )
       })
-    }
+      # dplyr::bind_rows(), not do.call(rbind, ...) -- same reasoning as
+      # .fetch_summaries_batched()/.fetch_taxonomy_map() above.
+      dplyr::bind_rows(rows)
+    })
+    if (result$success) res[[i]] <- result$value
     Sys.sleep(.ncbi_delay())
   }
 

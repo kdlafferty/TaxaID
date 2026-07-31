@@ -257,7 +257,9 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
     list(tpr_pooled          = tpr_species_pooled,
          fpr_by_genus_shrunk = fpr_congeneric_shrunk,
          fpr_pooled          = fpr_congeneric_pooled)
-  } else NULL
+  } else {
+    NULL
+  }
 
   genus_slot  <- NULL
   family_slot <- NULL
@@ -332,7 +334,8 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 
   .interp <- function(x, y, xout) {
     ok <- !is.na(x) & !is.na(y)
-    x <- x[ok]; y <- y[ok]
+    x  <- x[ok]
+    y  <- y[ok]
     if (length(x) == 0L) return(NA_real_)
     if (length(x) == 1L) return(y[[1L]])
     o <- order(x)

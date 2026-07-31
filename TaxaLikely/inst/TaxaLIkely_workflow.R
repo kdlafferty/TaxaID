@@ -248,10 +248,11 @@ if (nrow(real_lik_result$unresolved) > 0L) {
   # )
 }
 
-saveRDS(real_likelihoods,
-        "/Users/lafferty/My Drive/Rscripts/projects/TaxaID/TaxaLikely/inst/real_likelihoods.rds")
-
-message("Saved real_likelihoods.")
+real_likelihoods_path <- file.path(
+  system.file("", package = "TaxaLikely"), "real_likelihoods.rds"
+)
+saveRDS(real_likelihoods, real_likelihoods_path)
+message("Saved real_likelihoods to ", real_likelihoods_path)
 
 # ==============================================================================
 # STAGE C: COVERAGE CONSTRAINTS (needs internet)

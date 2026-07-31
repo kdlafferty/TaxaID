@@ -636,7 +636,9 @@ utils::globalVariables(c(
                            confusion_risk_curves$species$fpr_by_genus_shrunk,
                            confusion_risk_curves$species$fpr_pooled)
     }, numeric(1))
-  } else rep(NA_real_, n_res)
+  } else {
+    rep(NA_real_, n_res)
+  }
 
   res$genus_confusion_risk <- if (!is.null(confusion_risk_curves) && !is.null(confusion_risk_curves$genus)) {
     vapply(seq_len(n_res), function(i) {
@@ -645,13 +647,17 @@ utils::globalVariables(c(
                            confusion_risk_curves$genus$fpr_by_family_shrunk,
                            confusion_risk_curves$genus$fpr_pooled)
     }, numeric(1))
-  } else rep(NA_real_, n_res)
+  } else {
+    rep(NA_real_, n_res)
+  }
 
   res$family_confusion_risk <- if (!is.null(confusion_risk_curves) && !is.null(confusion_risk_curves$family)) {
-    vapply(seq_len(n_res), function(i)
-      .lookup_confusion_risk_value(obs_pct_res[i], NA_character_, NULL, confusion_risk_curves$family$fpr_pooled),
-      numeric(1))
-  } else rep(NA_real_, n_res)
+    vapply(seq_len(n_res), function(i) {
+      .lookup_confusion_risk_value(obs_pct_res[i], NA_character_, NULL, confusion_risk_curves$family$fpr_pooled)
+    }, numeric(1))
+  } else {
+    rep(NA_real_, n_res)
+  }
 
   res_agg <- res |>
     dplyr::group_by(hypothesis_type, taxon_name, taxon_name_rank) |>

@@ -711,7 +711,8 @@ train_likelihood_model <- function(raw_df,
     .compute_rank_score_curves(raw_clean, rank_system, prior_weight = prior_weight),
     error = function(e) {
       warning(sprintf(
-        "Failed to compute confusion-risk curves (%s); species_confusion_risk/genus_confusion_risk/family_confusion_risk will be unavailable.",
+        paste0("Failed to compute confusion-risk curves (%s); species_confusion_risk/",
+               "genus_confusion_risk/family_confusion_risk will be unavailable."),
         conditionMessage(e)
       ))
       NULL

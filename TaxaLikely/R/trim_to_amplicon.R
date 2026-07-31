@@ -166,19 +166,19 @@ trim_to_amplicon <- function(reference_df,
   if (!requireNamespace("Biostrings", quietly = TRUE))
     stop("Package 'Biostrings' is required. Install it with: BiocManager::install('Biostrings')")
 
-  df     <- reference_df
-  widths <- nchar(df$sequence)
+  seq_df <- reference_df
+  widths <- nchar(seq_df$sequence)
 
   needs_trim <- !is.na(widths) & widths > max_len
 
-  amplicon_trimmed   <- rep(FALSE, nrow(df))
-  amplicon_trim_note <- rep("within_length_range_no_trim_needed", nrow(df))
+  amplicon_trimmed   <- rep(FALSE, nrow(seq_df))
+  amplicon_trim_note <- rep("within_length_range_no_trim_needed", nrow(seq_df))
   amplicon_trim_note[is.na(widths)] <- "missing_sequence"
 
   if (verbose)
     message(sprintf(
       "trim_to_amplicon: %d of %d sequence(s) exceed max_len (%d bp) and will be checked for the amplicon region.",
-      sum(needs_trim, na.rm = TRUE), nrow(df), max_len
+      sum(needs_trim, na.rm = TRUE), nrow(seq_df), max_len
     ))
 
   primer_rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(primer_rev)))
@@ -190,7 +190,7 @@ trim_to_amplicon <- function(reference_df,
 
   for (i in idx_to_check) {
     result <- .extract_amplicon_one(
-      seq_char       = df$sequence[i],
+      seq_char       = seq_df$sequence[i],
       fwd_pattern    = primer_fwd,
       rev_pattern_rc = primer_rev_rc,
       fwd_max_mm     = fwd_max_mm,
@@ -200,7 +200,7 @@ trim_to_amplicon <- function(reference_df,
     )
     amplicon_trim_note[i] <- result$note
     if (result$trimmed) {
-      df$sequence[i]    <- result$sequence
+      seq_df$sequence[i]    <- result$sequence
       amplicon_trimmed[i] <- TRUE
       n_trimmed <- n_trimmed + 1L
     }
@@ -215,9 +215,9 @@ trim_to_amplicon <- function(reference_df,
       n_trimmed, length(idx_to_check), length(idx_to_check) - n_trimmed
     ))
 
-  df$amplicon_trimmed   <- amplicon_trimmed
-  df$amplicon_trim_note <- amplicon_trim_note
-  df
+  seq_df$amplicon_trimmed   <- amplicon_trimmed
+  seq_df$amplicon_trim_note <- amplicon_trim_note
+  seq_df
 }
 
 

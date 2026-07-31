@@ -543,6 +543,41 @@ audit_barcode_coverage <- function(match_df,
   }, error = function(e) character(0L))
 }
 
+# Enumerate species under a genus via NCBI taxonomy subtree (shared by
+# .audit_one_genus_reverse()'s primary NCBI path and its GBIF-fallback path).
+#' @noRd
+.ncbi_species_enumerate <- function(genus_uid, grp = NA_character_, warn_on_error = TRUE) {
+  if (is.na(genus_uid)) return(character(0L))
+  tryCatch({
+    sp_res <- rentrez::entrez_search(
+      db     = "taxonomy",
+      term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
+      retmax = 10000L
+    )
+    if (length(sp_res$ids) == 0L) {
+      character(0L)
+    } else {
+      Sys.sleep(.ncbi_delay())
+      batches <- split(sp_res$ids, ceiling(seq_along(sp_res$ids) / 200L))
+      sp_flat <- unlist(lapply(batches, function(b) {
+        Sys.sleep(.ncbi_delay())
+        s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = b),
+                      error = function(e) NULL)
+        if (is.null(s)) return(list())
+        if (inherits(s, "esummary")) list(s) else as.list(s)
+      }), recursive = FALSE)
+      raw <- vapply(sp_flat, `[[`, character(1L), "scientificname")
+      raw <- .first_two_words(unique(raw[!is.na(raw)]))
+      raw[TaxaTools::is_plausible_binomial(raw)]
+    }
+  }, error = function(e) {
+    if (warn_on_error)
+      warning(sprintf("NCBI taxonomy query failed for '%s': %s",
+                      grp, conditionMessage(e)))
+    character(0L)
+  })
+}
+
 # Shared inner loop body used by both new draft functions.
 # Handles species enumeration (GBIF or NCBI) + reverse barcode check + record
 # assembly. Returns a census record list.
@@ -580,65 +615,20 @@ audit_barcode_coverage <- function(match_df,
     if (use_gbif) {
       all_sp <- .get_species_gbif(grp)
     } else {
-      # NCBI taxonomy subtree (same as v1, now with batch fix)
-      if (!is.na(genus_uid)) {
-        all_sp <- tryCatch({
-          sp_res <- rentrez::entrez_search(
-            db     = "taxonomy",
-            term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
-            retmax = 10000L
-          )
-          if (length(sp_res$ids) == 0L) {
-            character(0L)
-          } else {
-            Sys.sleep(.ncbi_delay())
-            batches <- split(sp_res$ids,
-                             ceiling(seq_along(sp_res$ids) / 200L))
-            sp_flat <- unlist(lapply(batches, function(b) {
-              Sys.sleep(.ncbi_delay())
-              s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = b),
-                            error = function(e) NULL)
-              if (is.null(s)) return(list())
-              if (inherits(s, "esummary")) list(s) else as.list(s)
-            }), recursive = FALSE)
-            raw <- vapply(sp_flat, `[[`, character(1L), "scientificname")
-            raw <- .first_two_words(unique(raw[!is.na(raw)]))
-            raw[TaxaTools::is_plausible_binomial(raw)]
-          }
-        }, error = function(e) {
-          warning(sprintf("NCBI taxonomy query failed for '%s': %s",
-                          grp, conditionMessage(e)))
-          character(0L)
-        })
-      }
+      # NCBI taxonomy subtree (same as v1, now with batch fix). Warns on
+      # failure -- this is the primary source path, so a query failure here
+      # is worth surfacing to the caller.
+      all_sp <- .ncbi_species_enumerate(genus_uid, grp = grp, warn_on_error = TRUE)
     }
   }
 
-  # 3. Fallback: if GBIF returned nothing, try NCBI taxonomy
+  # 3. Fallback: if GBIF returned nothing, try NCBI taxonomy. Silent on
+  # failure -- this is a best-effort fallback after the primary (GBIF) path
+  # already came back empty, so a second failure here just leaves all_sp
+  # empty rather than doubling up warnings for what the caller already knows
+  # was an unproductive lookup.
   if (length(all_sp) == 0L && use_gbif && !is.na(genus_uid)) {
-    all_sp <- tryCatch({
-      sp_res <- rentrez::entrez_search(
-        db     = "taxonomy",
-        term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
-        retmax = 10000L
-      )
-      if (length(sp_res$ids) == 0L) {
-        character(0L)
-      } else {
-        Sys.sleep(.ncbi_delay())
-        batches <- split(sp_res$ids, ceiling(seq_along(sp_res$ids) / 200L))
-        sp_flat <- unlist(lapply(batches, function(b) {
-          Sys.sleep(.ncbi_delay())
-          s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = b),
-                        error = function(e) NULL)
-          if (is.null(s)) return(list())
-          if (inherits(s, "esummary")) list(s) else as.list(s)
-        }), recursive = FALSE)
-        raw <- vapply(sp_flat, `[[`, character(1L), "scientificname")
-        raw <- .first_two_words(unique(raw[!is.na(raw)]))
-        raw[TaxaTools::is_plausible_binomial(raw)]
-      }
-    }, error = function(e) character(0L))
+    all_sp <- .ncbi_species_enumerate(genus_uid, grp = grp, warn_on_error = FALSE)
   }
 
   if (length(all_sp) == 0L) return(rec)  # NA record; caller will not checkpoint
