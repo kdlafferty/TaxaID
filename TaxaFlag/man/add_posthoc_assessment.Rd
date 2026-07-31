@@ -2,26 +2,25 @@
 % Please edit documentation in R/add_posthoc_assessment.R
 \name{add_posthoc_assessment}
 \alias{add_posthoc_assessment}
-\title{Add a post-hoc plausibility assessment to a consensus data frame}
+\title{Add post-hoc plausibility and discrimination assessments to a consensus data frame}
 \usage{
 add_posthoc_assessment(
   consensus_df,
-  tiers,
   winner_likelihood_col = "winner_likelihood",
   consensus_taxon_col = "consensus_taxon",
   consensus_rank_col = "consensus_rank",
-  taxon_col = "taxon_name",
-  tier_col = "model_tier",
   likelihood_threshold = 0.5,
-  finest_rank = "species",
   domestic_taxa = NULL,
   domestic_prior_source = c("wild", "augmented"),
-  own_rank_confusion_risk_col = "winner_own_rank_confusion_risk",
-  high_confusion_risk_threshold = 0.5,
-  winner_prior_col = "winner_prior",
+  primary_confusion_risk_col = "winner_own_rank_confusion_risk",
+  consensus_confusion_risk_col = "consensus_confusion_risk",
+  discriminating_threshold = 0.05,
+  indistinguishable_threshold = 0.5,
+  winner_theta_col = "winner_theta_mean",
   winner_record_col = "winner_has_occurrence_record",
   consensus_prior_col = "consensus_prior",
-  expected_prior_threshold = 0.5
+  consensus_record_col = "consensus_has_occurrence_record",
+  expected_theta_threshold
 )
 }
 \arguments{
@@ -30,37 +29,26 @@ add_posthoc_assessment(
 \code{winner_likelihood_col}, \code{consensus_taxon_col}, and
 \code{consensus_rank_col}.}
 
-\item{tiers}{Data frame.  Taxon-tier lookup with at least \code{taxon_col}
-and \code{tier_col}.  Typically built as
-\code{dplyr::bind_rows(priors_observed, priors_undetected)} and passed
-directly; tier3 taxa (from \code{generate_undetected_diversity()}) are
-recognised by tier value \code{"tier3_undetected"}.}
-
 \item{winner_likelihood_col}{Character.  Column in \code{consensus_df}
 holding the winner's ratio-normalised likelihood (default
-\code{"winner_likelihood"}).  Pass \code{"winner_likelihood_cov"} to use
-the coverage-adjusted value instead.}
+\code{"winner_likelihood"}).  Used only by the domestic-species caveat
+(see below) -- a strong value here means the ID itself is trustworthy,
+independent of whether the occurrence prior underrepresents the taxon.}
 
 \item{consensus_taxon_col}{Character.  Column holding the consensus taxon
-name (default \code{"consensus_taxon"}).}
+name (default \code{"consensus_taxon"}).  Used only by the
+domestic-species caveat, to match against \code{domestic_taxa}.}
 
 \item{consensus_rank_col}{Character.  Column holding the consensus rank
-(default \code{"consensus_rank"}).}
+(default \code{"consensus_rank"}).  Drives which
+\code{expected_theta_threshold} entry \code{consensus_plausibility}
+compares against.}
 
-\item{taxon_col}{Character.  Column in \code{tiers} to join on (default
-\code{"taxon_name"}).}
-
-\item{tier_col}{Character.  Column in \code{tiers} holding the tier label
-(default \code{"model_tier"}).}
-
-\item{likelihood_threshold}{Numeric in (0, 1).  Likelihood cutoff for
-"supported" vs "limited" evidence (default \code{0.5}).  Below this, the
-winner had less than half the sequence density of the best-matching
-hypothesis.}
-
-\item{finest_rank}{Character.  The rank at which tier lookups are valid
-(default \code{"species"}).  Rows where \code{consensus_rank} differs
-receive \code{"vague_rank"}.}
+\item{likelihood_threshold}{Numeric in (0, 1).  Likelihood cutoff the
+domestic-species caveat uses for "the ID itself is trustworthy" (default
+\code{0.5}).  Below this, the winner had less than half the
+sequence-match density of the best-matching hypothesis.  Unused when
+\code{domestic_taxa} is \code{NULL}.}
 
 \item{domestic_taxa}{Character vector or \code{NULL} (default).  Taxon
 names (matched against \code{consensus_taxon_col}) that are domestic or
@@ -69,140 +57,178 @@ synanthropic for your study system (e.g. \code{"Felis catus"},
 default list, since what counts as "domestic" is study-system-specific.
 \code{NULL} disables this feature entirely (matches
 \code{\link{flag_handler}}'s \code{handler_taxa} convention). See the
-Domestic/synanthropic species caveat section below.}
+Domestic/synanthropic species caveat section above.}
 
 \item{domestic_prior_source}{Character.  One of \code{"wild"} (default) or
-\code{"augmented"}. \code{"wild"} assumes \code{tiers} came from a raw
-occurrence database (GBIF/iNaturalist) with no domestic-species
-augmentation, so a strong-likelihood + low-tier domestic-species row is
-re-labelled \code{"domestic_prior_caveat"}. \code{"augmented"} means the
-prior pipeline already incorporated known local domestic/synanthropic
-presence, so the low tier is treated as informative and no re-labelling
-happens. Ignored when \code{domestic_taxa} is \code{NULL}.}
+\code{"augmented"}. \code{"wild"} assumes the underlying occurrence prior
+came from a raw occurrence database (GBIF/iNaturalist) with no
+domestic-species augmentation, so a strong-likelihood +
+low-plausibility domestic-species row is flagged via
+\code{domestic_prior_caveat}. \code{"augmented"} means the prior
+pipeline already incorporated known local domestic/synanthropic
+presence, so low occurrence plausibility is treated as informative and
+the flag never fires. Ignored when \code{domestic_taxa} is \code{NULL}.}
 
-\item{own_rank_confusion_risk_col}{Character.  Column in \code{consensus_df}
-holding \code{TaxaLikely::evaluate_likelihoods()}'s
-\code{own_rank_confusion_risk} value for the winning hypothesis, passed
-through unchanged from \code{TaxaAssign::posterior_consensus()}'s
-\code{winner_own_rank_confusion_risk} column (default
-\code{"winner_own_rank_confusion_risk"}).  See \code{@section
-  Confusion-risk flag} below.  Silently ignored (no error,
-\code{confusion_risk_flag} is all \code{NA}) when absent from
-\code{consensus_df} -- an optional upstream output, not required input.}
+\item{primary_confusion_risk_col}{Character.  Column in \code{consensus_df}
+holding \code{TaxaAssign::posterior_consensus()}'s
+\code{winner_own_rank_confusion_risk} -- the confusion-risk value
+rank-matched to \code{primary_taxon}'s own resolved rank (default
+\code{"winner_own_rank_confusion_risk"}).  Drives
+\code{primary_discrimination}.  See \code{@section Discrimination
+  (Axis 2)} below.}
 
-\item{high_confusion_risk_threshold}{Numeric in \code{[0, 1]} (default
-\code{0.5}).  \code{own_rank_confusion_risk_col} values ABOVE this
-threshold are flagged \code{"high_confusion_risk"} (HIGHER means MORE
-confusable, i.e. weaker evidence for this diagnostic -- see
-\code{@section Confusion-risk flag}).  Not itself empirically
-validated -- a defensible midpoint, not a calibrated constant.}
+\item{consensus_confusion_risk_col}{Character.  Column holding the
+confusion-risk value rank-matched to \code{consensus_taxon} (default
+\code{"consensus_confusion_risk"}).  Drives
+\code{consensus_discrimination}.}
 
-\item{winner_prior_col}{Character.  Column in \code{consensus_df} holding
-the winning hypothesis's own occurrence prior (default
-\code{"winner_prior"}, from \code{TaxaAssign::posterior_consensus()}).
-Drives \code{primary_plausibility}.}
+\item{discriminating_threshold}{Numeric in \code{[0, 1]} (default
+\code{0.05}).  Below this, the resolved rank is \code{"discriminating"}.}
+
+\item{indistinguishable_threshold}{Numeric in \code{[0, 1]}, \code{>=
+  discriminating_threshold} (default \code{0.5}).  At or above this, the
+resolved rank is \code{"indistinguishable"}; between the two
+thresholds, \code{"weak"}.}
+
+\item{winner_theta_col}{Character.  Column in \code{consensus_df} holding
+the winning hypothesis's own raw occurrence-model share (default
+\code{"winner_theta_mean"}, from
+\code{TaxaAssign::posterior_consensus()}).  Drives
+\code{primary_plausibility}.  Deliberately reads \code{theta_mean}, NOT
+\code{winner_prior}/\code{prior_mean} -- see @section Occurrence
+plausibility below for why the two are not interchangeable.}
 
 \item{winner_record_col}{Character.  Column indicating whether the winning
 hypothesis's taxon carries a real occurrence record at all (default
-\code{"winner_has_occurrence_record"}).  This, NOT a low prior value, is
+\code{"winner_has_occurrence_record"}).  This, NOT a low theta value, is
 what makes a call \code{"unprecedented"}.}
 
-\item{consensus_prior_col}{Character.  Column holding the highest prior
-among recorded members of the consensus taxon (default
-\code{"consensus_prior"}).  \code{NA} there means no member has an
-occurrence record -- the consensus-scope never-reported signal.}
+\item{consensus_prior_col}{Character.  Column holding the occurrence-model
+share (\code{theta_mean}-based group sum, see
+\code{TaxaAssign::posterior_consensus()}'s own docs) for the consensus
+taxon (default \code{"consensus_prior"}).}
 
-\item{expected_prior_threshold}{Numeric in \code{[0, 1]} (default
-\code{0.5}).  At or above this prior a recorded taxon is
-\code{"expected"}; below it, \code{"unexpected"}.}
+\item{consensus_record_col}{Character.  Column indicating whether the
+consensus taxon's group carries a real occurrence record at all
+(default \code{"consensus_has_occurrence_record"}).  This, NOT
+\code{consensus_prior_col}'s \code{NA}-ness, is what makes a call
+\code{"unprecedented"} at consensus scope -- \code{consensus_prior} is
+\code{NA} for two different reasons (no local member found, OR
+\code{group_priors} was never supplied to \code{posterior_consensus()}
+at all) that this column alone cannot distinguish; a taxon with
+\code{NA} here is \code{"not_modeled"}, not \code{"unprecedented"}.}
+
+\item{expected_theta_threshold}{Named numeric vector, no default -- this
+genuinely depends on the taxon assemblage being scored and there is no
+universal safe value (mirrors \code{TaxaAssign::join_priors()}'s
+\code{backbone_id} / \code{TaxaAssign::score_consensus()}'s
+\code{rank_thresholds}, both required for the same reason). Names must
+be rank labels (e.g. \code{c(species = ..., genus = ..., family =
+  ...)}); \code{"species"} is required, since \code{primary_plausibility}
+always compares against it (see @section Occurrence plausibility). A
+recorded taxon at or above the threshold for ITS OWN rank is
+\code{"expected"}; below it, \code{"unexpected"}; a rank with no entry
+in this vector gets \code{"not_modeled"} rather than an unsafe
+cross-rank comparison. Recommended: the median \code{theta_sum} at each
+rank from \code{TaxaAssign::compute_group_priors()} (species from
+\code{median(taxaexpect_priors$theta_mean, na.rm = TRUE)} directly,
+since \code{compute_group_priors()} is only built for genus/family) --
+an "at least as expected as a typical local taxon at this rank"
+reading, avoiding a fitted or absolute cutoff. See @section Occurrence
+plausibility.}
 }
 \value{
-\code{consensus_df} with four columns appended:
+\code{consensus_df} with five columns appended:
 \describe{
-\item{\code{posthoc_assessment}}{Character.  One of: \code{"sensible"},
-\code{"limited_evidence"}, \code{"unexpected"}, \code{"suspect"},
-\code{"unprecedented"}, \code{"vague_rank"}, \code{"modeled"},
-and (only when \code{domestic_taxa} is supplied)
-\code{"domestic_prior_caveat"}.}
-\item{\code{confusion_risk_flag}}{Character.  \code{"high_confusion_risk"}
-when \code{own_rank_confusion_risk_col}'s value exceeds
-\code{high_confusion_risk_threshold}, \code{"low_confusion_risk"}
-otherwise, \code{NA} when the value itself is \code{NA} or
-\code{own_rank_confusion_risk_col} is absent from \code{consensus_df}.
-See \code{@section Confusion-risk flag} above.}
 \item{\code{primary_plausibility}, \code{consensus_plausibility}}{
-Character.  Occurrence plausibility of \code{primary_taxon} and of
-\code{consensus_taxon}: \code{"expected"}, \code{"unexpected"},
+Character.  Occurrence plausibility (Axis 1) of \code{primary_taxon}
+and of \code{consensus_taxon}: \code{"expected"}, \code{"unexpected"},
 \code{"unprecedented"}, or \code{"not_modeled"} when nothing is
-computable.  \code{NA} when the required source columns are absent
-from \code{consensus_df}.}
+computable -- including when \code{consensus_rank} has no matching
+entry in \code{expected_theta_threshold}.  \code{NA} when the required
+source columns are absent from \code{consensus_df}.}
+\item{\code{primary_discrimination}, \code{consensus_discrimination}}{
+Character.  Discrimination (Axis 2) of \code{primary_taxon} and of
+\code{consensus_taxon}: \code{"discriminating"}, \code{"weak"},
+\code{"indistinguishable"}, or \code{"not_modeled"} when the source
+confusion-risk column is absent or \code{NA}.  See \code{@section
+    Discrimination (Axis 2)} above.}
+\item{\code{domestic_prior_caveat}}{Logical.  \code{TRUE} when the
+winning taxon is in \code{domestic_taxa}, \code{domestic_prior_source
+    = "wild"}, the ID itself is trustworthy (\code{winner_likelihood_col}
+\code{>= likelihood_threshold}), and \code{primary_plausibility} is
+\code{"unexpected"} or \code{"unprecedented"} -- i.e. the occurrence
+plausibility flag for this row is a likely database-coverage artifact,
+not a genuine surprise. \code{FALSE} otherwise, including when
+\code{domestic_taxa} is \code{NULL} (the feature is disabled). See
+@section Domestic/synanthropic species caveat above.}
 }
 }
 \description{
-Classifies each row of a \code{posterior_consensus()} output using signals
-already present in the data: sequence-match evidence
-(\code{winner_likelihood}) and prior establishment status (taxon tier from
-\code{priors_combined}) drive the base 3 x 2 classification below. The
-result is a single categorical column \code{posthoc_assessment} suitable for
-filtering or LLM-assisted review.
+Appends two independent, orthogonal diagnostic axes to a
+\code{TaxaAssign::posterior_consensus()} output, reported for
+\code{primary_taxon} and \code{consensus_taxon} separately: occurrence
+plausibility (Axis 1 -- \code{primary_plausibility}/
+\code{consensus_plausibility}, "how expected is this taxon here?") and
+discrimination (Axis 2 -- \code{primary_discrimination}/
+\code{consensus_discrimination}, "could the evidence tell this taxon
+apart from a plausible relative?"). Neither axis gates or overrides the
+other, and neither is folded into a single combined categorical -- see
+\code{@section} below for both, and the "Retirement" section for why the
+earlier single-column \code{posthoc_assessment} design (with its
+\code{"vague_rank"} short-circuit for any non-species rank) was removed.
 }
-\details{
-\strong{Classification logic (3 x 2 table):}
-\tabular{lll}{
-\strong{Prior tier} \tab \strong{Likelihood supported} \tab \strong{Likelihood limited} \cr
-tier1 (expected)          \tab \code{"sensible"}      \tab \code{"limited_evidence"} \cr
-tier2 (unexpected)        \tab \code{"unexpected"}    \tab \code{"suspect"}          \cr
-tier3_undetected          \tab \code{"unprecedented"} \tab \code{"suspect"}          \cr
+\section{Retirement of \code{posthoc_assessment} (2026-07-30)}{
+
+The original design cross-tabulated sequence-match evidence against a
+taxon-tier lookup into one 9-category column, including
+\code{"vague_rank"} -- returned for EVERY row whose \code{consensus_rank}
+was not \code{"species"}, short-circuiting classification entirely rather
+than reporting a coarser-but-still-informative answer. Measured on a real
+616-observation Mugu dataset: 109 observations (17.7\\%) got
+\code{"vague_rank"} and were never assessed at all. This is exactly the
+failure mode the Axis 1/Axis 2 redesign replaces it with: both axes are
+computed at whatever rank the data actually resolved to, reported
+alongside each other, with no rank at which classification simply stops.
+\code{posthoc_assessment}, \code{tiers}, \code{taxon_col}, \code{tier_col},
+and \code{finest_rank} are all removed -- there is no replacement for the
+3x2 tier-times-likelihood table itself, since \code{primary_plausibility}
+(occurrence side) and \code{primary_discrimination} (evidence side)
+already answer the same two questions without collapsing them into one
+column or gating either on rank.
 }
 
-\strong{Special cases:}
-\itemize{
-\item \code{consensus_rank != finest_rank}: tier lookup is not meaningful
-at coarser ranks; returns \code{"vague_rank"}.
-\item \code{winner_likelihood = NA}: likelihoods were not modelled (e.g.
-output from \code{assign_taxa_llm()} or unresolved observations);
-returns \code{"modeled"}.
-\item Taxon not found in \code{tiers}: treated as tier2 (no occurrence
-record in the prior model).
-}
-
-\strong{Likelihood threshold:} \code{winner_likelihood} is ratio-normalised
-within each observation (best hypothesis = 1.0).  A value below
-\code{likelihood_threshold} (default 0.5) means another hypothesis had
-more than twice the sequence-match density as the winner -- the winner won
-primarily via prior strength.
-}
-\section{Domestic/synanthropic species caveat (Session 149)}{
+\section{Domestic/synanthropic species caveat (Session 149, redesigned 2026-07-30)}{
 
 GBIF- and iNaturalist-derived occurrence priors structurally under-index
 captive/domestic organisms (pets, livestock) -- a data-curation property of
 those sources, not a modelling choice. A domestic species can therefore
-land in \code{tier2}/\code{tier3_undetected} (an artificially low prior)
-even when the sequence-match or image/acoustic evidence for it is strong,
-producing an \code{"unexpected"}/\code{"unprecedented"} label that looks
-like a suspicious call but is really just a database gap -- likelihood
-(from e.g. NCBI BLAST or iNaturalist image recognition, both of which
-handle domestic species classification fine) contrasting with a low prior
-that came from an occurrence database with no domestic-species coverage.
-Passing \code{domestic_taxa} re-labels exactly this combination (strong
-likelihood + a low-tier prior) to \code{"domestic_prior_caveat"} instead,
-so a reviewer sees "trust the ID, question the rarity" rather than a
-generic low-plausibility flag. This is deliberately conservative: it only
-fires when the prior is expected to be an under-count (see
-\code{domestic_prior_source}), never invents or elevates a prior itself.
-If your prior pipeline already augments occurrence data with known local
-domestic/synanthropic presence (rather than relying on raw GBIF/iNat), set
-\code{domestic_prior_source = "augmented"} to disable this re-labelling,
-since the low-tier signal is then informative on its own.
+show \code{primary_plausibility = "unexpected"}/\code{"unprecedented"}
+(an artificially low occurrence share) even when the sequence-match or
+image/acoustic evidence for it is strong, looking like a suspicious call
+when it is really just a database gap. Passing \code{domestic_taxa} flags
+exactly this combination (strong likelihood + low occurrence
+plausibility) via the new \code{domestic_prior_caveat} column, so a
+reviewer sees "trust the ID, question the rarity" rather than treating
+the occurrence-implausibility flag at face value. This is deliberately
+conservative: it only fires when the prior is expected to be an
+under-count (see \code{domestic_prior_source}), never invents or elevates
+a prior itself, and -- unlike the retired \code{posthoc_assessment}
+design, which re-labelled the combined column in place -- is now its own
+small additive column, matching the axes' own "report alongside, never
+override" design. If your prior pipeline already augments occurrence data
+with known local domestic/synanthropic presence (rather than relying on
+raw GBIF/iNat), set \code{domestic_prior_source = "augmented"} to disable
+this flag, since \code{primary_plausibility} is then informative on its
+own.
 }
 
-\section{Confusion-risk flag (\code{confusion_risk_flag})}{
+\section{Discrimination (Axis 2) (\code{primary_discrimination}/\code{consensus_discrimination})}{
 
-A THIRD, deliberately SEPARATE signal from \code{posthoc_assessment}
-above. \code{TaxaLikely::evaluate_likelihoods()}'s
+A confusion-risk value (\code{TaxaLikely::evaluate_likelihoods()}'s
 \code{species_confusion_risk}/\code{genus_confusion_risk}/
-\code{family_confusion_risk} (passed through here via
-\code{own_rank_confusion_risk_col}) is a model-independent, score-ONLY
+\code{family_confusion_risk}, passed through by
+\code{posterior_consensus()}) is a model-independent, score-ONLY
 diagnostic: given the winning candidate's own raw match score, how often
 would a REAL congener/confamilial/cross-family pair score this high or
 higher? HIGHER values mean MORE confusable, i.e. WEAKER evidence for the
@@ -210,53 +236,75 @@ resolved rank -- a genuine risk-style metric (high=concern), unlike
 \code{score_likelihood}/\code{posterior_mean}/\code{confidence_score}
 elsewhere in this ecosystem, which are all high=good -- see
 \code{evaluate_likelihoods()}'s own \code{@section Confusion risk} for
-the full interpretation. (\code{flag_contaminant()}'s
-\code{observation_validity} is NOT an example of this convention, despite
-an earlier version of this note claiming otherwise -- it is a high=good
-confidence score, renamed 2026-07-24 from \code{contaminant_score} for
-exactly this reason; see that function's own docs.)
+the full interpretation.
 
-This is deliberately kept as its OWN column rather than folded into
-\code{posthoc_assessment}'s override chain. The cautionary precedent here
-is the \code{trusted_rank} ladder-walk
-mechanism (built 2026-07-19, removed 2026-07-20 after a real ~30\\%
-likelihood/posterior-winner mismatch plus a downranking-cancellation bug --
-see \code{[[project_rank_trust_mechanism_removed]]} in the TaxaID memory
-system): a mechanism that recomputes or overrides an existing categorical
-judgment is exactly the shape that broke there. \code{species_confusion_risk}
-and friends are meant to stay a plain continuous value a downstream
-consumer (a human reviewer, or an LLM-based review function) reads and
-acts on directly -- \code{confusion_risk_flag} is a convenience threshold
-on top of that raw value for quick filtering, not a replacement for
-reading \code{winner_species_confusion_risk}/\code{winner_genus_confusion_risk}/
-\code{winner_family_confusion_risk}/\code{winner_own_rank_confusion_risk}
-directly, and it never overrides or interacts with \code{posthoc_assessment}.
-(Renamed 2026-07-23 from \code{score_support_flag}/\code{weak_score_support}/
-\code{adequate_score_support} to match the direction the underlying values
-actually have -- no math changed, only the names.)
+\code{primary_discrimination}/\code{consensus_discrimination} tier that
+raw value into three ordinal bands (plus \code{"not_modeled"} when the
+source column is absent or \code{NA}): \code{"discriminating"} (\code{<
+0.05}), \code{"weak"} (\code{0.05}-\code{0.5}), \code{"indistinguishable"}
+(\code{>= 0.5}). Both breaks are interpretable statements about a genuine
+one-sided tail probability rather than fitted cutoffs.
+
+These are reported \strong{alongside} \code{primary_plausibility}/
+\code{consensus_plausibility} (Axis 1) rather than combined with them --
+Axis 1 asks whether the taxon is expected to be here at all; Axis 2 asks
+whether the evidence could discriminate it from a plausible relative.
+Neither substitutes for the other. This design is deliberately additive
+rather than a recomputing/overriding mechanism -- the cautionary
+precedent is the \code{trusted_rank} ladder-walk (built 2026-07-19,
+removed 2026-07-20 after a real ~30\\% likelihood/posterior-winner
+mismatch plus a downranking-cancellation bug -- see
+\code{[[project_rank_trust_mechanism_removed]]} in the TaxaID memory
+system).
 }
 
 \section{Occurrence plausibility (\code{primary_plausibility}/\code{consensus_plausibility})}{
 
 An ordinal answer to "how expected is this taxon here?", reported for
-\code{primary_taxon} and \code{consensus_taxon} separately and
-\strong{alongside} the other columns -- never gating them, which is the
-specific defect \code{"vague_rank"} has (it short-circuits classification
-entirely for any non-species rank).
+\code{primary_taxon} and \code{consensus_taxon} separately and computed
+at whatever rank the data actually resolved to -- never short-circuited
+for a coarser rank, the specific defect the retired \code{"vague_rank"}
+category had.
 
-\code{"unprecedented"} is driven by RECORD PRESENCE, never by a low prior
-value.  A never-reported taxon and a genuine singleton can carry the same
-numeric prior -- both land on the dark-diversity floor -- while meaning
-opposite things, so no threshold on the value can separate them.  Verified
-on real data: 547 candidate rows carried no occurrence record yet a prior
-above the floor, one reaching 0.975 because its dark-diversity group had
-only three members; thresholding value alone would have called that
-\code{"expected"}.
+\code{"unprecedented"} is driven by RECORD PRESENCE, never by a low value.
+A never-reported taxon and a genuine singleton can carry the same numeric
+value -- both land on the dark-diversity floor -- while meaning opposite
+things, so no threshold on the value can separate them.
 
-The \code{0.5} break does two jobs at once, which is why it was preferred
-to a fitted cutoff: it is directly interpretable (the taxon is at least as
-likely present as absent), and it falls in a genuinely empty region of the
-real prior distribution (nothing between 0.0865 and 0.966 -- an 11x gap).
+\strong{Reads \code{theta_mean}, not \code{prior_mean} (fixed 2026-07-30).}
+\code{prior_mean} can be substantially inflated by
+\code{TaxaAssign::update_prior_from_consensus()}'s cross-observation
+confirmation boost, which has no gate on occurrence-record presence.
+Measured on real Mugu data: of 616 winning candidates, 110 had
+\code{winner_prior >= 0.5}, and on that same dataset EVERY row with
+\code{prior_mean >= 0.5} was a boosted row -- so an \code{expected} call
+built on \code{prior_mean} would mean "confirmed elsewhere in this
+dataset", not "expected here on occurrence grounds". \code{theta_mean}
+(\code{TaxaExpect::prepare_model_dataframe()}'s raw occurrence-model share,
+a compositional share of local records -- see
+\code{TaxaAssign::update_prior_from_consensus()}'s own "Rescaling onto the
+occurrence scale" section) is immune to that boost by construction, since
+the boost only ever modifies \code{prior_mean}.
+
+A single absolute threshold (the previous design used \code{0.5} on the
+\code{prior_mean} scale) is also a unit mismatch on the \code{theta_mean}
+scale: \code{theta_mean} is a share of local records, not a presence
+probability, so comparing it to "50/50 odds" is not a meaningful
+comparison. Beyond that, a SINGLE threshold applied at every rank is
+itself biased: a genus/family-level \code{consensus_prior} (the SUM of
+\code{theta_mean} across every locally modelled group member, from
+\code{TaxaAssign::posterior_consensus(group_priors = ...)}) is
+mechanically larger than any one species' own share just from summing
+more terms -- measured on real Mugu data, 27 of 28 real families clear
+the SPECIES-level median purely by having more members, not because they
+are more locally expected. \code{expected_theta_threshold} is therefore a
+RANK-MATCHED vector: \code{primary_plausibility} (always the winning
+candidate's own species-level share) is compared against the
+\code{"species"} entry; \code{consensus_plausibility} is compared against
+whichever entry matches that row's own \code{consensus_rank_col} value.
+A \code{consensus_rank} with no matching entry (e.g. a coarser rank the
+caller didn't supply a threshold for) gets \code{"not_modeled"} rather
+than being compared against the wrong rank's threshold.
 }
 
 \examples{
@@ -268,32 +316,31 @@ cons <- data.frame(
   consensus_rank    = c("species", "species", "species",
                         "species", "species", "genus"),
   winner_likelihood = c(0.95, 0.03, 0.15, 0.80, 0.70, 0.90),
-  winner_prior      = c(0.40, 0.80, 0.35, 0.002, NA, 0.10),
+  winner_theta_mean = c(0.010, 0.020, 0.009, 0.0005, NA, 0.003),
+  winner_has_occurrence_record = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
   stringsAsFactors  = FALSE
 )
-tiers <- data.frame(
-  taxon_name  = c("Oncorhynchus mykiss", "Homo sapiens",
-                  "Salmo salar", "Sardina pilchardus"),
-  model_tier  = c("tier1", "tier1", "tier1", "tier3_undetected"),
-  stringsAsFactors = FALSE
-)
-add_posthoc_assessment(cons, tiers)
+# expected_theta_threshold has no default -- a named vector, one entry
+# per rank ("species" required). Typically the median theta at that rank
+# (species: median(taxaexpect_priors$theta_mean); genus/family: median of
+# TaxaAssign::compute_group_priors()'s theta_sum at that rank).
+add_posthoc_assessment(cons,
+                       expected_theta_threshold = c(species = 0.008, genus = 0.02))
 
 # Domestic-species caveat: a cat with a strong ID but a database-driven
-# low prior gets a distinct label instead of looking "suspect".
+# low occurrence plausibility gets a distinct flag rather than looking
+# like a genuinely surprising detection.
 cons2 <- data.frame(
   observation_id    = c("obs7", "obs8"),
   consensus_taxon   = c("Felis catus", "Made-up sp."),
   consensus_rank    = c("species", "species"),
   winner_likelihood = c(0.90, 0.90),
+  winner_theta_mean = c(0.0002, 0.0002),
+  winner_has_occurrence_record = c(TRUE, TRUE),
   stringsAsFactors  = FALSE
 )
-tiers2 <- data.frame(
-  taxon_name = character(0),
-  model_tier = character(0),
-  stringsAsFactors = FALSE
-)
-add_posthoc_assessment(cons2, tiers2, domestic_taxa = "Felis catus")
+add_posthoc_assessment(cons2, domestic_taxa = "Felis catus",
+                       expected_theta_threshold = c(species = 0.008))
 
 }
 \seealso{

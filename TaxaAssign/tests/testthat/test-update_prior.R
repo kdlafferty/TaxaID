@@ -357,3 +357,137 @@ test_that("min_confirmation_confidence must be in [0, 1]", {
     "min_confirmation_confidence"
   )
 })
+
+# ==============================================================================
+# Rescaling onto the occurrence scale + confirmed_without_occurrence_record
+# (2026-07-30, Task 0b/0c)
+# ==============================================================================
+# S1 confirms Sp_A (has a real theta_mean/occurrence record); S3 confirms
+# Sp_D (theta_mean NA everywhere -- no occurrence record at all, e.g. the
+# real Oncorhynchus mykiss case). S2 is unresolved and carries both as
+# candidates, so both boost paths are exercised side by side.
+
+.make_result_theta <- function() {
+  bind_rows(
+    tibble(
+      observation_id      = "S1",
+      taxon_name           = c("Sp_A", "Sp_B"),
+      taxon_name_rank      = "species",
+      hypothesis_type      = "specific_candidate",
+      score_likelihood     = c(0.8, 0.2),
+      score_likelihood_mean = c(0.8, 0.2),
+      score_likelihood_sd   = c(0.05, 0.05),
+      prior_mean           = c(0.5, 0.5),
+      theta_mean           = c(0.05, 0.01),
+      prior_alpha          = c(5, 5),
+      prior_beta           = c(5, 5),
+      posterior_point_est  = c(0.95, 0.05),
+      posterior_mean       = c(0.95, 0.05),
+      posterior_sd         = c(0.02, 0.02),
+      confidence_score     = c(0.95, 0.05)
+    ),
+    tibble(
+      observation_id      = "S2",
+      taxon_name           = c("Sp_A", "Sp_D"),
+      taxon_name_rank      = "species",
+      hypothesis_type      = "specific_candidate",
+      score_likelihood     = c(0.5, 0.5),
+      score_likelihood_mean = c(0.5, 0.5),
+      score_likelihood_sd   = c(0.05, 0.05),
+      prior_mean           = c(0.001, 0.0005),
+      theta_mean           = c(0.05, NA_real_),
+      prior_alpha          = c(5, 5),
+      prior_beta           = c(5, 5),
+      posterior_point_est  = c(0.5, 0.5),
+      posterior_mean       = c(0.5, 0.5),
+      posterior_sd         = c(0.05, 0.05),
+      confidence_score     = c(0.5, 0.5)
+    ),
+    tibble(
+      observation_id      = "S3",
+      taxon_name           = c("Sp_D", "Sp_E"),
+      taxon_name_rank      = "species",
+      hypothesis_type      = "specific_candidate",
+      score_likelihood     = c(0.95, 0.05),
+      score_likelihood_mean = c(0.95, 0.05),
+      score_likelihood_sd   = c(0.02, 0.02),
+      prior_mean           = c(0.0005, 0.5),
+      theta_mean           = c(NA_real_, 0.02),
+      prior_alpha          = c(5, 5),
+      prior_beta           = c(5, 5),
+      posterior_point_est  = c(0.95, 0.05),
+      posterior_mean       = c(0.95, 0.05),
+      posterior_sd         = c(0.02, 0.02),
+      confidence_score     = c(0.95, 0.05)
+    )
+  )
+}
+
+.make_consensus_theta <- function() {
+  tibble(
+    observation_id       = c("S1", "S2", "S3"),
+    consensus_taxon      = c("Sp_A", NA, "Sp_D"),
+    consensus_rank       = c("species", NA, "species"),
+    is_resolved          = c(TRUE, FALSE, TRUE),
+    consensus_posterior  = c(0.95, NA, 0.95),
+    n_plausible          = c(1L, 2L, 1L)
+  )
+}
+
+test_that("boost is rescaled onto the occurrence-scale ceiling, not used directly", {
+  result    <- .make_result_theta()
+  consensus <- .make_consensus_theta()
+  theta_ceiling <- max(result$theta_mean, na.rm = TRUE)   # 0.05
+  expect_equal(theta_ceiling, 0.05)
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
+
+  # q = 0.95 (the sole S1 donor's consensus_posterior); expected = q * ceiling
+  expect_equal(sp_a_s2, 0.95 * theta_ceiling, tolerance = 1e-8)
+  # and NOT the raw, unscaled quantile value (the pre-fix behavior)
+  expect_false(isTRUE(all.equal(sp_a_s2, 0.95)))
+})
+
+test_that("confirmed_without_occurrence_record flags a boosted taxon with NA theta_mean", {
+  result    <- .make_result_theta()
+  consensus <- .make_consensus_theta()
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+
+  sp_d_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_D", ]
+  sp_a_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+
+  expect_true("confirmed_without_occurrence_record" %in% names(out))
+  expect_true(sp_d_s2$confirmed_without_occurrence_record)
+  expect_false(sp_a_s2$confirmed_without_occurrence_record)
+  # boosting is NOT suppressed for the no-record taxon -- it still gets raised
+  expect_gt(sp_d_s2$prior_mean, 0.0005)
+})
+
+test_that("confirmed_without_occurrence_record defaults FALSE for resolved/unboosted rows", {
+  result    <- .make_result_theta()
+  consensus <- .make_consensus_theta()
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+
+  resolved <- out[out$observation_id %in% c("S1", "S3"), ]
+  expect_true(all(!resolved$confirmed_without_occurrence_record))
+})
+
+test_that("falls back to unscaled substitution when result has no theta_mean column", {
+  result    <- .make_result()      # no theta_mean column
+  consensus <- .make_consensus()
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  expect_false("theta_mean" %in% names(result))
+  # existing behavior: raw quantile substituted directly (0.9 default s1_posterior)
+  sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
+  expect_equal(sp_a_s2, 0.9, tolerance = 1e-8)
+})
+
+test_that("never-demote still holds under rescaling", {
+  result    <- .make_result_theta()
+  result$prior_mean[result$observation_id == "S2" & result$taxon_name == "Sp_A"] <- 0.9
+  consensus <- .make_consensus_theta()
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
+  expect_equal(sp_a_s2, 0.9)   # already well above q*ceiling (0.0475) -- untouched
+})

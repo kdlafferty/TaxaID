@@ -643,3 +643,171 @@ test_that("counts are NA (not 0) when posterior_df carries no model_tier column"
   expect_equal(out$consensus_rank, "species")
   expect_equal(out$consensus_confusion_risk, 0.10)
 })
+
+# ==============================================================================
+# Occurrence plausibility (2026-07-28/30): winner_theta_mean / consensus_prior
+# now read theta_mean, never prior_mean (2026-07-30 fix, Task 0a)
+# ==============================================================================
+# prior_mean and theta_mean are set to DIVERGE deliberately -- Aa one carries
+# a boosted prior_mean (0.99, as update_prior_from_consensus() would produce)
+# but a modest true occurrence share (theta_mean = 0.02), so any test that
+# reads winner_prior/consensus_prior interchangeably would fail loudly.
+
+make_theta_df <- function(model_tier      = c("tier1", "tier2", NA, NA),
+                           posterior_mean  = c(0.55, 0.20, 0.15, 0.10),
+                           prior_mean      = c(0.99, 0.05, NA, NA),
+                           theta_mean      = c(0.02, 0.05, NA, NA)) {
+  df <- data.frame(
+    observation_id  = rep("obs1", 4),
+    taxon_name      = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    taxon_name_rank = rep("species", 4),
+    hypothesis_type = rep("specific_candidate", 4),
+    posterior_mean  = posterior_mean,
+    prior_mean      = prior_mean,
+    theta_mean      = theta_mean,
+    genus           = c("Aa", "Aa", "Bb", "Bb"),
+    family          = rep("Fam1", 4),
+    species         = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    model_tier      = model_tier,
+    stringsAsFactors = FALSE
+  )
+  df
+}
+
+test_that("winner_theta_mean reads theta_mean, not the (possibly boosted) prior_mean", {
+  df <- make_theta_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_equal(out$consensus_taxon, "Aa one")   # Aa one wins on posterior_mean
+  expect_equal(out$winner_prior, 0.99)          # the boosted value, unchanged
+  expect_equal(out$winner_theta_mean, 0.02)     # the TRUE occurrence share
+})
+
+test_that("winner_theta_mean is NA when theta_mean is absent from posterior_df", {
+  df <- make_theta_df()
+  df$theta_mean <- NULL
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_true(is.na(out$winner_theta_mean))
+})
+
+test_that("winner_has_occurrence_record is FALSE when no candidate has an occurrence record", {
+  df <- make_theta_df(model_tier = c(NA, NA, NA, NA))
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_false(out$winner_has_occurrence_record)
+})
+
+test_that("winner_has_occurrence_record is unaffected by a boosted prior_mean", {
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03),
+                      prior_mean     = c(0.9999, 0.05, NA, NA))
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_equal(out$consensus_rank, "genus")
+  expect_true(out$winner_has_occurrence_record)
+})
+
+# ==============================================================================
+# consensus_prior via group_priors (2026-07-30, Task 1): SUM over ALL locally
+# modelled group members, not just this observation's own candidates.
+# consensus_prior REQUIRES group_priors -- there is no MAX fallback (removed
+# 2026-07-30, per the user's explicit direction: the candidate-scoped MAX was
+# a real underestimate, not a safe degrade-to value).
+# ==============================================================================
+
+test_that("consensus_prior is NA without group_priors, at any rank", {
+  sp  <- posterior_consensus(make_theta_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01)),
+                             rank_system = c("family", "genus", "species"))
+  gen <- posterior_consensus(make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03)),
+                             rank_system = c("family", "genus", "species"))
+  expect_equal(sp$consensus_rank, "species")
+  expect_true(is.na(sp$consensus_prior))
+  expect_equal(gen$consensus_rank, "genus")
+  expect_true(is.na(gen$consensus_prior))
+})
+
+test_that("group_priors drives consensus_prior when a matching (rank, taxon) row exists", {
+  # Aa one/Aa two tie for the genus-level plausible set, but genus Aa has a
+  # THIRD locally modelled member ("Aa three", theta_mean = 0.03) that never
+  # appears as a candidate here -- group_priors knows about it, the
+  # observation's own candidates don't.
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
+  gp <- data.frame(rank = "genus", taxon = "Aa", theta_sum = 0.02 + 0.05 + 0.03,
+                   n_members = 3L, stringsAsFactors = FALSE)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                             group_priors = gp)
+  expect_equal(out$consensus_rank, "genus")
+  expect_equal(out$consensus_prior, 0.10)
+})
+
+test_that("consensus_prior at genus rank is unaffected by a boosted prior_mean", {
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03),
+                      prior_mean     = c(0.9999, 0.05, NA, NA))
+  gp <- data.frame(rank = "genus", taxon = "Aa", theta_sum = 0.02 + 0.05,
+                   n_members = 2L, stringsAsFactors = FALSE)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                             group_priors = gp)
+  expect_equal(out$consensus_prior, 0.07)   # unaffected by winner_prior = 0.9999
+})
+
+test_that("consensus_prior is NA when group_priors has no matching row", {
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
+  gp <- data.frame(rank = "genus", taxon = "SomeOtherGenus", theta_sum = 0.5,
+                   n_members = 4L, stringsAsFactors = FALSE)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                             group_priors = gp)
+  expect_true(is.na(out$consensus_prior))
+})
+
+test_that("group_priors can supply a species-rank entry too", {
+  df <- make_theta_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  gp <- data.frame(rank = "species", taxon = "Aa one", theta_sum = 0.02,
+                   n_members = 1L, stringsAsFactors = FALSE)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                             group_priors = gp)
+  expect_equal(out$consensus_rank, "species")
+  expect_equal(out$consensus_prior, 0.02)
+})
+
+test_that("stops on invalid group_priors", {
+  df <- make_theta_df()
+  expect_error(
+    posterior_consensus(df, rank_system = c("family", "genus", "species"), group_priors = "x"),
+    "group_priors"
+  )
+  gp_bad <- data.frame(rank = "genus", taxon = "Aa")   # missing theta_sum
+  expect_error(
+    posterior_consensus(df, rank_system = c("family", "genus", "species"), group_priors = gp_bad),
+    "theta_sum"
+  )
+})
+
+# ==============================================================================
+# consensus_has_occurrence_record (2026-07-30): the real presence signal
+# consensus_prior's NA can no longer safely double as -- fixes a real bug
+# where consensus_plausibility misread "group_priors never supplied" as
+# "confirmed absent" on real production data (0 workflows wire in
+# group_priors yet, so consensus_prior was NA -- and thus misread as
+# unprecedented -- for every single row).
+# ==============================================================================
+
+test_that("consensus_has_occurrence_record is NA when group_priors is NULL (not checked)", {
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_true(is.na(out$consensus_has_occurrence_record))
+})
+
+test_that("consensus_has_occurrence_record is TRUE when group_priors has a matching row", {
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
+  gp <- data.frame(rank = "genus", taxon = "Aa", theta_sum = 0.07,
+                   n_members = 2L, stringsAsFactors = FALSE)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                             group_priors = gp)
+  expect_true(out$consensus_has_occurrence_record)
+})
+
+test_that("consensus_has_occurrence_record is FALSE (confirmed absent) when group_priors has no match", {
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
+  gp <- data.frame(rank = "genus", taxon = "SomeOtherGenus", theta_sum = 0.5,
+                   n_members = 4L, stringsAsFactors = FALSE)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
+                             group_priors = gp)
+  expect_false(out$consensus_has_occurrence_record)
+  expect_true(is.na(out$consensus_prior))
+})

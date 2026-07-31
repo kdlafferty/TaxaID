@@ -1,6 +1,49 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-28, later (Opus 5 -- add_posthoc_assessment() gains Axis 1:
+# Last updated: 2026-07-30 (Sonnet 5 -- add_posthoc_assessment()'s Axis 1 rebuilt around
+# theta_mean instead of prior_mean, closing out the 2026-07-28 design's two real weaknesses
+# found live-testing against production Mugu data. (1) prior_mean can be substantially
+# inflated by TaxaAssign::update_prior_from_consensus()'s cross-observation confirmation
+# boost, which has no gate on occurrence-record presence -- measured on real Mugu data,
+# EVERY row with prior_mean >= 0.5 was a boosted row, so an "expected" call built on
+# prior_mean meant "confirmed elsewhere in this dataset", not "expected here on occurrence
+# grounds". theta_mean (TaxaExpect::prepare_model_dataframe()'s raw occurrence-model share)
+# is immune to that boost by construction. (2) A single absolute threshold (the previous
+# design's fixed 0.5) is a unit mismatch on the theta_mean scale (a share of local records,
+# not a presence probability) AND biased across ranks -- a genus/family-level consensus_prior
+# (now a SUM over group members, see TaxaAssign/CLAUDE.md's matching note) is mechanically
+# larger than any one species' own share just from summing more terms (confirmed: 27/28 real
+# Mugu families cleared the species-level median purely by having more members). Fixed:
+# winner_prior_col/winner_record_col/consensus_prior_col/expected_prior_threshold=0.5 (the
+# 2026-07-28 design) replaced by winner_theta_col/winner_record_col/consensus_prior_col/
+# consensus_record_col (new)/expected_theta_threshold (no default, now a NAMED VECTOR keyed
+# by rank -- "species" required, genus/family optional; a rank absent from the vector gets
+# "not_modeled" rather than an unsafe cross-rank comparison). consensus_record_col
+# (default "consensus_has_occurrence_record") reads TaxaAssign::posterior_consensus()'s new
+# dedicated presence column directly instead of inferring presence from consensus_prior's
+# own NA-ness -- closes a real production bug (100% of 616 real Mugu rows read
+# "unprecedented" the moment group_priors was first wired into posterior_consensus(), since
+# consensus_prior's NA had started meaning "group_priors never supplied" as well as "checked,
+# absent", and the old inference couldn't tell them apart). Also retired posthoc_assessment
+# and its supporting params (tiers/taxon_col/tier_col/finest_rank) entirely -- there is no
+# replacement for the 3x2 tier-times-likelihood table itself, since primary_plausibility
+# (occurrence side, now theta-based) and primary_discrimination (evidence side, Axis 2)
+# already answer the same two questions without collapsing them into one column or gating
+# either on rank; the retired design's "vague_rank" category had short-circuited 109/616
+# real Mugu observations (17.7%) into never being assessed at all. Real end-to-end
+# verification via MuguFishWorkflow.R (not just the test suite): after TaxaAssign's own
+# group_priors wiring + a full real backbone-architecture fix (see TaxaID/CLAUDE.md's
+# 2026-07-30 note), final consensus_plausibility distribution: 519 expected / 93 unexpected /
+# 4 unprecedented (the 4 being genus-level taxa already flagged as genuinely suspect in
+# earlier project investigation, not a further bug). Fixtures in
+# test-add_posthoc_assessment.R updated to carry consensus_has_occurrence_record explicitly.
+# devtools::test() 240/240 (0 failures), devtools::check() 0 errors, with the pre-existing
+# build_review_covariates.R warning + .data note unchanged. Reinstalled and verified via a
+# direct smoke test (not just the reinstall command's exit status -- see TaxaAssign/CLAUDE.md's
+# matching note for why a stale-install bug this exact session made that distinction matter).
+# See [[project_axis1_consensus_prior_group_priors]] in the TaxaID memory system for the full
+# debugging record.
+# Previous update, 2026-07-28, later (Opus 5 -- add_posthoc_assessment() gains Axis 1:
 # primary_plausibility and consensus_plausibility, each one of "expected"/"unexpected"/
 # "unprecedented"/"not_modeled". Four new params (winner_prior_col, winner_record_col,
 # consensus_prior_col, expected_prior_threshold = 0.5), all with defaults matching
@@ -454,7 +497,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
 | `.recover_truncated_json()` | `R/review_assignments.R` | Written | Internal: salvage complete JSON objects from truncated LLM response |
 
-| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | Single-column `posthoc_assessment` summary combining sequence-match evidence (`winner_likelihood`) and prior establishment tier. Nine categories: `"sensible"`, `"limited_evidence"`, `"unexpected"`, `"unprecedented"`, `"suspect"`, `"vague_rank"`, `"modeled"`, (Session 149) `"domestic_prior_caveat"` -- a strong-likelihood call to a user-specified `domestic_taxa` name that landed in tier2/tier3 purely from GBIF/iNat's under-indexing of captive organisms, not genuine rarity -- and `"unsupported_rank"` -- overrides ANY of the above (including `"sensible"`) when the winning hypothesis's own absolute fit is weak, catching a case `winner_likelihood`'s ratio-normalization structurally cannot see: a weak match winning "cleanly" only because nothing competitive existed to compare it against. **2026-07-20**: driven by `absolute_fit_pvalue_col` (default `"winner_absolute_fit_pvalue"`) below `weak_evidence_pvalue` (default `0.001`) -- a direct threshold check, no rank comparison. Replaces the 2026-07-19 `trusted_rank_col`/rank-order-comparison design, removed the same day it shipped after being found unreliable on real data (see this file's top session note). Silently skipped when `absolute_fit_pvalue_col` absent (optional upstream output). Requires `tiers` data frame (from `priors_combined`). Threshold: `winner_likelihood >= 0.5` = sequence-supported. `domestic_taxa = NULL` (default, feature off) / `domestic_prior_source = "wild"` (default) vs `"augmented"` (opt-out when priors already account for domestic species). **2026-07-23**: gains a SECOND appended output column, `confusion_risk_flag` (`own_rank_confusion_risk_col` default `"winner_own_rank_confusion_risk"`, `high_confusion_risk_threshold` default `0.5`) -- `"high_confusion_risk"`/`"low_confusion_risk"`/`NA`, deliberately NOT part of the `posthoc_assessment` override chain (see this file's top session note for why). |
+| `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | **Redesigned 2026-07-30, superseding everything below this row from Session 149 onward.** The old single-column `posthoc_assessment` (9 categories, `tiers`/`taxon_col`/`tier_col`/`finest_rank` params, including `"vague_rank"` and `"unsupported_rank"`) is entirely retired -- see this file's top session note. Now appends FIVE columns implementing two independent, orthogonal axes, reported for `primary_taxon` and `consensus_taxon` separately, neither gating the other: **Axis 1** (`primary_plausibility`/`consensus_plausibility`, "how expected is this taxon here?") -- `"expected"`/`"unexpected"`/`"unprecedented"`/`"not_modeled"`, driven by `winner_theta_col` (default `"winner_theta_mean"`) + `winner_record_col` (default `"winner_has_occurrence_record"`) at primary scope, `consensus_prior_col` (default `"consensus_prior"`) + `consensus_record_col` (default `"consensus_has_occurrence_record"`, 2026-07-30 new) at consensus scope, compared against `expected_theta_threshold` -- a REQUIRED named vector keyed by rank (`"species"` mandatory, `genus`/`family` optional; a rank absent from the vector gets `"not_modeled"`). `"unprecedented"` is driven by record presence (the `*_record_col`), never by a low threshold value -- a never-reported taxon and a genuine singleton can share the same numeric floor while meaning opposite things. **Axis 2** (`primary_discrimination`/`consensus_discrimination`, "could the evidence tell this taxon apart from a plausible relative?") -- `"discriminating"`/`"weak"`/`"indistinguishable"`/`"not_modeled"`, driven by `primary_confusion_risk_col`/`consensus_confusion_risk_col` against `discriminating_threshold`/`indistinguishable_threshold` (default 0.05/0.5) -- this is the direct successor to the old `confusion_risk_flag` column (now two rank-scoped columns instead of one). `domestic_prior_caveat` (logical) is unchanged in purpose (Session 149) but now reads `primary_plausibility` instead of the retired tier lookup. See this file's top session note for the full real-data verification record. |
 
 **Dropped (Session 62):** `flag_allochthonous()` and `flag_taxonomic_scope()` -- absorbed
 into `review_assignments()`. One LLM call covers habitat, geography, scope, contaminant
@@ -597,7 +640,7 @@ found yet, which is the only thing keeping this from being worse").
 | test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
 | test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
 | test-report_flags.R | `report_flags()` | Fully offline |
-| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Fully offline; 51 tests (up from 44, 2026-07-23); covers all 9 `posthoc_assessment` categories (incl. Session 149's `domestic_prior_caveat` and `unsupported_rank`, redesigned 2026-07-20 around `absolute_fit_pvalue_col`/`weak_evidence_pvalue`), tier3, boundary threshold, custom columns, NA handling, validation; includes NA-rank bug fix (NA rank → vague_rank); 2026-07-23 adds the new `confusion_risk_flag` column (NA-when-absent, above/below-threshold classification, NA propagation, custom column name, non-interaction with `posthoc_assessment`, input validation) |
+| test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Rewritten 2026-07-30 for the Axis 1/Axis 2 redesign (62 tests) -- the old `posthoc_assessment`-category tests are gone with the column. Covers: Axis 1 expected/unexpected/unprecedented/not_modeled at both scopes, the load-bearing "no-record-but-high-theta is unprecedented" vs "singleton-at-floor is not" pin, rank-relative `expected_theta_threshold` (species-only vs species+genus+family), `consensus_has_occurrence_record`-driven consensus scope (incl. the regression test for the real 100%-unprecedented production bug), Axis 2 discriminating/weak/indistinguishable/not_modeled at both scopes, `domestic_prior_caveat`, NA-when-columns-absent, input validation. |
 
 ---
 

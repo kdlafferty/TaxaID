@@ -55,14 +55,17 @@ Default \code{NULL} (no group-based restriction — all observations
 participate, matching this function's original behaviour).}
 }
 \value{
-The full posterior dataframe with the same structure as \code{result}.
-Resolved observations are returned unchanged. Unresolved observations in
-a multi-member spatial group (see \code{spatial_group_map}) have updated
-\code{prior_mean} and freshly computed posterior columns
-(\code{posterior_point_est}, \code{posterior_mean}, \code{posterior_sd},
-\code{confidence_score}). Unresolved observations in a single-observation
-spatial group are returned unchanged, same as resolved ones. Sorted by
-\code{observation_id} then descending \code{posterior_point_est}.
+The full posterior dataframe with the same structure as \code{result},
+plus one new column, \code{confirmed_without_occurrence_record} (logical,
+\code{FALSE} unless set \code{TRUE} -- see @section Confirmed without an
+occurrence record). Resolved observations are returned unchanged.
+Unresolved observations in a multi-member spatial group (see
+\code{spatial_group_map}) have updated \code{prior_mean} and freshly computed
+posterior columns (\code{posterior_point_est}, \code{posterior_mean},
+\code{posterior_sd}, \code{confidence_score}). Unresolved observations in a
+single-observation spatial group are returned unchanged, same as
+resolved ones. Sorted by \code{observation_id} then descending
+\code{posterior_point_est}.
 }
 \description{
 A one-pass empirical Bayes refinement step. Takes the output of
@@ -143,6 +146,55 @@ A formally correct alternative would still be a Beta-Binomial
 hierarchical model over species x observation within a site; this
 quantile-based design is a more evidence-sensitive interim step than the
 old fixed multiplier, not a replacement for that.
+}
+
+\section{Rescaling onto the occurrence scale (2026-07-30)}{
+
+\code{consensus_posterior} is P(hypothesis | evidence) \emph{within one
+observation} -- a probability over competing hypotheses. \code{prior_mean},
+when sourced from \code{TaxaExpect}, is a \strong{compositional share of the local
+record pool} (\code{theta_mean}, confirmed by reading
+\code{TaxaExpect::prepare_model_dataframe()}'s binomial response directly:
+\code{n_species / n_total_at_site}, one record attributable to exactly one
+taxon). These are different sample spaces, and substituting one for the
+other only ever inflates (never-demote guarantees it). Measured on real
+Mugu data: 220 of 2540 rows were boosted, and all 220 landed in
+[0.951, 1.0] -- every one overshooting the real occurrence-scale
+ceiling (\code{max(theta_mean)} across every locally modelled taxon,
+0.0865 on that dataset) by 11x to 1000x.
+
+When a \code{theta_mean} column is present on \code{result}, the substitution is
+rescaled onto that ceiling instead of being used directly:
+\code{prior_new <- max(prior_old, q * max(result$theta_mean, na.rm = TRUE))},
+where \code{q} is the confirmation-quantile value described above. This keeps
+the confirmation-quantile logic and the never-demote guard unchanged --
+only the target scale moves -- so a stronger/more numerous confirmation
+(higher \code{q}) still produces a stronger boost, bounded by the model's own
+observed maximum share rather than substituting a foreign-scale
+constant. When \code{result} has no \code{theta_mean} column (e.g. LLM-pathway
+priors from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, which are not occurrence-share-based to
+begin with), the previous direct-substitution behavior is used
+unchanged -- the units mismatch this section fixes is specific to
+occurrence-model-sourced priors.
+}
+
+\section{Confirmed without an occurrence record (2026-07-30)}{
+
+A taxon can be confidently identified elsewhere in the dataset while
+having no occurrence record at all (\code{theta_mean} \code{NA} for every row
+naming it) -- e.g. a real Mugu case, \emph{Oncorhynchus mykiss}, which has no
+row in \code{taxaexpect_priors} at all (see
+\verb{[[project_urolophus_synonym_join_bug]]} in the project memory system --
+this is a known, separate upstream join gap, not a sign the species is
+actually rare). Such a row still gets boosted (the confirmation is real
+identification evidence, worth keeping) but is flagged via a new
+\code{confirmed_without_occurrence_record} column rather than silently
+presented as occurrence-grounded. Boosting is \emph{not} suppressed for these
+rows: gating on occurrence-record presence would currently punish
+exactly the taxa the join gap affects (whole families, in the Mugu
+salmonid case), which are neither rare nor implausible -- only
+undercounted by an unrelated bug. Revisit suppression once that join gap
+is fixed.
 }
 
 \examples{

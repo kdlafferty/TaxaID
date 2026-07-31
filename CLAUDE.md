@@ -1,7 +1,72 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-28 (Sonnet 5 -- generate_domestic_food_priors() re-implemented
+# Last updated: 2026-07-30 (Sonnet 5 -- closes out TaxaFlag/REENTRY_PROMPT_axes_wrapup.md's
+# remaining tasks (0/1/3/4, all now shipped) plus a real, unplanned backbone-architecture
+# review triggered by live-testing the result. TaxaAssign::compute_group_priors() (new) +
+# posterior_consensus(group_priors=) redesign consensus_prior from a candidate-scoped MAX to
+# a real group-level SUM; TaxaFlag::add_posthoc_assessment() rebuilt around theta_mean instead
+# of prior_mean for the same reason (prior_mean can be inflated by update_prior_from_
+# consensus()'s confirmation boost, theta_mean can't) -- see TaxaAssign/CLAUDE.md's and
+# TaxaFlag/CLAUDE.md's own top session notes for the full per-package record. Both packages
+# devtools::test()/check() clean (TaxaAssign 615/615, TaxaFlag 240/240; 0/0/0 both, TaxaFlag's
+# pre-existing unrelated build_review_covariates.R warning+note untouched), reinstalled.
+#
+# Wiring `group_priors` into a real production workflow (MuguFishWorkflow.R) surfaced three
+# more real bugs in quick succession, none caught by the test suite -- all found via actual
+# live end-to-end runs, not source review: (1) TaxaAssign had never actually been reinstalled
+# after the consensus_has_occurrence_record source fix landed earlier the same session --
+# devtools::install() output looks identical whether or not there was anything new to install,
+# so this went undetected until a direct smoke test of the installed package's own output.
+# (2) compute_group_priors()'s rank_cols default (genus/family only) has no species-rank
+# concept, so wiring it into posterior_consensus() made every SPECIES-rank consensus_taxon --
+# the vast majority of real calls -- read "unprecedented", a 504/616-row false-positive
+# regression; fixed at the workflow level with a species-identity-aggregation row, not a
+# package default change. (3) A THIRD, independent, real backbone bug: Urolophus halleri vs
+# Urobatis halleri disagreed between match-side and prior-side taxonomy again, traced to
+# `Mugu_Match_from_BLAST.R`/`Mugu_Match_from_Wilder.R` (the prerequisite match-building
+# scripts, outside the 5 workflow files an EARLIER session's backbone fix had touched) still
+# converting match objects to GBIF's own backbone, whose name-verification service resolves
+# this species to the older synonym.
+#
+# That third bug prompted stepping back from patching individual files to a full backbone-
+# architecture review with the user: three real objects (match_object, native NCBI;
+# reference_df, native NCBI; raw GBIF occurrence downloads, native GBIF) need a COMMON
+# backbone to join priors against likelihoods. **Decision: NCBI adopted as this ecosystem's
+# common working backbone for vertebrate-focused eDNA workflows (Mugu, PtConception), not
+# GBIF.** Two independent reasons, both load-bearing: (1) COST -- every backbone-conversion
+# call already dedupes to unique taxon names before looking anything up, so cost scales with
+# distinct-taxon count, not row count; match_object/reference_df are small (bounded by what
+# was actually sequenced) and already NCBI-native, while the occurrence side is the large pool
+# (the whole regional species list, for dark-diversity modelling) and already gets converted
+# TO NCBI -- so NCBI-common means the small objects need NO real cross-backbone shift at all,
+# while GBIF-common would mean converting the large pool instead. (2) DEPENDABILITY -- the
+# Urolophus/Urobatis case is a real, not hypothetical, data point: GBIF's own name-
+# verification service lags current ichthyological usage here; NCBI matches both current
+# convention and the raw GBIF occurrence data's own scientificName field, and is also the same
+# authority the sequence evidence itself already comes from (BLAST against NCBI GenBank).
+# Scoped explicitly to this study's vertebrate-heavy taxonomic focus, not claimed as a
+# universal ranking -- a plant- or invertebrate-focused workflow elsewhere in this ecosystem
+# might reasonably prefer GBIF/WoRMS-integrated naming instead.
+#
+# Applied identically across all 5 real production workflows plus their 2 prerequisite
+# match-building scripts (all outside this monorepo, not under git, at ~/My Drive/Rscripts/
+# eDNA/): `Mugu_Match_from_BLAST.R`, `Mugu_Match_from_Wilder.R`, `MuguFishWorkflow.R`,
+# `MuguWilderFishWorkflow.R`, `PtConceptionWorkflow_12S_single_site.R`,
+# `PtConceptionWorkflow_12S_multi_site.R`, `PtConceptionWorkflow_18S_2_single_site.R` -- each
+# match-object `convert_taxonomy_backbone()` call now targets `MATCH_BACKBONE_ID` (no real
+# shift, a same-backbone synonym-clean pass) instead of `PRIOR_BACKBONE_ID`; each
+# `join_priors(backbone_id=)` call updated to match. The 18S_2 script's separate, earlier,
+# pre-GBIF-search-purpose conversion (a different legitimate use, deliberately left GBIF-
+# targeted in an earlier session) was correctly NOT touched. Only `MuguFishWorkflow.R` has
+# been live re-run and verified end to end (final real state: 519 expected / 93 unexpected /
+# 4 unprecedented, the 4 being genus-level taxa already flagged as genuinely suspect in
+# earlier project investigation, not a bug) -- `MuguWilderFishWorkflow.R` has the identical
+# fix but hasn't been re-run; the 3 PtConception workflows have the fix applied but have not
+# been run at all this session (no cache found newer than mid-July). All 7 files parse
+# cleanly. See [[project_axis1_consensus_prior_group_priors]] in the TaxaID memory system for
+# the full multi-bug debugging record, including the real numbers at each stage.
+# Previous update, 2026-07-28 (Sonnet 5 -- generate_domestic_food_priors() re-implemented
 # around the match-list-gated architecture the user confirmed 2026-07-24 (this session
 # picked back up after a multi-day gap; the name-normalization/kingdom-cross-check work
 # already shipped 2026-07-24 was a real but separate improvement, not the redesign
@@ -1814,3 +1879,6 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-07-25 (Sonnet 5, later still) | `convert_taxonomy_backbone()` now also clears rank columns finer than a row's corrected rank (e.g. `species` -> `NA` when demoted to genus) | TaxaMatch | **Behavioral, not signature -- closes a real regression found only by testing against production, not by inspection.** The `taxon_name_rank` fix (row above) worked in isolation, but the real `Mugu_Match_from_BLAST.R` script calls `TaxaTools::create_taxon_names()` a SECOND time immediately after `convert_taxonomy_backbone()` to re-derive `taxon_name` from rank columns -- and since the finer `species` column still held its stale, per-column-fallback-cleaned value (`"Inu"`), that second call applied "most specific non-NA rank wins" and silently reverted the whole fix back to the wrong species-level label. Confirmed live against the real accession (`LC765844`): `taxon_name`/`taxon_name_rank` were briefly correct right after `convert_taxonomy_backbone()` but wrong again by the time `match_12s.rds` was saved. Now every rank column finer than the corrected rank is cleared to `NA` on the same rows, so any re-derivation downstream -- this one or a future one -- can't resurrect the stale value. `genus` itself is untouched (it's AT the corrected rank, not finer). `devtools::test()` 0 failures (`test-convert_taxonomy_backbone.R` 47/47 up from 43, full suite 508/508), `devtools::check()` 0/0/0. Separately: diagnosing this surfaced a real, still-open library-path issue -- the user's live session (a different RStudio project, no project-level `.Rprofile`) kept resolving `TaxaMatch` to the system default library instead of `~/Library/R/4.0/library` even after `.rs.restartR()`; worked around via `devtools::load_all()` directly on the source, root cause not fully resolved. |
 | 2026-07-28 (Sonnet 5) | `generate_domestic_food_priors()`: `known_cultivar_taxa` param added; `match_list_taxa`/`taxaexpect_priors` params added; `food_species_taxa` default extended 20 -> 449 species | TaxaExpect | **Additive (new params, `NULL`/default-preserving), plus a behavioral default change** (the larger `food_species_taxa` default checks more species when `match_list_taxa` is not supplied). Implements the match-list-gated architecture confirmed with the user 2026-07-24: `match_list_taxa` (taxa with real likelihoods this run) gates all four fixed/supplied channels to the intersection and drives an automatic open-discovery residual step (unreferenced match-list taxa, `phylum %in% c("Streptophyta","Tracheophyta")`, deliberately not pre-restricted to any known list) using the new `taxaexpect_priors` param to exclude already-modelled taxa. New `cultivar_evidence_source` output column (`"known_list"`/`"candidate_supplied"`/`"inat_confirmed"`) distinguishes the three ways a `prior_source_type = "domestic_plant"` row can arise. `match_list_taxa = NULL` (default) preserves the original 2026-07-23 unrestricted behavior exactly. `devtools::test()` 0 failures (536, up from 481), `devtools::check()` 0/0/0. |
 | 2026-07-28, same day (Sonnet 5) | All four real production workflows (`PtConceptionWorkflow_12S_single_site.R`, `PtConceptionWorkflow_18S_2_single_site.R`, `MuguFishWorkflow.R`, `MuguWilderFishWorkflow.R`) rewired for the row above | (workflow scripts, not a package) | `match_list_taxa`/`taxonomy` now sourced from each script's own match object (`match_obj_restored` for 12S -- required relocating the call to after that object is finalized, since it didn't exist yet at the original Step-5 call site; `match_obj` for 18S_2; `match_taxonomy`/`esv_expanded` for the two Mugu scripts, both already available early, no relocation needed). The 18S_2 script's ad hoc `candidate_plant_taxa` sourcing (GBIF-occurrence-derived sampling-group restriction) is fully superseded by the open-discovery residual step and removed. All four parse cleanly; not yet run end to end (real GBIF/NCBI/iNat/LLM API calls, real checkpoints -- the user's call). |
+| 2026-07-30 (Sonnet 5) | `compute_group_priors(taxaexpect_priors, taxonomy_map, rank_cols = c("genus","family"))` added; `posterior_consensus(group_priors = NULL)` added | TaxaAssign | New function + new optional param. `consensus_prior` (existing output column) redesigned from a candidate-scoped MAX to a real group-level SUM when `group_priors` is supplied -- a materially different, stronger statement (a single observation's own candidate set rarely contains every locally-modelled group member). The old candidate-scoped MAX fallback is REMOVED entirely (not kept as a default) -- `consensus_prior` is `NA_real_` when `group_priors` is `NULL` or has no matching row, a real behavior change for any caller that relied on the old fallback (no real caller did before this session). New `consensus_has_occurrence_record` output column is the dedicated presence signal downstream consumers should read -- `consensus_prior`'s own `NA`-ness cannot distinguish "checked, absent" from "`group_priors` never supplied." `devtools::test()` 615/615, `devtools::check()` 0/0/0. See `TaxaAssign/CLAUDE.md`'s top session note. |
+| 2026-07-30 (Sonnet 5) | `add_posthoc_assessment()`: `posthoc_assessment`/`tiers`/`taxon_col`/`tier_col`/`finest_rank` removed entirely; `winner_prior_col`/`consensus_prior_col`(old)/`expected_prior_threshold` -> `winner_theta_col`/`winner_record_col`/`consensus_prior_col`(new)/`consensus_record_col`/`expected_theta_threshold` (no default, named-by-rank vector); `confusion_risk_flag` -> `primary_discrimination`/`consensus_discrimination` | TaxaFlag | **Breaking, intentionally -- supersedes the whole 2026-07-28 Axis 1 design**, not an incremental change. `expected_theta_threshold` has no safe universal default (mirrors `join_priors(backbone_id=)`'s precedent) -- callers must supply at least a `"species"` entry. Any workflow calling the pre-2026-07-30 signature will error, not silently degrade. All 5 real production workflows (2 Mugu + 3 PtConception) updated the same day. `devtools::test()` 240/240, `devtools::check()` 0 errors (1 pre-existing unrelated warning+note, untouched). See `TaxaFlag/CLAUDE.md`'s top session note. |
+| 2026-07-30 (Sonnet 5) | `Mugu_Match_from_BLAST.R`/`Mugu_Match_from_Wilder.R`/all 5 real workflows: match-object `convert_taxonomy_backbone(target_backbone_id=)` GBIF -> NCBI; `join_priors(backbone_id=)` GBIF -> NCBI | (workflow scripts, not a package) | Backbone-architecture decision, not a package change -- NCBI adopted as the common working backbone for these vertebrate-focused eDNA workflows (see this file's own top session note for the full cost/dependability reasoning). Fixes a real, confirmed backbone-disagreement bug (`Urolophus halleri`/`Urobatis halleri`). Only `MuguFishWorkflow.R` verified via a real end-to-end re-run; the other 4 files have the identical fix applied but unverified this session. |

@@ -12,7 +12,8 @@ posterior_consensus(
   posterior_col = "posterior_mean",
   lookup_missing_taxonomy = FALSE,
   backbone_id = NULL,
-  species_reference = NULL
+  species_reference = NULL,
+  group_priors = NULL
 )
 }
 \arguments{
@@ -82,6 +83,17 @@ the function looks up how many taxa at the next finer rank belong to the
 consensus taxon. If exactly one, it downranks (recursively — e.g. family
 to unique genus to unique species in one pass). Stops at any rank with
 more than one option. Default \code{NULL} (no downranking).}
+
+\item{group_priors}{Optional data frame from \code{\link[=compute_group_priors]{compute_group_priors()}}
+(\code{rank}/\code{taxon}/\code{theta_sum}/\code{n_members} columns), the SUM of
+\code{theta_mean} over every locally modelled member of a genus or family --
+not just the candidates one observation's own evidence happened to
+surface. Drives \code{consensus_prior} when a matching (\code{rank}, \code{taxon}) row
+exists for an observation's \code{consensus_rank}/\code{consensus_taxon} (see that
+column's own docs below for the full reasoning). Default \code{NULL}:
+\code{consensus_prior} is \code{NA} for every row -- there is no fallback
+computation (removed 2026-07-30; the previous candidate-scoped MAX was a
+real underestimate, not a safe approximation).}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -135,7 +147,20 @@ plausible set. Use with \code{winner_likelihood} / \code{winner_likelihood_cov}
 to detect implausible winners (e.g. a low-prior taxon winning due to
 a reference error). \code{NA} when \code{prior_mean} is absent from
 \code{posterior_df} (e.g. input from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}) or when
-\code{consensus_taxon} is \code{NA}.}
+\code{consensus_taxon} is \code{NA}. NOTE: when \code{prior_mean} was sourced from
+TaxaExpect, this value can be substantially inflated by
+\code{update_prior_from_consensus()}'s cross-observation confirmation
+boost -- it is NOT interchangeable with \code{winner_theta_mean} below for
+occurrence-plausibility purposes; see that function's own "Rescaling
+onto the occurrence scale" section.}
+\item{\code{winner_theta_mean}}{The consensus taxon's raw occurrence-model
+share (\code{theta_mean}, from \code{TaxaExpect::prepare_model_dataframe()} --
+the fraction of local records attributable to this taxon; a
+compositional share, not a presence probability). Unlike
+\code{winner_prior}, this is immune to \code{update_prior_from_consensus()}'s
+confirmation boost by construction, since that boost only ever
+modifies \code{prior_mean}. \code{NA} when \code{theta_mean} is absent from
+\code{posterior_df} or when \code{consensus_taxon} is \code{NA}.}
 \item{\code{winner_likelihood}}{Point-estimate sequence-match likelihood
 (\code{score_likelihood}) of the consensus taxon. \code{NA} when absent from
 \code{posterior_df} or when \code{consensus_taxon} is \code{NA}.}
@@ -219,27 +244,44 @@ counts distinct plausible groups at \code{consensus_rank} (rival genera
 when the LCA landed at genus, rival families at family), reducing to
 the \code{primary_} count at species rank. Both are \code{NA} when
 \code{posterior_df} carries no \code{model_tier} column.}
-\item{\code{winner_has_occurrence_record}, \code{consensus_prior}}{Support for
-the prior/occurrence-plausibility axis, answering what
-\code{winner_prior}'s VALUE cannot: has this taxon ever been reported
-here at all? A never-reported taxon and a genuine singleton can
-carry the SAME numeric prior (both land on the dark-diversity
-floor) while meaning opposite things, so presence is read off
-\code{model_tier} rather than inferred from a low prior.
+\item{\code{winner_has_occurrence_record}, \code{consensus_prior},
+\code{consensus_has_occurrence_record}}{Support for the
+prior/occurrence-plausibility axis, answering what \code{winner_prior}'s
+VALUE cannot: has this taxon ever been reported here at all? A
+never-reported taxon and a genuine singleton can carry the SAME
+numeric prior (both land on the dark-diversity floor) while meaning
+opposite things, so presence is read off \code{model_tier} rather than
+inferred from a low prior.
 \code{winner_has_occurrence_record} is \code{TRUE} when the winning
 hypothesis carries a real occurrence record, \code{NA} when
 \code{posterior_df} has no \code{model_tier} column.
-\code{consensus_prior} is the HIGHEST prior among candidates that both
-carry an occurrence record and fall inside the consensus taxon --
-\code{NA} when none do, so \code{NA} doubles as the consensus-scope
-never-reported signal. Max is used deliberately: a group is
-expected here if any member is, making max the tightest valid lower
-bound on P(at least one member present) without assuming
-independence (a sum would double-count shared occurrence evidence;
-a mean would dilute a common member with its rare congeners). It is
-explicitly a best-member statement, NOT the mass-conserving
-hierarchical prior over a coarse taxon that TaxaExpect does not yet
-provide.}
+\code{consensus_prior} is a \code{theta_mean}-based group share
+(2026-07-30; previously \code{prior_mean} -- changed because
+\code{prior_mean} can be inflated by the confirmation boost above,
+which would let one confirmed-elsewhere candidate make its whole
+group look occurrence-expected regardless of real occurrence
+support). Requires \code{group_priors}: when supplied and it has a
+matching (\code{rank}, \code{taxon}) row for \code{consensus_rank}/
+\code{consensus_taxon}, this is the exact SUM of \code{theta_mean} across
+EVERY locally modelled member of the consensus taxon (see
+\code{\link[=compute_group_priors]{compute_group_priors()}}) -- records are mutually exclusive across
+taxa, so this is the group's true share by finite additivity, no
+independence assumption needed. \code{NA} when \code{group_priors} is not
+supplied, or has no matching row. There is deliberately no fallback
+to a candidate-scoped MAX (removed 2026-07-30) -- that value is a
+real underestimate on real data (e.g. Gobiidae: max 0.0164 vs. the
+true group sum 0.0313), not a safe approximation to degrade to
+silently.
+\code{consensus_has_occurrence_record} (2026-07-30, new) is the
+consensus-scope presence signal \code{consensus_prior}'s \code{NA} can no
+longer safely double as (fixed a real bug: \code{consensus_prior} is
+\code{NA} for two DIFFERENT reasons -- \code{group_priors} genuinely found no
+local member, OR \code{group_priors} was never supplied at all -- and a
+downstream consumer inferring "never reported" from \code{NA} alone
+could not tell them apart, misreading "not checked" as "confirmed
+absent"). \code{TRUE}/\code{FALSE} mean a real lookup against \code{group_priors}
+was performed and found/didn't find a matching group; \code{NA} means
+\code{group_priors} was not supplied (not checked at all).}
 }
 }
 \description{

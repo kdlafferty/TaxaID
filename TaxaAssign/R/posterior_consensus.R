@@ -112,6 +112,16 @@
 #'   consensus taxon. If exactly one, it downranks (recursively — e.g. family
 #'   to unique genus to unique species in one pass). Stops at any rank with
 #'   more than one option. Default `NULL` (no downranking).
+#' @param group_priors Optional data frame from [compute_group_priors()]
+#'   (`rank`/`taxon`/`theta_sum`/`n_members` columns), the SUM of
+#'   `theta_mean` over every locally modelled member of a genus or family --
+#'   not just the candidates one observation's own evidence happened to
+#'   surface. Drives `consensus_prior` when a matching (`rank`, `taxon`) row
+#'   exists for an observation's `consensus_rank`/`consensus_taxon` (see that
+#'   column's own docs below for the full reasoning). Default `NULL`:
+#'   `consensus_prior` is `NA` for every row -- there is no fallback
+#'   computation (removed 2026-07-30; the previous candidate-scoped MAX was a
+#'   real underestimate, not a safe approximation).
 #' @details
 #' \strong{Threshold interaction:}
 #' \code{min_posterior} and \code{cumulative_threshold} work together:
@@ -202,7 +212,20 @@
 #'       to detect implausible winners (e.g. a low-prior taxon winning due to
 #'       a reference error). `NA` when `prior_mean` is absent from
 #'       `posterior_df` (e.g. input from [assign_taxa_llm()]) or when
-#'       `consensus_taxon` is `NA`.}
+#'       `consensus_taxon` is `NA`. NOTE: when `prior_mean` was sourced from
+#'       TaxaExpect, this value can be substantially inflated by
+#'       `update_prior_from_consensus()`'s cross-observation confirmation
+#'       boost -- it is NOT interchangeable with `winner_theta_mean` below for
+#'       occurrence-plausibility purposes; see that function's own "Rescaling
+#'       onto the occurrence scale" section.}
+#'     \item{`winner_theta_mean`}{The consensus taxon's raw occurrence-model
+#'       share (`theta_mean`, from `TaxaExpect::prepare_model_dataframe()` --
+#'       the fraction of local records attributable to this taxon; a
+#'       compositional share, not a presence probability). Unlike
+#'       `winner_prior`, this is immune to `update_prior_from_consensus()`'s
+#'       confirmation boost by construction, since that boost only ever
+#'       modifies `prior_mean`. `NA` when `theta_mean` is absent from
+#'       `posterior_df` or when `consensus_taxon` is `NA`.}
 #'     \item{`winner_likelihood`}{Point-estimate sequence-match likelihood
 #'       (`score_likelihood`) of the consensus taxon. `NA` when absent from
 #'       `posterior_df` or when `consensus_taxon` is `NA`.}
@@ -286,27 +309,44 @@
 #'       when the LCA landed at genus, rival families at family), reducing to
 #'       the `primary_` count at species rank. Both are `NA` when
 #'       `posterior_df` carries no `model_tier` column.}
-#'     \item{`winner_has_occurrence_record`, `consensus_prior`}{Support for
-#'       the prior/occurrence-plausibility axis, answering what
-#'       `winner_prior`'s VALUE cannot: has this taxon ever been reported
-#'       here at all? A never-reported taxon and a genuine singleton can
-#'       carry the SAME numeric prior (both land on the dark-diversity
-#'       floor) while meaning opposite things, so presence is read off
-#'       `model_tier` rather than inferred from a low prior.
+#'     \item{`winner_has_occurrence_record`, `consensus_prior`,
+#'       `consensus_has_occurrence_record`}{Support for the
+#'       prior/occurrence-plausibility axis, answering what `winner_prior`'s
+#'       VALUE cannot: has this taxon ever been reported here at all? A
+#'       never-reported taxon and a genuine singleton can carry the SAME
+#'       numeric prior (both land on the dark-diversity floor) while meaning
+#'       opposite things, so presence is read off `model_tier` rather than
+#'       inferred from a low prior.
 #'       `winner_has_occurrence_record` is `TRUE` when the winning
 #'       hypothesis carries a real occurrence record, `NA` when
 #'       `posterior_df` has no `model_tier` column.
-#'       `consensus_prior` is the HIGHEST prior among candidates that both
-#'       carry an occurrence record and fall inside the consensus taxon --
-#'       `NA` when none do, so `NA` doubles as the consensus-scope
-#'       never-reported signal. Max is used deliberately: a group is
-#'       expected here if any member is, making max the tightest valid lower
-#'       bound on P(at least one member present) without assuming
-#'       independence (a sum would double-count shared occurrence evidence;
-#'       a mean would dilute a common member with its rare congeners). It is
-#'       explicitly a best-member statement, NOT the mass-conserving
-#'       hierarchical prior over a coarse taxon that TaxaExpect does not yet
-#'       provide.}
+#'       `consensus_prior` is a \code{theta_mean}-based group share
+#'       (2026-07-30; previously \code{prior_mean} -- changed because
+#'       \code{prior_mean} can be inflated by the confirmation boost above,
+#'       which would let one confirmed-elsewhere candidate make its whole
+#'       group look occurrence-expected regardless of real occurrence
+#'       support). Requires `group_priors`: when supplied and it has a
+#'       matching (`rank`, `taxon`) row for `consensus_rank`/
+#'       `consensus_taxon`, this is the exact SUM of `theta_mean` across
+#'       EVERY locally modelled member of the consensus taxon (see
+#'       [compute_group_priors()]) -- records are mutually exclusive across
+#'       taxa, so this is the group's true share by finite additivity, no
+#'       independence assumption needed. `NA` when `group_priors` is not
+#'       supplied, or has no matching row. There is deliberately no fallback
+#'       to a candidate-scoped MAX (removed 2026-07-30) -- that value is a
+#'       real underestimate on real data (e.g. Gobiidae: max 0.0164 vs. the
+#'       true group sum 0.0313), not a safe approximation to degrade to
+#'       silently.
+#'       `consensus_has_occurrence_record` (2026-07-30, new) is the
+#'       consensus-scope presence signal `consensus_prior`'s `NA` can no
+#'       longer safely double as (fixed a real bug: `consensus_prior` is
+#'       `NA` for two DIFFERENT reasons -- `group_priors` genuinely found no
+#'       local member, OR `group_priors` was never supplied at all -- and a
+#'       downstream consumer inferring "never reported" from `NA` alone
+#'       could not tell them apart, misreading "not checked" as "confirmed
+#'       absent"). `TRUE`/`FALSE` mean a real lookup against `group_priors`
+#'       was performed and found/didn't find a matching group; `NA` means
+#'       `group_priors` was not supplied (not checked at all).}
 #'   }
 #'
 #' @seealso [assign_taxa_llm()], [compute_posterior()],
@@ -334,7 +374,8 @@ posterior_consensus <- function(posterior_df,
                                 posterior_col           = "posterior_mean",
                                 lookup_missing_taxonomy = FALSE,
                                 backbone_id             = NULL,
-                                species_reference       = NULL) {
+                                species_reference       = NULL,
+                                group_priors            = NULL) {
 
   # --- Input validation -------------------------------------------------------
   required <- c("observation_id", "taxon_name", "taxon_name_rank",
@@ -342,6 +383,13 @@ posterior_consensus <- function(posterior_df,
   missing_cols <- setdiff(required, names(posterior_df))
   if (length(missing_cols) > 0)
     cli::cli_abort("posterior_df missing required column(s): {.field {missing_cols}}")
+  if (!is.null(group_priors)) {
+    if (!is.data.frame(group_priors))
+      cli::cli_abort("{.arg group_priors} must be a data.frame (see {.fn compute_group_priors}) or NULL.")
+    missing_gp <- setdiff(c("rank", "taxon", "theta_sum"), names(group_priors))
+    if (length(missing_gp) > 0)
+      cli::cli_abort("{.arg group_priors} missing required column(s): {.field {missing_gp}}")
+  }
   if (!is.numeric(cumulative_threshold) || length(cumulative_threshold) != 1L ||
       cumulative_threshold <= 0 || cumulative_threshold > 1)
     cli::cli_abort("{.arg cumulative_threshold} must be a single number in (0, 1].")
@@ -435,7 +483,8 @@ posterior_consensus <- function(posterior_df,
   results <- lapply(observation_ids, function(sid) {
     chunk <- posterior_df[posterior_df$observation_id == sid, ]
     .consensus_one_observation(chunk, sid, rank_system_eff,
-                           cumulative_threshold, min_posterior, posterior_col)
+                           cumulative_threshold, min_posterior, posterior_col,
+                           group_priors)
   })
 
   result <- dplyr::bind_rows(results)
@@ -464,7 +513,7 @@ posterior_consensus <- function(posterior_df,
 #' @noRd
 .consensus_one_observation <- function(chunk, sid, rank_system,
                                    cumulative_threshold, min_posterior,
-                                   posterior_col) {
+                                   posterior_col, group_priors = NULL) {
 
   # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
   # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
@@ -528,6 +577,16 @@ posterior_consensus <- function(posterior_df,
   winner_prior          <- if ("prior_mean"           %in% names(winner_row)) winner_row$prior_mean[[1L]]           else NA_real_
   winner_likelihood     <- if ("score_likelihood"     %in% names(winner_row)) winner_row$score_likelihood[[1L]]     else NA_real_
   winner_likelihood_cov <- if ("score_likelihood_cov" %in% names(winner_row)) winner_row$score_likelihood_cov[[1L]] else NA_real_
+  # winner_theta_mean (2026-07-30): the winner's raw occurrence-model share
+  # (TaxaExpect::prepare_model_dataframe()'s theta_mean = n_species /
+  # n_total_at_site, a compositional share of local records), distinct from
+  # winner_prior (prior_mean), which can be substantially inflated by
+  # TaxaAssign::update_prior_from_consensus()'s cross-observation confirmation
+  # boost -- a different sample space entirely (see that function's own
+  # "Rescaling onto the occurrence scale" section). Occurrence-plausibility
+  # diagnostics below use this, not winner_prior, so a boost elsewhere in the
+  # dataset cannot make an occurrence-implausible taxon read as "expected".
+  winner_theta_mean     <- if ("theta_mean"           %in% names(winner_row)) winner_row$theta_mean[[1L]]           else NA_real_
 
   # Confusion-risk pass-through (TaxaLikely::evaluate_likelihoods()'s
   # species_confusion_risk/genus_confusion_risk/family_confusion_risk/
@@ -642,30 +701,56 @@ posterior_consensus <- function(posterior_df,
   # presence signal rather than a lower cutoff.
   winner_has_occurrence_record <- if (has_tier)
     !is.na(winner_row$model_tier[[1L]]) else NA
-  # `consensus_prior`: the highest prior among candidates that (a) carry a real
-  # occurrence record and (b) fall inside the consensus taxon. NA when no
-  # member qualifies -- so NA doubles as the consensus-scope "never reported"
-  # signal, needing no separate logical.
+  # `consensus_prior`: the occurrence-model share for the consensus GROUP,
+  # not just its candidates. NA when nothing qualifies -- so NA doubles as
+  # the consensus-scope "never reported" signal, needing no separate logical.
   #
-  # MAX, deliberately -- not sum, not mean. The question is "is this GROUP
-  # expected here", and a group is expected if any member is: max is the
-  # tightest valid lower bound on P(at least one member present) without
-  # assuming independence. Summing would double-count shared occurrence
-  # evidence; averaging would dilute a genuinely common member with its rare
-  # congeners. This is explicitly NOT the mass-conserving hierarchical prior
-  # over a coarse taxon that TaxaExpect does not yet provide -- it is a
-  # best-member statement, and is documented as such rather than presented as
-  # the group's total probability mass.
-  consensus_prior <- if (has_tier && !is.na(lca$rank) && !is.na(lca$taxon) &&
-                         "prior_mean" %in% names(named_all)) {
-    grp_p <- .extract_rank_values(named_all, lca$rank)
-    if (is.null(grp_p)) NA_real_ else {
-      in_grp <- plaus_mask & !is.na(grp_p) & grp_p == lca$taxon
-      vals <- named_all$prior_mean[which(in_grp)]
-      vals <- vals[!is.na(vals)]
-      if (length(vals) == 0L) NA_real_ else max(vals)
-    }
-  } else NA_real_
+  # Reads `theta_mean`, NOT `prior_mean` (changed 2026-07-30). `prior_mean`
+  # can be substantially inflated by `update_prior_from_consensus()`'s
+  # cross-observation confirmation boost -- confirmed on real Mugu data: all
+  # 220 `prior_mean >= 0.5` rows in one real dataset were boosts, and the
+  # boost's own natural scale is a posterior probability (bounded ~1), not an
+  # occurrence share (observed ceiling 0.0865 on that dataset). Reading
+  # `prior_mean` here would let one confirmed-elsewhere candidate make its
+  # whole consensus group look occurrence-expected regardless of any real
+  # occurrence support. `theta_mean` is immune to that boost by construction.
+  #
+  # Requires `group_priors` (2026-07-30, from `compute_group_priors()`): the
+  # exact SUM of `theta_mean` over every locally modelled member of the
+  # consensus taxon at its own rank -- not just this observation's own
+  # candidates, which is all a candidate-scoped MAX could ever see. Records
+  # are mutually exclusive across taxa, so a group's true share is the exact
+  # sum of its members' shares -- no independence assumption needed (unlike
+  # a noisy-OR combination, the wrong model for a compositional share).
+  #
+  # `NA` when `group_priors` is not supplied, or has no matching (rank,
+  # taxon) row -- deliberately NOT a silent fallback to the old
+  # candidate-scoped MAX (removed 2026-07-30): that value is a real
+  # underestimate (confirmed on real data, e.g. Gobiidae max=0.0164 vs the
+  # true group sum 0.0313), and returning it silently when the caller hasn't
+  # supplied `group_priors` would misrepresent an incomplete computation as
+  # a complete one.
+  # `consensus_has_occurrence_record`: the consensus-scope analogue of
+  # `winner_has_occurrence_record`, and the fix for a real bug found
+  # 2026-07-30 -- `add_posthoc_assessment()` previously inferred "has a
+  # record" from whether `consensus_prior` was `NA`, which conflated two
+  # different situations `consensus_prior` alone cannot distinguish:
+  # `group_priors` was never supplied (unknown), vs. `group_priors` was
+  # supplied and genuinely found no local member (confirmed absent). On real
+  # production data (no workflow supplies `group_priors` yet),
+  # `consensus_prior` is `NA` for every row for the FIRST reason, and the old
+  # inference read every row as confirmed-absent ("unprecedented") --
+  # `consensus_plausibility` read `"unprecedented"` for all 616 real rows.
+  # `NA` here means "not checked" (matches `winner_has_occurrence_record`'s
+  # own `NA`-when-`model_tier`-absent convention); `TRUE`/`FALSE` mean a real
+  # lookup was performed and found/didn't find a matching group.
+  consensus_prior <- NA_real_
+  consensus_has_occurrence_record <- NA
+  if (!is.null(group_priors) && !is.na(lca$rank) && !is.na(lca$taxon)) {
+    gp_row <- group_priors[group_priors$rank == lca$rank & group_priors$taxon == lca$taxon, , drop = FALSE]
+    consensus_has_occurrence_record <- nrow(gp_row) > 0L
+    if (nrow(gp_row) > 0L) consensus_prior <- gp_row$theta_sum[[1L]]
+  }
 
   # Confusion risk matched to the CONSENSUS rank, rather than to
   # primary_taxon's own rank (which is what winner_own_rank_confusion_risk
@@ -727,6 +812,7 @@ posterior_consensus <- function(posterior_df,
     consensus_confidence_score = consensus_confidence_score,
     n_plausible                = n_include,
     winner_prior               = winner_prior,
+    winner_theta_mean           = winner_theta_mean,
     winner_likelihood          = winner_likelihood,
     winner_likelihood_cov      = winner_likelihood_cov,
     winner_hypothesis_type     = winner_hypothesis_type,
@@ -740,6 +826,7 @@ posterior_consensus <- function(posterior_df,
     consensus_n_plausible_competitors = consensus_n_plausible_competitors,
     winner_has_occurrence_record      = winner_has_occurrence_record,
     consensus_prior                   = consensus_prior,
+    consensus_has_occurrence_record   = consensus_has_occurrence_record,
     plausible_taxa       = I(list(plausible$taxon_name)),
     plausible_posteriors = I(list(stats::setNames(
       plausible[[posterior_col]], plausible$taxon_name
@@ -869,6 +956,7 @@ posterior_consensus <- function(posterior_df,
     consensus_confidence_score = NA_real_,
     n_plausible                = 0L,
     winner_prior               = NA_real_,
+    winner_theta_mean           = NA_real_,
     winner_likelihood          = NA_real_,
     winner_likelihood_cov      = NA_real_,
     winner_hypothesis_type     = NA_character_,
@@ -882,6 +970,7 @@ posterior_consensus <- function(posterior_df,
     consensus_n_plausible_competitors = NA_integer_,
     winner_has_occurrence_record      = NA,
     consensus_prior                   = NA_real_,
+    consensus_has_occurrence_record   = NA,
     plausible_taxa       = I(list(character(0))),
     plausible_posteriors = I(list(stats::setNames(numeric(0), character(0)))),
     stringsAsFactors     = FALSE

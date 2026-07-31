@@ -85,6 +85,51 @@
 #' quantile-based design is a more evidence-sensitive interim step than the
 #' old fixed multiplier, not a replacement for that.
 #'
+#' @section Rescaling onto the occurrence scale (2026-07-30):
+#' `consensus_posterior` is P(hypothesis | evidence) *within one
+#' observation* -- a probability over competing hypotheses. `prior_mean`,
+#' when sourced from `TaxaExpect`, is a **compositional share of the local
+#' record pool** (`theta_mean`, confirmed by reading
+#' `TaxaExpect::prepare_model_dataframe()`'s binomial response directly:
+#' `n_species / n_total_at_site`, one record attributable to exactly one
+#' taxon). These are different sample spaces, and substituting one for the
+#' other only ever inflates (never-demote guarantees it). Measured on real
+#' Mugu data: 220 of 2540 rows were boosted, and all 220 landed in
+#' \[0.951, 1.0\] -- every one overshooting the real occurrence-scale
+#' ceiling (`max(theta_mean)` across every locally modelled taxon,
+#' 0.0865 on that dataset) by 11x to 1000x.
+#'
+#' When a `theta_mean` column is present on `result`, the substitution is
+#' rescaled onto that ceiling instead of being used directly:
+#' `prior_new <- max(prior_old, q * max(result$theta_mean, na.rm = TRUE))`,
+#' where `q` is the confirmation-quantile value described above. This keeps
+#' the confirmation-quantile logic and the never-demote guard unchanged --
+#' only the target scale moves -- so a stronger/more numerous confirmation
+#' (higher `q`) still produces a stronger boost, bounded by the model's own
+#' observed maximum share rather than substituting a foreign-scale
+#' constant. When `result` has no `theta_mean` column (e.g. LLM-pathway
+#' priors from [assign_taxa_llm()], which are not occurrence-share-based to
+#' begin with), the previous direct-substitution behavior is used
+#' unchanged -- the units mismatch this section fixes is specific to
+#' occurrence-model-sourced priors.
+#'
+#' @section Confirmed without an occurrence record (2026-07-30):
+#' A taxon can be confidently identified elsewhere in the dataset while
+#' having no occurrence record at all (`theta_mean` `NA` for every row
+#' naming it) -- e.g. a real Mugu case, *Oncorhynchus mykiss*, which has no
+#' row in `taxaexpect_priors` at all (see
+#' `[[project_urolophus_synonym_join_bug]]` in the project memory system --
+#' this is a known, separate upstream join gap, not a sign the species is
+#' actually rare). Such a row still gets boosted (the confirmation is real
+#' identification evidence, worth keeping) but is flagged via a new
+#' `confirmed_without_occurrence_record` column rather than silently
+#' presented as occurrence-grounded. Boosting is *not* suppressed for these
+#' rows: gating on occurrence-record presence would currently punish
+#' exactly the taxa the join gap affects (whole families, in the Mugu
+#' salmonid case), which are neither rare nor implausible -- only
+#' undercounted by an unrelated bug. Revisit suppression once that join gap
+#' is fixed.
+#'
 #' @param result Dataframe. Output of [assign_taxa_llm()] or [compute_posterior()].
 #'   Must contain: `observation_id`, `taxon_name`, `score_likelihood`,
 #'   `score_likelihood_mean`, `score_likelihood_sd`, `prior_mean`. When
@@ -120,14 +165,17 @@
 #'   Default `NULL` (no group-based restriction — all observations
 #'   participate, matching this function's original behaviour).
 #'
-#' @return The full posterior dataframe with the same structure as `result`.
-#'   Resolved observations are returned unchanged. Unresolved observations in
-#'   a multi-member spatial group (see `spatial_group_map`) have updated
-#'   `prior_mean` and freshly computed posterior columns
-#'   (`posterior_point_est`, `posterior_mean`, `posterior_sd`,
-#'   `confidence_score`). Unresolved observations in a single-observation
-#'   spatial group are returned unchanged, same as resolved ones. Sorted by
-#'   `observation_id` then descending `posterior_point_est`.
+#' @return The full posterior dataframe with the same structure as `result`,
+#'   plus one new column, `confirmed_without_occurrence_record` (logical,
+#'   `FALSE` unless set `TRUE` -- see @section Confirmed without an
+#'   occurrence record). Resolved observations are returned unchanged.
+#'   Unresolved observations in a multi-member spatial group (see
+#'   `spatial_group_map`) have updated `prior_mean` and freshly computed
+#'   posterior columns (`posterior_point_est`, `posterior_mean`,
+#'   `posterior_sd`, `confidence_score`). Unresolved observations in a
+#'   single-observation spatial group are returned unchanged, same as
+#'   resolved ones. Sorted by `observation_id` then descending
+#'   `posterior_point_est`.
 #'
 #' @seealso [posterior_consensus()], [compute_posterior()], [assign_taxa_llm()]
 #'
@@ -289,6 +337,8 @@ update_prior_from_consensus <- function(result,
 
   resolved_rows$prior_updated   <- FALSE
   unresolved_rows$prior_updated <- TRUE
+  resolved_rows$confirmed_without_occurrence_record   <- FALSE
+  unresolved_rows$confirmed_without_occurrence_record <- FALSE
 
   # --- Apply confirmation-quantile substitution (never-demote) ----------------
   boost_mask <- unresolved_rows$taxon_name %in% confirmed_species
@@ -303,20 +353,54 @@ update_prior_from_consensus <- function(result,
     return(result)
   }
 
-  candidate_prior <- unname(species_quantile[unresolved_rows$taxon_name[boost_mask]])
+  # Rescale the quantile substitution onto the occurrence scale when result
+  # carries theta_mean (occurrence-model-sourced priors) -- see @section
+  # Rescaling onto the occurrence scale. q (the confirmation-quantile value,
+  # a probability over hypotheses) is never itself used as an occurrence
+  # share; it scales the dataset's own observed occurrence-share ceiling.
+  has_theta <- "theta_mean" %in% names(result)
+  theta_ceiling <- if (has_theta) max(result$theta_mean, na.rm = TRUE) else NA_real_
+  if (has_theta && (!is.finite(theta_ceiling) || theta_ceiling <= 0)) {
+    has_theta <- FALSE  # no usable occurrence-scale ceiling in this dataset
+  }
+
+  q_boosted <- unname(species_quantile[unresolved_rows$taxon_name[boost_mask]])
+  candidate_prior <- if (has_theta) q_boosted * theta_ceiling else q_boosted
   old_prior        <- unresolved_rows$prior_mean[boost_mask]
   raise_mask       <- candidate_prior > old_prior   # never-demote: only raise
   n_raised         <- sum(raise_mask)
 
-  cli::cli_inform(
+  cli::cli_inform(c(
     "{n_boosted} hypothesis row(s) across \\
     {dplyr::n_distinct(unresolved_rows$observation_id[boost_mask])} observation(s) \\
     matched a confirmed species; {n_raised} actually raised above their existing prior \\
-    (others already met or exceeded the confirmation quantile)."
-  )
+    (others already met or exceeded the confirmation quantile).",
+    if (has_theta)
+      "Substitution rescaled onto the occurrence scale (ceiling = {signif(theta_ceiling, 3)})."
+    else
+      "No theta_mean column on result -- using the confirmation quantile directly (pre-2026-07-30 behavior)."
+  ))
 
   new_prior <- old_prior
   new_prior[raise_mask] <- candidate_prior[raise_mask]
+
+  # Flag rows raised despite the taxon having no occurrence record at all
+  # (theta_mean NA for this candidate) -- track, don't suppress. See
+  # @section Confirmed without an occurrence record.
+  if (has_theta) {
+    theta_boosted <- unresolved_rows$theta_mean[boost_mask]
+    no_record_raised <- raise_mask & is.na(theta_boosted)
+    if (any(no_record_raised)) {
+      idx <- which(boost_mask)[no_record_raised]
+      unresolved_rows$confirmed_without_occurrence_record[idx] <- TRUE
+      cli::cli_inform(
+        "{sum(no_record_raised)} of those raised row(s) have NO occurrence record at all \\
+        (theta_mean NA) -- flagged via confirmed_without_occurrence_record, not suppressed. \\
+        This may reflect a genuinely undetected taxon, or an upstream occurrence-prior gap \\
+        (see [[project_urolophus_synonym_join_bug]])."
+      )
+    }
+  }
 
   # Keep prior_alpha/prior_beta consistent with the boosted prior_mean, when
   # present, by preserving the original concentration (alpha + beta) and
