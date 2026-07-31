@@ -383,16 +383,23 @@ test_that(".safe_normalise returns 0s when all values are equal (max == min)", {
   expect_true(all(out == 0))
 })
 
-test_that(".safe_normalise treats Inf as NA and still normalises finite values", {
+test_that(".safe_normalise restores +Inf as the best (1) normalised value, not NA", {
+  # A real +Inf input (e.g. cv_N == 0, perfectly uniform sampling effort) is
+  # the theoretically BEST possible value on this component -- it must map
+  # to 1, not NA. NA would silently disqualify this resolution from ever
+  # being selected via arrange(desc(composite_score)), since NA propagates
+  # through the composite score and sorts last.
   out <- TaxaExpect:::.safe_normalise(c(1, 2, Inf))
-  expect_true(is.na(out[3]))
   expect_equal(out[1], 0)
   expect_equal(out[2], 1)
+  expect_equal(out[3], 1)
 })
 
-test_that(".safe_normalise returns all NA when all values are non-finite", {
+test_that(".safe_normalise restores -Inf as 0 and leaves a bare NA input as NA", {
   out <- TaxaExpect:::.safe_normalise(c(NA, Inf, -Inf))
-  expect_true(all(is.na(out)))
+  expect_true(is.na(out[1]))
+  expect_equal(out[2], 1)
+  expect_equal(out[3], 0)
 })
 
 # =============================================================================

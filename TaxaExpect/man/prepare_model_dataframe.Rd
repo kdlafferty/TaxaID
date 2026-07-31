@@ -56,8 +56,8 @@ combination (including implicit zeros). Columns are ordered as:
 \code{n_other}, \code{is_present}, \code{observed_in_habitat},
 scaled covariate columns (\code{<cov>_s}), then all remaining columns.
 
-The attribute \code{scale_params} is a named list — one entry per
-covariate — each containing \code{center} (mean) and \code{scale} (SD).
+The attribute \code{scale_params} is a named list -- one entry per
+covariate -- each containing \code{center} (mean) and \code{scale} (SD).
 These are extracted automatically by \code{\link{train_biodiversity_model}}
 and stored in the model object so new sites can be scaled consistently at
 prediction time.
@@ -70,7 +70,7 @@ Converts raw occurrence records into the format required by
 \code{cor_threshold}.
 \item Aggregates records to species \eqn{\times} site-habitat counts and
 fills implicit zeros for species not observed at a site.
-\item Computes the \code{observed_in_habitat} flag — \code{TRUE}
+\item Computes the \code{observed_in_habitat} flag -- \code{TRUE}
 if the species has been recorded in that habitat type at any site.
 \item Scales all covariate columns to zero mean / unit SD, storing the
 scaling parameters as an attribute for use at prediction time.
@@ -135,6 +135,20 @@ rather than one pooled model across all of them --
 model against multi-group data (see its own docs) as a safety check.
 Default \code{NULL}: no grouping, output and behavior unchanged from before
 Session 149.
+
+A row whose \code{sampling_group_col} value is \code{NA} is kept as its
+own group (\code{sampling_group = NA}), not silently dropped. When
+grouping is active, the \code{scale_params} attribute described above is
+NOT attached (each group has its own covariate center/scale, and
+combining them into one flat list would silently keep only one group's
+values) -- instead the combined output carries
+\code{scale_params_by_group}, a named list of per-group \code{scale_params}
+lists, keyed by \code{sampling_group} value.
+\code{\link{train_biodiversity_model_by_group}} does not read either
+attribute from this combined output -- it re-derives its own per-group
+\code{scale_params} by calling this function once per group internally --
+so this only matters if you consume the combined, grouped output of this
+function directly.
 }
 
 \examples{

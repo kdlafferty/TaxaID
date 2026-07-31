@@ -23,12 +23,14 @@ Moran eigenvector terms and spatial gradient terms. Moran columns must
 be named \code{B1}, \code{B2}, ... and spatial gradient columns must be
 named \code{lat_r_s} and \code{lon_r_s}.}
 
-\item{sd_threshold}{Numeric. Coefficient of variation threshold for
-spatial predictor screening. Predictors with CV below this value show
-insufficient spatial variation to meaningfully explain species
-distributions. Default 0.20 (on the logit scale) -- a pragmatic
-minimum for ecological spatial predictors. Terms at or above this
-threshold are never removed.}
+\item{sd_threshold}{Numeric. Absolute logit-scale standard deviation
+threshold for spatial predictor screening (compared directly against
+each random slope's own fitted SD -- not a coefficient of variation;
+the code never divides by a mean). Predictors with an SD below this
+value show insufficient spatial variation to meaningfully explain
+species distributions. Default 0.20 -- a pragmatic minimum for
+ecological spatial predictors on the logit scale. Terms at or above
+this threshold are never removed.}
 
 \item{delta_aic_max}{Numeric. Maximum delta-AIC for retaining a spatial
 predictor. Following Burnham & Anderson (2002), models within

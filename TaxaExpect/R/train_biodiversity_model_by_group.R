@@ -110,7 +110,21 @@ train_biodiversity_model_by_group <- function(data,
          "' not found in data.")
   }
 
-  groups <- sort(unique(data[[sampling_group_col]]))
+  # sort(unique(x)) silently DROPS NA (sort()'s default na.last = NA removes
+  # it), and split(data, data[[col]]) silently drops NA-grouped rows entirely
+  # -- both confirmed directly. Keep NA as its own real group instead of
+  # dropping it: a row with an unclassified sampling_group_col value should
+  # be surfaced as its own group, not silently vanish from every fitted
+  # model. Mirrors the equivalent fix in prepare_model_dataframe().
+  group_vals <- data[[sampling_group_col]]
+  groups     <- sort(unique(group_vals[!is.na(group_vals)]))
+  if (anyNA(group_vals)) {
+    groups <- c(groups, NA)
+    message(sprintf(
+      "train_biodiversity_model_by_group: %d row(s) have NA in '%s'; grouped as its own group rather than dropped.",
+      sum(is.na(group_vals)), sampling_group_col
+    ))
+  }
   if (length(groups) < 2L) {
     warning(
       "train_biodiversity_model_by_group: only ", length(groups), " distinct value(s) ",
@@ -120,7 +134,7 @@ train_biodiversity_model_by_group <- function(data,
     )
   }
 
-  data_splits <- split(data, data[[sampling_group_col]])
+  data_splits <- split(data, factor(group_vals, exclude = NULL))
 
   # Session 149, found via real-data testing (real PtConception 18S
   # occurrences): a single group's fit failing (e.g. a group whose records
@@ -130,13 +144,19 @@ train_biodiversity_model_by_group <- function(data,
   # the same guard already used in the real workflow script this function is
   # meant to replace/generalize -- without this, a real multi-group dataset
   # with even one problematic group made this function unusable end to end.
+  # Index data_splits by POSITION (via match()), not by name: when g is NA,
+  # list[[NA]] returns NULL rather than the actual NA-named element (the
+  # same list-indexing footgun already documented and fixed elsewhere in
+  # this package, e.g. compute_adaptive_sampling_groups.R) -- a by-name
+  # lookup would silently treat the NA group's data as empty.
   models <- stats::setNames(lapply(groups, function(g) {
+    split_data <- data_splits[[match(g, names(data_splits))]]
     if (verbose) message(sprintf("--- Sampling group '%s' (%d record(s)) ---",
-                                  g, nrow(data_splits[[g]])))
+                                  g, nrow(split_data)))
 
     tryCatch({
       model_df <- prepare_model_dataframe(
-        data_splits[[g]],
+        split_data,
         covariates    = covariates,
         habitat_col   = habitat_col,
         cor_threshold = cor_threshold
@@ -151,7 +171,7 @@ train_biodiversity_model_by_group <- function(data,
         min_obs_threshold = min_obs_threshold,
         effort_threshold  = effort_threshold,
         min_positive_rows = min_positive_rows,
-        full_data         = data_splits[[g]]
+        full_data         = split_data
       )
     }, error = function(e) {
       if (verbose) message(sprintf("  Group '%s' failed to fit: %s", g, conditionMessage(e)))

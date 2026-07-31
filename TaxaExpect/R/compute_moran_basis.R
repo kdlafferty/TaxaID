@@ -28,7 +28,7 @@
 
 #' Compute Moran Eigenvector Basis for Spatial Autocorrelation
 #'
-#' Constructs a set of Moran eigenvectors (MEM — Moran's Eigenvector Maps)
+#' Constructs a set of Moran eigenvectors (MEM -- Moran's Eigenvector Maps)
 #' from a vector of \code{grid_id} strings.  The resulting basis columns can
 #' be joined to a model dataframe and included as fixed-effect covariates in
 #' \code{\link{train_biodiversity_model}} to capture spatial autocorrelation
@@ -41,10 +41,15 @@
 #'     \code{Grid_{lat}p{dec}_{m}{lon}p{dec}} encoding.
 #'   \item Build a binary adjacency matrix \eqn{W} where cells \eqn{i} and
 #'     \eqn{j} are neighbours if their Euclidean distance (in degrees) is
-#'     greater than zero and less than \code{distance_threshold}.
-#'   \item Row-standardise \eqn{W} to \eqn{W^*}.
-#'   \item Doubly-centre \eqn{W^*} to form the symmetric Moran operator
-#'     \eqn{M = H W^* H}, where \eqn{H = I - \mathbf{1}\mathbf{1}^T / n}.
+#'     greater than zero and less than \code{distance_threshold}. \eqn{W} is
+#'     symmetric by construction (a symmetric distance test).
+#'   \item Doubly-centre \eqn{W} to form the symmetric Moran operator
+#'     \eqn{M = H W H}, where \eqn{H = I - \mathbf{1}\mathbf{1}^T / n}. \eqn{M}
+#'     is symmetric because \eqn{W} and \eqn{H} both are -- this is required
+#'     for \code{eigen(M, symmetric = TRUE)} below to be valid; a
+#'     row-standardised \eqn{W} is asymmetric for any grid with unequal
+#'     neighbour counts (i.e. almost any real, non-toroidal grid) and must
+#'     not be used here.
 #'   \item Extract the \code{k} eigenvectors corresponding to the largest
 #'     positive eigenvalues of \eqn{M}.
 #'   \item Scale each eigenvector to unit standard deviation.
@@ -52,7 +57,7 @@
 #'
 #' If \code{distance_threshold} is \code{NULL} (the default), the threshold is
 #' inferred automatically as 1.5 times the minimum spacing between unique
-#' centroid coordinates — typically capturing all first-order neighbours on a
+#' centroid coordinates -- typically capturing all first-order neighbours on a
 #' regular grid.
 #'
 #' Grid cells that cannot be parsed, or that have no neighbours at the chosen
@@ -200,23 +205,20 @@ compute_moran_basis <- function(grid_ids,
     ))
   }
 
-  # --- Row-standardise W ------------------------------------------------------
-  row_sums <- rowSums(W)
-  zero_row <- row_sums == 0
-  if (any(zero_row)) {
-    warning(sprintf(
-      "compute_moran_basis: %d row(s) in neighbour matrix have zero row-sum after isolated-cell removal. Setting to 1 to avoid NaN in row-standardised W.",
-      sum(zero_row)
-    ), call. = FALSE)
-    row_sums[zero_row] <- 1
-  }
-  W_std    <- W / row_sums
-
-  # --- Build doubly-centred Moran operator M = H W* H -------------------------
-  n2         <- nrow(W_std)
+  # --- Build doubly-centred Moran operator M = H W H ---------------------------
+  # W is already binary and symmetric (built from a symmetric distance test
+  # above), which is required for M to be symmetric and for
+  # eigen(M, symmetric = TRUE) below to be valid. Do NOT row-standardise W
+  # here: row-standardising divides row i by its own neighbour count, which
+  # is asymmetric whenever two neighbouring cells have different neighbour
+  # counts -- true for essentially any real (non-toroidal, boundary-having)
+  # grid. eigen(..., symmetric = TRUE) silently reads only the lower
+  # triangle of its input with no warning, so an asymmetric M here would
+  # silently produce a wrong basis with no error at all.
+  n2         <- nrow(W)
   I          <- diag(n2)
   centering  <- I - matrix(1 / n2, n2, n2)
-  M          <- centering %*% W_std %*% centering
+  M          <- centering %*% W %*% centering
 
   # --- Eigen decomposition ----------------------------------------------------
   eig     <- eigen(M, symmetric = TRUE)

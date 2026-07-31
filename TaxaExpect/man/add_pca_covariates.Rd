@@ -28,7 +28,7 @@ covariate scaling parameters; retained for new-site prediction via
 \item{\code{pca_rotation}}{Named list:
 \code{source_cols} (replaced \verb{_s} column names),
 \code{pc_cols} (new PC column names),
-\code{rotation} (PCA loading matrix, n_source × n_pc),
+\code{rotation} (PCA loading matrix, n_source x n_pc),
 \code{prefix} (the prefix used).}
 }
 If no column pairs exceed \code{cor_threshold} the input is returned unchanged.
@@ -44,11 +44,11 @@ can be passed directly to \code{\link[=train_biodiversity_model]{train_biodivers
 \details{
 PCA is applied to all \verb{_s} columns involved in any correlated pair;
 uncorrelated \verb{_s} columns are left in place.  All principal components are
-retained — the output columns are orthogonal by construction, which
+retained -- the output columns are orthogonal by construction, which
 eliminates collinearity without discarding variance.
 
 \code{prcomp()} is called with \code{center = TRUE} so PC scores are zero-mean and
-exactly orthogonal.  The \verb{_s} columns are already ≈ 0-mean from
+exactly orthogonal.  The \verb{_s} columns are already ~ 0-mean from
 \code{prepare_model_dataframe()}; re-centering has negligible effect on values.
 
 \strong{Prediction-time note:} \code{\link[=generate_full_priors]{generate_full_priors()}} scales new sites using the

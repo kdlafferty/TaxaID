@@ -60,11 +60,11 @@ library(dplyr)
 # each absent from exactly one site. Species_B appears everywhere.
 .make_guaranteed_absence_input <- function() {
   data.frame(
-    grid_id      = c("g1","g1","g2","g2","g2"),
+    grid_id      = c("g1", "g1", "g2", "g2", "g2"),
     lat_r        = c(34, 34, 35, 35, 35),
     lon_r        = c(-120, -120, -118, -118, -118),
-    main_habitat = c("Kelp","Kelp","Rocky","Rocky","Rocky"),
-    taxon_name   = c("Sp_A","Sp_B","Sp_B","Sp_C","Sp_C"),
+    main_habitat = c("Kelp", "Kelp", "Rocky", "Rocky", "Rocky"),
+    taxon_name   = c("Sp_A", "Sp_B", "Sp_B", "Sp_C", "Sp_C"),
     stringsAsFactors = FALSE
   )
   # After zero-fill: 3 species x 2 sites = 6 rows

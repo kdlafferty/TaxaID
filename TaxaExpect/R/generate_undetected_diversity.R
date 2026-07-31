@@ -325,5 +325,5 @@ generate_undetected_diversity <- function(model_obj,
     length(proxy_list), nrow(result)
   ))
 
-  return(result)
+  result
 }

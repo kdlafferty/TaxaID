@@ -77,7 +77,11 @@ report_priors <- function(priors_output,
   }
 
   n_grid_cells <- if ("grid_id" %in% names(priors_df)) {
-    length(unique(priors_df$grid_id))
+    # NA-guard mirrors n_taxa above -- generate_domestic_food_priors() rows
+    # can legitimately carry grid_id = NA (no site association), which
+    # unique() otherwise counts as one more "distinct" cell, inflating any
+    # Methods-text-quoted cell count by one.
+    length(unique(priors_df$grid_id[!is.na(priors_df$grid_id)]))
   } else {
     NA_integer_
   }

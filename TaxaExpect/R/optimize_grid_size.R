@@ -156,8 +156,7 @@ utils::globalVariables(c(
 #' )
 #' }
 #'
-#' @importFrom dplyr mutate group_by summarise filter select arrange
-#'   distinct n_distinct pull desc bind_rows all_of
+#' @importFrom dplyr mutate group_by summarise filter select arrange distinct n_distinct pull desc bind_rows all_of
 #' @importFrom tidyr drop_na
 #' @importFrom rlang sym !!
 #' @importFrom stats sd median var
@@ -395,6 +394,27 @@ optimize_grid_size <- function(
   bbox_span        <- max(lat_range, lon_range)
   single_grid_size <- ceiling((bbox_span + step_grid) * 100) / 100
 
+  # Verify (not just assume) that this grid size actually pools every real
+  # point into one cell. round(x/g)*g's rounding boundaries are anchored at
+  # 0, not at this data's own bbox, so a grid_size derived from bbox_span
+  # alone can still split the data into >1 cell whenever the bbox happens to
+  # straddle a boundary -- confirmed with a real counterexample (bbox
+  # [10.0, 12.3]: the formula above produced grid cells 9.44 and 11.8, two
+  # distinct cells, silently contradicting this fallback's own "all
+  # observations are pooled into one site" message). Grow the grid size
+  # against the actual coordinates until it verifiably collapses to one
+  # cell, rather than trusting the algebra alone for an arbitrary bbox
+  # position.
+  .one_cell <- function(vals, g) length(unique(round(vals / g))) <= 1L
+  grow_attempts <- 0L
+  while ((!.one_cell(df_clean[[lat_col]], single_grid_size) ||
+          !.one_cell(df_clean[[lon_col]], single_grid_size)) &&
+         grow_attempts < 20L) {
+    single_grid_size <- single_grid_size * 1.5
+    grow_attempts     <- grow_attempts + 1L
+  }
+  single_grid_size <- round(single_grid_size, 2)
+
   explanation <- sprintf(
     paste0(
       "Fallback C applied: data are too sparse for any multi-cell grid. ",
@@ -525,9 +545,23 @@ optimize_grid_size <- function(
 #' @noRd
 
 .safe_normalise <- function(x) {
+  x_orig <- x
   x[is.infinite(x)] <- NA_real_
   rng <- range(x, na.rm = TRUE)
-  if (!is.finite(rng[1]) || !is.finite(rng[2])) return(rep(NA_real_, length(x)))
-  if (rng[2] - rng[1] < .Machine$double.eps)     return(rep(0,         length(x)))
-  (x - rng[1]) / (rng[2] - rng[1])
+  if (!is.finite(rng[1]) || !is.finite(rng[2])) {
+    out <- rep(NA_real_, length(x))
+  } else if (rng[2] - rng[1] < .Machine$double.eps) {
+    out <- rep(0, length(x))
+  } else {
+    out <- (x - rng[1]) / (rng[2] - rng[1])
+  }
+  # Restore +Inf/-Inf inputs (e.g. cv_N == 0, perfectly uniform sampling
+  # effort -- the theoretically BEST possible stability score) as the best
+  # (1) / worst (0) normalised value, rather than leaving them NA. NA would
+  # otherwise propagate into the composite score and sort last via
+  # arrange(desc(...)), silently disqualifying the resolution with the best
+  # value on this component from ever being selected as best_grid.
+  out[is.infinite(x_orig) & x_orig > 0] <- 1
+  out[is.infinite(x_orig) & x_orig < 0] <- 0
+  out
 }

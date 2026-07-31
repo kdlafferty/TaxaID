@@ -37,8 +37,8 @@ The input dataframe with three columns added:
 \code{"Grid_{lat_r}_{lon_r}"}, with decimal points replaced by
 \code{"p"} and minus signs replaced by \code{"m"}, making the label
 safe for use as a factor level in R formulae and as a file or column
-name. For example, lat = -119.5, lon = 34.0 yields
-\code{"Grid_m119p5_34p0"}.}
+name. For example, lat = 34.0, lon = -119.5 yields
+\code{"Grid_34p0_m119p5"}.}
 }
 Row order is unchanged.
 }

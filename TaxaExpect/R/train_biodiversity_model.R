@@ -86,14 +86,12 @@ rewrite_habitat_formula <- function(formula, indicators) {
         f_chr <- gsub("diag\\([^)]+\\)", "", f_chr)
         message("  Habitat random slopes: none supported (all habitats sparse). ",
             "Habitat fixed effect retained.")
-    }
-    else if (length(quoted) == 1) {
+    } else if (length(quoted) == 1) {
         slope_term <- sprintf("(0 + %s | taxon_name)", quoted)
         f_chr <- gsub("diag\\([^)]+\\)", slope_term, f_chr)
-    }
-    else {
+    } else {
         # FIX: one independent (0 + hab_X | taxon_name) term per indicator
-        # (previously joined into one correlated block — caused Hessian failures)
+        # (previously joined into one correlated block -- caused Hessian failures)
         slope_term <- paste(
             sprintf("(0 + %s | taxon_name)", quoted),
             collapse = " + "
@@ -162,7 +160,16 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #' @param full_data A tibble. The original pre-aggregated data (output of
 #'   \code{create_sites_from_grid()}) used to identify singletons for
 #'   \code{generate_undetected_diversity()}. If \code{NULL}, singletons are
-#'   identified from \code{data} directly.
+#'   identified from \code{data} directly. \strong{The definition of
+#'   "singleton" differs by which path is used}: with \code{full_data}
+#'   supplied, a singleton is a species with exactly one raw
+#'   \emph{record}; without it (the default), a singleton is a species
+#'   detected in exactly one occupied \emph{grid cell}
+#'   (\code{sum(n_species > 0) == 1} on the aggregated \code{data}). A
+#'   species with several raw records clustered at one grid cell is
+#'   therefore a singleton under the default path but not under the
+#'   \code{full_data} path -- which definition is more appropriate depends
+#'   on whether you want "seen exactly once" or "seen at exactly one site."
 #'
 #' @section Multi-group data is refused (Session 149):
 #' If \code{data} carries a \code{sampling_group} column (i.e. it came from
@@ -191,7 +198,13 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #'       effort-passing cells. Used for the global undetected floor prior.}
 #'     \item{tier2_empirical}{Data frame of observed mean/SD theta per
 #'       species x habitat for Tier 2 species. Fallback if Tier 2 model
-#'       fails.}
+#'       fails. \code{theta_mean_emp}/\code{theta_sd_emp} are computed over
+#'       ALL surveyed site rows for a detected species x habitat combo
+#'       (including zero-detection sites), i.e. a marginal prevalence rate --
+#'       not just the sites where it was actually seen, which would instead
+#'       be a conditional "typical rate given detected" and systematically
+#'       overstate theta. \code{n_detections} still counts only the positive
+#'       (\code{n_species > 0}) rows.}
 #'     \item{habitat_screening}{List documenting the habitat slope screening
 #'       result: \code{$supported}, \code{$sparse}, \code{$indicators},
 #'       \code{$min_positive_rows}, \code{$summary} (positive row counts per
@@ -301,8 +314,7 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #' }
 #'
 #' @importFrom glmmTMB glmmTMB
-#' @importFrom dplyr filter group_by summarise mutate pull left_join select
-#'   distinct rename n_distinct all_of
+#' @importFrom dplyr filter group_by summarise mutate pull left_join select distinct rename n_distinct all_of
 #' @importFrom rlang sym :=
 #' @importFrom stats sd setNames as.formula
 #' @export
@@ -380,7 +392,7 @@ train_biodiversity_model <- function(data,
   # (e.g., taxon_name:grid_id is handled by glmmTMB, not a required column)
   formula_vars  <- all.vars(formula)
   response_vars <- c("n_species", "n_other", "is_present")
-  # Exclude variables that are grouping factors in random effects — glmmTMB
+  # Exclude variables that are grouping factors in random effects -- glmmTMB
   # resolves interactions like taxon_name:grid_id internally
   check_vars    <- setdiff(formula_vars, c(response_vars, taxon_col,
                                            habitat_col, "grid_id"))
@@ -613,11 +625,24 @@ train_biodiversity_model <- function(data,
   # ---------------------------------------------------------------------------
   # Empirical stats for Tier 2 (fallback if Tier 2 model fails)
   # ---------------------------------------------------------------------------
-  tier2_empirical <- df |>
-    dplyr::filter(
-      (!!taxon_sym) %in% taxa_tier2,
-      n_species > 0
-    )
+  # theta_mean_emp/theta_sd_emp must be computed over ALL site rows for a
+  # given taxon x habitat combo -- including the zero-detection rows
+  # prepare_model_dataframe() zero-fills -- not just the rows where the
+  # species was actually detected. Averaging n_species/n_total_at_site only
+  # over n_species > 0 rows computes "typical rate GIVEN detected," a
+  # conditional probability, not the marginal prevalence rate this value is
+  # meant to approximate -- systematically inflated, worst for a rare
+  # species detected at only 1-2 of many surveyed sites. detected_combos
+  # below still restricts the output to taxon x habitat combos observed at
+  # least once (unchanged row set, needed so this doesn't leak into
+  # observed_in_habitat downstream for combos never actually detected).
+  detected_combos <- df |>
+    dplyr::filter((!!taxon_sym) %in% taxa_tier2, n_species > 0) |>
+    dplyr::distinct(dplyr::across(dplyr::all_of(
+      if (no_habitat) taxon_col else c(taxon_col, habitat_col)
+    )))
+
+  tier2_empirical <- dplyr::filter(df, (!!taxon_sym) %in% taxa_tier2)
   tier2_empirical <- if (no_habitat) {
     dplyr::group_by(tier2_empirical, !!taxon_sym)
   } else {
@@ -627,13 +652,17 @@ train_biodiversity_model <- function(data,
     dplyr::summarise(
       theta_mean_emp = mean(n_species / n_total_at_site, na.rm = TRUE),
       theta_sd_emp   = sd(n_species / n_total_at_site,   na.rm = TRUE),
-      n_detections   = dplyr::n(),
+      n_detections   = sum(n_species > 0),
       .groups        = "drop"
     ) |>
     dplyr::mutate(
       theta_sd_emp = dplyr::if_else(
         is.na(theta_sd_emp), theta_mean_emp * 0.5, theta_sd_emp
       )
+    ) |>
+    dplyr::semi_join(
+      detected_combos,
+      by = if (no_habitat) taxon_col else c(taxon_col, habitat_col)
     )
 
   # ---------------------------------------------------------------------------
@@ -698,7 +727,7 @@ train_biodiversity_model <- function(data,
     # indicators and supported are positionally aligned (both from screen_habitat_slopes)
     if (!is.null(hab_screen) && length(hab_screen$indicators) > 0) {
       for (i in seq_along(hab_screen$indicators)) {
-        df_t1[[ hab_screen$indicators[i] ]] <-
+        df_t1[[hab_screen$indicators[i]]] <-
           as.integer(df_t1[[habitat_col]] == hab_screen$supported[i])
       }
     }
@@ -850,7 +879,7 @@ train_biodiversity_model <- function(data,
     length(taxa_tier1), length(taxa_tier2), nrow(singletons), N_total
   ))
 
-  return(model_obj)
+  model_obj
 }
 
 

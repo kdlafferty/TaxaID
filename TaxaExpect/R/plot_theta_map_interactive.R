@@ -176,7 +176,7 @@ plot_theta_map_interactive <- function(
     if (!is.null(occurrence_habitat_col)) {
       occ$habitat <- as.character(occurrences[[occurrence_habitat_col]])
     }
-    occ <- occ[!is.na(occ$lat) & !is.na(occ$lon), ]
+    occ <- occ[!is.na(occ$lat) & !is.na(occ$lon) & !is.na(occ$taxon), ]
     occ <- occ[!duplicated(occ[, c("point_id", "taxon")]), ]
   } else {
     occ <- NULL
@@ -190,7 +190,7 @@ plot_theta_map_interactive <- function(
     theta      = unname(as.numeric(priors[[theta_col]])),
     stringsAsFactors = FALSE
   )
-  # Carry optional diagnostic columns if present — unname() strips vector names
+  # Carry optional diagnostic columns if present -- unname() strips vector names
   # (e.g. "eta_predict" from predict()) that break Leaflet's JSON serialization
   for (col in c("theta_sd", "n_obs", "model_tier",
                 "effort_flag", "extrapolation_warning", "jeffreys_fallback")) {
@@ -239,13 +239,13 @@ plot_theta_map_interactive <- function(
       shiny::div(
         style = "display:flex;width:100%;height:100%;",
 
-        # Map — takes all remaining width
+        # Map -- takes all remaining width
         shiny::div(
           style = "flex:1;min-width:0;position:relative;",
           leaflet::leafletOutput("map", width = "100%", height = "100%")
         ),
 
-        # Controls sidebar — fixed width
+        # Controls sidebar -- fixed width
         shiny::div(
           style = paste0(
             "width:230px;flex-shrink:0;padding:12px;border-left:1px solid #ddd;",
@@ -296,7 +296,7 @@ plot_theta_map_interactive <- function(
   # --- Server -----------------------------------------------------------------
   server <- function(input, output, session) {
 
-    # Update habitat checkboxes when taxon changes — select all by default
+    # Update habitat checkboxes when taxon changes -- select all by default
     shiny::observeEvent(input$taxon, {
       habs <- sort(unique(pr$habitat[pr$taxon_name %in% input$taxon]))
       shiny::updateCheckboxGroupInput(session, "habitat",
@@ -321,7 +321,12 @@ plot_theta_map_interactive <- function(
     # Filtered occurrences for current taxon x selected habitats
     occ_sel <- shiny::reactive({
       if (is.null(occ)) return(NULL)
-      sub <- occ[occ$taxon == input$taxon, ]
+      # %in%, not ==: matches pr_sel()'s own pattern above and, unlike ==,
+      # never turns an NA in occ$taxon into an NA logical mask entry, which
+      # `[`-indexing then silently expands into a ghost all-NA row (a real
+      # recurrence of the exact NA-comparison bug class already fixed once
+      # in this file -- see 2026-07-24 session notes in CLAUDE.md).
+      sub <- occ[occ$taxon %in% input$taxon, ]
       if (!is.null(occurrence_habitat_col) && "habitat" %in% names(sub)) {
         sub <- sub[sub$habitat %in% input$habitat, ]
       }
@@ -370,7 +375,7 @@ plot_theta_map_interactive <- function(
       )
     })
 
-    # Initial map render — zoom to default taxon x all habitats extent
+    # Initial map render -- zoom to default taxon x all habitats extent
     output$map <- leaflet::renderLeaflet({
       d_init    <- pr[pr$taxon_name %in% default_taxon & pr$habitat %in% default_habs, ]
       leaflet::leaflet() |>
@@ -429,7 +434,7 @@ plot_theta_map_interactive <- function(
         group       = "grid"
       )
 
-      # Theta legend — title shows taxon only (habitat selection shown in sidebar)
+      # Theta legend -- title shows taxon only (habitat selection shown in sidebar)
       proxy <- leaflet::addLegend(
         map      = proxy,
         position = "bottomright",
@@ -442,7 +447,7 @@ plot_theta_map_interactive <- function(
         opacity  = 0.9
       )
 
-      # Single-grid-cell warning — this gadget is built to compare theta
+      # Single-grid-cell warning -- this gadget is built to compare theta
       # across several cells; one cell has no spatial pattern to show. Based
       # on distinct grid_id count (n_cells()), not nrow(d): a single site with
       # several selected habitats produces many rows all sharing one grid_id.
@@ -498,7 +503,7 @@ plot_theta_map_interactive <- function(
           group       = "occurrences"
         )
 
-        # Habitat legend for occurrence points — shown only when >1 habitat
+        # Habitat legend for occurrence points -- shown only when >1 habitat
         # is present in the current filtered subset
         if (!is.null(occurrence_habitat_col) && "habitat" %in% names(sub) &&
             length(unique(sub$habitat)) > 1L) {

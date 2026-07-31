@@ -42,7 +42,7 @@ autocorrelation).}
 }
 }
 \description{
-Constructs a set of Moran eigenvectors (MEM — Moran's Eigenvector Maps)
+Constructs a set of Moran eigenvectors (MEM -- Moran's Eigenvector Maps)
 from a vector of \code{grid_id} strings.  The resulting basis columns can
 be joined to a model dataframe and included as fixed-effect covariates in
 \code{\link{train_biodiversity_model}} to capture spatial autocorrelation
@@ -55,10 +55,15 @@ The function performs the following steps:
 \code{Grid_{lat}p{dec}_{m}{lon}p{dec}} encoding.
 \item Build a binary adjacency matrix \eqn{W} where cells \eqn{i} and
 \eqn{j} are neighbours if their Euclidean distance (in degrees) is
-greater than zero and less than \code{distance_threshold}.
-\item Row-standardise \eqn{W} to \eqn{W^*}.
-\item Doubly-centre \eqn{W^*} to form the symmetric Moran operator
-\eqn{M = H W^* H}, where \eqn{H = I - \mathbf{1}\mathbf{1}^T / n}.
+greater than zero and less than \code{distance_threshold}. \eqn{W} is
+symmetric by construction (a symmetric distance test).
+\item Doubly-centre \eqn{W} to form the symmetric Moran operator
+\eqn{M = H W H}, where \eqn{H = I - \mathbf{1}\mathbf{1}^T / n}. \eqn{M}
+is symmetric because \eqn{W} and \eqn{H} both are -- this is required
+for \code{eigen(M, symmetric = TRUE)} below to be valid; a
+row-standardised \eqn{W} is asymmetric for any grid with unequal
+neighbour counts (i.e. almost any real, non-toroidal grid) and must
+not be used here.
 \item Extract the \code{k} eigenvectors corresponding to the largest
 positive eigenvalues of \eqn{M}.
 \item Scale each eigenvector to unit standard deviation.
@@ -66,7 +71,7 @@ positive eigenvalues of \eqn{M}.
 
 If \code{distance_threshold} is \code{NULL} (the default), the threshold is
 inferred automatically as 1.5 times the minimum spacing between unique
-centroid coordinates — typically capturing all first-order neighbours on a
+centroid coordinates -- typically capturing all first-order neighbours on a
 regular grid.
 
 Grid cells that cannot be parsed, or that have no neighbours at the chosen

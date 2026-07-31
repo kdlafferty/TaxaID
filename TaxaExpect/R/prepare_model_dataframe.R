@@ -13,7 +13,7 @@ utils::globalVariables(c(
 #'     \code{cor_threshold}.
 #'   \item Aggregates records to species \eqn{\times} site-habitat counts and
 #'     fills implicit zeros for species not observed at a site.
-#'   \item Computes the \code{observed_in_habitat} flag — \code{TRUE}
+#'   \item Computes the \code{observed_in_habitat} flag -- \code{TRUE}
 #'     if the species has been recorded in that habitat type at any site.
 #'   \item Scales all covariate columns to zero mean / unit SD, storing the
 #'     scaling parameters as an attribute for use at prediction time.
@@ -57,8 +57,8 @@ utils::globalVariables(c(
 #'   \code{n_other}, \code{is_present}, \code{observed_in_habitat},
 #'   scaled covariate columns (\code{<cov>_s}), then all remaining columns.
 #'
-#'   The attribute \code{scale_params} is a named list — one entry per
-#'   covariate — each containing \code{center} (mean) and \code{scale} (SD).
+#'   The attribute \code{scale_params} is a named list -- one entry per
+#'   covariate -- each containing \code{center} (mean) and \code{scale} (SD).
 #'   These are extracted automatically by \code{\link{train_biodiversity_model}}
 #'   and stored in the model object so new sites can be scaled consistently at
 #'   prediction time.
@@ -120,6 +120,20 @@ utils::globalVariables(c(
 #' Default \code{NULL}: no grouping, output and behavior unchanged from before
 #' Session 149.
 #'
+#' A row whose \code{sampling_group_col} value is \code{NA} is kept as its
+#' own group (\code{sampling_group = NA}), not silently dropped. When
+#' grouping is active, the \code{scale_params} attribute described above is
+#' NOT attached (each group has its own covariate center/scale, and
+#' combining them into one flat list would silently keep only one group's
+#' values) -- instead the combined output carries
+#' \code{scale_params_by_group}, a named list of per-group \code{scale_params}
+#' lists, keyed by \code{sampling_group} value.
+#' \code{\link{train_biodiversity_model_by_group}} does not read either
+#' attribute from this combined output -- it re-derives its own per-group
+#' \code{scale_params} by calling this function once per group internally --
+#' so this only matters if you consume the combined, grouped output of this
+#' function directly.
+#'
 #' @seealso \code{\link{create_sites_from_grid}},
 #'   \code{\link{train_biodiversity_model}},
 #'   \code{\link{train_biodiversity_model_by_group}}
@@ -139,8 +153,7 @@ utils::globalVariables(c(
 #' )
 #' }
 #'
-#' @importFrom dplyr rename filter group_by summarise mutate left_join
-#'   distinct select ends_with across all_of as_tibble n bind_rows
+#' @importFrom dplyr rename filter group_by summarise mutate left_join distinct select ends_with across all_of as_tibble n bind_rows
 #' @importFrom tidyr complete nesting replace_na
 #' @importFrom rlang sym :=
 #' @importFrom stats cor
@@ -346,11 +359,41 @@ prepare_model_dataframe <- function(data,
   }
 
   # --- Split by sampling group and recombine (Session 149) --------------------
-  group_splits <- split(data, data[[sampling_group_col]])
-  grouped_out  <- lapply(names(group_splits), function(g) {
-    out <- .run_one_group(group_splits[[g]])
-    out$sampling_group <- g
+  # base R's split() silently DROPS rows whose grouping value is NA -- fixed
+  # by splitting on an explicit factor with exclude = NULL, which keeps NA as
+  # its own real level (mirrors the pattern already used correctly nearby in
+  # compute_adaptive_sampling_groups.R for the identical reason).
+  group_vals <- data[[sampling_group_col]]
+  if (anyNA(group_vals)) {
+    message(sprintf(
+      "prepare_model_dataframe: %d row(s) have NA in '%s'; grouped as sampling_group = NA rather than dropped.",
+      sum(is.na(group_vals)), sampling_group_col
+    ))
+  }
+  group_splits <- split(data, factor(group_vals, exclude = NULL))
+
+  # Iterate by POSITION, not by name: when a name is the literal NA level
+  # produced above, list[["<the NA-named element>"]] returns NULL (not the
+  # element itself) rather than erroring, so a by-name loop would silently
+  # skip the NA group here even though split() itself kept it.
+  group_names <- names(group_splits)
+  grouped_out <- lapply(seq_along(group_splits), function(i) {
+    out <- .run_one_group(group_splits[[i]])
+    out$sampling_group <- group_names[i]
     out
   })
-  dplyr::bind_rows(grouped_out)
+
+  # dplyr::bind_rows() keeps only the FIRST element's value for a custom
+  # attribute like scale_params (verified directly) -- every group after the
+  # first would silently lose its own covariate center/scale to the first
+  # group's values. Store scale_params per group instead of a single flat
+  # attribute so no group's scaling is lost.
+  scale_params_by_group <- stats::setNames(
+    lapply(grouped_out, attr, which = "scale_params"),
+    group_names
+  )
+  out <- dplyr::bind_rows(grouped_out)
+  attr(out, "scale_params") <- NULL
+  attr(out, "scale_params_by_group") <- scale_params_by_group
+  out
 }

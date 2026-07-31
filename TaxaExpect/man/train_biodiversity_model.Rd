@@ -57,7 +57,16 @@ are retained as fixed effects only. Default \code{50}.}
 \item{full_data}{A tibble. The original pre-aggregated data (output of
 \code{create_sites_from_grid()}) used to identify singletons for
 \code{generate_undetected_diversity()}. If \code{NULL}, singletons are
-identified from \code{data} directly.}
+identified from \code{data} directly. \strong{The definition of
+"singleton" differs by which path is used}: with \code{full_data}
+supplied, a singleton is a species with exactly one raw
+\emph{record}; without it (the default), a singleton is a species
+detected in exactly one occupied \emph{grid cell}
+(\code{sum(n_species > 0) == 1} on the aggregated \code{data}). A
+species with several raw records clustered at one grid cell is
+therefore a singleton under the default path but not under the
+\code{full_data} path -- which definition is more appropriate depends
+on whether you want "seen exactly once" or "seen at exactly one site."}
 }
 \value{
 An object of class \code{"biofreq_model"}, a named list containing:
@@ -78,7 +87,13 @@ in TaxaLikely (reference sequences with no within-species neighbours).}
 effort-passing cells. Used for the global undetected floor prior.}
 \item{tier2_empirical}{Data frame of observed mean/SD theta per
 species x habitat for Tier 2 species. Fallback if Tier 2 model
-fails.}
+fails. \code{theta_mean_emp}/\code{theta_sd_emp} are computed over
+ALL surveyed site rows for a detected species x habitat combo
+(including zero-detection sites), i.e. a marginal prevalence rate --
+not just the sites where it was actually seen, which would instead
+be a conditional "typical rate given detected" and systematically
+overstate theta. \code{n_detections} still counts only the positive
+(\code{n_species > 0}) rows.}
 \item{habitat_screening}{List documenting the habitat slope screening
 result: \code{$supported}, \code{$sparse}, \code{$indicators},
 \code{$min_positive_rows}, \code{$summary} (positive row counts per

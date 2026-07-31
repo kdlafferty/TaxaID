@@ -1,7 +1,28 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-30 (Sonnet 5 -- closes out TaxaFlag/REENTRY_PROMPT_axes_wrapup.md's
+# Last updated: 2026-07-31 (Sonnet 5 -- TaxaExpect's first full code + domain review against
+# inst/Code and Domain Review 2.Rmd, closing the one remaining gap in this ecosystem's review
+# coverage (TaxaTools/TaxaFetch/TaxaMatch/TaxaLikely all already had one). Six real, live-
+# verified functionality bugs found and fixed in TaxaExpect's spatial-modelling machinery,
+# most with real prior-quality consequence: compute_moran_basis() silently produced a wrong
+# Moran spatial basis on any real, irregular grid (eigen(symmetric=TRUE) on an asymmetric,
+# row-standardised operator, no error or warning); generate_full_priors()'s "principled" phi
+# cap never fired on this package's own recommended formula (a glmmTMB VarCorr() lookup used
+# "." where glmmTMB actually uses ":"); prepare_model_dataframe()/train_biodiversity_model_
+# by_group() both silently dropped every NA-grouped row from the Session 149 group-aware
+# effort-denominator feature (base R split()/sort() NA-dropping); prepare_model_dataframe()
+# also silently discarded every group's scale_params but the first via dplyr::bind_rows()'s
+# attribute handling; create_sites_from_grid()'s grid_id collided distinct cells for any
+# grid_size < 0.1; optimize_grid_size() had a resolution-scoring Inf-handling bug and an
+# unverified single-cell-pooling guarantee in its sparsest fallback. Plus a Medium statistical
+# bias (train_biodiversity_model()'s Tier 2 empirical fallback averaged theta only over
+# detected rows, not the full zero-filled set) and a Medium UI bug (plot_theta_map_
+# interactive()'s occ_sel() used == instead of %in%, a live recurrence of the exact NA-ghost-
+# row bug class already fixed once in this same file). devtools::test() 538/538 (up from
+# 536), devtools::check() 0/0/0, reinstalled. See TaxaExpect/CLAUDE.md's top session note and
+# TaxaExpect/inst/taxaexpect_review.Rmd for the full record.
+# Previous update, 2026-07-30 (Sonnet 5 -- closes out TaxaFlag/REENTRY_PROMPT_axes_wrapup.md's
 # remaining tasks (0/1/3/4, all now shipped) plus a real, unplanned backbone-architecture
 # review triggered by live-testing the result. TaxaAssign::compute_group_priors() (new) +
 # posterior_consensus(group_priors=) redesign consensus_prior from a candidate-scoped MAX to

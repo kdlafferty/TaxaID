@@ -660,7 +660,7 @@ build_priors <- function(
 
   # no-op for NCBI backbone. Retained as safety net for other backbones.
   ncbi_lookup <- .recover_demoted_species(ncbi_lookup, target_backbone_id,
-                                           rank_system, verbose = verbose)
+                                           verbose = verbose)
 
   translated <- priors_combined |>
     dplyr::left_join(ncbi_lookup, by = c("taxon_name" = "gbif_name")) |>

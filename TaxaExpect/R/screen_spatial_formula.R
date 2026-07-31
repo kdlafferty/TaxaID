@@ -22,12 +22,14 @@
 #'   Moran eigenvector terms and spatial gradient terms. Moran columns must
 #'   be named \code{B1}, \code{B2}, ... and spatial gradient columns must be
 #'   named \code{lat_r_s} and \code{lon_r_s}.
-#' @param sd_threshold Numeric. Coefficient of variation threshold for
-#'   spatial predictor screening. Predictors with CV below this value show
-#'   insufficient spatial variation to meaningfully explain species
-#'   distributions. Default 0.20 (on the logit scale) -- a pragmatic
-#'   minimum for ecological spatial predictors. Terms at or above this
-#'   threshold are never removed.
+#' @param sd_threshold Numeric. Absolute logit-scale standard deviation
+#'   threshold for spatial predictor screening (compared directly against
+#'   each random slope's own fitted SD -- not a coefficient of variation;
+#'   the code never divides by a mean). Predictors with an SD below this
+#'   value show insufficient spatial variation to meaningfully explain
+#'   species distributions. Default 0.20 -- a pragmatic minimum for
+#'   ecological spatial predictors on the logit scale. Terms at or above
+#'   this threshold are never removed.
 #' @param delta_aic_max Numeric. Maximum delta-AIC for retaining a spatial
 #'   predictor. Following Burnham & Anderson (2002), models within
 #'   delta-AIC < 2 of the best model have substantial empirical support.
@@ -169,7 +171,8 @@ screen_spatial_formula <- function(data,
     moran_present <- setdiff(moran_present, missing_moran)
     # After stripping, re-check if any spatial terms remain
     if (length(moran_present) == 0L && length(spatial_present) == 0L) {
-      message("screen_spatial_formula: no spatial terms remain after stripping absent Moran columns. Fitting formula as-is and returning.")
+      message("screen_spatial_formula: no spatial terms remain after stripping absent Moran ",
+              "columns. Fitting formula as-is and returning.")
       model_out <- do.call(
         train_biodiversity_model,
         c(list(data = data, formula = formula_full), tbm_args)
@@ -368,8 +371,9 @@ screen_spatial_formula <- function(data,
   # Step 5: AIC comparison table
   # ---------------------------------------------------------------------------
   aic_vals  <- sapply(candidates, function(x) stats::AIC(x$model$models$tier1))
-  n_var_par <- sapply(candidates, function(x)
-    attr(stats::logLik(x$model$models$tier1), "df"))
+  n_var_par <- sapply(candidates, function(x) {
+    attr(stats::logLik(x$model$models$tier1), "df")
+  })
   labels    <- sapply(candidates, function(x) x$label)
 
   # Flag NA-AIC models (convergence failure) before comparison
@@ -466,7 +470,8 @@ screen_spatial_formula <- function(data,
 # ------------------------------------------------------------------------------
 #' @noRd
 .formula_in_candidates <- function(f_chr, candidates) {
-  existing <- sapply(candidates, function(x)
-    paste(deparse(x$formula, width.cutoff = 500), collapse = " "))
+  existing <- sapply(candidates, function(x) {
+    paste(deparse(x$formula, width.cutoff = 500), collapse = " ")
+  })
   any(existing == f_chr)
 }

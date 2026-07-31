@@ -35,8 +35,8 @@ utils::globalVariables(c("lat_r", "lon_r", "grid_id_raw", "grid_id"))
 #'       \code{"Grid_{lat_r}_{lon_r}"}, with decimal points replaced by
 #'       \code{"p"} and minus signs replaced by \code{"m"}, making the label
 #'       safe for use as a factor level in R formulae and as a file or column
-#'       name. For example, lat = -119.5, lon = 34.0 yields
-#'       \code{"Grid_m119p5_34p0"}.}
+#'       name. For example, lat = 34.0, lon = -119.5 yields
+#'       \code{"Grid_34p0_m119p5"}.}
 #'   }
 #'   Row order is unchanged.
 #'
@@ -97,12 +97,23 @@ create_sites_from_grid <- function(data,
   lat_sym <- rlang::sym(lat_col)
   lon_sym <- rlang::sym(lon_col)
 
+  # Format lat_r/lon_r to enough decimal places to represent grid_size
+  # itself distinctly -- a fixed "%.1f" (the previous behavior) silently
+  # collides genuinely distinct grid cells whenever grid_size < 0.1 (e.g.
+  # grid_size = 0.05 rounds 34.05 and 34.10 to the SAME "34.1" label),
+  # pooling spatially distinct sites into one taxon_name:grid_id random
+  # effect level with no warning. Enough decimal places for grid_size's own
+  # precision, with a floor of 1 (matching the previous default behavior
+  # for grid_size >= 0.1).
+  decimals <- max(1L, -floor(log10(grid_size)))
+  fmt      <- paste0("Grid_%.", decimals, "f_%.", decimals, "f")
+
   dplyr::select(
     dplyr::mutate(
       data,
       lat_r = round(!!lat_sym / grid_size) * grid_size,
       lon_r = round(!!lon_sym / grid_size) * grid_size,
-      grid_id_raw = sprintf("Grid_%.1f_%.1f", lat_r, lon_r),
+      grid_id_raw = sprintf(fmt, lat_r, lon_r),
       grid_id = stringr::str_replace_all(grid_id_raw, "-", "m"),
       grid_id = stringr::str_replace_all(grid_id, "\\.", "p")
     ),

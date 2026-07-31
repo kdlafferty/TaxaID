@@ -1,6 +1,60 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-28 (Sonnet 5 -- generate_domestic_food_priors() re-implemented
+# Last updated: 2026-07-31 (Sonnet 5 -- TaxaExpect's first full code + domain review against
+# inst/Code and Domain Review 2.Rmd, closing a real gap: every other package in the ecosystem
+# (TaxaTools, TaxaFetch, TaxaMatch, TaxaLikely) already had one, TaxaExpect never did. Findings
+# and fixes recorded together in inst/taxaexpect_review.Rmd (new file), following the
+# taxafetch_review.Rmd precedent. A background research pass read every R file against the
+# template; every High-severity claim was then independently re-verified live before being
+# trusted -- none were false positives at that tier. Six real functionality bugs found and
+# fixed, most with real production consequence: (1) compute_moran_basis()'s eigen(M, symmetric
+# = TRUE) was silently wrong for any real, irregular grid -- M was built from a row-
+# standardised (asymmetric) adjacency matrix, and eigen() with symmetric=TRUE reads only the
+# lower triangle with no error, producing a completely different spatial basis with no warning
+# at all; fixed by building M from the underlying binary (already symmetric) adjacency matrix
+# directly. (2) generate_full_priors()'s "principled" phi cap looked up
+# VarCorr(...)$cond[["taxon_name.grid_id"]] (a period) when glmmTMB actually names this
+# "taxon_name:grid_id" (a colon, confirmed live) -- the lookup always returned NULL, silently
+# falling back to a hardcoded max_phi=1000 on every call using this package's own documented
+# recommended formula. (3)/(4) prepare_model_dataframe()'s and train_biodiversity_model_by_
+# group()'s sampling_group_col grouping both silently dropped every NA-grouped row (base R's
+# split()/sort() default NA-dropping behavior, confirmed live) -- fixed by keeping NA as its
+# own explicit group and switching to positional (not by-name) list indexing throughout, since
+# list[[NA]] returns NULL rather than the actual element (the same footgun compute_adaptive_
+# sampling_groups.R had already independently worked around -- that file, not the other two,
+# was the correct reference pattern). prepare_model_dataframe() also had dplyr::bind_rows()
+# silently keeping only the FIRST group's scale_params attribute value across every group
+# after it (confirmed live) -- fixed via a new scale_params_by_group attribute. (5)
+# create_sites_from_grid()'s grid_id used a fixed sprintf("%.1f", ...), silently colliding two
+# genuinely distinct grid cells for any grid_size < 0.1 (confirmed live: 34.05 and 34.10 both
+# format to "34.1") -- fixed by deriving decimal precision from grid_size itself. (6)
+# optimize_grid_size() had two related bugs: .safe_normalise() masked +-Inf to NA without ever
+# restoring the correct 1/0 value, silently disqualifying a resolution with the theoretically
+# best stability score from ever being selected (NA sorts last via arrange(desc(...))); and
+# Fallback C's single_grid_size formula does not actually guarantee single-cell pooling for an
+# arbitrary bbox position (confirmed live with a real counterexample) -- fixed by verifying and
+# growing the grid size against the real coordinates instead of trusting the unverified
+# closed-form formula. A further Medium bug (train_biodiversity_model()'s Tier 2 empirical
+# fallback averaged theta only over DETECTED rows, a conditional "typical rate given detected"
+# instead of the marginal prevalence the docs implied -- systematically inflated for rare
+# species) and a Medium UI bug (plot_theta_map_interactive()'s occ_sel() used == instead of
+# %in%, a live recurrence of the exact NA-ghost-row bug class this same file was already
+# debugged for once on 2026-07-24) were also found and fixed, plus several smaller domain/
+# doc-accuracy findings (a default food-species name, "x Triticosecale", that can never survive
+# TaxaTools::clean_taxon_names() and was silently dropped every call; report_priors()'s
+# n_grid_cells missing the NA-guard its own n_taxa already has). Two pre-existing tests that
+# directly encoded the old buggy .safe_normalise() behavior as their expected result were
+# rewritten to assert the fix, not left broken or silently reverted. Also swept: non-ASCII
+# characters in 5 files (comments/roxygen only, ecosystem-standard cleanup); a new .lintr (this
+# package never had one, unlike every sibling); most real lintr findings fixed, a documented
+# residual of short conventional matrix-notation variable names (W, I, M, N_total) left as
+# .lintr exclusions rather than mechanically renamed across compute_moran_basis.R for cosmetic
+# gain only. A live, currently-blocking roxygen2 8.0.0-vs-declared-7.3.3 incompatibility was
+# also found and fixed (4 multi-line @importFrom blocks, a pre-existing ecosystem-wide pattern,
+# errored under the newer parser) -- needed to get this session's own roxygen edits into the
+# compiled man/ pages at all. devtools::test() 538/538 (up from 536), devtools::check() 0/0/0,
+# reinstalled to ~/Library/R/4.0/library. See inst/taxaexpect_review.Rmd for the full record.
+# Previous update, 2026-07-28 (Sonnet 5 -- generate_domestic_food_priors() re-implemented
 # around the match-list-gated architecture confirmed with the user 2026-07-24 but not
 # built until now. Two new params: match_list_taxa (character vector of taxa with real
 # likelihoods this run -- e.g. unique(match_obj$taxon_name[taxon_name_rank=="species"]);
@@ -477,8 +531,13 @@ plot_theta_map_interactive(priors, occurrences)
 
 ## Test Coverage
 
-⚠️ Test coverage is incomplete. Known issue: `test-generate_undetected_diversity.Rscreen_spatial_formula.R`
-is a malformed filename in `tests/testthat/` — investigate and rename before running `devtools::check()`.
+538 expectations, 0 failures (2026-07-31 review). The malformed-filename issue this section
+used to warn about (`test-generate_undetected_diversity.Rscreen_spatial_formula.R`) no longer
+exists -- `tests/testthat/` has 13 correctly-named files, including separate
+`test-generate_undetected_diversity.R` and `test-screen_spatial_formula.R`; `devtools::check()`
+runs clean. This was pure doc drift (the underlying file was fixed or never actually malformed
+in a way that blocked `check()` by the time this was checked) -- found and corrected during the
+2026-07-31 code/domain review, see `inst/taxaexpect_review.Rmd`.
 
 ---
 

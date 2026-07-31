@@ -65,8 +65,8 @@
 
 #' Lightweight HTML escaping
 #'
-#' Escapes \code{&}, \code{<}, \code{>}, and \code{"} for safe embedding in
-#' Leaflet popup HTML strings.
+#' Escapes \code{&}, \code{<}, \code{>}, \code{"}, and \code{'} for safe
+#' embedding in Leaflet popup HTML strings.
 #'
 #' @param x Character vector.
 #' @return Character vector of the same length.
@@ -77,5 +77,6 @@
   x <- gsub("<",  "&lt;",   x,               fixed = TRUE)
   x <- gsub(">",  "&gt;",   x,               fixed = TRUE)
   x <- gsub("\"", "&quot;", x,               fixed = TRUE)
+  x <- gsub("'",  "&#39;",  x,               fixed = TRUE)
   x
 }

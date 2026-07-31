@@ -10,12 +10,11 @@
 #'   translated backbone.
 #' @param backbone_id Integer. The target backbone ID. Recovery is only
 #'   attempted for NCBI (backbone_id = 4).
-#' @param rank_system Character vector of rank names (coarse to fine).
 #' @param verbose Logical. Print recovery messages.
 #' @return The lookup data frame with species column filled where recovery
 #'   succeeded.
 #' @noRd
-.recover_demoted_species <- function(lookup, backbone_id, rank_system,
+.recover_demoted_species <- function(lookup, backbone_id,
                                       verbose = FALSE) {
 
   # Only attempt recovery for NCBI backbone

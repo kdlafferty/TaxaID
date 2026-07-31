@@ -1,0 +1,39 @@
+linters: linters_with_defaults(
+    line_length_linter(120L),
+    indentation_linter = NULL
+  )
+encoding: "UTF-8"
+exclusions: list(
+    # Inline hex-colour comments read as "commented code" by the linter's
+    # heuristic but are plain English labels, not disabled R code.
+    "R/utils_plot.R" = list(commented_code_linter = c(41L, 42L, 43L, 44L, 46L, 50L)),
+    # object_name_linter false positives: N_total mirrors the exported
+    # biofreq_model$N_total field name for readability at the call site;
+    # .make_mock_model_obj's N_total argument does the same for its test
+    # fixture.
+    "R/train_biodiversity_model.R" = list(object_name_linter = c(521L)),
+    "tests/testthat/test-generate_domestic_food_priors.R" = list(
+      object_name_linter = c(22L),
+      line_length_linter = c(213L, 329L)
+    ),
+    "tests/testthat/test-generate_undetected_diversity.R" = list(
+      commented_code_linter = c(14L),
+      object_name_linter = c(39L)
+    ),
+    # A plain prose comment ("sprintf -> ...") that happens to parse as
+    # valid R, not disabled code.
+    "tests/testthat/test-create_sites_from_grid.R" = list(commented_code_linter = c(220L)),
+    "tests/testthat/test-compute_adaptive_sampling_groups.R" = list(commented_code_linter = c(156L)),
+    # object_usage_linter false positives: dplyr NSE column references
+    # (main_habitat inside mutate()) that lintr's static per-file analysis
+    # cannot resolve, and a genuinely-unused local test fixture kept for
+    # documentation purposes -- neither affects test correctness.
+    "tests/testthat/test-generate_full_priors.R" = list(object_usage_linter = c(55L)),
+    "tests/testthat/test-train_biodiversity_model_by_group.R" = list(object_usage_linter = c(20L)),
+    # Long-but-descriptive test_that() label strings and long aligned/vectorised
+    # code blocks (plot_theta_map_interactive.R's popup-field list,
+    # train_biodiversity_model_by_group.R's own >30-char exported name) --
+    # left as-is rather than shortened at the cost of readability.
+    "R/plot_theta_map_interactive.R" = list(line_length_linter = c(158L, 368L, 369L, 370L, 371L, 372L, 373L)),
+    "R/train_biodiversity_model_by_group.R" = list(object_length_linter = c(88L))
+  )

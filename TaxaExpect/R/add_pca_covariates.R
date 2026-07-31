@@ -26,7 +26,7 @@
 #'     \item{`pca_rotation`}{Named list:
 #'       `source_cols` (replaced `_s` column names),
 #'       `pc_cols` (new PC column names),
-#'       `rotation` (PCA loading matrix, n_source × n_pc),
+#'       `rotation` (PCA loading matrix, n_source x n_pc),
 #'       `prefix` (the prefix used).}
 #'   }
 #'   If no column pairs exceed `cor_threshold` the input is returned unchanged.
@@ -34,11 +34,11 @@
 #' @details
 #' PCA is applied to all `_s` columns involved in any correlated pair;
 #' uncorrelated `_s` columns are left in place.  All principal components are
-#' retained — the output columns are orthogonal by construction, which
+#' retained -- the output columns are orthogonal by construction, which
 #' eliminates collinearity without discarding variance.
 #'
 #' `prcomp()` is called with `center = TRUE` so PC scores are zero-mean and
-#' exactly orthogonal.  The `_s` columns are already ≈ 0-mean from
+#' exactly orthogonal.  The `_s` columns are already ~ 0-mean from
 #' `prepare_model_dataframe()`; re-centering has negligible effect on values.
 #'
 #' **Prediction-time note:** [generate_full_priors()] scales new sites using the
@@ -116,6 +116,18 @@ add_pca_covariates <- function(model_df,
   # orthogonal. The _s columns are already ~0-mean from prepare_model_dataframe();
   # re-centering has negligible effect on values but guarantees orthogonality.
   pca_mat <- as.matrix(model_df[, involved, drop = FALSE])
+  if (anyNA(pca_mat)) {
+    # cor(use = "pairwise.complete.obs") above tolerates NA, but prcomp()
+    # does not and fails with an opaque "infinite or missing values in 'x'"
+    # -- a realistic path, since real environmental covariates (e.g. depth)
+    # commonly have some missing values. Fail with a clear, actionable
+    # message naming the affected columns instead.
+    na_cols <- involved[vapply(involved, function(cn) anyNA(model_df[[cn]]), logical(1L))]
+    stop(sprintf(
+      "add_pca_covariates: column(s) %s have missing values, but prcomp() requires complete data. Impute or drop missing rows before calling add_pca_covariates().",
+      paste(na_cols, collapse = ", ")
+    ), call. = FALSE)
+  }
   pca_fit <- stats::prcomp(pca_mat, center = TRUE, scale. = FALSE)
 
   n_pc    <- ncol(pca_fit$rotation)

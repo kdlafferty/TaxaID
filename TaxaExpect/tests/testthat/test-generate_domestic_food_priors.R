@@ -361,7 +361,10 @@ test_that("open-discovery step excludes a match-list taxon outside the plausibly
   mod <- .make_mock_model_obj(N_total = 200L)
   call_count <- 0L
   local_mocked_bindings(
-    fetch_inat_occurrences = function(...) { call_count <<- call_count + 1L; .mock_inat(40L)(...) },
+    fetch_inat_occurrences = function(...) {
+      call_count <<- call_count + 1L
+      .mock_inat(40L)(...)
+    },
     .package = "TaxaFetch"
   )
   taxonomy <- tibble::tibble(taxon_name = "Paracalanus parvus", phylum = "Arthropoda")
@@ -380,7 +383,10 @@ test_that("open-discovery step excludes a match-list taxon already covered by ta
   mod <- .make_mock_model_obj(N_total = 200L)
   call_count <- 0L
   local_mocked_bindings(
-    fetch_inat_occurrences = function(...) { call_count <<- call_count + 1L; .mock_inat(40L)(...) },
+    fetch_inat_occurrences = function(...) {
+      call_count <<- call_count + 1L
+      .mock_inat(40L)(...)
+    },
     .package = "TaxaFetch"
   )
   taxonomy <- tibble::tibble(taxon_name = "Bidens torta", phylum = "Streptophyta")

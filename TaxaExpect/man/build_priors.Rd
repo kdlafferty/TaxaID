@@ -87,7 +87,7 @@ Default 0.20.}
 
 \item{rank_system}{Character vector of taxonomy ranks, coarse to fine.
 Default \code{c("kingdom", "phylum", "class", "order", "family",
-  "genus", "species")}.}
+"genus", "species")}.}
 
 \item{search_rank}{Character. The taxonomic rank at which GBIF occurrence
 queries are made. Default \code{"family"}, which fetches all species

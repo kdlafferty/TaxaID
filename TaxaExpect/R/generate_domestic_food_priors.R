@@ -491,7 +491,14 @@
   "Vitis vinifera",
   "Volvariella volvacea",
   "Wasabia japonica",
-  "x Triticosecale",
+  # "x Triticosecale" (leading lowercase "x", standard botanical hybrid
+  # notation) verified to clean to NA via TaxaTools::clean_taxon_names()
+  # (the capital-letter-start filter rejects it) and so was silently
+  # dropped from this list every call, unlike "Citrus x aurantiifolia"-style
+  # entries elsewhere in this list, which lossily but successfully collapse
+  # to genus-only. Corrected to the bare genus, matching how this list
+  # already handles other genus-only entries.
+  "Triticosecale",
   "Xanthosoma sagittifolium",
   "Zanthoxylum",
   "Zanthoxylum sp.",

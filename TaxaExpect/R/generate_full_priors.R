@@ -175,8 +175,7 @@ utils::globalVariables(c(
 #' head(priors)
 #' }
 #'
-#' @importFrom dplyr left_join mutate filter select bind_rows distinct
-#'   rename all_of if_else
+#' @importFrom dplyr left_join mutate filter select bind_rows distinct rename all_of if_else
 #' @importFrom tidyr crossing replace_na
 #' @importFrom rlang sym :=
 #' @export
@@ -267,8 +266,16 @@ generate_full_priors <- function(model_obj,
   # variance estimated during training. This is principled: the model itself
   # quantifies how much grid-level uncertainty exists, so the prior cannot
   # claim more certainty than that variance implies. No user input is needed.
-  # glmmTMB stores "taxon_name:grid_id" as "taxon_name.grid_id" in VarCorr.
-  grid_term <- paste0(taxon_col, ".grid_id")
+  # glmmTMB stores a "taxon_name:grid_id" interaction random effect under
+  # its VarCorr()$cond list keyed by the literal "taxon_name:grid_id" name
+  # (a colon, matching the formula syntax) -- confirmed directly against a
+  # real fitted glmmTMB model. An earlier version of this line used a
+  # period, which never matches, so this phi cap silently never fired on
+  # the package's own recommended formula (see CLAUDE.md's recommended
+  # formula: "... + (1 | taxon_name:grid_id)") -- max_phi fell through to
+  # NULL every time, and phi was instead capped only by the hardcoded 1000
+  # fallback below, with no error or warning either way.
+  grid_term <- paste0(taxon_col, ":grid_id")
   max_phi   <- tryCatch({
     vc  <- glmmTMB::VarCorr(model_obj$models$tier1)
     mat <- vc$cond[[grid_term]]
@@ -343,7 +350,7 @@ generate_full_priors <- function(model_obj,
   hs <- model_obj$habitat_screening
   if (!is.null(hs) && length(hs$indicators) > 0) {
     for (i in seq_along(hs$indicators)) {
-      sites_scaled[[ hs$indicators[i] ]] <-
+      sites_scaled[[hs$indicators[i]]] <-
         as.integer(sites_scaled[[habitat_col]] == hs$supported[i])
     }
   }
@@ -734,11 +741,11 @@ generate_full_priors <- function(model_obj,
   }
 
   n_mod    <- sum(!is.na(predictions$taxon_name))
-  n_undet  <- sum( is.na(predictions$taxon_name))
+  n_undet  <- sum(is.na(predictions$taxon_name))
   message(sprintf(
     "--- Priors complete: %d modelled rows, %d undetected rows, %d total ---",
     n_mod, n_undet, nrow(predictions)
   ))
 
-  return(predictions)
+  predictions
 }
