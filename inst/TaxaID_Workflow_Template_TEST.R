@@ -652,7 +652,7 @@ habitat_lookup <- TaxaHabitat::parse_hierarchical_habitat_response(
   habitat_scheme = prompt
 )
 occurrences_with_habitat <- TaxaHabitat::assign_habitat_biological(
-  data         = all_occurrences,
+  occurrence_data = all_occurrences,
   habitats_df  = habitat_lookup,
   point_id_col = "point_id",
   threshold    = 0.5
@@ -1241,12 +1241,15 @@ consensus_df <- TaxaAssign::posterior_consensus(
   rank_system         = fgs
 )
 
-# add_posthoc_assessment() needs a taxon x tier lookup -- taxaexpect_priors
-# already has taxon_name + model_tier (tier1/tier2/tier3_undetected) from
-# Section 5, so it can be passed directly as `tiers`.
+# add_posthoc_assessment()'s expected_theta_threshold has no package default
+# -- it depends on the taxon assemblage being scored. taxaexpect_priors
+# (Section 5) supplies the real theta_mean distribution to derive it from.
+# No genus/family entry: that needs TaxaAssign::compute_group_priors(), which
+# needs a taxonomy_map this template does not build -- consensus_plausibility
+# falls through to "not_modeled" for any non-species consensus_rank.
 consensus_df <- TaxaFlag::add_posthoc_assessment(
-  consensus_df = consensus_df,
-  tiers        = taxaexpect_priors
+  consensus_df             = consensus_df,
+  expected_theta_threshold = c(species = median(taxaexpect_priors$theta_mean, na.rm = TRUE))
 )
 
 taxaassign_consensus <- TaxaAssign::add_slash_taxon(consensus_df)

@@ -1,6 +1,56 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-25, later same day (Sonnet 5 -- convert_taxonomy_backbone() now
+# Last updated: 2026-08-03 (Sonnet 5 -- blast_sequences() real subject-length filter bug
+# fixed, found live debugging why real reference sequences (Ameiurus melas/natalis) for
+# a real GreatLakes2023 12S ASV never appeared as BLAST candidates despite the user
+# confirming (via a direct pairwiseAlignment() check) that real, well-matching reference
+# sequences existed for them. Root cause: .filter_blast_hits()'s subject-length filter
+# checked `hits$slen` (the GenBank record's OWN total sequence length) instead of
+# `hits$length` (the aligned region's length) against `subject_len_range` -- silently
+# discarding a perfect congener match whenever that congener happened to be deposited as
+# part of a long mitogenome record rather than a short barcode-only submission. Fixed by
+# switching the check to `hits$length`; extensive new @details documentation added
+# explaining the real motivating case. A second hypothesis (NCBI's implicit megablast
+# default suppressing hits) was tested first and found NOT to be the actual cause (live
+# A/B test with the fix already applied returned identical results either way) but was
+# kept anyway per the user's explicit "let's fix both" -- explicit > implicit undocumented
+# defaults is a real improvement independent of whether it was the bug. New `megablast`
+# param (default FALSE, matches the pre-existing implicit behavior byte-for-byte) threaded
+# through `.blast_remote()`/`.blast_local()`/`.blast_submit()`.
+#
+# Also added, same session, per the user's explicit request ("can we set a max hits per
+# taxon?"): new `max_hits_per_taxon` param. Real complication found and solved along the
+# way: remote BLAST XML never actually populates real per-hit taxids
+# (`.parse_blast_xml()` hardcodes `staxids = NA_character_` on every row), so grouping by
+# `staxids` directly would have been silently inert for the exact use case that motivated
+# this feature. Fixed via a `stage`/`taxon_group_col` restructuring of
+# `.filter_blast_hits()` (steps 1-3 run first as `stage="basic"`; taxonomy is then
+# resolved via a new extracted `.attach_taxonomy()` helper -- tries taxid-based
+# resolution first, falls back to accession-based; a combined `.taxon_group` key
+# (species > genus > staxids > row-unique fallback) is built; then `.filter_blast_hits()`
+# runs the remaining steps grouped by that real key). Gated behind
+# `resolve_taxonomy = TRUE` to avoid unwanted extra NCBI taxonomy calls for callers not
+# using this feature; the default (`resolve_taxonomy = FALSE` or `max_hits_per_taxon =
+# NULL`) path is completely unchanged. Live-verified end to end against the real
+# motivating ASV with all three fixes active: 9 unique species across 3 genera now
+# correctly surface as candidates (previously just 1). `devtools::test()` 523/523 (0
+# failures), `devtools::check()` 0 errors/0 warnings/0 notes, reinstalled to
+# `~/Library/R/4.0/library`.
+#
+# Same session, `inst/workflow_fastq_to_match.R` (the generic FASTQ-to-match template,
+# used as a starting point for future studies beyond GreatLakes) updated to demonstrate
+# `max_hits_per_taxon`/explicit `megablast` in both its remote and local BLAST examples,
+# plus two new cautionary comments aimed at whoever adapts this template to their own
+# multi-run study: (1) merge identical sequences across sequencing runs BY IDENTITY
+# before calling `blast_sequences()`, not after reconciling two already-BLASTed match
+# objects (the real GreatLakes2023 pipeline was doing the latter until this same session
+# -- see the ecosystem-level note in `TaxaID/CLAUDE.md` for the architecture fix and the
+# real BLAST-volume/consistency cost this avoids); (2) after any TaxaMatch upgrade, a
+# resumability scheme that only reblasts previously-zero-hit ASVs will NOT catch an ASV
+# left with a real-but-incomplete candidate set by a since-fixed bug (it already "has a
+# hit") -- a full reblast is the safe default post-upgrade, a real, previously-latent risk
+# this exact debugging session ran into with the GreatLakes production data.
+# Previous update, 2026-07-25, later same day (Sonnet 5 -- convert_taxonomy_backbone() now
 # ALSO clears rank columns finer than a row's corrected rank (e.g. species -> NA when a
 # row is demoted to genus), not just taxon_name/taxon_name_rank -- found only by the user
 # actually testing the same-day taxon_name_rank fix (row directly below) against the real
@@ -429,7 +479,7 @@ likelihood output downstream — it is NOT part of the match object.
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `blast_sequences()` | R/blast_sequences.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution. **Session 135**: `resolve_location = FALSE` param — when `TRUE`, fetches each unique hit accession's full GBSeq XML record (`.resolve_locations_by_acc()`) and appends `lat`/`lon`/`country` parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); independent of `resolve_taxonomy` (taxonomy comes from the NCBI taxonomy DB, location from the full nucleotide record — neither fetch gives you the other). **Session 151**: `score_range` default widened `2` → `8` — a leave-one-out check against 3 real 12S reference datasets found the old 2-pt window silently dropped the true species in 4/7 real congener-outscoring events; see roxygen's "Score window validation" section and `diagnostics/score_window_leave_one_out.R`. |
+| `blast_sequences()` | R/blast_sequences.R | Written, field-tested | Remote NCBI BLAST (httr2) or local rBLAST; score window filtering; taxonomy resolution. **Session 135**: `resolve_location = FALSE` param — when `TRUE`, fetches each unique hit accession's full GBSeq XML record (`.resolve_locations_by_acc()`) and appends `lat`/`lon`/`country` parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); independent of `resolve_taxonomy` (taxonomy comes from the NCBI taxonomy DB, location from the full nucleotide record — neither fetch gives you the other). **Session 151**: `score_range` default widened `2` → `8` — a leave-one-out check against 3 real 12S reference datasets found the old 2-pt window silently dropped the true species in 4/7 real congener-outscoring events; see roxygen's "Score window validation" section and `diagnostics/score_window_leave_one_out.R`. **2026-08-03**: real bug fixed -- the subject-length filter checked `slen` (whole GenBank record length) instead of `length` (aligned region length), discarding real congener matches deposited as long mitogenomes. New `megablast` param (explicit, default `FALSE`, matches prior implicit behavior). New `max_hits_per_taxon` param (requires `resolve_taxonomy = TRUE` on remote results, since remote BLAST XML never populates real per-hit taxids; new internal `.attach_taxonomy()` + `.filter_blast_hits(stage=, taxon_group_col=)` restructuring makes this work off a real resolved species/genus key instead). |
 
 ### Image and acoustic input
 

@@ -46,5 +46,10 @@ institution-proximity flags
 \author{
 \strong{Maintainer}: Kevin Lafferty \email{klafferty@usgs.gov}
 
+Authors:
+\itemize{
+  \item Kevin Lafferty \email{klafferty@usgs.gov}
+}
+
 }
 \keyword{internal}

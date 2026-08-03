@@ -132,6 +132,27 @@ message(sprintf("%d ASVs retained after filtering", nrow(filtered_df)))
 # ==============================================================================
 # Query NCBI for top matches. The score window algorithm keeps all hits within
 # score_range % of each query's top hit, rather than a flat top-N.
+#
+# NOTE on combining multiple sequencing runs (e.g. separate plates): if your
+# study has more than one seqtab_nochim, merge identical sequences ACROSS
+# runs into one canonical ID BEFORE calling blast_sequences() here -- not
+# after, by reconciling two already-BLASTed match objects. BLASTing the same
+# sequence twice (once per run) wastes NCBI query volume, and worse, the two
+# independent calls can land on different candidate sets for what is
+# provably one detection (remote BLAST's database isn't frozen, hit-order
+# ties aren't guaranteed stable, and max_hits_per_taxon's cap could keep
+# different representative hits each time). Build a per-run
+# old_id -> sequence lookup, collapse sequences present in more than one run
+# to a single shared canonical ID (e.g. "SHARED_ASV_<n>"), then run Step 1-3
+# once on the deduped, combined seq_df.
+#
+# NOTE on re-running after a TaxaMatch upgrade: if you build any "only
+# reblast ASVs that previously came back with zero hits" resumability logic
+# around this step, be aware that a package bug fix (e.g. a filtering fix)
+# can silently leave an ASV with a real but INCOMPLETE candidate set from
+# before the fix -- it already "has a hit," so a missing-hits-only reblast
+# will never pick it back up. Safest after any TaxaMatch upgrade is a full
+# reblast, not an incremental one.
 
 # --- Option A: Remote NCBI BLAST (no local database needed) -------------------
 # Good for < 500 ASVs. Requires internet. Can take minutes to hours.
@@ -142,6 +163,11 @@ blast_hits <- blast_sequences(
   method = "remote", database = "nt",
   score_range = 8, max_hits = 20, min_score = 70,
   min_query_coverage = 85, barcode_term = NULL,
+  megablast = FALSE,          # explicit, not NCBI's implicit web-UI default
+  max_hits_per_taxon = 3,     # caps one dominant reference species/accession
+                              # from crowding out real congener candidates;
+                              # requires resolve_taxonomy = TRUE (below) to
+                              # be effective on remote results
   email = "lafferty@ucsb.edu", resolve_taxonomy = TRUE
 )
 
@@ -157,6 +183,7 @@ blast_hits <- blast_sequences(
 #   min_score           = 70,
 #   min_query_coverage  = 80,
 #   barcode_term        = "MiFish",
+#   max_hits_per_taxon  = 3,
 #   resolve_taxonomy    = TRUE
 # )
 

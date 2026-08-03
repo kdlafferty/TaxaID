@@ -67,12 +67,12 @@ reproducibility matters.
 \preformatted{
 # Stage 0: generate scheme
 sp       <- build_scheme_prompt(taxa_in_data)
-scheme   <- parse_scheme_response(prompt_anthropic_api(sp), sp)
+scheme   <- parse_scheme_response(TaxaTools::prompt_api(sp), sp)
 print(scheme)   # inspect suggested categories
 
 # Stage 1: weighted assignment (scheme flows through automatically)
 prompt   <- build_habitat_prompt(taxa_in_data, habitat_scheme = scheme)
-raw_text <- prompt_anthropic_api(prompt)
+raw_text <- TaxaTools::prompt_api(prompt)
 hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa_in_data,
                                                 habitat_scheme = prompt)
 }
@@ -82,7 +82,7 @@ hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa_in_data,
 taxa <- unique(occurrence_data$taxon_name)
 sp   <- build_scheme_prompt(taxa, realm = "marine")
 print(sp)
-raw    <- prompt_anthropic_api(sp)
+raw    <- TaxaTools::prompt_api(sp)
 scheme <- parse_scheme_response(raw, sp)
 print(scheme)
 }

@@ -40,7 +40,7 @@ habitat_lookup <- TaxaHabitat::parse_hierarchical_habitat_response(
 
 # Step 4: Assign habitat to occurrences
 std_occurrences <- TaxaHabitat::assign_habitat_biological(
-  data        = occurrences,
+  occurrence_data = occurrences,
   habitats_df = habitat_lookup,
   threshold   = 0.5
 )

@@ -75,7 +75,7 @@ make_weights_other <- function() {
 
 test_that("stops when data is not a dataframe", {
   expect_error(
-    assign_habitat_biological(data = list(a = 1), habitats_df = make_weights_specialist()),
+    assign_habitat_biological(occurrence_data = list(a = 1), habitats_df = make_weights_specialist()),
     "must be a dataframe"
   )
 })
@@ -83,7 +83,7 @@ test_that("stops when data is not a dataframe", {
 test_that("stops when habitats_df is not a dataframe", {
   occ <- make_occ("pt1", "Gadus morhua")
   expect_error(
-    assign_habitat_biological(data = occ, habitats_df = "not a df"),
+    assign_habitat_biological(occurrence_data = occ, habitats_df = "not a df"),
     "must be a dataframe"
   )
 })
@@ -91,16 +91,16 @@ test_that("stops when habitats_df is not a dataframe", {
 test_that("stops when point_id_col is missing from data", {
   occ <- data.frame(taxon_name = "Gadus morhua", stringsAsFactors = FALSE)
   expect_error(
-    assign_habitat_biological(data = occ, habitats_df = make_weights_specialist()),
-    "column.*not found in 'data'"
+    assign_habitat_biological(occurrence_data = occ, habitats_df = make_weights_specialist()),
+    "column.*not found in 'occurrence_data'"
   )
 })
 
 test_that("stops when taxon_col is missing from data", {
   occ <- data.frame(point_id = "pt1", stringsAsFactors = FALSE)
   expect_error(
-    assign_habitat_biological(data = occ, habitats_df = make_weights_specialist()),
-    "column.*not found in 'data'"
+    assign_habitat_biological(occurrence_data = occ, habitats_df = make_weights_specialist()),
+    "column.*not found in 'occurrence_data'"
   )
 })
 
@@ -109,7 +109,7 @@ test_that("stops when taxon_col is missing from habitats_df", {
   bad_hab <- data.frame(species = "Gadus morhua", Rocky_Subtidal = 1.0,
                         stringsAsFactors = FALSE)
   expect_error(
-    assign_habitat_biological(data = occ, habitats_df = bad_hab),
+    assign_habitat_biological(occurrence_data = occ, habitats_df = bad_hab),
     "taxon column.*not found in 'habitats_df'"
   )
 })

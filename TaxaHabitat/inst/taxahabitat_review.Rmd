@@ -1,0 +1,283 @@
+---
+title: "TaxaHabitat code review"
+output: html_document
+---
+
+### Code Review
+
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
+
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable? 
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+    
+    The code is reasonably readable. Some things have similar enough names and/or functionality that it can be confusing, but this is likely unavoidable. There are some places where the code could likely be simpler with the same functionality, these are noted in the comments for specific files.
+    
+* [x] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way. 
+  * Is additional documentation required?
+  
+  There are cases where additional documentation is required. See comments for specific files for suggestions on optimization and documentation.
+  
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+  
+  There are some cases where functionality is directly duplicated. This should be avoided.
+  
+* [x] **Automated tests:** Confirm that all tests pass when run locally.
+
+  Here is the output from running `test_local` on the test directory:  `[ FAIL 0 | WARN 0 | SKIP 0 | PASS 158 ]`. Some functions do not have tests. This makes sense for shiny apps but not for other functions.
+  
+* [x] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
+
+  I do not have the domain knowledge to assess any security issue or vulnerabilities. 
+
+Any Additional comments, list below in comment section.
+
+### Domain Review
+
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
+
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct? 
+  * Are any claims of what the code does substantiated? 
+  * If tests are included, are they adequate to evaluate functionality?
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces. 
+  * If equations are solved, are the equations input correctly into the code?
+* [x] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
+
+Any Additional comments, list below in comment section.
+
+- Building the package produced the following warning, suggest adding R 4.1.0 as a dependency:
+
+```
+NB: this package now depends on R (>= 4.1.0)
+  WARNING: Added dependency on R >= 4.1.0 because package code uses the
+  pipe |> or function shorthand \(...) syntax added in R 4.1.0.
+  File(s) using such syntax:
+    'review_institution_flags.R' 'review_spatial_flags.R'
+```
+
+- **NOTE: this may be a dependency of a dependency, as I can't find adehabitatMA being called anywhere, but left this comment for completeness.** Loading the package produces the message below. Looking at the CRAN page for `adehabitatMA`, `sp` is a dependency, and the package hasn't been updated in several years. Consider whether this dependency is necessary and whether it can be replaced by packages such as `terra` or `sf`. 
+
+```
+Registered S3 methods overwritten by 'adehabitatMA':
+  method                       from
+  print.SpatialPixelsDataFrame sp  
+  print.SpatialPixels          sp  
+```
+
+- `data` is an existing R function. Suggest renaming throughout. This function is probably a more significant overwrite than `df` in other packages.
+
+- There are some places where British spelling is used (i.e. "colour" not "color"). I don't know that this is a problem but I thought I'd point it out.
+
+- `parse_habitat_response` seems to have an bug, see comments on that file.
+
+Comments on specific files:
+
+**assign_habitat_biological.R**
+
+* [x] reviewed
+
+- `data` is an existing R function. Suggest renaming.
+
+- Suggest requiring `habitat_cols` to be a standard format and names, or at least print a warning that all numeric columns are being used.
+
+- If `weight_by_abundance` is inluenced by sampling bias frequently enough to require a warning, consider removing it.
+
+- `assign_habitat_biological` example not runnable, suggest having example `occurrence_data` and `hab_weights`.
+
+- Line 192: should this prompt an early return?
+
+- Is `.detect_habitat_cols` really needed here? Seems like it just reproduces objects that already exits. Maybe just have a required format and column names.
+
+- Consider whether any of `assign_habitat_biological` could be simplified. My impression is that a pivot->summarize->filter `dplyr` operation with some checks and a join might do the same thing, or even `colSums`.
+
+- `consensus_habitat` has a good runnable example.
+
+**build_habitat_prompt.R**
+
+* [x] reviewed
+
+- `.collapse_to_model_habitats` does not appear to be exported or called by any other functions in this package. Remove? Reviewed to line ~300 then stopped when I realized it's not used anywhere. Other functions are reviewed in full.
+
+- `.iucn_habitat_lookup`: At the linked site, 1.3 is shown as "Subantarctic" not "Subalpine". This is true of 3.3 also, which is shiwb as "Boreal" not "Subalpine". The pattern goes on, double check that all values in the table match the linked material.
+
+- Line 221: perhaps it will become obvious, but what is the resolution of the cells?
+
+- Consider updating the documentation for `.collapse_to_model_habitats` to describe each argument. For example, what is `occurrence_data`?
+
+- Not all documentation is in roxygen format.
+
+- Since helper functions (i.e. `.validate_habitat_scheme`, `.collapse_to_model_habitats`) are not exported, printing them in the error message may be confusing.
+
+- Line 884: It seems like logic after the OR in `.is_iucn_scheme` makes the `identical` call unnecessary.
+
+- Line 279: can `.is_iucn_scheme` be called once and referenced later?
+
+- Line 300: where do these names come from? Consider requiring specific names and adding a check. This comment applies to all column names.
+
+- Lines 513-521: add `TaxaTools::` prefix (or correct package prefix if not `TaxaTools`) to all functions not exported by this package.
+
+- Line 595: why not require no duplicates?
+
+- Suggest running `.validate_habitat_scheme` right after default is created, as it has checks that stop the function and those should be done as soon as possible.
+
+- If I understand correctly, rows 614-629 are just using L1 when L2 is missing, right? Why not make a new colum with something like `ifelse(is.na(l2), l1, l2)`?
+
+- `.build_single_prompt`: I think the prompt functions throughout the packages could be collappsed to a single function in TaxaTools, something like `build_llm_promt`. You could have an argument about which type and pull the strings from a list of lookups.
+
+- consider using `example_habitat_scheme` in the examples for `build_habitat_prompt`. Or use `build_iucn_scheme` and remove `example_habitat_scheme` entirely.
+
+- Does `.l1_to_realm` only work for certain aquatic habitats? Consider expanding.
+
+- `build_iucn_scheme`: suggest adding early on in documentation for `l1` and `l2` arguments that specifics can be included, it's in there but you have to dig.
+
+- `build_iucn_scheme` has odd behavior with `build_iucn_scheme(realm = "terrestrial", l2 = "Temperate")`. See `data.frame` below. Should there be duplicates for L1 where L2 is `NA`? Also `realm` should be `terrestrial`, right?
+
+```
+                           l1_name               l2_name l2_code realm
+1                           Forest                  <NA>    <NA>  <NA>
+2                          Savanna                  <NA>    <NA>  <NA>
+3                        Shrubland                  <NA>    <NA>  <NA>
+4                        Grassland                  <NA>    <NA>  <NA>
+5             Rocky Areas (inland)                  <NA>    <NA>  <NA>
+6  Caves and Subterranean Habitats                  <NA>    <NA>  <NA>
+7                           Desert                  <NA>    <NA>  <NA>
+8            Introduced Vegetation                  <NA>    <NA>  <NA>
+9                           Forest    Temperate (Forest)     1.4  <NA>
+10                       Shrubland Temperate (Shrubland)     3.4  <NA>
+11                       Grassland Temperate (Grassland)     4.4  <NA>
+12                          Desert    Temperate (Desert)     8.2  <NA>
+```
+
+- `build_scheme_prompt("pinus contorta", realm = "terrestrial")` returns a prompt with `OUTPUT FORMAT` that lists all realms, even though the text prior says terrestrial only. Suggest constraining both if specified.
+
+- I found some of the outputs harder to parse with the custom `print` methods than if they were returned as-is, especially `data.frame` outputs.
+
+- Not all examples are runnable. 
+
+- Suggest updating `prompt_anthropic_api` in examples to `prompt_api`.
+
+- Line 1587: Is it possible for a comma to exist in lines that aren't data?
+
+- Line 1623: the default is 2. This is just a warning, but consider requiring min habitats to be specified as this can cause confusion.
+
+**flag_habitat_inconsistencies.R**
+
+* [x] reviewed
+
+- Line 11: is this actually the most common or is it the most common made for existing users so far?
+
+- Line 15: why not just return a dataframe that can be joined to avoid duplication?
+
+- Meters uses the British spelling here, i.e. "metres".
+
+- `flag_habitat_inconsistencies` Does not appear to have tests.
+
+- `data` is an existing R function. Suggest renaming.
+
+- Consider requiring column names in `data` to be specific.
+
+- Example for `flag_habitat_inconsistencies` not runnable.
+
+- Tested with ` test_data <- data.frame(decimalLatitude = 40.823875, decimalLongitude = -124.193872, main_habitat = "Marine")`
+
+- Suggest explicitly requiring `rnaturalearthdata` as a package dependency.
+
+- `rnaturalearthhires` is not available on CRAN due to size. Suggest showing how package can be installed.
+
+- Lines 190-200: could you just do (ugly) `st_as_sfc(st_bbox(st_buffer(pts_unique, distance)))` after converting to sf? Should distance be tunable?
+
+- Could the spatial data be preprocessed and shipped with the package? 
+
+- Messages are still printed even with `suppressWarnings`.
+
+- Not necessarily a package issue but `marmap::getNOAA.bathy` fails when on the network, works with wifi.
+
+**flag_institution_candidates.R**
+
+* [x] reviewed
+
+- Either `TaxaFetch::filter_gbif_quality` has been changed since I reviewed it or this function references an old version. Also, should this be in `TaxaFetch`?
+
+- More British spellings: `Research_centre`. This isn't necessarily a mistake but seems worth pointing out.
+
+- `data` is an existing R function. Suggest renaming.
+
+**parse_habitat_response.R**
+
+* [x] reviewed
+
+- What is the difference between `.validate_habitat_scheme_local` and `.validate_habitat_scheme`? Are both needed? There's a lot of duplication here, same comment for `.is_two_level_local`. Why is cross-file dependency an issue? I'm not sure about other helper functions but make sure functionality isn't being duplicated.
+
+- Line 454: Null operator not created here, but that helps avoid duplication.
+
+- `parse_hierarchical_habitat_response` has no tests.
+
+- Should lines 158-166 be in `.strip_and_extract_csv`?
+
+- When testing, I think that row names were the actual taxon names, and `taxon_name` was zeroes. I've pasted the csv below. Looks like the `Other_weight` and `habitat_best_guess` columns are also split values that should be together. I think this is because the `habitat_best_guess` had commas in it. **This seems like a true bug**
+
+```
+                    taxon_name Shallow Kelp Forest (<10m) Deep Kelp Forest (>10m) Rocky Subtidal Rocky Intertidal Sandy Subtidal Muddy Subtidal Coastal Pelagic Offshore Pelagic Estuarine Open Water Estuarine Mudflat
+Gadus morhua                 0                          0                    0.05              0              0.1           0.05            0.2             0.4             0.05                    0              0.15
+Oncorhynchus mykiss          0                          0                    0.00              0              0.0           0.00            0.1             0.0             0.10                    0              0.80
+                                                       Other_weight                                                            habitat_best_guess
+Gadus morhua                  Continental shelf demersal (30–200 m)               including deeper muddy/sandy bottoms and coastal pelagic waters
+Oncorhynchus mykiss Freshwater rivers and streams (including lakes) with some use of coastal pelagic and estuarine open water by anadromous forms
+```
+
+**report_habitat.R**
+
+* [x] reviewed
+
+- example not runnable as-is.
+
+- Consider adding an option for a known habitat scheme, which should probably be default.
+
+**review_institution_flags.R**
+
+* [x] reviewed
+
+- example not runnable as-is.
+
+- No tests but that might be reasonable in this case.
+
+- `data` is an existing R function. Suggest renaming.
+
+- Line 145: seems like this could be a simple filter operation.
+
+**review_spatial_flags.R**
+
+* [x] reviewed
+
+- More British spelling, this time "colour".
+
+- `data` is an existing R function. Suggest renaming.
+
+- Should manual entry for habitat type be free text or constrained to specific values?
+
+- Line 742: `hist` is also the name of the histogram function. Consider something like `flag_hist`.
+
+- Maybe I missed it, but the bulk flag drawing option doesn't seem to be working.
+
+**TaxaHabitat-package.R**
+
+* [x] reviewed
+
+**utils_plot.R**
+
+* [x] reviewed
+
+- Line 4: `.he` is also used by `review_institution_flags`.
+
+**zzz_imports.R**
+
+* [x] reviewed
+
+- Line 5: consider adding `call_api`
+

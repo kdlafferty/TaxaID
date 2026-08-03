@@ -1,6 +1,42 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-31 (Sonnet 5 -- TaxaExpect's first full code + domain review against
+# Last updated: 2026-08-03 (Sonnet 5 -- screen_spatial_formula() gains generalized covariate
+# screening. Found live, building a real continuous depth/elevation habitat covariate for
+# GreatLakes2023_ConsensusWorkflow.R (motivated by a real finding: 95% of "Lentic"-classified
+# GBIF occurrences were >50km offshore, dominated by genuinely pelagic species -- the
+# harbor's own prior was being driven by open-lake ecology, not anything resembling a
+# nearshore site). prepare_model_dataframe()'s `covariates=` argument is already fully
+# generic (its own roxygen even uses "depth" as an illustrative example), but
+# screen_spatial_formula() had never been updated to match -- it hardcoded recognition of
+# only `lat_r_s`/`lon_r_s` as screenable continuous covariates, both in the VarCorr
+# pre-screen filter (a literal regex, `"^B[0-9]+$|^lat_r_s$|^lon_r_s$"`) and in the whole
+# candidate-formula-building mechanism. A newly-added `depth_m_s` term was therefore fit as
+# a real random slope but completely invisible to this function's own model-selection
+# machinery: never shown in the VarCorr table, never a candidate for removal, its AIC
+# contribution never tested -- silently baked into every candidate formula regardless of
+# whether its variance was meaningfully non-zero. Found only because the user noticed
+# `depth_m_s` was simply absent from a real run's printed VarCorr table despite being in
+# the final recommended formula.
+#
+# Fixed by reading the real covariate list off `prepare_model_dataframe()`'s own
+# `scale_params` attribute (one entry per covariate it scaled, keyed by the raw covariate
+# name) instead of a hardcoded name pair -- generalizes to ANY covariate passed to that
+# function's `covariates=` argument, not just the original two. Verified first that this
+# attribute survives a `dplyr::left_join()` with a Moran spatial basis (the real usage
+# pattern in these workflows) before relying on it. Falls back to the original hardcoded
+# `c("lat_r_s","lon_r_s")` pair when the attribute is absent (hand-built data/older
+# callers), so this is fully backward compatible -- confirmed via a dedicated new test.
+# Re-run against the real GreatLakes data post-fix: `depth_m_s` now correctly appears in
+# the VarCorr table with SD=1.35 -- the LARGEST of any screened term (more than double
+# `lon_r_s`'s 0.585) -- correctly not flagged for removal; species differ far more in
+# depth-response than in raw lat/lon response. User confirmed "depth stays" after seeing
+# this. 2 new regression tests (a 3rd covariate is screened when `scale_params` is
+# present; the old hardcoded-pair fallback is unchanged when it's absent).
+# `devtools::test()` 541/541 (up from 538), `devtools::check()` 0 errors/0 warnings/0
+# notes, reinstalled to `~/Library/R/4.0/library`. See
+# `[[project_depth_covariate_propagation]]` in the memory system for the full real-data
+# motivating finding and what does/doesn't transfer to the Mugu/PtConception workflows.
+# Previous update, 2026-07-31 (Sonnet 5 -- TaxaExpect's first full code + domain review against
 # inst/Code and Domain Review 2.Rmd, closing a real gap: every other package in the ecosystem
 # (TaxaTools, TaxaFetch, TaxaMatch, TaxaLikely) already had one, TaxaExpect never did. Findings
 # and fixes recorded together in inst/taxaexpect_review.Rmd (new file), following the
@@ -269,7 +305,7 @@ and prior generation only.
 | `apply_pca_transform()` | Apply stored PCA rotation to scaled new-site data before `generate_full_priors()` | Complete | R/add_pca_covariates.R |
 | `optimize_grid_size()` | Score grid resolutions on coverage, quality, stability; return best size + fallback | Complete | R/optimize_grid_size.R |
 | `compute_moran_basis()` | Build Moran Eigenvector Maps (MEM) for spatial autocorrelation covariates | Complete | R/compute_moran_basis.R |
-| `screen_spatial_formula()` | Fit full spatial model, screen Moran/gradient slopes by VarCorr SD, select parsimonious formula by AIC | Complete | R/screen_spatial_formula.R |
+| `screen_spatial_formula()` | Fit full spatial model, screen Moran/gradient slopes by VarCorr SD, select parsimonious formula by AIC. **2026-08-03**: gradient-covariate detection now reads `data`'s own `scale_params` attribute (set by `prepare_model_dataframe()`) instead of hardcoding `lat_r_s`/`lon_r_s` -- any additional covariate (e.g. `depth_m_s`) is now screened identically, not silently carried through unscreened. Falls back to the old hardcoded pair when `scale_params` is absent. | Complete | R/screen_spatial_formula.R |
 | `plot_theta_map_interactive()` | Shiny gadget: Leaflet heatmap of `theta_mean` with occurrence point overlay | Complete | R/plot_theta_map_interactive.R |
 
 ### S3 methods

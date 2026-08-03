@@ -19,9 +19,16 @@
 #'   Moran basis columns (B1 ... BK) already joined via
 #'   \code{\link{compute_moran_basis}}.
 #' @param formula_full Formula. The full starting formula, including all
-#'   Moran eigenvector terms and spatial gradient terms. Moran columns must
-#'   be named \code{B1}, \code{B2}, ... and spatial gradient columns must be
-#'   named \code{lat_r_s} and \code{lon_r_s}.
+#'   Moran eigenvector terms and spatial/covariate gradient terms. Moran
+#'   columns must be named \code{B1}, \code{B2}, .... Gradient covariate
+#'   columns (\code{lat_r_s}, \code{lon_r_s}, and any additional covariate
+#'   passed to \code{\link{prepare_model_dataframe}}'s \code{covariates}
+#'   argument, e.g. \code{depth_m_s}) are auto-detected from \code{data}'s
+#'   own \code{scale_params} attribute (set by \code{prepare_model_dataframe}),
+#'   so any covariate beyond the original two is screened identically --
+#'   not just carried through unscreened. Falls back to
+#'   \code{c("lat_r_s", "lon_r_s")} only if \code{data} has no
+#'   \code{scale_params} attribute (e.g. hand-built data in older code/tests).
 #' @param sd_threshold Numeric. Absolute logit-scale standard deviation
 #'   threshold for spatial predictor screening (compared directly against
 #'   each random slope's own fitted SD -- not a coefficient of variation;
@@ -131,12 +138,30 @@ screen_spatial_formula <- function(data,
   formula_chr  <- paste(deparse(formula_full, width.cutoff = 500), collapse = " ")
   all_vars     <- all.vars(formula_full)
 
-  moran_present   <- sort(grep("^B[0-9]+$",   all_vars, value = TRUE))
-  spatial_present <- intersect(c("lat_r_s", "lon_r_s"), all_vars)
+  moran_present <- sort(grep("^B[0-9]+$", all_vars, value = TRUE))
+
+  # Gradient covariate names come from prepare_model_dataframe()'s own
+  # scale_params attribute (one entry per covariate it scaled, keyed by the
+  # RAW covariate name -- "lat_r", "lon_r", "depth_m", etc. -- so the
+  # formula's actual "_s"-suffixed slope term is scale_params name + "_s").
+  # This generalizes screening to ANY covariate passed to that function's
+  # covariates= argument, not just the original lat_r_s/lon_r_s pair --
+  # confirmed the attribute survives a left_join() with a Moran basis (the
+  # real GreatLakes2023_ConsensusWorkflow.R usage), so this is reliable in
+  # practice, not just in isolation. Falls back to the original hardcoded
+  # pair when the attribute is absent (data not produced by
+  # prepare_model_dataframe(), e.g. hand-built in older code/tests).
+  scaled_covariates <- names(attr(data, "scale_params"))
+  spatial_present <- if (!is.null(scaled_covariates)) {
+    intersect(paste0(scaled_covariates, "_s"), all_vars)
+  } else {
+    intersect(c("lat_r_s", "lon_r_s"), all_vars)
+  }
 
   if (length(moran_present) == 0L && length(spatial_present) == 0L) {
     message("screen_spatial_formula: formula contains no screenable spatial terms ",
-            "(Moran B1..BK or lat_r_s/lon_r_s). Fitting formula as-is and returning.")
+            "(Moran B1..BK or scaled covariates from prepare_model_dataframe(), ",
+            "e.g. lat_r_s/lon_r_s). Fitting formula as-is and returning.")
     model_out <- do.call(
       train_biodiversity_model,
       c(list(data = data, formula = formula_full), tbm_args)
@@ -239,8 +264,11 @@ screen_spatial_formula <- function(data,
   })
   sd_tbl <- do.call(rbind, sd_rows)
 
-  # Keep only the spatial slope terms we care about screening
-  sd_tbl <- sd_tbl[grepl("^B[0-9]+$|^lat_r_s$|^lon_r_s$", sd_tbl$term),
+  # Keep only the spatial slope terms we care about screening (Moran basis +
+  # whatever gradient covariates were detected above -- not a hardcoded
+  # name list, so a new covariate is screened the same way lat_r_s/lon_r_s
+  # always were, instead of silently passing through unscreened).
+  sd_tbl <- sd_tbl[sd_tbl$term %in% c(moran_present, spatial_present),
                    c("term", "sd"), drop = FALSE]
   sd_tbl$flagged <- sd_tbl$sd < sd_threshold
   sd_tbl <- sd_tbl[order(sd_tbl$sd), ]

@@ -8,8 +8,11 @@
 #' Points whose physical location is implausible given their assigned habitat
 #' are flagged for user review.
 #'
-#' The most common error this function catches is a marine species assigned
-#' a marine habitat but located far inland -- a GBIF georeferencing error.
+#' In this project's real usage so far, the most common error this function
+#' catches is a marine species assigned a marine habitat but located far
+#' inland -- a GBIF georeferencing error. This reflects the datasets this
+#' package has been used with to date, not a universal claim about GBIF
+#' data quality generally.
 #' Terrestrial species appearing in the ocean are also flagged.
 #'
 #' The function adds four columns to the input dataframe, repeated for every
@@ -46,7 +49,7 @@
 #' \code{"freshwater habitat not spatially verified"}. This avoids false
 #' positives for a common and genuinely hard-to-check class.
 #'
-#' @param data A dataframe, typically \code{occurrences_with_habitat} from the
+#' @param occurrence_data A dataframe, typically \code{occurrences_with_habitat} from the
 #'   TaxaExpect workflow. Must contain latitude, longitude, and habitat columns.
 #' @param lat_col Character. Latitude column name. Default
 #'   \code{"decimalLatitude"}.
@@ -83,7 +86,7 @@
 #'   scheme dataframe used to resolve habitat names for depth/distance checks.
 #'   If \code{NULL}, checks rely on the \code{habitat_col} values directly.
 #'
-#' @return The input \code{data} dataframe with four additional columns:
+#' @return The input \code{occurrence_data} dataframe with four additional columns:
 #' \describe{
 #'   \item{elevation_m}{Numeric. GEBCO value at the point: negative values
 #'     are ocean depth in metres; positive values are approximate land
@@ -100,9 +103,7 @@
 #' @seealso \code{\link{review_spatial_flags}}
 #'
 #' @importFrom terra rast vect extract
-#' @importFrom sf st_as_sf st_transform st_distance st_intersection st_union
-#'   st_buffer st_within st_make_valid st_geometry st_as_sfc st_bbox st_crop
-#'   sf_use_s2
+#' @importFrom sf st_as_sf st_transform st_distance st_intersection st_union st_buffer st_within st_make_valid st_geometry st_as_sfc st_bbox st_crop sf_use_s2
 #' @importFrom marmap getNOAA.bathy as.raster
 #' @importFrom rnaturalearth ne_coastline ne_countries
 #' @importFrom dplyr left_join
@@ -110,8 +111,15 @@
 #'
 #' @examples
 #' \dontrun{
+#' # A concrete, self-contained example (requires network access for the
+#' # Natural Earth polygon and NOAA bathymetry downloads):
+#' occurrence_data <- data.frame(
+#'   decimalLatitude  = 40.823875,
+#'   decimalLongitude = -124.193872,
+#'   main_habitat     = "Marine"
+#' )
 #' occurrences_flagged <- flag_habitat_inconsistencies(
-#'   occurrences_with_habitat,
+#'   occurrence_data,
 #'   coast_buffer_m = 1000
 #' )
 #'
@@ -127,7 +135,7 @@
 #' }
 
 flag_habitat_inconsistencies <- function(
-    data,
+    occurrence_data,
     lat_col         = "decimalLatitude",
     lon_col         = "decimalLongitude",
     habitat_col     = "main_habitat",
@@ -145,8 +153,8 @@ flag_habitat_inconsistencies <- function(
   # --------------------------------------------------------------------------
 
   for (col in c(lat_col, lon_col, habitat_col)) {
-    if (!col %in% names(data)) {
-      stop(sprintf("Column '%s' not found in data.", col))
+    if (!col %in% names(occurrence_data)) {
+      stop(sprintf("Column '%s' not found in occurrence_data.", col))
     }
   }
 
@@ -155,12 +163,29 @@ flag_habitat_inconsistencies <- function(
   missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace,
                                         logical(1L), quietly = TRUE)]
   if (length(missing_pkgs) > 0L) {
-    stop(sprintf(
-      "flag_habitat_inconsistencies requires %d package(s) not installed: %s\n  Install with: install.packages(c(%s))",
-      length(missing_pkgs),
-      paste(missing_pkgs, collapse = ", "),
-      paste(sprintf('"%s"', missing_pkgs), collapse = ", ")
-    ))
+    # rnaturalearthhires (needed for scale = "large" below) is NOT on CRAN --
+    # `install.packages("rnaturalearthhires")` alone fails. Give it its own,
+    # correct install line rather than lumping it into a single CRAN-only
+    # install.packages() call that would silently mislead the user for
+    # exactly this one package.
+    cran_missing <- setdiff(missing_pkgs, "rnaturalearthhires")
+    msg <- sprintf(
+      "flag_habitat_inconsistencies requires %d package(s) not installed: %s",
+      length(missing_pkgs), paste(missing_pkgs, collapse = ", ")
+    )
+    if (length(cran_missing) > 0L) {
+      msg <- paste0(msg, sprintf(
+        "\n  Install from CRAN with: install.packages(c(%s))",
+        paste(sprintf('"%s"', cran_missing), collapse = ", ")
+      ))
+    }
+    if ("rnaturalearthhires" %in% missing_pkgs) {
+      msg <- paste0(msg,
+        "\n  rnaturalearthhires is NOT on CRAN (too large). Install with:\n",
+        '    install.packages("rnaturalearthhires", repos = "https://ropensci.r-universe.dev")'
+      )
+    }
+    stop(msg, call. = FALSE)
   }
 
   # --------------------------------------------------------------------------
@@ -168,9 +193,9 @@ flag_habitat_inconsistencies <- function(
   # --------------------------------------------------------------------------
 
   pts_all <- data.frame(
-    lon     = data[[lon_col]],
-    lat     = data[[lat_col]],
-    habitat = data[[habitat_col]],
+    lon     = occurrence_data[[lon_col]],
+    lat     = occurrence_data[[lat_col]],
+    habitat = occurrence_data[[habitat_col]],
     stringsAsFactors = FALSE
   )
 
@@ -502,25 +527,25 @@ flag_habitat_inconsistencies <- function(
     "spatial_flag", "spatial_flag_reason"
   )]
 
-  data$._lon_ <- data[[lon_col]]
-  data$._lat_ <- data[[lat_col]]
+  occurrence_data$._lon_ <- occurrence_data[[lon_col]]
+  occurrence_data$._lat_ <- occurrence_data[[lat_col]]
 
-  data <- dplyr::left_join(
-    data, pts_join,
+  occurrence_data <- dplyr::left_join(
+    occurrence_data, pts_join,
     by = c("._lon_" = "lon", "._lat_" = "lat")
   )
 
-  data$._lon_ <- NULL
-  data$._lat_ <- NULL
+  occurrence_data$._lon_ <- NULL
+  occurrence_data$._lat_ <- NULL
 
   # Rows excluded from flagging (NA habitat or NA coordinates) receive a
   # explicit flag rather than NA, so downstream functions see only valid values.
-  na_flag <- is.na(data$spatial_flag)
+  na_flag <- is.na(occurrence_data$spatial_flag)
   if (any(na_flag)) {
-    na_hab  <- is.na(data[[habitat_col]])
-    na_coord <- is.na(data[[lon_col]]) | is.na(data[[lat_col]])
-    data$spatial_flag[na_flag]        <- "likely"
-    data$spatial_flag_reason[na_flag] <- ifelse(
+    na_hab  <- is.na(occurrence_data[[habitat_col]])
+    na_coord <- is.na(occurrence_data[[lon_col]]) | is.na(occurrence_data[[lat_col]])
+    occurrence_data$spatial_flag[na_flag]        <- "likely"
+    occurrence_data$spatial_flag_reason[na_flag] <- ifelse(
       na_coord[na_flag],
       "missing coordinates -- not spatially validated",
       ifelse(
@@ -539,5 +564,5 @@ flag_habitat_inconsistencies <- function(
 
   if (verbose) message("--- flag_habitat_inconsistencies() complete ---\n")
 
-  data
+  occurrence_data
 }

@@ -502,7 +502,7 @@ build_priors <- function(
   habitats_df <- do.call(rbind, habitats_list)
 
   occurrences <- TaxaHabitat::assign_habitat_biological(
-    data           = occurrences,
+    occurrence_data = occurrences,
     habitats_df    = habitats_df,
     threshold      = habitat_threshold
   )

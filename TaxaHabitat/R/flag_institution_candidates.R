@@ -18,9 +18,9 @@
 #' This is a pure classification step -- no interaction, no rows removed or
 #' reordered, mirroring \code{\link{flag_habitat_inconsistencies}}'s role
 #' ahead of an interactive review gadget. It adds one column
-#' (\code{institution_suspicion}) and makes no other change to \code{data}.
+#' (\code{institution_suspicion}) and makes no other change to \code{occurrence_data}.
 #'
-#' @param data A dataframe, typically the output of
+#' @param occurrence_data A dataframe, typically the output of
 #'   \code{TaxaFetch::filter_gbif_quality()}. Must contain
 #'   \code{institution_flag} and \code{institution_type} (both added by that
 #'   function when \code{flag_institution = TRUE}, its default).
@@ -52,7 +52,7 @@
 #'   and \code{institution_type} alone cannot tell those apart. That's exactly
 #'   the case \code{\link{review_institution_flags}} exists for.
 #'
-#' @return \code{data} with one additional column, \code{institution_suspicion}:
+#' @return \code{occurrence_data} with one additional column, \code{institution_suspicion}:
 #'   \code{"high"}, \code{"low"}, or \code{"ambiguous"} for a flagged record
 #'   (\code{institution_flag = TRUE}); \code{NA} for every other record
 #'   (never checked -- mirrors \code{\link{flag_habitat_inconsistencies}}'s
@@ -69,16 +69,16 @@
 #' table(tiered$institution_suspicion, useNA = "ifany")
 #' }
 flag_institution_candidates <- function(
-    data,
+    occurrence_data,
     kingdom_col      = "kingdom",
     suspicion_rules  = NULL
 ) {
 
-  if (!is.data.frame(data)) {
-    stop("flag_institution_candidates: 'data' must be a dataframe.")
+  if (!is.data.frame(occurrence_data)) {
+    stop("flag_institution_candidates: 'occurrence_data' must be a dataframe.")
   }
   required_cols <- c("institution_flag", "institution_type")
-  missing_cols  <- setdiff(required_cols, names(data))
+  missing_cols  <- setdiff(required_cols, names(occurrence_data))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
       paste0(
@@ -88,7 +88,7 @@ flag_institution_candidates <- function(
       paste(missing_cols, collapse = ", ")
     ))
   }
-  if (!kingdom_col %in% names(data)) {
+  if (!kingdom_col %in% names(occurrence_data)) {
     stop(sprintf(
       "flag_institution_candidates: kingdom column '%s' not found.", kingdom_col
     ))
@@ -109,16 +109,16 @@ flag_institution_candidates <- function(
     )
   }
 
-  data$institution_suspicion <- NA_character_
+  occurrence_data$institution_suspicion <- NA_character_
 
-  is_flagged <- !is.na(data$institution_flag) & data$institution_flag
+  is_flagged <- !is.na(occurrence_data$institution_flag) & occurrence_data$institution_flag
   if (!any(is_flagged)) {
     message("flag_institution_candidates: no flagged records to tier.")
-    return(data)
+    return(occurrence_data)
   }
 
-  flagged_type    <- data$institution_type[is_flagged]
-  flagged_kingdom <- data[[kingdom_col]][is_flagged]
+  flagged_type    <- occurrence_data$institution_type[is_flagged]
+  flagged_kingdom <- occurrence_data[[kingdom_col]][is_flagged]
 
   tier <- mapply(function(type, k) {
     # A record's own matched institution can genuinely have no recorded
@@ -150,7 +150,7 @@ flag_institution_candidates <- function(
     "ambiguous"
   }, flagged_type, flagged_kingdom, SIMPLIFY = TRUE, USE.NAMES = FALSE)
 
-  data$institution_suspicion[is_flagged] <- tier
+  occurrence_data$institution_suspicion[is_flagged] <- tier
 
   message(sprintf(
     "flag_institution_candidates: %d flagged record(s) tiered -- %d high, %d low, %d ambiguous.",
@@ -160,5 +160,5 @@ flag_institution_candidates <- function(
     sum(tier == "ambiguous", na.rm = TRUE)
   ))
 
-  data
+  occurrence_data
 }

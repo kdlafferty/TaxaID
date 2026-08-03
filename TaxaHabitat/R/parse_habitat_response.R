@@ -161,9 +161,19 @@ parse_hierarchical_habitat_response <- function(raw_text,
     dup_header  <- cleaned_lines[-1L] == header_line
     if (any(dup_header)) {
       cleaned_lines <- c(header_line, cleaned_lines[-1L][!dup_header])
-      cleaned <- paste(cleaned_lines, collapse = "\n")
     }
   }
+
+  # Repair rows whose free-text columns (habitat_best_guess,
+  # ecoregion_best_guess) contain a literal, unquoted comma -- see
+  # .repair_unquoted_commas()'s own docs for the exact failure mode this
+  # guards against (a real, confirmed bug: an unquoted embedded comma
+  # silently corrupts every column to its right, and -- because the data
+  # row then has one MORE field than the header -- utils::read.csv()'s
+  # row-name-inference rule kicks in and moves taxon_name into the
+  # invisible row name instead of the taxon_name column).
+  cleaned_lines <- .repair_unquoted_commas(cleaned_lines)
+  cleaned       <- paste(cleaned_lines, collapse = "\n")
 
   # ---------------------------------------------------------------------------
   # Parse CSV
@@ -392,6 +402,114 @@ parse_hierarchical_habitat_response <- function(raw_text,
   if (is.null(scheme)) return(FALSE)
   all(c("l1_name", "l2_name") %in% names(scheme)) &&
     any(!is.na(scheme$l2_name) & nzchar(trimws(scheme$l2_name)))
+}
+
+
+#' Repair data rows whose free-text columns contain an unquoted comma
+#'
+#' \code{build_habitat_prompt()} asks the LLM to write raw CSV, and instructs
+#' it (\code{.build_single_prompt()}'s OUTPUT FORMAT rules) to quote any
+#' free-text field that itself contains a comma. LLMs do not reliably follow
+#' that instruction: a real, confirmed case had \code{habitat_best_guess} =
+#' \code{"Continental shelf demersal (30-200 m), including deeper muddy/sandy
+#' bottoms and coastal pelagic waters"} written back UNQUOTED, with its own
+#' internal comma left as a bare field separator.
+#'
+#' Left unrepaired, this corrupts the row silently rather than erroring: the
+#' data row then has one MORE comma-separated field than the header, and
+#' \code{utils::read.csv()} (via base \code{read.table()}'s documented
+#' behaviour for exactly this header/data field-count mismatch) treats the
+#' FIRST field as an implicit row name rather than a data column. Every
+#' subsequent value shifts one column to the left -- \code{taxon_name} reads
+#' as a numeric habitat weight, \code{Other_weight} reads as the first half
+#' of the free-text description, and the true taxon name ends up as the
+#' (invisible, unless \code{row.names(x)} is checked) row name instead of
+#' the \code{taxon_name} column. This is exactly the symptom a reviewer
+#' found live-testing this function.
+#'
+#' Fixes it at the source rather than patching the symptom: merges the
+#' overflow field(s) back into \code{habitat_best_guess} (and, if present,
+#' \code{ecoregion_best_guess} -- the only two columns this scheme ever asks
+#' the LLM to write as free text) and re-quotes the merged value, so
+#' \code{utils::read.csv()} parses the row correctly regardless of whether
+#' the LLM ever quotes anything. When both free-text columns are present and
+#' more than one extra field appears, the LAST extra-span field is assumed
+#' to belong to \code{ecoregion_best_guess} (a short place name, the least
+#' likely of the two to itself contain an internal comma) and everything
+#' else is merged into \code{habitat_best_guess} -- a documented heuristic,
+#' not a proof, for the rare case of commas in both free-text fields at once.
+#'
+#' @param lines Character vector, one CSV line per element, header first
+#'   (already fence-stripped and trimmed of preamble/postamble).
+#' @return Character vector, same length as \code{lines}, with any
+#'   overflowing data row repaired. Rows that already match the header's
+#'   field count are returned unchanged. Returns \code{lines} unchanged if
+#'   there is no \code{habitat_best_guess} column to repair against.
+#' @noRd
+.repair_unquoted_commas <- function(lines) {
+  if (length(lines) < 2L) return(lines)
+
+  header   <- strsplit(lines[1L], ",", fixed = TRUE)[[1]]
+  n_header <- length(header)
+
+  guess_idx <- which(header == "habitat_best_guess")
+  if (length(guess_idx) == 0L) return(lines)
+  guess_idx <- guess_idx[1L]
+
+  eco_idx      <- which(header == "ecoregion_best_guess")
+  has_eco_next <- length(eco_idx) > 0L && eco_idx[1L] == guess_idx + 1L
+  n_free_cols  <- if (has_eco_next) 2L else 1L
+
+  for (i in seq(2L, length(lines))) {
+    if (!nzchar(lines[i])) next
+
+    # Quote-aware field count FIRST: a row already correctly quoted around
+    # its own embedded comma (either because the LLM followed the prompt's
+    # quoting instruction, or because a caller pre-cleaned it) already
+    # parses correctly via utils::read.csv()'s own quote handling and must
+    # be left untouched here -- naive comma-splitting below does not
+    # understand quoting and would otherwise "repair" (and corrupt, via
+    # double-quoting) a field that was never broken.
+    con <- textConnection(lines[i])
+    quoted_count <- tryCatch(
+      utils::count.fields(con, sep = ",", quote = "\""),
+      error = function(e) NA_integer_
+    )
+    close(con)
+    if (!is.na(quoted_count) && quoted_count <= n_header) next
+
+    fields  <- strsplit(lines[i], ",", fixed = TRUE)[[1]]
+    n_extra <- length(fields) - n_header
+    if (n_extra <= 0L) next   # already matches the header -- nothing to repair
+
+    mid_start <- guess_idx
+    mid_end   <- guess_idx + n_extra + (n_free_cols - 1L)
+    if (mid_end > length(fields)) next   # malformed beyond repair -- leave as-is, read.csv() will error informatively
+
+    before     <- if (mid_start > 1L) fields[seq_len(mid_start - 1L)] else character(0)
+    mid_fields <- fields[mid_start:mid_end]
+    after      <- if (mid_end < length(fields)) fields[(mid_end + 1L):length(fields)] else character(0)
+
+    if (n_free_cols == 2L) {
+      hbg_raw <- paste(mid_fields[seq_len(length(mid_fields) - 1L)], collapse = ",")
+      eco_raw <- mid_fields[length(mid_fields)]
+      repaired_mid <- c(.quote_csv_field(hbg_raw), eco_raw)
+    } else {
+      hbg_raw <- paste(mid_fields, collapse = ",")
+      repaired_mid <- .quote_csv_field(hbg_raw)
+    }
+
+    lines[i] <- paste(c(before, repaired_mid, after), collapse = ",")
+  }
+
+  lines
+}
+
+
+#' Quote a CSV field value, escaping any embedded double quotes
+#' @noRd
+.quote_csv_field <- function(x) {
+  paste0('"', gsub('"', '""', x, fixed = TRUE), '"')
 }
 
 

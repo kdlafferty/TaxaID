@@ -1,7 +1,71 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-07-31 (Sonnet 5 -- TaxaExpect's first full code + domain review against
+# Last updated: 2026-08-03 (Sonnet 5 -- two real fixes from a long GreatLakes2023
+# debugging/design session (production workflow, outside this monorepo, not under git).
+# (1) TaxaMatch::blast_sequences() real bug: the subject-length filter checked `slen`
+# (whole GenBank record length) instead of `length` (aligned region length), silently
+# discarding real congener matches deposited as long mitogenomes -- found live debugging
+# why real Ameiurus melas/natalis reference sequences never appeared as BLAST candidates
+# for a real GreatLakes 12S ASV despite the user directly confirming (via
+# pairwiseAlignment()) that real, well-matching references existed. Also added explicit
+# `megablast` param (default FALSE, matches prior implicit behavior -- tested and ruled
+# out as the actual bug, kept anyway per the user's "let's fix both") and a new
+# `max_hits_per_taxon` param (needed a `.attach_taxonomy()`/`stage=` restructuring since
+# remote BLAST XML never populates real per-hit taxids). Live-verified: 9 unique species
+# across 3 genera now correctly surface for the motivating ASV (previously 1).
+# Separately, the GreatLakes production pipeline itself was restructured
+# (`GreatLakes_blast_combined_plates.R`, new) to merge Plate 1 + Plate 2 sequences BY
+# IDENTITY before BLASTing, not after reconciling two separately-BLASTed match objects --
+# 1,457 shared sequences were being BLASTed twice for the identical query string, wasted
+# volume plus a real (if usually small) risk of the same physical sequence getting two
+# different answers. `devtools::test()` 523/523, `devtools::check()` 0/0/0, reinstalled.
+# (2) TaxaExpect::screen_spatial_formula() real bug, found building a continuous
+# depth/elevation habitat covariate for the same GreatLakes workflow (motivated by a real
+# finding: 95% of "Lentic"-classified occurrences were >50km offshore, dominated by
+# genuinely pelagic species): the function hardcoded recognition of only
+# `lat_r_s`/`lon_r_s` as screenable covariates, so a newly-added `depth_m_s` term was fit
+# as a real random slope but never shown in the VarCorr screen table, never tested for
+# removal, and never actually justified by AIC -- silently kept in every candidate
+# formula regardless of whether its variance was meaningfully non-zero. Fixed to read the
+# real covariate list off `prepare_model_dataframe()`'s own `scale_params` attribute
+# instead of a hardcoded pair (verified it survives a `left_join()` with a Moran spatial
+# basis, the real usage pattern), generalizing to any future covariate with zero further
+# package work. Re-run post-fix: `depth_m_s` has SD=1.35, the largest of any screened
+# term, correctly retained. `devtools::test()` 541/541 (up from 538), `devtools::check()`
+# 0/0/0, reinstalled. See `[[project_depth_covariate_propagation]]` in the memory system
+# for the full record, including what does/doesn't transfer to the Mugu/PtConception
+# workflows (flagged there as a future task, deliberately not delegated to an agent --
+# needs the same per-site empirical bathymetry-source verification this session did for
+# Lake Michigan). See TaxaMatch/CLAUDE.md's and TaxaExpect/CLAUDE.md's own top session
+# notes for the full per-package record.
+# Previous update, 2026-08-02 (Sonnet 5 -- TaxaHabitat::review_spatial_flags(), seventh round
+# of a recurring debugging thread (GreatLakes2023_ConsensusWorkflow.R, see
+# [[project_review_spatial_flags_habitat_reassign_gap]] in the memory system for the full
+# 7-round history). Two changes: (1) a design change at the user's request -- reassigning
+# a point's habitat via Reassign Habitat mode no longer force-resets spatial_flag to
+# "questionable" when starting from Likely/Unlikely, it now keeps the point's existing
+# flag (reassigning FROM Questionable is unchanged, still promotes to Likely). Halves
+# reviewer workload and stops one path that inflates the Questionable view -- the view
+# where bulk Flag-mode has repeatedly proven fragile in this thread. (2) A real,
+# independent regression fixed: the prior day's ecosystem-wide `data` -> `occurrence_data`
+# rename (Session 2026-08-01, below) had swept up an unrelated call into
+# `leaflet::addCircleMarkers()` inside `review_spatial_flags()`'s own map renderer --
+# that function's `data` parameter belongs to the `leaflet` package, not TaxaHabitat, and
+# was never supposed to be touched. This broke marker rendering in EVERY view of the
+# gadget, a far more severe regression than anything found in the prior 6 rounds, and is
+# the likely true explanation for why the original bug symptom looked worse on
+# re-test. A third, separate issue was found in the user's own external
+# `GreatLakes2023_ConsensusWorkflow.R` (not under git, not a package bug): one real call
+# site the original rename's ecosystem-wide sweep had missed
+# (`assign_habitat_biological(data = ...)`, still the pre-rename name) -- fixed directly
+# in the workflow file. Both package-level fixes live-verified via real Chrome browser
+# automation against the gadget's own running httpuv server (not just
+# devtools::test()/check()) -- see TaxaHabitat/CLAUDE.md's top session note for the full
+# verification record, including what's still NOT confirmed (the original "many
+# Questionable points" bug, against the user's real large-scale dataset). `devtools::test()`
+# 220/220 unchanged, `devtools::check()` 0/0/0, reinstalled.
+# Previous update, 2026-07-31 (Sonnet 5 -- TaxaExpect's first full code + domain review against
 # inst/Code and Domain Review 2.Rmd, closing the one remaining gap in this ecosystem's review
 # coverage (TaxaTools/TaxaFetch/TaxaMatch/TaxaLikely all already had one). Six real, live-
 # verified functionality bugs found and fixed in TaxaExpect's spatial-modelling machinery,
@@ -1903,3 +1967,8 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-07-30 (Sonnet 5) | `compute_group_priors(taxaexpect_priors, taxonomy_map, rank_cols = c("genus","family"))` added; `posterior_consensus(group_priors = NULL)` added | TaxaAssign | New function + new optional param. `consensus_prior` (existing output column) redesigned from a candidate-scoped MAX to a real group-level SUM when `group_priors` is supplied -- a materially different, stronger statement (a single observation's own candidate set rarely contains every locally-modelled group member). The old candidate-scoped MAX fallback is REMOVED entirely (not kept as a default) -- `consensus_prior` is `NA_real_` when `group_priors` is `NULL` or has no matching row, a real behavior change for any caller that relied on the old fallback (no real caller did before this session). New `consensus_has_occurrence_record` output column is the dedicated presence signal downstream consumers should read -- `consensus_prior`'s own `NA`-ness cannot distinguish "checked, absent" from "`group_priors` never supplied." `devtools::test()` 615/615, `devtools::check()` 0/0/0. See `TaxaAssign/CLAUDE.md`'s top session note. |
 | 2026-07-30 (Sonnet 5) | `add_posthoc_assessment()`: `posthoc_assessment`/`tiers`/`taxon_col`/`tier_col`/`finest_rank` removed entirely; `winner_prior_col`/`consensus_prior_col`(old)/`expected_prior_threshold` -> `winner_theta_col`/`winner_record_col`/`consensus_prior_col`(new)/`consensus_record_col`/`expected_theta_threshold` (no default, named-by-rank vector); `confusion_risk_flag` -> `primary_discrimination`/`consensus_discrimination` | TaxaFlag | **Breaking, intentionally -- supersedes the whole 2026-07-28 Axis 1 design**, not an incremental change. `expected_theta_threshold` has no safe universal default (mirrors `join_priors(backbone_id=)`'s precedent) -- callers must supply at least a `"species"` entry. Any workflow calling the pre-2026-07-30 signature will error, not silently degrade. All 5 real production workflows (2 Mugu + 3 PtConception) updated the same day. `devtools::test()` 240/240, `devtools::check()` 0 errors (1 pre-existing unrelated warning+note, untouched). See `TaxaFlag/CLAUDE.md`'s top session note. |
 | 2026-07-30 (Sonnet 5) | `Mugu_Match_from_BLAST.R`/`Mugu_Match_from_Wilder.R`/all 5 real workflows: match-object `convert_taxonomy_backbone(target_backbone_id=)` GBIF -> NCBI; `join_priors(backbone_id=)` GBIF -> NCBI | (workflow scripts, not a package) | Backbone-architecture decision, not a package change -- NCBI adopted as the common working backbone for these vertebrate-focused eDNA workflows (see this file's own top session note for the full cost/dependability reasoning). Fixes a real, confirmed backbone-disagreement bug (`Urolophus halleri`/`Urobatis halleri`). Only `MuguFishWorkflow.R` verified via a real end-to-end re-run; the other 4 files have the identical fix applied but unverified this session. |
+| 2026-08-01 (Sonnet 5) | `data` parameter renamed to `occurrence_data` in `assign_habitat_biological()`, `flag_habitat_inconsistencies()`, `flag_institution_candidates()`, `review_institution_flags()`, `review_spatial_flags()` | TaxaHabitat | **Breaking rename** (same fix as TaxaTools's own `df` -> `input_df`; `data` shadows base R's `data()`). All real named (`data = ...`) call sites across the monorepo updated, including `TaxaExpect::build_priors()` (real package code -- required a `TaxaExpect` reinstall) and `TaxaWizard/inst/metadata/TaxaHabitat.json`'s two entries. Positional-only calls unaffected. See `TaxaHabitat/CLAUDE.md`'s top session note and `TaxaHabitat/inst/taxahabitat_review_response.md` for the full record, including a real `parse_habitat_response.R` CSV-corruption bug fixed at the root cause and a full row-by-row rebuild of `.iucn_habitat_lookup` against the verified IUCN Habitats Classification Scheme v3.1 source (most of Marine Neritic was scrambled/fabricated; several other sections had real content errors). `devtools::test()` 220/220 (up from 158), `devtools::check()` 0/0/0. |
+| 2026-08-02 (Sonnet 5) | `review_spatial_flags()`'s `confirm_habitat` handler: reassigning habitat from Likely/Unlikely no longer resets `spatial_flag` to `"questionable"` | TaxaHabitat | **Behavioral, not signature.** At the user's request -- the point now keeps its existing flag instead of being forced through a second Questionable-view round trip. Reassigning FROM Questionable is unchanged (still promotes to Likely). Any existing caller relying on the old auto-reset-to-Questionable behavior for a Likely/Unlikely reassignment will see a different result; the roxygen `@section Click behaviour` documents the new behavior. `devtools::test()` 220/220 unchanged, `devtools::check()` 0/0/0. Live-verified via real Chrome browser automation, not just `check()`/`test()` -- see `TaxaHabitat/CLAUDE.md`'s top session note and `[[project_review_spatial_flags_habitat_reassign_gap]]`. |
+| 2026-08-02, same day (Sonnet 5) | `review_spatial_flags()`'s `output$map` renderer: fixed `Error in leaflet::addCircleMarkers: unused argument (occurrence_data = hab_sub)` | TaxaHabitat | **Real regression bug fix, not a signature change.** The row above from 2026-08-01 swept up an unrelated call into `leaflet::addCircleMarkers()` -- that function's own `data` parameter belongs to the `leaflet` package, not TaxaHabitat, and should never have been touched by that rename. Broke marker rendering in EVERY view of the gadget (a hard R error, not scale-dependent) until fixed (`occurrence_data = hab_sub` -> `data = hab_sub`). The other 4 functions touched by the same 2026-08-01 rename were checked for the identical mistake; none found. Any `review_spatial_flags()` call made against the 2026-08-01 install would have failed immediately on gadget launch -- this is the likely true explanation for the "several Questionable points" symptom looking newly worse on that day's re-test (the map wasn't drawing anything at all). `devtools::test()` 220/220, `devtools::check()` 0/0/0, live-verified via Chrome (map renders, markers clickable, correct color). |
+| 2026-08-03 (Sonnet 5) | `blast_sequences()`: subject-length filter now checks `length` (aligned region), not `slen` (whole GenBank record length); `megablast = FALSE` param added (explicit); `max_hits_per_taxon = NULL` param added (requires `resolve_taxonomy = TRUE` on remote results) | TaxaMatch | **Real bug fix + additive params.** The `slen`-vs-`length` bug silently discarded real congener matches deposited as long mitogenomes -- found live debugging a real GreatLakes 12S ASV. `megablast` matches the prior implicit default byte-for-byte (tested, ruled out as the actual bug, kept for explicit-over-implicit). `max_hits_per_taxon` needed a new internal `.attach_taxonomy()` + `.filter_blast_hits(stage=, taxon_group_col=)` restructuring since remote BLAST XML never populates real per-hit taxids. `devtools::test()` 523/523, `devtools::check()` 0/0/0. See `TaxaMatch/CLAUDE.md`'s top session note. |
+| 2026-08-03 (Sonnet 5) | `screen_spatial_formula()`'s gradient-covariate detection now reads `data`'s `scale_params` attribute instead of hardcoding `lat_r_s`/`lon_r_s` | TaxaExpect | **Behavioral, not signature.** Any covariate beyond the original two (e.g. a new `depth_m_s`) is now properly screened (shown in the VarCorr table, testable for removal via AIC) instead of being silently fit but invisible to this function's own model-selection machinery. Falls back to the old hardcoded pair when `scale_params` is absent (hand-built data/older callers) -- fully backward compatible, confirmed via a dedicated new test. `devtools::test()` 541/541 (up from 538), `devtools::check()` 0/0/0. See `TaxaExpect/CLAUDE.md`'s top session note and `[[project_depth_covariate_propagation]]`. |

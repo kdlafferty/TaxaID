@@ -2,9 +2,15 @@
 # Shared internal helpers for plot and review functions
 #
 # Used by:
-#   review_spatial_flags()
+#   review_spatial_flags(), review_institution_flags()
 #
-# None of these functions are exported.
+# None of these functions are exported. .he() in particular is defined ONLY
+# here (a single package-namespace-scoped definition) and called by both
+# gadget files above -- a code review flagged this as a possible naming
+# collision, but a single `.` prefixed helper shared by multiple files in
+# the same package is ordinary R namespace scoping, not a collision; a
+# collision would require a SECOND definition of the same name, which does
+# not exist (confirmed via grep across R/).
 # ==============================================================================
 
 
@@ -45,10 +51,24 @@
     pts$taxon <- as.character(data[[taxon_col]])
   }
 
-  # Drop incomplete rows
-  keep <- !is.na(pts$lon)     & !is.na(pts$lat)  &
-          !is.na(pts$habitat) & nzchar(pts$habitat) &
-          !is.na(pts$point_id)
+  # Missing/empty habitat -> a real "Unknown" category, NOT a dropped row. A
+  # point can have valid coordinates but a failed/below-threshold habitat
+  # classification (a real, common case -- e.g. assign_habitat_biological()'s
+  # own confidence threshold can leave a substantial fraction of real
+  # occurrence data with NA main_habitat: confirmed live on the real
+  # GreatLakes workflow data, 1,569 of 5,974 rows, 26%) and it should still
+  # get a marker to review, not silently vanish from the gadget entirely
+  # while still being counted in review_spatial_flags()'s sidebar view/flag
+  # tallies (built from the unfiltered input data, not this pts object) --
+  # that mismatch is exactly what made Flag-mode clicks/rectangle-selects
+  # appear to do nothing: a real fraction of "points in view" had no marker
+  # to click at all. Reassigning an "Unknown" point to a real habitat via
+  # review_spatial_flags()'s existing Reassign Habitat mode also now doubles
+  # as a manual fix path for these classification gaps.
+  pts$habitat[is.na(pts$habitat) | !nzchar(pts$habitat)] <- "Unknown"
+
+  # Drop only genuinely unmappable rows (no coordinates or no point identity).
+  keep <- !is.na(pts$lon) & !is.na(pts$lat) & !is.na(pts$point_id)
   pts  <- pts[keep, ]
 
   if (nrow(pts) == 0L) return(pts)
@@ -95,6 +115,25 @@
 #' @return Named character vector, same length as \code{hab_levels}.
 #' @noRd
 
+# Default 12-colour ecological palette. Shared by .habitat_palette() (initial
+# assignment) and .extend_habitat_palette() (mid-session additions) so both
+# draw from the same fixed sequence -- extending never means duplicating this
+# literal in two places and letting them drift apart.
+.eco_habitat_colors <- c(
+  "#2166ac",  # deep blue      -- Marine
+  "#74add1",  # mid blue       -- Marine Neritic / Freshwater
+  "#4dac26",  # green          -- Terrestrial / Forest
+  "#d6604d",  # terracotta     -- Rocky / Arid
+  "#8073ac",  # purple         -- Subterranean / Cave
+  "#f4a582",  # peach          -- Estuarine / Coastal
+  "#1b7837",  # dark green     -- Woodland / Savanna
+  "#bf812d",  # brown          -- Grassland / Desert
+  "#35978f",  # teal           -- Wetlands
+  "#de77ae",  # pink           -- Artificial
+  "#fdbf6f",  # amber          -- Introduced Vegetation
+  "#969696"   # grey           -- Other / Unknown
+)
+
 .habitat_palette <- function(hab_levels, colors = NULL) {
 
   n_hab <- length(hab_levels)
@@ -114,24 +153,8 @@
     return(colors[hab_levels])
   }
 
-  # Default 12-colour ecological palette
-  eco_pal <- c(
-    "#2166ac",  # deep blue      -- Marine
-    "#74add1",  # mid blue       -- Marine Neritic / Freshwater
-    "#4dac26",  # green          -- Terrestrial / Forest
-    "#d6604d",  # terracotta     -- Rocky / Arid
-    "#8073ac",  # purple         -- Subterranean / Cave
-    "#f4a582",  # peach          -- Estuarine / Coastal
-    "#1b7837",  # dark green     -- Woodland / Savanna
-    "#bf812d",  # brown          -- Grassland / Desert
-    "#35978f",  # teal           -- Wetlands
-    "#de77ae",  # pink           -- Artificial
-    "#fdbf6f",  # amber          -- Introduced Vegetation
-    "#969696"   # grey           -- Other / Unknown
-  )
-
-  if (n_hab <= length(eco_pal)) {
-    pal <- stats::setNames(eco_pal[seq_len(n_hab)], hab_levels)
+  if (n_hab <= length(.eco_habitat_colors)) {
+    pal <- stats::setNames(.eco_habitat_colors[seq_len(n_hab)], hab_levels)
   } else {
     pal <- stats::setNames(
       grDevices::rainbow(n_hab, s = 0.7, v = 0.85),
@@ -140,6 +163,44 @@
   }
 
   pal
+}
+
+
+#' Add colours for new habitat levels without disturbing existing ones
+#'
+#' Used by \code{\link{review_spatial_flags}} when a reviewer reassigns a
+#' point to a habitat value that did not exist in the original dataset (e.g.
+#' typed via the "Other" text box). Unlike calling \code{.habitat_palette()}
+#' again on the full, re-sorted level set -- which reassigns colours by
+#' POSITION and would silently recolour every already-displayed point
+#' whenever the new value sorts earlier than an existing one -- this appends
+#' a colour for each genuinely new level only, leaving every existing
+#' mapping untouched.
+#'
+#' @param pal Named character vector, an existing palette (e.g. from
+#'   \code{.habitat_palette()}).
+#' @param new_levels Character vector of habitat labels to ensure are present
+#'   in the returned palette. Labels already in \code{names(pal)} are
+#'   ignored.
+#' @return Named character vector: \code{pal} with any genuinely new levels
+#'   appended.
+#' @noRd
+
+.extend_habitat_palette <- function(pal, new_levels) {
+  new_levels <- setdiff(unique(new_levels), names(pal))
+  if (length(new_levels) == 0L) return(pal)
+
+  avail <- setdiff(.eco_habitat_colors, pal)
+  n_new <- length(new_levels)
+
+  if (length(avail) >= n_new) {
+    new_colors <- avail[seq_len(n_new)]
+  } else {
+    n_extra    <- n_new - length(avail)
+    new_colors <- c(avail, grDevices::rainbow(n_extra, s = 0.7, v = 0.85))
+  }
+
+  c(pal, stats::setNames(new_colors, new_levels))
 }
 
 

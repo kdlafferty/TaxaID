@@ -87,7 +87,7 @@ habitats_df <- do.call(rbind, habitats_list)
 
 ```{r assign}
 occurrences <- assign_habitat_biological(
-  data        = occurrence_data,
+  occurrence_data        = occurrence_data,
   habitats_df = habitats_df,
   threshold   = 0.3
 )

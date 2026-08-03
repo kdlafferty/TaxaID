@@ -7,6 +7,7 @@
 # package (where load_all() is not in effect and ::: may fail).
 
 .filter_blast_hits  <- function(...) get(".filter_blast_hits",  envir = asNamespace("TaxaMatch"))(...)
+.attach_taxonomy    <- function(...) get(".attach_taxonomy",    envir = asNamespace("TaxaMatch"))(...)
 .empty_raw_hits     <- function(...) get(".empty_raw_hits",     envir = asNamespace("TaxaMatch"))(...)
 .empty_blast_result <- function(...) get(".empty_blast_result", envir = asNamespace("TaxaMatch"))(...)
 .parse_blast_xml    <- function(...) get(".parse_blast_xml",    envir = asNamespace("TaxaMatch"))(...)
@@ -35,8 +36,15 @@ make_raw_hits <- function() {
     sacc     = paste0("ACC_", 1:10),
     staxids  = as.character(9000:9009),
     pident   = c(99, 97, 96, 95, 90, 80,   98, 97, 96, 70),
-    length   = rep(150L, 10),
-    slen     = c(170, 180, 500, 170, 170, 170, 170, 700, 170, 170),
+    # Aligned-region length -- this is what the subject-length filter checks
+    # (not `slen`, the raw subject accession length -- see below).
+    length   = c(170, 180, 500, 170, 170, 170, 170, 700, 170, 170),
+    # Deliberately decoupled from `length`: rows 1 and 7 simulate a real hit
+    # against a long mitogenome/partial-genome record (slen in the
+    # thousands) whose ALIGNED region is still a correctly-sized, in-range
+    # match (length = 170) -- exactly the real Ameiurus melas case that
+    # motivated checking `length` instead of `slen`.
+    slen     = c(16512, 180, 500, 170, 170, 170, 16513, 700, 170, 170),
     qcovs    = c(95, 92, 90, 88, 85, 50,   95, 90, 88, 30),
     mismatch = rep(1L, 10),
     gapopen  = rep(0L, 10),
@@ -181,7 +189,7 @@ test_that("query coverage filter removes partial alignments", {
   expect_true(all(result$qcovs >= 80))
 })
 
-test_that("subject length filter removes out-of-range references", {
+test_that("subject length filter removes hits whose aligned region is out of range", {
   hits <- make_raw_hits()
 
   result <- .filter_blast_hits(
@@ -190,8 +198,30 @@ test_that("subject length filter removes out-of-range references", {
     verbose = FALSE
   )
 
-  # slen = 500 and 700 should be excluded
-  expect_true(all(result$slen <= 300))
+  # length = 500 and 700 should be excluded (aligned-region length, not slen)
+  expect_true(all(result$length <= 300))
+})
+
+test_that("subject length filter checks the aligned region, not the raw subject accession length", {
+  # Rows 1 and 7 simulate a real hit against a long mitogenome (slen in the
+  # thousands) whose aligned region is still a correctly-sized match
+  # (length = 170) -- these must be RETAINED, not discarded for having a
+  # long subject record. This is the real Ameiurus melas case that motivated
+  # the fix: checking `slen` instead of `length` silently dropped a genuine,
+  # exactly-tied congener hit purely because its reference happened to be a
+  # long mitogenome deposit rather than a short standalone barcode
+  # submission.
+  hits <- make_raw_hits()
+
+  result <- .filter_blast_hits(
+    hits, min_score = 0, min_query_coverage = 0,
+    subject_len_range = c(100L, 300L), score_range = 100, max_hits = 100,
+    verbose = FALSE
+  )
+
+  long_subject_rows <- result[result$slen > 1000, ]
+  expect_gt(nrow(long_subject_rows), 0L)
+  expect_true(all(long_subject_rows$length <= 300))
 })
 
 test_that("max_hits safety cap limits per-query results", {
@@ -210,6 +240,133 @@ test_that("max_hits safety cap limits per-query results", {
   expect_lte(asv2_count, 2L)
 })
 
+make_raw_hits_dup_taxa <- function() {
+  # 6 hits, one query, 2 taxa: taxid 1000 (4 near-duplicate mitogenome
+  # deposits, simulating a heavily-resequenced species) and taxid 2000
+  # (2 hits, a real but different congener). Without a per-taxon cap,
+  # taxid 1000's redundant hits alone would fill a small max_hits budget.
+  data.frame(
+    qseqid   = rep("ASV_1", 6),
+    sseqid   = paste0("ref_", 1:6),
+    sacc     = paste0("ACC_", 1:6),
+    staxids  = c("1000", "1000", "1000", "1000", "2000", "2000"),
+    pident   = c(100, 100, 99.9, 99.8,   98, 97.5),
+    length   = rep(170L, 6),
+    slen     = rep(170L, 6),
+    qcovs    = rep(95, 6),
+    mismatch = rep(1L, 6),
+    gapopen  = rep(0L, 6),
+    evalue   = rep(1e-50, 6),
+    bitscore = rep(200, 6),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("max_hits_per_taxon caps hits per taxon before max_hits applies", {
+  hits <- make_raw_hits_dup_taxa()
+
+  result <- .filter_blast_hits(
+    hits, min_score = 0, min_query_coverage = 0,
+    subject_len_range = NULL, score_range = 100, max_hits = 3,
+    max_hits_per_taxon = 1L, verbose = FALSE
+  )
+
+  # Without the per-taxon cap, taxid 1000's 4 hits would fill max_hits = 3
+  # entirely and taxid 2000 would never appear. With max_hits_per_taxon = 1,
+  # each taxon contributes at most 1 hit, so taxid 2000 survives.
+  expect_true("2000" %in% result$staxids)
+  expect_equal(sum(result$staxids == "1000"), 1L)
+  expect_equal(sum(result$staxids == "2000"), 1L)
+})
+
+test_that("max_hits_per_taxon always keeps each taxon's own best hit", {
+  hits <- make_raw_hits_dup_taxa()
+
+  result <- .filter_blast_hits(
+    hits, min_score = 0, min_query_coverage = 0,
+    subject_len_range = NULL, score_range = 100, max_hits = 100,
+    max_hits_per_taxon = 1L, verbose = FALSE
+  )
+
+  taxid_1000_row <- result[result$staxids == "1000", ]
+  taxid_2000_row <- result[result$staxids == "2000", ]
+  expect_equal(taxid_1000_row$pident, 100)   # best of 100, 100, 99.9, 99.8
+  expect_equal(taxid_2000_row$pident, 98)    # best of 98, 97.5
+})
+
+test_that("max_hits_per_taxon = NULL preserves existing behavior (no cap)", {
+  hits <- make_raw_hits_dup_taxa()
+
+  result <- .filter_blast_hits(
+    hits, min_score = 0, min_query_coverage = 0,
+    subject_len_range = NULL, score_range = 100, max_hits = 100,
+    max_hits_per_taxon = NULL, verbose = FALSE
+  )
+
+  expect_equal(nrow(result), 6L)
+})
+
+test_that("blast_sequences rejects invalid max_hits_per_taxon", {
+  seq_df <- make_seq_df(1)
+  expect_error(blast_sequences(seq_df, max_hits_per_taxon = 0), "max_hits_per_taxon")
+  expect_error(blast_sequences(seq_df, max_hits_per_taxon = -1), "max_hits_per_taxon")
+  expect_error(blast_sequences(seq_df, max_hits_per_taxon = "3"), "max_hits_per_taxon")
+})
+
+test_that("max_hits_per_taxon groups by resolved species when staxids is NA (the real remote-BLAST case)", {
+  # Mirrors the real Ameiurus case: remote BLAST XML never populates a real
+  # staxids (see .parse_blast_xml()), so grouping must fall back to
+  # accession-resolved species names. 6 hits, one query: 4 near-duplicate
+  # "species A" mitogenome deposits (should collapse to 1 under the cap)
+  # and 2 real "species B" hits (should keep its own best).
+  hits <- data.frame(
+    qseqid   = rep("ASV_1", 6),
+    sseqid   = paste0("ref_", 1:6),
+    sacc     = paste0("ACC_", 1:6),
+    staxids  = NA_character_,
+    pident   = c(100, 100, 99.9, 99.8,   96, 95.5),
+    length   = rep(170L, 6),
+    slen     = rep(170L, 6),
+    qcovs    = rep(95, 6),
+    mismatch = rep(1L, 6),
+    gapopen  = rep(0L, 6),
+    evalue   = rep(1e-50, 6),
+    bitscore = rep(200, 6),
+    stringsAsFactors = FALSE
+  )
+
+  fake_tax_map <- data.frame(
+    accession = paste0("ACC_", 1:6),
+    genus     = rep("Genus", 6),
+    species   = c(rep("Genus species_a", 4), rep("Genus species_b", 2)),
+    stringsAsFactors = FALSE
+  )
+
+  testthat::local_mocked_bindings(
+    .resolve_taxonomy_by_acc = function(...) fake_tax_map,
+    .package = "TaxaMatch"
+  )
+
+  basic <- .filter_blast_hits(
+    hits, min_score = 0, min_query_coverage = 0, subject_len_range = NULL,
+    score_range = 100, max_hits = 100, verbose = FALSE, stage = "basic"
+  )
+  basic <- .attach_taxonomy(basic, ncbi_api_key = NULL, verbose = FALSE)
+  basic$.taxon_group <- basic$species
+
+  result <- .filter_blast_hits(
+    basic, min_score = 0, min_query_coverage = 0, subject_len_range = NULL,
+    score_range = 100, max_hits = 100, max_hits_per_taxon = 1L,
+    taxon_group_col = ".taxon_group", stage = "rest", verbose = FALSE
+  )
+
+  expect_equal(nrow(result), 2L)
+  expect_setequal(result$species, c("Genus species_a", "Genus species_b"))
+  # each surviving row is that species' own best-scoring hit
+  expect_equal(result$pident[result$species == "Genus species_a"], 100)
+  expect_equal(result$pident[result$species == "Genus species_b"], 96)
+})
+
 test_that("combined filters work together", {
   hits <- make_raw_hits()
 
@@ -221,7 +378,7 @@ test_that("combined filters work together", {
 
   expect_true(all(result$pident >= 90))
   expect_true(all(result$qcovs >= 85))
-  expect_true(all(result$slen >= 100 & result$slen <= 300))
+  expect_true(all(result$length >= 100 & result$length <= 300))
 
   for (q in unique(result$qseqid)) {
     qhits <- result[result$qseqid == q, ]

@@ -5,13 +5,13 @@
 \title{Tier Institution-Proximity Flags by Suspicion}
 \usage{
 flag_institution_candidates(
-  data,
+  occurrence_data,
   kingdom_col = "kingdom",
   suspicion_rules = NULL
 )
 }
 \arguments{
-\item{data}{A dataframe, typically the output of
+\item{occurrence_data}{A dataframe, typically the output of
 \code{TaxaFetch::filter_gbif_quality()}. Must contain
 \code{institution_flag} and \code{institution_type} (both added by that
 function when \code{flag_institution = TRUE}, its default).}
@@ -29,15 +29,15 @@ rule -- including every \code{"Museum"}, \code{"University"}, and
 -- gets \code{"ambiguous"}. Default rules (a first-pass heuristic, not a
 settled taxonomy -- override freely):
 \preformatted{
-  institution_type  kingdom   suspicion
-  Herbarium         Plantae   high
-  Herbarium         Fungi     high
-  Herbarium         <NA>      low
-  Botanic_garden    Plantae   high
-  Botanic_garden    <NA>      low
-  Zoo               Animalia  high
-  Zoo               <NA>      low
-  }
+institution_type  kingdom   suspicion
+Herbarium         Plantae   high
+Herbarium         Fungi     high
+Herbarium         <NA>      low
+Botanic_garden    Plantae   high
+Botanic_garden    <NA>      low
+Zoo               Animalia  high
+Zoo               <NA>      low
+}
 \code{"Museum"}/\code{"University"}/\code{"Research_centre"} are
 deliberately absent from the default rules -- real institutions of these
 types range from pure specimen archives to active field stations sited
@@ -46,7 +46,7 @@ and \code{institution_type} alone cannot tell those apart. That's exactly
 the case \code{\link{review_institution_flags}} exists for.}
 }
 \value{
-\code{data} with one additional column, \code{institution_suspicion}:
+\code{occurrence_data} with one additional column, \code{institution_suspicion}:
 \code{"high"}, \code{"low"}, or \code{"ambiguous"} for a flagged record
 (\code{institution_flag = TRUE}); \code{NA} for every other record
 (never checked -- mirrors \code{\link{flag_habitat_inconsistencies}}'s
@@ -66,7 +66,7 @@ plant is a real concern; a herbarium match for a fish essentially never is.
 This is a pure classification step -- no interaction, no rows removed or
 reordered, mirroring \code{\link{flag_habitat_inconsistencies}}'s role
 ahead of an interactive review gadget. It adds one column
-(\code{institution_suspicion}) and makes no other change to \code{data}.
+(\code{institution_suspicion}) and makes no other change to \code{occurrence_data}.
 }
 \examples{
 \dontrun{

@@ -44,7 +44,7 @@ habitat_lookup <- parse_hierarchical_habitat_response(
 ) #translate LLM output into a taxon by habitat table
 #add species-habitat associations to occurrence level data
 occurrences_with_habitat <- assign_habitat_biological(
-  data        = all_occurrences,
+  occurrence_data        = all_occurrences,
   habitats_df = habitat_lookup,
   threshold   = 0.5
 )

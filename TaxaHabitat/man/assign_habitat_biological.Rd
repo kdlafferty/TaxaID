@@ -5,7 +5,7 @@
 \title{Assign Habitat to Points Using Biological Consensus}
 \usage{
 assign_habitat_biological(
-  data,
+  occurrence_data,
   habitats_df,
   habitat_cols = NULL,
   point_id_col = "point_id",
@@ -16,7 +16,7 @@ assign_habitat_biological(
 )
 }
 \arguments{
-\item{data}{A dataframe of occurrence records. Must contain columns named
+\item{occurrence_data}{A dataframe of occurrence records. Must contain columns named
 by \code{point_id_col} and \code{taxon_col}.}
 
 \item{habitats_df}{A dataframe giving habitat weights for each species.
@@ -33,10 +33,10 @@ treated as a valid habitat column and propagated to \code{main_habitat}
 when it wins the consensus vote.}
 
 \item{point_id_col}{Character. Name of the point identifier column in
-\code{data}. Default \code{"point_id"}.}
+\code{occurrence_data}. Default \code{"point_id"}.}
 
 \item{taxon_col}{Character. Name of the taxon name column in both
-\code{data} and \code{habitats_df}. Default \code{"taxon_name"}.}
+\code{occurrence_data} and \code{habitats_df}. Default \code{"taxon_name"}.}
 
 \item{weight_by_abundance}{Logical. If \code{FALSE} (default), each species
 contributes equally to the point score regardless of how many occurrence
@@ -69,7 +69,7 @@ two-stage IUCN pipeline with the commit-at-confident-level prompt, which
 already discourages sub-0.1 weights by instruction.}
 }
 \value{
-The input \code{data} with two additional columns:
+The input \code{occurrence_data} with two additional columns:
 \describe{
 \item{main_habitat}{Character. The winning habitat label at each point,
 or \code{NA} if no habitat reached \code{threshold}.
@@ -110,23 +110,39 @@ is set to \code{"Other"} and \code{habitat_best_guess} is populated from the
 effective species count, making consensus harder to reach. Check coverage
 before running:
 \preformatted{
-mean(unique(data$taxon_name) \%in\% habitats_df$taxon_name)
+mean(unique(occurrence_data$taxon_name) \%in\% habitats_df$taxon_name)
 }
 }
 \examples{
-\dontrun{
-# hab_weights produced by parse_hierarchical_habitat_response()
+# occurrence_data: one row per detection, with a point identifier and taxon
+occurrence_data <- data.frame(
+  point_id   = c("pt1", "pt1", "pt2"),
+  taxon_name = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss")
+)
+
+# hab_weights: species-by-habitat weight table, e.g. from
+# parse_hierarchical_habitat_response()
+hab_weights <- data.frame(
+  taxon_name   = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
+  Marine       = c(1.0, 1.0, 0.5),
+  Freshwater   = c(0.0, 0.0, 0.5),
+  Terrestrial  = c(0.0, 0.0, 0.0),
+  Other_weight = c(0.0, 0.0, 0.0),
+  habitat_best_guess = c("", "", "")
+)
+
 result <- assign_habitat_biological(
-  data              = occurrence_data,
-  habitats_df       = hab_weights,
-  threshold         = 0.3,
+  occurrence_data     = occurrence_data,
+  habitats_df         = hab_weights,
+  threshold           = 0.3,
   weight_by_abundance = FALSE
 )
 
 # Points with no consensus
-result |> dplyr::filter(is.na(main_habitat)) |> dplyr::distinct(point_id)
+result[is.na(result$main_habitat), "point_id"]
 
-# Points where the scheme did not fit
+\dontrun{
+# Points where the scheme did not fit (dplyr shown for real workflows)
 result |> dplyr::filter(main_habitat == "Other") |>
   dplyr::distinct(point_id, habitat_best_guess)
 }

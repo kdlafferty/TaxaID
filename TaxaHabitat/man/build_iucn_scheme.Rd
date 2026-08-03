@@ -13,7 +13,7 @@ build_iucn_scheme(realm = NULL, l1 = "all", l2 = "none")
 groupings:
 \itemize{
 \item \code{"marine"}: Marine Neritic, Marine Oceanic, Marine Deep
-Ocean Floor, Marine Intertidal, Marine Coastal/Supralittoral
+Ocean Floor, Marine Intertidal, Marine Coastal/Supratidal
 \item \code{"freshwater"}: Wetlands (inland)
 \item \code{"terrestrial"}: Forest, Savanna, Shrubland, Grassland,
 Rocky Areas (inland), Caves and Subterranean Habitats, Desert,
@@ -61,11 +61,11 @@ available L1 groups and L2 subcategories at each level of filtering.
 \strong{Iterative discovery:} Call with broad filters first to see what is
 available, then narrow:
 \preformatted{
-build_iucn_scheme()                           # all 18 L1 groups
+build_iucn_scheme()                           # all 16 L1 groups (Other/Unknown excluded by default)
 build_iucn_scheme(realm = "marine")           # 5 marine L1 groups
-build_iucn_scheme(realm = "marine", l2 = "all")  # marine L1 + all 31 L2
+build_iucn_scheme(realm = "marine", l2 = "all")  # marine L1 + all 32 L2
 build_iucn_scheme(realm = "marine",
-  l2 = c("Rocky Subtidal", "Estuaries",
+  l2 = c("Subtidal Rock and Rocky Reefs", "Estuaries",
           "Macroalgal/Kelp"))                 # specific marine L2 + parent L1
 }
 
@@ -75,6 +75,17 @@ share an L1 group where one is assigned at L1 and another at L2 (which
 would create nested predictors in the model). For focused single-realm
 datasets, use \code{l1 = "none", l2 = "all"} to get a flat L2-only scheme,
 or \code{l2 = "none"} for a flat L1-only scheme.
+
+\strong{A common surprise:} \code{l1} defaults to \code{"all"}, so
+supplying \code{l2} \emph{without} also setting \code{l1 = "none"}
+returns BOTH an L1-only fallback row for every L1 group in the realm
+(\code{l2_name = NA}) AND the specific L2 rows you asked for -- e.g.
+\code{build_iucn_scheme(realm = "terrestrial", l2 = "Temperate")} returns
+all 8 terrestrial L1 groups as single-level rows PLUS 4 disambiguated
+\code{"Temperate (...)"} L2 rows (Forest/Shrubland/Grassland/Desert all
+have a "Temperate" subcategory). This is the documented mixed-scale
+behaviour above, not a bug -- but if you only want the L2 rows, pass
+\code{l1 = "none"} explicitly.
 
 \strong{Duplicate L2 names:} Some L2 names (e.g. "Boreal", "Temperate")
 appear under multiple L1 groups. When these are selected, the function
@@ -90,7 +101,7 @@ build_iucn_scheme(realm = "freshwater", l2 = "all")
 # Build a specific marine scheme with selected L2 subcategories
 scheme <- build_iucn_scheme(
   realm = "marine",
-  l2    = c("Rocky Subtidal", "Estuaries", "Macroalgal/Kelp",
+  l2    = c("Subtidal Rock and Rocky Reefs", "Estuaries", "Macroalgal/Kelp",
             "Subtidal Sandy", "Rocky Shoreline")
 )
 print(scheme)

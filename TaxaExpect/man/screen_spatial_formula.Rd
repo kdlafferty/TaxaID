@@ -19,9 +19,16 @@ Moran basis columns (B1 ... BK) already joined via
 \code{\link{compute_moran_basis}}.}
 
 \item{formula_full}{Formula. The full starting formula, including all
-Moran eigenvector terms and spatial gradient terms. Moran columns must
-be named \code{B1}, \code{B2}, ... and spatial gradient columns must be
-named \code{lat_r_s} and \code{lon_r_s}.}
+Moran eigenvector terms and spatial/covariate gradient terms. Moran
+columns must be named \code{B1}, \code{B2}, .... Gradient covariate
+columns (\code{lat_r_s}, \code{lon_r_s}, and any additional covariate
+passed to \code{\link{prepare_model_dataframe}}'s \code{covariates}
+argument, e.g. \code{depth_m_s}) are auto-detected from \code{data}'s
+own \code{scale_params} attribute (set by \code{prepare_model_dataframe}),
+so any covariate beyond the original two is screened identically --
+not just carried through unscreened. Falls back to
+\code{c("lat_r_s", "lon_r_s")} only if \code{data} has no
+\code{scale_params} attribute (e.g. hand-built data in older code/tests).}
 
 \item{sd_threshold}{Numeric. Absolute logit-scale standard deviation
 threshold for spatial predictor screening (compared directly against

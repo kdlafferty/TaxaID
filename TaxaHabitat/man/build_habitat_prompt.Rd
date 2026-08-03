@@ -90,10 +90,10 @@ species' actual habitat for scheme review.
 \strong{Pipeline:}
 \preformatted{
 prompt   <- build_habitat_prompt(taxa_in_data)
-raw_text <- prompt_anthropic_api(prompt)   # Path 1
+raw_text <- TaxaTools::prompt_api(prompt)      # Path 1
 # OR
-prompt_manual(prompt)                      # Path 3
-raw_text <- read_llm_response("habitat_response_1.txt")
+TaxaTools::prompt_manual(prompt)               # Path 3
+raw_text <- TaxaTools::read_llm_response("habitat_response_1.txt")
 
 hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa_in_data,
                                                 habitat_scheme = prompt)
@@ -106,8 +106,15 @@ not concatenate prompts before submitting.
 }
 \examples{
 taxa <- c("Gadus morhua", "Sebastes mystinus", "Oncorhynchus mykiss")
+
+# Default 3-category scheme (Marine/Freshwater/Terrestrial)
 prompt <- build_habitat_prompt(taxa)
 print(prompt)
+
+# A custom two-level scheme (see example_habitat_scheme for the required
+# l1_name/l2_name/l2_code/realm shape)
+custom_prompt <- build_habitat_prompt(taxa, habitat_scheme = example_habitat_scheme)
+print(custom_prompt)
 
 \dontrun{
 # View the raw prompt text for the first chunk

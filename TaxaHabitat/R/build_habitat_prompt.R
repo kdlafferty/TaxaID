@@ -8,24 +8,44 @@
 #   l1_code  -- Level 1 numeric code (character, e.g. "9")
 #   l1_name  -- Level 1 label (e.g. "Marine Neritic")
 #   l2_code  -- Level 2 numeric code (character, e.g. "9.1")
-#   l2_name  -- Level 2 label (e.g. "Seagrass (Beds)")
+#   l2_name  -- Level 2 label (e.g. "Seagrass (submerged)"); NA for the four
+#               L1 groups that have no real L2 subcategories in the source
+#               scheme (Rocky Areas (inland), Introduced Vegetation, Other,
+#               Unknown)
+#
+# Audited row-by-row against the source document 2026-08-01 after a code
+# review flagged 1.3/3.3 as mislabeled "Subalpine" (should be "Subantarctic"/
+# "Boreal" respectively) and asked whether the pattern continued elsewhere.
+# It did: Shrubland's whole 3.1-3.3 order was wrong (real order is Subarctic/
+# Subantarctic/Boreal, not Forest's Boreal/Subarctic/Subantarctic order);
+# Grassland's 4.3 was "Subalpine/Alpine" instead of "Subantarctic"; the whole
+# Marine Neritic (9.x) block was scrambled with several fabricated entries;
+# Marine Deep Ocean Floor was missing "Seamount" (real 11.5) entirely and had
+# a wrong Hadal-zone depth threshold; Wetlands (Inland) had a fabricated 19th
+# entry and a fabricated 5.18; Artificial - Aquatic had three fabricated
+# entries (15.10-15.12) and was missing the real 15.13; Rocky Areas (inland),
+# Introduced Vegetation, Other, and Unknown all had fabricated L2
+# subcategories despite being L1-only in the real scheme. See each inline
+# comment below for the specific fix. Verified against the real IUCN Habitats
+# Classification Scheme v3.1 source document (fetched directly, not from
+# memory) before any value below was changed.
 # ==============================================================================
 
 .iucn_habitat_lookup <- data.frame(
   l1_code = c(
-    # 1. Forest (9 subcategories)
+    # 1. Forest & Woodland (9 subcategories)
     rep("1", 9),
     # 2. Savanna (2)
     rep("2", 2),
     # 3. Shrubland (8)
     rep("3", 8),
-    # 4. Grassland (7)
+    # 4. Native Grassland (7)
     rep("4", 7),
-    # 5. Wetlands - Inland (19)
-    rep("5", 19),
-    # 6. Rocky Areas (2)
-    rep("6", 2),
-    # 7. Caves and Subterranean (2)
+    # 5. Wetlands (Inland) (18)
+    rep("5", 18),
+    # 6. Rocky Areas (Inland) -- L1-only in the real scheme, no L2 subcategories
+    rep("6", 1),
+    # 7. Caves and Subterranean Habitats (2)
     rep("7", 2),
     # 8. Desert (3)
     rep("8", 3),
@@ -33,21 +53,21 @@
     rep("9", 10),
     # 10. Marine Oceanic (4)
     rep("10", 4),
-    # 11. Marine Deep Ocean Floor (5)
-    rep("11", 5),
+    # 11. Marine Deep Ocean Floor (Benthic and Demersal) (6)
+    rep("11", 6),
     # 12. Marine Intertidal (7)
     rep("12", 7),
-    # 13. Marine Coastal/Supralittoral (5)
+    # 13. Marine Coastal/Supratidal (5)
     rep("13", 5),
     # 14. Artificial - Terrestrial (6)
     rep("14", 6),
-    # 15. Artificial - Aquatic (12)
-    rep("15", 12),
-    # 16. Introduced Vegetation (2)
-    rep("16", 2),
-    # 17. Other (1)
+    # 15. Artificial - Aquatic (13)
+    rep("15", 13),
+    # 16. Introduced Vegetation -- L1-only, no L2 subcategories
+    rep("16", 1),
+    # 17. Other -- L1-only, no L2 subcategories
     rep("17", 1),
-    # 18. Unknown (1)
+    # 18. Unknown -- L1-only, no L2 subcategories
     rep("18", 1)
   ),
   l1_name = c(
@@ -55,18 +75,18 @@
     rep("Savanna", 2),
     rep("Shrubland", 8),
     rep("Grassland", 7),
-    rep("Wetlands (inland)", 19),
-    rep("Rocky Areas (inland)", 2),
+    rep("Wetlands (inland)", 18),
+    rep("Rocky Areas (inland)", 1),
     rep("Caves and Subterranean Habitats", 2),
     rep("Desert", 3),
     rep("Marine Neritic", 10),
     rep("Marine Oceanic", 4),
-    rep("Marine Deep Ocean Floor", 5),
+    rep("Marine Deep Ocean Floor", 6),
     rep("Marine Intertidal", 7),
-    rep("Marine Coastal/Supralittoral", 5),
+    rep("Marine Coastal/Supratidal", 5),
     rep("Artificial - Terrestrial", 6),
-    rep("Artificial - Aquatic", 12),
-    rep("Introduced Vegetation", 2),
+    rep("Artificial - Aquatic", 13),
+    rep("Introduced Vegetation", 1),
     rep("Other", 1),
     rep("Unknown", 1)
   ),
@@ -81,9 +101,9 @@
     "4.1","4.2","4.3","4.4","4.5","4.6","4.7",
     # Wetlands (inland)
     "5.1","5.2","5.3","5.4","5.5","5.6","5.7","5.8","5.9",
-    "5.10","5.11","5.12","5.13","5.14","5.15","5.16","5.17","5.18","5.19",
-    # Rocky Areas
-    "6.1","6.2",
+    "5.10","5.11","5.12","5.13","5.14","5.15","5.16","5.17","5.18",
+    # Rocky Areas (inland) -- no L2 code in the real scheme
+    NA_character_,
     # Caves
     "7.1","7.2",
     # Desert
@@ -93,26 +113,26 @@
     # Marine Oceanic
     "10.1","10.2","10.3","10.4",
     # Marine Deep Ocean Floor
-    "11.1","11.2","11.3","11.4","11.5",
+    "11.1","11.2","11.3","11.4","11.5","11.6",
     # Marine Intertidal
     "12.1","12.2","12.3","12.4","12.5","12.6","12.7",
-    # Marine Coastal/Supralittoral
+    # Marine Coastal/Supratidal
     "13.1","13.2","13.3","13.4","13.5",
     # Artificial - Terrestrial
     "14.1","14.2","14.3","14.4","14.5","14.6",
     # Artificial - Aquatic
     "15.1","15.2","15.3","15.4","15.5","15.6",
-    "15.7","15.8","15.9","15.10","15.11","15.12",
-    # Introduced Vegetation
-    "16.1","16.2",
-    # Other
-    "17.0",
-    # Unknown
-    "18.0"
+    "15.7","15.8","15.9","15.10","15.11","15.12","15.13",
+    # Introduced Vegetation -- no L2 code in the real scheme
+    NA_character_,
+    # Other -- no L2 code in the real scheme
+    NA_character_,
+    # Unknown -- no L2 code in the real scheme
+    NA_character_
   ),
   l2_name = c(
     # Forest
-    "Boreal", "Subarctic", "Subalpine",
+    "Boreal", "Subarctic", "Subantarctic",
     "Temperate", "Subtropical/Tropical Dry",
     "Subtropical/Tropical Moist Lowland",
     "Subtropical/Tropical Mangrove Above High Tide",
@@ -120,17 +140,24 @@
     "Subtropical/Tropical Moist Montane",
     # Savanna
     "Dry", "Moist",
-    # Shrubland
-    "Boreal", "Subarctic", "Subalpine", "Temperate",
+    # Shrubland -- NOTE: the real IUCN order for Shrubland's first three
+    # subcategories is Subarctic/Subantarctic/Boreal, NOT the Boreal/
+    # Subarctic/Subantarctic order Forest uses. Verified directly against
+    # the IUCN Habitats Classification Scheme v3.1 source document.
+    "Subarctic", "Subantarctic", "Boreal", "Temperate",
     "Subtropical/Tropical Dry", "Subtropical/Tropical Moist",
     "Subtropical/Tropical High Altitude",
     "Mediterranean-type Shrubby Vegetation",
     # Grassland
-    "Tundra", "Subarctic", "Subalpine/Alpine", "Temperate",
+    "Tundra", "Subarctic", "Subantarctic", "Temperate",
     "Subtropical/Tropical Dry",
     "Subtropical/Tropical Seasonally Wet/Flooded",
     "Subtropical/Tropical High Altitude",
-    # Wetlands (inland)
+    # Wetlands (inland) -- 18 real subcategories (5.1-5.18); a fabricated
+    # 19th entry ("Ephemeral Saline/Brackish/Alkaline Lakes") that does not
+    # exist in the real scheme has been removed, and the real 5.18 ("Karst
+    # and Other Subterranean Inland Aquatic Systems") restored in place of
+    # a fabricated "Rocky Freshwater Rivers (rapids, falls)".
     "Permanent Rivers/Streams/Creeks",
     "Seasonal/Intermittent Rivers/Streams/Creeks",
     "Shrub Dominated Wetlands",
@@ -146,292 +173,99 @@
     "Permanent Inland Deltas",
     "Permanent Saline/Brackish/Alkaline Lakes",
     "Seasonal/Intermittent Saline/Brackish/Alkaline Lakes",
-    "Ephemeral Saline/Brackish/Alkaline Lakes",
     "Permanent Saline/Brackish/Alkaline Marshes",
     "Seasonal/Intermittent Saline/Brackish/Alkaline Marshes",
-    "Rocky Freshwater Rivers (rapids, falls)",
-    # Rocky Areas
-    "Inland Cliffs and Outcrops", "Scree and Talus",
+    "Karst and Other Subterranean Inland Aquatic Systems",
+    # Rocky Areas (inland) -- L1-only in the real scheme (no numbered L2
+    # subcategories; the real document lists "inland cliffs, mountain
+    # peaks, talus, feldmark" only as prose examples). The two fabricated
+    # L2 rows previously here ("Inland Cliffs and Outcrops", "Scree and
+    # Talus") did not exist in the real scheme and have been removed.
+    NA_character_,
     # Caves
-    "Caves", "Other Subterranean Habitats",
+    "Dry Caves", "Other Dry Subterranean Habitats",
     # Desert
     "Hot", "Temperate", "Cold",
-    # Marine Neritic
-    "Seagrass (Beds)", "Macroalgal/Kelp",
-    "Coral Reef", "Rocky Subtidal",
-    "Subtidal Sandy", "Subtidal Sandy-Mud",
-    "Subtidal Cave and Overhangs",
-    "Pelagic (Supercolumnar)",
-    "Seamounts and Knolls",
+    # Marine Neritic -- NOTE: this entire block was previously scrambled
+    # relative to the real 9.1-9.10 codes (verified directly against the
+    # IUCN source document), with several entries fabricated outright
+    # ("Subtidal Cave and Overhangs", "Pelagic (Supercolumnar)",
+    # "Seamounts and Knolls" -- Seamount is actually real code 11.5, under
+    # Marine Deep Ocean Floor, not Marine Neritic). Rebuilt in the real
+    # 9.1-9.10 order.
+    "Pelagic",
+    "Subtidal Rock and Rocky Reefs",
+    "Subtidal Loose Rock/Pebble/Gravel",
+    "Subtidal Sandy",
+    "Subtidal Sandy-Mud",
+    "Subtidal Muddy",
+    "Macroalgal/Kelp",
+    "Coral Reef",
+    "Seagrass (submerged)",
     "Estuaries",
     # Marine Oceanic
     "Epipelagic (0-200m)", "Mesopelagic (200-1000m)",
-    "Bathypelagic (1000-4000m)", "Abyssopelagic (>4000m)",
-    # Marine Deep Ocean Floor
+    "Bathypelagic (1000-4000m)", "Abyssopelagic (4000-6000m)",
+    # Marine Deep Ocean Floor -- real 11.3 is "Abyssal Mountain/Hills", not
+    # "Seamounts and Knolls (bathyal)"; real 11.4 ("Hadal/Deep Sea Trench")
+    # starts at >6000m, not >4000m; "Seamount" is its own real code, 11.5,
+    # previously missing entirely.
     "Continental Slope/Bathyal Zone (200-4000m)",
     "Abyssal Plain",
-    "Seamounts and Knolls (bathyal)",
-    "Hadal/Deep Trenches (>4000m)",
-    "Hydrothermal Vents/Cold Seeps",
-    # Marine Intertidal
+    "Abyssal Mountain/Hills",
+    "Hadal/Deep Sea Trench (>6000m)",
+    "Seamount",
+    "Deep Sea Vents (Rifts/Seeps)",
+    # Marine Intertidal -- real 12.4 is "Mud Shoreline and Intertidal Mud
+    # Flats"; "Salt Flats" is not part of this real category.
     "Rocky Shoreline",
     "Sandy Shoreline and Beaches",
     "Shingle and Pebble Shoreline",
-    "Mud Flats and Salt Flats",
+    "Mud Shoreline and Intertidal Mud Flats",
     "Salt Marshes (Emergent Grasses)",
     "Tidepools",
     "Mangrove Submerged Roots",
-    # Marine Coastal/Supralittoral
+    # Marine Coastal/Supratidal
     "Sea Cliffs and Rocky Offshore Islands",
     "Coastal Caves/Karst",
     "Coastal Sand Dunes",
     "Coastal Brackish/Saline Lagoons",
     "Coastal Freshwater Lakes",
-    # Artificial - Terrestrial
+    # Artificial - Terrestrial -- real 14.6 keeps its "Subtropical/
+    # Tropical" qualifier (unlike the L1-redundant suffixes stripped
+    # elsewhere in this table, this qualifier is substantive, not
+    # redundant with the "Artificial - Terrestrial" L1 name).
     "Arable Land", "Pastureland", "Plantations",
     "Rural Gardens", "Urban Areas",
-    "Heavily Degraded Former Forest",
-    # Artificial - Aquatic
+    "Subtropical/Tropical Heavily Degraded Former Forest",
+    # Artificial - Aquatic -- real 15.10-15.12 were previously fabricated
+    # ("Marine and Freshwater (flooded mines)", "Marine - Littoral (Tidal)
+    # Areas", "Marinas, Harbours, Jetties"); real 15.13 ("Mari/Brackish-
+    # culture Ponds") was missing entirely. Rebuilt to match the real
+    # 15.1-15.13 codes.
     "Water Storage Areas (>8ha)", "Ponds (<8ha)",
     "Aquaculture Ponds", "Salt Exploitation Sites",
     "Excavations (open)", "Wastewater Treatment Areas",
     "Irrigated Land", "Seasonally Flooded Agricultural Land",
     "Canals and Drainage Channels",
-    "Marine and Freshwater (flooded mines)",
-    "Marine - Littoral (Tidal) Areas",
-    "Marinas, Harbours, Jetties",
-    # Introduced Vegetation
-    "Planted Forest (monocultures)",
-    "Other Managed/Introduced Vegetation",
-    # Other
-    "Other",
-    # Unknown
-    "Unknown"
+    "Karst and Other Subterranean Hydrological Systems",
+    "Marine Anthropogenic Structures",
+    "Mariculture Cages",
+    "Mari/Brackish-culture Ponds",
+    # Introduced Vegetation -- L1-only in the real scheme ("No type
+    # specified"). The two fabricated L2 rows previously here ("Planted
+    # Forest (monocultures)", "Other Managed/Introduced Vegetation") did
+    # not exist in the real scheme and have been removed.
+    NA_character_,
+    # Other -- L1-only in the real scheme; the fabricated "17.0"/"Other"
+    # L2 pseudo-row has been removed.
+    NA_character_,
+    # Unknown -- L1-only in the real scheme; the fabricated "18.0"/
+    # "Unknown" L2 pseudo-row has been removed.
+    NA_character_
   ),
   stringsAsFactors = FALSE
 )
-
-
-# ==============================================================================
-# Internal helper: collapse IUCN L2 habitat assignments to a model-ready
-# Habitat factor with an appropriate number of levels.
-#
-# Algorithm:
-#   1. Join L1 onto each species record from .iucn_habitat_lookup.
-#   2. Count the number of unique grid cells with detections per L2 category.
-#   3. Any L2 below min_cells is collapsed to its L1 parent label.
-#   4. After collapsing, any L1 still below min_cells is flagged in the
-#      merge_log but NOT silently dropped -- the user decides.
-#   5. Returns the habitat_tbl with a new `Habitat` column and a `merge_log`
-#      data.frame attribute recording every merge and the cell counts.
-#
-# Called by assign_habitat_llm() when hierarchical = TRUE.
-# @noRd
-# ==============================================================================
-
-.collapse_to_model_habitats <- function(habitat_tbl,
-                                         occurrence_data,
-                                         taxon_col  = "taxon_name",
-                                         grid_col   = "grid_id",
-                                         min_cells  = 5L,
-                                         max_categories = 9L,
-                                         habitat_scheme = NULL) {
-
-  scheme <- .validate_habitat_scheme(habitat_scheme)
-
-  # --- Single-level scheme: nothing to collapse --------------------------------
-  if (!.is_two_level(scheme)) {
-    message(".collapse_to_model_habitats: single-level scheme detected -- ",
-            "no L2 \u2192 L1 collapsing performed. Returning data unchanged.")
-    return(habitat_tbl)
-  }
-
-  # --- Determine code column: IUCN uses IUCN_L2_code; custom uses habitat_code -
-  code_col <- if (.is_iucn_scheme(scheme)) "IUCN_L2_code" else "habitat_code"
-  if (!code_col %in% names(habitat_tbl)) {
-    # Backward compat: if expected column absent, try the other known name.
-    # Only overwrite if the fallback actually exists -- never set code_col to NA.
-    fallback <- intersect(c("IUCN_L2_code", "habitat_code"), names(habitat_tbl))[1]
-    if (!is.na(fallback)) code_col <- fallback
-    # If neither exists, code_col keeps its expected name so the error below is useful.
-  }
-
-  # --- Input checks -----------------------------------------------------------
-  required_hab  <- c(taxon_col, code_col)
-  required_occ  <- c(taxon_col, grid_col)
-  missing_hab   <- setdiff(required_hab,  names(habitat_tbl))
-  missing_occ   <- setdiff(required_occ,  names(occurrence_data))
-
-  if (length(missing_hab) > 0) {
-    stop(".collapse_to_model_habitats: habitat_tbl missing columns: ",
-         paste(missing_hab, collapse = ", "),
-         "\nDid you run parse_hierarchical_habitat_response() correctly?")
-  }
-  if (length(missing_occ) > 0) {
-    stop(".collapse_to_model_habitats: occurrence_data missing columns: ",
-         paste(missing_occ, collapse = ", "))
-  }
-
-  # --- Step 1: attach L1 info -------------------------------------------------
-  # Build a lookup from the scheme: l2_name -> l1_name
-  scheme_l2 <- scheme[!is.na(scheme$l2_name), ]
-
-  if (.is_iucn_scheme(scheme)) {
-    # IUCN: join via numeric code
-    hab_with_l1 <- merge(
-      habitat_tbl,
-      .iucn_habitat_lookup[, c("l2_code", "l2_name", "l1_code", "l1_name")],
-      by.x = code_col, by.y = "l2_code",
-      all.x = TRUE
-    )
-    unrecognised <- unique(hab_with_l1[[taxon_col]][is.na(hab_with_l1$l1_code)])
-    if (length(unrecognised) > 0) {
-      warning(sprintf(
-        ".collapse_to_model_habitats: %d species have unrecognised code values: %s. Labelled 'Unknown'.",
-        length(unrecognised), paste(head(unrecognised, 5), collapse = ", ")
-      ), call. = FALSE)
-      hab_with_l1$l1_name[is.na(hab_with_l1$l1_code)] <- "Unknown"
-      hab_with_l1$l1_code[is.na(hab_with_l1$l1_code)] <- "18"
-    }
-    l2_col_in_merged <- "l2_name"
-    l1_col_in_merged <- "l1_name"
-  } else {
-    # Custom: join via habitat_name -> l1_name
-    name_col <- if ("habitat_name" %in% names(habitat_tbl)) "habitat_name" else "Habitat"
-    hab_with_l1 <- merge(
-      habitat_tbl,
-      scheme_l2[, c("l2_name", "l1_name")],
-      by.x = name_col, by.y = "l2_name",
-      all.x = TRUE
-    )
-    hab_with_l1$l1_code <- NA_character_   # no numeric codes for custom schemes
-    unrecognised <- unique(hab_with_l1[[taxon_col]][is.na(hab_with_l1$l1_name)])
-    if (length(unrecognised) > 0) {
-      warning(sprintf(
-        ".collapse_to_model_habitats: %d species have unrecognised habitat_name values: %s. Labelled 'Unknown'.",
-        length(unrecognised), paste(head(unrecognised, 5), collapse = ", ")
-      ), call. = FALSE)
-      hab_with_l1$l1_name[is.na(hab_with_l1$l1_name)] <- "Unknown"
-    }
-    l2_col_in_merged <- name_col
-    l1_col_in_merged <- "l1_name"
-  }
-
-  # --- Step 2: count unique grids with detections per L2 ----------------------
-  occ_hab <- merge(
-    occurrence_data[, c(taxon_col, grid_col)],
-    hab_with_l1[, unique(c(taxon_col, code_col, l2_col_in_merged, "l1_code", l1_col_in_merged))],
-    by = taxon_col,
-    all.x = FALSE
-  )
-
-  # Count unique grids per L2 category
-  l2_grid_counts <- tapply(
-    occ_hab[[grid_col]],
-    occ_hab[[l2_col_in_merged]],
-    function(g) length(unique(g))
-  )
-  l2_grid_counts <- data.frame(
-    l2_val     = names(l2_grid_counts),
-    grid_cells = as.integer(l2_grid_counts),
-    stringsAsFactors = FALSE
-  )
-
-  # --- Step 3: decide final Habitat label -------------------------------------
-  merge_log <- data.frame(
-    l2_code       = character(0),
-    l2_name       = character(0),
-    l1_code       = character(0),
-    l1_name       = character(0),
-    grid_cells_l2 = integer(0),
-    action        = character(0),
-    stringsAsFactors = FALSE
-  )
-
-  hab_with_l1$Habitat <- NA_character_
-
-  for (i in seq_len(nrow(hab_with_l1))) {
-    l2_val <- hab_with_l1[[l2_col_in_merged]][i]
-    l1_val <- hab_with_l1[[l1_col_in_merged]][i]
-    # Guard: if l2_val is NA (unrecognised code), == comparison returns NA vector
-    # rather than FALSE -- always treat as 0 grid cells.
-    cnt <- if (is.na(l2_val)) {
-      0L
-    } else {
-      hits <- l2_grid_counts$grid_cells[l2_grid_counts$l2_val == l2_val]
-      if (length(hits) == 0L) 0L else hits[1L]
-    }
-
-    if (cnt >= min_cells) {
-      # Keep at L2: prefix with code if available
-      code_val <- if (code_col %in% names(hab_with_l1)) hab_with_l1[[code_col]][i] else NA
-      hab_with_l1$Habitat[i] <- if (!is.na(code_val) && nzchar(code_val) && !identical(code_val, l2_val)) {
-        paste0(code_val, " ", l2_val)
-      } else {
-        l2_val
-      }
-      action <- "kept_as_L2"
-    } else {
-      hab_with_l1$Habitat[i] <- l1_val
-      action <- paste0("collapsed_to_L1 (", cnt, " cells < ", min_cells, ")")
-    }
-
-    merge_log <- rbind(merge_log, data.frame(
-      l2_code       = if (code_col %in% names(hab_with_l1)) hab_with_l1[[code_col]][i] else l2_val,
-      l2_name       = l2_val,
-      l1_code       = if ("l1_code" %in% names(hab_with_l1)) hab_with_l1$l1_code[i] else NA_character_,
-      l1_name       = l1_val,
-      grid_cells_l2 = cnt,
-      action        = action,
-      stringsAsFactors = FALSE
-    ))
-  }
-  merge_log <- unique(merge_log)
-
-  # --- Step 4: check category count; warn if still too many ------------------
-  n_cats <- length(unique(hab_with_l1$Habitat))
-
-  if (n_cats > max_categories) {
-    warning(sprintf(
-      ".collapse_to_model_habitats: %d habitat categories remain after L2 -> L1 collapsing (max_categories = %d). Consider raising min_cells or manually merging similar L1 categories before modelling.",
-      n_cats, max_categories
-    ), call. = FALSE)
-  }
-
-  # --- Step 5: flag any L1 categories that are themselves sparse -------------
-  # Count unique grids per final Habitat label
-  final_counts <- tapply(
-    occ_hab[[grid_col]],
-    {
-      # Map through updated hab_with_l1 to get final Habitat per occ row
-      lookup <- setNames(hab_with_l1$Habitat, hab_with_l1[[taxon_col]])
-      lookup[occ_hab[[taxon_col]]]
-    },
-    function(g) length(unique(g))
-  )
-
-  sparse_cats <- names(final_counts)[final_counts < min_cells]
-  if (length(sparse_cats) > 0) {
-    warning(sprintf(
-      ".collapse_to_model_habitats: %d habitat category/categories have fewer than %d grid cells even after L1 collapsing: %s. These may cause model instability. Inspect the merge_log attribute for details.",
-      length(sparse_cats), min_cells,
-      paste(sparse_cats, collapse = ", ")
-    ), call. = FALSE)
-  }
-
-  # Attach merge log and category counts as attributes
-  hab_out <- hab_with_l1
-  attr(hab_out, "merge_log")     <- merge_log
-  attr(hab_out, "final_counts")  <- sort(final_counts, decreasing = TRUE)
-  attr(hab_out, "n_categories")  <- n_cats
-
-  message(sprintf(
-    ".collapse_to_model_habitats: %d L2 categories -> %d final Habitat levels (min_cells = %d).",
-    length(unique(hab_with_l1[[l2_col_in_merged]])), n_cats, min_cells
-  ))
-
-  hab_out
-}
 
 
 # ==============================================================================
@@ -511,10 +345,10 @@
 #' \strong{Pipeline:}
 #' \preformatted{
 #' prompt   <- build_habitat_prompt(taxa_in_data)
-#' raw_text <- prompt_anthropic_api(prompt)   # Path 1
+#' raw_text <- TaxaTools::prompt_api(prompt)      # Path 1
 #' # OR
-#' prompt_manual(prompt)                      # Path 3
-#' raw_text <- read_llm_response("habitat_response_1.txt")
+#' TaxaTools::prompt_manual(prompt)               # Path 3
+#' raw_text <- TaxaTools::read_llm_response("habitat_response_1.txt")
 #'
 #' hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa_in_data,
 #'                                                 habitat_scheme = prompt)
@@ -532,8 +366,15 @@
 #'
 #' @examples
 #' taxa <- c("Gadus morhua", "Sebastes mystinus", "Oncorhynchus mykiss")
+#'
+#' # Default 3-category scheme (Marine/Freshwater/Terrestrial)
 #' prompt <- build_habitat_prompt(taxa)
 #' print(prompt)
+#'
+#' # A custom two-level scheme (see example_habitat_scheme for the required
+#' # l1_name/l2_name/l2_code/realm shape)
+#' custom_prompt <- build_habitat_prompt(taxa, habitat_scheme = example_habitat_scheme)
+#' print(custom_prompt)
 #'
 #' \dontrun{
 #' # View the raw prompt text for the first chunk
@@ -586,6 +427,12 @@ build_habitat_prompt <- function(
     )
   }
 
+  # Validate and normalise the habitat_scheme dataframe right after the
+  # NULL/"IUCN_L1" shortcuts are resolved, and before any taxon_list work --
+  # a malformed custom scheme (missing l1_name, bad realm values, duplicate
+  # l2_name) should fail fast rather than after paying for taxon_list
+  # deduplication/messaging first.
+  scheme <- .validate_habitat_scheme(habitat_scheme)
 
   taxon_list <- trimws(taxon_list)
   taxon_list <- taxon_list[nzchar(taxon_list)]
@@ -599,10 +446,6 @@ build_habitat_prompt <- function(
     ))
   }
   chunk_size <- as.integer(chunk_size)
-
-  # Validate and normalise the habitat_scheme dataframe.
-  # NULL and "IUCN_L1" have already been converted to dataframes above.
-  scheme <- .validate_habitat_scheme(habitat_scheme)
 
   # Derive the ordered vector of habitat column names the LLM will produce.
   # Mixed schemes (from build_iucn_scheme with both L1 and L2 rows):
@@ -724,7 +567,17 @@ print.habitat_prompt <- function(x, ...) {
     "Do not use Markdown code fences. ",
     "Do not include any preamble, explanation, or closing text. ",
     "The first line must be the header row. ",
-    "Use 2 decimal places for all weights.\n",
+    "Use 2 decimal places for all weights. ",
+    if (!is.null(geographic_context)) {
+      paste0(
+        "If habitat_best_guess or ecoregion_best_guess contains a comma, "
+      )
+    } else {
+      "If habitat_best_guess contains a comma, "
+    },
+    "wrap the ENTIRE field value in double quotes, standard CSV convention ",
+    "(e.g. \"tidal marsh, brackish water\") -- otherwise the comma will be ",
+    "misread as a column separator.\n",
     if (!is.null(geographic_context)) {
       paste0(
         "9. ecoregion_best_guess: Name the most specific recognized ecoregion ",
@@ -763,10 +616,19 @@ print.habitat_prompt <- function(x, ...) {
   two_level <- .is_two_level(scheme)
 
   if (two_level) {
+    # A mixed-scale scheme (e.g. from build_iucn_scheme() with both L1
+    # fallback rows and L2 rows present) has l2_name = NA on its L1-only
+    # rows -- display_name falls back to l1_name for those specific rows
+    # so the prompt shows the real group name instead of literal "NA"
+    # (confirmed as a real, reproducible bug: build_iucn_scheme(realm =
+    # "terrestrial", l2 = "Temperate") followed by build_habitat_prompt()
+    # previously sent "NA  [Forest]", "NA  [Savanna]", etc. to the LLM for
+    # every L1 fallback row).
+    display_name <- ifelse(is.na(scheme$l2_name), scheme$l1_name, scheme$l2_name)
     hab_block <- paste(
       sprintf("  %-20s %s  [%s]",
               ifelse(is.na(scheme$l2_code), "", scheme$l2_code),
-              scheme$l2_name,
+              display_name,
               scheme$l1_name),
       collapse = "\n"
     )
@@ -877,13 +739,26 @@ print.habitat_prompt <- function(x, ...) {
 }
 
 
-#' Is a scheme the default IUCN lookup?
-#' Checked by presence of l2_code column with IUCN-style codes.
+#' Is a scheme derived from the IUCN lookup?
+#' Checked by presence of an l2_code column populated with IUCN-style
+#' numeric codes ("9.1", "1.3", etc.).
+#'
+#' Previously also checked \code{identical(scheme, .iucn_habitat_lookup)}
+#' and required an \code{l1_code} column. Both were dead in practice: every
+#' scheme reaching this function has already passed through
+#' \code{.validate_habitat_scheme()}, which subsets to
+#' \code{c("l1_name", "l2_code", "l2_name", "realm")} and never preserves
+#' \code{l1_code} -- so \code{identical()} against the raw (differently-
+#' shaped) \code{.iucn_habitat_lookup} could never succeed, and the
+#' \code{l1_code} membership check could never be TRUE either. Confirmed via
+#' \code{build_iucn_scheme()}'s own \code{@return} (only
+#' \code{l1_name}/\code{l2_name}/\code{l2_code}/\code{realm}) and a grep of
+#' every call site. The \code{l2_code} pattern check below is the only part
+#' that was ever actually reachable.
 #' @noRd
 .is_iucn_scheme <- function(scheme) {
-  identical(scheme, .iucn_habitat_lookup) ||
-    (all(c("l1_code", "l2_code", "l1_name", "l2_name") %in% names(scheme)) &&
-       any(grepl("^[0-9]+\\.[0-9]+$", scheme$l2_code, perl = TRUE)))
+  all(c("l2_code", "l1_name", "l2_name") %in% names(scheme)) &&
+    any(grepl("^[0-9]+\\.[0-9]+$", scheme$l2_code, perl = TRUE))
 }
 
 
@@ -921,7 +796,7 @@ print.habitat_prompt <- function(x, ...) {
 #'
 #' # Use with the full pipeline:
 #' prompt   <- build_habitat_prompt(taxa, habitat_scheme = my_scheme)
-#' raw_text <- prompt_anthropic_api(prompt)
+#' raw_text <- TaxaTools::prompt_api(prompt)
 #' hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa,
 #'                                                 habitat_scheme = prompt)
 #' flagged  <- flag_habitat_inconsistencies(occ, habitat_scheme = prompt)
@@ -969,15 +844,31 @@ example_habitat_scheme <- data.frame(
 
 
 #' Map IUCN L1 group names to realm values for flag_habitat_inconsistencies
+#'
+#' Only "marine", "freshwater", and "terrestrial" are valid values for the
+#' \code{realm} column (see \code{.validate_habitat_scheme()}'s
+#' \code{valid_realms}) -- there is no "artificial" realm value, since
+#' Artificial - Aquatic genuinely spans both marine (e.g. Mariculture Cages)
+#' and freshwater (e.g. Ponds) use cases and cannot be resolved from the L1
+#' group name alone. That one group -- along with "Other" and "Unknown",
+#' which have no real-world realm at all -- is deliberately left \code{NA};
+#' \code{flag_habitat_inconsistencies()}'s own \code{.realm()} name-pattern
+#' fallback already defaults anything not matched to "terrestrial", so this
+#' NA does not silently misclassify anything downstream.
 #' @noRd
 .l1_to_realm <- function(l1_names) {
-  marine_groups     <- c("Marine Neritic", "Marine Oceanic",
-                         "Marine Deep Ocean Floor", "Marine Intertidal",
-                         "Marine Coastal/Supralittoral")
+  marine_groups <- c("Marine Neritic", "Marine Oceanic",
+                     "Marine Deep Ocean Floor", "Marine Intertidal",
+                     "Marine Coastal/Supratidal")
   freshwater_groups <- c("Wetlands (inland)")
+  terrestrial_groups <- c("Forest", "Savanna", "Shrubland", "Grassland",
+                          "Rocky Areas (inland)",
+                          "Caves and Subterranean Habitats", "Desert",
+                          "Introduced Vegetation", "Artificial - Terrestrial")
   ifelse(l1_names %in% marine_groups, "marine",
          ifelse(l1_names %in% freshwater_groups, "freshwater",
-                NA_character_))
+                ifelse(l1_names %in% terrestrial_groups, "terrestrial",
+                       NA_character_)))
 }
 
 
@@ -1002,7 +893,7 @@ example_habitat_scheme <- data.frame(
 #'   groupings:
 #'   \itemize{
 #'     \item \code{"marine"}: Marine Neritic, Marine Oceanic, Marine Deep
-#'       Ocean Floor, Marine Intertidal, Marine Coastal/Supralittoral
+#'       Ocean Floor, Marine Intertidal, Marine Coastal/Supratidal
 #'     \item \code{"freshwater"}: Wetlands (inland)
 #'     \item \code{"terrestrial"}: Forest, Savanna, Shrubland, Grassland,
 #'       Rocky Areas (inland), Caves and Subterranean Habitats, Desert,
@@ -1037,11 +928,11 @@ example_habitat_scheme <- data.frame(
 #' \strong{Iterative discovery:} Call with broad filters first to see what is
 #' available, then narrow:
 #' \preformatted{
-#' build_iucn_scheme()                           # all 18 L1 groups
+#' build_iucn_scheme()                           # all 16 L1 groups (Other/Unknown excluded by default)
 #' build_iucn_scheme(realm = "marine")           # 5 marine L1 groups
-#' build_iucn_scheme(realm = "marine", l2 = "all")  # marine L1 + all 31 L2
+#' build_iucn_scheme(realm = "marine", l2 = "all")  # marine L1 + all 32 L2
 #' build_iucn_scheme(realm = "marine",
-#'   l2 = c("Rocky Subtidal", "Estuaries",
+#'   l2 = c("Subtidal Rock and Rocky Reefs", "Estuaries",
 #'           "Macroalgal/Kelp"))                 # specific marine L2 + parent L1
 #' }
 #'
@@ -1051,6 +942,17 @@ example_habitat_scheme <- data.frame(
 #' would create nested predictors in the model). For focused single-realm
 #' datasets, use \code{l1 = "none", l2 = "all"} to get a flat L2-only scheme,
 #' or \code{l2 = "none"} for a flat L1-only scheme.
+#'
+#' \strong{A common surprise:} \code{l1} defaults to \code{"all"}, so
+#' supplying \code{l2} \emph{without} also setting \code{l1 = "none"}
+#' returns BOTH an L1-only fallback row for every L1 group in the realm
+#' (\code{l2_name = NA}) AND the specific L2 rows you asked for -- e.g.
+#' \code{build_iucn_scheme(realm = "terrestrial", l2 = "Temperate")} returns
+#' all 8 terrestrial L1 groups as single-level rows PLUS 4 disambiguated
+#' \code{"Temperate (...)"} L2 rows (Forest/Shrubland/Grassland/Desert all
+#' have a "Temperate" subcategory). This is the documented mixed-scale
+#' behaviour above, not a bug -- but if you only want the L2 rows, pass
+#' \code{l1 = "none"} explicitly.
 #'
 #' \strong{Duplicate L2 names:} Some L2 names (e.g. "Boreal", "Temperate")
 #' appear under multiple L1 groups. When these are selected, the function
@@ -1070,7 +972,7 @@ example_habitat_scheme <- data.frame(
 #' # Build a specific marine scheme with selected L2 subcategories
 #' scheme <- build_iucn_scheme(
 #'   realm = "marine",
-#'   l2    = c("Rocky Subtidal", "Estuaries", "Macroalgal/Kelp",
+#'   l2    = c("Subtidal Rock and Rocky Reefs", "Estuaries", "Macroalgal/Kelp",
 #'             "Subtidal Sandy", "Rocky Shoreline")
 #' )
 #' print(scheme)
@@ -1085,7 +987,7 @@ build_iucn_scheme <- function(realm = NULL,
   # ---------------------------------------------------------------------------
   .realm_to_l1 <- list(
     marine      = c("Marine Neritic", "Marine Oceanic", "Marine Deep Ocean Floor",
-                    "Marine Intertidal", "Marine Coastal/Supralittoral"),
+                    "Marine Intertidal", "Marine Coastal/Supratidal"),
     freshwater  = c("Wetlands (inland)"),
     terrestrial = c("Forest", "Savanna", "Shrubland", "Grassland",
                     "Rocky Areas (inland)", "Caves and Subterranean Habitats",
@@ -1135,7 +1037,13 @@ build_iucn_scheme <- function(realm = NULL,
   }
 
   all_l1_in_scope <- unique(lookup$l1_name)
-  all_l2_in_scope <- unique(lookup$l2_name)
+  # Exclude NA: a handful of L1 groups (Rocky Areas (inland), Introduced
+  # Vegetation, Other, Unknown) have no real L2 subcategory at all in the
+  # source scheme and are represented by a single l2_name = NA row -- those
+  # groups are only reachable via 'l1', never via 'l2' (NA would otherwise
+  # match itself through %in%/match() and let 'l2 = "all"' silently pull in
+  # duplicate L1-only rows already added by the 'l1' argument).
+  all_l2_in_scope <- unique(lookup$l2_name[!is.na(lookup$l2_name)])
 
   # ---------------------------------------------------------------------------
   # Step 2: validate and resolve l1 argument
@@ -1252,12 +1160,22 @@ build_iucn_scheme <- function(realm = NULL,
   # L2 rows: from the filtered lookup (with possible disambiguation)
   # If l1 = "none", only L2 rows are included (flat L2-only scheme)
 
+  # realm column: when the caller supplied a specific 'realm' argument, every
+  # row in this scheme belongs to that realm by construction (Step 1 already
+  # filtered `lookup` down to that realm's own L1 groups) -- use it directly.
+  # `.l1_to_realm()` only recognises marine/freshwater L1 group names and
+  # returns NA for everything else (including "terrestrial" and "artificial"
+  # groups), so relying on it here silently produced realm = NA for every
+  # row of a realm = "terrestrial" (or "artificial") scheme even though the
+  # caller had explicitly said which realm it was. When realm is NULL (all
+  # realms requested), the per-L1-group mapping is still needed since rows
+  # span more than one realm.
   rows_l1 <- if (length(selected_l1) > 0L) {
     data.frame(
       l1_name = selected_l1,
       l2_name = NA_character_,
       l2_code = NA_character_,
-      realm   = .l1_to_realm(selected_l1),
+      realm   = if (!is.null(realm)) realm else .l1_to_realm(selected_l1),
       stringsAsFactors = FALSE
     )
   } else {
@@ -1269,7 +1187,7 @@ build_iucn_scheme <- function(realm = NULL,
       l1_name = l2_rows$l1_name,
       l2_name = l2_rows$l2_name,
       l2_code = l2_rows$l2_code,
-      realm   = .l1_to_realm(l2_rows$l1_name),
+      realm   = if (!is.null(realm)) realm else .l1_to_realm(l2_rows$l1_name),
       stringsAsFactors = FALSE
     )
   } else {
@@ -1363,12 +1281,12 @@ build_iucn_scheme <- function(realm = NULL,
 #' \preformatted{
 #' # Stage 0: generate scheme
 #' sp       <- build_scheme_prompt(taxa_in_data)
-#' scheme   <- parse_scheme_response(prompt_anthropic_api(sp), sp)
+#' scheme   <- parse_scheme_response(TaxaTools::prompt_api(sp), sp)
 #' print(scheme)   # inspect suggested categories
 #'
 #' # Stage 1: weighted assignment (scheme flows through automatically)
 #' prompt   <- build_habitat_prompt(taxa_in_data, habitat_scheme = scheme)
-#' raw_text <- prompt_anthropic_api(prompt)
+#' raw_text <- TaxaTools::prompt_api(prompt)
 #' hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa_in_data,
 #'                                                 habitat_scheme = prompt)
 #' }
@@ -1384,7 +1302,7 @@ build_iucn_scheme <- function(realm = NULL,
 #' taxa <- unique(occurrence_data$taxon_name)
 #' sp   <- build_scheme_prompt(taxa, realm = "marine")
 #' print(sp)
-#' raw    <- prompt_anthropic_api(sp)
+#' raw    <- TaxaTools::prompt_api(sp)
 #' scheme <- parse_scheme_response(raw, sp)
 #' print(scheme)
 #' }
@@ -1459,7 +1377,14 @@ build_scheme_prompt <- function(taxon_list,
     "OUTPUT FORMAT: Return ONLY a raw CSV block with exactly two columns and ",
     "no preamble or postamble:\n",
     "  habitat_name  -- your proposed category name (plain English)\n",
-    "  realm         -- one of: marine, freshwater, terrestrial, or NA if mixed\n\n",
+    if (!is.null(realm)) {
+      sprintf(
+        "  realm         -- always \"%s\" (all species in this list are in the %s realm)\n\n",
+        realm, realm
+      )
+    } else {
+      "  realm         -- one of: marine, freshwater, terrestrial, or NA if mixed\n\n"
+    },
     "The first line must be the header: habitat_name,realm\n",
     "Each subsequent line is one habitat category.\n\n",
     "SPECIES LIST:\n",
@@ -1551,7 +1476,7 @@ print.scheme_prompt <- function(x, ...) {
 #' @examples
 #' \dontrun{
 #' sp     <- build_scheme_prompt(taxa, realm = "marine")
-#' raw    <- prompt_anthropic_api(sp)
+#' raw    <- TaxaTools::prompt_api(sp)
 #' scheme <- parse_scheme_response(raw, sp)
 #' print(scheme)
 #' }

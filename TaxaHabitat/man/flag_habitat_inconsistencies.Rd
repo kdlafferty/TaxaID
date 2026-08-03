@@ -5,7 +5,7 @@
 \title{Flag Spatially Inconsistent Habitat Assignments}
 \usage{
 flag_habitat_inconsistencies(
-  data,
+  occurrence_data,
   lat_col = "decimalLatitude",
   lon_col = "decimalLongitude",
   habitat_col = "main_habitat",
@@ -19,7 +19,7 @@ flag_habitat_inconsistencies(
 )
 }
 \arguments{
-\item{data}{A dataframe, typically \code{occurrences_with_habitat} from the
+\item{occurrence_data}{A dataframe, typically \code{occurrences_with_habitat} from the
 TaxaExpect workflow. Must contain latitude, longitude, and habitat columns.}
 
 \item{lat_col}{Character. Latitude column name. Default
@@ -67,7 +67,7 @@ scheme dataframe used to resolve habitat names for depth/distance checks.
 If \code{NULL}, checks rely on the \code{habitat_col} values directly.}
 }
 \value{
-The input \code{data} dataframe with four additional columns:
+The input \code{occurrence_data} dataframe with four additional columns:
 \describe{
 \item{elevation_m}{Numeric. GEBCO value at the point: negative values
 are ocean depth in metres; positive values are approximate land
@@ -90,8 +90,11 @@ Points whose physical location is implausible given their assigned habitat
 are flagged for user review.
 }
 \details{
-The most common error this function catches is a marine species assigned
-a marine habitat but located far inland -- a GBIF georeferencing error.
+In this project's real usage so far, the most common error this function
+catches is a marine species assigned a marine habitat but located far
+inland -- a GBIF georeferencing error. This reflects the datasets this
+package has been used with to date, not a universal claim about GBIF
+data quality generally.
 Terrestrial species appearing in the ocean are also flagged.
 
 The function adds four columns to the input dataframe, repeated for every
@@ -134,8 +137,15 @@ positives for a common and genuinely hard-to-check class.
 
 \examples{
 \dontrun{
+# A concrete, self-contained example (requires network access for the
+# Natural Earth polygon and NOAA bathymetry downloads):
+occurrence_data <- data.frame(
+  decimalLatitude  = 40.823875,
+  decimalLongitude = -124.193872,
+  main_habitat     = "Marine"
+)
 occurrences_flagged <- flag_habitat_inconsistencies(
-  occurrences_with_habitat,
+  occurrence_data,
   coast_buffer_m = 1000
 )
 

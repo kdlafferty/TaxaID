@@ -116,5 +116,10 @@ output is TaxaLikely, which converts match scores to likelihoods.
 \author{
 \strong{Maintainer}: Kevin Lafferty \email{klafferty@usgs.gov}
 
+Authors:
+\itemize{
+  \item Kevin Lafferty \email{klafferty@usgs.gov}
+}
+
 }
 \keyword{internal}

@@ -251,6 +251,47 @@ test_that("sd_table only contains B and lat/lon terms with valid values", {
   expect_true(all(grepl("^B[0-9]+$|^lat_r_s$|^lon_r_s$", sd_tbl$term)))
 })
 
+test_that("a covariate beyond lat_r_s/lon_r_s is screened when scale_params is present", {
+  # Real-world case (found in production, GreatLakes2023_ConsensusWorkflow.R):
+  # prepare_model_dataframe(covariates = c("lat_r","lon_r","depth_m")) sets
+  # scale_params for all three; screen_spatial_formula() must detect depth_m_s
+  # from that attribute, not silently pass it through unscreened the way a
+  # hardcoded lat_r_s/lon_r_s-only check would.
+  skip_if_not_installed("glmmTMB")
+  syn_cov <- .syn_data
+  set.seed(1L)
+  syn_cov$depth_m_s <- as.numeric(scale(rnorm(nrow(syn_cov))))
+  attr(syn_cov, "scale_params") <- list(
+    lat_r   = list(center = 0, scale = 1),
+    lon_r   = list(center = 0, scale = 1),
+    depth_m = list(center = 0, scale = 1)
+  )
+  f_cov <- cbind(n_species, n_other) ~
+    main_habitat +
+    (1 | taxon_name) +
+    (0 + B1 | taxon_name) +
+    (0 + B2 | taxon_name) +
+    (0 + B3 | taxon_name) +
+    (0 + lat_r_s | taxon_name) +
+    (0 + lon_r_s | taxon_name) +
+    (0 + depth_m_s | taxon_name) +
+    (1 | taxon_name:grid_id)
+
+  result <- do.call(screen_spatial_formula,
+                    c(list(data = syn_cov, formula_full = f_cov), .ssf_args))
+  sd_tbl <- result$model_selection$sd_table
+  expect_true("depth_m_s" %in% sd_tbl$term)
+})
+
+test_that("fallback to lat_r_s/lon_r_s only is unchanged when scale_params is absent", {
+  skip_if_not_installed("glmmTMB")
+  expect_null(attr(.syn_data, "scale_params"))
+  result <- do.call(screen_spatial_formula,
+                    c(list(data = .syn_data, formula_full = .full_formula), .ssf_args))
+  sd_tbl <- result$model_selection$sd_table
+  expect_true(all(grepl("^B[0-9]+$|^lat_r_s$|^lon_r_s$", sd_tbl$term)))
+})
+
 test_that("recommended formula is a valid non-empty string retaining key terms", {
   skip_if_not_installed("glmmTMB")
   result <- do.call(screen_spatial_formula,

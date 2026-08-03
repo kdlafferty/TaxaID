@@ -195,7 +195,7 @@ message(sprintf("  To reuse without re-querying the LLM, paste:\n    habitat_wei
 message("\n--- Step 4: Assigning habitat to occurrence points (Step A) ---")
 
 occurrences_with_habitat <- TaxaHabitat::assign_habitat_biological(
-  data         = all_occurrences,
+  occurrence_data         = all_occurrences,
   habitats_df  = habitat_weights_a,
   point_id_col = "point_id",
   taxon_col    = "taxon_name",
@@ -280,16 +280,16 @@ if (NEEDS_SAMPLING_GROUP) {
   # IMPORTANT: run this against all_occurrences (the ORIGINAL raw table), NOT
   # against occurrences_with_habitat. assign_habitat_biological() unconditionally
   # drops any pre-existing main_habitat/habitat_best_guess columns from its
-  # `data` argument before joining in its own result (see its source:
-  # "Drop any pre-existing main_habitat / habitat_best_guess columns in data",
-  # R/assign_habitat_biological.R). Calling it directly on
+  # `occurrence_data` argument before joining in its own result (see its
+  # source: "Drop any pre-existing main_habitat / habitat_best_guess columns
+  # in occurrence_data", R/assign_habitat_biological.R). Calling it directly on
   # occurrences_with_habitat would silently destroy Step A's habitat
   # classification, not just its habitat_best_guess column. Instead, compute
   # Step B's result as an independent object and explicitly join just its
   # renamed output columns onto occurrences_with_habitat -- Step A's
   # main_habitat is never at risk of being overwritten.
   sampling_group_result <- TaxaHabitat::assign_habitat_biological(
-    data         = all_occurrences,
+    occurrence_data         = all_occurrences,
     habitats_df  = sampling_group_weights,
     point_id_col = "point_id",
     taxon_col    = "taxon_name",

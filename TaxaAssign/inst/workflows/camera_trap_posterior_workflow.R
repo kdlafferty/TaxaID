@@ -238,7 +238,7 @@ message(sprintf("  Saved: %s", all_occurrences_path))
 # Mirrors TaxaHabitat::assign_habitat_workflow.R Steps 4-6 exactly.
 
 occurrences_with_habitat <- TaxaHabitat::assign_habitat_biological(
-  data         = all_occurrences,
+  occurrence_data = all_occurrences,
   habitats_df  = habitat_weights,
   point_id_col = "point_id",
   taxon_col    = "taxon_name",

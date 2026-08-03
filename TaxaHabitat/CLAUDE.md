@@ -1,6 +1,168 @@
 # CLAUDE.md — TaxaHabitat
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-28 (Sonnet 5 -- code-review-prep pass against inst/Code and Domain
+# Last updated: 2026-08-02 (Sonnet 5 -- SEVENTH round of the review_spatial_flags()
+# "can't Flag points with several Questionable points on the map" debugging thread (see
+# [[project_review_spatial_flags_habitat_reassign_gap]] in the memory system for rounds
+# 1-6). Two changes, both live-verified via real Chrome browser automation against a
+# running gadget, not just devtools::test()/check():
+# (1) Design change, at the user's request: reassigning a point's habitat via Reassign
+# Habitat mode no longer forces spatial_flag to "questionable" when starting from
+# Likely/Unlikely -- it now keeps the point's existing flag (confirm_habitat's handler,
+# ~line 1026: `new_flag <- if (identical(old_flag, "questionable")) "likely" else
+# old_flag`, was `else "questionable"`). Reassigning FROM Questionable is unchanged
+# (still promotes to Likely). Halves reviewer workload for the common case and stops one
+# path that inflates the Questionable view -- the view where bulk Flag-mode has
+# repeatedly proven fragile across this thread's earlier rounds. roxygen `@section Click
+# behaviour` updated to match.
+# (2) Real, independent regression fixed, found on the user's very first live re-test of
+# (1): `Error in leaflet::addCircleMarkers: unused argument (occurrence_data = hab_sub)`.
+# Root cause: the 2026-08-01 session's `data` -> `occurrence_data` parameter rename
+# (below) swept up an unrelated call into `leaflet::addCircleMarkers()` inside
+# `output$map`'s `renderLeaflet()` (~line 647) -- that function's own `data` parameter
+# belongs to the `leaflet` package, not TaxaHabitat, and was never supposed to be
+# touched. This broke marker rendering in EVERY view, a far more severe regression than
+# anything in the prior 6 rounds -- likely the true explanation for why the "several
+# Questionable points" symptom looked newly worse (the map wasn't drawing anything at
+# all, not just fragile at scale). Checked the other 4 functions touched by the same
+# 2026-08-01 rename (`assign_habitat_biological()`, `flag_habitat_inconsistencies()`,
+# `flag_institution_candidates()`, `review_institution_flags()`) for the identical
+# mistake -- none found, an isolated one-line miss. Fixed: `occurrence_data = hab_sub`
+# -> `data = hab_sub` at that one call site.
+# A THIRD, separate issue surfaced immediately after, in the user's own external
+# `GreatLakes2023_ConsensusWorkflow.R` (not under git, not a package bug): its
+# `assign_habitat_biological(data = all_occurrences, ...)` call still used the OLD
+# parameter name from before the 2026-08-01 rename -- a real call site the original
+# rename's ecosystem-wide sweep missed. Fixed in the workflow file itself (`data =` ->
+# `occurrence_data =`); the file's other 4 calls to renamed functions
+# (`flag_institution_candidates()`, `review_institution_flags()`,
+# `flag_habitat_inconsistencies()`, `review_spatial_flags()`) are all positional and
+# were never at risk.
+# Live verification (real 12-point synthetic dataset, `browserViewer()`, driven via
+# Chrome automation against the gadget's own httpuv server -- not RStudio's Viewer
+# pane): confirmed the map renders real markers with no error; reassigning a Likely
+# point's habitat recolors it in place and correctly stays in the Likely view (override
+# count Likely:3 unchanged) instead of disappearing into Questionable; Flag mode still
+# promotes Likely -> Questionable normally afterward. `devtools::test()` 220/220
+# unchanged, `devtools::check()` 0/0/0, reinstalled and confirmed at
+# `~/Library/R/4.0/library` via `dirname(find.package("TaxaHabitat"))`; the shipped
+# `new_flag <- ... else old_flag` logic directly confirmed present in the installed
+# function body via `deparse(body(review_spatial_flags))` before live-testing.
+# **Not yet confirmed against the user's real, large-scale GreatLakes dataset** -- this
+# session's live test used a small synthetic fixture, the same class of gap that caused
+# false "resolved" conclusions in earlier rounds of this thread. The addCircleMarkers
+# fix should be unconditional (fixes a hard R error, not a scale-dependent behavior),
+# but the ORIGINAL "many Questionable points, Flag-mode does nothing" bug from round 6
+# is still not definitively closed -- only inferred less likely now that its probable
+# proximate trigger (a completely broken map render) has been removed. The round-6
+# debug `message()` logging in `map_draw_new_feature` is still installed and should be
+# watched in the R console if the symptom recurs on the real dataset.
+# Previous update, 2026-08-01 (Sonnet 5 -- full code + domain review response against
+# inst/taxahabitat_review.Rmd (a human-authored review, not the AI-run
+# "Code and Domain Review 2.Rmd" template other packages use). Full record in the new
+# inst/taxahabitat_review_response.md, modeled on TaxaTools's response-doc format. One
+# real, confirmed "true bug" (the reviewer's own words) fixed at the root cause: an
+# unquoted comma inside an LLM-written habitat_best_guess value corrupted the whole row
+# via utils::read.csv()'s row-name-inference rule (mismatched header/data field count ->
+# taxon_name silently becomes an invisible row name, every later column shifts left) --
+# fixed both preventively (build_habitat_prompt() now instructs the LLM to quote any
+# comma-containing free-text field) and correctively (new quote-aware
+# .repair_unquoted_commas() in parse_habitat_response.R merges/re-quotes an overflowing
+# row before read.csv() ever sees it, so already-malformed responses parse correctly
+# too). New tests/testthat/test-parse_habitat_response.R (33 tests) directly reproduces
+# the exact reported scenario -- this file had ZERO test coverage before this session,
+# despite being where the bug lived.
+#
+# A Domain Review finding turned out to be much bigger than the reviewer's own two
+# flagged codes (1.3/3.3 mislabeled "Subalpine"): fetched the real IUCN Habitats
+# Classification Scheme v3.1 source document directly (not from memory) and audited all
+# 104 rows of .iucn_habitat_lookup against it. Confirmed and fixed: Shrubland's whole
+# 3.1-3.3 ORDER was wrong (real order Subarctic/Subantarctic/Boreal, not Forest's
+# Boreal/Subarctic/Subantarctic); Grassland 4.3 wrong; Marine Neritic (9.x) almost
+# entirely scrambled with 3 outright fabricated entries ("Subtidal Cave and Overhangs",
+# "Pelagic (Supercolumnar)", "Seamounts and Knolls" at the wrong L1 group entirely --
+# Seamount is real code 11.5, under Marine Deep Ocean Floor); Marine Deep Ocean Floor
+# missing "Seamount" entirely plus a wrong Hadal-zone depth threshold (>4000m vs real
+# >6000m); Marine Intertidal 12.4 had a fabricated "Salt Flats" concept; Marine Coastal's
+# own L1 NAME was wrong ("Supralittoral" vs real "Supratidal"); Wetlands (Inland) had a
+# fabricated 19th entry and a fabricated 5.18; Artificial - Aquatic had 3 fabricated
+# entries (15.10-15.12) and was missing the real 15.13; Rocky Areas (inland) and
+# Introduced Vegetation are both L1-ONLY in the real scheme (no numbered L2 subcategories
+# exist at all -- the real doc lists examples only as prose) but had 2 fabricated L2 rows
+# each; Other/Unknown had fabricated pseudo-L2 codes ("17.0"/"18.0") the real scheme
+# doesn't have. Rebuilt the whole table row-by-row against the verified source, with the
+# four genuinely-L1-only groups now correctly represented as l2_code=l2_name=NA (matching
+# how the rest of the package already represents L1-only rows) rather than a fabricated
+# pseudo-L2. That restructuring surfaced one more real bug: build_iucn_scheme()'s
+# all_l2_in_scope lookup would have let l2="all" silently pull in duplicate L1-only rows
+# for those four groups via NA-matches-NA through %in%/match() -- fixed by excluding NA
+# from that specific lookup.
+#
+# Two more real, live-reproduced bugs found and fixed while investigating adjacent
+# review comments: (1) .is_iucn_scheme()'s identical(scheme, .iucn_habitat_lookup) check
+# the reviewer flagged as "redundant after the OR" was actually WORSE than redundant --
+# EVERY real scheme reaching this function has already passed .validate_habitat_scheme(),
+# which strips l1_code and adds realm, so NEITHER of the function's two disjuncts could
+# ever be true for a real scheme; flag_habitat_inconsistencies()'s own .realm() IUCN
+# fallback branch was therefore silently unreachable for any real IUCN-derived scheme.
+# Fixed by keeping only the actually-functional l2_code-pattern check. (2) A mixed-scale
+# scheme (e.g. build_iucn_scheme(realm="terrestrial", l2="Temperate"), which legitimately
+# returns both L1 fallback rows and L2 rows together) printed literal "NA" as the habitat
+# name for every L1-only row in the LLM-facing prompt text ("NA  [Forest]", "NA
+# [Savanna]", etc.) -- live-reproduced before fixing, fixed exactly per the reviewer's own
+# suggested ifelse(is.na(l2_name), l1_name, l2_name) pattern. Related: build_iucn_scheme()
+# also had a real realm=NA bug (realm="terrestrial" calls returned realm=NA on every row,
+# since the internal .l1_to_realm() helper it delegated to only ever recognised
+# marine/freshwater L1 groups) -- fixed by using the caller's own already-known realm
+# directly when supplied, and separately expanded .l1_to_realm() itself to also recognise
+# terrestrial groups (Artificial - Aquatic/Other/Unknown deliberately still NA -- genuinely
+# ambiguous or answerless from the L1 name alone).
+#
+# `data` renamed to `occurrence_data` across 5 functions (assign_habitat_biological(),
+# flag_habitat_inconsistencies(), flag_institution_candidates(), review_institution_flags(),
+# review_spatial_flags()) -- same fix TaxaTools already made for its own `df` parameter.
+# Every real named (`data = `) call site across the WHOLE monorepo updated, including
+# TaxaExpect::build_priors() (real package code, not a workflow script -- required a
+# TaxaExpect reinstall too) and TaxaWizard/inst/metadata/TaxaHabitat.json's two `"name":
+# "data"` entries (TaxaWizard's own CLAUDE.md states metadata param names must exactly
+# match real signatures). See TaxaID/CLAUDE.md's Recent Breaking Changes table.
+#
+# Investigated and confirmed NOT bugs, documented with evidence rather than guessed:
+# adehabitatMA's S3-overwrite warning traced to marmap's own Suggests (confirmed via
+# packageDescription("marmap")) -- not a direct or hidden dependency of this package;
+# flag_institution_candidates()'s "Research_centre" confirmed as CoordinateCleaner's own
+# literal external vocabulary value (verified live: sort(unique(institutions$type))), not
+# a spelling choice this package made -- renaming it would break the real join;
+# TaxaFetch::filter_gbif_quality()'s interface confirmed CURRENT against its real source
+# (institution_flag/institution_type/institution_lon/institution_lat all present exactly
+# as flag_institution_candidates()/review_institution_flags() expect) -- the review was
+# likely written against an earlier snapshot. review_spatial_flags()'s "bulk flag drawing
+# doesn't seem to be working" complaint was re-investigated fresh (this is the SAME
+# symptom class 6 rounds of a prior session already chased, see the
+# project_review_spatial_flags_habitat_reassign_gap memory) -- careful re-reading of the
+# rectangle-select code path found no new, independently reproducible bug; the debug
+# message() calls that prior session left in place as a safety net remain untouched. One
+# investigated lead (an apparent toolbar-reset asymmetry between Flag and Reassign-Habitat
+# modes) turned out to be correct-as-is on closer reading, not a bug.
+#
+# Also fixed: .collapse_to_model_habitats() deleted entirely (~220 lines) -- confirmed
+# dead code left over from the assign_habitat_llm() pipeline removed 2026-02-27, long
+# before this package existed in its current form; zzz_imports.R's unused
+# call_anthropic_api import removed (never called as a bare symbol anywhere in this
+# package); DESCRIPTION gained Depends: R (>= 4.1.0) (matching TaxaTools/TaxaLikely's own
+# pattern, previously only an auto-detected R CMD build warning) and rnaturalearthdata in
+# Suggests (already required at runtime, never declared); flag_habitat_inconsistencies()'s
+# missing-package error message now gives rnaturalearthhires its own correct
+# non-CRAN install line instead of a misleading blanket install.packages() call; hist ->
+# flag_hist renamed in review_spatial_flags.R (shadowed stats::hist(), same class of fix
+# as the 2026-07-28 session's det/t renames). devtools::test() 220/220 (up from 158,
+# real new coverage not inflation -- parse_habitat_response.R had ZERO tests before this
+# session), devtools::check() 0/0/0. Reinstalled via ecosystem_docs/install_all.R
+# (TaxaHabitat + TaxaExpect + TaxaWizard, since real code/metadata changed in all three).
+# See inst/taxahabitat_review_response.md for the complete per-comment record, including
+# several comments investigated and explicitly rejected with reasoning (British spelling
+# in non-user-facing prose left alone; several architecture-simplification suggestions
+# noted but not actioned as out of scope for this pass).
+# Previous update, 2026-07-28 (Sonnet 5 -- code-review-prep pass against inst/Code and Domain
 # Review 2.Rmd's 5-question rubric (tidyverse style / base-R name collisions / DRY-KISS /
 # naming clarity / doc accuracy), read-only findings gathered by a review agent first, then
 # implemented after user sign-off. One real correctness bug found and fixed: .is_two_level()

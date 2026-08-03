@@ -38,7 +38,7 @@
 #'     always retained by that filter).
 #' }
 #'
-#' @param data A dataframe, typically the output of
+#' @param occurrence_data A dataframe, typically the output of
 #'   \code{\link{flag_institution_candidates}}. Must contain
 #'   \code{institution_flag}, \code{institution_suspicion},
 #'   \code{institution_name}, \code{institution_type},
@@ -57,7 +57,7 @@
 #'   blue, so they provide spatial context without obscuring nearby
 #'   occurrence points). Default \code{7}.
 #'
-#' @return \code{data} with one additional column, \code{institution_decision}:
+#' @return \code{occurrence_data} with one additional column, \code{institution_decision}:
 #'   \code{"keep"} or \code{"remove"} for every record that had
 #'   \code{institution_flag = TRUE}; \code{NA} for every other record
 #'   (never shown to the reviewer, never touched). Returns \code{NULL} if
@@ -76,7 +76,7 @@
 #' final    <- dplyr::filter(reviewed, institution_decision != "remove")
 #' }
 review_institution_flags <- function(
-    data,
+    occurrence_data,
     lat_col      = "decimalLatitude",
     lon_col      = "decimalLongitude",
     taxon_col    = "species",
@@ -99,14 +99,14 @@ review_institution_flags <- function(
       ))
     }
   }
-  if (!is.data.frame(data)) {
-    stop("review_institution_flags: 'data' must be a dataframe.")
+  if (!is.data.frame(occurrence_data)) {
+    stop("review_institution_flags: 'occurrence_data' must be a dataframe.")
   }
   required_cols <- c("institution_flag", "institution_suspicion",
                      "institution_name", "institution_type",
                      "institution_dist_m", "institution_lon", "institution_lat",
                      lat_col, lon_col)
-  missing_cols <- setdiff(required_cols, names(data))
+  missing_cols <- setdiff(required_cols, names(occurrence_data))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
       paste0(
@@ -117,13 +117,13 @@ review_institution_flags <- function(
       paste(missing_cols, collapse = ", ")
     ))
   }
-  if (!is.null(taxon_col) && !taxon_col %in% names(data)) {
+  if (!is.null(taxon_col) && !taxon_col %in% names(occurrence_data)) {
     warning("review_institution_flags: taxon_col not found -- species label suppressed.",
             call. = FALSE)
     taxon_col <- NULL
   }
 
-  is_flagged <- !is.na(data$institution_flag) & data$institution_flag
+  is_flagged <- !is.na(occurrence_data$institution_flag) & occurrence_data$institution_flag
   if (!any(is_flagged)) {
     stop("review_institution_flags: no institution_flag = TRUE records to review.")
   }
@@ -137,7 +137,7 @@ review_institution_flags <- function(
 
   flagged_idx <- which(is_flagged)
 
-  point_id <- if ("gbifID" %in% names(data)) as.character(data$gbifID[flagged_idx]) else NA_character_
+  point_id <- if ("gbifID" %in% names(occurrence_data)) as.character(occurrence_data$gbifID[flagged_idx]) else NA_character_
   if (anyNA(point_id) || anyDuplicated(point_id) > 0L) {
     point_id <- as.character(flagged_idx)
   }
@@ -145,15 +145,15 @@ review_institution_flags <- function(
   pts <- data.frame(
     point_id    = point_id,
     row_idx     = flagged_idx,
-    lon         = data[[lon_col]][flagged_idx],
-    lat         = data[[lat_col]][flagged_idx],
-    taxon       = if (!is.null(taxon_col)) as.character(data[[taxon_col]][flagged_idx]) else NA_character_,
-    suspicion   = data$institution_suspicion[flagged_idx],
-    inst_name   = data$institution_name[flagged_idx],
-    inst_type   = data$institution_type[flagged_idx],
-    inst_dist_m = data$institution_dist_m[flagged_idx],
-    inst_lon    = data$institution_lon[flagged_idx],
-    inst_lat    = data$institution_lat[flagged_idx],
+    lon         = occurrence_data[[lon_col]][flagged_idx],
+    lat         = occurrence_data[[lat_col]][flagged_idx],
+    taxon       = if (!is.null(taxon_col)) as.character(occurrence_data[[taxon_col]][flagged_idx]) else NA_character_,
+    suspicion   = occurrence_data$institution_suspicion[flagged_idx],
+    inst_name   = occurrence_data$institution_name[flagged_idx],
+    inst_type   = occurrence_data$institution_type[flagged_idx],
+    inst_dist_m = occurrence_data$institution_dist_m[flagged_idx],
+    inst_lon    = occurrence_data$institution_lon[flagged_idx],
+    inst_lat    = occurrence_data$institution_lat[flagged_idx],
     stringsAsFactors = FALSE
   )
   pts$suspicion[is.na(pts$suspicion)] <- "ambiguous"
@@ -423,7 +423,7 @@ review_institution_flags <- function(
 
     shiny::observeEvent(input$done, {
       dec <- cur_decisions()
-      result <- data
+      result <- occurrence_data
       result$institution_decision <- NA_character_
       result$institution_decision[pts$row_idx] <- dec[pts$point_id]
       shiny::stopApp(returnValue = result)

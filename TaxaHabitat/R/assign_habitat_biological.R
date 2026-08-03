@@ -8,7 +8,7 @@
 #'
 #' This is a fallback method for when spatial polygon layers are unavailable.
 #'
-#' @param data A dataframe of occurrence records. Must contain columns named
+#' @param occurrence_data A dataframe of occurrence records. Must contain columns named
 #'   by \code{point_id_col} and \code{taxon_col}.
 #' @param habitats_df A dataframe giving habitat weights for each species.
 #'   Must contain a column named by \code{taxon_col}, one numeric column per
@@ -22,9 +22,9 @@
 #'   treated as a valid habitat column and propagated to \code{main_habitat}
 #'   when it wins the consensus vote.
 #' @param point_id_col Character. Name of the point identifier column in
-#'   \code{data}. Default \code{"point_id"}.
+#'   \code{occurrence_data}. Default \code{"point_id"}.
 #' @param taxon_col Character. Name of the taxon name column in both
-#'   \code{data} and \code{habitats_df}. Default \code{"taxon_name"}.
+#'   \code{occurrence_data} and \code{habitats_df}. Default \code{"taxon_name"}.
 #' @param weight_by_abundance Logical. If \code{FALSE} (default), each species
 #'   contributes equally to the point score regardless of how many occurrence
 #'   records it has at that point. If \code{TRUE}, species are weighted by
@@ -53,7 +53,7 @@
 #'   two-stage IUCN pipeline with the commit-at-confident-level prompt, which
 #'   already discourages sub-0.1 weights by instruction.
 #'
-#' @return The input \code{data} with two additional columns:
+#' @return The input \code{occurrence_data} with two additional columns:
 #' \describe{
 #'   \item{main_habitat}{Character. The winning habitat label at each point,
 #'     or \code{NA} if no habitat reached \code{threshold}.
@@ -85,7 +85,7 @@
 #' effective species count, making consensus harder to reach. Check coverage
 #' before running:
 #' \preformatted{
-#' mean(unique(data$taxon_name) \%in\% habitats_df$taxon_name)
+#' mean(unique(occurrence_data$taxon_name) \%in\% habitats_df$taxon_name)
 #' }
 #'
 #' @seealso \code{\link{parse_hierarchical_habitat_response}},
@@ -95,24 +95,40 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # hab_weights produced by parse_hierarchical_habitat_response()
+#' # occurrence_data: one row per detection, with a point identifier and taxon
+#' occurrence_data <- data.frame(
+#'   point_id   = c("pt1", "pt1", "pt2"),
+#'   taxon_name = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss")
+#' )
+#'
+#' # hab_weights: species-by-habitat weight table, e.g. from
+#' # parse_hierarchical_habitat_response()
+#' hab_weights <- data.frame(
+#'   taxon_name   = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
+#'   Marine       = c(1.0, 1.0, 0.5),
+#'   Freshwater   = c(0.0, 0.0, 0.5),
+#'   Terrestrial  = c(0.0, 0.0, 0.0),
+#'   Other_weight = c(0.0, 0.0, 0.0),
+#'   habitat_best_guess = c("", "", "")
+#' )
+#'
 #' result <- assign_habitat_biological(
-#'   data              = occurrence_data,
-#'   habitats_df       = hab_weights,
-#'   threshold         = 0.3,
+#'   occurrence_data     = occurrence_data,
+#'   habitats_df         = hab_weights,
+#'   threshold           = 0.3,
 #'   weight_by_abundance = FALSE
 #' )
 #'
 #' # Points with no consensus
-#' result |> dplyr::filter(is.na(main_habitat)) |> dplyr::distinct(point_id)
+#' result[is.na(result$main_habitat), "point_id"]
 #'
-#' # Points where the scheme did not fit
+#' \dontrun{
+#' # Points where the scheme did not fit (dplyr shown for real workflows)
 #' result |> dplyr::filter(main_habitat == "Other") |>
 #'   dplyr::distinct(point_id, habitat_best_guess)
 #' }
 
-assign_habitat_biological <- function(data,
+assign_habitat_biological <- function(occurrence_data,
                                       habitats_df,
                                       habitat_cols        = NULL,
                                       point_id_col        = "point_id",
@@ -124,17 +140,17 @@ assign_habitat_biological <- function(data,
   # ---------------------------------------------------------------------------
   # Input checks
   # ---------------------------------------------------------------------------
-  if (!is.data.frame(data)) {
-    stop("assign_habitat_biological: 'data' must be a dataframe.")
+  if (!is.data.frame(occurrence_data)) {
+    stop("assign_habitat_biological: 'occurrence_data' must be a dataframe.")
   }
   if (!is.data.frame(habitats_df)) {
     stop("assign_habitat_biological: 'habitats_df' must be a dataframe.")
   }
 
-  missing_data <- setdiff(c(point_id_col, taxon_col), names(data))
+  missing_data <- setdiff(c(point_id_col, taxon_col), names(occurrence_data))
   if (length(missing_data) > 0) {
     stop(
-      "assign_habitat_biological: column(s) not found in 'data': ",
+      "assign_habitat_biological: column(s) not found in 'occurrence_data': ",
       paste(missing_data, collapse = ", ")
     )
   }
@@ -179,7 +195,7 @@ assign_habitat_biological <- function(data,
   # ---------------------------------------------------------------------------
   # Coverage report
   # ---------------------------------------------------------------------------
-  data_taxa   <- unique(data[[taxon_col]])
+  data_taxa   <- unique(occurrence_data[[taxon_col]])
   lookup_taxa <- unique(habitats_df[[taxon_col]])
   n_covered   <- sum(data_taxa %in% lookup_taxa)
   pct_covered <- 100 * n_covered / length(data_taxa)
@@ -191,7 +207,7 @@ assign_habitat_biological <- function(data,
 
   if (n_covered == 0) {
     warning(
-      "assign_habitat_biological: no species in 'data' matched any entry in ",
+      "assign_habitat_biological: no species in 'occurrence_data' matched any entry in ",
       "'habitats_df'. All points will receive main_habitat = NA. ",
       "Check that 'taxon_col' refers to the same name format in both inputs.",
       call. = FALSE
@@ -234,20 +250,20 @@ assign_habitat_biological <- function(data,
   # ---------------------------------------------------------------------------
   # Compute per-species contribution weight at each point
   # ---------------------------------------------------------------------------
-  # Step 1: join occurrence data to weight table on taxon_col
+  # Step 1: join occurrence_data to weight table on taxon_col
   joined <- merge(
-    data[, unique(c(point_id_col, taxon_col)), drop = FALSE],
+    occurrence_data[, unique(c(point_id_col, taxon_col)), drop = FALSE],
     weights_clean,
     by    = taxon_col,
     all.x = FALSE   # drop unmatched occurrences (taxa not in lookup)
   )
 
   if (nrow(joined) == 0) {
-    # No matches at all -- return data with NA columns appended
-    result <- data
+    # No matches at all -- return occurrence_data with NA columns appended
+    result <- occurrence_data
     result[["main_habitat"]]       <- NA_character_
     result[["habitat_best_guess"]] <- NA_character_
-    message("assign_habitat_biological: 0 of ", dplyr::n_distinct(data[[point_id_col]]),
+    message("assign_habitat_biological: 0 of ", dplyr::n_distinct(occurrence_data[[point_id_col]]),
             " site(s) assigned a habitat (no species matched lookup table).")
     return(result)
   }
@@ -336,15 +352,15 @@ assign_habitat_biological <- function(data,
   site_habitats[["habitat_best_guess"]] <- best_guess_col
 
   # ---------------------------------------------------------------------------
-  # Merge back onto original data and report
+  # Merge back onto original occurrence_data and report
   # ---------------------------------------------------------------------------
-  # Drop any pre-existing main_habitat / habitat_best_guess columns in data
-  data[["main_habitat"]]       <- NULL
-  data[["habitat_best_guess"]] <- NULL
+  # Drop any pre-existing main_habitat / habitat_best_guess columns in occurrence_data
+  occurrence_data[["main_habitat"]]       <- NULL
+  occurrence_data[["habitat_best_guess"]] <- NULL
 
-  result <- merge(data, site_habitats, by = point_id_col, all.x = TRUE)
+  result <- merge(occurrence_data, site_habitats, by = point_id_col, all.x = TRUE)
 
-  n_sites      <- dplyr::n_distinct(data[[point_id_col]])
+  n_sites      <- dplyr::n_distinct(occurrence_data[[point_id_col]])
   n_assigned   <- dplyr::n_distinct(
     result[[point_id_col]][!is.na(result[["main_habitat"]])]
   )
@@ -416,6 +432,14 @@ assign_habitat_biological <- function(data,
         "a weighted output, or supply 'habitat_cols' explicitly."
       )
     }
+    message(sprintf(
+      paste0(
+        "%s: 'habitat_cols' not supplied -- using all %d numeric column(s) ",
+        "in 'habitats_df' as habitat weights: %s. Supply 'habitat_cols' ",
+        "explicitly if 'habitats_df' contains other numeric columns."
+      ),
+      caller, length(habitat_cols), paste(habitat_cols, collapse = ", ")
+    ))
   }
 
   list(habitats_df       = habitats_df,

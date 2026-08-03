@@ -5,18 +5,19 @@
 \title{Review and Correct Spatial Flags Interactively}
 \usage{
 review_spatial_flags(
-  data,
+  occurrence_data,
   habitat_col = "main_habitat",
   lat_col = "decimalLatitude",
   lon_col = "decimalLongitude",
   taxon_col = "taxon_name",
   colors = NULL,
   tile = "Esri.OceanBasemap",
-  point_radius = 6
+  point_radius = 6,
+  viewer = shiny::paneViewer(minHeight = 450)
 )
 }
 \arguments{
-\item{data}{A dataframe output of \code{\link{flag_habitat_inconsistencies}}.
+\item{occurrence_data}{A dataframe output of \code{\link{flag_habitat_inconsistencies}}.
 Must contain \code{spatial_flag}, \code{spatial_flag_reason},
 \code{point_id}, and coordinate columns.}
 
@@ -39,9 +40,17 @@ species display. Default \code{"taxon_name"}.}
 
 \item{point_radius}{Numeric. Circle marker radius in pixels. Default
 \code{6}.}
+
+\item{viewer}{Shiny viewer function passed through to
+\code{\link[shiny]{runGadget}}. Default
+\code{shiny::paneViewer(minHeight = 450)} (RStudio's embedded Viewer
+pane). Some RStudio configurations have been observed to silently
+swallow leaflet-map click events inside the Viewer pane; pass
+\code{shiny::browserViewer()} to force the gadget into a real browser
+tab as a workaround/diagnostic if map clicks appear unresponsive.}
 }
 \value{
-The input \code{data} dataframe with \code{spatial_flag},
+The input \code{occurrence_data} dataframe with \code{spatial_flag},
 \code{spatial_flag_reason}, and \code{main_habitat} updated where changed.
 Returns \code{NULL} if the user clicks Cancel. Filter to keep confirmed
 records:
@@ -82,20 +91,30 @@ The \strong{Action} radio switches between two modes:
 Likely/Unlikely \eqn{\rightarrow} Questionable;
 Questionable \eqn{\rightarrow} Likely.}
 \item{Reassign Habitat}{Click selects a point and shows a dropdown of
-all habitats present in the dataset. Confirming updates \code{main_habitat}
-for all rows at that \code{point_id} and resets \code{spatial_flag} to
-\code{"questionable"} so the point appears in the Questionable view for
-re-review.}
+all habitats present in the dataset (plus \strong{Other} for a value
+not yet seen this session). Confirming updates \code{main_habitat} for
+all rows at that \code{point_id}. If the point's flag was
+\strong{Questionable} at the moment of reassignment, this counts as a
+spatially-informed resolution and the flag becomes \strong{Likely}
+(the point leaves the Questionable view). Reassigning from
+\strong{Likely}/\strong{Unlikely} keeps the point's existing flag --
+the reassignment itself is treated as a spatially-informed decision,
+so it does not force a second round-trip through the Questionable
+view.}
 }
 Every change appends a timestamped note to \code{spatial_flag_reason}.
+A habitat value typed via \strong{Other} that doesn't already appear in
+the dataset is added to the palette and the Habitats sidebar filter
+immediately, without disturbing any existing habitat's colour.
 }
 
 \section{Habitat filter}{
 
 The sidebar \strong{Habitats} panel lists every habitat present in the
-dataset as a colour-coded checkbox. Unchecking a habitat hides those points
-from the map and excludes them from rectangle drag-selection and click
-actions. Use \strong{All} / \strong{None} to select or clear all at once.
+dataset (plus any added mid-session via a habitat reassignment) as a
+colour-coded checkbox. Unchecking a habitat hides those points from the
+map and excludes them from rectangle drag-selection and click actions.
+Use \strong{All} / \strong{None} to select or clear all at once.
 }
 
 \section{Point Info panel}{

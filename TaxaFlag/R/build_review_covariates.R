@@ -5,8 +5,9 @@ utils::globalVariables(c("n_reads", "seq_length", "min_reads", "max_reads", "qua
 #'
 #' Collapses a long-format reads table (one row per taxon x sample) to one
 #' row per observation, joined to a categorical classification column (e.g.
-#' \code{\link{add_posthoc_assessment}}'s \code{posthoc_assessment}, or any
-#' \code{\link{review_assignments}} output column). Intended as the training-
+#' \code{\link{add_posthoc_assessment}}'s \code{primary_plausibility}/
+#' \code{primary_discrimination}, or any \code{\link{review_assignments}}
+#' output column). Intended as the training-
 #' data step for a model relating observation-level attributes (sequence
 #' length, read depth, detection breadth, blank frequency) to how an
 #' observation was classified -- see \code{\link{model_review_classification}}.
@@ -42,7 +43,10 @@ utils::globalVariables(c("n_reads", "seq_length", "min_reads", "max_reads", "qua
 #'   than its read-count tables by convention).
 #' @param classification_col Character. Column in \code{classification_df}
 #'   holding the categorical label to model (default
-#'   \code{"posthoc_assessment"}).
+#'   \code{"primary_plausibility"} -- \code{add_posthoc_assessment()}'s
+#'   retired \code{posthoc_assessment} column is no longer produced; any
+#'   axis column, or a \code{review_assignments()} output column, works
+#'   equally well here).
 #' @param event_col Character. Sample/event identifier column in
 #'   \code{reads_df} (default \code{"event_id"}).
 #' @param reads_col Character. Read-count column in \code{reads_df} (default
@@ -151,7 +155,7 @@ utils::globalVariables(c("n_reads", "seq_length", "min_reads", "max_reads", "qua
 #' )
 #' cls <- data.frame(
 #'   observation_id = c("ESV_1", "ESV_2"),
-#'   posthoc_assessment = c("sensible", "suspect")
+#'   primary_plausibility = c("expected", "unexpected")
 #' )
 #' build_review_covariates(reads, cls, control_samples = "blank1")
 #'
@@ -163,7 +167,7 @@ build_review_covariates <- function(reads_df,
                                      classification_df,
                                      taxon_col                = "ESVId",
                                      classification_taxon_col = "observation_id",
-                                     classification_col       = "posthoc_assessment",
+                                     classification_col       = "primary_plausibility",
                                      event_col                 = "event_id",
                                      reads_col                 = "n_reads",
                                      sequence_col               = "sequence",

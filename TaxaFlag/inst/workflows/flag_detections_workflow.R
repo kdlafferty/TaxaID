@@ -31,9 +31,9 @@
 #   STEP 1 (live) -- review_assignments(): one real LLM call reviewing the
 #     irreducible candidate set (plausible_taxa / slash notation) for
 #     habitat/geographic/contamination plausibility and alternatives.
-#   STEP 2 (live) -- add_posthoc_assessment(): fully offline categorical
-#     cross-tab of sequence-match evidence (winner_likelihood) against
-#     occurrence-based prior tier (model_tier), no LLM call.
+#   STEP 2 (live) -- add_posthoc_assessment(): fully offline occurrence
+#     plausibility (Axis 1) and evidence discrimination (Axis 2) columns,
+#     no LLM call.
 #   STEP 3 (documented, NOT run) -- flag_contaminant(): needs lab read-count
 #     data (one row per sample x taxon, n_reads) that this GBIF-occurrence-
 #     based tutorial chain has never produced. See Section 3 below for why.
@@ -65,7 +65,8 @@ DEBUG_MODE <- TRUE
 TAXA_PER_CALL <- 15L
 
 # likelihood_threshold for add_posthoc_assessment(): package default (0.5) --
-# see ?TaxaFlag::add_posthoc_assessment for the sequence-supported cutoff.
+# only used by the (unused here) domestic_prior_caveat check; see
+# ?TaxaFlag::add_posthoc_assessment.
 LIKELIHOOD_THRESHOLD <- 0.5
 
 if (DEBUG_MODE) {
@@ -92,8 +93,8 @@ if (DEBUG_MODE) {
   if (!file.exists(.priors_checkpoint)) {
     stop("DEBUG_MODE = TRUE but TaxaExpect's checkpoint was not found at ",
          .priors_checkpoint, ". Run TaxaExpect's generate_priors_workflow.R ",
-         "first -- add_posthoc_assessment() requires the real taxaexpect_priors ",
-         "tiers object (taxon_name + model_tier).")
+         "first -- Step 2 below derives expected_theta_threshold from the real ",
+         "taxaexpect_priors object (theta_mean).")
   }
 
   taxaassign_consensus <- readRDS(.consensus_checkpoint)
@@ -153,7 +154,8 @@ if (DEBUG_MODE) {
   #
   #   taxaexpect_priors <- readRDS("path/to/your_taxaexpect_priors.rds")
   #     (the object produced by TaxaExpect's generate_priors_workflow.R;
-  #     only taxon_name + model_tier are required by add_posthoc_assessment())
+  #     Step 2 below reads its theta_mean column to derive
+  #     expected_theta_threshold)
   #
   #   SITE_HABITAT <- unique(na.omit(taxaexpect_priors$main_habitat))
   #     (or your own site resolution)
@@ -264,39 +266,45 @@ message(sprintf("  To reuse without re-querying the LLM, paste:\n    taxaassign_
                 taxaassign_consensus_reviewed_path))
 
 # ==============================================================================
-# 2.  ADD POST-HOC ASSESSMENT -- SEQUENCE EVIDENCE x PRIOR TIER (LIVE, OFFLINE)
+# 2.  ADD POST-HOC ASSESSMENT -- OCCURRENCE PLAUSIBILITY x DISCRIMINATION (LIVE, OFFLINE)
 # ==============================================================================
-# Fully offline categorical cross-tab: combines winner_likelihood (sequence-
-# match support for the winning hypothesis, already on taxaassign_consensus
-# from TaxaAssign's posterior_consensus()) against model_tier (the occurrence-
-# based prior tier for that taxon, already on taxaexpect_priors) into one of
-# seven categories (sensible / limited_evidence / unexpected / unprecedented /
-# suspect / vague_rank / modeled).
+# Fully offline, two independent axes (2026-07-30 -- the earlier single
+# posthoc_assessment cross-tab, including its "vague_rank" short-circuit for
+# any non-species consensus_rank, was retired): Axis 1 (primary_plausibility/
+# consensus_plausibility) asks whether the winning taxon's own occurrence
+# share (winner_theta_mean, already on taxaassign_consensus from TaxaAssign's
+# posterior_consensus()) is expected for this assemblage; Axis 2
+# (primary_discrimination/consensus_discrimination) asks whether the sequence
+# evidence could tell it apart from a plausible relative. Neither gates the
+# other, and both are computed regardless of consensus_rank.
 #
-# tiers = taxaexpect_priors DIRECTLY -- no synthetic data needed. Per
-# add_posthoc_assessment()'s own source, `tiers` only requires taxon_name +
-# model_tier, and taxaexpect_priors already has both real columns from
-# TaxaExpect's checkpoint. Runs on taxaassign_consensus_reviewed (Step 1's
-# output) so the final object carries both LLM review columns and the
-# post-hoc assessment column together.
+# expected_theta_threshold has NO package default (it depends on the taxon
+# assemblage being scored) -- computed here directly from taxaexpect_priors,
+# already available from TaxaExpect's checkpoint. Genus/family entries are
+# omitted (median of TaxaAssign::compute_group_priors()'s theta_sum would be
+# needed, which needs a taxonomy_map this tutorial chain has never built) --
+# consensus_plausibility falls through to "not_modeled" for any non-species
+# consensus_rank as a result, which is honest given the missing input, not a
+# silent gap.
 # ==============================================================================
 
-message("\n--- Step 2: Adding post-hoc assessment (sequence evidence x prior tier) ---")
+message("\n--- Step 2: Adding post-hoc assessment (occurrence plausibility x discrimination) ---")
+
+SPECIES_THETA_THRESHOLD <- median(taxaexpect_priors$theta_mean, na.rm = TRUE)
 
 taxaassign_consensus_flagged <- TaxaFlag::add_posthoc_assessment(
-  consensus_df          = taxaassign_consensus_reviewed,
-  tiers                 = taxaexpect_priors,
-  winner_likelihood_col = "winner_likelihood",
-  consensus_taxon_col   = "consensus_taxon",
-  consensus_rank_col    = "consensus_rank",
-  taxon_col             = "taxon_name",
-  tier_col              = "model_tier",
-  likelihood_threshold  = LIKELIHOOD_THRESHOLD,
-  finest_rank           = "species"
+  consensus_df             = taxaassign_consensus_reviewed,
+  winner_likelihood_col    = "winner_likelihood",
+  consensus_taxon_col      = "consensus_taxon",
+  consensus_rank_col       = "consensus_rank",
+  likelihood_threshold     = LIKELIHOOD_THRESHOLD,
+  expected_theta_threshold = c(species = SPECIES_THETA_THRESHOLD)
 )
 
-message("  posthoc_assessment distribution:")
-print(table(taxaassign_consensus_flagged$posthoc_assessment, useNA = "ifany"))
+message("  primary_plausibility distribution:")
+print(table(taxaassign_consensus_flagged$primary_plausibility, useNA = "ifany"))
+message("  primary_discrimination distribution:")
+print(table(taxaassign_consensus_flagged$primary_discrimination, useNA = "ifany"))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 taxaassign_consensus_flagged_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxaassign_consensus_flagged.rds"))
@@ -417,7 +425,7 @@ message("\nWorkflow complete.")
 message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutorial chain ",
         "(TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag). ",
         "Filter on contamination_risk / habitat_plausibility / geographic_plausibility / ",
-        "posthoc_assessment for a human-reviewed final call list.")
+        "primary_plausibility / primary_discrimination for a human-reviewed final call list.")
 
 # ==============================================================================
 # Output
@@ -459,12 +467,20 @@ message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutor
 #   tutorial isn't scoped to one target taxonomic group)
 #
 # From add_posthoc_assessment() (Step 2):
-#   posthoc_assessment -- character; one of "sensible", "limited_evidence",
-#                         "unexpected", "unprecedented", "suspect",
-#                         "vague_rank", "modeled" -- cross-tabulates
-#                         winner_likelihood (sequence-match support) against
-#                         model_tier (occurrence-based prior tier) from
-#                         taxaexpect_priors
+#   primary_plausibility, consensus_plausibility -- character; "expected"/
+#                         "unexpected"/"unprecedented"/"not_modeled" --
+#                         Axis 1, whether the winning/consensus taxon's own
+#                         occurrence share (theta_mean) is expected for this
+#                         assemblage. consensus_plausibility is "not_modeled"
+#                         here whenever consensus_rank isn't "species" (no
+#                         genus/family threshold was supplied -- see Step 2).
+#   primary_discrimination, consensus_discrimination -- character;
+#                         "discriminating"/"weak"/"indistinguishable"/
+#                         "not_modeled" -- Axis 2, whether the sequence
+#                         evidence could tell the taxon apart from a
+#                         plausible relative.
+#   domestic_prior_caveat -- logical; always FALSE here (domestic_taxa not
+#                         supplied to this tutorial's call).
 #
 # NOT added in this run (flag_contaminant() documented but not executed --
 # see Section 3): {contaminant_type}_risk / {contaminant_type}_score /
@@ -473,6 +489,6 @@ message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutor
 #
 # Consumer: none within the TaxaID ecosystem -- this is the terminal object
 #   of the tutorial series. Intended for human review/filtering (e.g.
-#   dplyr::filter(contamination_risk != "high", posthoc_assessment != "suspect"))
+#   dplyr::filter(contamination_risk != "high", primary_plausibility != "unprecedented"))
 #   or export for reporting/manuscript figures.
 # ==============================================================================

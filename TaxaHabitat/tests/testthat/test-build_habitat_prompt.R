@@ -324,3 +324,100 @@ test_that("build_habitat_prompt rejects invalid geographic_context", {
     "non-empty string"
   )
 })
+
+test_that("prompt quoting instruction only mentions ecoregion_best_guess when geographic_context is set", {
+  no_geo <- build_habitat_prompt(c("Sp A"))
+  expect_true(grepl("If habitat_best_guess contains a comma", no_geo$prompts[[1]], fixed = TRUE))
+  expect_false(grepl("ecoregion_best_guess contains a comma", no_geo$prompts[[1]], fixed = TRUE))
+
+  with_geo <- build_habitat_prompt(c("Sp A"), geographic_context = "Gulf of Maine")
+  expect_true(grepl("ecoregion_best_guess contains a comma", with_geo$prompts[[1]], fixed = TRUE))
+})
+
+# ==============================================================================
+# build_iucn_scheme() -- realm column and IUCN Habitats Classification
+# Scheme v3.1 audit (2026-08-01 code review)
+# ==============================================================================
+
+test_that("build_iucn_scheme(realm=) sets a non-NA realm matching the request", {
+  # Real bug: .l1_to_realm() only recognises marine/freshwater L1 group
+  # names and returned NA for everything else, so a realm = "terrestrial"
+  # (or "artificial") scheme previously had realm = NA on every row despite
+  # the caller explicitly requesting that realm.
+  scheme <- suppressWarnings(build_iucn_scheme(realm = "terrestrial"))
+  expect_true(all(scheme$realm == "terrestrial"))
+
+  scheme_art <- suppressWarnings(build_iucn_scheme(realm = "artificial"))
+  expect_true(all(scheme_art$realm == "artificial"))
+
+  scheme_mar <- suppressWarnings(build_iucn_scheme(realm = "marine"))
+  expect_true(all(scheme_mar$realm == "marine"))
+})
+
+test_that("build_iucn_scheme(realm = NULL) still varies realm per L1 group", {
+  scheme <- suppressWarnings(build_iucn_scheme(l1 = "all", l2 = "none"))
+  expect_true("marine" %in% scheme$realm)
+  expect_true(any(is.na(scheme$realm)))  # terrestrial/artificial groups
+})
+
+test_that("Shrubland has real Subarctic/Subantarctic/Boreal L2 subcategories, not Forest's order", {
+  # Real bug: the table previously used Forest's Boreal/Subarctic/Subantarctic
+  # order for Shrubland too, when the real scheme's own order for Shrubland's
+  # first three subcategories is Subarctic/Subantarctic/Boreal. Some names
+  # also appear under other L1 groups and get disambiguated with "(L1 parent)"
+  # -- match by substring rather than exact equality.
+  scheme <- suppressWarnings(build_iucn_scheme(l1 = "none", l2 = "all"))
+  shrub_l2 <- scheme$l2_name[scheme$l1_name == "Shrubland"]
+  expect_true(any(grepl("^Subarctic", shrub_l2)))
+  expect_true(any(grepl("^Subantarctic", shrub_l2)))
+  expect_true(any(grepl("^Boreal", shrub_l2)))
+})
+
+test_that("Marine Neritic contains real IUCN 9.x categories, not fabricated ones", {
+  scheme <- suppressWarnings(build_iucn_scheme(realm = "marine", l1 = "none", l2 = "all"))
+  neritic <- scheme[scheme$l1_name == "Marine Neritic", ]
+  # Real categories that were previously missing/scrambled
+  expect_true("Pelagic" %in% neritic$l2_name)
+  expect_true("Seagrass (submerged)" %in% neritic$l2_name)
+  # Fabricated categories that must no longer appear
+  expect_false("Subtidal Cave and Overhangs" %in% neritic$l2_name)
+  expect_false("Pelagic (Supercolumnar)" %in% neritic$l2_name)
+  expect_false(any(grepl("Seamounts and Knolls", neritic$l2_name)))
+})
+
+test_that("Seamount is its own real category under Marine Deep Ocean Floor", {
+  scheme <- suppressWarnings(build_iucn_scheme(realm = "marine", l1 = "none", l2 = "all"))
+  deep <- scheme[scheme$l1_name == "Marine Deep Ocean Floor", ]
+  expect_true("Seamount" %in% deep$l2_name)
+  expect_true("Abyssal Mountain/Hills" %in% deep$l2_name)
+})
+
+test_that("Rocky Areas (inland) and Introduced Vegetation have no fabricated L2 subcategories", {
+  # Real bug: both are L1-only in the real IUCN scheme (no L2 subcategories
+  # at all), but the table previously fabricated two L2 rows for each.
+  scheme <- suppressWarnings(build_iucn_scheme(realm = "terrestrial", l1 = "all", l2 = "none"))
+  rocky <- scheme[scheme$l1_name == "Rocky Areas (inland)", ]
+  expect_equal(nrow(rocky), 1L)
+  expect_true(is.na(rocky$l2_name))
+
+  veg <- scheme[scheme$l1_name == "Introduced Vegetation", ]
+  expect_equal(nrow(veg), 1L)
+  expect_true(is.na(veg$l2_name))
+})
+
+test_that("a mixed-scale scheme's L1-only rows display the L1 name, not literal NA", {
+  # Real, reproducible bug: build_iucn_scheme(realm = "terrestrial",
+  # l2 = "Temperate") returns a scheme with both L1-only rows (l2_name = NA)
+  # and L2 rows in the same object; build_habitat_prompt() previously
+  # printed literal "NA" for every L1-only row's habitat name in the
+  # HABITAT CLASSES prompt block instead of falling back to l1_name.
+  scheme <- suppressWarnings(suppressMessages(
+    build_iucn_scheme(realm = "terrestrial", l2 = "Temperate")
+  ))
+  prompt <- build_habitat_prompt(c("Pinus contorta"), habitat_scheme = scheme)
+  prompt_text <- prompt$prompts[[1]]
+
+  expect_false(grepl("\\bNA\\b\\s*\\[", prompt_text))
+  expect_true(grepl("Forest\\s*\\[Forest\\]", prompt_text))
+  expect_true(grepl("Temperate \\(Forest\\)\\s*\\[Forest\\]", prompt_text))
+})

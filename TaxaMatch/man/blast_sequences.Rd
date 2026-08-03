@@ -9,8 +9,10 @@ blast_sequences(
   method = "remote",
   database = "nt",
   program = "blastn",
+  megablast = FALSE,
   score_range = 8,
   max_hits = 20L,
+  max_hits_per_taxon = NULL,
   min_score = 70,
   min_query_coverage = 80,
   barcode_term = NULL,
@@ -39,6 +41,22 @@ local: path to a local BLAST database.}
 
 \item{program}{BLAST program. Default \code{"blastn"}.}
 
+\item{megablast}{Logical. Default \code{FALSE}. Both the NCBI BLAST URL API
+(remote) and the standalone \code{blastn} binary (local, via \pkg{rBLAST})
+default an unqualified \code{program = "blastn"} search to MEGABLAST mode
+when this isn't set explicitly -- a fast, greedy algorithm tuned to find
+\emph{a} highly-similar hit quickly, not to exhaustively return every
+equally-good one. Confirmed on real data: a query with five reference
+sequences from one species and five from a second, genuinely tied at
+100\\% identity over the full alignment, returned only a single hit from
+one species and none from the other under the implicit (megablast)
+default -- silently dropping a real, exactly-tied congener before
+\code{score_range} filtering ever had a chance to keep it. Set
+\code{TRUE} to restore the old implicit (unspecified/megablast) behavior
+for speed on very large batches; \code{FALSE} (classic blastn) is slower
+but the only mode confirmed to return every near-identical reference,
+which is what \code{score_range}'s own tie-detection depends on.}
+
 \item{score_range}{Numeric. Keep all hits within this many percent identity
 points of each query's top hit (default \code{8}, widened from an
 earlier default of \code{2} -- see "Score window validation" below).
@@ -52,6 +70,35 @@ Details).}
 score window filtering (default \code{20L}). Increase for queries
 expected to match many closely related species.}
 
+\item{max_hits_per_taxon}{Integer or \code{NULL} (default). When set, caps
+the number of hits retained per taxon \emph{before} \code{max_hits} is
+applied. Without this, one heavily-resequenced species -- e.g. a genus
+with many independently deposited mitogenomes of the same well-studied
+species -- can consume the entire \code{max_hits} budget with redundant
+near-duplicate hits, silently crowding out a real, different congener
+that would otherwise have survived \code{score_range} filtering. Each
+taxon's own best-scoring hit is always kept, so this never changes which
+taxon has the top score. Set to e.g. \code{3L} to keep at most 3
+representative hits per species.
+
+\strong{Requires \code{resolve_taxonomy = TRUE} to have any effect on
+remote BLAST results.} Remote BLAST's XML output never populates a real
+per-hit taxid (\code{staxids} is always \code{NA} there), so grouping
+would otherwise be a silent no-op -- every hit would land in its own
+singleton group. When both are set, taxonomy is resolved once, early
+(on the min_score/coverage/length survivors, before this cap and
+\code{max_hits} run) specifically so grouping can use the real resolved
+species/genus name; the normal end-of-pipeline taxonomy resolution step
+is skipped since it's already done. This does mean more NCBI taxonomy
+lookups than the \code{resolve_taxonomy = TRUE} default alone (resolved
+on the larger pre-\code{max_hits} set, not the smaller final one) -- a
+real cost, only incurred when \code{max_hits_per_taxon} is actually
+requested. With \code{resolve_taxonomy = FALSE}, this falls back to
+grouping by \code{staxids} (a no-op for remote results, same as before
+this parameter existed) -- local BLAST via \pkg{rBLAST} does supply
+real \code{staxids} directly from its own database's taxonomy mapping,
+so this fallback is only inert for the remote path.}
+
 \item{min_score}{Numeric. Discard hits below this percent identity
 (default \code{70}). The 70\% threshold is a conventional cross-genus
 floor for DNA barcoding; most true species-level matches exceed 95\%.}
@@ -60,15 +107,18 @@ floor for DNA barcoding; most true species-level matches exceed 95\%.}
 percentage of the query sequence aligned (default \code{80}). Standard
 BLAST quality filter; ensures hits span most of the barcode region.}
 
-\item{barcode_term}{Character. Barcode marker name for auto-detecting
-subject length bounds (e.g., \code{"12S"}, \code{"COI"}). Default
+\item{barcode_term}{Character. Barcode marker name for auto-detecting the
+expected amplicon length bounds (e.g., \code{"12S"}, \code{"COI"}).
+Default \code{NULL}.}
+
+\item{min_subject_length}{Integer. Minimum length, in bp, of the
+\emph{aligned region} against the reference (not the reference
+accession's own total sequence length -- see Details). Overrides
+\code{barcode_term}. Default \code{NULL}.}
+
+\item{max_subject_length}{Integer. Maximum length, in bp, of the aligned
+region against the reference. Overrides \code{barcode_term}. Default
 \code{NULL}.}
-
-\item{min_subject_length}{Integer. Minimum subject (reference) sequence
-length in bp. Overrides \code{barcode_term}. Default \code{NULL}.}
-
-\item{max_subject_length}{Integer. Maximum subject (reference) sequence
-length in bp. Overrides \code{barcode_term}. Default \code{NULL}.}
 
 \item{max_target_seqs}{Integer. Number of hits to request from BLAST before
 client-side filtering (default \code{100L}). Should be generous (larger
@@ -155,7 +205,8 @@ Rather than a flat top-N cutoff, hits are filtered per query:
 \enumerate{
 \item All hits below \code{min_score} are removed
 \item Hits with query coverage below \code{min_query_coverage} are removed
-\item Hits with subject length outside the barcode range are removed
+\item Hits whose \emph{aligned region} falls outside the barcode length
+range are removed (see "Subject length filter" below)
 \item For each query, the top hit's percent identity is found
 \item All hits within \code{score_range} of the top hit are retained
 \item A \code{max_hits} safety cap is applied per query
@@ -163,6 +214,31 @@ Rather than a flat top-N cutoff, hits are filtered per query:
 
 This means a clear top match may return only 1-3 hits (the rest are too
 distant), while an ambiguous query retains all plausible candidates.
+}
+
+\subsection{Subject length filter}{
+
+This step checks the length of the \strong{aligned region} (the BLAST
+\code{length} field), not the reference accession's own total sequence
+length. Confirmed as a real, not cosmetic, distinction on real Great Lakes
+Ameiurus (bullhead catfish) data: a query's raw BLAST hits included two
+\emph{Ameiurus melas} references at 100\\% identity and 100\\% query
+coverage over the full amplicon -- a genuine, exactly-tied congener match
+-- but both were deposited as long mitogenome/partial-genome records
+(672bp and 960bp), so checking the \emph{subject's own length} against a
+~130-210bp MiFish window discarded them entirely, leaving only a single
+\emph{A. nebulosus} hit (a short, standalone 172bp barcode submission)
+that happened to be the only reference short enough to survive -- not
+because it was the best match, but because it was the only
+correctly-sized \emph{record}. The aligned region itself, in every one of
+these mitogenome-embedded hits, was the correct barcode window (full
+query length, 100\\% coverage) -- exactly the case this filter should
+retain, not the "wrong genomic region of the same gene" case
+(\code{TaxaLikely}'s documented "Paralabrax footgun") it exists to catch.
+Checking aligned length rather than raw subject length fixes this while
+still catching genuinely off-target hits (a poor, partial, non-amplicon
+overlap is already excluded by \code{min_query_coverage} before this step
+ever runs).
 }
 
 \subsection{Score window validation}{

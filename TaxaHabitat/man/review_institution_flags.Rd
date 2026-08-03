@@ -5,7 +5,7 @@
 \title{Review Institution-Proximity Flags Interactively}
 \usage{
 review_institution_flags(
-  data,
+  occurrence_data,
   lat_col = "decimalLatitude",
   lon_col = "decimalLongitude",
   taxon_col = "species",
@@ -14,7 +14,7 @@ review_institution_flags(
 )
 }
 \arguments{
-\item{data}{A dataframe, typically the output of
+\item{occurrence_data}{A dataframe, typically the output of
 \code{\link{flag_institution_candidates}}. Must contain
 \code{institution_flag}, \code{institution_suspicion},
 \code{institution_name}, \code{institution_type},
@@ -38,7 +38,7 @@ blue, so they provide spatial context without obscuring nearby
 occurrence points). Default \code{7}.}
 }
 \value{
-\code{data} with one additional column, \code{institution_decision}:
+\code{occurrence_data} with one additional column, \code{institution_decision}:
 \code{"keep"} or \code{"remove"} for every record that had
 \code{institution_flag = TRUE}; \code{NA} for every other record
 (never shown to the reviewer, never touched). Returns \code{NULL} if

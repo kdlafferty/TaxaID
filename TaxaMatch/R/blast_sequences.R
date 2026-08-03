@@ -27,6 +27,21 @@ NULL
 #' @param database For remote: NCBI database name (default \code{"nt"}). For
 #'   local: path to a local BLAST database.
 #' @param program BLAST program. Default \code{"blastn"}.
+#' @param megablast Logical. Default \code{FALSE}. Both the NCBI BLAST URL API
+#'   (remote) and the standalone \code{blastn} binary (local, via \pkg{rBLAST})
+#'   default an unqualified \code{program = "blastn"} search to MEGABLAST mode
+#'   when this isn't set explicitly -- a fast, greedy algorithm tuned to find
+#'   \emph{a} highly-similar hit quickly, not to exhaustively return every
+#'   equally-good one. Confirmed on real data: a query with five reference
+#'   sequences from one species and five from a second, genuinely tied at
+#'   100\% identity over the full alignment, returned only a single hit from
+#'   one species and none from the other under the implicit (megablast)
+#'   default -- silently dropping a real, exactly-tied congener before
+#'   \code{score_range} filtering ever had a chance to keep it. Set
+#'   \code{TRUE} to restore the old implicit (unspecified/megablast) behavior
+#'   for speed on very large batches; \code{FALSE} (classic blastn) is slower
+#'   but the only mode confirmed to return every near-identical reference,
+#'   which is what \code{score_range}'s own tie-detection depends on.
 #' @param score_range Numeric. Keep all hits within this many percent identity
 #'   points of each query's top hit (default \code{8}, widened from an
 #'   earlier default of \code{2} -- see "Score window validation" below).
@@ -38,19 +53,50 @@ NULL
 #' @param max_hits Integer. Safety cap: maximum hits to retain per query after
 #'   score window filtering (default \code{20L}). Increase for queries
 #'   expected to match many closely related species.
+#' @param max_hits_per_taxon Integer or \code{NULL} (default). When set, caps
+#'   the number of hits retained per taxon \emph{before} \code{max_hits} is
+#'   applied. Without this, one heavily-resequenced species -- e.g. a genus
+#'   with many independently deposited mitogenomes of the same well-studied
+#'   species -- can consume the entire \code{max_hits} budget with redundant
+#'   near-duplicate hits, silently crowding out a real, different congener
+#'   that would otherwise have survived \code{score_range} filtering. Each
+#'   taxon's own best-scoring hit is always kept, so this never changes which
+#'   taxon has the top score. Set to e.g. \code{3L} to keep at most 3
+#'   representative hits per species.
+#'
+#'   \strong{Requires \code{resolve_taxonomy = TRUE} to have any effect on
+#'   remote BLAST results.} Remote BLAST's XML output never populates a real
+#'   per-hit taxid (\code{staxids} is always \code{NA} there), so grouping
+#'   would otherwise be a silent no-op -- every hit would land in its own
+#'   singleton group. When both are set, taxonomy is resolved once, early
+#'   (on the min_score/coverage/length survivors, before this cap and
+#'   \code{max_hits} run) specifically so grouping can use the real resolved
+#'   species/genus name; the normal end-of-pipeline taxonomy resolution step
+#'   is skipped since it's already done. This does mean more NCBI taxonomy
+#'   lookups than the \code{resolve_taxonomy = TRUE} default alone (resolved
+#'   on the larger pre-\code{max_hits} set, not the smaller final one) -- a
+#'   real cost, only incurred when \code{max_hits_per_taxon} is actually
+#'   requested. With \code{resolve_taxonomy = FALSE}, this falls back to
+#'   grouping by \code{staxids} (a no-op for remote results, same as before
+#'   this parameter existed) -- local BLAST via \pkg{rBLAST} does supply
+#'   real \code{staxids} directly from its own database's taxonomy mapping,
+#'   so this fallback is only inert for the remote path.
 #' @param min_score Numeric. Discard hits below this percent identity
 #'   (default \code{70}). The 70% threshold is a conventional cross-genus
 #'   floor for DNA barcoding; most true species-level matches exceed 95%.
 #' @param min_query_coverage Numeric. Discard hits where less than this
 #'   percentage of the query sequence aligned (default \code{80}). Standard
 #'   BLAST quality filter; ensures hits span most of the barcode region.
-#' @param barcode_term Character. Barcode marker name for auto-detecting
-#'   subject length bounds (e.g., \code{"12S"}, \code{"COI"}). Default
+#' @param barcode_term Character. Barcode marker name for auto-detecting the
+#'   expected amplicon length bounds (e.g., \code{"12S"}, \code{"COI"}).
+#'   Default \code{NULL}.
+#' @param min_subject_length Integer. Minimum length, in bp, of the
+#'   \emph{aligned region} against the reference (not the reference
+#'   accession's own total sequence length -- see Details). Overrides
+#'   \code{barcode_term}. Default \code{NULL}.
+#' @param max_subject_length Integer. Maximum length, in bp, of the aligned
+#'   region against the reference. Overrides \code{barcode_term}. Default
 #'   \code{NULL}.
-#' @param min_subject_length Integer. Minimum subject (reference) sequence
-#'   length in bp. Overrides \code{barcode_term}. Default \code{NULL}.
-#' @param max_subject_length Integer. Maximum subject (reference) sequence
-#'   length in bp. Overrides \code{barcode_term}. Default \code{NULL}.
 #' @param max_target_seqs Integer. Number of hits to request from BLAST before
 #'   client-side filtering (default \code{100L}). Should be generous (larger
 #'   than \code{max_hits}) since NCBI's default is 500. Set higher (e.g., 500)
@@ -123,7 +169,8 @@ NULL
 #' \enumerate{
 #'   \item All hits below \code{min_score} are removed
 #'   \item Hits with query coverage below \code{min_query_coverage} are removed
-#'   \item Hits with subject length outside the barcode range are removed
+#'   \item Hits whose \emph{aligned region} falls outside the barcode length
+#'     range are removed (see "Subject length filter" below)
 #'   \item For each query, the top hit's percent identity is found
 #'   \item All hits within \code{score_range} of the top hit are retained
 #'   \item A \code{max_hits} safety cap is applied per query
@@ -131,6 +178,30 @@ NULL
 #'
 #' This means a clear top match may return only 1-3 hits (the rest are too
 #' distant), while an ambiguous query retains all plausible candidates.
+#'
+#' ## Subject length filter
+#'
+#' This step checks the length of the \strong{aligned region} (the BLAST
+#' \code{length} field), not the reference accession's own total sequence
+#' length. Confirmed as a real, not cosmetic, distinction on real Great Lakes
+#' Ameiurus (bullhead catfish) data: a query's raw BLAST hits included two
+#' \emph{Ameiurus melas} references at 100\% identity and 100\% query
+#' coverage over the full amplicon -- a genuine, exactly-tied congener match
+#' -- but both were deposited as long mitogenome/partial-genome records
+#' (672bp and 960bp), so checking the \emph{subject's own length} against a
+#' ~130-210bp MiFish window discarded them entirely, leaving only a single
+#' \emph{A. nebulosus} hit (a short, standalone 172bp barcode submission)
+#' that happened to be the only reference short enough to survive -- not
+#' because it was the best match, but because it was the only
+#' correctly-sized \emph{record}. The aligned region itself, in every one of
+#' these mitogenome-embedded hits, was the correct barcode window (full
+#' query length, 100\% coverage) -- exactly the case this filter should
+#' retain, not the "wrong genomic region of the same gene" case
+#' (\code{TaxaLikely}'s documented "Paralabrax footgun") it exists to catch.
+#' Checking aligned length rather than raw subject length fixes this while
+#' still catching genuinely off-target hits (a poor, partial, non-amplicon
+#' overlap is already excluded by \code{min_query_coverage} before this step
+#' ever runs).
 #'
 #' ## Score window validation
 #'
@@ -208,8 +279,10 @@ blast_sequences <- function(seq_df,
                             method = "remote",
                             database = "nt",
                             program = "blastn",
+                            megablast = FALSE,
                             score_range = 8,
                             max_hits = 20L,
+                            max_hits_per_taxon = NULL,
                             min_score = 70,
                             min_query_coverage = 80,
                             barcode_term = NULL,
@@ -254,11 +327,17 @@ blast_sequences <- function(seq_df,
   if (!is.numeric(max_hits) || length(max_hits) != 1L || is.na(max_hits) ||
       max_hits < 1L)
     stop("max_hits must be a positive integer")
+  if (!is.null(max_hits_per_taxon) &&
+      (!is.numeric(max_hits_per_taxon) || length(max_hits_per_taxon) != 1L ||
+       is.na(max_hits_per_taxon) || max_hits_per_taxon < 1L))
+    stop("max_hits_per_taxon must be NULL or a positive integer")
   if (!is.numeric(min_score) || length(min_score) != 1L || is.na(min_score))
     stop("min_score must be a single numeric value")
   if (!is.numeric(min_query_coverage) || length(min_query_coverage) != 1L ||
       is.na(min_query_coverage))
     stop("min_query_coverage must be a single numeric value")
+  if (!is.logical(megablast) || length(megablast) != 1L || is.na(megablast))
+    stop("megablast must be TRUE or FALSE")
   if (!is.logical(resolve_taxonomy) || length(resolve_taxonomy) != 1L ||
       is.na(resolve_taxonomy))
     stop("resolve_taxonomy must be TRUE or FALSE")
@@ -277,6 +356,7 @@ blast_sequences <- function(seq_df,
   if (identical(ncbi_api_key, "")) ncbi_api_key <- NULL
 
   max_hits <- as.integer(max_hits)
+  if (!is.null(max_hits_per_taxon)) max_hits_per_taxon <- as.integer(max_hits_per_taxon)
   max_target_seqs <- as.integer(max_target_seqs)
   batch_size <- as.integer(batch_size)
 
@@ -310,12 +390,12 @@ blast_sequences <- function(seq_df,
         "Set email = 'you@example.com' to comply with their usage policy."
       )
     raw_hits <- .blast_remote(
-      seq_df, database, program, max_target_seqs, batch_size,
+      seq_df, database, program, megablast, max_target_seqs, batch_size,
       email, ncbi_api_key, verbose
     )
   } else {
     raw_hits <- .blast_local(
-      seq_df, database, program, max_target_seqs, verbose
+      seq_df, database, program, megablast, max_target_seqs, verbose
     )
   }
 
@@ -329,10 +409,54 @@ blast_sequences <- function(seq_df,
                     nrow(raw_hits), length(unique(raw_hits$qseqid))))
 
   # --- Filter hits ------------------------------------------------------------
-  filtered <- .filter_blast_hits(
-    raw_hits, min_score, min_query_coverage,
-    subject_len_range, score_range, max_hits, verbose
-  )
+  taxonomy_already_attached <- FALSE
+
+  if (!is.null(max_hits_per_taxon) && isTRUE(resolve_taxonomy)) {
+    # max_hits_per_taxon needs real species/genus names to group hits by --
+    # remote BLAST's XML output never populates a real per-hit taxid
+    # (staxids is always NA_character_ there; see .parse_blast_xml()), so
+    # grouping by staxids alone would silently be a no-op for the remote
+    # path (the one this ecosystem actually uses). Resolve taxonomy on the
+    # min_score/coverage/length survivors BEFORE the per-taxon cap and
+    # max_hits truncation run, so capping groups by a real resolved name
+    # instead. Only done when resolve_taxonomy = TRUE -- with it FALSE,
+    # max_hits_per_taxon falls back to grouping by staxids (a no-op for
+    # remote results), same as before this feature existed.
+    basic <- .filter_blast_hits(
+      raw_hits, min_score, min_query_coverage, subject_len_range,
+      score_range, max_hits, verbose = verbose, stage = "basic"
+    )
+
+    if (nrow(basic) == 0L) {
+      warning("All hits removed by filtering")
+      return(.empty_blast_result(resolve_taxonomy))
+    }
+
+    basic <- .attach_taxonomy(basic, ncbi_api_key, verbose)
+
+    sp <- if ("species" %in% names(basic)) basic$species else rep(NA_character_, nrow(basic))
+    ge <- if ("genus"   %in% names(basic)) basic$genus   else rep(NA_character_, nrow(basic))
+    st <- if ("staxids" %in% names(basic)) basic$staxids else rep(NA_character_, nrow(basic))
+    basic$.taxon_group <- ifelse(
+      !is.na(sp) & nzchar(sp), sp,
+      ifelse(!is.na(ge) & nzchar(ge), ge,
+             ifelse(!is.na(st) & nzchar(st), st,
+                    paste0("__unresolved_", seq_len(nrow(basic))))))
+
+    filtered <- .filter_blast_hits(
+      basic, min_score, min_query_coverage, subject_len_range,
+      score_range, max_hits, max_hits_per_taxon,
+      taxon_group_col = ".taxon_group", stage = "rest", verbose = verbose
+    )
+    if (".taxon_group" %in% names(filtered)) filtered$.taxon_group <- NULL
+    taxonomy_already_attached <- TRUE
+  } else {
+    filtered <- .filter_blast_hits(
+      raw_hits, min_score, min_query_coverage,
+      subject_len_range, score_range, max_hits, max_hits_per_taxon,
+      verbose = verbose
+    )
+  }
 
   if (nrow(filtered) == 0L) {
     warning("All hits removed by filtering")
@@ -340,43 +464,8 @@ blast_sequences <- function(seq_df,
   }
 
   # --- Resolve taxonomy -------------------------------------------------------
-  if (resolve_taxonomy) {
-    # Try taxid-based resolution first; fall back to accession-based lookup
-    taxids <- character(0L)
-    if ("staxids" %in% names(filtered)) {
-      taxids <- unique(stats::na.omit(filtered$staxids))
-      taxids <- unique(vapply(
-        strsplit(as.character(taxids), ";"),
-        `[`, character(1L), 1L
-      ))
-      taxids <- taxids[nchar(taxids) > 0L & taxids != "N/A"]
-    }
-
-    if (length(taxids) > 0L) {
-      # Direct taxid resolution
-      if (verbose) message(sprintf("Resolving taxonomy for %d unique taxids...", length(taxids)))
-      tax_map <- .resolve_taxonomy(taxids, ncbi_api_key, verbose)
-      filtered$taxid_join <- vapply(
-        strsplit(as.character(filtered$staxids), ";"),
-        `[`, character(1L), 1L
-      )
-      filtered <- merge(filtered, tax_map, by.x = "taxid_join", by.y = "taxid",
-                        all.x = TRUE, sort = FALSE)
-      filtered$taxid_join <- NULL
-    } else {
-      # No taxids available (e.g., from XML output) -- look up from accessions
-      accessions <- unique(filtered$sacc)
-      accessions <- accessions[!is.na(accessions) & nchar(accessions) > 0L]
-      if (length(accessions) > 0L && verbose)
-        message(sprintf("Looking up taxids for %d unique accessions...", length(accessions)))
-      if (length(accessions) > 0L) {
-        tax_map <- .resolve_taxonomy_by_acc(accessions, ncbi_api_key, verbose)
-        if (is.data.frame(tax_map) && nrow(tax_map) > 0L) {
-          filtered <- merge(filtered, tax_map, by.x = "sacc", by.y = "accession",
-                            all.x = TRUE, sort = FALSE)
-        }
-      }
-    }
+  if (resolve_taxonomy && !taxonomy_already_attached) {
+    filtered <- .attach_taxonomy(filtered, ncbi_api_key, verbose)
   }
 
   # --- Rename to TaxaMatch convention -----------------------------------------
@@ -464,7 +553,7 @@ blast_sequences <- function(seq_df,
 # Internal: Remote NCBI BLAST via URL API
 # ==============================================================================
 
-.blast_remote <- function(seq_df, database, program, max_target_seqs,
+.blast_remote <- function(seq_df, database, program, megablast, max_target_seqs,
                           batch_size, email, ncbi_api_key, verbose) {
   .check_pkg("httr2")
 
@@ -490,7 +579,7 @@ blast_sequences <- function(seq_df,
                       i, length(batches), length(idx)))
 
     # --- Submit (PUT) ---------------------------------------------------------
-    rid <- .blast_submit(base_url, query_str, database, program,
+    rid <- .blast_submit(base_url, query_str, database, program, megablast,
                          max_target_seqs, email, ncbi_api_key)
 
     if (is.null(rid)) {
@@ -556,7 +645,7 @@ blast_sequences <- function(seq_df,
           ))
 
         Sys.sleep(11)  # rate-limit before retry submission
-        rid <- .blast_submit(base_url, query_str, database, program,
+        rid <- .blast_submit(base_url, query_str, database, program, megablast,
                              max_target_seqs, email, ncbi_api_key)
 
         if (is.null(rid)) {
@@ -602,15 +691,20 @@ blast_sequences <- function(seq_df,
 
 
 #' @noRd
-.blast_submit <- function(base_url, query, database, program,
+.blast_submit <- function(base_url, query, database, program, megablast,
                           max_target_seqs, email, ncbi_api_key) {
   # NCBI URL API: format params are ignored at submission time.
   # Only CMD, QUERY, DATABASE, PROGRAM, and search params matter here.
+  # MEGABLAST is set explicitly (on/off) rather than left unspecified -- an
+  # unqualified PROGRAM = "blastn" submission defaults to megablast mode,
+  # which can silently return only one of several genuinely tied top hits
+  # (see blast_sequences()'s own `megablast` param documentation).
   params <- list(
     CMD            = "Put",
     QUERY          = query,
     DATABASE       = database,
     PROGRAM        = program,
+    MEGABLAST      = if (isTRUE(megablast)) "on" else "off",
     HITLIST_SIZE   = as.character(max_target_seqs)
   )
   if (!is.null(email)) params$EMAIL <- email
@@ -818,7 +912,7 @@ blast_sequences <- function(seq_df,
 # Internal: Local BLAST via rBLAST
 # ==============================================================================
 
-.blast_local <- function(seq_df, database, program, max_target_seqs, verbose) {
+.blast_local <- function(seq_df, database, program, megablast, max_target_seqs, verbose) {
   .check_pkg("rBLAST", "BiocManager::install('rBLAST')")
   .check_pkg("Biostrings", "BiocManager::install('Biostrings')")
 
@@ -843,10 +937,18 @@ blast_sequences <- function(seq_df,
 
   if (verbose) message(sprintf("Running local BLAST against %s...", database))
 
+  # The standalone blastn binary defaults to "-task megablast" when -task is
+  # left unspecified for program = "blastn" -- the same fast-but-not-
+  # exhaustive behavior as the remote URL API's implicit default (see
+  # blast_sequences()'s `megablast` param doc). "-task blastn" forces the
+  # classic, more sensitive algorithm.
+  task_flag <- if (identical(program, "blastn"))
+    sprintf("-task %s", if (isTRUE(megablast)) "megablast" else "blastn") else ""
+
   hits <- stats::predict(bl, dna,
                   BLAST_args = sprintf(
-                    "-max_target_seqs %d -outfmt '6 %s'",
-                    max_target_seqs, custom_format
+                    "-max_target_seqs %d %s -outfmt '6 %s'",
+                    max_target_seqs, task_flag, custom_format
                   ))
 
   if (is.null(hits) || nrow(hits) == 0L) return(.empty_raw_hits())
@@ -872,29 +974,127 @@ blast_sequences <- function(seq_df,
 
 
 # ==============================================================================
+# Internal: Resolve taxonomy onto a (partially or fully) filtered hits table
+# ==============================================================================
+
+#' Attach genus/species/etc. columns to a hits data frame, in place.
+#'
+#' Tries taxid-based resolution first (via \code{staxids}); falls back to
+#' accession-based lookup (via \code{sacc}) when no usable taxid is present
+#' -- which is always the case for remote BLAST XML output, since
+#' \code{.parse_blast_xml()} never populates a real per-hit taxid. Extracted
+#' from \code{blast_sequences()}'s main body so it can run either at its
+#' original point (after all filtering, the default) or earlier (right
+#' after the cheap min_score/coverage/length filters, when
+#' \code{max_hits_per_taxon} needs real names to group hits by before the
+#' per-taxon cap and \code{max_hits} truncation run).
+#' @noRd
+.attach_taxonomy <- function(filtered, ncbi_api_key, verbose) {
+  # Try taxid-based resolution first; fall back to accession-based lookup
+  taxids <- character(0L)
+  if ("staxids" %in% names(filtered)) {
+    taxids <- unique(stats::na.omit(filtered$staxids))
+    taxids <- unique(vapply(
+      strsplit(as.character(taxids), ";"),
+      `[`, character(1L), 1L
+    ))
+    taxids <- taxids[nchar(taxids) > 0L & taxids != "N/A"]
+  }
+
+  if (length(taxids) > 0L) {
+    # Direct taxid resolution
+    if (verbose) message(sprintf("Resolving taxonomy for %d unique taxids...", length(taxids)))
+    tax_map <- .resolve_taxonomy(taxids, ncbi_api_key, verbose)
+    filtered$taxid_join <- vapply(
+      strsplit(as.character(filtered$staxids), ";"),
+      `[`, character(1L), 1L
+    )
+    filtered <- merge(filtered, tax_map, by.x = "taxid_join", by.y = "taxid",
+                      all.x = TRUE, sort = FALSE)
+    filtered$taxid_join <- NULL
+  } else {
+    # No taxids available (e.g., from XML output) -- look up from accessions
+    accessions <- unique(filtered$sacc)
+    accessions <- accessions[!is.na(accessions) & nchar(accessions) > 0L]
+    if (length(accessions) > 0L && verbose)
+      message(sprintf("Looking up taxids for %d unique accessions...", length(accessions)))
+    if (length(accessions) > 0L) {
+      tax_map <- .resolve_taxonomy_by_acc(accessions, ncbi_api_key, verbose)
+      if (is.data.frame(tax_map) && nrow(tax_map) > 0L) {
+        filtered <- merge(filtered, tax_map, by.x = "sacc", by.y = "accession",
+                          all.x = TRUE, sort = FALSE)
+      }
+    }
+  }
+
+  filtered
+}
+
+
+# ==============================================================================
 # Internal: Filter BLAST hits (score window + QC)
 # ==============================================================================
 
 .filter_blast_hits <- function(hits, min_score, min_query_coverage,
                                subject_len_range, score_range, max_hits,
+                               max_hits_per_taxon = NULL,
+                               taxon_group_col = "staxids",
+                               stage = "all",
                                verbose) {
   n_start <- nrow(hits)
 
-  # 1. Minimum score
-  hits <- hits[!is.na(hits$pident) & hits$pident >= min_score, ]
+  if (stage %in% c("all", "basic")) {
+    # 1. Minimum score
+    hits <- hits[!is.na(hits$pident) & hits$pident >= min_score, ]
 
-  # 2. Query coverage
-  if ("qcovs" %in% names(hits) && !all(is.na(hits$qcovs))) {
-    hits <- hits[is.na(hits$qcovs) | hits$qcovs >= min_query_coverage, ]
+    # 2. Query coverage
+    if ("qcovs" %in% names(hits) && !all(is.na(hits$qcovs))) {
+      hits <- hits[is.na(hits$qcovs) | hits$qcovs >= min_query_coverage, ]
+    }
+
+    # 3. Aligned-region length (NOT the subject accession's own total length
+    # -- a long mitogenome/partial-genome record can still contain a
+    # perfectly valid, correctly-sized amplicon-window alignment; checking
+    # the whole subject's length instead of the alignment itself discards
+    # those hits for no real reason. See "Subject length filter" in
+    # @details.
+    if (!is.null(subject_len_range) && "length" %in% names(hits) &&
+        !all(is.na(hits$length))) {
+      hits <- hits[
+        is.na(hits$length) |
+          (hits$length >= subject_len_range[1L] & hits$length <= subject_len_range[2L]),
+      ]
+    }
   }
 
-  # 3. Subject length
-  if (!is.null(subject_len_range) && "slen" %in% names(hits) &&
-      !all(is.na(hits$slen))) {
-    hits <- hits[
-      is.na(hits$slen) |
-        (hits$slen >= subject_len_range[1L] & hits$slen <= subject_len_range[2L]),
-    ]
+  if (stage == "basic") return(hits)
+
+  # 3b. Per-taxon cap (optional): within each query, keep at most
+  # max_hits_per_taxon hits per taxon (grouped by `taxon_group_col`, default
+  # "staxids" -- but note remote BLAST's XML output never populates a real
+  # per-hit taxid, so blast_sequences() resolves real species/genus names
+  # FIRST via .attach_taxonomy() and passes their column name here instead
+  # whenever max_hits_per_taxon + resolve_taxonomy are both requested; see
+  # that function's own logic). Prevents one heavily-resequenced species
+  # (e.g. many independently deposited mitogenomes of the same well-studied
+  # species) from consuming the whole max_hits budget with redundant
+  # near-duplicates and crowding out a real, different congener. Each
+  # taxon's own best hit is always kept (sorted by pident before
+  # truncating), so this never changes which taxon holds the top score for
+  # step 4 below.
+  if (!is.null(max_hits_per_taxon) && nrow(hits) > 0L &&
+      taxon_group_col %in% names(hits)) {
+    group_val <- hits[[taxon_group_col]]
+    taxon_key <- ifelse(
+      is.na(group_val) | !nzchar(group_val),
+      paste0("__unresolved_", seq_len(nrow(hits))),  # never group unresolved hits together
+      group_val
+    )
+    hits <- do.call(rbind, lapply(
+      split(hits, list(hits$qseqid, taxon_key), drop = TRUE),
+      function(g) utils::head(g[order(-g$pident), ], max_hits_per_taxon)
+    ))
+    rownames(hits) <- NULL
   }
 
   # 4. Score window: per query, keep hits within score_range of top hit
