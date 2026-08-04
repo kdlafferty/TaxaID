@@ -1,6 +1,35 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-30 (Sonnet 5 -- consensus_prior redesigned from a candidate-scoped
+# Last updated: 2026-08-04 (Sonnet 5 -- TaxaAssign's first full code + domain review against
+# inst/Code and Domain Review 2.Rmd, closing the one remaining gap in this ecosystem's review
+# coverage (TaxaTools/TaxaFetch/TaxaMatch/TaxaLikely/TaxaExpect all already had one). No
+# functionality bugs found -- this package had already been through many rounds of ecosystem-
+# wide correctness fixes (see the session notes below). Findings were style/consistency/
+# documentation only, all fixed: (1) base R stop()/warning()/message() used inconsistently
+# with the package's own declared `cli` Imports convention -- 5 files (site_utils.R,
+# run_bayesian_pipeline.R, build_context.R, group_priors.R, report_assign.R) used base calls
+# exclusively (most strikingly, run_bayesian_pipeline.R and run_llm_pipeline.R had the
+# identical backbone_id validation check written with stop() in one and cli::cli_abort() in
+# the other), plus a handful of stray base calls in otherwise-cli files (compute_posterior.R,
+# posterior_consensus.R x2, join_priors.R, slash_taxon.R); all 31 converted to cli::, with
+# every substring an existing expect_error()/expect_warning() regex checks verified preserved
+# before editing. (2) A ~15-line LLM-prompt "Context:" block was independently triplicated
+# verbatim across assign_taxa_llm.R's .build_taxa_prompt() and suggest_unreferenced_species.R's
+# .build_plausible_prompt()/.build_family_prompt() (differing only in one field name); extracted
+# to a new shared .build_context_block() helper in site_utils.R. (3) compute_posterior.R's
+# internal rtruncnorm_at_zero(n, mean, sd) shadowed base::mean/stats::sd as parameter names --
+# not an active bug (never called internally), but exactly the base-R-collision class this
+# review's own template asks to check for; renamed to mu/sigma. (4) A latent packaging bug
+# (not introduced this session, but blocking): 4 multi-line @importFrom roxygen blocks
+# (assign_taxa_llm.R x2, join_priors.R, suggest_unreferenced_species.R) are a hard error under
+# the locally installed roxygen2 8.0.0 (tolerated by older versions) -- silently aborted
+# devtools::document() partway through; split into single-line tags, same fix pattern
+# TaxaExpect's own 2026-07-31 review already applied to an identical issue in that package.
+# devtools::test() 615/615 unchanged (0 failures; 13 pre-existing informational warnings, 1
+# pre-existing skip, both unchanged -- no test asserted on exact message wording beyond the
+# substrings preserved). devtools::check() 0 errors/0 warnings/0 notes. Reinstalled to
+# ~/Library/R/4.0/library. See inst/taxaassign_review.Rmd for the full record.
+# Previous update, 2026-07-30 (Sonnet 5 -- consensus_prior redesigned from a candidate-scoped
 # MAX to a real group-level SUM, closing out Task 1 of TaxaFlag/REENTRY_PROMPT_axes_wrapup.md
 # (deferred at the end of the 2026-07-28 session below). New exported
 # compute_group_priors(taxaexpect_priors, taxonomy_map, rank_cols = c("genus","family"))

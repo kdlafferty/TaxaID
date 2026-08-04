@@ -72,22 +72,21 @@ build_context <- function(taxon_names,
 
   # --- Check TaxaHabitat availability ---
   if (!requireNamespace("TaxaHabitat", quietly = TRUE)) {
-    stop(
-      "build_context: the TaxaHabitat package is required but not installed.\n",
-      "Install it with: devtools::install('<path_to_TaxaHabitat>')",
-      call. = FALSE
-    )
+    cli::cli_abort(c(
+      "build_context: the {.pkg TaxaHabitat} package is required but not installed.",
+      "i" = "Install it with: {.code devtools::install('<path_to_TaxaHabitat>')}"
+    ))
   }
 
   # --- Input validation ---
   if (!is.character(taxon_names) || length(taxon_names) == 0) {
-    stop("build_context: 'taxon_names' must be a non-empty character vector.")
+    cli::cli_abort("{.arg taxon_names} must be a non-empty character vector.")
   }
   if (!is.null(date) && (!is.character(date) || length(date) != 1L)) {
-    stop("build_context: 'date' must be NULL or a single character string.")
+    cli::cli_abort("{.arg date} must be NULL or a single character string.")
   }
   if (!is.function(llm_fn)) {
-    stop("build_context: 'llm_fn' must be a function.")
+    cli::cli_abort("{.arg llm_fn} must be a function.")
   }
 
   taxon_names <- unique(trimws(taxon_names))
@@ -104,8 +103,7 @@ build_context <- function(taxon_names,
   # --- Step 2: submit each chunk to the LLM ---
   raw_texts <- character(prompt$n_chunks)
   for (i in seq_len(prompt$n_chunks)) {
-    message(sprintf("build_context: submitting chunk %d of %d to LLM...",
-                    i, prompt$n_chunks))
+    cli::cli_inform("build_context: submitting chunk {i} of {prompt$n_chunks} to LLM...")
     raw_texts[i] <- llm_fn(prompt$prompts[[i]])
   }
 
@@ -135,7 +133,7 @@ build_context <- function(taxon_names,
     geographic_hint    = geographic_hint,
     ecoregion          = consensus$ecoregion
   )
-  message("build_context: synthesising habitat description...")
+  cli::cli_inform("build_context: synthesising habitat description...")
   synthesis_raw    <- llm_fn(synthesis_prompt)
   synthesis        <- .parse_synthesis_response(synthesis_raw)
   main_habitat     <- synthesis$main_habitat
@@ -156,11 +154,9 @@ build_context <- function(taxon_names,
   attr(ctx, "habitats_df") <- habitats_df
   attr(ctx, "habitat_proportions") <- props
 
-  message(sprintf(
-    "build_context: main_habitat = '%s', ecoregion = '%s'",
-    if (is.na(ctx$main_habitat)) "(NA)" else ctx$main_habitat,
-    if (is.na(ctx$ecoregion)) "(NA)" else ctx$ecoregion
-  ))
+  cli::cli_inform(
+    "build_context: main_habitat = {.val {if (is.na(ctx$main_habitat)) NA else ctx$main_habitat}}, ecoregion = {.val {if (is.na(ctx$ecoregion)) NA else ctx$ecoregion}}"
+  )
 
   ctx
 }

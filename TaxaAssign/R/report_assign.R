@@ -53,8 +53,7 @@ report_assign <- function(result    = NULL,
                           verbose   = FALSE) {
 
   if (!is.data.frame(consensus) || nrow(consensus) == 0L)
-    stop("report_assign: 'consensus' must be a non-empty data frame.",
-         call. = FALSE)
+    cli::cli_abort("{.arg consensus} must be a non-empty data frame.")
 
   # --- Detect consensus type --------------------------------------------------
   consensus_type <- if ("top_score" %in% names(consensus)) "score" else "posterior"
@@ -174,8 +173,10 @@ report_assign <- function(result    = NULL,
 
   # --- Construct report_section -----------------------------------------------
   if (!requireNamespace("TaxaTools", quietly = TRUE))
-    stop("report_assign: TaxaTools is required for report_section objects. ",
-         "Install with: devtools::install('path/to/TaxaTools')", call. = FALSE)
+    cli::cli_abort(c(
+      "{.pkg TaxaTools} is required for {.cls report_section} objects.",
+      "i" = "Install with: {.code devtools::install('path/to/TaxaTools')}"
+    ))
 
   TaxaTools::new_report_section(
     package    = "TaxaAssign",

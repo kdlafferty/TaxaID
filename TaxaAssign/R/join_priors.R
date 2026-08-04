@@ -613,7 +613,7 @@ utils::globalVariables(c(
 #' }
 #'
 #' @importFrom dplyr left_join distinct filter mutate select arrange
-#'   group_by summarise coalesce if_else desc na_if
+#' @importFrom dplyr group_by summarise coalesce if_else desc na_if
 #' @importFrom rlang .data
 #' @export
 join_priors <- function(likelihoods,
@@ -1121,8 +1121,10 @@ join_priors <- function(likelihoods,
 
   zero_ab <- which((result$prior_alpha + result$prior_beta) == 0)
   if (length(zero_ab) > 0L) {
-    warning(sprintf("join_priors: %d row(s) have alpha + beta = 0; setting prior_mean to 0.5 (uninformative).", length(zero_ab)),
-            call. = FALSE)
+    cli::cli_warn(
+      "{length(zero_ab)} row(s) have alpha + beta = 0; setting prior_mean to \\
+      0.5 (uninformative)."
+    )
     result$prior_alpha[zero_ab] <- 0.5
     result$prior_beta[zero_ab] <- 0.5
     result$prior_mean[zero_ab] <- 0.5

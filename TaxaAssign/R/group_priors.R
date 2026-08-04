@@ -71,21 +71,20 @@ compute_group_priors <- function(taxaexpect_priors,
                                   rank_cols = c("genus", "family")) {
 
   if (!is.data.frame(taxaexpect_priors))
-    stop("compute_group_priors: 'taxaexpect_priors' must be a data frame.", call. = FALSE)
+    cli::cli_abort("{.arg taxaexpect_priors} must be a data frame.")
   if (!is.data.frame(taxonomy_map))
-    stop("compute_group_priors: 'taxonomy_map' must be a data frame.", call. = FALSE)
+    cli::cli_abort("{.arg taxonomy_map} must be a data frame.")
   for (col in c(taxon_col, theta_col)) {
     if (!col %in% names(taxaexpect_priors))
-      stop(sprintf("compute_group_priors: column '%s' not found in taxaexpect_priors.", col),
-           call. = FALSE)
+      cli::cli_abort("Column {.field {col}} not found in {.arg taxaexpect_priors}.")
   }
   if (!taxon_col %in% names(taxonomy_map))
-    stop(sprintf("compute_group_priors: column '%s' not found in taxonomy_map.", taxon_col),
-         call. = FALSE)
+    cli::cli_abort("Column {.field {taxon_col}} not found in {.arg taxonomy_map}.")
   missing_rank_cols <- setdiff(rank_cols, names(taxonomy_map))
   if (length(missing_rank_cols) > 0)
-    stop(sprintf("compute_group_priors: rank_cols not found in taxonomy_map: %s.",
-                 paste(missing_rank_cols, collapse = ", ")), call. = FALSE)
+    cli::cli_abort(
+      "{.arg rank_cols} not found in {.arg taxonomy_map}: {.field {missing_rank_cols}}."
+    )
 
   priors_slim <- taxaexpect_priors[, c(taxon_col, theta_col), drop = FALSE]
   names(priors_slim) <- c("taxon_name_", "theta_")

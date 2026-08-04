@@ -49,9 +49,9 @@ element is extracted automatically).}
 which habitat your observations came from. Accepted formats:
 \describe{
 \item{Named list with lat/lon}{\code{list(lat = 34.1, lon = -119.1,
-      main_habitat = "Marine")} -- auto-resolves to nearest grid cell.}
+    main_habitat = "Marine")} -- auto-resolves to nearest grid cell.}
 \item{Named list with grid_id}{\code{list(grid_id = "...",
-      main_habitat = "...")}}
+    main_habitat = "...")}}
 \item{Data frame (multi-site)}{Columns \code{observation_id},
 \code{grid_id}, \code{main_habitat} -- OR -- \code{observation_id},
 \code{lat}, \code{lon}, \code{main_habitat}.}

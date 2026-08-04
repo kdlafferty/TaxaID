@@ -33,9 +33,9 @@ is always required -- the function does not guess which habitat your
 observations came from. Accepted formats:
 \describe{
 \item{Named list with lat/lon}{\code{list(lat = 34.1, lon = -119.1,
-      main_habitat = "Marine")} -- auto-resolves to nearest grid_id.}
+    main_habitat = "Marine")} -- auto-resolves to nearest grid_id.}
 \item{Named list with grid_id}{\code{list(grid_id = "...",
-      main_habitat = "Marine")}}
+    main_habitat = "Marine")}}
 \item{Data frame (multi-site)}{Columns \code{observation_id},
 \code{grid_id}, \code{main_habitat}. Or \code{observation_id},
 \code{lat}, \code{lon}, \code{main_habitat}.}

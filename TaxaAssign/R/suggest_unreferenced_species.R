@@ -40,22 +40,7 @@
 #' Build a plausible-species prompt for one batch of genera
 #' @noRd
 .build_plausible_prompt <- function(genera, ctx, data_type = "eDNA") {
-  ctx_fields   <- c("ecoregion", "lat", "lon", "date", "habitat")
-  header_parts <- character(0L)
-  for (fld in ctx_fields) {
-    v <- ctx[[fld]]
-    if (!is.null(v) && length(v) == 1L && !is.na(v) && nzchar(trimws(as.character(v)))) {
-      label <- switch(fld,
-        ecoregion = "Ecoregion", lat = "Latitude", lon = "Longitude",
-        date = "Date/season", habitat = "Habitat", fld
-      )
-      header_parts <- c(header_parts, paste0(label, ": ", as.character(v)))
-    }
-  }
-  ctx_block <- if (length(header_parts) > 0L)
-    paste0("Context:\n", paste0("  ", header_parts, collapse = "\n"), "\n\n")
-  else
-    ""
+  ctx_block <- .build_context_block(ctx, habitat_field = "habitat")
 
   ex1 <- genera[[1L]]
   if (length(genera) >= 2L) {
@@ -184,22 +169,7 @@
 #' Build a plausible-species prompt for one family (excluding known genera)
 #' @noRd
 .build_family_prompt <- function(family, exclude_genera, ctx, data_type = "eDNA") {
-  ctx_fields   <- c("ecoregion", "lat", "lon", "date", "habitat")
-  header_parts <- character(0L)
-  for (fld in ctx_fields) {
-    v <- ctx[[fld]]
-    if (!is.null(v) && length(v) == 1L && !is.na(v) && nzchar(trimws(as.character(v)))) {
-      label <- switch(fld,
-        ecoregion = "Ecoregion", lat = "Latitude", lon = "Longitude",
-        date = "Date/season", habitat = "Habitat", fld
-      )
-      header_parts <- c(header_parts, paste0(label, ": ", as.character(v)))
-    }
-  }
-  ctx_block <- if (length(header_parts) > 0L)
-    paste0("Context:\n", paste0("  ", header_parts, collapse = "\n"), "\n\n")
-  else
-    ""
+  ctx_block <- .build_context_block(ctx, habitat_field = "habitat")
 
   ref_filter_note <- switch(data_type,
     eDNA     = "A separate NCBI sequence check will filter species lacking barcode sequences.\nDo not pre-filter based on sequence availability.\n\n",
@@ -509,7 +479,7 @@ print.unreferenced_species_result <- function(x, ...) {
 #'   unreferenced species detection that does not require an LLM.
 #'
 #' @importFrom cli cli_abort cli_inform cli_warn cli_progress_bar
-#'   cli_progress_update cli_progress_done
+#' @importFrom cli cli_progress_update cli_progress_done
 #' @importFrom jsonlite fromJSON
 #' @importFrom stats setNames
 #'

@@ -134,7 +134,7 @@ add_slash_taxon <- function(consensus_df,
                            posteriors_col = "plausible_posteriors") {
 
   if (!taxa_col %in% names(consensus_df))
-    stop(sprintf("Column '%s' not found in consensus_df.", taxa_col))
+    cli::cli_abort("Column {.field {taxa_col}} not found in {.arg consensus_df}.")
 
   raw_sets <- consensus_df[[taxa_col]]
 

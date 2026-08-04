@@ -19,7 +19,7 @@ build_context(
 
 \item{geographic_hint}{Optional character string describing the approximate
 geographic region (e.g. \code{"Southern California"}, \code{"Chesapeake Bay
-  watershed"}). Passed to \code{build_habitat_prompt(geographic_context = ...)}.
+watershed"}). Passed to \code{build_habitat_prompt(geographic_context = ...)}.
 When non-NULL, the LLM also returns an \code{ecoregion_best_guess} column.}
 
 \item{date}{Optional character string for the sampling date or year

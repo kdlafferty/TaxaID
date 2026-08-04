@@ -182,18 +182,18 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   # TaxaAssign::compute_posterior::mc_uncertainty_propagation). `mean`/`sd` are
   # recycled to length `n`, matching rnorm()'s own recycling behavior. sd == 0
   # is deterministic, matching rnorm(sd = 0) returning `mean` exactly.
-  rtruncnorm_at_zero <- function(n, mean, sd) {
-    mean <- rep_len(mean, n)
-    sd   <- rep_len(sd, n)
-    out  <- mean
-    pos_sd <- sd > 0
+  rtruncnorm_at_zero <- function(n, mu, sigma) {
+    mu     <- rep_len(mu, n)
+    sigma  <- rep_len(sigma, n)
+    out    <- mu
+    pos_sd <- sigma > 0
     if (any(pos_sd)) {
       # Clamp away from exactly 1 to avoid qnorm(1) = Inf for extreme
       # negative-mean/small-sd combinations (probability mass below 0
       # effectively 1 in double precision).
-      lower_p <- pmin(stats::pnorm(0, mean[pos_sd], sd[pos_sd]), 1 - 1e-12)
+      lower_p <- pmin(stats::pnorm(0, mu[pos_sd], sigma[pos_sd]), 1 - 1e-12)
       u       <- stats::runif(sum(pos_sd), min = lower_p, max = 1)
-      out[pos_sd] <- stats::qnorm(u, mean[pos_sd], sd[pos_sd])
+      out[pos_sd] <- stats::qnorm(u, mu[pos_sd], sigma[pos_sd])
     }
     out
   }
@@ -265,10 +265,11 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
         all_zero_cols <- col_sums_lik == 0
         n_zero_cols   <- sum(all_zero_cols)
         if (n_zero_cols > 0L) {
-          warning(sprintf(
-            "compute_posterior: %d of %d simulation(s) for observation_id '%s' had all-zero likelihoods; using uniform fallback for those simulations.",
-            n_zero_cols, n_sims, chunk$observation_id[1L]
-          ), call. = FALSE)
+          cli::cli_warn(
+            "{n_zero_cols} of {n_sims} simulation(s) for observation_id \\
+            {.val {chunk$observation_id[1L]}} had all-zero likelihoods; using \\
+            uniform fallback for those simulations."
+          )
         }
         sim_lik_norm  <- sweep(sim_lik, 2,
                                ifelse(all_zero_cols, 1, col_sums_lik), "/")

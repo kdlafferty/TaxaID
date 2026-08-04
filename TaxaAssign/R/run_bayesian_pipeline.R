@@ -154,23 +154,21 @@ run_bayesian_pipeline <- function(
   constraint_behavior <- match.arg(constraint_behavior)
 
   if (missing(backbone_id)) {
-    stop(
-      "run_bayesian_pipeline: 'backbone_id' must be specified explicitly.\n",
-      "There is no safe default: the correct backbone depends on which ",
-      "backbone your input taxonomy was verified against, which varies by ",
-      "project. Common values: 11 (GBIF), 4 (NCBI). See the Taxonomic ",
-      "Backbone ID Reference in TaxaID/CLAUDE.md for the full list.",
-      call. = FALSE
-    )
+    cli::cli_abort(c(
+      "{.arg backbone_id} must be specified explicitly.",
+      "i" = "There is no safe default: the correct backbone depends on which \\
+      backbone your input taxonomy was verified against, which varies by \\
+      project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See the \\
+      Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the full list."
+    ))
   }
 
   # --- Check dependencies ---
   if (!requireNamespace("TaxaLikely", quietly = TRUE)) {
-    stop(
-      "run_bayesian_pipeline: the TaxaLikely package is required.\n",
-      "Install it with: devtools::install('<path_to_TaxaLikely>')",
-      call. = FALSE
-    )
+    cli::cli_abort(c(
+      "The {.pkg TaxaLikely} package is required.",
+      "i" = "Install it with: {.code devtools::install('<path_to_TaxaLikely>')}"
+    ))
   }
 
   .msg <- function(...) if (verbose) message(...)
@@ -182,12 +180,11 @@ run_bayesian_pipeline <- function(
   if (is.null(model_rank_system)) {
     match_ranks <- intersect(rank_system, names(match_df))
     if (length(match_ranks) < 2L) {
-      stop(
-        "run_bayesian_pipeline: fewer than 2 rank_system columns found in match_df: ",
-        paste(match_ranks, collapse = ", "),
-        "\nAvailable columns: ", paste(names(match_df), collapse = ", "),
-        call. = FALSE
-      )
+      cli::cli_abort(c(
+        "fewer than 2 rank_system columns found in match_df: \\
+        {paste(match_ranks, collapse = ', ')}",
+        "i" = "Available columns: {paste(names(match_df), collapse = ', ')}"
+      ))
     }
     model_rank_system <- match_ranks
     .msg(sprintf("  Auto-detected model_rank_system from match_df: %s",
@@ -213,14 +210,12 @@ run_bayesian_pipeline <- function(
   prior_grids <- unique(taxaexpect_priors$grid_id)
   missing_grids <- setdiff(site_grids, prior_grids)
   if (length(missing_grids) > 0L) {
-    stop(sprintf(
-      paste0("run_bayesian_pipeline: site grid_id(s) not found in ",
-             "taxaexpect_priors: %s\n",
-             "Available grid_ids: %s\n",
-             "Hint: use site = list(lat = ..., lon = ...) to auto-match."),
-      paste(missing_grids, collapse = ", "),
-      paste(utils::head(prior_grids, 10L), collapse = ", ")
-    ), call. = FALSE)
+    cli::cli_abort(c(
+      "site grid_id(s) not found in {.arg taxaexpect_priors}: \\
+      {paste(missing_grids, collapse = ', ')}",
+      "i" = "Available grid_ids: {paste(utils::head(prior_grids, 10L), collapse = ', ')}",
+      "i" = "Hint: use {.code site = list(lat = ..., lon = ...)} to auto-match."
+    ))
   }
 
   # 2. Check genus overlap between match_df and taxaexpect_priors
@@ -230,12 +225,11 @@ run_bayesian_pipeline <- function(
     overlap <- length(intersect(match_genera, prior_genera))
     pct <- if (length(match_genera) > 0L) overlap / length(match_genera) else 1
     if (pct < 0.5) {
-      warning(sprintf(
-        paste0("Low genus overlap between match_df and taxaexpect_priors: ",
-               "%d of %d genera (%.0f%%). Objects may be from different ",
-               "datasets or regions."),
-        overlap, length(match_genera), pct * 100
-      ), call. = FALSE)
+      cli::cli_warn(
+        "Low genus overlap between {.arg match_df} and {.arg taxaexpect_priors}: \\
+        {overlap} of {length(match_genera)} genera ({round(pct * 100)}%). Objects \\
+        may be from different datasets or regions."
+      )
     }
   }
 
@@ -259,14 +253,13 @@ run_bayesian_pipeline <- function(
   if (length(match_taxa) > 0L) {
     taxa_pct <- length(taxa_with_prior) / length(match_taxa)
     if (taxa_pct < 0.5) {
-      warning(sprintf(
-        paste0("Only %d of %d candidate taxa (%.0f%%) have non-zero priors ",
-               "for habitat '%s'. The habitat scheme or site coordinates ",
-               "may not match the study system. Consider a finer scheme ",
-               "(habitat_scheme = 'IUCN_L1') or check site coordinates."),
-        length(taxa_with_prior), length(match_taxa), taxa_pct * 100,
-        paste(site_habitats, collapse = " / ")
-      ), call. = FALSE)
+      cli::cli_warn(
+        "Only {length(taxa_with_prior)} of {length(match_taxa)} candidate taxa \\
+        ({round(taxa_pct * 100)}%) have non-zero priors for habitat \\
+        {.val {paste(site_habitats, collapse = ' / ')}}. The habitat scheme or \\
+        site coordinates may not match the study system. Consider a finer \\
+        scheme ({.code habitat_scheme = 'IUCN_L1'}) or check site coordinates."
+      )
     } else {
       .msg(sprintf("  %d of %d candidate taxa (%.0f%%) have non-zero priors at habitat '%s'.",
                    length(taxa_with_prior), length(match_taxa), taxa_pct * 100,

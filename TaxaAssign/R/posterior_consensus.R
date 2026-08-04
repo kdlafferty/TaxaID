@@ -540,19 +540,21 @@ posterior_consensus <- function(posterior_df,
 
 
   if (nrow(named_all) == 0L) {
-    warning(sprintf(
-      "posterior_consensus: observation_id '%s' has no named hypotheses (all rows have NA taxon_name or are unreferenced_family). Consensus is NA.", sid
-    ), call. = FALSE)
+    cli::cli_warn(
+      "observation_id {.val {sid}} has no named hypotheses (all rows have NA \\
+      taxon_name or are unreferenced_family). Consensus is NA."
+    )
     return(.empty_flagged())
   }
 
   # Apply minimum posterior filter (named_all preserved above for consensus_posterior)
   named <- named_all[named_all[[posterior_col]] >= min_posterior, ]
   if (nrow(named) == 0L) {
-    warning(sprintf(
-      "posterior_consensus: observation_id '%s' has no hypotheses above min_posterior = %g. All %d named hypothesis(es) are below threshold. Consider lowering min_posterior.",
-      sid, min_posterior, nrow(named_all)
-    ), call. = FALSE)
+    cli::cli_warn(
+      "observation_id {.val {sid}} has no hypotheses above min_posterior = \\
+      {min_posterior}. All {nrow(named_all)} named hypothesis(es) are below \\
+      threshold. Consider lowering min_posterior."
+    )
     return(.empty_flagged())
   }
 

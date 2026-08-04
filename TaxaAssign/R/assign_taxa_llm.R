@@ -253,12 +253,12 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #'
 #' @seealso [compute_posterior()] for the Bayesian update step.
 #'
-#' @importFrom dplyr filter arrange desc group_by ungroup left_join bind_rows
-#'   slice_max n_distinct summarise
+#' @importFrom dplyr filter arrange desc group_by ungroup left_join
+#' @importFrom dplyr bind_rows slice_max n_distinct summarise
 #' @importFrom rlang .data
 #' @importFrom stats median setNames
 #' @importFrom cli cli_inform cli_warn cli_abort cli_progress_bar
-#'   cli_progress_update cli_progress_done
+#' @importFrom cli cli_progress_update cli_progress_done
 #'
 #' @export
 #'
@@ -860,22 +860,7 @@ assign_taxa_llm <- function(match_df,
                                 known_absent_df    = NULL,
                                 prior_weight_guide = NULL) {
   # Context block
-  ctx_fields <- c("ecoregion", "lat", "lon", "date", "main_habitat")
-  header_parts <- character(0)
-  for (fld in ctx_fields) {
-    v <- ctx[[fld]]
-    if (!is.null(v) && length(v) == 1 && !is.na(v) && nzchar(trimws(as.character(v)))) {
-      label <- switch(fld,
-        ecoregion    = "Ecoregion", lat = "Latitude", lon = "Longitude",
-        date         = "Date/season", main_habitat = "Habitat", fld
-      )
-      header_parts <- c(header_parts, paste0(label, ": ", as.character(v)))
-    }
-  }
-  ctx_block <- if (length(header_parts) > 0)
-    paste0("Context:\n", paste0("  ", header_parts, collapse = "\n"), "\n\n")
-  else
-    ""
+  ctx_block <- .build_context_block(ctx, habitat_field = "main_habitat")
 
   # Survey context block (independent species observations at the site)
   survey_parts <- character(0)
