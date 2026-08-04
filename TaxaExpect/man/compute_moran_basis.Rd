@@ -8,7 +8,8 @@ compute_moran_basis(
   grid_ids,
   k = 10L,
   distance_threshold = NULL,
-  min_neighbours = 1L
+  min_neighbours = 1L,
+  coords = NULL
 )
 }
 \arguments{
@@ -28,6 +29,14 @@ coordinate spacing in \code{grid_ids}.}
 \item{min_neighbours}{Positive integer.  Minimum number of neighbours a
 cell must have before a warning is issued about potential unreliability
 of the spatial basis for that cell.  Default \code{1L}.}
+
+\item{coords}{Optional data frame with columns \code{grid_id}, \code{lat},
+\code{lon} giving each cell's real centroid coordinates directly (e.g.
+\code{dplyr::distinct(model_data, grid_id, lat = lat_r, lon = lon_r)}).
+When supplied, used in place of parsing \code{grid_ids}' own string
+encoding; rows not covering every value in \code{grid_ids} fall back to
+string-parsing for the missing ones. Default \code{NULL} (string-parse
+every \code{grid_id}, the original behavior).}
 }
 \value{
 A data frame with \code{nrow} equal to the number of parseable,
@@ -51,8 +60,14 @@ patterns that are not explained by the habitat and geographic gradient terms.
 \details{
 The function performs the following steps:
 \enumerate{
-\item Parse \code{grid_ids} to centroid coordinates using the TaxaExpect
-\code{Grid_{lat}p{dec}_{m}{lon}p{dec}} encoding.
+\item Resolve centroid coordinates for \code{grid_ids} -- from
+\code{coords} directly when supplied, otherwise by parsing the
+TaxaExpect \code{Grid_{lat}p{dec}_{m}{lon}p{dec}} encoding. Passing
+\code{coords} is preferred whenever you already have real \code{lat_r}/
+\code{lon_r} columns on hand (e.g. straight from
+\code{\link{prepare_model_dataframe}}'s output) -- string-round-tripping
+through \code{grid_id} is unnecessary work and, at high grid
+resolutions, loses precision relative to the source coordinates.
 \item Build a binary adjacency matrix \eqn{W} where cells \eqn{i} and
 \eqn{j} are neighbours if their Euclidean distance (in degrees) is
 greater than zero and less than \code{distance_threshold}. \eqn{W} is
@@ -79,12 +94,27 @@ threshold, are dropped with a warning.  If fewer than \code{k} positive
 eigenvalues exist, \code{k} is silently reduced to the number available.
 }
 \examples{
+# A small 4x4 regular grid, built the same way create_sites_from_grid()
+# encodes coordinates into grid_id strings.
+lat_seq  <- seq(33.0, 34.5, by = 0.5)
+lon_seq  <- seq(-119.5, -118.0, by = 0.5)
+grid_ids <- as.vector(outer(lat_seq, lon_seq, function(la, lo) {
+  s <- sprintf("Grid_\%.1f_\%.1f", la, lo)
+  s <- gsub("-", "m", s, fixed = TRUE)
+  gsub(".", "p", s, fixed = TRUE)
+}))
+basis <- compute_moran_basis(grid_ids, k = 5L)
+head(basis)
+
 \dontrun{
+# Real usage: pass known lat_r/lon_r coordinates directly (avoids
+# re-parsing grid_id's own string encoding) and join the result onto
+# model data before training.
 basis <- compute_moran_basis(
   grid_ids = unique(model_data$grid_id),
-  k        = 10L
+  k        = 10L,
+  coords   = dplyr::distinct(model_data, grid_id, lat = lat_r, lon = lon_r)
 )
-# Join to model data before training
 model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
 }
 

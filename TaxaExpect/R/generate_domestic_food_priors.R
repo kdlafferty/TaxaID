@@ -50,6 +50,13 @@
 #' incomplete reference has a real residual error rate -- extend or replace
 #' via \code{generate_domestic_food_priors(food_species_taxa = ...)} for your
 #' own study system.
+#' \strong{No stable URLs recorded:} the five Wikipedia food-plant lists were
+#' consulted via ad hoc web search in an earlier working session and their
+#' individual page URLs were not retained at the time -- reconstructing them
+#' now with confidence they are the exact pages used is not possible, so none
+#' are cited here rather than risking a wrong or unstable link. If exact
+#' citations matter for your use, re-derive the genus reference from
+#' Wikipedia's current list-of-food-plants category pages directly.
 #' @noRd
 .default_food_species_taxa <- c(
   "Abelmoschus caillei",
@@ -921,7 +928,8 @@
 #'   a match-list taxon with a real named row here doesn't need an
 #'   iNaturalist check. Default \code{NULL} (residual pool is a safe
 #'   superset, not incorrect, just less minimal).
-#' @param radius_km Numeric. iNaturalist search radius. Default 50.
+#' @param radius_km Numeric. iNaturalist search radius, in kilometers.
+#'   Default 50.
 #' @param ess Numeric. Baseline effective sample size (in the same
 #'   \code{N_total} units as \code{generate_undetected_diversity()}'s
 #'   \code{singleton_ess}) assumed for \code{domestic_animal_taxa}/
@@ -1050,9 +1058,6 @@ generate_domestic_food_priors <- function(
     stop("generate_domestic_food_priors: N_total is zero or negative. ",
          "Check that train_biodiversity_model() ran successfully.")
   }
-
-  beta_mean <- function(a, b) a / (a + b)
-  beta_sd   <- function(a, b) sqrt((a * b) / ((a + b)^2 * (a + b + 1)))
 
   candidates <- dplyr::bind_rows(
     if (length(domestic_animal_taxa) > 0L) {
@@ -1292,8 +1297,8 @@ generate_domestic_food_priors <- function(
         grid_id                   = grid_id,
         alpha                     = alpha_i,
         beta                      = beta_i,
-        theta_mean                = beta_mean(alpha_i, beta_i),
-        theta_sd                  = beta_sd(alpha_i, beta_i),
+        theta_mean                = .beta_mean(alpha_i, beta_i),
+        theta_sd                  = .beta_sd(alpha_i, beta_i),
         model_tier                = "tier_domestic_food",
         prior_source_type         = category,
         cultivar_evidence_source  = row$cultivar_evidence_source,
@@ -1331,7 +1336,7 @@ generate_domestic_food_priors <- function(
     result <- dplyr::bind_rows(proxy_list)
   }
 
-  tax_rank_cols <- c("genus", "family", "order", "class", "phylum")
+  tax_rank_cols <- .dark_diversity_rank_cols
   if (!is.null(taxonomy)) {
     if (!is.data.frame(taxonomy) || !"taxon_name" %in% names(taxonomy)) {
       stop("generate_domestic_food_priors: taxonomy must be a data frame with a 'taxon_name' column.")

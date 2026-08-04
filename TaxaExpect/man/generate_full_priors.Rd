@@ -141,7 +141,7 @@ If phi <= 0 after capping and flooring at \code{min_phi} (variance exceeds
 the Bernoulli maximum, or the SE prediction itself was non-finite -- with
 \code{min_phi > 0}, the default, the finite "too much variance" case is
 already rescued by the floor, so this branch is reached almost exclusively
-via a non-finite SE), the fallback (Session 149) preserves the model's
+via a non-finite SE), the fallback preserves the model's
 point-estimate mean \code{m} rather than discarding it for the agnostic
 Jeffreys mean of 0.5 -- 0.5 is a poor stand-in for what a Tier 1/2
 prediction almost always actually is (a low-theta species, not a coin

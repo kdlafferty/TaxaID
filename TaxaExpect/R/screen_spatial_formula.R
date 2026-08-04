@@ -62,6 +62,15 @@
 #'   }
 #'
 #' @details
+#' **Tier 1:** "Tier 1" refers to the species tier assigned by
+#' \code{\link{train_biodiversity_model}} -- species with enough detections
+#' (\code{>= min_obs_threshold}) to fit the full, species-specific formula
+#' being screened here. Every fit and comparison in this function operates on
+#' the Tier 1 model only; Tier 2 (sparse species, intercept-only) is
+#' untouched and always uses the same simplified formula regardless of what
+#' this function recommends. See \code{\link{train_biodiversity_model}}'s own
+#' documentation for the full tier definition.
+#'
 #' **Candidate models fitted:**
 #' \enumerate{
 #'   \item Full model (always -- reuses the first fit, no refitting).
@@ -138,7 +147,7 @@ screen_spatial_formula <- function(data,
   formula_chr  <- paste(deparse(formula_full, width.cutoff = 500), collapse = " ")
   all_vars     <- all.vars(formula_full)
 
-  moran_present <- sort(grep("^B[0-9]+$", all_vars, value = TRUE))
+  moran_terms <- sort(grep("^B[0-9]+$", all_vars, value = TRUE))
 
   # Gradient covariate names come from prepare_model_dataframe()'s own
   # scale_params attribute (one entry per covariate it scaled, keyed by the
@@ -152,13 +161,13 @@ screen_spatial_formula <- function(data,
   # pair when the attribute is absent (data not produced by
   # prepare_model_dataframe(), e.g. hand-built in older code/tests).
   scaled_covariates <- names(attr(data, "scale_params"))
-  spatial_present <- if (!is.null(scaled_covariates)) {
+  spatial_terms <- if (!is.null(scaled_covariates)) {
     intersect(paste0(scaled_covariates, "_s"), all_vars)
   } else {
     intersect(c("lat_r_s", "lon_r_s"), all_vars)
   }
 
-  if (length(moran_present) == 0L && length(spatial_present) == 0L) {
+  if (length(moran_terms) == 0L && length(spatial_terms) == 0L) {
     message("screen_spatial_formula: formula contains no screenable spatial terms ",
             "(Moran B1..BK or scaled covariates from prepare_model_dataframe(), ",
             "e.g. lat_r_s/lon_r_s). Fitting formula as-is and returning.")
@@ -179,7 +188,7 @@ screen_spatial_formula <- function(data,
   # Validate that Moran columns exist in data; strip any that are absent
   # (can happen with small datasets where compute_moran_basis() returns fewer
   # than k eigenvectors and the formula references the original k).
-  missing_moran <- setdiff(moran_present, names(data))
+  missing_moran <- setdiff(moran_terms, names(data))
   if (length(missing_moran) > 0L) {
     message(sprintf(
       "screen_spatial_formula: %d Moran column(s) absent from data (%s); stripping from formula.",
@@ -193,9 +202,9 @@ screen_spatial_formula <- function(data,
     }
     formula_full  <- stats::as.formula(formula_chr_adj)
     formula_chr   <- paste(deparse(formula_full, width.cutoff = 500), collapse = " ")
-    moran_present <- setdiff(moran_present, missing_moran)
+    moran_terms <- setdiff(moran_terms, missing_moran)
     # After stripping, re-check if any spatial terms remain
-    if (length(moran_present) == 0L && length(spatial_present) == 0L) {
+    if (length(moran_terms) == 0L && length(spatial_terms) == 0L) {
       message("screen_spatial_formula: no spatial terms remain after stripping absent Moran ",
               "columns. Fitting formula as-is and returning.")
       model_out <- do.call(
@@ -268,16 +277,16 @@ screen_spatial_formula <- function(data,
   # whatever gradient covariates were detected above -- not a hardcoded
   # name list, so a new covariate is screened the same way lat_r_s/lon_r_s
   # always were, instead of silently passing through unscreened).
-  sd_tbl <- sd_tbl[sd_tbl$term %in% c(moran_present, spatial_present),
+  sd_tbl <- sd_tbl[sd_tbl$term %in% c(moran_terms, spatial_terms),
                    c("term", "sd"), drop = FALSE]
   sd_tbl$flagged <- sd_tbl$sd < sd_threshold
   sd_tbl <- sd_tbl[order(sd_tbl$sd), ]
   rownames(sd_tbl) <- NULL
 
-  flagged_moran   <- sd_tbl$term[sd_tbl$flagged & sd_tbl$term %in% moran_present]
-  flagged_spatial <- sd_tbl$term[sd_tbl$flagged & sd_tbl$term %in% spatial_present]
-  keep_moran      <- setdiff(moran_present,   flagged_moran)
-  keep_spatial    <- setdiff(spatial_present, flagged_spatial)
+  flagged_moran   <- sd_tbl$term[sd_tbl$flagged & sd_tbl$term %in% moran_terms]
+  flagged_spatial <- sd_tbl$term[sd_tbl$flagged & sd_tbl$term %in% spatial_terms]
+  keep_moran      <- setdiff(moran_terms,   flagged_moran)
+  keep_spatial    <- setdiff(spatial_terms, flagged_spatial)
 
   if (verbose) {
     cat(sprintf(
@@ -296,7 +305,7 @@ screen_spatial_formula <- function(data,
   # ---------------------------------------------------------------------------
   f_full_chr <- paste(deparse(formula_full, width.cutoff = 500), collapse = " ")
 
-  all_screened_vars <- c(moran_present, spatial_present)
+  all_screened_vars <- c(moran_terms, spatial_terms)
 
   # Remove screened random slopes: (0 + <var> | <group>)
   for (v in all_screened_vars) {
@@ -329,7 +338,7 @@ screen_spatial_formula <- function(data,
   candidates <- list()
 
   # Baseline: no Moran, full spatial slopes (always included as anchor)
-  f_base     <- .build_formula(character(0), spatial_present)
+  f_base     <- .build_formula(character(0), spatial_terms)
   f_base_chr <- paste(deparse(f_base, width.cutoff = 500), collapse = " ")
   candidates[["baseline"]] <- list(
     label   = "Baseline (no Moran, lat/lon only)",
@@ -342,8 +351,8 @@ screen_spatial_formula <- function(data,
   if (f_full_cand_chr != f_base_chr) {
     candidates[["full"]] <- list(
       label   = sprintf("Full (%s + lat/lon)",
-                        if (length(moran_present) > 0L)
-                          paste(moran_present, collapse = "+") else "no Moran"),
+                        if (length(moran_terms) > 0L)
+                          paste(moran_terms, collapse = "+") else "no Moran"),
       formula = formula_full,
       model   = model_full
     )
@@ -353,7 +362,7 @@ screen_spatial_formula <- function(data,
 
   # Drop flagged Moran, keep all spatial
   if (length(flagged_moran) > 0L) {
-    f <- .build_formula(keep_moran, spatial_present)
+    f <- .build_formula(keep_moran, spatial_terms)
     f_chr <- paste(deparse(f, width.cutoff = 500), collapse = " ")
     if (!.formula_in_candidates(f_chr, candidates)) {
       lbl <- if (length(keep_moran) == 0L)
@@ -450,7 +459,7 @@ screen_spatial_formula <- function(data,
       "     add complexity incrementally."
     )
   }
-  aic_table$delta_AIC[!na_aic] <- round(aic_vals[!na_aic] - min(valid_aic), 1)
+  aic_table$delta_AIC[!na_aic] <- round(valid_aic - min(valid_aic), 1)
   aic_table <- aic_table[order(is.na(aic_table$delta_AIC), aic_table$delta_AIC), ]
 
   # Parsimony rule: only among valid models

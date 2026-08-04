@@ -131,7 +131,7 @@ utils::globalVariables(c(
 #' the Bernoulli maximum, or the SE prediction itself was non-finite -- with
 #' \code{min_phi > 0}, the default, the finite "too much variance" case is
 #' already rescued by the floor, so this branch is reached almost exclusively
-#' via a non-finite SE), the fallback (Session 149) preserves the model's
+#' via a non-finite SE), the fallback preserves the model's
 #' point-estimate mean \code{m} rather than discarding it for the agnostic
 #' Jeffreys mean of 0.5 -- 0.5 is a poor stand-in for what a Tier 1/2
 #' prediction almost always actually is (a low-theta species, not a coin
@@ -318,18 +318,18 @@ generate_full_priors <- function(model_obj,
   sites_scaled <- new_sites
   extrap_flags <- rep(FALSE, nrow(new_sites))
 
-  for (cov in names(scale_params)) {
-    if (!cov %in% names(sites_scaled)) next
-    center  <- scale_params[[cov]]$center
-    sc      <- scale_params[[cov]]$scale
+  for (covariate in names(scale_params)) {
+    if (!covariate %in% names(sites_scaled)) next
+    center  <- scale_params[[covariate]]$center
+    sc      <- scale_params[[covariate]]$scale
     if (sc == 0 || !is.finite(sc)) {
       warning(sprintf(
-        "generate_full_priors: scale_params for '%s' has zero/non-finite scale; centering only.", cov
+        "generate_full_priors: scale_params for '%s' has zero/non-finite scale; centering only.", covariate
       ))
       sc <- 1
     }
-    scaled  <- (sites_scaled[[cov]] - center) / sc
-    sites_scaled[[paste0(cov, "_s")]] <- scaled
+    scaled  <- (sites_scaled[[covariate]] - center) / sc
+    sites_scaled[[paste0(covariate, "_s")]] <- scaled
     extrap_flags <- extrap_flags | (abs(scaled) > 3)
   }
   sites_scaled$extrapolation_warning <- extrap_flags
@@ -415,6 +415,21 @@ generate_full_priors <- function(model_obj,
     # derivative of plogis: m * (1 - m)
     v <- se^2 * (m * (1 - m))^2
     list(mean = m, var = v)
+  }
+
+  # ---------------------------------------------------------------------------
+  # Helper: attach effort_flag/n_obs -- identical in predict_tier() and
+  # predict_tier_empirical(), factored out once rather than duplicated.
+  # ---------------------------------------------------------------------------
+  .assign_effort_flag <- function(grid) {
+    if (has_n_total) {
+      grid$effort_flag <- grid$n_total_at_site < effort_thr
+      grid$n_obs       <- grid$n_total_at_site
+    } else {
+      grid$effort_flag <- NA
+      grid$n_obs       <- NA_integer_
+    }
+    grid
   }
 
   # ---------------------------------------------------------------------------
@@ -561,16 +576,7 @@ generate_full_priors <- function(model_obj,
     grid$jeffreys_fallback  <- ab$jeffreys_fallback
     grid$model_tier         <- tier_label
 
-    # Effort flag
-    if (has_n_total) {
-      grid$effort_flag <- grid$n_total_at_site < effort_thr
-      grid$n_obs       <- grid$n_total_at_site
-    } else {
-      grid$effort_flag <- NA
-      grid$n_obs       <- NA_integer_
-    }
-
-    grid
+    .assign_effort_flag(grid)
   }
 
   # ---------------------------------------------------------------------------
@@ -625,14 +631,7 @@ generate_full_priors <- function(model_obj,
     # Empirical means carry no covariate-based extrapolation to flag.
     grid$extrapolation_warning <- FALSE
 
-    if (has_n_total) {
-      grid$effort_flag <- grid$n_total_at_site < effort_thr
-      grid$n_obs       <- grid$n_total_at_site
-    } else {
-      grid$effort_flag <- NA
-      grid$n_obs       <- NA_integer_
-    }
-
+    grid <- .assign_effort_flag(grid)
     grid |> dplyr::select(-theta_mean_emp, -theta_sd_emp, -n_detections)
   }
 
@@ -701,9 +700,6 @@ generate_full_priors <- function(model_obj,
   # ---------------------------------------------------------------------------
   # Finalise columns
   # ---------------------------------------------------------------------------
-  beta_mean_fn <- function(a, b) a / (a + b)
-  beta_sd_fn   <- function(a, b) sqrt((a * b) / ((a + b)^2 * (a + b + 1)))
-
   output_cols <- c("taxon_name", "grid_id", habitat_col,
                    "alpha", "beta", "theta_mean", "theta_sd",
                    "n_obs", "model_tier", "effort_flag",
@@ -716,8 +712,8 @@ generate_full_priors <- function(model_obj,
   predictions <- predictions |>
     dplyr::mutate(
       taxon_name        = !!taxon_sym,
-      theta_mean        = beta_mean_fn(alpha, beta),
-      theta_sd          = beta_sd_fn(alpha, beta),
+      theta_mean        = .beta_mean(alpha, beta),
+      theta_sd          = .beta_sd(alpha, beta),
       undetected_type   = NA_character_,
       source_taxon_name = NA_character_
     ) |>
@@ -746,6 +742,15 @@ generate_full_priors <- function(model_obj,
     "--- Priors complete: %d modelled rows, %d undetected rows, %d total ---",
     n_mod, n_undet, nrow(predictions)
   ))
+
+  # Propagate the training grid resolution (set by create_sites_from_grid(),
+  # carried through model_obj$meta) so a downstream consumer that only has
+  # this output (e.g. plot_theta_map_interactive()) can read the real cell
+  # half-width instead of inferring it from whichever grid_ids happen to be
+  # present in a later, possibly-filtered selection.
+  if (!is.null(model_obj$meta$grid_size)) {
+    attr(predictions, "grid_size") <- model_obj$meta$grid_size
+  }
 
   predictions
 }

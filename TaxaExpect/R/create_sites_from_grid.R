@@ -55,10 +55,12 @@ utils::globalVariables(c("lat_r", "lon_r", "grid_id_raw", "grid_id"))
 #'   \code{\link{optimize_grid_size}}
 #'
 #' @examples
-#' \dontrun{
+#' occurrences <- data.frame(
+#'   decimalLatitude  = runif(10, 34, 36),
+#'   decimalLongitude = runif(10, -119, -118)
+#' )
 #' gridded <- create_sites_from_grid(occurrences, grid_size = 0.1)
 #' head(gridded$grid_id)
-#' }
 #'
 #' @importFrom dplyr mutate select
 #' @importFrom rlang sym
@@ -108,15 +110,22 @@ create_sites_from_grid <- function(data,
   decimals <- max(1L, -floor(log10(grid_size)))
   fmt      <- paste0("Grid_%.", decimals, "f_%.", decimals, "f")
 
-  dplyr::select(
-    dplyr::mutate(
-      data,
-      lat_r = round(!!lat_sym / grid_size) * grid_size,
-      lon_r = round(!!lon_sym / grid_size) * grid_size,
-      grid_id_raw = sprintf(fmt, lat_r, lon_r),
-      grid_id = stringr::str_replace_all(grid_id_raw, "-", "m"),
-      grid_id = stringr::str_replace_all(grid_id, "\\.", "p")
-    ),
-    -grid_id_raw
+  out <- dplyr::mutate(
+    data,
+    lat_r   = round(!!lat_sym / grid_size) * grid_size,
+    lon_r   = round(!!lon_sym / grid_size) * grid_size,
+    # Both replacements operate on disjoint characters ("-" vs "."), so a
+    # single sprintf() + two chained str_replace_all() calls needs no
+    # intermediate grid_id_raw column to hold the pre-replacement string.
+    grid_id = stringr::str_replace_all(
+      stringr::str_replace_all(sprintf(fmt, lat_r, lon_r), "-", "m"),
+      "\\.", "p"
+    )
   )
+  # Record the resolution used, so downstream functions that only carry
+  # grid_id forward (e.g. plot_theta_map_interactive()) can read the real
+  # cell half-width instead of inferring it from whichever centroids happen
+  # to be present in a later, possibly-filtered subset.
+  attr(out, "grid_size") <- grid_size
+  out
 }

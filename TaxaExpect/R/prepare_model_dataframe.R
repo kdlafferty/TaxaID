@@ -96,18 +96,15 @@ utils::globalVariables(c(
 #' denominators. The model would then treat effort from one survey as
 #' informative about relative abundance in the other, which is not defensible.
 #' Taxa with different detection methods should be modelled in separate
-#' \code{train_biodiversity_model()} calls -- as of Session 149 this is no
-#' longer purely a documentation-only recommendation: see
-#' \code{sampling_group_col} below and \code{\link{train_biodiversity_model_by_group}}.
+#' \code{train_biodiversity_model()} calls -- this is enforced, not just
+#' documented advice: see \code{sampling_group_col} below and
+#' \code{\link{train_biodiversity_model_by_group}}.
 #'
-#' @section Group-aware effort denominators (\code{sampling_group_col}, Session 149):
+#' @section Group-aware effort denominators (\code{sampling_group_col}):
 #' When supplied, \code{n_total_at_site} is computed \emph{within} each
 #' \code{sampling_group_col} value at a site, instead of pooling every taxon
 #' together -- this is the code-level fix for the Shared effort assumption
-#' above, confirmed (2026-07-10) to have been previously documented only as
-#' advisory prose, never enforced anywhere, including in the one real
-#' production workflow (PtConception 18S) that actually mixes phytoplankton
-#' counts with vertebrate counts. Internally, \code{data} is split by
+#' above. Internally, \code{data} is split by
 #' \code{sampling_group_col} and this function's existing aggregation logic is
 #' applied to each split independently (never a shared \code{tidyr::complete()}
 #' cross-join across groups, which would itself reintroduce cross-group
@@ -117,8 +114,7 @@ utils::globalVariables(c(
 #' rather than one pooled model across all of them --
 #' \code{\link{train_biodiversity_model}} itself will refuse to fit a single
 #' model against multi-group data (see its own docs) as a safety check.
-#' Default \code{NULL}: no grouping, output and behavior unchanged from before
-#' Session 149.
+#' Default \code{NULL}: no grouping.
 #'
 #' A row whose \code{sampling_group_col} value is \code{NA} is kept as its
 #' own group (\code{sampling_group = NA}), not silently dropped. When
@@ -139,11 +135,20 @@ utils::globalVariables(c(
 #'   \code{\link{train_biodiversity_model_by_group}}
 #'
 #' @examples
-#' \dontrun{
+#' gridded_data <- data.frame(
+#'   grid_id      = rep(c("Grid_34p0_m119p0", "Grid_34p5_m119p5"), each = 4),
+#'   lat_r        = rep(c(34.0, 34.5), each = 4),
+#'   lon_r        = rep(c(-119.0, -119.5), each = 4),
+#'   main_habitat = rep(c("Marine", "Freshwater"), 4),
+#'   taxon_name   = c("Sp_a", "Sp_b", "Sp_a", "Sp_c",
+#'                    "Sp_a", "Sp_b", "Sp_b", "Sp_a")
+#' )
 #' model_df <- prepare_model_dataframe(gridded_data,
 #'                                     covariates = c("lat_r", "lon_r"),
 #'                                     habitat_col = "main_habitat")
+#' head(model_df)
 #'
+#' \dontrun{
 #' # Group-aware effort denominators for a broad marker mixing detection
 #' # processes (e.g. 18S phytoplankton + vertebrate counts):
 #' model_df_grouped <- prepare_model_dataframe(
@@ -208,154 +213,20 @@ prepare_model_dataframe <- function(data,
     }
   }
 
-  # --- Per-group processing (Session 149) -------------------------------------
+  # --- Per-group processing ----------------------------------------------------
   # sampling_group_col: rather than teach tidyr::complete()'s zero-filling to
   # respect group boundaries within one combined aggregation (fragile -- a
   # shared complete() call risks re-introducing cross-group zero-fill
   # contamination), split data by group and run the existing, already-tested
-  # single-group aggregation logic (below) on each split independently, then
-  # recombine. This guarantees n_total_at_site is never pooled across groups.
-  .run_one_group <- function(data) {
-
-  # --- Internal rename --------------------------------------------------------
-  # No habitat_col supplied: use a single constant internal placeholder so the
-  # existing grouping/join logic below runs unchanged (grouping by a constant
-  # is equivalent to not grouping by it). Dropped from the final output below
-  # -- never exposed to the caller, and never enters any model formula (that
-  # guarantee is enforced in train_biodiversity_model(), not here).
-  no_habitat <- is.null(habitat_col)
-  if (no_habitat) {
-    data$.habitat <- "_no_habitat_"
-  } else {
-    data <- dplyr::rename(data, .habitat = !!habitat_col)
-  }
-
-  # --- Extra covariate handling -----------------------------------------------
-  extra_covs <- setdiff(covariates, c("lat_r", "lon_r"))
-
-  if (length(extra_covs) > 0) {
-    cov_variance <- dplyr::summarise(
-      dplyr::group_by(dplyr::filter(data, !is.na(.habitat)), grid_id, .habitat),
-      dplyr::across(dplyr::all_of(extra_covs),
-                    ~ length(unique(.x)) > 1,
-                    .names = "{.col}_varies"),
-      .groups = "drop"
-    )
-    vary_cols <- names(cov_variance)[
-      grepl("_varies$", names(cov_variance)) &
-        sapply(
-          names(cov_variance)[grepl("_varies$", names(cov_variance))],
-          function(v) any(cov_variance[[v]])
-        )
-    ]
-    if (length(vary_cols) > 0) {
-      orig_names <- sub("_varies$", "", vary_cols)
-      warning(
-        "prepare_model_dataframe: the following covariates vary within ",
-        "site-habitat combinations and will be averaged: ",
-        paste(orig_names, collapse = ", "),
-        ". Consider summarizing to site level before modeling.",
-        call. = FALSE
-      )
-    }
-    site_covs <- dplyr::summarise(
-      dplyr::group_by(dplyr::filter(data, !is.na(.habitat)), grid_id, .habitat),
-      dplyr::across(dplyr::all_of(extra_covs), \(x) mean(x, na.rm = TRUE)),
-      .groups = "drop"
-    )
-  }
-
-  # --- Site totals and species counts -----------------------------------------
-  site_totals <- dplyr::summarise(
-    dplyr::group_by(dplyr::filter(data, !is.na(.habitat)),
-                    grid_id, lat_r, lon_r, .habitat),
-    n_total_at_site = dplyr::n(),
-    .groups = "drop"
-  )
-
-  model_df <- dplyr::mutate(
-    dplyr::left_join(
-      tidyr::complete(
-        dplyr::summarise(
-          dplyr::group_by(dplyr::filter(data, !is.na(.habitat)),
-                          grid_id, lat_r, lon_r, .habitat, taxon_name),
-          n_species = dplyr::n(),
-          .groups = "drop"
-        ),
-        tidyr::nesting(grid_id, lat_r, lon_r, .habitat),
-        taxon_name,
-        fill = list(n_species = 0L)
-      ),
-      site_totals,
-      by = c("grid_id", "lat_r", "lon_r", ".habitat")
-    ),
-    n_other    = n_total_at_site - n_species,
-    is_present = as.integer(n_species > 0),
-    .habitat   = as.factor(.habitat)
-  )
-
-  # --- Join extra covariates --------------------------------------------------
-  if (length(extra_covs) > 0) {
-    model_df <- dplyr::mutate(
-      dplyr::left_join(model_df, site_covs, by = c("grid_id", ".habitat")),
-      .habitat = as.factor(.habitat)
-    )
-  }
-
-  # --- observed_in_habitat flag ----------------------------------------
-  habitat_presence <- dplyr::mutate(
-    dplyr::distinct(dplyr::filter(model_df, n_species > 0), taxon_name, .habitat),
-    observed_in_habitat = TRUE
-  )
-  model_df <- dplyr::mutate(
-    dplyr::left_join(model_df, habitat_presence, by = c("taxon_name", ".habitat")),
-    observed_in_habitat = tidyr::replace_na(observed_in_habitat, FALSE)
-  )
-
-  # --- Scale covariates -------------------------------------------------------
-  scale_params <- list()
-  for (cov in covariates) {
-    cov_center          <- mean(model_df[[cov]], na.rm = TRUE)
-    cov_scale           <- sd(model_df[[cov]],   na.rm = TRUE)
-    if (cov_scale == 0 || !is.finite(cov_scale)) {
-      warning(sprintf(
-        "Covariate '%s' has zero variance; centering only (no scaling).", cov
-      ))
-      cov_scale <- 1
-    }
-    scale_params[[cov]] <- list(center = cov_center, scale = cov_scale)
-    new_col             <- paste0(cov, "_s")
-    model_df[[new_col]] <- (model_df[[cov]] - cov_center) / cov_scale
-  }
-  attr(model_df, "scale_params") <- scale_params
-
-  # --- Final column order and return ------------------------------------------
-  if (no_habitat) {
-    # Drop the internal placeholder entirely -- no habitat column in output.
-    model_df <- dplyr::select(
-      dplyr::select(model_df, -.habitat),
-      grid_id, lat_r, lon_r, taxon_name,
-      n_species, n_total_at_site, n_other, is_present,
-      observed_in_habitat,
-      dplyr::ends_with("_s"),
-      dplyr::everything()
-    )
-  } else {
-    model_df <- dplyr::select(
-      dplyr::rename(model_df, !!habitat_col := .habitat),
-      grid_id, lat_r, lon_r, !!habitat_col, taxon_name,
-      n_species, n_total_at_site, n_other, is_present,
-      observed_in_habitat,
-      dplyr::ends_with("_s"),
-      dplyr::everything()
-    )
-  }
-
-  dplyr::as_tibble(model_df)
-  } # end .run_one_group
+  # single-group aggregation logic (.prepare_one_group(), below) on each split
+  # independently, then recombine. This guarantees n_total_at_site is never
+  # pooled across groups.
+  grid_size <- attr(data, "grid_size")
 
   if (is.null(sampling_group_col)) {
-    return(.run_one_group(data))
+    out <- .prepare_one_group(data, covariates, habitat_col)
+    if (!is.null(grid_size)) attr(out, "grid_size") <- grid_size
+    return(out)
   }
 
   # --- Split by sampling group and recombine (Session 149) --------------------
@@ -378,7 +249,7 @@ prepare_model_dataframe <- function(data,
   # skip the NA group here even though split() itself kept it.
   group_names <- names(group_splits)
   grouped_out <- lapply(seq_along(group_splits), function(i) {
-    out <- .run_one_group(group_splits[[i]])
+    out <- .prepare_one_group(group_splits[[i]], covariates, habitat_col)
     out$sampling_group <- group_names[i]
     out
   })
@@ -395,5 +266,160 @@ prepare_model_dataframe <- function(data,
   out <- dplyr::bind_rows(grouped_out)
   attr(out, "scale_params") <- NULL
   attr(out, "scale_params_by_group") <- scale_params_by_group
+  if (!is.null(grid_size)) attr(out, "grid_size") <- grid_size
   out
+}
+
+
+#' Aggregate one group's occurrence data to species x site-habitat counts
+#'
+#' The single-group aggregation logic behind \code{\link{prepare_model_dataframe}}
+#' -- extracted to a top-level, explicitly-parameterized helper (rather than a
+#' closure nested inside \code{prepare_model_dataframe()}) so its body reads
+#' at its own indentation level and so it can be called identically whether or
+#' not \code{sampling_group_col} splits the input into several groups first.
+#'
+#' @param data A dataframe for ONE group (already split by
+#'   \code{sampling_group_col} if applicable). Must contain \code{grid_id},
+#'   \code{lat_r}, \code{lon_r}, \code{taxon_name}, and \code{habitat_col}
+#'   (unless \code{habitat_col} is \code{NULL}).
+#' @param covariates Character vector of numeric covariate columns to scale.
+#' @param habitat_col Character or \code{NULL}. Name of the habitat column.
+#' @return A tibble, the per-group column layout documented in
+#'   \code{\link{prepare_model_dataframe}}'s own \code{@return}.
+#' @noRd
+.prepare_one_group <- function(data, covariates, habitat_col) {
+
+  # --- Internal rename ---------------------------------------------------------
+  # No habitat_col supplied: use a single constant internal placeholder so the
+  # existing grouping/join logic below runs unchanged (grouping by a constant
+  # is equivalent to not grouping by it). Dropped from the final output below
+  # -- never exposed to the caller, and never enters any model formula (that
+  # guarantee is enforced in train_biodiversity_model(), not here).
+  no_habitat <- is.null(habitat_col)
+  if (no_habitat) {
+    data$.habitat <- "_no_habitat_"
+  } else {
+    data <- dplyr::rename(data, .habitat = !!habitat_col)
+  }
+
+  # --- Extra covariate handling -------------------------------------------------
+  extra_covs <- setdiff(covariates, c("lat_r", "lon_r"))
+
+  if (length(extra_covs) > 0) {
+    cov_variance <- data |>
+      dplyr::filter(!is.na(.habitat)) |>
+      dplyr::group_by(grid_id, .habitat) |>
+      dplyr::summarise(
+        dplyr::across(dplyr::all_of(extra_covs),
+                      ~ length(unique(.x)) > 1,
+                      .names = "{.col}_varies"),
+        .groups = "drop"
+      )
+    vary_cols <- names(cov_variance)[
+      grepl("_varies$", names(cov_variance)) &
+        sapply(
+          names(cov_variance)[grepl("_varies$", names(cov_variance))],
+          function(v) any(cov_variance[[v]])
+        )
+    ]
+    if (length(vary_cols) > 0) {
+      orig_names <- sub("_varies$", "", vary_cols)
+      warning(
+        "prepare_model_dataframe: the following covariates vary within ",
+        "site-habitat combinations and will be averaged: ",
+        paste(orig_names, collapse = ", "),
+        ". Consider summarizing to site level before modeling.",
+        call. = FALSE
+      )
+    }
+    site_covs <- data |>
+      dplyr::filter(!is.na(.habitat)) |>
+      dplyr::group_by(grid_id, .habitat) |>
+      dplyr::summarise(
+        dplyr::across(dplyr::all_of(extra_covs), \(x) mean(x, na.rm = TRUE)),
+        .groups = "drop"
+      )
+  }
+
+  # --- Site totals and species counts -------------------------------------------
+  site_totals <- data |>
+    dplyr::filter(!is.na(.habitat)) |>
+    dplyr::group_by(grid_id, lat_r, lon_r, .habitat) |>
+    dplyr::summarise(n_total_at_site = dplyr::n(), .groups = "drop")
+
+  model_df <- data |>
+    dplyr::filter(!is.na(.habitat)) |>
+    dplyr::group_by(grid_id, lat_r, lon_r, .habitat, taxon_name) |>
+    dplyr::summarise(n_species = dplyr::n(), .groups = "drop") |>
+    tidyr::complete(
+      tidyr::nesting(grid_id, lat_r, lon_r, .habitat),
+      taxon_name,
+      fill = list(n_species = 0L)
+    ) |>
+    dplyr::left_join(site_totals, by = c("grid_id", "lat_r", "lon_r", ".habitat")) |>
+    dplyr::mutate(
+      n_other    = n_total_at_site - n_species,
+      is_present = as.integer(n_species > 0),
+      .habitat   = as.factor(.habitat)
+    )
+
+  # --- Join extra covariates -----------------------------------------------------
+  if (length(extra_covs) > 0) {
+    model_df <- model_df |>
+      dplyr::left_join(site_covs, by = c("grid_id", ".habitat")) |>
+      dplyr::mutate(.habitat = as.factor(.habitat))
+  }
+
+  # --- observed_in_habitat flag --------------------------------------------------
+  habitat_presence <- model_df |>
+    dplyr::filter(n_species > 0) |>
+    dplyr::distinct(taxon_name, .habitat) |>
+    dplyr::mutate(observed_in_habitat = TRUE)
+  model_df <- model_df |>
+    dplyr::left_join(habitat_presence, by = c("taxon_name", ".habitat")) |>
+    dplyr::mutate(observed_in_habitat = tidyr::replace_na(observed_in_habitat, FALSE))
+
+  # --- Scale covariates -----------------------------------------------------------
+  scale_params <- list()
+  for (covariate in covariates) {
+    cov_center             <- mean(model_df[[covariate]], na.rm = TRUE)
+    cov_scale              <- sd(model_df[[covariate]],   na.rm = TRUE)
+    if (cov_scale == 0 || !is.finite(cov_scale)) {
+      warning(sprintf(
+        "Covariate '%s' has zero variance; centering only (no scaling).", covariate
+      ))
+      cov_scale <- 1
+    }
+    scale_params[[covariate]] <- list(center = cov_center, scale = cov_scale)
+    new_col                   <- paste0(covariate, "_s")
+    model_df[[new_col]]       <- (model_df[[covariate]] - cov_center) / cov_scale
+  }
+  attr(model_df, "scale_params") <- scale_params
+
+  # --- Final column order and return -----------------------------------------------
+  if (no_habitat) {
+    # Drop the internal placeholder entirely -- no habitat column in output.
+    model_df <- model_df |>
+      dplyr::select(-.habitat) |>
+      dplyr::select(
+        grid_id, lat_r, lon_r, taxon_name,
+        n_species, n_total_at_site, n_other, is_present,
+        observed_in_habitat,
+        dplyr::ends_with("_s"),
+        dplyr::everything()
+      )
+  } else {
+    model_df <- model_df |>
+      dplyr::rename(!!habitat_col := .habitat) |>
+      dplyr::select(
+        grid_id, lat_r, lon_r, !!habitat_col, taxon_name,
+        n_species, n_total_at_site, n_other, is_present,
+        observed_in_habitat,
+        dplyr::ends_with("_s"),
+        dplyr::everything()
+      )
+  }
+
+  dplyr::as_tibble(model_df)
 }

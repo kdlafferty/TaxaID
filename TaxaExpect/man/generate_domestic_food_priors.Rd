@@ -71,7 +71,8 @@ a match-list taxon with a real named row here doesn't need an
 iNaturalist check. Default \code{NULL} (residual pool is a safe
 superset, not incorrect, just less minimal).}
 
-\item{radius_km}{Numeric. iNaturalist search radius. Default 50.}
+\item{radius_km}{Numeric. iNaturalist search radius, in kilometers.
+Default 50.}
 
 \item{ess}{Numeric. Baseline effective sample size (in the same
 \code{N_total} units as \code{generate_undetected_diversity()}'s

@@ -1,6 +1,80 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-03 (Sonnet 5 -- screen_spatial_formula() gains generalized covariate
+# Last updated: 2026-08-04 (Sonnet 5 -- TaxaExpect's first full code review RESPONSE pass
+# against inst/taxaexpect_review.Rmd (the checklist-template review itself predates this
+# session; see inst/taxaexpect_review_response.md for the complete file-by-file record).
+# Three real doc/logic bugs fixed: optimize_grid_size()'s own @examples passed
+# grid_sizes=/min_species=, neither a real parameter of the function (would error if run);
+# plot_theta_map_interactive()'s docs pointed at a plot_theta_map() function that does not
+# exist anywhere in this codebase (confirmed via monorepo-wide grep); build_priors()'s
+# habitat_scheme[[1]] read whichever column happened to be first in a custom habitat_scheme
+# data frame instead of the specific column TaxaHabitat::build_habitat_prompt()'s own
+# validator actually requires (l1_name) -- fixed to read l1_name when present.
+#
+# New grid_size propagation chain (the main structural addition): create_sites_from_grid()
+# now records attr(result, "grid_size") <- grid_size; prepare_model_dataframe() propagates
+# it through (both the single-group and sampling_group_col-split paths);
+# train_biodiversity_model() stores it as $meta$grid_size; generate_full_priors() attaches
+# it to its own output as attr(result, "grid_size"). plot_theta_map_interactive() now reads
+# this attribute for the grid-cell half-width instead of always inferring it from centroid
+# spacing (falls back to the original inference when the attribute is absent, e.g. older/
+# hand-built priors objects) -- closes the review's "isn't the grid resolution also
+# knowable?" finding. Verified end-to-end with a live smoke test (not just unit tests):
+# create_sites_from_grid() -> prepare_model_dataframe() -> train_biodiversity_model() ->
+# generate_full_priors(), confirming the attribute survives all three hops.
+#
+# compute_moran_basis() gains a new `coords` parameter (data frame of grid_id/lat/lon):
+# when supplied, used directly instead of re-parsing grid_id's own string encoding (falls
+# back to string-parsing only for any grid_id missing from coords); `coords = NULL` (the
+# default) preserves the original behavior exactly. Both compute_moran_basis.R's own
+# .parse_grid_id_basis() and plot_theta_map_interactive.R's separately-implemented
+# .parse_grid_id() (a real, pre-existing duplication the review flagged) are now deleted in
+# favor of one shared TaxaExpect:::.parse_grid_id_coords() (new R/utils_internal.R).
+# TaxaExpect:::.beta_mean()/.beta_sd() and TaxaExpect:::.dark_diversity_rank_cols (also new
+# in R/utils_internal.R) similarly consolidate a beta-distribution mean/SD helper and a
+# genus/family/order/class/phylum rank-column vector that were each reimplemented
+# identically in generate_full_priors.R, generate_undetected_diversity.R, and/or
+# generate_domestic_food_priors.R.
+#
+# One breaking (but zero-real-caller) change: `compute_adaptive_sampling_groups(min_n =)`
+# lost its `100` default and is now required -- matches this ecosystem's established
+# "no safe universal default" convention (join_priors(backbone_id=), score_consensus(
+# rank_thresholds=)); a viable per-site record count varies by orders of magnitude across
+# study designs, and this function has never been wired into any production workflow
+# (confirmed via a monorepo- and ~/My-Drive/Rscripts-wide grep), so this is zero-risk.
+#
+# Also: prepare_model_dataframe()'s internal .run_one_group closure (previously nested
+# inside the exported function with its ~140-line body left at the SAME indentation level
+# as the enclosing function, rather than one level deeper) extracted to a proper top-level
+# TaxaExpect:::.prepare_one_group(data, covariates, habitat_col) helper with explicit
+# params and correct indentation, and its aggregation logic converted from deeply nested
+# dplyr calls to native pipes, matching this project's own stated convention. Six examples
+# across add_pca_covariates()/apply_pca_transform()/create_sites_from_grid()/
+# optimize_grid_size()/compute_moran_basis()/compute_adaptive_sampling_groups()/
+# prepare_model_dataframe() fixed to be runnable (previously several referenced
+# nonexistent objects or, in optimize_grid_size()'s case, nonexistent parameters).
+# `.score_one_resolution()`'s internal (non-exported) argument list reduced from 10 to 5
+# by bundling column names into a `site_cols` list and thresholds into a `thresholds` list.
+#
+# ~20 review items were considered and explicitly declined, most notably: renaming the
+# `data`/`formula` parameters used by 5+ functions (matches TaxaMatch's own already-
+# recorded precedent for declining the identical `data`-rename ask, plus a real, larger
+# blast radius here -- ~20 named `data =` call sites found across several real external
+# eDNA production workflow scripts, some of unconfirmed current status); redesigning
+# habitat_col from character-or-NULL to a logical flag (would directly undo the 2026-07-03
+# fix for a real shipped bug -- see that date's entry further below); splitting
+# screen_spatial_formula() into separate fit/select functions or renaming it; folding
+# train_biodiversity_model_by_group() into train_biodiversity_model(groups=) (the latter
+# deliberately REFUSES multi-group data as a safety check, so absorbing grouping into it
+# would undermine the check's own point). Two cross-package findings flagged but not fixed
+# here (out of this package's scope): TaxaHabitat::assign_habitat_biological()'s "0 site(s)
+# assigned 'Other'" message firing unconditionally, and .he() (HTML-escaping helper)
+# duplicated between this package and TaxaHabitat. See inst/taxaexpect_review_response.md
+# for the complete file-by-file record, including every declined item's full reasoning.
+#
+# `devtools::test()` 555/555 (up from 538), `devtools::check()` 0 errors/0 warnings/0
+# notes, reinstalled to `~/Library/R/4.0/library`.
+# Previous update, 2026-08-03 (Sonnet 5 -- screen_spatial_formula() gains generalized covariate
 # screening. Found live, building a real continuous depth/elevation habitat covariate for
 # GreatLakes2023_ConsensusWorkflow.R (motivated by a real finding: 95% of "Lentic"-classified
 # GBIF occurrences were >50km offshore, dominated by genuinely pelagic species -- the
@@ -282,14 +356,14 @@ and prior generation only.
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `create_sites_from_grid()` | Snap lat/lon to grid cells; add `lat_r`, `lon_r`, `grid_id` | Complete | R/create_sites_from_grid.R |
-| `prepare_model_dataframe()` | Aggregate occurrences to species × site-habitat counts; zero-fill; scale covariates. **Session 149:** `sampling_group_col` (default `NULL`) computes `n_total_at_site` within each group rather than pooling all taxa -- the code-level fix for the long-documented-but-unenforced "Shared effort assumption" (e.g. don't mix phytoplankton counts with vertebrate counts on one denominator). | Complete | R/prepare_model_dataframe.R |
-| `train_biodiversity_model()` | Fit Tier 1/2 binomial GLMM; return `biofreq_model` S3 object. **Session 149:** refuses to fit against data whose `sampling_group` column (from `prepare_model_dataframe(sampling_group_col=)`) spans more than one value -- use `train_biodiversity_model_by_group()` instead. | Complete | R/train_biodiversity_model.R |
+| `create_sites_from_grid()` | Snap lat/lon to grid cells; add `lat_r`, `lon_r`, `grid_id`. **2026-08-04:** also records `attr(result, "grid_size")` -- the resolution used, propagated by `prepare_model_dataframe()`/`train_biodiversity_model()`/`generate_full_priors()` so `plot_theta_map_interactive()` can read the real cell half-width instead of inferring it. | Complete | R/create_sites_from_grid.R |
+| `prepare_model_dataframe()` | Aggregate occurrences to species × site-habitat counts; zero-fill; scale covariates. `sampling_group_col` (default `NULL`) computes `n_total_at_site` within each group rather than pooling all taxa -- the code-level fix for the long-documented-but-unenforced "Shared effort assumption" (e.g. don't mix phytoplankton counts with vertebrate counts on one denominator). **2026-08-04:** propagates `data`'s `grid_size` attribute (if present) to its own output, in both the ungrouped and grouped paths; internal single-group aggregation logic extracted to a top-level `.prepare_one_group()` helper (was a badly-indented nested closure) and converted to native pipes. | Complete | R/prepare_model_dataframe.R |
+| `train_biodiversity_model()` | Fit Tier 1/2 binomial GLMM; return `biofreq_model` S3 object. Refuses to fit against data whose `sampling_group` column (from `prepare_model_dataframe(sampling_group_col=)`) spans more than one value -- use `train_biodiversity_model_by_group()` instead. **2026-08-04:** `$meta` gains `grid_size` (from `attr(data, "grid_size")`). | Complete | R/train_biodiversity_model.R |
 | `train_biodiversity_model_by_group()` | **Session 149, new.** Splits raw occurrence data by `sampling_group_col` and runs `prepare_model_dataframe()` + `train_biodiversity_model()` once per group (each with its own effort denominator and covariate scaling); returns a named list of `biofreq_model` objects. Recommended entry point for broad-marker data (e.g. 18S) spanning multiple detection processes. Each group's fit is wrapped in `tryCatch()` (added after real-data testing found a single failing group crashed the whole call) -- failed groups are dropped with a `warning()` naming them, not fatal. | Complete | R/train_biodiversity_model_by_group.R |
-| `compute_adaptive_sampling_groups()` | **Session 149, new.** Automated alternative to hand-classifying `sampling_group`: greedily merges taxa up a taxonomic rank hierarchy (`rank_system`, finest first, e.g. `c("order","class","phylum")`) until each group's mean per-site record count clears `min_n`, never merging across the ceiling rank (default phylum). Analogous to "stratum collapsing" in survey methodology; structurally similar to `TaxaAssign::join_priors()`'s hierarchical dark-diversity grouping but merges bottom-up on a sample-size criterion rather than descending top-down on singleton presence. Groups still below `min_n` even at the ceiling are finalized anyway (never escalated further) and flagged via `sampling_group_below_min_n`. Feed its output into `prepare_model_dataframe(sampling_group_col=)`/`train_biodiversity_model_by_group()` the same as a manually-supplied grouping. | Complete | R/compute_adaptive_sampling_groups.R |
+| `compute_adaptive_sampling_groups()` | Automated alternative to hand-classifying `sampling_group`: greedily merges taxa up a taxonomic rank hierarchy (`rank_system`, finest first, e.g. `c("order","class","phylum")`) until each group's mean per-site record count clears `min_n`, never merging across the ceiling rank (default phylum). Analogous to "stratum collapsing" in survey methodology; structurally similar to `TaxaAssign::join_priors()`'s hierarchical dark-diversity grouping but merges bottom-up on a sample-size criterion rather than descending top-down on singleton presence. Groups still below `min_n` even at the ceiling are finalized anyway (never escalated further) and flagged via `sampling_group_below_min_n`. Feed its output into `prepare_model_dataframe(sampling_group_col=)`/`train_biodiversity_model_by_group()` the same as a manually-supplied grouping. **2026-08-04: `min_n` is now required (no default)** -- no safe universal value across study systems; zero real callers affected. | Complete | R/compute_adaptive_sampling_groups.R |
 | `generate_undetected_diversity()` | Tier 3 proxy priors: singleton mirrors + global floor | Complete | R/generate_undetected_diversity.R |
 | `generate_domestic_food_priors()` | **2026-07-23, new.** Non-GBIF prior source for domestic/commensal animal, food/crop, and cultivated-plant species -- named rows (real `taxon_name`, unlike the Tier 3 proxies above) with a `prior_source_type` categorical column and `model_tier = "tier_domestic_food"`. Implements `ecosystem_docs/REENTRY_PROMPT_domestic_food_species_priors.md`. **2026-07-24:** gains an iNaturalist kingdom cross-check -- when `taxonomy` supplies a `kingdom` column, a candidate's known kingdom is compared against `fetch_inat_occurrences()`'s `inat_kingdom`; a mismatch (likely a cross-backbone homonym) discards the local-evidence boost without removing the fixed-list category. **2026-07-28, re-implemented around match-list gating:** `domestic_animal_taxa`/`food_species_taxa` (now 449 species, up from 20) are fixed vectors checked immediately; new 4th fixed list `known_cultivar_taxa` (216 species) likewise patched immediately (`cultivar_evidence_source = "known_list"`); `candidate_plant_taxa` requires real local iNat evidence (`cultivar_evidence_source = "candidate_supplied"`); new `match_list_taxa` param (taxa with real likelihoods this run) gates all four channels to the intersection and drives an automatic open-discovery residual step (unreferenced match-list taxa, restricted to `phylum %in% c("Streptophyta","Tracheophyta")`, deliberately NOT pre-restricted to any known list -- `cultivar_evidence_source = "inat_confirmed"`) using a new `taxaexpect_priors` param to exclude already-modelled taxa. `match_list_taxa = NULL` (default) preserves the original unrestricted behavior exactly. | Complete | R/generate_domestic_food_priors.R |
-| `generate_full_priors()` | Predict theta at all taxon × site × habitat; return Beta(alpha, beta) prior table | Complete | R/generate_full_priors.R |
+| `generate_full_priors()` | Predict theta at all taxon × site × habitat; return Beta(alpha, beta) prior table. **2026-08-04:** output gains `attr(result, "grid_size")` (from `model_obj$meta$grid_size`, `NULL`-safe); `cov` loop variable renamed `covariate` (shadowed `stats::cov()`); `predict_tier()`/`predict_tier_empirical()`'s duplicated effort-flag assignment factored into a shared local helper. | Complete | R/generate_full_priors.R |
 
 ### High-level wrapper
 
@@ -304,9 +378,9 @@ and prior generation only.
 | `add_pca_covariates()` | Replace correlated `_s` covariate columns with orthogonal PCA scores; returns same structure as `prepare_model_dataframe()` output; stores `pca_rotation` attribute for prediction-time use | Complete | R/add_pca_covariates.R |
 | `apply_pca_transform()` | Apply stored PCA rotation to scaled new-site data before `generate_full_priors()` | Complete | R/add_pca_covariates.R |
 | `optimize_grid_size()` | Score grid resolutions on coverage, quality, stability; return best size + fallback | Complete | R/optimize_grid_size.R |
-| `compute_moran_basis()` | Build Moran Eigenvector Maps (MEM) for spatial autocorrelation covariates | Complete | R/compute_moran_basis.R |
-| `screen_spatial_formula()` | Fit full spatial model, screen Moran/gradient slopes by VarCorr SD, select parsimonious formula by AIC. **2026-08-03**: gradient-covariate detection now reads `data`'s own `scale_params` attribute (set by `prepare_model_dataframe()`) instead of hardcoding `lat_r_s`/`lon_r_s` -- any additional covariate (e.g. `depth_m_s`) is now screened identically, not silently carried through unscreened. Falls back to the old hardcoded pair when `scale_params` is absent. | Complete | R/screen_spatial_formula.R |
-| `plot_theta_map_interactive()` | Shiny gadget: Leaflet heatmap of `theta_mean` with occurrence point overlay | Complete | R/plot_theta_map_interactive.R |
+| `compute_moran_basis()` | Build Moran Eigenvector Maps (MEM) for spatial autocorrelation covariates. **2026-08-04:** new `coords` param (data frame of `grid_id`/`lat`/`lon`) supplies real coordinates directly instead of parsing `grid_ids`' string encoding; `coords = NULL` (default) preserves the original string-parsing behavior. Internal parser consolidated into shared `TaxaExpect:::.parse_grid_id_coords()` (`R/utils_internal.R`). | Complete | R/compute_moran_basis.R |
+| `screen_spatial_formula()` | Fit full spatial model, screen Moran/gradient slopes by VarCorr SD, select parsimonious formula by AIC. Gradient-covariate detection reads `data`'s own `scale_params` attribute (set by `prepare_model_dataframe()`) instead of hardcoding `lat_r_s`/`lon_r_s` -- any additional covariate (e.g. `depth_m_s`) is screened identically, not silently carried through unscreened. Falls back to the old hardcoded pair when `scale_params` is absent. | Complete | R/screen_spatial_formula.R |
+| `plot_theta_map_interactive()` | Shiny gadget: Leaflet heatmap of `theta_mean` with occurrence point overlay. **2026-08-04:** grid-cell half-width now prefers `priors`'s recorded `grid_size` attribute over inferring it from centroid spacing, when present; internal grid_id parser consolidated into shared `TaxaExpect:::.parse_grid_id_coords()`; `@return` no longer references a nonexistent `plot_theta_map()` function. | Complete | R/plot_theta_map_interactive.R |
 
 ### S3 methods
 
@@ -314,6 +388,23 @@ and prior generation only.
 |---|---|---|
 | `print.biofreq_model()` | Compact summary of tiers, formula, convergence | R/train_biodiversity_model.R |
 | `summary.biofreq_model()` | print + tier assignments + habitat screening table | R/train_biodiversity_model.R |
+
+### Internal helpers (not exported)
+
+**2026-08-04, new file `R/utils_internal.R`** -- consolidates helpers previously
+reimplemented identically in 2-3 files each (code-review response, see
+`inst/taxaexpect_review_response.md`):
+
+| Helper | Purpose | Used by |
+|---|---|---|
+| `.beta_mean(a, b)` / `.beta_sd(a, b)` | Beta distribution mean/SD from alpha/beta | `generate_full_priors.R`, `generate_undetected_diversity.R`, `generate_domestic_food_priors.R` |
+| `.dark_diversity_rank_cols` | `c("genus","family","order","class","phylum")` -- rank columns joined onto anonymous/named proxy prior rows | `generate_undetected_diversity.R`, `generate_domestic_food_priors.R` |
+| `.parse_grid_id_coords(grid_id)` | Vectorised `grid_id` string -> centroid lat/lon parser (`sub()`-based, `NA`-safe) | `compute_moran_basis.R`, `plot_theta_map_interactive.R` |
+
+Also new: `.prepare_one_group(data, covariates, habitat_col)` (`R/prepare_model_dataframe.R`,
+the extracted single-group aggregation logic behind `prepare_model_dataframe()`) and
+`.assign_effort_flag(grid)` (`R/generate_full_priors.R`, a local closure shared by
+`predict_tier()`/`predict_tier_empirical()`).
 
 ---
 
@@ -323,11 +414,14 @@ and prior generation only.
 - Adds `lat_r`, `lon_r`, `grid_id` columns. `grid_id` format: `"Grid_{lat_r}_{lon_r}"` with `.` → `p`, `-` → `m`.
 - `grid_size > 10` triggers a warning (likely km not degrees).
 - **Strict rule:** `grid_id` encodes location only — never habitat.
+- **2026-08-04:** attaches `attr(result, "grid_size") <- grid_size` -- propagated by
+  `prepare_model_dataframe()`/`train_biodiversity_model()`/`generate_full_priors()` so
+  `plot_theta_map_interactive()` can read the real resolution instead of inferring it.
 
 ### `prepare_model_dataframe(data, covariates = c("lat_r", "lon_r"), habitat_col = "main_habitat", cor_threshold = 0.7)`
 - Requires: `grid_id`, `lat_r`, `lon_r`, `habitat_col` (unless NULL), `taxon_name`.
 - Returns tibble with: `grid_id`, `lat_r`, `lon_r`, `<habitat_col>`, `taxon_name`, `n_species`, `n_total_at_site`, `n_other`, `is_present`, `observed_in_habitat`, `<cov>_s` columns.
-- Attaches `scale_params` as attribute (list of center/scale per covariate) for use at prediction time.
+- Attaches `scale_params` as attribute (list of center/scale per covariate) for use at prediction time. **2026-08-04:** also propagates `data`'s own `grid_size` attribute (if present) onto the output, in both the ungrouped and `sampling_group_col`-split paths.
 - Warns on multicollinearity > `cor_threshold`; call `add_pca_covariates()` on the result to fix.
 - **`habitat_col = NULL`** (Session, 2026-07-03): opts out of habitat modeling entirely. No habitat
   column required in `data`, none in the output. Two-path design: if you have a habitat column, run
@@ -349,6 +443,7 @@ and prior generation only.
 - Use before `generate_full_priors()` when model was trained with PCA covariates.
 
 ### `train_biodiversity_model(data, formula, taxon_col = "taxon_name", habitat_col = "main_habitat", response = c("theta", "psi"), min_obs_threshold = 5L, effort_threshold = 10L, min_positive_rows = 50L, full_data = NULL)`
+- **2026-08-04:** `$meta` gains `grid_size` (from `attr(data, "grid_size")`, `NULL`-safe).
 - **Tier 1** (>= `min_obs_threshold` detections): full user-supplied formula with habitat screening.
 - **Tier 2** (< threshold): auto intercept-only formula `cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name)`.
 - `diag(main_habitat | taxon_name)` in user formula is a placeholder — rewritten to indicator-based slopes per supported habitat.
@@ -427,6 +522,7 @@ and prior generation only.
   PtConception 18S data that this fires 0/1200 rows with defaults, since `min_phi` already
   neutralizes the common finite-variance case; the fix protects the rarer non-finite-SE case.
 - Appends `undetected` rows if supplied. Singleton-mirror rows in `undetected` carry `source_taxon_name` (Session 117); this column is preserved in the output and used by `join_priors(singleton_taxonomy=)` to re-join taxonomy for hierarchical group priors.
+- **2026-08-04:** output gains `attr(result, "grid_size")` (from `model_obj$meta$grid_size`, set when absent).
 
 ### `optimize_grid_size(observation_data, n_covariates, protected_habitat = NULL, min_s_threshold = 5, min_N_threshold = 10, min_distinct_locs = 20, min_locs_per_habitat = 3, min_grid = 0.1, max_grid = 1.0, step_grid = 0.05, lat_col = "decimalLatitude", lon_col = "decimalLongitude", species_col = "taxon_name", habitat_col = "main_habitat", weights = c(resolution = 0.4, quality = 0.4, stability = 0.2))`
 - Returns named list: `$summary_table`, `$best_grid` (pass to `create_sites_from_grid`), `$explanation`, `$fallback_level` (`"none"`, `"A"`, `"B"`, `"C"`).
@@ -444,15 +540,23 @@ and prior generation only.
 - `$model_selection` contains: `aic_table`, `recommended_formula`, `flagged_terms`, `sd_table`.
 - `...` passed to `train_biodiversity_model()` (e.g. `effort_threshold`, `min_obs_threshold`).
 
-### `compute_moran_basis(grid_ids, k = 10L, distance_threshold = NULL, min_neighbours = 1L)`
+### `compute_moran_basis(grid_ids, k = 10L, distance_threshold = NULL, min_neighbours = 1L, coords = NULL)`
 - Returns data frame: `grid_id`, `B1`, `B2`, ..., `Bk` (MEM columns, largest eigenvalue first).
 - `distance_threshold = NULL` auto-inferred as 1.5× minimum coordinate spacing.
 - Join result to model data before calling `prepare_model_dataframe()`.
+- **`coords`** (2026-08-04): optional data frame with `grid_id`/`lat`/`lon` -- when supplied,
+  used directly instead of parsing `grid_ids`' own string encoding (e.g.
+  `dplyr::distinct(model_data, grid_id, lat = lat_r, lon = lon_r)`). Falls back to
+  string-parsing for any `grid_id` missing from `coords`. Default `NULL` preserves the
+  original string-parsing-only behavior.
 
 ### `plot_theta_map_interactive(priors, occurrences, occurrence_habitat_col = "main_habitat", tile = "Esri.OceanBasemap", theta_col = "theta_mean", grid_opacity = 0.7, point_radius = 4, point_color = "#ff6600")`
 - Returns `NULL` invisibly. For exploration only.
 - `occurrences = NULL` suppresses occurrence points.
 - `occurrence_habitat_col = NULL` disables habitat colouring on points.
+- **2026-08-04:** grid-cell half-width now reads `priors`'s recorded `attr(priors,
+  "grid_size")` (propagated from `create_sites_from_grid()` via `generate_full_priors()`)
+  when present, falling back to the original centroid-spacing inference otherwise.
 
 ---
 
@@ -567,13 +671,16 @@ plot_theta_map_interactive(priors, occurrences)
 
 ## Test Coverage
 
-538 expectations, 0 failures (2026-07-31 review). The malformed-filename issue this section
-used to warn about (`test-generate_undetected_diversity.Rscreen_spatial_formula.R`) no longer
-exists -- `tests/testthat/` has 13 correctly-named files, including separate
-`test-generate_undetected_diversity.R` and `test-screen_spatial_formula.R`; `devtools::check()`
-runs clean. This was pure doc drift (the underlying file was fixed or never actually malformed
-in a way that blocked `check()` by the time this was checked) -- found and corrected during the
-2026-07-31 code/domain review, see `inst/taxaexpect_review.Rmd`.
+555 expectations, 0 failures (2026-08-04, up from 538). `tests/testthat/` has 14
+correctly-named files, including separate `test-generate_undetected_diversity.R` and
+`test-screen_spatial_formula.R`; `devtools::check()` runs clean. New file
+`test-plot_theta_map_interactive.R` (6 tests) covers the shared
+`TaxaExpect:::.parse_grid_id_coords()` and `TaxaExpect:::.truncate_label()` pure helpers --
+the gadget itself remains untested (requires a live interactive session, same testing
+boundary as before). `test-compute_adaptive_sampling_groups.R` and
+`test-optimize_grid_size.R` updated for the `min_n`-required and
+`.score_one_resolution(site_cols=, thresholds=)` signature changes, respectively. See
+`inst/taxaexpect_review_response.md` for the full 2026-08-04 code-review response record.
 
 ---
 

@@ -59,8 +59,9 @@ provided, points are coloured by habitat via the shared ecological palette
 and this argument is ignored.}
 }
 \value{
-\code{NULL} invisibly. The gadget is for exploration only; use
-\code{plot_theta_map()} when you need a static exportable figure.
+\code{NULL} invisibly. The gadget is for exploration only -- for a
+static, exportable figure, plot \code{priors} directly (e.g. with
+\code{ggplot2}) outside this package.
 }
 \description{
 Opens a Shiny gadget showing predicted theta (\code{theta_mean}) from
@@ -72,8 +73,14 @@ updates reactively.
 \details{
 \strong{grid_id parsing:} Grid cell centroids are derived by parsing the
 \code{grid_id} string (e.g. \code{"Grid_33p1_m118p5"} -> lat 33.1,
-lon -118.5). The grid cell size is inferred from the spacing of unique
-centroid latitudes in the filtered data.
+lon -118.5) -- \code{priors} objects are typically standalone artifacts
+(saved/reloaded across sessions) that don't carry a separate sites table
+alongside them, and \code{grid_id}'s own encoding is the self-contained
+record of where each cell is. The grid cell size uses the resolution
+recorded on \code{priors} via its \code{grid_size} attribute (set by
+\code{\link{create_sites_from_grid}} and propagated through
+\code{\link{generate_full_priors}}) when present, otherwise it is inferred
+from the spacing of unique centroid latitudes in the data.
 
 \strong{Habitat selection:} All habitats available for the selected taxon
 are shown as checkboxes. All are ticked by default. Use the \strong{All}

@@ -171,7 +171,7 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #'   \code{full_data} path -- which definition is more appropriate depends
 #'   on whether you want "seen exactly once" or "seen at exactly one site."
 #'
-#' @section Multi-group data is refused (Session 149):
+#' @section Multi-group data is refused:
 #' If \code{data} carries a \code{sampling_group} column (i.e. it came from
 #' \code{\link{prepare_model_dataframe}(sampling_group_col = ...)}) spanning
 #' more than one group, this function errors rather than silently fitting one
@@ -214,7 +214,10 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #'     \item{meta}{Named list of metadata: taxon_col, habitat_col, response,
 #'       min_obs_threshold, effort_threshold, min_positive_rows,
 #'       formula_tier1, formula_tier2, n_sites, n_species_tier1,
-#'       n_species_tier2.}
+#'       n_species_tier2, grid_size (the resolution recorded by
+#'       \code{\link{create_sites_from_grid}} via its own \code{grid_size}
+#'       attribute, propagated through \code{data}; \code{NULL} if that
+#'       attribute was never set, e.g. hand-built \code{data}).}
 #'   }
 #'
 #' @details
@@ -868,7 +871,8 @@ train_biodiversity_model <- function(data,
       formula_tier2     = deparse(formula_tier2, width.cutoff = 500),
       n_sites           = dplyr::n_distinct(df$grid_id),
       n_species_tier1   = length(taxa_tier1),
-      n_species_tier2   = length(taxa_tier2)
+      n_species_tier2   = length(taxa_tier2),
+      grid_size         = attr(data, "grid_size")
     )
   )
 

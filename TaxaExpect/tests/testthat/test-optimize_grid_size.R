@@ -415,17 +415,15 @@ test_that(".score_one_resolution returns NULL when no cells pass quality thresho
     stringsAsFactors = FALSE
   )
   out <- TaxaExpect:::.score_one_resolution(
-    res                  = 0.5,
-    df_clean             = df,
-    lat_col              = "decimalLatitude",
-    lon_col              = "decimalLongitude",
-    species_col          = "taxon_name",
-    habitat_col          = "main_habitat",
-    min_s_threshold      = 5L,   # 1 species -- will fail
-    min_N_threshold      = 10L,  # 1 obs -- will fail
-    min_distinct_locs    = 20L,
-    min_locs_per_habitat = 3L,
-    protected_habitat    = NULL
+    res        = 0.5,
+    df_clean   = df,
+    site_cols  = list(lat_col = "decimalLatitude", lon_col = "decimalLongitude",
+                      species_col = "taxon_name", habitat_col = "main_habitat"),
+    thresholds = list(min_s_threshold = 5L,   # 1 species -- will fail
+                      min_N_threshold = 10L,  # 1 obs -- will fail
+                      min_distinct_locs = 20L,
+                      min_locs_per_habitat = 3L),
+    protected_habitat = NULL
   )
   expect_null(out)
 })
@@ -433,17 +431,13 @@ test_that(".score_one_resolution returns NULL when no cells pass quality thresho
 test_that(".score_one_resolution returns a one-row tibble with correct columns", {
   df <- .make_dense_obs()
   out <- TaxaExpect:::.score_one_resolution(
-    res                  = 0.5,
-    df_clean             = df,
-    lat_col              = "decimalLatitude",
-    lon_col              = "decimalLongitude",
-    species_col          = "taxon_name",
-    habitat_col          = "main_habitat",
-    min_s_threshold      = 1L,
-    min_N_threshold      = 1L,
-    min_distinct_locs    = 3L,
-    min_locs_per_habitat = 1L,
-    protected_habitat    = NULL
+    res        = 0.5,
+    df_clean   = df,
+    site_cols  = list(lat_col = "decimalLatitude", lon_col = "decimalLongitude",
+                      species_col = "taxon_name", habitat_col = "main_habitat"),
+    thresholds = list(min_s_threshold = 1L, min_N_threshold = 1L,
+                      min_distinct_locs = 3L, min_locs_per_habitat = 1L),
+    protected_habitat = NULL
   )
   expect_false(is.null(out))
   expect_equal(nrow(out), 1L)
@@ -456,17 +450,13 @@ test_that(".score_one_resolution returns a one-row tibble with correct columns",
 test_that(".score_one_resolution: passed = TRUE when n_distinct_locs >= min_distinct_locs", {
   df <- .make_dense_obs()
   out <- TaxaExpect:::.score_one_resolution(
-    res                  = 0.5,
-    df_clean             = df,
-    lat_col              = "decimalLatitude",
-    lon_col              = "decimalLongitude",
-    species_col          = "taxon_name",
-    habitat_col          = "main_habitat",
-    min_s_threshold      = 1L,
-    min_N_threshold      = 1L,
-    min_distinct_locs    = 3L,
-    min_locs_per_habitat = 1L,
-    protected_habitat    = NULL
+    res        = 0.5,
+    df_clean   = df,
+    site_cols  = list(lat_col = "decimalLatitude", lon_col = "decimalLongitude",
+                      species_col = "taxon_name", habitat_col = "main_habitat"),
+    thresholds = list(min_s_threshold = 1L, min_N_threshold = 1L,
+                      min_distinct_locs = 3L, min_locs_per_habitat = 1L),
+    protected_habitat = NULL
   )
   expect_true(out$passed)
   expect_gte(out$n_distinct_locs, 3L)
@@ -475,17 +465,13 @@ test_that(".score_one_resolution: passed = TRUE when n_distinct_locs >= min_dist
 test_that(".score_one_resolution: grid_size column equals the res argument", {
   df <- .make_dense_obs()
   out <- TaxaExpect:::.score_one_resolution(
-    res                  = 0.5,
-    df_clean             = df,
-    lat_col              = "decimalLatitude",
-    lon_col              = "decimalLongitude",
-    species_col          = "taxon_name",
-    habitat_col          = "main_habitat",
-    min_s_threshold      = 1L,
-    min_N_threshold      = 1L,
-    min_distinct_locs    = 3L,
-    min_locs_per_habitat = 1L,
-    protected_habitat    = NULL
+    res        = 0.5,
+    df_clean   = df,
+    site_cols  = list(lat_col = "decimalLatitude", lon_col = "decimalLongitude",
+                      species_col = "taxon_name", habitat_col = "main_habitat"),
+    thresholds = list(min_s_threshold = 1L, min_N_threshold = 1L,
+                      min_distinct_locs = 3L, min_locs_per_habitat = 1L),
+    protected_habitat = NULL
   )
   expect_equal(out$grid_size, 0.5)
 })

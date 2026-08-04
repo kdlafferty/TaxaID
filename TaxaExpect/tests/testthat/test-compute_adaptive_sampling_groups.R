@@ -229,8 +229,17 @@ test_that("errors on missing required columns", {
   occ <- .make_group_rows("Perciformes", "Actinopteri", "Chordata", 10)
   occ$class <- NULL
   expect_error(
-    compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum")),
+    compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
+                                      min_n = 100),
     "missing required columns"
+  )
+})
+
+test_that("errors when min_n is omitted", {
+  occ <- .make_group_rows("Perciformes", "Actinopteri", "Chordata", 10)
+  expect_error(
+    compute_adaptive_sampling_groups(occ),
+    "min_n"
   )
 })
 

@@ -110,20 +110,17 @@ markers --- makes \code{n_total_at_site} a mixture of independent effort
 denominators. The model would then treat effort from one survey as
 informative about relative abundance in the other, which is not defensible.
 Taxa with different detection methods should be modelled in separate
-\code{train_biodiversity_model()} calls -- as of Session 149 this is no
-longer purely a documentation-only recommendation: see
-\code{sampling_group_col} below and \code{\link{train_biodiversity_model_by_group}}.
+\code{train_biodiversity_model()} calls -- this is enforced, not just
+documented advice: see \code{sampling_group_col} below and
+\code{\link{train_biodiversity_model_by_group}}.
 }
 
-\section{Group-aware effort denominators (\code{sampling_group_col}, Session 149)}{
+\section{Group-aware effort denominators (\code{sampling_group_col})}{
 
 When supplied, \code{n_total_at_site} is computed \emph{within} each
 \code{sampling_group_col} value at a site, instead of pooling every taxon
 together -- this is the code-level fix for the Shared effort assumption
-above, confirmed (2026-07-10) to have been previously documented only as
-advisory prose, never enforced anywhere, including in the one real
-production workflow (PtConception 18S) that actually mixes phytoplankton
-counts with vertebrate counts. Internally, \code{data} is split by
+above. Internally, \code{data} is split by
 \code{sampling_group_col} and this function's existing aggregation logic is
 applied to each split independently (never a shared \code{tidyr::complete()}
 cross-join across groups, which would itself reintroduce cross-group
@@ -133,8 +130,7 @@ column identifying each row's group. Pass the result to
 rather than one pooled model across all of them --
 \code{\link{train_biodiversity_model}} itself will refuse to fit a single
 model against multi-group data (see its own docs) as a safety check.
-Default \code{NULL}: no grouping, output and behavior unchanged from before
-Session 149.
+Default \code{NULL}: no grouping.
 
 A row whose \code{sampling_group_col} value is \code{NA} is kept as its
 own group (\code{sampling_group = NA}), not silently dropped. When
@@ -152,11 +148,20 @@ function directly.
 }
 
 \examples{
-\dontrun{
+gridded_data <- data.frame(
+  grid_id      = rep(c("Grid_34p0_m119p0", "Grid_34p5_m119p5"), each = 4),
+  lat_r        = rep(c(34.0, 34.5), each = 4),
+  lon_r        = rep(c(-119.0, -119.5), each = 4),
+  main_habitat = rep(c("Marine", "Freshwater"), 4),
+  taxon_name   = c("Sp_a", "Sp_b", "Sp_a", "Sp_c",
+                   "Sp_a", "Sp_b", "Sp_b", "Sp_a")
+)
 model_df <- prepare_model_dataframe(gridded_data,
                                     covariates = c("lat_r", "lon_r"),
                                     habitat_col = "main_habitat")
+head(model_df)
 
+\dontrun{
 # Group-aware effort denominators for a broad marker mixing detection
 # processes (e.g. 18S phytoplankton + vertebrate counts):
 model_df_grouped <- prepare_model_dataframe(

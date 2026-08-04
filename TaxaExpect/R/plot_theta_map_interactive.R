@@ -39,14 +39,21 @@
 #'   provided, points are coloured by habitat via the shared ecological palette
 #'   and this argument is ignored.
 #'
-#' @return \code{NULL} invisibly. The gadget is for exploration only; use
-#'   \code{plot_theta_map()} when you need a static exportable figure.
+#' @return \code{NULL} invisibly. The gadget is for exploration only -- for a
+#'   static, exportable figure, plot \code{priors} directly (e.g. with
+#'   \code{ggplot2}) outside this package.
 #'
 #' @details
 #' \strong{grid_id parsing:} Grid cell centroids are derived by parsing the
 #' \code{grid_id} string (e.g. \code{"Grid_33p1_m118p5"} -> lat 33.1,
-#' lon -118.5). The grid cell size is inferred from the spacing of unique
-#' centroid latitudes in the filtered data.
+#' lon -118.5) -- \code{priors} objects are typically standalone artifacts
+#' (saved/reloaded across sessions) that don't carry a separate sites table
+#' alongside them, and \code{grid_id}'s own encoding is the self-contained
+#' record of where each cell is. The grid cell size uses the resolution
+#' recorded on \code{priors} via its \code{grid_size} attribute (set by
+#' \code{\link{create_sites_from_grid}} and propagated through
+#' \code{\link{generate_full_priors}}) when present, otherwise it is inferred
+#' from the spacing of unique centroid latitudes in the data.
 #'
 #' \strong{Habitat selection:} All habitats available for the selected taxon
 #' are shown as checkboxes. All are ticked by default. Use the \strong{All}
@@ -199,7 +206,7 @@ plot_theta_map_interactive <- function(
   pr <- pr[!is.na(pr$theta) & !is.na(pr$grid_id), ]
 
   # --- Parse grid_id -> centroid coords ---------------------------------------
-  coords     <- .parse_grid_id(pr$grid_id)
+  coords     <- .parse_grid_id_coords(pr$grid_id)
   pr$lat_ctr <- coords$lat
   pr$lon_ctr <- coords$lon
   bad_coords <- is.na(pr$lat_ctr) | is.na(pr$lon_ctr) |
@@ -213,15 +220,25 @@ plot_theta_map_interactive <- function(
   }
 
   # --- Grid cell half-width ----------------------------------------------------
-  # A fixed property of the grid every grid_id was built from -- computed once
-  # from the FULL centroid set, never per-selection. Inferring it from
-  # whichever centroids happen to be currently selected (as an earlier version
-  # of this function did) breaks whenever the selection has only 1-2 points
-  # that aren't true grid neighbors (e.g. two sites hundreds of km apart): the
-  # inferred half-width blows up to roughly half that distance, drawing one
-  # huge rectangle instead of correctly-sized ones for each cell.
-  all_lat_ctr <- sort(unique(pr$lat_ctr))
-  grid_hw     <- if (length(all_lat_ctr) >= 2L) min(diff(all_lat_ctr)) / 2 else 0.05
+  # Prefer the real resolution recorded by create_sites_from_grid() (carried
+  # through prepare_model_dataframe() -> train_biodiversity_model() ->
+  # generate_full_priors() as the "grid_size" attribute) over inferring it.
+  # Falls back to inference for priors objects that predate this attribute or
+  # were hand-built. Inference is computed once from the FULL centroid set,
+  # never per-selection -- inferring it from whichever centroids happen to be
+  # currently selected (as an earlier version of this function did) breaks
+  # whenever the selection has only 1-2 points that aren't true grid
+  # neighbors (e.g. two sites hundreds of km apart): the inferred half-width
+  # blows up to roughly half that distance, drawing one huge rectangle
+  # instead of correctly-sized ones for each cell.
+  recorded_grid_size <- attr(priors, "grid_size")
+  grid_hw <- if (!is.null(recorded_grid_size) && is.finite(recorded_grid_size) &&
+                 recorded_grid_size > 0) {
+    recorded_grid_size / 2
+  } else {
+    all_lat_ctr <- sort(unique(pr$lat_ctr))
+    if (length(all_lat_ctr) >= 2L) min(diff(all_lat_ctr)) / 2 else 0.05
+  }
 
   # --- Initial dropdown / checkbox state --------------------------------------
   all_taxa      <- sort(unique(pr$taxon_name))
@@ -590,34 +607,6 @@ plot_theta_map_interactive <- function(
 # ==============================================================================
 # Internal helpers
 # ==============================================================================
-
-#' Parse grid_id strings to centroid lat/lon
-#' Format: "Grid_{lat_int}p{lat_dec}_{m}{lon_int}p{lon_dec}"
-#' where "p" = decimal point, "m" prefix = negative
-#' @noRd
-.parse_grid_id <- function(grid_id) {
-  x         <- sub("^Grid_", "", grid_id)
-  # sub(), not regmatches(regexpr(...)): regmatches() silently DROPS any
-  # element with no match (e.g. NA input) instead of returning NA, which
-  # desyncs parts/lon_parts' lengths from grid_id's whenever any input is
-  # NA or malformed. sub() always preserves length (NA stays NA in place).
-  parts     <- sub("_.*$", "", x)
-  lon_parts <- sub("^[^_]+_", "", x)
-
-  parse_coord <- function(s) {
-    neg <- startsWith(s, "m")
-    s   <- sub("^m", "", s)
-    s   <- gsub("p", ".", s, fixed = TRUE)
-    val <- suppressWarnings(as.numeric(s))
-    ifelse(neg, -val, val)
-  }
-
-  data.frame(
-    lat = parse_coord(parts),
-    lon = parse_coord(lon_parts),
-    stringsAsFactors = FALSE
-  )
-}
 
 #' Truncate a label for display
 #' @noRd

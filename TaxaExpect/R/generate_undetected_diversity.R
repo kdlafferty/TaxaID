@@ -18,7 +18,7 @@
 #'    theta = 1 / N_total, parameterized as Beta(1, N_total - 1).
 #'    This ensures TaxaAssign always has at least one undetected competitor.
 #'
-#' @section Domestic/synanthropic species (Session 149):
+#' @section Domestic/synanthropic species:
 #' Both priors above are ultimately derived from \code{model_obj}'s training
 #' occurrence data (typically fetched from GBIF/iNaturalist). Those sources
 #' structurally under-index captive/domestic organisms (pets, livestock), so
@@ -108,8 +108,7 @@
 #' have already been filtered upstream), only the global floor prior is
 #' returned. This is the minimum viable undetected pool.
 #'
-#' **Taxonomic-group dilution (Session 149: mitigated via the grouped pathway,
-#' opt-in):**
+#' **Taxonomic-group dilution (mitigated via the grouped pathway, opt-in):**
 #' N_total is computed across all taxa in \code{model_obj} regardless of
 #' taxonomic group. When a marker captures groups of very different sizes
 #' (e.g. ~800 fish + ~20 mammals on a 12S marker), the global floor
@@ -117,7 +116,7 @@
 #' the floor prior would be Beta(1, 819) rather than the group-appropriate
 #' Beta(1, 19), making unmodelled mammals appear ~41x less likely than they
 #' should be relative to the mammal species pool. Confirmed on real
-#' PtConception 18S data (Session 149): pooling `macroinvertebrates` +
+#' PtConception 18S data: pooling `macroinvertebrates` +
 #' `other_vascular_plants` + `zooplankton` into one N_total gives
 #' `zooplankton` a floor ~34x too low relative to its own group's true
 #' effort.
@@ -129,9 +128,7 @@
 #' correctly-scoped \code{N_total}, so its global floor is automatically
 #' group-appropriate with no extra parameter here. This is the same
 #' \code{sampling_group_col} infrastructure built for the "Shared effort
-#' assumption" (see \code{\link{prepare_model_dataframe}}'s docs); it was
-#' already the documented recommendation before Session 149, but there was no
-#' concrete tool to do the splitting until then. If you do not group your
+#' assumption" (see \code{\link{prepare_model_dataframe}}'s docs). If you do not group your
 #' data this way, the dilution described above still applies uncorrected --
 #' in practice its impact is also blunted by three things even when
 #' unmitigated: (1) modelled species priors come from the Tier 1/2 model and
@@ -172,7 +169,7 @@ generate_undetected_diversity <- function(model_obj,
          "Check that train_biodiversity_model() ran successfully.")
   }
 
-  tax_rank_cols <- c("genus", "family", "order", "class", "phylum")
+  tax_rank_cols <- .dark_diversity_rank_cols
 
   if (!is.null(taxonomy)) {
     if (!is.data.frame(taxonomy) || !"taxon_name" %in% names(taxonomy)) {
@@ -184,10 +181,6 @@ generate_undetected_diversity <- function(model_obj,
       taxonomy <- NULL
     }
   }
-
-  # --- Helper: beta mean and SD from alpha/beta --------------------------------
-  beta_mean <- function(a, b) a / (a + b)
-  beta_sd   <- function(a, b) sqrt((a * b) / ((a + b)^2 * (a + b + 1)))
 
   # --- 1. Singleton mirrors ----------------------------------------------------
   proxy_rows <- list()
@@ -233,8 +226,8 @@ generate_undetected_diversity <- function(model_obj,
         grid_id           = row$grid_id,
         alpha             = alpha_i,
         beta              = beta_i,
-        theta_mean        = beta_mean(alpha_i, beta_i),
-        theta_sd          = beta_sd(alpha_i, beta_i),
+        theta_mean        = .beta_mean(alpha_i, beta_i),
+        theta_sd          = .beta_sd(alpha_i, beta_i),
         n_obs             = row$n_total_at_site,
         model_tier        = "tier3_undetected",
         undetected_type   = "singleton_mirror",
@@ -275,8 +268,8 @@ generate_undetected_diversity <- function(model_obj,
     grid_id           = NA_character_,
     alpha             = alpha_floor,
     beta              = beta_floor,
-    theta_mean        = beta_mean(alpha_floor, beta_floor),
-    theta_sd          = beta_sd(alpha_floor, beta_floor),
+    theta_mean        = .beta_mean(alpha_floor, beta_floor),
+    theta_sd          = .beta_sd(alpha_floor, beta_floor),
     n_obs             = N_total,
     model_tier        = "tier3_undetected",
     undetected_type   = "global_floor",

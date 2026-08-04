@@ -1,31 +1,3 @@
-# ---------------------------------------------------------------------------
-# Internal helper: parse grid_id strings to lat/lon coordinates
-# Format: "Grid_{lat}p{dec}_{m}{lon}p{dec}"
-# e.g. "Grid_33p1_m118p5" -> lat = 33.1, lon = -118.5
-# ---------------------------------------------------------------------------
-.parse_grid_id_basis <- function(grid_ids) {
-  parse_one <- function(id) {
-    x         <- sub("^Grid_", "", id)
-    parts     <- strsplit(x, "_")[[1L]]
-    if (length(parts) != 2L) return(c(lat = NA_real_, lon = NA_real_))
-    parse_coord <- function(s) {
-      neg <- startsWith(s, "m")
-      s   <- sub("^m", "", s)
-      s   <- gsub("p", ".", s, fixed = TRUE)
-      val <- suppressWarnings(as.numeric(s))
-      if (neg) -val else val
-    }
-    c(lat = parse_coord(parts[1L]), lon = parse_coord(parts[2L]))
-  }
-  result <- lapply(grid_ids, parse_one)
-  data.frame(
-    lat = vapply(result, `[[`, numeric(1L), "lat"),
-    lon = vapply(result, `[[`, numeric(1L), "lon"),
-    stringsAsFactors = FALSE
-  )
-}
-
-
 #' Compute Moran Eigenvector Basis for Spatial Autocorrelation
 #'
 #' Constructs a set of Moran eigenvectors (MEM -- Moran's Eigenvector Maps)
@@ -37,8 +9,14 @@
 #' @details
 #' The function performs the following steps:
 #' \enumerate{
-#'   \item Parse \code{grid_ids} to centroid coordinates using the TaxaExpect
-#'     \code{Grid_{lat}p{dec}_{m}{lon}p{dec}} encoding.
+#'   \item Resolve centroid coordinates for \code{grid_ids} -- from
+#'     \code{coords} directly when supplied, otherwise by parsing the
+#'     TaxaExpect \code{Grid_{lat}p{dec}_{m}{lon}p{dec}} encoding. Passing
+#'     \code{coords} is preferred whenever you already have real \code{lat_r}/
+#'     \code{lon_r} columns on hand (e.g. straight from
+#'     \code{\link{prepare_model_dataframe}}'s output) -- string-round-tripping
+#'     through \code{grid_id} is unnecessary work and, at high grid
+#'     resolutions, loses precision relative to the source coordinates.
 #'   \item Build a binary adjacency matrix \eqn{W} where cells \eqn{i} and
 #'     \eqn{j} are neighbours if their Euclidean distance (in degrees) is
 #'     greater than zero and less than \code{distance_threshold}. \eqn{W} is
@@ -77,6 +55,13 @@
 #' @param min_neighbours Positive integer.  Minimum number of neighbours a
 #'   cell must have before a warning is issued about potential unreliability
 #'   of the spatial basis for that cell.  Default \code{1L}.
+#' @param coords Optional data frame with columns \code{grid_id}, \code{lat},
+#'   \code{lon} giving each cell's real centroid coordinates directly (e.g.
+#'   \code{dplyr::distinct(model_data, grid_id, lat = lat_r, lon = lon_r)}).
+#'   When supplied, used in place of parsing \code{grid_ids}' own string
+#'   encoding; rows not covering every value in \code{grid_ids} fall back to
+#'   string-parsing for the missing ones. Default \code{NULL} (string-parse
+#'   every \code{grid_id}, the original behavior).
 #'
 #' @return A data frame with \code{nrow} equal to the number of parseable,
 #'   connected grid cells (which may be less than \code{length(grid_ids)}).
@@ -102,12 +87,27 @@
 #' @seealso \code{\link{prepare_model_dataframe}}, \code{\link{train_biodiversity_model}}
 #'
 #' @examples
+#' # A small 4x4 regular grid, built the same way create_sites_from_grid()
+#' # encodes coordinates into grid_id strings.
+#' lat_seq  <- seq(33.0, 34.5, by = 0.5)
+#' lon_seq  <- seq(-119.5, -118.0, by = 0.5)
+#' grid_ids <- as.vector(outer(lat_seq, lon_seq, function(la, lo) {
+#'   s <- sprintf("Grid_%.1f_%.1f", la, lo)
+#'   s <- gsub("-", "m", s, fixed = TRUE)
+#'   gsub(".", "p", s, fixed = TRUE)
+#' }))
+#' basis <- compute_moran_basis(grid_ids, k = 5L)
+#' head(basis)
+#'
 #' \dontrun{
+#' # Real usage: pass known lat_r/lon_r coordinates directly (avoids
+#' # re-parsing grid_id's own string encoding) and join the result onto
+#' # model data before training.
 #' basis <- compute_moran_basis(
 #'   grid_ids = unique(model_data$grid_id),
-#'   k        = 10L
+#'   k        = 10L,
+#'   coords   = dplyr::distinct(model_data, grid_id, lat = lat_r, lon = lon_r)
 #' )
-#' # Join to model data before training
 #' model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
 #' }
 #'
@@ -115,7 +115,8 @@
 compute_moran_basis <- function(grid_ids,
                                 k                  = 10L,
                                 distance_threshold = NULL,
-                                min_neighbours     = 1L) {
+                                min_neighbours     = 1L,
+                                coords             = NULL) {
 
   # --- Input validation -------------------------------------------------------
   if (!is.character(grid_ids) || length(grid_ids) == 0L) {
@@ -136,8 +137,25 @@ compute_moran_basis <- function(grid_ids,
     ))
   }
 
-  # --- Parse grid_ids to coordinates ------------------------------------------
-  coords      <- .parse_grid_id_basis(grid_ids)
+  # --- Resolve coordinates: real coords when supplied, else parse grid_ids ----
+  if (!is.null(coords)) {
+    if (!is.data.frame(coords) ||
+        !all(c("grid_id", "lat", "lon") %in% names(coords))) {
+      stop("compute_moran_basis: 'coords' must be a data frame with columns ",
+           "grid_id, lat, lon.")
+    }
+    coord_lookup <- coords[!duplicated(coords$grid_id), ]
+    resolved     <- coord_lookup[match(grid_ids, coord_lookup$grid_id), c("lat", "lon")]
+    unresolved   <- is.na(resolved$lat) | is.na(resolved$lon)
+    if (any(unresolved)) {
+      parsed_fallback       <- .parse_grid_id_coords(grid_ids[unresolved])
+      resolved[unresolved, ] <- parsed_fallback
+    }
+    coords <- data.frame(lat = resolved$lat, lon = resolved$lon,
+                          stringsAsFactors = FALSE)
+  } else {
+    coords <- .parse_grid_id_coords(grid_ids)
+  }
   unparseable <- is.na(coords$lat) | is.na(coords$lon)
 
   if (any(unparseable)) {

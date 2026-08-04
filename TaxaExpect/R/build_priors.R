@@ -32,7 +32,10 @@
 #'   (3-category: Marine / Freshwater / Terrestrial).
 #' @param llm_fn Function. LLM provider for habitat assignment (follows the
 #'   TaxaTools \code{llm_fn} pattern). Default
-#'   \code{TaxaTools::call_anthropic_api}.
+#'   \code{getOption("TaxaID.llm_fn", TaxaTools::call_api)} -- resolves to
+#'   whichever provider \code{library(TaxaTools)}'s own startup auto-detection
+#'   configured (see TaxaTools' \code{.onAttach()}), or \code{call_api()}'s
+#'   own auto-detection if that option was never set.
 #' @param max_coord_uncertainty Numeric. Maximum coordinate uncertainty in
 #'   metres for \code{\link[TaxaFetch]{filter_gbif_quality}}. Default
 #'   \code{500}. Endangered or sensitive species often have intentionally
@@ -205,7 +208,7 @@ build_priors <- function(
   .msg("build_priors [1/7]: Fetching GBIF occurrences...")
 
   # Translate input taxa to GBIF backbone before querying GBIF. Input names
- # may come from any backbone (NCBI for eDNA, WoRMS for marine, etc.) and
+  # may come from any backbone (NCBI for eDNA, WoRMS for marine, etc.) and
   # family-level disagreements (e.g. Girellidae in NCBI vs Kyphosidae in
   # GBIF) cause silent 0-record returns. This is a no-op when names are
   # already GBIF-compatible.
@@ -214,7 +217,6 @@ build_priors <- function(
   keys <- TaxaFetch::get_keys_from_context(taxa)
 
   # Filter to usable keys: exclude NONE, ERROR, and HIGHERRANK matches where
-
   # the resolved rank is drastically coarser than the input (e.g. Cyprinidae
   # resolving to kingdom Animalia, usageKey=1, which would fetch ALL animals).
   rank_hierarchy <- c("KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS", "SPECIES")
@@ -467,7 +469,12 @@ build_priors <- function(
   } else if (is.character(habitat_scheme) && length(habitat_scheme) == 1L) {
     scheme_label <- habitat_scheme
   } else if (is.data.frame(habitat_scheme)) {
-    scheme_label <- sprintf("custom (%d categories)", dplyr::n_distinct(habitat_scheme[[1]]))
+    # TaxaHabitat::build_habitat_prompt()'s .validate_habitat_scheme() requires
+    # an "l1_name" column specifically (not just "whichever column comes
+    # first") -- read it directly rather than assuming column order.
+    scheme_col   <- if ("l1_name" %in% names(habitat_scheme)) "l1_name" else 1L
+    scheme_label <- sprintf("custom (%d categories)",
+                            dplyr::n_distinct(habitat_scheme[[scheme_col]]))
   } else {
     scheme_label <- "unknown"
   }
@@ -655,10 +662,9 @@ build_priors <- function(
     )
 
   # --- Recovery: direct NCBI taxonomy lookup for species demoted to genus ---
-  # NOTE: As of Session 72, verify_taxon_names(backbone_id = 4) bypasses
-  # GlobalNames and queries NCBI directly, so this recovery step should be a
-
-  # no-op for NCBI backbone. Retained as safety net for other backbones.
+  # NOTE: verify_taxon_names(backbone_id = 4) bypasses GlobalNames and queries
+  # NCBI directly, so this recovery step should be a no-op for NCBI backbone.
+  # Retained as safety net for other backbones.
   ncbi_lookup <- .recover_demoted_species(ncbi_lookup, target_backbone_id,
                                            verbose = verbose)
 
@@ -726,7 +732,6 @@ build_priors <- function(
 .translate_to_gbif <- function(taxa, rank_system, search_rank, .msg) {
 
   # Translate input taxa to GBIF backbone by verifying the finest available
-
   # names against GBIF, then aggregating to `search_rank`. Species-level
   # queries are essential because family-level disagreements (e.g. Girellidae
   # in NCBI vs Kyphosidae in GBIF) can only be resolved through species

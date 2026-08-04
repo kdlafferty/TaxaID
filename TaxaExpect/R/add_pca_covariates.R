@@ -50,6 +50,23 @@
 #'   [train_biodiversity_model()]
 #'
 #' @examples
+#' set.seed(1)
+#' model_df <- data.frame(
+#'   lat_r_s   = rnorm(30),
+#'   lon_r_s   = rnorm(30),
+#'   # depth_r_s is deliberately correlated with lat_r_s (|r| > 0.7) so this
+#'   # example actually exercises the PCA replacement path.
+#'   depth_r_s = NA_real_
+#' )
+#' model_df$depth_r_s <- 0.9 * model_df$lat_r_s + 0.1 * rnorm(30)
+#' attr(model_df, "scale_params") <- list(
+#'   lat_r   = list(center = 0, scale = 1),
+#'   lon_r   = list(center = 0, scale = 1),
+#'   depth_r = list(center = 0, scale = 1)
+#' )
+#' model_df_pca <- add_pca_covariates(model_df)
+#' names(model_df_pca)
+#'
 #' \dontrun{
 #' model_df     <- prepare_model_dataframe(gridded_data,
 #'                   covariates = c("lat_r", "lon_r", "depth"))
@@ -186,6 +203,14 @@ add_pca_covariates <- function(model_df,
 #' @seealso [add_pca_covariates()], [generate_full_priors()]
 #'
 #' @examples
+#' set.seed(1)
+#' model_df <- data.frame(lat_r_s = rnorm(30), lon_r_s = rnorm(30))
+#' model_df$depth_r_s <- 0.9 * model_df$lat_r_s + 0.1 * rnorm(30)
+#' model_df_pca  <- add_pca_covariates(model_df)
+#' pca_rot       <- attr(model_df_pca, "pca_rotation")
+#' new_sites_pca <- apply_pca_transform(model_df, pca_rot)
+#' names(new_sites_pca)
+#'
 #' \dontrun{
 #' # Typical workflow when model was trained with PCA covariates:
 #' pca_rot       <- attr(model_df_pca, "pca_rotation")

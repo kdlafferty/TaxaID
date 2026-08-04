@@ -75,6 +75,15 @@ models is compared by AIC. The most parsimonious model within
 \code{delta_aic_max} units of the best AIC is returned.
 }
 \details{
+\strong{Tier 1:} "Tier 1" refers to the species tier assigned by
+\code{\link{train_biodiversity_model}} -- species with enough detections
+(\code{>= min_obs_threshold}) to fit the full, species-specific formula
+being screened here. Every fit and comparison in this function operates on
+the Tier 1 model only; Tier 2 (sparse species, intercept-only) is
+untouched and always uses the same simplified formula regardless of what
+this function recommends. See \code{\link{train_biodiversity_model}}'s own
+documentation for the full tier definition.
+
 \strong{Candidate models fitted:}
 \enumerate{
 \item Full model (always -- reuses the first fit, no refitting).

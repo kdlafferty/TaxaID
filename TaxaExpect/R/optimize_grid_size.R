@@ -151,9 +151,12 @@ utils::globalVariables(c(
 #' \dontrun{
 #' grid_results <- optimize_grid_size(
 #'   observation_data = occurrences,
-#'   grid_sizes = c(0.05, 0.10, 0.25),
-#'   min_species = 5
+#'   n_covariates     = 2L,
+#'   min_grid         = 0.05,
+#'   max_grid         = 0.5,
+#'   min_s_threshold  = 3L
 #' )
+#' create_sites_from_grid(occurrences, grid_size = grid_results$best_grid)
 #' }
 #'
 #' @importFrom dplyr mutate group_by summarise filter select arrange distinct n_distinct pull desc bind_rows all_of
@@ -210,6 +213,16 @@ optimize_grid_size <- function(
   df_clean <- observation_data |>
     tidyr::drop_na(dplyr::all_of(required_cols))
 
+  n_dropped_na <- nrow(observation_data) - nrow(df_clean)
+  if (n_dropped_na > 0) {
+    message(sprintf(
+      "optimize_grid_size: dropped %d of %d row(s) (%.1f%%) with NA in a required column (%s).",
+      n_dropped_na, nrow(observation_data),
+      100 * n_dropped_na / nrow(observation_data),
+      paste(required_cols, collapse = ", ")
+    ))
+  }
+
   if (nrow(df_clean) == 0) {
     stop(
       "optimize_grid_size: no rows remain after removing NAs ",
@@ -257,19 +270,23 @@ optimize_grid_size <- function(
   # --- Grid search ------------------------------------------------------------
   resolutions <- seq(min_grid, max_grid, by = step_grid)
 
+  # Column names and thresholds bundled into two lists rather than passed as
+  # 8 separate arguments -- .score_one_resolution() only needs "which columns"
+  # and "which cutoffs", not each one individually threaded through.
+  site_cols  <- list(lat_col = lat_col, lon_col = lon_col,
+                     species_col = species_col, habitat_col = habitat_col)
+  thresholds <- list(min_s_threshold = min_s_threshold,
+                     min_N_threshold = min_N_threshold,
+                     min_distinct_locs = min_distinct_locs,
+                     min_locs_per_habitat = min_locs_per_habitat)
+
   results_list <- lapply(
     resolutions,
     .score_one_resolution,
-    df_clean             = df_clean,
-    lat_col              = lat_col,
-    lon_col              = lon_col,
-    species_col          = species_col,
-    habitat_col          = habitat_col,
-    min_s_threshold      = min_s_threshold,
-    min_N_threshold      = min_N_threshold,
-    min_distinct_locs    = min_distinct_locs,
-    min_locs_per_habitat = min_locs_per_habitat,
-    protected_habitat    = protected_habitat
+    df_clean          = df_clean,
+    site_cols         = site_cols,
+    thresholds        = thresholds,
+    protected_habitat = protected_habitat
   )
 
   results_df <- dplyr::bind_rows(results_list)
@@ -445,24 +462,29 @@ optimize_grid_size <- function(
 #'
 #' @param res Numeric. Grid resolution in decimal degrees.
 #' @param df_clean Cleaned observation dataframe.
-#' @param lat_col,lon_col,species_col,habitat_col Column names.
-#' @param min_s_threshold,min_N_threshold,min_distinct_locs,min_locs_per_habitat
-#'   Thresholds as passed from the parent function.
+#' @param site_cols Named list: \code{lat_col}, \code{lon_col},
+#'   \code{species_col}, \code{habitat_col}.
+#' @param thresholds Named list: \code{min_s_threshold}, \code{min_N_threshold},
+#'   \code{min_distinct_locs}, \code{min_locs_per_habitat}.
 #' @param protected_habitat Character or NULL.
 #' @return A one-row tibble of metrics, or NULL if no valid sites.
 #' @noRd
 
 .score_one_resolution <- function(res,
                                    df_clean,
-                                   lat_col,
-                                   lon_col,
-                                   species_col,
-                                   habitat_col,
-                                   min_s_threshold,
-                                   min_N_threshold,
-                                   min_distinct_locs,
-                                   min_locs_per_habitat,
+                                   site_cols,
+                                   thresholds,
                                    protected_habitat) {
+
+  lat_col     <- site_cols$lat_col
+  lon_col     <- site_cols$lon_col
+  species_col <- site_cols$species_col
+  habitat_col <- site_cols$habitat_col
+
+  min_s_threshold       <- thresholds$min_s_threshold
+  min_N_threshold       <- thresholds$min_N_threshold
+  min_distinct_locs     <- thresholds$min_distinct_locs
+  min_locs_per_habitat  <- thresholds$min_locs_per_habitat
 
   hab_sym     <- rlang::sym(habitat_col)
   species_sym <- rlang::sym(species_col)

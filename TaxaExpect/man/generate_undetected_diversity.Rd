@@ -106,8 +106,7 @@ If the dataset contains no singletons (as is common when rare species
 have already been filtered upstream), only the global floor prior is
 returned. This is the minimum viable undetected pool.
 
-\strong{Taxonomic-group dilution (Session 149: mitigated via the grouped pathway,
-opt-in):}
+\strong{Taxonomic-group dilution (mitigated via the grouped pathway, opt-in):}
 N_total is computed across all taxa in \code{model_obj} regardless of
 taxonomic group. When a marker captures groups of very different sizes
 (e.g. ~800 fish + ~20 mammals on a 12S marker), the global floor
@@ -115,7 +114,7 @@ Beta(1, N_total - 1) is diluted by the dominant group. For a mammal query
 the floor prior would be Beta(1, 819) rather than the group-appropriate
 Beta(1, 19), making unmodelled mammals appear ~41x less likely than they
 should be relative to the mammal species pool. Confirmed on real
-PtConception 18S data (Session 149): pooling \code{macroinvertebrates} +
+PtConception 18S data: pooling \code{macroinvertebrates} +
 \code{other_vascular_plants} + \code{zooplankton} into one N_total gives
 \code{zooplankton} a floor ~34x too low relative to its own group's true
 effort.
@@ -127,9 +126,7 @@ returned \code{biofreq_model} -- each group's model carries its own
 correctly-scoped \code{N_total}, so its global floor is automatically
 group-appropriate with no extra parameter here. This is the same
 \code{sampling_group_col} infrastructure built for the "Shared effort
-assumption" (see \code{\link{prepare_model_dataframe}}'s docs); it was
-already the documented recommendation before Session 149, but there was no
-concrete tool to do the splitting until then. If you do not group your
+assumption" (see \code{\link{prepare_model_dataframe}}'s docs). If you do not group your
 data this way, the dilution described above still applies uncorrected --
 in practice its impact is also blunted by three things even when
 unmitigated: (1) modelled species priors come from the Tier 1/2 model and
@@ -138,7 +135,7 @@ promotion is dominated by singleton mirrors, which are themselves
 group-weighted; and (3) minority-group queries are typically rare on
 group-biased markers.
 }
-\section{Domestic/synanthropic species (Session 149)}{
+\section{Domestic/synanthropic species}{
 
 Both priors above are ultimately derived from \code{model_obj}'s training
 occurrence data (typically fetched from GBIF/iNaturalist). Those sources

@@ -54,7 +54,7 @@
 #'   \code{dplyr::bind_rows()} the resulting prior tables together before
 #'   passing the combined table to \code{TaxaAssign::join_priors()}.
 #'
-#' @section Groups that fail to fit are dropped, not fatal (Session 149):
+#' @section Groups that fail to fit are dropped, not fatal:
 #' Each group's \code{\link{prepare_model_dataframe}} +
 #' \code{\link{train_biodiversity_model}} call is wrapped in its own
 #' \code{tryCatch()}. A group that errors (e.g. too few records to clear

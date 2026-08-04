@@ -67,10 +67,12 @@ spatial location into multiple grid IDs, breaking the
 \code{train_biodiversity_model}. Assign habitat after this step.
 }
 \examples{
-\dontrun{
+occurrences <- data.frame(
+  decimalLatitude  = runif(10, 34, 36),
+  decimalLongitude = runif(10, -119, -118)
+)
 gridded <- create_sites_from_grid(occurrences, grid_size = 0.1)
 head(gridded$grid_id)
-}
 
 }
 \seealso{

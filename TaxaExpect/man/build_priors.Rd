@@ -63,7 +63,10 @@ such taxa are being entirely excluded.}
 
 \item{llm_fn}{Function. LLM provider for habitat assignment (follows the
 TaxaTools \code{llm_fn} pattern). Default
-\code{TaxaTools::call_anthropic_api}.}
+\code{getOption("TaxaID.llm_fn", TaxaTools::call_api)} -- resolves to
+whichever provider \code{library(TaxaTools)}'s own startup auto-detection
+configured (see TaxaTools' \code{.onAttach()}), or \code{call_api()}'s
+own auto-detection if that option was never set.}
 
 \item{habitat_threshold}{Numeric. Minimum weight for
 \code{\link[TaxaHabitat]{assign_habitat_biological}}. Default 0.5.}

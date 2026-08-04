@@ -179,9 +179,12 @@ messages for reference but do not gate the output.
 \dontrun{
 grid_results <- optimize_grid_size(
   observation_data = occurrences,
-  grid_sizes = c(0.05, 0.10, 0.25),
-  min_species = 5
+  n_covariates     = 2L,
+  min_grid         = 0.05,
+  max_grid         = 0.5,
+  min_s_threshold  = 3L
 )
+create_sites_from_grid(occurrences, grid_size = grid_results$best_grid)
 }
 
 }

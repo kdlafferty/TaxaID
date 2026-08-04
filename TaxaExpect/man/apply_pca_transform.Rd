@@ -27,6 +27,14 @@ Use this as a pre-processing step before \code{\link[=generate_full_priors]{gene
 training model used PCA-transformed covariates.
 }
 \examples{
+set.seed(1)
+model_df <- data.frame(lat_r_s = rnorm(30), lon_r_s = rnorm(30))
+model_df$depth_r_s <- 0.9 * model_df$lat_r_s + 0.1 * rnorm(30)
+model_df_pca  <- add_pca_covariates(model_df)
+pca_rot       <- attr(model_df_pca, "pca_rotation")
+new_sites_pca <- apply_pca_transform(model_df, pca_rot)
+names(new_sites_pca)
+
 \dontrun{
 # Typical workflow when model was trained with PCA covariates:
 pca_rot       <- attr(model_df_pca, "pca_rotation")

@@ -72,7 +72,7 @@ one \code{sampling_group} value, as a safety check -- but that function
 does not do the splitting/re-scaling for you, which is what this wrapper is
 for.
 }
-\section{Groups that fail to fit are dropped, not fatal (Session 149)}{
+\section{Groups that fail to fit are dropped, not fatal}{
 
 Each group's \code{\link{prepare_model_dataframe}} +
 \code{\link{train_biodiversity_model}} call is wrapped in its own

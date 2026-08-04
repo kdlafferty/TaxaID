@@ -7,7 +7,7 @@
 compute_adaptive_sampling_groups(
   data,
   rank_system = c("order", "class", "phylum"),
-  min_n = 100,
+  min_n,
   grid_col = "grid_id",
   habitat_col = NULL
 )
@@ -22,9 +22,13 @@ finest to coarsest. The last element is the ceiling rank -- groups are
 never merged across it. Default \code{c("order", "class", "phylum")}.}
 
 \item{min_n}{Numeric. Minimum viable typical per-site record count for a
-group (see Details for exactly how this is computed). Default
-\code{100} -- a placeholder, like every other threshold introduced
-during this review; adjust to your system's actual effort scale.}
+group (see Details for exactly how this is computed). No default --
+there is no universal viable effort scale across study systems (a
+camera-trap survey and a broad eDNA marker have wildly different typical
+per-site counts), matching this ecosystem's convention of requiring an
+explicit value rather than shipping a threshold that would be silently
+wrong for most callers (see e.g. \code{TaxaAssign::join_priors(
+backbone_id = )}).}
 
 \item{grid_col}{Character. Column identifying spatial sites. Default
 \code{"grid_id"}.}
@@ -125,6 +129,20 @@ same split-then-defer-with-guaranteed-ceiling-finalization structure.
 }
 
 \examples{
+obs <- data.frame(
+  grid_id = rep(c("Grid_1", "Grid_2", "Grid_3"), each = 4),
+  order   = c("Perciformes", "Perciformes", "Perciformes", "Perciformes",
+              "Diatomea", "Diatomea", "Rotifera", "Rotifera",
+              "Perciformes", "Diatomea", "Rotifera", "Perciformes"),
+  class   = c(rep("Actinopteri", 4), rep("Bacillariophyceae", 2),
+              rep("Rotifera", 2), "Actinopteri", "Bacillariophyceae",
+              "Rotifera", "Actinopteri"),
+  phylum  = c(rep("Chordata", 4), rep("Ochrophyta", 2), rep("Rotifera", 2),
+              "Chordata", "Ochrophyta", "Rotifera", "Chordata")
+)
+grouped <- compute_adaptive_sampling_groups(obs, min_n = 3)
+table(grouped$sampling_group)
+
 \dontrun{
 occurrences_gridded <- compute_adaptive_sampling_groups(
   occurrences_gridded,
