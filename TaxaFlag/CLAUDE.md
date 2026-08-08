@@ -1,6 +1,669 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-30 (Sonnet 5 -- add_posthoc_assessment()'s Axis 1 rebuilt around
+# Last updated: 2026-08-07, continued once more (Sonnet 5 -- first full TaxaFlag code +
+# domain review against inst/Code and Domain Review 2.Rmd, findings + fixes in one pass,
+# recorded in new inst/taxaflag_review.Rmd (matches TaxaFetch/TaxaLikely/TaxaMatch's own
+# combined-review convention). Two real bugs fixed: (1) flag_handler()'s internal
+# merge(df, group_edges, by=".tmp_group", all.x=TRUE) used base R's default sort=TRUE,
+# silently re-sorting the OUTPUT row order by group whenever group_col groups appeared in
+# the input in non-alphabetical order -- contradicts the function's own documented "input
+# data frame with columns appended" contract, and every pre-existing test's fixture
+# happened to already be group-sorted so this was never caught. Fixed with the same
+# .row_id-then-resort pattern review_assignments()'s own .join_key merge already uses; new
+# regression test constructs an out-of-order-group fixture specifically to catch it.
+# (2) build_review_covariates.R's roxygen referenced \code{\link{model_review_classification}}
+# twice -- no such function exists anywhere in the package, and this was the real cause of
+# the "1 pre-existing unrelated warning+note in build_review_covariates.R" this file's own
+# session notes had carried, unresolved, for many sessions; fixed by rewording to plain
+# prose. Also: `df` (shadows stats::df()) renamed to `input_df` in flag_contaminant(),
+# flag_handler(), review_assignments(), review_spatial_context(), and their internal
+# helpers -- the last package in the ecosystem still carrying this exact pattern
+# (TaxaTools/TaxaHabitat already fixed their own df/data collisions in earlier reviews).
+# Propagated to every real call site found via a full ~/My Drive/Rscripts grep, not just
+# this package: TaxaFlag's own tests/inst/vignette, TaxaWizard's two consensus_to_flagged/
+# consensus_to_reviewed.R snippets + metadata/TaxaFlag.json, TaxaID/inst/
+# TaxaID_Workflow_Template_TEST.R, and all 6 real external eDNA production workflow
+# scripts (PtConception x4, SepulvedaMugu x2, outside this monorepo, not under git --
+# backed up first as *.bak_pre_input_df_rename). DESCRIPTION also gained a missing
+# `Depends: R (>= 4.1.0)` (3 files use the native pipe; confirmed via devtools::build()'s
+# own dependency-detection message, matching TaxaHabitat/TaxaLikely/TaxaTools's identical
+# fix). New test-build_review_covariates.R (22 expectations) closes the one exported
+# function in the package that had zero test coverage before this session -- every
+# expected value in it was checked against the function's real live output before being
+# written into an assertion. `devtools::test()` 415/415 (up from 382), `devtools::check()`
+# 0 errors/0 warnings/0 notes (the long-standing warning is gone). Reinstalled, verified
+# at ~/Library/R/4.0/library. Real production impact: any external caller using named
+# `df = ...` against these four functions needs `input_df = ...` now -- see TaxaID/
+# CLAUDE.md's Recent Breaking Changes table.
+# Previous update, 2026-08-07, closing out the review_spatial_context() thread with a
+# dedicated test-coverage pass (Sonnet 5). Prompted by the user asking to make sure all
+# docs/tests were properly written up after confirming the fourth click-through round's
+# fixes worked -- audited what had accumulated purely as inline logic inside the gadget's
+# reactive/render closures across nine rounds and was therefore only ever exercised
+# implicitly through the full `shiny::testServer()` machinery, never directly. Two pieces
+# of real, non-trivial logic extracted into standalone `@noRd` functions specifically so
+# they're independently unit-testable: `.gbif_tile_url(taxon_key, style, bin_size,
+# year_range)` (the `.point`->`.poly` auto-upgrade + `bin=square`/`squareSize` + Heat-family
+# exclusion logic from the GBIF tile layer) and `.gbif_legend_swatch(style)` (the real,
+# sampled per-style legend gradient lookup). Both were previously local variables computed
+# inline where they were used -- functionally identical behavior, but no way to assert on
+# them directly, which is exactly the shape of bug that shipped twice in this thread (a
+# real value computed correctly once, then not actually wired to -- or not actually
+# re-checked against -- the place a real user's own parameters would reach it). 15 new
+# tests added: 5 for `.gbif_tile_url()` (point->poly upgrade, already-.poly passthrough,
+# Heat-family exclusion, bin_size=NULL no-op, year_range query), 3 for
+# `.gbif_legend_swatch()` (classic .point/.poly parity, purpleHeat's real distinct colors,
+# unverified-style gray fallback), 2 for `.fetch_inat_points()` (mocked at
+# `httr2::req_perform`, matching this file's own established mocking convention -- real-
+# shaped geojson.coordinates extraction, and the empty-results 0-row case), plus the
+# existing gadget-level tests already covering the reactive wiring end to end.
+# `devtools::test()` 382/382 (up from 360), `devtools::check()` 0 errors/0 notes (1
+# pre-existing unrelated warning+note in `build_review_covariates.R`, untouched).
+# Reinstalled. Pure refactor + additive tests -- no behavioral change to the gadget itself.
+# See [[project_gbif_tile_spatial_review_functions]] for the full nine-round record this
+# closes out.
+# Previous update, 2026-08-07, fourth round of real click-through feedback (Sonnet 5 --
+# review_spatial_context()). Two items. (1) **iNat clustering reverted.** The third round's
+# marker clustering + radius bump (2->3) was rolled back completely per direct user
+# feedback ("The iNat points were fine before") -- back to plain, unclustered
+# `radius=2, color="#16a34a"` circleMarkers with no `clusterOptions`, matching the state
+# confirmed good in an earlier round. The `inat_radius_km` param, the dashed search-radius
+# circle, and the legend text showing the actual radius (all from the third round) were
+# kept -- those were separately confirmed correct, this revert is scoped to clustering/size
+# only. (2) **GBIF tiles still too small -- fixed with a verified, correct display-size
+# lever this time, explicitly NOT clustering (the user ruled that out directly, and it
+# wouldn't apply anyway -- GBIF is a raster tile, not point markers).** Investigated the
+# display-size question left open since the original tileSize regression: does forcing
+# GBIF's real 512x512 @1x.png image into Leaflet's default 256 CSS-px tile slot actually
+# shrink it? Answer: yes, genuinely -- and the fix is Leaflet's own purpose-built lever for
+# exactly this shape of provider (`tileOptions(tileSize=512, zoomOffset=-1)`, the standard
+# "retina tile" recipe), paired correctly this time rather than applied bare. Verified LIVE
+# before shipping, specifically because a prior round's superficially similar bare-tileSize
+# change caused a real regression and this thread's own hard lesson is "verify, don't
+# repeat a reasoning mistake": built a standalone (non-Shiny) leaflet HTML page, served over
+# a local `python3 -m http.server` (Chrome blocks `file://` navigation via the extension),
+# with the paired option set alongside the current no-override rendering, side by side --
+# screenshotted both via real Chrome browser automation at the gadget's actual initial zoom
+# (7) and again after zooming in twice more. Confirmed: visibly ~2x larger squares in both
+# dimensions, correctly positioned (same real GreatLakes coordinates/species, Chicago/
+# Detroit-area clusters land in the identical real locations), zero tile gaps, zero
+# basemap misalignment, zero console errors at either zoom level. Shipped to the GBIF tile
+# layer's own `addTiles()` call only -- no other layer touched. `devtools::test()` 360/360
+# unchanged, `devtools::check()` 0 errors/0 notes (1 pre-existing unrelated warning+note),
+# reinstalled. See `TaxaID/CLAUDE.md`'s "Known R Footguns" tileSize entry (updated with this
+# verified-correct paired usage) and [[project_gbif_tile_spatial_review_functions]] for the
+# full record.
+# Previous update, 2026-08-07, third round of real click-through feedback (Sonnet 5 --
+# review_spatial_context()). Study Site marker fix confirmed correct. Three more real
+# issues, all fixed with the same "verify, don't guess" discipline as every prior round:
+# 1. **GBIF legend color STILL wrong for the user's actual config.** The second round's
+# fix hardcoded the "classic" ramp's real sampled colors -- correct for THAT style, but the
+# user's own call passes gbif_style="purpleHeat.point", and the legend kept showing
+# classic's yellow/orange/red regardless, because the swatch never actually read
+# gbif_style at all. Rebuilt as a real lookup keyed on the configured style (stripped of
+# its .point/.poly suffix, since binning never changes color family): sampled live purple
+# Heat/green Heat/blue Heat/orange Heat tiles the same way classic was sampled last round
+# (dense world tile, to see each ramp's true top end) -- purpleHeat genuinely renders
+# black -> purple -> magenta -> pink, confirming the user's own "black to yellow" mismatch
+# report was about MY swatch being wrong, not GBIF's real rendering being wrong. Any style
+# outside this now-5-style verified set falls back to a neutral gray swatch labeled "colors
+# unverified for this style" rather than another guess.
+# 2. **iNat search radius has no visual boundary.** A taxon with zero visible points within
+# the (now 500km) search radius reads identically to "no iNat data exists at all" --
+# flagged by the user as a real risk of misreading absence-within-radius as absence-
+# entirely. Fixed two ways at once, per the user's own "OR" framing taken as "do both":
+# new `inat_radius_km` param (default 500, threaded through all three function layers same
+# as gbif_bin_size) now drives BOTH a dashed `leaflet::addCircles()` boundary on the map
+# (grouped with the points layer, so toggling one toggles both) AND the legend text itself
+# ("iNaturalist observation (dashed circle = 500 km search radius)") -- the actual km value
+# is read from the same variable driving the real fetch, so the two can't drift apart.
+# 3. **iNat points barely visible when zoomed in, worse since they don't cluster.** A
+# fixed-screen-pixel circleMarker (radius=2/3) never grows as you zoom in the way a raster
+# tile's own image pixels do, and points that visually overlapped at low zoom spread apart
+# and stop reading as a group once zoomed in -- exactly the user's own diagnosis. Fixed
+# with `clusterOptions = leaflet::markerClusterOptions()` on the iNat circleMarkers layer
+# (confirmed live: Leaflet's bundled clustering plugin is natively supported by
+# `leaflet::addCircleMarkers()`, no extra R dependency) -- nearby points now group into a
+# numbered badge at low zoom and split apart progressively while zooming in, rather than
+# rendering as isolated barely-visible dots throughout. Marker radius also bumped 2 -> 3 as
+# a modest additional margin (kept-occurrence points, confirmed "just right" by the user
+# two rounds ago, are untouched at radius=2 -- this only affects iNat's own layer, which
+# serves a different wide-context purpose).
+# `devtools::test()` 360/360 unchanged, `devtools::check()` 0 errors/0 notes (1
+# pre-existing unrelated warning+note), reinstalled. Legend gradient lookup and
+# `clusterOptions`/`addCircles` construction both live-verified against the real installed
+# `leaflet` package before considering this done. See
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, second round of real click-through feedback on the very same
+# fixes just shipped (Sonnet 5 -- review_spatial_context()). Legend/toggles now show
+# (structurally working), but 4 more real problems: GBIF legend swatch color wrong, Study
+# Site legend swatch didn't match the actual map marker, iNat points newly confined to a
+# small region (a real regression from switching off the raster tile), and GBIF tiles
+# "not particularly more visible" despite the prior round's bin=square fix. All four
+# re-verified against real data rather than patched blind a second time:
+# 1. **GBIF legend color wrong.** The prior round's gradient (ffffb2->fd8d3c->bd0026) was a
+# guessed ColorBrewer-style ramp, never actually sampled from a real tile. Fetched real
+# GBIF "classic" tiles (both a sparse local one and a deliberately dense world tile, to see
+# the ramp's true top end) and read back the actual non-transparent pixel RGB values: real
+# stops are pure yellow (255,255,0) -> orange (255,152,0) -> dark red (213,10,0), notably
+# more vivid/saturated than the guessed pale-yellow start. Legend gradient corrected to
+# #ffff00/#ff9800/#d50a00.
+# 2. **Study Site marker mismatch.** The prior round's legend used a generic pin emoji
+# (unicode U+1F4CD); the actual map marker is `leaflet::addMarkers()`'s own default blue
+# teardrop icon, a specific bundled PNG, not something an emoji can approximate. Fixed by
+# embedding that EXACT file (`system.file("htmlwidgets/lib/leaflet/images/marker-icon.png",
+# package="leaflet")`) as a base64 data URI, generated at runtime (not hardcoded) so it can
+# never drift from whatever leaflet version is actually installed -- guaranteed
+# pixel-identical to the real marker rather than an approximation of it.
+# 3. **iNat points confined to a small region -- a real regression, root-caused, not
+# guessed at.** The raster tile layer this replaced last round always covered the FULL
+# visible map (it rendered GBIF-style world density, not a distance-limited search), so
+# switching to real individual points fetched with a hardcoded 50km search radius
+# (fetch_inat_occurrences()'s own default, copied without re-deriving it for this very
+# different use case) was a genuine narrowing, not a perceived one. Fixed by raising
+# .fetch_inat_points()'s default radius_km 50 -> 500; confirmed live the results genuinely
+# spread across a wide real area at 500km (Iowa/Indiana/Ontario/Wisconsin for a real
+# Chicago-area test point, not clustered near center), since iNat's own default sort is
+# most-recent-first, not nearest-first.
+# 4. **GBIF tiles still not noticeably bigger.** The prior round's default
+# (gbif_bin_size=64) was chosen from measurements against a maximally COMMON species (house
+# sparrow, present literally everywhere) -- the wrong reference case for a tool whose real
+# job is reviewing SPARSE "unprecedented" species. Re-measured against this thread's own
+# real sparse GreatLakes species (Lepomis peltastes, Neogobius melanostomus) at the exact
+# real study-site tile (zoom 7, x=33, y=47 for the GreatLakes2023 coordinates): raw
+# .point pixels covered under 0.1% there; squareSize=64 only reached ~1-2.5%, visually
+# indistinguishable from unbinned dots on a full map pane -- explaining exactly why the
+# user "didn't notice a difference." Default raised to 256L, which reaches ~10-15%
+# coverage for those same real sparse species (a ~60-140x increase over raw pixels) while
+# the maximally-common reference species only reaches ~26% (still not a solid blob).
+# `devtools::test()` 360/360 unchanged (styling/data-source changes only, no new reactive
+# branches or signature params needing test-site updates this round), `devtools::check()`
+# 0 errors/0 notes (1 pre-existing unrelated warning+note). Reinstalled; the marker data
+# URI and the 500km radius bump were both live-verified against the real installed package
+# before considering this done (200 real points now spanning ~6.6 degrees latitude / ~10
+# degrees longitude, vs. a tight cluster before). See
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, the FIRST real RStudio click-through, 4 concrete points
+# (Sonnet 5 -- review_spatial_context()). The user's assessment: occurrence points are
+# "just right" (unchanged), iNat markers too large, GBIF tiles still too small even after
+# the zoom-7/bin-size work, no legend, and no toggle switches. Each fix verified live
+# against the real APIs before shipping, not guessed:
+# 1. **iNat markers too large, no fix via the tile API.** Directly probed
+# api.inaturalist.org/v1/points/{z}/{x}/{y}.png with every plausible size param name
+# (marker-width/width/radius/dot-radius/size) against a real taxon -- all six produced
+# BYTE-IDENTICAL output to a bare request, while `color` measurably changed it, confirming
+# the endpoint has no working size control at all (undocumented too -- the
+# Windshaft-inaturalist wrapper repo's own real params list is x/y/z/taxon_id/user_id/
+# place_id/project_id/color/opacity/border_opacity/ttl, nothing size-related). Replaced the
+# raster tile layer entirely with real individual point markers: new internal
+# `.fetch_inat_points()` hits the same `/v1/observations` search endpoint
+# `TaxaFetch::fetch_inat_occurrences()` already counts against (confirmed live this
+# specific public read query needs no Authorization header, so no TaxaFetch dependency
+# needed), extracts each result's real `geojson.coordinates`, and draws them with
+# `leaflet::addCircleMarkers()` sized to match the gadget's own "just right" occurrence-
+# point convention exactly (radius=2) instead of a fixed, uncontrollable server-side dot.
+# Capped at `per_page=200` (iNat's real server-side max, confirmed live: requesting 201
+# silently returns 200) -- one page, matching this gadget's "cheap context" scope.
+# 2. **GBIF tiles still too small.** Root cause this time: `bin=square`/`squareSize`
+# binning params (which aggregate raw single-pixel dots into visibly larger squares) are
+# silently NO-OPS on any `.point`-suffixed style -- confirmed live, byte-identical response
+# with/without them -- and only take effect once the style is switched to its `.poly`
+# counterpart. New `gbif_bin_size` param (default `64L`, `NULL` disables) auto-upgrades a
+# bare `.point` style to `.poly` and appends the bin params; Heat-family styles (no `.poly`
+# counterpart) are left unbinned. Chosen from a real measured sweep across
+# squareSize in {16,32,64,128} at zoom 7 for a densely-covering species: 64 gives ~13.6%
+# visible tile coverage (~36x the raw `.point` style's ~0.4%) without 128's near-solid-blob
+# look. Also confirmed live: pairing a `.poly` style with NO bin params (the naive first
+# idea) can render a completely EMPTY tile at a real zoom/species combo -- never applied
+# unbinned.
+# 3. **Legend added.** Static HTML `leaflet::addControl()` (bottomright, built once,
+# doesn't depend on the selected taxon) explaining all 4 toggleable overlays plus the
+# always-present study-site marker.
+# 4. **Toggle switches re-added.** `leaflet::addLayersControl()` -- removed in an earlier
+# round alongside the tileSize regression on the theory its own JS behavior couldn't be
+# verified without a browser; now that a real click-through exists and the actual root
+# cause of that regression was confirmed to be the tileSize bug (not addLayersControl
+# itself), it's back. Re-issued inside `observeEvent(input$taxon)` AFTER the groups are
+# rebuilt each time (not once at initial render, when the groups don't exist yet) --
+# leaflet's R htmlwidget resolves `overlayGroups` against whatever layers currently carry
+# that group name; a repeat call with the same names updates the control in place rather
+# than stacking duplicates.
+# `devtools::test()` 360/360 unchanged (styling/rendering changes, no new reactive logic
+# needing new test coverage beyond the existing `.build_spatial_context_server()` call
+# sites, which needed `gbif_bin_size` threaded through the same way `live_inat_check`/
+# `inat_cache_dir` did last round), `devtools::check()` 0 errors/0 notes (1 pre-existing
+# unrelated warning+note in `build_review_covariates.R`). Reinstalled, `.fetch_inat_points()`
+# live-verified against the real installed package (200 real Chicago-area house-sparrow
+# points returned). This is genuinely the first round grounded in the user's own real
+# browser session rather than `shiny::testServer()`/API-only verification -- see
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, closing the persistent "no iNat data" gap (Sonnet 5 --
+# review_spatial_context() gains an opt-in `live_inat_check`/`inat_cache_dir` fallback in
+# its `inat_row()` reactive: when a taxon has no row in the caller-supplied `inat_range`
+# (or none was supplied at all), and `live_inat_check` (default TRUE) is enabled and
+# `TaxaFetch` is installed, it now calls `TaxaFetch::check_inat_range()` live for just that
+# one taxon before giving up. Prompted by the user reporting the same "iNat: no data"
+# message across THREE different real taxa (`Salmo trutta`, `Perca flavescens`) spanning
+# both "unexpected" and "expected" plausibility tiers -- verified directly against real
+# data (not re-guessed) that both taxa are genuinely absent from the real `inat_range.rds`,
+# and that `check_inat_range()`'s real scoping only ever covers a pipeline's own
+# "unprecedented"-tier undetected-diversity candidate pool, structurally excluding most of
+# a real consensus table. This is a coverage workaround, not a fix to the separate,
+# still-open `check_inat_range()` name-mismatch bug
+# ([[project_inat_range_backbone_mismatch_todo]]) -- a live call can still resolve to the
+# wrong species via iNat's own fuzzy matching, same as the static path already could.
+# `output$stats_panel`'s iNat message block reworked to match: gates on
+# `!is.null(inat_range) || isTRUE(live_inat_check)` instead of only the static
+# `inat_range`, and no longer claims "not in the supplied inat_range" when a live check may
+# also have run -- surfaces the real `range_status` (e.g. `"taxon_not_found"`/
+# `"no_polygon"`) when a check (static or live) genuinely found nothing, distinguishing
+# "checked, empty" from "never checked." `TaxaFetch` added to `DESCRIPTION`'s `Suggests`
+# (checked lazily via `requireNamespace()`, not required). A real, pre-existing test-suite
+# gap was found running the full suite after this change: `.build_spatial_context_server()`
+# already required `live_inat_check`/`inat_cache_dir` as REQUIRED params (no default) from
+# this same round's own signature threading, but the test file's `.make_server()` helper
+# and two standalone direct calls hadn't been updated to pass them -- this didn't error at
+# construction (lazy R argument evaluation), only once `inat_row()` actually ran, so it
+# surfaced as an opaque "output$ai_panel encountered an unexpected error resolving its
+# promise" deep in a `shiny::testServer()` backtrace rather than a clear missing-argument
+# message. Fixed by adding both params to `.make_server()` (default `live_inat_check =
+# FALSE`, keeping existing tests network-call-free) and both standalone call sites; two new
+# tests added (`local_mocked_bindings(check_inat_range = ..., .package = "TaxaFetch")`)
+# confirming the live fallback fires when enabled and taxon-absent, and confirming it's
+# never called when `live_inat_check = FALSE`. `devtools::test()` 360/360 (up from 356),
+# `devtools::check()` 0 errors/0 notes (1 pre-existing unrelated warning+note in
+# `build_review_covariates.R`, untouched). Reinstalled. Still not done: the user's own live
+# RStudio click-through confirming the live fallback actually renders correctly in a real
+# browser session -- every round of this thread so far has been verified via
+# `shiny::testServer()`/direct API calls/source reading, never a real click-through by me.
+# See [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, a real regression found and fixed (Sonnet 5 --
+# review_spatial_context()'s previous session's `tileOptions(tileSize = 512)` "fix" was
+# ITSELF a genuine bug, not a display tweak gone slightly wrong -- confirmed by reading
+# the actual bundled Leaflet.js source (installed at
+# leaflet/htmlwidgets/lib/leaflet/leaflet.js) rather than trusting the earlier reasoning:
+# `getPixelWorldBounds()` (the MAP's shared world-pixel bounds at a given zoom) is derived
+# purely from the map's CRS, independent of any one layer; `_pxBoundsToTileRange()` then
+# divides those SAME shared bounds by `this.getTileSize()` -- EACH LAYER's OWN tileSize --
+# to compute that layer's tile x/y indices. Two layers at the identical zoom with
+# different tileSize therefore request DIFFERENT x/y indices from the identical
+# viewport -- GBIF's server-side tile addressing uses the standard 256px-tile-grid
+# convention regardless of what pixel resolution its response images actually are, so
+# tileSize=512 desynced the requested indices from what GBIF's real addressing expects.
+# This is the confirmed, verified cause of the user's real regression: tiles disappeared
+# entirely, and the (also newly-added) leaflet::addLayersControl() checkbox didn't
+# function correctly either. Fully reverted -- no tileOptions override anywhere now, on
+# either the GBIF or the (equally affected) iNat tile layer -- and addLayersControl()/
+# clearControls() removed entirely rather than debugged further, since its interactive
+# JS behavior can't be verified without a real browser and the added complexity wasn't
+# earning its keep. "Bigger-looking density" pursued via a genuinely safe lever instead:
+# raised the map's initial zoom 5 -> 7, verified with real check_gbif_tile_range() numbers
+# (not assumed) that GBIF's own density-blob pixel footprint DOES grow with zoom up to a
+# point (patch_size_px 21 -> 52 -> 95 across zoom 5/6/7 for a real test case) before
+# fragmenting into isolated single pixels beyond zoom 7 -- 7 is the measured sweet spot.
+# Also added an explicit sidebar note distinguishing "no iNat row at all for this taxon"
+# from "row present but no taxon_id" (the map's iNat tile layer specifically needs
+# taxon_id), so a taxon with real iNat text data but no map layer doesn't read as broken.
+# devtools::test() 356/356 (unchanged from the prior round -- no test asserted on the now-
+# removed layers control), devtools::check() 0 errors/0 notes. Reinstalled. Meta-lesson,
+# recorded plainly: the FIRST attempt at the tileSize fix was reasoned from memory of how
+# Leaflet's tileSize option works, without checking; it was wrong in a way that broke
+# something that had been working. Went back and read the actual bundled source this time
+# before re-fixing, rather than reasoning from memory a second time. Still the standing
+# gap: four rounds of feedback now, all diagnosed via API-level verification, source
+# reading, and testServer() -- still no real RStudio click-through confirmation by me
+# directly. See [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, a third round of real click-through feedback (Sonnet 5 --
+# review_spatial_context() again, four fixes, all grounded in direct verification against
+# the real GBIF/iNaturalist APIs rather than guessed:
+# (1) THE root cause of "GBIF pixels render too small": Leaflet defaults every tile layer
+# to 256px unless told otherwise, but GBIF's own @1x.png tiles ARE 512x512 (confirmed
+# directly against a real response) -- every GBIF tile was silently being shrunk to half
+# its intended on-screen size. Fixed with `tileOptions(tileSize = 512)` on the addTiles()
+# call -- a real, well-understood Leaflet mechanism for non-256px tile services (this is
+# the standard way "retina"/custom-resolution tiles are integrated), not a workaround.
+# Since GBIF's own @1x convention is already ~2x a standard 256px tile's density, this
+# alone should roughly double the apparent size of every density pixel -- landing in the
+# user's requested "2-3x larger" range without over-correcting via a resolution bump.
+# (2) New `gbif_year_range` param (display-only, forwarded as GBIF's own `year` query
+# param) -- verified live that it's a real, working filter (byte size of the same tile
+# genuinely shrinks with a narrower year range), added to let a user align the visual tile
+# layer with their own study's date-bounded fetch. Deliberately NOT threaded into
+# check_gbif_tile_range()'s own numeric computation, which stays all-time/global by
+# design -- that's the right question for "is this plausible anywhere, ever," and
+# narrowing it risks a false beyond_buffer for a genuinely present species with no records
+# in one particular window. This also explains a real user observation from this round:
+# the density map shows far more points than a study's own year- and quality-filtered GBIF
+# fetch, because it's intentionally the FULL, unfiltered, all-time global record by
+# default, not a scoped-down comparison.
+# (3) Genuinely new: an iNat observation-density tile LAYER, separate from
+# check_inat_range()'s own text panel. The user correctly identified that
+# check_inat_range()'s tabular output (in_range/n_observations/matched_name, no geometry)
+# has nothing to actually draw on a map -- but investigated rather than accepted as a dead
+# end: iNaturalist has its OWN live observation-tile endpoint
+# (api.inaturalist.org/v1/points/{z}/{x}/{y}.png?taxon_id=), confirmed with a real request
+# (512x512, real alpha-channel content, not a placeholder). This is real iNat OBSERVATION
+# density, not a computed range boundary -- a genuinely different visualization than GBIF's
+# tiles, not a duplicate. Reuses the already-looked-up `inat_row()$taxon_id` (from the
+# existing text-panel logic), so no new resolution step or param was needed -- only drawn
+# when `inat_range` provides a `taxon_id` for the selected taxon.
+# (4) `leaflet::addLayersControl()` added (a real, standard Leaflet UI widget) so a
+# reviewer can independently toggle GBIF tiles / iNat tiles / kept points / excluded
+# points -- increasingly useful now that up to 4 overlays can be showing at once. Also
+# downsized the excluded-records red rings (radius 5->3) to match the earlier round's
+# kept-points shrink, per explicit request.
+# 2 new tests. devtools::test() 356/356 (up from 354), devtools::check() 0 errors/0 notes
+# (same pre-existing warning). Reinstalled. Still the same standing gap: no real RStudio
+# click-through of these specific changes yet -- three rounds of feedback now, all
+# responded to via API-level verification + testServer(), never seen rendered by me
+# directly. See [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, yet another round (Sonnet 5 -- review_spatial_context() visual
+# tuning from a SECOND round of real click-through feedback: (1) GBIF tiles' fine pixel
+# geometry didn't stand out against the default OpenStreetMap basemap. Default `tile`
+# changed OpenStreetMap -> "CartoDB.Positron" (a muted, mostly-grayscale basemap chosen so
+# GBIF's colours -- not the basemap's own roads/labels/land colour -- carry the visual
+# weight). New `gbif_style` param (default "classic.point", GBIF's own map-API `style`
+# query parameter) exposes GBIF's colour/aggregation choice directly rather than working
+# around it -- verified empirically against the real GBIF tile API before picking a
+# default: `.poly`-suffixed styles (area/hexagon aggregation, the plausible "smoother
+# rendering" option) can return a completely EMPTY tile at a real zoom/species combination
+# where `.point` styles render correctly, ruling them out as a safe default; `.point`
+# variants (`purpleHeat.point` etc.) are valid, bolder-coloured alternatives a caller can
+# opt into. (2) Occurrence points (`occurrence_data`) were still oversized next to GBIF's
+# fine tile pixels even after the FIRST round's radius cut (4->3) -- shrunk further to
+# radius=2, weight=0 (no outline, a plain dot rather than a bordered disc). The
+# `excluded_occurrence_data` red-ring overlay from the prior round was confirmed working
+# well by the user and left unchanged. devtools::test() 354/354, devtools::check() 0
+# errors/0 notes. Still the same open item: no real RStudio click-through confirmation of
+# THESE specific tuning changes yet -- this is the user's second round of feedback on
+# renders they saw live, but I still haven't seen the rendered result myself. See
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued once more (Sonnet 5 -- review_spatial_context()
+# refined from the user's first real click-through, three concrete points: (1) the local
+# occurrence points overwhelmed the GBIF density tiles visually, and the tiles didn't look
+# like GBIF's own rendering -- root cause: an unneeded `tileOptions(opacity = 0.75)`
+# override on the tile layer, on top of `occ_points`'s own fairly bold styling (radius=4,
+# fillOpacity=0.8). Fixed by dropping the tile opacity override entirely (render GBIF's
+# tiles exactly as GBIF serves them -- their own colour ramp already encodes density, a
+# second multiplier just makes sparse species harder to see than GBIF's own viewer shows
+# them) and toning the occurrence points down (radius=3, fillOpacity=0.45) so both layers
+# stay readable together. (2) The iNat panel was silently blank whenever `inat_range` had
+# no row for the selected taxon -- a real, common case (`check_inat_range()` only ever
+# covers a pipeline's own undetected/unreferenced candidate list, see
+# [[project_inat_range_backbone_mismatch_todo]]), but silence reads identically to "iNat
+# integration is broken." Fixed: any taxon now shows an explicit iNat line whenever
+# `inat_range` was supplied at all -- either the real data or "no data for this taxon" --
+# with no line at all only when `inat_range` itself is `NULL` (the "not using this feature"
+# case, correctly still silent). (3) The user asked whether records this study's OWN GBIF
+# filtering had excluded as questionable could be shown too -- investigated rather than
+# guessed at: checked the real GreatLakes2023 checkpoints directly and found 0 geographic-
+# outlier removals and 0 institution-flagged removals for this dataset (both real, checked
+# numbers, not assumptions), but a real 530 records excluded by
+# `TaxaFetch::filter_gbif_quality()` between `raw_gbif` (7287 rows) and `geo_outlier_check`
+# (6757 rows) -- recoverable via a plain `anti_join` on `gbifID`, independent of whether
+# `filter_gbif_quality()`'s own `removed_records` attribute survived the pipeline intact.
+# New `excluded_occurrence_data` param (same schema as `occurrence_data`, reusing its
+# column-name params) renders these as hollow red rings, visually distinct from the solid
+# blue "kept" points -- shown for provenance, not as evidence of presence. Not computed
+# inside the gadget (workflow-specific reconstruction logic); the user's own
+# `GreatLakes2023_TestSpatialReviewFunctions.R` (outside this monorepo) was updated with a
+# tested, real-data-verified reconstruction snippet (confirmed against the real checkpoint
+# files before shipping -- e.g. round goby has 16 of the 530 real exclusions, mostly
+# `TAXON_ID_NOT_FOUND`/`COORDINATE_ROUNDED` GBIF issue codes). 4 new tests. `devtools::test()`
+# 354/354 (up from 350), `devtools::check()` 0 errors/0 notes (same pre-existing warning).
+# Reinstalled. Still same open item as before: a real interactive click-through in RStudio
+# hasn't happened yet -- this round's fixes are unverified in the browser itself, only via
+# `testServer()` + the real checkpoint-data reconstruction check. See
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued yet further (Sonnet 5 -- new review_spatial_context()
+# gadget, the click-through UI from the original brainstorm this whole thread started
+# from ("scroll through a list of taxa and generate a GBIF map"). Follows this ecosystem's
+# established gadget pattern (leaflet + miniUI + shiny::paneViewer(), matching
+# TaxaHabitat::review_spatial_flags()): a taxon dropdown filterable by a plausibility
+# column (e.g. add_posthoc_assessment()'s primary_plausibility -- expected/unexpected/
+# unprecedented), a sidebar showing the SAME numeric context already built this session
+# (check_gbif_tile_range()/compute_local_occurrence_distance(), plus a pre-supplied
+# inat_range lookup), and a live, pannable/zoomable leaflet tile layer rendering GBIF's
+# real density tiles directly (leaflet::addTiles() with the density-tile URL template --
+# the literal one-line idea the whole conversation opened with) rather than a static
+# snapshot. A "Run AI Review" button calls review_assignments() live, single-taxon --
+# deliberately the ONE thing in this gadget that is never automatic (a real, billed LLM
+# call), gated behind an explicit click and only shown at all when context is supplied;
+# every other reactive update (taxon selection -> GBIF/iNat/local lookups, map tile
+# refresh) is free/cheap and fires automatically.
+#
+# Verification took a real detour worth recording: standard browser-automation tooling
+# (Chrome extension driven via computer-use style tools) hung indefinitely waiting for
+# "network idle" against a live running instance of this gadget -- confirmed NOT a bug in
+# the gadget itself (a plain curl request got a fast, correct 200 response and structurally
+# correct HTML: the right dropdown options, the AI-review section correctly absent when
+# context = NULL), but a real mismatch between that tool's idle-wait heuristic and a Shiny
+# app's persistent WebSocket connection, which never "finishes" the way a normal page load
+# does. Rather than keep fighting that (stopped after 3 identical hangs, matching this
+# project's own "avoid rabbit holes" guidance), pivoted to shiny::testServer() -- Shiny's
+# own supported non-browser mechanism for exercising server-side reactive logic -- which
+# needed one clean refactor first: the server closure was extracted out of
+# .review_spatial_context_impl() into a new .build_spatial_context_server() factory so it
+# could be driven directly, independent of runGadget()/the interactive()-only gate.
+#
+# That testing effort was NOT a formality -- it caught one real bug before any user ever
+# would have: gbif_res()'s reactive used shiny::req(!is.na(key)) to skip GBIF lookup for
+# an unresolvable taxon name, but req()'s silent-stop PROPAGATES to any caller reading that
+# reactive -- since output$stats_panel reads gbif_res() unconditionally, an unresolvable
+# name would have silently blanked the ENTIRE stats panel (including the Local/iNat
+# sections, which don't even depend on GBIF at all), not just shown the intended "could not
+# resolve" message. Fixed by returning NULL from the reactive instead of req()'ing --
+# req() is for "this whole output has nothing to show," not "handle this input
+# differently," and conflating the two is exactly the kind of bug that only surfaces when
+# you actually exercise the reactive graph, not by reading the code. 16 new
+# testServer()-driven tests (GBIF distance/patch display, beyond_buffer phrasing, the
+# unresolvable-name fix itself, iNat mismatch flagging in both directions, the local/free
+# panel with and without occurrence_data, map output rendering, the AI-review button's
+# success path and its real graceful-NA-degradation-on-LLM-failure path -- NOT a thrown
+# error, since review_assignments() already catches that internally, a wrong test premise
+# caught and corrected before shipping -- and .resolve_gbif_taxon_key()'s real-response-
+# shape parsing). New Suggests: leaflet, miniUI, shiny (all requireNamespace()-guarded,
+# matching this file's established convention). devtools::test() 350/350 (0 failures, up
+# from 334), devtools::check() 0 errors/0 notes (same pre-existing, unrelated
+# build_review_covariates.R warning). Reinstalled; the raw HTTP/HTML structure was also
+# re-verified directly against the freshly installed package (not just load_all()).
+#
+# What's genuinely NOT yet verified: a real interactive click-through in an actual RStudio
+# session -- the testServer() suite proves the reactive LOGIC is correct, but the full
+# browser-rendered experience (does the leaflet tile layer actually paint GBIF tiles
+# correctly on pan/zoom, does the paneViewer() open cleanly in RStudio's own viewer pane)
+# still needs the user's own live test, matching this ecosystem's established pattern for
+# every other interactive gadget here (review_spatial_flags()/review_institution_flags()/
+# plot_theta_map_interactive() were all ultimately validated this way, not by an automated
+# suite alone). See [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued (Sonnet 5 -- review_assignments() wired to the new
+# spatial-review functions (check_gbif_tile_range()/compute_local_occurrence_distance(),
+# plus TaxaFetch::check_inat_range()), closing out the design conversation from earlier
+# the same session. Six new optional _col params (dist_nearest_occupied_km_col,
+# patch_diameter_km_col, beyond_buffer_col, inat_in_range_col, inat_n_observations_col,
+# inat_matched_name_col), matching this function's existing consensus_posterior_col-style
+# convention exactly: real producer column names as defaults, silently skipped when
+# absent, purely additive to the PROMPT (no new output columns, no change to which rows
+# are reviewed or the dedup key). New internal .summarise_spatial_context() mirrors
+# .summarise_pipeline_context()'s O(n) split()-based grouping.
+#
+# Key design decision, reached with the user before implementing: facts only in the
+# per-taxon "[...]" bracket (e.g. "GBIF: nearest occurrence ~6517km away, patch ~7.3km
+# across; iNat: matched to 'Gasterosteus aculeatus' (name differs from query), in range,
+# 10135 obs") -- no plausibility judgment is pre-computed or baked in server-side. A
+# rigid "if sources disagree, downweight" rule was considered and explicitly rejected,
+# citing this ecosystem's own precedent (the trusted_rank mechanism, built then removed
+# after misfiring on real data -- [[project_rank_trust_mechanism_removed]]). Instead, two
+# real interpretive caveats are added as a single conditional GUIDELINES bullet (only
+# included when a batch has >=1 spatial note): (1) GBIF's density map is raw/unfiltered,
+# so a small isolated patch is weaker evidence than a large one; (2) an iNat matched_name
+# that differs from the taxon under review may describe a different species entirely
+# (see the iNat TODO below) -- treat that verdict with suspicion, not confirmation.
+#
+# Prompted by real GreatLakes2023 data, not a hypothetical: comparing the new
+# check_gbif_tile_range() against TaxaFetch::check_inat_range() for the same 4
+# "unprecedented" taxa found check_inat_range() had resolved Gasterosteus gymnurus (a
+# European fish) to Gasterosteus aculeatus (North American/circumpolar) via a fuzzy name
+# match, returning a misleading in_range=TRUE -- exactly the scenario matched_name
+# exposure now lets a reviewer (human or LLM) catch. That underlying check_inat_range()
+# limitation is NOT fixed here -- filed as its own separate TODO,
+# [[project_inat_range_backbone_mismatch_todo]], since it's a real bug with its own live
+# production consequence (TaxaAssign::adjust_inat_range_priors() already elevates priors
+# based on this unchecked verdict) independent of this prompt-wiring work.
+#
+# Live-verified via a prompt-capturing stub llm_fn (not just output-column assertions,
+# since this feature is purely prompt-side) against the exact real 3-species scenario
+# (Lepomis peltastes/Gasterosteus gymnurus/Campostoma pullum) -- confirmed correct
+# per-taxon alignment, the conditional GUIDELINES bullet appearing only when warranted,
+# and the name-mismatch annotation firing/not-firing correctly. One real false-positive
+# test failure caught and fixed before shipping: an early assertion checked for the
+# literal string "iNat:" anywhere in the whole prompt to confirm a disabled param had no
+# effect, but the GUIDELINES bullet's own fixed text legitimately mentions the general
+# "GBIF:"/"iNat:" notation concept regardless of which columns are enabled -- fixed by
+# scoping the check to the TAXA TO REVIEW section only. 14 new tests.
+# devtools::test() 334/334 (0 failures, up from 320), devtools::check() 0 errors/0 notes
+# (same pre-existing, unrelated build_review_covariates.R warning). Reinstalled,
+# re-verified post-install. See [[project_gbif_tile_spatial_review_functions]] for the
+# full cross-session record.
+# Previous update, 2026-08-07 (Sonnet 5 -- check_gbif_tile_range() refined from real user
+# feedback against the real GreatLakes2023 "unprecedented" test case (below), not a
+# hypothetical -- two real flagged taxa this session (Barbatula barbatula, a European
+# stone loach; Gasterosteus gymnurus, a European stickleback) came back
+# beyond_buffer = TRUE / dist = NA at the default zoom, and the user pointed out that a
+# flat NA is a real usability gap: a reviewer wants to know it's very far (consistent
+# with a genuine misidentification/contamination flag) rather than an undifferentiated
+# "unknown." Two fixes, both additive (no signature removals):
+#
+# (1) Zoom escalation (new @section "Zoom escalation" in the roxygen): new `escalate`
+# (default TRUE) and `min_zoom` (default 0L) params. When nothing is found at the
+# requested zoom, the SAME buffer_px window is retried one zoom level coarser
+# (geometric doubling of real-world coverage per step) down to min_zoom, stopping as
+# soon as something is found. New output columns zoom_requested/zoom_used/escalated
+# make the actual precision of the answer legible (compare against zoom_used, not the
+# originally requested zoom). `beyond_buffer` is REDEFINED under escalate = TRUE
+# (the new default) to mean "not found anywhere down to min_zoom" -- with the default
+# min_zoom = 0, this is now a real, decisive finding (absent from GBIF's density map
+# entirely), not just "outside this one window." `escalate = FALSE` restores the exact
+# original single-zoom behavior byte-for-byte. Directly answers the user's own
+# efficiency worry ("doing multiple zooms might not be efficient?") empirically, not
+# just by argument: live-verified both real problem species now resolve at zoom 3 (3
+# extra steps, 36 total tiles, ~8s) to real, plausible transatlantic distances (6567km
+# and 6514km respectively -- sanity-checks correctly against their known European
+# ranges), while the already-working round-goby case does NOT escalate at all
+# (zoom_used == zoom_requested, same ~3s cost as before) -- escalation only ever costs
+# extra when the answer would otherwise have been NA, and even the fully-exhausted
+# worst case (a fabricated, real-nowhere taxonKey, escalating all the way to
+# min_zoom = 0) took ~12s for 54 tiles, still bounded.
+#
+# (2) km-scaled patch size (the user's other concrete ask -- "if it is possible to
+# report in km dimensions rather than n pixels"): new patch_area_km2
+# (`patch_size_px * resolution_km_per_px^2`) and patch_diameter_km
+# (`sqrt(patch_size_px) * resolution_km_per_px`, a rough linear scale directly
+# comparable to dist_nearest_occupied_km for eyeballing "isolated point N km from a
+# patch M km across"). patch_size_px/patch_size_capped are kept (still needed to know
+# whether the km values are a lower bound), not replaced.
+#
+# Refactored the single-zoom tile-fetch/stitch/distance/patch logic out into a new
+# internal .check_gbif_tile_range_at_zoom() so the public function can call it
+# repeatedly across the escalation loop without duplicating it. Test suite rewritten
+# for the new signature/columns plus new escalation-specific tests (a zoom-aware mock
+# confirms escalation stops at the first zoom that finds something and does NOT
+# continue past it; the min_zoom-exhausted case; the escalate = FALSE opt-out).
+# devtools::test() 320/320 (0 failures, up from 297 -- the 5 pre-existing WARN lines are
+# unrelated review_assignments() expect_warning() tests). devtools::check() 0 errors/
+# 0 notes (same pre-existing, unrelated build_review_covariates.R warning). Reinstalled,
+# re-verified post-install via a direct smoke test on one of the two real motivating
+# species. The user's own GreatLakes2023_TestSpatialReviewFunctions.R test script
+# (outside this monorepo, not under git) updated in parallel to surface
+# zoom_used/escalated/patch_area_km2/patch_diameter_km in its comparison table. See
+# [[project_gbif_tile_spatial_review_functions]] in the memory system for the full
+# record, including the real numeric feedback this session started from.
+# Previous update, 2026-08-06 (Sonnet 5 -- two new standalone review-support functions,
+# compute_local_occurrence_distance() and check_gbif_tile_range(), from a multi-turn
+# design conversation about giving a TaxaFlag reviewer spatial context for a taxon
+# flagged "unexpected"/"unprecedented" by add_posthoc_assessment()'s Axis 1. Both answer
+# the same question -- "how far is this detection from where this species is normally
+# found?" -- at two different cost/precision points, deliberately NOT merged into one
+# function since they have genuinely different data sources and cost profiles:
+#
+# compute_local_occurrence_distance() is free (no network call at all): it reuses
+# occurrence data a workflow's own TaxaFetch step already downloaded (e.g.
+# GreatLakes2023_ConsensusWorkflow.R's all_occurrences/occurrences_clean), and just
+# computes geodesic (haversine) distance from a query point to the nearest already-
+# fetched record of a given taxon. A taxon with n_local_records = 0 here is, by
+# construction, exactly the situation that produces
+# TaxaAssign::compute_group_priors()'s consensus_has_occurrence_record = FALSE -- this
+# function answers *why* an "unprecedented" flag fired, using data the pipeline already
+# paid for. Scope-limited to whatever bounding box the study's own GBIF fetch covered.
+#
+# check_gbif_tile_range() covers the wider question the local fetch structurally can't:
+# is a species novel to this study also far from its known range everywhere, or just
+# novel here because no one sampled here before. Downloads GBIF's occurrence-density map
+# tiles (the leaflet PNG endpoint from the user's original idea,
+# api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png) around a point and reads
+# ONLY the alpha channel (transparent = zero occurrences, any non-zero = at least one) --
+# deliberately never tries to decode the colour ramp into a density value, which is
+# unreliable. Reports point_occupied, dist_nearest_occupied_km (haversine-equivalent but
+# computed in tile-pixel space via the standard Web Mercator ground-resolution formula),
+# and patch_size_px (an 8-connected blob size grown from the nearest occupied cell -- a
+# weak proxy for "one lone report" vs. "a small cluster of independent nearby reports",
+# the geometric signature the user was trying to define for a rare-bird-style vagrancy
+# report as distinct from a data error). Explicitly does NOT try to distinguish error
+# from genuine rarity -- both produce the identical isolated-point signature; that
+# distinction is TaxaFetch::check_geographic_outliers()'s job (a different, prior
+# question: is this occurrence plausible at all), not this function's.
+#
+# Several real facts about GBIF's tile API were verified empirically against live tiles
+# before writing any georeferencing math, not assumed: (1) tile_size is 512px for
+# @1x.png, not the 256px OSM/slippy-map convention -- confirmed by inspecting a real
+# decoded PNG's dimensions. (2) The standard XYZ/Web-Mercator tile formulas and PNG
+# row/column orientation (row=y top-down, col=x left-right) were confirmed decisive via
+# real presence/absence at known locations (Homo sapiens turned out to be a bad test
+# species -- GBIF's density map has only 118/262144 non-transparent pixels for it in a
+# populous-region tile, presumably a real data-governance exclusion, not a bug; American
+# Robin at Ohio gave alpha=1.000 exactly at the hand-computed pixel, confirming both the
+# tile math and array orientation). (3) GBIF returns HTTP 204 (empty body) for a tile
+# with zero occurrences rather than a blank PNG -- handled explicitly as an all-zero
+# alpha matrix, not an error; found by testing a real ocean tile, which crashed the
+# naive first version.
+#
+# One real, measured performance problem was found and fixed before shipping: the first
+# patch-growth implementation (unbounded vectorised region-growing via repeated 8-
+# connected dilation) took 13-22s end to end for a real, densely-covering species
+# (American Robin) because iteration count scales with the patch's geometric extent, not
+# its cell count -- convergence needed 65 iterations across a 3-tile mosaic (measured
+# directly via profiling, not guessed). Fixed by capping growth at 15 iterations (chosen
+# from the real isolated-patch case -- the actual round-goby/Burns-Harbor detection this
+# function is for converges in 9) and adding a patch_size_capped flag: a capped patch is,
+# by construction, one already covering a wide area, which IS the "clearly not a rarity
+# report" signal on its own -- exact size isn't needed once that's already obvious. Cuts
+# worst-case latency from ~22s to ~4s (network-dominated, 9 tile fetches) while leaving
+# the small/isolated case this function targets fully exact.
+#
+# Both functions live-verified against real GBIF data (not just synthetic tests) before
+# writing the test suite: round goby (Neogobius melanostomus, a real Great Lakes
+# invasive) near-occupied at Burns Harbor (dist 0.91km, patch 52 cells, uncapped) vs. the
+# same species query point moved to the Sahara (beyond_buffer = TRUE, correct negative
+# control); Salmo salar/genuinely-fictional-species correctly return
+# n_local_records = 0/NA in compute_local_occurrence_distance(). Offline test suite mocks
+# only the network boundary (.fetch_gbif_tile_alpha(), plus one direct
+# httr2::req_perform() mock via the real httr2::response() test constructor for the 204
+# case) -- same strategy TaxaFetch's test-check_geographic_outliers.R already uses,
+# letting all the real tile math/stitching/distance/patch-growth logic run for real
+# underneath the mock. New Imports: rlang (for the .data pronoun in
+# compute_local_occurrence_distance()); new Suggests: httr2, png (check_gbif_tile_range()
+# hard-stops with an install message if either is missing -- no fallback exists, same
+# convention TaxaFetch::check_geographic_outliers() uses for CoordinateCleaner).
+# devtools::test() 297/297 (0 failures, up from 232 -- the 5 WARN lines are pre-existing
+# review_assignments() tests exercising expect_warning() paths, unrelated).
+# devtools::check() 0 errors/0 notes; the sole warning is the pre-existing, unrelated
+# build_review_covariates.R Rd cross-reference issue this file has documented for
+# sessions. Reinstalled to ~/Library/R/4.0/library, re-verified via a direct post-install
+# smoke test (not just the install call's exit status). Not yet wired into
+# review_assignments() or any gadget UI -- both are standalone functions a reviewer (or a
+# future click-through gadget, still just discussed, not built) can call directly on a
+# consensus_final row flagged unexpected/unprecedented.
+# Previous update, 2026-07-30 (Sonnet 5 -- add_posthoc_assessment()'s Axis 1 rebuilt around
 # theta_mean instead of prior_mean, closing out the 2026-07-28 design's two real weaknesses
 # found live-testing against production Mugu data. (1) prior_mean can be substantially
 # inflated by TaxaAssign::update_prior_from_consensus()'s cross-observation confirmation
@@ -491,13 +1154,17 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | `flag_contaminant()` | `R/flag_contaminant.R` | Written | Compare read proportions between field samples and controls; `contaminant_type` param selects lab vs field vs positive control. **Session 151**: depth-weighted rates + Empirical Bayes shrinkage replace the old unweighted-mean/hard-0-1 formula; score documented as a ranked screening statistic, not a probability. **Session 152**: shrinkage denominator changed from sample count to read count (`prior_weight`, default `20`, now read-equivalent units) -- see "flag_contaminant() Design" below. **2026-07-24**: output columns renamed to the unified schema -- `observation_validity` (was `{contaminant_type}_score`, high=good, unchanged direction/math), `validity_flag` (was `{contaminant_type}_risk`; values now `"valid"`/`"questionable_{contaminant_type}"`/`"invalid_{contaminant_type}"`, was `"low"`/`"moderate"`/`"high"`), `validity_reason` (was `{contaminant_type}_reason`). Column NAMES no longer vary by `contaminant_type` -- the type now lives in `validity_flag`'s value instead. |
 | `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts. **Session 151**: optional `station_metadata` param anchors edges on real deploy/retrieve timestamps instead of the data's own min/max (opt-in, backward compatible; see "flag_handler() Design" below). **2026-07-24**: output columns renamed to the same unified schema as `flag_contaminant()` -- `observation_validity` (was `flag_handler_score`, high=good, unchanged direction/math), `validity_flag` (was `flag_handler`; values now `"valid"`/`"questionable_handling"`/`"invalid_handling"`, was `"likely"`/`"possible"`/`"unlikely"`), `validity_reason` (was `flag_handler_reason`). `edge_anchor_source` unchanged. |
 | `.parse_datetimes()` | `R/flag_handler.R` | Written | Internal: auto-detect datetime format |
-| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. **2026-07-24**: gains `consensus_posterior_col`/`winner_prior_col`/`winner_rank_expanded_col`/`plausible_posteriors_col` (all optional, silently skipped when absent) -- when present, appends a compact pipeline-confidence/occurrence-prior/rank-expanded/candidate-weight annotation to each taxon's LLM prompt line, so the LLM's ecological judgment can be checked against the pipeline's own statistics. Also now prefers `df$consensus_OTU` (from `TaxaAssign::add_slash_taxon()`) for candidate-set labels when present, instead of always rebuilding independently -- closes a label-drift risk on downranked rows. |
+| `review_spatial_context()` | `R/review_spatial_context.R` | Written (2026-08-07) | Interactive click-through gadget (leaflet + miniUI + `shiny::paneViewer()`, matching `TaxaHabitat::review_spatial_flags()`'s pattern): taxon dropdown filterable by a plausibility column, a live GBIF density-tile map layer (`leaflet::addTiles()` with the density URL template -- pannable/zoomable, not a static snapshot), a sidebar with `check_gbif_tile_range()`/`compute_local_occurrence_distance()`/pre-supplied `inat_range` context, and an opt-in "Run AI Review" button (`review_assignments()`, the only billed step, never automatic). Server logic factored into internal `.build_spatial_context_server()` specifically so it's testable via `shiny::testServer()` -- standard browser automation hangs against a live Shiny session's persistent WebSocket (confirmed not a gadget bug via a direct `curl` check), so this is the real verification path for the reactive logic; a real bug (an unresolvable taxon name silently blanking the whole stats panel via `shiny::req()`'s propagating silent-stop) was caught this way before shipping. **2026-08-07, refined from first real click-through**: dropped an unneeded tile-opacity override (render GBIF's tiles as GBIF serves them) and toned down the occurrence-point styling so both layers stay readable together; iNat panel now always shows an explicit line when `inat_range` is supplied (real data or "no data for this taxon"), never silence; new `excluded_occurrence_data` param overlays GBIF records this study's own quality/outlier/institution filtering excluded (hollow red rings, distinct from kept points) -- reconstructable via a plain `anti_join` on `gbifID` between `raw_gbif` and a post-filter checkpoint, verified against real GreatLakes2023 data (530 real exclusions found). Not yet live-clicked-through in an actual RStudio session -- see this file's top session note. |
+| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. **2026-07-24**: gains `consensus_posterior_col`/`winner_prior_col`/`winner_rank_expanded_col`/`plausible_posteriors_col` (all optional, silently skipped when absent) -- when present, appends a compact pipeline-confidence/occurrence-prior/rank-expanded/candidate-weight annotation to each taxon's LLM prompt line, so the LLM's ecological judgment can be checked against the pipeline's own statistics. Also now prefers `df$consensus_OTU` (from `TaxaAssign::add_slash_taxon()`) for candidate-set labels when present, instead of always rebuilding independently -- closes a label-drift risk on downranked rows. **2026-08-07**: gains `dist_nearest_occupied_km_col`/`patch_diameter_km_col`/`beyond_buffer_col` (matching `check_gbif_tile_range()`) and `inat_in_range_col`/`inat_n_observations_col`/`inat_matched_name_col` (matching `TaxaFetch::check_inat_range()`) -- same optional/silently-skipped convention. Facts-only per-taxon annotation (e.g. `"GBIF: nearest occurrence ~41km away, patch ~0.9km across; iNat: in range, 1275 obs"`); a conditional GUIDELINES bullet (only when a batch has a spatial note) carries the interpretive caveats instead of pre-judging server-side -- see this file's top session note for why, and for the real *Gasterosteus gymnurus* case that motivated surfacing `matched_name` specifically. |
 | `.normalise_context()` | `R/review_assignments.R` | Written | Internal: normalise build_context() or named list to standard fields |
 | `.build_review_prompt()` | `R/review_assignments.R` | Written | Internal: construct structured LLM prompt |
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
 | `.recover_truncated_json()` | `R/review_assignments.R` | Written | Internal: salvage complete JSON objects from truncated LLM response |
 
 | `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | **Redesigned 2026-07-30, superseding everything below this row from Session 149 onward.** The old single-column `posthoc_assessment` (9 categories, `tiers`/`taxon_col`/`tier_col`/`finest_rank` params, including `"vague_rank"` and `"unsupported_rank"`) is entirely retired -- see this file's top session note. Now appends FIVE columns implementing two independent, orthogonal axes, reported for `primary_taxon` and `consensus_taxon` separately, neither gating the other: **Axis 1** (`primary_plausibility`/`consensus_plausibility`, "how expected is this taxon here?") -- `"expected"`/`"unexpected"`/`"unprecedented"`/`"not_modeled"`, driven by `winner_theta_col` (default `"winner_theta_mean"`) + `winner_record_col` (default `"winner_has_occurrence_record"`) at primary scope, `consensus_prior_col` (default `"consensus_prior"`) + `consensus_record_col` (default `"consensus_has_occurrence_record"`, 2026-07-30 new) at consensus scope, compared against `expected_theta_threshold` -- a REQUIRED named vector keyed by rank (`"species"` mandatory, `genus`/`family` optional; a rank absent from the vector gets `"not_modeled"`). `"unprecedented"` is driven by record presence (the `*_record_col`), never by a low threshold value -- a never-reported taxon and a genuine singleton can share the same numeric floor while meaning opposite things. **Axis 2** (`primary_discrimination`/`consensus_discrimination`, "could the evidence tell this taxon apart from a plausible relative?") -- `"discriminating"`/`"weak"`/`"indistinguishable"`/`"not_modeled"`, driven by `primary_confusion_risk_col`/`consensus_confusion_risk_col` against `discriminating_threshold`/`indistinguishable_threshold` (default 0.05/0.5) -- this is the direct successor to the old `confusion_risk_flag` column (now two rank-scoped columns instead of one). `domestic_prior_caveat` (logical) is unchanged in purpose (Session 149) but now reads `primary_plausibility` instead of the retired tier lookup. See this file's top session note for the full real-data verification record. |
+
+| `compute_local_occurrence_distance()` | `R/compute_local_occurrence_distance.R` | Written (2026-08-06) | Free (no network call): geodesic distance from a query point to the nearest already-fetched occurrence of a taxon in a supplied `occurrence_data` frame (e.g. a workflow's own `all_occurrences`/`occurrences_clean`). `n_local_records = 0` is exactly the situation behind an "unprecedented" Axis 1 call -- answers *why*, using data already in hand. Scope-limited to whatever bbox the caller's occurrence data covers. |
+| `check_gbif_tile_range()` | `R/check_gbif_tile_range.R` | Written (2026-08-06), escalation + km output added (2026-08-07) | Downloads GBIF's occurrence-density map tiles around a point and reads presence/absence from the alpha channel only (never decodes the colour ramp). Reports `point_occupied`, `dist_nearest_occupied_km`, `patch_area_km2`/`patch_diameter_km` (real-world-scaled; `patch_size_px`/`patch_size_capped` kept as the underlying pixel count, capped at 15 growth iterations for bounded latency -- a widespread/capped patch is itself the "not a rarity report" signal). **2026-08-07**: `escalate`/`min_zoom` params (default `TRUE`/`0L`) widen the search to coarser zoom levels when nothing is found at the requested zoom, so a genuinely-far species reports a real (if coarse) distance instead of `NA` -- `zoom_used`/`escalated` expose what actually happened. Complements the function above with the global range context a bbox-limited local fetch can't give, at the cost of a handful of tile downloads (more if escalation fires). Does not distinguish data error from genuine rarity -- see `TaxaFetch::check_geographic_outliers()` for that separate, prior question. Requires `httr2`/`png` (Suggests, hard-stops if missing). |
 
 **Dropped (Session 62):** `flag_allochthonous()` and `flag_taxonomic_scope()` -- absorbed
 into `review_assignments()`. One LLM call covers habitat, geography, scope, contaminant
@@ -638,9 +1305,12 @@ found yet, which is the only thing keeping this from being worse").
 |---|---|---|
 | test-flag_contaminant.R | `flag_contaminant()` | Fully offline; covers all risk levels, custom thresholds, positive controls; uses Session 101 vocabulary (low/moderate/high) |
 | test-flag_handler.R | `flag_handler()` | Fully offline; covers edge scoring, handler_taxa filtering |
-| test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values |
+| test-review_spatial_context.R | `review_spatial_context()` / `.build_spatial_context_server()` | 2026-08-07, 16 tests via `shiny::testServer()` (not a browser -- see this file's top session note for why). Covers: GBIF distance/patch display, `beyond_buffer` phrasing, the unresolvable-taxon-name fix (the real bug this suite caught), iNat mismatch flagging correctly firing/not-firing, the local/free panel present-with and absent-without `occurrence_data`, `output$map` rendering without error, the AI-review button's success path AND its real graceful-NA-degradation-on-LLM-failure path (not a thrown error -- `review_assignments()` already catches that), and `.resolve_gbif_taxon_key()`'s real-response-shape parsing. Network-calling functions mocked at the TaxaFlag namespace boundary via `local_mocked_bindings()`, matching `test-check_gbif_tile_range.R`'s convention. The gadget's UI shell (dropdown population, conditional AI-button visibility) is exercised only via a manual raw-HTML fetch during development, not an automated test -- matching this ecosystem's established precedent for fully interactive gadgets. |
+| test-review_assignments.R | `review_assignments()` | LLM mocked; covers all 8 output columns, partial response recovery, Session 101 column names/values. **2026-08-07**: 14 new tests for the spatial-context wiring, using a prompt-*capturing* stub (not just canned output, since this feature is purely prompt-side) -- correct per-taxon GBIF/iNat alignment against the real 3-species scenario, the name-mismatch annotation firing/not-firing, `beyond_buffer` phrasing, the conditional GUIDELINES bullet appearing only when warranted, each `_col` param's `NULL` opt-out, and `.summarise_spatial_context()`'s `NULL`-when-nothing-present case. |
 | test-report_flags.R | `report_flags()` | Fully offline |
 | test-add_posthoc_assessment.R | `add_posthoc_assessment()` | Rewritten 2026-07-30 for the Axis 1/Axis 2 redesign (62 tests) -- the old `posthoc_assessment`-category tests are gone with the column. Covers: Axis 1 expected/unexpected/unprecedented/not_modeled at both scopes, the load-bearing "no-record-but-high-theta is unprecedented" vs "singleton-at-floor is not" pin, rank-relative `expected_theta_threshold` (species-only vs species+genus+family), `consensus_has_occurrence_record`-driven consensus scope (incl. the regression test for the real 100%-unprecedented production bug), Axis 2 discriminating/weak/indistinguishable/not_modeled at both scopes, `domestic_prior_caveat`, NA-when-columns-absent, input validation. |
+| test-compute_local_occurrence_distance.R | `compute_local_occurrence_distance()` | 2026-08-06, fully offline. Covers: nearest-of-several-records selection, genuinely-absent taxon (0/NA), NA-coordinate rows excluded from the count, multi-taxon batch calls, duplicate-name collapsing, custom column names, haversine symmetry/zero-distance sanity checks, input validation. |
+| test-check_gbif_tile_range.R | `check_gbif_tile_range()` | 2026-08-06, escalation tests added 2026-08-07. Mocks only `.fetch_gbif_tile_alpha()` (plus one `httr2::req_perform()` mock via `httr2::response()` for the real HTTP-204-empty-tile case) so tile math/stitching/distance/patch-growth/escalation all run for real underneath -- same strategy as `TaxaFetch::test-check_geographic_outliers.R`. Covers: point-occupied/zero-distance (incl. patch_area_km2/patch_diameter_km unit checks), nearby-but-not-coincident distance (exact pixel-to-km check), a zoom-aware mock confirming escalation stops at the FIRST zoom that finds something and does not continue past it, `min_zoom`-exhausted `beyond_buffer` (with `zoom_used` NA but `resolution_km_per_px` still reported at the finest attempted zoom), `escalate = FALSE`'s single-zoom opt-out, the real HTTP-204 empty-tile behavior, a fully-occupied mosaic hitting the growth cap, `buffer_px` rounding to whole tiles, Mercator resolution monotonicity, a hand-computed zoom-0 tile-pixel case, `.dilate8()`'s single-seed neighbourhood, input validation (incl. the new `escalate`/`min_zoom` checks). Real end-to-end verification against live GBIF tiles (round goby at Burns Harbor, Sahara negative control, American Robin patch-cap timing, and -- 2026-08-07 -- two real European species that only resolve via escalation) was done manually during development -- see this file's own top session note for the concrete numbers. |
 
 ---
 

@@ -10,7 +10,9 @@ utils::globalVariables(c("n_reads", "seq_length", "min_reads", "max_reads", "qua
 #' output column). Intended as the training-
 #' data step for a model relating observation-level attributes (sequence
 #' length, read depth, detection breadth, blank frequency) to how an
-#' observation was classified -- see \code{\link{model_review_classification}}.
+#' observation was classified -- e.g. a simple classification tree or
+#' logistic regression fit directly on this function's output (no dedicated
+#' \code{model_review_classification()} wrapper exists in this package yet).
 #'
 #' \strong{Field denominator:} \code{prop_samples_detected} is computed
 #' against the TOTAL number of distinct field (non-control) samples present
@@ -159,8 +161,7 @@ utils::globalVariables(c("n_reads", "seq_length", "min_reads", "max_reads", "qua
 #' )
 #' build_review_covariates(reads, cls, control_samples = "blank1")
 #'
-#' @seealso \code{\link{model_review_classification}},
-#'   \code{\link{add_posthoc_assessment}}, \code{\link{flag_contaminant}}
+#' @seealso \code{\link{add_posthoc_assessment}}, \code{\link{flag_contaminant}}
 #' @importFrom dplyr filter group_by summarise ungroup n_distinct left_join
 #' @export
 build_review_covariates <- function(reads_df,

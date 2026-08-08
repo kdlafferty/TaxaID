@@ -49,7 +49,7 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #' \code{validity_flag}'s values, not just the column's presence, since the
 #' column name alone no longer identifies which check produced it.
 #'
-#' @param df Data frame in long format with at minimum columns for sample
+#' @param input_df Data frame in long format with at minimum columns for sample
 #'   identification, taxon identification, and read counts.
 #' @param event_col Character. Column name identifying collection events
 #'   (e.g., individual filters, bottles, or deployments). Default
@@ -142,14 +142,14 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #' \dontrun{
 #' # Identify extraction control columns, flag contaminants
 #' flagged <- flag_contaminant(
-#'   df             = reads_long,
+#'   input_df             = reads_long,
 #'   control_samples  = c("Palmyra30", "Palmyra62"),
 #'   contaminant_type = "lab_contaminant"
 #' )
 #'
 #' # Using sample_type column instead
 #' flagged <- flag_contaminant(
-#'   df              = reads_long,
+#'   input_df              = reads_long,
 #'   sample_type_col = "sample_type",
 #'   control_types     = c("extraction_blank", "pcr_blank"),
 #'   contaminant_type = "lab_contaminant"
@@ -157,7 +157,7 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #'
 #' # Flag positive control leakage
 #' flagged <- flag_contaminant(
-#'   df               = reads_long,
+#'   input_df               = reads_long,
 #'   control_samples    = c("Palmyra32", "Palmyra64"),
 #'   exclude_samples  = c("Palmyra30", "Palmyra31", "Palmyra62", "Palmyra63"),
 #'   contaminant_type = "positive_control"
@@ -165,7 +165,7 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #' }
 #'
 #' @export
-flag_contaminant <- function(df,
+flag_contaminant <- function(input_df,
                              event_col       = "event_id",
                              taxon_col        = "taxon_name",
                              reads_col        = "n_reads",
@@ -179,14 +179,14 @@ flag_contaminant <- function(df,
                              verbose          = TRUE) {
 
   # --- Input validation ---
-  if (!is.data.frame(df)) stop("'df' must be a data frame.", call. = FALSE)
+  if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
   for (col in c(event_col, taxon_col, reads_col)) {
-    if (!col %in% names(df))
-      stop(sprintf("Column '%s' not found in df.", col), call. = FALSE)
+    if (!col %in% names(input_df))
+      stop(sprintf("Column '%s' not found in input_df.", col), call. = FALSE)
   }
 
-  if (!is.numeric(df[[reads_col]]))
+  if (!is.numeric(input_df[[reads_col]]))
     stop(sprintf("Column '%s' must be numeric.", reads_col), call. = FALSE)
 
   if (!is.numeric(prior_weight) || length(prior_weight) != 1L ||
@@ -201,8 +201,8 @@ flag_contaminant <- function(df,
     stop("Supply 'control_samples' OR 'sample_type_col', not both.", call. = FALSE)
 
   if (!is.null(sample_type_col)) {
-    if (!sample_type_col %in% names(df))
-      stop(sprintf("Column '%s' not found in df.", sample_type_col), call. = FALSE)
+    if (!sample_type_col %in% names(input_df))
+      stop(sprintf("Column '%s' not found in input_df.", sample_type_col), call. = FALSE)
     if (is.null(control_types) || length(control_types) == 0L)
       stop("'control_types' required when using 'sample_type_col'.", call. = FALSE)
   }
@@ -214,12 +214,12 @@ flag_contaminant <- function(df,
     stop("'contaminant_type' must be a single character string.", call. = FALSE)
 
   # --- Resolve control vs field samples ---
-  all_samples <- unique(df[[event_col]])
+  all_samples <- unique(input_df[[event_col]])
 
   # Exclude samples first
 
   if (!is.null(exclude_samples)) {
-    df <- df[!df[[event_col]] %in% exclude_samples, , drop = FALSE]
+    input_df <- input_df[!input_df[[event_col]] %in% exclude_samples, , drop = FALSE]
     all_samples <- setdiff(all_samples, exclude_samples)
   }
 
@@ -227,9 +227,9 @@ flag_contaminant <- function(df,
   if (!is.null(control_samples)) {
     control_ids <- intersect(control_samples, all_samples)
     if (length(control_ids) == 0L)
-      stop("None of 'control_samples' found in df after exclusions.", call. = FALSE)
+      stop("None of 'control_samples' found in input_df after exclusions.", call. = FALSE)
   } else {
-    control_ids <- unique(df[[event_col]][df[[sample_type_col]] %in% control_types])
+    control_ids <- unique(input_df[[event_col]][input_df[[sample_type_col]] %in% control_types])
     if (length(control_ids) == 0L)
       stop(sprintf("No samples match control_types '%s' in column '%s'.",
                     paste(control_types, collapse = "', '"), sample_type_col),
@@ -249,7 +249,7 @@ flag_contaminant <- function(df,
 
   # --- Compute scores ---
   scores <- .compute_contaminant_scores(
-    df         = df,
+    input_df         = input_df,
     event_col = event_col,
     taxon_col  = taxon_col,
     reads_col  = reads_col,
@@ -409,7 +409,7 @@ flag_contaminant <- function(df,
 #' detection with tens of thousands of reads does reach `"low"`, as it
 #' should).
 #'
-#' @param df Data frame in long format.
+#' @param input_df Data frame in long format.
 #' @param event_col,taxon_col,reads_col Column name strings.
 #' @param control_ids,field_ids Character vectors of sample IDs.
 #' @param prior_weight Numeric. Equivalent read count for shrinking the final
@@ -423,15 +423,15 @@ flag_contaminant <- function(df,
 #'   \code{n_controls_total}, \code{n_reads_total}, \code{contaminant_score}.
 #'
 #' @noRd
-.compute_contaminant_scores <- function(df, event_col, taxon_col, reads_col,
+.compute_contaminant_scores <- function(input_df, event_col, taxon_col, reads_col,
                                         control_ids, field_ids,
                                         prior_weight = 20) {
 
   # Standardise column names for internal use
   work <- data.frame(
-    sample   = df[[event_col]],
-    taxon    = df[[taxon_col]],
-    n_reads  = df[[reads_col]],
+    sample   = input_df[[event_col]],
+    taxon    = input_df[[taxon_col]],
+    n_reads  = input_df[[reads_col]],
     stringsAsFactors = FALSE
   )
 

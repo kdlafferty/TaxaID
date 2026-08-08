@@ -137,6 +137,33 @@ test_that("min/max computed per group", {
   expect_equal(stb$observation_validity[2], 10 / 30, tolerance = 0.001)
 })
 
+test_that("row order is preserved when group order is not alphabetical", {
+  # StationB rows come FIRST here (before StationA) -- merge()'s default
+  # sort = TRUE re-sorts output by the join key (group), which would put
+  # StationA's rows first regardless of input order if row order weren't
+  # explicitly restored afterward. This is the real regression case the
+  # earlier "min/max computed per group" test (StationA then StationB,
+  # already alphabetical) could never have caught.
+  df2 <- rbind(
+    data.frame(
+      station    = "StationB",
+      datetime   = as.POSIXct(c("2025-06-16 12:00:00",
+                                 "2025-06-16 12:10:00",
+                                 "2025-06-16 13:00:00")),
+      taxon_name = c("Homo sapiens", "Lynx rufus", "Lynx rufus"),
+      stringsAsFactors = FALSE
+    ),
+    mock_camera
+  )
+
+  result <- flag_handler(df2, group_col = "station",
+                         interval_minutes = 30, verbose = FALSE)
+
+  expect_equal(result$station, df2$station)
+  expect_equal(result$datetime, df2$datetime)
+  expect_equal(result$taxon_name, df2$taxon_name)
+})
+
 
 # ===========================================================================
 # Datetime parsing

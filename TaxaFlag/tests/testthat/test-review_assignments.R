@@ -34,7 +34,7 @@ mock_context <- list(
 
 test_that("review_assignments adds 8 columns", {
   result <- review_assignments(
-    df           = mock_consensus,
+    input_df           = mock_consensus,
     taxon_col    = "consensus_taxon",
     context      = mock_context,
     target_group = "fish",
@@ -55,7 +55,7 @@ test_that("review_assignments adds 8 columns", {
 
 test_that("review values are correct for known taxa", {
   result <- review_assignments(
-    df           = mock_consensus,
+    input_df           = mock_consensus,
     taxon_col    = "consensus_taxon",
     context      = mock_context,
     target_group = "fish",
@@ -77,7 +77,7 @@ test_that("review values are correct for known taxa", {
 
 test_that("alternatives populated for implausible taxa", {
   result <- review_assignments(
-    df           = mock_consensus,
+    input_df           = mock_consensus,
     taxon_col    = "consensus_taxon",
     context      = mock_context,
     target_group = "fish",
@@ -97,7 +97,7 @@ test_that("alternatives populated for implausible taxa", {
 
 test_that("review_lower_hypotheses populated when taxon_rank_col supplied", {
   result <- review_assignments(
-    df             = mock_consensus,
+    input_df             = mock_consensus,
     taxon_col      = "consensus_taxon",
     taxon_rank_col = "consensus_rank",
     context        = mock_context,
@@ -112,7 +112,7 @@ test_that("review_lower_hypotheses populated when taxon_rank_col supplied", {
 
 test_that("review_lower_hypotheses is NA when taxon_rank_col not supplied", {
   result <- review_assignments(
-    df           = mock_consensus,
+    input_df           = mock_consensus,
     taxon_col    = "consensus_taxon",
     context      = mock_context,
     target_group = "fish",
@@ -131,7 +131,7 @@ test_that("review_lower_hypotheses is NA when taxon_rank_col not supplied", {
 
 test_that("scope_plausibility is NA when target_group not supplied", {
   result <- review_assignments(
-    df       = mock_consensus,
+    input_df       = mock_consensus,
     taxon_col = "consensus_taxon",
     context  = mock_context,
     llm_fn   = mock_llm_fn,
@@ -155,7 +155,7 @@ test_that("build_context() style data frame works as context", {
   )
 
   result <- review_assignments(
-    df        = mock_consensus,
+    input_df        = mock_consensus,
     taxon_col = "consensus_taxon",
     context   = ctx_df,
     llm_fn    = mock_llm_fn,
@@ -175,7 +175,7 @@ test_that("graceful handling of LLM failure", {
 
   expect_warning(
     result <- review_assignments(
-      df        = mock_consensus,
+      input_df        = mock_consensus,
       taxon_col = "consensus_taxon",
       context   = mock_context,
       llm_fn    = fail_fn,
@@ -194,7 +194,7 @@ test_that("graceful handling of invalid JSON response", {
 
   expect_warning(
     result <- review_assignments(
-      df        = mock_consensus,
+      input_df        = mock_consensus,
       taxon_col = "consensus_taxon",
       context   = mock_context,
       llm_fn    = bad_fn,
@@ -218,7 +218,7 @@ test_that("graceful handling of partial LLM response", {
 
   expect_warning(
     result <- review_assignments(
-      df        = mock_consensus,
+      input_df        = mock_consensus,
       taxon_col = "consensus_taxon",
       context   = mock_context,
       llm_fn    = partial_fn,
@@ -274,7 +274,7 @@ test_that("truncated batch is recovered via automatic retry with smaller sub-bat
 
   expect_silent(
     result <- review_assignments(
-      df            = mock_consensus,
+      input_df            = mock_consensus,
       taxon_col     = "consensus_taxon",
       context       = mock_context,
       llm_fn        = retry_fn,
@@ -300,7 +300,7 @@ test_that("hard llm_fn errors are not retried -- a smaller batch can't fix a bro
 
   expect_warning(
     result <- review_assignments(
-      df            = mock_consensus,
+      input_df            = mock_consensus,
       taxon_col     = "consensus_taxon",
       context       = mock_context,
       llm_fn        = fail_fn,
@@ -326,7 +326,7 @@ test_that("max_retries = 0 disables retry, matching pre-retry behavior", {
 
   expect_warning(
     result <- review_assignments(
-      df            = mock_consensus,
+      input_df            = mock_consensus,
       taxon_col     = "consensus_taxon",
       context       = mock_context,
       llm_fn        = partial_fn,
@@ -350,7 +350,7 @@ test_that("max_tokens is forwarded to llm_fn when supplied", {
   }
 
   review_assignments(
-    df         = mock_consensus,
+    input_df         = mock_consensus,
     taxon_col  = "consensus_taxon",
     context    = mock_context,
     llm_fn     = capture_fn,
@@ -369,7 +369,7 @@ test_that("max_tokens defaults to NULL and is not forwarded to llm_fn", {
   }
 
   review_assignments(
-    df        = mock_consensus,
+    input_df        = mock_consensus,
     taxon_col = "consensus_taxon",
     context   = mock_context,
     llm_fn    = capture_fn,
@@ -401,7 +401,7 @@ test_that("error when context missing", {
   )
 })
 
-test_that("error when taxon_rank_col not in df", {
+test_that("error when taxon_rank_col not in input_df", {
   expect_error(
     review_assignments(mock_consensus, taxon_col = "consensus_taxon",
                        taxon_rank_col = "nonexistent",
@@ -418,7 +418,7 @@ test_that("error when taxon_rank_col not in df", {
 
 test_that("output row order matches input", {
   result <- review_assignments(
-    df        = mock_consensus,
+    input_df        = mock_consensus,
     taxon_col = "consensus_taxon",
     context   = mock_context,
     llm_fn    = mock_llm_fn,

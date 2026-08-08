@@ -39,7 +39,7 @@ controls <- c("blank_1", "blank_2", "blank_3")
 
 # Flag taxa that appear disproportionately in blanks
 flagged <- flag_contaminant(
-  df               = reads_long,
+  input_df               = reads_long,
   control_samples  = controls,
   taxon_col        = "taxon_name",
   reads_col        = "n_reads",
@@ -70,7 +70,7 @@ maximally suspect. If you have a real per-station deployment log, pass it as
 ```{r handler-example, eval = FALSE}
 # Flag detections within 30 minutes of sample collection
 flagged <- flag_handler(
-  df               = assignments,
+  input_df               = assignments,
   datetime_col     = "detection_time",
   group_col        = "station_id",
   interval_minutes = 30
@@ -85,7 +85,7 @@ table(flagged$flag_handler)
 # station_deploy_log needs one row per station_id with real timestamps:
 #   station_id, deploy_time, retrieve_time
 flagged_anchored <- flag_handler(
-  df               = assignments,
+  input_df               = assignments,
   datetime_col     = "detection_time",
   group_col        = "station_id",
   interval_minutes = 30,
@@ -105,7 +105,7 @@ structured expert review across multiple dimensions.
 ```{r review-example, eval = FALSE}
 # Requires an LLM provider function and a context list
 reviewed <- review_assignments(
-  df        = consensus_df,
+  input_df        = consensus_df,
   taxon_col = "consensus_taxon",
   context   = list(geography = "Southern California Bight",
                    habitat   = "Marine"),

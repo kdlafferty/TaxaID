@@ -163,7 +163,9 @@ row per observation, joined to a categorical classification column (e.g.
 output column). Intended as the training-
 data step for a model relating observation-level attributes (sequence
 length, read depth, detection breadth, blank frequency) to how an
-observation was classified -- see \code{\link{model_review_classification}}.
+observation was classified -- e.g. a simple classification tree or
+logistic regression fit directly on this function's output (no dedicated
+\code{model_review_classification()} wrapper exists in this package yet).
 }
 \details{
 \strong{Field denominator:} \code{prop_samples_detected} is computed
@@ -196,6 +198,5 @@ build_review_covariates(reads, cls, control_samples = "blank1")
 
 }
 \seealso{
-\code{\link{model_review_classification}},
 \code{\link{add_posthoc_assessment}}, \code{\link{flag_contaminant}}
 }

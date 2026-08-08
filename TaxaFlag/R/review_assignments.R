@@ -17,7 +17,7 @@
 #' TaxaAssign output. Context (geography, habitat) can be supplied as a
 #' \code{build_context()} object from TaxaAssign, or as a simple named list.
 #'
-#' @param df Data frame with at minimum a column of taxon names.
+#' @param input_df Data frame with at minimum a column of taxon names.
 #' @param taxon_col Character. Column name for consensus taxon. Default
 #'   \code{"consensus_taxon"}.
 #' @param taxon_rank_col Character or \code{NULL}. Column name for consensus
@@ -32,7 +32,7 @@
 #'   are skipped. Default \code{NULL} (current behaviour -- deduplicates on
 #'   \code{taxon_col}).
 #' @param irreducible_only Logical. When \code{plausible_taxa_col} is supplied
-#'   and an \code{irreducible_consensus} column is present in \code{df} (added
+#'   and an \code{irreducible_consensus} column is present in \code{input_df} (added
 #'   by \code{TaxaAssign::add_slash_taxon()}), only candidate sets where
 #'   \code{irreducible_consensus == TRUE} are reviewed. Non-irreducible rows
 #'   receive \code{NA} review columns. When \code{irreducible_consensus} is
@@ -47,7 +47,7 @@
 #'   confidence and the LLM's ecological plausibility judgment can be
 #'   surfaced in \code{review_comment}. Purely additive text -- never changes
 #'   which rows are reviewed or any output column. Silently skipped when the
-#'   named column is absent from \code{df}. Default
+#'   named column is absent from \code{input_df}. Default
 #'   \code{"consensus_posterior"} (matches \code{posterior_consensus()}'s own
 #'   output). Set to \code{NULL} to disable.
 #' @param winner_prior_col Character or \code{NULL}. Column name for
@@ -77,6 +77,42 @@
 #'   weaker member instead of the group as an undifferentiated set. Silently
 #'   skipped when absent. Default \code{"plausible_posteriors"}. Set to
 #'   \code{NULL} to disable.
+#' @param dist_nearest_occupied_km_col Character or \code{NULL}. Column name
+#'   for \code{check_gbif_tile_range()}'s \code{dist_nearest_occupied_km} --
+#'   distance from the study site to the nearest GBIF-mapped occurrence of
+#'   the taxon, worldwide. Shown as median context (e.g. \code{"GBIF: nearest
+#'   occurrence ~41km away"}) alongside \code{patch_diameter_km_col} when
+#'   both are present. Silently skipped when absent. Default
+#'   \code{"dist_nearest_occupied_km"}. Set to \code{NULL} to disable.
+#' @param patch_diameter_km_col Character or \code{NULL}. Column name for
+#'   \code{check_gbif_tile_range()}'s \code{patch_diameter_km} -- shown
+#'   alongside \code{dist_nearest_occupied_km_col} as a rough size for the
+#'   occupied area found (see "Spatial context" below for why this matters
+#'   to interpretation). Silently skipped when absent, or when
+#'   \code{dist_nearest_occupied_km_col} is not shown. Default
+#'   \code{"patch_diameter_km"}. Set to \code{NULL} to disable.
+#' @param beyond_buffer_col Character or \code{NULL}. Column name for
+#'   \code{check_gbif_tile_range()}'s \code{beyond_buffer} -- when
+#'   \code{TRUE}, shown instead of the distance/patch note as \code{"GBIF: no
+#'   occurrence found anywhere globally"}. Silently skipped when absent.
+#'   Default \code{"beyond_buffer"}. Set to \code{NULL} to disable.
+#' @param inat_in_range_col Character or \code{NULL}. Column name for
+#'   \code{TaxaFetch::check_inat_range()}'s \code{in_range}. Shown as
+#'   \code{"in range"}/\code{"outside range"} alongside
+#'   \code{inat_n_observations_col}/\code{inat_matched_name_col} when
+#'   present. Silently skipped when absent. Default \code{"in_range"}. Set to
+#'   \code{NULL} to disable.
+#' @param inat_n_observations_col Character or \code{NULL}. Column name for
+#'   \code{check_inat_range()}'s \code{n_observations}. Default
+#'   \code{"n_observations"}. Set to \code{NULL} to disable.
+#' @param inat_matched_name_col Character or \code{NULL}. Column name for
+#'   \code{check_inat_range()}'s \code{matched_name} -- the taxon iNaturalist's
+#'   own name search actually resolved the query to, which is not always the
+#'   query taxon itself. When it differs from the taxon under review, this is
+#'   flagged in the prompt as \code{"matched to '...' (name differs from
+#'   query)"} -- a plain factual annotation, not a judgment (see "Spatial
+#'   context" below). Default \code{"matched_name"}. Set to \code{NULL} to
+#'   disable.
 #' @param context Named list or data frame describing the study context.
 #'   Recognised fields: \code{geography} (or \code{ecoregion}),
 #'   \code{habitat} (or \code{main_habitat}), \code{date}. A
@@ -136,7 +172,7 @@
 #' @section Pipeline context:
 #' When \code{consensus_posterior_col}/\code{winner_prior_col}/
 #' \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} match real
-#' columns in \code{df} (the defaults match \code{TaxaAssign::
+#' columns in \code{input_df} (the defaults match \code{TaxaAssign::
 #' posterior_consensus()}'s own output names), a compact \code{"[...]"}
 #' annotation is appended to each taxon's line in the LLM prompt -- the
 #' pipeline's own median statistical confidence/occurrence prior for that
@@ -148,7 +184,52 @@
 #' additive: it never changes which rows are reviewed, the dedup key, or any
 #' output column, and adds only a few tokens per taxon to the prompt. Set any
 #' of the four params to \code{NULL} to disable; all four are silently
-#' skipped (not an error) when the named column is absent from \code{df}.
+#' skipped (not an error) when the named column is absent from \code{input_df}.
+#'
+#' @section Spatial context:
+#' When \code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
+#' \code{beyond_buffer_col} (matching \code{check_gbif_tile_range()}'s own
+#' output) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/
+#' \code{inat_matched_name_col} (matching \code{TaxaFetch::check_inat_range()}'s
+#' own output) match real columns in \code{input_df} -- typically joined onto it by
+#' taxon name before calling this function, since both source functions
+#' operate per-taxon at a query point, not per-row -- the same \code{"[...]"}
+#' bracket used for pipeline context also carries a compact GBIF/iNat summary
+#' (e.g. \code{"[GBIF: nearest occurrence ~41km away, patch ~2.1km across;
+#' iNat: in range, 1275 obs]"}). Found empirically to matter, not
+#' hypothetically: real GreatLakes2023 "unprecedented" taxa included both a
+#' genuine Great Lakes native (a real regional species simply not yet
+#' recorded at this exact site) and two European fish species ~6500km from
+#' any GBIF-mapped occurrence -- the same "unprecedented" flag, two very
+#' different real explanations, indistinguishable without this evidence.
+#'
+#' Deliberately facts-only in the per-taxon bracket -- no plausibility
+#' judgment is pre-computed or baked in server-side (the same design choice
+#' already made for \code{winner_rank_expanded}'s note above, and the reason
+#' the \code{trusted_rank} mechanism was removed from this ecosystem
+#' elsewhere -- see \code{TaxaLikely::evaluate_likelihoods()}'s history). Two
+#' real caveats about how to weigh these facts are added as a GUIDELINES
+#' bullet instead (only when a batch has at least one such note), for the LLM
+#' to apply per case: (1) GBIF's density map is raw, unfiltered global data --
+#' an occurrence found far away, especially in a small (1-2 cell) patch, may
+#' itself be a single bad or mis-georeferenced GBIF record rather than a real
+#' population; a small isolated patch is weaker evidence than a large one.
+#' (2) When iNat's \code{matched_name} differs from the taxon under review,
+#' its \code{in_range} verdict may describe a *different*, often more common,
+#' species due to a fuzzy name-search match -- not the taxon actually being
+#' assessed. Confirmed as a real, not hypothetical, failure mode: a query for
+#' the European \emph{Gasterosteus gymnurus} resolved via iNat's own search to
+#' \emph{Gasterosteus aculeatus} (a genuinely North American/circumpolar
+#' species), returning a misleading \code{in_range = TRUE}. This is a known,
+#' separate, not-yet-fixed limitation of \code{check_inat_range()}'s name
+#' resolution -- \code{matched_name} is surfaced here specifically so a
+#' reviewer (human or LLM) can catch it downstream in the meantime, not as a
+#' substitute for fixing it upstream.
+#'
+#' Purely additive, matching "Pipeline context" above in every other respect:
+#' never changes which rows are reviewed, the dedup key, or any output
+#' column. Set any of the six params to \code{NULL} to disable; all six are
+#' silently skipped when the named column is absent from \code{input_df}.
 #'
 #' @seealso \code{\link{flag_contaminant}} for data-driven contaminant
 #'   detection, \code{\link{flag_handler}} for temporal proximity flagging,
@@ -158,7 +239,7 @@
 #' \dontrun{
 #' # Standard review (consensus taxon only)
 #' reviewed <- review_assignments(
-#'   df           = consensus_df,
+#'   input_df           = consensus_df,
 #'   context      = list(geography = "Palmyra Atoll, central Pacific",
 #'                       habitat   = "coral reef"),
 #'   target_group = "fish",
@@ -168,7 +249,7 @@
 #' # Candidate-aware review (recommended for upranked assignments)
 #' consensus_df <- TaxaAssign::add_slash_taxon(consensus_df)
 #' reviewed <- review_assignments(
-#'   df                 = consensus_df,
+#'   input_df                 = consensus_df,
 #'   plausible_taxa_col = "plausible_taxa",
 #'   irreducible_only   = TRUE,
 #'   context            = ctx,
@@ -177,7 +258,7 @@
 #' }
 #'
 #' @export
-review_assignments <- function(df,
+review_assignments <- function(input_df,
                                taxon_col          = "consensus_taxon",
                                taxon_rank_col     = NULL,
                                plausible_taxa_col = NULL,
@@ -186,6 +267,12 @@ review_assignments <- function(df,
                                winner_prior_col         = "winner_prior",
                                winner_rank_expanded_col = "winner_rank_expanded",
                                plausible_posteriors_col = "plausible_posteriors",
+                               dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
+                               patch_diameter_km_col        = "patch_diameter_km",
+                               beyond_buffer_col            = "beyond_buffer",
+                               inat_in_range_col            = "in_range",
+                               inat_n_observations_col      = "n_observations",
+                               inat_matched_name_col        = "matched_name",
                                context,
                                target_group       = NULL,
                                marker             = NULL,
@@ -198,29 +285,35 @@ review_assignments <- function(df,
                                verbose            = TRUE) {
 
   # --- Input validation ---
-  if (!is.data.frame(df)) stop("'df' must be a data frame.", call. = FALSE)
+  if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
-  if (!taxon_col %in% names(df))
-    stop(sprintf("Column '%s' not found in df.", taxon_col), call. = FALSE)
+  if (!taxon_col %in% names(input_df))
+    stop(sprintf("Column '%s' not found in input_df.", taxon_col), call. = FALSE)
 
-  if (!is.null(taxon_rank_col) && !taxon_rank_col %in% names(df))
-    stop(sprintf("Column '%s' not found in df.", taxon_rank_col), call. = FALSE)
+  if (!is.null(taxon_rank_col) && !taxon_rank_col %in% names(input_df))
+    stop(sprintf("Column '%s' not found in input_df.", taxon_rank_col), call. = FALSE)
 
-  if (!is.null(plausible_taxa_col) && !plausible_taxa_col %in% names(df))
-    stop(sprintf("Column '%s' not found in df.", plausible_taxa_col), call. = FALSE)
+  if (!is.null(plausible_taxa_col) && !plausible_taxa_col %in% names(input_df))
+    stop(sprintf("Column '%s' not found in input_df.", plausible_taxa_col), call. = FALSE)
 
   # Pipeline-context column-name params are deliberately NOT validated for
-  # presence in df -- unlike taxon_rank_col/plausible_taxa_col above, these
+  # presence in input_df -- unlike taxon_rank_col/plausible_taxa_col above, these
   # have non-NULL defaults matching TaxaAssign::posterior_consensus()'s own
   # output names, so an explicit-presence check would break every existing
-  # caller whose df predates these columns. Silently skipped instead (see
+  # caller whose input_df predates these columns. Silently skipped instead (see
   # .summarise_pipeline_context()); only the parameter TYPE is checked here.
   for (col_param in list(consensus_posterior_col, winner_prior_col,
-                         winner_rank_expanded_col, plausible_posteriors_col)) {
+                         winner_rank_expanded_col, plausible_posteriors_col,
+                         dist_nearest_occupied_km_col, patch_diameter_km_col,
+                         beyond_buffer_col, inat_in_range_col,
+                         inat_n_observations_col, inat_matched_name_col)) {
     if (!is.null(col_param) && (!is.character(col_param) || length(col_param) != 1L))
       stop(paste(
         "'consensus_posterior_col', 'winner_prior_col',",
-        "'winner_rank_expanded_col', and 'plausible_posteriors_col' must",
+        "'winner_rank_expanded_col', 'plausible_posteriors_col',",
+        "'dist_nearest_occupied_km_col', 'patch_diameter_km_col',",
+        "'beyond_buffer_col', 'inat_in_range_col',",
+        "'inat_n_observations_col', and 'inat_matched_name_col' must",
         "each be a single character string or NULL."
       ), call. = FALSE)
   }
@@ -243,7 +336,7 @@ review_assignments <- function(df,
 
   if (use_candidates) {
 
-    raw_sets  <- df[[plausible_taxa_col]]
+    raw_sets  <- input_df[[plausible_taxa_col]]
     taxa_sets <- lapply(raw_sets, function(x) sort(unique(x[!is.na(x) & nzchar(x)])))
     n_cands   <- lengths(taxa_sets)
 
@@ -255,8 +348,8 @@ review_assignments <- function(df,
     # sees plausible_taxa, not downranked/consensus_taxon). Rebuilding
     # independently risks producing a DIFFERENT label than add_slash_taxon()
     # would for the same row.
-    cand_labels <- if ("consensus_OTU" %in% names(df)) {
-      df[["consensus_OTU"]]
+    cand_labels <- if ("consensus_OTU" %in% names(input_df)) {
+      input_df[["consensus_OTU"]]
     } else {
       vapply(seq_along(taxa_sets), function(i) {
         if (n_cands[i] == 0L) return(NA_character_)
@@ -267,12 +360,12 @@ review_assignments <- function(df,
 
     # Determine which rows to review
     if (irreducible_only) {
-      if ("irreducible_consensus" %in% names(df)) {
-        include_rows <- df[["irreducible_consensus"]] %in% TRUE
+      if ("irreducible_consensus" %in% names(input_df)) {
+        include_rows <- input_df[["irreducible_consensus"]] %in% TRUE
         if (verbose)
           message(sprintf(
             "  irreducible_only = TRUE: %d of %d rows selected for review.",
-            sum(include_rows & n_cands > 0L), nrow(df)
+            sum(include_rows & n_cands > 0L), nrow(input_df)
           ))
       } else {
         if (verbose)
@@ -281,22 +374,22 @@ review_assignments <- function(df,
             "Run TaxaAssign::add_slash_taxon() to enable filtering. ",
             "Reviewing all non-empty candidate sets."
           ))
-        include_rows <- rep(TRUE, nrow(df))
+        include_rows <- rep(TRUE, nrow(input_df))
       }
     } else {
-      include_rows <- rep(TRUE, nrow(df))
+      include_rows <- rep(TRUE, nrow(input_df))
     }
 
     # Exclude unresolved rows
     include_rows <- include_rows & n_cands > 0L
 
-    # Store join key on df (label is the key — canonical because sets are sorted)
-    df$.join_key <- cand_labels
+    # Store join key on input_df (label is the key — canonical because sets are sorted)
+    input_df$.join_key <- cand_labels
 
     # Build taxa_info from unique labels in included rows
     inc_labels <- cand_labels[include_rows]
     inc_ranks  <- if (!is.null(taxon_rank_col)) {
-      df[[taxon_rank_col]][include_rows]
+      input_df[[taxon_rank_col]][include_rows]
     } else {
       rep(NA_character_, sum(include_rows))
     }
@@ -315,16 +408,16 @@ review_assignments <- function(df,
   } else {
 
     # --- Current path: dedup on consensus_taxon ---
-    df$.join_key <- df[[taxon_col]]
+    input_df$.join_key <- input_df[[taxon_col]]
 
-    taxa <- unique(df[[taxon_col]])
+    taxa <- unique(input_df[[taxon_col]])
     taxa <- taxa[!is.na(taxa) & nchar(trimws(taxa)) > 0]
 
     if (length(taxa) == 0L)
       stop(sprintf("No non-NA taxa found in column '%s'.", taxon_col), call. = FALSE)
 
     if (!is.null(taxon_rank_col)) {
-      taxa_info <- unique(df[, c(taxon_col, taxon_rank_col), drop = FALSE])
+      taxa_info <- unique(input_df[, c(taxon_col, taxon_rank_col), drop = FALSE])
       names(taxa_info) <- c("taxon_name", "taxon_rank")
       taxa_info <- taxa_info[!is.na(taxa_info$taxon_name) &
                                nchar(trimws(taxa_info$taxon_name)) > 0, , drop = FALSE]
@@ -341,20 +434,25 @@ review_assignments <- function(df,
   # every row sharing a label) -- never changes which rows are reviewed, the
   # dedup key, or any output column. Grouping is O(n) via split(), not a
   # per-label linear scan, to stay cheap regardless of dataset size.
-  label_vec_full <- if (use_candidates) cand_labels else df[[taxon_col]]
+  label_vec_full <- if (use_candidates) cand_labels else input_df[[taxon_col]]
 
   pipeline_ctx <- .summarise_pipeline_context(
-    label_vec_full, df, consensus_posterior_col, winner_prior_col,
+    label_vec_full, input_df, consensus_posterior_col, winner_prior_col,
     winner_rank_expanded_col
   )
   weight_ctx <- if (use_candidates && !is.null(plausible_posteriors_col) &&
-                    plausible_posteriors_col %in% names(df)) {
-    .summarise_candidate_weights(label_vec_full, df[[plausible_posteriors_col]])
+                    plausible_posteriors_col %in% names(input_df)) {
+    .summarise_candidate_weights(label_vec_full, input_df[[plausible_posteriors_col]])
   } else {
     NULL
   }
+  spatial_ctx <- .summarise_spatial_context(
+    label_vec_full, input_df, dist_nearest_occupied_km_col, patch_diameter_km_col,
+    beyond_buffer_col, inat_in_range_col, inat_n_observations_col,
+    inat_matched_name_col
+  )
 
-  if (!is.null(pipeline_ctx) || !is.null(weight_ctx)) {
+  if (!is.null(pipeline_ctx) || !is.null(weight_ctx) || !is.null(spatial_ctx)) {
     pn <- if (!is.null(pipeline_ctx))
       pipeline_ctx$pipeline_note[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]
     else rep(NA_character_, nrow(taxa_info))
@@ -362,7 +460,16 @@ review_assignments <- function(df,
       weight_ctx$weight_note[match(taxa_info$taxon_name, weight_ctx$taxon_name)]
     else rep(NA_character_, nrow(taxa_info))
     wn <- ifelse(is.na(wn), NA_character_, paste0("candidate weights: ", wn))
-    taxa_info$pipeline_note <- .combine_notes(pn, wn)
+    sn <- if (!is.null(spatial_ctx))
+      spatial_ctx$spatial_note[match(taxa_info$taxon_name, spatial_ctx$taxon_name)]
+    else rep(NA_character_, nrow(taxa_info))
+    # spatial_note is kept as its own column (not just folded into
+    # pipeline_note) so .build_review_prompt() can tell, per batch, whether
+    # to include the GBIF/iNat interpretation caveats -- see "Spatial
+    # context" in this function's own roxygen for why those caveats live in
+    # fixed GUIDELINES text rather than being pre-judged per taxon here.
+    taxa_info$spatial_note  <- sn
+    taxa_info$pipeline_note <- .combine_notes(.combine_notes(pn, wn), sn)
   }
 
   if (verbose)
@@ -421,8 +528,8 @@ review_assignments <- function(df,
     stringsAsFactors = FALSE
   )
 
-  df$.row_id <- seq_len(nrow(df))
-  result <- merge(df, merge_key, by = ".join_key", all.x = TRUE, sort = FALSE)
+  input_df$.row_id <- seq_len(nrow(input_df))
+  result <- merge(input_df, merge_key, by = ".join_key", all.x = TRUE, sort = FALSE)
   result <- result[order(result$.row_id), , drop = FALSE]
   result$.row_id  <- NULL
   result$.join_key <- NULL
@@ -468,7 +575,7 @@ review_assignments <- function(df,
 #' Summarise Pipeline Confidence Context per Unique Taxon/Candidate-Set Label
 #'
 #' Aggregates \code{TaxaAssign::posterior_consensus()}'s confidence columns
-#' (when present) across every \code{df} row sharing a taxon/candidate-set
+#' (when present) across every \code{input_df} row sharing a taxon/candidate-set
 #' label into one compact annotation string per unique label, so the LLM
 #' reviewing a taxon sees the pipeline's OWN statistical confidence alongside
 #' its ecological judgment -- without inflating the prompt with one value per
@@ -476,11 +583,11 @@ review_assignments <- function(df,
 #' outlier observations sharing a common label. Grouping is done once via
 #' \code{split()} (O(n)), not a per-label linear scan (O(n * unique labels)).
 #' @noRd
-.summarise_pipeline_context <- function(label_vec, df, consensus_posterior_col,
+.summarise_pipeline_context <- function(label_vec, input_df, consensus_posterior_col,
                                         winner_prior_col, winner_rank_expanded_col) {
-  has_post  <- !is.null(consensus_posterior_col)  && consensus_posterior_col  %in% names(df)
-  has_prior <- !is.null(winner_prior_col)         && winner_prior_col         %in% names(df)
-  has_rexp  <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(df)
+  has_post  <- !is.null(consensus_posterior_col)  && consensus_posterior_col  %in% names(input_df)
+  has_prior <- !is.null(winner_prior_col)         && winner_prior_col         %in% names(input_df)
+  has_rexp  <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(input_df)
   if (!has_post && !has_prior && !has_rexp) return(NULL)
 
   keep <- !is.na(label_vec)
@@ -491,14 +598,14 @@ review_assignments <- function(df,
   notes <- vapply(groups, function(rows) {
     parts <- character(0)
     if (has_post) {
-      v <- stats::median(df[[consensus_posterior_col]][rows], na.rm = TRUE)
+      v <- stats::median(input_df[[consensus_posterior_col]][rows], na.rm = TRUE)
       if (!is.na(v)) parts <- c(parts, sprintf("pipeline posterior=%.2f", v))
     }
     if (has_prior) {
-      v <- stats::median(df[[winner_prior_col]][rows], na.rm = TRUE)
+      v <- stats::median(input_df[[winner_prior_col]][rows], na.rm = TRUE)
       if (!is.na(v)) parts <- c(parts, sprintf("occurrence prior=%.2f", v))
     }
-    if (has_rexp && isTRUE(any(df[[winner_rank_expanded_col]][rows], na.rm = TRUE))) {
+    if (has_rexp && isTRUE(any(input_df[[winner_rank_expanded_col]][rows], na.rm = TRUE))) {
       parts <- c(parts, paste0(
         "species-level ID from occurrence-prior tie-break, ",
         "no direct sequence discrimination"
@@ -517,7 +624,7 @@ review_assignments <- function(df,
 #' For each unique multi-candidate label (contains \code{"/"} or \code{"+"}),
 #' averages the per-candidate posterior weight (from
 #' \code{posterior_consensus()}'s \code{plausible_posteriors} list column)
-#' across every \code{df} row sharing that label, so the LLM sees which
+#' across every \code{input_df} row sharing that label, so the LLM sees which
 #' specific member of the slash/plus group carries the most evidence rather
 #' than assessing an unweighted set. Singleton labels are skipped -- there is
 #' nothing to weight. Grouping via \code{split()} (O(n)), matching
@@ -540,6 +647,102 @@ review_assignments <- function(df,
 
   data.frame(taxon_name = names(groups), weight_note = unname(notes),
              stringsAsFactors = FALSE)
+}
+
+
+#' Summarise Spatial-Occurrence Context (GBIF Density Tile + iNat Range) per
+#' Unique Taxon/Candidate-Set Label
+#'
+#' Aggregates \code{check_gbif_tile_range()}/\code{compute_local_occurrence_distance()}
+#' and \code{TaxaFetch::check_inat_range()} output columns (when present in
+#' \code{input_df}, typically already joined onto it by taxon name before calling
+#' \code{review_assignments()} -- both source functions operate per-taxon at
+#' a query point, not per-observation) into one compact annotation string per
+#' unique label. Mirrors \code{.summarise_pipeline_context()}'s exact shape
+#' and O(n) \code{split()}-based grouping. Unlike that function's per-
+#' observation confidence values, these spatial columns are per-TAXON
+#' (constant across every row sharing a label) -- \code{median()}/\code{any()}
+#' here are defensive against a caller's join producing minor row-level
+#' variation, not doing real aggregation work.
+#'
+#' Facts only, no judgment baked in here -- see \code{review_assignments()}'s
+#' own "Spatial context" roxygen section for why the interpretive caveats
+#' (a small isolated GBIF patch may be a bad record, not real presence; an
+#' iNat \code{matched_name} that differs from the taxon under review may
+#' describe a different species entirely) live in
+#' \code{.build_review_prompt()}'s GUIDELINES text instead of being
+#' pre-decided per taxon here.
+#' @noRd
+.summarise_spatial_context <- function(label_vec, input_df,
+                                       dist_nearest_occupied_km_col,
+                                       patch_diameter_km_col,
+                                       beyond_buffer_col,
+                                       inat_in_range_col,
+                                       inat_n_observations_col,
+                                       inat_matched_name_col) {
+  has_dist    <- !is.null(dist_nearest_occupied_km_col) && dist_nearest_occupied_km_col %in% names(input_df)
+  has_patch   <- !is.null(patch_diameter_km_col)         && patch_diameter_km_col         %in% names(input_df)
+  has_beyond  <- !is.null(beyond_buffer_col)              && beyond_buffer_col              %in% names(input_df)
+  has_inrange <- !is.null(inat_in_range_col)              && inat_in_range_col              %in% names(input_df)
+  has_nobs    <- !is.null(inat_n_observations_col)        && inat_n_observations_col        %in% names(input_df)
+  has_match   <- !is.null(inat_matched_name_col)          && inat_matched_name_col          %in% names(input_df)
+  if (!has_dist && !has_beyond && !has_inrange && !has_nobs && !has_match) return(NULL)
+
+  keep <- !is.na(label_vec)
+  if (!any(keep)) return(NULL)
+
+  groups <- split(which(keep), label_vec[keep])
+
+  notes <- vapply(names(groups), function(lbl) {
+    rows <- groups[[lbl]]
+    parts <- character(0)
+
+    beyond <- has_beyond && isTRUE(any(input_df[[beyond_buffer_col]][rows] %in% TRUE))
+    if (beyond) {
+      parts <- c(parts, "GBIF: no occurrence found anywhere globally")
+    } else if (has_dist) {
+      d <- suppressWarnings(stats::median(input_df[[dist_nearest_occupied_km_col]][rows], na.rm = TRUE))
+      if (is.finite(d)) {
+        patch_str <- ""
+        if (has_patch) {
+          p <- suppressWarnings(stats::median(input_df[[patch_diameter_km_col]][rows], na.rm = TRUE))
+          if (is.finite(p)) patch_str <- sprintf(", patch ~%.1fkm across", p)
+        }
+        parts <- c(parts, sprintf("GBIF: nearest occurrence ~%.0fkm away%s", d, patch_str))
+      }
+    }
+
+    if (has_inrange || has_nobs || has_match) {
+      in_range <- if (has_inrange) {
+        v <- input_df[[inat_in_range_col]][rows]
+        if (all(is.na(v))) NA else any(v %in% TRUE)
+      } else NA
+      nobs <- if (has_nobs)
+        suppressWarnings(stats::median(input_df[[inat_n_observations_col]][rows], na.rm = TRUE))
+      else NA_real_
+      matched <- if (has_match) {
+        m <- input_df[[inat_matched_name_col]][rows]
+        m <- m[!is.na(m)]
+        if (length(m) > 0L) m[[1L]] else NA_character_
+      } else NA_character_
+
+      if (!is.na(in_range) || is.finite(nobs) || !is.na(matched)) {
+        inat_parts <- character(0)
+        if (!is.na(matched) && !is.na(lbl) &&
+            tolower(trimws(matched)) != tolower(trimws(lbl))) {
+          inat_parts <- c(inat_parts, sprintf("matched to '%s' (name differs from query)", matched))
+        }
+        if (!is.na(in_range)) inat_parts <- c(inat_parts, if (in_range) "in range" else "outside range")
+        if (is.finite(nobs))  inat_parts <- c(inat_parts, sprintf("%.0f obs", nobs))
+        if (length(inat_parts) > 0L)
+          parts <- c(parts, paste0("iNat: ", paste(inat_parts, collapse = ", ")))
+      }
+    }
+
+    if (length(parts) == 0L) NA_character_ else paste(parts, collapse = "; ")
+  }, character(1L))
+
+  data.frame(taxon_name = names(groups), spatial_note = unname(notes), stringsAsFactors = FALSE)
 }
 
 
@@ -694,6 +897,24 @@ review_assignments <- function(df,
     )
   )
 
+  # --- Spatial-context guidance (only when this batch actually has a note) ---
+  has_spatial_note <- "spatial_note" %in% names(taxa_batch) &&
+    any(!is.na(taxa_batch$spatial_note))
+  spatial_guideline <- if (has_spatial_note) paste0(
+    '- When a taxon line ends with a "GBIF:"/"iNat:" note, that is real ',
+    "occurrence-database evidence -- two caveats on how to weigh it: (1) ",
+    "GBIF's density map is RAW, unfiltered global data. An occurrence found ",
+    "far away, especially in a small (1-2 cell) patch, may itself be a ",
+    "single bad or mis-georeferenced record rather than a real population -- ",
+    "weight a small isolated patch as weaker evidence than a large one. (2) ",
+    "If iNat's matched name differs from the taxon under review, its range ",
+    "verdict may describe a DIFFERENT (often more common) species due to a ",
+    "fuzzy name match, not the taxon actually being assessed -- treat that ",
+    "verdict with real suspicion rather than as confirmation. Use both to ",
+    "inform geographic_plausibility, and note any inconsistency you notice ",
+    "in review_comment.\n"
+  ) else NULL
+
   example_comment <- switch(data_type,
     eDNA     = "Common lab contaminant in eDNA studies",
     acoustic = "Human vocalization detected near recording equipment",
@@ -732,6 +953,7 @@ review_assignments <- function(df,
     '- ', contaminant_guideline, '\n',
     '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
     '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
+    if (!is.null(spatial_guideline)) spatial_guideline else '',
     '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
     'pipeline\'s OWN confidence for this call (posterior/occurrence prior/candidate ',
     'weights), not your input. Use it to flag disagreement between the pipeline\'s ',

@@ -75,7 +75,7 @@ holding \code{TaxaAssign::posterior_consensus()}'s
 rank-matched to \code{primary_taxon}'s own resolved rank (default
 \code{"winner_own_rank_confusion_risk"}).  Drives
 \code{primary_discrimination}.  See \code{@section Discrimination
-  (Axis 2)} below.}
+(Axis 2)} below.}
 
 \item{consensus_confusion_risk_col}{Character.  Column holding the
 confusion-risk value rank-matched to \code{consensus_taxon} (default
@@ -86,7 +86,7 @@ confusion-risk value rank-matched to \code{consensus_taxon} (default
 \code{0.05}).  Below this, the resolved rank is \code{"discriminating"}.}
 
 \item{indistinguishable_threshold}{Numeric in \code{[0, 1]}, \code{>=
-  discriminating_threshold} (default \code{0.5}).  At or above this, the
+discriminating_threshold} (default \code{0.5}).  At or above this, the
 resolved rank is \code{"indistinguishable"}; between the two
 thresholds, \code{"weak"}.}
 
@@ -124,7 +124,7 @@ universal safe value (mirrors \code{TaxaAssign::join_priors()}'s
 \code{backbone_id} / \code{TaxaAssign::score_consensus()}'s
 \code{rank_thresholds}, both required for the same reason). Names must
 be rank labels (e.g. \code{c(species = ..., genus = ..., family =
-  ...)}); \code{"species"} is required, since \code{primary_plausibility}
+...)}); \code{"species"} is required, since \code{primary_plausibility}
 always compares against it (see @section Occurrence plausibility). A
 recorded taxon at or above the threshold for ITS OWN rank is
 \code{"expected"}; below it, \code{"unexpected"}; a rank with no entry

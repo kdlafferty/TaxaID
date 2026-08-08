@@ -112,7 +112,7 @@ devtools::install("path/to/TaxaFlag")
 library(TaxaFlag)
 
 flagged <- flag_contaminant(
-  df               = reads_long,
+  input_df               = reads_long,
   taxon_col        = "taxon_name",
   reads_col        = "n_reads",
   event_col        = "event_id",
@@ -129,7 +129,7 @@ flagged[flagged$lab_contaminant_risk == "high", ]
 
 ``` r
 flagged <- flag_handler(
-  df               = camera_detections,
+  input_df               = camera_detections,
   datetime_col     = "datetime",
   group_col        = "camera_id",
   interval_minutes = 30
@@ -140,7 +140,7 @@ flagged <- flag_handler(
 
 ``` r
 reviewed <- review_assignments(
-  df         = consensus_results,
+  input_df         = consensus_results,
   taxon_col  = "consensus_taxon",
   context    = list(geography = "Southern California", habitat = "Marine"),
   target_group = "fish"

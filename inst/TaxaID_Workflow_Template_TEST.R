@@ -236,7 +236,7 @@ reads_long <- Reads_Table |> #convert the standard wide reads table into long fo
 #   prefix match: sub("\\..*$", "", event_id) %in% BLANKS_RUN2
 
 contaminant_flags <- TaxaFlag::flag_contaminant(
-  df               = reads_long,
+  input_df               = reads_long,
   event_col        = "event_id",
   taxon_col        = "observation_id",
   reads_col        = "n_reads",
@@ -1282,7 +1282,7 @@ taxaassign_consensus$common_name <- TaxaTools::scientific_to_common(
 # =============================================================================
 
 reviewed_assignments <- TaxaFlag::review_assignments(
-  df               = taxaassign_consensus,
+  input_df               = taxaassign_consensus,
   taxon_col        = "consensus_taxon",
   taxon_rank_col   = "consensus_rank",
   irreducible_only = TRUE,

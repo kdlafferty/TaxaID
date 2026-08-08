@@ -6,7 +6,7 @@
 #   actual column names from the data.
 
 reviewed <- TaxaFlag::review_assignments(
-  df             = {{consensus_var}},
+  input_df       = {{consensus_var}},
   taxon_col      = {{taxon_col}},
   taxon_rank_col = {{taxon_rank_col}},
   context        = {{context_var}},

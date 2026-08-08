@@ -241,7 +241,7 @@ if (!.use_irreducible_only) {
 }
 
 taxaassign_consensus_reviewed <- TaxaFlag::review_assignments(
-  df                 = taxaassign_consensus,
+  input_df                 = taxaassign_consensus,
   taxon_col          = "consensus_taxon",
   plausible_taxa_col = "plausible_taxa",
   irreducible_only   = .use_irreducible_only,
@@ -401,7 +401,7 @@ message(sprintf("  To reuse without re-running this workflow, paste:\n    taxaas
 #   # columns: event_id, taxon_name, n_reads, sample_type ("field"/"blank"/...)
 #
 #   taxaassign_consensus_flagged <- TaxaFlag::flag_contaminant(
-#     df               = read_counts_long,
+#     input_df               = read_counts_long,
 #     event_col        = "event_id",
 #     taxon_col        = "taxon_name",
 #     reads_col        = "n_reads",

@@ -6,7 +6,7 @@
       "name": "flag_contaminant",
       "description": "Flag taxa disproportionately represented in control samples (lab blanks, field blanks, or positive controls)",
       "inputs": [
-        {"name": "df", "type": "data.frame", "required": true, "description": "Long-format detection data with read counts; one row per event x taxon"},
+        {"name": "input_df", "type": "data.frame", "required": true, "description": "Long-format detection data with read counts; one row per event x taxon"},
         {"name": "control_samples", "type": "character_vector", "required": false, "description": "Character vector of event_id values identifying control samples"},
         {"name": "sample_type_col", "type": "character", "required": false, "description": "Column indicating event type (alternative to control_samples; use with control_types)"},
         {"name": "control_types", "type": "character_vector", "required": false, "description": "Values in sample_type_col that identify controls"},
@@ -25,7 +25,7 @@
       "name": "flag_handler",
       "description": "Flag detections temporally proximate to handler presence (camera traps, acoustic recorders)",
       "inputs": [
-        {"name": "df", "type": "data.frame", "required": true, "description": "Detection data with datetime column"},
+        {"name": "input_df", "type": "data.frame", "required": true, "description": "Detection data with datetime column"},
         {"name": "datetime_col", "type": "character", "required": false, "default": "datetime", "description": "Column with datetime values (auto-parsed)"},
         {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon column"},
         {"name": "group_col", "type": "character", "required": false, "description": "Column for grouping (e.g., camera station); min/max computed per group"},
@@ -43,7 +43,7 @@
       "name": "review_assignments",
       "description": "LLM expert review of taxonomic assignments for ecological plausibility (habitat fit, geographic range, scope, contaminant risk, alternatives)",
       "inputs": [
-        {"name": "df", "type": "data.frame", "required": true, "description": "Data frame with a taxon column; typically filtered to flagged rows (suspect, unexpected, etc.)"},
+        {"name": "input_df", "type": "data.frame", "required": true, "description": "Data frame with a taxon column; typically filtered to flagged rows (suspect, unexpected, etc.)"},
         {"name": "taxon_col", "type": "character", "required": false, "default": "consensus_taxon", "description": "Column name for the taxon to review"},
         {"name": "taxon_rank_col", "type": "character", "required": false, "description": "Column for consensus rank; triggers lower_hypotheses when coarser than species"},
         {"name": "context", "type": "list_or_context_df", "required": true, "description": "Named list or build_context() output with geography/ecoregion and habitat/main_habitat"},

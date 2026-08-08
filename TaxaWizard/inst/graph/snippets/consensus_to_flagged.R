@@ -10,7 +10,7 @@
 #   validity_flag's value.
 
 flagged <- TaxaFlag::flag_contaminant(
-  df              = {{input_var}},
+  input_df        = {{input_var}},
   control_samples = {{control_samples}},
   event_col       = {{event_col}},
   taxon_col       = {{taxon_col}},

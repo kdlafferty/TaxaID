@@ -5,7 +5,7 @@
 \title{Flag Detections Near Start or End of a Sampling Period}
 \usage{
 flag_handler(
-  df,
+  input_df,
   datetime_col = "datetime",
   taxon_col = "taxon_name",
   group_col = NULL,
@@ -18,7 +18,7 @@ flag_handler(
 )
 }
 \arguments{
-\item{df}{Data frame with at minimum a datetime column, a taxon column,
+\item{input_df}{Data frame with at minimum a datetime column, a taxon column,
 and optionally a grouping column (e.g., station or site).}
 
 \item{datetime_col}{Character. Column name containing timestamps. The
@@ -97,7 +97,7 @@ real deploy/retrieve timestamps -- the same "external attribute lookup
 table keyed by a sample/event identifier" pattern already used elsewhere
 in this ecosystem, e.g. \code{TaxaMatch::join_event_site_metadata()}) to
 anchor edges on the actual deployment window instead. A group present in
-\code{df} but absent from \code{station_metadata} (or with an unparseable
+\code{input_df} but absent from \code{station_metadata} (or with an unparseable
 timestamp) falls back to the data-derived min/max for that group only,
 with a \code{warning()} naming it -- this is a real weakening of that
 group's flag, not a silent one. The output \code{edge_anchor_source}
@@ -130,7 +130,7 @@ column name alone no longer identifies which check produced it.
 # Flag detections within 30 minutes of camera setup/retrieval, anchored
 # on real per-station deploy/retrieve timestamps
 flagged <- flag_handler(
-  df               = camera_detections,
+  input_df               = camera_detections,
   datetime_col     = "datetime",
   group_col        = "station",
   interval_minutes = 30,

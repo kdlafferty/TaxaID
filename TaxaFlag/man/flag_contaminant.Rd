@@ -5,7 +5,7 @@
 \title{Flag Potential Contaminants by Comparison to Control Samples}
 \usage{
 flag_contaminant(
-  df,
+  input_df,
   event_col = "event_id",
   taxon_col = "taxon_name",
   reads_col = "n_reads",
@@ -20,7 +20,7 @@ flag_contaminant(
 )
 }
 \arguments{
-\item{df}{Data frame in long format with at minimum columns for sample
+\item{input_df}{Data frame in long format with at minimum columns for sample
 identification, taxon identification, and read counts.}
 
 \item{event_col}{Character. Column name identifying collection events
@@ -171,14 +171,14 @@ column name alone no longer identifies which check produced it.
 \dontrun{
 # Identify extraction control columns, flag contaminants
 flagged <- flag_contaminant(
-  df             = reads_long,
+  input_df             = reads_long,
   control_samples  = c("Palmyra30", "Palmyra62"),
   contaminant_type = "lab_contaminant"
 )
 
 # Using sample_type column instead
 flagged <- flag_contaminant(
-  df              = reads_long,
+  input_df              = reads_long,
   sample_type_col = "sample_type",
   control_types     = c("extraction_blank", "pcr_blank"),
   contaminant_type = "lab_contaminant"
@@ -186,7 +186,7 @@ flagged <- flag_contaminant(
 
 # Flag positive control leakage
 flagged <- flag_contaminant(
-  df               = reads_long,
+  input_df               = reads_long,
   control_samples    = c("Palmyra32", "Palmyra64"),
   exclude_samples  = c("Palmyra30", "Palmyra31", "Palmyra62", "Palmyra63"),
   contaminant_type = "positive_control"

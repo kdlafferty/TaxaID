@@ -43,5 +43,10 @@ and provides LLM-based expert review of assignment plausibility.
 \author{
 \strong{Maintainer}: Kevin Lafferty \email{klafferty@usgs.gov}
 
+Authors:
+\itemize{
+  \item Kevin Lafferty \email{klafferty@usgs.gov}
+}
+
 }
 \keyword{internal}

@@ -5,7 +5,7 @@
 \title{LLM Expert Review of Taxonomic Assignments}
 \usage{
 review_assignments(
-  df,
+  input_df,
   taxon_col = "consensus_taxon",
   taxon_rank_col = NULL,
   plausible_taxa_col = NULL,
@@ -14,6 +14,12 @@ review_assignments(
   winner_prior_col = "winner_prior",
   winner_rank_expanded_col = "winner_rank_expanded",
   plausible_posteriors_col = "plausible_posteriors",
+  dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
+  patch_diameter_km_col = "patch_diameter_km",
+  beyond_buffer_col = "beyond_buffer",
+  inat_in_range_col = "in_range",
+  inat_n_observations_col = "n_observations",
+  inat_matched_name_col = "matched_name",
   context,
   target_group = NULL,
   marker = NULL,
@@ -27,7 +33,7 @@ review_assignments(
 )
 }
 \arguments{
-\item{df}{Data frame with at minimum a column of taxon names.}
+\item{input_df}{Data frame with at minimum a column of taxon names.}
 
 \item{taxon_col}{Character. Column name for consensus taxon. Default
 \code{"consensus_taxon"}.}
@@ -46,7 +52,7 @@ are skipped. Default \code{NULL} (current behaviour -- deduplicates on
 \code{taxon_col}).}
 
 \item{irreducible_only}{Logical. When \code{plausible_taxa_col} is supplied
-and an \code{irreducible_consensus} column is present in \code{df} (added
+and an \code{irreducible_consensus} column is present in \code{input_df} (added
 by \code{TaxaAssign::add_slash_taxon()}), only candidate sets where
 \code{irreducible_consensus == TRUE} are reviewed. Non-irreducible rows
 receive \code{NA} review columns. When \code{irreducible_consensus} is
@@ -58,11 +64,11 @@ when \code{plausible_taxa_col = NULL}. Default \code{TRUE}.}
 the pipeline's own statistical confidence in the winning taxon. When
 present, the median value across every row sharing a taxon/candidate-set
 label is shown to the LLM as context (e.g. \code{"pipeline
-  posterior=0.81"}), so a sharp disagreement between the pipeline's
+posterior=0.81"}), so a sharp disagreement between the pipeline's
 confidence and the LLM's ecological plausibility judgment can be
 surfaced in \code{review_comment}. Purely additive text -- never changes
 which rows are reviewed or any output column. Silently skipped when the
-named column is absent from \code{df}. Default
+named column is absent from \code{input_df}. Default
 \code{"consensus_posterior"} (matches \code{posterior_consensus()}'s own
 output). Set to \code{NULL} to disable.}
 
@@ -91,10 +97,52 @@ disable.}
 supplied. When present, each multi-candidate label's per-candidate
 weights are averaged across every row sharing that label and shown to
 the LLM (e.g. \code{"candidate weights: Bos javanicus 72\%, Bos
-  primigenius 28\%"}), so \code{review_comment} can speak to the specific
+primigenius 28\%"}), so \code{review_comment} can speak to the specific
 weaker member instead of the group as an undifferentiated set. Silently
 skipped when absent. Default \code{"plausible_posteriors"}. Set to
 \code{NULL} to disable.}
+
+\item{dist_nearest_occupied_km_col}{Character or \code{NULL}. Column name
+for \code{check_gbif_tile_range()}'s \code{dist_nearest_occupied_km} --
+distance from the study site to the nearest GBIF-mapped occurrence of
+the taxon, worldwide. Shown as median context (e.g. \code{"GBIF: nearest
+occurrence ~41km away"}) alongside \code{patch_diameter_km_col} when
+both are present. Silently skipped when absent. Default
+\code{"dist_nearest_occupied_km"}. Set to \code{NULL} to disable.}
+
+\item{patch_diameter_km_col}{Character or \code{NULL}. Column name for
+\code{check_gbif_tile_range()}'s \code{patch_diameter_km} -- shown
+alongside \code{dist_nearest_occupied_km_col} as a rough size for the
+occupied area found (see "Spatial context" below for why this matters
+to interpretation). Silently skipped when absent, or when
+\code{dist_nearest_occupied_km_col} is not shown. Default
+\code{"patch_diameter_km"}. Set to \code{NULL} to disable.}
+
+\item{beyond_buffer_col}{Character or \code{NULL}. Column name for
+\code{check_gbif_tile_range()}'s \code{beyond_buffer} -- when
+\code{TRUE}, shown instead of the distance/patch note as \code{"GBIF: no
+occurrence found anywhere globally"}. Silently skipped when absent.
+Default \code{"beyond_buffer"}. Set to \code{NULL} to disable.}
+
+\item{inat_in_range_col}{Character or \code{NULL}. Column name for
+\code{TaxaFetch::check_inat_range()}'s \code{in_range}. Shown as
+\code{"in range"}/\code{"outside range"} alongside
+\code{inat_n_observations_col}/\code{inat_matched_name_col} when
+present. Silently skipped when absent. Default \code{"in_range"}. Set to
+\code{NULL} to disable.}
+
+\item{inat_n_observations_col}{Character or \code{NULL}. Column name for
+\code{check_inat_range()}'s \code{n_observations}. Default
+\code{"n_observations"}. Set to \code{NULL} to disable.}
+
+\item{inat_matched_name_col}{Character or \code{NULL}. Column name for
+\code{check_inat_range()}'s \code{matched_name} -- the taxon iNaturalist's
+own name search actually resolved the query to, which is not always the
+query taxon itself. When it differs from the taxon under review, this is
+flagged in the prompt as \code{"matched to '...' (name differs from
+query)"} -- a plain factual annotation, not a judgment (see "Spatial
+context" below). Default \code{"matched_name"}. Set to \code{NULL} to
+disable.}
 
 \item{context}{Named list or data frame describing the study context.
 Recognised fields: \code{geography} (or \code{ecoregion}),
@@ -184,7 +232,7 @@ TaxaAssign output. Context (geography, habitat) can be supplied as a
 
 When \code{consensus_posterior_col}/\code{winner_prior_col}/
 \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} match real
-columns in \code{df} (the defaults match \code{TaxaAssign::
+columns in \code{input_df} (the defaults match \code{TaxaAssign::
 posterior_consensus()}'s own output names), a compact \code{"[...]"}
 annotation is appended to each taxon's line in the LLM prompt -- the
 pipeline's own median statistical confidence/occurrence prior for that
@@ -196,14 +244,61 @@ pipeline's own confidence and its ecological judgment. It is purely
 additive: it never changes which rows are reviewed, the dedup key, or any
 output column, and adds only a few tokens per taxon to the prompt. Set any
 of the four params to \code{NULL} to disable; all four are silently
-skipped (not an error) when the named column is absent from \code{df}.
+skipped (not an error) when the named column is absent from \code{input_df}.
+}
+
+\section{Spatial context}{
+
+When \code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
+\code{beyond_buffer_col} (matching \code{check_gbif_tile_range()}'s own
+output) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/
+\code{inat_matched_name_col} (matching \code{TaxaFetch::check_inat_range()}'s
+own output) match real columns in \code{input_df} -- typically joined onto it by
+taxon name before calling this function, since both source functions
+operate per-taxon at a query point, not per-row -- the same \code{"[...]"}
+bracket used for pipeline context also carries a compact GBIF/iNat summary
+(e.g. \code{"[GBIF: nearest occurrence ~41km away, patch ~2.1km across;
+iNat: in range, 1275 obs]"}). Found empirically to matter, not
+hypothetically: real GreatLakes2023 "unprecedented" taxa included both a
+genuine Great Lakes native (a real regional species simply not yet
+recorded at this exact site) and two European fish species ~6500km from
+any GBIF-mapped occurrence -- the same "unprecedented" flag, two very
+different real explanations, indistinguishable without this evidence.
+
+Deliberately facts-only in the per-taxon bracket -- no plausibility
+judgment is pre-computed or baked in server-side (the same design choice
+already made for \code{winner_rank_expanded}'s note above, and the reason
+the \code{trusted_rank} mechanism was removed from this ecosystem
+elsewhere -- see \code{TaxaLikely::evaluate_likelihoods()}'s history). Two
+real caveats about how to weigh these facts are added as a GUIDELINES
+bullet instead (only when a batch has at least one such note), for the LLM
+to apply per case: (1) GBIF's density map is raw, unfiltered global data --
+an occurrence found far away, especially in a small (1-2 cell) patch, may
+itself be a single bad or mis-georeferenced GBIF record rather than a real
+population; a small isolated patch is weaker evidence than a large one.
+(2) When iNat's \code{matched_name} differs from the taxon under review,
+its \code{in_range} verdict may describe a \emph{different}, often more common,
+species due to a fuzzy name-search match -- not the taxon actually being
+assessed. Confirmed as a real, not hypothetical, failure mode: a query for
+the European \emph{Gasterosteus gymnurus} resolved via iNat's own search to
+\emph{Gasterosteus aculeatus} (a genuinely North American/circumpolar
+species), returning a misleading \code{in_range = TRUE}. This is a known,
+separate, not-yet-fixed limitation of \code{check_inat_range()}'s name
+resolution -- \code{matched_name} is surfaced here specifically so a
+reviewer (human or LLM) can catch it downstream in the meantime, not as a
+substitute for fixing it upstream.
+
+Purely additive, matching "Pipeline context" above in every other respect:
+never changes which rows are reviewed, the dedup key, or any output
+column. Set any of the six params to \code{NULL} to disable; all six are
+silently skipped when the named column is absent from \code{input_df}.
 }
 
 \examples{
 \dontrun{
 # Standard review (consensus taxon only)
 reviewed <- review_assignments(
-  df           = consensus_df,
+  input_df           = consensus_df,
   context      = list(geography = "Palmyra Atoll, central Pacific",
                       habitat   = "coral reef"),
   target_group = "fish",
@@ -213,7 +308,7 @@ reviewed <- review_assignments(
 # Candidate-aware review (recommended for upranked assignments)
 consensus_df <- TaxaAssign::add_slash_taxon(consensus_df)
 reviewed <- review_assignments(
-  df                 = consensus_df,
+  input_df                 = consensus_df,
   plausible_taxa_col = "plausible_taxa",
   irreducible_only   = TRUE,
   context            = ctx,

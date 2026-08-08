@@ -47,7 +47,7 @@ mock_long <- data.frame(
 
 test_that("flag_contaminant returns one row per taxon", {
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -76,7 +76,7 @@ test_that("TaxonA (only in field) gets a high score approaching but not reaching
  # shrinkage barely moves it off 1.0 -- this is the intended fix: sample
  # count alone (the pre-152 denominator) would have shrunk this far harder.
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -90,7 +90,7 @@ test_that("TaxonA (only in field) gets a high score approaching but not reaching
 
 test_that("TaxonD (only in controls) gets a low score approaching but not reaching 0.0, flag 'invalid_lab_contaminant'", {
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -102,7 +102,7 @@ test_that("TaxonD (only in controls) gets a low score approaching but not reachi
 
 test_that("prior_weight = 0 disables shrinkage: TaxonA/TaxonD hit the exact un-shrunk 1.0/0.0 boundary", {
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    prior_weight    = 0,
    verbose         = FALSE
@@ -149,13 +149,13 @@ test_that("higher prior_weight shrinks a thin-read-count detection harder toward
  # should be pulled toward the neutral 0.5 more strongly as prior_weight
  # (read-equivalent units since Session 152) increases.
  weak_shrink <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    prior_weight    = 1,
    verbose         = FALSE
  )
  strong_shrink <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    prior_weight    = 200,
    verbose         = FALSE
@@ -181,7 +181,7 @@ test_that("invalid prior_weight errors", {
 
 test_that("TaxonB (high in controls, low in field) gets low score", {
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -193,7 +193,7 @@ test_that("TaxonB (high in controls, low in field) gets low score", {
 
 test_that("result is sorted by score (contaminants first)", {
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -203,7 +203,7 @@ test_that("result is sorted by score (contaminants first)", {
 
 test_that("scores are between 0 and 1", {
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -223,7 +223,7 @@ test_that("flag_contaminant works with sample_type_col", {
  )
 
  result <- flag_contaminant(
-   df              = df_typed,
+   input_df              = df_typed,
    sample_type_col = "sample_type",
    control_types   = "lab_blank",
    verbose         = FALSE
@@ -248,7 +248,7 @@ test_that("flag_contaminant works with sample_type_col", {
 
 test_that("contaminant_type is embedded in validity_flag's values, not the column name", {
  result <- flag_contaminant(
-   df               = mock_long,
+   input_df               = mock_long,
    control_samples  = c("blank_1", "blank_2"),
    contaminant_type = "field_contaminant",
    verbose          = FALSE
@@ -267,7 +267,7 @@ test_that("contaminant_type is embedded in validity_flag's values, not the colum
 
 test_that("positive_control type works", {
  result <- flag_contaminant(
-   df               = mock_long,
+   input_df               = mock_long,
    control_samples  = c("blank_1", "blank_2"),
    contaminant_type = "positive_control",
    verbose          = FALSE
@@ -286,14 +286,14 @@ test_that("positive_control type works", {
 test_that("exclude_samples removes samples from proportion calculation", {
  # With both controls: TaxonE is in blank_2 with prop ~ 0.125
  result_both <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
 
  # With only blank_1 (blank_2 excluded): TaxonE is NOT in blank_1
  result_one <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1"),
    exclude_samples = c("blank_2"),
    verbose         = FALSE
@@ -314,14 +314,14 @@ test_that("exclude_samples removes samples from proportion calculation", {
 test_that("custom score_thresholds change validity_flag assignments", {
  # With very strict thresholds, more taxa become "invalid_lab_contaminant"
  result_strict <- flag_contaminant(
-   df               = mock_long,
+   input_df               = mock_long,
    control_samples  = c("blank_1", "blank_2"),
    score_thresholds = c(0.8, 0.99),
    verbose          = FALSE
  )
 
  result_default <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -338,7 +338,7 @@ test_that("custom score_thresholds change validity_flag assignments", {
 
 test_that("reason strings contain expected information", {
  result <- flag_contaminant(
-   df              = mock_long,
+   input_df              = mock_long,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
@@ -362,7 +362,7 @@ test_that("taxa with zero reads are excluded from output", {
  )
 
  result <- flag_contaminant(
-   df              = df_zeros,
+   input_df              = df_zeros,
    control_samples = c("blank_1", "blank_2"),
    verbose         = FALSE
  )
