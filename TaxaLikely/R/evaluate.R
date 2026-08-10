@@ -40,12 +40,20 @@ utils::globalVariables(c(
 #'   relative to the best hypothesis; specific candidates below this are dropped.
 #' @param min_match_threshold Numeric (default `0.50`).  Raw score below which
 #'   a candidate receives likelihood 0 regardless of the model prediction.
-#' @param alpha Numeric (default `0.001`).  Score-outlier p-value cutoff: H1 candidates
-#'   whose query score is inconsistent with the species' own score distribution (univariate
-#'   normal, df = 1 chi-squared) receive likelihood 0.  The gap feature is NOT included in
-#'   this test -- a small gap (confusable congener present) correctly lowers the bivariate
-#'   H1 density but should not cause the candidate to be rejected as an outlier.  The
-#'   default 0.001 (1-in-1000 threshold, ~3.3 sigma) drops genuinely inconsistent
+#' @param alpha Numeric (default `0.001`).  Score-outlier p-value cutoff, ONE-SIDED
+#'   (low side only): H1 candidates whose query score is anomalously LOW relative to the
+#'   species' own score distribution (univariate normal) receive likelihood 0.  An
+#'   anomalously HIGH score (e.g. a literal 100% match) is never rejected by this test --
+#'   H2/H3 model missing-species/genus hypotheses via a leftward shift of H1's own mean,
+#'   so a score far ABOVE H1's mean fits every alternative hypothesis strictly worse, not
+#'   better; there is no hypothesis for a rejected H1 to hand its likelihood mass to that
+#'   explains a near-perfect match. (Prior to this being made one-sided, the test was
+#'   two-sided and could hard-zero H1 for exactly the evidence that most strongly supports
+#'   it -- see `train_likelihood_model()`'s "Non-monotonic score->likelihood shape"
+#'   section for the analysis that found this.) The gap feature is NOT included in this
+#'   test -- a small gap (confusable congener present) correctly lowers the bivariate H1
+#'   density but should not cause the candidate to be rejected as an outlier.  The default
+#'   0.001 (1-in-1000 threshold, ~3.3 sigma on the low side) drops genuinely inconsistent
 #'   cross-family BLAST hits (e.g. freshwater taxa at 91-93% in a marine sample) while
 #'   retaining legitimate borderline H1s (e.g. a coastal species at 99% with a tight
 #'   per-species distribution).  H1-intrinsic: no comparison to H2/H3 densities.
@@ -110,9 +118,10 @@ utils::globalVariables(c(
     n_dropped <- sum(!keep)
     if (n_dropped > 0L) {
       candidate_df <- candidate_df[keep, , drop = FALSE]
-      if (verbose)
+      if (verbose) {
         message(sprintf("  Coverage filter (>= %.2f): dropped %d candidate row(s)",
                         min_coverage, n_dropped))
+      }
     }
   }
 
@@ -122,7 +131,26 @@ utils::globalVariables(c(
   # transform, since H1/H2/H3 are compared via density ratios at one shared
   # point (see train_likelihood_model()'s own score_transform documentation).
   # Absent for any model trained before this parameter existed -> "logit",
-  # its original and only behavior.
+  # its original and only behavior -- but a SILENT fallback here is exactly
+  # the mechanism that let a stale, undocumented-transform model object stay
+  # dangerous (found during the statistical-critique session that produced
+  # train_likelihood_model()'s "Non-monotonic score->likelihood shape"
+  # section: a real cached model with no Score_Transform field at all was
+  # silently read as "logit", the more fragile of the two transforms, with
+  # no signal to the caller that this had happened). Now warns instead of
+  # defaulting silently, so a caller inspecting an old/orphaned model_params
+  # object gets a visible prompt to check whether it should be retrained.
+  if (is.null(model_params$Score_Transform)) {
+    warning(paste0(
+      "model_params has no Score_Transform field -- this model predates ",
+      "score_transform tracking (added Session 158) and is being evaluated as ",
+      "\"logit\", its original and only behavior. logit's near-100%-identity region is ",
+      "the fragile one (unbounded scale, position set by logit_epsilon rather than real ",
+      "data -- see train_likelihood_model()'s \"Non-monotonic score->likelihood shape\" ",
+      "section); if this model is stale, consider retraining with ",
+      "train_likelihood_model(score_transform = \"sqrt_mismatch\") instead."
+    ), call. = FALSE)
+  }
   score_transform <- model_params$Score_Transform %||% "logit"
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
 
@@ -404,12 +432,26 @@ utils::globalVariables(c(
                                    sd   = sqrt(use_sigma[1L, 1L]))
       } else {
         x_pt <- c(s_vec[i], g_vec[i])
-        # Outlier filter: TWO-SIDED score-only chi-squared test (df = 1),
-        # calibrated against real 12S data in this exact form (Session 121 --
-        # see this parameter's own @param alpha docs for the real Cyprinidae/
-        # coastal-species numbers that calibration was based on). Kept
-        # byte-identical to that calibration -- computed independently of
-        # the confusion-risk columns, which answer a different question.
+        # Outlier filter: ONE-SIDED (low side only) score-only normal test,
+        # calibrated against real 12S data in its original two-sided form
+        # (Session 121 -- see this parameter's own @param alpha docs for the
+        # real Cyprinidae/coastal-species numbers that calibration was based
+        # on) and made one-sided in the statistical-critique session that
+        # found the two-sided version incoherent for the high side: H2/H3's
+        # own means sit BELOW H1's by construction (they model a missing-
+        # species/genus hypothesis via a leftward shift), so a query score
+        # anomalously ABOVE H1's mean fits every available alternative
+        # hypothesis strictly worse, not better -- there is nothing for a
+        # rejected H1 to hand its likelihood mass to that explains a
+        # near-perfect match. The old two-sided test could hard-zero the
+        # best-fitting hypothesis on exactly the evidence that most strongly
+        # supports it. Verified this never actually fired on any current
+        # production model (see the model_params$Score_Transform docs above
+        # and train_likelihood_model()'s own "Non-monotonic score->likelihood
+        # shape" section for the full record), but is a real, structural gap
+        # independent of how rarely it fires in practice. Kept the identical
+        # z-score/alpha calibration on the low side -- only the high side's
+        # rejection is removed.
         # The gap measures how well-separated
         # H1 is from alternatives -- a small gap (confusable congener
         # present) is correctly handled by the bivariate density below, which
@@ -419,9 +461,9 @@ utils::globalVariables(c(
         # species in a speciose family). The score alone determines whether
         # the query is consistent with this species' identity; the gap
         # informs the relative weight.
-        d_sq_score       <- (s_vec[i] - use_mu[1L])^2 / use_sigma[1L, 1L]
-        p_val_two_sided  <- stats::pchisq(d_sq_score, df = 1L, lower.tail = FALSE)
-        if (p_val_two_sided >= alpha)
+        z_score        <- (s_vec[i] - use_mu[1L]) / sqrt(use_sigma[1L, 1L])
+        p_val_low_side <- stats::pnorm(z_score)
+        if (p_val_low_side >= alpha)
           h1_vals[i] <- mvtnorm::dmvnorm(x_pt,
                                          mean  = as.numeric(use_mu),
                                          sigma = use_sigma)
@@ -1220,6 +1262,10 @@ utils::globalVariables(c(
 #'
 #' @seealso [train_likelihood_model()], [filter_top_hypotheses()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `match_df`/`model` are derived), see `inst/review_function_inputs.R`
+#'   Section 6 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' result <- evaluate_likelihoods(
@@ -1276,6 +1322,20 @@ evaluate_likelihoods <- function(match_df,
   # not something new introduced here.
 
   # Auto-detect rank_system from match_df columns
+  # This 14-rank ladder is deliberately NOT TaxaTools::standard_ranks (7
+  # ranks -- too coarse, missing e.g. subphylum/superclass/suborder) or
+  # TaxaTools::extended_ranks (21 ranks -- has domain/subkingdom/superorder/
+  # superfamily/subfamily/tribe/subgenus/subspecies/variety/form instead of
+  # this function's infraclass/cohort/suborder/infraorder). Investigated
+  # during the human code review (2026-08) as a candidate for consolidation
+  # onto one shared TaxaTools constant -- not done, since the three lists
+  # have genuinely different rank sets (not just duplicated identical
+  # values, unlike fetch.R's former .crabs_std_hierarchy, which WAS an
+  # exact duplicate of TaxaTools::standard_ranks and now aliases it
+  # directly). Reconciling all three into one canonical extended-rank list
+  # would mean widening a shared, exported TaxaTools constant and checking
+  # every downstream consumer's auto-detection behavior for a change --
+  # flagged for a future dedicated cross-package session, not attempted here.
   if (is.null(rank_system)) {
     canonical <- c("kingdom", "phylum", "subphylum", "superclass", "class",
                    "subclass", "infraclass", "cohort", "order", "suborder",
@@ -1452,6 +1512,9 @@ evaluate_likelihoods <- function(match_df,
 #'
 #' @seealso [evaluate_likelihoods()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration, see
+#'   `inst/review_function_inputs.R` Section 6 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' result <- evaluate_likelihoods(match_df, model)
@@ -1528,6 +1591,20 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
   # hits and restored candidates are unaffected (some is_restored = FALSE ->
   # genus row still dropped, species rows kept -- existing behaviour).
   if ("is_restored" %in% names(specific_scored) && nrow(coarser_rows) > 0L) {
+
+    # sub(" .*$", "", taxon_name) below takes the first whitespace-delimited
+    # token of finest_rows$taxon_name as its genus, on the assumption that
+    # taxon_name at the finest observed rank always begins with the genus
+    # name -- true for this package's own genus/species convention (a
+    # species-rank taxon_name is always a "Genus species" binomial per
+    # TaxaTools::create_taxon_names()/is_plausible_binomial()'s shared
+    # convention) and degrades safely when the finest rank IS genus (a
+    # single-word string with no space is returned unchanged by sub()).
+    # Not verified against every possible custom rank_system a caller could
+    # supply (e.g. a rank finer than species whose own column doesn't store
+    # a full trinomial) -- this branch is only reached via the DNA/BLAST
+    # restore_suppressed_candidates() pathway, which in every real workflow
+    # this package ships uses family/genus/species specifically.
 
     # Per (observation_id, genus): are ALL finest-rank rows for that genus restored?
     genus_all_restored <- finest_rows |>

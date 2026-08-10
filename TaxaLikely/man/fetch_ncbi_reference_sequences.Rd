@@ -83,11 +83,16 @@ at least this many sequences (or all of them if fewer exist).}
 Regex pattern for filtering sequence titles.
 Sequences whose title matches this pattern are excluded.}
 
-\item{min_date}{Character or NULL (e.g., \code{"2010/01/01"}).
-Earliest publication date for sequences.}
+\item{min_date}{Character or NULL (default; e.g. pass \code{"2010/01/01"} to set
+one). Earliest publication date for sequences. \code{NULL} means no lower
+bound -- internally resolved to the sentinel \code{"1900/01/01"} (predates
+GenBank's own founding), not left off the query entirely, so it composes
+safely with a supplied \code{max_date} alone.}
 
-\item{max_date}{Character or NULL (e.g., \code{"2024/12/31"}).
-Latest publication date.}
+\item{max_date}{Character or NULL (default; e.g. pass \code{"2024/12/31"} to set
+one). Latest publication date. \code{NULL} means no upper bound -- internally
+resolved to the sentinel \code{"3000/12/31"}, matching \code{min_date}'s NULL
+handling above.}
 
 \item{cache_dir}{Character path.
 Per-taxon intermediate results are cached here, enabling resumable

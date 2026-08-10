@@ -36,12 +36,129 @@ test_that("flag_reference_errors: return_all includes clean rows", {
   expect_equal(nrow(out), length(unique(.make_raw_df()$id_x)))
 })
 
+test_that("flag_reference_errors: singleton_match_threshold is a real, working parameter", {
+  # B1 is a true singleton (species "Bb" has no other member), whose best
+  # foreign match is 0.70 -- below the 0.98 default, so not flagged there,
+  # but a caller-supplied lower threshold should flag it. Regression test:
+  # this threshold used to be a hardcoded 0.98 literal with a comment
+  # suggesting it be raised for ITS but no way to actually change it.
+  out_default <- flag_reference_errors(.make_raw_df(), return_all = TRUE)
+  expect_false(any(out_default$id_x == "B1" &
+                      out_default$error_type == "unverified_singleton_high_match"))
+
+  out_lower <- flag_reference_errors(.make_raw_df(), return_all = TRUE,
+                                      singleton_match_threshold = 0.65)
+  expect_true(any(out_lower$id_x == "B1" &
+                    out_lower$error_type == "unverified_singleton_high_match"))
+})
+
+test_that("flag_reference_errors: singleton_match_threshold validates input", {
+  expect_error(
+    flag_reference_errors(.make_raw_df(), singleton_match_threshold = "x"),
+    "singleton_match_threshold"
+  )
+  expect_error(
+    flag_reference_errors(.make_raw_df(), singleton_match_threshold = 1.5),
+    "singleton_match_threshold"
+  )
+})
+
 test_that("flag_reference_errors: required columns checked", {
   expect_error(flag_reference_errors(data.frame(x = 1)), "missing required columns")
 })
 
 test_that("flag_reference_errors: non-data-frame input errors", {
   expect_error(flag_reference_errors(list()), "must be a data frame")
+})
+
+# ---- min_coverage (pairwise overlap filter) -----------------------------------
+
+test_that(".compute_reference_qc_stats: min_coverage excludes low-coverage pairs", {
+  df <- .make_raw_df()
+  # A1-B1 is A1's only foreign comparison and scores high (0.70) -- make its
+  # coverage too thin to trust; A1-A2 (self) stays high-coverage.
+  df$coverage <- 1.0
+  df$coverage[df$id_x == "A1" & df$id_y == "B1"] <- 0.1
+
+  unfiltered <- TaxaLikely:::.compute_reference_qc_stats(df)
+  filtered   <- TaxaLikely:::.compute_reference_qc_stats(df, min_coverage = 0.5)
+
+  a1_unfiltered <- unfiltered[unfiltered$id_x == "A1", ]
+  a1_filtered   <- filtered[filtered$id_x == "A1", ]
+
+  expect_equal(a1_unfiltered$max_foreign_match, 0.70)
+  # With the low-coverage A1-B1 pair excluded, A1 has no foreign comparisons
+  # left at all -- max_foreign_match falls back to 0 (the documented no-
+  # foreign-rows convention), not 0.70.
+  expect_equal(a1_filtered$max_foreign_match, 0)
+  expect_equal(a1_filtered$n_foreign_pairs, 0L)
+})
+
+test_that(".compute_reference_qc_stats: min_coverage is a no-op when coverage column absent", {
+  df <- .make_raw_df()  # no coverage column
+  unfiltered <- TaxaLikely:::.compute_reference_qc_stats(df)
+  filtered   <- TaxaLikely:::.compute_reference_qc_stats(df, min_coverage = 0.9)
+  expect_equal(unfiltered, filtered)
+})
+
+test_that(".compute_reference_qc_stats: min_coverage treats NA coverage as fully covered", {
+  df <- .make_raw_df()
+  df$coverage <- NA_real_
+  unfiltered <- TaxaLikely:::.compute_reference_qc_stats(df)
+  filtered   <- TaxaLikely:::.compute_reference_qc_stats(df, min_coverage = 0.9)
+  expect_equal(unfiltered$max_foreign_match, filtered$max_foreign_match)
+})
+
+test_that(".compute_reference_qc_stats: foreign_match_coverage is the coverage of the pair that produced max_foreign_match", {
+  df <- .make_raw_df()
+  df$coverage <- 1.0
+  # A1's foreign comparisons: A1-B1 (0.70, well covered). Make a SECOND,
+  # higher-scoring but thinly-covered foreign pair so foreign_match_coverage
+  # must track the WINNING pair, not just any foreign row's coverage.
+  df <- rbind(df, data.frame(
+    id_x = "A1", id_y = "C1", species.x = "Aa", species.y = "Cc",
+    genus.x = "A", genus.y = "C", p_match = 0.90, coverage = 0.15,
+    stringsAsFactors = FALSE
+  ))
+  out <- TaxaLikely:::.compute_reference_qc_stats(df)
+  a1 <- out[out$id_x == "A1", ]
+  expect_equal(a1$max_foreign_match, 0.90)
+  expect_equal(a1$foreign_match_coverage, 0.15)
+})
+
+test_that(".compute_reference_qc_stats: median_self_coverage summarises self-pair coverage", {
+  df <- .make_raw_df()
+  df$coverage <- 1.0
+  df$coverage[df$id_x == "A1" & df$id_y == "A2"] <- 0.4
+  out <- TaxaLikely:::.compute_reference_qc_stats(df)
+  a1 <- out[out$id_x == "A1", ]
+  expect_equal(a1$median_self_coverage, 0.4)
+})
+
+test_that(".compute_reference_qc_stats: foreign_match_coverage/median_self_coverage are NA with no coverage column", {
+  out <- TaxaLikely:::.compute_reference_qc_stats(.make_raw_df())
+  expect_true(all(is.na(out$foreign_match_coverage)))
+  expect_true(all(is.na(out$median_self_coverage)))
+})
+
+test_that("flag_reference_errors: min_coverage error on invalid value", {
+  expect_error(
+    flag_reference_errors(.make_raw_df(), min_coverage = "x"),
+    "min_coverage"
+  )
+})
+
+test_that("flag_reference_errors: min_coverage changes error_type when a mislabel signal is coverage-thin", {
+  df <- .make_raw_df()
+  df$p_match[df$id_x == "A1" & df$id_y == "B1"] <- 0.99  # would read likely_mislabeled
+  df$coverage <- 1.0
+  df$coverage[df$id_x == "A1" & df$id_y == "B1"] <- 0.1   # but the pair barely overlaps
+
+  out_default <- flag_reference_errors(df)
+  out_covfilt <- flag_reference_errors(df, min_coverage = 0.5, return_all = TRUE)
+
+  expect_true("A1" %in% out_default$id_x)  # flagged without the coverage filter
+  expect_equal(out_covfilt$error_type[out_covfilt$id_x == "A1"], "clean")
 })
 
 # ---- .prep_training_data -----------------------------------------------------
@@ -292,4 +409,100 @@ test_that("train_likelihood_model: H2_Lookup is NULL when rank_system has no gen
   out <- train_likelihood_model(.make_genus_raw_df(), c("species"),
                                 use_hierarchy = FALSE, anchor_perfect = FALSE)
   expect_null(out$H2_Lookup)
+})
+
+# ---- .check_score_ratio_monotonicity (statistical-critique diagnostic) -----
+#
+# Verifies the monotone-likelihood-ratio (MLR) property this diagnostic
+# actually checks -- whether H1's log-likelihood-ratio against H2 keeps
+# increasing all the way to a perfect match -- as opposed to whether H1's
+# own density PEAKS at a perfect match (it need not; see
+# train_likelihood_model()'s "Non-monotonic score->likelihood shape"
+# @section). For two Gaussians sharing an evaluation point, the ratio is
+# still increasing at the ceiling iff sigma_H1 >= sigma_H2 (or the turning
+# point falls outside the achievable domain) -- so a violation requires H1 to
+# be TIGHTER than its competing H2, not merely for H1's mean to sit below the
+# ceiling.
+
+.make_h1_lookup_1sp <- function(mu_score, sigma_score) {
+  data.frame(lookup_key = "Sp1", rank = "species",
+             mu_score = mu_score, mu_gap = 0, sigma_score = sigma_score,
+             stringsAsFactors = FALSE)
+}
+
+test_that(".check_score_ratio_monotonicity: flags a species whose H1 is TIGHTER than its genus H2 (violation)", {
+  # sqrt_mismatch scale: perfect match transforms to exactly 0.
+  # H1: mu=-0.05, sigma=0.001 (very tight, well-referenced species) -- 0 sits
+  # ~50 SD from mu1, so H1's density has already collapsed by the ceiling.
+  # H2 (pooled): delta=0.05 -> mu2=-0.10, sigma=0.05 (much wider/looser) --
+  # 0 sits only ~2 SD from mu2, so H2 remains comparatively substantial there.
+  h1 <- .make_h1_lookup_1sp(mu_score = -0.05, sigma_score = 0.001)
+  h2 <- list(delta = 0.05,
+             sigma = matrix(c(0.05, 0, 0, 1), nrow = 2,
+                            dimnames = list(c("score_logit","gap_logit"),
+                                            c("score_logit","gap_logit"))))
+  out <- TaxaLikely:::.check_score_ratio_monotonicity(
+    H1_Lookup = h1, global_sigma1 = 0.0005, H2 = h2, H2_Lookup = NULL,
+    species_genus = NULL, score_transform = "sqrt_mismatch", logit_epsilon = 1e-4
+  )
+  expect_equal(out$violations, "Sp1")
+})
+
+test_that(".check_score_ratio_monotonicity: does not flag when H1 is at least as wide as H2 (typical current-production shape)", {
+  h1 <- .make_h1_lookup_1sp(mu_score = -0.05, sigma_score = 0.05)
+  h2 <- list(delta = 0.03,
+             sigma = matrix(c(0.02, 0, 0, 1), nrow = 2,
+                            dimnames = list(c("score_logit","gap_logit"),
+                                            c("score_logit","gap_logit"))))
+  out <- TaxaLikely:::.check_score_ratio_monotonicity(
+    H1_Lookup = h1, global_sigma1 = 0.01, H2 = h2, H2_Lookup = NULL,
+    species_genus = NULL, score_transform = "sqrt_mismatch", logit_epsilon = 1e-4
+  )
+  expect_equal(out$violations, character(0))
+})
+
+test_that(".check_score_ratio_monotonicity: max_z reports the floored-SD distance from mu_score to a perfect match", {
+  # sqrt_mismatch: perfect = 0. mu_score=-0.02, floored sigma=0.0004 (sd=0.02)
+  # -> z = (0 - (-0.02))/0.02 = 1.0 exactly.
+  h1 <- .make_h1_lookup_1sp(mu_score = -0.02, sigma_score = 0.0004)
+  h2 <- list(delta = 0.05,
+             sigma = matrix(c(0.05, 0, 0, 1), nrow = 2,
+                            dimnames = list(c("score_logit","gap_logit"),
+                                            c("score_logit","gap_logit"))))
+  out <- TaxaLikely:::.check_score_ratio_monotonicity(
+    H1_Lookup = h1, global_sigma1 = 0.0001, H2 = h2, H2_Lookup = NULL,
+    species_genus = NULL, score_transform = "sqrt_mismatch", logit_epsilon = 1e-4
+  )
+  expect_equal(out$max_z, 1.0, tolerance = 1e-8)
+  expect_equal(out$max_z_species, "Sp1")
+})
+
+test_that(".check_score_ratio_monotonicity: uses the genus-specific H2_Lookup entry over the pooled default when available", {
+  # Same numbers as the flagging test above, but supplied via H2_Lookup for
+  # Sp1's genus instead of the pooled H2 list (which is set to a
+  # non-violating shape here, to confirm the genus-specific row is what's
+  # actually driving the result, not an unused pooled fallback).
+  h1 <- .make_h1_lookup_1sp(mu_score = -0.05, sigma_score = 0.001)
+  h2_pooled_safe <- list(delta = 0.01,
+                         sigma = matrix(c(0.0005, 0, 0, 1), nrow = 2,
+                                        dimnames = list(c("score_logit","gap_logit"),
+                                                        c("score_logit","gap_logit"))))
+  h2_lookup <- data.frame(genus = "G1", n_pairs = 5L,
+                          delta_shrunk = 0.05, var_shrunk = 0.05,
+                          stringsAsFactors = FALSE)
+  out <- TaxaLikely:::.check_score_ratio_monotonicity(
+    H1_Lookup = h1, global_sigma1 = 0.0005, H2 = h2_pooled_safe,
+    H2_Lookup = h2_lookup, species_genus = c(Sp1 = "G1"),
+    score_transform = "sqrt_mismatch", logit_epsilon = 1e-4
+  )
+  expect_equal(out$violations, "Sp1")
+})
+
+test_that("train_likelihood_model: returns Stats$mlr_violations/max_ceiling_z fields", {
+  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+                                use_hierarchy = FALSE, anchor_perfect = FALSE)
+  expect_true("mlr_violations" %in% names(out$Stats))
+  expect_true("max_ceiling_z" %in% names(out$Stats))
+  expect_true("max_ceiling_z_species" %in% names(out$Stats))
+  expect_true(is.character(out$Stats$mlr_violations))
 })

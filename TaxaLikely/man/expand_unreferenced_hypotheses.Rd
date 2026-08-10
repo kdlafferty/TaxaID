@@ -112,6 +112,11 @@ Run \emph{before} \code{\link[=apply_coverage_constraints]{apply_coverage_constr
 constraints must see the named rows, not the generic genus/family rows.
 }
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{result}/\code{unreferenced_species_result} are derived), see
+\code{inst/review_function_inputs.R} Section 7 in the package source.
+}
 \examples{
 \dontrun{
 expanded <- expand_unreferenced_hypotheses(

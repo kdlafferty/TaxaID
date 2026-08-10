@@ -29,6 +29,10 @@
 #'
 #' @seealso \code{\link{train_likelihood_model}}, \code{\link{interpret_model}}
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `model` is derived), see `inst/review_function_inputs.R` Section 12 in
+#'   the package source.
+#'
 #' @examples
 #' \dontrun{
 #' model <- train_likelihood_model(ref_matrix)

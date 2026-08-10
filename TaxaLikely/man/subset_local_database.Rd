@@ -63,6 +63,12 @@ only those IDs.  Peak memory scales with the number of matching sequences,
 not the total database size, making this suitable for multi-gigabyte
 databases such as SILVA SSU, MIDORI2, or Greengenes2.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration using a small
+synthetic FASTA + taxonomy fixture (real multi-gigabyte databases like
+SILVA/PR2/MIDORI2 aren't practical to bundle for a doc example), see
+\code{inst/review_function_inputs.R} Section 1 in the package source.
+}
 \section{Supported database formats}{
 
 \describe{
@@ -91,8 +97,13 @@ and its companion \code{_taxon.tsv} from
 range of nuclear markers for metazoan eDNA; the full COI release is ~4 GB.
 Its license is reported as CC-BY-NC in secondary sources (unconfirmed on
 the primary site) -- this may be in tension with this ecosystem's
-CC0/USGS public-domain policy for anything beyond local model training;
-confirm before redistributing any cached MIDORI2-derived data.}
+CC0/USGS public-domain policy. This function never fetches, bundles, or
+redistributes MIDORI2 data itself (it only filters a copy the user
+already downloaded), so it carries no license obligation on its own --
+but the license question is real for the USER: do not redistribute any
+MIDORI2-derived \code{reference_df}/FASTA output beyond local model
+training until the license is confirmed directly with the MIDORI2
+maintainers.}
 \item{GTDB}{GTDB taxonomy differs from NCBI for bacteria and archaea.
 Export GTDB-formatted 16S sequences + taxonomy via QIIME 2 (\code{qiime
     tools export}) or download pre-built QIIME2 classifiers and extract

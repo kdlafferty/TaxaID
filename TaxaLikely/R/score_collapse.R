@@ -190,9 +190,11 @@ detect_suppressed_candidates <- function(match_obj,
 
 #' Restore candidates suppressed by upstream pipeline rules
 #'
-#' Reframed design (see
-#' \code{ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md}): the
-#' function's job is not "restore candidates so more of them can individually
+#' Reframed design (see the TaxaID monorepo's own
+#' \code{ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md} design
+#' document for the full history -- development-repository context, not
+#' shipped with the installed package): the function's job is not "restore
+#' candidates so more of them can individually
 #' win" but to detect whether the anchor's apparent win is real or an
 #' artifact of upstream suppression, so that downstream consensus logic can
 #' back off from a false-precision specific-species call when it isn't. Every
@@ -339,13 +341,18 @@ detect_suppressed_candidates <- function(match_obj,
 #'   pre-redesign behavior at some real cost (see \code{@section Level 4 cost
 #'   control} for two real, measured cases).
 #' @param taxaexpect_priors Data frame or \code{NULL} (default \code{NULL}).
+#'   A plain data frame -- this package has no dependency on TaxaExpect and
+#'   never calls into it; the name and default \code{taxon_col}/
+#'   \code{grid_col}/\code{theta_col} column names are simply chosen to match
+#'   \code{TaxaExpect::generate_full_priors()}'s own output shape, so that
+#'   object can be passed directly without renaming columns. Any data frame
+#'   with the right columns (or with \code{taxon_col}/\code{grid_col}/
+#'   \code{theta_col} overridden to match your own column names) works.
 #'   Powers the floor-vs-documented ratio fallback in \code{@section Level 4
 #'   cost control} for a candidate NOT on \code{candidate_species_filter}.
 #'   \code{NULL} (default) means that fallback is unavailable -- a candidate
 #'   missing the filter is never worth Level 4 regardless of its real
-#'   occurrence support. When supplied, needs \code{taxon_col}/
-#'   \code{grid_col}/\code{theta_col} (defaults match TaxaExpect's own
-#'   \code{generate_full_priors()} output column names).
+#'   occurrence support.
 #' @param grid_id_col Character. Column in \code{match_obj} naming each
 #'   observation's own grid cell (default \code{"grid_id"}), looked up
 #'   against \code{taxaexpect_priors}' grid column. Only used when
@@ -470,8 +477,25 @@ detect_suppressed_candidates <- function(match_obj,
 #' unbounded number of candidates for one anchor.
 #'
 #' @return \code{match_obj} with restored \code{"suppressed_candidate"} rows
-#'   appended (or unchanged if nothing qualified), plus new \code{is_restored}
-#'   and \code{restoration_basis} columns. When \code{check_regional_overlap
+#'   appended (or unchanged if nothing qualified), plus new \code{is_restored},
+#'   \code{restoration_basis}, \code{restoration_level}, and
+#'   \code{restoration_source_accession} columns. \code{restoration_level}
+#'   (added 2026-08-08) is the \code{.resolve_hierarchy_score()} level (1-4)
+#'   that produced a restored row's score, \code{NA} for original (non-
+#'   restored) rows and for the no-score pathway. \code{restoration_source_
+#'   accession} is a real, single NCBI accession ONLY when
+#'   \code{restoration_level == 1L} AND exactly one candidate accession
+#'   drove the score -- Levels 2-4 always aggregate across more than one
+#'   accession, so no single accession can be honestly named as "the"
+#'   source for those; \code{NA} otherwise. Lets a caller screen restored
+#'   rows for reference-accession quality (e.g.
+#'   \code{TaxaMatch::evaluate_reference_accessions()}) wherever that's
+#'   actually possible -- distinct from the \code{"RESTORED_<accession>"}
+#'   value already carried in \code{accession} itself, which always picks
+#'   an arbitrary representative accession of the candidate species for
+#'   display/provenance regardless of restoration level, and should not be
+#'   used for screening (it is not guaranteed to be the accession that
+#'   actually drove the score). When \code{check_regional_overlap
 #'   = TRUE}, the result also carries \code{attr(result,
 #'   "regional_unreferenced")}: \code{NULL} if nothing was ever rejected/
 #'   unresolved, otherwise a data frame with columns \code{observation_id}/
@@ -484,6 +508,9 @@ detect_suppressed_candidates <- function(match_obj,
 #'   calling [expand_unreferenced_hypotheses()], whose \code{observation_id}-
 #'   scoped rows accept this shape directly (an extra \code{basis} column is
 #'   additive and does not disturb that consumer).
+#'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration, see
+#'   `inst/review_function_inputs.R` Section 9 in the package source.
 #'
 #' @examples
 #' \dontrun{
@@ -594,12 +621,19 @@ restore_suppressed_candidates <- function(match_obj,
     if (!has_score) match_obj[[score_col]] <- NA_real_
     # Mark original rows with synthetic H1 score = 1.0
     match_obj[[score_col]] <- 1.0
-    if (verbose)
+    if (verbose) {
+      # sprintf() does not concatenate multiple format-string arguments --
+      # join with paste0() first, then sprintf() the single result (see
+      # TaxaID/CLAUDE.md's "Split-string sprintf bug" footgun). The prior
+      # form here silently dropped the whole "(H1 = 1.0, restored = ...)"
+      # clause and emitted an "arguments not used by format" warning on
+      # every verbose=TRUE call through this path.
       message(sprintf(
-        "restore_suppressed_candidates: no score column -creating synthetic scores ",
-        "(H1 = 1.0, restored = %.4f). Use assign_scores(score_type = \"direct\") downstream.",
+        paste0("restore_suppressed_candidates: no score column -- creating synthetic scores ",
+               "(H1 = 1.0, restored = %.4f). Use assign_scores(score_type = \"direct\") downstream."),
         1.0 - delta_01
       ))
+    }
   }
 
   # Scale-detect: 0-100 vs 0-1 (used to translate hierarchy-resolved p_match
@@ -783,7 +817,8 @@ restore_suppressed_candidates <- function(match_obj,
             return_detail         = TRUE
           )
           if (isTRUE(detail$overlap) && !is.na(detail$pid)) {
-            res <- list(p_match = detail$pid / 100, level = 4L, source = "tier2_alignment")
+            res <- list(p_match = detail$pid / 100, level = 4L, source = "tier2_alignment",
+                        source_accession = NA_character_)
           } else if (isFALSE(detail$overlap)) {
             basis_note <- "regional_reject"
           } else {
@@ -837,7 +872,8 @@ restore_suppressed_candidates <- function(match_obj,
 
       rows_for_obs[[length(rows_for_obs) + 1L]] <- .build_restored_row(
         anchor_row, ref_genus_rows, sp, rank_system, species_col,
-        score_col = score_col, imputed_score = imputed_score, restoration_basis = basis
+        score_col = score_col, imputed_score = imputed_score, restoration_basis = basis,
+        restoration_level = res$level, restoration_source_accession = res$source_accession
       )
     }
 
@@ -869,6 +905,8 @@ restore_suppressed_candidates <- function(match_obj,
               "Purpose B admission for any observation.")
     match_obj$is_restored <- FALSE
     match_obj$restoration_basis <- NA_character_
+    match_obj$restoration_level <- NA_integer_
+    match_obj$restoration_source_accession <- NA_character_
     attr(match_obj, "regional_unreferenced") <- regional_unreferenced_df
     return(match_obj)
   }
@@ -876,6 +914,10 @@ restore_suppressed_candidates <- function(match_obj,
   match_obj$is_restored   <- FALSE
   if (!"restoration_basis" %in% names(match_obj))
     match_obj$restoration_basis <- NA_character_
+  if (!"restoration_level" %in% names(match_obj))
+    match_obj$restoration_level <- NA_integer_
+  if (!"restoration_source_accession" %in% names(match_obj))
+    match_obj$restoration_source_accession <- NA_character_
   restored_df$is_restored <- TRUE
 
   result <- dplyr::bind_rows(match_obj, restored_df)
@@ -891,9 +933,22 @@ restore_suppressed_candidates <- function(match_obj,
 }
 
 #' Build one restored candidate row (shared by the scored and no-score paths)
+#'
+#' @param restoration_level Integer or `NA_integer_` (default). The
+#'   `.resolve_hierarchy_score()` level (1-4) that produced `imputed_score`,
+#'   `NA` for the no-score pathway (no hierarchy level applies there).
+#' @param restoration_source_accession Character or `NA_character_`
+#'   (default). A real, single NCBI accession ONLY when `restoration_level
+#'   == 1L` AND exactly one candidate accession drove the score (see
+#'   `.resolve_hierarchy_score()`'s own `@return` for why every other case
+#'   is `NA`) -- lets a caller screen restored rows for reference-accession
+#'   quality (e.g. `TaxaMatch::evaluate_reference_accessions()`) wherever
+#'   that's actually possible, added 2026-08-08.
 #' @noRd
 .build_restored_row <- function(anchor_row, ref_genus_rows, sp, rank_system, species_col,
-                                 score_col, imputed_score, restoration_basis) {
+                                 score_col, imputed_score, restoration_basis,
+                                 restoration_level = NA_integer_,
+                                 restoration_source_accession = NA_character_) {
   ref_row <- ref_genus_rows[ref_genus_rows[[species_col]] == sp, , drop = FALSE][1L, ]
   new_row <- anchor_row
 
@@ -910,6 +965,8 @@ restore_suppressed_candidates <- function(match_obj,
   new_row[[score_col]] <- imputed_score
   new_row[["hypothesis_type"]] <- "suppressed_candidate"
   new_row[["restoration_basis"]] <- restoration_basis
+  new_row[["restoration_level"]] <- restoration_level
+  new_row[["restoration_source_accession"]] <- restoration_source_accession
 
   if ("accession" %in% names(new_row)) {
     ref_acc <- if ("accession" %in% names(ref_row))

@@ -17,16 +17,24 @@
 # ------------------------------------------------------------------------------
 
 #' @noRd
-.detect_finest_rank_col <- function(df) {
-  # Find all ranks present as paired .x / .y columns in df, then return the
-  # finest (last in TaxaTools::standard_ranks, which runs coarse-to-fine).
-  x_ranks <- sub("\\.x$", "", grep("\\.x$", names(df), value = TRUE))
-  y_ranks <- sub("\\.y$", "", grep("\\.y$", names(df), value = TRUE))
+.detect_finest_rank_col <- function(input_df) {
+  # Find all ranks present as paired .x / .y columns in input_df, then return
+  # the finest (last in TaxaTools::standard_ranks, which runs coarse-to-fine).
+  x_ranks <- sub("\\.x$", "", grep("\\.x$", names(input_df), value = TRUE))
+  y_ranks <- sub("\\.y$", "", grep("\\.y$", names(input_df), value = TRUE))
   paired  <- intersect(x_ranks, y_ranks)
   if (length(paired) == 0L) return(NULL)
   std     <- TaxaTools::standard_ranks   # coarse-to-fine: kingdom ... species
   ordered <- std[std %in% paired]
-  if (length(ordered) == 0L) return(paired[length(paired)])
+  # If none of the paired rank names are recognized standard ranks (e.g. a
+  # non-standard scheme like "clade"/"strain"), there is no ordering
+  # information to fall back on -- `paired`'s own order just reflects
+  # whichever order the .x/.y columns happen to appear in `input_df`, not a
+  # coarse-to-fine ordering, so guessing `paired[length(paired)]` here would
+  # silently pick an arbitrary column rather than the true finest rank.
+  # Decline to guess; the caller already has a documented fallback (its own
+  # warning + NA H1/H2 metrics) for this case.
+  if (length(ordered) == 0L) return(NULL)
   ordered[length(ordered)]   # last element = finest rank
 }
 
@@ -127,6 +135,10 @@
 #' @seealso [build_sequence_matrix()],
 #'   [coverage_threshold()], [train_likelihood_model()], [evaluate_likelihoods()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration built on real
+#'   `DECIPHER`-aligned fixture data, see `inst/review_function_inputs.R`
+#'   Section 8 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' ref_matrix <- build_sequence_matrix(reference_df)
@@ -212,6 +224,14 @@ calibrate_coverage_filter <- function(ref_pairs,
   total_h2 <- if (h1_available) sum(!is_h1 & cov_known) else NA_integer_
 
   # ---- categorical coverage detection ----------------------------------------
+  # 10 is not tied to any specific quality scheme -- it is deliberately more
+  # than double the largest known real categorical cardinality (Xeno-canto's
+  # 5 quality grades, A-E) while staying far below what a genuinely continuous
+  # alignment-coverage distribution shows on real DNA reference data (typically
+  # hundreds to thousands of unique values). This gives headroom for a future
+  # categorical scheme with a few more levels without needing a per-data-type
+  # parameter, while remaining nowhere near large enough to misclassify real
+  # continuous coverage as categorical.
   n_uniq_cov     <- length(unique(ref_pairs$coverage[cov_known]))
   is_categorical  <- n_uniq_cov <= 10L
 
@@ -318,6 +338,10 @@ calibrate_coverage_filter <- function(ref_pairs,
 #'
 #' @seealso [calibrate_coverage_filter()], [build_sequence_matrix()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration built on real
+#'   `DECIPHER`-aligned fixture data, see `inst/review_function_inputs.R`
+#'   Section 8 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' ref_matrix <- build_sequence_matrix(reference_df)
@@ -355,6 +379,8 @@ coverage_threshold <- function(ref_pairs, keep_frac = 0.95) {
   raw_thresh <- stats::quantile(cov, probs = 1 - keep_frac, names = FALSE)
 
   uniq_cov <- sort(unique(cov))
+  # Same 10-value cutoff and rationale as calibrate_coverage_filter()'s
+  # is_categorical check above -- see that function's comment.
   if (length(uniq_cov) <= 10L) {
     # Categorical coverage (e.g. Xeno-canto quality grades A-E mapped to 5 values).
     # Snap to the nearest unique value so the threshold falls on a grade boundary.

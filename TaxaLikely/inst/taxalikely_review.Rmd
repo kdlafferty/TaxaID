@@ -1,379 +1,355 @@
 ---
-title: "TaxaLikely code and domain review"
+title: "TaxaLikely code review"
 output: html_document
 ---
 
-Review date: 2026-07-30. Package version reviewed: TaxaLikely 0.1.0. Review conducted by
-Claude Code, using the template in `inst/Code and Domain Review 2.Rmd`, and fixed in the
-same session (no separate response document -- findings and fixes are combined below,
-following the `TaxaFetch/inst/taxafetch_review.Rmd` precedent). All 9 findings from the
-draft's "Summary for triage" table were authorized for fixing by K. D. Lafferty and are
-now applied; see each item below for what was actually done. The task brief said 24 R
-files; the package actually has **28** (`R/` totals 12,834 lines) -- all 28 were read in
-full, not sampled, during the original review pass.
+### Code Review
 
-`devtools::test()` (post-fix): 925 expectations, 0 failures, 0 errors, 9 warnings (all
-expected -- 8 are the `assign_scores(score_type = "none")` tests that deliberately trigger
-the "scores will be ignored" warning; 1 is a `pwalign`/`Biostrings` "multiple methods
-tables found for 'pattern'" S4-dispatch warning from `.check_regional_overlap()`'s own
-test, environmental, not code-related), 1 skip (a `DECIPHER`-present environment skip).
-(The original draft's preamble reported 935 expectations for the pre-fix baseline; a
-same-day CLAUDE.md session note independently recorded 925 as the correct baseline after
-an unrelated same-day `absolute_fit_pvalue` removal -- the draft's 935 appears to have been
-a stale/incorrect count, not a regression introduced by this session's fixes, none of
-which added or removed a test.)
-`devtools::check()` (`--no-tests`, tests run separately above): **0 errors, 0 warnings,
-0 notes -- Status: OK.** The one packaging-level `R CMD build` warning noted in the draft
-(auto-detected `R >= 4.1.0` dependency) no longer appears -- see finding 7 below.
-`lintr::lint_package()`: 214 lints package-wide (down from 226), **0 in `R/`** (down from
-12 -- see findings 1-2 below); the remainder are pre-existing `tests/`/`inst/workflows/`
-lints, out of scope for this review. Non-ASCII sweep of `R/`: clean, zero hits (unchanged).
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
 
-------------------------------------------------------------------------
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable?
+  
+  The code is readable.
+  
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+    
+  I found that in some places, there are concepts/objects etc. that are referenced by number or letter and must be cross referenced frequently to be understood. This may be unavoidable, but it does affect code comprehension. Due to the fact that there are multiple scripts doing similar things (i.e. querying an API for a genetic database), some processes are similar enough that it can be hard to follow at times. But I don't think this warrants a change. 
 
-# Code Review
+* [x] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way. 
+  * Is additional documentation required?
+  
+  I did not notice any obvious places for optimization. If anything, some scripts are over documented, including narrative of the development process.
+  
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+  
+  Any issues with coding standards are minor and are addressed in the file specific comments or in the additional comments section. In general the coding standard is high.
+  
+* [x] **Automated tests:** Confirm that all tests pass when run locally.
 
-Purpose: To produce high quality code that is well written and organized according to
-best coding practices.
+  Here is the output from running `test_local` on the test directory: `[ FAIL 0 | WARN 8 | SKIP 27 | PASS 822 ]`. `test_check` doesn't work, perhaps because I isntalled from the command line.
+  
+* [x] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
 
-### [x] Functionality: readable, organized, consistent across all 28 files.
+  I do not have the domain knowledge to assess any security issue or vulnerabilities. The package does query some APIs. 
 
-Roxygen documentation, internal-helper naming (`.` prefix), `package::function()`
-cross-package calls, and the coarse-to-fine `rank_system` convention are applied
-consistently everywhere. The statistical core (`train.R`/`evaluate.R`/`score_collapse.R`/
-`restore_hierarchy.R`/`regional_overlap.R`/`support_curves.R`) is unusually
-well-commented for *why*, not just *what* -- most non-obvious formulas carry an inline
-derivation or a pointer to the real dataset that motivated them. No changes needed here.
+Any Additional comments, list below in comment section.
 
-### [x] Optimizations: no new performance concerns; two small DRY opportunities noted under Coding standards, both fixed.
+### Domain Review
 
-No new efficiency issues found. This package's own session history already shows
-several real, measured performance fixes (the `align_cache`/`.seq_matrix_partner_index()`
-memoization in `restore_hierarchy.R`/`regional_overlap.R`, found via real ~590x and
-~100x speedups on real 13,442-observation data) -- nothing found this pass regresses
-or duplicates that work. The two duplicated-code patterns noted under Coding standards
-below were style/maintainability items, not measured performance problems; both are now
-factored into shared helpers (findings 4 and 5).
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
 
-### [x] Coding standards: all findings fixed this session; no correctness impact.
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct?
+  
+  There are some default values used, but I do not have the domain knowledge to evaluate whether they are correct.
+  
+  * Are any claims of what the code does substantiated?
+  
+  The code appears to do what the project claims to do.
+  
+  * If tests are included, are they adequate to evaluate functionality?
+  
+  The tests appear adequate.
+  
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces. 
+  * If equations are solved, are the equations input correctly into the code?
+  
+  I do not have the domain knowledge to fully evaluate all equations, but I did not see any obvious errors.
+  
+* [x] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
 
-**`.lintr`'s `R/train.R` `object_name_linter` exclusion line numbers had drifted (Low,
-mechanical fix -- Fixed).** The exclusion previously read
-`"R/train.R" = list(object_name_linter = c(864, 899, 984, 1000, 1008))`, but a live
-`lintr::lint_package()` run found the real `H1_Lookup`/`H2_Lookup`/`H2`/`H3` object-name
-lints (the ones this exclusion is meant to cover, per its own comment: "mirror the
-taxa_model_params object's own documented slot names") sitting at lines 900, 935, 1075,
-1091, 1099 before any fix in this session was applied. *Fixed:* updated to those 5 values
--- then, because finding 2's own `train.R` fix (wrapping the 143-char line, finding 2)
-inserted one additional line earlier in the file, re-ran `lintr::lint_package()` a second
-time immediately before finalizing `.lintr` (per this exact finding's own caution) and
-found all 5 had shifted again, by exactly +1: `c(901, 936, 1076, 1092, 1100)`. That is the
-value now in `.lintr`. A final `lintr::lint_package()` run confirms 0 `object_name_linter`
-hits (or any other lint) remain in `R/train.R`.
+  I do not work with DNA, but many of the algorithms used cite papers as their source.
+  
+Any Additional comments, list below in comment section.
 
-**Six other real, cosmetic `R/` lints (Low, mechanical fixes -- Fixed):**
-- `R/evaluate.R:632,641,650` -- `brace_linter`, "Either both or neither branch in
-  `if`/`else` should use curly braces" (the three `*_confusion_risk` column assignments,
-  each `if (...) { ... } else rep(NA_real_, n_res)`). *Fixed:* checked this file's own
-  convention first, per the task's own instruction -- `evaluate.R` uses `} else {` with
-  braces on both sides in 18 of its other 21 if/else constructs, so braces were added to
-  all three `else` branches (not removed from the `if`), matching the file's established
-  style.
-- `R/evaluate.R:651` -- `brace_linter`, "Wrap multi-line function bodies in curly braces"
-  (the `family_confusion_risk` `vapply()`'s anonymous function body). *Fixed* as part of
-  the same edit above -- the anonymous function's single-expression body is now wrapped in
-  `{ }`.
-- `R/support_curves.R:256` -- `brace_linter`, same "both or neither" issue
-  (`species_slot <- if (...) {...} else NULL`). *Fixed:* this file had no other one-line-else
-  precedent to follow (only this one occurrence existed), so braces were added to match
-  `evaluate.R`'s package-wide convention (both branches braced) rather than removing them
-  from the `if`.
-- `R/support_curves.R:335` -- `semicolon_linter`: `x <- x[ok]; y <- y[ok]` (inside
-  `.lookup_confusion_risk_value()`'s local `.interp()` helper). *Fixed:* split into two
-  separate, aligned lines.
-- `R/train.R:714` -- `line_length_linter`, 143 characters (limit 120). *Fixed:* wrapped the
-  long `sprintf()` format string via `paste0()`, matching this package's own established
-  convention for long `stop()`/`warning()`/`message()` strings elsewhere in `R/`.
+- This package has a dependency from Bioconductor (`DECIPHER`). Is this package strictly necessary, or could some other package or perhaps a custom function stand in for this? While somewhat minor, getting Bioconductor packages can be a bit of a hassle. Note that in the file specific comments, I mention that the functionality seems to warrant more than `suggests`. This is still true.
 
-All six were re-confirmed lint-clean individually and via a final full-package
-`lintr::lint_package()` run (0 hits anywhere in `R/`); none of these six edits shifted any
-other, previously-clean line into a new lint.
+- When building the package (done using `R CMD build` from the command line), I got this warning, suggest incorporating R version dependencies:
 
-**`df` used as a local variable name, shadowing `stats::df()` (Low, informational --
-Fixed).** `build_sequence_matrix()` (`R/build_sequence.R`), `trim_to_amplicon()`
-(`R/trim_to_amplicon.R`), and `read_crabs_output()` (`R/read_crabs.R`) each had a local
-`df` data-frame variable. *Fixed:* renamed per-file, chosen to reflect what each variable
-actually holds (not a single mechanical find/replace) -- `ref_seqs` in
-`build_sequence.R` (the working reference-sequence table being cleaned/deduplicated/
-filtered/thinned before alignment), `seq_df` in `trim_to_amplicon.R` (the working copy of
-`reference_df` whose `sequence` column is progressively replaced with extracted
-amplicons), `crabs_df` in `read_crabs.R` (the raw parsed CRABS table, before the final
-`reference_df` object is assembled from it at the end of the function). Renamed via
-exact-scope, word-boundary-safe substitution (confirmed the pattern never matched inside
-the unrelated `reference_df` parameter name, which shares the `df` substring). Each `df`
-was confirmed function-local before renaming, and no test in `tests/testthat/` references
-any of these variables by name (they are local to their respective functions and never
-exposed).
+```
+WARNING: Added dependency on R >= 4.1.0 because package code uses the
+  pipe |> or function shorthand \(...) syntax added in R 4.1.0.
+  File(s) using such syntax:
+    'build_sequence.R' 'calibrate_query_noise.R' 'coverage.R'
+    'evaluate.R' 'fetch.R' 'interpret.R' 'train.R'
+```
 
-**Two real DRY opportunities (Low-Medium, informational -- both Fixed, with one real
-behavioral discrepancy found and preserved rather than silently normalized).**
-1. `R/coverage.R`'s `.audit_one_genus_reverse()` had two near-identical ~25-line blocks
-   for NCBI-taxonomy-subtree species enumeration (the "2. Primary source" NCBI branch and
-   the "3. Fallback" branch). *Fixed:* extracted into a new shared internal helper,
-   `.ncbi_species_enumerate(genus_uid, grp, warn_on_error)` (`@noRd`, placed immediately
-   above `.audit_one_genus_reverse()`), called from both sites. **Read both blocks
-   carefully before merging, per this finding's own explicit caution, and found they were
-   NOT behaviorally identical**: the primary-source block's `tryCatch()` error handler
-   called `warning()` naming the genus and the underlying error message on failure; the
-   fallback block's error handler silently returned `character(0L)` on failure, with no
-   warning at all. This is a real, intentional-looking asymmetry (the fallback only runs
-   after the primary GBIF path already came back empty, so a second silent failure there
-   avoids doubling up warnings for what the caller already knows was an unproductive
-   lookup) -- preserved exactly via the new `warn_on_error` parameter (`TRUE` at the
-   primary-source call site, `FALSE` at the fallback site) rather than silently picking one
-   behavior for both. Every other aspect of the two blocks (search term, batching, retry
-   absence, field extraction, `is_plausible_binomial()` filtering, return shape) was
-   confirmed identical before extraction.
-2. `R/fetch.R` had four separate hand-rolled retry loops with the identical
-   `attempt <- 0L; success <- FALSE; while (attempt < 3L && !success) { ... Sys.sleep(attempt)
-   ... }` shape: `.fetch_summaries_batched()`, `.fetch_taxonomy_map()`,
-   `.fetch_fasta_batched()`, `.fetch_locations_batched()`. *Fixed:* extracted into a new
-   shared internal helper, `.retry_fetch(fn, max_attempts = 3L)` (`@noRd`), which retries a
-   zero-argument closure (one fetch+parse attempt) and returns `list(value, success)`.
-   **Confirmed, not assumed, that all four loops were genuinely identical** in max attempts
-   (3, hardcoded), backoff (linear `Sys.sleep(attempt)`, no sleep after the final attempt),
-   and error handling (silent on exhaustion -- no warning or error is raised if every
-   attempt fails; the caller's pre-allocated slot for that batch simply stays at its initial
-   empty value) before merging -- unlike finding 4 above, no behavioral difference needed
-   preserving here. Each of the four call sites now builds its per-batch closure and checks
-   `result$success` before assigning into its accumulator (`res[[i]]`/`chunks[i]`), which
-   correctly leaves that slot at its original pre-allocated value (`NULL` for the list
-   accumulators, `""` for `chunks`, a plain character vector) on exhaustion -- exactly
-   matching the original code's behavior, which never assigned into the slot at all on
-   failure.
+- I'm not familiar enough with genetics to evaluate much of the default values and search terms used in this package.
 
-**`interpret_model()`'s reused `mu_score`/`mu_gap` names created a fragile,
-non-obvious scoping dependency (Low -- Fixed via rename).** In `R/interpret.R`, the outer
-scalars `mu_score <- model_params$H1_Global_Mu[["score_logit"]]` and
-`mu_gap <- model_params$H1_Global_Mu[["gap_logit"]]` shared a name with `H1_Lookup`'s real
-per-species columns `mu_score`/`mu_gap`, which the "Per-species thresholds" block's
-`dplyr::mutate()` relies on shadowing via tidy-eval data-mask precedence. *Fixed:* renamed
-the two outer scalars to `global_mu_score`/`global_mu_gap` everywhere they're used in the
-"Hypothesis baselines"/"Global H1 profile" sections (the scalar declarations themselves,
-`mean_score_pct`/`runner_up_pct`, `h2_logit`/`h3_logit`, and the `global_h1` data frame).
-Per the task's explicit instruction, `H1_Lookup`'s actual `mu_score`/`mu_gap` columns were
-**not** renamed (a real, documented, ecosystem-wide column pair used elsewhere in `train.R`
-and consumed by other functions -- renaming them would be a breaking change out of scope
-here), and the bare `mu_score`/`mu_gap`/`mu_gap` references inside the `dplyr::mutate()`
-block itself (lines computing `expected_match_pct`/`danger_gap`/`status`, etc.) were
-deliberately left untouched. Verified after the edit: those bare references now
-unambiguously resolve to `H1_Lookup`'s per-species columns via `.data`, with no outer
-scalar of the same name left in scope to create the collision risk the finding described.
+- I won't point this out everywhere but `df` is a function in the stats package.
 
-**Packaging: no explicit `Depends: R (>= 4.1.0)` in `DESCRIPTION` (Low-Medium, mechanical
-fix -- Fixed).** `R CMD build` previously emitted: *"WARNING: Added dependency on
-R >= 4.1.0 because package code uses the pipe `|>` or function shorthand `\(...)`
-syntax"*, naming `build_sequence.R`, `calibrate_query_noise.R`, `coverage.R`,
-`evaluate.R`, `fetch.R`, `interpret.R`, `train.R`. *Fixed:* added `Depends: R (>= 4.1.0)`
-to `DESCRIPTION` directly, placed after `Encoding: UTF-8` and before `Roxygen:`, matching
-the field ordering already used in this monorepo's `TaxaTools/DESCRIPTION` (the one
-sibling package with its own `Depends:` field). A fresh `devtools::check()` after this
-change confirms the `R CMD build` warning no longer appears, and `R CMD check`'s own
-Status remains 0/0/0 -- OK.
+- There are a lot of functions with seemingly similar functionality that are often wrappers of each other. This may be unavoidable and doesn't necessarily warrant a change, but it makes conceptualizing and navigating the package confusing. Consider if there are areas where things could be simplified and/or combined.
 
-**`object_usage_linter` hits: all outside `R/`, not a package-code finding (Low,
-informational -- unchanged).** Per the task's own instruction to check whether
-`object_usage_linter` hits are genuine dead code: all 8 package-wide hits (`no visible
-binding for global variable 'true_species'/'p'/'p_true'`) are in
-`inst/workflows/calibrate_training_bias_tau.R` (a demonstration/calibration workflow
-script, not a `R/` package file) -- `zero` hits in `R/` itself, both before and after this
-session's fixes. Out of scope for this review (a workflow script, not package code); no
-change made.
+- Across the packages in this ecosystem, many function examples show objects that are not created in the example or internal example data (if this latter is true it is not obvious). This makes the examples unrunnable, suggest creating simulated data in the example or including example data in `inst`, loadable with `data()`. 
 
-### [x] Automated tests: confirmed passing when run locally.
+- Suggest removing references to other packages unless strictly necessary or combining packages.
 
-`devtools::test()`: 925 expectations, 0 failures, 0 errors. 9 warnings, all deliberate
-(8 are `assign_scores(score_type = "none")` tests asserting the "scores will be ignored"
-warning fires; 1 is an S4-dispatch environmental warning from `pwalign`/`Biostrings`
-inside a `.check_regional_overlap()` test, not a code issue). 1 skip (an
-environment-dependent skip: `DECIPHER` is installed here, so the "errors when DECIPHER
-absent" test correctly skips itself). None of the 9 fixes in this session added or
-removed a test; the count is unchanged before and after. (Always use `devtools::test()`,
-not bare `testthat::test_dir()`, per this ecosystem's own documented footgun.)
+- Auto-detecting rank systems is done a lot in this package and others. This could be it's own function, and would save ~20 lines of code everywhere it's used.
 
-### [x] Vulnerabilities: none found.
+Comments on specific files:
 
-Checked for the four ecosystem-relevant patterns flagged in the task brief, plus the
-standard sweep:
-- **SSRF / "host taken from untrusted external data" (the TaxaFetch DataONE
-  precedent).** `fetch.R`'s NCBI (`rentrez`), BOLD (`.bold_api_base`, a hardcoded
-  constant), and `coverage.R`'s Xeno-canto/iNaturalist calls all target fixed, hardcoded
-  hosts. The one place a value returned by a third-party API feeds back into a request
-  URL -- `.bold_fetch_documents(query_id)`, where `query_id` comes from BOLD's own
-  `query/preprocessor`/`query` response -- inserts it only as a **path segment**
-  (`httr2::req_url_path_append("documents", query_id, "download")`) on the fixed
-  `.bold_api_base` host; `req_url_path_append()` cannot be used to substitute a different
-  scheme or host, so this cannot redirect the request off BOLD's own domain. Not
-  analogous to TaxaFetch's SSRF case (which took a *full URL, host included* from
-  third-party EML metadata with no allowlist).
-- **Unsafe deserialization.** Every `readRDS()` call (checkpoint/cache files under
-  `tools::R_user_dir("TaxaLikely", "cache")` or a caller-supplied `cache_dir`) loads only
-  files this package's own functions previously wrote via `saveRDS()` with a
-  deterministic, hashed filename -- never an arbitrary or externally-supplied `.rds`.
-- **Command injection / `system()`/`eval()`/`parse()`.** None found anywhere in the 28
-  files.
-- **Zip-slip.** Not applicable -- no archive-extraction code in this package.
-- **XXE.** `.fetch_taxonomy_map()`/`.fetch_locations_batched()` (`fetch.R`) parse NCBI's
-  own XML via `xml2::read_xml()`, which does not resolve external entities by default
-  (same conclusion already confirmed live for TaxaFetch's own `xml2` usage).
-- **Credentials.** NCBI (`ENTREZ_KEY`/`NCBI_API_KEY`), Xeno-canto (`XC_API_KEY`), and
-  iNaturalist (`INAT_API_TOKEN`) keys are all read from environment variables or an
-  explicit caller-supplied parameter; no hardcoded credentials anywhere.
-- **Path traversal.** Cache/output filenames built from taxon names are sanitized
-  (`gsub("[^A-Za-z0-9]", "_", ...)`) before being used in `file.path()`, preventing a
-  `..`-bearing taxon string from escaping `cache_dir`. `read_reference_fasta()`/
-  `subset_local_database()`/`read_crabs_output()` read a caller-supplied file path
-  directly -- expected behavior for a function whose entire job is "read this local file
-  the caller pointed at," not a vulnerability under this project's threat model (unlike
-  a URL/host taken unrestricted from third-party data).
 
-------------------------------------------------------------------------
+**assign_scores.R**
 
-# Domain Review
+* [x] reviewed
 
-Purpose: To ensure the code produces outputs, data, interfaces, or software that is
-biologically reasonable when compared to other similar information available.
+- How was the value of `.unreferenced_family_weight` chosen?
 
-### [x] Scientific Rigor: no new findings.
+- Referencing downstream packages (i.e. `TaxaAssign`) suggests that it might make more sense to combine.
 
-Read `TaxaLikely/CLAUDE.md` in full before this pass, per the task's own instruction, to
-calibrate against already-settled history -- this package has an unusually deep,
-real-data-validated session record (the `sqrt_mismatch` vs. `logit` transform choice,
-the `H1_Lookup$sigma_score` squaring bug, per-genus H2 delta/variance shrinkage, the
-evidence-ratio crossover gate, the Jeffreys-smoothing + interpolation fix for
-`Confusion_Risk_Curves`, the level-aware `calibrate_query_noise()` recalibration). Read
-`train.R`, `evaluate.R`, `calibrate.R`, `calibrate_query_noise.R`,
-`correct_training_bias.R`, `support_curves.R`, `score_collapse.R`, and
-`restore_hierarchy.R` closely, as the task asked, specifically looking for anything
-**not** already covered by that history. Spot-checked several roxygen claims against the
-actual code rather than trusting the docstring (`build_sequence_matrix()`'s `coverage`
-formula; `correct_training_bias()`'s `tau_used = 0` fallback arithmetic;
-`assign_scores()`'s H2/H3 congener-median anchoring; `unreferenced_candidates()`'s
-`score_original = NA` on added rows) -- all matched the code exactly. Found no new
-scientific-rigor defect. The one remaining documented-but-unfixed simplification (H3's
-delta is `H2$delta + 2.0` as a flat, non-genus-specific heuristic "one additional
-taxonomic step," explicitly flagged in the code's own comment as a possible future
-extension) is pre-existing, already disclosed, and not something this pass is treating
-as a new finding. None of the 9 fixes applied this session touch any statistical/domain
-logic -- all are cosmetic, refactoring, packaging, or debris-cleanup fixes with confirmed
-identical behavior (or, for finding 4, a preserved, parameterized behavioral difference).
+- How can one convert the absence of a mach score into a likelihood?
 
-### [x] Outputs: no new findings.
+- Line 91: `match_df` is not created here, example not runnable.
 
-No output-comparability issues found. `evaluate_likelihoods()`'s `raw_likelihood` vs.
-`score_likelihood` (ratio-normalized) distinction, and the `score_likelihood_cov`/
-`score_likelihood_evidence` parallel columns, are documented accurately and match their
-implementation (score-only sigma inflation for `_cov`, the closed-form crossover-gated
-rescale for `_evidence`) on direct reading.
+- Line 264: why is this not also `NA_real_`?
 
-### [x] Algorithms: no new findings; existing design choices are internally consistent.
+**build_sequence.R**
 
-Verified, by direct reading rather than assumption, that `score_transform` (`"logit"` vs.
-`"sqrt_mismatch"`) is threaded consistently end to end: `.prep_training_data()`,
-`train_likelihood_model()`'s H1/H2/H3 fitting, `.evaluate_one_query()`'s density
-evaluation, and `calibrate_query_noise()`'s residual computation all read
-`model_params$Score_Transform` (or receive it explicitly) rather than hardcoding
-`"logit"` anywhere in the inference path -- confirming the Session 158 fix is complete,
-not partially applied. Verified the Empirical-Bayes shrinkage weight `w = n/(n +
-prior_weight)` is applied with the same form and the same `prior_weight` source
-(`model_params$Stats$prior_weight`, not the true pooled count) everywhere it's used:
-H1 species means (`train.R`), H2 per-genus delta/variance (`train.R`), the
-`Confusion_Risk_Curves` per-genus/per-family rate curves (`support_curves.R`), and the
-Monte Carlo mean-uncertainty term (`evaluate.R`) -- consistent, not reinvented per
-call site. Verified the Jeffreys-smoothed (`rate_smooth`/`pooled_rate_smooth`) vs. raw
-(`rate`/`pooled_rate`) column split in `support_curves.R` is actually read by the two
-different consumers the code comments say it should be (`.lookup_confusion_risk_value()`
-reads the smoothed columns; `compute_rank_thresholds()`'s `.youden_best()` reads the raw
-`pooled_rate` columns) -- both correct per the file's own stated rationale for keeping
-them separate.
+* [x] reviewed
 
-------------------------------------------------------------------------
+- The function name suggests it returns a matrix but returns `data.frame`. This could be domain specific. If not, suggest renaming to something like `get_pairwise_match_scores()`.
 
-# File specific comments
+**build_site_reference.R**
 
-- `R/train.R` -- `.lintr`'s `object_name_linter` exclusion for this file has drifted
-  (lines 864/899/984/1000/1008 -> actual hits at 900/935/1075/1091/1099, then a further
-  +1 shift to 901/936/1076/1092/1100 once this session's own `line_length_linter` fix on
-  the same file added a line above them) -- **Fixed**, `.lintr` now reads
-  `c(901, 936, 1076, 1092, 1100)`. One `line_length_linter` hit at (original) line 714
-  (143 chars) -- **Fixed** via `paste0()` wrapping.
-- `R/evaluate.R` -- `brace_linter` hits at lines 632, 641, 650 (inconsistent
-  if/else bracing around the three `*_confusion_risk` assignments) and 651 (multi-line
-  body needs braces) -- **Fixed**, both-braces convention applied throughout.
-- `R/support_curves.R` -- `brace_linter` at line 256; `semicolon_linter` at line 335
-  (`x <- x[ok]; y <- y[ok]` inside `.interp()`) -- **Fixed**.
-- `R/build_sequence.R`, `R/trim_to_amplicon.R`, `R/read_crabs.R` -- local variable `df`
-  shadowed `stats::df()` (informational, harmless in practice) -- **Fixed**, renamed to
-  `ref_seqs`/`seq_df`/`crabs_df` respectively.
-- `R/coverage.R` -- `.audit_one_genus_reverse()`'s "2. Primary source" NCBI branch and
-  "3. Fallback" branch duplicated the same ~25-line species-enumeration logic --
-  **Fixed** via new `.ncbi_species_enumerate()`; see the Coding standards section above
-  for the real `warn_on_error` behavioral difference found and preserved between the two
-  original call sites.
-- `R/fetch.R` -- `.fetch_summaries_batched()`, `.fetch_taxonomy_map()`,
-  `.fetch_fasta_batched()`, `.fetch_locations_batched()` each hand-rolled an identical
-  3-attempt retry loop -- **Fixed** via new `.retry_fetch()`; the four loops were
-  confirmed truly identical (unlike the `coverage.R` case above), so no behavioral
-  parameterization was needed. (Note: this file's own `.lintr` `line_length_linter`
-  exclusion at line 1460 also drifted to 1469 as a side effect of this edit adding lines
-  -- updated in `.lintr` alongside the `train.R` fix, though not itself one of the 9
-  numbered findings.)
-- `R/interpret.R` -- `interpret_model()`'s per-species `dplyr::mutate()` block (around
-  the `species_thr <- model_params$H1_Lookup |> dplyr::mutate(...)` call) relied on
-  tidy-eval data-mask precedence to correctly shadow the function's own earlier
-  `mu_score`/`mu_gap` scalars with `H1_Lookup`'s per-species columns of the same name --
-  correct at the time, fragile to a future column rename -- **Fixed** via renaming the
-  outer scalars to `global_mu_score`/`global_mu_gap`; the `mutate()` block's own bare
-  references are now unambiguous.
-- `DESCRIPTION` -- no `Depends: R (>= 4.1.0)` field despite `R CMD build` auto-detecting
-  and requiring one (pipe `|>`/lambda `\(...)` syntax used in 7 files) -- **Fixed**.
-- `inst/TaxaLikely_workflow.R` (the explicitly-superseded monolithic workflow, "retained
-  for reference" per `CLAUDE.md`) -- line 252 hardcoded a personal absolute path
-  (`/Users/lafferty/My Drive/Rscripts/projects/TaxaID/TaxaLikely/inst/real_likelihoods.rds`)
-  instead of using the `real_matrix_path`-style `system.file()` pattern the same script
-  uses a few lines earlier for the companion `.rds` -- **Fixed**, now mirrors that
-  existing pattern exactly (`real_likelihoods_path <- file.path(system.file("", package =
-  "TaxaLikely"), "real_likelihoods.rds")`).
-- `inst/real_matrix.rds` (9.5 KB) / `inst/real_likelihoods.rds` (972 KB) -- real cached
-  output of the superseded `inst/TaxaLikely_workflow.R`, both already excluded from the
-  built package via `.Rbuildignore`, so no CRAN/build impact -- **Deleted**. Confirmed via
-  a whole-package and whole-monorepo grep before deleting: no `R/`, `tests/`, or other
-  TaxaLikely file reads either path; two references exist in *other* packages'
-  workflow/reference scripts (`TaxaAssign/inst/TaxaAssign_bayesian_workflow.R`, an
-  interactive `file.choose()` call, not a hard path dependency; `TaxaAssign/inst/
-  Wrapper_full_workflow.R`, a hardcoded path to `real_matrix.rds`), both outside
-  TaxaLikely and outside anything `devtools::check()`/`test()` exercises. Re-running
-  `inst/TaxaLikely_workflow.R`'s Stage B end to end (network + DECIPHER access required)
-  will regenerate both caches from scratch; flagged for the author, since
-  `TaxaAssign/inst/Wrapper_full_workflow.R` would need that regeneration to run again
-  as-is.
+* [x] reviewed
 
-------------------------------------------------------------------------
+- Line 19: the `DECIPHER` package's functionality seems somewhat critical even though it's only used in this function.
 
-# Summary for triage
+- Line 25: this suggests that it might be best to group this package and `TaxaAssign`.
 
-| # | Finding | Severity | File(s) / line(s) | Status |
-|---|---|---|---|---|
-| 1 | `.lintr` `R/train.R` `object_name_linter` exclusion line numbers drifted | Low | `.lintr`; `R/train.R:901,936,1076,1092,1100` | **Fixed** -- updated to current values, re-verified after finding 2's own edit shifted them again |
-| 2 | 6 residual cosmetic `R/` lints (4 brace_linter, 1 semicolon_linter, 1 line_length_linter) | Low | `R/evaluate.R:632,641,650,651`; `R/support_curves.R:256,335`; `R/train.R:714` | **Fixed** -- mechanical reformatting, 0 `R/` lints remain |
-| 3 | `df` used as a local variable name (shadows `stats::df()`) | Low, informational | `R/build_sequence.R`, `R/trim_to_amplicon.R`, `R/read_crabs.R` | **Fixed** -- renamed per-file (`ref_seqs`/`seq_df`/`crabs_df`) |
-| 4 | Duplicated ~25-line NCBI species-enumeration block (primary vs. fallback branch) | Low-Medium | `R/coverage.R`, `.audit_one_genus_reverse()` | **Fixed** -- extracted `.ncbi_species_enumerate()`; found and preserved a real `warn_on_error` behavioral difference between the two original blocks (see above) |
-| 5 | 4 duplicated retry-loop implementations | Low, informational | `R/fetch.R`, `.fetch_summaries_batched()`/`.fetch_taxonomy_map()`/`.fetch_fasta_batched()`/`.fetch_locations_batched()` | **Fixed** -- extracted `.retry_fetch()`; the four loops were confirmed genuinely identical, no parameterization needed |
-| 6 | `interpret_model()` relies on tidy-eval data-mask precedence to reuse `mu_score`/`mu_gap` names for two different things (global scalar vs. per-species column) | Low | `R/interpret.R`, `interpret_model()`'s `species_thr <- ... \|> dplyr::mutate(...)` block | **Fixed** -- outer scalars renamed to `global_mu_score`/`global_mu_gap`; `H1_Lookup`'s own columns and the `mutate()` block left untouched |
-| 7 | No `Depends: R (>= 4.1.0)` in `DESCRIPTION` despite `\|>`/`\(...)` usage across 7 files | Low-Medium | `DESCRIPTION` | **Fixed** -- field added; `R CMD build` warning confirmed gone |
-| 8 | `inst/TaxaLikely_workflow.R` (superseded, "retained for reference") hardcoded a personal absolute path at line 252 | Low, informational | `inst/TaxaLikely_workflow.R:252` | **Fixed** -- now uses the `system.file()`-based pattern already used a few lines above |
-| 9 | Two real cached `.rds` files in `inst/` (9.5 KB + 972 KB), already `.Rbuildignore`d, tied to the superseded workflow script above | Low, informational | `inst/real_matrix.rds`, `inst/real_likelihoods.rds` | **Deleted** -- confirmed unreferenced by any TaxaLikely test/source file; two references in other packages' own workflow scripts flagged, not touched |
-| -- | Vulnerabilities | None found | -- | (c) informational only, re-confirmed |
-| -- | Domain review (Scientific Rigor / Outputs / Algorithms) | None found -- no new findings beyond the extensively-documented existing history | -- | (c) informational only, re-confirmed |
-| -- | `devtools::test()` | 925 expectations, 0 failures, 0 errors, 9 expected warnings, 1 environment skip (post-fix; unchanged by this session's edits) | -- | (c) informational only |
-| -- | `devtools::check()` | 0 errors / 0 warnings / 0 notes (Status: OK; post-fix, no more `R CMD build` dependency warning) | -- | (c) informational only |
+**calibrate.R**
+
+* [x] reviewed
+
+- Could `.detect_finest_rank_col` be used elsewhere? It seems familiar...
+
+- Line 29: if no values from `paired` are in `std`, how can it be ensured that the last value is the finest rank?
+
+- Line 132: it does not show how `reference_df` in the example is derived.
+
+- Line 216: how is 10 categorical coverage?
+
+**clean.R**
+
+* [x] reviewed
+
+- Should this be in TaxaMatch?
+
+- it does not show how `reference_df` in the example is derived.
+
+- suggest renaming file to `remove_flagged_references.R`.
+
+**compute_likelihoods.R**
+
+* [x] reviewed
+
+- Line 52: `match_df` is not created here, example not runnable.
+
+- Line 96: this may be a comment for `evaluate_likelihoods`, but why return an empty `data.frame` for `unresolved`? Same comment applies line 255.
+
+**correct_training_bias.R**
+
+* [x] reviewed
+
+- Suggest removing session references, and any other stream-of-consciousness records in the documentation.
+
+- I did not review Menon et al., assuming methods were faithfully reproduced and that those methods are appropriate for this application.
+
+- Line 182: suggest enforcing `count_col` to be a consistent name.
+
+- If `tau` is generally zero, it seems like this function doesn't change anything. If that is the default, should it be included in the package?
+
+**coverage.R**
+
+* [x] reviewed
+
+- Is there a similar function to `.first_two_words` in the other packages? It's very familiar but a search of this package didn't turn anything up.
+
+- Suggest checking that `len_range` in `.coverage_checkpoint_path` is a length-two integer vector. 
+
+- Line 85: `reference_df` is not created or an exported dataset, example not runnable.
+
+- why are there `audit_barcode_coverage`, `.audit_barcode_coverage_new_`, *and* `audit_barcode_coverage_gbif`? These could be collapsed into one, as `audit_barcode_coverage_gbif` and `audit_barcode_coverage` both call `.audit_barcode_coverage_new_` without any changes. The only real function here is `.audit_barcode_coverage_new_`.
+
+- Any "draft" functions should be removed or finalized.
+
+- I don't have the domain knowledge, what is "reverse" referencing here?
+
+- Lines 754-755: I think it would make more sense to put `is_plausible_binomial` as the outside function here as other functions change formatting. Also, are multiple calls to `trimws` needed here?
+
+- Line 777: presumably there is a reason 1985 is used here?
+
+- Line 903: is `audit_acoustic_coverage` really designed for camera trap data? If so suggest renaming.
+
+- Other than some input checks, does `audit_acoustic_coverage` improve significantly over an `%in%` statement? Perhaps specific output is needed elsewhere, but ensure it could not be simplified or removed.
+
+- Line 1098: Here as elsewhere, example is not runnable.
+
+- Line 1298: why not make this conditionally, as in only when needed?
+
+- Line 1394: `.inat_species_info` is not an exported function, so this warning message may be confusing.
+
+**evaluate.R**
+
+* [x] reviewed
+
+- Lines 122-125: use brackets on multiline `if`.
+
+- As usual, suggest removing session notes.
+
+- I have not evaluated all the statistical algorithms in this script, I am assuming they are correct.
+
+- Line 658: if I understand this comment correctly, this is a single row `data.frame`- so why summarize?
+
+- Line 1188: example not runnable.
+
+- Line 1243: This vector of ranks is repeated many times, could `.crabs_std_hierarchy` be defined once and used throughout? It does not have all the ranks from `canonical` here, but that seems like a solvable problem. Or perhaps shoule `TaxaTools::extended_ranks` be used?
+
+- Line 1515: at this point it's probably fine (input data has been tested), but is the first word always genus here?
+
+- Why is an empty unresolved `data.frame` returned?
+
+**expand_unreferenced.R**
+
+* [x] reviewed
+
+- Line 109: results not loadable or created, example not runnable.
+
+**fetch.R**
+
+* [x] reviewed
+
+- Is there a reason `barcode_term` isn't required to be one of the `gene_map` values? Same for `primer_to_locus`.
+
+- Lines 112-113: Is there a logic behind the default date window? Presumably it is designed to capture all dates. Dates shown in documentation for `min_date` and `max_date` (lines 473, 475) differ from those on lines 112:113.
+
+- `rentrez::entrez_summary()` is used in multiple places in this package and in `TaxaTools`. This isn't a problem necessarily, but is there any way these API queries could be combined? To put it another way, is there unnecessary repitition going on here?
+
+- `.parse_lat_lon()` uses position for extracting values. This may be okay if GenBank *always* puts latitude first, but it is generally safer to extract by reference. Suggest adding a test for plausible values, possibly reuse elsewhere where coordinates are parsed?
+
+- For the `include_location` argument, is there a reason not to just query it once and include location optionally?
+
+- Loop starting at line 802 returns the warning "fetch_ncbi_reference_sequences: 'Fundulus' failed ('is_plausible_binomial' is not an exported object from 'namespace:TaxaTools'). Skipping this taxon.". Based on the commit history, this is because TaxaTools has been updated since the version installed on this machine, just referencing here for completeness.
+
+- Line 1239: is there a reason this shouldn't take a vector? Consider removing `length(x) != 1L` and first index on line 1241, possibly other changes to make this vectorized.
+
+**infer_predicted.R**
+
+* [x] reviewed
+
+- Should this be in TaxaMatch?
+
+- Suggest requiring `accession_col` to default to "accession" only. "acc" seems vague.
+
+**interpret.R**
+
+* [x] reviewed
+
+- Comments about  example not runnable applies here too.
+
+- Line 77: oddly placed space.
+
+- Is there a way to iterate over hypotheses so tables aren't created by position? Everything looks right but that would be safer.
+
+
+**normalize.R**
+
+* [x] reviewed
+
+- Are line 24 and 31-32 redundant?
+
+**read_crabs.R**
+
+* [x] reviewed
+
+- Line 86: `file` is an existing function. Suggest renaming to `crabs_file` or similar. Also `df` is used to name the `data.frame`, the same comment applies (`df` is an existing function).
+
+**report_likelihood.R**
+
+* [x] reviewed
+
+- Comments about  example not runnable applies here too.
+
+**score_collapse.R**
+
+* [x] reviewed
+
+- Line 194: this markdown is not in this package.
+
+- Line 341: does `taxaexpect_priors` depend on `TaxaExpect`?
+
+- Unless relevant suggest removing revision dates and references to sessions. 
+
+- Line 490: Comments about  example not runnable applies here too.
+
+- Line 915-916: multiline `if` without brackets.
+
+**subset_db.R**
+
+* [x] reviewed
+
+- Line 32: if there are potential licensing issues, suggest removing this option until confirmed.
+
+- Line 250: is this function just grabbing stuff from the global environment? Should this use arguments or something like `get("x", envir = globalenv())` for clarity?
+
+- Line 261: `line` is also an existing R function.
+
+**TaxaLikely-package.R**
+
+* [x] reviewed
+
+**train.R**
+
+* [x] reviewed
+
+- The example doesn't show how `reference_df` is created.
+
+- Line 38: see comment on `build_sequence_matrix()` function name in that functions file specific comments. 
+
+- Line 112: this comment suggests that `0.98` should be a mutable value but it does not appear to be in this case.
+
+- Line 152: what are the implications if `rank_code_a` refers to different ranks across datasets? I suppose there's no issue if models are fit within datasets.
+
+- Line 179: if `N_Obs` is not currently used, suggest removing.
+
+- Line 202: `score_transform` is not listed in roxygen params. 
+
+- Why is `.generalize_ranks` internal to `.prep_training_data`? Not necessarily a problem but a noticeable design choice.
+
+- Line 262: if `score_transform` isn't logit then `noise_floor_logit` is named incorrectly. Ditto line 266.
+
+- Line 299: I thought `rank_code_a` was the finest taxonomy rank, but that it could be anything. So assuming `rank_code == b` is genus is not necessarily a safe assumption, correct?
+
+- Line 707: My first thought reading this on pseudo-data anchoring was why not just use a fully Bayesian model with an actual prior that can be explicitly defined and understood? Even under those circumstances, the use of "tight" priors (technically they are all informative) requires strong justification. Perhaps that exists here, but I don't have the domain knowledge to evaluate it.
+
+**tansform.R**
+
+* [x] reviewed
+
+- Presumably there's some significance for a gap between 99.3% and 50%, but why were these thresholds chosen?
+
+**trim_to_amplicon.R**
+
+* [x] reviewed
+
+- Line 242: Would this be better if it searched for characters that *aren't* IUPAC?
+
+- Line 212: this section of the message still prints if the number of sequences that could not be trimmed is zero. Suggest only printing the latter half if > 0.
+
+**unreferenced_candidates.R**
+
+* [x] reviewed
+
+- Line 44: can `include_unreferenced_family` be forced to `FALSE` when needed?
+
+- Comments about  example not runnable applies here too.
+
+**write_fasta.R**
+
+* [x] reviewed

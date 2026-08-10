@@ -48,6 +48,10 @@ hypothesis suppressed via \code{\link[=apply_coverage_constraints]{apply_coverag
 Requires an internet connection and the \code{rentrez} package.  NCBI
 enforces rate limits (3 req/s without an API key; 10 req/s with one).
 Wrap the call in \code{tryCatch()} for batch processing of large databases.
+
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{reference_df} is derived), see \code{inst/review_function_inputs.R}
+Section 7 in the package source.
 }
 \section{Scope}{
 

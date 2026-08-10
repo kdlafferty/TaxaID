@@ -103,6 +103,10 @@ utils::globalVariables(c("hypothesis_type"))
 #'   [restore_suppressed_candidates()] for the `check_regional_overlap`
 #'   mechanism that produces an observation-scoped `unreferenced_df` addition
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `result`/`unreferenced_species_result` are derived), see
+#'   `inst/review_function_inputs.R` Section 7 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' expanded <- expand_unreferenced_hypotheses(

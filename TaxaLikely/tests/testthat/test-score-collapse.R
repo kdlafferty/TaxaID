@@ -458,6 +458,24 @@ test_that("restore_suppressed_candidates no-score path creates synthetic scores"
   expect_true(all(abs(result$score_original[result$is_restored] - 0.995) < 1e-9))
 })
 
+test_that("restore_suppressed_candidates no-score path verbose message has no split-string sprintf warning", {
+  # Regression test for a real split-string sprintf() bug (see review response
+  # for score_collapse.R): the verbose message previously dropped its whole
+  # "(H1 = 1.0, restored = ...)" clause and raised an "arguments not used by
+  # format" warning on every verbose=TRUE call through this path.
+  m <- make_match()
+  m$score_original <- NULL
+  call_fn <- function() {
+    restore_suppressed_candidates(
+      m, make_ref(),
+      rank_system = c("family", "genus", "species"),
+      delta = 0.5, verbose = TRUE
+    )
+  }
+  expect_message(call_fn(), "H1 = 1.0, restored = 0.9950")
+  expect_no_warning(suppressMessages(call_fn()))
+})
+
 # ---- .check_regional_overlap() (internal, Session 159) -----------------------
 # Synthetic "genome" built from two clearly distinct, non-repetitive 60bp
 # regions separated by an 80bp spacer, so local alignment behavior is
@@ -992,6 +1010,57 @@ test_that("restore_suppressed_candidates(check_regional_overlap = FALSE) restore
   expect_equal(nrow(result), 3L)
   expect_true(any(result$is_restored))
   expect_null(attr(result, "regional_unreferenced"))
+})
+
+# ---- restoration_level / restoration_source_accession (2026-08-08) ----------
+# Lets a caller screen restored rows for reference-accession quality
+# (e.g. TaxaMatch::evaluate_reference_accessions()) wherever that's
+# actually possible -- Level 1 with exactly one contributing candidate
+# accession only. make_match()/make_ref() have no `accession` column by
+# default, so these tests add one explicitly to exercise Level 1 at all
+# (without it, anchor_accession is NA and Level 1 never fires).
+
+test_that("restore_suppressed_candidates: Level 1 with one contributing accession sets restoration_source_accession", {
+  ref <- make_ref(species = c("simplicidens", "nigricans"))
+  m <- make_match(species = "simplicidens")
+  m$accession <- "ACC_simplicidens"
+
+  result <- restore_suppressed_candidates(
+    m, ref,
+    rank_system = c("family", "genus", "species"),
+    seq_matrix  = make_seq_matrix_for_ref(ref),
+    verbose     = FALSE
+  )
+  restored <- result[result$is_restored, , drop = FALSE]
+  expect_equal(nrow(restored), 1L)
+  expect_equal(restored$species, "nigricans")
+  expect_equal(restored$restoration_level, 1L)
+  expect_equal(restored$restoration_source_accession, "ACC_nigricans")
+  # Original (non-restored) row gets NA for both new columns.
+  orig <- result[!result$is_restored, , drop = FALSE]
+  expect_true(is.na(orig$restoration_level))
+  expect_true(is.na(orig$restoration_source_accession))
+})
+
+test_that("restore_suppressed_candidates: Level 1 with >1 contributing accession leaves restoration_source_accession NA", {
+  ref <- make_ref(species = c("simplicidens", "nigricans"))
+  ref <- rbind(ref, data.frame(
+    family = "Kyphosidae", genus = "Girella", species = "nigricans",
+    composite_id = "ACC_nigricans_2", stringsAsFactors = FALSE
+  ))
+  m <- make_match(species = "simplicidens")
+  m$accession <- "ACC_simplicidens"
+
+  result <- restore_suppressed_candidates(
+    m, ref,
+    rank_system = c("family", "genus", "species"),
+    seq_matrix  = make_seq_matrix_for_ref(ref),
+    verbose     = FALSE
+  )
+  restored <- result[result$is_restored, , drop = FALSE]
+  expect_equal(nrow(restored), 1L)
+  expect_equal(restored$restoration_level, 1L)
+  expect_true(is.na(restored$restoration_source_accession))
 })
 
 # ---- regional_unreferenced attribute (Session 159 extension) ----------------

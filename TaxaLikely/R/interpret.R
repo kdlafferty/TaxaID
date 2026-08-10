@@ -35,6 +35,10 @@ utils::globalVariables(c(
 #'
 #' @seealso [train_likelihood_model()], [evaluate_likelihoods()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `ref_matrix` is derived), see `inst/review_function_inputs.R`
+#'   Section 11 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' model <- train_likelihood_model(ref_matrix,
@@ -74,7 +78,6 @@ interpret_model <- function(model_params, print_report = TRUE) {
 
   # ---- H2 / H3 expected gaps ------------------------------------------------
   # H2 and H3 distributions have expected gap = 0 (logit scale): when the
-
   # true species/genus is absent, no candidate has a clear advantage.
   # H1 gap comes from the global mean gap.
   h2_runner_pct <- round(.inv_logit(h2_logit - 0) * 100, 2)  # gap_logit = 0
@@ -83,12 +86,21 @@ interpret_model <- function(model_params, print_report = TRUE) {
   h3_gap_pct    <- round(h3_pct - h3_runner_pct, 2)
 
   # ---- Summary tables -------------------------------------------------------
-  hyp_baselines <- data.frame(
-    hypothesis         = c("H1: known species", "H2: unreferenced species", "H3: unreferenced genus"),
-    expected_match_pct = c(mean_score_pct, h2_pct, h3_pct),
-    expected_gap_pct   = c(effective_gap_pct, h2_gap_pct, h3_gap_pct),
-    stringsAsFactors   = FALSE
+  # Built one row at a time (hypothesis label alongside its own values)
+  # rather than three parallel c() vectors assembled by position -- keeps
+  # each hypothesis's label and statistics from being able to silently
+  # drift out of alignment if the vectors are ever edited independently.
+  hyp_rows <- list(
+    list(hypothesis = "H1: known species",
+         expected_match_pct = mean_score_pct, expected_gap_pct = effective_gap_pct),
+    list(hypothesis = "H2: unreferenced species",
+         expected_match_pct = h2_pct,         expected_gap_pct = h2_gap_pct),
+    list(hypothesis = "H3: unreferenced genus",
+         expected_match_pct = h3_pct,         expected_gap_pct = h3_gap_pct)
   )
+  hyp_baselines <- do.call(rbind, lapply(hyp_rows, as.data.frame,
+                                          stringsAsFactors = FALSE))
+  row.names(hyp_baselines) <- NULL
 
   global_h1 <- data.frame(
     metric         = c("mean match score", "mean runner-up gap", "score tolerance (SD)"),

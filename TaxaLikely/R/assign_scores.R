@@ -7,8 +7,13 @@ utils::globalVariables(c("score_norm", "score_softmax",
                           "score_likelihood_sd", "score_method"))
 
 # Fixed likelihood weight for unreferenced_family rows.
-# Analogous to the unknown_lik_weight in assign_taxa_llm() (0.05 * max exp-score,
-# which converges to ~0.05 at typical max-normalized scale).
+# Not fit from data -- a deliberately conservative, low-but-nonzero nominal
+# constant, chosen to match TaxaAssign::assign_taxa_llm()'s analogous
+# unknown_lik_weight parameter (also 0.05) so an unreferenced_family hypothesis
+# gets comparable, non-degenerate treatment whether it enters the posterior via
+# the scored (TaxaLikely) or LLM (TaxaAssign) pathway. Kept as one shared
+# nominal value across the ecosystem rather than independently tuned per
+# package.
 .unreferenced_family_weight <- 0.05
 
 #' Assign score_likelihood values to a hypotheses data frame
@@ -84,6 +89,10 @@ utils::globalVariables(c("score_norm", "score_softmax",
 #'
 #' @seealso [unreferenced_candidates()], [model_likelihoods()],
 #'   [compute_likelihoods()]
+#'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including where
+#'   `match_df`/`hyp_df` come from), see `inst/review_function_inputs.R`
+#'   Section 3 in the package source.
 #'
 #' @examples
 #' \dontrun{
@@ -258,10 +267,12 @@ assign_scores <- function(hypotheses_df,
     h4_rows <- obs_rows[h4_mask, , drop = FALSE]
 
     if (nrow(h1_rows) == 0L) {
-      # No H1 -- pass through unchanged (will have NA score_likelihood)
+      # No H1 -- pass through unchanged (will have NA score_likelihood).
+      # sd is NA here too, not 0: 0 would claim "a known point estimate with
+      # zero uncertainty," but there is no estimate at all in this branch.
       obs_rows$score_likelihood      <- NA_real_
       obs_rows$score_likelihood_mean <- NA_real_
-      obs_rows$score_likelihood_sd   <- 0.0
+      obs_rows$score_likelihood_sd   <- NA_real_
       obs_rows$score_method          <- score_type
       result_list[[oi]] <- obs_rows
       next

@@ -28,8 +28,10 @@
     lo <- bounds[1]
     hi <- bounds[2]
   } else {
+    # No length(non_na) == 0L guard needed here: the all(is.na(x)) check
+    # above already returned in that case, so at least one non-NA value is
+    # guaranteed to exist by the time this branch runs.
     non_na <- x[!is.na(x)]
-    if (length(non_na) == 0L) return(x)
     lo <- 0
     hi <- if (max(non_na) > 1) 100 else 1
   }

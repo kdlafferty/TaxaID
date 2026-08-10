@@ -4,3 +4,8 @@
 .httr-oauth
 .DS_Store
 .quarto
+
+# Superseded DECIPHER-based reference-audit approach (2026-08-07) -- kept locally
+# for reference during the BLAST-based redesign, deliberately not committed.
+# See ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md.
+archive_decipher_reference_audit/

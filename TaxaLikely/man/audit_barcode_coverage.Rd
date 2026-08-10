@@ -194,11 +194,17 @@ accessions) are classified separately; see \code{exclude_predicted}.
 \note{
 Requires an internet connection and the \code{rentrez} package.  NCBI
 enforces rate limits (3 req/s without an API key; 10 req/s with one).
+
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{match_obj} is derived), see \code{inst/review_function_inputs.R} Section 7
+in the package source.
 }
 \examples{
 \dontrun{
+# match_obj is a match object (e.g. TaxaMatch::standardize_match_data()
+# output), NOT a length-curated reference_df -- see "Common mistake" above.
 cov <- audit_barcode_coverage(
-  reference_df,
+  match_obj,
   barcode_term = "MiFishU",
   target_rank  = "genus",
   max_date     = "2024/06/01"

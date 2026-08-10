@@ -1,3 +1,29 @@
+# ---- .first_two_words / .coverage_checkpoint_path (internal helpers) --------
+
+test_that(".first_two_words: truncates to Genus + epithet", {
+  expect_equal(
+    .first_two_words(c("Homo sapiens Linnaeus, 1758", "Cottus asper", "Genus")),
+    c("Homo sapiens", "Cottus asper", "Genus")
+  )
+})
+
+test_that(".coverage_checkpoint_path: errors on malformed len_range instead of silently recycling to NA", {
+  expect_error(
+    .coverage_checkpoint_path("Cottus", "12S", len_range = 150L,
+                              max_date = NULL, target_rank = "genus",
+                              cache_dir = tempdir())
+  )
+})
+
+test_that(".coverage_checkpoint_path: builds a deterministic path from valid inputs", {
+  p <- .coverage_checkpoint_path("Cottus", "12S", len_range = c(100L, 200L),
+                                  max_date = "2024/01/01", target_rank = "genus",
+                                  cache_dir = tempdir())
+  expect_true(is.character(p))
+  expect_true(grepl("^coverage_genus_12S_", basename(p)))
+  expect_true(grepl("100_200", p))
+})
+
 # ---- audit_reference_coverage -----------------------------------------------
 # Network tests are guarded; input validation tests are offline.
 

@@ -83,6 +83,12 @@ primers trimmed off at deposition, so attempting primer matching on them
 would often fail even though the sequence is perfectly usable). Only
 sequences longer than \code{max_len} are searched for primer sites.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration using a
+synthetic (not live-fetched) over-length sequence, see
+\code{tests/testthat/test-trim-to-amplicon.R}'s \code{.build_genome()} fixture in
+the package source.
+}
 \section{Failure mode}{
 
 When a primer site cannot be found within tolerance on either strand, or

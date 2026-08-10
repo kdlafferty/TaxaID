@@ -5,7 +5,7 @@
 \title{Read a CRABS-formatted reference database}
 \usage{
 read_crabs_output(
-  file,
+  crabs_file,
   rank_system = NULL,
   max_n_bases = NULL,
   require_species = TRUE,
@@ -13,7 +13,7 @@ read_crabs_output(
 )
 }
 \arguments{
-\item{file}{Character scalar. Path to the CRABS internal-format file.}
+\item{crabs_file}{Character scalar. Path to the CRABS internal-format file.}
 
 \item{rank_system}{Character vector of ranks to include, \strong{coarse to
 fine} (e.g., \code{c("family", "genus", "species")}). Must be a subset
@@ -56,6 +56,10 @@ widely-used eDNA reference database builder. CRABS outputs a single
 tab-delimited file with no header row and 11 fixed columns, with missing
 ranks represented as the literal string \code{"NA"}.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration, see
+\code{inst/review_function_inputs.R} Section 1 in the package source.
+}
 \section{CRABS column format}{
 
 CRABS internal format is a headerless tab-delimited file with exactly 11
@@ -84,7 +88,7 @@ the likelihood model.
 \examples{
 \dontrun{
 ref <- read_crabs_output(
-  file        = "mifish_12S_crabs.tsv",
+  crabs_file  = "mifish_12S_crabs.tsv",
   rank_system = c("family", "genus", "species"),
   max_n_bases = 250,
   dereplicate = TRUE

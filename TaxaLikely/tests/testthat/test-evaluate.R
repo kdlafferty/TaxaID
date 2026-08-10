@@ -203,6 +203,31 @@ test_that(".evaluate_one_query: score-only alpha filter rejects extreme outlier,
   expect_true(all(spec_far$score_likelihood == 0))
 })
 
+test_that(".evaluate_one_query: alpha filter is one-sided -- an anomalously HIGH score is never rejected", {
+  # Statistical-critique fix: the alpha gate used to be a two-sided chi-sq
+  # test, which could hard-zero H1 for a query anomalously CLOSE to a perfect
+  # match -- incoherent, since H2/H3's means sit below H1's by construction,
+  # so a high score fits every alternative hypothesis strictly worse, not
+  # better. Verify the high side is never rejected regardless of how far
+  # above mu_score the query sits, while the low side (already covered above)
+  # is unaffected.
+  # Fixture: mu_score=4.5, H1_Sigma[1,1]=2.0 (sd ~= 1.414).
+  # Score 99.999 -> logit(0.99999) ~= 11.51 -> ~4.96 SD ABOVE mu_score.
+  # Old two-sided test: p ~= 7e-7 << 0.001 -> would have been rejected.
+  # New one-sided (low-side-only) test: p_val_low_side = pnorm(4.96) ~= 1 -> retained.
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  df_high <- .make_match_df()
+  df_high$score <- c(99.999, 80.0, 60.0)
+  out_high <- TaxaLikely:::.evaluate_one_query(df_high, params,
+                                                c("family", "genus", "species"),
+                                                ratio_threshold = 0, alpha = 0.001)
+  spec_high <- out_high[out_high$hypothesis_type == "specific_candidate" &
+                           out_high$taxon_name == "Hybognathus nuchalis", ]
+  expect_true(nrow(spec_high) > 0L)
+  expect_true(any(spec_high$score_likelihood > 0))
+})
+
 test_that(".evaluate_one_query: alpha filter uses score only, not gap (small-gap candidate retained)", {
   # A legitimate H1 candidate may have a tiny gap (confusable congener present) but a
   # reasonable score. The outlier filter must NOT reject it based on the gap -- only the
@@ -284,6 +309,34 @@ test_that("evaluate_likelihoods: min_coverage works (no error) on a sqrt_mismatc
   df$coverage <- 0.9
   expect_no_error(
     evaluate_likelihoods(df, params, c("family", "genus", "species"), min_coverage = 0.5)
+  )
+})
+
+test_that("evaluate_likelihoods: warns (not silent) when Score_Transform is absent from model_params", {
+  # Statistical-critique fix: silently defaulting an absent Score_Transform to
+  # "logit" is exactly the mechanism that let a stale/orphaned model object
+  # (no Score_Transform field at all, from before Session 158) stay dangerous
+  # with no signal to the caller. Now warns instead.
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()  # Score_Transform absent
+  df <- .make_match_df()
+  expect_warning(
+    evaluate_likelihoods(df, params, c("family", "genus", "species")),
+    "Score_Transform"
+  )
+})
+
+test_that("evaluate_likelihoods: no Score_Transform warning when it is explicitly set", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  params$Score_Transform <- "logit"
+  df <- .make_match_df()
+  expect_no_warning(
+    evaluate_likelihoods(df, params, c("family", "genus", "species"))
+  )
+  params$Score_Transform <- "sqrt_mismatch"
+  expect_no_warning(
+    evaluate_likelihoods(df, params, c("family", "genus", "species"))
   )
 })
 

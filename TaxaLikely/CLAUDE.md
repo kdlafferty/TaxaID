@@ -1,6 +1,505 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-30 (Sonnet 5 -- full code + domain review against `inst/Code and
+# Last updated: 2026-08-08 (Sonnet 5 -- first HUMAN-authored code + domain review response
+# (Micah Wright, not Claude -- this replaces the prior, Claude-authored review's response
+# doc entirely; see `inst/taxalikely_review.Rmd`/`inst/taxalikely_review_response.md` for the
+# full record). Walked every checklist item and every one of ~24 files' worth of comments.
+# 17 real bugs fixed (all input-validation/messaging/documentation/dead-code/naming -- no
+# statistical formula touched): `assign_scores()`'s no-H1 branch reported `score_likelihood_sd
+# = 0` instead of `NA` (claimed "zero uncertainty" for an estimate that doesn't exist);
+# `.detect_finest_rank_col()` (calibrate.R) could silently guess a wrong finest rank instead
+# of declining; a genuine split-string `sprintf()` bug in `restore_suppressed_candidates()`'s
+# no-score verbose message (this project's own documented recurring footgun -- silently
+# dropped half the message, raised a spurious warning); `trim_to_amplicon()`'s verbose summary
+# printed "0 could not be trimmed" noise even on full success; `flag_reference_errors()`'s
+# `0.98` singleton-match threshold was hardcoded with a comment suggesting it be adjustable
+# but no actual parameter -- now a real, additive `singleton_match_threshold` arg (threaded
+# through `train_likelihood_model()` too); `.parse_lat_lon()` had no coordinate-plausibility
+# guard; an unexplained `1985` date-floor literal in coverage.R, inconsistent with this
+# ecosystem's own `"1900/01/01"` sentinel convention (fetch.R); `.inat_species_info()`'s
+# httr2-missing warning self-identified by an unexported internal name a user can't look up;
+# plus real `file`/`line`/`df` base-function-shadowing fixes (`read_crabs.R`'s `file` ->
+# `crabs_file`, an EXPORTED signature change -- propagated to the one real cross-package
+# caller, `TaxaWizard/inst/graph/snippets/local_fasta_to_refs.R`, and its metadata entry;
+# `subset_db.R`'s `line` -> `fasta_line`). Dead code removed: `audit_barcode_coverage_gbif()`
+# (confirmed via full monorepo grep + NAMESPACE: unexported, untested, zero real callers --
+# a genuine abandoned "DRAFT" function, not just a stylistic duplicate of
+# `.audit_barcode_coverage_new_()` as the reviewer described it) and the GBIF-only code path
+# it alone used; `rgbif` dropped from Suggests (now genuinely unused). `clean.R` renamed
+# `remove_flagged_references.R` (file only, zero functional change, `git mv`'d to preserve
+# history). Several real, substantive statistical/design questions answered in full rather
+# than deflected -- all now recorded in the touched functions' own roxygen so they don't need
+# re-deriving next time someone asks: `transform.R`'s 99.3%/50% gap-ceiling thresholds
+# (verified by direct computation that `5.0` is the actually-chosen round log-odds cap and
+# `99.3% = plogis(5)` is derived FROM it, not independently chosen); `train.R`'s pseudo-data
+# anchoring answered as a real Bayesian mechanism (the standard prior-as-pseudo-observations
+# construction for conjugate Normal estimation, mathematically identical to an explicit
+# `Normal(target, sigma^2/n0)` prior), not a workaround avoiding one, and confirmed
+# deliberately NOT tight (capped at 10% of real H1 rows); `train.R`'s `rank_code_b`-as-genus
+# assumption confirmed real but positional/unenforced (documented, not runtime-validated, by
+# design); ~15 new `@note` pointers added to `inst/review_function_inputs.R`'s already-
+# existing runnable sections for flagged non-runnable `@examples` blocks, plus 2 real doc bugs
+# fixed outright (`audit_barcode_coverage()`'s own example contradicted its own "Common
+# mistake" warning; `flag_reference_errors()`'s example referenced a nonexistent
+# `flagged$flag` column). `.lintr`'s `R/train.R`/`R/fetch.R` exclusion line numbers
+# re-synchronized (same drift class the prior Claude review's response doc already fixed
+# once); one new legitimate exclusion added (`subset_db.R`'s documented closure-mutation
+# `<<-`). ~15 new regression tests added across 6 test files, all passing.
+#
+# Note on a test-count discrepancy found while reconciling counts, resolved (NOT data loss,
+# NOT part of the human review): the "Reference database auditing (Module B-QC2)" module
+# documented below (2026-08-04 through 2026-08-06 entries -- `estimate_reference_scope()`/
+# `audit_reference_database()`/`classify_reference_accessions()`/`repair_thin_evidence()`/
+# `.compute_hierarchy_congruence()`) is absent from `R/` and has no test files in `tests/`.
+# **This is a real, already-completed, already-documented archival, not a loss**: per
+# `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md`, the same 2026-08-06/07
+# design session that built this module also found it has a real false-positive failure mode
+# (15 genuine Smithsonian-vouchered `Menidia` accessions flagged "incongruent" purely because
+# `Menidia`'s family had no other representative on a real 6-genus test's own taxon list) and a
+# structural false-negative gap (a mislabeled accession's true contaminating identity can never
+# be detected if its genus isn't on the caller's own taxon list) -- both root-caused to the same
+# thing: the comparison population was scope-limited to whatever the caller's own `taxa`
+# argument happened to include, not a broad, independent one. The whole DECIPHER-whole-set-
+# alignment approach was abandoned the same session and archived (source + tests, intact) at
+# `TaxaLikely/archive_decipher_reference_audit/` (deliberately `.gitignore`d, confirmed present
+# on disk). Its replacement (BLAST against a broad, unrestricted database, scoped per
+# accession, not per taxon list) is designed in full in that reentry doc but **explicitly NOT
+# YET IMPLEMENTED** ("only the archival step... done") -- this file's own 2026-08-04 through
+# 2026-08-06 entries below therefore describe a state this package no longer has; a real
+# documentation-drift gap worth a cleanup pass once the BLAST-based replacement is actually
+# built, not attempted this session (out of scope for a review-response pass). Explains the
+# test-count gap this session found reconciling against the human review's own reported
+# baseline: `devtools::test()` now gives 974 pass (0 fail, 56 expected warn, 1 skip) vs. the
+# 1075 this file's own (now-superseded) 2026-08-06 note claims -- the ~101-test gap is exactly
+# the three archived test files.
+#
+# `devtools::test()` 974 pass / 0 fail / 56 warn (all pre-existing/expected, matching this
+# file's own 2026-08-06 baseline exactly) / 1 skip. `devtools::check()` 0 errors/0 warnings/0
+# notes (run twice). `lintr::lint_dir("R")` 0 hits. Reinstalled, verified at
+# `~/Library/R/4.0/library`. See `inst/taxalikely_review_response.md` for the complete,
+# comment-by-comment record (every checklist item + every file's comments, each marked Fixed/
+# Not changed/Answered/Design decision -- nothing skipped silently).
+# Previous update, 2026-08-06, continued yet again (Sonnet 5 -- `repair_thin_evidence()`'s
+# scope widened to cover accessions with ZERO presence in `seq_matrix` (a genuine length
+# outlier, e.g. a full mitogenome) -- previously explicitly out of scope ("Scope,
+# deliberately bounded"). Prompted directly by a real finding from the `min_coverage_floor`
+# rollout (this file's own entry below): a live GreatLakes 12S diagnostic showed only 3,551
+# of 10,701 accessions (33%) have ANY presence in the raw `seq_matrix` at all -- the other
+# 67% aren't a coverage problem `min_coverage_floor` could ever reach, they never entered a
+# single pair. Confirmed LIVE against real NCBI data before proposing a fix (not assumed
+# from length alone): the never-paired population's length distribution is essentially
+# bimodal (paired: 105-600bp; never-paired: median 16,454bp), and a representative example
+# (`MH538728`) is a real, complete `Menidia menidia` mitochondrion genome with a real,
+# GenBank-annotated `12S ribosomal RNA` gene at 70-1018bp -- confirmed via live
+# `esummary`/`efetch` calls, not inferred.
+#
+# The obvious fix -- `trim_to_amplicon()` (already built, Session 140), locate a named
+# primer's binding site and extract the amplicon -- was explicitly REJECTED by the user on
+# a real, first-principles design objection: whether an accession gets rescued (and
+# therefore whether it can be checked for mislabeling at all) would then depend on WHICH
+# PRIMER an analyst happened to try, not on the record's real identity -- a correctly-
+# labeled record that only cleanly binds MiFish-E would stay excluded under a MiFish-U-
+# first choice, while a genuinely mislabeled one that happens to bind MiFish-U escapes
+# unexamined, for reasons unrelated to either record's truth. It's also gated on
+# `TaxaTools::barcode_primer_defaults` registry completeness -- real, but an implementation
+# artifact, not a data one. This directly extends a design principle already stated
+# elsewhere in this ecosystem (`min_coverage`'s own original motivation: avoid needing to
+# name one specific primer window at all) to this new case.
+#
+# Fix, per the user's explicit direction ("go with the primer-neutral approach, no
+# fallback"): reuse `repair_thin_evidence()`'s EXISTING same-species/genus candidate search
+# and pairwise-local-alignment machinery, unchanged, on the widened eligible-accession set
+# -- `eligible_ids <- ref_ids` (was gated on raw `seq_matrix` presence) -- with one added
+# constraint, the actual primer-neutral safeguard: every CANDIDATE a repair attempt aligns
+# against must itself already have real presence in `seq_matrix` (new `paired_ids`,
+# intersected into both the same-species and same-genus candidate pools). This means no
+# primer sequence, no `barcode_term`-resolved window, and no registry lookup anywhere in the
+# decision -- purely "does a real, already-vetted short reference for this species/genus
+# already exist in the audit's own data" -- and it bounds every alignment to a
+# short-vs-long (or short-vs-short) pair, never the long-vs-long case that would make two
+# 16kb-vs-16kb local alignments (an O(n*m) cost, ~270M cell operations) the norm instead of
+# the rare exception. A species/genus with no short reference anywhere in the audit still
+# can't be rescued by this pass -- an honest data-availability gap, the same kind
+# `hierarchy_flag`'s `"insufficient_independent_evidence"` already reports elsewhere, not a
+# primer-dependent one. No new params, no signature change -- this is a scope widening plus
+# one internal safeguard, not a new mechanism. 2 tests rewritten/added
+# (`test-repair-thin-evidence.R`): a same-species PAIR where BOTH sides lack real presence
+# still correctly repairs nothing (neither can anchor the other); a zero-presence accession
+# WITH a real, already-paired same-species candidate now IS repaired. `devtools::test()` 0
+# failures (1079, up from 1061), `devtools::check()` 0 errors/0 warnings/1 pre-existing
+# environmental note, reinstalled and verified at `~/Library/R/4.0/library`. Real-scale
+# timing/validation run against the actual GreatLakes cached checkpoint (30MB, 10,701
+# accessions, 2.6M-row `seq_matrix`, 6,350 never-paired) before handing this back -- see this
+# session's own record for the actual attempted/improved/pairs-added counts and wall-clock
+# time.
+#
+# Previous update, 2026-08-06, continued once more (Sonnet 5 -- implements the recommendations
+# from a statistical-critique investigation the user requested after noticing
+# train_likelihood_model()'s fitted score->likelihood relationship can peak at an
+# intermediate score and decline toward a perfect (100%) match, rather than being
+# maximized there -- worried this signalled overfitting. Three agents (a mechanics trace, an
+# empirical scan of real cached lik_model objects from GreatLakes/Mugu/PtConception, and an
+# Opus-level critique of both) converged on: the peak-below-ceiling shape is expected and
+# correct (a Gaussian is unimodal at its fitted mean, which real reference/query data
+# genuinely sits below the ceiling), and the property that actually matters for a Bayesian
+# classifier -- monotone likelihood ratio (MLR): a better score must never be WEAKER evidence
+# for the known-species hypothesis than a worse one -- held in every real production model
+# checked (~2,000 species, max 0.85 floored SD from a perfect match, 0% over 1 SD). The
+# critique's own independent re-derivation (re-running the empirical scan itself rather than
+# trusting the first pass) found two things the first two reports missed: the empirical scan
+# had compared against the RAW stored sigma_score instead of the inference-time-floored value
+# evaluate_likelihoods() actually uses (inflating the one "severe" case's reported z from 2.46
+# to a stale-object-only 3.31, and wrongly implying the alpha gate fires 53% of the time there
+# when it actually fires 0%); and the two-sided outlier-rejection alpha gate in
+# evaluate_likelihoods() is independently incoherent regardless of the main question, since
+# H2/H3 model missing-species/genus hypotheses via a LEFTWARD shift of H1's own mean, so an
+# anomalously HIGH score can never fit them better than H1 -- there is nothing for a rejected
+# H1 to hand its likelihood mass to that explains a near-perfect match, yet the old two-sided
+# test could hard-zero exactly that case. User asked to implement the fix items directly
+# rather than write a new design document -- three real code changes plus documentation
+# folded into train_likelihood_model()'s own roxygen (its "function readme") rather than a
+# separate memory doc: (1) evaluate.R's alpha gate changed from two-sided
+# (`pchisq(d_sq_score, df=1, lower.tail=FALSE)`) to one-sided low-side-only
+# (`pnorm(z_score) >= alpha`) -- verified to have ZERO effect on any current production model
+# (nothing currently trips the high side) while removing a real, structural latent failure
+# mode. (2) evaluate_likelihoods() now warns (rather than silently defaulting to `"logit"`,
+# the more fragile transform) when `model_params$Score_Transform` is absent -- this silent
+# default was the exact mechanism that let a stale, orphaned real Pt. Conception model object
+# (no Score_Transform field at all, predating Session 158) stay usable with no signal to the
+# caller; no current Pt. Conception lik_model was found on disk during the empirical scan to
+# confirm it isn't still this stale object in production. (3) New internal
+# `.check_score_ratio_monotonicity()` (R/train.R) runs automatically at the end of
+# train_likelihood_model(), checking the MLR property directly (not assuming it) for every
+# species against its genus's H2 alternative, using the SAME inference-time sigma floor
+# evaluate_likelihoods() applies (the exact correction that fixed the critique's own re-derived
+# numbers) -- warns and records affected species in the new `Stats$mlr_violations` field if any
+# species' ratio turns over before the ceiling, and separately warns if any species' own
+# ceiling-distance z exceeds 2 floored SDs (`Stats$max_ceiling_z`/`max_ceiling_z_species`). Also
+# corrected a real, previously-inaccurate roxygen claim in the pre-existing "Pseudo-data
+# anchoring" section, which asserted anchor_perfect "produc[es] a monotonically increasing
+# likelihood surface as match quality approaches 100%" -- false: anchoring only nudges the
+# GLOBAL pooled mean (diluted by real data volume), never any individual species' own
+# H1_Lookup$mu_score, and does not by itself guarantee monotonicity of anything. New
+# `@section Non-monotonic score->likelihood shape` added to train_likelihood_model()'s own
+# roxygen (the "function readme" instead of a new standalone doc) laying out the full
+# reasoning, the MLR distinction, and the real production-model numbers, so this doesn't need
+# re-investigating from scratch next time someone notices the same shape. A real, unrelated
+# roxygen/Rd bug was hit and fixed while writing this doc: two SEPARATE backtick-quoted
+# `Stats$mlr_violations`/`Stats$max_ceiling_z` code spans near each other corrupted the whole
+# section's Rd output under this package's `Roxygen: list(markdown = TRUE)` setting (traced to
+# roxygen2's markdown-to-Rd pass, not obviously reproducible in isolation -- fixed by rewording
+# to avoid two bare `$`-accessor code spans in proximity, not by disabling markdown). New tests:
+# one-sided-gate regression (`test-evaluate.R`, confirms a near-perfect-match query is no
+# longer rejected), Score_Transform-absent warning + explicit-transform no-warning
+# (`test-evaluate.R`), and four direct unit tests of
+# `.check_score_ratio_monotonicity()` plus one integration smoke test confirming
+# train_likelihood_model() surfaces the new Stats fields (`test-train.R`). `devtools::test()`
+# 0 failures (1075 passing, 56 expected warnings -- the new max_ceiling_z diagnostic correctly
+# fires on several existing tiny/logit-trained synthetic test fixtures, exactly the shape the
+# diagnostic is designed to catch -- 1 pre-existing environment skip), `devtools::check()` 0
+# errors/0 warnings/1 pre-existing note (timestamp verification, environmental). Reinstalled,
+# verified at `~/Library/R/4.0/library`. Not done this session (flagged as open, not
+# resolved): confirming what score_transform the CURRENT Pt. Conception production model
+# actually uses (no live model file was found on disk during the empirical scan -- only the
+# stale `real_model.rds`) and whether any reported PtConception results trace back to it.
+#
+# To apply these changes:
+# ```r
+# .rs.restartR()
+# devtools::install("~/My Drive/Rscripts/projects/TaxaID/TaxaLikely")
+# .rs.restartR()
+# ```
+# No re-run of any real workflow is required to see these fixes take effect on NEW
+# `train_likelihood_model()`/`evaluate_likelihoods()` calls -- but any already-cached
+# `lik_model`/`lik_result` object was produced under the OLD two-sided gate and without the
+# new MLR diagnostic ever having run. To check whether the diagnostic flags anything on a
+# real model already in hand, the cheapest path is simply to retrain it (the check runs
+# automatically) and look for a `mlr_violations`/`max_ceiling_z` warning at the console; a
+# real production model warning here would be a genuinely new, actionable finding (all models
+# checked empirically during the investigation that prompted this session had none).
+# Previous update, 2026-08-06, continued yet further (Sonnet 5 -- `min_coverage`'s role in
+# `audit_reference_database()`/`classify_reference_accessions()` split into two params,
+# prompted by the user's own design question about whether the `median(self) -
+# max(foreign)` `integrity_gap` formula treats coverage correctly, and directly motivated
+# by a real finding from the `repair_thin_evidence()` rollout (this same file's entry
+# immediately below): after that repair pass, a real GreatLakes 12S audit's review rate
+# was 74.6%, and 73% of THAT was `error_type == "excluded_from_alignment"` -- 54% of all
+# 10,701 audited accessions had ZERO surviving `seq_matrix` pairs at the Youden's-J-
+# calibrated `min_coverage = 0.95`, even after repair recovered real evidence for 385 of
+# them. Root cause: `min_coverage` was doing two jobs at once -- deciding what counts as
+# evidence AT ALL when computing Check 1's raw stats (`.compute_reference_qc_stats()`'s
+# pre-filter), and deciding what's trustworthy enough to flag `"likely_mislabeled"`/
+# `"unverified_singleton_high_match"` on. At a real, sharply-optimal calibrated value like
+# `0.95`, the first job destroyed far more real (if thin) same-species/foreign evidence
+# than the second job needed to stay safe. The user's own proposed fix, worked through and
+# then implemented: split the two roles into new `min_coverage_floor` (default `0.1`, a
+# permissive sanity minimum applied when Check 1's stats are computed -- excludes only a
+# near-zero coincidental overlap) and the existing `min_coverage` (now purely a downstream
+# TRUST gate, applied only by `classify_reference_accessions()`, only against the ONE
+# specific pair driving `max_foreign_match` -- not a blanket pre-filter on every
+# comparison). New `.compute_reference_qc_stats()` output columns
+# `foreign_match_coverage` (coverage of the pair that actually produced `max_foreign_match`
+# -- not a summary, since a single extreme value needs its OWN pair's coverage to judge
+# trust, not an aggregate) and `median_self_coverage` (a diagnostic only, deliberately NOT
+# auto-gated, since thin self-evidence can bias `median_self_match` in either direction,
+# unlike the one-directional foreign-side risk). `classify_reference_accessions()` gains a
+# `min_coverage = NULL` param (auto-pulled from `search_metadata` when unset, same pattern
+# as every other threshold) gating `"likely_mislabeled"`/`"unverified_singleton_high_match"`
+# on `foreign_match_coverage >= min_coverage`; gracefully absent (every row trusted,
+# matching the pre-2026-08-06 behavior) when `foreign_match_coverage` is missing (older
+# `qc_df`) or no calibrated value is available from either source. `audit_reference_
+# database()` gains `min_coverage_floor` (validated `<= min_coverage` when both set) and
+# now calls `.compute_reference_qc_stats(min_coverage = min_coverage_floor)` instead of the
+# caller's calibrated value; `excluded_from_alignment`'s own meaning correspondingly
+# tightens back to its originally-documented intent ("never entered alignment at all"),
+# since a real accession with SOME pair above the permissive floor no longer disappears
+# from `qc_stats`' output just because every pair fell below the strict calibrated bar. A
+# real, independent stale-doc bug was found and fixed along the way: `audit_reference_
+# database()`'s own roxygen for `excluded_from_alignment` claimed `min_coverage` excluding
+# all of an accession's pairs would NOT set `excluded_from_alignment = TRUE` -- directly
+# contradicted by the actual code (`missing_ids <- setdiff(reference_df$composite_id,
+# qc_stats$accession)`), and by `repair_thin_evidence()`'s own correct documentation of the
+# identical ambiguity elsewhere in this same file. `flag_reference_errors()`'s own public
+# contract is untouched (its `dplyr::select()` already whitelists documented columns; the
+# two new diagnostic columns simply don't reach its output). `classify_reference_
+# accessions()`'s coverage gate is built as a real DATA COLUMN inside the `dplyr::mutate()`
+# chain (`.qc_coverage_trusted`, dropped before return) rather than referencing a bare
+# closured R vector from within `case_when()` -- functionally identical, but avoids a real
+# `lintr::object_usage_linter()` false positive on the closured-vector form (confirmed via
+# direct side-by-side testing: `devtools::check()` never flagged it, only `lintr`'s own
+# separate, stricter static-usage heuristic did). New tests: 3 for `.compute_reference_qc_
+# stats()`'s two new columns (`test-train.R`), 4 for the floor/gate mechanism end-to-end
+# via mocked `audit_reference_database()` (`test-audit-reference-database.R`), covering the
+# floor rescuing thin evidence, the `min_coverage_floor > min_coverage` validation error,
+# the gate suppressing an over-confident flag on thin decisive coverage plus re-enabling it
+# at a lower explicit override, and full backward compatibility when the new column/
+# threshold are absent. `devtools::test()` 0 failures (1061, up from 1045), `devtools::
+# check()` 0/0/0, `.lintr`'s `train.R`/`audit_reference_database.R` line-number exclusions
+# updated for the shift. Reinstalled, verified at `~/Library/R/4.0/library`. Wired into
+# `AuditNCBI.R` (external GreatLakes workflow, not under git) as a new `MIN_COVERAGE_FLOOR`
+# constant threaded through all three `audit_reference_database()` calls; step 8 (threshold
+# sensitivity sweep) gains a `min_coverage` sweep example now that it's classification-time-
+# only and no longer requires the reuse-call pattern to change. `AuditNCBI_README.md` gains
+# a "Retaining thin-coverage evidence" section plus updated column-table/`excluded_from_
+# alignment` descriptions. Not yet re-run against real GreatLakes production data (the
+# user's call) -- ready to re-run after restart/install.
+#
+# To apply these changes:
+# ```r
+# .rs.restartR()
+# devtools::install("~/My Drive/Rscripts/projects/TaxaID/TaxaLikely")
+# .rs.restartR()
+# ```
+# Then re-run `AuditNCBI.R` from step 2 onward (all three `audit_reference_database()`
+# calls now pass `min_coverage_floor = MIN_COVERAGE_FLOOR`). After step 4/4b, real GreatLakes
+# data should show `excluded_from_alignment` collapse from its prior 54% down close to
+# `estimate_reference_scope()`'s own length-outlier population -- if it's still large, check
+# `MIN_COVERAGE_FLOOR`'s value (default `0.1`) hasn't been set too high. After step 5,
+# `table(classification$error_type)`/`table(classification$recommended_list)` should show
+# `review` no longer dominated by `excluded_from_alignment` the way it was pre-fix (73% of
+# review rows) -- the new step 8 `coverage_strict`/`coverage_lenient` sweep is the fastest
+# way to see how much of any remaining `likely_mislabeled`/`unverified_singleton_high_match`
+# count is sitting right at the `min_coverage` trust boundary versus being robust to it.
+# Previous update, 2026-08-06, continued (Sonnet 5 -- new `repair_thin_evidence()`
+# (`R/repair_thin_evidence.R`), closing out the "targeted repair pass" half of the
+# 2-part plan the user chose ("Both, in sequence") after real GreatLakes 12S
+# calibration of `min_coverage` (this same day's earlier work, see the top-of-file
+# hierarchy-congruence note below) drove `review` rate from 5.5% to 28%, 72% of the
+# increase attributed to `insufficient_independent_evidence`. Root cause: a broad
+# `barcode_term` + strict `min_coverage` means a real same-species/same-genus pair
+# sequenced with a DIFFERENT primer subset can fail `build_sequence_matrix()`'s single
+# whole-set alignment even though both sequences are genuinely correct -- confirmed
+# this is a real, not hypothetical, cost (mitogenome-scale `excluded_from_alignment`
+# growth was separately confirmed real the same day, not a bug). `repair_thin_evidence()`
+# re-checks each thin accession's same-species/same-genus candidates via a direct
+# `pwalign::pairwiseAlignment(type="local")` two-sequence alignment -- reusing
+# `.check_regional_overlap()`'s exact alignment/coverage/PID convention rather than
+# inventing a third formula -- held to the SAME `min_coverage` the rest of the audit
+# uses, capped per accession (`max_candidates_per_accession`, default 20L) so this stays
+# a bounded repair pass, not a redesign of the main alignment. Scope is gated on real
+# presence in the raw `seq_matrix` (`ref_ids %in% union(seq_matrix$id_x, seq_matrix$id_y)`),
+# deliberately NOT on `qc$excluded_from_alignment` -- a real, non-obvious bug was found
+# and fixed mid-session via dry-run testing: that flag reads identically `TRUE` for a
+# genuine non-entrant (e.g. a mitogenome-length outlier) AND for an accession whose
+# EVERY `seq_matrix` row failed `min_coverage` (it then has no surviving row in
+# `.compute_reference_qc_stats()`'s own output either, the same "missing" signature) --
+# but the second case DID enter alignment and is exactly the population this function
+# exists to help; trusting the flag alone silently excluded it. Same-submission-batch
+# candidates are excluded from the hierarchy-repair path via the same
+# `.build_submission_batch_lookup()`/`.same_submission_batch()` helpers
+# `.compute_hierarchy_congruence()` already uses (extracted to before that function's own
+# roxygen block so both consumers share one implementation, not two). Real
+# accession-indexed O(1) environment lookups throughout (`seq_env`/`taxa_env`/`batch_env`),
+# matching this package's established performance discipline
+# (`.seq_matrix_partner_index()` precedent) rather than a per-candidate linear scan.
+# Wired into `AuditNCBI.R` (external GreatLakes workflow, not under git) as new step 4b,
+# between the calibrated audit and classification -- reuses `audit_reference_database()`'s
+# own `reference_df`/`seq_matrix` cheap-reuse mechanism, so applying the repair costs one
+# extra stats recompute, not a second fetch/alignment. `AuditNCBI_README.md` gains a
+# "Repairing thin-evidence accessions" section. 18 test assertions
+# (`tests/testthat/test-repair-thin-evidence.R`), including a dedicated regression test
+# for the `excluded_from_alignment`-via-`min_coverage` case described above. Verified via
+# a reconstructed real end-to-end scenario (mocked `audit_reference_database()` through
+# `fetch_ncbi_reference_sequences`/`build_sequence_matrix`/`verify_taxon_names`, matching
+# `test-audit-reference-database.R`'s own established offline pattern) reproducing the
+# exact `qc` signature this bug was found under (`n_self_neighbors=NA`,
+# `n_independent_top_matches=0`, `excluded_from_alignment=TRUE`) -- correctly repairs both
+# thin accessions. `devtools::test()` 0 failures (1045, up from ~1027), `devtools::check()`
+# 0/0/0, reinstalled and verified at `~/Library/R/4.0/library`. See
+# `[[project_h1_mu_gap_overfitting_concern]]`-adjacent memory entries and the GreatLakes
+# GL presentation memory for the broader project context. Not yet re-run against real
+# GreatLakes production data (the user's call) -- ready to re-run after restart/install
+# (see the block below).
+#
+# To apply these changes:
+# ```r
+# .rs.restartR()
+# devtools::install("~/My Drive/Rscripts/projects/TaxaID/TaxaLikely")
+# .rs.restartR()
+# ```
+# Then re-run `AuditNCBI.R` from step 2 onward (step 4b's repair pass is new; steps 1-3
+# are unaffected). To inspect the repair pass's own effect in isolation before trusting
+# the full re-run: after step 4b, `repair$n_accessions_attempted` /
+# `repair$n_accessions_improved` / `repair$n_pairs_added` / `repair$repaired_accessions`
+# report what it did; a real repair pass on genuinely broad-marker-search data should
+# show `n_accessions_improved > 0` (good) -- `0` would mean either no real thin-evidence
+# gap existed this run, or something regressed (worth checking `repair$n_accessions_attempted`
+# too: if that's also `0`, no thin accessions had ANY same-species/same-genus candidate to
+# try at all, which is a legitimate outcome for a small/sparse taxon list, not a bug).
+# Previous update, 2026-08-06 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_
+# reference_database_audit_hierarchy_check.md end to end: the taxonomic-hierarchy-
+# congruence phase of the reference-database-audit design thread that began 2026-08-04.
+# New internal `.compute_hierarchy_congruence()` (R/train.R) + its wiring into
+# `audit_reference_database()`/`classify_reference_accessions()`'s new `hierarchy_flag`
+# column -- see the new "Reference database auditing (Module B-QC2)" Function Inventory
+# section above for the full mechanism (independence filter, Jeffreys-smoothed
+# corroboration fraction, why `min_congruent_rank` defaults to `"family"` not
+# `"kingdom"`/`"phylum"`) and this session's own top-of-inventory note for the real-scale
+# timing result (1M-row `seq_matrix` in 1.39s) and the 4 required biological test
+# fixtures. Folds in, in one pass per this project's own end-of-session convention, the
+# Function Inventory documentation for the three functions this same design thread
+# shipped 2026-08-04/05 but left undocumented pending real-data testing:
+# `estimate_reference_scope()`, `audit_reference_database()` (the exhaustive per-accession
+# QC-stats fetch), `classify_reference_accessions()` (threshold-based `error_type`/
+# `recommended_list` categorization, kept deliberately separate from the stats step so a
+# threshold can be re-tried with zero recompute cost). Two smaller real fixes made along
+# the way, both required (not optional) given the alternative was silent breakage on real
+# stale caches: `fetch_ncbi_reference_sequences()`'s per-taxon cache key now folds in
+# `rank_system` (a stale cache from any narrower-`rank_system` call would otherwise
+# hard-crash a later wider one with `undefined columns selected`, since
+# `audit_reference_database()`'s own default widened to the full 7-rank ladder this same
+# session); `.fetch_summaries_batched()` now also parses `create_date` (live-verified
+# present on NCBI's real ESummary DocSum for the nucleotide database via a real
+# `rentrez::entrez_summary()` call before relying on it, zero extra NCBI round trips),
+# consumed by the new independence filter. `devtools::test()` 0 failures (full suite,
+# `test-hierarchy-congruence.R` new, `test-audit-reference-database.R`'s one exact-column
+# assertion updated for the new columns), `devtools::check()` 0 errors/0 warnings/0 notes.
+# Reinstalled, verified at `~/Library/R/4.0/library`. `.lintr`'s `train.R` object-name
+# exclusion line numbers updated for the ~350-line shift (926/961/1101/1117/1125 ->
+# 1210/1245/1385/1401/1409); `fetch.R`'s own line-length exclusion updated similarly
+# (1469 -> 1503); a new `object_length_linter` exclusion added for
+# `hierarchy_incongruent_threshold` (31 chars), matching the existing
+# `identify_confident_observations()` precedent. New
+# `diagnostics/hierarchy_congruence_timing.R` (TaxaID root, matching this package's own
+# `diagnostics/` convention for real-scale checks too slow for the automated test suite).
+#
+# Continued, same day, real production use (GreatLakes 12S, 156 genera, 3557 accessions):
+# live-testing the hierarchy-congruence feature surfaced two real, distinct findings, only
+# one of which was a bug in this package. (1) NOT a bug, but real and worth knowing:
+# several accessions flagged `hierarchy_flag = "incongruent"` turned out to be genuine,
+# correctly-labeled 12S sequences covering an OLDER, non-MiFish-amplicon genomic window
+# (e.g. `AF042473`/`AF042480`/`AF118675`/`U73259`, 182-323bp vs. the true MiFish-U
+# amplicon's ~130-210bp; one, `AY850362`, turned out to be a mislabeled 16S sequence
+# entirely) -- `build_sequence_matrix()`'s bare `barcode_term = "12S"` search term
+# resolves to a wide ~100-600bp catch-all window (the already-documented "Paralabrax
+# footgun," see Known Footguns below), so these off-window sequences were never excluded
+# before alignment and produced noisy, spurious incongruence signal. Confirmed live
+# against real NCBI records (`rentrez::entrez_summary()`/`entrez_fetch()`) before
+# concluding anything -- not guessed from accession patterns alone. Passing a specific
+# registered primer variant (`barcode_term = "MiFishU"` instead of `"12S"`) is the
+# user-facing fix -- `TaxaTools::resolve_barcode_lengths("MiFishU")` gives the correct
+# narrow window. (2) A REAL BUG, found only because of (1): switching to the narrower
+# `barcode_term` dropped the audit from 3557 to 1125 accessions and from 650 to 333
+# *species* -- far more than "off-window sequences now correctly excluded" should cost.
+# Root cause: `audit_reference_database()` never passed `keep_out_of_range`/
+# `max_out_of_range_per_species` to `fetch_ncbi_reference_sequences()`, so it inherited
+# that function's own `keep_out_of_range = FALSE` default -- any accession outside
+# `barcode_term`'s resolved window was dropped AT FETCH TIME, before ever reaching `qc`,
+# not even as `excluded_from_alignment = TRUE`. Under the old bare `"12S"` window
+# (100-600bp) this was nearly inert (almost nothing real falls outside that range); under
+# a length-specific window like `"MiFishU"`'s 130-210bp it silently deleted over half the
+# species from the audit with zero trace -- directly contradicting this function's own
+# "Deliberately exhaustive" design section, which only ever addressed count-based
+# subsampling (`max_per_species`/`max_per_genus`/`max_sequences`), not the length filter.
+# Fixed: `audit_reference_database()` now hardcodes `keep_out_of_range = TRUE` and a
+# practically-uncapped `max_out_of_range_per_species = 1000000L` (mirroring the same
+# `max_per_species = NULL`/`max_per_genus = NULL` exhaustiveness precedent already set for
+# this function, not exposed as new caller-facing params) in its own
+# `fetch_ncbi_reference_sequences()` call -- an out-of-window accession is now retained
+# through fetch and correctly surfaces as `excluded_from_alignment = TRUE` via
+# `build_sequence_matrix()`'s own separate length filter, instead of vanishing. `devtools::
+# test()` 0 failures (mocked fixtures unaffected -- `local_mocked_bindings()` ignores the
+# new args), `devtools::check()` 0/0/0, reinstalled, verified at `~/Library/R/4.0/library`.
+# Not yet re-verified against the real GreatLakes data that found it (would re-trigger a
+# real, large NCBI fetch) -- left for the user to re-run.
+#
+# Continued, same day, following a real user design question: after walking through why
+# `barcode_term = "MiFishU"` fixes amplicon-window-mismatch false positives, the user
+# asked why the fix needs to name a specific primer window at all, rather than checking
+# real overlap per PAIR before counting a comparison as evidence -- and pointed out
+# `build_sequence_matrix()` already computes exactly that (`coverage`, the fraction of
+# the shorter sequence that actually aligned against non-gap positions in the other),
+# per pair, from the real alignment. Checked and confirmed: neither `.compute_reference_
+# qc_stats()` nor `.compute_hierarchy_congruence()` read `coverage` at all -- a real,
+# previously-unnoticed gap, not a design choice. New `min_coverage` param (`NULL` default,
+# matching `evaluate_likelihoods()`'s own `min_coverage` convention including its `NA`-is-
+# fully-covered handling) added to `.compute_reference_qc_stats()`, `flag_reference_
+# errors()`, `.compute_hierarchy_congruence()`, and `audit_reference_database()` (threaded
+# through both, recorded in `search_metadata`) -- excludes a comparison PAIR whose real
+# overlap is too thin, rather than excluding a whole ACCESSION via a pre-alignment length
+# window. Strictly more precise than the length-window approach: catches same-length
+# sequences covering different, non-overlapping stretches of a gene (which length alone
+# cannot detect), and doesn't discard an accession's ability to corroborate against a
+# genuinely different-length sequence it DOES overlap. Does not replace `barcode_term`'s
+# own length-window role entirely -- DECIPHER's `AlignSeqs()` still builds one MSA for its
+# whole input set, so mixing wildly divergent lengths (e.g. full mitogenomes with short
+# amplicons) into one alignment call remains a real cost/quality concern independent of
+# this fix; `min_coverage` is the pairwise-precision half of the fix, not a replacement for
+# keeping `build_sequence_matrix()`'s own input reasonably length-homogeneous. New tests
+# (`test-hierarchy-congruence.R`, `test-train.R`) reproduce the real motivating case
+# directly: a spurious high-`p_match`/low-`coverage` cross-lineage "match" that would
+# otherwise outrank a genuine, well-covering congener in the top-N ranking is correctly
+# excluded once `min_coverage` is set. `devtools::test()` 0 failures, `devtools::check()`
+# 0/0/0, reinstalled, verified at `~/Library/R/4.0/library`. `.lintr`'s `train.R`
+# object-name exclusion line numbers updated again for the shift (1210/1245/1385/1401/1409
+# -> 1271/1306/1446/1462/1470); `audit_reference_database.R`'s `object_length_linter`
+# exclusion likewise (529 -> 598).
+#
+# Continued, same day: the user confirmed they want to switch the GreatLakes audit script
+# from a fixed `barcode_term = "MiFishU"` restriction to `min_coverage`, calibrated the
+# same way `sequence_likelihood_workflow.R` already calibrates `evaluate_likelihoods(
+# min_coverage=)` -- via `calibrate_coverage_filter()`'s Youden's J, falling back to
+# `coverage_threshold()`'s quantile shortcut on near-categorical coverage -- rather than a
+# hand-picked constant. Doing this required a real package gap to be closed first:
+# `audit_reference_database()` built `seq_matrix` internally and discarded it, so a caller
+# had no way to calibrate a threshold from real data without a second, full fetch+alignment
+# pass just to get a `seq_matrix` to calibrate against. Fixed with new optional
+# `reference_df`/`seq_matrix` params (from a prior call's own newly-attached
+# `attr(result, "reference_df")`/`attr(result, "seq_matrix")`) -- when both are supplied,
+# Step 1 (fetch) and Step 3's alignment are skipped entirely, only name-cleaning and stats
+# computation re-run against the reused objects. Lets a caller: (1) run once with
+# `min_coverage = NULL` to get a real `seq_matrix`; (2) calibrate a threshold from it; (3)
+# re-run cheaply with that threshold applied, paying only for cheap re-computation, not a
+# second NCBI fetch + DECIPHER alignment. `reference_df` must be the RAW (pre-name-cleaning)
+# object specifically, not `result` itself -- documented explicitly to avoid a double-merge
+# footgun. New tests confirm the reuse path genuinely skips both `fetch_ncbi_reference_
+# sequences()`/`build_sequence_matrix()` (mocked call-tracking, not just output equality) and
+# that supplying only one of the pair errors clearly. `devtools::test()` 0 failures,
+# `devtools::check()` 0/0/0, reinstalled. `.lintr`'s `audit_reference_database.R`
+# `object_length_linter` exclusion updated again (598 -> 659). Not yet wired into the
+# GreatLakes `AuditNCBI.R` script/README -- see that project's own workflow files for the
+# calibration wiring, done the same session outside this monorepo.
+# Previous update, 2026-07-30 (Sonnet 5 -- full code + domain review against `inst/Code and
 # Domain Review 2.Rmd`, findings + fixes recorded in `inst/taxalikely_review.Rmd` (moved
 # there from a monorepo-root DRAFT after this session's fixes, matching TaxaFetch's own
 # `inst/taxafetch_review.Rmd` precedent). 9 low/low-medium findings, 0 vulnerabilities, 0
@@ -1603,9 +2102,9 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `fetch_ncbi_reference_sequences()` | `R/fetch.R` | Written | **Renamed from `fetch_reference_sequences()` (Session 136)** — old name kept as a deprecated forwarding alias (`.Deprecated()`, matches `audit_barcode_coverage_ncbi()`'s pattern); renamed because a second live-API reference source (BOLD) was planned and the old name didn't say NCBI anywhere. Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. **Session 135**: `include_location = FALSE` param — when `TRUE`, fetches each accession's full GBSeq XML record (`.fetch_locations_batched()`) and adds `lat`/`lon`/`country` columns parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); a genuinely separate NCBI round trip from the ESummary/taxonomy-XML fetches this function already does, neither of which carries those qualifiers. **Session 159**: `keep_out_of_range = FALSE` param — when `TRUE`, out-of-range (e.g. mitogenome-length) sequences are retained (new `in_barcode_range` diagnostic column) instead of dropped, capped per species by `max_out_of_range_per_species` (default `2L`) so they never compete with in-range sequences for the `max_per_species`/`max_per_genus` training-set budget. `build_sequence_matrix()`'s own independent length filter still excludes them from training exactly as before. Exists so `restore_suppressed_candidates(check_regional_overlap = TRUE)` has real sequence content to check for regional overlap without a separate on-demand fetch when a query's own top hit is an over-length reference (see that function's own Session 159 note). Also fixed the same session: `.build_search_term()`'s bare `barcode_term = "12S"`/`"16S"` now ORs in "small/large subunit ribosomal RNA" synonyms -- see the top-of-file Session 159 note for the full real-data-confirmed root cause. **Session 159 (final entry)**: `keep_out_of_range = TRUE` had no upper size bound at all -- found via a real 111,213,091bp whole-genome scaffold in the real Mugu `reference_df.rds` (142MB). New `max_out_of_range_len = 200000L` param caps it (real mitogenomes/chloroplast genomes stay under this; genome/scaffold-scale sequences don't), folded into both length-filter locations and the cache key (which also didn't vary by `keep_out_of_range` at all before this fix -- a real staleness bug). |
+| `fetch_ncbi_reference_sequences()` | `R/fetch.R` | Written | **Renamed from `fetch_reference_sequences()` (Session 136)** — old name kept as a deprecated forwarding alias (`.Deprecated()`, matches `audit_barcode_coverage_ncbi()`'s pattern); renamed because a second live-API reference source (BOLD) was planned and the old name didn't say NCBI anywhere. Search NCBI by taxon + barcode marker, resolve taxonomy via taxid bridge, filter/downsample, download FASTA → `reference_df`. Count-first estimation; resumable via `cache_dir` (default `tools::R_user_dir("TaxaLikely","cache")`). Cache key includes `min_len`, `max_len`, `max_date` so changed parameters auto-start fresh. Per-taxon tryCatch: NCBI rate-limit errors skip one taxon with warning instead of crashing the entire run. **Session 135**: `include_location = FALSE` param — when `TRUE`, fetches each accession's full GBSeq XML record (`.fetch_locations_batched()`) and adds `lat`/`lon`/`country` columns parsed from the `source` feature's `lat_lon`/`country` qualifiers (`.parse_lat_lon()`); a genuinely separate NCBI round trip from the ESummary/taxonomy-XML fetches this function already does, neither of which carries those qualifiers. **Session 159**: `keep_out_of_range = FALSE` param — when `TRUE`, out-of-range (e.g. mitogenome-length) sequences are retained (new `in_barcode_range` diagnostic column) instead of dropped, capped per species by `max_out_of_range_per_species` (default `2L`) so they never compete with in-range sequences for the `max_per_species`/`max_per_genus` training-set budget. `build_sequence_matrix()`'s own independent length filter still excludes them from training exactly as before. Exists so `restore_suppressed_candidates(check_regional_overlap = TRUE)` has real sequence content to check for regional overlap without a separate on-demand fetch when a query's own top hit is an over-length reference (see that function's own Session 159 note). Also fixed the same session: `.build_search_term()`'s bare `barcode_term = "12S"`/`"16S"` now ORs in "small/large subunit ribosomal RNA" synonyms -- see the top-of-file Session 159 note for the full real-data-confirmed root cause. **Session 159 (final entry)**: `keep_out_of_range = TRUE` had no upper size bound at all -- found via a real 111,213,091bp whole-genome scaffold in the real Mugu `reference_df.rds` (142MB). New `max_out_of_range_len = 200000L` param caps it (real mitogenomes/chloroplast genomes stay under this; genome/scaffold-scale sequences don't), folded into both length-filter locations and the cache key (which also didn't vary by `keep_out_of_range` at all before this fix -- a real staleness bug). **2026-08-06**: `.fetch_summaries_batched()` now also parses `create_date` (live-verified present on NCBI's real ESummary DocSum for the nucleotide database, zero extra NCBI round trips) -- carried through to `reference_df` only when present in the cached/fetched `meta` object (a stale pre-this-fix cache degrades gracefully rather than crashing). Consumed by `audit_reference_database()`'s new hierarchy-congruence independence filter (see that function's own entry). Also **2026-08-06**: the per-taxon cache key (both the priority-species and broader-taxa paths) now folds in `rank_system` -- required because `audit_reference_database()`'s own default widened to the full 7-rank ladder the same session, and the cached `meta` object's own columns are exactly whatever `rank_system` was in force when it was written; without this fix, a stale cache from any narrower-`rank_system` call (e.g. this function's own unchanged `family`/`genus`/`species` default) would hard-crash a later wider-`rank_system` call with `undefined columns selected`. Same failure class as Session 159's own `barcode_term`/`keep_out_of_range` cache-staleness fixes above. |
 | `fetch_bold_reference_sequences()` | `R/fetch.R` | Written | BOLD Systems reference-fetch analog. **Session 136**: talks directly to BOLD's real, live v5 Data Portal API (`portal.boldsystems.org/api`, confirmed via its own OpenAPI spec) via `httr2` -- does NOT wrap the `bold` R package, whose `bold_seqspec()`/`bold_identify()` target BOLD's now-permanently-retired v3/v4 API. 3-stage flow: `query/preprocessor` (resolve taxon → triplet) → `query` (submit → `query_id`) → `documents/{id}/download?format=tsv` (returns full result set, no pagination needed). No server-side marker/locus filter exists in BOLD's query API (only `tax`/`geo`/`ids`/`bin`/`recordsetcode` scopes) — `barcode_term` filters client-side on the returned `marker_code` column. Location (`coord`, bracketed `"[lat, lon]"` string, parsed by `.parse_bold_coord()`; `country/ocean`) comes free with every query, unlike NCBI which needs a separate round trip. Live-tested end to end (103 real sequences across 2 taxa, 84% real coordinate coverage). Internal helpers: `.bold_resolve_taxon()`, `.bold_submit_query()`, `.bold_fetch_documents()`, `.parse_bold_coord()`. |
-| `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
+| `read_crabs_output()` | `R/read_crabs.R` | Written | Read CRABS internal-format database (headerless 11-column TSV) → `reference_df`. Params: `crabs_file` (2026-08-08: renamed from `file`, which shadowed `base::file()` -- see Recent Breaking Changes in `TaxaID/CLAUDE.md`), `rank_system` (NULL = auto-detect from populated columns), `max_n_bases`, `require_species` (uses `TaxaTools::is_valid_species_name()`), `dereplicate` (collapse exact-duplicate seqs within species). Complementary to `flag_reference_errors()`: CRABS handles bulk QC; TaxaLikely catches mislabeling CRABS cannot detect. |
 | `trim_to_amplicon()` | `R/trim_to_amplicon.R` | Written | **Session 140.** In-silico PCR: locates forward/reverse primer-binding sites in over-length `reference_df` sequences (full mitogenomes, whole-genome scaffolds) and extracts just the amplicon, instead of `build_sequence_matrix()`'s length filter discarding the whole sequence -- the fix for a poorly-sampled species whose only GenBank record is over-length losing all reference representation. Standalone stage: `fetch_ncbi_reference_sequences()` → `trim_to_amplicon()` → `build_sequence_matrix()`. Sequences already within `[min_len, max_len]` are left untouched (most purpose-cut barcode submissions already have primers stripped at deposition, so attempting a match on them would often fail even though the sequence is fine). Primers resolved via `barcode_term` (`TaxaTools::resolve_barcode_primers()`) or supplied directly (`primer_fwd`/`primer_rev`) for any marker not yet in the registry. `Biostrings::matchPattern(fixed = "subject")` (both strands, via `reverseComplement()`) -- empirically confirmed `fixed = FALSE` produces spurious matches across long N-runs in draft sequences, while `fixed = "subject"` correctly treats subject ambiguity codes literally while still interpreting the primer's own IUPAC degeneracy. `max_mismatch_rate` (default `0.15`) tolerates real SNP variation at primer-binding sites. A matched pair implying a span outside `[min_len, max_len]` is rejected as an implausible pairing rather than accepted (guards against a spurious far-apart match producing a near-original-length "amplicon"). Per-sequence graceful fallback: unmatched/implausible sequences are left unchanged (still over-length) and flagged via `amplicon_trim_note`, so they fall through to `build_sequence_matrix()`'s existing length filter exactly as before -- this function only ever rescues sequences that would otherwise be lost, never removes ones that would otherwise be kept. Live-verified on a realistic simulated 16kb mitogenome containing an embedded real MiFish-U amplicon: correctly extracted a 172bp sequence (matching Miya et al. 2015's own reported mean amplicon length exactly) that would otherwise have been dropped outright. Deliberately narrow in scope -- not a CRABS reimplementation; primer registry is populated only for verified primer sets (currently MiFish-U/E), with an unregistered marker directed to supply primers directly or pre-trim with CRABS. Internal helper: `.extract_amplicon_one()`. **Session 141**: works out of the box for 6 more markers now that `barcode_primer_defaults` covers every mito/chloroplast marker in `barcode_length_defaults` (16S, COI, cytb, rbcL, matK, trnL) -- no code change needed here, since this function was already generic over any `barcode_term` with a registered pair. New tests confirm real, literature-verified COI-Folmer and rbcLa primer pairs correctly extract from an over-length synthetic sequence, plus a loop test covering all 6 new registry entries end-to-end. **Session 142**: now also supports `coi-leray` (the real mlCOIintF/dgHCO2198 eDNA mini-barcode) -- no code change needed, `barcode_term = "COI-Leray"` resolves through the same generic path. New test confirms correct extraction of a real, literature-verified Leray-fragment amplicon; bare `"COI"` now errors (ambiguous between `coi-folmer`/`coi-leray`) rather than guessing. |
 | `read_reference_fasta()` | `R/fetch.R` | Written | Read local FASTA + taxonomy → `reference_df`. For CRUX, GenBank dumps, custom databases. `taxonomy` param accepts a data frame; new `taxonomy_file` param accepts a 2-column TSV (QIIME2/RESCRIPt/SILVA/MIDORI2 prefix-style `k__Kingdom;...` or positional `Kingdom;...`). Exactly one of `taxonomy` or `taxonomy_file` must be supplied (previously `taxonomy` was required). Internals: `.parse_taxonomy_tsv()`, `.parse_tax_string()`. |
 | `subset_local_database()` | `R/subset_db.R` | Written | Filter a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB, Greengenes2, RDP, **PR2 — Session 136**) to a user-supplied taxon list. Parses taxonomy first → O(1) ID lookup via environment hash → streams FASTA in chunks; peak memory scales with matching sequences, not total database size. Supports `.gz`-compressed FASTA. Optional `max_n_bases` and `require_species` filters. Returns `reference_df`. Reuses `.parse_taxonomy_tsv()` internal. **Session 136**: added real PR2 support — PR2 uses a fixed 9-level positional taxonomy string (`domain;supergroup;division;subdivision;class;order;family;genus;species`, confirmed against a real downloaded v5.1.1 release, 240,201 records, 100% uniform) that doesn't match `.crabs_std_hierarchy`'s 7-level shape; `.parse_tax_string()` now dispatches on field count (9 → new `.pr2_hierarchy` constant) rather than bending the shared 7-level constant every other positional source relies on. Also confirmed and preserved (not stripped) PR2's `:plas` plastid-ancestry suffix. MIDORI2's license (reported CC-BY-NC in secondary sources, unconfirmed on the primary site) now flagged in `@details` as a possible conflict with this ecosystem's CC0/USGS policy. |
@@ -1615,9 +2114,86 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | Function | File | Status | Description |
 |---|---|---|---|
 | `build_sequence_matrix()` | `R/build_sequence.R` | Written | Align DNA sequences (DECIPHER), compute pairwise distance matrix → pair format for `train_likelihood_model()`. Output includes `coverage` column. New params (Session 112): `filter_unnamed = TRUE` drops sequences with blank/NA finest-rank (species) label before alignment — removes spurious within-species pairs (blank == blank) that dominated 18S databases (69% of pairs); `max_seqs_per_taxon = NULL` randomly subsamples sequences per species before alignment to prevent heavily-sequenced taxa (e.g. Ovis aries) from dominating the within-species distribution. Both operate pre-alignment, reducing DECIPHER computation time. Renamed from `build_reference_matrix()` Session 88. **Session 151**: `barcode_term = NULL` param — when supplied and `min_seq_len`/`max_seq_len` are left at their defaults, auto-resolves the length window via `TaxaTools::resolve_barcode_lengths(barcode_term)` instead of the generic `[100, 2000]` default (explicit lengths always override). Closes the Paralabrax footgun (below) ergonomically — a specific registered primer variant (e.g. `"MiFishU"`) gives a real amplicon-window guarantee; a bare marker name (e.g. `"12S"`) does not. |
-| `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references |
+| `flag_reference_errors()` | `R/train.R` | Written | Flag mislabeled references. `singleton_match_threshold` param added 2026-08-08 (default `0.98`, same value/comparison as the prior hardcoded literal -- see Recent Breaking Changes). |
 | `compute_rank_thresholds()` | `R/support_curves.R` | Written | **2026-07-23.** Marker-agnostic per-rank Youden's J threshold deriver -- given a `build_sequence_matrix()`-style `seq_matrix` for YOUR marker/reference database, returns a `c(species=, genus=, family=)`-shaped named vector directly usable as `TaxaAssign::score_consensus(rank_thresholds=)`. Reuses the same genus-/family-equal-weighted, Empirical-Bayes-shrunk curve machinery `train_likelihood_model()` stores in `model_params$Confusion_Risk_Curves` (via the shared internal `.compute_rank_score_curves()`), so the two never drift apart. Built specifically because `score_consensus()`'s `rank_thresholds` lost its universal default the same session (see `TaxaAssign/CLAUDE.md`'s matching note) -- this is the "derive your own from real data" option its new error message points at. |
-| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. Empirical Bayes shrinkage weight `w = N/(N+prior_weight)` uses `N` = within-species SEQUENCE count (one row per sequence after `.prep_training_data()`'s `group_by(id_x) |> slice_max()` dedup), not raw pair count — confirmed empirically Session 151 after a soundness-review finding claimed otherwise (see that function's `N_Obs` doc note). **Session 151**: gained `@section Marker validation scope` — Framing B (this bivariate-normal form) is validated for 12S/18S only; run `diagnostics/seq_matrix_score_distribution.R` before trusting it on another marker. Also **Session 151**: `H2$delta` (the missing-species shift) is otherwise a single value pooled across every genus in the training set; where a genus has a real congener pair (`max_congener_score` from `.prep_training_data()`, distinct from the existing cross-any-genus `max_foreign_score`), a genus-specific delta is estimated and shrunk toward the pooled value via the same Empirical Bayes form as the per-species H1 means, stored in a new `H2_Lookup` slot. Genera with only one referenced species get no lookup row and fall back to the pooled delta unchanged. **Session 158**: new `score_transform` param (`"logit"` default, `"sqrt_mismatch"` new -- see this file's Session 158 note for the full derivation); `H2_Lookup` gains genus-specific `var_shrunk`; the pooled H2 delta/variance default now correctly sources from congener-only comparisons (was mixing in cross-any-genus data); fixed a real, pre-existing bug where `H1_Lookup$sigma_score` stored `sqrt(shrunk variance)` instead of the variance itself, understating every species-specific H1 candidate's true uncertainty since this formula was first written. **Session 157**: `H1_Lookup` gains `n_obs_species` (previously computed for shrinkage, then discarded); `Stats` gains `n_h1_pooled` (total sequences behind the global mean) and `n_h2_pooled` (foreign-match count behind the pooled global H2 delta) -- all three feed `evaluate_likelihoods()`'s redesigned Monte Carlo uncertainty (see that function's own Session 157 note). Purely additive; `model_params` objects trained before this change simply lack these fields and `evaluate_likelihoods()` falls back to its previous behavior. **2026-07-23**: gains a new `Confusion_Risk_Curves` slot (list, `NULL`-safe) -- genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank TPR/FPR curves computed once via the new internal `.compute_rank_score_curves()` (`R/support_curves.R`), read by `evaluate_likelihoods()`'s new `species_confusion_risk`/`genus_confusion_risk`/`family_confusion_risk` columns (see that function's own entry below) and by the new `compute_rank_thresholds()`. |
+| `train_likelihood_model()` | `R/train.R` | Written | Full training pipeline -> `taxa_model_params` object; `anchor_perfect` param (default TRUE) injects synthetic perfect-match observations. Bivariate normal over `(score_logit, gap_logit)`. Coverage is a filter only — pass `min_coverage` to `evaluate_likelihoods()` at inference, not a model dimension. Empirical Bayes shrinkage weight `w = N/(N+prior_weight)` uses `N` = within-species SEQUENCE count (one row per sequence after `.prep_training_data()`'s `group_by(id_x) |> slice_max()` dedup), not raw pair count — confirmed empirically Session 151 after a soundness-review finding claimed otherwise (see that function's `N_Obs` doc note). **Session 151**: gained `@section Marker validation scope` — Framing B (this bivariate-normal form) is validated for 12S/18S only; run `diagnostics/seq_matrix_score_distribution.R` before trusting it on another marker. Also **Session 151**: `H2$delta` (the missing-species shift) is otherwise a single value pooled across every genus in the training set; where a genus has a real congener pair (`max_congener_score` from `.prep_training_data()`, distinct from the existing cross-any-genus `max_foreign_score`), a genus-specific delta is estimated and shrunk toward the pooled value via the same Empirical Bayes form as the per-species H1 means, stored in a new `H2_Lookup` slot. Genera with only one referenced species get no lookup row and fall back to the pooled delta unchanged. **Session 158**: new `score_transform` param (`"logit"` default, `"sqrt_mismatch"` new -- see this file's Session 158 note for the full derivation); `H2_Lookup` gains genus-specific `var_shrunk`; the pooled H2 delta/variance default now correctly sources from congener-only comparisons (was mixing in cross-any-genus data); fixed a real, pre-existing bug where `H1_Lookup$sigma_score` stored `sqrt(shrunk variance)` instead of the variance itself, understating every species-specific H1 candidate's true uncertainty since this formula was first written. **Session 157**: `H1_Lookup` gains `n_obs_species` (previously computed for shrinkage, then discarded); `Stats` gains `n_h1_pooled` (total sequences behind the global mean) and `n_h2_pooled` (foreign-match count behind the pooled global H2 delta) -- all three feed `evaluate_likelihoods()`'s redesigned Monte Carlo uncertainty (see that function's own Session 157 note). Purely additive; `model_params` objects trained before this change simply lack these fields and `evaluate_likelihoods()` falls back to its previous behavior. **2026-07-23**: gains a new `Confusion_Risk_Curves` slot (list, `NULL`-safe) -- genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank TPR/FPR curves computed once via the new internal `.compute_rank_score_curves()` (`R/support_curves.R`), read by `evaluate_likelihoods()`'s new `species_confusion_risk`/`genus_confusion_risk`/`family_confusion_risk` columns (see that function's own entry below) and by the new `compute_rank_thresholds()`. **2026-08-08**: gains `singleton_match_threshold` param (default `0.98`, forwarded to `flag_reference_errors()`, purely additive). |
+
+### Reference database auditing (Module B-QC2, new -- 2026-08-06)
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `estimate_reference_scope()` | `R/audit_reference_database.R` | Written | NCBI count-only preflight (no fetch/alignment) for a taxon/marker/date scope, before committing to a full `audit_reference_database()` run. Reuses internal `.build_search_term()`/`.ncbi_delay()`. |
+| `audit_reference_database()` | `R/audit_reference_database.R` | Written | Exhaustive per-accession reference-database audit: fetches every matching accession (`max_sequences = Inf` default, deliberately no per-species/per-genus subsampling, unlike `fetch_ncbi_reference_sequences()`'s own modeling-oriented defaults), cleans the listed taxon name via `TaxaTools::verify_taxon_names(backbone_id = ncbi_backbone_id)`, builds `seq_matrix` via `build_sequence_matrix()`, and returns ONE ROW PER ACCESSION with raw QC statistics -- no categorization (see `classify_reference_accessions()`). Default `rank_system` is the full 7-rank `kingdom`...`species` ladder (**wider than `fetch_ncbi_reference_sequences()`'s own `family`/`genus`/`species` default, which is unchanged**) so the hierarchy-congruence check below has the coarse ranks it needs; this widening is real but not free -- see the cache-staleness fix under `fetch_ncbi_reference_sequences()`'s own entry. New `top_n`/`min_congruent_rank`/`submission_window` params control the hierarchy-congruence check, recorded in `search_metadata`. Output gains `median_foreign_match`/`n_foreign_pairs`/`n_foreign_taxa` (from `.compute_reference_qc_stats()`, shared with `flag_reference_errors()`) and `finest_common_rank`/`n_independent_top_matches`/`n_top_matches_available`/`frac_independent_below_min_congruent_rank` (from the new `.compute_hierarchy_congruence()`, see below). Metadata attached via `attr(result, "search_metadata")`. **New (2026-08-06, continued yet further)**: gains `min_coverage_floor` (default `0.1`, validated `<= min_coverage`) -- Check 1's raw stats (`.compute_reference_qc_stats()`) are now computed under THIS permissive floor, not the caller's calibrated `min_coverage`, which is instead recorded in `search_metadata` for `classify_reference_accessions(min_coverage=)`'s own downstream trust gate. Output gains `foreign_match_coverage`/`median_self_coverage` (see that function's own roxygen section and `classify_reference_accessions()`'s entry below for the full mechanism). `excluded_from_alignment` now reflects `min_coverage_floor`, not `min_coverage` -- an accession with any pair above the floor gets real stats. |
+| `classify_reference_accessions()` | `R/audit_reference_database.R` | Written | Takes `audit_reference_database()`'s stats-only output and derives `error_type`/`recommended_list` at a caller-chosen threshold (`mislabel_threshold`, `singleton_match_threshold`, `require_verified_name`), zero recompute cost. Deliberately separate from `audit_reference_database()` -- the raw numbers never need re-fetching/re-aligning to try a different threshold. **New (2026-08-06)**: gains `hierarchy_flag` (`"incongruent"`/`"congruent"`/`"insufficient_independent_evidence"`, controlled by new `hierarchy_incongruent_threshold` param, default `0.5`) whenever `qc_df` carries the hierarchy-congruence columns -- OPTIONAL, gracefully absent (not an error) for an older `qc_df` that predates this feature. Deliberately a SEPARATE column from `error_type`, never folded into its override chain (see `TaxaFlag::confusion_risk_flag`/the retired `"unsupported_rank"` category for why -- this codebase has already run that experiment twice). `recommended_list` is the one place the two signals combine: `"blacklist"` if `error_type == "likely_mislabeled"` OR `hierarchy_flag == "incongruent"`; `"review"` adds `hierarchy_flag == "insufficient_independent_evidence"` to the existing review cases; `"whitelist"` otherwise. **New (2026-08-06, continued yet further)**: gains `min_coverage = NULL` (auto-pulled from `attr(qc_df, "search_metadata")$min_coverage` when unset, overridable for instant threshold sensitivity sweeps, same pattern as `hierarchy_incongruent_threshold`). Gates `"likely_mislabeled"`/`"unverified_singleton_high_match"` on `foreign_match_coverage >= min_coverage` -- both flags key off a single extreme value (`max_foreign_match`), so the ONE pair that produced it needs its OWN coverage checked, not a blanket filter over every comparison. Gracefully disabled (every row trusted, matching pre-2026-08-06 behavior) when `foreign_match_coverage` is absent from `qc_df` or no calibrated `min_coverage` is available from either source -- same "optional, not required" pattern as the hierarchy columns. |
+| `repair_thin_evidence()` | `R/repair_thin_evidence.R` | Written | **New (2026-08-06, continued).** Targeted pairwise repair for accessions `audit_reference_database()`/`classify_reference_accessions()` flagged thin-evidence (`n_self_neighbors` below `min_self_neighbors`, default `1L`; or `n_independent_top_matches` below `min_independent_partners`, default `3L`, matching `classify_reference_accessions()`'s own `"insufficient_independent_evidence"` floor). Re-checks a bounded set (`max_candidates_per_accession`, default `20L`) of same-species/same-genus candidates via a direct `pwalign::pairwiseAlignment(type="local")` two-sequence alignment -- the same alignment/coverage/PID convention `.check_regional_overlap()` already established, not a third formula -- held to the same `min_coverage` the audit itself used. Same-submission-batch candidates excluded from the hierarchy-repair path via the same `.build_submission_batch_lookup()`/`.same_submission_batch()` helpers `.compute_hierarchy_congruence()` uses. Deliberately NOT gated on `qc$excluded_from_alignment` -- that flag is `TRUE` for several different real causes (see below) and is never trusted directly to determine scope. **Scope widened (2026-08-06, continued yet again)**: EVERY accession in `reference_df` is eligible, including one with ZERO presence in `seq_matrix` (a genuine length outlier like a full mitogenome) -- previously explicitly out of scope. Primer-neutral safeguard: every CANDIDATE a repair attempt aligns against must itself already have real presence in `seq_matrix` (`paired_ids`) -- i.e. already short enough to have entered the whole-set MSA normally -- so an over-length/otherwise-thin accession is never used as another one's anchor, bounding every alignment to a short-vs-long (or short-vs-short) pair and never long-vs-long. This is what makes the mechanism able to rescue over-length records WITHOUT naming a specific primer (`trim_to_amplicon()`, rejected for this purpose -- see this file's top session note for the real design objection). Returns an augmented `seq_matrix` -- pass straight back into `audit_reference_database(reference_df=, seq_matrix=, min_coverage=)` to re-score at no re-fetch/re-alignment cost, reusing that function's own cheap-reuse mechanism. See this file's own top session notes for the real GreatLakes `review`-rate motivation, the real end-to-end bug found and fixed via dry-run testing, and the real scope-widening finding (67% of a real audit had zero `seq_matrix` presence at all). |
+
+**The hierarchy-congruence mechanism (2026-08-06).** Implements
+`ecosystem_docs/REENTRY_PROMPT_reference_database_audit_hierarchy_check.md` --
+motivated by a real failure mode a naive "top-N nearest-neighbour"
+corroboration statistic cannot catch: a parasite correctly identified
+morphologically, but whose sequenced DNA is actually the host's (lab/
+pipeline contamination), replicated across several individuals from the
+same sample. A contaminated accession's *nearest* matches (by `p_match`)
+are its own sibling replicates from the same contamination event (same
+wrong sequence, `p_match` near 1.0) -- they outrank the true, independent
+evidence in any raw top-N ranking, so a naive version is silent precisely
+when replication exists, which is the defining feature of the motivating
+case. New internal `.compute_hierarchy_congruence(seq_matrix, reference_df,
+rank_system, top_n = 5L, min_congruent_rank = "family", submission_window =
+5L)` (`R/train.R`) fixes this via an **independence filter**: before
+ranking partners for any accession, any partner sharing the same
+*submission batch* (NOT the same species -- same-species comparisons from
+different, independent submissions remain fully valid corroborating
+evidence) is excluded, via EITHER of two OR'd signals -- `create_date`
+(live-verified present on NCBI's real ESummary DocSum for the nucleotide
+database; a new column on `fetch_ncbi_reference_sequences()`'s own
+`reference_df`, see that function's entry) within `submission_window` days,
+or `composite_id`'s accession-number proximity (always available, zero
+fetch cost). `min_congruent_rank` defaults to `"family"`, not a coarser
+rank -- real host-parasite pairs are very often in the same phylum/class/
+order as their host, and NCBI does not populate `"kingdom"` uniformly
+across the tree of life (absent for protists/prokaryotes), so a fixed
+kingdom/phylum default would both miss real cases and silently never fire
+across large parts of the tree. `frac_independent_below_min_congruent_rank`
+is Jeffreys-smoothed (`(k+0.5)/(n+1)`, the same convention already used in
+`R/support_curves.R`'s confusion-risk curves) rather than a raw `k/n`,
+which is uselessly lumpy at small `n`; accessions with `< 3` independent
+top-N partners are marked `"insufficient_independent_evidence"` rather than
+letting a smoothed-but-still-tiny-n fraction drive a verdict either way.
+**Vectorised, not per-accession**: the rank-agreement walk loops only over
+`rank_system`'s own (<= 7) ranks, each iteration a fully vectorised column
+operation over the whole independence-filtered, `top_n`-sliced table --
+this package has already been bitten twice by exactly the per-row/
+per-candidate scan performance-bug class on real million-row `seq_matrix`
+data (Session 159's `%in%` scan and `sub()` re-run, see the Known Footguns
+below), so this was checked directly: `diagnostics/hierarchy_congruence_
+timing.R` confirms 600,000 real-scale synthetic `seq_matrix` rows process
+in 0.82s (~730K rows/sec) and 1,000,000 rows in 1.39s. Tested against 4
+hand-built biological fixtures (not just that the mechanism runs without
+erroring) in `tests/testthat/test-hierarchy-congruence.R`: the motivating
+replicated-contamination case (3 same-batch parasite accessions whose true
+content matches 3 independent host accessions -> `"incongruent"`); a
+true-negative confamilial/congeneric case (-> `"congruent"`, the family-
+level default does not false-positive on ordinary barcode ambiguity); a
+sparse-region case (1 independent partner -> `"insufficient_independent_
+evidence"`); and a dedicated independence-filter regression proving a naive
+unfiltered top-N would have read `"congruent"` (masking the real signal)
+on the exact same data the real, filtered mechanism correctly reads
+`"incongruent"` on.
+
+**Explicitly out of scope, not built this session** (see the reentry doc
+for the full reasoning): barcode-gap refinement beyond `median_foreign_
+match`/`n_foreign_pairs`/`n_foreign_taxa`; NCBI metadata plausibility
+beyond the `create_date`-based independence check, and BOLD
+cross-referencing; `spider::localMinima()`/an adaptive-threshold wrapper
+(this package already ships a SUPERVISED, ground-truth-driven equivalent,
+`compute_rank_thresholds()`, above); `spider`'s `"ambiguous"` category and
+`spider::monophyly()`/tree-based checks; author-level (GBSeq XML)
+same-submission detection (date + accession-proximity only); fixing
+`build_sequence_matrix()`/`DECIPHER::DistanceMatrix()`'s own dense-matrix
+memory ceiling (documented in `audit_reference_database()`'s and
+`estimate_reference_scope()`'s own roxygen -- `max_sequences` is the
+mitigation, not a fix).
 
 ### Unified likelihood pipeline (new — Session 99)
 
@@ -1653,7 +2229,7 @@ for `unreferenced_species` and `unreferenced_genus` rows (unreferenced species p
 | Function | File | Status | Description |
 |---|---|---|---|
 | `infer_exclude_predicted()` | `R/infer_predicted.R` | Written | Inspects accession column of a match object to infer whether the BLAST reference excluded computationally predicted (XR_/XM_) sequences. Returns `TRUE` (no XR_/XM_ found → exclude), `FALSE` (predicted accessions present → include), or `NA` (all custom/non-NCBI accessions → cannot determine). Auto-detects accession column; strips version suffixes; reports custom accession count. Feeds directly into `audit_barcode_coverage(exclude_predicted = infer_exclude_predicted(match_obj) \%\|\|\% TRUE)`. |
-| `audit_barcode_coverage()` | `R/coverage.R` | Written | **Preferred for eDNA/barcode data.** Unreferenced = described species with NO barcode sequence (cannot appear as reference match). **Reverse-search implementation** (Session 113): one genus-level NCBI nuccore query + batched `elink` → taxonomy + batched `entrez_summary`; ~4 fixed API calls per genus regardless of species count (3.25× faster than per-species queries on 18S protist/algae genera). Species enumeration: NCBI taxonomy subtree (or user `species_list`). Census: `in_reference`, `has_seqs_not_in_ref`, `unreferenced`, `is_complete`. Params: `barcode_term` (vector ok), `max_date`, `min_len`, `max_len`, `species_list`, `max_nuccore` (default 5000), `cache_dir`. Checkpoint/resume: progress saved per genus; interrupted runs resume automatically. Hyphenated genera (e.g. *Pseudo-nitzschia*) handled via hyphen→space normalization in `.genus_taxid()`. `audit_barcode_coverage_ncbi()` is a deprecated alias. |
+| `audit_barcode_coverage()` | `R/coverage.R` | Written | **Preferred for eDNA/barcode data.** Unreferenced = described species with NO barcode sequence (cannot appear as reference match). **Reverse-search implementation** (Session 113): one genus-level NCBI nuccore query + batched `elink` → taxonomy + batched `entrez_summary`; ~4 fixed API calls per genus regardless of species count (3.25× faster than per-species queries on 18S protist/algae genera). Species enumeration: NCBI taxonomy subtree (or user `species_list`). Census: `in_reference`, `has_seqs_not_in_ref`, `unreferenced`, `is_complete`. Params: `barcode_term` (vector ok), `max_date`, `min_len`, `max_len`, `species_list`, `max_nuccore` (default 5000), `cache_dir`. Checkpoint/resume: progress saved per genus; interrupted runs resume automatically. Hyphenated genera (e.g. *Pseudo-nitzschia*) handled via hyphen→space normalization in `.genus_taxid()`. `audit_barcode_coverage_ncbi()` is a deprecated alias. Internal scaffold `.audit_barcode_coverage_new_()` renamed `.audit_barcode_coverage_impl()` 2026-08-08. `audit_barcode_coverage_gbif()` (an unexported, untested, zero-caller "DRAFT" GBIF-enumeration variant) removed entirely the same day -- see Recent Breaking Changes in `TaxaID/CLAUDE.md`. |
 | `audit_reference_coverage()` | `R/coverage.R` | Written | Queries NCBI taxonomy tree (all described species). Use for non-barcode libraries (images, sounds) where barcode availability is irrelevant. |
 | `audit_acoustic_coverage()` | `R/coverage.R` | Written | **Acoustic/image.** Which plausible species are absent from classifier's known list? Simple set-membership check — no NCBI API. `match_df` param annotates `in_match_data`. `xc_recordings = FALSE` param (Session 119, fixed to v3 Session 125): when TRUE, queries Xeno-canto v3 API (requires `XC_API_KEY` env var) for `n_recordings` per species (1s rate limit; NA on failure or missing key). Returns `list(census, unreferenced)` matching `audit_barcode_coverage()` format. |
 | `audit_inat_coverage()` | `R/coverage.R` | Written | **iNaturalist image coverage audit** (Session 119). Given a species list (prior taxa), queries iNat taxa API for each species: returns `n_observations`, `cv_model_included` (n_obs >= `cv_threshold`, default 100L), `unreferenced` list. Optional `match_df` annotates `in_match_data`. Optional `api_token` (env `INAT_API_TOKEN`; 401 → stop). 0.3s rate limit. Returns `list(census, unreferenced)` with same structure as `audit_barcode_coverage()`. Internal helpers: `.inat_species_info()`, `.xc_recording_count()`. |
@@ -1687,7 +2263,7 @@ Use `unreferenced_candidates()` + `assign_scores()` (score_type = "none" or
 
 | Function | File | Status | Description |
 |---|---|---|---|
-| `remove_flagged_references()` | `R/clean.R` | Written | Remove mislabeled accessions from match_df using `flag_reference_errors()` output. Handles version suffix stripping. `remove_unverified_singletons` param (default FALSE). |
+| `remove_flagged_references()` | `R/remove_flagged_references.R` (2026-08-08: file renamed from `R/clean.R`, per its own only function's name -- no functional change) | Written | Remove mislabeled accessions from match_df using `flag_reference_errors()` output. Handles version suffix stripping. `remove_unverified_singletons` param (default FALSE). |
 | `write_reference_fasta()` | `R/write_fasta.R` | Written | Export `reference_df` to FASTA + optional companion taxonomy TSV. FASTA header: `>{composite_id} {rank vals}` (NA ranks omitted). TSV is positional format compatible with `read_reference_fasta(taxonomy_file=)`. `rank_system` auto-detected when NULL. |
 | `build_site_reference()` | `R/build_site_reference.R` | Written | High-level site-specific reference builder (DNA only). taxa list → `fetch_reference_sequences()` → optional `flag_reference_errors()` → `audit_barcode_coverage()` → `write_reference_fasta()`. Returns `list($reference_df, $errors, $census, $unreferenced)`. `output_dir` param writes `reference.fasta` + `reference_taxonomy.tsv`. |
 
@@ -1843,6 +2419,9 @@ which is skipped when DECIPHER/Biostrings are not installed.
 | test-write-fasta.R | `write_reference_fasta()` | Fully offline |
 | test-score-collapse.R | `detect_suppressed_candidates()`, `restore_suppressed_candidates()`, `.check_regional_overlap()` | 65 test_that blocks (up from 46, 2026-07-18 redesign + Option A/C cost-control revision); fully offline; covers all 3 detect rules, no-score path, check_regional_overlap (Tiers 1/2a/2b), `align_cache` memoization, `.check_regional_overlap(return_detail = TRUE)`'s pid output, the score-sourcing hierarchy (seq_matrix-based imputation, median aggregation, Level 0 routing to Level 4), Purpose A/B admission (`restoration_basis` values via a real `model_params` fixture), the `.worth_level4_check()` two-tier gate (`candidate_species_filter` default, ratio fallback for a candidate not on it), the `.level4_attempt_allowed()` per-anchor cap (`max_level4_per_anchor`), the `regional_unreferenced` attribute's `basis` column (`regional_reject` vs `no_reference_data`), and the no-evidence no-op behavior change |
 | test-expand_unreferenced.R | `expand_unreferenced_hypotheses()` | 20 test_that blocks; fully offline; covers H2/H3 expansion, species-level suppression, genus-rank suppression, extra-column passthrough, and the Session 159 `observation_id`-scoped unreferenced_df extension |
+| test-audit-reference-database.R | `estimate_reference_scope()`, `audit_reference_database()`, `classify_reference_accessions()` | Fully offline via `local_mocked_bindings()` (`fetch_ncbi_reference_sequences`/`build_sequence_matrix`/`TaxaTools::verify_taxon_names` mocked, matching `test-build-site-reference.R`'s established pattern). 2026-08-06, continued yet further: 4 new blocks for `min_coverage_floor`/`min_coverage`'s split roles -- the floor rescuing thin evidence from `excluded_from_alignment`, `min_coverage_floor > min_coverage` validation, the trust gate suppressing an over-confident flag on thin decisive coverage then re-enabling it at a lower override, and full backward compatibility when the new column/threshold are absent. |
+| test-hierarchy-congruence.R | `.compute_hierarchy_congruence()` (internal), `classify_reference_accessions()`'s `hierarchy_flag` | 2026-08-06, 9 test_that blocks; fully offline, hand-built `seq_matrix`/`reference_df` fixtures built from real biology (a real sea-louse/salmon host-parasite pair), not synthetic placeholders. Covers the 4 required scenarios from the reentry doc's verification bar: the motivating replicated-contamination case, a true-negative confamilial/congeneric case, a sparse-region (`insufficient_independent_evidence`) case, and a dedicated independence-filter regression proving a naive unfiltered top-N would mask the real signal. Plus: NA-skip rank-walk semantics, `hierarchy_flag`'s optional-column backward compatibility, `hierarchy_incongruent_threshold` adjustability, and input validation. |
+| test-repair-thin-evidence.R | `repair_thin_evidence()` | 2026-08-06, 7 test_that blocks, 22 assertions; fully offline, real DNA (a genuine substring pair, not random unrelated strings, so `pairwiseAlignment()` has real overlap to find). Covers: basic same-species repair recovery, an already-valid-pair no-op, the same-batch independence filter excluding a hierarchy candidate, a dedicated regression for the `excluded_from_alignment=TRUE`-via-`min_coverage` case, input validation, and (2026-08-06, continued yet again) the primer-neutral scope widening -- a same-species pair where BOTH sides lack real `seq_matrix` presence still correctly repairs nothing (neither can anchor the other), and a zero-presence accession WITH a real, already-paired same-species candidate now IS repaired. |
 
 ---
 

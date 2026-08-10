@@ -18,6 +18,12 @@ utils::globalVariables(c(
 #' @noRd
 .coverage_checkpoint_path <- function(genera, barcode_term, len_range,
                                        max_date, target_rank, cache_dir) {
+  # len_range is always TaxaTools::resolve_barcode_lengths()'s c(min_bp, max_bp)
+  # output by construction at this internal helper's one call site, but
+  # guard explicitly anyway -- a malformed len_range would otherwise silently
+  # build a checkpoint filename missing its length component (len_range[2L]
+  # recycling to NA) rather than failing clearly.
+  stopifnot(is.numeric(len_range), length(len_range) == 2L, !anyNA(len_range))
   safe_bc  <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
   date_sfx <- gsub("[^0-9A-Za-z]", "", if (is.null(max_date)) "X" else max_date)
   n_gen    <- length(genera)
@@ -79,6 +85,10 @@ utils::globalVariables(c(
 #'   Wrap the call in `tryCatch()` for batch processing of large databases.
 #'
 #' @seealso [apply_coverage_constraints()]
+#'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `reference_df` is derived), see `inst/review_function_inputs.R`
+#'   Section 7 in the package source.
 #'
 #' @examples
 #' \dontrun{
@@ -368,10 +378,16 @@ audit_reference_coverage <- function(reference_df,
 #'
 #' @seealso [audit_reference_coverage()], [apply_coverage_constraints()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `match_obj` is derived), see `inst/review_function_inputs.R` Section 7
+#'   in the package source.
+#'
 #' @examples
 #' \dontrun{
+#' # match_obj is a match object (e.g. TaxaMatch::standardize_match_data()
+#' # output), NOT a length-curated reference_df -- see "Common mistake" above.
 #' cov <- audit_barcode_coverage(
-#'   reference_df,
+#'   match_obj,
 #'   barcode_term = "MiFishU",
 #'   target_rank  = "genus",
 #'   max_date     = "2024/06/01"
@@ -395,12 +411,11 @@ audit_barcode_coverage <- function(match_df,
                                    max_nuccore       = 5000L,
                                    exclude_predicted = TRUE) {
 
-  .audit_barcode_coverage_new_(
+  .audit_barcode_coverage_impl(
     match_df = match_df, barcode_term = barcode_term, species_list = species_list,
     min_len = min_len, max_len = max_len, max_date = max_date,
     target_rank = target_rank, cache_dir = cache_dir,
     ncbi_api_key = ncbi_api_key, max_nuccore = max_nuccore,
-    use_gbif = FALSE, version_tag = NULL,
     exclude_predicted = exclude_predicted
   )
 }
@@ -421,8 +436,15 @@ audit_barcode_coverage <- function(match_df,
   }, error = function(e) NA_character_)
 }
 
-# Reverse barcode check: one genus-level nuccore search + batched elink to
-# taxonomy + batched taxonomy summary.
+# "Reverse" barcode check: reverse in the sense of which direction the
+# search runs, not a biology term. The naive ("forward") approach checks one
+# species at a time: for each candidate species, ask NCBI "does a barcode
+# sequence exist for you?" (N searches). This function instead runs ONE
+# broad genus-level nuccore search (every barcode-length sequence for the
+# whole genus, in one query) and then works backward from those results,
+# resolving each hit's taxid to a species name to see which candidates got
+# covered -- one genus-level nuccore search + batched elink to taxonomy +
+# batched taxonomy summary.
 #
 # Replaces N per-species entrez_search calls with O(ceil(n_ids / 200)) elink
 # calls regardless of how many candidate species exist.  The efficiency gain is
@@ -516,35 +538,7 @@ audit_barcode_coverage <- function(match_df,
   )
 }
 
-# Enumerate accepted species for a genus from the GBIF backbone.
-# Requires rgbif (in TaxaFetch Imports; not in TaxaLikely -- checked at runtime).
-# Returns character(0L) on any failure so the caller can fall back to NCBI.
-#' @noRd
-.get_species_gbif <- function(grp) {
-  if (!requireNamespace("rgbif", quietly = TRUE)) {
-    warning(sprintf("'rgbif' not installed; GBIF lookup skipped for '%s'", grp))
-    return(character(0L))
-  }
-  tryCatch({
-    bb <- rgbif::name_backbone(name = grp, rank = "genus", strict = FALSE)
-    if (is.null(bb) || length(bb) == 0L || is.na(bb$usageKey[1L]) ||
-        toupper(bb$rank[1L]) != "GENUS")
-      return(character(0L))
-    ch <- rgbif::name_usage(key = bb$usageKey[1L],
-                             data = "children", limit = 1000L)$data
-    if (is.null(ch) || nrow(ch) == 0L) return(character(0L))
-    sp <- ch$scientificName[
-      !is.na(ch$rank) & toupper(ch$rank) == "SPECIES" &
-      !is.na(ch$taxonomicStatus) &
-      toupper(ch$taxonomicStatus) %in% c("ACCEPTED", "DOUBTFUL")
-    ]
-    sp_clean <- .first_two_words(trimws(sp))
-    sp_clean[TaxaTools::is_plausible_binomial(sp_clean)]
-  }, error = function(e) character(0L))
-}
-
-# Enumerate species under a genus via NCBI taxonomy subtree (shared by
-# .audit_one_genus_reverse()'s primary NCBI path and its GBIF-fallback path).
+# Enumerate species under a genus via NCBI taxonomy subtree.
 #' @noRd
 .ncbi_species_enumerate <- function(genus_uid, grp = NA_character_, warn_on_error = TRUE) {
   if (is.na(genus_uid)) return(character(0L))
@@ -578,12 +572,12 @@ audit_barcode_coverage <- function(match_df,
   })
 }
 
-# Shared inner loop body used by both new draft functions.
-# Handles species enumeration (GBIF or NCBI) + reverse barcode check + record
-# assembly. Returns a census record list.
+# Per-genus inner loop body for audit_barcode_coverage(): species enumeration
+# (NCBI taxonomy subtree) + reverse barcode check + record assembly. Returns
+# a census record list.
 #' @noRd
 .audit_one_genus_reverse <- function(grp, match_df, target_rank,
-                                      species_list, use_gbif,
+                                      species_list,
                                       barcode_clause, len_range, date_clause,
                                       max_nuccore, exclude_predicted = TRUE) {
   rec <- list(group = grp, total = NA_integer_, in_reference = NA_integer_,
@@ -610,26 +604,11 @@ audit_barcode_coverage <- function(match_df,
   if (!is.null(species_list))
     all_sp <- species_list[startsWith(species_list, paste0(grp, " "))]
 
-  # 2. Primary source: GBIF or NCBI (per function choice)
-  if (length(all_sp) == 0L) {
-    if (use_gbif) {
-      all_sp <- .get_species_gbif(grp)
-    } else {
-      # NCBI taxonomy subtree (same as v1, now with batch fix). Warns on
-      # failure -- this is the primary source path, so a query failure here
-      # is worth surfacing to the caller.
-      all_sp <- .ncbi_species_enumerate(genus_uid, grp = grp, warn_on_error = TRUE)
-    }
-  }
-
-  # 3. Fallback: if GBIF returned nothing, try NCBI taxonomy. Silent on
-  # failure -- this is a best-effort fallback after the primary (GBIF) path
-  # already came back empty, so a second failure here just leaves all_sp
-  # empty rather than doubling up warnings for what the caller already knows
-  # was an unproductive lookup.
-  if (length(all_sp) == 0L && use_gbif && !is.na(genus_uid)) {
-    all_sp <- .ncbi_species_enumerate(genus_uid, grp = grp, warn_on_error = FALSE)
-  }
+  # 2. Primary source: NCBI taxonomy subtree. Warns on failure -- this is the
+  # only species-enumeration source, so a query failure here is worth
+  # surfacing to the caller.
+  if (length(all_sp) == 0L)
+    all_sp <- .ncbi_species_enumerate(genus_uid, grp = grp, warn_on_error = TRUE)
 
   if (length(all_sp) == 0L) return(rec)  # NA record; caller will not checkpoint
 
@@ -666,65 +645,15 @@ audit_barcode_coverage <- function(match_df,
 }
 
 
-# ==============================================================================
-# DRAFT: audit_barcode_coverage_gbif()
-# Species enumeration: GBIF backbone (NCBI fallback for genera missing from GBIF)
-# Barcode check:       reverse NCBI  (one genus-level nuccore search + elink)
-# ==============================================================================
-
-#' Audit barcode coverage -- GBIF species list + reverse NCBI search (DRAFT)
-#'
-#' Experimental alternative to [audit_barcode_coverage()].  Uses the GBIF
-#' backbone to enumerate described species per genus (no rate-limiting; often
-#' more complete for marine invertebrates and algae) and replaces the N
-#' per-species NCBI nucleotide queries with a single genus-level search plus
-#' `elink` back to taxonomy.
-#'
-#' API calls per genus: ~3 fixed (genus taxid + nuccore search + elink +
-#' taxonomy batch), regardless of the number of candidate species.
-#' Compare with [audit_barcode_coverage()] for speed and robustness.
-#'
-#' @param match_df,barcode_term,species_list,min_len,max_len,max_date,target_rank,cache_dir,ncbi_api_key
-#'   Same as [audit_barcode_coverage()].
-#' @param max_nuccore Integer.  Maximum NCBI nucleotide IDs fetched per genus
-#'   for the reverse check.  Default 5000; increase for extremely sequence-rich
-#'   genera if some represented species are suspected to be missed.
-#'
-#' @return Same structure as [audit_barcode_coverage()].
-#' @seealso [audit_barcode_coverage()]
+# Shared scaffolding for audit_barcode_coverage().
+# Handles validation, checkpoint, progress bar, and output assembly. Split
+# out from audit_barcode_coverage() itself so the exported function's body
+# stays a thin, readable pass-through of its own documented arguments.
 #' @noRd
-audit_barcode_coverage_gbif <- function(match_df,
-                                         barcode_term,
-                                         species_list      = NULL,
-                                         min_len           = NULL,
-                                         max_len           = NULL,
-                                         max_date          = NULL,
-                                         target_rank       = "genus",
-                                         cache_dir         = tools::R_user_dir("TaxaLikely", "cache"),
-                                         ncbi_api_key      = NULL,
-                                         max_nuccore       = 5000L,
-                                         exclude_predicted = TRUE) {
-
-  .audit_barcode_coverage_new_(
-    match_df = match_df, barcode_term = barcode_term, species_list = species_list,
-    min_len = min_len, max_len = max_len, max_date = max_date,
-    target_rank = target_rank, cache_dir = cache_dir,
-    ncbi_api_key = ncbi_api_key, max_nuccore = max_nuccore,
-    use_gbif = TRUE, version_tag = "gbif",
-    exclude_predicted = exclude_predicted
-  )
-}
-
-
-# Shared scaffolding for audit_barcode_coverage() and audit_barcode_coverage_gbif().
-# Handles validation, checkpoint, progress bar, and output assembly.
-# use_gbif: selects GBIF vs NCBI species enumeration.
-# version_tag: NULL = canonical checkpoint name; non-NULL = suffixed name.
-#' @noRd
-.audit_barcode_coverage_new_ <- function(match_df, barcode_term, species_list,
+.audit_barcode_coverage_impl <- function(match_df, barcode_term, species_list,
                                           min_len, max_len, max_date,
                                           target_rank, cache_dir, ncbi_api_key,
-                                          max_nuccore, use_gbif, version_tag,
+                                          max_nuccore,
                                           exclude_predicted = TRUE) {
   # ---- Input validation ------------------------------------------------------
   if (!is.data.frame(match_df))
@@ -741,9 +670,14 @@ audit_barcode_coverage_gbif <- function(match_df,
   if (!is.null(species_list)) {
     if (!is.character(species_list) || length(species_list) == 0L)
       stop("species_list must be a character vector or NULL")
-    species_list <- unique(.first_two_words(
-      trimws(species_list[TaxaTools::is_plausible_binomial(trimws(species_list))])
-    ))
+    # Truncate to "Genus species" first, then check plausibility on the
+    # truncated result -- matches every other is_plausible_binomial() call
+    # site in this file (.reverse_barcode_check()'s .sp_names(),
+    # .ncbi_species_enumerate(), .audit_one_genus_reverse()'s ref_sp), which
+    # all check the already-truncated form rather than the raw string. A
+    # single trimws() up front (not one before AND one after truncation).
+    species_list <- .first_two_words(trimws(species_list))
+    species_list <- unique(species_list[TaxaTools::is_plausible_binomial(species_list)])
   }
   if (!requireNamespace("rentrez", quietly = TRUE))
     stop("Package 'rentrez' is required. Install with: install.packages('rentrez')")
@@ -763,8 +697,13 @@ audit_barcode_coverage_gbif <- function(match_df,
     sprintf("%s[All Fields]", barcode_term)
   else
     sprintf("(%s)", paste(sprintf("%s[All Fields]", barcode_term), collapse = " OR "))
+  # 1900 as the lower bound is a "no meaningful floor" sentinel (predates
+  # GenBank's own 1982 founding), matching fetch.R's .build_search_term()
+  # min_date default of "1900/01/01" -- this function has no min_date
+  # argument of its own, so it always uses the same sentinel rather than an
+  # arbitrary literal that could silently exclude a genuinely early record.
   date_clause <- if (!is.null(max_date))
-    sprintf(" AND (1985[PDAT] : %s[PDAT])", trimws(max_date)) else ""
+    sprintf(" AND (1900/01/01[PDAT] : %s[PDAT])", trimws(max_date)) else ""
 
   genera <- unique(stats::na.omit(match_df[[target_rank]]))
   genera <- genera[nchar(trimws(genera)) > 0L]
@@ -779,38 +718,32 @@ audit_barcode_coverage_gbif <- function(match_df,
     ))
   }
 
-  # ---- Checkpoint (version-tagged or canonical) -------------------------------
+  # ---- Checkpoint --------------------------------------------------------------
   checkpoint_path <- NULL
   prior_census    <- list()
   if (!is.null(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    base_path <- .coverage_checkpoint_path(genera, barcode_term, len_range,
-                                            max_date, target_rank, cache_dir)
-    checkpoint_path <- if (is.null(version_tag)) base_path else
-      sub("_ckpt\\.rds$", sprintf("_%s_ckpt.rds", version_tag), base_path)
+    checkpoint_path <- .coverage_checkpoint_path(genera, barcode_term, len_range,
+                                                  max_date, target_rank, cache_dir)
     if (file.exists(checkpoint_path)) {
       prior_census <- readRDS(checkpoint_path)
       n_done <- sum(genera %in% names(prior_census))
-      pfx <- if (is.null(version_tag)) "" else sprintf("[%s] ", version_tag)
-      message(sprintf("  %sResuming: %d/%d %s(s) done.",
-                      pfx, n_done, length(genera), target_rank))
+      message(sprintf("  Resuming: %d/%d %s(s) done.",
+                      n_done, length(genera), target_rank))
     }
   }
 
   t_start <- proc.time()[["elapsed"]]
-  pfx <- if (is.null(version_tag)) "" else sprintf("[%s] ", version_tag)
   message(sprintf(
-    "%sAuditing %d %s(s) (barcode: '%s', length: %d-%d bp)...",
-    pfx, length(genera), target_rank, term_label,
+    "Auditing %d %s(s) (barcode: '%s', length: %d-%d bp)...",
+    length(genera), target_rank, term_label,
     len_range[1L], len_range[2L]))
 
   # ---- Per-genus loop --------------------------------------------------------
   full_census <- vector("list", length(genera))
   names(full_census) <- genera
 
-  pb_label <- if (is.null(version_tag)) "Auditing genera" else
-    sprintf("Auditing genera [%s]", version_tag)
-  pb <- cli::cli_progress_bar(pb_label, total = length(genera))
+  pb <- cli::cli_progress_bar("Auditing genera", total = length(genera))
 
   for (i in seq_along(genera)) {
     cli::cli_progress_update(id = pb)
@@ -823,7 +756,7 @@ audit_barcode_coverage_gbif <- function(match_df,
 
     rec <- .audit_one_genus_reverse(
       grp = grp, match_df = match_df, target_rank = target_rank,
-      species_list = species_list, use_gbif = use_gbif,
+      species_list = species_list,
       barcode_clause = barcode_clause, len_range = len_range,
       date_clause = date_clause, max_nuccore = max_nuccore,
       exclude_predicted = exclude_predicted
@@ -842,8 +775,7 @@ audit_barcode_coverage_gbif <- function(match_df,
   cli::cli_progress_done(id = pb)
 
   elapsed <- proc.time()[["elapsed"]] - t_start
-  pfx2 <- if (is.null(version_tag)) "" else sprintf("[%s] ", version_tag)
-  message(sprintf("%sCompleted in %.1f min.", pfx2, elapsed / 60))
+  message(sprintf("Completed in %.1f min.", elapsed / 60))
 
   if (!is.null(checkpoint_path) && file.exists(checkpoint_path))
     file.remove(checkpoint_path)
@@ -1116,6 +1048,10 @@ audit_acoustic_coverage <- function(plausible_species,
 #' @seealso [audit_barcode_coverage()], [audit_reference_coverage()],
 #'   [evaluate_likelihoods()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `result`/`cov` are derived), see `inst/review_function_inputs.R`
+#'   Section 7 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' constrained <- apply_coverage_constraints(
@@ -1380,8 +1316,12 @@ fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
 #' @noRd
 .inat_species_info <- function(species_name, api_token = "") {
   if (!requireNamespace("httr2", quietly = TRUE)) {
+    # Self-identify by the exported caller (audit_inat_coverage), not this
+    # internal (.noRd, unexported) helper's own name -- a user has no way to
+    # look up ".inat_species_info" and the message would otherwise reference
+    # a function they never called directly.
     warning(
-      ".inat_species_info: 'httr2' is required for iNaturalist queries. ",
+      "audit_inat_coverage: 'httr2' is required for iNaturalist queries. ",
       "Install with: install.packages('httr2')",
       call. = FALSE
     )

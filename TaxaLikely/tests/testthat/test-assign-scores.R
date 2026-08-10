@@ -148,6 +148,19 @@ test_that("score_type='probability': score_likelihood_sd = 0", {
   expect_true(all(out$score_likelihood_sd == 0.0))
 })
 
+test_that("score_type='probability': an observation with no H1 rows gets NA sd, not 0", {
+  # A no-H1 observation is one where no evidence at all supports any
+  # score_likelihood estimate -- score_likelihood_sd = 0 would misleadingly
+  # claim "a known point estimate with zero uncertainty" (see review response
+  # for assign_scores.R). It must be NA, matching the NA mean/likelihood.
+  hyp_df <- .make_hyp_df(n_obs = 1L)
+  no_h1  <- hyp_df[hyp_df$hypothesis_type != "specific_candidate", ]
+  out <- assign_scores(no_h1, score_type = "probability")
+  expect_true(all(is.na(out$score_likelihood)))
+  expect_true(all(is.na(out$score_likelihood_mean)))
+  expect_true(all(is.na(out$score_likelihood_sd)))
+})
+
 test_that("score_type='probability': score_method = 'probability'", {
   out <- assign_scores(.make_hyp_df(), score_type = "probability")
   expect_true(all(out$score_method == "probability"))

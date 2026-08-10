@@ -86,6 +86,11 @@ values are unaffected by the number of unreferenced hypotheses.
 \code{TaxaAssign::compute_posterior()} normalizes posteriors, so the
 absolute scale of likelihoods does not matter.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including where
+\code{match_df}/\code{hyp_df} come from), see \code{inst/review_function_inputs.R}
+Section 3 in the package source.
+}
 \examples{
 \dontrun{
 # No-score pathway (morphology IDs)

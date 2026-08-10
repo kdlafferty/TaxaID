@@ -53,6 +53,10 @@
 #'
 #' @seealso [assign_scores()], [model_likelihoods()], [compute_likelihoods()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `match_df` is derived), see `inst/review_function_inputs.R` Section 3
+#'   in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' # Expand a match object before assign_scores()

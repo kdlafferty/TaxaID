@@ -4,7 +4,13 @@
 \alias{flag_reference_errors}
 \title{Flag mislabeled sequences in the reference database}
 \usage{
-flag_reference_errors(raw_df, mislabel_threshold = 0.02, return_all = FALSE)
+flag_reference_errors(
+  raw_df,
+  mislabel_threshold = 0.02,
+  return_all = FALSE,
+  min_coverage = NULL,
+  singleton_match_threshold = 0.98
+)
 }
 \arguments{
 \item{raw_df}{Data frame of pairwise match scores, as returned by
@@ -22,6 +28,23 @@ higher values are more permissive, suitable for noisier markers.}
 
 \item{return_all}{Logical (default \code{FALSE}).  If \code{TRUE}, returns all
 sequences including those flagged \code{"clean"}.}
+
+\item{min_coverage}{Numeric or \code{NULL} (default \code{NULL}). See
+\code{.compute_reference_qc_stats()}'s own documentation of this same
+parameter -- excludes a pair from every statistic below when its
+\code{coverage} (real per-pair alignment overlap, from \code{build_sequence_matrix()})
+falls below this threshold, catching e.g. two same-length sequences
+that cover different, non-overlapping parts of the gene.}
+
+\item{singleton_match_threshold}{Numeric scalar in (0, 1] (default \code{0.98}).
+A singleton (no within-species neighbours) is flagged
+\code{"unverified_singleton_high_match"} when its best cross-species match
+exceeds this value. 98\% identity is the conventional barcode gap
+threshold for many markers; for ITS (fungi), where within-species
+variation is higher, consider raising to \code{0.99}. Previously a hardcoded
+literal with a comment suggesting it be raised for ITS but no actual way
+for a caller to do so -- now a real parameter, with the exact same
+default and comparison (\code{>}) as before.}
 }
 \value{
 A data frame with one row per unique \code{id_x} and columns:
@@ -40,6 +63,10 @@ or \code{"clean"}.}
 Examines a pairwise distance matrix (output of \code{build_sequence_matrix()})
 and flags sequences whose best match is to a \emph{different} species than their
 own label -- a pattern consistent with mislabeling or contamination.
+}
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration, see
+\code{inst/review_function_inputs.R} Section 2 in the package source.
 }
 \section{Scope}{
 
@@ -63,7 +90,7 @@ simply the only representative of its species.
 ref_matrix <- build_sequence_matrix(reference_df,
                                      rank_system = c("family", "genus", "species"))
 flagged <- flag_reference_errors(ref_matrix, mislabel_threshold = 0.02)
-table(flagged$flag)
+table(flagged$error_type)
 }
 
 }

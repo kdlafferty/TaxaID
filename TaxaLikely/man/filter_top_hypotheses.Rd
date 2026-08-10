@@ -38,6 +38,10 @@ named species hypotheses -- including locally-expected species absent from the
 reference library.  The all-restored species rows are simultaneously dropped
 to prevent double-counting after expansion.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration, see
+\code{inst/review_function_inputs.R} Section 6 in the package source.
+}
 \examples{
 \dontrun{
 result <- evaluate_likelihoods(match_df, model)

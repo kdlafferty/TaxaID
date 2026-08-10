@@ -138,15 +138,24 @@
 #' TRUE)`) instead, which this function deliberately does not attempt itself
 #' (Level 4 is expensive and budget-gated by the caller).
 #'
-#' @return A list `(p_match, level, source)`. `p_match` is `NA_real_` and
-#'   `level`/`source` are `NA` when nothing resolved.
+#' @return A list `(p_match, level, source, source_accession)`. `p_match` is
+#'   `NA_real_` and `level`/`source` are `NA` when nothing resolved.
+#'   `source_accession` is a real, single NCBI accession ONLY for a Level 1
+#'   resolution backed by exactly one distinct candidate accession -- `NA`
+#'   for every other case (Levels 2-4 all aggregate across more than one
+#'   accession by construction, so no single accession can be honestly
+#'   named as "the" source). See `restore_suppressed_candidates()`'s own
+#'   `restoration_level`/`restoration_source_accession` output columns,
+#'   which surface this field for external screening (e.g.
+#'   `TaxaMatch::evaluate_reference_accessions()`) of restored rows.
 #' @noRd
 .resolve_hierarchy_score <- function(anchor_accession, anchor_species, candidate_species,
                                       genus, ref_genus_rows, species_col,
                                       seq_matrix, model_params, score_transform,
                                       align_cache) {
 
-  unresolved <- list(p_match = NA_real_, level = NA_integer_, source = NA_character_)
+  unresolved <- list(p_match = NA_real_, level = NA_integer_, source = NA_character_,
+                     source_accession = NA_character_)
 
   anchor_accession <- sub("\\.[0-9]+$", "", anchor_accession)
   has_sm <- !is.null(seq_matrix) && is.data.frame(seq_matrix) && nrow(seq_matrix) > 0L &&
@@ -170,12 +179,24 @@
   cand_accessions <- cand_accessions[!is.na(cand_accessions)]
 
   # ---- Level 1: direct accession-pair p_match --------------------------------
+  # source_accession: set ONLY when exactly one distinct candidate accession
+  # contributed the value(s) behind p_match -- an unambiguous, directly-
+  # screenable accession (see restore_suppressed_candidates()'s own
+  # `RESTORED_<accession>` provenance tag and the 2026-08-08 screenability
+  # discussion this field exists to support). NA whenever more than one
+  # candidate accession contributed (the median then blends real evidence
+  # from several accessions, none of which can honestly be singled out).
   if (!is.na(anchor_accession) && length(cand_accessions) > 0L) {
     lk <- .seq_matrix_lookup(anchor_accession, index)
+    contributing <- lk$partner[lk$partner %in% cand_accessions & !is.na(lk$p_match)]
     vals <- lk$p_match[lk$partner %in% cand_accessions]
     vals <- vals[!is.na(vals)]
-    if (length(vals) > 0L)
-      return(list(p_match = stats::median(vals), level = 1L, source = "direct_accession"))
+    if (length(vals) > 0L) {
+      distinct_contributors <- unique(contributing)
+      src_acc <- if (length(distinct_contributors) == 1L) distinct_contributors else NA_character_
+      return(list(p_match = stats::median(vals), level = 1L, source = "direct_accession",
+                  source_accession = src_acc))
+    }
   }
 
   # ---- Level 2: any-accession species-pair p_match ----------------------------
@@ -186,7 +207,8 @@
     vals <- all_pmatch[all_partner %in% cand_accessions]
     vals <- vals[!is.na(vals)]
     if (length(vals) > 0L)
-      return(list(p_match = stats::median(vals), level = 2L, source = "species_pair"))
+      return(list(p_match = stats::median(vals), level = 2L, source = "species_pair",
+                  source_accession = NA_character_))
   }
 
   # ---- Level 3: genus-level typical divergence --------------------------------
@@ -206,7 +228,8 @@
       if (!is.na(anchor_mu)) {
         cand_transform <- anchor_mu - model_params$H2_Lookup$delta_shrunk[gidx]
         p <- .untransform_p(cand_transform, method = score_transform)
-        return(list(p_match = p, level = 3L, source = "genus_model"))
+        return(list(p_match = p, level = 3L, source = "genus_model",
+                    source_accession = NA_character_))
       }
     }
   }
@@ -238,7 +261,8 @@
       vals <- all_pmatch[within_genus][cross]
       vals <- vals[!is.na(vals)]
       if (length(vals) > 0L)
-        return(list(p_match = stats::median(vals), level = 3L, source = "genus_raw_median"))
+        return(list(p_match = stats::median(vals), level = 3L, source = "genus_raw_median",
+                    source_accession = NA_character_))
     }
   }
 

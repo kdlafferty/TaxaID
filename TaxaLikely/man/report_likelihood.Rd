@@ -26,6 +26,11 @@ Summarizes a trained likelihood model into a structured
 \code{report_section} object (from TaxaTools). Works standalone or feeds
 into \code{TaxaTools::assemble_report()} for a unified pipeline report.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{model} is derived), see \code{inst/review_function_inputs.R} Section 12 in
+the package source.
+}
 \examples{
 \dontrun{
 model <- train_likelihood_model(ref_matrix)

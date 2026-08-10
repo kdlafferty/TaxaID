@@ -323,6 +323,24 @@ test_that(".parse_lat_lon returns NA on NULL/multi-length input", {
   expect_true(all(is.na(pll(c("36.789 N 121.947 W", "1 N 2 E")))))
 })
 
+test_that(".parse_lat_lon rejects out-of-range (implausible) coordinates", {
+  # Regex-matching but physically impossible -- must degrade to NA/NA like
+  # any other unparseable input, not propagate an impossible coordinate.
+  pll <- TaxaLikely:::.parse_lat_lon
+  expect_true(all(is.na(pll("999.0 N 999.0 E"))))
+  expect_true(all(is.na(pll("91.0 N 10.0 E"))))    # lat just over 90
+  expect_true(all(is.na(pll("10.0 N 181.0 E"))))   # lon just over 180
+})
+
+test_that(".parse_lat_lon does not match a longitude-first string as if it were latitude-first", {
+  # Extraction is validated by the hemisphere letter (N/S vs E/W), not
+  # blind position -- a lon-then-lat ordering has no N/S letter where the
+  # pattern requires one, so it fails to match entirely rather than being
+  # silently assigned to the wrong axis.
+  pll <- TaxaLikely:::.parse_lat_lon
+  expect_true(all(is.na(pll("121.947 W 36.789 N"))))
+})
+
 # ---- .fetch_locations_batched (internal) --------------------------------------
 
 test_that(".fetch_locations_batched returns empty typed data frame for no accessions", {

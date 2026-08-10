@@ -106,6 +106,11 @@ utils::globalVariables(c("sequence"))
 #' @seealso [build_sequence_matrix()], [fetch_ncbi_reference_sequences()],
 #'   [TaxaTools::barcode_primer_defaults]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration using a
+#'   synthetic (not live-fetched) over-length sequence, see
+#'   `tests/testthat/test-trim-to-amplicon.R`'s `.build_genome()` fixture in
+#'   the package source.
+#'
 #' @examples
 #' \dontrun{
 #' # Requires Biostrings (Bioconductor)
@@ -206,14 +211,25 @@ trim_to_amplicon <- function(reference_df,
     }
   }
 
-  if (verbose)
-    message(sprintf(
-      paste0("trim_to_amplicon: extracted the amplicon region from %d of %d over-length ",
-             "sequence(s); %d could not be trimmed (primer site(s) not found, or found an ",
-             "implausible span) and remain over-length -- these will still be excluded ",
-             "downstream by build_sequence_matrix()'s own min_seq_len/max_seq_len filter."),
-      n_trimmed, length(idx_to_check), length(idx_to_check) - n_trimmed
-    ))
+  n_not_trimmed <- length(idx_to_check) - n_trimmed
+  if (verbose) {
+    msg <- sprintf(
+      "trim_to_amplicon: extracted the amplicon region from %d of %d over-length sequence(s).",
+      n_trimmed, length(idx_to_check)
+    )
+    # Only mention the "could not be trimmed" clause when it's actually
+    # nonzero -- printing it unconditionally (even reporting "0 could not be
+    # trimmed") added noise to the common case where every over-length
+    # sequence was successfully trimmed.
+    if (n_not_trimmed > 0L)
+      msg <- paste0(msg, sprintf(
+        paste0(" %d could not be trimmed (primer site(s) not found, or found an ",
+               "implausible span) and remain over-length -- these will still be excluded ",
+               "downstream by build_sequence_matrix()'s own min_seq_len/max_seq_len filter."),
+        n_not_trimmed
+      ))
+    message(msg)
+  }
 
   seq_df$amplicon_trimmed   <- amplicon_trimmed
   seq_df$amplicon_trim_note <- amplicon_trim_note

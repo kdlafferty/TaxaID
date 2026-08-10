@@ -63,6 +63,11 @@ The expanded data frame is passed to \code{\link[=assign_scores]{assign_scores()
 \code{score_likelihood} values, or directly to \code{\link[=model_likelihoods]{model_likelihoods()}} for
 the bivariate-normal (similarity) pathway.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{match_df} is derived), see \code{inst/review_function_inputs.R} Section 3
+in the package source.
+}
 \examples{
 \dontrun{
 # Expand a match object before assign_scores()

@@ -76,6 +76,11 @@ itself is ground truth, not just an estimate -- see the "Census
 confidence" section below before choosing this mode.
 }
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{result}/\code{cov} are derived), see \code{inst/review_function_inputs.R}
+Section 7 in the package source.
+}
 \section{Census confidence}{
 
 \code{census_result$status} (built from \code{audit_barcode_coverage()}'s

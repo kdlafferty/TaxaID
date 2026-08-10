@@ -188,6 +188,14 @@ utils::globalVariables(c(
           taxid    = as.character(if (is.null(x$taxid))    NA else x$taxid),
           slen     = as.numeric(if (is.null(x$slen))       NA else x$slen),
           organism = as.character(if (is.null(x$organism)) NA else x$organism),
+          # create_date: live-verified (rentrez::entrez_summary(db =
+          # "nucleotide", ...)) that NCBI's own ESummary DocSum for this
+          # database includes a real createdate field ("YYYY/MM/DD") on the
+          # same already-batched call this function makes -- zero extra NCBI
+          # round trips. Used by .compute_hierarchy_congruence()'s
+          # independence filter (audit_reference_database.R) to detect
+          # same-submission-batch accessions.
+          create_date = as.character(if (is.null(x$createdate)) NA else x$createdate),
           stringsAsFactors = FALSE
         )
       }))
@@ -290,6 +298,16 @@ utils::globalVariables(c(
   empty <- c(lat = NA_real_, lon = NA_real_)
   if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) return(empty)
 
+  # Extraction is validated BY REFERENCE, not by blind position: the regex
+  # itself requires the first number's hemisphere letter to be N/S and the
+  # second's to be E/W (the [NSns]/[EWew] character classes are part of the
+  # match, not applied after the fact) -- a string that put longitude first
+  # (e.g. "121.947 W 36.789 N") simply fails to match this pattern at all
+  # (falls through to `empty`) rather than being silently assigned to the
+  # wrong axis. This does assume GenBank's /lat_lon qualifier always pairs a
+  # latitude+N/S value with a longitude+E/W value in that lat-then-lon order
+  # (INSDC's own documented convention for this qualifier), not that "first
+  # number = latitude" holds for an arbitrary/differently-formatted string.
   m <- regmatches(x, regexec(
     "^\\s*([0-9.]+)\\s*([NSns])\\s+([0-9.]+)\\s*([EWew])\\s*$", x
   ))[[1L]]
@@ -301,6 +319,12 @@ utils::globalVariables(c(
 
   lat <- if (toupper(m[3L]) == "S") -lat_val else lat_val
   lon <- if (toupper(m[5L]) == "W") -lon_val else lon_val
+
+  # Plausibility guard: a regex-matching but out-of-range value (malformed
+  # GenBank free-text metadata) should degrade to NA/NA like any other
+  # unparseable input, not propagate an impossible coordinate downstream.
+  if (is.na(lat) || is.na(lon) || abs(lat) > 90 || abs(lon) > 180) return(empty)
+
   c(lat = lat, lon = lon)
 }
 
@@ -479,10 +503,15 @@ utils::globalVariables(c(
 #' @param blacklist_regex Character scalar.
 #'   Regex pattern for filtering sequence titles.
 #'   Sequences whose title matches this pattern are excluded.
-#' @param min_date Character or NULL (e.g., `"2010/01/01"`).
-#'   Earliest publication date for sequences.
-#' @param max_date Character or NULL (e.g., `"2024/12/31"`).
-#'   Latest publication date.
+#' @param min_date Character or NULL (default; e.g. pass `"2010/01/01"` to set
+#'   one). Earliest publication date for sequences. `NULL` means no lower
+#'   bound -- internally resolved to the sentinel `"1900/01/01"` (predates
+#'   GenBank's own founding), not left off the query entirely, so it composes
+#'   safely with a supplied `max_date` alone.
+#' @param max_date Character or NULL (default; e.g. pass `"2024/12/31"` to set
+#'   one). Latest publication date. `NULL` means no upper bound -- internally
+#'   resolved to the sentinel `"3000/12/31"`, matching `min_date`'s NULL
+#'   handling above.
 #' @param cache_dir Character path.
 #'   Per-taxon intermediate results are cached here, enabling resumable
 #'   downloads when NCBI rate-limits or the session is interrupted.
@@ -772,10 +801,16 @@ fetch_ncbi_reference_sequences <- function(taxa,
         # out-of-range rows, so a later TRUE call must not silently reuse it.
         oor_sfx <- if (keep_out_of_range)
           sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len) else ""
+        # rank_sfx: the cached object is post-taxonomy-merge (see the
+        # non-priority cache_file's identical comment below for the full
+        # reasoning) -- must be part of the key or a stale cache built under a
+        # narrower rank_system hard-crashes a later, wider rank_system call
+        # ("undefined columns selected" at the keep_cols subset below).
+        rank_sfx <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
         p_cache_file <- file.path(cache_dir,
                                   paste0("priority_", safe_name, "_", safe_bc,
                                          "_l", eff_min_len, "_", eff_max_len,
-                                         "_d", date_sfx, oor_sfx, "_meta.rds"))
+                                         "_d", date_sfx, oor_sfx, rank_sfx, "_meta.rds"))
         if (file.exists(p_cache_file)) {
           message(sprintf("  %s: loading from cache", sp))
           priority_meta[[sp]] <- readRDS(p_cache_file)
@@ -823,10 +858,25 @@ fetch_ncbi_reference_sequences <- function(taxa,
       # keep_out_of_range must be part of this key.
       oor_sfx2   <- if (keep_out_of_range)
         sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len) else ""
+      # rank_sfx2: `meta` is cached AFTER the taxonomy merge (line ~919 below:
+      # `meta <- merge(meta, tax_map, ...)` runs before `saveRDS(meta,
+      # cache_file)`), so the cached object's own columns are exactly whatever
+      # rank_system was in force when it was written -- NOT re-derived from
+      # the caller's current rank_system on load. Without this in the key, a
+      # user who already ran a fetch (e.g. audit_reference_database()'s own
+      # narrower historical default, or any other caller) against the same
+      # taxon/barcode/length/date combo with a narrower rank_system hits a
+      # hard crash the first time a wider rank_system reuses that stale
+      # cache: `keep_cols <- c("composite_id", rank_cols, ...)` further below
+      # subsets combined_meta for columns (e.g. "phylum") that simply were
+      # never fetched into the cached object -- "undefined columns selected".
+      # Same failure class already documented for Session 159's barcode_term
+      # cache-staleness issue.
+      rank_sfx2  <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
       cache_file <- file.path(cache_dir,
                               paste0(safe_name, "_", safe_bc,
                                      "_l", eff_min_len, "_", eff_max_len,
-                                     "_d", date_sfx2, oor_sfx2, "_meta.rds"))
+                                     "_d", date_sfx2, oor_sfx2, rank_sfx2, "_meta.rds"))
       if (file.exists(cache_file)) {
         message(sprintf("  %s: loading from cache", taxa[i]))
         all_meta[[i]] <- readRDS(cache_file)
@@ -1116,6 +1166,11 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # only when keep_out_of_range = TRUE.
   rank_cols <- tolower(rank_system)
   keep_cols <- c("composite_id", rank_cols, "in_barcode_range", "slen")
+  # create_date is only included when present -- a cache written before this
+  # column existed (keyed identically otherwise: taxon/barcode/length/date
+  # unchanged) would lack it, and this keeps that stale-cache case a graceful
+  # NA-column omission rather than a hard "undefined columns selected" crash.
+  if ("create_date" %in% names(combined_meta)) keep_cols <- c(keep_cols, "create_date")
   lookup    <- combined_meta[!duplicated(combined_meta$composite_id), keep_cols,
                              drop = FALSE]
 
@@ -1456,9 +1511,14 @@ fetch_bold_reference_sequences <- function(taxa,
 # --- Internal helpers for taxonomy_file parsing in read_reference_fasta() ----
 
 #' Standard 7-level hierarchy used for positional taxonomy-string parsing
+#'
+#' Same values as \code{TaxaTools::standard_ranks} (kept as its own named
+#' constant, not just an inline reference, because the CRABS positional
+#' taxonomy-string format this is used to parse is specifically defined
+#' against this 7-level order -- see the "does not line up with" note on
+#' \code{.parse_tax_string()} below).
 #' @noRd
-.crabs_std_hierarchy <- c("kingdom", "phylum", "class", "order",
-                          "family", "genus", "species")
+.crabs_std_hierarchy <- TaxaTools::standard_ranks
 
 #' PR2's fixed 9-level positional hierarchy
 #'

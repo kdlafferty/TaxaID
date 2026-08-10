@@ -55,7 +55,7 @@ restored row's synthetic score (default \code{0.5}, on the 0-100 scale;
 used as \code{delta / 100} against the \code{1.0} baseline). Has no
 effect when \code{match_obj} carries real scores -- restored rows there
 get a real, hierarchy-resolved score instead (\code{@section
-  Score-sourcing hierarchy}).}
+Score-sourcing hierarchy}).}
 
 \item{max_per_obs}{Integer. Maximum restored candidates per observation
 (default \code{10L}), applied to the final admitted set (after Purpose
@@ -101,7 +101,7 @@ only ever bites exactly where Level 4 already lives.}
 \code{coverage}), the source for Levels 1-3 of the score-sourcing
 hierarchy and Level 4's Tier 1 lookup. Restoration is a no-op for the
 scored pathway when this is \code{NULL} and \code{check_regional_overlap
-  = FALSE} -- there is no free evidence to source a score from and no live
+= FALSE} -- there is no free evidence to source a score from and no live
 alignment enabled either.}
 
 \item{min_regional_coverage}{Numeric in (0, 1]. Minimum alignment coverage
@@ -115,7 +115,7 @@ row's own reference accession (default \code{"accession"}).}
 \item{sequence_col}{Character or \code{NULL} (default \code{NULL}). Column
 in \code{match_obj} carrying each observation's own raw query DNA
 sequence, enabling Level 4's Tier 2b fallback (see \code{@section
-  Score-sourcing hierarchy}) for match objects with no live BLAST
+Score-sourcing hierarchy}) for match objects with no live BLAST
 alignment coordinates at all. \code{NULL} means only Tier 1/2a run.}
 
 \item{candidate_species_filter}{Character vector or \code{NULL} (default
@@ -137,16 +137,21 @@ binomial, e.g. \code{"Fundulus parvipinnis"}). \code{NULL} (default)
 means every same-genus congener is both Purpose-B-eligible AND
 Level-4-eligible -- no narrowing at all, matching the original
 pre-redesign behavior at some real cost (see \code{@section Level 4 cost
-  control} for two real, measured cases).}
+control} for two real, measured cases).}
 
 \item{taxaexpect_priors}{Data frame or \code{NULL} (default \code{NULL}).
+A plain data frame -- this package has no dependency on TaxaExpect and
+never calls into it; the name and default \code{taxon_col}/
+\code{grid_col}/\code{theta_col} column names are simply chosen to match
+\code{TaxaExpect::generate_full_priors()}'s own output shape, so that
+object can be passed directly without renaming columns. Any data frame
+with the right columns (or with \code{taxon_col}/\code{grid_col}/
+\code{theta_col} overridden to match your own column names) works.
 Powers the floor-vs-documented ratio fallback in \code{@section Level 4
-  cost control} for a candidate NOT on \code{candidate_species_filter}.
+cost control} for a candidate NOT on \code{candidate_species_filter}.
 \code{NULL} (default) means that fallback is unavailable -- a candidate
 missing the filter is never worth Level 4 regardless of its real
-occurrence support. When supplied, needs \code{taxon_col}/
-\code{grid_col}/\code{theta_col} (defaults match TaxaExpect's own
-\code{generate_full_priors()} output column names).}
+occurrence support.}
 
 \item{grid_id_col}{Character. Column in \code{match_obj} naming each
 observation's own grid cell (default \code{"grid_id"}), looked up
@@ -174,8 +179,25 @@ an unbounded number of expensive alignments for one anchor. See
 }
 \value{
 \code{match_obj} with restored \code{"suppressed_candidate"} rows
-appended (or unchanged if nothing qualified), plus new \code{is_restored}
-and \code{restoration_basis} columns. When \code{check_regional_overlap
+appended (or unchanged if nothing qualified), plus new \code{is_restored},
+\code{restoration_basis}, \code{restoration_level}, and
+\code{restoration_source_accession} columns. \code{restoration_level}
+(added 2026-08-08) is the \code{.resolve_hierarchy_score()} level (1-4)
+that produced a restored row's score, \code{NA} for original (non-
+restored) rows and for the no-score pathway. \code{restoration_source_
+  accession} is a real, single NCBI accession ONLY when
+\code{restoration_level == 1L} AND exactly one candidate accession
+drove the score -- Levels 2-4 always aggregate across more than one
+accession, so no single accession can be honestly named as "the"
+source for those; \code{NA} otherwise. Lets a caller screen restored
+rows for reference-accession quality (e.g.
+\code{TaxaMatch::evaluate_reference_accessions()}) wherever that's
+actually possible -- distinct from the \code{"RESTORED_<accession>"}
+value already carried in \code{accession} itself, which always picks
+an arbitrary representative accession of the candidate species for
+display/provenance regardless of restoration level, and should not be
+used for screening (it is not guaranteed to be the accession that
+actually drove the score). When \code{check_regional_overlap
   = TRUE}, the result also carries \code{attr(result,
   "regional_unreferenced")}: \code{NULL} if nothing was ever rejected/
 unresolved, otherwise a data frame with columns \code{observation_id}/
@@ -190,9 +212,11 @@ scoped rows accept this shape directly (an extra \code{basis} column is
 additive and does not disturb that consumer).
 }
 \description{
-Reframed design (see
-\code{ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md}): the
-function's job is not "restore candidates so more of them can individually
+Reframed design (see the TaxaID monorepo's own
+\code{ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md} design
+document for the full history -- development-repository context, not
+shipped with the installed package): the function's job is not "restore
+candidates so more of them can individually
 win" but to detect whether the anchor's apparent win is real or an
 artifact of upstream suppression, so that downstream consensus logic can
 back off from a false-precision specific-species call when it isn't. Every
@@ -247,6 +271,10 @@ a synthetic score exactly as before this redesign: original rows get
 \code{assign_scores(score_type = "direct")} rather than the bivariate-
 normal pipeline. \code{restoration_basis} is \code{NA} for rows added this
 way (no purpose distinction applies without real score evidence).
+}
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration, see
+\code{inst/review_function_inputs.R} Section 9 in the package source.
 }
 \section{Score-sourcing hierarchy}{
 

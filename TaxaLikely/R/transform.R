@@ -47,8 +47,17 @@
 
 #' Default `max_gap_ceiling` for a given score_transform
 #'
-#' Matches each scale's own version of the package's original derivation
-#' ("roughly the gap between a 99.3% and a 50% match"): `logit` keeps the
+#' `5.0` is the primary chosen value, not `99.3%` -- 5.0 is a conventional,
+#' round cap on a logit-space (log-odds) difference, a common rule-of-thumb
+#' magnitude in logistic-regression-adjacent modeling for preventing one
+#' outlier pair from dominating a variance estimate. `logit(0.5) = 0` is the
+#' natural zero-point (a 50/50 match, i.e. no discrimination at all between
+#' candidates), so "99.3%" is simply the proportion that maps back to
+#' `logit = 5` relative to that zero-point (`plogis(5) = 0.9933...`,
+#' confirmed by direct computation) -- a descriptive gloss for what a gap of
+#' 5.0 concretely represents ("roughly as large as a near-perfect match vs.
+#' a coin flip"), not an independently chosen biological threshold. Matches
+#' each scale's own version of that same reference gap: `logit` keeps the
 #' existing `5.0` default; `sqrt_mismatch`'s equivalent gap
 #' (`-sqrt(1-0.993) - (-sqrt(1-0.5))`) is `~0.6234`.
 #' @noRd

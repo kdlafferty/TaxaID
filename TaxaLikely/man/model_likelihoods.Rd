@@ -65,6 +65,11 @@ Internally calls \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} on 
 \code{"specific_candidate"} rows and adds
 \code{score_method = "bivariate_normal"} to the result.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{match_df}/\code{model} are derived), see \code{inst/review_function_inputs.R}
+Section 3 in the package source.
+}
 \examples{
 \dontrun{
 hyp_df  <- unreferenced_candidates(match_df)

@@ -50,6 +50,11 @@ returns per-threshold metrics quantifying the trade-off between retaining
 query breadth and discriminating H1 (within-species) pairs from H2/H3
 (cross-species) noise.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration built on real
+\code{DECIPHER}-aligned fixture data, see \code{inst/review_function_inputs.R}
+Section 8 in the package source.
+}
 \section{Motivation}{
 
 Match scores (\code{p_match}) measure how similar two sequences or audio clips

@@ -9,12 +9,139 @@ utils::globalVariables(c(
   "score_logit_mean", "gap_logit_mean", "score_logit_var",
   "n_obs_species", "shrunk_mu_score", "shrunk_mu_gap", "shrunk_sigma",
   "w", "species", "max_congener_score", "delta_emp", "n_pairs", "delta_shrunk",
-  "mean_cong", "var_cong", "var_shrunk"
+  "mean_cong", "var_cong", "var_shrunk",
+  "median_foreign_match", "n_foreign_pairs", "n_foreign_taxa", "species_x",
+  "coverage", "foreign_match_coverage", "median_self_coverage"
 ))
 
 # ==============================================================================
 # MODULE B-QC: REFERENCE DATABASE ERROR DETECTION
 # ==============================================================================
+
+#' Compute per-accession reference QC statistics
+#'
+#' Internal helper shared by [flag_reference_errors()] and
+#' `TaxaLikely::audit_reference_database()`. Reduces a pairwise distance
+#' matrix (output of `build_sequence_matrix()`) to one row per accession,
+#' carrying only the raw self-match/foreign-match statistics -- no
+#' categorization. `flag_reference_errors()` applies its own `error_type`
+#' threshold on top of this; `audit_reference_database()` returns these raw
+#' numbers directly, leaving categorization to `classify_reference_accessions()`.
+#'
+#' @param raw_df Data frame of pairwise match scores, as returned by
+#'   `build_sequence_matrix()`. Must contain `id_x`, `id_y`, `species.x`,
+#'   `species.y`, and `p_match`.
+#' @param min_coverage Numeric or `NULL` (default `NULL`). When not `NULL`
+#'   and a `coverage` column is present in `raw_df`, a pair whose `coverage`
+#'   is below this threshold is excluded before any statistic is computed --
+#'   `coverage` (see `build_sequence_matrix()`) is the fraction of the
+#'   shorter sequence that actually aligned against non-gap positions in the
+#'   other, i.e. a direct, per-pair measurement of whether the two sequences
+#'   genuinely cover the same stretch of the gene. This is a more general
+#'   and more precise fix for the "amplicon-window mismatch" problem than
+#'   restricting `build_sequence_matrix(barcode_term=)` to one named
+#'   primer's length range: two sequences of similar length can still cover
+#'   *different* parts of the gene (length alone can't detect this, real
+#'   alignment coverage can), and a length-window restriction excludes a
+#'   whole accession outright even when it *would* have genuinely overlapped
+#'   some other sequence of a different length. Matching
+#'   `evaluate_likelihoods()`'s own `min_coverage` convention: `NA` coverage
+#'   (e.g. a `raw_df` built without `build_sequence_matrix()`) is treated as
+#'   fully covered, not penalised.
+#'
+#' @return A data frame with one row per unique `id_x`: `id_x`, `species_x`,
+#'   `median_self_match`, `max_foreign_match`, `median_foreign_match`,
+#'   `n_self_neighbors`, `n_foreign_pairs`, `n_foreign_taxa`,
+#'   `integrity_gap`, `foreign_match_coverage`, `median_self_coverage`.
+#'
+#' @section foreign_match_coverage / median_self_coverage (2026-08-06, `audit_reference_database()`):
+#' `max_foreign_match` is a single extreme value (the best of however many
+#' foreign comparisons this accession has), so a caller deciding whether to
+#' TRUST it needs to know the coverage of that ONE specific pair, not a
+#' summary over all of them -- a 99% identity hit on 15% real overlap is a
+#' different kind of evidence than the same identity on 95% overlap.
+#' `foreign_match_coverage` is exactly that: the `coverage` value of whichever
+#' pair achieved `max_foreign_match` (`NA` when there are zero foreign rows).
+#' `median_self_coverage` is a companion diagnostic on the self side (median
+#' `coverage` among same-species pairs) -- deliberately NOT used to gate
+#' anything automatically, since thin self-evidence can bias
+#' `median_self_match` in EITHER direction (a short coincidental overlap can
+#' read spuriously high OR a messy short fragment spuriously low), unlike the
+#' foreign side where the concern (a spurious high-identity hit on a tiny
+#' shared fragment inflating `max_foreign_match`) has one clear direction.
+#' Both are computed from whatever `raw_df` survives the `min_coverage`
+#' pre-filter above -- pass a low, permissive `min_coverage` (a sanity floor,
+#' not the calibrated trust threshold) so these reflect real available
+#' evidence, and gate on the calibrated threshold downstream instead (see
+#' `classify_reference_accessions(min_coverage=)`), not here.
+#'
+#' @section median_foreign_match / n_foreign_pairs / n_foreign_taxa (grown for `audit_reference_database()`):
+#' Every foreign row entering this function is already restricted to
+#' `p_match > 1 - max_dist` (`build_sequence_matrix()`'s own default
+#' `max_dist = 0.25`, i.e. `p_match > 0.75`) -- `median_foreign_match` is
+#' therefore the median of the *upper tail* of the foreign-match
+#' distribution, not the whole distribution. This can differ from
+#' `max_foreign_match` in either direction depending on how many foreign
+#' neighbours exist (a genus with one congener at 0.99 has a median of 0.99;
+#' one with forty congeners mostly at 0.90 has a median of 0.90), not just
+#' whether they exist -- still a useful, cheap column, just don't oversell
+#' what it measures. `n_foreign_pairs` counts ROWS (an id_x can have many
+#' rows against the same foreign species), not distinct foreign taxa --
+#' `n_foreign_taxa` (distinct `species.y` among foreign rows) is the
+#' companion for "supported by many species" vs. "supported by many
+#' accessions of few species." NA convention, matching `max_foreign_match`'s
+#' existing `-Inf`/`NA` -> `0` coercion: when there are zero foreign rows,
+#' `median_foreign_match` is also `0`, not `NA` (`stats::median(numeric(0))`
+#' would otherwise return `NA`, and a downstream `case_when` comparing `0`
+#' against `NA` would silently produce `NA` verdicts).
+#'
+#' @noRd
+.compute_reference_qc_stats <- function(raw_df, min_coverage = NULL) {
+  if (!"coverage" %in% names(raw_df)) raw_df$coverage <- NA_real_
+  if (!is.null(min_coverage)) {
+    cov_vals <- raw_df[["coverage"]]
+    raw_df <- raw_df[is.na(cov_vals) | cov_vals >= min_coverage, , drop = FALSE]
+  }
+  raw_df |>
+    dplyr::group_by(id_x, species.x) |>
+    dplyr::summarise(
+      median_self_match = stats::median(
+        p_match[species.x == species.y & id_x != id_y], na.rm = TRUE
+      ),
+      median_self_coverage = suppressWarnings(stats::median(
+        coverage[species.x == species.y & id_x != id_y], na.rm = TRUE
+      )),
+      max_foreign_match = suppressWarnings(
+        max(p_match[species.x != species.y], na.rm = TRUE)
+      ),
+      # Coverage of the SPECIFIC pair that produced max_foreign_match --
+      # see the "foreign_match_coverage / median_self_coverage" section
+      # above for why this needs to be the driving pair's own value, not a
+      # summary across every foreign comparison.
+      foreign_match_coverage = {
+        fidx <- which(species.x != species.y & !is.na(p_match))
+        if (length(fidx) == 0L) NA_real_ else coverage[fidx[which.max(p_match[fidx])]]
+      },
+      median_foreign_match = suppressWarnings(
+        stats::median(p_match[species.x != species.y], na.rm = TRUE)
+      ),
+      n_self_neighbors = sum(species.x == species.y & id_x != id_y),
+      n_foreign_pairs = sum(species.x != species.y, na.rm = TRUE),
+      n_foreign_taxa = dplyr::n_distinct(species.y[species.x != species.y]),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      max_foreign_match = ifelse(
+        is.infinite(max_foreign_match) | is.na(max_foreign_match),
+        0, max_foreign_match
+      ),
+      median_foreign_match = ifelse(
+        is.na(median_foreign_match), 0, median_foreign_match
+      ),
+      integrity_gap = median_self_match - max_foreign_match
+    ) |>
+    dplyr::rename(species_x = species.x)
+}
 
 #' Flag mislabeled sequences in the reference database
 #'
@@ -48,6 +175,21 @@ utils::globalVariables(c(
 #'   higher values are more permissive, suitable for noisier markers.
 #' @param return_all Logical (default `FALSE`).  If `TRUE`, returns all
 #'   sequences including those flagged `"clean"`.
+#' @param min_coverage Numeric or `NULL` (default `NULL`). See
+#'   `.compute_reference_qc_stats()`'s own documentation of this same
+#'   parameter -- excludes a pair from every statistic below when its
+#'   `coverage` (real per-pair alignment overlap, from `build_sequence_matrix()`)
+#'   falls below this threshold, catching e.g. two same-length sequences
+#'   that cover different, non-overlapping parts of the gene.
+#' @param singleton_match_threshold Numeric scalar in (0, 1] (default `0.98`).
+#'   A singleton (no within-species neighbours) is flagged
+#'   `"unverified_singleton_high_match"` when its best cross-species match
+#'   exceeds this value. 98% identity is the conventional barcode gap
+#'   threshold for many markers; for ITS (fungi), where within-species
+#'   variation is higher, consider raising to `0.99`. Previously a hardcoded
+#'   literal with a comment suggesting it be raised for ITS but no actual way
+#'   for a caller to do so -- now a real parameter, with the exact same
+#'   default and comparison (`>`) as before.
 #'
 #' @return A data frame with one row per unique `id_x` and columns:
 #'   \describe{
@@ -63,18 +205,23 @@ utils::globalVariables(c(
 #'
 #' @seealso [build_sequence_matrix()], [train_likelihood_model()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration, see
+#'   `inst/review_function_inputs.R` Section 2 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' ref_matrix <- build_sequence_matrix(reference_df,
 #'                                      rank_system = c("family", "genus", "species"))
 #' flagged <- flag_reference_errors(ref_matrix, mislabel_threshold = 0.02)
-#' table(flagged$flag)
+#' table(flagged$error_type)
 #' }
 #'
 #' @export
 flag_reference_errors <- function(raw_df,
                                   mislabel_threshold = 0.02,
-                                  return_all = FALSE) {
+                                  return_all = FALSE,
+                                  min_coverage = NULL,
+                                  singleton_match_threshold = 0.98) {
   if (!is.data.frame(raw_df))
     stop("raw_df must be a data frame")
   needed <- c("id_x", "id_y", "species.x", "species.y", "p_match")
@@ -87,37 +234,33 @@ flag_reference_errors <- function(raw_df,
     stop("mislabel_threshold must be a single non-NA numeric value")
   if (!is.logical(return_all) || length(return_all) != 1L || is.na(return_all))
     stop("return_all must be TRUE or FALSE")
+  if (!is.null(min_coverage) && (!is.numeric(min_coverage) || length(min_coverage) != 1L ||
+      is.na(min_coverage)))
+    stop("min_coverage must be NULL or a single non-NA numeric value")
+  if (!is.numeric(singleton_match_threshold) || length(singleton_match_threshold) != 1L ||
+      is.na(singleton_match_threshold) || singleton_match_threshold <= 0 ||
+      singleton_match_threshold > 1)
+    stop("singleton_match_threshold must be a single numeric value in (0, 1]")
 
-  qc <- raw_df |>
-    dplyr::group_by(id_x, species.x) |>
-    dplyr::summarise(
-      median_self_match = stats::median(
-        p_match[species.x == species.y & id_x != id_y], na.rm = TRUE
-      ),
-      max_foreign_match = suppressWarnings(
-        max(p_match[species.x != species.y], na.rm = TRUE)
-      ),
-      n_self_neighbors = sum(species.x == species.y & id_x != id_y),
-      .groups = "drop"
-    ) |>
+  # .compute_reference_qc_stats() gained median_foreign_match/n_foreign_pairs/
+  # n_foreign_taxa (audit_reference_database() consumes all three); this
+  # function's own public @return contract -- and its existing tests -- are
+  # unaffected by that growth via this explicit dplyr::select() back down to
+  # the documented column set.
+  qc <- .compute_reference_qc_stats(raw_df, min_coverage = min_coverage) |>
     dplyr::mutate(
-      max_foreign_match = ifelse(
-        is.infinite(max_foreign_match) | is.na(max_foreign_match),
-        0, max_foreign_match
-      ),
-      integrity_gap = median_self_match - max_foreign_match,
       error_type = dplyr::case_when(
         integrity_gap < -mislabel_threshold & n_self_neighbors > 0 ~
           "likely_mislabeled",
-        # 98% identity is the conventional barcode gap threshold for many
-        # markers. For ITS (fungi) where within-species variation is higher,
-        # consider raising to 99%.
-        n_self_neighbors == 0 & max_foreign_match > 0.98 ~
+        n_self_neighbors == 0 & max_foreign_match > singleton_match_threshold ~
           "unverified_singleton_high_match",
         .default = "clean"
       )
     ) |>
-    dplyr::rename(species_x = species.x)
+    dplyr::select(
+      id_x, species_x, median_self_match, max_foreign_match,
+      n_self_neighbors, integrity_gap, error_type
+    )
 
   if (!return_all) {
     qc <- dplyr::filter(qc, error_type != "clean")
@@ -127,6 +270,7 @@ flag_reference_errors <- function(raw_df,
   }
   qc
 }
+
 
 # ==============================================================================
 # MODULE C: TRAINING ENGINE (Empirical Bayes Shrinkage)
@@ -167,7 +311,13 @@ flag_reference_errors <- function(raw_df,
 #'   outliers from dominating training (default `5.0`).  In logit space, 5.0
 #'   corresponds roughly to the gap between 99.3% and 50% identity --
 #'   differences larger than this are capped to prevent extreme outliers from
-#'   dominating model estimates.
+#'   dominating model estimates.  `NULL` resolves per `score_transform` via
+#'   `.resolve_gap_ceiling()`.
+#' @param score_transform Character, `"logit"` (default) or `"sqrt_mismatch"`.
+#'   Which scale scores/gaps are transformed onto before training -- see
+#'   `train_likelihood_model()`'s own `@param score_transform` for the full
+#'   explanation (this internal function is always called with the same value
+#'   the caller passed there).
 #' @return A data frame with one row per query sequence containing:
 #'   \describe{
 #'     \item{`id_x`}{Query sequence identifier.}
@@ -259,7 +409,11 @@ flag_reference_errors <- function(raw_df,
   # ---- STEP 2: SCORE TRANSFORM -----------------------------------------------
   # noise floor: scores below 1% identity are treated as random noise and
   # replaced with this floor value, on whichever scale score_transform picks.
-  noise_floor_logit <- .transform_p(0.01, score_transform, logit_epsilon)
+  # Named "_transformed", not "_logit", because this value is computed via
+  # .transform_p() and so lives on score_transform's own scale -- calling it
+  # "_logit" would be a wrong/misleading name whenever score_transform =
+  # "sqrt_mismatch".
+  noise_floor_transformed <- .transform_p(0.01, score_transform, logit_epsilon)
 
   df_logit <- df_combined |>
     dplyr::mutate(
@@ -282,7 +436,7 @@ flag_reference_errors <- function(raw_df,
     ) |>
     dplyr::mutate(
       max_foreign_score = ifelse(
-        is.infinite(max_foreign_score), noise_floor_logit, max_foreign_score
+        is.infinite(max_foreign_score), noise_floor_transformed, max_foreign_score
       )
     )
 
@@ -296,9 +450,24 @@ flag_reference_errors <- function(raw_df,
   # other referenced species at all, so train_likelihood_model() can tell
   # "no local congener data exists for this genus" apart from "a real
   # congener match was observed and it was distant." Used to estimate a
-  # genus-specific H2 delta (see H2_Lookup below); requires rank_code_b
-  # (the rank immediately coarser than species -- genus, by this package's
-  # rank_system convention) to be present.
+  # genus-specific H2 delta (see H2_Lookup below); requires rank_code_b to be
+  # present.
+  #
+  # rank_code_b is PURELY POSITIONAL, not semantic: rank_code_a is always
+  # rank_system's LAST (finest) element, rank_code_b its second-to-last, and
+  # so on (.generalize_ranks() above renames by position via rev(present)).
+  # "Genus" here is a documented CONVENTION, not an enforced guarantee --
+  # true whenever rank_system's finest two elements are ("...", "genus",
+  # "species"), which is this ecosystem's own standard rank_system (see
+  # Statistical Design Notes, "rank_system convention", in this package's
+  # CLAUDE.md) and how every real production workflow calls this package. A
+  # caller supplying a non-standard rank_system whose second-finest rank
+  # ISN'T genus (e.g. one ending "...genus, species, subspecies", finest =
+  # subspecies) would silently get max_congener_score/H2_Lookup keyed on
+  # THAT rank instead (e.g. same-species-different-subspecies) with no
+  # error or warning -- there is no runtime check enforcing "genus"
+  # specifically, by design (this package's rank_system is deliberately
+  # flexible, not hardcoded to a fixed taxonomic ladder).
   has_genus_code <- all(c("rank_code_b.x", "rank_code_b.y") %in% names(df_logit))
   congener_stats <- if (has_genus_code) {
     df_logit |>
@@ -389,7 +558,7 @@ flag_reference_errors <- function(raw_df,
 
   df_singletons <- df_singletons |>
     dplyr::mutate(
-      max_foreign_score  = noise_floor_logit,
+      max_foreign_score  = noise_floor_transformed,
       max_congener_score = NA_real_,
       gap_logit          = max_gap_ceiling,
       rank_category      = "Singleton",
@@ -468,14 +637,88 @@ flag_reference_errors <- function(raw_df,
 #' @section Pseudo-data anchoring:
 #' When `anchor_perfect = TRUE`, synthetic "perfect match" observations are
 #' injected into the H1 training data before fitting the global mean.  This
-#' prevents the **perfection penalty** -- a pathology where a 100\% match
-#' receives a *lower* likelihood than the training mean (e.g., 98.5\%) because
-#' the Gaussian density peaks at the mean.  Anchoring shifts the H1 mean
-#' toward the theoretical maximum and expands the covariance, producing a
-#' monotonically increasing likelihood surface as match quality approaches
-#' 100\%.  The number of anchor points is 10\% of the H1 training rows
-#' (minimum 5), weighted enough to nudge the mean without overwhelming real
-#' data.
+#' softens the **perfection penalty** -- a pathology where a 100% match
+#' receives a *lower* likelihood than the training mean (e.g., 98.5%) because
+#' the Gaussian density peaks at the mean -- by nudging the *global* (pooled)
+#' mean upward, diluted by however much real training data exists. It does
+#' **not** force any individual species' own `H1_Lookup$mu_score` to the
+#' ceiling (the anchor pseudo-rows are excluded from per-species estimation
+#' before shrinkage happens) and does **not**, on its own, guarantee a
+#' monotonically increasing density as match quality approaches 100% for any
+#' given species -- see the "Non-monotonic score->likelihood shape" section
+#' below for what property this model actually needs (and checks
+#' automatically), and why a peaked-below-100%-density is not itself a
+#' problem. The number of anchor points is 10% of the H1 training rows
+#' (minimum 5), weighted enough to nudge the pooled mean without overwhelming
+#' real data.
+#'
+#' This is not a workaround standing in for "a real Bayesian model" -- it IS
+#' one, via the standard prior-as-pseudo-observations construction for
+#' conjugate Normal estimation: adding `n0` synthetic rows at a target value
+#' is mathematically equivalent to placing a `Normal(target, sigma^2/n0)`
+#' prior on the mean and computing the closed-form posterior mean, the exact
+#' same `w = N/(N+prior_weight)` Empirical Bayes shrinkage form already used
+#' throughout this model for per-species/per-genus estimates (see
+#' `prior_weight` above). Implementing it as injected rows, rather than a
+#' second, separately-coded prior-density formula, keeps this correction on
+#' the same estimation machinery as everything else in the model instead of
+#' adding a parallel mechanism to keep in sync. It is also deliberately NOT a
+#' tight/strong prior: capped at 10% of real H1 rows (min 5) specifically so
+#' it nudges the pooled global mean rather than dominating it, and it is
+#' never applied to any individual species' own shrunk estimate -- only the
+#' pooled global mean is nudged, and only diluted by however much real
+#' training data exists (a species with abundant real data is essentially
+#' unaffected).
+#'
+#' @section Non-monotonic score->likelihood shape:
+#' A trained species' H1 density is a Gaussian (or bivariate normal, jointly
+#' with gap) on the transformed score, and a Gaussian is unimodal by
+#' construction -- it peaks at that species' own fitted `mu_score`, not
+#' necessarily at the transformed value of a perfect (100%) match. Since
+#' `mu_score` is estimated from real reference-pair comparisons (which are
+#' essentially never *exactly* 100% identical even for the correct species,
+#' due to real intraspecific variation and sequencing/assembly noise) and
+#' real query-time scores run measurably below the training-only mean on top
+#' of that (`calibrate_query_noise()`'s own real-data finding: trained means
+#' commonly sit 0.6-1.2 percentage points above real production query
+#' medians), it is normal and expected for a species' H1 density to peak at
+#' an intermediate score and decline, rather than increase, as score
+#' approaches 100%. **This is not itself a sign of overfitting or a
+#' bug** -- it is the correct behavior of a well-specified Gaussian estimating
+#' a quantity whose true mean is genuinely below the ceiling.
+#'
+#' What actually matters for a Bayesian classifier is not where the H1
+#' density's own peak sits, but whether the **H1-vs-H2 likelihood
+#' ratio** stays monotone at the ceiling -- i.e. whether a better score is
+#' ever *weaker*, rather than stronger or equal, evidence for the
+#' known-species hypothesis relative to the missing-species alternative. Two
+#' Gaussians with different means and different variances can, in principle,
+#' cross twice, so this is checked directly (not assumed) at the end of
+#' training via an internal `.check_score_ratio_monotonicity()`, using the
+#' same inference-time sigma floor `evaluate_likelihoods()` applies. A
+#' `warning()` is raised if any species' ratio turns over before the ceiling,
+#' or if any species' perfect-match point sits implausibly far (more than 2
+#' floored standard deviations) from its own fitted mean -- both symptoms are
+#' recorded in the returned object's `Stats` list (`mlr_violations` and
+#' `max_ceiling_z` respectively) for inspection.
+#'
+#' On real production models (Great Lakes, Mugu; all trained with
+#' `score_transform = "sqrt_mismatch"`), this was checked empirically across
+#' ~2,000 real species and found negligible: the likelihood ratio was
+#' strictly increasing all the way to a perfect match in every case, and the
+#' worst observed distance from a species' fitted mean to the ceiling was
+#' 0.85 floored standard deviations (0% exceeded 1 SD). The one severe case
+#' found (median ~2.5 floored SDs, some species effectively at the boundary)
+#' was a stale, orphaned model object still trained with
+#' `score_transform = "logit"` -- under `logit`, the transformed value of a
+#' perfect match is not a fixed point determined by real data but is set by
+#' `logit_epsilon` (a numerical-hygiene constant), and the default sits only
+#' about one order of magnitude away from a value that would make every
+#' perfect match implausible under every species' own fitted distribution.
+#' `score_transform = "sqrt_mismatch"` does not have this fragility (a
+#' perfect match maps to exactly `0`, the finite edge of that transform's own
+#' range, with no free parameter) and is the more robust choice for any new
+#' training run near this boundary.
 #'
 #' @param raw_df Data frame of pairwise match scores, as returned by
 #'   `build_sequence_matrix()`.  Passed through `.prep_training_data()`.
@@ -511,6 +754,9 @@ flag_reference_errors <- function(raw_df,
 #'   `mislabel_threshold`.  The default 0.02 means a sequence is flagged if
 #'   its best foreign match is within 2 percentage points of its typical
 #'   self-match.  Lower values are stricter, flagging more sequences.
+#' @param singleton_match_threshold Numeric.  Passed to
+#'   `flag_reference_errors()` (default `0.98`) -- see that function's own
+#'   documentation of this parameter.
 #' @param logit_epsilon Numeric.  Logit-clipping value (default `1e-4`).
 #'   Used only when `score_transform = "logit"`.
 #' @param max_gap_ceiling Numeric or `NULL` (default).  Gap cap.  `NULL`
@@ -627,6 +873,10 @@ flag_reference_errors <- function(raw_df,
 #'
 #' @seealso [evaluate_likelihoods()], [interpret_model()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `reference_df` is derived), see `inst/review_function_inputs.R`
+#'   Section 2 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' ref_matrix <- build_sequence_matrix(reference_df,
@@ -648,6 +898,7 @@ train_likelihood_model <- function(raw_df,
                                    use_hierarchy      = TRUE,
                                    anchor_perfect     = TRUE,
                                    mislabel_threshold  = 0.02,
+                                   singleton_match_threshold = 0.98,
                                    logit_epsilon      = 1e-4,
                                    max_gap_ceiling    = NULL,
                                    score_transform    = "logit") {
@@ -690,7 +941,8 @@ train_likelihood_model <- function(raw_df,
   message("Removing mislabeled references...")
   errors <- flag_reference_errors(raw_df,
                                   mislabel_threshold = mislabel_threshold,
-                                  return_all        = FALSE)
+                                  return_all        = FALSE,
+                                  singleton_match_threshold = singleton_match_threshold)
   n_removed <- sum(errors$error_type == "likely_mislabeled")
   if (n_removed > 0)
     message(sprintf("Removed %d likely-mislabeled sequence(s) before training", n_removed))
@@ -1099,6 +1351,58 @@ train_likelihood_model <- function(raw_df,
   # possible future extension.
   H3 <- list(delta = h2_delta_val + 2.0 * unit_ratio,        sigma = h3_sigma_mat)
 
+  # ---- NON-MONOTONICITY / MONOTONE-LIKELIHOOD-RATIO DIAGNOSTIC --------------
+  # Added following a statistical-critique session prompted by a user
+  # observation that the fitted score->likelihood relationship can peak at an
+  # intermediate score rather than at a perfect (100%) match -- see this
+  # function's own "Non-monotonic score->likelihood shape" @section below for
+  # the full analysis and why a peaked-below-the-ceiling H1 DENSITY is
+  # expected and not itself a problem. What DOES matter for a Bayesian
+  # classifier is whether the H1-vs-H2 LIKELIHOOD RATIO stays monotone (a
+  # better score is never weaker evidence for the known-species hypothesis
+  # than a worse one) -- checked here directly rather than assumed, per-
+  # species, at the transformed value of a perfect match. Uses the SAME
+  # inference-time sigma floor evaluate_likelihoods() applies
+  # (max(sigma_species, global_sigma), Session 121) -- checking the raw,
+  # unfloored sigma_score overstates how severe any violation would actually
+  # be at inference time (this exact mistake was caught and corrected during
+  # the critique session that motivated this check).
+  species_genus <- if ("rank_code_b" %in% names(h1_data))
+    stats::setNames(h1_data$rank_code_b, h1_data$rank_code_a) else NULL
+  mlr_check <- .check_score_ratio_monotonicity(
+    H1_Lookup       = H1_Lookup,
+    global_sigma1   = global_cov[1L, 1L],
+    H2              = H2,
+    H2_Lookup       = H2_Lookup,
+    species_genus   = species_genus,
+    score_transform = score_transform,
+    logit_epsilon   = logit_epsilon
+  )
+  if (length(mlr_check$violations) > 0L) {
+    warning(sprintf(paste0(
+      "%d of %d species have a non-monotone H1-vs-H2 likelihood ratio at a perfect ",
+      "match: this species' own fitted score distribution is wide enough, relative to ",
+      "its genus's H2 (missing-species) distribution, that a literal 100%% identity ",
+      "match would be RELATIVELY WEAKER evidence for the known-species hypothesis than ",
+      "a slightly lower score would be. Affected species are in model_params$Stats$",
+      "mlr_violations. This does not necessarily make any single likelihood value ",
+      "wrong, but the 'more identity is always at least as much evidence' property does ",
+      "not hold for these species and is worth inspecting directly (e.g. via ",
+      "interpret_model())."
+    ), length(mlr_check$violations), nrow(H1_Lookup)), call. = FALSE)
+  }
+  if (isTRUE(mlr_check$max_z > 2)) {
+    warning(sprintf(paste0(
+      "Species '%s' has its fitted score mean %.2f SD (floored sigma) away from a ",
+      "perfect match -- the H1 density has already substantially decayed by the time a ",
+      "query reaches 100%% identity for this species. A small gap here is expected and ",
+      "harmless (real production models typically run well under 1 SD); a value this ",
+      "large is worth checking against score_transform (\"logit\" is the more fragile ",
+      "of the two -- see this function's \"Non-monotonic score->likelihood shape\" ",
+      "@section) and against how many reference sequences this species has."
+    ), mlr_check$max_z_species, mlr_check$max_z), call. = FALSE)
+  }
+
   message(sprintf(
     "Model trained: %d species, %d singletons. Global mu_score=%.2f, mu_gap=%.2f",
     n_species, n_singletons, mu_score_global, mu_gap_global
@@ -1115,16 +1419,86 @@ train_likelihood_model <- function(raw_df,
       Confusion_Risk_Curves = confusion_risk_curves,
       Score_Transform = score_transform,
       Stats        = list(
-        AIC_Score    = aic_score,
-        n_species    = n_species,
-        n_singletons = n_singletons,
-        n_anchors    = n_anchors,
-        n_h1_pooled  = sum(species_params$n_obs_species),
-        n_h2_pooled  = n_h2_pooled,
-        prior_weight = prior_weight
+        AIC_Score       = aic_score,
+        n_species       = n_species,
+        n_singletons    = n_singletons,
+        n_anchors       = n_anchors,
+        n_h1_pooled     = sum(species_params$n_obs_species),
+        n_h2_pooled     = n_h2_pooled,
+        prior_weight    = prior_weight,
+        mlr_violations  = mlr_check$violations,
+        max_ceiling_z   = mlr_check$max_z,
+        max_ceiling_z_species = mlr_check$max_z_species
       ),
       reference_errors = errors
     ),
     class = "taxa_model_params"
+  )
+}
+
+#' Check H1-vs-H2 log-likelihood-ratio monotonicity at a perfect match
+#'
+#' For each species, checks whether the H1 (known-species) density remains at
+#' least as strong, relative to its genus's H2 (missing-species) alternative,
+#' as the score improves all the way to a perfect match -- the
+#' monotone-likelihood-ratio (MLR) property that actually matters for a
+#' Bayesian classifier, as distinct from whether the H1 density's own PEAK
+#' sits at the ceiling (it need not -- see train_likelihood_model()'s
+#' "Non-monotonic score->likelihood shape" @section). For two univariate
+#' normals sharing an evaluation point x, `log(f1(x)/f2(x))` has derivative
+#' `(mu1 - x)/sigma1 + (x - mu2)/sigma2`; evaluated at the transformed value
+#' of a perfect match, a positive value means the ratio is still increasing
+#' there (a better score at the ceiling is still relatively stronger evidence
+#' for H1), a negative value means it has already turned over.
+#'
+#' @param H1_Lookup Data frame with `lookup_key`, `mu_score`, `sigma_score`.
+#' @param global_sigma1 Numeric. Global H1 score variance, used as the same
+#'   inference-time floor `evaluate_likelihoods()` applies to `sigma_score`.
+#' @param H2 List with `delta` (pooled) and `sigma` (2x2, `[1,1]` used).
+#' @param H2_Lookup Data frame with `genus`, `delta_shrunk`, `var_shrunk`, or
+#'   `NULL` if no genus had a real congener pair.
+#' @param species_genus Named character vector (species -> genus), or `NULL`
+#'   if the training data had no genus-level rank column.
+#' @param score_transform,logit_epsilon Passed to `.transform_p()` to compute
+#'   the transformed value of a perfect (100%) match.
+#'
+#' @return List with `violations` (character vector of species names whose
+#'   ratio turns over before the ceiling), `max_z` (largest per-species
+#'   distance, in floored SDs, from `mu_score` to the perfect-match point),
+#'   and `max_z_species` (the species attaining it).
+#' @noRd
+.check_score_ratio_monotonicity <- function(H1_Lookup, global_sigma1, H2, H2_Lookup,
+                                             species_genus, score_transform,
+                                             logit_epsilon) {
+  if (nrow(H1_Lookup) == 0L)
+    return(list(violations = character(0), max_z = NA_real_, max_z_species = NA_character_))
+
+  perfect_x <- .transform_p(1, score_transform, logit_epsilon)
+
+  mu1    <- H1_Lookup$mu_score
+  sigma1 <- pmax(H1_Lookup$sigma_score, global_sigma1)
+  genus  <- if (!is.null(species_genus))
+    unname(species_genus[H1_Lookup$lookup_key]) else rep(NA_character_, nrow(H1_Lookup))
+
+  h2_delta <- rep(H2$delta, nrow(H1_Lookup))
+  h2_var   <- rep(H2$sigma[1L, 1L], nrow(H1_Lookup))
+  if (!is.null(H2_Lookup) && nrow(H2_Lookup) > 0L) {
+    m         <- match(genus, H2_Lookup$genus)
+    has_local <- !is.na(m)
+    h2_delta[has_local] <- H2_Lookup$delta_shrunk[m[has_local]]
+    h2_var[has_local]   <- H2_Lookup$var_shrunk[m[has_local]]
+  }
+  mu2 <- mu1 - h2_delta
+
+  slope_at_ceiling <- (mu1 - perfect_x) / sigma1 + (perfect_x - mu2) / h2_var
+  z_at_ceiling      <- (perfect_x - mu1) / sqrt(sigma1)
+
+  violated  <- !is.na(slope_at_ceiling) & slope_at_ceiling < 0
+  best_i    <- if (all(is.na(z_at_ceiling))) NA_integer_ else which.max(z_at_ceiling)
+
+  list(
+    violations    = H1_Lookup$lookup_key[violated],
+    max_z         = if (is.na(best_i)) NA_real_ else z_at_ceiling[best_i],
+    max_z_species = if (is.na(best_i)) NA_character_ else H1_Lookup$lookup_key[best_i]
   )
 }

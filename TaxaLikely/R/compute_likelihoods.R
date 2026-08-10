@@ -47,6 +47,10 @@
 #' @seealso [assign_scores()], [unreferenced_candidates()],
 #'   [compute_likelihoods()], [evaluate_likelihoods()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `match_df`/`model` are derived), see `inst/review_function_inputs.R`
+#'   Section 3 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' hyp_df  <- unreferenced_candidates(match_df)
@@ -174,6 +178,10 @@ model_likelihoods <- function(scored_df,
 #'
 #' @seealso [unreferenced_candidates()], [assign_scores()],
 #'   [model_likelihoods()], [evaluate_likelihoods()]
+#'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `match_df` is derived), see `inst/review_function_inputs.R` Section 3
+#'   in the package source.
 #'
 #' @examples
 #' \dontrun{

@@ -32,6 +32,11 @@ Converts the internal logit-space parameters of a \code{"taxa_model_params"}
 object back to interpretable percentages and prints a formatted report.
 Returns the summary tables invisibly for programmatic access.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{ref_matrix} is derived), see \code{inst/review_function_inputs.R}
+Section 11 in the package source.
+}
 \examples{
 \dontrun{
 model <- train_likelihood_model(ref_matrix,

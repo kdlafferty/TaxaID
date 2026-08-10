@@ -31,7 +31,7 @@
 #' of [build_sequence_matrix()] to identify and remove them before training
 #' the likelihood model.
 #'
-#' @param file Character scalar. Path to the CRABS internal-format file.
+#' @param crabs_file Character scalar. Path to the CRABS internal-format file.
 #' @param rank_system Character vector of ranks to include, \strong{coarse to
 #'   fine} (e.g., \code{c("family", "genus", "species")}). Must be a subset
 #'   of the seven CRABS taxonomy columns: \code{kingdom}, \code{phylum},
@@ -66,10 +66,13 @@
 #'   [fetch_ncbi_reference_sequences()] for downloading from NCBI,
 #'   [build_sequence_matrix()], [flag_reference_errors()]
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration, see
+#'   `inst/review_function_inputs.R` Section 1 in the package source.
+#'
 #' @examples
 #' \dontrun{
 #' ref <- read_crabs_output(
-#'   file        = "mifish_12S_crabs.tsv",
+#'   crabs_file  = "mifish_12S_crabs.tsv",
 #'   rank_system = c("family", "genus", "species"),
 #'   max_n_bases = 250,
 #'   dereplicate = TRUE
@@ -83,19 +86,21 @@
 #' }
 #'
 #' @export
-read_crabs_output <- function(file,
+read_crabs_output <- function(crabs_file,
                               rank_system     = NULL,
                               max_n_bases     = NULL,
                               require_species = TRUE,
                               dereplicate     = FALSE) {
 
   # --- Validate inputs --------------------------------------------------------
-  if (!is.character(file) || length(file) != 1L)
-    stop("file must be a single file path")
-  if (!file.exists(file))
-    stop(sprintf("File not found: %s", file))
-  if (file.info(file)$size == 0L)
-    stop(sprintf("CRABS file is empty (0 bytes): %s", file))
+  # `crabs_file` (not `file`, which shadows base::file()) and `crabs_df`
+  # (not `df`, which shadows stats::df()) throughout this function.
+  if (!is.character(crabs_file) || length(crabs_file) != 1L)
+    stop("crabs_file must be a single file path")
+  if (!file.exists(crabs_file))
+    stop(sprintf("File not found: %s", crabs_file))
+  if (file.info(crabs_file)$size == 0L)
+    stop(sprintf("CRABS file is empty (0 bytes): %s", crabs_file))
   if (!is.null(max_n_bases) &&
       (!is.numeric(max_n_bases) || length(max_n_bases) != 1L || max_n_bases < 1L))
     stop("max_n_bases must be a positive integer or NULL")
@@ -128,23 +133,23 @@ read_crabs_output <- function(file,
   # so that we can distinguish missing taxonomy from genuinely empty fields
   crabs_df <- tryCatch(
     utils::read.table(
-      file, sep = "\t", header = FALSE, col.names = crabs_col_names,
+      crabs_file, sep = "\t", header = FALSE, col.names = crabs_col_names,
       quote = "", comment.char = "", stringsAsFactors = FALSE,
       fill = TRUE, na.strings = character(0L)
     ),
     error = function(e) {
       stop(sprintf("Failed to read CRABS file '%s': %s",
-                   basename(file), conditionMessage(e)))
+                   basename(crabs_file), conditionMessage(e)))
     }
   )
 
   if (nrow(crabs_df) == 0L) {
-    warning(sprintf("CRABS file contained no rows: %s", basename(file)))
+    warning(sprintf("CRABS file contained no rows: %s", basename(crabs_file)))
     return(data.frame(composite_id = character(0L), sequence = character(0L),
                       stringsAsFactors = FALSE))
   }
 
-  message(sprintf("Read %d rows from %s", nrow(crabs_df), basename(file)))
+  message(sprintf("Read %d rows from %s", nrow(crabs_df), basename(crabs_file)))
 
   # Convert literal "NA" strings to NA in taxonomy columns
   for (col in crabs_tax_ranks) {

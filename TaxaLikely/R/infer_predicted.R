@@ -66,6 +66,10 @@
 #'
 #' @seealso \code{\link{audit_barcode_coverage}}
 #'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `match_obj` is derived), see `inst/review_function_inputs.R` Section 7
+#'   in the package source.
+#'
 #' @export
 #'
 #' @examples

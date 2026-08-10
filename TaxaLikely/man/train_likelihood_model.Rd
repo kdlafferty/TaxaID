@@ -13,6 +13,7 @@ train_likelihood_model(
   use_hierarchy = TRUE,
   anchor_perfect = TRUE,
   mislabel_threshold = 0.02,
+  singleton_match_threshold = 0.98,
   logit_epsilon = 1e-04,
   max_gap_ceiling = NULL,
   score_transform = "logit"
@@ -60,6 +61,10 @@ minus its maximum cross-species match score is below negative
 \code{mislabel_threshold}.  The default 0.02 means a sequence is flagged if
 its best foreign match is within 2 percentage points of its typical
 self-match.  Lower values are stricter, flagging more sequences.}
+
+\item{singleton_match_threshold}{Numeric.  Passed to
+\code{flag_reference_errors()} (default \code{0.98}) -- see that function's own
+documentation of this parameter.}
 
 \item{logit_epsilon}{Numeric.  Logit-clipping value (default \code{1e-4}).
 Used only when \code{score_transform = "logit"}.}
@@ -166,6 +171,11 @@ with shrinkage strength inversely proportional to the number of observations
 for that species.  Optionally uses \code{lme4} random intercepts per taxonomic
 rank for more robust estimation.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{reference_df} is derived), see \code{inst/review_function_inputs.R}
+Section 2 in the package source.
+}
 \section{Model structure}{
 
 For each candidate hypothesis the model uses a 2-dimensional multivariate
@@ -232,14 +242,90 @@ discussion of that limitation.
 
 When \code{anchor_perfect = TRUE}, synthetic "perfect match" observations are
 injected into the H1 training data before fitting the global mean.  This
-prevents the \strong{perfection penalty} -- a pathology where a 100\\% match
-receives a \emph{lower} likelihood than the training mean (e.g., 98.5\\%) because
-the Gaussian density peaks at the mean.  Anchoring shifts the H1 mean
-toward the theoretical maximum and expands the covariance, producing a
-monotonically increasing likelihood surface as match quality approaches
-100\\%.  The number of anchor points is 10\\% of the H1 training rows
-(minimum 5), weighted enough to nudge the mean without overwhelming real
-data.
+softens the \strong{perfection penalty} -- a pathology where a 100\% match
+receives a \emph{lower} likelihood than the training mean (e.g., 98.5\%) because
+the Gaussian density peaks at the mean -- by nudging the \emph{global} (pooled)
+mean upward, diluted by however much real training data exists. It does
+\strong{not} force any individual species' own \code{H1_Lookup$mu_score} to the
+ceiling (the anchor pseudo-rows are excluded from per-species estimation
+before shrinkage happens) and does \strong{not}, on its own, guarantee a
+monotonically increasing density as match quality approaches 100\% for any
+given species -- see the "Non-monotonic score->likelihood shape" section
+below for what property this model actually needs (and checks
+automatically), and why a peaked-below-100\%-density is not itself a
+problem. The number of anchor points is 10\% of the H1 training rows
+(minimum 5), weighted enough to nudge the pooled mean without overwhelming
+real data.
+
+This is not a workaround standing in for "a real Bayesian model" -- it IS
+one, via the standard prior-as-pseudo-observations construction for
+conjugate Normal estimation: adding \code{n0} synthetic rows at a target value
+is mathematically equivalent to placing a \code{Normal(target, sigma^2/n0)}
+prior on the mean and computing the closed-form posterior mean, the exact
+same \code{w = N/(N+prior_weight)} Empirical Bayes shrinkage form already used
+throughout this model for per-species/per-genus estimates (see
+\code{prior_weight} above). Implementing it as injected rows, rather than a
+second, separately-coded prior-density formula, keeps this correction on
+the same estimation machinery as everything else in the model instead of
+adding a parallel mechanism to keep in sync. It is also deliberately NOT a
+tight/strong prior: capped at 10\% of real H1 rows (min 5) specifically so
+it nudges the pooled global mean rather than dominating it, and it is
+never applied to any individual species' own shrunk estimate -- only the
+pooled global mean is nudged, and only diluted by however much real
+training data exists (a species with abundant real data is essentially
+unaffected).
+}
+
+\section{Non-monotonic score->likelihood shape}{
+
+A trained species' H1 density is a Gaussian (or bivariate normal, jointly
+with gap) on the transformed score, and a Gaussian is unimodal by
+construction -- it peaks at that species' own fitted \code{mu_score}, not
+necessarily at the transformed value of a perfect (100\%) match. Since
+\code{mu_score} is estimated from real reference-pair comparisons (which are
+essentially never \emph{exactly} 100\% identical even for the correct species,
+due to real intraspecific variation and sequencing/assembly noise) and
+real query-time scores run measurably below the training-only mean on top
+of that (\code{calibrate_query_noise()}'s own real-data finding: trained means
+commonly sit 0.6-1.2 percentage points above real production query
+medians), it is normal and expected for a species' H1 density to peak at
+an intermediate score and decline, rather than increase, as score
+approaches 100\%. \strong{This is not itself a sign of overfitting or a
+bug} -- it is the correct behavior of a well-specified Gaussian estimating
+a quantity whose true mean is genuinely below the ceiling.
+
+What actually matters for a Bayesian classifier is not where the H1
+density's own peak sits, but whether the \strong{H1-vs-H2 likelihood
+ratio} stays monotone at the ceiling -- i.e. whether a better score is
+ever \emph{weaker}, rather than stronger or equal, evidence for the
+known-species hypothesis relative to the missing-species alternative. Two
+Gaussians with different means and different variances can, in principle,
+cross twice, so this is checked directly (not assumed) at the end of
+training via an internal \code{.check_score_ratio_monotonicity()}, using the
+same inference-time sigma floor \code{evaluate_likelihoods()} applies. A
+\code{warning()} is raised if any species' ratio turns over before the ceiling,
+or if any species' perfect-match point sits implausibly far (more than 2
+floored standard deviations) from its own fitted mean -- both symptoms are
+recorded in the returned object's \code{Stats} list (\code{mlr_violations} and
+\code{max_ceiling_z} respectively) for inspection.
+
+On real production models (Great Lakes, Mugu; all trained with
+\code{score_transform = "sqrt_mismatch"}), this was checked empirically across
+~2,000 real species and found negligible: the likelihood ratio was
+strictly increasing all the way to a perfect match in every case, and the
+worst observed distance from a species' fitted mean to the ceiling was
+0.85 floored standard deviations (0\% exceeded 1 SD). The one severe case
+found (median ~2.5 floored SDs, some species effectively at the boundary)
+was a stale, orphaned model object still trained with
+\code{score_transform = "logit"} -- under \code{logit}, the transformed value of a
+perfect match is not a fixed point determined by real data but is set by
+\code{logit_epsilon} (a numerical-hygiene constant), and the default sits only
+about one order of magnitude away from a value that would make every
+perfect match implausible under every species' own fitted distribution.
+\code{score_transform = "sqrt_mismatch"} does not have this fragility (a
+perfect match maps to exactly \code{0}, the finite edge of that transform's own
+range, with no free parameter) and is the more robust choice for any new
+training run near this boundary.
 }
 
 \examples{

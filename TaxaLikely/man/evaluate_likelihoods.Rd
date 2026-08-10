@@ -345,6 +345,11 @@ Backward compatible: falls back to the previous (score-resampling)
 behavior when \code{model_params$H1_Lookup} has no \code{n_obs_species} column
 (i.e., any model trained before this mechanism was added).
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{match_df}/\code{model} are derived), see \code{inst/review_function_inputs.R}
+Section 6 in the package source.
+}
 \section{Confusion risk}{
 
 \code{species_confusion_risk}/\code{genus_confusion_risk}/\code{family_confusion_risk} are

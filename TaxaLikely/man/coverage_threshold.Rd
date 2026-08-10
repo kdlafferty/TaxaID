@@ -31,6 +31,11 @@ pairwise reference dataset -- the minimum coverage that retains approximately
 coverage filtering when a full sweep via \code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}} is
 not needed.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration built on real
+\code{DECIPHER}-aligned fixture data, see \code{inst/review_function_inputs.R}
+Section 8 in the package source.
+}
 \section{Method}{
 
 Setting \code{keep_frac = 0.95} computes \code{quantile(coverage, 0.05)} -- the 5th

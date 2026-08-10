@@ -11,6 +11,21 @@
 #' pre-classified candidate outputs; mislabel removal via accession IDs is
 #' not applicable in those workflows.
 #'
+#' @section Package placement:
+#' This is TaxaLikely, not TaxaMatch, deliberately: it removes rows flagged
+#' by \code{\link{flag_reference_errors}}, which is built on the exact same
+#' pairwise DECIPHER alignment matrix (\code{\link{build_sequence_matrix}})
+#' used for likelihood-model training -- colocating detection and remediation
+#' avoids splitting one mislabeling-detection mechanism's output and its own
+#' consumer across two packages. TaxaMatch has its own, separately-scoped
+#' reference-quality tooling (\code{evaluate_reference_accessions()}/
+#' \code{remove_incongruent_references()}, a BLAST-based per-accession check
+#' against a broad database, not this package's within-reference-set
+#' pairwise-alignment approach) -- confirmed via that package's own
+#' documented scope revision ("screening match data against reference
+#' quality in service of producing a clean match object," not a general
+#' reference-database-auditing home, which stays TaxaLikely's domain).
+#'
 #' Only sequences flagged as \code{"likely_mislabeled"} are removed by default.
 #' Sequences flagged as \code{"unverified_singleton_high_match"} are ambiguous
 #' (may be correctly labeled singletons) and are retained unless
@@ -35,6 +50,10 @@
 #'   no flagged accessions are found.
 #'
 #' @seealso [flag_reference_errors()], [train_likelihood_model()]
+#'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
+#'   `match_obj` is derived), see `inst/review_function_inputs.R` Section 10
+#'   in the package source.
 #'
 #' @examples
 #' \dontrun{

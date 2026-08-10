@@ -89,6 +89,11 @@ This is the recommended high-level entry point for new workflows.  For the
 bivariate-normal similarity pathway it is equivalent to
 \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}.
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{match_df} is derived), see \code{inst/review_function_inputs.R} Section 3
+in the package source.
+}
 \examples{
 \dontrun{
 # No-score pathway (morphology or upranked consensus)

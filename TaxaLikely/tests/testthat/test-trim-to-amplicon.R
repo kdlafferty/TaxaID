@@ -93,6 +93,46 @@ test_that("trim_to_amplicon: extracts the correct amplicon from an over-length s
   expect_equal(nchar(out$sequence), g$amplicon_len)
 })
 
+test_that("trim_to_amplicon: verbose message omits the 'could not be trimmed' clause when it's zero", {
+  # Regression test: this clause used to print unconditionally, even
+  # reporting "0 could not be trimmed" when every over-length sequence was
+  # successfully trimmed.
+  skip_if_not_installed("Biostrings")
+  g <- .build_genome()
+  df <- data.frame(composite_id = "MITO1", sequence = g$genome, stringsAsFactors = FALSE)
+  msgs <- character(0L)
+  withCallingHandlers(
+    trim_to_amplicon(df, barcode_term = "MiFishU", min_len = 50L, max_len = 100L, verbose = TRUE),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  summary_msg <- msgs[grepl("^trim_to_amplicon: extracted", msgs)]
+  expect_length(summary_msg, 1L)
+  expect_false(grepl("could not be trimmed", summary_msg))
+})
+
+test_that("trim_to_amplicon: verbose message includes the 'could not be trimmed' clause when nonzero", {
+  skip_if_not_installed("Biostrings")
+  df <- data.frame(
+    composite_id = "NOPRIMER",
+    sequence      = paste0(strrep("N", 300L), strrep("ACGTACGTAC", 10L), strrep("A", 300L)),
+    stringsAsFactors = FALSE
+  )
+  msgs <- character(0L)
+  withCallingHandlers(
+    trim_to_amplicon(df, barcode_term = "MiFishU", min_len = 50L, max_len = 100L, verbose = TRUE),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  summary_msg <- msgs[grepl("^trim_to_amplicon: extracted", msgs)]
+  expect_length(summary_msg, 1L)
+  expect_true(grepl("1 could not be trimmed", summary_msg))
+})
+
 test_that("trim_to_amplicon: extracts correctly when the sequence was deposited on the opposite strand", {
   skip_if_not_installed("Biostrings")
   g <- .build_genome(revcomp_deposit = TRUE)

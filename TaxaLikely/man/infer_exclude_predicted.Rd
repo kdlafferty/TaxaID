@@ -76,6 +76,11 @@ This is safer than \code{ep \%||\% TRUE} because \code{\%||\%} replaces
 \code{NULL} but not \code{NA}.
 }
 }
+\note{
+For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
+\code{match_obj} is derived), see \code{inst/review_function_inputs.R} Section 7
+in the package source.
+}
 \examples{
 \dontrun{
 # Typical usage -- result feeds directly into audit_barcode_coverage()

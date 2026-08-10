@@ -35,8 +35,13 @@
 #'     range of nuclear markers for metazoan eDNA; the full COI release is ~4 GB.
 #'     Its license is reported as CC-BY-NC in secondary sources (unconfirmed on
 #'     the primary site) -- this may be in tension with this ecosystem's
-#'     CC0/USGS public-domain policy for anything beyond local model training;
-#'     confirm before redistributing any cached MIDORI2-derived data.}
+#'     CC0/USGS public-domain policy. This function never fetches, bundles, or
+#'     redistributes MIDORI2 data itself (it only filters a copy the user
+#'     already downloaded), so it carries no license obligation on its own --
+#'     but the license question is real for the USER: do not redistribute any
+#'     MIDORI2-derived \code{reference_df}/FASTA output beyond local model
+#'     training until the license is confirmed directly with the MIDORI2
+#'     maintainers.}
 #'   \item{GTDB}{GTDB taxonomy differs from NCBI for bacteria and archaea.
 #'     Export GTDB-formatted 16S sequences + taxonomy via QIIME 2 (\code{qiime
 #'     tools export}) or download pre-built QIIME2 classifiers and extract
@@ -98,6 +103,11 @@
 #' @seealso [read_reference_fasta()] for smaller databases where loading the
 #'   entire file at once is practical; [read_crabs_output()] for CRABS
 #'   internal-format databases; [build_sequence_matrix()] for the next step.
+#'
+#' @note For a fully runnable, non-`\dontrun{}` demonstration using a small
+#'   synthetic FASTA + taxonomy fixture (real multi-gigabyte databases like
+#'   SILVA/PR2/MIDORI2 aren't practical to bundle for a doc example), see
+#'   `inst/review_function_inputs.R` Section 1 in the package source.
 #'
 #' @examples
 #' \dontrun{
@@ -247,6 +257,13 @@ subset_local_database <- function(fasta_path,
   in_target_seq <- FALSE
   chunk_size    <- 5000L
 
+  # .save_record() is a lexical closure over THIS function's own local
+  # variables (records/current_id/current_seq/in_target_seq/max_n_bases),
+  # not the global environment -- standard R closure scoping, not global
+  # state. Kept as a no-argument closure (mutating `records` via `<<-`)
+  # rather than threading explicit params/return values through the
+  # streaming loop below, since it has exactly one call site and its whole
+  # job is "flush whatever the loop has accumulated so far."
   .save_record <- function() {
     if (!in_target_seq || is.null(current_id)) return()
     seq <- paste(current_seq, collapse = "")
@@ -258,15 +275,15 @@ subset_local_database <- function(fasta_path,
   }
 
   while (length(lines <- readLines(con, n = chunk_size, warn = FALSE)) > 0L) {
-    for (line in lines) {
-      if (startsWith(line, ">")) {
+    for (fasta_line in lines) {
+      if (startsWith(fasta_line, ">")) {
         .save_record()
-        header        <- sub("^>", "", line)
+        header        <- sub("^>", "", fasta_line)
         current_id    <- strsplit(header, "\\s+", perl = TRUE)[[1L]][1L]
         in_target_seq <- exists(current_id, envir = keep_env, inherits = FALSE)
         current_seq   <- character(0L)
       } else if (in_target_seq) {
-        current_seq <- c(current_seq, trimws(line))
+        current_seq <- c(current_seq, trimws(fasta_line))
       }
     }
   }

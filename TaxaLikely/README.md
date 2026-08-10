@@ -96,7 +96,7 @@ Load it with:
 
 ``` r
 ref <- read_crabs_output(
-  file        = "mifish_12S_crabs.tsv",
+  crabs_file  = "mifish_12S_crabs.tsv",
   rank_system = c("family", "genus", "species"),  # or NULL to auto-detect
   max_n_bases = 250,      # optional: drop unusually long sequences
   dereplicate = TRUE      # optional: collapse identical seqs within species
