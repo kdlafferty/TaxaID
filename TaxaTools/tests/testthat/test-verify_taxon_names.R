@@ -78,6 +78,7 @@ test_that("returns correct structure for valid names", {
 
 test_that("NCBI path fuzzy-corrects a real misspelling via the fallback backbone", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   expect_warning(
     result <- verify_taxon_names("Acanthogobius flavimannus", backbone_id = 4),
@@ -110,6 +111,7 @@ test_that("fallback_backbone_id = 4 errors immediately", {
 
 test_that("a genuinely nonexistent name is left unmatched even after the fuzzy fallback", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   result <- verify_taxon_names("Zzznotarealtaxonxyz123", backbone_id = 4)
 
@@ -126,6 +128,7 @@ test_that("exact matches return score of 1", {
 
 test_that("unrecognized name returns NA matched_name with verified = TRUE", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   result <- verify_taxon_names("Xyzzy fakeii", backbone_id = 4)
   expect_true(result$verified)
@@ -170,6 +173,7 @@ test_that("whitespace in names is trimmed", {
 
 test_that("a genus-only synonym match resolves to the current accepted genus, not the synonym", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   result <- verify_taxon_names(
     "Inu sp. 1 sensu Shibukawa et al., 2020.",
@@ -183,6 +187,7 @@ test_that("a genus-only synonym match resolves to the current accepted genus, no
 
 test_that("matched_rank correctly reports genus when only genus-level data exists (GBIF)", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   result <- verify_taxon_names(
     "Inu sp. 1 sensu Shibukawa et al., 2020.",
@@ -193,6 +198,7 @@ test_that("matched_rank correctly reports genus when only genus-level data exist
 
 test_that("a non-synonym match is left unchanged and is_synonym is FALSE", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   result <- verify_taxon_names("Homo sapiens", backbone_id = 11L)
 
@@ -203,6 +209,7 @@ test_that("a non-synonym match is left unchanged and is_synonym is FALSE", {
 
 test_that("a subspecies-rank match preserves the full trinomial, not just genus+epithet", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   # Real regression case: the previous strip_authority() regex only captured
   # "genus + at most one lowercase word", silently truncating any
@@ -218,6 +225,7 @@ test_that("a subspecies-rank match preserves the full trinomial, not just genus+
 
 test_that("a no-match result has NA matched_rank and NA is_synonym", {
   skip_if_offline()
+  skip_if_verifier_down()
 
   result <- verify_taxon_names("Zzznotarealtaxonxyz123", backbone_id = 11L)
 

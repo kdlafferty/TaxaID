@@ -114,6 +114,7 @@ test_that("evaluate_reference_accessions(barcode_term =) trims an over-length qu
 })
 
 test_that("evaluate_reference_accessions() with barcode_term = NULL (default) submits queries at full length, unchanged", {
+  skip_if_not_installed("Biostrings")
   g <- .build_genome_tm()
 
   seen_sequence <- NULL
