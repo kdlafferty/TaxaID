@@ -1,329 +1,302 @@
 ---
-title: "TaxaExpect code and domain review"
+title: "TaxaExpect code review"
 output: html_document
 ---
 
-Review date: 2026-07-31. Package version reviewed: TaxaExpect 0.1.0. Review conducted by
-Claude Code, using the template in `inst/Code and Domain Review 2.Rmd`. This is TaxaExpect's
-first full review of this kind -- every sibling package in the ecosystem (TaxaTools,
-TaxaFetch, TaxaMatch, TaxaLikely) already had one; this closes that gap. Findings and fixes
-are combined in one pass (no separate response document), following the `taxafetch_review.Rmd`
-precedent: a background research pass read every R file against the template and reported
-candidate findings; every High-severity claim below was then independently re-verified against
-the actual running code (live R execution, not re-reading the report) before being trusted or
-fixed -- several were confirmed exactly as reported, none were found to be false positives at
-the High tier.
+### Code Review
 
-`devtools::check()`: 0 errors, 0 warnings, 0 notes. `devtools::test()`: 538 expectations (up
-from 536 before this review -- two pre-existing tests that directly encoded the old, buggy
-`.safe_normalise()` behavior as their expected result were rewritten to assert the corrected
-behavior instead, net +2 assertions), 0 failures (37 warnings, all pre-existing and benign: a
-`glmmTMB`/`TMB` package-version-mismatch environment warning repeated per test file, plus tests
-that deliberately capture convergence warnings). `lintr::lint_package()`: no `.lintr` existed
-before this review (every sibling package has one); one was added (line length 120, UTF-8,
-matching the ecosystem convention) and most real findings fixed -- see the Coding standards
-section below for what remains open and why.
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
 
-------------------------------------------------------------------------
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable? 
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+    
+    The code is readable and organized. There are places where code is reproduced, violating the "do not repeat yourself" principle (noted in individual files below). Suggest reviewing for any code duplication and strategizing how it could be eliminated. At this point in the review process, so many functions are similar in name and/or functionality keeping them all straight is a challenge. This is probably not entirely avoidable, but it illustrates the importance of keeping the code base as simple as possible while retaining the desired functionality. 
+    
+* [ ] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way. 
+  * Is additional documentation required?
+  
+  The documentation seems efficient. As noted above, some code is reproduced, and there are places where functions are run that are unecessary (i.e. parising IDs to get coordinates when coordinates are known). See comments on individual files below. 
+  
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+  
+  I did not notice any major coding standard issues.
+  
+* [x] **Automated tests:** Confirm that all tests pass when run locally.
+  
+  Not all functions have tests. This is noted in the comments on individual files. Here is the output from running `test_local` on the test directory: `[ FAIL 0 | WARN 37 | SKIP 0 | PASS 538 ]`. 
+  
+* [x] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
 
-# Code Review
+  I do not have the domain knowledge to assess any security issue or vulnerabilities. The package does query some APIs.
+  
+Any Additional comments, list below in comment section.
 
-Purpose: To produce high quality code that is well written and organized according to
-best coding practices.
+### Domain Review
 
-### [x] Functionality: The code is readable, organized, and efficient. Six real bugs fixed.
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
 
-Overall organization is consistent with the rest of the ecosystem (roxygen throughout,
-`.`-prefixed internal helpers, `package::function()` cross-package calls). Six real
-correctness bugs were found and fixed, all confirmed by direct live execution before
-touching any code -- listed here because they are functionality bugs (silent wrong output
-or a broken invariant), not style:
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct? 
+  * Are any claims of what the code does substantiated? 
+  * If tests are included, are they adequate to evaluate functionality?
+  
+  See previous comments on tests. The code appears to work as advertised. I could not run all functions as example data was not readily available.
+  
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces. 
+  * If equations are solved, are the equations input correctly into the code?
+  
+  I do not have the domain knowledge to fully evaluate all equations, but I did not see any obvious errors.
+  
+* [ ] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
+  
+  Many of the algorithms used cite papers as their source.
+  
+Any Additional comments, list below in comment section.
 
-**`compute_moran_basis.R` -- `eigen(M, symmetric = TRUE)` silently wrong on any real,
-irregular grid (High, fixed).** The Moran operator `M` was built from a row-standardised
-adjacency matrix (`W_std <- W / row_sums`), which is asymmetric for any grid where two
-cells have different neighbour counts -- true for essentially every real, non-toroidal
-grid (confirmed live with a 5-node unequal-degree graph: max asymmetry 0.33, not a
-rounding artifact). `eigen(..., symmetric = TRUE)` silently reads only the lower
-triangle of an asymmetric input with **no error or warning**, producing a completely
-different set of eigenvalues, signs, and eigenvectors than the correct general
-eigendecomposition (confirmed live: `[0.789, 0.073, -0.270, -0.501, -1.091]` vs. the
-correct `[-0.857, 0.654, -0.5, -0.297, 0]`). The wrong `B1...Bk` spatial basis columns
-then feed directly into `train_biodiversity_model()`/`generate_full_priors()` for any
-caller using `moran_k > 0` -- `build_priors()`'s own default. Fixed: `M` is now built
-from the underlying binary adjacency matrix `W` directly (already symmetric by
-construction, from a symmetric distance test) instead of its row-standardised form --
-the row-standardisation step was removed entirely, not patched. Roxygen `@details`
-corrected to state the symmetry requirement explicitly.
+- I won't point this out everywhere, but British spellings are sprinkled throughout (i.e. "centre", "colour"). Not necessarily an issue but odd.
 
-**`generate_full_priors.R` -- phi cap never fires on the package's own recommended
-formula (High, fixed).** The "principled" phi (Beta-prior effective sample size) cap,
-documented as being derived from the model's own `taxon_name:grid_id` random-effect
-variance, looked up `glmmTMB::VarCorr(...)$cond[["taxon_name.grid_id"]]` -- a period,
-not the colon glmmTMB actually uses (confirmed live against a real fitted glmmTMB model:
-`names(VarCorr(m)$cond)` returns `"taxon_name:grid_id"`). The lookup therefore always
-returned `NULL`, silently falling through to the hardcoded `max_phi = 1000` fallback on
-every single call using the package's own documented recommended formula
-(`... + (1 | taxon_name:grid_id)`, `TaxaExpect/CLAUDE.md`'s own "Recommended formula").
-Where the real grid-level variance implies a materially tighter cap, this could produce
-falsely narrow (overconfident) Beta priors. Fixed: one-character fix (`.` -> `:`),
-confirmed live that `as.numeric(mat)` now correctly extracts the scalar variance.
+- Suggest replacing all objects named `data` with more informative names that don't overwrite existing R functions.
 
-**`prepare_model_dataframe.R`/`train_biodiversity_model_by_group.R` --
-`sampling_group_col` silently drops every NA-grouped row (High, fixed in both files).**
-Base R's `split(data, data[[col]])` silently omits rows whose grouping value is `NA`
-(confirmed live: `split(1:5, c("a","a",NA,"b","b"))` returns only 4 of 5 elements, with
-no warning). Any taxon whose `sampling_group_col` value is unclassified therefore
-vanished entirely from the grouped output of both functions, undermining the whole
-point of the Session 149 group-aware effort-denominator feature (enforcing the "shared
-effort assumption"). `train_biodiversity_model_by_group()` additionally used
-`sort(unique(...))` to enumerate groups, which also silently drops NA (`sort()`'s
-default `na.last = NA`). Fixed in both files: NA is now kept as its own explicit group
-(`sampling_group = NA`) via `factor(x, exclude = NULL)` before splitting, with a
-`message()` reporting the affected row count. Indexing was switched from by-name to
-by-position throughout both files, since `list[[NA]]` returns `NULL` rather than the
-actual NA-named element (confirmed live) -- the exact list-indexing footgun this
-package's own `compute_adaptive_sampling_groups.R` had already independently worked
-around; that file was the correct reference pattern, not an inconsistency to resolve
-the other way.
+- After reviewing this package and the others, consider if it makes sense to completely combine these packages into a single one. They are often quite interdependent.
 
-**`prepare_model_dataframe.R` -- `scale_params` attribute silently kept only the first
-group's values (High, fixed).** `dplyr::bind_rows()` on a list of data frames each
-carrying a custom `scale_params` attribute keeps only the FIRST element's attribute
-value, discarding every other group's (confirmed live with a two-group toy
-reproduction). Any group after the first therefore had its covariate center/scale
-silently replaced by the first group's, for any caller consuming
-`prepare_model_dataframe(sampling_group_col = ...)`'s combined output directly (a
-documented, standalone capability -- `train_biodiversity_model_by_group()` itself
-sidesteps this by re-deriving its own per-group `scale_params` internally, per its own
-existing session notes, but did not fix the underlying attribute-loss bug in the
-function it wraps). Fixed: the combined output no longer carries a flat `scale_params`
-attribute when grouped; it carries `scale_params_by_group`, a named list of per-group
-`scale_params` lists, documented in the function's own `@return`.
+- This package and others really do require `rnaturalearthdata` and `rnaturalearthdatahires` to have full functionality, these should be listed as explicit dependencies.
 
-**`create_sites_from_grid.R` -- `grid_id` silently collides distinct cells for any
-`grid_size < 0.1` (High, fixed).** `grid_id` was always formatted via a fixed
-`sprintf("Grid_%.1f_%.1f", ...)`, regardless of `grid_size`. For any finer resolution
-(a real, supported choice -- `optimize_grid_size()` can legitimately recommend one),
-two genuinely distinct cells collide into one label (confirmed live: `grid_size = 0.05`
-rounds `34.05` and `34.10` to the same `"34.1"` string), silently pooling spatially
-distinct sites into one `taxon_name:grid_id` random-effect level with no warning. Fixed:
-decimal precision is now derived from `grid_size` itself (`max(1L, -floor(log10(grid_size)))`),
-preserving the previous 1-decimal-place output exactly for `grid_size >= 0.1`.
+- In this package and others, much of the comments contain narritive describing earlier versions and the developement process. Suggest removing this as it is the first release. This extra narrative makes the comments harder to navigate at times.
 
-**`optimize_grid_size.R` -- two related bugs in resolution scoring/selection (High and
-Medium-High, both fixed).** (1) `.safe_normalise()` masked `+Inf`/`-Inf` inputs to `NA`
-before computing the normalisation range, but never restored them afterward -- a
-resolution with the theoretically BEST possible stability score (`cv_N == 0`, perfectly
-uniform sampling effort, a realistic case for structured survey designs) ended up with
-`NA` instead of the correct `1`, which then propagates through the composite score and
-sorts last via `arrange(desc(...))`, silently disqualifying that resolution from ever
-being selected as `best_grid`. Fixed: `+Inf`/`-Inf` inputs are now explicitly restored
-to `1`/`0` after normalisation. (2) Fallback C's `single_grid_size`, documented to
-guarantee "all observations pooled into one site," is not actually guaranteed by its
-formula for an arbitrary bbox position -- confirmed live with a concrete counterexample
-(bbox `[10.0, 12.3]`, span 2.3: the formula's `single_grid_size = 2.36` still produced
-two distinct grid cells, `9.44` and `11.8`, contradicting the fallback's own printed
-message). Fixed: the grid size is now verified against the real coordinates and grown
-(geometric, capped at 20 iterations) until it demonstrably collapses to one cell for
-the actual data at hand, rather than trusting an unverified closed-form formula for an
-arbitrary bbox alignment.
+- `formula` is an existing R function.
 
-### [x] Optimizations: No significant inefficiencies found beyond the correctness issues above.
+- It seems like identifying an unprecedented invasion may be a weakness of this package and the TaxaID ecosystem in general. I'm not sure this is something that can be easily solved and I know this has been considered by the package author, but I wanted to record it here. 
 
-No algorithmic complexity concerns. `compute_moran_basis()`'s fix is a net simplification
-(one fewer matrix operation, not an added cost).
+Comments on specific files:
 
-### [x] Coding standards: Docstrings/comments checked against actual behavior; several
-gaps found and fixed; `.lintr` added, most findings fixed, remainder documented below.
+**add_pca_covariates.R**
 
-Multiple doc-vs-code mismatches were found (beyond the ones already listed above as
-functionality bugs, since fixing the code made the docs correct automatically):
+* [x] reviewed
 
-- `train_biodiversity_model.R`'s Tier 2 empirical fallback (`tier2_empirical`, used when
-  the Tier 2 GLMM fails to fit) computed `theta_mean_emp`/`theta_sd_emp` only over rows
-  where `n_species > 0` -- a conditional "typical rate given detected," not the marginal
-  prevalence rate the roxygen implies ("observed mean/SD theta"). Systematically
-  inflated, worst for a rare species detected at only 1-2 of many surveyed sites. Fixed
-  to average over ALL surveyed rows for a detected taxon x habitat combo (including the
-  zero-detection rows `prepare_model_dataframe()` zero-fills), while still restricting
-  output rows to combos observed at least once (so `observed_in_habitat` downstream
-  logic, which reads this table's taxon/habitat combos, is unaffected).
-- `screen_spatial_formula.R`'s `sd_threshold` was documented as a "coefficient of
-  variation," a self-contradictory phrase ("CV... on the logit scale") since the code
-  never divides by a mean anywhere -- it's compared directly against each random
-  slope's absolute fitted SD. Doc-only fix.
-- `train_biodiversity_model.R`'s `full_data` parameter silently changes what "singleton"
-  means: a raw-record count when supplied, an occupied-grid-cell count when omitted (the
-  default) -- a species with 3 clustered raw records at one cell is a singleton under the
-  default path but not under the `full_data` path. Not previously disclosed. Doc-only fix.
-- `train_biodiversity_model_by_group.R`'s exported name (34 characters) exceeds the
-  30-character `object_length_linter` convention -- flagged, not renamed (a real API
-  break for a name already referenced throughout `CLAUDE.md`'s Function Inventory and
-  several session notes, for cosmetic gain only); recorded as a `.lintr` exclusion
-  instead.
-- `recover_demoted_species.R`'s `rank_system` parameter was declared and documented but
-  never referenced in the function body -- genuinely dead (internal, `@noRd`, single
-  call site in `build_priors.R`). Removed entirely (not deprecated) rather than left as
-  misleading documentation, since it is unexported and has exactly one caller, updated
-  in the same pass.
-- `TaxaExpect-package.R`'s package-level roxygen index omitted several newer exported
-  functions (`prepare_model_dataframe`, `train_biodiversity_model_by_group`,
-  `compute_adaptive_sampling_groups`, `compute_moran_basis`, `screen_spatial_formula`,
-  `add_pca_covariates`, `generate_domestic_food_priors`,
-  `plot_theta_map_interactive`). Fixed -- all now listed.
-- `create_sites_from_grid.R`'s own `@return` example had latitude and longitude swapped
-  in its prose ("lat = -119.5, lon = 34.0" -- backwards for a Southern California
-  example, though internally consistent with the example's own output string). Fixed.
+- Examples is not runnable as-is.
 
-`.lintr` added (line length 120, UTF-8, matching every sibling package). Real findings
-fixed: two `else`-on-own-line `brace_linter` hits, three `spaces_inside_linter` hits
-(`x[[ y ]]` -> `x[[y]]`), three `return_linter` hits (explicit `return()` at a function's
-final statement), two `sapply(x, function(y) ...)`-without-braces `brace_linter` hits, one
-compound-semicolon test-file statement split across lines, comma-spacing in one test
-fixture, and one over-long `message()` string split via `paste0()`-equivalent multi-arg
-`message()` (safe here, unlike `sprintf()` -- see this package's own Known Footguns entry
-on the split-string `sprintf()` bug; `message()`'s `...` genuinely concatenates, confirmed
-before relying on it).
+- Lines 88-92: how much of this is reproduced from `prepare_model_dataframe`? Consider if this can be done once and referenced.
 
-**Not fixed this pass, left as documented `.lintr` exclusions or open items:** roughly 40
-remaining `object_name_linter` hits on short, conventional statistical/matrix notation
-(`W`, `I`, `M`, `N_total`, `min_N_threshold` -- used consistently throughout this package's
-spatial-modelling code, matching standard notation in the cited MEM/PCNM literature) and a
-handful of long `message()`/`stop()` strings exceeding 120 characters. Both are cosmetic-only
-with no correctness implication; renaming ~15 short single-letter matrix variables used
-throughout `compute_moran_basis.R` would touch every line of that function for no behavior
-change and was judged not worth the risk this session, unlike the sibling packages' own
-lintr passes which dealt with a much smaller residual after their own object-name findings.
-Left open rather than silently claimed clean.
+**build_priors.R**
 
-### [x] Automated tests: Confirmed passing when run locally after all fixes above.
+* [x] reviewed
 
-`devtools::test()`: 538 expectations, 0 failures. Two pre-existing tests in
-`test-optimize_grid_size.R` directly asserted the OLD, buggy `.safe_normalise()` behavior
-(`is.na(out[3])` for an `Inf` input, `all(is.na(out))` for an all-non-finite input) --
-these were rewritten to assert the corrected behavior (`Inf` -> `1`, `-Inf` -> `0`,
-bare `NA` stays `NA`) rather than left broken or silently reverted.
+- Instead of three parameters (`lat`, `lon`, and `search_radius_deg`), why not just have the user supply a bbox?
 
-### [x] Vulnerabilities: None found requiring a fix.
+- Why not just make `year_range` a length 2 integer vector? Line 190 would be unnecessary.
 
-This package has no direct network I/O, file-path construction from untrusted input, or
-`eval`/`parse` of external data -- all external data acquisition (GBIF, NCBI, LLM calls)
-is delegated to TaxaFetch/TaxaHabitat/TaxaTools, already reviewed separately
-(`taxafetch_review.Rmd` found and fixed a real SSRF gap there). `generate_domestic_food_priors.R`
-(the largest, newest file, checked most closely for this reason) calls
-`TaxaFetch::fetch_inat_occurrences()`/`TaxaTools::clean_taxon_names()` but does not itself
-construct URLs, file paths, or shell commands from any input. `plot_theta_map_interactive.R`'s
-`.he()` HTML-escaping helper (for Leaflet popup content) escaped `&`/`<`/`>`/`"` but not `'`,
-an incomplete escaping boundary against its own stated purpose -- fixed (added), though real
-exposure was low (a single-user local interactive Shiny gadget, self-XSS at worst, not a
-network-facing surface).
+- Doesn't `llm_fn` actually default to whatever the env variable is now?
 
-------------------------------------------------------------------------
+- Line 71: suggest enforcing column names instead of giving the option to rename in the function.
 
-# Domain Review
+- Suggest adding `checkpoint_dir` as an argument to `.save`.
 
-Purpose: To ensure the code produces outputs, data, interfaces, or software that is
-biologically reasonable when compared to other similar information available.
+- Lines 217, 660, 729: weird spaces.
 
-### [x] Scientific Rigor: Two real statistical bugs found and fixed (see Code Review above
-for the full technical detail: `compute_moran_basis.R`'s asymmetric-eigendecomposition bug
-and `train_biodiversity_model.R`'s Tier 2 conditional-vs-marginal-rate bug). Both directly
-affect the numeric values TaxaExpect produces, not just crash behavior. One further
-domain-specific finding, fixed:
+- What happens if `gbif_rank` isn't in the keys `data.frame`?
 
-**`generate_domestic_food_priors.R` -- `"x Triticosecale"` default entry silently never
-survives name-cleaning (Medium, fixed).** Verified live against the real
-`TaxaTools::clean_taxon_names()`: `"x Triticosecale"` (leading lowercase "x", standard
-botanical hybrid notation for the wheat-rye hybrid crop) cleans to `NA` and is silently
-dropped from the default `food_species_taxa` list every call -- confirmed distinct from
-this list's other hybrid-formula entries (e.g. `"Citrus x aurantiifolia"`), which lossily
-but successfully collapse to their genus. Fixed: corrected to the bare genus
-`"Triticosecale"`, matching how this list already handles other genus-only entries.
+- a variety of taxonomic rank objects are created here, and throughout the package ecosystem. Consider how these could be collapsed into a single queryiable object, or some minimal subset.
 
-### [x] Outputs: Comparable to expectation; one reporting-accuracy gap fixed.
+- Line 440: this seems like it should be 2 of 7, as no other steps have substeps.
 
-**`report_priors.R` -- `n_grid_cells` inflated by 1 whenever `generate_domestic_food_priors()`
-rows (which legitimately carry `grid_id = NA`) are present (Low, fixed).** `unique()` counts
-`NA` as one more "distinct" value; the adjacent `n_taxa` computation three lines above
-already correctly guards against the identical case, making this a genuine oversight rather
-than a deliberate asymmetry. Fixed to match the existing `n_taxa` pattern -- relevant to
-any Methods-text-quoted cell count once domestic/food priors are mixed into a report.
+- Line 470: seems like this should be checked or confirmed instead of just taking the first column. Really, this should only allow one oject type.
 
-### [x] Algorithms: Appropriate for stated purpose, with the corrections above. One
-additional real UI/data-integrity bug found and fixed in the interactive exploration tool:
+- Line 480: does this get cleaned earlier? Is this needed?
 
-**`plot_theta_map_interactive.R` -- `occ_sel()` uses `==` where its sibling reactive uses
-`%in%` (Medium, fixed).** `occ[occ$taxon == input$taxon, ]` (vs. `pr_sel()`'s correct
-`pr$taxon_name %in% input$taxon` two lines above) turns an NA in `occ$taxon` into an NA
-logical mask entry, which `[`-indexing expands into a full ghost all-NA row -- a live
-recurrence of the exact NA-comparison bug class this same file was already debugged for
-once (2026-07-24 session, per `CLAUDE.md`; the earlier fix addressed a different reactive,
-`taxon_name == input$taxon` matching undetected/singleton-mirror proxy rows, not this one).
-Worse specifically when `occurrence_habitat_col = NULL` (a supported, documented mode),
-since the habitat-filter step that happens to mask the ghost row in the default mode is
-skipped. Fixed to `%in%`, matching the sibling reactive; the upstream `occ` construction
-also gained an explicit `!is.na(occ$taxon)` filter alongside its existing lat/lon NA guard,
-as defense in depth.
+- Line 492: this doesn't work unless `TaxaTools` is explicitly loaded. Suggest loading at the start of the function or updating `TaxaTools` so `call_api` works with `::`.
 
-------------------------------------------------------------------------
+- `TaxaHabitat::assign_habitat_biological` returns this as part of the message: `0 site(s) assigned 'Other' (scheme may need extending -- check habitat_best_guess column)`. Only return these messages if this count is > 0.
 
-# File specific comments
+- Line 541: this returns the warning `prepare_model_dataframe: the following covariate pairs are correlated above |r| = 0.7:  lat_r and lon_r (r = -0.84)`. Seems like this could be an issue frequently, as species and/or their observations often occur in patterns across space.
 
-- `R/compute_moran_basis.R` -- `M` now built from the symmetric binary `W` directly
-  (row-standardisation step removed); `@details` corrected.
-- `R/generate_full_priors.R` -- `grid_term` lookup key fixed (`.` -> `:`); two
-  `spaces_inside_linter`/`return_linter` style fixes; `@importFrom dplyr` merged to one
-  line (roxygen2 8.0.0 compatibility, see the note below).
-- `R/prepare_model_dataframe.R` -- NA-drop and `scale_params`-attribute-loss both fixed
-  in the `sampling_group_col` grouping path; `@return`/`@section` updated to document
-  `scale_params_by_group`; `@importFrom dplyr` merged to one line.
-- `R/train_biodiversity_model_by_group.R` -- matching NA-drop fix (positional indexing
-  throughout).
-- `R/create_sites_from_grid.R` -- `grid_id` decimal precision now derived from
-  `grid_size`; `@return` example lat/lon corrected.
-- `R/optimize_grid_size.R` -- `.safe_normalise()` Inf-restoration fix; Fallback C's
-  `single_grid_size` now verified against real coordinates and grown until correct;
-  `@importFrom dplyr` merged to one line.
-- `R/train_biodiversity_model.R` -- Tier 2 empirical fallback now averages over all
-  surveyed rows, not just detected ones; `@param full_data`'s singleton-definition gap
-  documented; two `brace_linter`/one `spaces_inside_linter`/one `return_linter` style
-  fixes; `@importFrom dplyr` merged to one line.
-- `R/plot_theta_map_interactive.R` -- `occ_sel()`'s `==` -> `%in%`; upstream NA filter
-  extended to `occ$taxon`.
-- `R/generate_domestic_food_priors.R` -- `"x Triticosecale"` default corrected to
-  `"Triticosecale"`.
-- `R/report_priors.R` -- `n_grid_cells` NA-guard added, matching `n_taxa`'s existing
-  pattern.
-- `R/screen_spatial_formula.R` -- `sd_threshold` doc corrected (not a CV); two
-  `sapply(...)`-without-braces fixes; one long `message()` split.
-- `R/add_pca_covariates.R` -- explicit, actionable error added for missing values
-  reaching `prcomp()` (previously an opaque low-level R error).
-- `R/utils_plot.R` -- `.he()` gains apostrophe escaping.
-- `R/recover_demoted_species.R` -- unused `rank_system` parameter removed; sole call
-  site in `R/build_priors.R` updated to match.
-- `R/TaxaExpect-package.R` -- package-level function index completed.
-- 5 files (`prepare_model_dataframe.R`, `add_pca_covariates.R`,
-  `plot_theta_map_interactive.R`, `compute_moran_basis.R`, `train_biodiversity_model.R`)
-  had non-ASCII em-dash/multiplication/approx characters in comments and roxygen (no
-  string literals affected) -- swept to ASCII equivalents, matching this ecosystem's
-  established policy (every sibling package's own review did the same).
-- `.lintr` added (new file); `.Rbuildignore` gained `^\.lintr$` (without it,
-  `devtools::check()` produces a "hidden files" NOTE -- caught and fixed the same session,
-  matching every sibling package's own `.Rbuildignore`).
-- `tests/testthat/test-optimize_grid_size.R` -- the two `.safe_normalise()` tests that
-  encoded the old buggy behavior rewritten to assert the fix (see Automated tests above).
-- `tests/testthat/test-prepare_model_dataframe.R` / `test-generate_domestic_food_priors.R`
-  -- minor lint fixes (comma spacing, compound-statement split), no behavior change.
-- **Environment note, not a package bug:** this developer's current environment has
-  roxygen2 8.0.0 installed against a `RoxygenNote: 7.3.3`-declared package (true for
-  every package in this ecosystem, not specific to TaxaExpect). Version 8.0.0's stricter
-  `@importFrom` parser rejects the multi-line-wrapped `@importFrom dplyr ...` blocks used
-  throughout this package (and, unchanged, in every sibling package) -- `devtools::document()`
-  errored on 4 of TaxaExpect's files until each was merged to one line (done this session,
-  see the file list above). This is a real, currently-live blocker for regenerating any
-  `.Rd` file in this package on this machine; it was not previously encountered because
-  no prior session's edits happened to touch one of the affected roxygen blocks while also
-  needing a `document()` run. Worth a `CLAUDE.md`-level note for future sessions (not added
-  here, to keep this review scoped to TaxaExpect) if the same block is hit again in another
-  package.
+- Line 587: The model fails to fit with data from the example, so lines from here on were read only for the review. Suggest specifying example data that can fit.  
+
+**compute_adaptive_sampling_groups.R**
+
+* [x] reviewed
+
+- Line 55: Should `min_n` require an input?
+
+- Example is not runnable as-is.
+
+**compute_moran_basis.R**
+
+* [x] reviewed
+
+- why use `.parse_grid_id_basis` when lat/lon coordinates are known?
+
+- Line 127: could this be simplified with `is.integer`?
+
+**create_sites_from_grid.R**
+
+* [x] reviewed
+
+- suggest requiring specific names for `lat_col` and `lon_col`.
+
+- example is not runnable as-is. This function should be trivial to generate example data, `data.frame(decimalLatitude = runif(10, 34, 36), decimalLongitude = runif(10, -119, -118))` worked for me.
+
+- Line 116: I think `grid_id_raw` is created as it is needed to make `grid_id`, as `dplyr::mutate` evaluates arguments in order (variables created in mutate can be used as soon as they are created. However, consider whether it is really needed.
+
+**generate_domestic_food_priors.R**
+
+* [x] reviewed
+
+- I assumed that `.default_known_cultivar_taxa`, `.default_domestic_animal_taxa`, and `.default_food_species_taxa` are correct and reasonable lists and did not verify them. I will note that the documentation references some csv files, not sure if these were available. URLs for the source material would be better.
+
+- The units for `radius_km` must be assumed from the name, suggest adding to documentation.
+
+- `beta_mean` and `beta_sd` are reproduced three times in three separate scripts. Consider specifying once.
+
+- Taxonomic ranks here and elsewhere should be specified once and referenced.
+
+**generate_full_priors.R**
+
+* [x] reviewed
+
+- Example is not runnable as-is. 
+
+- Line 321: `cov` is an exisiting R function, suggest renaming to `covariate` or similar.
+
+- I couldn't find them quickly, but are the formulas on lines 362-363 reproduced anywhere? Ensure that multiple versions don't exist.
+
+- Lines 400-403: If `missing` isn't specified, why use `dplyr::if_else` rather than `ifelse`?
+
+- `predict_tier_empirical` reproduces some of `predict_tier`. Can these be combined to reduce code duplication?
+
+- Lines 704-705: these are produced elsewhere, make a single function and reference.
+
+**generate_undetected_diversity.R**
+
+* [x] reviewed
+
+- Should this reference `generate_domestic_food_priors`? 
+
+- Line 58: if this is referencing an issue on the github repo, it's not clear what that is.
+
+- Usual comment about session references in documentation applies here.
+
+- Taxonomic ranks here and elsewhere should be specified once and referenced.
+
+- `beta_mean` and `beta_sd` are reproduced three times in three separate scripts. Consider specifying once.
+
+- Line 291 and onward: The global floor row has `NA` for `grid_id` in `result`. Is this expected?
+
+**optimize_grid_size.R**
+
+* [x] reviewed
+
+- Line 36: suggest issuing a warning when rows are dropped.
+
+- suggest requiring specific names for `lat_col` and `lon_col`, probably `species_col` and `habitat_col` too.
+
+- Example is not runnable as-is. 
+
+- Could `.score_one_resolution` have fewer arguments (i.e. by standardizing names)?
+
+**plot_theta_map_interactive.R**
+
+* [x] reviewed
+
+- Line 43: does `plot_theta_map` exist? I searched the project and I couldn't find.
+
+- Why parse `grid_id` when coordinates are known?
+
+- Example is not runnable as-is. 
+
+- Isn't the grid resolution also knowable? Suggest recording somehow and reading actual value.
+
+- I think a function to parse `grid_id` is also defined in `compute_moran_basis.R`, define once and reference.
+
+- No example data was provided or readily available (i.e. from tests), so I did not run this function.
+
+- No tests for this function, but that makes some sense for shiny apps. Testing helpers would be good.
+
+**prepare_model_dataframe.R**
+
+* [x] reviewed
+
+- Suggest changing `habitat_col` to a logical argument for whether a habitat attribute exists and treating it like lat and long with specific column names required.
+
+- Line 99 etc: suggest removing session ids and dates from documentation unless they are directly relevant to future users.
+
+- Is having `train_biodiversity_model_by_group` worth having? See similar comment for that file.
+
+- Example is not runnable as-is. 
+
+- These functions tend to use nesting instead of pipes. This is not a problem, but it is inconsistent with other functions in the package and other packages in the ecosystem.
+
+- Indenting code for `.run_one_group` or putting outside main function would make it easier to read.
+
+**recover_demoted_species.R**
+
+* [x] reviewed
+
+- Not really a problem, but why isn't this function exported? 
+
+- Why have `backbone_id` at all if this should only be run for NCBI?
+
+- Isn't there a function in one of the other packages that tests for whether something is a binomial? Could that be used for line 27?
+
+- Similarly, could the call to `rentrez` be a single function that gets referenced?
+
+- No tests are available for this function.
+
+**report_priors.R**
+
+* [x] reviewed
+
+- Example is not runnable as-is. 
+
+**screen_spatial_formula.R**
+
+* [x] reviewed
+
+- Suggest removing session ids and dates from documentation unless they are directly relevant to future users.
+
+- This function is a bit oddly named, it makes it seem like it's doing something to the formula specifically. Suggest renaming. Perhaps this should be `train_biodiversity_model`? 
+
+- Consider separating model training and selection steps, that is, don't wrap them together.
+
+- example is not runnable as-is. 
+
+- Should `moran_present` and `spatial_present` be logical vectors length one? Produced by something like `any(grepl("^B[0-9]+$",   all_vars))`. If the names are what is needed suggest renaming to something like `moran_names` or something.
+
+- Line 201 and elsewhere: what is Tier 1, exactly?
+
+- Line 425: can't `aic_vals[!na_aic]` be replaced by `valid_aic`?
+
+**TaxaExpect**package.R*
+
+* [x] reviewed
+
+**train_biodiversity_model.R**
+
+* [x] reviewed
+
+- Tier 1 is not explained until line 117.
+
+- Line 359: what if they use a different column name? Column name control is loose at times.
+
+- example is not runnable as-is.
+
+**train_biodiversity_model_by_group.R**
+
+* [x] reviewed
+
+- Isn't this just iterating over existing functions? Could this `replace train_biodiversity_model.R` with a groups argument?
+
+- example is not runnable as-is.
+
+- Usual comment about narrative in code comments applies here.
+
+**utils_plot.R**
+
+* [x] reviewed
+
+- Line 75: `.he` is also defined in `TaxaHabitat`, could this be defined once and referenced (i.e. in `TaxaTools`)?
