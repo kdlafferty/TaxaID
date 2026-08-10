@@ -1,6 +1,323 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-03 (Sonnet 5 -- blast_sequences() real subject-length filter bug
+# Last updated: 2026-08-08 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_
+# investigate_flagged_accession_prefilter_group_posthoc.md's top three menu items
+# (Question 1's Option A fix, Question 2 item 4, Question 3 items 1-2), per that doc's own
+# "Suggested next-session scope" ranking. Cluster-level mislabel detection (Question 3 item
+# 3, the doc's own highest-value idea) and Question 4's items were left undone, exactly as
+# the doc itself flagged -- item 3 needs real batch data with genuine disagreement-taxon
+# overlap to design against meaningfully, not available yet.
+#
+# (1) Question 1, Option A: investigate_flagged_accession()'s two comparisons
+# (conspecific/disagreeing-taxon self- and cross-consistency) now run via new internal
+# .blast_against_comparison_set() (reuses blast_sequences() itself, the SAME mechanism
+# that originally produced the real evidence making MZ605481 a confirmed candidate_mislabel
+# -- 20 independent, coverage-safe Cyprinus carpio hits at 100% identity) instead of a
+# hand-rolled pwalign::pairwiseAlignment() loop. The pairwise-alignment path's real
+# coverage-blindness problem (a short query vs. a much longer full-mitogenome reference can
+# find a tiny, spuriously-perfect local-alignment fragment) is exactly what
+# blast_sequences()'s own min_query_coverage already guards against by construction --
+# confirmed this was the actual root cause of the real MZ605481 "inconclusive in both
+# directions" result the reentry doc itself documents (0 of 30+ candidate accessions
+# cleared a 50% coverage floor via NCBI's length-unaware [Organism] species search). This
+# is a post-hoc filter (BLASTs against the same broad database, then keeps only hits whose
+# accession is in the caller's own comparison set), not a scope-restricted search --
+# considered and rejected NCBI's entrez_query gi-list restriction mechanism (the reentry
+# doc's other suggested option) as unnecessary extra complexity once the post-hoc-filter
+# approach was confirmed sufficient. .align_against_comparison_set() (the old pwalign-based
+# function) removed entirely; pwalign dropped from DESCRIPTION Suggests (now unused
+# anywhere in this package).
+#
+# (2) Question 2, item 4: new check_marker_mismatch() (R/check_marker_mismatch.R) -- a
+# single cheap GBSeq XML fetch (new internal .fetch_marker_annotation(), reads the feature
+# table's /gene and /product qualifiers, same rentrez::entrez_fetch(rettype="gb",
+# retmode="xml") endpoint this file's other NCBI fetchers already use) cross-checked
+# against a small hand-curated marker-synonym lookup (.MARKER_ANNOTATION_PATTERNS -- 12S/
+# 16S/18S/COI/CO1/COX1/cytb/matK/rbcL/trnL/ITS/ITS2). Directly grounded in the real,
+# already-confirmed AY850362 case (a genuine 16S-vs-12S marker mislabel, GreatLakes 12S
+# audit, 2026-08-06/07) -- the reentry doc's own item 3 first tried and refuted a coarser
+# hypothesis (a disagreement resolved only at family/order/phylum signals a marker
+# mislabel, while genus/species signals a species mislabel) directly against MZ605481 (a
+# real confirmed SPECIES mislabel whose own disagreement is ALSO recorded at order rank),
+# so this function checks the record's own annotated gene/product text instead, not its
+# taxonomic rank of disagreement. No BLAST, no alignment -- meant to route a flagged
+# accession to a completely different, much simpler resolution path (correct the marker
+# label, or exclude the accession from this marker's own reference set) before ever
+# reaching investigate_flagged_accession()'s much more expensive deep dive.
+#
+# (3) Question 3, items 1-2: investigate_flagged_accession() gains a persistent,
+# accession-keyed cache (default cache_dir = tools::R_user_dir("TaxaMatch", "cache")),
+# mirroring evaluate_reference_accessions()'s own asymmetric-TTL philosophy -- a
+# "inconclusive_length_mismatch"-class result (BOTH comparisons failed to clear
+# min_coverage on either side, the real MZ605481-class outcome) expires after
+# inconclusive_ttl_days (default 30) and is retried; any other result is cached
+# indefinitely. New investigate_flagged_accessions() (plural) batch wrapper shares a single
+# in-memory NCBI-species-search cache across a whole flagged-accession list -- a
+# listed_species or disagreeing_taxon repeated across several independently-flagged
+# accessions is now fetched from NCBI at most once per batch, not once per accession -- and
+# reuses the same persistent cache investigate_flagged_accession() itself writes to/reads
+# from, so mixing single and batch calls across sessions on overlapping accessions is
+# correctly cache-coherent. Required refactoring the original monolithic function body into
+# an internal .investigate_flagged_accession_core() (shared by both entry points, driven by
+# an optional shared_cache environment) plus a standalone .print_investigation_summary()
+# (so a cache HIT still prints the identical narrative summary a fresh computation would,
+# without recomputing).
+#
+# 20 new tests (test-investigate-flagged-accession.R, test-check-marker-mismatch.R), fully
+# offline via local_mocked_bindings() on .fetch_reference_accession_records()/
+# .search_species_accessions()/blast_sequences()/.fetch_marker_annotation(), matching this
+# package's established mocking convention -- including a real caching/TTL/batch-sharing
+# integration test suite mirroring evaluate_reference_accessions()'s own (old-schema-cache
+# graceful discard, TTL expiry via backdated evaluated_at, call-counting mocks confirming
+# NCBI searches are genuinely shared across a batch, not just structurally plausible).
+# devtools::test() 679/679 (0 failures, up from 605), devtools::check() 0 errors/0
+# warnings/0 notes, reinstalled and verified at ~/Library/R/4.0/library. Not done this
+# session, per the reentry doc's own explicit deferral: Question 3 item 3 (cluster-level
+# mislabel detection across a batch -- the doc's own highest-value idea, needs real batch
+# data with genuine disagreement-taxon overlap to design against) and all of Question 4
+# (voucher/publication-context check, geographic/range plausibility cross-check,
+# submission-batch-wide pattern check).
+# Same day, continued (Sonnet 5 -- the offline-tested Option A fix above was live-tested
+# against the real MZ605481 case immediately after shipping, at the user's explicit request
+# ("what's next, test or code?" -> "y"). It failed, twice more, before actually working --
+# each failure found and fixed via direct live debugging, not guessed at from documentation:
+# (1) .blast_against_comparison_set()'s original design was a POST-HOC FILTER (BLAST
+# unrestricted against the full database, then keep only hits matching the comparison set)
+# -- returned ZERO matches on both sides even though 30 real conspecific accessions were
+# independently confirmed to exist, because they simply never ranked among BLAST's own
+# top hits (an unrelated sample from a different search, no guaranteed overlap). Fixed by
+# switching to NCBI's ENTREZ_QUERY mechanism (new entrez_query param threaded through
+# .blast_submit()/.blast_remote(), internal-only, backward compatible), which restricts the
+# BLAST search SPACE itself to the comparison-set accessions -- verified in isolation first
+# against one known-good accession (OP739039, correctly recovered at 100% identity/coverage)
+# before re-running the full case. (2) Re-running with that fix STILL returned zero matches
+# -- direct inspection of the real candidate accessions found the true root cause one level
+# further upstream: Pseudorasbora parva has a published reference genome, and 26 of 30
+# "other accessions of this species" (via a plain NCBI [Organism] search) were whole-
+# chromosome shotgun-assembly records 60-80+ million bp long, which also silently fail to
+# fetch full sequence content (too large for NCBI's inline GBSeq_sequence). This is exactly
+# the reentry doc's own originally-deferred "Option B" (length-ratio candidate pre-
+# filtering) -- deferred at design time as "cheaper but doesn't fully solve the problem,"
+# confirmed live to be a REQUIRED companion to Option A, not an alternative to it.
+# .search_species_accessions() gained reference_length/max_length_ratio params (default
+# ratio 3x, the reentry doc's own tentative "2-3x?" suggestion) using NCBI's real slen
+# ESummary field (confirmed live: field name is lowercase "slen", not "length"). (3) The
+# first length-filter implementation (widen the client-side search to retmax=500, then
+# filter by ESummary's slen) hit a real, independent HTTP 414 "request is too large" error
+# on the unbatched entrez_summary() call for 500 IDs -- silently swallowed by the existing
+# tryCatch, masquerading as "0 found." Fixed with the same 100-per-batch convention already
+# used elsewhere in this file. Even after fixing that, Cyprinus carpio (67,744 total nuccore
+# records) STILL returned zero candidates -- its real short mitochondrial-gene deposits
+# simply aren't within NCBI's default-sort first 500 [Organism]-search results. Root cause
+# traced one level further: length restriction needs to happen SERVER-SIDE, not client-side
+# -- rewired the search term itself to `"species"[Organism] AND lo:hi[SLEN]`, confirmed live
+# to correctly restrict the search space independent of total record count (Pseudorasbora
+# parva: 6 real, genuine "12S rRNA" 177bp records now surface immediately; Cyprinus carpio:
+# real COX1/ribosomal-RNA-gene records surface immediately). A final full live re-run
+# produced exactly the pattern the doc's own narrative interpretation calls the strongest
+# evidence of a genuine mislabel: self-consistency 3/3 accessions clearing coverage, mean
+# 87.64% identity (87.08-88.20%); cross-taxon 2/2 clearing coverage, mean 99.42% identity
+# (98.84-100.00%) -- MZ605481 is a confirmed candidate_mislabel in the ground-truth CSV.
+# .investigate_params_key()'s version string bumped (v1 -> v2) so any real cache row written
+# under the broken v1 logic is correctly invalidated, not served as a stale "fresh" hit.
+# New .filter_and_cap_accessions()/.valid_reference_length() extracted as pure, directly
+# unit-testable helpers (this package's convention mocks only its own internal NCBI-fetch
+# wrappers, never raw rentrez calls) -- 5 new offline tests reproduce the exact real
+# chromosome-vs-barcode length-distribution shape found live. devtools::test() 696/696 (0
+# failures, up from 685 immediately post-shipping), devtools::check() 0 errors/0 warnings/0
+# notes, reinstalled and re-verified at ~/Library/R/4.0/library after each of the three
+# fixes. See TaxaID/CLAUDE.md's own matching continued note for the ecosystem-level summary.
+# Previous update, 2026-08-07, continued yet again (Sonnet 5 -- real bug found on the FIRST
+# live re-run of the identity-diagnostics work below, against the real GreatLakes cache:
+# `.load_reference_accession_cache()` trusted an on-disk cache file's column schema
+# unconditionally. A real cache written before this session's new diagnostic columns
+# existed has fewer columns than the current `out_cols` list; `.EVAL_REF_ACC_VERSION`
+# correctly invalidates individual stale ROWS via `params_key`, but that can't rescue a
+# file whose COLUMN SCHEMA doesn't match -- `cache_hit_rows[, out_cols]` errored
+# ("undefined columns selected") even with zero matching rows, since the missing columns
+# don't exist in the loaded frame at all regardless of row count. Fixed: the loader now
+# compares the loaded file's columns against the current empty-schema template and
+# discards the whole file (with a `warning()`, not silent) on any mismatch, symmetric with
+# how a `params_key` mismatch already discards individual rows -- the correct response to
+# a schema mismatch is starting fresh, not a partial/patched read. New regression test
+# writes a real old-schema cache file directly and confirms it's discarded gracefully
+# (warns, recomputes, does not error). `devtools::test()` 605/605 (up from 601),
+# `devtools::check()` 0/0/0, reinstalled. Anyone with an existing
+# `*_ref_eval_cache/reference_accession_cache.rds` from before this session's diagnostic-
+# column additions will see this warning once per cache dir, then it self-heals (rewritten
+# in the new schema going forward).
+# Previous update, 2026-08-07, continued yet further (Sonnet 5 -- follows up on an Opus
+# design-consult about the Abylopsis ambiguity (see this file's own note directly below
+# for the case) with two of the consult's concrete recommendations, both implemented the
+# same day. (1) New `flag_incongruent_references()` -- annotates a match object with the
+# full evaluation (hierarchy_flag + all identity/coverage diagnostics) WITHOUT removing
+# any row, now the documented RECOMMENDED default; `remove_incongruent_references()`
+# remains available but its own roxygen now explicitly says to reach for it deliberately,
+# after review, not as a default pipeline step -- the exact "flag, don't auto-drop on an
+# uncertain database-derived verdict" correction this ecosystem has already made twice
+# before for unrelated mechanisms (`apply_coverage_constraints()`'s `"zero"` ->
+# `"relabel"` default; `filter_gbif_quality()`'s `exclude_institution` ->
+# `flag_institution`), cited directly by the consult as precedent. (2)
+# `.compute_hierarchy_congruence()` gains 5 new output columns -- `best_hit_pident`,
+# `best_agreeing_pident`, `best_disagreeing_pident`, `congruent_evidence_exists_anywhere`,
+# `congruent_evidence_best_pident` -- surfacing two pieces of information the function was
+# already computing and then discarding: real BLAST percent-identity (previously used only
+# to ORDER hits before being dropped), and whether ANY independent hit anywhere in the
+# full pre-`top_n` pool corroborates the listed rank (not just within the `top_n`-truncated
+# slice `hierarchy_flag` itself is computed from). The consult's own math: a HIGH-identity
+# disagreeing hit is a real mislabel signal; a MODERATE-identity one is unremarkable for a
+# conserved marker with poor resolving power at that rank -- information `hierarchy_flag`
+# alone cannot convey, and directly actionable for the real Abylopsis case (both flagged
+# accessions' disagreeing hits are consistently a sister family at very high identity,
+# still ambiguous between "real mislabel" and "marker/coverage limitation" per the
+# consult's own identifiability argument -- this doesn't resolve that, it gives a reviewer
+# the actual numbers to judge it with). `.compute_hierarchy_congruence()` is explicitly
+# noted as no longer byte-identical to the archived TaxaLikely original (dead code, not
+# kept in sync). Real bug fixed before shipping: the rank-agreement walk previously ran
+# only on the `top_n`-sliced pool; computing `congruent_evidence_exists_anywhere` required
+# restructuring it to run on the full independence-filtered pool FIRST, then slice for the
+# `hierarchy_flag` verdict -- a genuine internal reordering, not just additive columns
+# bolted on after. Cache schema bumped again (`.EVAL_REF_ACC_VERSION`,
+# `"v3_pident_and_anywhere_diagnostics"`) so old cached rows are correctly treated as stale
+# rather than silently missing the new columns forever. Also: a small, curated ground-truth
+# accession list (`TaxaID/diagnostics/reference_accession_ground_truth.csv`) was added --
+# a real known mislabel (`AY850362`, GreatLakes 12S, confirmed 2026-08-06), 4 real
+# known-correct-but-thin-coverage accessions from the same audit, the real ambiguous
+# Abylopsis pair, and 4 real Menidia accessions (the original motivating false-positive
+# case) -- wired into both real external `AuditNCBI.R` workflow scripts (GreatLakes and
+# PtConception, outside this monorepo, not under git) as a per-run sanity check against
+# already-adjudicated cases, not just fresh unknowns. `devtools::test()` 601/601 (0
+# failures, up from 577), `devtools::check()` 0 errors/0 warnings/0 notes, reinstalled.
+# See the Opus consult's own full writeup (relayed to the user in-session, not saved as a
+# separate doc file per this session's own conversational flow) for the parts NOT yet
+# acted on: the graded-likelihood-weighting question itself remains open (the consult's
+# own recommendation was these two cheaper diagnostic/default-behavior fixes FIRST, then
+# revisit weighting only if they turn out to actually separate real mislabel from
+# real-but-ambiguous cases at scale -- not yet tested at scale).
+# Previous update, 2026-08-07, continued (Sonnet 5 -- evaluate_reference_accessions()
+# gains a full kingdom->species rank_system (was family/genus/species only), prompted by
+# a real live-testing result the same day: two independent real PtConception 18S
+# accessions for Abylopsis eschscholtzii (KY594854, an unvouchered environmental-amplicon
+# clone; KX384617, a voucher-backed NHMUK museum specimen from a peer-reviewed checklist
+# paper) both flagged "incongruent", and the user pulled the real BLAST hits by hand and
+# found they weren't unrelated organisms at all -- consistently Diphyidae, a SISTER
+# family within the same order (Siphonophorae, Calycophorae) as the listed Abylidae. The
+# old family/genus/species-only rank_system had no way to report that: finest_common_rank
+# collapsed straight to NA the instant family failed, giving identical output for "same
+# order, different family" (weak signal, likely 18S's well-documented poor resolving
+# power in this clade + thin Abylidae coverage, not necessarily a mislabel) and "no
+# agreement even at phylum" (a genuinely strong red flag) -- exactly the ambiguity the
+# user flagged when asking "is this accession weak evidence, or a real mislabel" with no
+# way from the output alone to tell. Fix: rank_system is now TaxaTools::standard_ranks
+# (the full kingdom->species ladder); hierarchy_flag's classification threshold is
+# UNCHANGED (still fires at min_congruent_rank, default "family") -- only
+# finest_common_rank gets more to report. Query-side taxonomy for every rank is now
+# resolved via the internal .resolve_taxonomy_by_acc() (the SAME NCBI-taxonomy-DB
+# mechanism already used to classify BLAST hits) instead of TaxaTools::fill_higher_ranks()
+# (GNVerifier-backed, and only ever resolved genus+family) -- keeps both sides of every
+# comparison on one consistent authority, and removes a cross-backbone dependency this
+# function never needed. A real, previously-invisible test-environment bug was found and
+# fixed while making this change: the integration tests mocked blast_sequences()/
+# .fetch_reference_accession_records() but never .resolve_taxonomy_by_acc() (a brand new
+# internal call this fix added) -- since it happened to fail fast and gracefully against
+# fictional test accession names, the "fully offline" test suite was silently making real,
+# live NCBI calls on every run without erroring or visibly hanging (confirmed by timing:
+# 6.67s before the fix, 1.02s after mocking it properly -- the tell that something network-
+# bound was happening despite every test passing). New unit test pins the exact regression
+# this was built for: an accession whose top hits disagree at family but share its own
+# order now reports finest_common_rank = "order", not NA. `devtools::test()` 577/577 (0
+# failures, up from 576), `devtools::check()` 0 errors/0 warnings/0 notes, reinstalled.
+# See [[the reentry doc's own item 5]] -- still open, not addressed here: this coarse-rank
+# diagnostic makes the ambiguity VISIBLE, it doesn't resolve it into a principled graded
+# confidence weight; that remains real, deferred future work.
+# Previous update, 2026-08-07 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_
+# blast_based_reference_quality.md: new evaluate_reference_accessions() (per-accession
+# BLAST-based reference-quality evaluation) + remove_incongruent_references() (the early,
+# narrow hard-filter consumer, mirrors TaxaLikely::remove_flagged_references()'s
+# established pattern). Supersedes, for the accession-quality question specifically, the
+# taxon-list-scoped DECIPHER whole-set-alignment approach the reentry doc's own design
+# session abandoned earlier the same week (TaxaLikely::audit_reference_database()/
+# classify_reference_accessions(), archived at TaxaLikely/archive_decipher_reference_
+# audit/) -- that approach's "among"/foreign comparison population for any accession was
+# exactly and only whatever else the caller's own `taxa` argument happened to fetch, with
+# real, live-confirmed false positives (15 genuine, Smithsonian-vouchered Menidia
+# accessions flagged "incongruent" purely because Menidia's family had no other
+# representative in a real 6-genus GreatLakes test) and a structural false-negative gap
+# (a mislabeled accession's true contaminating identity can only be caught if its genus
+# happened to be on the same caller's list). BLASTing each accession against a broad,
+# unrestricted database removes the taxa-list dependency for both directions at once.
+#
+# Implementation duplicates (not reaches across packages for) three small, already-
+# validated pieces of TaxaLikely's archived congruence machinery --
+# .build_submission_batch_lookup()/.same_submission_batch() (the same-submission-batch
+# independence-filter helpers) and .compute_hierarchy_congruence() itself (the Jeffreys-
+# smoothed rank-agreement math, unchanged) -- mirroring this exact two-package
+# precedent already set by .parse_lat_lon() (duplicated between TaxaLikely/R/fetch.R and
+# TaxaMatch/R/blast_sequences.R for the identical "TaxaMatch must never depend on
+# TaxaLikely" reason). What's genuinely NEW, not duplicated, is the caller:
+# evaluate_reference_accessions() builds the id_x/id_y/{rank}.x/{rank}.y-shaped pair table
+# .compute_hierarchy_congruence() expects directly from real, unrestricted BLAST hits
+# (via blast_sequences() itself, resolve_taxonomy = TRUE) instead of a narrow DECIPHER
+# alignment -- a genuinely broader comparison population fed through the identical,
+# already-validated math. New .fetch_reference_accession_records() (one combined GBSeq
+# XML round trip per batch, rentrez::entrez_fetch(rettype="gb", retmode="xml")) gives
+# sequence + listed organism + submission create-date all at once, reusing the exact
+# accession-keyed NCBI-fetch pattern .resolve_locations_by_acc() (R/blast_sequences.R)
+# already established -- including its version-suffix-stripped join-back-to-caller's-
+# own-requested-string defensive pattern, load-bearing here since the returned accession
+# string becomes id_x/composite_id for the hierarchy-congruence join. Query taxonomy
+# (family/genus/species) is derived via .extract_genus() (already in utils_shared.R) +
+# TaxaTools::fill_higher_ranks() (this ecosystem's established genus->family lookup);
+# hit taxonomy comes free from blast_sequences(resolve_taxonomy = TRUE)'s own output.
+#
+# Persistent, cross-run cache (default tools::R_user_dir("TaxaMatch", "cache"), keyed by
+# accession alone, not by taxon/genus/project -- the user's own stated design intent, a
+# real compounding advantage over the old AuditNCBI.R workflow's per-project `taxa` list):
+# asymmetric TTL, per the user's explicit choice ("option b" of two offered) --
+# "congruent"/"incongruent" verdicts cached indefinitely (an accession's own sequence/
+# label doesn't change once deposited); only "insufficient_independent_evidence" expires
+# (insufficient_evidence_ttl_days, default 180) and is retried, since new NCBI deposits
+# could genuinely change that answer. A cached row is also invalidated by any change to
+# a parameter that affects the verdict itself (a params_key string, not a cryptographic
+# hash -- no new dependency needed). Within-call dedup happens unconditionally
+# (unique(accessions)), independent of caching, per the reentry doc's own framing.
+#
+# A real, structural bug was found and fixed before shipping, via testing against the
+# genuinely common "brand-new species, zero BLAST hits at all" case, not by inspection:
+# the initial version's empty-hits fallback built a bare one-column (id_x only) congruence
+# frame, which silently made every such accession VANISH from the final output entirely
+# (a downstream merge()'s right side had no n_independent_top_matches/etc. columns to
+# bring in, so ifelse()/data.frame() calls on NULL columns collapsed the whole result to
+# zero rows) -- fixed with a properly-shaped empty frame carrying all five expected
+# columns; a dedicated regression test (a genuinely hit-less accession) guards this.
+# Two smaller real bugs also found via live testthat runs: a base merge() call with
+# differing by.x/by.y names, where BOTH frames already had a real column literally named
+# "accession" (the BLAST hit's own subject accession vs. the query-side join key) --
+# replaced with dplyr::left_join(by = c(x = y)), which is unambiguous about which side's
+# same-named column survives; and `cache_hit_rows$cache_hit <- TRUE` erroring
+# ("replacement has 1 row, data has 0") whenever the cache-hit subset was legitimately
+# zero rows -- scalar assignment onto a NEW column of a zero-row data frame does not
+# recycle the way it does on an existing column. `devtools::test()` 576/576 (0 failures,
+# up from 523 -- 53 new, fully offline via local_mocked_bindings() on
+# .fetch_reference_accession_records()/blast_sequences()/TaxaTools::fill_higher_ranks(),
+# matching this package's own asNamespace()-wrapper convention for internal-function unit
+# tests and TaxaExpect's established cross-package .package= mocking convention),
+# `devtools::check()` 0 errors/0 warnings/0 notes (withr added to Suggests, matching
+# TaxaTools's own existing precedent, for the caching tests' tempdir isolation).
+# Reinstalled and verified at `~/Library/R/4.0/library`.
+#
+# NOT done this session, explicitly flagged as real, agreed-on future work (per the
+# reentry doc's own item 5, deliberately left undesigned): the full per-accession quality
+# signal (frac_independent_below_min_congruent_rank etc., not just the binary blacklist
+# decision remove_incongruent_references() consumes) needs to survive through every
+# TaxaMatch/TaxaLikely transformation between the early filter and
+# TaxaLikely::evaluate_likelihoods(), so it can inflate/discount likelihood the way
+# score_likelihood_cov already does for alignment coverage -- no signature or mechanism
+# decided yet, flag as its own task when picked up. Also not done: AuditNCBI.R/
+# AuditNCBI_README.md's fate once this exists (rewrite vs. retire, not decided); local
+# BLAST (method = "local") not evaluated for large batch compilations; not yet wired into
+# any real production workflow.
+# Previous update, 2026-08-03 (Sonnet 5 -- blast_sequences() real subject-length filter bug
 # fixed, found live debugging why real reference sequences (Ameiurus melas/natalis) for
 # a real GreatLakes2023 12S ASV never appeared as BLAST candidates despite the user
 # confirming (via a direct pairwiseAlignment() check) that real, well-matching reference
@@ -387,8 +704,29 @@ Now also provides a complete FASTQ-to-match pipeline: ingest DADA2 sequence tabl
 FASTA files, filter by length/abundance, BLAST against NCBI (remote or local), and
 standardize results.
 
-TaxaMatch does NOT perform score-to-likelihood conversion or reference quality checks —
-those functions live in TaxaLikely.
+**Revised 2026-08-07** (implements `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_
+quality.md`): TaxaMatch now also screens match data against reference-accession quality
+*in service of producing a clean match object* -- `evaluate_reference_accessions()`
+BLASTs each accession's own sequence against a broad, unrestricted database and computes
+a per-accession taxonomic-hierarchy congruence verdict; `remove_incongruent_references()`
+is the early, narrow hard filter consuming it (mirrors `TaxaLikely::
+remove_flagged_references()`'s existing pattern). This does NOT make TaxaMatch a
+wholesale reference-database-auditing package -- `TaxaLikely::audit_reference_database()`/
+`classify_reference_accessions()`/`repair_thin_evidence()` (the broader, taxon-list-scoped
+reference-QC toolkit, archived at `TaxaLikely/archive_decipher_reference_audit/`) remain
+TaxaLikely's domain for anything beyond this narrow, match-object-cleaning use. Package
+placement was settled explicitly with the user: this function's primary real use edits/
+filters the match object, which must happen *before* TaxaExpect ever builds a taxon list
+to generate priors for -- strictly upstream of any TaxaLikely call -- so it has to live
+here, in the package that already owns match-object standardization, not downstream in
+TaxaLikely (which TaxaMatch must never depend on). See TaxaMatch's own top session note
+for the full record, including what's still open (graded per-accession weighting surviving
+through to `TaxaLikely::evaluate_likelihoods()` -- real, agreed-on future work, not
+designed or implemented yet).
+
+TaxaMatch does NOT perform score-to-likelihood conversion or general-purpose reference
+quality auditing (taxon-list-scoped mislabel/completeness checks) -- those functions live
+in TaxaLikely.
 
 **Status: All functions written and passing `devtools::check()` (0 errors, 0 warnings, 0 notes).**
 
@@ -399,8 +737,13 @@ those functions live in TaxaLikely.
 TaxaTools → TaxaFetch → TaxaHabitat → TaxaExpect → TaxaAssign
 TaxaMatch → TaxaLikely → TaxaAssign
 
-TaxaMatch depends on TaxaTools for `rename_cols()`, `create_taxon_names()`, and (Session
-134b) `define_search_polygon()` (called by `group_observations_by_bbox()`).
+TaxaMatch depends on TaxaTools for `rename_cols()`, `create_taxon_names()`, (Session
+134b) `define_search_polygon()` (called by `group_observations_by_bbox()`), and
+`TaxaTools::standard_ranks` (the canonical kingdom->species rank ladder, used by
+`.attach_taxonomy()` and, since 2026-08-07 continued, `evaluate_reference_accessions()`
+-- see that function's own CLAUDE.md note below; an earlier same-day version called
+`TaxaTools::fill_higher_ranks()` for query-side taxonomy, superseded the same day by
+`.resolve_taxonomy_by_acc()`, already internal to this package).
 Also depends on `httr2` (remote BLAST API), `rentrez` + `xml2` (taxonomy resolution), and
 (Session 134b) `sf` (point-in-polygon spatial-group assignment).
 `Biostrings` and `rBLAST` are in Suggests (FASTA reading and local BLAST, respectively).
@@ -500,6 +843,17 @@ likelihood output downstream — it is NOT part of the match object.
 | `group_observations_by_bbox()` | R/group_observations_by_bbox.R | Complete | **Session 134b, moved here from TaxaFetch and reworked** (see that session's note below for the full design rationale). Interactive: loops `TaxaTools::define_search_polygon()` (re-centred each time on still-default observations, guaranteed to fully enclose them) to collect one or more group polygons, then an end-of-loop review step (list drawn groups by member count; re-open one by number to reshape via `init_polygon`; `"delete <n>"` to remove one, releasing its members back to default; Enter to finalize). Updates `spatial_group_id`/`spatial_group_N` **in place** on a `build_site_table()`-shaped input -- only touches observations still at their default single-observation state; anything already grouped (prior call, or `assign_spatial_group()`) is left untouched regardless of geometry. Overlap rule: **last-drawn-wins** with a `warning()` naming every ambiguous `observation_id`. Internal helpers `.bbox_center_radius()`, `.assign_spatial_groups_from_polygons()`, and `.review_drawn_groups()`'s non-interactive/zero-polygon paths are pure and unit-tested without a live gadget session. **Session 139:** checks `is_default_group` directly instead of re-deriving "still default" from `spatial_group_id`'s contents (needed once `build_site_table()`'s default label stopped being `observation_id`-shaped); newly drawn groups' `"spatial_group_<n>"` numbering now starts past whatever numbers `build_site_table()`'s own exact-match default already used (`.next_spatial_group_number()`), so the two numbering sources can never collide; also sets `is_default_group = FALSE` for captured/reshaped rows. Gadget calls now pass context-specific `title`/`done_label`/`cancel_label` ("Group These Points"/"No More Groups", with per-iteration progress in the title) instead of relying on `define_search_polygon()`'s generic defaults -- see `TaxaTools::define_search_polygon()`'s own Session 139 note. |
 | `assign_spatial_group()` | R/assign_spatial_group.R | Complete | **Session 134b.** Manual `spatial_group_id` setter for a named set of observations -- for a study where grouping is already known from metadata, or to hand-correct a few observations after `group_observations_by_bbox()`. Validates every named `observation_id` exists; **collision guard**: stops if the target `spatial_group_id` is already used by an observation *not* named in the call (would otherwise silently expand an unrelated group's membership) -- include that observation explicitly to merge groups instead. Recomputes `spatial_group_N` in sync. **Session 139:** also clears `is_default_group` (sets `FALSE`) for the named observations when that column is present; no-ops harmlessly on older-shaped input without it. |
 | `join_event_site_metadata()` | R/join_event_site_metadata.R | Complete | **Session 137 (Phase 4).** Produces a `site_df` for `build_site_table()` from any event-level detections table (one row per `id_col` x `event_col` pair actually observed) joined against a separately-maintained site-metadata table (`event_col` + `lat`/`lon`/`observed_on`) -- the same "sample column -> attribute lookup table" pattern already used ecosystem-wide to identify blanks (`BLANKS_MARCH`/`BLANKS_AUG` in `PtConceptionWorkflow_12S.R`, `control_samples` in `TaxaFlag::flag_contaminant()`), generalized to carry site coordinates instead of (or alongside) blank status. Data-type-agnostic: DNA/BLAST (Reads-table sample columns, already pivoted to long format and filtered to real detections) and acoustic (recording/device identifiers) both reduce to the same join, so one function serves both rather than duplicating it per pathway. `control_samples` param excludes blanks before joining (blanks are not real site detections). Warns (does not error) on events with no matching site-metadata row -- those rows get `NA` `lat`/`lon` rather than being silently dropped. |
+
+### Reference-accession quality (new, 2026-08-07)
+
+| Function | File | Status | Description |
+|---|---|---|---|
+| `investigate_flagged_accession()` | R/investigate_flagged_accession.R | Written, tested (offline), 2026-08-08 | Deep-dive verification for ONE `evaluate_reference_accessions()`-flagged accession: self-consistency (vs. other real accessions of its own listed species) and cross-taxon consistency (vs. other real accessions of its top independent disagreeing BLAST hit's species), both independence-filtered the same way `evaluate_reference_accessions()` is. **2026-08-08**: both comparisons now run via `.blast_against_comparison_set()` (internal, reuses `blast_sequences()` itself) instead of a hand-rolled `pwalign::pairwiseAlignment()` loop -- see this file's top session note (Option A of `ecosystem_docs/REENTRY_PROMPT_investigate_flagged_accession_prefilter_group_posthoc.md`). Gains a persistent, accession-keyed cache (`cache_dir`, asymmetric TTL: `"inconclusive_length_mismatch"` verdicts expire after `inconclusive_ttl_days`, default 30; any other verdict cached indefinitely). |
+| `investigate_flagged_accessions()` | R/investigate_flagged_accession.R | Written, tested (offline), new 2026-08-08 | Batch wrapper -- shares one in-memory NCBI-species-search cache across a whole flagged-accession list (a `listed_species`/`disagreeing_taxon` repeated across several accessions is only fetched from NCBI once per batch) and shares `investigate_flagged_accession()`'s own persistent cache. Does NOT do cross-accession pattern detection (see this file's top session note for why that's deliberately separate, not-yet-designed future work). |
+| `check_marker_mismatch()` | R/check_marker_mismatch.R | Written, tested (offline), new 2026-08-08 | Cheap pre-filter (Question 2, item 4 of the reentry prompt above): a single GBSeq XML fetch checks a flagged accession's own annotated `/gene`/`/product` feature-table qualifier against the marker an evaluation was scoped to (e.g. does a "12S"-scoped audit's flagged record actually say `/product="16S ribosomal RNA"`?) -- no BLAST, no alignment, meant to route a flagged accession to a much simpler resolution path (correct the marker label) before ever reaching `investigate_flagged_accession()`'s deep dive. Directly grounded in a real confirmed case (`AY850362`, a genuine 16S-vs-12S marker mislabel) -- see this file's top session note for why the earlier "coarse rank of disagreement signals marker mislabel" hypothesis was tested and refuted first. |
+| `evaluate_reference_accessions()` | R/evaluate_reference_accessions.R | Written, tested (offline) | Implements `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md`. For each accession, BLASTs its own sequence against a broad, unrestricted database (`method`/`database`/`score_range`/`min_score`/`max_hits` passed through to `blast_sequences()`), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed `hierarchy_flag` (`"congruent"`/`"incongruent"`/`"insufficient_independent_evidence"`) -- the same congruence math `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()` used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now fed from real, broad BLAST hits instead. `finest_common_rank` walks the FULL `kingdom`->`species` ladder (2026-08-07), not just `family`/`genus`/`species`. **2026-08-07, continued**: gains 5 identity/coverage-anywhere diagnostic columns (`best_hit_pident`/`best_agreeing_pident`/`best_disagreeing_pident`/`congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) -- see this file's own top session note and `evaluate_reference_accessions()`'s own `@section Identity diagnostics` for why: `hierarchy_flag` alone cannot distinguish a genuine mislabel from "correct label, thin coverage/poor marker resolving power at this rank," and these columns give a reviewer the real percent-identity numbers to judge that with. Persistent, accession-keyed cross-run cache (`cache_dir`, default `tools::R_user_dir("TaxaMatch", "cache")`), asymmetric TTL (`insufficient_evidence_ttl_days`, default 180 -- only `"insufficient_independent_evidence"` expires; `"congruent"`/`"incongruent"` cached indefinitely). See this file's own top session note for the full design record and the real bugs found/fixed before shipping. |
+| `flag_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), 2026-08-07 continued | **The RECOMMENDED default consumer.** Left-joins `evaluate_reference_accessions()`'s full output (hierarchy_flag + all diagnostics) onto a match object by accession (version-suffix-stripped), never removes a row. Added after a real live case (`Abylopsis eschscholtzii`) showed why an unreviewed hard drop is the wrong default -- see this file's own top session note. |
+| `remove_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline) | The harder, deliberate opt-in -- mirrors `TaxaLikely::remove_flagged_references()`'s exact pattern. Drops only rows whose accession was flagged `"incongruent"` by `evaluate_reference_accessions()` (version-suffix-stripped match); `"insufficient_independent_evidence"` is retained by default (`remove_insufficient_evidence = FALSE`). **No longer the recommended default pipeline step as of 2026-08-07 continued** -- its own roxygen now says to reach for `flag_incongruent_references()` first and only use this deliberately, after reviewing the identity diagnostics. Deliberately consumes only the binary blacklist decision, not the full quality signal -- see this file's top session note for the TaxaLikely-side graded-weighting work this does NOT yet do. |
 
 ### Standardization (original)
 

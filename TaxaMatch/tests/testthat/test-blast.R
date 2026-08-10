@@ -558,6 +558,59 @@ test_that("parse_blast_xml handles no hits gracefully", {
 
 
 # ==============================================================================
+# .blast_server_rejected() -- NCBI CPU-budget rejection detection
+# ==============================================================================
+# Message text below is verbatim from a REAL captured response (2026-08-09,
+# a real 20-query batch of mostly full-mitogenome-length sequences against
+# nt) -- not a synthetic guess. NCBI reported Status=READY (a real,
+# successfully-retrieved document) for this batch; every <Iteration>
+# carried both messages below, and .parse_blast_xml() silently returned 0
+# hit rows with no indication this wasn't a genuine "found nothing" result.
+
+test_that("blast_server_rejected detects a real NCBI CPU-budget rejection", {
+  real_message_1 <- paste0(
+    "<Iteration_message>Searches from this IP address have consumed a ",
+    "large amount of server CPU time. Future searches may be penalized ",
+    "in fairness to other users. Please consider the BLAST+ binaries: ",
+    "https://www.ncbi.nlm.nih.gov/books/NBK279690/</Iteration_message>"
+  )
+  real_message_2 <- paste0(
+    "<Iteration_message>[blastsrv4.REAL]: Error: CPU usage limit was ",
+    "exceeded, resulting in SIGXCPU (24).</Iteration_message>"
+  )
+  expect_true(.blast_server_rejected(real_message_1))
+  expect_true(.blast_server_rejected(real_message_2))
+  expect_true(.blast_server_rejected(paste(real_message_1, real_message_2)))
+})
+
+test_that("blast_server_rejected is FALSE for a normal successful response", {
+  xml_text <- '<?xml version="1.0"?>
+  <BlastOutput>
+    <BlastOutput_iterations>
+      <Iteration>
+        <Iteration_query-def>ASV_001</Iteration_query-def>
+        <Iteration_hits><Hit><Hit_accession>X12345</Hit_accession></Hit></Iteration_hits>
+      </Iteration>
+    </BlastOutput_iterations>
+  </BlastOutput>'
+  expect_false(.blast_server_rejected(xml_text))
+})
+
+test_that("blast_server_rejected is FALSE for an empty-hits (genuine no-match) response", {
+  xml_text <- '<?xml version="1.0"?>
+  <BlastOutput>
+    <BlastOutput_iterations>
+      <Iteration>
+        <Iteration_query-def>ASV_001</Iteration_query-def>
+        <Iteration_hits></Iteration_hits>
+      </Iteration>
+    </BlastOutput_iterations>
+  </BlastOutput>'
+  expect_false(.blast_server_rejected(xml_text))
+})
+
+
+# ==============================================================================
 # .parse_taxonomy_xml() — XML parsing
 # ==============================================================================
 

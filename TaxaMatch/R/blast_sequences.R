@@ -122,6 +122,28 @@ NULL
 #'   no collection-location metadata. Independent of \code{resolve_taxonomy}
 #'   -- taxonomy comes from the NCBI taxonomy database, location from the
 #'   full nucleotide record; neither fetch gives you the other.
+#' @param poll_max_wait Numeric. Remote BLAST only. Seconds to keep polling
+#'   NCBI for a submitted batch's results before giving up on it (default
+#'   \code{1800}, i.e. 30 minutes). Raised from an earlier hardcoded
+#'   \code{600} (2026-08-09) after a real, large (1,183-accession) remote-
+#'   BLAST run observed sustained per-batch queue waits exceeding 600s.
+#'   A batch that still exceeds this window (even after the existing
+#'   halved-batch-size retry), OR that NCBI reports \code{Status=READY} for
+#'   but has actually aborted server-side for exceeding a CPU-time fair-use
+#'   budget (see \code{.blast_server_rejected()}'s own documentation for the
+#'   real captured case that found this -- a real, distinct failure mode
+#'   from a poll timeout, since NCBI returns a genuine, successfully-
+#'   retrieved XML document, just one recording a rejection instead of real
+#'   search results), is recorded in \code{attr(result, "failed_query_ids")}
+#'   -- the affected \code{asv_id}s, so a caller can tell "search never
+#'   completed or was rejected" apart from "search completed and found
+#'   nothing," which \code{evaluate_reference_accessions()} uses to avoid
+#'   caching a failed batch's accessions as if they were a real verdict.
+#'   Neither failure mode is fixable by raising this parameter alone --
+#'   a CPU-budget rejection means NCBI is actively throttling this IP
+#'   address's remote-BLAST usage; the real remedy is fewer/smaller/less
+#'   frequent real calls (or \code{method = "local"} for a large batch job),
+#'   not a longer wait.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
 #' @return A data frame with one row per query x hit, containing:
@@ -161,6 +183,15 @@ NULL
 #'   An \code{attr(out, "report_params")} list (\code{method}, \code{database},
 #'   \code{min_score}, \code{n_samples}) is also attached, consumed by
 #'   \code{\link{report_match}}.
+#'
+#'   \code{attr(out, "failed_query_ids")} (character vector, \code{NULL} if
+#'   none) -- remote BLAST only, added 2026-08-09: \code{asv_id}s whose
+#'   search never completed (submission or poll failure, even after the
+#'   automatic halved-batch-size retry) -- distinct from a query that
+#'   completed and genuinely found nothing, which simply has no rows in
+#'   \code{out} at all. Present regardless of which return path this
+#'   function takes, including every early-return-on-empty-result branch.
+#'   See \code{poll_max_wait}'s own documentation.
 #'
 #' @details
 #' ## Score window algorithm
@@ -294,6 +325,7 @@ blast_sequences <- function(seq_df,
                             ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                             resolve_taxonomy = TRUE,
                             resolve_location = FALSE,
+                            poll_max_wait = 1800,
                             verbose = TRUE) {
 
   # --- Input validation -------------------------------------------------------
@@ -391,7 +423,7 @@ blast_sequences <- function(seq_df,
       )
     raw_hits <- .blast_remote(
       seq_df, database, program, megablast, max_target_seqs, batch_size,
-      email, ncbi_api_key, verbose
+      email, ncbi_api_key, verbose, max_wait = poll_max_wait
     )
   } else {
     raw_hits <- .blast_local(
@@ -399,9 +431,19 @@ blast_sequences <- function(seq_df,
     )
   }
 
+  # Captured here, before raw_hits is filtered/rebuilt into an entirely new
+  # data frame below (attr() does not survive that reconstruction) --
+  # re-attached to whatever this function ultimately returns, including
+  # every early-return branch, so a caller can always tell "these specific
+  # queries' BLAST search never completed" apart from "completed and found
+  # nothing" -- see poll_max_wait's own documentation for why this matters.
+  failed_query_ids <- attr(raw_hits, "failed_query_ids")
+
   if (nrow(raw_hits) == 0L) {
     warning("BLAST returned no hits")
-    return(.empty_blast_result(resolve_taxonomy))
+    empty <- .empty_blast_result(resolve_taxonomy)
+    attr(empty, "failed_query_ids") <- failed_query_ids
+    return(empty)
   }
 
   if (verbose)
@@ -429,7 +471,9 @@ blast_sequences <- function(seq_df,
 
     if (nrow(basic) == 0L) {
       warning("All hits removed by filtering")
-      return(.empty_blast_result(resolve_taxonomy))
+      empty <- .empty_blast_result(resolve_taxonomy)
+      attr(empty, "failed_query_ids") <- failed_query_ids
+      return(empty)
     }
 
     basic <- .attach_taxonomy(basic, ncbi_api_key, verbose)
@@ -460,7 +504,9 @@ blast_sequences <- function(seq_df,
 
   if (nrow(filtered) == 0L) {
     warning("All hits removed by filtering")
-    return(.empty_blast_result(resolve_taxonomy))
+    empty <- .empty_blast_result(resolve_taxonomy)
+    attr(empty, "failed_query_ids") <- failed_query_ids
+    return(empty)
   }
 
   # --- Resolve taxonomy -------------------------------------------------------
@@ -544,6 +590,7 @@ blast_sequences <- function(seq_df,
     min_score = min_score,
     n_samples = length(unique(out$observation_id))
   )
+  attr(out, "failed_query_ids") <- failed_query_ids
 
   out
 }
@@ -554,7 +601,8 @@ blast_sequences <- function(seq_df,
 # ==============================================================================
 
 .blast_remote <- function(seq_df, database, program, megablast, max_target_seqs,
-                          batch_size, email, ncbi_api_key, verbose) {
+                          batch_size, email, ncbi_api_key, verbose, entrez_query = NULL,
+                          max_wait = 1800) {
   .check_pkg("httr2")
 
   base_url <- "https://blast.ncbi.nlm.nih.gov/blast/Blast.cgi"
@@ -565,6 +613,7 @@ blast_sequences <- function(seq_df,
 
   all_hits <- vector("list", length(batches))
   failed_batches <- integer(0)
+  failed_query_ids <- character(0)
 
   for (i in seq_along(batches)) {
     idx <- batches[[i]]
@@ -580,7 +629,7 @@ blast_sequences <- function(seq_df,
 
     # --- Submit (PUT) ---------------------------------------------------------
     rid <- .blast_submit(base_url, query_str, database, program, megablast,
-                         max_target_seqs, email, ncbi_api_key)
+                         max_target_seqs, email, ncbi_api_key, entrez_query)
 
     if (is.null(rid)) {
       warning(sprintf("Batch %d/%d: BLAST submission failed. Skipping.", i, length(batches)))
@@ -591,10 +640,24 @@ blast_sequences <- function(seq_df,
     if (verbose) message(sprintf("  RID: %s -- polling for results...", rid))
 
     # --- Poll (GET) -----------------------------------------------------------
-    result_text <- .blast_poll(base_url, rid, verbose)
+    result_text <- .blast_poll(base_url, rid, verbose, max_wait = max_wait)
 
     if (is.null(result_text)) {
       warning(sprintf("Batch %d/%d: No results retrieved (RID: %s). Skipping.", i, length(batches), rid))
+      failed_batches <- c(failed_batches, i)
+      next
+    }
+
+    # NCBI can report Status=READY (a real, successfully-retrieved XML
+    # document) while having aborted the actual computation server-side for
+    # exceeding a CPU-time fair-use budget -- see .blast_server_rejected()'s
+    # own documentation for the real case that found this. Treated as a
+    # batch failure (same as a poll timeout), not "searched, found nothing".
+    if (.blast_server_rejected(result_text)) {
+      warning(sprintf(
+        "Batch %d/%d: NCBI rejected this search for exceeding its server CPU budget (RID: %s). Skipping.",
+        i, length(batches), rid
+      ))
       failed_batches <- c(failed_batches, i)
       next
     }
@@ -625,6 +688,7 @@ blast_sequences <- function(seq_df,
       ))
 
     still_failed <- integer(0)
+    still_failed_ids <- character(0)
 
     for (fi in failed_batches) {
       retry_rows <- seq_df[batches[[fi]], ]
@@ -646,22 +710,32 @@ blast_sequences <- function(seq_df,
 
         Sys.sleep(11)  # rate-limit before retry submission
         rid <- .blast_submit(base_url, query_str, database, program, megablast,
-                             max_target_seqs, email, ncbi_api_key)
+                             max_target_seqs, email, ncbi_api_key, entrez_query)
 
         if (is.null(rid)) {
           if (verbose)
             message(sprintf("    Retry batch %d.%d: submission failed.", fi, ri))
           still_failed <- c(still_failed, fi)
+          still_failed_ids <- c(still_failed_ids, rb_df$asv_id)
           next
         }
 
         if (verbose) message(sprintf("    RID: %s -- polling...", rid))
-        result_text <- .blast_poll(base_url, rid, verbose)
+        result_text <- .blast_poll(base_url, rid, verbose, max_wait = max_wait)
 
         if (is.null(result_text)) {
           if (verbose)
             message(sprintf("    Retry batch %d.%d: poll timed out.", fi, ri))
           still_failed <- c(still_failed, fi)
+          still_failed_ids <- c(still_failed_ids, rb_df$asv_id)
+          next
+        }
+
+        if (.blast_server_rejected(result_text)) {
+          if (verbose)
+            message(sprintf("    Retry batch %d.%d: NCBI rejected this search (server CPU budget).", fi, ri))
+          still_failed <- c(still_failed, fi)
+          still_failed_ids <- c(still_failed_ids, rb_df$asv_id)
           next
         }
 
@@ -672,6 +746,7 @@ blast_sequences <- function(seq_df,
     }
 
     failed_batches <- unique(still_failed)
+    failed_query_ids <- unique(still_failed_ids)
   }
 
   if (length(failed_batches) > 0L) {
@@ -683,22 +758,33 @@ blast_sequences <- function(seq_df,
   }
 
   all_hits <- Filter(Negate(is.null), all_hits)
-  if (length(all_hits) == 0L) return(.empty_raw_hits())
-  result <- do.call(rbind, all_hits)
+  result <- if (length(all_hits) == 0L) .empty_raw_hits() else do.call(rbind, all_hits)
   attr(result, "failed_batches") <- if (length(failed_batches) > 0L) failed_batches else NULL
+  attr(result, "failed_query_ids") <- if (length(failed_query_ids) > 0L) failed_query_ids else NULL
   result
 }
 
 
 #' @noRd
 .blast_submit <- function(base_url, query, database, program, megablast,
-                          max_target_seqs, email, ncbi_api_key) {
+                          max_target_seqs, email, ncbi_api_key, entrez_query = NULL) {
   # NCBI URL API: format params are ignored at submission time.
   # Only CMD, QUERY, DATABASE, PROGRAM, and search params matter here.
   # MEGABLAST is set explicitly (on/off) rather than left unspecified -- an
   # unqualified PROGRAM = "blastn" submission defaults to megablast mode,
   # which can silently return only one of several genuinely tied top hits
   # (see blast_sequences()'s own `megablast` param documentation).
+  # ENTREZ_QUERY (when supplied) restricts the search SPACE itself to
+  # records matching that Entrez query (e.g. a small, specific accession
+  # OR-list, `"ACC1[ACCN] OR ACC2[ACCN]"`) -- BLAST then computes a real
+  # alignment against every matching record, not just whatever happens to
+  # rank among the top hits of an otherwise-unrestricted search. See
+  # `.blast_against_comparison_set()` (`R/investigate_flagged_accession.R`)
+  # for why this matters: a post-hoc top-N-then-filter approach was tried
+  # first and found live (2026-08-08, real MZ605481 case) to return ZERO
+  # matches even for accessions independently confirmed to exist, because
+  # the candidate accessions simply never appeared in the unrestricted
+  # top-max_target_seqs hit list.
   params <- list(
     CMD            = "Put",
     QUERY          = query,
@@ -707,6 +793,7 @@ blast_sequences <- function(seq_df,
     MEGABLAST      = if (isTRUE(megablast)) "on" else "off",
     HITLIST_SIZE   = as.character(max_target_seqs)
   )
+  if (!is.null(entrez_query) && nzchar(entrez_query)) params$ENTREZ_QUERY <- entrez_query
   if (!is.null(email)) params$EMAIL <- email
   if (!is.null(ncbi_api_key)) params$API_KEY <- ncbi_api_key
 
@@ -805,6 +892,38 @@ blast_sequences <- function(seq_df,
   NULL
 }
 
+#' Detect NCBI's server-side CPU-usage-limit rejection
+#'
+#' Found 2026-08-09 on a real, large (1,183-accession) remote-BLAST run:
+#' NCBI's remote BLAST service can report a batch's search as
+#' \code{Status=READY} (a real, successfully-retrieved XML document, not a
+#' poll timeout) while having actually ABORTED the computation server-side
+#' for exceeding a CPU-time fair-use budget -- confirmed via a real captured
+#' response for a 20-query batch of mostly full-mitogenome-length sequences
+#' (16.5kb each) against \code{nt}, every \code{<Iteration>} carrying two
+#' \code{<Iteration_message>} entries: \code{"Searches from this IP address
+#' have consumed a large amount of server CPU time..."} and
+#' \code{"[blastsrv4.REAL]: Error: CPU usage limit was exceeded, resulting
+#' in SIGXCPU (24)."}. \code{.parse_blast_xml()} never checked
+#' \code{Iteration_message} at all -- a rejected batch silently parsed to
+#' zero hit rows, indistinguishable from a real "searched everything,
+#' found nothing" result, and (before this fix) would have been cached by
+#' \code{evaluate_reference_accessions()} as a false
+#' \code{"insufficient_independent_evidence"} verdict for every accession
+#' in the batch, exactly like an undetected poll timeout.
+#'
+#' Matched on the raw XML text (cheap, before parsing) rather than
+#' per-\code{<Iteration>} -- confirmed on the real captured case that a
+#' server-side CPU rejection applies to the WHOLE batch at once (every
+#' iteration carried the identical message pair), not select queries within
+#' it, so there's nothing to gain from a finer-grained per-iteration check.
+#'
+#' @return Logical scalar.
+#' @noRd
+.blast_server_rejected <- function(xml_text) {
+  grepl("CPU usage limit was exceeded", xml_text, fixed = TRUE) ||
+    grepl("consumed a large amount of server CPU time", xml_text, fixed = TRUE)
+}
 
 #' @noRd
 .parse_blast_xml <- function(xml_text) {

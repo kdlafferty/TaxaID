@@ -24,6 +24,7 @@ blast_sequences(
   ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
   resolve_taxonomy = TRUE,
   resolve_location = FALSE,
+  poll_max_wait = 1800,
   verbose = TRUE
 )
 }
@@ -151,6 +152,29 @@ no collection-location metadata. Independent of \code{resolve_taxonomy}
 -- taxonomy comes from the NCBI taxonomy database, location from the
 full nucleotide record; neither fetch gives you the other.}
 
+\item{poll_max_wait}{Numeric. Remote BLAST only. Seconds to keep polling
+NCBI for a submitted batch's results before giving up on it (default
+\code{1800}, i.e. 30 minutes). Raised from an earlier hardcoded
+\code{600} (2026-08-09) after a real, large (1,183-accession) remote-
+BLAST run observed sustained per-batch queue waits exceeding 600s.
+A batch that still exceeds this window (even after the existing
+halved-batch-size retry), OR that NCBI reports \code{Status=READY} for
+but has actually aborted server-side for exceeding a CPU-time fair-use
+budget (see \code{.blast_server_rejected()}'s own documentation for the
+real captured case that found this -- a real, distinct failure mode
+from a poll timeout, since NCBI returns a genuine, successfully-
+retrieved XML document, just one recording a rejection instead of real
+search results), is recorded in \code{attr(result, "failed_query_ids")}
+-- the affected \code{asv_id}s, so a caller can tell "search never
+completed or was rejected" apart from "search completed and found
+nothing," which \code{evaluate_reference_accessions()} uses to avoid
+caching a failed batch's accessions as if they were a real verdict.
+Neither failure mode is fixable by raising this parameter alone --
+a CPU-budget rejection means NCBI is actively throttling this IP
+address's remote-BLAST usage; the real remedy is fewer/smaller/less
+frequent real calls (or \code{method = "local"} for a large batch job),
+not a longer wait.}
+
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
 \value{
@@ -191,6 +215,15 @@ This output is ready for \code{\link{standardize_match_data}}.
 An \code{attr(out, "report_params")} list (\code{method}, \code{database},
 \code{min_score}, \code{n_samples}) is also attached, consumed by
 \code{\link{report_match}}.
+
+\code{attr(out, "failed_query_ids")} (character vector, \code{NULL} if
+none) -- remote BLAST only, added 2026-08-09: \code{asv_id}s whose
+search never completed (submission or poll failure, even after the
+automatic halved-batch-size retry) -- distinct from a query that
+completed and genuinely found nothing, which simply has no rows in
+\code{out} at all. Present regardless of which return path this
+function takes, including every early-return-on-empty-result branch.
+See \code{poll_max_wait}'s own documentation.
 }
 \description{
 Searches query sequences against NCBI nucleotide (remote) or a local BLAST
