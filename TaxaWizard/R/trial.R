@@ -3,7 +3,7 @@
 #' Creates a small subset of the input data for estimating run time
 #' before committing to the full dataset.
 #'
-#' @param df Data frame to subset.
+#' @param input_df Data frame to subset.
 #' @param n Integer. Number of rows (or unique observation_ids) to keep.
 #'   Default 20.
 #' @param by Character or NULL. Column to subset by unique values
@@ -11,14 +11,14 @@
 #'
 #' @return Subsetted data frame.
 #' @noRd
-.subset_for_trial <- function(df, n = 20L, by = "observation_id") {
+.subset_for_trial <- function(input_df, n = 20L, by = "observation_id") {
 
-  if (!is.null(by) && by %in% names(df)) {
-    unique_vals <- unique(df[[by]])
+  if (!is.null(by) && by %in% names(input_df)) {
+    unique_vals <- unique(input_df[[by]])
     keep_vals   <- utils::head(unique_vals, n)
-    df[df[[by]] %in% keep_vals, , drop = FALSE]
+    input_df[input_df[[by]] %in% keep_vals, , drop = FALSE]
   } else {
-    utils::head(df, n)
+    utils::head(input_df, n)
   }
 }
 

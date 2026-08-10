@@ -22,7 +22,7 @@
 #' @param metadata Named list of package metadata from
 #'   \code{.load_metadata()}. When \code{NULL} (default), loads all
 #'   available TaxaID package metadata automatically.
-#' @param model Character. LLM model ID. Default \code{"claude-opus-4-6"}.
+#' @param model Character. LLM model ID. Default \code{"claude-sonnet-4-6"}.
 #' @param api_key Character or NULL. Anthropic API key. Ignored when
 #'   \code{llm_fn} is supplied.
 #' @param llm_fn Function or NULL. Custom LLM caller for non-Anthropic
@@ -60,7 +60,7 @@
 #' }
 workflow_engine <- function(history,
                             metadata      = NULL,
-                            model         = "claude-opus-4-6",
+                            model         = "claude-sonnet-4-6",
                             api_key       = NULL,
                             llm_fn        = NULL,
                             system_prompt = NULL) {

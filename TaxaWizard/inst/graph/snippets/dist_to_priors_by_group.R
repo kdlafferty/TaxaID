@@ -54,7 +54,11 @@ if (isTRUE({{include_domestic_priors}})) {
 }
 
 priors <- TaxaTools::verify_taxon_names(priors, taxon_col = "taxon_name")
-priors <- TaxaTools::change_backbone(priors, target_backbone_id = {{target_backbone_id}})
+priors <- TaxaMatch::convert_taxonomy_backbone(
+  priors,
+  target_backbone_id = {{target_backbone_id}},
+  taxon_col           = "taxon_name"
+)
 message("Generated priors for ", length(unique(priors$taxon_name)), " taxa across ",
         length(group_models), " sampling group(s)")
 priors

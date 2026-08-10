@@ -7,7 +7,7 @@
 workflow_engine(
   history,
   metadata = NULL,
-  model = "claude-opus-4-6",
+  model = "claude-sonnet-4-6",
   api_key = NULL,
   llm_fn = NULL,
   system_prompt = NULL
@@ -23,7 +23,7 @@ the message text) so phase detection works correctly.}
 \code{.load_metadata()}. When \code{NULL} (default), loads all
 available TaxaID package metadata automatically.}
 
-\item{model}{Character. LLM model ID. Default \code{"claude-opus-4-6"}.}
+\item{model}{Character. LLM model ID. Default \code{"claude-sonnet-4-6"}.}
 
 \item{api_key}{Character or NULL. Anthropic API key. Ignored when
 \code{llm_fn} is supplied.}

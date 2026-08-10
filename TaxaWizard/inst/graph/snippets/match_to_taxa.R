@@ -38,7 +38,7 @@ if ("species" %in% names({{input_var}})) {
 }
 
 taxa_df <- TaxaTools::create_taxon_names(
-  df          = {{input_var}},
+  input_df    = {{input_var}},
   rank_system = detected_ranks
 )
 message("Unique taxa: ", length(unique(taxa_df$taxon_name)))

@@ -13,7 +13,7 @@ blast_hits <- TaxaMatch::blast_sequences(
   filtered_df,
   method     = {{blast_method}},
   database   = "nt",
-  score_range = 2,
+  score_range = 8,
   max_hits    = 20,
   min_score   = {{min_score}},
   email       = {{email}},
@@ -28,4 +28,28 @@ match_df <- TaxaMatch::standardize_match_data(
 )
 
 match_df <- TaxaMatch::filter_redundant_hypotheses(match_df)
+
+# Optional: BLAST-based reference-accession quality screening (2026-08-08
+# audit's recommended pre-training screen). For each reference accession a
+# hypothesis in match_df is based on, checks whether independent GenBank
+# evidence agrees taxonomically -- flags likely mislabeled/contaminated
+# reference submissions (hierarchy_flag = "incongruent") without discarding
+# them outright, since a flag can also mean "this marker has poor resolving
+# power here", not necessarily a genuine mislabel -- see
+# evaluate_reference_accessions()'s own documentation. Costly (one BLAST
+# round-trip per unique accession) -- set {{screen_reference_accessions}} to
+# FALSE to skip entirely.
+if (isTRUE({{screen_reference_accessions}})) {
+  accession_eval <- TaxaMatch::evaluate_reference_accessions(
+    accessions = unique(match_df$accession),
+    method     = {{blast_method}}
+  )
+  match_df <- TaxaMatch::flag_incongruent_references(match_df, accession_eval)
+  message(
+    "Reference-accession screening: ",
+    sum(match_df$hierarchy_flag == "incongruent", na.rm = TRUE),
+    " of ", nrow(match_df), " match rows rest on an incongruent reference accession"
+  )
+}
+
 match_df

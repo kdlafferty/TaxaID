@@ -7,12 +7,12 @@
 
 image_raw <- switch(.classifier,
   animl = TaxaMatch::read_animl_output(
-    data           = {{input_var}},
+    files          = {{input_var}},
     min_confidence = {{min_confidence}},
     top_n          = {{top_n}}
   ),
   inaturalist_cv = TaxaMatch::read_inaturalist_cv_output(
-    data           = {{input_var}},
+    files          = {{input_var}},
     min_confidence = {{min_confidence}},
     top_n          = {{top_n}}
   ),

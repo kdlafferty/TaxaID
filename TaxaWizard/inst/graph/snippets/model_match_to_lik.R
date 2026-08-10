@@ -33,7 +33,7 @@ if (!"taxon_name" %in% names({{match_var}})) {
     {{match_var}}$species <- TaxaTools::clean_taxon_names({{match_var}}$species)
   }
   {{match_var}} <- TaxaTools::create_taxon_names(
-    df = {{match_var}}, rank_system = detected_ranks
+    input_df = {{match_var}}, rank_system = detected_ranks
   )
   message("Added taxon_name from ranks: ", paste(detected_ranks, collapse = ", "))
 }

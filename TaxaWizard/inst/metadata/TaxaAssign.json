@@ -6,19 +6,81 @@
       "name": "run_llm_pipeline",
       "description": "End-to-end LLM-shortcut workflow: auto-context, unreferenced detection, assignment, consensus, report",
       "inputs": [
-        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object from TaxaMatch"},
-        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function. Use TaxaTools::call_api (auto-selects provider). Valid names: call_api, call_anthropic_api, call_gemini_api, call_openai_api, call_azure_api, call_ollama_api. Do NOT invent other names."},
-        {"name": "geographic_hint", "type": "character", "required": false, "description": "Geographic region description"},
-        {"name": "date", "type": "character", "required": false, "description": "Sampling date or year"},
-        {"name": "score_threshold", "type": "numeric", "required": false, "default": 80, "description": "Minimum match score (0-100)"},
-        {"name": "backbone_id", "type": "integer", "required": true, "description": "Taxonomic backbone for taxonomy lookup. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."},
-        {"name": "detect_unreferenced", "type": "logical", "required": false, "default": true, "description": "Run unreferenced species detection"},
-        {"name": "generate_report", "type": "logical", "required": false, "default": false, "description": "Generate Methods + Results text"},
-        {"name": "reference_errors", "type": "data.frame", "required": false, "description": "From model_params$reference_errors for error filtering"},
-        {"name": "habitat_scheme", "type": "character", "required": false, "description": "Habitat scheme for context building"},
-        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Standardized match object from TaxaMatch"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "description": "LLM provider function. Use TaxaTools::call_api (auto-selects provider). Valid names: call_api, call_anthropic_api, call_gemini_api, call_openai_api, call_azure_api, call_ollama_api. Do NOT invent other names."
+        },
+        {
+          "name": "geographic_hint",
+          "type": "character",
+          "required": false,
+          "description": "Geographic region description"
+        },
+        {
+          "name": "date",
+          "type": "character",
+          "required": false,
+          "description": "Sampling date or year"
+        },
+        {
+          "name": "score_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 80,
+          "description": "Minimum match score (0-100)"
+        },
+        {
+          "name": "backbone_id",
+          "type": "integer",
+          "required": true,
+          "description": "Taxonomic backbone for taxonomy lookup. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."
+        },
+        {
+          "name": "detect_unreferenced",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Run unreferenced species detection"
+        },
+        {
+          "name": "generate_report",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Generate Methods + Results text"
+        },
+        {
+          "name": "reference_errors",
+          "type": "data.frame",
+          "required": false,
+          "description": "From model_params$reference_errors for error filtering"
+        },
+        {
+          "name": "habitat_scheme",
+          "type": "character",
+          "required": false,
+          "description": "Habitat scheme for context building"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Print progress messages"
+        }
       ],
-      "output": {"type": "llm_pipeline_result", "description": "List with $consensus, $result, $context, $unreferenced, $report"},
+      "output": {
+        "type": "llm_pipeline_result",
+        "description": "List with $consensus, $result, $context, $unreferenced, $report"
+      },
       "scaling": "api_limited",
       "scaling_note": "Dominated by LLM API calls; ~1-2 min per 30 taxa"
     },
@@ -26,15 +88,55 @@
       "name": "run_bayesian_pipeline",
       "description": "End-to-end Bayesian workflow: likelihoods + priors -> posterior -> consensus -> report",
       "inputs": [
-        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object from TaxaMatch"},
-        {"name": "model_params", "type": "taxa_model_params", "required": true, "description": "Trained likelihood model from TaxaLikely"},
-        {"name": "taxaexpect_priors", "type": "priors_df", "required": true, "description": "Prior probabilities from TaxaExpect (or build_priors() output)"},
-        {"name": "site", "type": "site_spec", "required": true, "description": "Site specification: list(lat, lon) or list(grid_id, main_habitat)"},
-        {"name": "backbone_id", "type": "integer", "required": true, "description": "Taxonomic backbone for taxonomy lookup. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."},
-        {"name": "generate_report", "type": "logical", "required": false, "default": false, "description": "Generate report text"},
-        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Standardized match object from TaxaMatch"
+        },
+        {
+          "name": "model_params",
+          "type": "taxa_model_params",
+          "required": true,
+          "description": "Trained likelihood model from TaxaLikely"
+        },
+        {
+          "name": "taxaexpect_priors",
+          "type": "priors_df",
+          "required": true,
+          "description": "Prior probabilities from TaxaExpect (or build_priors() output)"
+        },
+        {
+          "name": "site",
+          "type": "site_spec",
+          "required": true,
+          "description": "Site specification: list(lat, lon) or list(grid_id, main_habitat)"
+        },
+        {
+          "name": "backbone_id",
+          "type": "integer",
+          "required": true,
+          "description": "Taxonomic backbone for taxonomy lookup. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."
+        },
+        {
+          "name": "generate_report",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Generate report text"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Print progress messages"
+        }
       ],
-      "output": {"type": "bayesian_pipeline_result", "description": "List with $consensus, $result, $report"},
+      "output": {
+        "type": "bayesian_pipeline_result",
+        "description": "List with $consensus, $result, $report"
+      },
       "scaling": "linear",
       "scaling_note": "Fast once model and priors are precomputed; ~10 sec for 500 samples"
     },
@@ -42,18 +144,74 @@
       "name": "assign_taxa_llm",
       "description": "LLM-based assignment: score-derived likelihoods + LLM priors -> posteriors per sample",
       "inputs": [
-        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object"},
-        {"name": "context", "type": "context_df", "required": false, "description": "Site context from build_context(): ecoregion, main_habitat, date"},
-        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function"},
-        {"name": "score_threshold", "type": "numeric", "required": false, "default": 80, "description": "Minimum match score"},
-        {"name": "context_group", "type": "character", "required": false, "description": "Column for grouping taxa into context-specific batches"},
-        {"name": "unreferenced_taxa", "type": "character_vector", "required": false, "description": "Named unreferenced species to include as hypotheses"},
-        {"name": "known_present", "type": "character_vector", "required": false, "description": "Species known to be present (LLM context only)"},
-        {"name": "known_absent", "type": "character_vector", "required": false, "description": "Species known absent (prior suppression)"},
-        {"name": "n_sims", "type": "integer", "required": false, "default": 1000, "description": "Monte Carlo simulations"},
-        {"name": "verbose", "type": "logical", "required": false, "default": false, "description": "Print progress"}
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Standardized match object"
+        },
+        {
+          "name": "context",
+          "type": "context_df",
+          "required": false,
+          "description": "Site context from build_context(): ecoregion, main_habitat, date"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "description": "LLM provider function"
+        },
+        {
+          "name": "score_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 80,
+          "description": "Minimum match score"
+        },
+        {
+          "name": "context_group",
+          "type": "character",
+          "required": false,
+          "description": "Column for grouping taxa into context-specific batches"
+        },
+        {
+          "name": "unreferenced_taxa",
+          "type": "character_vector",
+          "required": false,
+          "description": "Named unreferenced species to include as hypotheses"
+        },
+        {
+          "name": "known_present",
+          "type": "character_vector",
+          "required": false,
+          "description": "Species known to be present (LLM context only)"
+        },
+        {
+          "name": "known_absent",
+          "type": "character_vector",
+          "required": false,
+          "description": "Species known absent (prior suppression)"
+        },
+        {
+          "name": "n_sims",
+          "type": "integer",
+          "required": false,
+          "default": 1000,
+          "description": "Monte Carlo simulations"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Print progress"
+        }
       ],
-      "output": {"type": "posterior_df", "description": "Full posterior data frame with all hypotheses per sample"},
+      "output": {
+        "type": "posterior_df",
+        "description": "Full posterior data frame with all hypotheses per sample"
+      },
       "scaling": "api_limited",
       "scaling_note": "LLM calls dominate; batches of 30 taxa per call"
     },
@@ -61,13 +219,41 @@
       "name": "build_context",
       "description": "Auto-infer site context (habitat, ecoregion) from taxon names via LLM",
       "inputs": [
-        {"name": "taxon_names", "type": "character_vector", "required": true, "description": "Unique scientific names from match_df"},
-        {"name": "geographic_hint", "type": "character", "required": false, "description": "Approximate region"},
-        {"name": "date", "type": "character", "required": false, "description": "Sampling date or year"},
-        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function"},
-        {"name": "habitat_scheme", "type": "character", "required": false, "description": "Habitat scheme name: NULL (default 3-category), 'IUCN_L1', or 'IUCN_L2'. Pass a string, NOT a data frame."}
+        {
+          "name": "taxon_names",
+          "type": "character_vector",
+          "required": true,
+          "description": "Unique scientific names from match_df"
+        },
+        {
+          "name": "geographic_hint",
+          "type": "character",
+          "required": false,
+          "description": "Approximate region"
+        },
+        {
+          "name": "date",
+          "type": "character",
+          "required": false,
+          "description": "Sampling date or year"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "description": "LLM provider function"
+        },
+        {
+          "name": "habitat_scheme",
+          "type": "character",
+          "required": false,
+          "description": "Habitat scheme name: NULL (default 3-category), 'IUCN_L1', or 'IUCN_L2'. Pass a string, NOT a data frame."
+        }
       ],
-      "output": {"type": "context_df", "description": "One-row data frame: ecoregion, main_habitat, date"},
+      "output": {
+        "type": "context_df",
+        "description": "One-row data frame: ecoregion, main_habitat, date"
+      },
       "scaling": "api_limited",
       "scaling_note": "2-3 LLM calls regardless of taxon count"
     },
@@ -75,13 +261,42 @@
       "name": "score_consensus",
       "description": "Simple score-based consensus: min_score + gap + rank_thresholds -> LCA. No model/priors needed.",
       "inputs": [
-        {"name": "match_df", "type": "match_df", "required": true, "description": "Standardized match object"},
-        {"name": "rank_thresholds", "type": "named_numeric", "required": true, "description": "Score thresholds per rank (e.g. c(species=98, genus=95, family=90)). No default (2026-07-23) -- errors if omitted, since the correct thresholds depend on marker/data type and no single value is safe to assume. Either supply real thresholds (e.g. the conventional GITA/Jonah Ventures c(species=98, genus=95, family=90, phylum=85)), derive marker-specific ones via TaxaLikely::compute_rank_thresholds() on your own reference data, or pass NULL explicitly to disable rank capping entirely. Auto-rescaled by /100 if the match score column looks like a 0-1 proportion rather than 0-100 percent identity."},
-        {"name": "min_score", "type": "numeric", "required": false, "default": 0, "description": "Minimum score to consider. Note: min_score alone provides little species-vs-congener discrimination -- rank_thresholds does that job."},
-        {"name": "max_gap", "type": "numeric", "required": false, "description": "Maximum score gap for species-level"},
-        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Rank order for LCA"}
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Standardized match object"
+        },
+        {
+          "name": "rank_thresholds",
+          "type": "named_numeric",
+          "required": true,
+          "description": "Score thresholds per rank (e.g. c(species=98, genus=95, family=90)). No default (2026-07-23) -- errors if omitted, since the correct thresholds depend on marker/data type and no single value is safe to assume. Either supply real thresholds (e.g. the conventional GITA/Jonah Ventures c(species=98, genus=95, family=90, phylum=85)), derive marker-specific ones via TaxaLikely::compute_rank_thresholds() on your own reference data, or pass NULL explicitly to disable rank capping entirely. Auto-rescaled by /100 if the match score column looks like a 0-1 proportion rather than 0-100 percent identity."
+        },
+        {
+          "name": "min_score",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Minimum score to consider. Note: min_score alone provides little species-vs-congener discrimination -- rank_thresholds does that job."
+        },
+        {
+          "name": "max_gap",
+          "type": "numeric",
+          "required": false,
+          "description": "Maximum score gap for species-level"
+        },
+        {
+          "name": "rank_system",
+          "type": "character_vector",
+          "required": false,
+          "description": "Rank order for LCA"
+        }
       ],
-      "output": {"type": "consensus_df", "description": "One row per observation_id with consensus assignment"},
+      "output": {
+        "type": "consensus_df",
+        "description": "One row per observation_id with consensus assignment"
+      },
       "scaling": "linear",
       "scaling_note": "Very fast; pure R computation"
     },
@@ -89,13 +304,50 @@
       "name": "posterior_consensus",
       "description": "LCA-based consensus from posterior: plausible hypotheses -> one assignment per sample",
       "inputs": [
-        {"name": "posterior_df", "type": "posterior_df", "required": true, "description": "Posterior data frame from compute_posterior or assign_taxa_llm"},
-        {"name": "cumulative_threshold", "type": "numeric", "required": false, "default": 0.95, "description": "Cumulative posterior threshold for plausibility"},
-        {"name": "min_posterior", "type": "numeric", "required": false, "default": 0.01, "description": "Minimum individual posterior to include"},
-        {"name": "backbone_id", "type": "integer", "required": false, "description": "Target backbone for taxonomy lookup, used only when lookup_missing_taxonomy = TRUE. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."},
-        {"name": "species_reference", "type": "data.frame_or_unreferenced_result", "required": false, "description": "For downranking: reference with finer-rank taxa"}
+        {
+          "name": "posterior_df",
+          "type": "posterior_df",
+          "required": true,
+          "description": "Posterior data frame from compute_posterior or assign_taxa_llm"
+        },
+        {
+          "name": "cumulative_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.95,
+          "description": "Cumulative posterior threshold for plausibility"
+        },
+        {
+          "name": "min_posterior",
+          "type": "numeric",
+          "required": false,
+          "default": 0.01,
+          "description": "Minimum individual posterior to include"
+        },
+        {
+          "name": "backbone_id",
+          "type": "integer",
+          "required": false,
+          "description": "Target backbone for taxonomy lookup, used only when lookup_missing_taxonomy = TRUE. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."
+        },
+        {
+          "name": "species_reference",
+          "type": "data.frame_or_unreferenced_result",
+          "required": false,
+          "description": "For downranking: reference with finer-rank taxa"
+        },
+        {
+          "name": "group_priors",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Optional output of compute_group_priors(). When supplied, consensus_prior becomes a real group-level SUM of theta across every locally modelled group member instead of a candidate-scoped max, and a new consensus_has_occurrence_record output column distinguishes 'checked, absent' from 'group_priors never supplied'"
+        }
       ],
-      "output": {"type": "consensus_df", "description": "One row per observation_id with consensus_taxon, consensus_rank, consensus_posterior"},
+      "output": {
+        "type": "consensus_df",
+        "description": "One row per observation_id with consensus_taxon, consensus_rank, consensus_posterior"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; pure R computation"
     },
@@ -103,10 +355,24 @@
       "name": "compute_posterior",
       "description": "Core Bayes update: likelihood x prior -> posterior for each hypothesis",
       "inputs": [
-        {"name": "likelihood_w_prior", "type": "data.frame", "required": true, "description": "Data frame with likelihood and prior columns per hypothesis"},
-        {"name": "n_sims", "type": "integer", "required": false, "default": 1000, "description": "Monte Carlo simulations for uncertainty"}
+        {
+          "name": "likelihood_w_prior",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame with likelihood and prior columns per hypothesis"
+        },
+        {
+          "name": "n_sims",
+          "type": "integer",
+          "required": false,
+          "default": 1000,
+          "description": "Monte Carlo simulations for uncertainty"
+        }
       ],
-      "output": {"type": "posterior_df", "description": "Data frame with posterior_point_est, posterior_mean, posterior_sd per hypothesis"},
+      "output": {
+        "type": "posterior_df",
+        "description": "Data frame with posterior_point_est, posterior_mean, posterior_sd per hypothesis"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; ~1 sec per 1000 rows with MC"
     },
@@ -114,14 +380,49 @@
       "name": "join_priors",
       "description": "Join TaxaExpect priors to a likelihood table by taxon_name + site. 'site' can be a single-site list OR a multi-site data frame -- see the site input below. When using the multi-site data-frame form, ALWAYS follow with combine_multisite_priors() before compute_posterior(), since an observation detected at more than one site produces one joined row per site",
       "inputs": [
-        {"name": "likelihoods", "type": "data.frame", "required": true, "description": "Likelihood table from evaluate_likelihoods()"},
-        {"name": "taxaexpect_priors", "type": "data.frame", "required": true, "description": "Prior table from TaxaExpect (build_priors()/generate_full_priors()/generate_domestic_food_priors())"},
-        {"name": "site", "type": "list|data.frame", "required": false, "default": null, "description": "Single-site form: list(lat=, lon=, main_habitat=) or list(grid_id=, main_habitat=) -- applied to every observation. Multi-site form (data frame): columns observation_id, grid_id, main_habitat, OR observation_id, lat, lon, main_habitat -- one or more rows per observation_id. main_habitat is always required in either form"},
-        {"name": "taxonomy_lookup", "type": "data.frame", "required": false, "default": null, "description": "Optional taxon_name -> taxonomy-rank lookup (e.g. match_df) for species with likelihoods but absent from taxaexpect_priors"},
-        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks for joining, coarsest to finest. NULL auto-detects from likelihoods columns"},
-        {"name": "backbone_id", "type": "integer", "required": true, "description": "Taxonomic backbone for taxonomy fallback fill. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."}
+        {
+          "name": "likelihoods",
+          "type": "data.frame",
+          "required": true,
+          "description": "Likelihood table from evaluate_likelihoods()"
+        },
+        {
+          "name": "taxaexpect_priors",
+          "type": "data.frame",
+          "required": true,
+          "description": "Prior table from TaxaExpect (build_priors()/generate_full_priors()/generate_domestic_food_priors())"
+        },
+        {
+          "name": "site",
+          "type": "list|data.frame",
+          "required": false,
+          "default": null,
+          "description": "Single-site form: list(lat=, lon=, main_habitat=) or list(grid_id=, main_habitat=) -- applied to every observation. Multi-site form (data frame): columns observation_id, grid_id, main_habitat, OR observation_id, lat, lon, main_habitat -- one or more rows per observation_id. main_habitat is always required in either form"
+        },
+        {
+          "name": "taxonomy_lookup",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Optional taxon_name -> taxonomy-rank lookup (e.g. match_df) for species with likelihoods but absent from taxaexpect_priors"
+        },
+        {
+          "name": "rank_system",
+          "type": "character_vector",
+          "required": false,
+          "description": "Taxonomy ranks for joining, coarsest to finest. NULL auto-detects from likelihoods columns"
+        },
+        {
+          "name": "backbone_id",
+          "type": "integer",
+          "required": true,
+          "description": "Taxonomic backbone for taxonomy fallback fill. No default -- depends on which backbone the input taxonomy was verified against. Common values: 11 (GBIF), 4 (NCBI)."
+        }
       ],
-      "output": {"type": "data.frame", "description": "Likelihood table with prior columns (prior_alpha, prior_beta, grid_id, main_habitat, ...) added. Multi-site form: one row PER SITE per (observation_id, taxon_name) -- pass through combine_multisite_priors() before compute_posterior()"},
+      "output": {
+        "type": "data.frame",
+        "description": "Likelihood table with prior columns (prior_alpha, prior_beta, grid_id, main_habitat, ...) added. Multi-site form: one row PER SITE per (observation_id, taxon_name) -- pass through combine_multisite_priors() before compute_posterior()"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; merge operation"
     },
@@ -129,9 +430,17 @@
       "name": "combine_multisite_priors",
       "description": "Combines duplicate (observation_id, taxon_name) rows produced by join_priors()'s multi-site data-frame path -- an observation detected at more than one site -- via precision-weighted logit combination. Correctly discounts a low-confidence/sparse-data site rather than a plain average or product. Single-site candidates pass through unchanged with n_sites_combined = 1",
       "inputs": [
-        {"name": "joined", "type": "data.frame", "required": true, "description": "Output of join_priors() with the multi-site data-frame 'site' argument -- must have observation_id, taxon_name, taxon_name_rank, grid_id, main_habitat, prior_alpha, prior_beta columns"}
+        {
+          "name": "joined",
+          "type": "data.frame",
+          "required": true,
+          "description": "Output of join_priors() with the multi-site data-frame 'site' argument -- must have observation_id, taxon_name, taxon_name_rank, grid_id, main_habitat, prior_alpha, prior_beta columns"
+        }
       ],
-      "output": {"type": "data.frame", "description": "Input with one row per (observation_id, taxon_name, taxon_name_rank), plus n_sites_combined (integer) and combined_sites (character, sites that were combined) columns. Ready for compute_posterior()"},
+      "output": {
+        "type": "data.frame",
+        "description": "Input with one row per (observation_id, taxon_name, taxon_name_rank), plus n_sites_combined (integer) and combined_sites (character, sites that were combined) columns. Ready for compute_posterior()"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; group + combine operation"
     },
@@ -139,13 +448,42 @@
       "name": "suggest_unreferenced_species",
       "description": "LLM-first unreferenced species detection: plausible species per genus not in reference",
       "inputs": [
-        {"name": "match_df", "type": "match_df", "required": true, "description": "Match object (genera extracted automatically)"},
-        {"name": "context", "type": "context_df", "required": false, "description": "Site context for plausibility"},
-        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM provider function"},
-        {"name": "barcode_term", "type": "character", "required": false, "description": "Barcode marker for NCBI verification"},
-        {"name": "expand_to_family", "type": "logical", "required": false, "default": false, "description": "Also check family-level unreferenced taxa"}
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Match object (genera extracted automatically)"
+        },
+        {
+          "name": "context",
+          "type": "context_df",
+          "required": false,
+          "description": "Site context for plausibility"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "description": "LLM provider function"
+        },
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": false,
+          "description": "Barcode marker for NCBI verification"
+        },
+        {
+          "name": "expand_to_family",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Also check family-level unreferenced taxa"
+        }
       ],
-      "output": {"type": "unreferenced_species_result", "description": "Character vector of unreferenced species; census and plausible in attributes"},
+      "output": {
+        "type": "unreferenced_species_result",
+        "description": "Character vector of unreferenced species; census and plausible in attributes"
+      },
       "scaling": "api_limited",
       "scaling_note": "LLM calls + optional NCBI verification; ~2-5 min"
     },
@@ -153,16 +491,98 @@
       "name": "generate_report",
       "description": "Generate publication-ready Methods + Results text from pipeline outputs",
       "inputs": [
-        {"name": "result", "type": "posterior_df", "required": false, "description": "Posterior data frame (NULL for score-only)"},
-        {"name": "consensus", "type": "consensus_df", "required": true, "description": "Consensus data frame"},
-        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM for narrative Results (template if NULL)"},
-        {"name": "data_type", "type": "character", "required": false, "description": "e.g. 'eDNA', 'camera trap', 'acoustic'"},
-        {"name": "marker", "type": "character", "required": false, "description": "e.g. '12S MiFish', 'COI'"},
-        {"name": "study_description", "type": "character", "required": false, "description": "Brief study context for report intro"}
+        {
+          "name": "result",
+          "type": "posterior_df",
+          "required": true,
+          "description": "Posterior data frame (required; pass consensus's own no-score equivalent if using the score-only pathway -- see TaxaAssign::posterior_consensus())"
+        },
+        {
+          "name": "consensus",
+          "type": "consensus_df",
+          "required": true,
+          "description": "Consensus data frame"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "description": "LLM for narrative Results (template if NULL)"
+        },
+        {
+          "name": "data_type",
+          "type": "character",
+          "required": false,
+          "description": "e.g. 'eDNA', 'camera trap', 'acoustic'"
+        },
+        {
+          "name": "marker",
+          "type": "character",
+          "required": false,
+          "description": "e.g. '12S MiFish', 'COI'"
+        },
+        {
+          "name": "study_description",
+          "type": "character",
+          "required": false,
+          "description": "Brief study context for report intro"
+        }
       ],
-      "output": {"type": "character", "description": "Formatted Methods + Results text"},
+      "output": {
+        "type": "character",
+        "description": "Formatted Methods + Results text"
+      },
       "scaling": "api_limited",
       "scaling_note": "One LLM call for Results; template-only if llm_fn = NULL"
+    },
+    {
+      "name": "compute_group_priors",
+      "description": "Aggregates TaxaExpect occurrence priors up to genus/family (and species, auto-derived from taxon identity), producing a real group-level SUM of theta across every locally modelled member sharing a rank. Feeds posterior_consensus(group_priors=)'s consensus_prior, which otherwise stays candidate-scoped (a materially weaker statement, since one observation's own candidate set rarely contains every locally modelled group member).",
+      "inputs": [
+        {
+          "name": "taxaexpect_priors",
+          "type": "priors",
+          "required": true,
+          "description": "Output of TaxaExpect's prior-generation functions (build_priors()/generate_full_priors()), with taxon_col and theta_col"
+        },
+        {
+          "name": "taxonomy_map",
+          "type": "data.frame",
+          "required": true,
+          "description": "A data frame with taxon_col plus real genus/family (or whatever rank_cols names) columns -- e.g. occurrences_clean, which typically has these even when taxaexpect_priors itself does not"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Shared join key between the two inputs"
+        },
+        {
+          "name": "theta_col",
+          "type": "character",
+          "required": false,
+          "default": "theta_mean",
+          "description": "Column in taxaexpect_priors holding the occurrence-model share"
+        },
+        {
+          "name": "rank_cols",
+          "type": "character_vector",
+          "required": false,
+          "default": [
+            "species",
+            "genus",
+            "family"
+          ],
+          "description": "Which columns in taxonomy_map to aggregate by; 'species' is auto-derived as taxon_col's own identity when taxonomy_map has no explicit species column"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "One row per (rank, taxon) group actually present: rank, taxon, theta_sum (capped at 1), n_members (locally modelled members contributing to the sum)"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; pure aggregation over existing priors data"
     }
   ]
 }

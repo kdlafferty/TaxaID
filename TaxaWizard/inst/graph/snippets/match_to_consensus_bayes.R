@@ -37,7 +37,7 @@ if (!"taxon_name" %in% names({{match_var}})) {
     {{match_var}}$species <- TaxaTools::clean_taxon_names({{match_var}}$species)
   }
   {{match_var}} <- TaxaTools::create_taxon_names(
-    df          = {{match_var}},
+    input_df    = {{match_var}},
     rank_system = detected_ranks
   )
   message("Created taxon_name column: ", length(unique({{match_var}}$taxon_name)), " unique taxa")

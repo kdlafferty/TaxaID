@@ -1217,6 +1217,31 @@ annotate_script <- function(script_path,
 }
 
 
+#' Allowed LLM Provider Functions for Generated Apps
+#'
+#' The fixed set of provider-calling functions a \code{function_ref}
+#' parameter's widget may resolve to in a generated app. Shared between the
+#' UI widget (\code{.widget_code()}, which builds the \code{selectInput()}
+#' choices from it) and the server-side assembly code
+#' (\code{.param_assembly_line()}, which validates \code{input$...} against
+#' it before \code{eval(parse(text = ...))}) so a client that tampers with
+#' the Shiny input value client-side (e.g. via the browser console) cannot
+#' get arbitrary text evaluated server-side.
+#'
+#' @return Named character vector: display label -> \code{pkg::fn} string.
+#' @noRd
+.llm_provider_choices <- function() {
+  c(
+    "Auto-detect"            = "TaxaTools::call_api",
+    "Anthropic Claude"       = "TaxaTools::call_anthropic_api",
+    "Azure OpenAI (DOI)"     = "TaxaTools::call_azure_openai_api",
+    "OpenAI GPT"             = "TaxaTools::call_openai_api",
+    "Google Gemini"          = "TaxaTools::call_gemini_api",
+    "Ollama (local)"         = "TaxaTools::call_ollama_api"
+  )
+}
+
+
 #' Generate a UI widget for one parameter
 #' @noRd
 .widget_code <- function(param) {
@@ -1311,10 +1336,17 @@ annotate_script <- function(script_path,
         input_id, label, csv_text
       )
     },
-    function_ref = sprintf(
-      'shiny::selectInput("%s", "%s", choices = c("Auto-detect" = "TaxaTools::call_api", "Anthropic Claude" = "TaxaTools::call_anthropic_api", "Azure OpenAI (DOI)" = "TaxaTools::call_azure_openai_api", "OpenAI GPT" = "TaxaTools::call_openai_api", "Google Gemini" = "TaxaTools::call_gemini_api", "Ollama (local)" = "TaxaTools::call_ollama_api"), selected = "%s"),',
-      input_id, label, param$default
-    ),
+    function_ref = {
+      choices <- .llm_provider_choices()
+      choices_text <- paste(
+        sprintf('"%s" = "%s"', names(choices), unname(choices)),
+        collapse = ", "
+      )
+      sprintf(
+        'shiny::selectInput("%s", "%s", choices = c(%s), selected = "%s"),',
+        input_id, label, choices_text, param$default
+      )
+    },
     null_param = sprintf(
       'shiny::textInput("%s", "%s (leave empty for NULL)", value = ""),',
       input_id, label
@@ -1654,10 +1686,21 @@ annotate_script <- function(script_path,
       paste0('  assign("', nm, '", NULL, envir = env)'),
       "}"
     ),
-    function_ref = c(
-      sprintf('.fn_str <- input$%s', input_id),
-      sprintf('assign("%s", eval(parse(text = .fn_str)), envir = env)', nm)
-    ),
+    function_ref = {
+      allowed <- unname(.llm_provider_choices())
+      allowed_text <- paste(sprintf('"%s"', allowed), collapse = ", ")
+      c(
+        sprintf('.fn_str <- input$%s', input_id),
+        sprintf('.allowed_fns <- c(%s)', allowed_text),
+        '# Validate against the fixed provider list before eval(): input$... is',
+        '# client-supplied and Shiny does not restrict it to the selectInput choices',
+        '# server-side, so this guards against arbitrary code reaching eval(parse()).',
+        'if (!.fn_str %in% .allowed_fns) {',
+        '  stop("Invalid LLM provider selection.")',
+        '}',
+        sprintf('assign("%s", eval(parse(text = .fn_str)), envir = env)', nm)
+      )
+    },
     null_param = c(
       sprintf('if (nzchar(trimws(input$%s))) {', input_id),
       sprintf('  assign("%s", input$%s, envir = env)', nm, input_id),

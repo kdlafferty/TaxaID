@@ -180,6 +180,41 @@ test_that(".build_app_code produces valid structure", {
   expect_true(grepl("downloadButton", app_text))
 })
 
+test_that(".widget_code's function_ref choices match .llm_provider_choices()", {
+  param <- list(name = "llm_fn", type = "function_ref", default = "TaxaTools::call_api")
+  widget <- TaxaWizard:::.widget_code(param)
+  for (fn in unname(TaxaWizard:::.llm_provider_choices())) {
+    expect_true(grepl(fn, widget, fixed = TRUE))
+  }
+})
+
+test_that(".param_assembly_line's function_ref branch validates against the allow-list before eval", {
+  param <- list(name = "llm_fn", type = "function_ref", default = "TaxaTools::call_api")
+  lines <- paste(TaxaWizard:::.param_assembly_line(param), collapse = "\n")
+
+  expect_true(grepl(".allowed_fns", lines, fixed = TRUE))
+  expect_true(grepl("if (!.fn_str %in% .allowed_fns)", lines, fixed = TRUE))
+  # Every real choice must appear in the generated allow-list literal.
+  for (fn in unname(TaxaWizard:::.llm_provider_choices())) {
+    expect_true(grepl(fn, lines, fixed = TRUE))
+  }
+})
+
+test_that(".param_assembly_line's function_ref allow-list actually blocks an unlisted value", {
+  param <- list(name = "llm_fn", type = "function_ref", default = "TaxaTools::call_api")
+  lines <- paste(TaxaWizard:::.param_assembly_line(param), collapse = "\n")
+
+  # Simulate the generated server code with a tampered (non-widget) input value,
+  # as a malicious client could send via Shiny.setInputValue() regardless of the
+  # selectInput's own choices.
+  input <- list(param_llm_fn = 'system("touch /tmp/pwned")')
+  env <- new.env()
+  expect_error(
+    eval(parse(text = lines), envir = environment()),
+    "Invalid LLM provider selection"
+  )
+})
+
 test_that("workflow_app rejects missing script", {
   expect_error(
     workflow_app("/nonexistent/script.R"),

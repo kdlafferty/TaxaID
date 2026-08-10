@@ -13,12 +13,13 @@ Description: Provides a conversational assistant that helps users design
 License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 Imports:
     httr2,
     jsonlite
 Suggests:
+    lifecycle,
     shiny,
     TaxaTools,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

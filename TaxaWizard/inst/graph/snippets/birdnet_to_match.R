@@ -4,7 +4,7 @@
 # character vector of file paths.
 
 birdnet_raw <- TaxaMatch::read_birdnet_output(
-  data           = {{input_var}},
+  files          = {{input_var}},
   min_confidence = {{min_confidence}},
   top_n          = {{top_n}}
 )

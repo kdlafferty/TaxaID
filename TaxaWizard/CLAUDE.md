@@ -1,6 +1,230 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-24, continued (Sonnet 5 -- graph EXPANSION, direct follow-up to the
+# Last updated: 2026-08-09, continued yet again (Sonnet 5 -- TaxaWizard's first full code +
+# domain review against inst/Code and Domain Review 2.Rmd, findings + fixes recorded in new
+# inst/taxawizard_review.Rmd (matches TaxaFetch/TaxaLikely/TaxaMatch/TaxaFlag's own
+# combined-review convention -- every other package already had one; this was the last gap).
+# Real fixes: (1) SECURITY -- .param_assembly_line()'s function_ref branch in every
+# workflow_app()-generated app.R called eval(parse(text = input$param_llm_fn)) with no
+# server-side validation; the selectInput() widget constrains the UI, but Shiny's
+# client/server protocol lets a browser client set arbitrary input$ values via
+# Shiny.setInputValue() regardless of widget choices, and workflow_app()'s own docs
+# describe generated apps as meant to be "shared with collaborators" -- a real, if narrow,
+# RCE vector in any deployed app. Fixed with a new shared .llm_provider_choices() (used by
+# both the widget builder and a new server-side allow-list check emitted before every
+# eval(parse(...)) call), verified by a new test that a tampered input value is rejected
+# before eval() runs. (2) .save_session() (R/cli.R) persists api_key/llm_fn (often a
+# closure capturing a provider key) to a plaintext RDS in tempdir() for workflow_fix() to
+# resume later -- now chmod'd 0600 immediately after saveRDS() so the secret is
+# owner-readable only. (3) .generate_app() was a hardcoded non-functional placeholder
+# ("Full implementation forthcoming") even though a complete app generator
+# (workflow_app()/.build_app_code()) already existed in the same package -- any interview
+# response with "app" in dag$outputs (a value the legacy system_prompt.md schema still
+# documents as valid, though the live phase_parameterize.md prompt steers the LLM toward
+# a separate workflow_app() follow-up call instead) would have silently produced a broken
+# stub. Now delegates to workflow_app(script_path=, launch=FALSE) when a sibling script
+# exists in the same response. (4) workflow_engine()/.call_llm()'s model default
+# ("claude-opus-4-6") didn't match workflow_create()/workflow_chat()/workflow_gadget()'s
+# ("claude-sonnet-4-6") -- this file's own "Key Design Decisions" section documents Sonnet
+# as the intended engine default; a caller using workflow_engine() directly (the natural
+# entry point for scripting) silently got the wrong one. Aligned both to sonnet. (5) `df`
+# (shadows stats::df()) renamed to `input_df` in .subset_for_trial() (R/trial.R,
+# internal-only) -- the last function in the ecosystem still carrying this exact pattern.
+# (6) lifecycle::badge("deprecated") is used in R/cli.R's and R/gadget.R's roxygen
+# (confirmed live-evaluated at devtools::document() time by inspecting the built .Rd
+# files' expanded badge markup) but `lifecycle` was declared nowhere in DESCRIPTION --
+# added to Suggests. (7) Two dead sub() calls immediately shadowed by an identical gsub()
+# removed from .build_phase_prompt()'s path_select branch (R/graph.R). (8) Three orphaned,
+# unreferenced *.rds prior tables (~120KB, real TaxaExpect-style output from an unrelated
+# manual test session, confirmed via a full-package grep) and a stray tests/.DS_Store
+# removed from inst/ -- a package with no data dependencies of its own shouldn't ship
+# unrelated species-specific fixtures in every install. Test coverage: added
+# tests/testthat/test-output.R (.generate_script()/.append_to_script()/.generate_markdown()/
+# .generate_outputs() -- the actual script-generation logic behind this package's core
+# deliverable, previously entirely untested) plus two .parse_engine_response() tests for
+# the previously-uncovered "Approach 3" brace-matching JSON-recovery fallback and three new
+# tests in test-shiny.R for the eval() allow-list fix. Also new inst/
+# taxawizard_reviewer_demo.R -- a runnable companion script demonstrating every exported
+# function (workflow_create/workflow_engine/workflow_fix/workflow_app/annotate_script/the
+# two deprecated wrappers) against a real Azure OpenAI (DOI) backend via an explicit llm_fn
+# closure, plus an offline-only section (graph path computation, response parsing) needing
+# no API key at all. `devtools::test()` 696/696 (0 failures, up from 655),
+# `devtools::check()` 0 errors/0 warnings/0 notes (unchanged, was already clean),
+# reinstalled and verified at ~/Library/R/4.0/library. See inst/taxawizard_review.Rmd for
+# the full write-up, including several items checked and found NOT to be problems (the
+# Shiny chat gadget's HTML escaping, path-handling quote-escaping, .call_llm()'s
+# TaxaTools-optional design).
+# Previous update, 2026-08-09, continued (Sonnet 5 -- closes out the three "wholly missing
+# capability" gaps the same-day metadata-drift audit left open, at the user's explicit request
+# ("let's add those open issues"). Two were real graph-worthy DAG additions; one turned out to
+# be a documentation-only decision once actually investigated, not a gap at all.
+#
+# (1) BLAST-based reference-quality screening (TaxaMatch::evaluate_reference_accessions()/
+# flag_incongruent_references(), 2026-08-07/08's recommended pre-training screen). Considered
+# and REJECTED a self-loop design (match_df + accession_evaluation -> match_df, as its own new
+# node/edge) after checking `.compute_paths()`'s actual backward-search implementation
+# (R/graph.R): its cycle-prevention (`visited_targets`) unconditionally blocks a node from
+# being re-derived while already being derived, so a `match_df -> match_df` edge would NEVER
+# appear in any computed path -- the exact same permanently-unreachable failure mode as the
+# dead acoustic/image edges removed earlier the same day. Wired instead as an optional gated
+# step INSIDE the existing `seq_to_match.R` snippet (the sequences -> match_df edge, the only
+# one BLAST-derived accessions are relevant to -- not acoustic/image match_df, which have no
+# GenBank accession at all), exactly matching this codebase's own established precedent for
+# this situation (`generate_domestic_food_priors()`'s addition to `dist_to_priors.R`,
+# `flag_institution_candidates()`'s addition to `occ_to_std.R`, both 2026-07-24: "existing
+# edges extended in place, no topology change"). Gated on a new `{{screen_reference_accessions}}`
+# boolean; `flag_incongruent_references()` (annotate, not remove) used as the wired default,
+# matching the ecosystem's own explicit recommendation -- `remove_incongruent_references()`
+# metadata'd but not snippet-wired, matching that same recommendation's "deliberate opt-in,
+# not default" framing. `investigate_flagged_accession(s)()`/`check_marker_mismatch()` are
+# genuinely investigative single-accession follow-up tools (a human decides which flagged
+# accessions to dig into) rather than mechanical pipeline steps -- metadata'd only, matching
+# the existing `calibrate_coverage_filter()`/`coverage_threshold()` precedent for diagnostic
+# helpers with no graph edge. Also fixed a real, separate, stale value found while touching
+# this exact file: `seq_to_match.R` hardcoded `blast_sequences(score_range = 2)`, the OLD
+# default the 2026-08-08 breaking-change table's own evidence shows silently drops a query's
+# true species from BLAST output 57% of the time when a confusable congener scores higher --
+# updated to the current default (`8`).
+#
+# (2) `TaxaAssign::compute_group_priors()` + `posterior_consensus(group_priors=)` (2026-07-30,
+# the fix for the real Mugu 504/616 false-positive regression). Same "extend the existing edge
+# in place" pattern -- added as an optional gated step inside `post_to_consensus.R` (the
+# `posteriors -> consensus` edge), computing `group_priors` once and threading it into both of
+# that snippet's existing `posterior_consensus()` calls (the initial pass and the empirical-
+# Bayes-refined final pass). Gated on `{{include_group_priors}}`, needs
+# `{{taxaexpect_priors_var}}` + `{{taxonomy_map_var}}` (e.g. `occurrences_clean`) as directly-
+# supplied placeholders, mirroring `lik_prior_to_post.R`'s existing `{{lat}}`/`{{lon}}`/
+# `{{main_habitat}}` convention rather than inventing a new cross-edge variable-threading
+# mechanism. Verified directly against real formals (`compute_group_priors()`'s 5 formals,
+# `posterior_consensus()` does have `group_priors`) and a live smoke test with realistic
+# priors/taxonomy_map fixtures before trusting the wiring.
+#
+# (3) `TaxaFlag::review_spatial_context()` (2026-08-06/07) -- checked directly rather than
+# assumed: it's a `miniUI`/`leaflet` Shiny GADGET (opens a live interactive browser session),
+# not a script-callable function. Confirmed via the graph's own existing precedent that this
+# whole CLASS of function has zero graph AND zero metadata representation anywhere already --
+# `TaxaHabitat::review_spatial_flags()`/`review_institution_flags()` (both real, both used in
+# production, both genuinely Shiny gadgets) have never had a graph edge or metadata entry
+# either, while `TaxaFlag::review_assignments()` (an LLM-driven, non-interactive, plain
+# script-callable review function -- confirmed via its own real formals, no Shiny anywhere)
+# IS graph-wired (`consensus_to_reviewed`). This is a real, consistent, working distinction
+# already baked into the design (interactive gadgets don't fit a generated-script DAG; batch
+# review functions do) -- not a gap that was missed, just never written down as a decision
+# anywhere. Documenting it here so a future audit doesn't re-flag it as one: `workflow_app()`
+# (TaxaWizard's own script-to-Shiny-app converter, R/shiny.R) is the intended path from a
+# TaxaWizard-generated script to something with review-gadget-style interactivity, not a graph
+# edge to a specific gadget function.
+#
+# Verified: `TaxaWizard:::.compute_paths()` re-run post-edit -- `sequences -> consensus` still
+# 32 paths (edge count unchanged, since both additions were snippet-internal, not new
+# topology), `distributions -> prior_map` still 2 paths. `devtools::test()` 655/655 unchanged
+# (no test asserts on gated-optional-step snippet content), `devtools::check()` 0/0/0.
+# Previous update, 2026-08-09 (Sonnet 5 -- metadata-drift audit + Tier-1 fix pass, prompted by the
+# user asking for a full sensitivity/staleness assessment (how sensitive is the engine to
+# function details, when was metadata last synced, what's emerged since, what's the update
+# strategy). Verdict: metadata/*.json's last full sync was 2026-07-24; four of eight files
+# (TaxaAssign/TaxaExpect/TaxaFetch/TaxaMatch) hadn't been touched since. Built a reusable
+# structural auditor (formals()-vs-metadata diff against the real installed packages, not
+# just grep) -- TaxaID/diagnostics/taxawizard_metadata_audit.R, run standalone
+# (`Rscript diagnostics/taxawizard_metadata_audit.R` from the TaxaID root) any time a package
+# signature changes, to catch this class of drift going forward without a full manual re-audit
+# -- surfacing 95 findings, ~70 after noise filtering (mostly `5L` vs `5` default-literal
+# formatting, flagged separately as DEFAULT_MISMATCH and not treated as real drift). Fixed the "Tier 1" subset (graph-wired,
+# confirmed broken, would fail or silently misbehave on first real generated-script run):
+# (1) The single worst finding -- `taxa_to_acoustic_matrix`/`image_refs_to_matrix` edges (plus
+# their `acoustic_matrix_to_model`/`image_matrix_to_model` consumers) called
+# TaxaLikely::fetch_reference_recordings()/build_acoustic_reference()/build_image_reference(),
+# none of which have existed since **Session 99 (2026-06-02)** -- confirmed via `git log -S`
+# that the ecosystem's own ecosystem-level `2820c07` commit deliberately removed them in favor
+# of the no-score pathway (`unreferenced_candidates()` + `assign_scores(score_type=)`), and the
+# real replacement edges (`birdnet_to_match`, `image_to_match`) already existed correctly in
+# the graph the whole time. This drift had been live for over two months, not weeks. Deleted
+# the 4 dead edges + 2 orphaned nodes (`acoustic_matrix`/`image_matrix`) + 2 dead snippet files;
+# 28 nodes/38 edges -> 26 nodes/34 edges. (2) `TaxaTools::create_taxon_names()` called with
+# `df = {{var}}` (real formal: `input_df`) in FIVE separate snippets
+# (match_to_consensus_llm/bayes/score.R, model_match_to_lik.R, match_to_taxa.R) -- every one
+# would have errored "unused argument" on first real use; all fixed. (3)
+# `TaxaMatch::read_animl_output()`/`read_inaturalist_cv_output()`/`read_birdnet_output()`
+# called with `data = ` (real formal: `files`) in `image_to_match.R`/`birdnet_to_match.R` --
+# confirms [[project_taxawizard_metadata_drift]]'s pre-existing memory finding was STILL live
+# 17 days after being flagged; fixed both snippets + metadata (also corrected read_animl_
+# output's stale FilePath/PredictedValue/Confidence defaults to the real FileName/prediction/
+# confidence). (4) `dist_to_priors_by_group.R` called `TaxaTools::change_backbone(df,
+# target_backbone_id=)` -- that function is a different, unrelated relabeling helper requiring
+# pre-existing matched_name/classification_path columns; the real target was always
+# `TaxaMatch::convert_taxonomy_backbone()` (the function documented extensively throughout
+# TaxaID/CLAUDE.md's NCBI-backbone-adoption history), which had NO metadata entry anywhere in
+# TaxaWizard despite being production-critical -- fixed the snippet and added a full, correct
+# metadata entry; removed the wrong `change_backbone` entry from TaxaTools.json entirely (it
+# was never a real fit for what any snippet needed). (5) `get_keys_from_context()`'s metadata
+# invented `taxon_names`/`backbone_id` params that don't exist -- real signature is a single
+# `hierarchy_df` (full-taxonomy-context lookup, not a name+backbone pair); the two calling
+# snippets (`taxa_to_occ.R`/`taxa_to_occ_checked.R`) were already calling it correctly
+# (positional), only the metadata was wrong -- fixed metadata only. (6)
+# `TaxaLikely::flag_reference_errors()`'s metadata `rank_system` param isn't real; its new
+# `singleton_match_threshold` (added the day before this audit, 2026-08-08) was completely
+# absent -- fixed. (7) `filter_top_hypotheses()`'s metadata said `likelihoods_df`, real formal
+# is `likelihood_df` (singular) -- fixed (snippet call was positional, so only metadata broke).
+# Verified via `TaxaWizard:::.compute_paths()` directly (not just JSON validity) that real
+# multi-step paths still resolve post-edit: `sequences -> consensus` 32 paths,
+# `birdnet_detections -> consensus` 32 paths, `image_classifier_output -> consensus` 32 paths,
+# `distributions -> prior_map` 2 paths. `devtools::test()` 655/655 (down from the 2026-07-24
+# note's 855 -- expected, matching combinatorial-growth logic in reverse: fewer real edges,
+# fewer enumerable paths, not a regression), `devtools::check()` 0/0/0.
+# Same-day follow-up (Tier 2): fixed the remaining metadata-only entries too (no snippet calls
+# these directly, so no script-breaking risk, but each would have produced a wrong/incomplete
+# interview or a garbage error-fix suggestion). `TaxaFlag::add_posthoc_assessment()` was the
+# worst of these -- metadata still described the pre-2026-07-30 signature entirely (`tiers`/
+# `taxon_col`/`tier_col`/`finest_rank`, none of which exist post-redesign; the real required
+# `expected_theta_threshold` was absent) -- fully rewritten against the real 15-param Axis-1/
+# Axis-2 signature and roxygen. Also fixed: `make_bbox_wkt()` (lon_min/lon_max/lat_min/lat_max
+# -> lat/lon/radius_deg), `search_literature()` (taxon_names/geographic_terms -> taxon_scope/
+# geo_scope/bbox/... the real 9-param OpenAlex signature), `write_reference_fasta()`
+# (fasta_path -> file), `calibrate_coverage_filter()`/`coverage_threshold()` (raw_df ->
+# ref_pairs, descriptions' build_acoustic_reference() references removed), `generate_report()`
+# (`result` flipped required=false -> true, matching the real no-default formal),
+# `find_taxonomy_conflicts()` (df -> input_df), `read_reference_fasta()` (`rank_system` flipped
+# optional -> required) and `build_sequence_matrix()` (`rank_system` flipped required ->
+# optional, matching its real `NULL` default). A second pass over the audit's own output
+# (re-run after the Tier-1 fixes, to catch what changed) surfaced 3 more structural findings
+# not in the original Tier-1/Tier-2 scoping message -- fixed rather than left as a known gap
+# since the tooling was already loaded: `TaxaHabitat::build_habitat_prompt()`/
+# `parse_hierarchical_habitat_response()` (both had entirely invented param names --
+# `taxon_names`/`response`/`habitat_prompt` -- vs. the real `taxon_list`/`raw_text`/
+# `habitat_scheme` etc.) and `TaxaLikely::audit_acoustic_coverage()` (`taxa`/
+# `classifier_species` -> the real `plausible_species`/`reference_species`). Left
+# deliberately unfixed: `TaxaMatch::standardize_match_data()`'s `data` param is flagged
+# `REQUIRED_MISMATCH` (real formal has a `NULL` default, so mechanically "optional") but
+# `data = NULL` opens `file.choose()` interactively or errors non-interactively -- for
+# TaxaWizard's always-non-interactive generated-script context, `required: true` is the
+# correct design choice even though it diverges from bare R semantics, so left as-is rather
+# than "fixed" into something worse.
+#
+# Verified via `TaxaTools::create_taxon_names(input_df=)` against the real bundled
+# `TaxaID_test_BLAST.rds` fixture (6 unique taxa resolved, no error) and
+# `TaxaMatch::read_animl_output()`/`read_inaturalist_cv_output()`/`read_birdnet_output()`
+# called with `files=` against small synthetic fixtures matching each real reader's expected
+# format (all three accepted the argument with no "unused argument" error -- one had 0 rows
+# from an intentionally-imperfect JSON fixture, not a fix problem).
+# `TaxaMatch::convert_taxonomy_backbone()`'s own existing test suite (`devtools::test(filter=
+# "convert_taxonomy_backbone")`) confirmed passing, ruling out any regression from the new
+# metadata entry describing it. Final audit re-run: 95 -> 44 -> 35 findings, ALL remaining
+# ones DEFAULT_MISMATCH noise (`5L` vs `5` literal-formatting, or a `match.arg()`-style vector
+# default represented as its first element) except the one deliberate `standardize_match_data`
+# case above. `devtools::test()` 655/655 (down from 2026-07-24's 855 -- expected, fewer real
+# edges means fewer enumerable paths, not a regression), `devtools::check()` 0/0/0.
+#
+# Wholly missing capabilities (no graph representation at all, not drift since nothing
+# claims to cover them) still open, unchanged from the 2026-07-24 note plus everything the
+# ecosystem has shipped since: the entire BLAST-based reference-quality screening toolchain
+# (TaxaMatch::evaluate_reference_accessions()/flag_incongruent_references()/
+# investigate_flagged_accession(s)()/check_marker_mismatch(), 2026-08-07/08, now the
+# recommended pre-training screen per the same day's ecosystem audit),
+# TaxaAssign::compute_group_priors()/posterior_consensus(group_priors=) (2026-07-30, the fix
+# for the real Mugu 504/616 false-positive regression), TaxaFlag::review_spatial_context()
+# (2026-08-06/07, plausibly deliberate given add_posthoc_assessment()'s precedent, but never
+# recorded as such the way that one was).
+# Previous update, 2026-07-24, continued (Sonnet 5 -- graph EXPANSION, direct follow-up to the
 # metadata-drift sync pass below: the user asked for the 5 flagged-but-not-fixed capabilities
 # to actually be wired into workflow_graph.json as new nodes/edges, not just documented as a
 # gap. New node: site_table (per-observation spatial_group_id table). New edges:
@@ -142,7 +366,8 @@ Sits outside the TaxaID dependency chain -- depends on all TaxaID packages
 (via metadata), but no TaxaID package depends on it.
 
 **Status: Graph-based engine implemented. 0 errors, 0 warnings, 0 notes on devtools::check().
-Metadata JSONs fully audited. 259 tests passing.**
+Metadata JSONs fully audited. First full code + domain review complete (2026-08-09, see
+inst/taxawizard_review.Rmd). 696 tests passing.**
 
 ---
 
@@ -178,14 +403,15 @@ JSON (stored as full structured response in history).
 
 ### Workflow Graph
 
-`inst/graph/workflow_graph.json` defines (2026-07-24 count, corrected from a long-stale
-"20 nodes / 22 edges" claim dating to Session 69's original build):
-- **28 nodes**: 10 inputs, 12 intermediates, 6 outputs
-- **38 edges**: each maps to specific TaxaID functions + a code snippet file
+`inst/graph/workflow_graph.json` defines (2026-08-09 count, after the metadata-drift audit
+below removed the dead acoustic/image reference-matrix subgraph -- down from 2026-07-24's
+28 nodes / 38 edges):
+- **26 nodes**: 10 inputs, 10 intermediates, 6 outputs
+- **34 edges**: each maps to specific TaxaID functions + a code snippet file
 - **Wrapper edges**: `build_priors()`, `run_llm_pipeline()`, `run_bayesian_pipeline()`
   flagged with `"wrapper": true`
 
-`inst/graph/snippets/*.R` -- 34 code snippet files with `{{placeholder}}` params
+`inst/graph/snippets/*.R` -- 32 code snippet files with `{{placeholder}}` params
 extracted from real battle-tested workflow scripts.
 
 Path computation handles multi-input edges (e.g., `match_to_consensus_bayes`

@@ -519,9 +519,7 @@ utils::globalVariables(character(0))
         paths <- .compute_paths(input_type, output_type, graph)
       }
 
-      prompt <- sub("{{INPUT_TYPE}}", input_type, prompt, fixed = TRUE)
       prompt <- gsub("{{INPUT_TYPE}}", input_type, prompt, fixed = TRUE)
-      prompt <- sub("{{OUTPUT_TYPE}}", output_type, prompt, fixed = TRUE)
       prompt <- gsub("{{OUTPUT_TYPE}}", output_type, prompt, fixed = TRUE)
       prompt <- sub("{{INPUT_LABEL}}", input_label, prompt, fixed = TRUE)
       prompt <- sub("{{OUTPUT_LABEL}}", output_label, prompt, fixed = TRUE)

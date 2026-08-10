@@ -6,18 +6,77 @@
       "name": "flag_contaminant",
       "description": "Flag taxa disproportionately represented in control samples (lab blanks, field blanks, or positive controls)",
       "inputs": [
-        {"name": "input_df", "type": "data.frame", "required": true, "description": "Long-format detection data with read counts; one row per event x taxon"},
-        {"name": "control_samples", "type": "character_vector", "required": false, "description": "Character vector of event_id values identifying control samples"},
-        {"name": "sample_type_col", "type": "character", "required": false, "description": "Column indicating event type (alternative to control_samples; use with control_types)"},
-        {"name": "control_types", "type": "character_vector", "required": false, "description": "Values in sample_type_col that identify controls"},
-        {"name": "event_col", "type": "character", "required": false, "default": "event_id", "description": "Column identifying L1 collection events (not observation_id)"},
-        {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Column with taxon names"},
-        {"name": "reads_col", "type": "character", "required": false, "default": "n_reads", "description": "Column with read counts; drives depth-weighted field_rate/control_rate"},
-        {"name": "contaminant_type", "type": "character", "required": false, "default": "lab_contaminant", "description": "2026-07-24: no longer changes output COLUMN NAMES (those are now fixed: observation_validity/validity_flag/validity_reason). Only changes the qualifier embedded in validity_flag's value, e.g. 'invalid_lab_contaminant' vs 'invalid_positive_control'"},
-        {"name": "score_thresholds", "type": "numeric", "required": false, "default": "c(0.5, 0.9)", "description": "Two-element vector defining invalid/questionable/valid boundaries on observation_validity"},
-        {"name": "prior_weight", "type": "numeric", "required": false, "default": 20, "description": "Empirical-Bayes shrinkage weight toward 0.5, in read-equivalent units (Session 152 -- was sample-count units through Session 151)"}
+        {
+          "name": "input_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Long-format detection data with read counts; one row per event x taxon"
+        },
+        {
+          "name": "control_samples",
+          "type": "character_vector",
+          "required": false,
+          "description": "Character vector of event_id values identifying control samples"
+        },
+        {
+          "name": "sample_type_col",
+          "type": "character",
+          "required": false,
+          "description": "Column indicating event type (alternative to control_samples; use with control_types)"
+        },
+        {
+          "name": "control_types",
+          "type": "character_vector",
+          "required": false,
+          "description": "Values in sample_type_col that identify controls"
+        },
+        {
+          "name": "event_col",
+          "type": "character",
+          "required": false,
+          "default": "event_id",
+          "description": "Column identifying L1 collection events (not observation_id)"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Column with taxon names"
+        },
+        {
+          "name": "reads_col",
+          "type": "character",
+          "required": false,
+          "default": "n_reads",
+          "description": "Column with read counts; drives depth-weighted field_rate/control_rate"
+        },
+        {
+          "name": "contaminant_type",
+          "type": "character",
+          "required": false,
+          "default": "lab_contaminant",
+          "description": "2026-07-24: no longer changes output COLUMN NAMES (those are now fixed: observation_validity/validity_flag/validity_reason). Only changes the qualifier embedded in validity_flag's value, e.g. 'invalid_lab_contaminant' vs 'invalid_positive_control'"
+        },
+        {
+          "name": "score_thresholds",
+          "type": "numeric",
+          "required": false,
+          "default": "c(0.5, 0.9)",
+          "description": "Two-element vector defining invalid/questionable/valid boundaries on observation_validity"
+        },
+        {
+          "name": "prior_weight",
+          "type": "numeric",
+          "required": false,
+          "default": 20,
+          "description": "Empirical-Bayes shrinkage weight toward 0.5, in read-equivalent units (Session 152 -- was sample-count units through Session 151)"
+        }
       ],
-      "output": {"type": "flagged_df", "description": "Per-taxon summary with fixed columns observation_validity (numeric 0-1, high = genuine), validity_flag ('valid' / 'questionable_{contaminant_type}' / 'invalid_{contaminant_type}'), validity_reason, plus informational field_rate/control_rate/n_reads_total/n_field_present/n_controls_present/n_controls_total. contaminant_type's value is embedded in validity_flag, not the column name."},
+      "output": {
+        "type": "flagged_df",
+        "description": "Per-taxon summary with fixed columns observation_validity (numeric 0-1, high = genuine), validity_flag ('valid' / 'questionable_{contaminant_type}' / 'invalid_{contaminant_type}'), validity_reason, plus informational field_rate/control_rate/n_reads_total/n_field_present/n_controls_present/n_controls_total. contaminant_type's value is embedded in validity_flag, not the column name."
+      },
       "scaling": "linear",
       "scaling_note": "Fast; proportion-based comparison"
     },
@@ -25,17 +84,71 @@
       "name": "flag_handler",
       "description": "Flag detections temporally proximate to handler presence (camera traps, acoustic recorders)",
       "inputs": [
-        {"name": "input_df", "type": "data.frame", "required": true, "description": "Detection data with datetime column"},
-        {"name": "datetime_col", "type": "character", "required": false, "default": "datetime", "description": "Column with datetime values (auto-parsed)"},
-        {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon column"},
-        {"name": "group_col", "type": "character", "required": false, "description": "Column for grouping (e.g., camera station); min/max computed per group"},
-        {"name": "interval_minutes", "type": "numeric", "required": false, "default": 30, "description": "Minutes before/after session edges to flag"},
-        {"name": "handler_taxa", "type": "character_vector", "required": false, "description": "Taxa indicating handler presence (default: Homo sapiens)"},
-        {"name": "station_metadata", "type": "data.frame", "required": false, "default": null, "description": "Optional per-group deploy_time/retrieve_time table; anchors edges on real deploy/retrieve times instead of the detection data's own min/max. Requires group_col"},
-        {"name": "deploy_col", "type": "character", "required": false, "default": "deploy_time", "description": "Column in station_metadata with deployment timestamp"},
-        {"name": "retrieve_col", "type": "character", "required": false, "default": "retrieve_time", "description": "Column in station_metadata with retrieval timestamp"}
+        {
+          "name": "input_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Detection data with datetime column"
+        },
+        {
+          "name": "datetime_col",
+          "type": "character",
+          "required": false,
+          "default": "datetime",
+          "description": "Column with datetime values (auto-parsed)"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Taxon column"
+        },
+        {
+          "name": "group_col",
+          "type": "character",
+          "required": false,
+          "description": "Column for grouping (e.g., camera station); min/max computed per group"
+        },
+        {
+          "name": "interval_minutes",
+          "type": "numeric",
+          "required": false,
+          "default": 30,
+          "description": "Minutes before/after session edges to flag"
+        },
+        {
+          "name": "handler_taxa",
+          "type": "character_vector",
+          "required": false,
+          "description": "Taxa indicating handler presence (default: Homo sapiens)"
+        },
+        {
+          "name": "station_metadata",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Optional per-group deploy_time/retrieve_time table; anchors edges on real deploy/retrieve times instead of the detection data's own min/max. Requires group_col"
+        },
+        {
+          "name": "deploy_col",
+          "type": "character",
+          "required": false,
+          "default": "deploy_time",
+          "description": "Column in station_metadata with deployment timestamp"
+        },
+        {
+          "name": "retrieve_col",
+          "type": "character",
+          "required": false,
+          "default": "retrieve_time",
+          "description": "Column in station_metadata with retrieval timestamp"
+        }
       ],
-      "output": {"type": "flagged_df", "description": "Input with fixed columns observation_validity (numeric 0-1, high = genuine), validity_flag ('valid'/'questionable_handling'/'invalid_handling'), validity_reason, edge_anchor_source ('station_metadata' or 'detection_data_fallback') added. Same column names as flag_contaminant() (2026-07-24 unified schema)"},
+      "output": {
+        "type": "flagged_df",
+        "description": "Input with fixed columns observation_validity (numeric 0-1, high = genuine), validity_flag ('valid'/'questionable_handling'/'invalid_handling'), validity_reason, edge_anchor_source ('station_metadata' or 'detection_data_fallback') added. Same column names as flag_contaminant() (2026-07-24 unified schema)"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; temporal proximity check"
     },
@@ -43,39 +156,207 @@
       "name": "review_assignments",
       "description": "LLM expert review of taxonomic assignments for ecological plausibility (habitat fit, geographic range, scope, contaminant risk, alternatives)",
       "inputs": [
-        {"name": "input_df", "type": "data.frame", "required": true, "description": "Data frame with a taxon column; typically filtered to flagged rows (suspect, unexpected, etc.)"},
-        {"name": "taxon_col", "type": "character", "required": false, "default": "consensus_taxon", "description": "Column name for the taxon to review"},
-        {"name": "taxon_rank_col", "type": "character", "required": false, "description": "Column for consensus rank; triggers lower_hypotheses when coarser than species"},
-        {"name": "context", "type": "list_or_context_df", "required": true, "description": "Named list or build_context() output with geography/ecoregion and habitat/main_habitat"},
-        {"name": "target_group", "type": "character", "required": false, "description": "Taxonomic target group (e.g., 'fish', 'birds'); triggers scope review"},
-        {"name": "marker", "type": "character", "required": false, "description": "Molecular marker or detection method (e.g., '12S', 'COI', 'camera trap')"},
-        {"name": "data_type", "type": "character", "required": false, "default": "eDNA", "description": "'eDNA', 'acoustic', or 'image' — switches contaminant guidance in the LLM prompt"},
-        {"name": "llm_fn", "type": "function", "required": false, "default": "TaxaTools::call_api", "description": "LLM provider function. Use TaxaTools::call_api (auto-selects provider). Valid names: call_api, call_anthropic_api, call_gemini_api, call_openai_api, call_azure_api, call_ollama_api. Do NOT invent other names."},
-        {"name": "taxa_per_call", "type": "integer", "required": false, "default": 15, "description": "Maximum taxa per LLM batch call (default 15 to avoid response truncation)"},
-        {"name": "pause_seconds", "type": "numeric", "required": false, "default": 1, "description": "Seconds between LLM calls"},
-        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Print progress messages"}
+        {
+          "name": "input_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame with a taxon column; typically filtered to flagged rows (suspect, unexpected, etc.)"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_taxon",
+          "description": "Column name for the taxon to review"
+        },
+        {
+          "name": "taxon_rank_col",
+          "type": "character",
+          "required": false,
+          "description": "Column for consensus rank; triggers lower_hypotheses when coarser than species"
+        },
+        {
+          "name": "context",
+          "type": "list_or_context_df",
+          "required": true,
+          "description": "Named list or build_context() output with geography/ecoregion and habitat/main_habitat"
+        },
+        {
+          "name": "target_group",
+          "type": "character",
+          "required": false,
+          "description": "Taxonomic target group (e.g., 'fish', 'birds'); triggers scope review"
+        },
+        {
+          "name": "marker",
+          "type": "character",
+          "required": false,
+          "description": "Molecular marker or detection method (e.g., '12S', 'COI', 'camera trap')"
+        },
+        {
+          "name": "data_type",
+          "type": "character",
+          "required": false,
+          "default": "eDNA",
+          "description": "'eDNA', 'acoustic', or 'image' \u2014 switches contaminant guidance in the LLM prompt"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "default": "TaxaTools::call_api",
+          "description": "LLM provider function. Use TaxaTools::call_api (auto-selects provider). Valid names: call_api, call_anthropic_api, call_gemini_api, call_openai_api, call_azure_api, call_ollama_api. Do NOT invent other names."
+        },
+        {
+          "name": "taxa_per_call",
+          "type": "integer",
+          "required": false,
+          "default": 15,
+          "description": "Maximum taxa per LLM batch call (default 15 to avoid response truncation)"
+        },
+        {
+          "name": "pause_seconds",
+          "type": "numeric",
+          "required": false,
+          "default": 1,
+          "description": "Seconds between LLM calls"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Print progress messages"
+        }
       ],
-      "output": {"type": "review_df", "description": "Input df with 8 review columns: habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"},
+      "output": {
+        "type": "review_df",
+        "description": "Input df with 8 review columns: habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"
+      },
       "scaling": "api_limited",
       "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 15 taxa"
     },
     {
       "name": "add_posthoc_assessment",
-      "description": "Classify each consensus assignment by prior tier × sequence-match evidence into a single posthoc_assessment column, plus two separate additive flag columns. Requires winner_likelihood from posterior_consensus() and tiers from priors_combined. Run before review_assignments() to identify which rows need expert review.",
+      "description": "Append two independent diagnostic axes to a posterior_consensus() output, reported for primary_taxon and consensus_taxon separately: occurrence plausibility (Axis 1 -- primary_plausibility/consensus_plausibility, 'how expected is this taxon here?') and discrimination (Axis 2 -- primary_discrimination/consensus_discrimination, 'could the evidence tell this taxon apart from a plausible relative?'). Neither axis gates or overrides the other. Redesigned 2026-07-30 -- superseded the old single posthoc_assessment column (tiers/taxon_col/tier_col/finest_rank all removed).",
       "inputs": [
-        {"name": "consensus_df", "type": "consensus_df", "required": true, "description": "Output of posterior_consensus() with winner_likelihood, consensus_taxon, and consensus_rank columns"},
-        {"name": "tiers", "type": "data.frame", "required": true, "description": "Taxon-tier lookup; typically bind_rows(priors_observed, priors_undetected) from TaxaExpect; tier3_undetected rows come from generate_undetected_diversity()"},
-        {"name": "winner_likelihood_col", "type": "character", "required": false, "default": "winner_likelihood", "description": "Column holding the winner's ratio-normalised likelihood; pass 'winner_likelihood_cov' for coverage-adjusted value"},
-        {"name": "likelihood_threshold", "type": "numeric", "required": false, "default": 0.5, "description": "Threshold for 'supported' vs 'limited' evidence; below this, winner had < half the sequence density of the best hypothesis"},
-        {"name": "finest_rank", "type": "character", "required": false, "default": "species", "description": "Rank at which tier lookups are valid; rows with coarser or NA rank receive vague_rank"},
-        {"name": "domestic_taxa", "type": "character_vector", "required": false, "default": null, "description": "Optional taxa known domestic/synanthropic (occurrence-database floor-prior artifact); relabels a strong-likelihood + database-driven-low-tier call as domestic_prior_caveat instead of unprecedented/unexpected"},
-        {"name": "domestic_prior_source", "type": "character", "required": false, "default": "wild", "description": "'wild' or 'augmented' — whether the tier lookup already accounts for domestic taxa"},
-        {"name": "own_rank_confusion_risk_col", "type": "character", "required": false, "default": "winner_own_rank_confusion_risk", "description": "Column with the winner's own-rank confusion-risk value (from TaxaLikely::evaluate_likelihoods()/posterior_consensus() pass-through; renamed from *_support 2026-07-23, HIGH = more confusable = weaker evidence)"},
-        {"name": "high_confusion_risk_threshold", "type": "numeric", "required": false, "default": 0.5, "description": "Above this, confusion_risk_flag is set to 'high_confusion_risk' (separate additive column, never overrides posthoc_assessment)"}
+        {
+          "name": "consensus_df",
+          "type": "consensus_df",
+          "required": true,
+          "description": "Output of TaxaAssign::posterior_consensus(), containing at minimum winner_likelihood_col, consensus_taxon_col, and consensus_rank_col"
+        },
+        {
+          "name": "winner_likelihood_col",
+          "type": "character",
+          "required": false,
+          "default": "winner_likelihood",
+          "description": "Column holding the winner's ratio-normalised likelihood; used only by the domestic-species caveat"
+        },
+        {
+          "name": "consensus_taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_taxon",
+          "description": "Column holding the consensus taxon name; used only by the domestic-species caveat"
+        },
+        {
+          "name": "consensus_rank_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_rank",
+          "description": "Column holding the consensus rank; drives which expected_theta_threshold entry consensus_plausibility compares against"
+        },
+        {
+          "name": "likelihood_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.5,
+          "description": "Likelihood cutoff the domestic-species caveat uses for 'the ID itself is trustworthy'; unused when domestic_taxa is NULL"
+        },
+        {
+          "name": "domestic_taxa",
+          "type": "character_vector",
+          "required": false,
+          "default": null,
+          "description": "Taxon names (matched against consensus_taxon_col) that are domestic/synanthropic for your study system; NULL disables the domestic-prior-caveat feature entirely (no built-in default list)"
+        },
+        {
+          "name": "domestic_prior_source",
+          "type": "character",
+          "required": false,
+          "default": "wild",
+          "description": "'wild' (raw GBIF/iNat occurrence prior, no domestic augmentation -- flag fires) or 'augmented' (prior pipeline already incorporated known local domestic presence -- flag never fires); ignored when domestic_taxa is NULL"
+        },
+        {
+          "name": "primary_confusion_risk_col",
+          "type": "character",
+          "required": false,
+          "default": "winner_own_rank_confusion_risk",
+          "description": "Column holding posterior_consensus()'s winner_own_rank_confusion_risk (rank-matched to primary_taxon); drives primary_discrimination"
+        },
+        {
+          "name": "consensus_confusion_risk_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_confusion_risk",
+          "description": "Column holding the confusion-risk value rank-matched to consensus_taxon; drives consensus_discrimination"
+        },
+        {
+          "name": "discriminating_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.05,
+          "description": "Below this confusion-risk value, the resolved rank is 'discriminating'"
+        },
+        {
+          "name": "indistinguishable_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.5,
+          "description": "At or above this confusion-risk value, the resolved rank is 'indistinguishable'; between the two thresholds, 'weak'"
+        },
+        {
+          "name": "winner_theta_col",
+          "type": "character",
+          "required": false,
+          "default": "winner_theta_mean",
+          "description": "Column holding the winning hypothesis's own raw occurrence-model share (from posterior_consensus()); drives primary_plausibility. Deliberately theta_mean, NOT winner_prior/prior_mean (which can be inflated by update_prior_from_consensus()'s confirmation boost)"
+        },
+        {
+          "name": "winner_record_col",
+          "type": "character",
+          "required": false,
+          "default": "winner_has_occurrence_record",
+          "description": "Column indicating whether the winning hypothesis's taxon carries a real occurrence record at all; this (not a low theta value) is what makes a call 'unprecedented'"
+        },
+        {
+          "name": "consensus_prior_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_prior",
+          "description": "Column holding the occurrence-model share (theta_mean-based group sum) for the consensus taxon"
+        },
+        {
+          "name": "consensus_record_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_has_occurrence_record",
+          "description": "Column indicating whether the consensus taxon's group carries a real occurrence record at all; this (not consensus_prior_col's NA-ness) is what makes a call 'unprecedented' at consensus scope"
+        },
+        {
+          "name": "expected_theta_threshold",
+          "type": "named_numeric_vector",
+          "required": true,
+          "description": "No safe universal default -- names must be rank labels (e.g. c(species=0.008, genus=0.02, family=0.05)); 'species' is required since primary_plausibility always compares against it. Recommended: median theta_sum at each rank from TaxaAssign::compute_group_priors() (species: median(taxaexpect_priors$theta_mean, na.rm=TRUE) directly)"
+        }
       ],
-      "output": {"type": "consensus_df", "description": "Input with posthoc_assessment column appended. Values: sensible (tier1+supported), limited_evidence (tier1+limited), unexpected (tier2+supported), suspect (tier2+limited OR not-in-tiers+limited), unprecedented (tier3+supported), vague_rank (non-species rank), modeled (NA likelihood), domestic_prior_caveat (domestic_taxa override). Also adds separate, additive confusion_risk_flag ('high_confusion_risk'/'low_confusion_risk'/NA) -- never folded into posthoc_assessment itself"},
+      "output": {
+        "type": "consensus_df",
+        "description": "Input with 5 columns appended: primary_plausibility/consensus_plausibility ('expected'/'unexpected'/'unprecedented'/'not_modeled'), primary_discrimination/consensus_discrimination ('discriminating'/'weak'/'indistinguishable'/'not_modeled'), and domestic_prior_caveat (logical)"
+      },
       "scaling": "linear",
-      "scaling_note": "Fast; vectorised lookup — runs on full consensus_df before filtering for review"
+      "scaling_note": "Fast; vectorised lookup \u2014 runs on full consensus_df before filtering for review"
     }
   ]
 }

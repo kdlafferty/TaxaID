@@ -11,7 +11,7 @@ NULL
 #'
 #' @param messages List of message objects (role + content).
 #' @param system_prompt Character. The system prompt enforcing JSON schema.
-#' @param model Character. Model ID. Default \code{"claude-opus-4-6"}.
+#' @param model Character. Model ID. Default \code{"claude-sonnet-4-6"}.
 #' @param api_key Character or NULL. Anthropic API key. Default reads
 #'   \code{ANTHROPIC_API_KEY} from environment. Ignored when \code{llm_fn}
 #'   is supplied.
@@ -26,7 +26,7 @@ NULL
 #' @noRd
 .call_llm <- function(messages,
                       system_prompt,
-                      model      = "claude-opus-4-6",
+                      model      = "claude-sonnet-4-6",
                       api_key    = NULL,
                       max_tokens = 16384L,
                       llm_fn     = NULL) {

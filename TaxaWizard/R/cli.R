@@ -279,6 +279,11 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 
 
 #' Save Conversation State
+#'
+#' Persists the conversation so \code{\link{workflow_fix}} can resume it
+#' later. This includes \code{api_key} (and \code{llm_fn}, which may itself
+#' be a closure capturing a provider API key) -- both are secrets, so the
+#' file is written with owner-only permissions immediately after creation.
 #' @noRd
 .save_session <- function(history, metadata, model, api_key, llm_fn,
                           output_dir, trial) {
@@ -294,6 +299,8 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
   )
   session_path <- file.path(tempdir(), "taxawizard_session.rds")
   saveRDS(session, session_path)
+  Sys.chmod(session_path, mode = "0600")
+  session_path
 }
 
 

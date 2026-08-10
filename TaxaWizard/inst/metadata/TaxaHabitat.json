@@ -6,11 +6,45 @@
       "name": "build_habitat_prompt",
       "description": "Build hierarchical LLM prompt for habitat assignment of taxa",
       "inputs": [
-        {"name": "taxon_names", "type": "character_vector", "required": true, "description": "Scientific names to assign habitats"},
-        {"name": "habitat_scheme", "type": "character", "required": false, "description": "Habitat classification scheme name as a string: NULL (default 3-category: Marine/Freshwater/Terrestrial), 'IUCN_L1' (13 categories), or 'IUCN_L2' (detailed). Do NOT pass a data frame."},
-        {"name": "geographic_context", "type": "character", "required": false, "description": "Geographic hint for habitat assignment"}
+        {
+          "name": "taxon_list",
+          "type": "character_vector",
+          "required": true,
+          "description": "Non-empty vector of scientific names to classify"
+        },
+        {
+          "name": "extra_covariates",
+          "type": "character_vector",
+          "required": false,
+          "default": [],
+          "description": "Additional covariate columns to request alongside the habitat classification"
+        },
+        {
+          "name": "chunk_size",
+          "type": "integer",
+          "required": false,
+          "default": 60,
+          "description": "Taxa per LLM call"
+        },
+        {
+          "name": "habitat_scheme",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Habitat classification scheme to use (default IUCN Habitats Classification Scheme)"
+        },
+        {
+          "name": "geographic_context",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Free-text geographic context to include in the prompt"
+        }
       ],
-      "output": {"type": "habitat_prompt", "description": "S3 prompt object for prompt_api()"},
+      "output": {
+        "type": "habitat_prompt",
+        "description": "S3 prompt object for prompt_api()"
+      },
       "scaling": "linear",
       "scaling_note": "Instant; string construction"
     },
@@ -18,10 +52,37 @@
       "name": "parse_hierarchical_habitat_response",
       "description": "Parse LLM habitat response into wide data frame with habitat weight columns",
       "inputs": [
-        {"name": "response", "type": "character", "required": true, "description": "LLM response text from prompt_api()"},
-        {"name": "habitat_prompt", "type": "habitat_prompt", "required": true, "description": "The prompt object used"}
+        {
+          "name": "raw_text",
+          "type": "character",
+          "required": true,
+          "description": "Length-1 non-empty raw LLM response text to parse"
+        },
+        {
+          "name": "taxon_list",
+          "type": "character_vector",
+          "required": true,
+          "description": "The same taxon_list passed to build_habitat_prompt(), used to validate/align parsed rows"
+        },
+        {
+          "name": "habitat_scheme",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Must match the scheme used in build_habitat_prompt()"
+        },
+        {
+          "name": "extra_covariates",
+          "type": "character_vector",
+          "required": false,
+          "default": null,
+          "description": "Must match the extra_covariates used in build_habitat_prompt()"
+        }
       ],
-      "output": {"type": "habitats_df", "description": "Wide data frame: one row per taxon, habitat weight columns"},
+      "output": {
+        "type": "habitats_df",
+        "description": "Wide data frame: one row per taxon, habitat weight columns"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; JSON parsing"
     },
@@ -29,13 +90,43 @@
       "name": "assign_habitat_biological",
       "description": "Assign habitat classifications from pre-computed habitat weight table to spatial data",
       "inputs": [
-        {"name": "occurrence_data", "type": "data.frame", "required": true, "description": "Spatial data with point_id and taxon columns"},
-        {"name": "habitats_df", "type": "habitats_df", "required": true, "description": "Per-species habitat weights from parse_hierarchical_habitat_response()"},
-        {"name": "habitat_cols", "type": "character_vector", "required": false, "description": "Habitat column names (auto-detected if NULL)"},
-        {"name": "point_id_col", "type": "character", "required": false, "default": "point_id", "description": "Column with spatial point IDs"},
-        {"name": "taxon_col", "type": "character", "required": false, "default": "species", "description": "Column with taxon names"}
+        {
+          "name": "occurrence_data",
+          "type": "data.frame",
+          "required": true,
+          "description": "Spatial data with point_id and taxon columns"
+        },
+        {
+          "name": "habitats_df",
+          "type": "habitats_df",
+          "required": true,
+          "description": "Per-species habitat weights from parse_hierarchical_habitat_response()"
+        },
+        {
+          "name": "habitat_cols",
+          "type": "character_vector",
+          "required": false,
+          "description": "Habitat column names (auto-detected if NULL)"
+        },
+        {
+          "name": "point_id_col",
+          "type": "character",
+          "required": false,
+          "default": "point_id",
+          "description": "Column with spatial point IDs"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "species",
+          "description": "Column with taxon names"
+        }
       ],
-      "output": {"type": "data.frame", "description": "Input with main_habitat column added per point"},
+      "output": {
+        "type": "data.frame",
+        "description": "Input with main_habitat column added per point"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; weighted voting"
     },
@@ -43,12 +134,37 @@
       "name": "consensus_habitat",
       "description": "Assemblage-level consensus habitat from per-species weights",
       "inputs": [
-        {"name": "habitats_df", "type": "habitats_df", "required": true, "description": "Per-species habitat weight table"},
-        {"name": "habitat_cols", "type": "character_vector", "required": false, "description": "Habitat columns (auto-detected if NULL)"},
-        {"name": "taxon_col", "type": "character", "required": false, "default": "taxon_name", "description": "Taxon name column"},
-        {"name": "threshold", "type": "numeric", "required": false, "default": 0.3, "description": "Minimum weight for inclusion"}
+        {
+          "name": "habitats_df",
+          "type": "habitats_df",
+          "required": true,
+          "description": "Per-species habitat weight table"
+        },
+        {
+          "name": "habitat_cols",
+          "type": "character_vector",
+          "required": false,
+          "description": "Habitat columns (auto-detected if NULL)"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Taxon name column"
+        },
+        {
+          "name": "threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.3,
+          "description": "Minimum weight for inclusion"
+        }
       ],
-      "output": {"type": "consensus_result", "description": "List with main_habitat, ecoregion, habitat_proportions"},
+      "output": {
+        "type": "consensus_result",
+        "description": "List with main_habitat, ecoregion, habitat_proportions"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; pure R computation"
     },
@@ -56,11 +172,31 @@
       "name": "flag_institution_candidates",
       "description": "Classification stage (pure, no interaction, no removal) for filter_gbif_quality()'s institution_flag column -- tiers flagged records by crossing the matched institution's real type (Herbarium/Botanic_garden/Zoo/Museum/University/Research_centre) against the record's kingdom. Mirrors flag_habitat_inconsistencies()'s classify-then-review pattern",
       "inputs": [
-        {"name": "occurrence_data", "type": "occurrences_df", "required": true, "description": "Output of filter_gbif_quality() -- must have institution_flag and institution_type columns"},
-        {"name": "kingdom_col", "type": "character", "required": false, "default": "kingdom", "description": "Column with the record's kingdom"},
-        {"name": "suspicion_rules", "type": "list", "required": false, "default": null, "description": "Optional custom institution-type-x-kingdom suspicion rules; NULL uses the built-in defaults"}
+        {
+          "name": "occurrence_data",
+          "type": "occurrences_df",
+          "required": true,
+          "description": "Output of filter_gbif_quality() -- must have institution_flag and institution_type columns"
+        },
+        {
+          "name": "kingdom_col",
+          "type": "character",
+          "required": false,
+          "default": "kingdom",
+          "description": "Column with the record's kingdom"
+        },
+        {
+          "name": "suspicion_rules",
+          "type": "list",
+          "required": false,
+          "default": null,
+          "description": "Optional custom institution-type-x-kingdom suspicion rules; NULL uses the built-in defaults"
+        }
       ],
-      "output": {"type": "occurrences_df", "description": "Input with one additional column, institution_suspicion: 'high'/'low'/'ambiguous' for a flagged record (institution_flag = TRUE); NA for every other record (never conflates 'not evaluated' with a real category)"},
+      "output": {
+        "type": "occurrences_df",
+        "description": "Input with one additional column, institution_suspicion: 'high'/'low'/'ambiguous' for a flagged record (institution_flag = TRUE); NA for every other record (never conflates 'not evaluated' with a real category)"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; vectorised lookup"
     }

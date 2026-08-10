@@ -1,0 +1,254 @@
+---
+title: "TaxaWizard code and domain review"
+output: html_document
+---
+
+Review date: 2026-08-09. Package version reviewed: TaxaWizard 0.1.0. Review conducted by
+Claude Code, using the template in `inst/Code and Domain Review 2.Rmd` (the TaxaID-root
+copy). This is TaxaWizard's first full code + domain review -- every other package in the
+ecosystem already had one. This review combines findings and fixes in one pass (no
+separate response document), matching the convention already used for
+`TaxaFetch`/`TaxaLikely`/`TaxaMatch`/`TaxaFlag`.
+
+`devtools::check()`: 0 errors, 0 warnings, 0 notes (unchanged -- was already clean).
+`devtools::test()`: 696 expectations (up from 655 before this review), 0 failures.
+
+------------------------------------------------------------------------
+
+# Code Review
+
+Purpose: To produce high quality code that is well written and organized according to
+best coding practices.
+
+### [x] Functionality: The code is readable, organized, and efficient.
+
+Readable and consistently organized across all 11 `R/` files -- roxygen documentation,
+`.`-prefixed internal helpers, and `package::function()` cross-package calls follow the
+same conventions used throughout the rest of the ecosystem. `R/shiny.R` (1671 lines) is
+by far the largest file, but that reflects real, non-duplicated surface area (script
+parsing via `parse()`/`getSrcref()`, two independent annotation modes, and a full
+UI+server code generator for the produced `app.R`) rather than disorganization -- it is
+internally well-sectioned (`Script Parsing` / `Generic Script Segmentation` / `Script
+Annotation` / `App Code Generation`) with clear boundaries between sections.
+
+TaxaWizard is architecturally the most unusual package in the ecosystem: it doesn't
+compute anything biological itself -- it generates R code that calls the other eight
+packages. The "graph-constrained LLM" design (`R/graph.R`'s `.compute_paths()` computing
+valid pipeline paths in R so the LLM only classifies/selects/parameterizes, never invents
+function names) is a sound way to keep an LLM from hallucinating call sequences, and is
+implemented consistently across all three phases.
+
+One real base-R name collision found and fixed: `.subset_for_trial(df, n, by)` (`R/trial.R`,
+internal-only) used `df` as its first parameter name, shadowing `stats::df()` -- the one
+function in the package still carrying the exact pattern every other package in this
+ecosystem has already fixed (`TaxaTools::create_taxon_names()`'s `df` -> `input_df`,
+`TaxaFlag`'s four-function fix, etc.). Renamed to `input_df`; zero external impact since
+the function is `@noRd` and every existing call site (tests) passes it positionally.
+
+### [x] Optimizations: No performance concerns; one real functional gap found and fixed.
+
+Nothing in this package does bulk/iterative computation at a scale where an algorithmic
+change would matter -- `.compute_paths()`'s backward search + Cartesian product of
+multi-input plans is over a graph with a few dozen nodes/edges, not user data.
+
+**Real gap: `.generate_app()` was a hardcoded placeholder ("Full implementation
+forthcoming"), while a complete, working app generator (`workflow_app()`/
+`.build_app_code()`) already existed in the same package.** `.generate_outputs()` (the
+dispatcher a completed `workflow_engine()` interview calls) routed any response with
+`"app"` in `dag$outputs` to the placeholder, not to `workflow_app()` -- so if an
+interview ever produced `outputs = c("script", "app")` (a value the legacy
+`system_prompt.md` schema explicitly documents as valid, even though the currently-active
+`phase_parameterize.md` prompt instead tells the LLM to point users at
+`workflow_app()` as a separate follow-up call), the user would have silently received a
+non-functional stub `app.R` instead of a real one. In practice the live prompt makes this
+path unlikely to be reached today, but the landmine was real and the fix was
+straightforward: `.generate_app()` now delegates to `workflow_app(script_path = ...,
+launch = FALSE)` whenever a sibling script was generated in the same response, falling
+back to a (now honestly-worded, pointing the user at `workflow_app()`) placeholder only
+when no script is available. See `R/output.R`.
+
+### [x] Coding standards: Two real issues found and fixed; otherwise clean.
+
+Every exported function (`workflow_create()`, `workflow_engine()`, `workflow_fix()`,
+`workflow_app()`, `annotate_script()`, plus the two deprecated wrappers) has complete
+roxygen with `@param` for every argument, an accurate `@return`, and runnable
+`@examples` (correctly wrapped in `\dontrun{}` where they require API access or an
+interactive session).
+
+**Real bug: `lifecycle::badge("deprecated")` used in roxygen but `lifecycle` was
+declared nowhere in `DESCRIPTION`.** `R/cli.R` and `R/gadget.R` both use
+`` `r lifecycle::badge("deprecated")` `` in their `@description` blocks -- this is a live
+inline-R roxygen2 expression (confirmed by inspecting the built `man/workflow_chat.Rd`/
+`man/workflow_gadget.Rd`, which contain the expanded `\ifelse{html}{...lifecycle-deprecated.svg...}`
+markup, not the literal backtick-r text), evaluated at `devtools::document()` time. A
+contributor running `document()` for the first time on a machine without `lifecycle`
+already installed (e.g. as a transitive dependency of something else) would hit an
+opaque failure with no clue why, since neither `Imports` nor `Suggests` mentioned it.
+Fixed by adding `lifecycle` to `Suggests`.
+
+**Inconsistency: `workflow_engine()`/`.call_llm()` defaulted to a different model than
+every user-facing wrapper.** `R/api.R`'s `.call_llm()` and `R/engine.R`'s
+`workflow_engine()` both defaulted `model = "claude-opus-4-6"`, while
+`workflow_create()`, `workflow_chat()`, and `workflow_gadget()` all default to
+`"claude-sonnet-4-6"` -- and this package's own `CLAUDE.md` documents Sonnet as the
+intended engine default ("Sonnet is faster and cheaper for the interview loop; the code
+comes from pre-validated snippets, not the LLM"). A caller using `workflow_engine()`
+directly (the natural entry point for scripting/testing, and the one this review's own
+example runner script uses) silently got a different, undocumented default. Fixed by
+aligning both to `"claude-sonnet-4-6"`.
+
+**Minor DRY nit, fixed:** `R/graph.R`'s `.build_phase_prompt()` (`path_select` branch)
+called `sub("{{INPUT_TYPE}}", ...)` immediately followed by `gsub("{{INPUT_TYPE}}", ...)`
+on the identical pattern/replacement (same for `{{OUTPUT_TYPE}}`) -- the `sub()` calls
+were fully redundant, since the following `gsub()` already replaces every occurrence
+including the first. Removed the two dead `sub()` lines.
+
+**Package hygiene: three orphaned data files and a `.DS_Store` were bundled into every
+install.** `inst/goby_priors.rds`, `inst/gobiidae_priors.rds`, and
+`inst/tidewater_goby_priors.rds` (~120KB combined, dated May 7, real
+`TaxaExpect`-style prior tables from what appears to be a one-off manual test session)
+had zero references anywhere in `R/`, `tests/`, or `inst/` -- confirmed via a full-package
+grep before removing them. A package whose own stated purpose has no data dependencies
+(`workflow_engine(history, metadata) -> JSON`; metadata comes from `inst/metadata/*.json`)
+should not ship unrelated species-specific prior tables in every tarball. Also removed
+`tests/.DS_Store` (a macOS Finder artifact; already covered by `.gitignore` going forward,
+so this was a stale tracked file rather than a gitignore gap).
+
+### [x] Automated tests: Confirmed passing when run locally; real coverage gaps found and partly closed.
+
+`devtools::test()`: 696 expectations, 0 failures (up from 655).
+
+**Coverage gap, largely closed this session:** before this review, only 3 of 11 `R/`
+files had a dedicated test file (`engine.R`, `graph.R`, `shiny.R`) -- `api.R`,
+`metadata.R`, `context.R`, `create.R`, `output.R`, `cli.R`, `trial.R`, `gadget.R`, `zzz.R`
+had none. The highest-value gap was `R/output.R`'s `.generate_script()`/
+`.append_to_script()` -- the actual code-generation logic that produces the package's
+core deliverable (the self-contained `.R` workflow script) -- which had zero test
+coverage despite being exercised by every real `workflow_create()` session. Added
+`tests/testthat/test-output.R` (fresh-script header/params/steps, the one-step-only
+debug-mode subsetting placement, `.find_existing_script()`'s date-scoping,
+`.append_to_script()`'s step renumbering + single-footer invariant + `total_steps`
+update, `.generate_markdown()`, `.generate_outputs()`'s `appended` attribute, and the
+`.generate_app()` fallback fixed above). Also added two `.parse_engine_response()` tests
+in `test-engine.R` covering the previously-untested "Approach 3" brace-matching fallback
+(LLM prose before the JSON object; multiple top-level JSON blocks, picking the one with a
+`status` field) -- this is the mechanism that keeps a malformed/chatty LLM response from
+crashing the conversation, and it was the one branch of that function's three-tier
+fallback with no test at all.
+
+**Still open, not attempted this session (flagged, not fixed):** `api.R`'s
+non-Anthropic provider bridge inside `.call_llm()` (lines ~34-63 -- building a
+`llm_fn` wrapper around `TaxaTools::call_api` when `TaxaID.provider` is set to a
+non-Anthropic value) has no test coverage; `metadata.R`, `context.R`, `cli.R`'s
+`.parse_error_context()`, and `create.R`'s console/viewer loops also remain untested.
+None of these showed a defect during manual reading, but a full closure of this gap
+is future work, not part of this pass.
+
+### [x] Vulnerabilities: Two real issues found and fixed.
+
+**Real vulnerability: `eval(parse(text = input$...))` on a Shiny input in every generated
+app, with no server-side validation.** `.param_assembly_line()`'s `function_ref` branch
+(`R/shiny.R`) generated code of the form `assign(nm, eval(parse(text = input$param_llm_fn)),
+envir = env)` in the produced `app.R`. The corresponding widget is a `selectInput()`
+constrained to six hardcoded provider choices, but that constraint is UI-only -- Shiny's
+client/server protocol does not stop a browser client from sending an arbitrary
+`input$...` value via `Shiny.setInputValue()` in the browser console/devtools, regardless
+of what the rendered widget offers. Since `workflow_app()`'s own documentation explicitly
+positions generated apps as something to be "shared with collaborators" (i.e., a
+multi-user, potentially internet-facing deployment target, not a single-user local
+script), this was a real, if narrow, remote-code-execution vector: any user of a deployed
+app could get arbitrary R code evaluated server-side. Fixed by extracting the six allowed
+provider strings into a single shared source (`.llm_provider_choices()`, used by both the
+widget builder and the server code generator so the two can't drift), and by emitting an
+explicit allow-list check (`if (!.fn_str %in% .allowed_fns) stop(...)`) before the
+`eval(parse(...))` call in every generated app. New tests in `test-shiny.R` confirm the
+allow-list check is present in the generated code and that it actually blocks a tampered
+value (simulated via a non-widget input string) before `eval()` would run it.
+
+**Real hygiene issue: API keys persisted to disk in plaintext with default file
+permissions.** `.save_session()` (`R/cli.R`) `saveRDS()`s the full conversation state --
+including `api_key` and `llm_fn` (which, for a non-Anthropic provider, is typically a
+closure that itself captures an API key in its enclosing environment; this package's own
+`@param llm_fn` documentation for `workflow_create()` shows exactly this pattern for
+Azure) -- to `file.path(tempdir(), "taxawizard_session.rds")`, so that `workflow_fix()`
+can resume the conversation later. This is necessary for the error-fix feature to work at
+all, and `tempdir()` is process-private on most systems, but the file was written with
+whatever the process's default `umask` produces, not explicitly restricted. Fixed by
+calling `Sys.chmod(session_path, mode = "0600")` immediately after `saveRDS()`, so the
+session file (and the secrets inside it) is readable only by the owning user regardless
+of the environment's default permissions.
+
+Everything else checked came back clean: the Shiny gadget's chat rendering
+(`R/create.R`'s `.create_viewer()`) HTML-escapes all message text on both the client
+(inline JS) and server (the `observe()` block building `update_chat` HTML) before
+insertion, so neither the user's own typed input nor the LLM's response can inject
+markup into the chat log. `.generate_script()`'s path handling escapes embedded quotes
+before building string literals rather than concatenating raw user paths into R source
+unescaped, and `workflow_app()`'s file-path replacement in step code uses
+`fixed = TRUE` throughout (no accidental regex interpretation of user-supplied file
+paths).
+
+# Domain Review
+
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is
+biologically reasonable when compared to other similar information available. Review
+should be conducted by someone with applicable subject-matter knowledge.
+
+### [x] Scientific Rigor
+
+TaxaWizard does not itself perform any biological computation -- it interviews the user,
+selects a path through the ecosystem's existing (already-reviewed) statistical
+components, and fills in pre-written code snippets with the user's parameter values. Its
+own "correctness" is therefore about faithfully reproducing what the underlying TaxaID
+packages already do, not about any biological claim of its own. The one place this
+distinction could matter is if `inst/metadata/*.json` (the parameter documentation
+surfaced to the LLM and, indirectly, to the user) drifted from what the real functions
+actually do or require -- but that risk is already the subject of a separate, extensive,
+actively-maintained audit process (`diagnostics/taxawizard_metadata_audit.R`, run
+repeatedly per this package's own `CLAUDE.md` session notes, most recently 2026-08-09) and
+was deliberately out of scope for this code-focused pass to avoid duplicating that work.
+
+### [x] Outputs
+
+Not directly applicable -- TaxaWizard's own output is generated R source code (a `.R`
+script, a `.md` methods file, or an `app.R`), not a scientific result. The generated
+script's own outputs are whatever the selected TaxaID functions produce, unchanged by
+TaxaWizard.
+
+### [x] Algorithms
+
+The one algorithm genuinely internal to this package -- `.compute_paths()`'s backward
+recursive graph search with Cartesian-product combination for multi-input edges -- is a
+standard, appropriate technique for the problem (enumerate all ways to reach a target
+node from a start node in a small DAG with cycle prevention via `visited_targets`), and
+is exercised heavily by `test-graph.R`. No domain-specific (biological) algorithm choices
+are made in this package.
+
+# File specific comments
+
+**R/api.R** -- `.call_llm()`'s non-Anthropic bridge (auto-detecting `TaxaID.provider` and
+wrapping `TaxaTools::call_api`) duplicates logic conceptually similar to
+`TaxaWizard::.onAttach()` (`R/zzz.R`) and to `TaxaTools`'s own provider auto-detection --
+by design, since `TaxaWizard` deliberately has no hard `Imports` dependency on
+`TaxaTools` (Suggests only), this can't be factored into one shared helper without
+creating that dependency. Left as-is; the duplication is small and the design constraint
+is documented.
+
+**R/output.R** -- `.generate_script()`/`.append_to_script()` both duplicate the
+"indent code inside `quote({...})`, wrap in `.run_step()`" step-formatting logic. A
+shared internal helper (e.g. `.format_step_lines(step, step_num)`) would remove the
+duplication; not extracted in this pass since both call sites are short and the tests
+added this session cover both paths' current behavior, but worth doing if a third
+call site is ever added.
+
+**R/shiny.R** -- `.classify_param()`'s file-input/file-output detection
+(`grepl('^".*\\.(csv|tsv|txt|rds|xlsx|fasta|fa)"', ...)` vs. the output variant's
+`grepl("output|save|write", name, ...)`) is a reasonable heuristic for TaxaWizard's own
+generated scripts (which always name output-path parameters predictably, e.g.
+`output_path`/`save_path`), but would misclassify a generic script's parameter named
+something like `write_up_notes_path` (a real file path, not an output path, containing
+"write"). This only affects `annotate_script(mode = "self"/"llm")`'s automatic
+classification for arbitrary user scripts, not TaxaWizard's own generated scripts, and
+the self-guided mode already lets the user correct misclassified parameters
+interactively -- not changed, but worth knowing if `.classify_param()` is ever reused for
+a fully-automatic (no human confirmation) path.

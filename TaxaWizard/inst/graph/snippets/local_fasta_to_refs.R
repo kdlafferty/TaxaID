@@ -14,7 +14,7 @@
 reference_df <- if (.format == "crabs") {
 
   TaxaLikely::read_crabs_output(
-    file            = {{input_var}},
+    crabs_file      = {{input_var}},
     rank_system     = {{rank_system}},
     require_species = TRUE,
     dereplicate     = TRUE

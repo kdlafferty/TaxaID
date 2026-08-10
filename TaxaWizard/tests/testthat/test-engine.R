@@ -13,6 +13,28 @@ test_that(".parse_engine_response: strips markdown fences", {
   expect_equal(result$status, "complete")
 })
 
+test_that(".parse_engine_response: recovers JSON preceded by thinking text", {
+  raw <- paste0(
+    "Let me think about this step by step. The user wants fish ",
+    "identification, so I'll classify accordingly.\n\n",
+    '{"status": "complete", "message": "Done.", "input_type": "sequences"}'
+  )
+  result <- TaxaWizard:::.parse_engine_response(raw)
+  expect_equal(result$status, "complete")
+  expect_equal(result$input_type, "sequences")
+})
+
+test_that(".parse_engine_response: picks the last top-level block when several are present", {
+  raw <- paste0(
+    '{"not_the_answer": true}\n\n',
+    "Some prose in between.\n\n",
+    '{"status": "incomplete", "message": "Real answer."}'
+  )
+  result <- TaxaWizard:::.parse_engine_response(raw)
+  expect_equal(result$status, "incomplete")
+  expect_equal(result$message, "Real answer.")
+})
+
 test_that(".parse_engine_response: wraps plain text as incomplete response", {
   result <- suppressWarnings(
     TaxaWizard:::.parse_engine_response("not json at all")

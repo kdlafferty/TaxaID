@@ -6,11 +6,30 @@
       "name": "read_sequence_table",
       "description": "Ingest DADA2 seqtab matrix, FASTA file, or DNAStringSet; optional taxonomy join",
       "inputs": [
-        {"name": "data", "type": "file_path|matrix|DNAStringSet", "required": true, "description": "Sequence table, FASTA path, or DNAStringSet"},
-        {"name": "taxonomy", "type": "data.frame", "required": false, "description": "Taxonomy table to join"},
-        {"name": "id_prefix", "type": "character", "required": false, "default": "ASV", "description": "Prefix for auto-generated sample IDs"}
+        {
+          "name": "data",
+          "type": "file_path|matrix|DNAStringSet",
+          "required": true,
+          "description": "Sequence table, FASTA path, or DNAStringSet"
+        },
+        {
+          "name": "taxonomy",
+          "type": "data.frame",
+          "required": false,
+          "description": "Taxonomy table to join"
+        },
+        {
+          "name": "id_prefix",
+          "type": "character",
+          "required": false,
+          "default": "ASV",
+          "description": "Prefix for auto-generated sample IDs"
+        }
       ],
-      "output": {"type": "sequence_df", "description": "Data frame with observation_id, sequence columns"},
+      "output": {
+        "type": "sequence_df",
+        "description": "Data frame with observation_id, sequence columns"
+      },
       "scaling": "linear",
       "scaling_note": "I/O bound; fast for typical eDNA datasets"
     },
@@ -18,13 +37,42 @@
       "name": "filter_sequences",
       "description": "Filter ASVs by length range and minimum abundance",
       "inputs": [
-        {"name": "seq_df", "type": "sequence_df", "required": true, "description": "From read_sequence_table()"},
-        {"name": "barcode_term", "type": "character", "required": false, "description": "Barcode marker for auto length detection"},
-        {"name": "min_length", "type": "integer", "required": false, "description": "Minimum sequence length"},
-        {"name": "max_length", "type": "integer", "required": false, "description": "Maximum sequence length"},
-        {"name": "min_abundance", "type": "integer", "required": false, "default": 2, "description": "Minimum total reads across samples"}
+        {
+          "name": "seq_df",
+          "type": "sequence_df",
+          "required": true,
+          "description": "From read_sequence_table()"
+        },
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": false,
+          "description": "Barcode marker for auto length detection"
+        },
+        {
+          "name": "min_length",
+          "type": "integer",
+          "required": false,
+          "description": "Minimum sequence length"
+        },
+        {
+          "name": "max_length",
+          "type": "integer",
+          "required": false,
+          "description": "Maximum sequence length"
+        },
+        {
+          "name": "min_abundance",
+          "type": "integer",
+          "required": false,
+          "default": 2,
+          "description": "Minimum total reads across samples"
+        }
       ],
-      "output": {"type": "sequence_df", "description": "Filtered sequence data frame"},
+      "output": {
+        "type": "sequence_df",
+        "description": "Filtered sequence data frame"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; pure R"
     },
@@ -32,15 +80,57 @@
       "name": "blast_sequences",
       "description": "Remote NCBI BLAST or local rBLAST; score window filtering; taxonomy resolution",
       "inputs": [
-        {"name": "seq_df", "type": "sequence_df", "required": true, "description": "Sequences to BLAST (from read_sequence_table/filter_sequences)"},
-        {"name": "database", "type": "character", "required": false, "default": "nt", "description": "BLAST database"},
-        {"name": "method", "type": "character", "required": false, "default": "remote", "description": "'remote' (NCBI) or 'local' (rBLAST)"},
-        {"name": "score_range", "type": "numeric", "required": false, "default": 5, "description": "Keep hits within this % of top hit per query"},
-        {"name": "barcode_term", "type": "character", "required": false, "description": "Barcode marker for length filtering"},
-        {"name": "resolve_taxonomy", "type": "logical", "required": false, "default": true, "description": "Resolve full taxonomy from NCBI"},
-        {"name": "email", "type": "character", "required": false, "description": "Email for NCBI (required for remote)"}
+        {
+          "name": "seq_df",
+          "type": "sequence_df",
+          "required": true,
+          "description": "Sequences to BLAST (from read_sequence_table/filter_sequences)"
+        },
+        {
+          "name": "database",
+          "type": "character",
+          "required": false,
+          "default": "nt",
+          "description": "BLAST database"
+        },
+        {
+          "name": "method",
+          "type": "character",
+          "required": false,
+          "default": "remote",
+          "description": "'remote' (NCBI) or 'local' (rBLAST)"
+        },
+        {
+          "name": "score_range",
+          "type": "numeric",
+          "required": false,
+          "default": 5,
+          "description": "Keep hits within this % of top hit per query"
+        },
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": false,
+          "description": "Barcode marker for length filtering"
+        },
+        {
+          "name": "resolve_taxonomy",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Resolve full taxonomy from NCBI"
+        },
+        {
+          "name": "email",
+          "type": "character",
+          "required": false,
+          "description": "Email for NCBI (required for remote)"
+        }
       ],
-      "output": {"type": "match_df", "description": "Match data with score, accession, taxonomy"},
+      "output": {
+        "type": "match_df",
+        "description": "Match data with score, accession, taxonomy"
+      },
       "scaling": "api_limited",
       "scaling_note": "Remote BLAST: ~2-5 min per batch of 50 sequences. Local: ~30 sec per 100 sequences"
     },
@@ -48,13 +138,41 @@
       "name": "standardize_match_data",
       "description": "Standardize any match table to the canonical match_df format",
       "inputs": [
-        {"name": "data", "type": "data.frame", "required": true, "description": "Raw match data with score and taxonomy columns"},
-        {"name": "observation_id_col", "type": "character", "required": true, "description": "Column containing observation/query identifiers"},
-        {"name": "score_col", "type": "character", "required": true, "description": "Column containing match scores"},
-        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Taxonomy ranks to retain"},
-        {"name": "col_map", "type": "named_character", "required": false, "description": "Additional column renames: c(new = 'old')"}
+        {
+          "name": "data",
+          "type": "data.frame",
+          "required": true,
+          "description": "Raw match data with score and taxonomy columns"
+        },
+        {
+          "name": "observation_id_col",
+          "type": "character",
+          "required": true,
+          "description": "Column containing observation/query identifiers"
+        },
+        {
+          "name": "score_col",
+          "type": "character",
+          "required": true,
+          "description": "Column containing match scores"
+        },
+        {
+          "name": "rank_system",
+          "type": "character_vector",
+          "required": false,
+          "description": "Taxonomy ranks to retain"
+        },
+        {
+          "name": "col_map",
+          "type": "named_character",
+          "required": false,
+          "description": "Additional column renames: c(new = 'old')"
+        }
       ],
-      "output": {"type": "match_df", "description": "Standardized match object with observation_id, score, taxon_name, taxon_name_rank, taxonomy columns"},
+      "output": {
+        "type": "match_df",
+        "description": "Standardized match object with observation_id, score, taxon_name, taxon_name_rank, taxonomy columns"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; column rename + type coercion"
     },
@@ -62,10 +180,23 @@
       "name": "filter_redundant_hypotheses",
       "description": "Drop higher-rank rows superseded by finer-rank rows within same lineage + observation_id",
       "inputs": [
-        {"name": "match_df", "type": "match_df", "required": true, "description": "Match object"},
-        {"name": "rank_system", "type": "character_vector", "required": false, "description": "Rank order for redundancy detection"}
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Match object"
+        },
+        {
+          "name": "rank_system",
+          "type": "character_vector",
+          "required": false,
+          "description": "Rank order for redundancy detection"
+        }
       ],
-      "output": {"type": "match_df", "description": "Filtered match object"},
+      "output": {
+        "type": "match_df",
+        "description": "Filtered match object"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; pure R"
     },
@@ -73,11 +204,31 @@
       "name": "read_birdnet_output",
       "description": "Ingest BirdNET-Analyzer CSV results into match object format. observation_id = '{file_stem}_{start_s}-{end_s}'",
       "inputs": [
-        {"name": "data", "type": "file_path|character_vector", "required": true, "description": "Path to BirdNET CSV file, directory of CSVs, or character vector of paths"},
-        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
-        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N detections per observation_id by confidence"}
+        {
+          "name": "files",
+          "type": "file_path|character_vector",
+          "required": true,
+          "description": "Path to BirdNET CSV file, directory of CSVs, or character vector of paths"
+        },
+        {
+          "name": "min_confidence",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Minimum confidence score to retain"
+        },
+        {
+          "name": "top_n",
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "description": "Keep top N detections per observation_id by confidence"
+        }
       ],
-      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, source_file columns"},
+      "output": {
+        "type": "match_df",
+        "description": "Match object with observation_id, score, species, genus, source_file columns"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; CSV parsing only"
     },
@@ -85,14 +236,52 @@
       "name": "read_animl_output",
       "description": "Ingest Animl (MegaDetector + SpeciesNet) camera trap CSV into match object format. observation_id = image filename stem",
       "inputs": [
-        {"name": "data", "type": "file_path|data.frame", "required": true, "description": "Path to Animl CSV file or data frame"},
-        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
-        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N detections per image by confidence"},
-        {"name": "file_col", "type": "character", "required": false, "default": "FilePath", "description": "Column containing image file paths"},
-        {"name": "species_col", "type": "character", "required": false, "default": "PredictedValue", "description": "Column containing predicted species"},
-        {"name": "score_col", "type": "character", "required": false, "default": "Confidence", "description": "Column containing confidence scores"}
+        {
+          "name": "files",
+          "type": "file_path|character_vector",
+          "required": true,
+          "description": "Path to Animl CSV file, directory, or character vector of file paths"
+        },
+        {
+          "name": "min_confidence",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Minimum confidence score to retain"
+        },
+        {
+          "name": "top_n",
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "description": "Keep top N detections per image by confidence"
+        },
+        {
+          "name": "file_col",
+          "type": "character",
+          "required": false,
+          "default": "FileName",
+          "description": "Column containing image file paths"
+        },
+        {
+          "name": "species_col",
+          "type": "character",
+          "required": false,
+          "default": "prediction",
+          "description": "Column containing predicted species"
+        },
+        {
+          "name": "score_col",
+          "type": "character",
+          "required": false,
+          "default": "confidence",
+          "description": "Column containing confidence scores"
+        }
       ],
-      "output": {"type": "match_df", "description": "Match object with observation_id (image stem), score, species, genus columns"},
+      "output": {
+        "type": "match_df",
+        "description": "Match object with observation_id (image stem), score, species, genus columns"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; CSV parsing only"
     },
@@ -100,12 +289,41 @@
       "name": "read_inaturalist_cv_output",
       "description": "Read per-image JSON files from the iNaturalist CV API into match object format",
       "inputs": [
-        {"name": "data", "type": "file_path|character_vector", "required": true, "description": "Path to JSON file or directory of JSON files"},
-        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0.1, "description": "Minimum confidence score to retain"},
-        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N predictions per image"},
-        {"name": "score_type", "type": "character", "required": false, "default": "combined_score", "description": "'combined_score' or 'score'"}
+        {
+          "name": "files",
+          "type": "file_path|character_vector",
+          "required": true,
+          "description": "Path to JSON file, directory of JSON files, or character vector of paths"
+        },
+        {
+          "name": "min_confidence",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Minimum confidence score to retain"
+        },
+        {
+          "name": "top_n",
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "description": "Keep top N predictions per image"
+        },
+        {
+          "name": "score_type",
+          "type": "character",
+          "required": false,
+          "default": [
+            "combined_score",
+            "score"
+          ],
+          "description": "One of 'combined_score' or 'score' (matched via match.arg; first value is the default)"
+        }
       ],
-      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, common_name, taxon_rank columns"},
+      "output": {
+        "type": "match_df",
+        "description": "Match object with observation_id, score, species, genus, common_name, taxon_rank columns"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; JSON parsing only"
     },
@@ -113,13 +331,45 @@
       "name": "read_speciesnet_output",
       "description": "Read real SpeciesNet CLI (google/cameratrapai) predictions_json batch output into match object format. Rank-aware: taxon_rank lands wherever SpeciesNet's own conservative rollup landed (species down to class)",
       "inputs": [
-        {"name": "files", "type": "file_path|character_vector", "required": true, "description": "Path to SpeciesNet predictions_json file, directory of JSON files, or character vector of paths"},
-        {"name": "min_confidence", "type": "numeric", "required": false, "default": 0, "description": "Minimum classification score to retain"},
-        {"name": "top_n", "type": "integer", "required": false, "default": null, "description": "Keep top N candidates per image (SpeciesNet returns at most 5)"},
-        {"name": "include_coverage", "type": "logical", "required": false, "default": false, "description": "Add coverage/detection_conf columns from MegaDetector bounding boxes"},
-        {"name": "min_detection_conf", "type": "numeric", "required": false, "default": 0, "description": "Minimum MegaDetector detection confidence to be eligible as the representative detection (only used when include_coverage=true)"}
+        {
+          "name": "files",
+          "type": "file_path|character_vector",
+          "required": true,
+          "description": "Path to SpeciesNet predictions_json file, directory of JSON files, or character vector of paths"
+        },
+        {
+          "name": "min_confidence",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Minimum classification score to retain"
+        },
+        {
+          "name": "top_n",
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "description": "Keep top N candidates per image (SpeciesNet returns at most 5)"
+        },
+        {
+          "name": "include_coverage",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Add coverage/detection_conf columns from MegaDetector bounding boxes"
+        },
+        {
+          "name": "min_detection_conf",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Minimum MegaDetector detection confidence to be eligible as the representative detection (only used when include_coverage=true)"
+        }
       ],
-      "output": {"type": "match_df", "description": "Match object with observation_id, score, species, genus, family, order, class, common_name, taxon_rank, ensemble_prediction, ensemble_prediction_score, ensemble_prediction_source, lat, lon, country columns"},
+      "output": {
+        "type": "match_df",
+        "description": "Match object with observation_id, score, species, genus, family, order, class, common_name, taxon_rank, ensemble_prediction, ensemble_prediction_score, ensemble_prediction_source, lat, lon, country columns"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; JSON parsing only"
     },
@@ -127,11 +377,31 @@
       "name": "build_site_table",
       "description": "Build a per-observation site table (observation_id, lat, lon, spatial_group_id) for spatial grouping. Reads embedded lat/lng from match_df directly if present (e.g. image EXIF GPS); otherwise requires a separately supplied site_df (e.g. from join_event_site_metadata())",
       "inputs": [
-        {"name": "match_df", "type": "match_df", "required": true, "description": "Match/detection data with an id_col column; embedded lat/lng columns used automatically if present"},
-        {"name": "site_df", "type": "data.frame", "required": false, "default": null, "description": "Required only when match_df has no embedded lat/lng. Must have id_col, lat, lon columns (one or more rows per observation -- an observation detected at multiple sites gets multiple rows)"},
-        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation"}
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Match/detection data with an id_col column; embedded lat/lng columns used automatically if present"
+        },
+        {
+          "name": "site_df",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Required only when match_df has no embedded lat/lng. Must have id_col, lat, lon columns (one or more rows per observation -- an observation detected at multiple sites gets multiple rows)"
+        },
+        {
+          "name": "id_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Column identifying each observation"
+        }
       ],
-      "output": {"type": "site_table", "description": "Data frame with id_col, lat, lon, observed_on, spatial_group_id (initially one default group per exact lat/lon match), spatial_group_N, is_default_group"},
+      "output": {
+        "type": "site_table",
+        "description": "Data frame with id_col, lat, lon, observed_on, spatial_group_id (initially one default group per exact lat/lon match), spatial_group_N, is_default_group"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; pure R computation"
     },
@@ -139,13 +409,45 @@
       "name": "group_observations_by_bbox",
       "description": "Interactively draw bounding-box/polygon groups over a site_table's observations, overwriting the default exact-lat/lon spatial_group_id with user-drawn groups. Requires an interactive session (Shiny gadget)",
       "inputs": [
-        {"name": "sites", "type": "site_table", "required": true, "description": "Output of build_site_table()"},
-        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation"},
-        {"name": "lat_col", "type": "character", "required": false, "default": "lat", "description": "Latitude column"},
-        {"name": "lon_col", "type": "character", "required": false, "default": "lon", "description": "Longitude column"},
-        {"name": "tile", "type": "character", "required": false, "default": "Esri.OceanBasemap", "description": "Leaflet basemap tile provider"}
+        {
+          "name": "sites",
+          "type": "site_table",
+          "required": true,
+          "description": "Output of build_site_table()"
+        },
+        {
+          "name": "id_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Column identifying each observation"
+        },
+        {
+          "name": "lat_col",
+          "type": "character",
+          "required": false,
+          "default": "lat",
+          "description": "Latitude column"
+        },
+        {
+          "name": "lon_col",
+          "type": "character",
+          "required": false,
+          "default": "lon",
+          "description": "Longitude column"
+        },
+        {
+          "name": "tile",
+          "type": "character",
+          "required": false,
+          "default": "Esri.OceanBasemap",
+          "description": "Leaflet basemap tile provider"
+        }
       ],
-      "output": {"type": "site_table", "description": "Input with spatial_group_id/spatial_group_N updated from user-drawn groups. Anything left ungrouped becomes its own single-observation group -- never dropped"},
+      "output": {
+        "type": "site_table",
+        "description": "Input with spatial_group_id/spatial_group_N updated from user-drawn groups. Anything left ungrouped becomes its own single-observation group -- never dropped"
+      },
       "scaling": "linear",
       "scaling_note": "Interactive; time depends on number of groups the user draws, not data size"
     },
@@ -153,12 +455,36 @@
       "name": "assign_spatial_group",
       "description": "Non-interactive alternative to group_observations_by_bbox() -- manually assign a known spatial_group_id to a set of observation_ids (e.g. groups already known from site metadata)",
       "inputs": [
-        {"name": "sites", "type": "site_table", "required": true, "description": "Output of build_site_table() (must already have spatial_group_id/spatial_group_N columns)"},
-        {"name": "observation_ids", "type": "character_vector", "required": true, "description": "Observation IDs to (re)assign"},
-        {"name": "spatial_group_id", "type": "character", "required": true, "description": "Group label to assign to these observations"},
-        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation"}
+        {
+          "name": "sites",
+          "type": "site_table",
+          "required": true,
+          "description": "Output of build_site_table() (must already have spatial_group_id/spatial_group_N columns)"
+        },
+        {
+          "name": "observation_ids",
+          "type": "character_vector",
+          "required": true,
+          "description": "Observation IDs to (re)assign"
+        },
+        {
+          "name": "spatial_group_id",
+          "type": "character",
+          "required": true,
+          "description": "Group label to assign to these observations"
+        },
+        {
+          "name": "id_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Column identifying each observation"
+        }
       ],
-      "output": {"type": "site_table", "description": "Input with the specified observations reassigned to spatial_group_id"},
+      "output": {
+        "type": "site_table",
+        "description": "Input with the specified observations reassigned to spatial_group_id"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; pure R computation"
     },
@@ -166,18 +492,362 @@
       "name": "join_event_site_metadata",
       "description": "Build a site_df (for build_site_table()'s site_df argument) from an event-level detections table joined against a user-maintained site-metadata table. Generalizes this ecosystem's blank-identification lookup-table pattern to carry site coordinates",
       "inputs": [
-        {"name": "detections", "type": "data.frame", "required": true, "description": "Event-level detections table"},
-        {"name": "site_metadata", "type": "data.frame", "required": true, "description": "User-maintained table mapping event_col to site lat/lon"},
-        {"name": "event_col", "type": "character", "required": false, "default": "event_id", "description": "Column identifying the collection event in both tables"},
-        {"name": "id_col", "type": "character", "required": false, "default": "observation_id", "description": "Column identifying each observation in detections"},
-        {"name": "lat_col", "type": "character", "required": false, "default": "lat", "description": "Latitude column in site_metadata"},
-        {"name": "lon_col", "type": "character", "required": false, "default": "lon", "description": "Longitude column in site_metadata"},
-        {"name": "observed_on_col", "type": "character", "required": false, "default": "observed_on", "description": "Observation date column"},
-        {"name": "control_samples", "type": "character_vector", "required": false, "default": null, "description": "Event IDs to exclude as controls/blanks"}
+        {
+          "name": "detections",
+          "type": "data.frame",
+          "required": true,
+          "description": "Event-level detections table"
+        },
+        {
+          "name": "site_metadata",
+          "type": "data.frame",
+          "required": true,
+          "description": "User-maintained table mapping event_col to site lat/lon"
+        },
+        {
+          "name": "event_col",
+          "type": "character",
+          "required": false,
+          "default": "event_id",
+          "description": "Column identifying the collection event in both tables"
+        },
+        {
+          "name": "id_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Column identifying each observation in detections"
+        },
+        {
+          "name": "lat_col",
+          "type": "character",
+          "required": false,
+          "default": "lat",
+          "description": "Latitude column in site_metadata"
+        },
+        {
+          "name": "lon_col",
+          "type": "character",
+          "required": false,
+          "default": "lon",
+          "description": "Longitude column in site_metadata"
+        },
+        {
+          "name": "observed_on_col",
+          "type": "character",
+          "required": false,
+          "default": "observed_on",
+          "description": "Observation date column"
+        },
+        {
+          "name": "control_samples",
+          "type": "character_vector",
+          "required": false,
+          "default": null,
+          "description": "Event IDs to exclude as controls/blanks"
+        }
       ],
-      "output": {"type": "data.frame", "description": "site_df ready for build_site_table(site_df=)"},
+      "output": {
+        "type": "data.frame",
+        "description": "site_df ready for build_site_table(site_df=)"
+      },
       "scaling": "linear",
       "scaling_note": "Fast; join operation"
+    },
+    {
+      "name": "convert_taxonomy_backbone",
+      "description": "Translate a data frame's taxonomy to a different taxonomic backbone (e.g. NCBI to GBIF), resolving synonyms and homonyms via TaxaTools::verify_taxon_names(). Used ecosystem-wide to reconcile match objects, reference sequences, and priors onto one common backbone before joining.",
+      "inputs": [
+        {
+          "name": "match_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame with a taxon name column (see taxon_col) to convert"
+        },
+        {
+          "name": "target_backbone_id",
+          "type": "integer",
+          "required": true,
+          "description": "Target backbone ID to convert TO (e.g. 4=NCBI, 11=GBIF, 1=Catalogue of Life, 3=ITIS, 9=WoRMS)"
+        },
+        {
+          "name": "source_backbone_id",
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "description": "Source backbone ID, for logging/attribute purposes only; does not change matching behavior"
+        },
+        {
+          "name": "rank_system",
+          "type": "character_vector",
+          "required": false,
+          "default": [
+            "order",
+            "family",
+            "genus",
+            "species"
+          ],
+          "description": "Ranks to consider, coarse-to-fine"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Column holding the name to convert"
+        },
+        {
+          "name": "update_taxon_name",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "If TRUE, overwrite taxon_col with the resolved target-backbone name (falling back to a cleaned original value when not found); if FALSE, only append backbone_col/collision_col diagnostics"
+        },
+        {
+          "name": "original_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name_original",
+          "description": "Column to store the pre-conversion original name"
+        },
+        {
+          "name": "backbone_col",
+          "type": "character",
+          "required": false,
+          "default": "taxonomy_backbone",
+          "description": "Column recording which backbone each row's taxon_name now reflects"
+        },
+        {
+          "name": "collision_col",
+          "type": "character",
+          "required": false,
+          "default": "taxonomy_collision",
+          "description": "Column flagging rows where conversion produced a collision with another row"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "Input data frame with taxon_col (and rank columns finer than any corrected rank) updated to the target backbone, plus original_col/backbone_col/collision_col diagnostic columns"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "One name-verification API call per distinct taxon name"
+    },
+    {
+      "name": "evaluate_reference_accessions",
+      "description": "Per-accession BLAST-based reference-quality screen: for each reference accession, checks whether independent GenBank evidence agrees taxonomically at min_congruent_rank. Recommended (2026-08-08 ecosystem audit) as the pre-training reference screen going forward, ahead of TaxaLikely::flag_reference_errors()'s narrower same-database comparison.",
+      "inputs": [
+        {
+          "name": "accessions",
+          "type": "character_vector",
+          "required": true,
+          "description": "NCBI accessions to evaluate (deduplicated internally)"
+        },
+        {
+          "name": "method",
+          "type": "character",
+          "required": false,
+          "default": "remote",
+          "description": "'remote' or 'local', passed through to blast_sequences()"
+        },
+        {
+          "name": "database",
+          "type": "character",
+          "required": false,
+          "default": "nt",
+          "description": "Passed through to blast_sequences()"
+        },
+        {
+          "name": "top_n",
+          "type": "integer",
+          "required": false,
+          "default": 5,
+          "description": "Max independent BLAST hits ranked per accession for the congruence verdict"
+        },
+        {
+          "name": "min_congruent_rank",
+          "type": "character",
+          "required": false,
+          "default": "family",
+          "description": "Rank at which independent hits must agree to count as congruent evidence"
+        },
+        {
+          "name": "cache_dir",
+          "type": "file_path",
+          "required": false,
+          "default": "tools::R_user_dir('TaxaMatch', 'cache')",
+          "description": "Set NULL to disable caching (every call re-evaluates every accession)"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "One row per accession: hierarchy_flag ('congruent'/'incongruent'/'insufficient_independent_evidence', NA if the record couldn't be fetched), finest_common_rank, best_hit_pident/best_agreeing_pident/best_disagreeing_pident (identity diagnostics), congruent_evidence_exists_anywhere, evaluated_at, cache_hit"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "One BLAST round-trip per unique accession -- can be multi-hour for large (1000+) accession sets; cached with an asymmetric TTL"
+    },
+    {
+      "name": "flag_incongruent_references",
+      "description": "Recommended default consumer of evaluate_reference_accessions(): joins its verdict columns onto a standardized match_df by accession, annotating rather than removing. Row count and order unchanged.",
+      "inputs": [
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "A standardized match object (from standardize_match_data()) containing an accession column"
+        },
+        {
+          "name": "evaluation",
+          "type": "data.frame",
+          "required": true,
+          "description": "Output of evaluate_reference_accessions()"
+        }
+      ],
+      "output": {
+        "type": "match_df",
+        "description": "match_df with hierarchy_flag and the other evaluate_reference_accessions() columns joined on; a row whose accession wasn't evaluated gets NA in all of them"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; pure join, no new API calls"
+    },
+    {
+      "name": "remove_incongruent_references",
+      "description": "Opt-in hard-filter alternative to flag_incongruent_references() -- demoted from default to deliberate opt-in per the 2026-08-07 design consult, since a caller should review flagged rows before dropping them (a flag can mean 'poor marker resolving power here', not only a genuine mislabel).",
+      "inputs": [
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "A standardized match object (from standardize_match_data()) containing an accession column"
+        },
+        {
+          "name": "evaluation",
+          "type": "data.frame",
+          "required": true,
+          "description": "Output of evaluate_reference_accessions()"
+        },
+        {
+          "name": "remove_insufficient_evidence",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "If TRUE, also removes rows whose accession verdict is 'insufficient_independent_evidence' (not just 'incongruent')"
+        }
+      ],
+      "output": {
+        "type": "match_df",
+        "description": "match_df with incongruent (and optionally insufficient-evidence) rows removed"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; pure filter, no new API calls"
+    },
+    {
+      "name": "investigate_flagged_accession",
+      "description": "Deeper, single-accession follow-up diagnostic for a specific accession evaluate_reference_accessions() flagged 'incongruent' -- runs species-level cross-checks (via blast_sequences()-backed comparisons) beyond the batch screen's own evidence. Investigative helper for manual review of specific flagged accessions, not a mechanical pipeline step (see the plural investigate_flagged_accessions() for a batch wrapper).",
+      "inputs": [
+        {
+          "name": "accession",
+          "type": "character",
+          "required": true,
+          "description": "Single NCBI accession to investigate"
+        },
+        {
+          "name": "species",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "The accession's listed species name, if already known (avoids a lookup)"
+        },
+        {
+          "name": "method",
+          "type": "character",
+          "required": false,
+          "default": "remote",
+          "description": "'remote' or 'local'"
+        },
+        {
+          "name": "cache_dir",
+          "type": "file_path",
+          "required": false,
+          "default": "tools::R_user_dir('TaxaMatch', 'cache')",
+          "description": "Set NULL to disable caching"
+        }
+      ],
+      "output": {
+        "type": "list",
+        "description": "Detailed per-accession investigation result (comparison detail beyond the batch screen's summary verdict)"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "Several BLAST/NCBI round-trips per accession; meant for a handful of flagged accessions, not batch use"
+    },
+    {
+      "name": "investigate_flagged_accessions",
+      "description": "Batch wrapper for investigate_flagged_accession(), sharing NCBI species-search results across the accession list. Investigative helper for manual review, not a mechanical pipeline step.",
+      "inputs": [
+        {
+          "name": "accessions",
+          "type": "character_vector",
+          "required": true,
+          "description": "NCBI accessions to investigate"
+        },
+        {
+          "name": "species",
+          "type": "character_vector",
+          "required": false,
+          "default": null,
+          "description": "Listed species names, if already known, aligned to accessions"
+        },
+        {
+          "name": "method",
+          "type": "character",
+          "required": false,
+          "default": "remote",
+          "description": "'remote' or 'local'"
+        },
+        {
+          "name": "cache_dir",
+          "type": "file_path",
+          "required": false,
+          "default": "tools::R_user_dir('TaxaMatch', 'cache')",
+          "description": "Set NULL to disable caching"
+        }
+      ],
+      "output": {
+        "type": "list",
+        "description": "Per-accession investigation results, keyed by accession"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "Several BLAST/NCBI round-trips per accession; meant for a handful of flagged accessions, not batch use"
+    },
+    {
+      "name": "check_marker_mismatch",
+      "description": "Cheap cross-check of a flagged accession's own annotated GenBank feature-table gene/product qualifier against the marker an evaluation was scoped to -- catches a real confirmed failure mode (a reference accession genuinely sequenced for a different marker than assumed).",
+      "inputs": [
+        {
+          "name": "accessions",
+          "type": "character_vector",
+          "required": true,
+          "description": "NCBI accessions to check"
+        },
+        {
+          "name": "expected_marker",
+          "type": "character",
+          "required": true,
+          "description": "The marker the evaluation was scoped to (e.g. '12S', 'COI')"
+        },
+        {
+          "name": "ncbi_api_key",
+          "type": "character",
+          "required": false,
+          "default": "Sys.getenv('NCBI_API_KEY')",
+          "description": "Optional NCBI API key for higher rate limits"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "One row per accession with its annotated gene/product qualifier and whether it matches expected_marker"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "One cheap GBSeq feature-table fetch per accession"
     }
   ]
 }
