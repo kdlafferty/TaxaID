@@ -1,7 +1,562 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-08-03 (Sonnet 5 -- two real fixes from a long GreatLakes2023
+# Last updated: 2026-08-09 (Sonnet 5 -- TaxaWizard's first full code + domain review against
+# inst/Code and Domain Review 2.Rmd, closing the last gap in this ecosystem's review coverage
+# (every other package already had one). Findings + fixes recorded in new TaxaWizard/inst/
+# taxawizard_review.Rmd. Two real, fixed security findings: an eval(parse(text = input$...))
+# call in every workflow_app()-generated Shiny app had no server-side validation against its
+# nominally-fixed selectInput() choices, a real code-injection vector in any deployed/shared
+# app (fixed with a shared allow-list checked before eval()); .save_session() persisted
+# api_key/llm_fn (often a closure capturing a provider key) to a plaintext tempdir() RDS with
+# default permissions (now chmod'd 0600). Also fixed: .generate_app() was a non-functional
+# placeholder despite a complete app generator (workflow_app()) already existing in the same
+# package -- now delegates to it; workflow_engine()'s model default didn't match its own
+# documented design (opus vs. the intended sonnet); the last `df`-shadows-stats::df() instance
+# in the ecosystem; an undeclared `lifecycle` roxygen-time dependency; three orphaned ~120KB
+# *.rds fixtures bundled into every install with zero references anywhere. New
+# tests/testthat/test-output.R closes the largest test-coverage gap (the actual script-
+# generation logic behind this package's core deliverable had zero prior coverage). New
+# TaxaWizard/inst/taxawizard_reviewer_demo.R exercises every exported function against a real
+# Azure OpenAI (DOI) backend via an explicit llm_fn closure (TaxaWizard has no hard TaxaTools
+# dependency, so this is the documented way to point it at Azure), plus an offline-only
+# section needing no API key. `devtools::test()` 696/696 (up from 655), `devtools::check()`
+# 0/0/0 (unchanged), reinstalled and verified at ~/Library/R/4.0/library. See TaxaWizard/
+# CLAUDE.md's own top session note for the full record.
+# Previous update, 2026-08-08, continued yet again (Sonnet 5 -- closed out ecosystem_docs/
+# REENTRY_PROMPT_screening_approach_comparison_audit.md (Q3 of the day's 3-question thread):
+# does TaxaLikely::flag_reference_errors() (the REAL live "old" pre-training reference screen,
+# confirmed against remove_flagged_references()'s production wiring, NOT the archived DECIPHER
+# classify_reference_accessions()) flag more references than TaxaMatch::
+# evaluate_reference_accessions() (the NEW BLAST-based screen) because it's genuinely more
+# sensitive, or a real structural false-positive mode? Pure empirical analysis, no code
+# touched -- and no new BLAST/NCBI calls needed, since the raw materials already existed from a
+# 2026-08-07 session one day before this reentry doc was written (its own "design-only, not
+# started" header was stale). Answer, from the real full 10,701-accession GreatLakes 12S
+# database plus a 132-accession sample evaluated by both tools: BOTH hypotheses hold, for
+# different subsets, not one or the other. Of old's 28 "old-only" flags (vs. new), 39.3% are
+# confirmed real same-submission-batch artifacts (via .same_submission_batch(), exactly the
+# PV382872-class false positive the new tool's independence filter exists to close) -- but the
+# other 60.7% are a SEPARATE false-positive mode an independence filter alone would NOT fix:
+# small negative integrity_gap against a tight congener (Cephalopholis/Epinephelus/Phoxinus,
+# all documented cryptic-species-rich genera) where the new tool finds real independent
+# corroborating evidence the old tool's narrow same-database comparison structurally can't see.
+# Old also has a genuine, narrower blind spot the new tool closes: 3 new-only flags are all
+# singletons whose max_foreign_match (0.93) never clears flag_reference_errors()'s hardcoded
+# singleton_match_threshold (0.98), even though 2 of 3 disagree with independent evidence at
+# CLASS rank -- a real taxonomic red flag a hierarchy-congruence check catches and a flat
+# percent-identity threshold structurally cannot express. Ground-truth cross-check (10 real
+# adjudicated GreatLakes accessions, including the one confirmed candidate_mislabel positive
+# control MZ605481) found zero disagreements between the two tools -- and surfaced that the
+# famous "Menidia false positive" motivating the whole BLAST-based redesign was NEVER actually
+# a flag_reference_errors() problem (error_type="clean" for all 4 Menidia accessions,
+# correctly) -- it was specific to the archived DECIPHER hierarchy check, a design abandoned
+# before reaching production. Recommendation: an independence filter alone for
+# flag_reference_errors() (this doc's own originally-floated "smaller, more surgical fix")
+# would only address ~39% of its real over-flagging -- evaluate_reference_accessions() should
+# be the recommended pre-training screen going forward, with flag_reference_errors() (if kept
+# at all) treated as high-recall/low-precision (~6.7% precision against the new tool's
+# verdict on this sample), worth a review pass, not an auto-blacklist. New, reusable
+# diagnostics/greatlakes_screening_approach_comparison_analysis.R reproduces every number
+# above from existing checkpoints (verified to run end to end); the reentry doc itself now
+# carries the full write-up. No package code changed, no reinstall needed.
+# Previous update, 2026-08-08, continued (Sonnet 5 -- TaxaLikely's first human-authored code +
+# domain review response (Micah Wright, replacing the prior Claude-authored review's
+# response doc entirely -- see TaxaLikely/inst/taxalikely_review_response.md and
+# TaxaLikely/CLAUDE.md's own top session note for the full comment-by-comment record). 17 real
+# bugs fixed, all input-validation/messaging/documentation/dead-code/naming -- no statistical
+# formula touched: assign_scores()'s no-H1 branch reported score_likelihood_sd = 0 instead of
+# NA; a genuine split-string sprintf() bug (this project's own documented recurring footgun)
+# in restore_suppressed_candidates()'s no-score verbose message; flag_reference_errors()'s
+# 0.98 singleton-match threshold was hardcoded with a comment suggesting it be adjustable but
+# no actual parameter -- now real (singleton_match_threshold, additive); .parse_lat_lon() had
+# no coordinate-plausibility guard; an unexplained 1985 date-floor literal inconsistent with
+# this ecosystem's own "1900/01/01" sentinel convention; plus df/file/line base-function-
+# shadowing fixes, including one EXPORTED signature change (read_crabs_output(file=) ->
+# crabs_file=, propagated to its one real cross-package caller in TaxaWizard). Dead code
+# removed: audit_barcode_coverage_gbif() (confirmed via full monorepo grep + NAMESPACE:
+# unexported, untested, zero real callers -- a genuinely abandoned draft, not just a
+# stylistic duplicate as the reviewer described it) and rgbif dropped from Suggests. Several
+# real statistical/design questions answered in full with verified derivations rather than
+# deflected (transform.R's 99.3%/50% gap-ceiling thresholds -- confirmed by direct computation
+# that 5.0, not 99.3%, is the actually-chosen value; train.R's pseudo-data anchoring confirmed
+# to be a real Bayesian mechanism via the standard prior-as-pseudo-observations equivalence,
+# not a workaround). devtools::test() 974 pass/0 fail/56 warn (expected, matching this
+# package's own prior documented baseline)/1 skip; devtools::check() 0/0/0 (run twice);
+# lintr::lint_dir("R") 0 hits; reinstalled, verified at ~/Library/R/4.0/library.
+#
+# Note, found while reconciling test counts, resolved (NOT data loss, NOT part of the human
+# review): TaxaLikely's own CLAUDE.md documents a "Module B-QC2" reference-database-auditing
+# feature set (audit_reference_database()/classify_reference_accessions()/
+# repair_thin_evidence()/.compute_hierarchy_congruence(), 2026-08-04 through 2026-08-06
+# entries) that is absent from the current TaxaLikely source tree -- initially looked like data
+# loss, but is actually a real, already-documented, already-completed archival: the same
+# 2026-08-06/07 design session that built this module found it has a genuine false-positive
+# mode (real Smithsonian-vouchered accessions flagged "incongruent" purely from a too-narrow
+# taxon-list-scoped comparison population) and a structural false-negative gap, abandoned the
+# whole DECIPHER-based approach, and moved its source + tests intact to
+# TaxaLikely/archive_decipher_reference_audit/ (deliberately gitignored, confirmed present on
+# disk) -- see ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md. Its BLAST-based
+# replacement is fully designed there but explicitly not yet implemented. This explains the
+# ~101-test gap between this session's observed devtools::test() count (974) and TaxaLikely/
+# CLAUDE.md's own (now-superseded) 2026-08-06 claim of 1075. The one real, still-open gap: that
+# file's 2026-08-04 through 2026-08-06 entries still describe the archived module as live
+# shipped code -- a documentation-drift cleanup flagged for whenever the BLAST-based
+# replacement is actually built, not attempted this session.
+# Previous update, 2026-08-08 (Sonnet 5 -- TaxaFetch's first human-authored code + domain review
+# response (the user replaced the old Claude-authored inst/taxafetch_review.Rmd, Session 148,
+# with a fresh human-authored one by Micah Wright, same 24-file structure). Full record in
+# TaxaFetch/inst/taxafetch_review_response.md and TaxaFetch/CLAUDE.md's own top session note.
+# Nine real bugs found and fixed, each confirmed via direct standalone testing before
+# shipping, not just reading the diff: search_dataone()'s coordinate parsing never matched
+# PASTA's real spatialCoverage/coordinates XML structure or its Solr
+# ENVELOPE(minX,maxX,maxY,minY) string (coordinates_raw was NA for every real record,
+# reproduced with the reviewer's own live SBC LTER example); dataone_catalog.R's authors/
+# keywords_str columns came back NA for every real record (XPath now tries several real
+# candidate node shapes); dataone_standardize.R's .extract_eml_sites() site-code regex
+# silently failed on any geographicDescription containing an embedded newline (missing PCRE
+# (?s) flag -- the same documented footgun class already in this package's own Known
+# Footguns section, reproduced with the reviewer's real "ABUR: Arroyo Burro Reef..."
+# example); fetch_gbif_occurrences(year_range = NULL) crashed with cache_dir enabled -- a
+# real, reachable path via TaxaExpect::build_priors()'s own year_range=NULL default
+# forwarding straight through; a shared hardcoded year_range default ("2000,2024", identical
+# across five functions) was already silently excluding all 2025+ GBIF data for any
+# default-argument caller by the time of this review, fixed with a call-time-computed
+# default instead of a fixed literal (see Recent Breaking Changes below); filter_gbif_
+# quality()'s basisOfRecord filter compared exact case/whitespace, inconsistent with its own
+# occurrenceStatus filter's normalization; pdf_extract.R was applying TaxaTools's
+# deliberately NULL-only %||% to four screen_pdf_structure() axis fields that explicitly
+# return NA_character_ (not NULL) on LLM-characterization failure, confirmed via a real
+# bundled PDF where every one of these fields came back NA and stayed NA through prompt
+# building; pdf_text.R's two-column-layout header detection never matched a NUMBERED header
+# ("2.1 RESULTS ...") since it tested against the raw line without first stripping the
+# leading number the way its own single-column pass already does; pdf_api.R's
+# build_pdf_extract_prompt() @examples used entirely wrong parameter names. Also fixed: a
+# stale "TaxaExpect --" header banner (pre-Session-19-split doc drift) in 7 files; pdf_api.R
+# and this package's own Function Inventory table both still claimed call_api_pdf() was
+# "Anthropic-only," predating Session 87's provider generalization (the function body itself
+# already dispatched through TaxaTools::call_api(), only the docs were wrong); two real
+# df-shadows-stats::df() local-variable violations (dataone_taxon_screening.R,
+# pdf_extract.R, matching this ecosystem's established df -> input_df convention); several
+# genuine DRY duplications consolidated. Several other review comments were investigated and
+# found to be already-correct design or genuine-but-out-of-scope architecture questions
+# flagged for a future session rather than fixed unilaterally (data.frame vs. tibble
+# consistency ecosystem-wide; EDIutils adoption; httr vs. httr2 consistency; three separate
+# .bbox_overlaps()-style implementations across three files; inconsistent bbox-argument
+# conventions within TaxaFetch's own functions) -- see the response doc for the full
+# file-by-file record, including reviewer suggestions that were checked and found incorrect
+# before being rejected (not just dismissed). New test coverage for 3 previously-untested
+# files. TaxaFetch devtools::test() 616/618 (2 pre-existing failures, confirmed via git
+# stash to be present and identical before this session -- a CoordinateCleaner/terra/sf
+# environment version issue, unrelated to any fix here), up from 565/565; devtools::check()
+# 0 errors/0 warnings/0 notes; reinstalled and verified at ~/Library/R/4.0/library.
+# Previous update, 2026-08-08 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_
+# investigate_flagged_accession_prefilter_group_posthoc.md's top three menu items, per that
+# doc's own priority ranking: (1) TaxaMatch::investigate_flagged_accession()'s two
+# comparisons now run via BLAST itself (new internal .blast_against_comparison_set(),
+# reusing blast_sequences()'s own proven coverage-safety) instead of a hand-rolled
+# pwalign::pairwiseAlignment() loop -- fixes the real MZ605481 "inconclusive in both
+# directions" regression the reentry doc itself documents (a short amplicon vs.
+# length-unaware NCBI species search returning mostly full mitogenomes). (2) new
+# TaxaMatch::check_marker_mismatch() -- a single cheap GBSeq feature-table fetch
+# cross-checking a flagged accession's own annotated /gene or /product qualifier against
+# the marker an evaluation was scoped to, directly grounded in the real confirmed AY850362
+# marker-mislabel case (a hypothesis based on taxonomic rank of disagreement was tried
+# first and refuted directly against MZ605481, a real species mislabel that ALSO disagrees
+# only at a coarse rank). (3) investigate_flagged_accession() gains a persistent,
+# asymmetric-TTL cache (mirrors evaluate_reference_accessions()'s own design) plus a new
+# plural investigate_flagged_accessions() batch wrapper sharing NCBI species-search results
+# across a flagged-accession list. Deliberately NOT done, per the reentry doc's own
+# deferral: cluster-level mislabel detection across a batch (the doc's own highest-value
+# idea, needs real batch data with genuine disagreement-taxon overlap to design against
+# meaningfully) and the Question 4 items (voucher/publication-context check,
+# geographic/range plausibility cross-check, submission-batch-wide pattern check).
+# TaxaMatch devtools::test() 679/679 (0 failures, up from 605), devtools::check() 0
+# errors/0 warnings/0 notes, reinstalled and verified at ~/Library/R/4.0/library. See
+# TaxaMatch/CLAUDE.md's own top session note for the full implementation record.
+# Same day, continued (Sonnet 5 -- the fix above was live-tested against the real MZ605481
+# case immediately after shipping (user's request: "what's next, test or code?" -> "y") and
+# failed twice more before actually working -- each failure diagnosed and fixed via direct
+# live debugging: (1) .blast_against_comparison_set()'s post-hoc-filter design returned
+# ZERO matches even for accessions confirmed to exist, since comparison-set accessions
+# never ranked among an unrestricted BLAST's own top hits -- fixed via NCBI's ENTREZ_QUERY
+# mechanism, which restricts the search space itself. (2) Still zero matches -- root cause
+# traced to Pseudorasbora parva having a published reference genome, so a plain species-name
+# search returned mostly whole-chromosome assembly records (60-80M bp) instead of short
+# barcode deposits, confirming the reentry doc's own originally-deferred "Option B" (length-
+# ratio candidate filtering) is a REQUIRED companion to Option A, not an alternative --
+# implemented in TaxaMatch::.search_species_accessions() via NCBI's own [SLEN] Entrez query
+# field (server-side length restriction, found necessary after a client-side widen-then-
+# filter approach both hit an HTTP 414 batching error and still failed for Cyprinus carpio's
+# 67,744 total records). Final live re-run produced exactly the pattern this whole mechanism
+# exists to detect: MZ605481 (a confirmed candidate_mislabel) shows 87.64% mean self-
+# consistency identity to its own listed species vs. 99.42% mean cross-taxon identity to
+# Cyprinus carpio. TaxaMatch devtools::test() 696/696 (0 failures), devtools::check() 0/0/0,
+# reinstalled and re-verified after each fix. See TaxaMatch/CLAUDE.md's own same-day
+# continued note for the full multi-round debugging record.
+# Previous update, 2026-08-07, continued once more (Sonnet 5 -- TaxaAssign's second full code +
+# domain review response, against a fresh inst/taxaassign_review.Rmd (20 files). Two real bugs
+# found and fixed via direct empirical verification: update_prior_from_consensus() was
+# silently OVERWRITING (not merging) any report_params already attached to its input `result`,
+# meaning every real run_llm_pipeline() report's Methods text silently used hardcoded defaults
+# instead of the real assign_taxa_llm() parameters actually used; .find_nearest_grid()'s plain
+# Euclidean lat/lon-degree distance wasn't spherical-correct (over-weights longitude away from
+# the equator) and could pick the wrong nearest grid cell, fixed with a cosine-latitude
+# correction confirmed via a constructed 60N counterexample. Also closed a real, previously-
+# documented production landmine at the package level: compute_group_priors()'s default
+# rank_cols changed from c("genus","family") to c("species","genus","family") (auto-deriving
+# "species" as taxon identity) -- the old default was the root cause of the 504/616 real Mugu
+# "unprecedented" false-positive bug from the 2026-07-30 entry below, patched at the time with
+# a manual per-workflow shim rather than a package default change; this session's reviewer
+# independently flagged the same landmine with no access to that history, which is exactly the
+# discoverability risk that earlier reasoning under-valued. expand_unreferenced_hypotheses()'s
+# TaxaAssign-side deprecated forwarding wrapper removed entirely (zero real qualified callers).
+# 13 broken/\dontrun{}-hidden @examples blocks rewritten to genuinely runnable, verified by
+# devtools::check() actually executing them. devtools::test() 655/655 (up from 615),
+# devtools::check() 0/0/0, reinstalled and verified against the installed copy directly. See
+# TaxaAssign/CLAUDE.md's own top session note and inst/taxaassign_review_response.md for the
+# complete file-by-file record.
+# Previous update, 2026-08-07, continued yet again (Sonnet 5 -- TaxaFlag::review_spatial_context(),
+# closing out the whole nine-round spatial-review-gadget thread with a dedicated test-
+# coverage pass, prompted by the user asking to make sure all docs/tests were properly
+# written up after confirming the tileSize=512/zoomOffset=-1 fix worked. Two pieces of real
+# logic that had only ever existed as inline variables inside the gadget's reactive/render
+# closures -- the GBIF tile URL's .point->.poly auto-upgrade/bin-param/Heat-exclusion logic,
+# and the per-style legend gradient lookup -- were extracted into standalone `@noRd`
+# functions (`.gbif_tile_url()`, `.gbif_legend_swatch()`) specifically so they're
+# independently unit-testable, not just implicitly exercised through the full gadget. This
+# matters because the exact bug class this thread shipped twice (a real, correctly-verified
+# value that wasn't actually wired to, or re-checked against, the code path a real user's
+# parameters would hit) is precisely what inline-only logic can't catch. 15 new tests added
+# (5 for the URL builder, 3 for the legend lookup, 2 for `.fetch_inat_points()` which had no
+# direct test coverage at all before this pass). devtools::test() 382/382 (up from 360),
+# devtools::check() 0 errors/0 notes, reinstalled. Pure refactor + additive tests, no
+# behavioral change. See TaxaFlag/CLAUDE.md's top session note and
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued once more (Sonnet 5 -- TaxaFlag::review_spatial_context(),
+# fourth round of real click-through feedback. Two items: (1) reverted the prior round's iNat
+# marker clustering + radius bump entirely, per direct user feedback ("The iNat points were
+# fine before") -- back to plain, unclustered radius=2 circleMarkers, no clusterOptions.
+# (2) GBIF tiles still too small, with an explicit "don't use clustering to solve this."
+# Rather than tune squareSize yet again, investigated the deeper display-size question left
+# unresolved since the original tileSize regression: GBIF's z/x/y addressing follows the
+# standard 256px-grid convention (confirmed repeatedly this thread via real occupied-pixel
+# checks) while its @1x.png response is a real 512x512 image -- i.e. GBIF's default tile is
+# already a "retina"/@2x tile for its own addressed area, the exact shape Leaflet's own
+# `tileSize`+`zoomOffset` pairing exists for. Verified live before shipping (not reasoned
+# from memory, specifically because a prior round's superficially similar tileSize-only
+# change caused a real regression): built a standalone non-Shiny leaflet page with
+# `tileOptions(tileSize=512, zoomOffset=-1)` alongside the old default, screenshotted both
+# via real Chrome browser automation at the gadget's real zoom and after zooming in twice
+# more -- confirmed correctly positioned, visibly ~2x larger squares, zero tile gaps, zero
+# console errors. Shipped to the GBIF tile layer specifically. devtools::test() 360/360
+# unchanged, devtools::check() 0 errors/0 notes, reinstalled. See TaxaFlag/CLAUDE.md's top
+# session note, this file's own "Known R Footguns" tileSize entry (updated with the correct
+# paired-usage finding), and [[project_gbif_tile_spatial_review_functions]] for the full
+# record.
+# Previous update, 2026-08-07, continued yet again (Sonnet 5 -- TaxaFlag::review_spatial_context(),
+# third round of real click-through feedback. Study Site marker fix confirmed correct; three
+# more real issues fixed: the GBIF legend color was STILL wrong once the user's own call
+# actually used gbif_style="purpleHeat.point" -- the prior round's fix hardcoded "classic"'s
+# real sampled colors but never read the actual configured style, so it kept showing
+# yellow/orange/red regardless. Rebuilt as a real per-style lookup (5 styles sampled live:
+# classic + all 4 Heat variants), falling back to a neutral gray for anything unverified
+# rather than another guess. The iNat search radius (raised to 500km last round) had no
+# visual boundary, risking "no points here" being misread as "no iNat data at all" -- fixed
+# with a dashed leaflet::addCircles() boundary plus the actual km value in the legend text,
+# both driven by one new inat_radius_km param so they can't drift apart. iNat points were
+# barely visible when zoomed in since a fixed-screen-pixel circleMarker never grows with
+# zoom and un-clustered points spread apart at high zoom -- fixed with Leaflet's own bundled
+# marker-clustering plugin (leaflet::markerClusterOptions(), confirmed natively supported,
+# no new dependency). devtools::test() 360/360 unchanged, devtools::check() 0 errors/0
+# notes, reinstalled. See TaxaFlag/CLAUDE.md's top session note and
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued once more (Sonnet 5 -- TaxaFlag::review_spatial_context(),
+# second round of real click-through feedback on the SAME fixes just shipped: legend/toggles
+# now show, but the GBIF legend color was a never-sampled guess (fixed by reading real pixel
+# RGB values off live tiles: yellow/orange/dark-red, not the paler ramp guessed before), the
+# Study Site legend swatch was a generic pin emoji rather than the real marker (fixed by
+# embedding leaflet's own bundled marker-icon.png as a runtime-generated base64 data URI,
+# pixel-identical to the real map marker), iNat points were confined to a small region -- a
+# real regression from switching off the old world-spanning raster tile in favor of a
+# hardcoded 50km point search (fixed: default radius raised to 500km, confirmed live the
+# spread is genuinely wide again), and the GBIF tile bin-size fix from the prior round was
+# real but tuned against the wrong reference case (a maximally common species) -- re-measured
+# against this thread's own real sparse GreatLakes species at the actual study-site tile and
+# raised the default squareSize 64->256, which real data showed makes a genuine, not marginal,
+# visual difference for the sparse species this gadget actually reviews. `devtools::test()`
+# 360/360 unchanged, `devtools::check()` 0 errors/0 notes, reinstalled. See TaxaFlag/CLAUDE.md's
+# top session note and [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued (Sonnet 5 -- TaxaFlag::review_spatial_context()'s FIRST
+# real RStudio click-through by the user, 4 concrete points: occurrence points "just right"
+# (unchanged), iNat markers too large, GBIF tiles still too small, no legend, no toggles.
+# All fixed with live-verified levers, not guesses: iNat's own points-tile API has NO working
+# size parameter at all (confirmed directly -- 6 candidate param names all byte-identical to a
+# bare request) so the raster tile layer was replaced entirely with real point markers (new
+# `.fetch_inat_points()`, same `/v1/observations` endpoint `TaxaFetch::fetch_inat_occurrences()`
+# counts against, no auth needed) sized to match the already-approved occurrence-point styling;
+# GBIF's `bin=square`/`squareSize` binning params (confirmed live to be silent no-ops on
+# `.point`-suffixed styles) now auto-upgrade the style to its `.poly` counterpart, chosen at
+# `squareSize=64` from a real measured sweep (~36x more visible area than raw pixels); a static
+# HTML legend and `leaflet::addLayersControl()` toggles were added -- the latter was removed in
+# an earlier round on suspicion it caused a real regression that was later proven (via reading
+# Leaflet's own source) to be an unrelated `tileSize` bug, so it's back now that a real browser
+# session exists to verify it in. `devtools::test()` 360/360 unchanged, `devtools::check()` 0
+# errors/0 notes, reinstalled. See TaxaFlag/CLAUDE.md's top session note and
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued once more (Sonnet 5 -- TaxaMatch follow-up on the
+# real Abylopsis eschscholtzii ambiguity from the same-day BLAST-based reference-quality
+# work: an Opus design consult (requested by the user directly: "is it time to ask Opus")
+# found the current hierarchy_flag/finest_common_rank columns cannot distinguish a genuine
+# mislabel from "correct label, but this marker (18S) has poor resolving power at this rank
+# for this clade and GenBank coverage is thin" -- both produce identical output for the two
+# real accessions in question. Recommended two concrete fixes before attempting any
+# graded-likelihood-weighting mechanism (the reentry doc's own deferred item 5, still not
+# attempted): (1) surface percent-identity of agreeing/disagreeing hits (already computed,
+# previously discarded) plus whether ANY corroborating evidence exists anywhere in the full
+# hit pool, not just the top_n slice used for the verdict; (2) stop hard-dropping on an
+# unreviewed "incongruent" verdict by default, citing this ecosystem's own precedent of
+# making and reverting that exact mistake twice before (apply_coverage_constraints()'s
+# zero->relabel default; filter_gbif_quality()'s exclude_institution->flag_institution).
+# Both implemented same-day: evaluate_reference_accessions() gains 5 new diagnostic columns;
+# new flag_incongruent_references() (annotate, never remove) is now the documented
+# recommended default, with remove_incongruent_references() demoted to a deliberate,
+# post-review opt-in. Also added: a small curated ground-truth accession list
+# (diagnostics/reference_accession_ground_truth.csv, TaxaID repo root) -- a real confirmed
+# mislabel, real confirmed-correct-but-thin-coverage accessions, the real ambiguous
+# Abylopsis pair, and real Menidia accessions, all from this ecosystem's own prior
+# real-data audits -- wired into both real external AuditNCBI.R workflow scripts
+# (GreatLakes and PtConception, outside this monorepo) as a per-run sanity check.
+# `devtools::test()` 601/601 (up from 577), `devtools::check()` 0/0/0, reinstalled. The
+# graded-weighting question itself remains open, per the consult's own recommendation to
+# try the cheaper fixes first and revisit weighting only if they prove sufficient at scale
+# -- not yet tested at scale. See TaxaMatch/CLAUDE.md's own top session note for the full
+# record, including the consult's core finding (this is a real identifiability problem
+# from these two data points alone, not a smoothing/threshold problem).
+# Previous update, 2026-08-07, continued (Sonnet 5 -- TaxaFlag::review_spatial_context()
+# gains an opt-in live TaxaFetch::check_inat_range() fallback (new live_inat_check/
+# inat_cache_dir params on review_spatial_context() and its internal server), closing a real
+# coverage gap the user hit repeatedly across three different real taxa spanning both
+# "unexpected" and "expected" plausibility tiers: the pipeline's own static inat_range is
+# scoped to its "unprecedented"-tier undetected-diversity candidates only, so most of a real
+# consensus table has no row in it at all -- not a bug, a real structural limitation, verified
+# directly against real data before building the fallback rather than patched blind a second
+# time. The stats-panel iNat message no longer claims "not in the supplied inat_range" when a
+# live check may also have run, and now surfaces the real range_status when a check (static or
+# live) genuinely finds nothing. A pre-existing test-suite gap (the test file's own server-
+# construction helper hadn't been updated for a REQUIRED param this same round's signature
+# threading had already added, surfacing as an opaque testServer() promise error rather than a
+# clear missing-argument message) was found and fixed while getting to a clean test run.
+# devtools::test() 360/360 (up from 356), devtools::check() 0 errors/0 notes, reinstalled. Still
+# not done: the user's own live RStudio click-through -- every round of this thread has been
+# verified via shiny::testServer()/direct API calls/source reading so far, not a real browser
+# session by me. See TaxaFlag/CLAUDE.md's top session note and
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued yet again (Sonnet 5 -- TaxaFlag::review_spatial_context()
+# refined from the user's first real click-through: dropped an unneeded tile-opacity
+# override (GBIF's tiles now render as GBIF itself serves them, not dimmed further), toned
+# down the occurrence-point styling so it doesn't visually overwhelm the tile layer, made
+# the iNat panel always show an explicit line (real data or "no data for this taxon")
+# rather than silence, and added a new excluded_occurrence_data overlay for GBIF records
+# this study's own quality/outlier/institution filtering excluded. That last point was
+# investigated against the real GreatLakes2023 checkpoints rather than assumed: 0
+# geographic-outlier removals, 0 institution removals, but a real 530 records excluded by
+# filter_gbif_quality() (recoverable via a plain anti_join on gbifID between raw_gbif and a
+# post-filter checkpoint). devtools::test() 354/354, devtools::check() 0 errors/0 notes.
+# Still open: a real interactive click-through in RStudio hasn't happened yet. See
+# TaxaFlag/CLAUDE.md's top session note and [[project_gbif_tile_spatial_review_functions]].
+# Previous update, 2026-08-07, continued once more (Sonnet 5 -- implements ecosystem_docs/
+# REENTRY_PROMPT_blast_based_reference_quality.md: TaxaMatch gains
+# evaluate_reference_accessions() (per-accession BLAST-based reference-quality
+# evaluation, replacing the taxon-list-scoped DECIPHER whole-set-alignment approach a
+# prior 2026-08-06/07 design session abandoned after finding real false positives --
+# 15 genuine Smithsonian-vouchered Menidia accessions flagged "incongruent" purely
+# because Menidia's family had no other representative on a real 6-genus GreatLakes
+# test's `taxa` list -- and a structural false-negative gap that approach could never
+# close) + remove_incongruent_references() (the early hard-filter consumer, mirrors
+# TaxaLikely::remove_flagged_references()'s pattern). BLASTs each accession against a
+# broad, unrestricted database instead of a caller-scoped taxon list, reusing (duplicated,
+# not cross-package-reached-for, per the documented TaxaMatch->TaxaLikely dependency
+# direction) the archived .build_submission_batch_lookup()/.same_submission_batch()/
+# .compute_hierarchy_congruence() machinery unchanged -- what's new is the caller, which
+# adapts real BLAST hits into the same id_x/id_y/{rank}.x/{rank}.y pair-table shape that
+# machinery already expects. Persistent accession-keyed cache with the user's chosen
+# asymmetric TTL (congruent/incongruent cached indefinitely; insufficient_independent_
+# evidence expires and retries). A real, structural bug was found and fixed via testing
+# the common "brand-new accession, zero BLAST hits" case, not by inspection: the initial
+# empty-hits fallback silently dropped such accessions from the output entirely (a
+# downstream merge()'s right side had no columns to bring in) -- fixed with a properly-
+# shaped empty frame, guarded by a dedicated regression test. TaxaMatch's own Package
+# Purpose statement updated to reflect this narrow, match-object-cleaning scope revision
+# (confirmed with the user during the design session: "screening match data against
+# reference quality in service of producing a clean match object," not a takeover of
+# reference-database auditing as a discipline -- that stays TaxaLikely's domain).
+# devtools::test() 576/576 (0 failures, up from 523), devtools::check() 0 errors/0
+# warnings/0 notes, reinstalled and verified at ~/Library/R/4.0/library. Not done this
+# session, explicitly flagged as real future work (the reentry doc's own item 5,
+# deliberately left undesigned): the full per-accession quality signal surviving through
+# to TaxaLikely::evaluate_likelihoods() for graded likelihood weighting -- no mechanism or
+# signature decided yet. See TaxaMatch/CLAUDE.md's own top session note for the full
+# record, including two smaller real bugs found and fixed the same way (a base merge()
+# column-name ambiguity, a zero-row scalar-column-assignment error).
+# Previous update, 2026-08-07, continued yet further (Sonnet 5 -- TaxaFlag gains
+# review_spatial_context(), a click-through leaflet + miniUI gadget closing out the
+# original brainstorm this whole multi-day thread started from -- taxon dropdown
+# (filterable by plausibility), a live pannable/zoomable GBIF density-tile map layer, a
+# sidebar with the already-built check_gbif_tile_range()/compute_local_occurrence_
+# distance()/iNat context, and an opt-in "Run AI Review" button (the only billed step,
+# never automatic). Standard browser-automation tooling hung indefinitely against the
+# running gadget waiting for "network idle," which a Shiny app's persistent WebSocket
+# never reaches -- confirmed not a gadget bug (a plain curl request got a fast, correct
+# response) before abandoning that path per this project's own "avoid rabbit holes"
+# guidance. Pivoted to shiny::testServer() instead (a small refactor exposed the server
+# function directly), which caught a real bug before any user would have: an unresolvable
+# taxon name silently blanked the ENTIRE stats panel, not just the intended message,
+# because shiny::req()'s silent-stop propagates to any caller reading that reactive.
+# devtools::test() 350/350, devtools::check() 0 errors/0 notes. Still needs the user's own
+# live click-through in RStudio -- testServer() verifies the reactive logic, not the full
+# rendered browser experience. See TaxaFlag/CLAUDE.md's top session note and
+# [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07, continued (Sonnet 5 -- TaxaFlag::review_assignments() wired to
+# the new spatial-review functions (check_gbif_tile_range()/
+# compute_local_occurrence_distance() + TaxaFetch::check_inat_range()): six new optional
+# `_col` params, purely additive to the LLM prompt (facts only, e.g. "GBIF: nearest
+# occurrence ~6517km away, patch ~7.3km across; iNat: matched to 'Gasterosteus aculeatus'
+# (name differs from query), in range, 10135 obs"), with the interpretive caveats -- a
+# small isolated GBIF patch may be a bad record, not real presence; a mismatched iNat
+# matched_name may describe a different species -- as a conditional GUIDELINES bullet
+# rather than a server-side pre-judgment. That last point was a deliberate design choice,
+# citing this ecosystem's own trusted_rank precedent (built, then removed after misfiring
+# on real data) for why a rigid disagreement rule wasn't built instead. Also surfaced,
+# same real-data comparison: TaxaFetch::check_inat_range() resolved a query for the
+# European Gasterosteus gymnurus to Gasterosteus aculeatus (a different, North American
+# species) via a fuzzy name match, returning a misleading in_range=TRUE -- filed as its
+# own separate TODO ([[project_inat_range_backbone_mismatch_todo]]), not fixed here, since
+# it has a live production consequence (TaxaAssign::adjust_inat_range_priors() already
+# elevates priors from this unchecked verdict) independent of the prompt-wiring work.
+# devtools::test() 334/334, devtools::check() 0 errors/0 notes. See TaxaFlag/CLAUDE.md's
+# top session note and [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-07 (Sonnet 5 -- TaxaFlag::check_gbif_tile_range() refined from
+# real user feedback on the real GreatLakes2023 data: two genuinely "unprecedented"
+# European fish species came back NA/beyond_buffer at the default zoom, which the user
+# flagged as uninformative (a reviewer wants "very far" over "unknown"), and raw
+# patch_size_px was hard to interpret without knowing the zoom's real-world scale. Both
+# fixed: new `escalate`/`min_zoom` params widen the tile search to coarser zoom levels
+# only when nothing is found, stopping as soon as something is (live-verified: both real
+# species now resolve at zoom 3 to real, plausible transatlantic distances ~6500km,
+# while the already-working case does not escalate at all); new `patch_area_km2`/
+# `patch_diameter_km` convert the raw pixel count to real-world units. devtools::test()
+# 320/320, devtools::check() 0 errors/0 notes. See TaxaFlag/CLAUDE.md's top session note
+# and [[project_gbif_tile_spatial_review_functions]] for the full record.
+# Previous update, 2026-08-06 (Sonnet 5 -- TaxaFlag gains two new standalone functions giving
+# a reviewer spatial context for a taxon flagged "unexpected"/"unprecedented":
+# compute_local_occurrence_distance() (free -- reuses a workflow's own already-fetched
+# TaxaFetch occurrence data, no new network call) and check_gbif_tile_range() (cheap --
+# reads presence/absence from GBIF's occurrence-density map tiles' alpha channel, giving
+# the global range context a bbox-limited local fetch structurally can't). Neither
+# distinguishes a data error from a genuine rarity/vagrancy report -- that's
+# TaxaFetch::check_geographic_outliers()'s separate, prior job; these answer a downstream
+# question (how isolated is a detection already judged plausible). A real performance
+# problem (unbounded patch-growth taking 13-22s for a densely-covering species) was found
+# and fixed via live-verification against real GBIF tiles before shipping, not caught by
+# synthetic tests. devtools::test() 297/297, devtools::check() 0 errors/0 notes (1
+# pre-existing unrelated warning). See TaxaFlag/CLAUDE.md's top session note for the full
+# design record, including the real empirically-verified GBIF tile facts (512px tiles,
+# not 256px; HTTP 204 for empty tiles) that would have silently broken the georeferencing
+# math if assumed instead of checked.
+# Previous update, 2026-08-06, continued yet again (Sonnet 5 -- `repair_thin_evidence()`'s
+# scope widened to also rescue accessions with ZERO `seq_matrix` presence (over-length
+# records, e.g. full mitogenomes) -- a real GreatLakes 12S check found 67% of a real audit's
+# accessions fell in this bucket, live-confirmed against NCBI as genuine mitogenome-scale
+# records each carrying a real, annotated 12S region. A primer-based rescue
+# (`trim_to_amplicon()`, already built) was deliberately rejected by the user on a real
+# design objection: whether an accession gets checked for mislabeling must not depend on
+# which primer an analyst happened to try. Fixed primer-neutrally instead, reusing
+# `repair_thin_evidence()`'s existing same-species/genus pairwise-alignment machinery with
+# one added safeguard -- every candidate must already be a real, vetted `seq_matrix`
+# participant, never another unvetted long/thin accession. devtools::test() 0 failures
+# (1079), devtools::check() 0/0/1 (pre-existing environmental note), reinstalled. See
+# TaxaLikely/CLAUDE.md's own top session note for the full record, including real-scale
+# validation against the GreatLakes cached checkpoint.
+# Previous update, 2026-08-06, continued once more (Sonnet 5 -- TaxaLikely: closes out a
+# statistical-critique investigation (mechanics trace + real-data empirical scan + Opus
+# critique) the user requested after noticing train_likelihood_model()'s fitted
+# score->likelihood relationship can peak below a perfect match rather than at it. Verdict:
+# expected/correct behavior (a Gaussian peaks at its fitted mean, which real data sits below
+# the ceiling), and the property that actually matters -- monotone likelihood ratio -- held
+# in every real production model checked. Three real fixes shipped anyway: evaluate.R's H1
+# outlier-rejection gate changed from two-sided to one-sided (a real, if latent, structural
+# incoherence independent of the main question -- H2/H3 can never fit a too-high score better
+# than H1, so only a too-LOW score should ever zero H1); evaluate_likelihoods() now warns
+# rather than silently defaulting to the more fragile `"logit"` transform when a model
+# object's Score_Transform field is absent; train_likelihood_model() gained an automatic
+# post-training monotone-likelihood-ratio diagnostic (new `.check_score_ratio_monotonicity()`,
+# `Stats$mlr_violations`/`max_ceiling_z`). Per the user's explicit choice, the analysis is
+# documented in train_likelihood_model()'s own roxygen (a new `@section Non-monotonic
+# score->likelihood shape`) rather than a new standalone design doc. `devtools::test()` 0
+# failures (1075), `devtools::check()` 0/0/1 (pre-existing environmental note), reinstalled.
+# Still open, not resolved: no live Pt. Conception `lik_model` was found on disk to confirm
+# it isn't still the stale, `Score_Transform`-less object the empirical scan flagged as the
+# one real severe case found. See TaxaLikely/CLAUDE.md's own top session note for the full
+# record.
+# Previous update, 2026-08-06, continued yet further (Sonnet 5 -- `audit_reference_database()`/
+# `classify_reference_accessions()`'s `min_coverage` split into two params
+# (`min_coverage_floor`, a permissive sanity minimum for computing raw stats; `min_coverage`,
+# now purely a downstream trust gate on the specific pair driving a flag), fixing a real,
+# measured problem: at a real Youden's-J-calibrated `min_coverage = 0.95`, 54% of a real
+# 10,701-accession GreatLakes 12S audit had zero surviving self-comparisons, even after the
+# same-day `repair_thin_evidence()` repair pass. Prompted by the user's own design question
+# and proposed fix. New `foreign_match_coverage`/`median_self_coverage` output columns.
+# devtools::test() 0 failures (1061), devtools::check() 0/0/0, reinstalled. Wired into the
+# external GreatLakes `AuditNCBI.R` workflow (not under git). See TaxaLikely/CLAUDE.md's own
+# top session note for the full record.
+# Previous update, 2026-08-06, continued (Sonnet 5 -- TaxaLikely gains
+# `repair_thin_evidence()`, a targeted pairwise repair pass for reference-database-audit
+# accessions a broad-marker-search + strict-`min_coverage` alignment left thin-evidenced
+# even though real corroborating data exists, just sequenced with a different primer
+# subset. Wired into the external GreatLakes `AuditNCBI.R` workflow (not under git).
+# devtools::test() 0 failures (1045), devtools::check() 0/0/0, reinstalled. See
+# TaxaLikely/CLAUDE.md's own top session note for the full record, including a real bug
+# found and fixed via dry-run testing (scope was gated on `qc$excluded_from_alignment`,
+# which conflates a genuine non-entrant with an accession every one of whose pairs merely
+# failed `min_coverage` -- fixed to check raw `seq_matrix` presence directly).
+# Previous update, 2026-08-06 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_
+# reference_database_audit_hierarchy_check.md: TaxaLikely gains a taxonomic-hierarchy-
+# congruence check for its reference-database audit tooling, closing out the design
+# thread begun 2026-08-04 (a full critical re-design after an Opus-model architecture
+# review found the first version would not have caught the motivating case -- a parasite
+# correctly identified morphologically whose sequenced DNA is actually the host's,
+# replicated across several individuals from the same sample). New internal
+# `.compute_hierarchy_congruence()` walks each accession's independent (not
+# same-submission-batch) close matches for taxonomic-rank agreement, Jeffreys-smoothed
+# and vectorised (1M-row real-scale `seq_matrix` in 1.39s); wired into
+# `audit_reference_database()`/`classify_reference_accessions()`'s new `hierarchy_flag`
+# column, kept deliberately additive (never folded into the existing `error_type`
+# override chain -- this ecosystem has already run that "fold a new signal in" experiment
+# twice, both times finding the additive-column design safer). Also documents (in one
+# pass, per this project's own end-of-session convention) the three functions this same
+# design thread shipped 2026-08-04/05 -- `estimate_reference_scope()`,
+# `audit_reference_database()`, `classify_reference_accessions()` -- left undocumented at
+# the time pending real-data testing. Two required cache-staleness fixes made along the
+# way in `fetch_ncbi_reference_sequences()` (folding `rank_system` into its per-taxon
+# cache key; adding a `create_date` column, live-verified present on NCBI's real
+# ESummary DocSum). `devtools::test()`/`check()` clean (0 failures, 0/0/0), reinstalled.
+# See `TaxaLikely/CLAUDE.md`'s top session note and its new "Reference database auditing
+# (Module B-QC2)" Function Inventory section for the full record.
+# Continued, same day, real production use against real GreatLakes 12S data (156 genera,
+# 3557 accessions) found a real bug: `audit_reference_database()` never passed
+# `keep_out_of_range` through to `fetch_ncbi_reference_sequences()`, so a caller using a
+# length-specific `barcode_term` (e.g. `"MiFishU"`, 130-210bp, the fix for a separate,
+# real, non-bug finding -- several accessions flagged `hierarchy_flag = "incongruent"`
+# turned out to be genuine 12S sequences from an OLDER, non-MiFish amplicon window, live-
+# verified against real NCBI records) silently lost every off-window accession before it
+# ever reached `qc` -- not flagged, just gone, taking over half the species in a real test
+# run with it. Fixed: `audit_reference_database()` now retains out-of-range accessions
+# through fetch so they correctly surface as `excluded_from_alignment = TRUE` instead of
+# vanishing, matching its own "Deliberately exhaustive" design intent (which had only ever
+# covered count-based subsampling, not the length filter). `devtools::test()`/`check()`
+# clean, reinstalled. See `TaxaLikely/CLAUDE.md`'s same-day continued note.
+# Previous update, 2026-08-03 (Sonnet 5 -- two real fixes from a long GreatLakes2023
 # debugging/design session (production workflow, outside this monorepo, not under git).
 # (1) TaxaMatch::blast_sequences() real bug: the subject-length filter checked `slen`
 # (whole GenBank record length) instead of `length` (aligned region length), silently
@@ -1751,6 +2306,56 @@ Do not tell the user to use Session → Restart R or Cmd+Shift+F10 (does not wor
 
 ## ⚠️ Known R Footguns
 
+### `leaflet::tileOptions(tileSize = ...)` changes which tiles get requested, not just their display size (found 2026-08-07)
+Setting a custom `tileSize` on `leaflet::addTiles()` to match a tile provider's real image
+dimensions (e.g. GBIF's `@1x.png` tiles are genuinely 512x512, not the 256px Leaflet
+assumes by default) looks like a safe display-only fix -- it is not. Confirmed by reading
+Leaflet.js's own bundled source directly (`system.file("htmlwidgets/lib/leaflet/leaflet.js",
+package = "leaflet")`, minified but greppable): `getPixelWorldBounds()` (the map's shared
+world-pixel bounds at a given zoom) comes from the map's CRS alone, identical for every
+layer; `_pxBoundsToTileRange()` then divides those SAME shared bounds by
+`this.getTileSize()` -- **each layer's own** `tileSize` -- to compute that layer's tile
+x/y indices. A layer with `tileSize = 512` therefore requests DIFFERENT x/y indices than
+a layer left at the 256px default, at the identical zoom and viewport. If the tile
+provider's own server-side addressing uses the standard 256px-grid convention regardless
+of what pixel resolution its response images actually are (true for GBIF, and true for
+most slippy-map tile services), overriding `tileSize` desyncs your requested indices from
+what the server expects -- tiles silently stop rendering (wrong/out-of-range indices),
+not just "display at the wrong size." Real production consequence: a `TaxaFlag::
+review_spatial_context()` fix meant to enlarge GBIF's rendered density tiles broke tile
+rendering entirely instead, found only via the user's own live click-through, then
+diagnosed correctly (not guessed a second time) by reading the actual Leaflet source
+rather than reasoning from memory of how `tileSize` "should" work. If a tile provider's
+own images genuinely don't match Leaflet's 256px default, the correct levers are
+`detectRetina`/`zoomOffset` (Leaflet's own purpose-built retina-tile mechanism, which
+Leaflet itself uses instead of a raw `tileSize` override) or simply raising the map's
+initial/default zoom level (verified separately, via real `check_gbif_tile_range()`
+output, to genuinely increase a GBIF density blob's on-screen pixel footprint) -- never a
+bare `tileSize` change on one layer alone.
+
+**Update, 2026-08-07, later same thread -- the correct paired fix, verified live:** `tileSize`'s addressing
+change (above) can be used SAFELY when paired with `zoomOffset`, which is exactly the
+compensation Leaflet's own docs recommend for a provider whose default tile is already
+higher-resolution than the 256px convention for the SAME addressed area (a real "retina"
+tile, which is what GBIF's `@1x.png` genuinely is here -- confirmed elsewhere in this file
+that GBIF's z/x/y follows the standard 256px-grid convention while returning a real 512px
+image for that identical area). `leaflet::tileOptions(tileSize = 512, zoomOffset = -1)`
+together: `zoomOffset = -1` requests one zoom level COARSER, whose standard-grid tile
+covers exactly the geographic area a `tileSize = 512` on-screen slot spans at the map's
+displayed zoom -- so the real, correctly-addressed 512px image fills that slot with no
+forced downscaling and no addressing mismatch. **Verified live before shipping this
+time, specifically to avoid repeating the mistake above**: built a standalone (non-Shiny)
+leaflet HTML page (served over a local `python3 -m http.server`, since Chrome blocks
+`file://` navigation via the extension) with this option pair alongside the no-override
+default, side by side, screenshotted both via real Chrome browser automation at the
+gadget's real zoom (7) and again after zooming in twice more -- confirmed visibly larger,
+correctly positioned squares (same real coordinates/species, matching clusters exactly)
+with zero tile gaps, zero basemap misalignment, and zero console errors at either zoom.
+The lesson from the original entry stands (a BARE `tileSize` change alone is still a real
+bug) -- this is the verified-safe paired form, not a contradiction of it. See
+`TaxaFlag/CLAUDE.md`'s own top session note for where this landed
+(`review_spatial_context()`'s GBIF tile layer).
+
 ### Split-string sprintf bug (recurring)
 `sprintf()` does NOT concatenate multiple string arguments.
 ```r
@@ -1973,3 +2578,9 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-08-03 (Sonnet 5) | `blast_sequences()`: subject-length filter now checks `length` (aligned region), not `slen` (whole GenBank record length); `megablast = FALSE` param added (explicit); `max_hits_per_taxon = NULL` param added (requires `resolve_taxonomy = TRUE` on remote results) | TaxaMatch | **Real bug fix + additive params.** The `slen`-vs-`length` bug silently discarded real congener matches deposited as long mitogenomes -- found live debugging a real GreatLakes 12S ASV. `megablast` matches the prior implicit default byte-for-byte (tested, ruled out as the actual bug, kept for explicit-over-implicit). `max_hits_per_taxon` needed a new internal `.attach_taxonomy()` + `.filter_blast_hits(stage=, taxon_group_col=)` restructuring since remote BLAST XML never populates real per-hit taxids. `devtools::test()` 523/523, `devtools::check()` 0/0/0. See `TaxaMatch/CLAUDE.md`'s top session note. |
 | 2026-08-03 (Sonnet 5) | `screen_spatial_formula()`'s gradient-covariate detection now reads `data`'s `scale_params` attribute instead of hardcoding `lat_r_s`/`lon_r_s` | TaxaExpect | **Behavioral, not signature.** Any covariate beyond the original two (e.g. a new `depth_m_s`) is now properly screened (shown in the VarCorr table, testable for removal via AIC) instead of being silently fit but invisible to this function's own model-selection machinery. Falls back to the old hardcoded pair when `scale_params` is absent (hand-built data/older callers) -- fully backward compatible, confirmed via a dedicated new test. `devtools::test()` 541/541 (up from 538), `devtools::check()` 0/0/0. See `TaxaExpect/CLAUDE.md`'s top session note and `[[project_depth_covariate_propagation]]`. |
 | 2026-08-04 (Sonnet 5) | `compute_adaptive_sampling_groups(min_n=)` lost its `100` default, now required | TaxaExpect | **Breaking, but zero real callers** (confirmed via a grep across the whole monorepo and the wider `~/My Drive/Rscripts` tree -- this function has never been wired into any production workflow). No safe universal per-site record-count threshold exists across study systems, matching this ecosystem's established "no safe default" convention (`join_priors(backbone_id=)`, `score_consensus(rank_thresholds=)`). Part of TaxaExpect's first code-review response pass; see `TaxaExpect/CLAUDE.md`'s top session note and `TaxaExpect/inst/taxaexpect_review_response.md` for the full record (also: new `grid_size` attribute propagated through `create_sites_from_grid()`/`prepare_model_dataframe()`/`train_biodiversity_model()`/`generate_full_priors()`/`plot_theta_map_interactive()`; new `compute_moran_basis(coords=)` param). `devtools::test()` 555/555 (up from 538), `devtools::check()` 0/0/0. |
+| 2026-08-07 (Sonnet 5) | `flag_contaminant(df=)`/`flag_handler(df=)`/`review_assignments(df=)`/`review_spatial_context(df=)` -> `input_df=` | TaxaFlag | **Breaking rename**, first TaxaFlag code review pass (`inst/taxaflag_review.Rmd`). `df` shadows `stats::df()`; matches the identical fix already made in `TaxaTools`/`TaxaHabitat`. Propagated to every real named-argument call site found via a full `~/My Drive/Rscripts` grep: this package's own tests/inst/vignette, `TaxaWizard`'s `consensus_to_flagged.R`/`consensus_to_reviewed.R` snippets + `metadata/TaxaFlag.json`, `TaxaID/inst/TaxaID_Workflow_Template_TEST.R`, and all 6 real external eDNA production workflow scripts (PtConception x4, SepulvedaMugu x2 -- outside this monorepo, not under git, backed up first as `*.bak_pre_input_df_rename`). Positional calls unaffected. Also fixed the same session: a real `flag_handler()` row-order bug (its internal `merge()` used `sort=TRUE`, silently re-sorting output by `group_col` whenever groups appeared out of alphabetical order in the input -- fixed with the same `.row_id`-then-resort pattern `review_assignments()` already used); a broken `\link{model_review_classification}` Rd cross-reference in `build_review_covariates.R` that had been the real cause of this package's long-standing, never-resolved `devtools::check()` warning; and a new `test-build_review_covariates.R` (that function's only exported-with-zero-tests gap). `devtools::test()` 415/415 (up from 382), `devtools::check()` 0 errors/0 warnings/0 notes (was 1 warning). See `TaxaFlag/CLAUDE.md`'s top session note and `inst/taxaflag_review.Rmd` for the full record. |
+| 2026-08-08 (Sonnet 5) | `fetch_gbif_occurrences()`/`download_gbif_occurrences()`/`get_gbif_occurrences()`/`check_geographic_outliers()`/`fetch_occurrences_by_taxon()`: `year_range` default `"2000,2024"` -> `.gbif_default_year_range()` (`"2000"` through the current year, computed at call time) | TaxaFetch | **Behavioral, not signature**, first TaxaFetch human code review pass (`inst/taxafetch_review.Rmd`, reviewer Micah Wright). The old fixed-literal default was identical across all five functions and had already gone stale by the time of this review -- any caller relying on the default was silently excluding all 2025+ GBIF occurrence data with no warning. Any caller passing its own explicit `year_range` is unaffected; a caller relying on the default now gets more complete data, never less. Also fixed the same session, adjacent to this: `fetch_gbif_occurrences(year_range = NULL)` (a real, reachable path via `TaxaExpect::build_priors()`'s own `year_range = NULL` default) crashed inside `.gbif_checkpoint_path()` when `cache_dir` was enabled -- `gsub()` on `NULL` silently produced `character(0)`, propagating into a length-zero checkpoint path and an `"argument is of length zero"` error. See `TaxaFetch/CLAUDE.md`'s top session note and `inst/taxafetch_review_response.md` for the full record, including several real data-parsing bugs fixed the same session (PASTA coordinate/XML-field bugs, a newline-vs-PCRE-dot footgun recurrence, an NA-vs-NULL defaulting gap in the PDF pipeline). |
+| 2026-08-08 (Sonnet 5) | `filter_gbif_quality()`'s `basisOfRecord` filter is now case/whitespace-insensitive | TaxaFetch | **Behavioral, not signature.** Previously exact `data$basisOfRecord %in% basis_keep`; now `toupper(trimws(...))` on both sides, matching the `occurrenceStatus` filter's own existing normalization (an inconsistency the review flagged). A no-op against real GBIF data (a strict, consistently upper-case Darwin Core controlled vocabulary); only changes outcomes for a non-GBIF-native `basisOfRecord` value differing from `basis_keep` only in case/whitespace, previously (incorrectly) dropped. |
+| 2026-08-08 (Sonnet 5) | `read_crabs_output(file=)` -> `crabs_file=` | TaxaLikely | **Breaking rename**, first TaxaLikely human code review pass (`inst/taxalikely_review.Rmd`, reviewer Micah Wright). `file` shadows `base::file()`, matching this ecosystem's established `df`/`file`/`line`-shadowing fix convention. Propagated to the one real cross-package named-argument call site found via a full monorepo grep: `TaxaWizard/inst/graph/snippets/local_fasta_to_refs.R` (`file = {{input_var}}` -> `crabs_file = {{input_var}}`) and its `TaxaWizard/inst/metadata/TaxaLikely.json` entry; this package's own `README.md` example. All in-package test calls already used positional (unnamed) calling and needed no change. See `TaxaLikely/CLAUDE.md`'s top session note and `inst/taxalikely_review_response.md` for the full record. |
+| 2026-08-08 (Sonnet 5) | `flag_reference_errors(singleton_match_threshold = 0.98)` added; `train_likelihood_model(singleton_match_threshold = 0.98)` added | TaxaLikely | **Additive, fully backward compatible** -- same default and comparison direction (`>`) as the prior hardcoded `0.98` literal, so no existing caller's behavior changes. The literal previously had an inline comment suggesting a caller "consider raising to 99% for ITS" with no actual way to do so; now a real parameter, threaded through `train_likelihood_model()` (which calls `flag_reference_errors()` internally) too. |
+| 2026-08-08 (Sonnet 5) | `audit_barcode_coverage_gbif()` removed entirely | TaxaLikely | **Breaking, but zero real callers** -- confirmed via a full monorepo grep and `NAMESPACE`: never exported (`@noRd`), zero test coverage, zero real callers anywhere, a genuinely abandoned "DRAFT" function (matches this ecosystem's established zero-real-callers removal precedent, e.g. `fetch_reference_sequences()`/`audit_barcode_coverage_ncbi()`/`expand_consensus_candidates()`). Its GBIF-only species-enumeration code path (`.get_species_gbif()`, `use_gbif`/`version_tag` plumbing in the internal scaffold) removed with it; `rgbif` dropped from `DESCRIPTION` `Suggests` (now genuinely unused). Internal `.audit_barcode_coverage_new_()` renamed `.audit_barcode_coverage_impl()` (not user-facing). |

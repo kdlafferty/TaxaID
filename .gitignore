@@ -36,11 +36,9 @@ ecosystem_docs/*.html
 TaxaID_presentation.qmd
 
 # ── GL Presentation (not for public repo) ────────
-TaxaID_GL_presentation.qmd
-TaxaID_GL_presentation.html
-TaxaID_GL_presentation_files/
+GL_presentation/
 
-# ── Generated GL figures ──────────────────────────
+# ── Other generated GL figures (pre-existing, unrelated to GL_presentation/) ──
 GL_*.png
 
 # ── Presentation analysis scripts and outputs ────
