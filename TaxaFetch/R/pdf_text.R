@@ -143,9 +143,16 @@
   # tests it against the vocabulary. This reliably catches INTRODUCTION,
   # METHODS, RESULTS, DISCUSSION without false-matching abbreviations or
   # accession numbers embedded mid-line.
-  leading_caps <- regmatches(line,
+  #
+  # Strip a leading section number first (same trim Pass 1 already applies)
+  # -- a numbered two-column header like "2.1 RESULTS ... [right-column
+  # prose]" otherwise never matches "^[A-Z]" since the line starts with a
+  # digit, silently missing numbered headers in exactly the layout Pass 2
+  # exists for (2026-08 human review).
+  line_numstripped <- gsub("^[0-9IVXivx]+\\.?[0-9]*\\.?\\s*", "", line)
+  leading_caps <- regmatches(line_numstripped,
                              regexpr("^[A-Z][A-Z &]{2,39}(?=\\s)",
-                                     line, perl = TRUE))
+                                     line_numstripped, perl = TRUE))
   if (length(leading_caps) == 1L && nzchar(leading_caps)) {
     caps_lower <- tolower(trimws(leading_caps))
     for (label in names(patterns)) {

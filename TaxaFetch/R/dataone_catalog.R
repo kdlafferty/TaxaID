@@ -1,6 +1,6 @@
 # ==============================================================================
 # dataone_catalog.R
-# TaxaExpect -- DataONE / PASTA Solr catalog harvest
+# TaxaFetch -- DataONE / PASTA Solr catalog harvest
 #
 # Exported functions:
 #   harvest_dataone_catalog()   Pull full PASTA Solr catalog; cache to disk
@@ -19,6 +19,17 @@
 #' Downloads metadata for all non-noise packages from the PASTA Solr endpoint
 #' and returns them as a tibble. Results are cached to disk; subsequent calls
 #' within \code{max_age_days} return the cache without hitting the network.
+#'
+#' "PASTA" (the endpoint queried here, \code{pasta.lternet.edu}) is the data
+#' repository infrastructure operated by the
+#' \href{https://edirepository.org}{Environmental Data Initiative (EDI)} --
+#' not itself a dataset. Every package harvested here was published through
+#' EDI, and its terms of use ask that data be cited (a \code{doi} column is
+#' included below for this purpose) and that data providers be contacted
+#' before use in a publication; see
+#' \href{https://edirepository.org}{edirepository.org} for the current
+#' policy. This function does not enforce or verify citation/contact
+#' compliance -- that remains the caller's responsibility.
 #'
 #' This is the first step in the DataONE supplemental occurrence pipeline:
 #' \preformatted{
@@ -48,8 +59,8 @@
 #' @return A tibble with one row per PASTA package and columns:
 #'   \code{id}, \code{scope}, \code{title}, \code{site},
 #'   \code{pubdate}, \code{geographicdescription}, \code{taxonomic},
-#'   \code{abstract}, \code{keywords_str}, \code{authors}, \code{begindate},
-#'   \code{enddate}, \code{has_taxonomic}, \code{is_candidate}.
+#'   \code{abstract}, \code{keywords_str}, \code{authors}, \code{doi},
+#'   \code{begindate}, \code{enddate}, \code{has_taxonomic}, \code{is_candidate}.
 #'   \code{is_candidate} is \code{TRUE} for packages that have a non-empty
 #'   \code{taxonomic} field and are therefore worth geographic screening.
 #'
@@ -224,10 +235,10 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
   fl_fields <- paste(c(
     "id", "scope", "title", "site", "pubdate",
     "geographicdescription", "taxonomic", "abstract",
-    "keyword", "author", "begindate", "enddate"
+    "keyword", "author", "doi", "begindate", "enddate"
   ), collapse = ",")
 
-  req <- httr2::request("https://pasta.lternet.edu/package/search/eml") |>
+  req <- httr2::request(.pasta_solr_url) |>
     httr2::req_url_query(
       q     = "*:*",
       fl    = fl_fields,
@@ -265,12 +276,24 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
     if (!nzchar(val)) NA_character_ else val
   }
 
-  .xml_collapse <- function(doc, field) {
-    nodes <- xml2::xml_find_all(doc, field)
-    if (length(nodes) == 0L) return(NA_character_)
-    vals <- trimws(xml2::xml_text(nodes))
-    vals <- vals[nzchar(vals)]
-    if (length(vals) == 0L) NA_character_ else paste(vals, collapse = " | ")
+  # 2026-08 human review: a live test found `authors`/`keywords_str` came
+  # back NA for every real record. The Solr field names ("author"/"keyword",
+  # singular) are correct per PASTA's own documented field list
+  # (dataone_occurrence_search.R's header comment), but the returned XML
+  # element name/nesting for a multi-value field is not guaranteed to match
+  # the field name exactly -- try several real candidate shapes in order
+  # (flat singular, nested plural/singular, flat plural) instead of assuming
+  # just one.
+  .xml_collapse <- function(doc, fields) {
+    for (field in fields) {
+      nodes <- xml2::xml_find_all(doc, field)
+      if (length(nodes) > 0L) {
+        vals <- trimws(xml2::xml_text(nodes))
+        vals <- vals[nzchar(vals)]
+        if (length(vals) > 0L) return(paste(vals, collapse = " | "))
+      }
+    }
+    NA_character_
   }
 
   rows_list <- lapply(docs, function(doc) {
@@ -283,8 +306,13 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
       geographicdescription = .xml_scalar(doc, "geographicdescription"),
       taxonomic             = .xml_scalar(doc, "taxonomic"),
       abstract              = .xml_scalar(doc, "abstract"),
-      keywords_str          = .xml_collapse(doc, "keyword"),
-      authors               = .xml_collapse(doc, "author"),
+      keywords_str          = .xml_collapse(
+        doc, c("keyword", "keywords/keyword", "keywords")
+      ),
+      authors               = .xml_collapse(
+        doc, c("author", "authors/author", "authors")
+      ),
+      doi                   = .xml_scalar(doc, "doi"),
       begindate             = .xml_scalar(doc, "begindate"),
       enddate               = .xml_scalar(doc, "enddate")
     )

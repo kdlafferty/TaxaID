@@ -34,7 +34,7 @@ relevance, and \code{\link{parse_taxon_screening_response}} returns a
 literature catalogs (e.g. from \code{\link{search_literature}}) where
 \code{\link{build_geo_prompt}} cannot be used because the catalog lacks
 DataONE-specific columns.  Example: \code{"Santa Barbara Channel,
-  southern California coastal waters"}.  Leave \code{NULL} for the DataONE
+southern California coastal waters"}.  Leave \code{NULL} for the DataONE
 path.}
 
 \item{chunk_size}{Integer. Maximum datasets per prompt chunk. Default

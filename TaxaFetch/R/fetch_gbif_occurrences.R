@@ -1,7 +1,21 @@
 # ==============================================================================
 # fetch_gbif_occurrences.R
-# TaxaExpect -- Download GBIF occurrence records for a set of taxon keys
+# TaxaFetch -- Download GBIF occurrence records for a set of taxon keys
 # ==============================================================================
+
+#' Default \code{year_range} for GBIF fetch functions: 2000 through the
+#' current year, computed at call time (not a hardcoded literal year that
+#' silently goes stale). 2026-08 human review: a hardcoded
+#' \code{"2000,2024"} default (used identically across five functions in
+#' this package) meant every default-argument caller silently excluded all
+#' 2025+ GBIF occurrence data with no warning, an already-live data-
+#' completeness gap by the time of the review. Shared here so the fix and
+#' its rationale live in one place rather than five hand-copied literals.
+#' @noRd
+.gbif_default_year_range <- function() {
+  sprintf("2000,%d", as.integer(format(Sys.Date(), "%Y")))
+}
+
 
 #' Fetch GBIF Occurrence Records for a Set of Taxon Keys
 #'
@@ -18,9 +32,13 @@
 #'   global search instead -- useful for pulling a species' full range as a
 #'   reference cloud (e.g. \code{\link{check_geographic_outliers}}), not for
 #'   routine regional fetches.
-#' @param year_range Character. Year range for the GBIF query, formatted as
-#'   \code{"YYYY,YYYY"}, e.g. \code{"2000,2024"}. Passed directly to
-#'   \code{rgbif::occ_data(year = ...)}.
+#' @param year_range Character or \code{NULL}. Year range for the GBIF
+#'   query, formatted as \code{"YYYY,YYYY"}, e.g. \code{"2000,2024"}.
+#'   Passed directly to \code{rgbif::occ_data(year = ...)}. \code{NULL}
+#'   issues no year filter at all (matches \code{geometry = NULL}'s
+#'   unrestricted-search convention). Default: \code{"2000"} through the
+#'   current year, computed fresh at call time -- not a fixed year that
+#'   would silently go stale.
 #' @param limit Integer. Maximum records to return per taxon key. GBIF caps
 #'   this at 100,000; default 10,000 is usually sufficient for regional
 #'   queries.
@@ -127,7 +145,7 @@
 
 fetch_gbif_occurrences <- function(keys,
                                    geometry,
-                                   year_range         = "2000,2024",
+                                   year_range         = .gbif_default_year_range(),
                                    limit              = 10000L,
                                    chunk_size         = 20L,
                                    pause_seconds      = 2,
@@ -337,12 +355,22 @@ fetch_gbif_occurrences <- function(keys,
   if (is.null(cache_dir)) return(NULL)
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   geometry_len <- if (is.null(geometry)) 0L else nchar(geometry)
+  # year_range can legitimately be NULL (no year filter, matching
+  # geometry = NULL's convention) -- gsub() on NULL returns character(0),
+  # which would make this whole sprintf() call return character(0) instead
+  # of a signature string, silently propagating into a length-zero
+  # checkpoint_path and crashing the caller's `if (!is.null(checkpoint_path)
+  # && file.exists(checkpoint_path))` check with "argument is of length
+  # zero" (2026-08 human review; confirmed reachable from a real caller --
+  # TaxaExpect::build_priors()'s own year_range = NULL default forwards
+  # straight through to here).
+  year_tag <- if (is.null(year_range)) "all" else gsub("[^0-9]", "", year_range)
   sig <- sprintf(
     "%dk_s%d_g%d_%s_l%d",
     length(keys),
     as.integer(sum(as.numeric(keys)) %% 1e9),
     geometry_len,
-    gsub("[^0-9]", "", year_range),
+    year_tag,
     as.integer(limit)
   )
   file.path(cache_dir, paste0("gbif_fetch_", sig, ".rds"))

@@ -1,6 +1,6 @@
 # ==============================================================================
 # pdf_api.R
-# TaxaFetch -- Send PDF page images to the Anthropic API
+# TaxaFetch -- Send PDF page images to a vision-capable LLM
 #
 # Exported functions:
 #   call_api_pdf()    Send selected PDF pages as images to API
@@ -9,10 +9,15 @@
 #   .render_pdf_pages()         Render page numbers to base64 PNG images
 #
 # Relationship to DataONE pipeline:
-#   Extends call_anthropic_api() (in llm_api_utils.R) to handle document
-#   input. call_anthropic_api() handles text-in/text-out. This function
-#   handles PDF-page-images-in/text-out. Both return a single character
-#   string suitable for passing to parse_*_response() functions.
+#   Extends TaxaTools::call_api() (provider-general since Session 87 -- see
+#   that package's llm_api_utils.R; this file predates that
+#   generalization and was updated 2026-08 to stop naming Anthropic
+#   specifically, since the actual dispatch below has been provider-general
+#   for some time) to handle document input. call_api() handles
+#   text-in/text-out for any registered provider (Anthropic, Gemini,
+#   OpenAI, Ollama, ...). This function handles PDF-page-images-in/text-out
+#   the same way. Both return a single character string suitable for
+#   passing to parse_*_response() functions.
 #
 #   The section targeting here (sending only methods + results pages) is
 #   the PDF pipeline equivalent of the EML column screening step in
@@ -21,7 +26,7 @@
 #
 # Dependencies:
 #   pdftools (Suggests) -- pdf_render_page() for image rendering
-#   httr2    (Imports)  -- API call (same as call_anthropic_api)
+#   httr2    (Imports)  -- API call (via TaxaTools::call_api())
 #   jsonlite (Imports)  -- JSON construction
 #
 # Token cost notes:
@@ -77,18 +82,14 @@
     pg <- page_numbers[i]
 
     if (use_subprocess) {
-      # Render in isolated subprocess -- segfault kills child, not parent
+      # Render in isolated subprocess -- segfault kills child, not parent.
+      # .render_one_page_b64 is defined below and shared with the
+      # in-process fallback (2026-08 human review: these two branches were
+      # identical except for the callr wrapper -- collapsed into one
+      # rendering function called from both).
       b64 <- tryCatch(
         callr::r(
-          function(pdf_path, pg, dpi) {
-            img <- pdftools::pdf_render_page(pdf_path, page = pg, dpi = dpi,
-                                             numeric = FALSE)
-            tmp <- tempfile(fileext = ".png")
-            on.exit(unlink(tmp), add = TRUE)
-            png::writePNG(img, tmp)
-            raw_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
-            base64enc::base64encode(raw_bytes)
-          },
+          .render_one_page_b64,
           args = list(pdf_path = pdf_path, pg = pg, dpi = dpi),
           timeout = 60
         ),
@@ -102,19 +103,14 @@
       )
     } else {
       # Fallback: render in-process (segfault will crash R)
-      b64 <- tryCatch({
-        img <- pdftools::pdf_render_page(pdf_path, page = pg, dpi = dpi,
-                                         numeric = FALSE)
-        tmp <- tempfile(fileext = ".png")
-        on.exit(unlink(tmp), add = TRUE)
-        png::writePNG(img, tmp)
-        raw_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
-        base64enc::base64encode(raw_bytes)
-      }, error = function(e) {
-        warning(sprintf(".render_pdf_pages: could not render page %d: %s",
-                        pg, conditionMessage(e)), call. = FALSE)
-        NULL
-      })
+      b64 <- tryCatch(
+        .render_one_page_b64(pdf_path, pg, dpi),
+        error = function(e) {
+          warning(sprintf(".render_pdf_pages: could not render page %d: %s",
+                          pg, conditionMessage(e)), call. = FALSE)
+          NULL
+        }
+      )
     }
 
     results[[i]] <- b64
@@ -122,6 +118,30 @@
 
   # Drop failed pages
   results[!vapply(results, is.null, logical(1L))]
+}
+
+
+#' Render one PDF page to a base64-encoded PNG string
+#'
+#' Shared by both branches of \code{.render_pdf_pages()} -- the callr
+#' subprocess path passes this function directly as the job to run; the
+#' in-process fallback calls it directly. Must be fully self-contained
+#' (no closure over the caller's environment) since \code{callr::r()} runs
+#' it in a fresh R session.
+#'
+#' @param pdf_path Character. Path to PDF file.
+#' @param pg Integer. Page number (1-based).
+#' @param dpi Integer. Rendering resolution.
+#' @return Base64-encoded PNG string.
+#' @noRd
+.render_one_page_b64 <- function(pdf_path, pg, dpi) {
+  img <- pdftools::pdf_render_page(pdf_path, page = pg, dpi = dpi,
+                                   numeric = FALSE)
+  tmp <- tempfile(fileext = ".png")
+  on.exit(unlink(tmp), add = TRUE)
+  png::writePNG(img, tmp)
+  raw_bytes <- readBin(tmp, "raw", file.info(tmp)$size)
+  base64enc::base64encode(raw_bytes)
 }
 
 
@@ -224,14 +244,13 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Typical Stage 3 usage -- page_map from Stage 2:
-#' pdf_content <- extract_pdf_text("Swift_et_al_1993.pdf")
+#' # Typical Stage 3 usage -- page_map from Stage 2, pdf_structure from
+#' # screen_pdf_structure() (build_pdf_extract_prompt() takes a
+#' # pdf_structure object, not the raw output of extract_pdf_text()):
+#' pdf_content   <- extract_pdf_text("Swift_et_al_1993.pdf")
+#' pdf_structure <- screen_pdf_structure(pdf_content)
 #'
-#' prompt <- build_pdf_extract_prompt(
-#'   pdf_meta   = my_screen_result,
-#'   taxon_scope = "freshwater fish",
-#'   bbox        = c(-122, -117, 32, 35)
-#' )
+#' prompt <- build_pdf_extract_prompt(pdf_structure)
 #'
 #' raw_response <- call_api_pdf(
 #'   prompt   = prompt,
@@ -251,18 +270,17 @@
 #' }
 
 call_api_pdf <- function(prompt,
-                                   pdf_path,
-                                   sections   = c("methods", "results",
-                                                  "appendix"),
-                                   page_map   = NULL,
-                                   dpi        = 150L,
-                                   provider   = NULL,
-                                   tier       = c("mid", "fast", "top"),
-                                   model      = NULL,
-                                   max_tokens = 4000L,
-                                   api_key    = NULL,
-                                   base_url   = NULL,
-                                   verbose    = TRUE) {
+                         pdf_path,
+                         sections   = c("methods", "results", "appendix"),
+                         page_map   = NULL,
+                         dpi        = 150L,
+                         provider   = NULL,
+                         tier       = c("mid", "fast", "top"),
+                         model      = NULL,
+                         max_tokens = 4000L,
+                         api_key    = NULL,
+                         base_url   = NULL,
+                         verbose    = TRUE) {
 
   # ---- input checks ----------------------------------------------------------
   if (!is.character(prompt) || length(prompt) != 1L ||

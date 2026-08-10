@@ -7,7 +7,7 @@
 fetch_gbif_occurrences(
   keys,
   geometry,
-  year_range = "2000,2024",
+  year_range = .gbif_default_year_range(),
   limit = 10000L,
   chunk_size = 20L,
   pause_seconds = 2,
@@ -29,9 +29,13 @@ global search instead -- useful for pulling a species' full range as a
 reference cloud (e.g. \code{\link{check_geographic_outliers}}), not for
 routine regional fetches.}
 
-\item{year_range}{Character. Year range for the GBIF query, formatted as
-\code{"YYYY,YYYY"}, e.g. \code{"2000,2024"}. Passed directly to
-\code{rgbif::occ_data(year = ...)}.}
+\item{year_range}{Character or \code{NULL}. Year range for the GBIF
+query, formatted as \code{"YYYY,YYYY"}, e.g. \code{"2000,2024"}.
+Passed directly to \code{rgbif::occ_data(year = ...)}. \code{NULL}
+issues no year filter at all (matches \code{geometry = NULL}'s
+unrestricted-search convention). Default: \code{"2000"} through the
+current year, computed fresh at call time -- not a fixed year that
+would silently go stale.}
 
 \item{limit}{Integer. Maximum records to return per taxon key. GBIF caps
 this at 100,000; default 10,000 is usually sufficient for regional

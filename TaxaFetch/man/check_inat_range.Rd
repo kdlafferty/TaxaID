@@ -21,7 +21,11 @@ check_inat_range(
 \item{lng}{Numeric. Longitude of the query point in decimal degrees.}
 
 \item{api_token}{Character. iNaturalist API token for taxon name resolution.
-Defaults to the \code{INAT_API_TOKEN} environment variable.}
+Defaults to the \code{INAT_API_TOKEN} environment variable. Generate a
+token at \url{https://www.inaturalist.org/users/api_token} (requires a
+free iNaturalist account; log in, then visit that URL to get a token
+good for 24 hours) and store it via \code{Sys.setenv(INAT_API_TOKEN =
+"your_token")} or in \code{~/.Renviron}.}
 
 \item{cache_dir}{Character. Optional path to a directory for caching
 downloaded GeoJSON files. Speeds up repeated calls for the same taxa.}

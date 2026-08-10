@@ -102,13 +102,17 @@ over a static, separately-loaded GBIF snapshot file.
 \examples{
 \dontrun{
 bbox <- list(west = -121.0, east = -118.5, south = 33.5, north = 35.0)
-candidates <- search_dataone(bbox, scope = "knb-lter-sbc")
+# search_dataone() has no 'scope' argument -- narrow by dataset scope via
+# build_geo_prompt(scope_lookup = ...) instead, or filter candidates$scope
+# yourself after the call.
+candidates <- search_dataone(bbox)
 
-# Single dataset smoke test
-occ <- fetch_dataone_occurrences(candidates$id[1], bbox)
-
-# Full run
-occ <- fetch_dataone_occurrences(candidates$id, bbox)
+# Single dataset smoke test against a known-good, real, moderate-size
+# dataset (edi.885.1, ~50k rows) -- fetching EVERY candidate returned by
+# search_dataone() above can take a very long time (a real run against the
+# full unrestricted candidate list ran over 20 minutes without finishing);
+# narrow 'candidates' first, or supply specific dataset_ids as here.
+occ <- fetch_dataone_occurrences("edi.885.1", bbox)
 
 # Fix a non-standard column name
 extra <- data.frame(

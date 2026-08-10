@@ -200,7 +200,13 @@ build_geo_prompt <- function(catalog,
   }
 
   # ---- deduplication ---------------------------------------------------------
-  desc_vec    <- trimws(undecided$geographicdescription)
+  # Strip a single trailing period before deduplicating -- catches
+  # near-duplicate descriptions that differ only in trailing punctuation
+  # (e.g. "Andrews Experimental Forest." vs "Andrews Experimental Forest",
+  # a real pair found on the live catalog by the 2026-08 human review;
+  # normalizing this reduced unique descriptions there from 1247 to 1239,
+  # i.e. fewer redundant LLM screening calls).
+  desc_vec    <- sub("\\.$", "", trimws(undecided$geographicdescription))
   unique_desc <- unique(desc_vec)
 
   # Build description -> dataset IDs mapping

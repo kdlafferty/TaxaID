@@ -31,6 +31,8 @@
 #'   \code{NA}/empty \code{taxon_key} or \code{geometry} are dropped; exact
 #'   duplicate rows are dropped before unioning.
 #' @param year_range,limit Forwarded to \code{\link{get_gbif_occurrences}}.
+#'   \code{year_range} defaults to \code{"2000"} through the current year,
+#'   computed at call time.
 #' @param combine_shared_geometry Logical. Default \code{TRUE}. After
 #'   unioning each taxon key's own geometry, taxon keys whose resulting
 #'   unioned geometry is identical are combined into a single multi-key call
@@ -82,7 +84,7 @@
 #' occ <- fetch_occurrences_by_taxon(taxon_geometry_map, year_range = "2000,2024")
 #' }
 fetch_occurrences_by_taxon <- function(taxon_geometry_map,
-                                        year_range = "2000,2024",
+                                        year_range = .gbif_default_year_range(),
                                         limit = NULL,
                                         combine_shared_geometry = TRUE,
                                         ...) {

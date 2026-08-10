@@ -42,8 +42,8 @@ Reduce if you encounter timeouts.}
 A tibble with one row per PASTA package and columns:
 \code{id}, \code{scope}, \code{title}, \code{site},
 \code{pubdate}, \code{geographicdescription}, \code{taxonomic},
-\code{abstract}, \code{keywords_str}, \code{authors}, \code{begindate},
-\code{enddate}, \code{has_taxonomic}, \code{is_candidate}.
+\code{abstract}, \code{keywords_str}, \code{authors}, \code{doi},
+\code{begindate}, \code{enddate}, \code{has_taxonomic}, \code{is_candidate}.
 \code{is_candidate} is \code{TRUE} for packages that have a non-empty
 \code{taxonomic} field and are therefore worth geographic screening.
 }
@@ -53,6 +53,17 @@ and returns them as a tibble. Results are cached to disk; subsequent calls
 within \code{max_age_days} return the cache without hitting the network.
 }
 \details{
+"PASTA" (the endpoint queried here, \code{pasta.lternet.edu}) is the data
+repository infrastructure operated by the
+\href{https://edirepository.org}{Environmental Data Initiative (EDI)} --
+not itself a dataset. Every package harvested here was published through
+EDI, and its terms of use ask that data be cited (a \code{doi} column is
+included below for this purpose) and that data providers be contacted
+before use in a publication; see
+\href{https://edirepository.org}{edirepository.org} for the current
+policy. This function does not enforce or verify citation/contact
+compliance -- that remains the caller's responsibility.
+
 This is the first step in the DataONE supplemental occurrence pipeline:
 \preformatted{
 catalog    <- harvest_dataone_catalog(cache_file = "pasta_catalog.rds")

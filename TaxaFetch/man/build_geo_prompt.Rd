@@ -27,14 +27,14 @@ with a listed prefix are pre-accepted (bbox overlaps) or pre-rejected
 to the LLM. Use this to save tokens when you know which scopes are
 relevant. Example:
 \preformatted{
-  scope_lookup = data.frame(
-    scope = c("knb-lter-fce", "knb-lter-gce"),
-    west  = c(-81.2, -82.0),
-    east  = c(-80.4, -80.0),
-    south = c(25.1,  30.5),
-    north = c(25.8,  32.5),
-    label = c("FCE LTER", "GCE LTER")
-  )}}
+scope_lookup = data.frame(
+  scope = c("knb-lter-fce", "knb-lter-gce"),
+  west  = c(-81.2, -82.0),
+  east  = c(-80.4, -80.0),
+  south = c(25.1,  30.5),
+  north = c(25.8,  32.5),
+  label = c("FCE LTER", "GCE LTER")
+)}}
 
 \item{chunk_size}{Integer. Maximum descriptions per prompt chunk.
 Default \code{80L}.}

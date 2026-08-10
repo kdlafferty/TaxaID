@@ -1,6 +1,77 @@
-# CLAUDE.md — TaxaFetch
+# CLAUDE.md -- TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-27 (Sonnet 5 -- geographic-outlier/institution-flag thread CLOSED OUT.
+# Last updated: 2026-08-08 (Sonnet 5 -- first human-authored code + domain review response.
+# The user replaced the old Claude-authored inst/taxafetch_review.Rmd (Session 148) with a
+# fresh human-authored review by Micah Wright, covering the same 24-file structure. Full
+# record in inst/taxafetch_review_response.md. Real bugs found and fixed, all confirmed via
+# direct testing before shipping (not just reading the diff): (1) search_dataone()'s
+# coordinate parsing never matched PASTA's real spatialCoverage/coordinates XML structure or
+# its Solr ENVELOPE(minX,maxX,maxY,minY) string -- coordinates_raw was NA for every real
+# record; the reviewer's own live example (a real SBC LTER Kelp Forest dataset) reproduced
+# it exactly. (2) dataone_catalog.R's authors/keywords_str columns came back NA for every
+# real record -- XPath now tries several real candidate node shapes instead of one guessed
+# shape. (3) dataone_standardize.R's .extract_eml_sites() site-code regex silently failed on
+# any geographicDescription containing an embedded newline (missing PCRE (?s) flag) -- same
+# documented footgun class as this file's own Known Footguns entry, reproduced with the
+# reviewer's real "ABUR: Arroyo Burro Reef..." example. (4) fetch_gbif_occurrences(
+# year_range = NULL) crashed with cache_dir enabled ("argument is of length zero" inside
+# .gbif_checkpoint_path()) -- a real, reachable path via TaxaExpect::build_priors()'s own
+# year_range=NULL default forwarding straight through; confirmed via a standalone
+# reproduction before fixing. (5) A shared hardcoded year_range default ("2000,2024",
+# identical across FIVE functions: fetch_gbif_occurrences/download_gbif_occurrences/
+# get_gbif_occurrences/check_geographic_outliers/fetch_occurrences_by_taxon) was already
+# silently excluding all 2025+ GBIF data for any default-argument caller by the time of this
+# review -- fixed with a new .gbif_default_year_range() computed at call time, not a fixed
+# literal. (6) filter_gbif_quality()'s basisOfRecord filter compared exact case/whitespace,
+# inconsistent with the occurrenceStatus filter's own normalization (real inconsistency, low
+# practical risk against real GBIF data but fixed for defense-in-depth). (7) pdf_extract.R:
+# TaxaTools's %||% (deliberately NULL-only, used ecosystem-wide) was being applied to four
+# screen_pdf_structure() axis fields that explicitly return NA_character_ (not NULL) on LLM
+# characterization failure -- confirmed via a real bundled PDF where every one of these
+# fields came back NA and stayed NA through prompt building, exactly as the reviewer found.
+# New .axis_or_default() helper (NULL-or-NA-safe), 5 call sites fixed; %||% itself untouched
+# (its NULL-only semantics are relied on elsewhere). (8) pdf_text.R's .match_header() Pass 2
+# (two-column-layout header detection) never matched a NUMBERED header ("2.1 RESULTS ...")
+# since it tested "^[A-Z]" against the raw line without first stripping the leading number
+# the way Pass 1 already does -- fixed by applying the same strip. (9) pdf_api.R's
+# build_pdf_extract_prompt() @examples used entirely wrong parameter names (pdf_meta/
+# taxon_scope/bbox, none of which exist on the real function) -- fixed to match the real
+# signature. Also fixed: a stale "TaxaExpect --" header banner (pre-Session-19-split doc
+# drift) in 7 files, corrected to "TaxaFetch --"; pdf_api.R's file header and this file's own
+# Function Inventory table both still claimed call_api_pdf() was "Anthropic-only" -- stale,
+# predating Session 87's provider generalization (the function body itself already
+# dispatched through TaxaTools::call_api(), only the docs were wrong); real df-shadows-
+# stats::df() local-variable violations fixed in dataone_taxon_screening.R and
+# pdf_extract.R (matching this ecosystem's established df -> input_df convention); several
+# genuine DRY duplications consolidated (.detect_lat_col/.detect_lon_col/.detect_species_col
+# in dataone_eml_screen.R; .pdf_dwc_cols vs. dataone_standardize.R's identical local
+# dwc_cols; pdf_api.R's duplicated subprocess/in-process PDF-rendering logic, the latter
+# verified end-to-end via callr both before and after to confirm the refactor didn't change
+# behavior under subprocess serialization). Several other review comments were investigated
+# and found to be either already-correct design (e.g. max_coord_decimal_places already
+# defaults NULL; the literature_search.R bbox-is-metadata-only design is already documented;
+# .coerce_numeric_col()/.coerce_integer_col() do add real column-specific warning value over
+# bare as.numeric()/as.integer()) or genuine but out-of-scope architecture questions flagged
+# for a future session rather than fixed unilaterally (data.frame vs. tibble consistency
+# ecosystem-wide; EDIutils adoption; httr vs. httr2 consistency; three separate
+# .bbox_overlaps()-style implementations across dataone_eml_screen.R/dataone_geo_screening.R/
+# dataone_occurrence_search.R; inconsistent bbox-argument conventions across this package's
+# own functions, list-only in search_dataone() vs. list-or-vector elsewhere) -- see the
+# response doc for the full file-by-file record, including which of the reviewer's own
+# suggested fixes were checked and found to be incorrect before being rejected (e.g. a
+# one-liner gsub() simplification in pdf_extract.R that would have left a stray tag-word
+# artifact; an is.null() check in download_gbif_occurrences.R that would have silently
+# broken the empty-select_cols-intersection edge case). New test coverage for 3 previously-
+# untested files (test-dataone_occurrence_search.R, test-pdf_text.R, test-pdf_extract.R).
+# devtools::document() 0 errors (also fixed 4 pre-existing multi-line @importFrom blocks
+# that a newer roxygen2 in this environment now rejects -- found blocking document(),
+# unrelated to any review comment). devtools::test() 616/618 (2 pre-existing failures,
+# confirmed via git stash to be present and identical before this session -- a
+# CoordinateCleaner/terra/sf environment version issue, not caused by or related to any fix
+# here), up from 565/565. devtools::check() 0 errors/0 warnings/0 notes. Reinstalled to
+# ~/Library/R/4.0/library, confirmed via find.package(). See inst/taxafetch_review_response.md
+# for the complete comment-by-comment record.
+# Previous update, 2026-07-27 (Sonnet 5 -- geographic-outlier/institution-flag thread CLOSED OUT.
 # Final live-testing bug, found by the user re-running MuguFishWorkflow.R (OUT_PREFIX =
 # "MuguWilderFish_blast"): gbif_occurrences$institution_flag came back NULL, not just FALSE.
 # Not a package bug -- the workflow script's own `if (file.exists(geo_outlier_path)) {
@@ -359,7 +430,7 @@ non-interactive-vs-interactive comparison.
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
 | `extract_pdf_text()` | Extract text by section; returns `$sections`, `$page_map`, `$has_headers`, `$n_pages`, `$pdf_path` | Complete | R/pdf_text.R |
-| `call_api_pdf()` | Send selected PDF pages as images to Anthropic API (Anthropic-only) | Complete | R/pdf_api.R |
+| `call_api_pdf()` | Send selected PDF pages as images to a vision-capable LLM via `TaxaTools::call_api()` -- any registered provider (Anthropic, Gemini, OpenAI, Ollama), not Anthropic-only. **2026-08:** this table row and the file's own header comment previously claimed "Anthropic-only" -- stale, predating Session 87's provider-generalization; the function body itself already dispatched through `call_api()` before this session, only the docs were wrong. | Complete | R/pdf_api.R |
 | `screen_pdf_structure()` | Five-axis characterisation; `llm_fn` param | Complete | R/pdf_characterize.R |
 | `print.pdf_structure()` | S3 print method | Complete | R/pdf_characterize.R |
 | `build_pdf_extract_prompt()` | Configure extraction prompt; `dpi` param (default 150L); `chunk_pages` param | Complete | R/pdf_extract.R |
@@ -513,8 +584,8 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 
 | File | Functions covered | Notes |
 |---|---|---|
-| test-fetch_gbif_occurrences.R | `fetch_gbif_occurrences()`, `.gbif_checkpoint_path()` | Mocked rgbif; covers 429 retry/backoff; 2026-07-20 added `geometry = NULL` global-search coverage |
-| test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline; 2026-07-20 added `cc_equ`/`cc_zero` CoordinateCleaner-check coverage (real package calls, `skip_if_not_installed`); 2026-07-23 added `cc_cen`/`cc_cap`/`cc_inst` coverage using REAL coordinates pulled live from `CoordinateCleaner::countryref`/`institutions` at test time, not guessed/hardcoded -- correctness holds regardless of the package's exact buffer defaults; 2026-07-23 continued: 5 new tests for the `removed_records` attribute (always-present-with-0-rows case, missing-coordinates case, specific-matched-issue-code case, a real double-simultaneous-CC-reason case at (0.01, 0.01), original-column preservation); 2026-07-23 continued yet further: institution tests rewritten for flag-not-remove (asserts row retained + 4 new columns populated, not asserts row removed), a `flag_institution = FALSE` skip test, a removal-check-runs-before-institution-flagging ordering test |
+| test-fetch_gbif_occurrences.R | `fetch_gbif_occurrences()`, `.gbif_checkpoint_path()`, `.gbif_default_year_range()` | Mocked rgbif; covers 429 retry/backoff; 2026-07-20 added `geometry = NULL` global-search coverage; 2026-08-08 added `.gbif_checkpoint_path()` NULL-`year_range` crash coverage (real bug found by human review) and `.gbif_default_year_range()`'s call-time current-year computation |
+| test-filter_gbif_quality.R | `filter_gbif_quality()` | Fully offline; 2026-07-20 added `cc_equ`/`cc_zero` CoordinateCleaner-check coverage (real package calls, `skip_if_not_installed`); 2026-07-23 added `cc_cen`/`cc_cap`/`cc_inst` coverage using REAL coordinates pulled live from `CoordinateCleaner::countryref`/`institutions` at test time, not guessed/hardcoded -- correctness holds regardless of the package's exact buffer defaults; 2026-07-23 continued: 5 new tests for the `removed_records` attribute (always-present-with-0-rows case, missing-coordinates case, specific-matched-issue-code case, a real double-simultaneous-CC-reason case at (0.01, 0.01), original-column preservation); 2026-07-23 continued yet further: institution tests rewritten for flag-not-remove (asserts row retained + 4 new columns populated, not asserts row removed), a `flag_institution = FALSE` skip test, a removal-check-runs-before-institution-flagging ordering test; 2026-08-08 added `basisOfRecord` case/whitespace-insensitivity coverage (human review) |
 | test-check_geographic_outliers.R | `check_geographic_outliers()` | 2026-07-20, **new file**. Mocks `rgbif::occ_data` (same layer as test-fetch_gbif_occurrences.R) so the real `fetch_gbif_occurrences()` and `CoordinateCleaner::cc_outl()` both run underneath -- genuine end-to-end coverage of the outlier/insufficient-data/consistent three-way split, not just the plumbing. Same-day addition: a regression test mocking `CoordinateCleaner::cc_outl()` directly to assert it's called once per species (not once for the whole batch) -- guards the real raster-approximation bug found on first live use; deliberately not a synthetic 10,000+ row fixture, which would be slow and still wouldn't exercise the actual bug (that needed real GBIF data's clustering, not synthetic data -- see Session Notes) |
 | test-fetch_inat_occurrences.R | `fetch_inat_occurrences()`, `.inat_observation_count()` | 2026-07-23, **new file**. Mirrors test-check_inat_range.R's mocking strategy (`local_mocked_bindings()` on `.inat_taxon_id()`/`.inat_observation_count()`, then `httr::GET`/`status_code`/`content` for the internal helper directly); 24 tests, fully offline |
 | test-get_keys_from_context.R | `get_keys_from_context()`, `.recover_higherrank()` | Mocked rgbif; Session 148 added kingdom-narrowing coverage via a synthetic mixed-kingdom fixture |
@@ -523,10 +594,13 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | test-dedupe_occurrences.R | `dedupe_occurrences()` | **2026-07-23, new file** -- split out of test-stack_occurrences.R. Fully offline; covers `gbifID` exact match, `collapse_duplicate_occasions` content match (single-source and post-`stack_occurrences()` cases), missing-key-component preservation, `year`/`month`/`day` fallback, custom `taxon_col`/`date_col`/`lat_col`/`lon_col`, and `report_params` attribute refresh |
 | test-report_fetch.R | `report_fetch()` | Fully offline |
 | test-biotime_fetch.R | `read_biotime_study()` | Fully offline; Session 148 added NA-vs-absent `occurrenceStatus` coverage |
-| test-dataone_standardize.R | `fetch_dataone_occurrences()`, `.is_trusted_pasta_url()`, `.download_data_table()` | Mocked DataONE API; Session 148 added SSRF host-allowlist coverage |
+| test-dataone_standardize.R | `fetch_dataone_occurrences()`, `.is_trusted_pasta_url()`, `.download_data_table()`, `.extract_eml_sites()` | Mocked DataONE API; Session 148 added SSRF host-allowlist coverage; 2026-08-08 added `.extract_eml_sites()` coverage (had zero coverage before) for the real embedded-newline site-code regression found by human review, plus a no-newline control case |
 | test-dataone_preview.R | `.preview_one_entity()` (guard only) | Session 148, **new file** -- `preview_dataone_occurrences()` itself remains untested, a pre-existing gap |
 | test-dataone_taxon_screening_geo.R | `build_taxon_screen_prompt()`, `parse_taxon_screening_response()`, `build_geo_prompt()`, `parse_geo_screening_response()` | LLM mocked |
 | test-literature_search.R | `search_literature()`, `download_literature_pdfs()` | OpenAlex calls mocked |
+| test-dataone_occurrence_search.R | `.parse_coordinates_field()`, `.parse_pasta_response()`, `.bbox_overlaps()` | **2026-08-08, new file** -- this file (`search_dataone()`, `fetch_dataone_eml()`) had zero test coverage before the human review found real coordinate-parsing bugs. Fully offline; covers the confirmed-real Solr `ENVELOPE(...)` format (degenerate and non-degenerate boxes, case-insensitivity), the legacy `N:`/`S:`/`E:`/`W:` format, the corrected numeric-fallback field order, `.parse_pasta_response()`'s `spatialCoverage/coordinates` XML path with a synthetic fixture matching the real SBC LTER structure it was found against |
+| test-pdf_text.R | `.match_header()` | **2026-08-08, new file** -- `pdf_text.R` had zero test coverage before this session. Scoped to the specific bug fixed (numbered two-column-layout headers), not a full file test suite |
+| test-pdf_extract.R | `.axis_or_default()`, `.build_axis_instructions()`, `build_pdf_extract_prompt()` | **2026-08-08, new file** -- `pdf_extract.R` had zero test coverage before this session. Scoped to the specific bug fixed (NA-vs-NULL axis defaulting), not a full CSV-parsing/DwC-mapping test suite |
 
 ---
 

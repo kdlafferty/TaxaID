@@ -5,7 +5,7 @@ utils::globalVariables(c(
 
 # ==============================================================================
 # dataone_standardize.R
-# TaxaExpect -- DataONE / EDI dataset download and standardization
+# TaxaFetch -- DataONE / EDI dataset download and standardization
 #
 # Exported functions:
 #   fetch_dataone_occurrences()     Full pipeline: EML -> download -> DWC -> bbox
@@ -178,8 +178,7 @@ utils::globalVariables(c(
 #'
 #' @importFrom httr2 request req_timeout req_perform resp_body_string
 #' @importFrom xml2 read_xml xml_ns_strip xml_find_all xml_find_first xml_text
-#' @importFrom dplyr mutate rename select filter bind_rows any_of all_of
-#'   n_distinct left_join
+#' @importFrom dplyr mutate rename select filter bind_rows any_of all_of n_distinct left_join
 #' @importFrom stats setNames
 #' @importFrom tibble as_tibble
 #' @importFrom cli cli_progress_bar cli_progress_update cli_progress_done
@@ -190,13 +189,17 @@ utils::globalVariables(c(
 #' @examples
 #' \dontrun{
 #' bbox <- list(west = -121.0, east = -118.5, south = 33.5, north = 35.0)
-#' candidates <- search_dataone(bbox, scope = "knb-lter-sbc")
+#' # search_dataone() has no 'scope' argument -- narrow by dataset scope via
+#' # build_geo_prompt(scope_lookup = ...) instead, or filter candidates$scope
+#' # yourself after the call.
+#' candidates <- search_dataone(bbox)
 #'
-#' # Single dataset smoke test
-#' occ <- fetch_dataone_occurrences(candidates$id[1], bbox)
-#'
-#' # Full run
-#' occ <- fetch_dataone_occurrences(candidates$id, bbox)
+#' # Single dataset smoke test against a known-good, real, moderate-size
+#' # dataset (edi.885.1, ~50k rows) -- fetching EVERY candidate returned by
+#' # search_dataone() above can take a very long time (a real run against the
+#' # full unrestricted candidate list ran over 20 minutes without finishing);
+#' # narrow 'candidates' first, or supply specific dataset_ids as here.
+#' occ <- fetch_dataone_occurrences("edi.885.1", bbox)
 #'
 #' # Fix a non-standard column name
 #' extra <- data.frame(
@@ -278,14 +281,12 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   all_results <- dplyr::bind_rows(results)
 
-  # -- Canonical DWC column order ---------------------------------------------
-  dwc_cols <- c(
-    "occurrenceID", "datasetID", "datasetName", "institutionCode",
-    "basisOfRecord", "eventDate", "year", "month", "day",
-    "decimalLatitude", "decimalLongitude", "coordinateUncertaintyInMeters",
-    "scientificName", "genus", "family", "specificEpithet", "vernacularName",
-    "individualCount", "recordedBy", "locality", "habitat"
-  )
+  # -- Canonical DWC column order -----------------------------------------------
+  # Shared with pdf_extract.R's .pdf_dwc_cols (same literal 20-column list --
+  # deduplicated 2026-08 human review; referenced here rather than
+  # hand-copied so the two pipelines' output column order can't silently
+  # drift apart).
+  dwc_cols <- .pdf_dwc_cols
   present_dwc <- intersect(dwc_cols, names(all_results))
   extra_cols  <- setdiff(names(all_results), dwc_cols)
   all_results <- dplyr::select(all_results,
@@ -724,9 +725,15 @@ fetch_dataone_occurrences <- function(dataset_ids,
     if (is.na(west) || is.na(east) || is.na(south) || is.na(north)) return(NULL)
     if (!isTRUE(all.equal(west, east)) || !isTRUE(all.equal(south, north))) return(NULL)
 
-    # Extract site code: everything before the first ':' or whitespace
+    # Extract site code: everything before the first ':' or whitespace.
+    # (?s) is required -- PCRE's "." does not match newlines by default, and
+    # real EML geographicDescription text commonly embeds them (e.g. "ABUR:
+    # Arroyo Burro Reef is located ...\r\n  near the mouth ..."), which
+    # silently left `sub()` unmatched and returned the description
+    # unchanged instead of just the leading code (2026-08 human review;
+    # same documented footgun as this file's own Known R Footguns entry).
     code <- if (!is.na(desc) && nzchar(desc)) {
-      trimws(sub("^([^:\\s]+)[:\\s].*$", "\\1", desc, perl = TRUE))
+      trimws(sub("(?s)^([^:\\s]+)[:\\s].*$", "\\1", desc, perl = TRUE))
     } else {
       NA_character_
     }
@@ -1143,6 +1150,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
   sites_table <- if (!is.null(site_lookup)) {
     site_lookup
   } else if (nrow(meta$sites) > 0L) {
+    codes <- unique(meta$sites$site_code)
     if (anyDuplicated(meta$sites$site_code)) {
       dup_codes <- unique(meta$sites$site_code[duplicated(meta$sites$site_code)])
       if (verbose) {
@@ -1152,7 +1160,6 @@ fetch_dataone_occurrences <- function(dataset_ids,
         ))
       }
       # Average lat/lon per site_code using base R (no dplyr dependency here)
-      codes  <- unique(meta$sites$site_code)
       avg_df <- do.call(rbind, lapply(codes, function(code) {
         rows <- meta$sites[meta$sites$site_code == code, ]
         data.frame(

@@ -6,7 +6,7 @@
 \usage{
 fetch_occurrences_by_taxon(
   taxon_geometry_map,
-  year_range = "2000,2024",
+  year_range = .gbif_default_year_range(),
   limit = NULL,
   combine_shared_geometry = TRUE,
   ...
@@ -24,7 +24,9 @@ same \code{geometry} may appear for multiple \code{taxon_key} values
 \code{NA}/empty \code{taxon_key} or \code{geometry} are dropped; exact
 duplicate rows are dropped before unioning.}
 
-\item{year_range, limit}{Forwarded to \code{\link{get_gbif_occurrences}}.}
+\item{year_range, limit}{Forwarded to \code{\link{get_gbif_occurrences}}.
+\code{year_range} defaults to \code{"2000"} through the current year,
+computed at call time.}
 
 \item{combine_shared_geometry}{Logical. Default \code{TRUE}. After
 unioning each taxon key's own geometry, taxon keys whose resulting

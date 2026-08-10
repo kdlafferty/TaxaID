@@ -10,7 +10,8 @@ screen_eml_columns(ids, bbox, pause_seconds = 0.5, verbose = TRUE)
 \item{ids}{Character vector of PASTA dataset IDs to screen
 (e.g. \code{"knb-lter-sbc.17.18"} or \code{"edi.123.4"}).}
 
-\item{bbox}{Numeric vector \code{c(west, east, south, north)}.}
+\item{bbox}{Numeric vector of the query bounding-box coordinates, in the
+order \code{c(west, east, south, north)} (decimal degrees, WGS84).}
 
 \item{pause_seconds}{Numeric. Pause between EML requests. Default
 \code{0.5}.}
@@ -30,6 +31,13 @@ Use this column when calling \code{\link{fetch_dataone_eml}} or
 confirmed outside query.}
 \item{has_lat}{Logical. A likely latitude column was found in the data tables.}
 \item{has_lon}{Logical. A likely longitude column was found in the data tables.}
+\item{has_coords}{Logical. \code{TRUE} if the dataset has usable
+coordinates by EITHER route: a detected \code{lat_col} AND
+\code{lon_col} pair, OR at least one EML point site
+(\code{has_eml_sites}). This is the column \code{eml_status}/
+\code{eml_pass} actually key off; \code{has_lat}/\code{has_lon} alone
+are not sufficient on their own since a dataset with EML point sites
+can have usable coordinates with both \code{FALSE}.}
 \item{has_species}{Logical. A likely species/taxon column was found.}
 \item{has_eml_sites}{Logical. At least one EML point site was found in
 \code{<geographicCoverage>} (bounding box where west==east and
@@ -39,7 +47,9 @@ of \code{\link{fetch_dataone_occurrences}} will inject the coordinates.}
 \item{lat_col}{Character. Detected latitude column name, or \code{NA}.}
 \item{lon_col}{Character. Detected longitude column name, or \code{NA}.}
 \item{species_col}{Character. Detected species column name, or \code{NA}.}
-\item{n_tables}{Integer. Number of \code{<dataTable>} elements in EML.}
+\item{n_tables}{Integer. Number of EML \code{<dataTable>} elements --
+the EML element type describing one rectangular data file within the
+dataset (a dataset package can bundle more than one data table).}
 \item{eml_status}{Character. One of \code{"pass"},
 \code{"fetch_failed"}, \code{"no_bbox_overlap"},
 \code{"no_coords"} (no lat/lon columns AND no EML point sites),

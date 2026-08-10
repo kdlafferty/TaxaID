@@ -669,3 +669,53 @@ test_that(".download_data_table() refuses an untrusted data_url without a networ
   )
   expect_null(result)
 })
+
+# =============================================================================
+# .extract_eml_sites() -- site-code extraction from geographicDescription
+# =============================================================================
+# 2026-08 human review: a real bug -- geographicDescription text embedding a
+# literal newline (common in real EML, e.g. "ABUR: Arroyo Burro Reef is
+# located ...\r\n  near the mouth ...") silently defeated the site-code
+# regex's ".*$" (PCRE's "." does not match newlines without the "(?s)"
+# inline flag -- this codebase's own documented, recurring footgun), so
+# `sub()` found no match and returned the FULL description unchanged instead
+# of just the leading "ABUR" code.
+
+.make_gc_eml <- function(desc, west, east, south, north) {
+  xml2::read_xml(sprintf(
+    paste0(
+      "<eml><dataset><coverage><geographicCoverage>",
+      "<geographicDescription>%s</geographicDescription>",
+      "<boundingCoordinates>",
+      "<westBoundingCoordinate>%s</westBoundingCoordinate>",
+      "<eastBoundingCoordinate>%s</eastBoundingCoordinate>",
+      "<northBoundingCoordinate>%s</northBoundingCoordinate>",
+      "<southBoundingCoordinate>%s</southBoundingCoordinate>",
+      "</boundingCoordinates>",
+      "</geographicCoverage></coverage></dataset></eml>"
+    ),
+    desc, west, east, north, south
+  ))
+}
+
+test_that(".extract_eml_sites() extracts the site code when description has no newline", {
+  eml <- .make_gc_eml("SONGS: San Onofre Nuclear Generating Station.",
+                      -117.5, -117.5, 33.4, 33.4)
+  sites <- TaxaFetch:::.extract_eml_sites(eml)
+  expect_equal(nrow(sites), 1L)
+  expect_equal(sites$site_code[[1L]], "SONGS")
+})
+
+test_that(".extract_eml_sites() extracts the site code across an embedded newline (real bug)", {
+  # Real example from the human review: a genuine EML geographicDescription
+  # with an embedded \r\n partway through the free-text portion.
+  desc <- paste0(
+    "ABUR: Arroyo Burro Reef is located on the Santa Barbara Channel\r\n",
+    "  near the mouth of Arroyo Burro Creek and Beach. ",
+    "Depth ranges from 5.4 to 7 meters."
+  )
+  eml <- .make_gc_eml(desc, -119.74, -119.74, 34.40, 34.40)
+  sites <- TaxaFetch:::.extract_eml_sites(eml)
+  expect_equal(nrow(sites), 1L)
+  expect_equal(sites$site_code[[1L]], "ABUR")
+})

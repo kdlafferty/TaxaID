@@ -30,12 +30,12 @@ character string (the prompt) as its first argument and return a single
 character string (the response). Default \code{call_anthropic_api}.
 To use a different provider, pass a compatible wrapper function:
 \preformatted{
-  my_openai <- function(prompt_str, ...) {
-    # ... call OpenAI API ...
-    return(response_text)
-  }
-  screen_pdf_structure(pdf_content, llm_fn = my_openai)
-  }}
+my_openai <- function(prompt_str, ...) {
+  # ... call OpenAI API ...
+  return(response_text)
+}
+screen_pdf_structure(pdf_content, llm_fn = my_openai)
+}}
 
 \item{model}{Character. Model identifier passed to \code{llm_fn}.
 Default \code{"claude-sonnet-4-6"} (cheaper than opus; sufficient for

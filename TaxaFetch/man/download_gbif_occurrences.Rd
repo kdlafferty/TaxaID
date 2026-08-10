@@ -7,7 +7,7 @@
 download_gbif_occurrences(
   keys,
   geometry,
-  year_range = "2000,2024",
+  year_range = .gbif_default_year_range(),
   limit = NULL,
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
@@ -39,7 +39,8 @@ automatically.}
 
 \item{year_range}{Character. Year range formatted as \code{"YYYY,YYYY"},
 e.g. \code{"2000,2024"}. Passed to GBIF as year >= and year <=
-predicates.}
+predicates. Default \code{"2000"} through the current year, computed
+at call time -- not a fixed year that would silently go stale.}
 
 \item{limit}{Integer or \code{NULL}. Maximum records to retain
 \strong{per taxon key} after import, matching the per-key semantics of
@@ -164,9 +165,10 @@ identified only to family level), not records of species within it.
 \code{taxonKey}, so records at all ranks within the queried taxa are
 returned.
 
-\strong{Cache invalidation:} If you have a cached download from a version
-of this function that used only \code{taxonKey} (before the rank-specific
-fix), re-run with \code{overwrite = TRUE} to fetch the correct data.
+\strong{Cache invalidation:} A cache built by an older version of this
+function that queried \code{taxonKey} alone (not the OR predicate above)
+will silently omit records at other ranks. If in doubt, re-run with
+\code{overwrite = TRUE}.
 
 \strong{Hierarchy validation:} Each returned record is checked to confirm
 that one of its rank-specific key columns (\code{taxonKey},

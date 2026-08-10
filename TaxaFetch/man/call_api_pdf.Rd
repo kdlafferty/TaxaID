@@ -119,14 +119,13 @@ session-wide, or pass \code{provider} explicitly for a single call.
 }
 \examples{
 \dontrun{
-# Typical Stage 3 usage -- page_map from Stage 2:
-pdf_content <- extract_pdf_text("Swift_et_al_1993.pdf")
+# Typical Stage 3 usage -- page_map from Stage 2, pdf_structure from
+# screen_pdf_structure() (build_pdf_extract_prompt() takes a
+# pdf_structure object, not the raw output of extract_pdf_text()):
+pdf_content   <- extract_pdf_text("Swift_et_al_1993.pdf")
+pdf_structure <- screen_pdf_structure(pdf_content)
 
-prompt <- build_pdf_extract_prompt(
-  pdf_meta   = my_screen_result,
-  taxon_scope = "freshwater fish",
-  bbox        = c(-122, -117, 32, 35)
-)
+prompt <- build_pdf_extract_prompt(pdf_structure)
 
 raw_response <- call_api_pdf(
   prompt   = prompt,

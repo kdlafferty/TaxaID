@@ -113,6 +113,24 @@ test_that("skips basis filter with message when basisOfRecord column absent", {
   expect_equal(nrow(out), sum(!is.na(df$decimalLatitude)))
 })
 
+test_that("basis_of_record match is case/whitespace-insensitive (2026-08 human review)", {
+  # occurrenceStatus already normalized case/whitespace before this fix;
+  # basisOfRecord did not, an inconsistency the review flagged. GBIF-native
+  # data is consistently upper-case already (this doesn't change the
+  # default-argument path against real GBIF data), but a record whose
+  # basisOfRecord differs only in case/whitespace from basis_keep should
+  # still be retained, not silently dropped.
+  df  <- .make_gbif()
+  df  <- df[!is.na(df$decimalLatitude), ]
+  df$basisOfRecord <- " human_observation "
+  out <- filter_gbif_quality(df,
+                              basis_keep   = c("HUMAN_OBSERVATION"),
+                              exclude_edna = FALSE,
+                              bad_issues   = character(0),
+                              max_coord_uncertainty = Inf)
+  expect_equal(nrow(out), nrow(df))
+})
+
 # =============================================================================
 # Filter 3: GBIF issue codes
 # =============================================================================

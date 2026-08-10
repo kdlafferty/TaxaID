@@ -173,6 +173,42 @@ test_that(".gbif_checkpoint_path handles NULL geometry without error", {
   expect_true(grepl("_g0_", path))
 })
 
+test_that(".gbif_checkpoint_path handles NULL year_range without error (real bug, 2026-08 review)", {
+  # Before the fix, gsub() on a NULL year_range silently produced
+  # character(0), which propagated through sprintf() into a length-zero
+  # checkpoint_path -- fetch_gbif_occurrences()'s own
+  # `if (!is.null(checkpoint_path) && file.exists(checkpoint_path))` check
+  # then crashed with "argument is of length zero". Reachable from a real
+  # caller: TaxaExpect::build_priors()'s own year_range = NULL default
+  # forwards straight through to fetch_gbif_occurrences().
+  path <- TaxaFetch:::.gbif_checkpoint_path(
+    cache_dir  = tempdir(),
+    keys       = c(1L, 2L),
+    geometry   = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))",
+    year_range = NULL,
+    limit      = 100L
+  )
+  expect_true(is.character(path))
+  expect_length(path, 1L)
+  expect_true(grepl("_all_", path))
+
+  # Also confirm the actual downstream check that crashed does not error.
+  expect_no_error(
+    if (!is.null(path) && file.exists(path)) {
+      TRUE
+    } else {
+      FALSE
+    }
+  )
+})
+
+test_that(".gbif_default_year_range() returns 2000 through the current year", {
+  yr <- TaxaFetch:::.gbif_default_year_range()
+  expect_match(yr, "^2000,[0-9]{4}$")
+  end_year <- as.integer(strsplit(yr, ",")[[1L]][2L])
+  expect_equal(end_year, as.integer(format(Sys.Date(), "%Y")))
+})
+
 # =============================================================================
 # Chunking behaviour
 # =============================================================================

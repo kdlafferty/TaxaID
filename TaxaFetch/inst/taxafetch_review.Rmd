@@ -1,208 +1,377 @@
 ---
-title: "TaxaFetch code and domain review"
+title: "TaxaFetch code review"
 output: html_document
 ---
 
-Review date: 2026-07-09. Package version reviewed: TaxaFetch 0.1.0. Review conducted by
-Claude Code, using the template in `inst/Code and Domain Review 2.Rmd`. This review
-combines findings and fixes in one pass (no separate response document) -- all issues
-below were fixed and verified in the same session, with two design decisions (marked
-below) made by K. D. Lafferty before implementation.
+### Code Review
 
-`devtools::check()`: 0 errors, 0 warnings, 0 notes. `devtools::test()`: 459 expectations
-(up from 434 before this review), 0 failures, 0 errors (2 expected skips, 6 expected
-warnings from tests deliberately checking warning messages). `lintr::lint_package()`:
-clean.
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
 
-------------------------------------------------------------------------
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable? 
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+    
+  - The code is organized and generally easy to read.
+    
+* [x] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way. 
+  * Is additional documentation required?
+  
+  - There were no obvious optimization opportunities. See comments for individual files for any suggestions regarding documentation.
+  
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+  
+  - Refer to comments for individual files for any suggestions regarding documentation or coding standards.
+  
+* [x] **Automated tests:** Confirm that all tests pass when run locally.
 
-# Code Review
+  - I ran the tests manually. Double check that test "read_biotime_study() errors in non-interactive session when local_path is NULL" is running as expected.
+  
+* [x] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
 
-Purpose: To produce high quality code that is well written and organized according to
-best coding practices.
+  - I do not have the requisite knowledge to evaluate whether this package has vulnerabilities, particularly relating to interfacing with LLMs. I saw nothing obvious for other domains.
+  
+Any Additional comments, list below in comment section.
 
-### [x] Functionality: The code is readable, organized, and efficient.
+### Domain Review
 
-Readable and consistently organized across all 24 files -- roxygen documentation,
-internal-helper naming (`.` prefix), and `package::function()` cross-package calls follow
-the same conventions throughout. No changes needed here.
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
 
-### [x] Optimizations: No areas needing optimization; documentation is adequate.
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct? 
+  * Are any claims of what the code does substantiated? 
+  * If tests are included, are they adequate to evaluate functionality?
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces. 
+  * If equations are solved, are the equations input correctly into the code?
+* [x] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
 
-No performance concerns found. `fetch_occurrences_by_taxon()` (the newest function,
-Session 140) already documents its own known scaling limitation (GBIF's uncharacterized
-WKT-complexity ceiling) rather than leaving it undiscovered.
+Any Additional comments, list below in comment section.
 
-### [x] Coding standards: No errors or bad practices; docstrings and comments are accurate.
+- At least some of these functions explicitly return `tibbles`. These behave differently than base R `data.frame` objects in important ways. The package suite returns both `data.frame` and `tibble` objects. This may be a design choice, but consider using either base R `data.frame` or `tibbles` across all packages for consistency. Note: package optionally uses `fread()` from `data.table`. The `data.table` package is excellent, consider switching. 
 
-Every exported function has complete roxygen (title, `@param` for every argument,
-`@return` describing actual structure, `@examples`). Two doc-accuracy gaps were found and
-fixed (see File-specific comments): `get_gbif_occurrences()`'s `rank_filter` doc didn't
-disclose that it drops `SUBSPECIES`/`VARIETY`/`FORM` records, and `get_keys_from_context()`'s
-`matchType` enum and review-advice list didn't mention the real `"LOOKUP_RECOVERED"` value
-its own recovery path can return.
+- Why not use the `EDIutils` package? It would introduce a dependency but browsing [](https://docs.ropensci.org/EDIutils/index.html) looks like it has most if not all the required functionality.
 
-### [x] Automated tests: Confirmed passing when run locally.
+- See my comments from dataone_geo_screening.R concerning bbox and `spatialCoverage` column. This is parsed in the dataone_occurrence_search.R script. Perhaps I'm misunderstanding something, but why not use `harvest_dataone_catalog()` once, save *all* the info, and then just reference it? Searching through the package, [](https://pasta.lternet.edu/package/search/eml) is defined in three separate scripts, suggesting that the API is being queried in at least three separate functions. Suggest defining the query once and reusing if multiple API calls are needed. 
 
-`devtools::test()`: 459 expectations, 0 failures, 0 errors. (Always use `devtools::test()`,
-not bare `testthat::test_dir()`, for this package -- see `TaxaFetch/CLAUDE.md`'s Known
-Footguns for why the latter produces false "function not found" failures.)
+Comments on specific files:
 
-### [x] Vulnerabilities: One real finding, fixed; see below.
+**biotime_fetch.R**
 
-**SSRF via third-party EML metadata (Medium-High, fixed).** `dataone_standardize.R`'s
-`.download_data_table()` and `dataone_preview.R`'s `.preview_one_entity()` (via
-`.get_content_length()`/`.stream_n_rows()`) took `data_url` verbatim from EML metadata
-fetched from the PASTA/EDI repository and used it as the full request URL (host and
-scheme included) for HTTP GET/HEAD calls, with no restriction on the destination. Verified
-live against a real PASTA record (`edi.1290.9`) that legitimate `dataTable`/`otherEntity`
-download URLs consistently resolve to `pasta.lternet.edu`, while other `<online><url>`
-entries in the same real record pointed at five different external hosts entirely
-(`filelib.wildlife.ca.gov`, `wildlife.ca.gov`, `nrm.dfg.ca.gov`, `usbr.gov`, `doi.org`) --
-confirming the attack surface is real, not theoretical: a malformed or malicious EML
-record could point `data_url` at an internal address, and this code would fetch it.
+* [x] reviewed
 
-*Decision (K. D. Lafferty): add a host allowlist.* Fixed via `.is_trusted_pasta_url()`
-(`dataone_standardize.R`), restricting requests to `https://pasta.lternet.edu` and
-`https://pasta.edirepository.org` (EDI's own alternate system host for the same
-infrastructure). Both call sites now skip (with a clear message/skip-reason) rather than
-request any URL outside this allowlist. 6 new tests
-(`test-dataone_standardize.R`, `test-dataone_preview.R`) cover accepted hosts, rejected
-hosts (including a cloud metadata-endpoint address and `localhost`), non-`https` schemes,
-and unparseable input.
+- Would the BioTIMEr package be useful here?
 
-**Zip-slip (Low, hardened defensively).** `download_gbif_occurrences.R`'s
-`.read_gbif_zip()` called `utils::unzip()` with no entry-path validation. `zip_path`
-originates from GBIF's own `occ_download()`/`occ_download_get()` API (a trusted first
-party), so this was not assessed as exploitable today, but nothing re-validates that
-trust downstream (cache tampering, a MITM'd download). Added an explicit entry-path check
-(rejects absolute paths and `..` traversal segments) before extraction, as defense in
-depth.
+- Line 58 etc: suggest defualting to require a path instead of opening `file.choose()`.
 
-Everything else checked and found not exploitable (command injection: none found anywhere
-in the package; XXE: `xml2::read_xml()` does not resolve external entities by default,
-confirmed with a live test; unsafe deserialization: all `readRDS()` calls load only the
-package's own previously-written cache files; path traversal: all user/API-derived
-filename components are sanitized via `basename()` + character-class stripping before use
-in `file.path()`; PDF magic-byte validation: confirmed working as documented, not
-bypassable via extension alone).
+- Is extracting the numerics from the filename the best way to assign `study_id` if `NULL`? Would it be better to generate a random string instead? Might be less likely to duplicate. 
 
-------------------------------------------------------------------------
+- Line 223: should this be integer?
 
-# Domain Review
+- Line 291: everything is done with base R `data.frame` objects until here. Why return a `tibble`?
 
-Purpose: To ensure the code produces outputs, data, interfaces, or software that is
-biologically reasonable when compared to other similar information available.
+**check_inat_range.R**
 
-### [x] Scientific Rigor: One real finding, fixed; two lower-severity findings fixed.
+* [x] reviewed
 
-**Homonym misresolution in `get_keys_from_context()`'s `HIGHERRANK` recovery path
-(Medium-High, fixed).** The function's entire design premise is that supplying full
-taxonomic hierarchy context to GBIF's `name_backbone()` prevents homonym errors (its own
-documented example: *Alaria* is both a brown alga and a trematode worm). But its recovery
-path for a `HIGHERRANK` result too coarse to trust (`.recover_higherrank()`) called
-`rgbif::name_lookup()` with only the name and rank -- no kingdom/phylum context -- and
-picked the majority-vote `nubKey` across whatever checklist datasets `name_lookup()`
-searched. This reintroduces exactly the failure mode the rest of the function exists to
-prevent. Verified live against real GBIF data for *Alaria*: `name_lookup()` results mixed
-kingdoms (Animalia/Platyhelminthes, Chromista/Ochrophyta, and others) under the same
-generic-rank query, with the per-record `kingdom` field itself inconsistently populated
-across checklist datasets -- confirming the concern is real, though also surfacing that
-GBIF's backbone occasionally collapses distinct kingdoms to the same `nubKey` regardless
-(a GBIF data-quality limitation outside this package's control, disclosed in the fixed
-function's own roxygen).
+- suggest either explaining how to obtain an iNaturalist API token or linking to an explanation, perhaps with `@seealso` if explained elsewhere.
 
-*Decision (K. D. Lafferty): filter `name_lookup()` hits by kingdom before voting.* Fixed:
-`.recover_higherrank()` now accepts a `context` list (the row's own already-available
-hierarchy values) and narrows lookup hits to the matching kingdom before the majority
-vote, falling back to the previous unfiltered behavior when no kingdom context is
-available or the narrowed set is empty. The resulting `matchType = "LOOKUP_RECOVERED"`
-was also missing from the function's documented `matchType` enum and its "review these
-rows" advice -- both fixed. 3 new tests using a synthetic, deliberately unambiguous mixed-
-kingdom fixture (real GBIF data was tried first but is too noisy to isolate the narrowing
-logic cleanly, per the note above).
+- Line 179: this always sleeps here no matter what. If this is intended as a rate limiter, should this sleep be used conditionally in the main `for` loop this function is used in?
 
-**BioTime `occurrenceStatus` conflated missing data with confirmed absence (Medium,
-fixed).** `biotime_fetch.R`'s `read_biotime_study()` coded `occurrenceStatus` as
-`"present"` when `ABUNDANCE`/`BIOMAS` was a valid number `> 0`, and `"absent"` in every
-other case -- including rows where both fields were missing or failed `as.numeric()`
-coercion on malformed source data (silently caught by `suppressWarnings()`). This treats
-"unparseable" the same as "confirmed non-detection," a real risk for a database (BioTime)
-that is predominantly presence-based, where an `"absent"` row is unusual and consequential
-for downstream occurrence priors. Fixed: `occurrenceStatus` is now `NA` when neither field
-parses to a number, `"absent"` only when at least one field is a valid, explicit zero, and
-`"present"` as before. A verbose-mode message reports the affected row count. 3 new tests.
+- Line 206: can results ever be longer than one element? perhaps running `lapply()` over results and returning the list that way is safer.
 
-**eDNA-exclusion pattern was overly broad (Low-Medium, fixed).** `filter_gbif_quality()`'s
-`exclude_edna` filter matched the generic phrases `"bulk sample"` and `"water sample"`
-against `samplingProtocol`/`occurrenceRemarks`/`preparations`, in addition to
-`"edna"`/`"environmental dna"`/`"metabarcod"`. The two generic phrases can appear in
-non-eDNA methods (plankton tows, water-quality collection notes), risking silent exclusion
-of legitimate presence data. Fixed: removed the two generic phrases from the pattern; real
-GBIF eDNA datasets consistently self-label with one of the three remaining specific terms.
-1 new test confirms generic wording alone no longer triggers exclusion.
+- Line 254: why not use `sf::st_write()` here?
 
-### [x] Outputs: Comparable to other implementations; two doc-accuracy gaps fixed.
+**dataone_catalog.R**
 
-**`make_bbox_wkt()`'s km-conversion reference was latitude-dependent but undisclosed
-(Low, doc fix).** The function always produces a square in degree-space (by design, not a
-bug -- irregular polygons are explicitly routed to `TaxaTools::define_search_polygon()`
-instead). Its docstring's "0.5 degrees is approximately 55 km" reference conversion holds
-along the north-south axis only; east-west coverage shrinks by `cos(latitude)` and was not
-disclosed, a real risk for high-latitude sites. Fixed: `@param radius_deg` now states the
-caveat explicitly with concrete examples (about 78 km at 45 degrees, about 39 km at 70
-degrees).
+* [x] reviewed
 
-**`get_gbif_occurrences()`'s `rank_filter` default silently excludes subspecies-level
-records (Low, doc fix, behavior unchanged).** `rank_filter = "species"` (default) is an
-exact string match against `taxonRank`, so GBIF records ranked `SUBSPECIES`/`VARIETY`/
-`FORM` are dropped even though they carry a usable species-level identity in their own
-`species` column -- inconsistent with `filter_gbif_quality(require_species = TRUE)`'s more
-permissive downstream check. Assessed as plausibly intentional (conservative default,
-every existing caller already expects species-rank-only output) rather than a bug to fix
-behaviorally this session; documented explicitly instead so the tradeoff is visible rather
-than discovered by surprise.
+- Suggest naming Environmental Data Initiative explicitly in the documentation.
 
-### [x] Algorithms: Appropriate for intended purpose; no other flaws found.
+- From the EDI website: "Data and metadata derived from publicly funded research are made available through this website with as few restrictions as possible, and on a non-discriminatory basis. In return, EDI expects users of data to act ethically by contacting the data provider prior to using it in any published research. In accordance with professional etiquette, data accessed from this website should be cited appropriately when used in a publication. A digital object identifier (DOI) is provided for each dataset to facilitate citation." Is this expected behavior is followed here? Perhaps some documentation and/or warnings should be included. Also suggest returning DOIs to make this process easier.
 
-`fetch_occurrences_by_taxon()`'s geometry union/combine logic, `stack_occurrences()`'s
-`gbifID` dedup, `check_inat_range()`'s point-in-polygon logic, and the DataONE geo/taxon
-LLM-screening prompts (deliberately biased toward "answer YES when in doubt," relying on
-stricter downstream EML screening) were all read closely and found appropriate for their
-purpose. `filter_gbif_quality()`'s other six filters (coordinates, absent-occurrence
-exclusion, basis of record, issue codes, coordinate-uncertainty `NA`-handling, decimal-
-place precision) are correctly implemented and match their documentation.
+- these functions use `httr2`, but those in check_inat_range.R use `httr`. Suggest using `httr2` across all packages for consistency.
 
-------------------------------------------------------------------------
+- Line 3: why is TaxaExpect referenced here? If the package is cross referenced, consider combining.
 
-# File specific comments
+- For the test case in `review_function_inputs.R`, all authors were `NA`. This behavior persisted even after increasing to 200 rows. It looks like the name of the xml node might be `authors` not `author`. Same for `keyword`, should be `keywords` (lines 286-287).
 
-- `R/dataone_standardize.R` -- added `.pasta_trusted_hosts` / `.is_trusted_pasta_url()`
-  and the `.download_data_table()` guard (SSRF fix); `.recover_higherrank()` gained a
-  `context` parameter and kingdom-narrowing logic (homonym fix); `.process_gbif_row()`
-  updated to pass context through.
-- `R/dataone_preview.R` -- `.preview_one_entity()` gained the same host-allowlist guard
-  before its HEAD/stream calls.
-- `R/get_keys_from_context.R` -- `matchType` roxygen enum and review-advice list updated
-  to include `"LOOKUP_RECOVERED"`; summary message now reports a `LOOKUP_RECOVERED` count
-  when nonzero.
-- `R/biotime_fetch.R` -- `occurrenceStatus` derivation and all three related roxygen
-  sections (`@details`, `@return` field, verbose summary message) updated for the
-  NA-vs-absent distinction.
-- `R/filter_gbif_quality.R` -- `edna_pattern` narrowed; inline comment explains why.
-- `R/make_bbox_wkt.R` -- `@param radius_deg` gained the latitude-dependent caveat.
-- `R/get_gbif_occurrences.R` -- `@param rank_filter` gained the exact-match/subspecies
-  caveat. (Unrelated: this edit shifted `.lintr`'s line-293 `commented_code_linter`
-  exclusion to line 300 -- updated; see `.lintr`'s Pass 5 note in the project's own
-  pre-review-checklist memory about exclusion line-number drift.)
-- `R/download_gbif_occurrences.R` -- `.read_gbif_zip()` gained a zip-slip entry-path
-  check before extraction.
-- `.lintr` -- added an `object_usage_linter` exclusion for `dataone_preview.R:544`
-  (`.is_trusted_pasta_url()` cross-file call, same false-positive class as the existing
-  `get_gbif_occurrences.R:217` exclusion, confirmed via `codetools::checkUsage()` on the
-  loaded namespace).
-- New/expanded test files: `test-dataone_standardize.R` (+6), `test-dataone_preview.R`
-  (new file, +4 -- this file previously had zero test coverage at all;
-  `preview_dataone_occurrences()` itself remains untested beyond this guard, a
-  pre-existing gap out of scope for this review), `test-get_keys_from_context.R` (+3),
-  `test-biotime_fetch.R` (+2), `test-filter_gbif_quality.R` (+1).
+- Line 244: why is this one liner piped?
+
+- Looking ahead, there are functions for geographic screening.Maybe I'm thinking about this backwards, but should any screening be applied here?
+
+**dataone_eml_screen.R**
+
+* [x] reviewed
+
+- Same comment about TaxaExpect here.
+
+- Suggest combining `.detect_lat_col()` and `.detect_lon_col` into one function. Perhaps it would be best combine all column detections into a single query function.
+
+- Line 42: Suggest explicitly stating that these are the bbox coordinates.
+
+- Lines 57-58: Are lat/long useful on their own? As in, do you need both? If so, suggest changing to single column like `has_coords` or similar.
+
+- Line 68: perhaps it will be obvious, but dataTable is not defined in this documentation.
+
+- The base url "https://pasta.lternet.edu/package" is repeated several times across this package. Suggest defining once and reusing.
+
+**dataone_geo_screening.R**
+
+* [x] reviewed
+
+- If I understand this correctly, it uses an LLM to screen things geographically. These functions use coordinates when available, but is there possibly more info available for this? Manual downloads from EDI have a column called `spatialCoverage`, which has bbox coordinates (not always populated). I don't see that being retained in `harvest_dataone_catalog()`. EDIT: I see that it is retained and parsed in `search_dataone()` and internals in dataone_occurrence_search.R. I'n somewhat confused as to why that isn't used here.
+
+- It seems like these queries could add up to a lot of tokens quickly. `max_tokens` in `call_api()` might keep this from getting out of hand, but seemed worth pointing out. 
+
+- Line 507: suggest curly braces for multiline `if`.
+
+- Line 204: returns "Andrews Experimental Forest.", "Andrews Experimental Forest", and "All locations were on the H.J. Andrews Experimental Forest" using the current complete catalog. The first two are obviously more similar with only punctuation differentiating them. Trimming periods reduced the unique `geographicdescription` for undecided from 1247 to 1239 in this case.
+
+**dataone_occurrence_search.R**
+
+* [x] reviewed
+
+- See comments on `spatialCoverage` above. I'm still trying to fully understand the different functionality between these two files, but it seems like lots of it could be combined.
+
+- Line 101: this example fails because it shows bbox as an unnamed vector and the check starting on line 118 is looking for a named list. Using this same bb as a named list and keeping all other inputs the same, all coordinate rows are NA out of 418 returned. I manually checked this against the dataset titled "SBC LTER: Reef: Kelp Forest Community Dynamics: Fish abundance" from 2025, one of the returned, and it should have these coordinates: `ENVELOPE(-119.7445915, -119.7445915, 34.400275, 34.400275)`. In fact, all the coordinates I saw had this format, and I'm not sure it's captured by the current function. The XML structure was a node called "spatialCoverage", with a child node called "coordinates" with the bb coordinates entered as a string wrapped in "ENVELOPE()", as in ``ENVELOPE(-119.7445915, -119.7445915, 34.400275, 34.400275)`. I got the same behavior (all values for `coordinates_raw` were `NA`).
+
+- Lines 413-414: Not a major issue, but why is format B above format A?
+
+- Line 484: functions exactly like this get defined numerous times in this package. Suggest defining once and referencing. 
+
+**dataone_preview.R**
+
+* [x] reviewed
+
+- Could the functionality of this be baked into the download functions? Something like `fetch_dataone_occurrences(preview = TRUE)`?
+
+- Line 35: I think this is now just imported from TaxaTools, right? Should this be noted instead?
+
+- Line 100: presumably this varies considerably due to network demand and whatnot.
+
+- Lines 188-196: this enforces different standards based on input type. Suggest forcing all values to be named references (i.e. named vector). Also suggest doing either list or numeric vector, not both.
+
+**dataone_standardize.R**
+
+* [x] reviewed
+
+- Why is TaxaExpect referenced here? Suggest assuming standalone package use in documentation.
+
+- Line 192: `scope` is not an argument for `search_dataone()`. Using this example returns an error.
+
+- Line 195: This example resulted in very long download times, I had to stop after ~20 minutes. Suggest specifying specific id of a known small dataset. The example in `review_function_inputs.R` works.
+
+- Line 203: this is obviously a hypothetical dataset, suggest making it even more obvious with something like `"path/to/gbif/example_data.csv"`. Alternatively (and preferred), show minimal example creating `gbif_sbchannel.csv` prior to referencing it in the function. 
+
+- Line 230-233: this assumes bb coordinates by position. Suggest requiring a named vector or simply require a named list and skip all the coercsion.
+
+- Line 261: consider adding conditional where this is not run at all if `gbif_snapshot_path` is `NULL`, even though the `NULL` results in early return.
+
+- Line 725: suggest using `unique()` here and not doing it twice later.
+
+- `.load_gbif_hashes()` and `.deduplicate_against_gbif()` are just looking for the same record in GBIF, right? So if the species, date, and location are the same, this assumes they are duplicates and removes them. It is theoretically possible to observe something twice in the same day, though I think the current assumption is reasonable and probably doesn't warrant a change. However, might it just be simpler to do something like `anti_join()` from dplyr? Not sure.
+
+- `.filter_to_bbox_df()` could reference a spatial filtering function that could be used elsewhere.
+
+- Line 778: this fails when there are newlines in the string.  `"ABUR: Arroyo Burro Reef is located on the Santa Barbara Channel\r\n  near the mouth of Arroyo Burro Creek and Beach. Depth ranges from 5.4 to 7 meters."` only works correctly when newline `\r\n` is removed, otherwise returns the string unchanged.
+
+**dataone_taxon_screening.R**
+
+* [x] reviewed
+
+- Is PASTA the name of the data or of the data repository infrastructure? I believe it is the latter. Would referring to it as EDI be better? This comment applies throughout.
+
+- Line 150: should this have `trimws()` like line 157?
+
+- Line 177: `df` overwrites `stats::df()`.
+
+- Suggest filtering for all `NA` prior to making vectors on line 196 instead of doing it twice, preferably when still in `data.frame` format.
+
+**download_gbif_occurrences.R**
+
+* [x] reviewed
+
+- How is this different than `fetch_gbif_occurrences()`? Is it returning the same data, but `fetch_gbif_occurrences()` is less effective for large queries? If so, suggest getting rid of `fetch_gbif_occurrences()`.
+
+- The `data.table` is a optional dependency here. This package is fantastic, and does much of the work of the tidyverse (e.g. `dplyr`, `tibble`) more easily for less. Not required, but replacing tidyverse dependencies with `data.table` throughout would reduce dependencies and likely be faster. Maybe for version 2.0.
+
+- Line 132: this appears to reference a fix. This is unreleased code, so this is unecessary and should be removed. Including this in `NEWS` or other change log may be more appropriate. 
+
+- Line 188: suggest requiring users to specify `year_range` as an input, without defaults.
+
+- Line 265: why not just make it so `year_range` is required to be input as a length two integer vector? Seems easier, more intuitive, and more robust to me.
+
+- Line 467: is this attribute just replicating what's in the `bibliographicCitation` column?
+
+- Line 525: actually falls back to `readr` on line 587.
+
+- Line 568: suggest checking if `datafile` is length one and stopping if not, or at least warning.
+
+- Line 583: seems like testing if `use_cols` is null here is more intuitive.
+
+- Maybe there's good reason to have the default for `cache_dir` be persistent (long downloads, presumably), but it seems like having it default to the temp file unless otherwise specified might be better.
+
+- example scenario in `review_function_inputs.R` produces the following warning, with no data: `"download_gbif_occurrences: no records in download. Check that keys are valid and the geometry intersects known records."`. This seems expected given the comments on `fetch_gbif_occurrences` in the same file, but doesn't allow for reviewing an output. The example on lines 165-179 produced an output.
+
+**fetch_gbif_occurrences.R**
+
+* [x] reviewed
+
+- Same issue as `download_gbif_occurrences.R`, `review_function_inputs.R` produces 0 row. Gadidae example works.
+
+- Definitely faster than `download_gbif_occurrences.R`. Still not sure on why both are needed.
+
+- `.gbif_checkpoint_path()` is very similar to `.gbif_dl_meta_path()` in `download_gbif_occurrences.R`. Consider combining these into one function.
+
+- Line 133: suggest not having persistent cache. Use temp instead, especially if this is the quick check version of this functionality.
+
+- Line 202: what happens if these conditions aren't met and `chunk_result$aborted` doesn't equal `TRUE`?
+
+- Line 291: excellent choice. But is option 3 even better?
+
+- Line 326: suggest using actual bb values, or at least unsigned. It will be more informative and unique.
+
+**fetch_occurrences_by_taxon.R**
+
+* [x] reviewed
+
+- Line 7: are the `.md` files in `ecosystem_docs` being released with the package(s)? If not suggest removing.
+
+- If I understand the problem here, the issue is that different rows are different queries, and these can result in returning the same gbif records for each. Essentially, returning duplicates. Perhaps this is the only function that should be exported (not `get_gbif_occurrences()`), treating it as default behavior.
+
+- Same comment as before- `@examples` produces populated output, but the review functions does not.
+
+**filter_gbif_quality.R**
+
+* [x] reviewed
+
+- Remove references to `TaxaExpect` unless necessary.
+
+- Line 22: consider giving the vector of possibilities. Ditto other arguments.
+
+- Line 60: This may be a safe assumption but it is technically possible to have records at coordinates with "low" precision that are actually quite precise, such as if one were recording an observation at the intersection point of lines of lat and lon (the whole numbers, i.e. -118, 43 or something). Keep default as NULL. 
+
+- Lines 176-187: should `toupper` and `trimws` be used here as in line 167? Same for issues line 190+.
+
+**get_gbif_occurrences.R**
+
+* [x] reviewed
+
+- This explains why both  `download_gbif_occurrences()` and `fetch_gbif_occurrences()` were retained. My suggestion of where to cache data in those functions applies here. 
+
+**get_keys_from_context.R**
+
+* [x] reviewed
+
+- No additional comments.
+
+**literature_search.R**
+
+* [x] reviewed
+
+- Line 32: Suggest rewriting to match lines 138-139, which is clearer.
+
+- Line 79: is this a reference to package version? If so make sure to update as needed.
+
+- Why is `taxon_scope` a single string and not a character vector? Example: `"gobies, goby, Gobiidae, tidewater goby, Eucyclogobius"` could be `c("gobies", "goby", "Gobiidae", "tidewater goby", "Eucyclogobius")`.
+
+- Seems like `taxon_scope` is not actually a taxonomic reference, it looks at title and abstract based in 296-300. Should this be named `query_scope` or similar? Could both 
+
+- Same question for `geo_scope` as `taxon_scope` above.
+
+- line 150: passing parameters that don't do anything in a function seems like an inefficient design choice. Could this be done elsewhere or removed?
+
+**make_bbox_wkt.R**
+
+* [x] reviewed
+
+- Why is the British spelling of "centre" used here?
+
+- I'm not sure if all the parameters would be correct (point order and whatnot), but wouldn't it be easier and more intuitive to just use functions from sf for this, and extract coords from the BB that way? It's already a dependency. See example below. There are issues with distance using WGS84, but for the use case and existing caveats they seem similar. That might help with coordinate clamping issues.
+
+```
+point_buff <- st_buffer(point, distance)
+point_bb <- st_bbox(point_buff)
+```
+
+**pdf_api.R**
+
+* [x] reviewed
+
+- Would it be easier and/or cheaper to just send the results of `extract_pdf_text` to the LLM if the papers are just being screened?
+
+- Lines 3-30: This explicitly references Anthropic. Suggest updating or removing. 
+
+- Lines 84-90 and 106-112 should be collapsed into a single function, as they are directly duplicated.
+
+- I haven't been commenting on most nitpicky stuff, but the indentation  for `call_api_pdf()` arguments section is way off. 
+
+- This failed to find the sections during testing, but that might be more of an issue with `extract_pdf_text()`.
+
+**pdf_characterize.R**
+
+* [x] reviewed
+
+**pdf_extract.R**
+
+* [x] reviewed
+
+- Suggest removing session log info from comments.
+
+- `.pdf_dwc_cols` and the vector on line 290 in `dataone_standardize.R` should both reference the same object instead of duplicating.
+
+- Line 70: fails with bundled pdf, which produces `NA` for `observation_type`, `location_structure`, `data_density`, `taxonomic_scope`, and `contamination_risk`. Currently only replaces `NULL`, `NA` persist.
+
+- Line 103: will the LLM interpret A, B, and C literally?
+
+- Line 108: what if coordinates are given in different CRS?
+
+- Lines 189-190: why not just a one-liner with `gsub("```", "", raw_text)`? In testing this produces a cleaner result (no appended whitespace).
+
+- There may be good reason for this, but why remove newline characters in line 192 only to add them back in on line 215? Whitespace is trimmed, but presumably that could be done once the `data.frame` is read in.
+
+- Could `.strip_to_binomial()` be defined in TaxaTools and reused? Seems like there was some similar functionality there.
+
+- Maybe I'm missing something but at first glance `.coerce_numeric_col()` seems to do exactly what R already does. Ditto `.coerce_integer_col()`. Both `as.integer` and `as.numeric` return the same things in testing as these functions, with different warnings.
+
+- Line 369: doesn't this return "field_survey" when structure is `NULL`? What if it's not a field survey? Ditto line 643.
+
+- `df`- I've made this comment before.
+
+- Line 698: suggest making the `else` outcome be `NA_character`.
+
+**pdf_text.R**
+
+* [x] reviewed
+
+- Line 80: how does including `"results and discussion"` affect things?
+
+- Line 137: in testing, this fails for two column formats where either the section begins with numbers i.e. "2.1 Results" or where the section begins on the second row. This failing is acknowledged here but at least the case with numbers seems solvable by applying the trim used in pass 1.  
+
+**report_fetch.R**
+
+* [x] reviewed
+
+- No additional comments.
+
+**stack_occurrences.R**
+
+* [x] reviewed
+
+- No additional comments.
+
+**TaxaFetch-package.R**
+
+* [x] reviewed
+
+- No additional comments.
+
+**zzz_imports.R**
+
+* [x] reviewed
+
+- No additional comments.

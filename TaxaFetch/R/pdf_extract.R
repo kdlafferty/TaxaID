@@ -31,7 +31,11 @@ utils::globalVariables(c(
 
 
 # ------------------------------------------------------------------------------
-# Canonical DwC column order -- must match fetch_dataone_occurrences() output
+# Canonical DwC column order -- must match fetch_dataone_occurrences() output.
+# Also referenced directly (same literal vector, not duplicated) by
+# dataone_standardize.R's fetch_dataone_occurrences() for its own final
+# column ordering -- kept in one place since 2026-08 human review (both
+# files previously hand-copied the identical 20-column list).
 # ------------------------------------------------------------------------------
 
 .pdf_dwc_cols <- c(
@@ -52,6 +56,33 @@ utils::globalVariables(c(
 .pdf_pa_cols <- c("organismQuantity", "organismQuantityType")
 
 
+#' Default an axis value, treating both NULL and NA as "missing"
+#'
+#' \code{screen_pdf_structure()} explicitly returns \code{NA_character_}
+#' (not \code{NULL}) for \code{observation_type}/\code{location_structure}/
+#' \code{data_density}/\code{contamination_risk} when its LLM
+#' characterization call fails to produce a valid value (see that
+#' function's own fallback object) -- a real, documented, in-package
+#' contract. This package's shared \code{\%||\%} operator (from TaxaTools)
+#' only substitutes on \code{NULL}, by design (it's used ecosystem-wide and
+#' its NULL-only semantics are relied on elsewhere), so applying it
+#' directly to these axis fields silently left \code{NA} unresolved instead
+#' of falling back to a sensible default -- confirmed via a real bundled
+#' PDF in the 2026-08 human review, where every one of these four fields
+#' came back \code{NA} and stayed \code{NA} all the way through prompt
+#' building. Use this helper instead of \code{\%||\%} for these four axis
+#' fields specifically.
+#'
+#' @param x A scalar value (possibly \code{NULL} or \code{NA}).
+#' @param default The fallback value.
+#' @return \code{x} if it is neither \code{NULL} nor \code{NA}; \code{default}
+#'   otherwise.
+#' @noRd
+.axis_or_default <- function(x, default) {
+  if (is.null(x) || (length(x) == 1L && is.na(x))) default else x
+}
+
+
 # ==============================================================================
 # .build_axis_instructions() -- translate pdf_structure axes to prompt text
 # ==============================================================================
@@ -59,10 +90,10 @@ utils::globalVariables(c(
 #' @noRd
 .build_axis_instructions <- function(pdf_structure) {
 
-  obs  <- pdf_structure$observation_type  %||% "field_survey"
-  loc  <- pdf_structure$location_structure %||% "named_localities"
-  dens <- pdf_structure$data_density       %||% "tabular"
-  cont <- pdf_structure$contamination_risk %||% "low"
+  obs  <- .axis_or_default(pdf_structure$observation_type,   "field_survey")
+  loc  <- .axis_or_default(pdf_structure$location_structure, "named_localities")
+  dens <- .axis_or_default(pdf_structure$data_density,       "tabular")
+  cont <- .axis_or_default(pdf_structure$contamination_risk, "low")
 
   lines <- character(0L)
 
@@ -185,9 +216,14 @@ utils::globalVariables(c(
 
 #' @noRd
 .parse_dwc_csv <- function(raw_text) {
-  # Remove markdown code fences
+  # Remove markdown code fences. "[a-z]*" matches zero or more characters,
+  # so this single pass already covers both a language-tagged opening fence
+  # ("```csv") and a bare fence ("```", including the closing fence) --
+  # verified identical to the previous two-call version, which had a
+  # redundant second gsub("```", "", ...) (2026-08 human review; a truly
+  # single gsub("```", ...) one-liner, as first suggested, would instead
+  # leave the language tag word behind as stray text, e.g. "csv\n...").
   raw_text <- gsub("```[a-z]*", "", raw_text)
-  raw_text <- gsub("```", "", raw_text)
 
   lines <- strsplit(raw_text, "\n")[[1L]]
   lines <- trimws(lines)
@@ -366,8 +402,8 @@ build_pdf_extract_prompt <- function(pdf_structure,
   chunk_pages <- isTRUE(chunk_pages)
 
   # Skip non-extractable paper types
-  obs <- pdf_structure$observation_type %||% "field_survey"
-  if (!is.na(obs) && obs %in% c("analytical_modelling", "experimental_lab")) {
+  obs <- .axis_or_default(pdf_structure$observation_type, "field_survey")
+  if (obs %in% c("analytical_modelling", "experimental_lab")) {
     message(sprintf(
       "build_pdf_extract_prompt: observation_type = '%s'. Skipping extraction.", obs
     ))
@@ -564,9 +600,9 @@ print.pdf_extract_prompt <- function(x, ...) {
   cat(sprintf("  Pages to send  : %d\n", x$n_send))
   cat(sprintf("  dpi            : %d\n", x$dpi))
   cat(sprintf("  Chunks         : %d\n", x$n_chunks))
-  obs <- x$pdf_structure$observation_type %||% "(unknown)"
+  obs <- .axis_or_default(x$pdf_structure$observation_type, "(unknown)")
   cat(sprintf("  Observation    : %s\n", obs))
-  loc <- x$pdf_structure$location_structure %||% "(unknown)"
+  loc <- .axis_or_default(x$pdf_structure$location_structure, "(unknown)")
   cat(sprintf("  Location struct: %s\n", loc))
   if (!is.null(x$single_site_coords)) {
     cat(sprintf("  Single-site lat: %s  lon: %s\n",
@@ -640,10 +676,10 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
   # Retrieve pdf_path from structure for occurrenceID construction
   pdf_path <- pdf_structure$pdf_path %||% "unknown_pdf"
 
-  obs <- pdf_structure$observation_type %||% "field_survey"
+  obs <- .axis_or_default(pdf_structure$observation_type, "field_survey")
 
   # Parse CSV
-  df <- tryCatch(
+  occ_df <- tryCatch(
     .parse_dwc_csv(raw_text),
     error = function(e) {
       warning(sprintf(
@@ -653,8 +689,8 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
       NULL
     }
   )
-  if (is.null(df)) return(invisible(NULL))
-  if (nrow(df) == 0L) {
+  if (is.null(occ_df)) return(invisible(NULL))
+  if (nrow(occ_df) == 0L) {
     warning(sprintf(
       "parse_pdf_extract_response: zero rows extracted from '%s'.",
       basename(pdf_path)
@@ -663,87 +699,87 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
   }
 
   # --- scientificName: expand abbreviations then strip to binomial ---
-  if ("scientificName" %in% names(df)) {
-    df$scientificName <- .expand_abbreviated_names(
-      df$scientificName, abbreviation_inventory
+  if ("scientificName" %in% names(occ_df)) {
+    occ_df$scientificName <- .expand_abbreviated_names(
+      occ_df$scientificName, abbreviation_inventory
     )
-    df$scientificName <- .strip_to_binomial(df$scientificName)
+    occ_df$scientificName <- .strip_to_binomial(occ_df$scientificName)
   }
 
   # --- Coerce numeric / integer columns ---
   for (col in c("decimalLatitude", "decimalLongitude",
                 "coordinateUncertaintyInMeters")) {
-    if (col %in% names(df)) {
-      df[[col]] <- .coerce_numeric_col(df[[col]], col)
+    if (col %in% names(occ_df)) {
+      occ_df[[col]] <- .coerce_numeric_col(occ_df[[col]], col)
     }
   }
   for (col in c("year", "month", "day", "individualCount")) {
-    if (col %in% names(df)) {
-      df[[col]] <- .coerce_integer_col(df[[col]], col)
+    if (col %in% names(occ_df)) {
+      occ_df[[col]] <- .coerce_integer_col(occ_df[[col]], col)
     }
   }
-  if ("organismQuantity" %in% names(df)) {
-    df$organismQuantity <- .coerce_numeric_col(df$organismQuantity,
+  if ("organismQuantity" %in% names(occ_df)) {
+    occ_df$organismQuantity <- .coerce_numeric_col(occ_df$organismQuantity,
                                                "organismQuantity")
   }
 
   # --- Assign occurrenceID ---
-  df$occurrenceID <- paste0(basename(pdf_path), "_row", seq_len(nrow(df)))
+  occ_df$occurrenceID <- paste0(basename(pdf_path), "_row", seq_len(nrow(occ_df)))
 
   # --- Assign fixed PDF-pipeline columns ---
-  df$datasetID        <- pdf_path
-  df$institutionCode  <- NA_character_
-  df$basisOfRecord    <- ifelse(
-    "basisOfRecord" %in% names(df) & !is.na(df$basisOfRecord),
-    df$basisOfRecord, "HumanObservation"
+  occ_df$datasetID        <- pdf_path
+  occ_df$institutionCode  <- NA_character_
+  occ_df$basisOfRecord    <- ifelse(
+    "basisOfRecord" %in% names(occ_df) & !is.na(occ_df$basisOfRecord),
+    occ_df$basisOfRecord, "HumanObservation"
   )
-  df$genus           <- NA_character_
-  df$family          <- NA_character_
-  df$specificEpithet <- NA_character_
-  df$recordedBy      <- NA_character_
+  occ_df$genus           <- NA_character_
+  occ_df$family          <- NA_character_
+  occ_df$specificEpithet <- NA_character_
+  occ_df$recordedBy      <- NA_character_
 
   # --- Ensure all 21 canonical DwC columns present ---
   for (col in .pdf_dwc_cols) {
-    if (!col %in% names(df)) {
+    if (!col %in% names(occ_df)) {
       # Determine NA type
       if (col %in% c("decimalLatitude", "decimalLongitude",
                      "coordinateUncertaintyInMeters")) {
-        df[[col]] <- NA_real_
+        occ_df[[col]] <- NA_real_
       } else if (col %in% c("year", "month", "day", "individualCount")) {
-        df[[col]] <- NA_integer_
+        occ_df[[col]] <- NA_integer_
       } else {
-        df[[col]] <- NA_character_
+        occ_df[[col]] <- NA_character_
       }
     }
   }
 
   # --- Reorder to canonical DwC column order ---
-  extra_names <- setdiff(names(df), .pdf_dwc_cols)
-  df <- df[, c(.pdf_dwc_cols, extra_names), drop = FALSE]
+  extra_names <- setdiff(names(occ_df), .pdf_dwc_cols)
+  occ_df <- occ_df[, c(.pdf_dwc_cols, extra_names), drop = FALSE]
 
   # --- Append PDF-pipeline extra columns (always present) ---
   for (col in .pdf_extra_cols) {
-    if (!col %in% names(df)) {
-      df[[col]] <- NA_character_
+    if (!col %in% names(occ_df)) {
+      occ_df[[col]] <- NA_character_
     }
   }
   # Ensure occurrenceStatus is "present" (LLM may have filled it)
-  df$occurrenceStatus <- "present"
+  occ_df$occurrenceStatus <- "present"
 
   # --- prevalence_abundance extras ---
   if (!is.na(obs) && obs == "prevalence_abundance") {
     for (col in .pdf_pa_cols) {
-      if (!col %in% names(df)) {
+      if (!col %in% names(occ_df)) {
         if (col == "organismQuantity") {
-          df[[col]] <- NA_real_
+          occ_df[[col]] <- NA_real_
         } else {
-          df[[col]] <- NA_character_
+          occ_df[[col]] <- NA_character_
         }
       }
     }
   } else {
     # Remove any LLM-generated PA columns for non-PA papers
-    df <- df[, setdiff(names(df), .pdf_pa_cols), drop = FALSE]
+    occ_df <- occ_df[, setdiff(names(occ_df), .pdf_pa_cols), drop = FALSE]
   }
 
   # Final reorder: canonical + extra + (PA if applicable)
@@ -751,9 +787,9 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
     .pdf_dwc_cols,
     .pdf_extra_cols,
     if (!is.na(obs) && obs == "prevalence_abundance") .pdf_pa_cols else character(0L),
-    setdiff(names(df), c(.pdf_dwc_cols, .pdf_extra_cols, .pdf_pa_cols))
+    setdiff(names(occ_df), c(.pdf_dwc_cols, .pdf_extra_cols, .pdf_pa_cols))
   )
-  df <- df[, final_cols[final_cols %in% names(df)], drop = FALSE]
+  occ_df <- occ_df[, final_cols[final_cols %in% names(occ_df)], drop = FALSE]
 
-  tibble::as_tibble(df)
+  tibble::as_tibble(occ_df)
 }

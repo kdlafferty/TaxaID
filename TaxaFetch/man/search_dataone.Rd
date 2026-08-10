@@ -59,7 +59,7 @@ filters results in R by bounding-box overlap on the returned
 \examples{
 \dontrun{
 results <- search_dataone(
-  bbox = c(-120, 34, -119, 35),
+  bbox = list(west = -120, east = -119, south = 34, north = 35),
   keywords = c("fish", "occurrence")
 )
 }

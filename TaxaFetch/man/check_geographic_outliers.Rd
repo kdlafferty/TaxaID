@@ -11,7 +11,7 @@ check_geographic_outliers(
   method = "distance",
   tdi = 1000,
   mltpl = 5,
-  year_range = "2000,2024",
+  year_range = .gbif_default_year_range(),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   verbose = FALSE
 )
@@ -52,7 +52,8 @@ directly interpretable choice for "isolated from every cluster."
 own default, \code{5}.}
 
 \item{year_range}{Character. Year range for the global GBIF fetch,
-\code{"YYYY,YYYY"}. Default \code{"2000,2024"}, matching
+\code{"YYYY,YYYY"}. Default \code{"2000"} through the current year
+(computed at call time), matching
 \code{\link{fetch_gbif_occurrences}}'s own default. The global fetch
 characterizes the species' broader distribution, not just the local
 study window -- widen this if a narrow year range risks under-sampling

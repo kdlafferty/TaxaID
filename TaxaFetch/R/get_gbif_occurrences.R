@@ -20,7 +20,8 @@
 #'   from \code{\link{get_keys_from_context}}. Duplicates are removed before
 #'   the key count is compared to \code{key_threshold}.
 #' @param geometry Character. WKT polygon (see \code{\link{make_bbox_wkt}}).
-#' @param year_range Character. \code{"YYYY,YYYY"}. Default \code{"2000,2024"}.
+#' @param year_range Character. \code{"YYYY,YYYY"}. Default \code{"2000"}
+#'   through the current year, computed at call time.
 #' @param limit Integer or \code{NULL}. Per-key record cap, forwarded as-is.
 #'   \code{NULL} (default) means "retain all records" on the download path
 #'   (its own default); on the fetch path, \code{NULL} is translated to that
@@ -167,7 +168,7 @@
 get_gbif_occurrences <- function(
     keys,
     geometry,
-    year_range         = "2000,2024",
+    year_range         = .gbif_default_year_range(),
     limit               = NULL,
     key_threshold       = 50L,
     rank_filter         = "species",

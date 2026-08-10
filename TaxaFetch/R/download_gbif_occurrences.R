@@ -21,7 +21,8 @@ utils::globalVariables("taxonKey")
 #'   automatically.
 #' @param year_range Character. Year range formatted as \code{"YYYY,YYYY"},
 #'   e.g. \code{"2000,2024"}. Passed to GBIF as year >= and year <=
-#'   predicates.
+#'   predicates. Default \code{"2000"} through the current year, computed
+#'   at call time -- not a fixed year that would silently go stale.
 #' @param limit Integer or \code{NULL}. Maximum records to retain
 #'   \strong{per taxon key} after import, matching the per-key semantics of
 #'   \code{\link{fetch_gbif_occurrences}}. Records are kept in GBIF's return
@@ -129,9 +130,10 @@ utils::globalVariables("taxonKey")
 #' \code{taxonKey}, so records at all ranks within the queried taxa are
 #' returned.
 #'
-#' \strong{Cache invalidation:} If you have a cached download from a version
-#' of this function that used only \code{taxonKey} (before the rank-specific
-#' fix), re-run with \code{overwrite = TRUE} to fetch the correct data.
+#' \strong{Cache invalidation:} A cache built by an older version of this
+#' function that queried \code{taxonKey} alone (not the OR predicate above)
+#' will silently omit records at other ranks. If in doubt, re-run with
+#' \code{overwrite = TRUE}.
 #'
 #' \strong{Hierarchy validation:} Each returned record is checked to confirm
 #' that one of its rank-specific key columns (\code{taxonKey},
@@ -185,7 +187,7 @@ utils::globalVariables("taxonKey")
 download_gbif_occurrences <- function(
     keys,
     geometry,
-    year_range     = "2000,2024",
+    year_range     = .gbif_default_year_range(),
     limit          = NULL,
     cache_dir      = tools::R_user_dir("TaxaFetch", "cache"),
     overwrite      = FALSE,
@@ -564,6 +566,18 @@ download_gbif_occurrences <- function(
   }
   if (length(data_file) == 0L) {
     stop("download_gbif_occurrences: no data file found in zip at ", zip_path)
+  }
+  if (length(data_file) > 1L) {
+    warning(sprintf(
+      paste0(
+        "download_gbif_occurrences: %d candidate data file(s) found in zip ",
+        "at %s -- using the first (%s) and silently ignoring the rest: %s. ",
+        "This is unexpected for a standard SIMPLE_CSV download; inspect the ",
+        "zip contents if this is not the file you expect."
+      ),
+      length(data_file), zip_path, basename(data_file[1L]),
+      paste(basename(data_file[-1L]), collapse = ", ")
+    ), call. = FALSE)
   }
   data_file <- data_file[1L]
 

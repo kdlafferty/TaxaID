@@ -5,7 +5,7 @@ utils::globalVariables(c(
 
 # ==============================================================================
 # filter_gbif_quality.R
-# TaxaExpect -- Quality-filter raw GBIF occurrence records
+# TaxaFetch -- Quality-filter raw GBIF occurrence records
 # ==============================================================================
 
 #' Filter GBIF Occurrence Records by Quality
@@ -319,7 +319,14 @@ filter_gbif_quality <- function(
   if (!"basisOfRecord" %in% names(data)) {
     message("filter_gbif_quality: 'basisOfRecord' column not found -- skipping basis filter.")
   } else {
-    keep <- data$basisOfRecord %in% basis_keep
+    # Normalize case/whitespace before comparing, matching the same
+    # defensive treatment already applied to occurrenceStatus above
+    # (2026-08 human review) -- basisOfRecord is a controlled Darwin Core
+    # vocabulary and GBIF-native data is consistently upper-case already,
+    # so this is a no-op for the default basis_keep against real GBIF data,
+    # but protects against stray whitespace/case drift from any non-GBIF
+    # source merged into the same pipeline.
+    keep <- toupper(trimws(data$basisOfRecord)) %in% toupper(trimws(basis_keep))
     removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
                                    "basis_of_record")
     if (any(!keep)) {

@@ -1,6 +1,6 @@
 # ==============================================================================
 # dataone_occurrence_search.R
-# TaxaExpect -- EDI / PASTA dataset discovery
+# TaxaFetch -- EDI / PASTA dataset discovery
 #
 # Exported:  search_dataone(), fetch_dataone_eml()
 # Internal:  .parse_pasta_response(), .parse_coordinates_field(),
@@ -41,8 +41,13 @@
 # ==============================================================================
 
 
-.pasta_solr_url <- "https://pasta.lternet.edu/package/search/eml"
-.pasta_meta_url <- "https://pasta.lternet.edu/package/metadata/eml"
+# Base PASTA/EDI package-service URL, shared across this package's PASTA
+# endpoints (search, metadata, per-scope EML revision lookup in
+# dataone_eml_screen.R) so the host/path prefix is defined once, not
+# hand-copied at each call site (2026-08 human review).
+.pasta_base_url <- "https://pasta.lternet.edu/package"
+.pasta_solr_url <- paste0(.pasta_base_url, "/search/eml")
+.pasta_meta_url <- paste0(.pasta_base_url, "/metadata/eml")
 
 .default_bio_keywords <- c(
   "species", "occurrence", "abundance", "population", "biodiversity",
@@ -98,7 +103,7 @@
 #' @examples
 #' \dontrun{
 #' results <- search_dataone(
-#'   bbox = c(-120, 34, -119, 35),
+#'   bbox = list(west = -120, east = -119, south = 34, north = 35),
 #'   keywords = c("fish", "occurrence")
 #' )
 #' }
@@ -373,8 +378,14 @@ fetch_dataone_eml <- function(dataset_id) {
       row[["keywords_str"]] <- NA_character_
     }
 
-    # coordinates -- multi-value; collect all child text nodes
-    # Try nested <coordinate> elements first, then flat text node
+    # coordinates -- multi-value; collect all child text nodes.
+    # Confirmed real PASTA structure (2026-08 human review, live-verified
+    # against actual Solr output): coordinates is a single text node nested
+    # under <spatialCoverage>, holding a Solr "ENVELOPE(minX, maxX, maxY,
+    # minY)" string, e.g. "ENVELOPE(-119.74, -119.74, 34.40, 34.40)" --
+    # NOT a direct <coordinates>/<coordinate> child of <document> as
+    # originally guessed. Try the confirmed path first; keep the original
+    # guessed paths as fallbacks in case a different dataset shape uses them.
     coord_nodes <- xml2::xml_find_all(node, "coordinates/coordinate")
     if (length(coord_nodes) == 0L)
       coord_nodes <- xml2::xml_find_all(node, "coordinate")
@@ -384,7 +395,9 @@ fetch_dataone_eml <- function(dataset_id) {
       row[["coordinates_raw"]] <- if (length(vals) > 0L)
         paste(vals, collapse = "|") else NA_character_
     } else {
-      cn <- xml2::xml_find_first(node, "coordinates")
+      cn <- xml2::xml_find_first(node, "spatialCoverage/coordinates")
+      if (inherits(cn, "xml_missing") || length(cn) == 0L)
+        cn <- xml2::xml_find_first(node, "coordinates")
       if (!inherits(cn, "xml_missing") && length(cn) > 0L) {
         txt <- xml2::xml_text(cn, trim = TRUE)
         row[["coordinates_raw"]] <- if (nzchar(txt)) txt else NA_character_
@@ -410,16 +423,40 @@ fetch_dataone_eml <- function(dataset_id) {
 #' Tries multiple formats in order. Returns NULL on failure (caller retains
 #' the dataset). All known PASTA coordinate formats:
 #'
-#' Format B  "N:35.0 S:33.5 E:-118.5 W:-121.0"  (key:value tokens)
-#' Format A  "35.0|33.5|-118.5|-121.0"           (4 nums, NSEW order)
-#' Format C  "+35.0 +33.5 -118.5 -121.0"         (4 space-sep nums)
-#' Format D  "35.0,-121.0|35.0,-118.5|..."        (lat,lon corner pairs)
+#' Format 1  "ENVELOPE(-119.74, -119.74, 34.40, 34.40)"  (Solr ENVELOPE,
+#'   minX, maxX, maxY, minY == west, east, north, south -- the CONFIRMED
+#'   real format returned by \code{spatialCoverage/coordinates}, verified
+#'   2026-08 against live PASTA output; previously only guessed at)
+#' Format 2  "N:35.0 S:33.5 E:-118.5 W:-121.0"  (key:value tokens)
+#' Format 3  "35.0|33.5|-118.5|-121.0"           (4 nums, NSEW order)
+#' Format 4  "+35.0 +33.5 -118.5 -121.0"         (4 space-sep nums, WESN order)
+#' Format 5  "35.0,-121.0|35.0,-118.5|..."        (lat,lon corner pairs)
+#'
+#' Formats 2-5 are unverified legacy guesses, kept as fallbacks for any
+#' dataset that doesn't use the confirmed ENVELOPE format.
 #'
 #' @noRd
 .parse_coordinates_field <- function(raw) {
   if (is.na(raw) || !nzchar(trimws(raw))) return(NULL)
 
-  # Format B: N:, S:, E:, W: tokens
+  # Format 1: Solr ENVELOPE(minX, maxX, maxY, minY) -- confirmed real format.
+  env_m <- regmatches(raw, regexpr(
+    "(?i)ENVELOPE\\s*\\(\\s*([+-]?[0-9.]+)\\s*,\\s*([+-]?[0-9.]+)\\s*,\\s*([+-]?[0-9.]+)\\s*,\\s*([+-]?[0-9.]+)\\s*\\)",
+    raw, perl = TRUE))
+  if (length(env_m) > 0L) {
+    env_nums <- suppressWarnings(as.numeric(
+      regmatches(env_m, gregexpr("[+-]?[0-9]+\\.?[0-9]*", env_m))[[1L]]))
+    if (length(env_nums) == 4L) {
+      w1 <- env_nums[1L]
+      e1 <- env_nums[2L]
+      n1 <- env_nums[3L]
+      s1 <- env_nums[4L]
+      if (abs(n1) <= 90 && abs(s1) <= 90 && abs(e1) <= 180 && abs(w1) <= 180)
+        return(list(north = n1, south = s1, east = e1, west = w1))
+    }
+  }
+
+  # Format 2: N:, S:, E:, W: tokens
   .xkey <- function(k) {
     m <- regmatches(raw, regexpr(
       paste0("(?i)\\b", k, ":([+-]?[0-9]+\\.?[0-9]*)"), raw, perl = TRUE))
@@ -438,7 +475,7 @@ fetch_dataone_eml <- function(dataset_id) {
     regmatches(raw, gregexpr("[+-]?[0-9]+\\.?[0-9]*", raw))[[1L]]))
   nums <- nums[!is.na(nums)]
 
-  # Format A/C: exactly 4 numbers, assumed NSEW
+  # Format 3/4: exactly 4 numbers, assumed NSEW
   if (length(nums) == 4L) {
     n2 <- nums[1L]
     s2 <- nums[2L]
@@ -447,17 +484,19 @@ fetch_dataone_eml <- function(dataset_id) {
     if (abs(n2) <= 90 && abs(s2) <= 90 && abs(e2) <= 180 && abs(w2) <= 180
         && n2 >= s2)
       return(list(north = n2, south = s2, east = e2, west = w2))
-    # Try WESN order
+    # Try WESN order (matches the confirmed ENVELOPE order above, minus the
+    # explicit "ENVELOPE(" keyword -- kept as a fallback for a bare
+    # 4-number string with no format marker at all)
     w3 <- nums[1L]
     e3 <- nums[2L]
-    s3 <- nums[3L]
-    n3 <- nums[4L]
+    n3 <- nums[3L]
+    s3 <- nums[4L]
     if (abs(n3) <= 90 && abs(s3) <= 90 && abs(e3) <= 180 && abs(w3) <= 180
         && n3 >= s3)
       return(list(north = n3, south = s3, east = e3, west = w3))
   }
 
-  # Format D: 8 numbers as 4 lat,lon corner pairs
+  # Format 5: 8 numbers as 4 lat,lon corner pairs
   if (length(nums) == 8L) {
     lats <- nums[c(1L, 3L, 5L, 7L)]
     lons <- nums[c(2L, 4L, 6L, 8L)]

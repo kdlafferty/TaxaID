@@ -1,6 +1,6 @@
 # ==============================================================================
 # dataone_eml_screen.R
-# TaxaExpect -- EML pre-screening for DataONE / PASTA candidate datasets
+# TaxaFetch -- EML pre-screening for DataONE / PASTA candidate datasets
 #
 # Exported functions:
 #   screen_eml_columns()    Fetch EML for candidates; check bbox + column presence
@@ -39,7 +39,8 @@
 #'
 #' @param ids Character vector of PASTA dataset IDs to screen
 #'   (e.g. \code{"knb-lter-sbc.17.18"} or \code{"edi.123.4"}).
-#' @param bbox Numeric vector \code{c(west, east, south, north)}.
+#' @param bbox Numeric vector of the query bounding-box coordinates, in the
+#'   order \code{c(west, east, south, north)} (decimal degrees, WGS84).
 #' @param pause_seconds Numeric. Pause between EML requests. Default
 #'   \code{0.5}.
 #' @param verbose Logical. Print per-dataset progress. Default \code{TRUE}.
@@ -56,6 +57,13 @@
 #'       confirmed outside query.}
 #'     \item{has_lat}{Logical. A likely latitude column was found in the data tables.}
 #'     \item{has_lon}{Logical. A likely longitude column was found in the data tables.}
+#'     \item{has_coords}{Logical. \code{TRUE} if the dataset has usable
+#'       coordinates by EITHER route: a detected \code{lat_col} AND
+#'       \code{lon_col} pair, OR at least one EML point site
+#'       (\code{has_eml_sites}). This is the column \code{eml_status}/
+#'       \code{eml_pass} actually key off; \code{has_lat}/\code{has_lon} alone
+#'       are not sufficient on their own since a dataset with EML point sites
+#'       can have usable coordinates with both \code{FALSE}.}
 #'     \item{has_species}{Logical. A likely species/taxon column was found.}
 #'     \item{has_eml_sites}{Logical. At least one EML point site was found in
 #'       \code{<geographicCoverage>} (bounding box where west==east and
@@ -65,7 +73,9 @@
 #'     \item{lat_col}{Character. Detected latitude column name, or \code{NA}.}
 #'     \item{lon_col}{Character. Detected longitude column name, or \code{NA}.}
 #'     \item{species_col}{Character. Detected species column name, or \code{NA}.}
-#'     \item{n_tables}{Integer. Number of \code{<dataTable>} elements in EML.}
+#'     \item{n_tables}{Integer. Number of EML \code{<dataTable>} elements --
+#'       the EML element type describing one rectangular data file within the
+#'       dataset (a dataset package can bundle more than one data table).}
 #'     \item{eml_status}{Character. One of \code{"pass"},
 #'       \code{"fetch_failed"}, \code{"no_bbox_overlap"},
 #'       \code{"no_coords"} (no lat/lon columns AND no EML point sites),
@@ -101,8 +111,7 @@
 #'
 #' @importFrom dplyr tibble bind_rows
 #' @importFrom httr2 request req_perform resp_body_string
-#' @importFrom xml2 read_xml xml_ns_strip xml_find_all xml_find_first
-#'   xml_text xml_attr
+#' @importFrom xml2 read_xml xml_ns_strip xml_find_all xml_find_first xml_text xml_attr
 #' @export
 #'
 #' @examples
@@ -151,6 +160,7 @@ screen_eml_columns <- function(ids,
           eml_bbox_ok   = NA,
           has_lat       = FALSE,
           has_lon       = FALSE,
+          has_coords    = FALSE,
           has_species   = FALSE,
           has_eml_sites = FALSE,
           lat_col       = NA_character_,
@@ -222,6 +232,7 @@ screen_eml_columns <- function(ids,
       eml_bbox_ok    = FALSE,
       has_lat        = NA,
       has_lon        = NA,
+      has_coords     = NA,
       has_species    = NA,
       has_eml_sites  = FALSE,
       lat_col        = NA_character_,
@@ -274,6 +285,7 @@ screen_eml_columns <- function(ids,
     eml_bbox_ok   = eml_bbox_ok,
     has_lat       = has_lat,
     has_lon       = has_lon,
+    has_coords    = has_coords,
     has_species   = has_species,
     has_eml_sites = has_eml_sites,
     lat_col       = lat_col,
@@ -313,7 +325,7 @@ screen_eml_columns <- function(ids,
   scope <- paste(parts[seq_len(length(parts) - 1L)], collapse = ".")
   ident <- parts[length(parts)]
 
-  url  <- sprintf("https://pasta.lternet.edu/package/eml/%s/%s", scope, ident)
+  url  <- sprintf("%s/eml/%s/%s", .pasta_base_url, scope, ident)
   resp <- tryCatch(
     httr2::request(url) |> httr2::req_perform(),
     error = function(e) {
@@ -390,18 +402,21 @@ screen_eml_columns <- function(ids,
 }
 
 
-#' Detect the most likely latitude column name from a list of attribute names.
-#' Returns the original-case name, or NA_character_.
+#' Detect the most likely column name matching a candidate pattern set.
+#'
+#' Shared implementation for \code{.detect_lat_col()}, \code{.detect_lon_col()},
+#' \code{.detect_species_col()} (2026-08 human review: these three were
+#' identical except for their candidate lists -- consolidated to one query
+#' function per that review's suggestion). Exact matches (highest confidence)
+#' are checked first, then partial/substring matches.
+#'
+#' @param attrs Character vector of (lowercased) attribute names.
+#' @param exact Character vector of exact-match candidates.
+#' @param partial Character vector of substring-match candidates.
+#' @return The matching attribute name, or \code{NA_character_}.
 #' @noRd
-.detect_lat_col <- function(attrs) {
+.detect_attr_col <- function(attrs, exact, partial) {
   if (length(attrs) == 0L) return(NA_character_)
-
-  # Exact matches first (highest confidence), then partial
-  exact   <- c("lat", "latitude", "decimallatitude", "y", "ylat",
-                "lat_dd", "latitude_dd", "site_lat", "start_lat",
-                "end_lat", "northing", "y_coord", "yloc", "lat_wgs84",
-                "latitude_wgs84", "point_y")
-  partial <- c("lat", "latitude", "northing", "yloc", "y_coord")
 
   hit <- attrs[attrs %in% exact]
   if (length(hit) > 0L) return(hit[1L])
@@ -410,6 +425,21 @@ screen_eml_columns <- function(ids,
   if (length(hit) > 0L) return(hit[1L])
 
   NA_character_
+}
+
+
+#' Detect the most likely latitude column name from a list of attribute names.
+#' Returns the original-case name, or NA_character_.
+#' @noRd
+.detect_lat_col <- function(attrs) {
+  .detect_attr_col(
+    attrs,
+    exact   = c("lat", "latitude", "decimallatitude", "y", "ylat",
+                "lat_dd", "latitude_dd", "site_lat", "start_lat",
+                "end_lat", "northing", "y_coord", "yloc", "lat_wgs84",
+                "latitude_wgs84", "point_y"),
+    partial = c("lat", "latitude", "northing", "yloc", "y_coord")
+  )
 }
 
 
@@ -417,21 +447,14 @@ screen_eml_columns <- function(ids,
 #' Returns the lowercased name, or NA_character_.
 #' @noRd
 .detect_lon_col <- function(attrs) {
-  if (length(attrs) == 0L) return(NA_character_)
-
-  exact   <- c("lon", "long", "longitude", "decimallongitude", "x", "xlon",
+  .detect_attr_col(
+    attrs,
+    exact   = c("lon", "long", "longitude", "decimallongitude", "x", "xlon",
                 "lon_dd", "longitude_dd", "site_lon", "start_lon",
                 "end_lon", "easting", "x_coord", "xloc", "lon_wgs84",
-                "longitude_wgs84", "point_x")
-  partial <- c("lon", "long", "longitude", "easting", "xloc", "x_coord")
-
-  hit <- attrs[attrs %in% exact]
-  if (length(hit) > 0L) return(hit[1L])
-
-  hit <- attrs[grepl(paste(partial, collapse = "|"), attrs, fixed = FALSE)]
-  if (length(hit) > 0L) return(hit[1L])
-
-  NA_character_
+                "longitude_wgs84", "point_x"),
+    partial = c("lon", "long", "longitude", "easting", "xloc", "x_coord")
+  )
 }
 
 
@@ -439,21 +462,14 @@ screen_eml_columns <- function(ids,
 #' Returns the lowercased name, or NA_character_.
 #' @noRd
 .detect_species_col <- function(attrs) {
-  if (length(attrs) == 0L) return(NA_character_)
-
-  exact   <- c("species", "taxon", "taxon_name", "scientific_name",
+  .detect_attr_col(
+    attrs,
+    exact   = c("species", "taxon", "taxon_name", "scientific_name",
                 "scientificname", "organism", "genus", "sp_name",
                 "common_name", "commonname", "accepted_name",
                 "vernacular", "taxa", "taxon_code", "sp", "spp",
-                "species_name", "genus_species")
-  partial <- c("species", "taxon", "scientific", "organism",
+                "species_name", "genus_species"),
+    partial = c("species", "taxon", "scientific", "organism",
                 "common_name", "vernacular", "genus")
-
-  hit <- attrs[attrs %in% exact]
-  if (length(hit) > 0L) return(hit[1L])
-
-  hit <- attrs[grepl(paste(partial, collapse = "|"), attrs, fixed = FALSE)]
-  if (length(hit) > 0L) return(hit[1L])
-
-  NA_character_
+  )
 }

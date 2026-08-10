@@ -7,7 +7,7 @@
 get_gbif_occurrences(
   keys,
   geometry,
-  year_range = "2000,2024",
+  year_range = .gbif_default_year_range(),
   limit = NULL,
   key_threshold = 50L,
   rank_filter = "species",
@@ -34,7 +34,8 @@ the key count is compared to \code{key_threshold}.}
 
 \item{geometry}{Character. WKT polygon (see \code{\link{make_bbox_wkt}}).}
 
-\item{year_range}{Character. \code{"YYYY,YYYY"}. Default \code{"2000,2024"}.}
+\item{year_range}{Character. \code{"YYYY,YYYY"}. Default \code{"2000"}
+through the current year, computed at call time.}
 
 \item{limit}{Integer or \code{NULL}. Per-key record cap, forwarded as-is.
 \code{NULL} (default) means "retain all records" on the download path

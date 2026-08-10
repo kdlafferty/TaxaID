@@ -7,7 +7,7 @@ utils::globalVariables(c(
 
 # ==============================================================================
 # dataone_preview.R
-# TaxaExpect -- lightweight preview of DataONE/EDI datasets before full download
+# TaxaFetch -- lightweight preview of DataONE/EDI datasets before full download
 #
 # Exported:
 #   preview_dataone_occurrences()   Scout datasets: size, taxa, bbox, speed est.
@@ -32,9 +32,9 @@ utils::globalVariables(c(
 #   .attempt_dwc_join(), str_trunc_safe(), .default_dwc_map
 #
 # Internal operator dependency:
-#   %||%  defined in get_keys_from_context.R (package-internal) -- do NOT redefine here
+#   %||%  imported from TaxaTools (see zzz_imports.R) -- do NOT redefine here
 #
-# Dependencies (all in TaxaExpect Imports):
+# Dependencies (all in TaxaFetch Imports):
 #   httr2, dplyr, tibble, stringr, readr, stats
 #
 # Typical workflow:
@@ -154,10 +154,8 @@ utils::globalVariables(c(
 #' @seealso \code{\link{fetch_dataone_occurrences}},
 #'   \code{\link{screen_eml_columns}}, \code{\link{harvest_dataone_catalog}}
 #'
-#' @importFrom httr2 request req_method req_timeout req_perform
-#'   req_perform_stream resp_header
-#' @importFrom dplyr bind_rows filter mutate select pull n_distinct rename
-#'   any_of
+#' @importFrom httr2 request req_method req_timeout req_perform req_perform_stream resp_header
+#' @importFrom dplyr bind_rows filter mutate select pull n_distinct rename any_of
 #' @importFrom tibble tibble as_tibble
 #' @importFrom stringr str_count str_to_lower str_trim
 #' @importFrom readr read_delim

@@ -174,9 +174,12 @@ build_taxon_screen_prompt <- function(catalog,
   # ---- locate text columns (case-insensitive) --------------------------------
   col_lower <- tolower(names(catalog))
 
-  get_col <- function(df, target) {
-    idx <- match(target, tolower(names(df)))
-    if (is.na(idx)) rep(NA_character_, nrow(df)) else as.character(df[[idx]])
+  # NOTE: parameter named input_df, not df -- df() is a base R function
+  # (stats::df, the F distribution density) and this codebase avoids
+  # shadowing it (2026-08 human review).
+  get_col <- function(input_df, target) {
+    idx <- match(target, tolower(names(input_df)))
+    if (is.na(idx)) rep(NA_character_, nrow(input_df)) else as.character(input_df[[idx]])
   }
 
   expected_text <- c("title", "abstract", "keywords")
@@ -208,8 +211,10 @@ build_taxon_screen_prompt <- function(catalog,
            ))))
   }, logical(1L))
 
+  # Filter to has_text rows once, by subsetting the already-built vectors --
+  # avoids rebuilding titles/abstracts/keywords a second time via get_col()
+  # on a filtered data.frame (2026-08 human review).
   skipped_ids <- ids[!has_text]
-  keep        <- catalog[has_text, ]
   ids_keep    <- ids[has_text]
 
   if (verbose && length(skipped_ids) > 0L) {
@@ -219,14 +224,13 @@ build_taxon_screen_prompt <- function(catalog,
     ))
   }
 
-  if (nrow(keep) == 0L) {
+  if (length(ids_keep) == 0L) {
     stop("build_taxon_screen_prompt: no datasets have title, abstract, or keyword metadata -- cannot build prompt.")
   }
 
-  # ---- refresh text vectors for kept rows ------------------------------------
-  titles_k    <- get_col(keep, "title")
-  abstracts_k <- get_col(keep, "abstract")
-  keywords_k  <- get_col(keep, "keywords")
+  titles_k    <- titles[has_text]
+  abstracts_k <- abstracts[has_text]
+  keywords_k  <- keywords[has_text]
 
   # ---- truncate abstracts ----------------------------------------------------
   if (abstract_chars > 0L) {
@@ -240,7 +244,7 @@ build_taxon_screen_prompt <- function(catalog,
   }
 
   # ---- chunk and build prompts -----------------------------------------------
-  n_items  <- nrow(keep)
+  n_items  <- length(ids_keep)
   indices  <- seq_len(n_items)
   chunks   <- split(indices, ceiling(indices / chunk_size))
   n_chunks <- length(chunks)
