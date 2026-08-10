@@ -21,8 +21,19 @@ and (when family expansion was used) \code{attr(x, "unreferenced_family")} (fami
 \code{attr(x, "family_census")}.
 }
 \examples{
+# A minimal object built directly, matching what suggest_unreferenced_species()
+# returns -- avoids requiring a real LLM/NCBI call for this example.
+unref <- structure(
+  c("Gadus ogac", "Gadus macrocephalus"),
+  plausible = list(Gadus = c("Gadus ogac", "Gadus macrocephalus", "Gadus morhua")),
+  census    = data.frame(genus = "Gadus", plausible_count = 3L,
+                         ncbi_count = 1L, unreferenced_count = 2L),
+  class = c("unreferenced_species_result", "character")
+)
+print(unref)
+
 \dontrun{
-unref <- suggest_unreferenced_species(match_df, llm_fn = call_anthropic_api)
+unref <- suggest_unreferenced_species(match_df, llm_fn = TaxaTools::call_api)
 print(unref)
 }
 }

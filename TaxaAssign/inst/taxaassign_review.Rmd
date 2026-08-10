@@ -1,253 +1,352 @@
 ---
-title: "TaxaAssign code and domain review"
+title: "TaxaAssign code review"
 output: html_document
 ---
+### Code Review
 
-Review date: 2026-08-04. Package version reviewed: TaxaAssign 0.1.0. Review conducted by
-Claude Code, using the template in `inst/Code and Domain Review 2.Rmd`. This is TaxaAssign's
-first full review of this kind -- every sibling package in the ecosystem that has one
-(TaxaTools, TaxaFetch, TaxaMatch, TaxaLikely, TaxaExpect) already had one; this closes that
-gap. Findings and fixes are combined in one pass (no separate response document), following
-the `taxafetch_review.Rmd`/`taxaexpect_review.Rmd` precedent: every R file (19 source files,
-~9,300 lines) was read in full against the template's five criteria, candidate findings were
-verified directly against the source (not inferred), and every fix applied was re-verified by
-re-running the full test suite and `R CMD check` afterward.
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
 
-`devtools::test()`: 615 expectations, 0 failures (unchanged from before this review -- these
-fixes are style/consistency/documentation, not behavior, and no test asserted on the exact
-wording of any message this review touched beyond the substrings preserved below). 13
-pre-existing warnings (informational messages the test suite deliberately captures) and 1 skip
-(TaxaTools-not-installed path, environment-dependent), both unchanged. `devtools::check()`:
-0 errors, 0 warnings, 0 notes. Reinstalled to `~/Library/R/4.0/library`.
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable? 
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+    
+   The code is readable and organized. Some of the same difficulties noted in other packages persist, but those may be unavoidable.
+   
+* [x] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way. 
+  * Is additional documentation required?
+  
+  The documentation seems efficient. Code reproduction could be reduced and/or simplified in places, see individual comments.
+  
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+  
+  I did not notice any major coding standard issues.
 
-------------------------------------------------------------------------
+* [x] **Automated tests:** Confirm that all tests pass when run locally.
 
-# Code Review
+  Here is the output from running `test_local` on the test directory: `[ FAIL 0 | WARN 13 | SKIP 1 | PASS 615 ]`
 
-Purpose: To produce high quality code that is well written and organized according to
-best coding practices.
+* [x] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
 
-### [x] Functionality: The code is readable, organized, and efficient.
-
-TaxaAssign is a mature package (19 R source files, extensively documented, 615 passing
-tests) that has already been through many rounds of ecosystem-wide correctness fixes --
-see `CLAUDE.md`'s ~40 dated session notes. No functionality bugs were found this session;
-the code is readable and consistently organized (roxygen throughout, `.`-prefixed
-`@noRd` internal helpers, `package::function()` cross-package calls, shared helpers
-factored into `.run_consensus_and_report()`/`site_utils.R`). The findings below are
-style, consistency, and DRY issues, plus one latent packaging bug surfaced by a newer
-local `roxygen2` version -- none change any function's behavior.
-
-### [x] Optimizations: no inefficiencies found; two DRY violations fixed.
-
-**Base R `stop()`/`warning()`/`message()` used inconsistently with the package's own `cli`
-convention (fixed).** `DESCRIPTION` declares `cli` as a formal `Imports`, and 14 of 19 R
-files use `cli::cli_abort()`/`cli_warn()`/`cli_inform()` exclusively or predominantly for
-user-facing messages. Five files used base `stop()`/`warning()`/`message()` exclusively
-instead: `site_utils.R` (10 calls), `run_bayesian_pipeline.R` (7), `build_context.R` (7),
-`group_priors.R` (5), `report_assign.R` (2) -- plus a handful of stray base calls scattered
-inside otherwise-`cli` files (`compute_posterior.R`, `posterior_consensus.R` x2,
-`join_priors.R`, `slash_taxon.R`). Most strikingly, `run_bayesian_pipeline.R` and
-`run_llm_pipeline.R` are sibling entry points with the identical `backbone_id` validation
-check, but one used `stop()` and the other `cli::cli_abort()` for the exact same error.
-**Fixed:** all 31 base calls across these files converted to the equivalent `cli::`
-call, preserving every substring an existing test regex checks (verified by reading
-every `expect_error()`/`expect_warning()` in the affected test files before editing, not
-after). The two identical `.msg <- function(...) if (verbose) message(...)` progress-message
-wrappers in `run_bayesian_pipeline.R`/`run_llm_pipeline.R` were deliberately left as-is --
-they're a consistent, shared, `verbose`-gated convention between the two sibling pipeline
-functions, not a stray inconsistency.
-
-**Triplicated LLM-prompt context-block logic (fixed).** `assign_taxa_llm.R`'s
-`.build_taxa_prompt()` and `suggest_unreferenced_species.R`'s `.build_plausible_prompt()`
-and `.build_family_prompt()` each independently built an identical ~15-line "Context:\n..."
-block from a `ctx` list (same field list, same label-lookup `switch()`, same
-`nzchar(trimws(...))` filtering), differing only in which field name holds the habitat
-value (`"main_habitat"` vs `"habitat"`). Extracted to a single shared helper,
-`.build_context_block(ctx, habitat_field)`, in `site_utils.R` (this package's existing
-home for small cross-file internal helpers); all three call sites now call it directly.
-Verified line-by-line equivalent to the three original blocks before replacing them.
-
-### [x] Coding standards: one base-R name collision fixed; documentation is thorough and (with one packaging fix) builds cleanly.
-
-**`rtruncnorm_at_zero(n, mean, sd)` shadowed `base::mean` and `stats::sd` as parameter
-names (fixed).** `compute_posterior.R`'s internal truncated-normal sampler used `mean`
-and `sd` as its own parameter names -- exactly the class of collision the review template
-calls out by name. Not an active bug (the function body never calls `mean()`/`sd()`
-internally, so nothing was silently shadowed at runtime), but poor practice per tidyverse
-naming guidance and a real readability hazard if the function is ever extended to call
-either generic. Renamed to `mu`/`sigma` (the conventional statistical notation for a
-normal distribution's parameters, and unambiguous). The function is called positionally
-at its one call site, so this is a pure internal rename with no behavior change.
-
-No other base-R/`stats`-shadowing object names were found (`grep`-checked the whole `R/`
-directory for bare `df`/`data`/`T`/`F`/`c`/`mean`/`sd`/`var`/`range`/`filter`/`format`/
-`table`/`sum`/`length`/`unique`/`sort`/`order`/`levels` assignments; the only hits were
-this one and unrelated `format = ...` named arguments to `cli::cli_progress_bar()`, which
-is the function's own real parameter name, not a collision).
-
-**Latent packaging bug: 4 multi-line `@importFrom` roxygen blocks (fixed).**
-`assign_taxa_llm.R` (x2), `join_priors.R`, and `suggest_unreferenced_species.R` each had a
-single `@importFrom pkg fn1 fn2 ...` tag wrapped onto a second line
-(`#'   fn3 fn4 ...`). This was tolerated by older `roxygen2` but is a hard error under the
-locally installed `roxygen2` 8.0.0 (`"@importFrom must be only 1 line long, not 2"`),
-which silently aborted `devtools::document()` partway through and left those four files'
-`NAMESPACE`/`.Rd` entries stale on this machine. Not something this review's edits
-introduced -- these blocks predate this session -- but it blocks a clean `document()` run
-for anyone documenting this package with a current `roxygen2`, which the
-"Automated tests: confirm all tests pass" checklist item below depends on. Fixed by
-splitting each into two single-line `@importFrom` tags for the same package (e.g.
-`@importFrom dplyr filter arrange desc group_by ungroup left_join` /
-`@importFrom dplyr bind_rows slice_max n_distinct summarise`) -- semantically identical,
-just reformatted. `devtools::document()` now completes with no errors; `DESCRIPTION`'s
-`RoxygenNote`/`Config/roxygen2/version` fields were updated by `document()` to reflect
-this.
-
-Docstrings are present and thorough for every exported function (often with dedicated
-`@details`/`@section` blocks explaining *why*, not just *what* -- e.g.
-`update_prior_from_consensus()`'s "Confirmation-quantile design" section walks through
-several rejected alternatives and why each failed). In-line comments are informative and,
-where checked against the code they describe, accurate (see the Comment accuracy note
-below for the one place this needed a closer look).
-
-**Minor, not fixed (per the template's "minor violations can be ignored or briefly
-mentioned" guidance):** roxygen `@param` blocks in several files use manually
-column-aligned `=` signs with inconsistent column widths across nearby lines (e.g.
-`assign_taxa_llm()`'s own signature block, `R/assign_taxa_llm.R:284-310`) -- cosmetic
-only, doesn't affect parsing or readability materially, and "fixing" alignment across a
-whole file risks noisy diffs for zero functional benefit. `NEWS.md` documents only
-"Sessions 57-59" and predates the dozens of subsequent sessions recorded in `CLAUDE.md`
--- a real but low-priority documentation gap (this package's session history is the
-authoritative record; `NEWS.md` was not kept in sync), left as-is since backfilling ~40
-sessions' worth of user-facing changelog entries is a substantial undertaking outside
-this review's scope, not a quick fix.
-
-### [x] Automated tests: all pass.
-
-`devtools::test()`: 615/615 passing both before and after this review's edits (13
-pre-existing informational warnings, 1 pre-existing environment-dependent skip, both
-unchanged). `devtools::check()`: 0 errors, 0 warnings, 0 notes (after the `@importFrom`
-fix above -- see that finding for why `check()`/`document()` would otherwise fail on a
-current `roxygen2` installation).
-
-### [x] Vulnerabilities: none found.
-
-TaxaAssign does no direct file-system, network, or shell access of its own -- it consumes
-already-fetched data frames (`match_df`, `taxaexpect_priors`) and delegates LLM calls to a
-caller-supplied `llm_fn`. The one place user-controlled text reaches an external system is
-`assign_taxa_llm()`/`suggest_unreferenced_species()`/`build_context()` building free-text
-LLM prompts from taxon names and context strings -- these are interpolated into prompt text
-via `paste0()`/`sprintf()`, not into a shell command, SQL query, or file path, so this is a
-prompt-injection-shaped surface (a taxon name with adversarial content could try to
-influence the LLM's response) rather than a code-execution one, and is inherent to any
-LLM-prompting function, not specific to this package. `.parse_taxa_response()`/
-`.parse_plausible_response()`/`.parse_family_response()` all wrap `jsonlite::fromJSON()` in
-`tryCatch()` and validate the parsed shape before use, so a malformed or adversarial LLM
-response degrades to a documented uniform-prior/empty-list fallback rather than crashing or
-executing anything.
-
-Any additional comments, list below in comment section.
-
-No further comments.
-
-------------------------------------------------------------------------
-
-# Domain Review
-
-Purpose: To ensure the code produces outputs, data, interfaces, or software that is
-biologically reasonable when compared to other similar information available. Review
-should be conducted by someone with applicable subject-matter knowledge.
-
-### [x] Scientific Rigor
-
-TaxaAssign's Bayesian machinery (`compute_posterior()`'s truncated-normal likelihood
-sampling and Beta-distributed prior sampling, `posterior_consensus()`'s LCA-based
-consensus, `update_prior_from_consensus()`'s confirmation-quantile empirical Bayes step)
-has already been the subject of extensive, dated statistical soundness review recorded in
-`CLAUDE.md` and `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md` -- including
-several real derivation corrections (e.g. the 2026-07-09 truncated-normal fix removing a
-spurious point mass at 0; the 2026-07-30 `consensus_prior` redesign from a
-candidate-scoped MAX to a group-level SUM, justified by finite additivity of a
-compositional share). This review did not re-derive that work; no new statistical claim
-in the package's documentation was found unsubstantiated, and every formula checked
-against its roxygen description matched (e.g. `combine_multisite_priors()`'s
-precision-weighted logit combination correctly implements the stated
-`digamma`/`trigamma` exact-moment formulas for a Beta-distributed logit transform).
-
-### [x] Outputs
-
-No units/constants (e.g. "density of granite"-style physical constants) apply to this
-package -- its numeric outputs are probabilities and Beta-distribution parameters, whose
-correctness was assessed under Scientific Rigor above. Output columns are documented with
-their exact scale and interpretation (e.g. `posterior_consensus()`'s extensive `@return`
-block distinguishes `winner_prior` from the newer `winner_theta_mean`, explicitly warning
-that the two are NOT interchangeable and why -- `winner_prior` can be inflated by the
-empirical Bayes confirmation boost while `winner_theta_mean` cannot, by construction).
-
-### [x] Algorithms
-
-The LCA (lowest common ancestor) consensus algorithm, dark-diversity hierarchical prior
-fallback, and empirical Bayes confirmation-quantile refinement are all standard,
-appropriate techniques for this problem and are used correctly where checked. One
-existing design point is worth restating here since it is exactly the kind of thing this
-checklist item asks to verify and not assume: `score_consensus()` deliberately
-reproduces a conventional fixed-percent-identity-threshold pipeline (GITA/Jonah
-Ventures-style) so its output can be compared against TaxaAssign's own Bayesian pathway
-on the same data -- its well-documented inability to reliably separate a species from its
-closest congener at typical thresholds is not a defect in this function, confirmed
-directly in its own `@section Purpose` and cross-checked against
-`diagnostics/score_floor_roc_sweep.R`'s real ROC-style validation cited there. No
-algorithmic flaws were found.
-
-### Comment accuracy check
-
-One place deserved a closer look because it's easy to misread on a fast pass:
-`.merge_llm_priors()` (`R/assign_taxa_llm.R`) sets `merged$prior_source[[i]] <-
-"na_fill_fallback"` inside a loop guarded by `if (is.na(merged$prior_source[[i]]))` --
-this reads at first glance like it could reference a column that was never created for
-the `unk_idx` (unreferenced-family) rows earlier in the same function. Traced the full
-data flow: `prior_source` always exists by this point because it comes from
-`.parse_taxa_response()`'s output (`prior_df`), which unconditionally includes a
-`prior_source` column (`"llm"` or `"uniform_fallback"`) for every named taxon; the
-`unk_idx` rows (NA `taxon_name`) never match anything in the `left_join()` and so
-correctly get `NA` there, which is exactly what this later loop's `is.na()` guard is
-checking for. No bug -- the comment/code both hold up under tracing, included here only
-because verifying it took a genuine trace rather than a glance, and a future reader might
-have the same "wait, does this column exist?" reaction.
-
+   I do not have the domain knowledge to assess any security issue or vulnerabilities. The package does query some APIs.
+  
 Any Additional comments, list below in comment section.
 
-No further comments.
+### Domain Review
 
-------------------------------------------------------------------------
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
 
-# File specific comments
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct? 
+  * Are any claims of what the code does substantiated? 
+  * If tests are included, are they adequate to evaluate functionality?
 
-- `R/compute_posterior.R` -- `mean`/`sd` parameter rename (`mu`/`sigma`); one `warning()`
-  converted to `cli::cli_warn()`.
-- `R/posterior_consensus.R` -- two `warning()` calls converted to `cli::cli_warn()`
-  (substrings `"no hypotheses above min_posterior"` and the empty-consensus message
-  preserved for `test-posterior_consensus.R`'s `expect_warning()` regexes).
-- `R/join_priors.R` -- one `warning()` converted to `cli::cli_warn()`; two multi-line
-  `@importFrom` blocks split into single-line tags.
-- `R/slash_taxon.R` -- one `stop()` converted to `cli::cli_abort()`.
-- `R/site_utils.R` -- all 10 `stop()`/`warning()`/`message()` calls in `.resolve_llm_fn()`,
-  `.resolve_site()`, and `.latlon_to_grid()` converted to `cli::`; new shared
-  `.build_context_block()` helper added (see DRY finding above).
-- `R/build_context.R` -- all 7 `stop()`/`message()` calls converted to `cli::`.
-- `R/group_priors.R` -- all 5 `stop()` calls converted to `cli::cli_abort()` (substrings
-  `"must be a data frame"`/`"theta_mean"`/`"genus"` preserved for
-  `test-group_priors.R`'s `expect_error()` regexes).
-- `R/report_assign.R` -- both `stop()` calls converted to `cli::cli_abort()`.
-- `R/run_bayesian_pipeline.R` -- all 7 `stop()`/`warning()` calls converted to `cli::`
-  (substring `"fewer than 2 rank_system"` preserved for `test-run_pipelines.R`'s
-  `expect_error()` regex; the shared `.msg()` progress-message wrapper deliberately left
-  unchanged, matching `run_llm_pipeline.R`'s identical convention).
-- `R/assign_taxa_llm.R` -- `.build_taxa_prompt()`'s ~15-line context-block loop replaced
-  by a call to the new shared `.build_context_block()`; two multi-line `@importFrom`
-  blocks split into single-line tags.
-- `R/suggest_unreferenced_species.R` -- the same context-block loop, duplicated twice
-  (`.build_plausible_prompt()`/`.build_family_prompt()`), replaced by the shared helper;
-  one multi-line `@importFrom` block split into single-line tags.
+  See previous comments on tests. The code appears to work as advertised. I could not run all functions as example data was not readily available.
 
-No file-specific domain concerns beyond what's covered above.
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces. 
+  * If equations are solved, are the equations input correctly into the code?
+  
+  I do not have the domain knowledge to fully evaluate all equations, but I did not see any obvious errors.
+
+* [x] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
+
+  I did not see any obvious errors.
+  
+Any Additional comments, list below in comment section.
+
+- When building the package, the warning below is issued. This has been observed in other `TaxaID` packages.
+
+```
+NB: this package now depends on R (>= 4.1.0)
+  WARNING: Added dependency on R >= 4.1.0 because package code uses the
+  pipe |> or function shorthand \(...) syntax added in R 4.1.0.
+  File(s) using such syntax:
+    'assign_taxa_llm.R' 'combine_multisite_priors.R'
+    'compute_posterior.R' 'generate_report.R' 'join_priors.R'
+    'run_bayesian_pipeline.R' 'update_prior_from_consensus.R'
+```
+
+- I have mostly ignore it, but almost every function in all packages has arguments on newlines but the first character is not aligned. Not a big deal but an easy fix.
+
+- Suggest removing references to dates or session numbers.
+
+- All the packages in the `TaxaID` ecosystem so far have sorted ranks by position, often with a user-defined vector. I suggest defining a function once, perhaps in `TaxaTools`, that does this for all possible ranks and that can find the minimum from a known sequence. Ideally, this would be immutable by the user. This is tricky in R though and might require a custom s4 class.
+
+- If possible, all exported functions should have a minimal runnable example, written as-is in the examples section.
+
+Comments on specific files:
+
+**adjust_inat_range_priors.R**
+
+* [x] reviewed
+
+- No examples. Include reproducable minimal example.
+
+- I think alpha / (alpha + beta) is calculating `beta_mean` from `TaxaExpect`, right? Could this be defined in TaxaTools and reused? The formula is used here on lines 122-123 and 147-150. 
+
+**assign_taxa_llm.R**
+
+* [x] reviewed
+
+- Lines 196-235: this section does present some interesting caveats concerning functionality and assumptions, but consider whether it should be included in its entirety in the final product.
+
+- Line 267: I'm not sure this file is actually in `TaxaMatch`.
+
+- Line I looked through the prompt generated for a simulated dataset created with `make_match_df` from the test file, and I don't see how the LLM knows where the observation is without `context`. Maybe I missed something, but shouldn't context be required? 
+
+- Line 712: could this be a requirement for inputs that `hypothesis_type` and `taxon_name_rank` can't be included?
+
+**build_context.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- Should this be in `TaxaHabitat`?
+
+- Line 111: got this odd warning running with misspelled `taxon_names`, should it say something like `"Sequoia sempivirens not found"`?
+
+```
+Warning message:
+parse_hierarchical_habitat_response: 1 taxon/taxa missing from response: Sequoia sempivirens 
+```
+
+- I've mentioned this in other reviews but I think prompt building could be done using one function, with prompt generation specified by argument (e.g. `prompt_type = "habitat context"`).
+
+**combine_multisite_priors.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- Line 160: suggest not referencing session numbers in error messages.
+
+- It looks like `main_habitat` from inputs is not preserved in the outputs. Is this intentional?
+
+**compute_posterior.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- Line 33: why not require `prior_alpha` and `prior_beta` and always sample from `Beta(alpha, beta)`?
+
+- Line 185: `sigma` is an existing R function.
+
+- `rtruncnorm_at_zero` zero-truncation does seem to shift the mean of the distribution away from `mu` when it is small and `sigma` is large (i.e. mu = 0.001, sigma = 2), but I only tested it once so I might have not thought everything through.
+
+- I don't recall exactly what the distribution of `score_likelihood` should be at this point, but it's not a truncated Gaussian, is it? Presumably it conforms to some known distribution, why not sample from that?
+
+**consensus_refinement.R**
+
+* [x] reviewed
+
+- It's internal so maybe it needs less documentation, but documentation's pretty minimal.
+
+- Indirectly tested in `run_bayesian_pipeline` and `run_llm_pipeline`.
+
+- Didn't run directly as it needs many parts, ran idirectly via `run_bayesian_pipeline` and `run_llm_pipeline`.
+
+**expand_unreferenced.R**
+
+* [x] reviewed
+
+- Since this code has not been released suggest removing from `TaxaAssign` entirely, since backward compatibility is less of a concern right now.
+
+**generate_report.R**
+
+* [x] reviewed
+
+- Would this function make more sense in `TaxaTools`? How could this be combined with functions of similar functionality in this package ecosystem?
+
+- Example not runnable as-is.
+
+- Instead of trying to detect what the workflow is, suggest requiring that it be specified.
+
+- Under what circumstances would `utils::citation("TaxaAssign")` return an error when this package is installed? I guess it's not a problem (you can never be to careful) but the `tryCatch` seems unnecessary here. Why can't the citation for this just be the string on line 222? Lines 211-228 could be collapsed to one or two lines.
+
+- Line 547: double check if it always true that `score_sharpness=0.1` when it's not specified here. Is there any other way this number could be different? Suggest changing if there is any way this could happen, even if this is the default. Same forother values here (i.e. `absent_prob` and `n_sims`).
+
+**group_priors.R**
+
+* [x] reviewed
+
+- Line 16: how is `TaxaFlag` relevant here?
+
+- Should `rank_cols` have a default?
+
+- Suggest curly brackets or spacing lines 102-104 to make the early return more distinct when reading.
+
+**join_priors.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- Line 52 and elsewhere: `rank_system` and other taxonomic rankings are filtered by position. Aren't rank hierarchies known? Would it be safer to compare to a known lookup?
+
+- Is `template_keep_cols` ever used?
+
+- Lines 151, 297: this is the same function as used in `TaxaExpect`, could it be defined once?
+
+- Line 193: `dark floor`?
+
+- Line 327: This formula is reproduced in some form multiple times, consider defining once.
+
+- Line 460: Suggest including this explanation in the README.
+
+- Line 506: Suggest requiring a single specific format for `site`. 
+
+- Line 551: This file is not in this package, if it is important it should be documented within the package.
+
+- Line 754: suggest requring coordinates since they are known.
+
+- Lines 1088-1093 (and elsewhere): could a merge be used effectively here?
+
+**posterior_consensus.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- Line 137: consider whether this adds to the documentation for most users.
+
+- Lines 578-581: if this used the format below, it would be easier to read.
+
+```
+if (test_condition) {
+  result <- do_something(object)
+} else {
+  result <- NA_real_
+}
+```
+- Inconsistent curly brace use lines 783-793. Suggest using them in all locations.
+
+- Like all functions working with ranks in this package ecosystem, `.find_lca` assumes that taxon ranks are in a specific order. Suggest defining them once for all functions here and in other packages and referencing directly. Ideally this would be an immutable object but that might require a custom class. This applies to several functions in this file alone.
+
+- Lines 906, 1004: are these always species or can this be accessing a attribute that only lists genus? Could it read, say "Pinus" instead of "Pinus contorta"?
+
+**report_assign.R**
+
+* [x] reviewed
+
+- Lines 10-11: weird spaces.
+
+- should this be in `TaxaTools`?
+
+- Example not runnable as-is.
+
+- Line 65: suggest requiring workflow be specified instead of guessing based on column names.
+
+**run_bayesian_pipeline.R**
+
+* [x] reviewed
+
+- This seems bigger than this package somehow- dependent on all or many of the others so far.
+
+- Example not runnable as-is.
+
+- Examples in tests are all designed to fail at some point so couldn't test all functionality.
+
+**run_llm_pipeline.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- Line 32: doesn't all the LLM stuff require `TaxaTools`? I'd definitely say it's a dependency.
+
+**score_consensus.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- Line 243: suggest requiring a specific format (either 0-1 or 0-100) instead of guessing.
+
+- Line 257: suggest testing for and requiring that these be on the same scale instead of fixing.
+
+- Line 307: usual comment about ranks applies here too.
+
+- Lines 328-338: Why reassign to `chunk`? I think you could just keep working with the same vector `scores` until step 2 is complete.
+
+- Line 344: this object doesn't need to be named, could replace `unique_taxa` with `!duplicated(chunk$taxon_name)` in line 345.
+
+- Line 423: Could this be a vectorized filter? A little tricky to test on the fly.
+
+**site_utils.R**
+
+* [x] reviewed
+
+- Not sure any of these functions are directly tested.
+
+- Example data not available so I dodn't run directly.
+
+- Line 21: `TaxaTools::call_api` usually results in an error, often package must be loaded.
+
+- Maybe I'm just not seeing it, but why does `.resolve_site` need to take multiple formats?
+
+- Test for `NULL` in `main_habitat` in `.latlon_to_grid` should be done immediately, otherwise effort on grid stuff in earlier lines is wasted.
+
+- `taxaexpect_priors` should have `lat` and `lon` preserved to avoid parsing ID.
+
+- `.find_nearest_grid`: I don't think this distance formulation works correctly with spherical coordinates. 
+
+- Line 162: is it possible to have length missmatches for `taxaexpect_priors` and `unique_locs` columns?
+
+- Line 205: see previous comment about spherical coordinates, but doesn't this just reproduce the effort from `.find_nearest_grid`?
+
+- Line 2018: what happens if `grid_rows` has no values?
+
+**slash_taxon.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- `.make_slash_name` uses spaces to split binomials. This is probably okay and follows a pattern that is used throughout these packages, but it could be a source of failure if the assumption isn't met. The `@note` on line 113 suggests that this is a possibility, consider if this could be improved to reduce this weakness.
+
+- `add_slash_taxon` does some ranking by posterior, consider renaming to better fit it's actual function. Currently seems like a wrapper for `.make_slash_name`.
+
+- I wonder if having list columns is the best way to do this. Is there any way the order of the list columns could get corrupted? Could they be combined somehow?
+
+**suggest_unreferenced_species.R**
+
+* [x] reviewed
+
+- Lines 45-46: could this just iterate over `genera`, which would allow any length?
+
+- Line 146: probably safer to iterate instead of selecting the first element, even if you're pretty sure it's always length 1.
+
+- Line 342: example not runnable as-is.
+
+- Line 491: I don't think this object is incuded in `TaxaMatch`. Without it example not runnable.
+
+- I had to explicitly load `TaxaTools` to run.
+
+- Running on the match_df created with`make_spg_match_df` in the test file, I get the following, which I think means no unreferenced species are suggested:
+
+```
+Unreferenced species detected: 0
+Access full details: attr(x, "census") | attr(x, "plausible")
+```
+
+**TaxaAssign-package.R**
+
+* [x] reviewed
+
+**update_prior_from_consensus.R**
+
+* [x] reviewed
+
+- Line 116: this seems like a developer note to self instead of helpful documentation.
+
+- Example not runnable as-is.
+
+- Line 381: consider if date will be meaningful for future users.
+
+- Using the test data, one row had `prior_updated = TRUE` when the prior values were unchanged from the input.

@@ -90,6 +90,24 @@ test_that("update_prior_from_consensus boosts confirmed species in unresolved sa
   expect_equal(s2_sp_a$prior_mean, 0.9)
 })
 
+test_that("report_params from the input `result` survive the call, merged with this function's own (real bug, code review 2026-08)", {
+  result    <- .make_result()
+  attr(result, "report_params") <- list(score_sharpness = 0.77, top_n = 4L)
+  consensus <- .make_consensus()
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0,
+                                      confirmation_quantile = 0.85)
+  rp <- attr(out, "report_params")
+
+  # Previously this attribute was overwritten wholesale, silently discarding
+  # score_sharpness/top_n (and anything else the caller had attached) --
+  # generate_report()'s LLM Methods text would then fall back to a
+  # hardcoded default instead of the value actually used.
+  expect_equal(rp$score_sharpness, 0.77)
+  expect_equal(rp$top_n, 4L)
+  expect_equal(rp$confirmation_quantile, 0.85)
+})
+
 test_that("update_prior_from_consensus handles case with no resolved species", {
   result    <- .make_result()
   consensus <- .make_consensus()

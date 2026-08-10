@@ -48,6 +48,18 @@ utils::globalVariables(c("posterior_mean", "posterior_point_est", "posterior_sd"
 #'   S3 object from \code{\link{suggest_unreferenced_species}}. When provided,
 #'   the report includes reference database completeness statistics and
 #'   unreferenced species findings.
+#' @param workflow Character or \code{NULL}. One of \code{"bayesian"} or
+#'   \code{"llm"}, describing how \code{result}/\code{consensus} were
+#'   produced -- selects which Methods-text template to use. Default
+#'   \code{NULL} auto-detects from column presence (`range_status`,
+#'   `habitat_fit`, `information_quality` all present -> `"llm"`; otherwise
+#'   `"bayesian"`), which is reliable for output produced by this package's
+#'   own \code{run_bayesian_pipeline()}/\code{run_llm_pipeline()}/
+#'   \code{assign_taxa_llm()}, but can misclassify a hand-built or
+#'   third-party \code{result} that happens to share (or omit) those column
+#'   names. Pass this explicitly to avoid relying on the guess. Ignored when
+#'   \code{consensus} comes from \code{\link{score_consensus}} (workflow is
+#'   always \code{"score"} in that case, not a guess).
 #' @param data_type Character. One of \code{"eDNA"}, \code{"image"},
 #'   \code{"acoustic"}, or \code{NULL}. Used to tailor methods language.
 #' @param marker Character. Molecular marker name (e.g. \code{"12S MiFish"}).
@@ -68,19 +80,38 @@ utils::globalVariables(c("posterior_mean", "posterior_point_est", "posterior_sd"
 #'   invisibly.
 #'
 #' @examples
-#' \dontrun{
+#' result <- data.frame(
+#'   observation_id       = c("S1", "S1"),
+#'   taxon_name           = c("Gadus morhua", "Gadus chalcogrammus"),
+#'   taxon_name_rank       = "species",
+#'   hypothesis_type       = "specific_candidate",
+#'   genus                 = "Gadus",
+#'   family                = "Gadidae",
+#'   score_likelihood      = c(0.8, 0.2),
+#'   score_likelihood_mean = c(0.8, 0.2),
+#'   score_likelihood_sd   = c(0.05, 0.05),
+#'   prior_mean            = c(0.6, 0.4),
+#'   prior_alpha           = c(30, 20),
+#'   prior_beta            = c(20, 30)
+#' )
+#' result <- compute_posterior(result, n_sims = 0)
+#' consensus <- posterior_consensus(result)
+#'
+#' # llm_fn = NULL (the default) uses a template-based Results section, so
+#' # this example needs no network access and is fully runnable.
 #' report <- generate_report(
-#'   result    = result_updated,
-#'   consensus = consensus_final,
+#'   result    = result,
+#'   consensus = consensus,
+#'   workflow  = "bayesian",
 #'   data_type = "eDNA",
 #'   marker    = "12S MiFish"
 #' )
-#' }
 #'
 #' @export
 generate_report <- function(result,
                             consensus,
                             unreferenced_result = NULL,
+                            workflow            = NULL,
                             data_type           = NULL,
                             marker              = NULL,
                             context_source      = "user",
@@ -91,6 +122,8 @@ generate_report <- function(result,
   # --- Input validation -------------------------------------------------------
   if (!is.data.frame(consensus))
     cli::cli_abort("{.arg consensus} must be a data frame.")
+  if (!is.null(workflow))
+    workflow <- match.arg(workflow, c("bayesian", "llm"))
 
   required_consensus <- c("observation_id", "consensus_taxon", "consensus_rank",
                           "is_resolved")
@@ -126,11 +159,15 @@ generate_report <- function(result,
 
   # --- Detect workflow and gather parameters ----------------------------------
   if (consensus_type == "posterior") {
-    workflow <- .detect_workflow(result)
+    if (is.null(workflow)) {
+      workflow <- .detect_workflow(result)
+      if (verbose) cli::cli_inform("Detected workflow: {.val {workflow}} (pass {.arg workflow} explicitly to override).")
+    } else if (verbose) {
+      cli::cli_inform("Using explicitly supplied workflow: {.val {workflow}}")
+    }
   } else {
     workflow <- "score"
   }
-  if (verbose) cli::cli_inform("Detected workflow: {.val {workflow}}")
 
   params <- .gather_report_params(result, consensus)
 
@@ -208,19 +245,21 @@ generate_report <- function(result,
 
 #' @noRd
 .build_citation_text <- function(llm_model_name = NULL) {
-  # Programmatic citation from inst/CITATION
-  cite <- tryCatch(
-    utils::citation("TaxaAssign"),
-    error = function(e) NULL
-  )
-  if (!is.null(cite) && length(cite) >= 2L) {
-    # Second entry is the ecosystem citation
-    eco <- cite[[2L]]
-    cite_str <- format(eco, style = "text")
-    cite_str <- paste(cite_str, collapse = " ")
-  } else {
-    cite_str <- "Lafferty, K. (2026). TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment. In preparation."
-  }
+  # Reads the ecosystem citation (2nd entry) programmatically from
+  # inst/CITATION rather than hardcoding it a second time here, so the two
+  # can't drift apart. utils::citation() does not error under normal use
+  # (verified under both an installed package and devtools::load_all()) --
+  # the tryCatch/fallback exists solely as a defense against inst/CITATION
+  # itself being broken by a future edit (e.g. malformed bibentry() syntax,
+  # or reduced to a single entry), which would otherwise hard-error every
+  # generate_report() call instead of degrading to the fallback string below.
+  cite_str <- tryCatch({
+    cite <- utils::citation("TaxaAssign")
+    if (length(cite) < 2L) stop("inst/CITATION has fewer than 2 entries")
+    paste(format(cite[[2L]], style = "text"), collapse = " ")
+  }, error = function(e) {
+    "Lafferty, K. (2026). TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment. In preparation."
+  })
 
   software_text <- sprintf(
     "All analyses were performed using the TaxaID R ecosystem (%s).",

@@ -325,26 +325,17 @@ competing hypotheses. \code{cumulative_threshold = 0.9} is analogous to a
 assignments (more upranking to genus/family); decrease to 0.8 for more
 aggressive species-level calls.
 
-\strong{Empirical sensitivity (2026-07-09, real data):} a grid sweep against
-a real 3,000-observation subsample of PtConception 12S posteriors (see
-\code{diagnostics/posterior_threshold_sweep.R}) found the two defaults are
-NOT equally load-bearing. Holding \code{cumulative_threshold} at the
-default 0.90, sweeping \code{min_posterior} from 0 to 0.20 moved the
-finest-rank resolution rate by +8.2 points (72.3\\% -> 80.5\\%) -- a real,
-fairly linear effect. Holding \code{min_posterior} at the default 0.05,
-sweeping \code{cumulative_threshold} from 0.70 to 0.99 moved resolution by
-only -3.3 points (79.6\\% -> 76.3\\%) -- \code{cumulative_threshold} does
-comparatively little independent work once a reasonable \code{min_posterior}
-floor is already in place. The two parameters interact sharply only in the
-unrealistic corner of \code{min_posterior = 0} combined with
-\code{cumulative_threshold = 0.99} (resolution drops to 57.9\\%), confirming
-the mechanism described above is real but not a practical risk at the
-current defaults. \strong{Caveat:} this sweep measures resolution
-\emph{rate} (how often the pipeline commits to a finest-rank call), not
-\emph{accuracy} (whether that call is correct) -- no ground-truth-validated
-observation set was available to check against, so a higher
-\code{min_posterior} driving up the resolved-\\% is not itself evidence that
-those additional resolved calls are correct.
+\strong{Parameter sensitivity:} a grid sweep against a real posterior
+dataset (see \code{diagnostics/posterior_threshold_sweep.R}) found the two
+defaults are not equally load-bearing: \code{min_posterior} has a real,
+roughly linear effect on how often the pipeline resolves to the finest
+rank, while \code{cumulative_threshold} does comparatively little
+independent work once a reasonable \code{min_posterior} floor is already
+in place. The two interact sharply only in the unrealistic combination of
+\code{min_posterior = 0} with a very high \code{cumulative_threshold}.
+This sweep measures resolution \emph{rate}, not \emph{accuracy} -- no
+ground-truth-validated observation set was available, so a higher
+resolved-\\% is not itself evidence those calls are correct.
 
 \strong{LCA method:}
 Lowest Common Ancestor is the standard conservative consensus method in
@@ -353,14 +344,21 @@ walks from finest to coarsest rank and stops at the first rank where all
 plausible hypotheses agree.
 }
 \examples{
-\dontrun{
-consensus <- posterior_consensus(
-  result_updated,
-  cumulative_threshold = 0.9,
-  min_posterior = 0.05
+posterior_df <- data.frame(
+  observation_id   = c("S1", "S1", "S1"),
+  taxon_name       = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+  taxon_name_rank  = c("species", "species", "genus"),
+  hypothesis_type  = "specific_candidate",
+  genus            = "Gadus",
+  family           = "Gadidae",
+  posterior_mean   = c(0.75, 0.20, 0.05)
 )
-head(consensus)
-}
+consensus <- posterior_consensus(
+  posterior_df,
+  cumulative_threshold = 0.9,
+  min_posterior         = 0.05
+)
+consensus[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
 
 }
 \seealso{

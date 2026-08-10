@@ -102,8 +102,9 @@ Default 0.05.}
 \code{\link{join_priors}} and consensus. Required, no default -- the
 correct value depends on which backbone your input taxonomy was
 verified against, which varies by project (e.g. \code{11} for GBIF,
-\code{4} for NCBI). See the Taxonomic Backbone ID Reference in
-\code{TaxaID/CLAUDE.md} for the full list.}
+\code{4} for NCBI). See
+\code{TaxaTools::verify_taxon_names()}'s \code{backbone_id} docs, or
+\url{https://verifier.globalnames.org/} for the full list.}
 
 \item{lookup_missing_taxonomy}{Logical. Look up missing taxonomy in
 consensus. Default \code{TRUE}.}
@@ -165,6 +166,13 @@ fine-grained control, use the individual functions directly.
 }
 \examples{
 \dontrun{
+# Requires real upstream objects this package alone cannot synthesize --
+# match_obj from TaxaMatch (sequence/image/acoustic match data), a fitted
+# trained_model from TaxaLikely::train_likelihood_model() (needs a real
+# reference sequence database), and priors from
+# TaxaExpect::generate_full_priors() (needs a real GBIF occurrence fetch).
+# See vignette("taxonomic-assignment", package = "TaxaAssign") for a
+# complete, step-by-step runnable version of this pipeline.
 out <- run_bayesian_pipeline(
   match_df          = match_obj,
   model_params      = trained_model,

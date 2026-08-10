@@ -182,14 +182,20 @@ use \code{\link[=posterior_consensus]{posterior_consensus()}}, not this function
 }
 
 \examples{
-\dontrun{
+match_df <- data.frame(
+  observation_id  = c("S1", "S1", "S1"),
+  taxon_name      = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+  taxon_name_rank = c("species", "species", "genus"),
+  score_original  = c(99, 98.5, 90),
+  genus           = "Gadus",
+  family          = "Gadidae"
+)
 sc <- score_consensus(
   match_df,
-  min_score = 97,
+  min_score       = 97,
   rank_thresholds = c(species = 98, genus = 95, family = 90)
 )
-head(sc)
-}
+sc[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
 
 }
 \seealso{

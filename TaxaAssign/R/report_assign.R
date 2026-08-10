@@ -3,9 +3,7 @@
 # TaxaAssign -- Generate report_section for taxonomic assignment
 #
 # Exported functions:
-#   report_assign()   -- generate report_section from assignment output
-#
-# Session 65: initial implementation
+#   report_assign() -- generate report_section from assignment output
 # ==============================================================================
 
 
@@ -27,6 +25,13 @@
 #'   or \code{\link{score_consensus}}.
 #' @param data_type Character or \code{NULL}. One of \code{"eDNA"},
 #'   \code{"image"}, \code{"acoustic"}.
+#' @param workflow Character or \code{NULL}. One of \code{"bayesian"} or
+#'   \code{"llm"} -- overrides the auto-detected workflow used to select
+#'   Methods-text wording (same auto-detection caveat as
+#'   \code{\link{generate_report}}'s \code{workflow} argument: reliable for
+#'   this package's own pipeline output, but can misclassify a hand-built or
+#'   third-party \code{result}). Ignored when \code{consensus} comes from
+#'   \code{\link{score_consensus}} (workflow is always \code{"score"}).
 #' @param verbose Logical. Print summary messages. Default \code{FALSE}.
 #'
 #' @return A \code{report_section} object with:
@@ -41,31 +46,44 @@
 #'   \code{\link{score_consensus}}
 #'
 #' @examples
-#' \dontrun{
-#' sec <- report_assign(result, consensus)
+#' result <- data.frame(
+#'   observation_id  = c("S1", "S1"),
+#'   taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+#'   taxon_name_rank = "species",
+#'   hypothesis_type = "specific_candidate",
+#'   genus           = "Gadus",
+#'   family          = "Gadidae",
+#'   posterior_mean  = c(0.8, 0.2)
+#' )
+#' consensus <- posterior_consensus(result)
+#' sec <- report_assign(result, consensus, data_type = "eDNA", workflow = "bayesian")
 #' print(sec)
-#' }
 #'
 #' @export
 report_assign <- function(result    = NULL,
                           consensus,
                           data_type = NULL,
+                          workflow  = NULL,
                           verbose   = FALSE) {
 
   if (!is.data.frame(consensus) || nrow(consensus) == 0L)
     cli::cli_abort("{.arg consensus} must be a non-empty data frame.")
+  if (!is.null(workflow))
+    workflow <- match.arg(workflow, c("bayesian", "llm"))
 
   # --- Detect consensus type --------------------------------------------------
   consensus_type <- if ("top_score" %in% names(consensus)) "score" else "posterior"
 
-  # --- Detect workflow --------------------------------------------------------
-  workflow <- if (consensus_type == "score") {
-    "score"
+  # --- Resolve workflow --------------------------------------------------------
+  if (consensus_type == "score") {
+    workflow <- "score"
+  } else if (!is.null(workflow)) {
+    # explicitly supplied -- use as-is, no detection needed
   } else if (!is.null(result) && is.data.frame(result)) {
     llm_cols <- c("range_status", "habitat_fit", "information_quality")
-    if (all(llm_cols %in% names(result))) "llm" else "bayesian"
+    workflow <- if (all(llm_cols %in% names(result))) "llm" else "bayesian"
   } else {
-    "posterior"
+    workflow <- "posterior"
   }
 
   # --- Gather report_params ---------------------------------------------------

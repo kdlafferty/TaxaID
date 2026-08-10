@@ -106,9 +106,9 @@ refinement
 
 **Unreferenced species:** - `suggest_unreferenced_species()` --
 LLM-first detection of missing taxa (supports eDNA, acoustic, and image
-data via `data_type` param) - `expand_unreferenced_hypotheses()` --
-deprecated forwarding wrapper; moved to
-`TaxaLikely::expand_unreferenced_hypotheses()` (Session 150)
+data via `data_type` param) - see also
+`TaxaLikely::expand_unreferenced_hypotheses()`, which models likelihoods
+for named unreferenced taxa
 
 **High-level wrappers:** - `run_bayesian_pipeline()` -- full Bayesian
 (TaxaLikely + TaxaExpect -\> posteriors) - `run_llm_pipeline()` --
@@ -150,10 +150,14 @@ LLM estimation).
     one observation receive boosted priors in unresolved observations
     from the same study, analogous to shrinkage estimators (Efron and
     Morris 1973)
--   **Dark diversity fallback**: species absent from TaxaExpect's
-    spatial model receive priors from Tier 3 (undetected species)
-    estimates, preventing false negatives from incomplete occurrence
-    data
+-   **Dark diversity fallback**: "dark diversity" is an ecological
+    concept for the set of species that belong to the regional species
+    pool and could plausibly occur at a site given its environmental
+    conditions, but have not actually been observed there. Species
+    absent from TaxaExpect's spatial model receive priors from Tier 3
+    (undetected species) estimates built on this concept, preventing
+    false negatives from incomplete occurrence data. See
+    `join_priors()`'s own documentation for the full mechanism.
 
 For the full statistical derivation, assumptions, and references,
 see [`inst/TaxaAssign_supplemental_methods.md`](inst/TaxaAssign_supplemental_methods.md).

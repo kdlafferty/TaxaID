@@ -446,10 +446,24 @@ update_prior_from_consensus <- function(result,
   out <- dplyr::bind_rows(resolved_rows, updated_rows) |>
     dplyr::arrange(.data$observation_id, dplyr::desc(.data$posterior_point_est))
 
-  attr(out, "report_params") <- list(
-    confirmation_quantile       = confirmation_quantile,
-    min_confirmation_confidence = min_confirmation_confidence,
-    n_sims                      = n_sims
+  # Merge onto (not overwrite) any report_params already attached to `result`
+  # -- e.g. assign_taxa_llm()'s score_sharpness/unknown_lik_weight/
+  # score_threshold/top_n. This function's own compute_posterior() call
+  # above already set attr(updated_rows, "report_params") <- list(n_sims=...)
+  # (compute_posterior()'s own, narrower default), which would otherwise
+  # silently discard those upstream values for every real
+  # run_llm_pipeline() call (it always calls this function), making
+  # generate_report()'s LLM Methods text fall back to hardcoded defaults
+  # (e.g. score_sharpness = 0.1) instead of the values actually used --
+  # found via code review, not a symptom anyone had reported yet.
+  prior_params <- attr(result, "report_params")
+  attr(out, "report_params") <- utils::modifyList(
+    if (is.null(prior_params)) list() else prior_params,
+    list(
+      confirmation_quantile       = confirmation_quantile,
+      min_confirmation_confidence = min_confirmation_confidence,
+      n_sims                      = n_sims
+    )
   )
   out
 }

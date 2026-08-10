@@ -143,7 +143,21 @@
         !"plausible_species" %in% names(item))
       next
 
-    g   <- as.character(item$genus)[[1L]]
+    g_vec <- as.character(item$genus)
+    if (length(g_vec) != 1L) {
+      # Expected exactly one genus per item (the prompt's own format example
+      # shows this); an LLM response with a genus array instead of a scalar
+      # is malformed enough that silently keeping only the first value could
+      # misattribute plausible_species to the wrong genus. Skip and warn
+      # rather than guess.
+      cli::cli_warn(
+        "Malformed item in LLM response for {.val {group_label}}: \\
+        {.field genus} has length {length(g_vec)}, expected 1. Skipping this \\
+        item: {.val {g_vec}}"
+      )
+      next
+    }
+    g   <- g_vec
     sps <- as.character(item$plausible_species)
     valid <- unique(sps[TaxaTools::is_plausible_binomial(sps)])
 
@@ -338,8 +352,19 @@
 #' @param ... Not used.
 #' @return `x`, invisibly.
 #' @examples
+#' # A minimal object built directly, matching what suggest_unreferenced_species()
+#' # returns -- avoids requiring a real LLM/NCBI call for this example.
+#' unref <- structure(
+#'   c("Gadus ogac", "Gadus macrocephalus"),
+#'   plausible = list(Gadus = c("Gadus ogac", "Gadus macrocephalus", "Gadus morhua")),
+#'   census    = data.frame(genus = "Gadus", plausible_count = 3L,
+#'                          ncbi_count = 1L, unreferenced_count = 2L),
+#'   class = c("unreferenced_species_result", "character")
+#' )
+#' print(unref)
+#'
 #' \dontrun{
-#' unref <- suggest_unreferenced_species(match_df, llm_fn = call_anthropic_api)
+#' unref <- suggest_unreferenced_species(match_df, llm_fn = TaxaTools::call_api)
 #' print(unref)
 #' }
 #' @export
@@ -487,8 +512,17 @@ print.unreferenced_species_result <- function(x, ...) {
 #'
 #' @examples
 #' \dontrun{
-#' match_df <- readRDS(
-#'   system.file("match_obj.rds", package = "TaxaMatch")
+#' # Requires real LLM (genus -> plausible species) and NCBI (barcode-count)
+#' # network calls; match_df is typically real TaxaMatch output, but any
+#' # data frame with these columns works.
+#' match_df <- data.frame(
+#'   observation_id   = c("S1", "S1", "S2", "S2"),
+#'   score_original   = c(99, 88, 97, 85),
+#'   taxon_name       = c("Fundulus lima", "Fundulus zebrinus",
+#'                        "Gambusia affinis", "Gambusia holbrooki"),
+#'   taxon_name_rank  = "species",
+#'   genus            = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
+#'   stringsAsFactors = FALSE
 #' )
 #'
 #' ctx <- data.frame(
@@ -499,7 +533,7 @@ print.unreferenced_species_result <- function(x, ...) {
 #' # Genus-level unreferenced species only
 #' unref_names <- suggest_unreferenced_species(
 #'   match_df, context = ctx, barcode_term = "12S",
-#'   llm_fn = TaxaTools::call_anthropic_api, max_date = "2024/12/31"
+#'   llm_fn = TaxaTools::call_api, max_date = "2024/12/31"
 #' )
 #' cat("Unreferenced taxa found:", length(unref_names), "\n")
 #'
@@ -804,12 +838,27 @@ suggest_unreferenced_species <- function(match_df,
 
   if (isTRUE(expand_to_family) && length(empty_genera_for_family) > 0L) {
 
-    # Look up family for each empty genus from match_df
+    # Look up family for each empty genus from match_df. A genus should map
+    # to exactly one family; if match_df disagrees (a real data-quality
+    # issue this loop would otherwise mask by silently keeping the first
+    # value seen), warn and use the most frequent value.
+    inconsistent_genera <- character(0L)
     genus_to_family_lookup <- vapply(empty_genera_for_family, function(g) {
       fam <- match_df$family[!is.na(match_df$genus) & match_df$genus == g &
                                !is.na(match_df$family)]
-      if (length(fam) > 0L) fam[[1L]] else NA_character_
+      if (length(fam) == 0L) return(NA_character_)
+      fam_counts <- table(fam)
+      if (length(fam_counts) > 1L)
+        inconsistent_genera <<- c(inconsistent_genera, g)
+      names(fam_counts)[[which.max(fam_counts)]]
     }, character(1L))
+    if (length(inconsistent_genera) > 0L)
+      cli::cli_warn(
+        "{length(inconsistent_genera)} genus/genera map to more than one \\
+        distinct {.field family} value in {.arg match_df}: \\
+        {.val {inconsistent_genera}}. Using the most frequent value for \\
+        each; consider {.fn TaxaTools::find_taxonomy_conflicts} to inspect."
+      )
 
     has_fam            <- !is.na(genus_to_family_lookup)
     empty_with_fam     <- empty_genera_for_family[has_fam]

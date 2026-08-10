@@ -228,66 +228,77 @@ scored candidate are inserted as additional hypotheses. Their likelihood equals
 the median of their referenced congeners so unreferenced taxa start on equal
 footing. They appear in the prompt labelled \verb{[no reference sequence]}.
 
-\strong{Empirical sensitivity (2026-07-09, real data):} a sweep of
-\code{score_sharpness}, \code{unknown_lik_weight}, \code{prior_phi}, and
-\code{absent_detection_prob} against a real, fixed LLM response (499
-PtConception 12S observations, 143 LLM-evaluated taxa; see
-\code{diagnostics/llm_prior_shape_sweep.R}) found these four parameters mostly
-shape \emph{confidence} (\code{consensus_posterior}), not \emph{which} taxon
-wins (\code{pct_resolved} was essentially flat -- within ~1.5 points -- across
-every parameter and grid tested):
-\itemize{
-\item \strong{\code{unknown_lik_weight}} has the largest real effect: mean
-winning-hypothesis posterior mass dropped from 0.997 to 0.911 sweeping
-0.01 -> 0.20 (default 0.05 sits at 0.992). It siphons probability mass
-from every named candidate uniformly, so the same candidate usually
-still wins, just less confidently.
-\item \strong{\code{score_sharpness}} had almost no effect in this dataset
-(confidence moved only 0.9922 -> 0.9936 across the full 0-1 range) --
-the LLM-derived prior is doing nearly all the discriminating work here,
-consistent with the "LLM prior dominates over score" design intent
-documented above.
-\item \strong{\code{prior_phi}}: a flat scalar phi (any value 5-80) gave
-statistically the same resolution/confidence as the default tiered
-vector \code{c(high=50, moderate=10, low=3)} in this sweep -- only very low
-phi (2-3) noticeably hurt. This does not prove the tiered structure is
-unnecessary (it may matter more for datasets with more skewed
-\code{information_quality}, or for accuracy rather than confidence), but it
-is a real, open question about whether the added complexity is
-earning its keep, not yet resolved.
-\item \strong{\code{absent_detection_prob}}: tested via a disclosed synthetic
-\code{known_absent} overlay (no real workflow in this ecosystem currently
-supplies \code{known_absent}, so the real checkpoint had none to sweep
-against) -- no meaningful aggregate effect was detected, but this
-result is the weakest of the four: only 5 of 143 taxa were affected,
-diluted across 499 observations. Not a validated finding either way.
-}
-\strong{Caveat:} this sweep measures resolution \emph{rate} and mean
-posterior \emph{mass}, not \emph{accuracy} -- no ground-truth-validated
-observations were available. It also reflects ONE real but
-non-reproducible LLM response (a single model call, not repeated draws),
-so treat the exact numbers as illustrative of sensitivity magnitude, not a
-precise calibration.
+\strong{Parameter sensitivity:} a sweep of \code{score_sharpness},
+\code{unknown_lik_weight}, \code{prior_phi}, and \code{absent_detection_prob} against one
+real, fixed LLM response (see \code{diagnostics/llm_prior_shape_sweep.R}) found
+these four parameters mostly shape \emph{confidence}
+(\code{consensus_posterior}), not \emph{which} taxon wins. \code{unknown_lik_weight}
+has the largest effect (raising it toward 0.20 measurably lowers winning-
+hypothesis confidence); \code{score_sharpness} has almost none (the LLM-derived
+prior does most of the discriminating work); a flat scalar \code{prior_phi}
+performed comparably to the tiered default in this one sweep, so whether
+the tiered structure earns its complexity is a real, unresolved question;
+\code{absent_detection_prob} showed no aggregate effect in a small synthetic
+test (no real workflow in this ecosystem currently supplies
+\code{known_absent}). This reflects one non-reproducible LLM response, not a
+calibration study -- treat it as sensitivity direction, not a precise
+estimate.
+
+\strong{Context is optional but strongly recommended.} The prompt always
+asks the LLM to commit to \code{range_status} (geographic presence "in this
+region") regardless of whether \code{context} supplies a region at all. With no
+\code{context}, the LLM has nothing but each taxon's name to reason from and
+falls back on general knowledge of the species' typical range rather than
+anything about the actual survey site -- \code{range_status}/\code{prior_weight}
+from a context-less call should be treated as weak, unverified evidence,
+not a real site-specific assessment. A \code{cli_warn()} is emitted whenever
+\code{context} is \code{NULL}. \code{context} is not a hard requirement (rather than an
+error) because a coarse call -- e.g. flagging an unambiguously
+\code{taxonomically_impossible} candidate by genus/family alone -- can still be
+useful without any location at all; supply \code{context} whenever a real
+site is available.
 }
 }
 \examples{
+match_df <- data.frame(
+  observation_id   = c("S1", "S1", "S1", "S2", "S2"),
+  score_original   = c(99, 93, 85, 100, 88),
+  taxon_name       = c("Eucyclogobius newberryi", "Quietula y-cauda",
+                       "Gillichthys mirabilis",
+                       "Eucyclogobius newberryi", "Gillichthys mirabilis"),
+  taxon_name_rank  = rep("species", 5),
+  stringsAsFactors = FALSE
+)
+
+# A stub llm_fn stands in for a real API call so this example is runnable
+# offline; a real call would use llm_fn = TaxaTools::call_api instead.
+stub_llm_fn <- function(prompt_str) {
+  taxa <- regmatches(prompt_str,
+    gregexpr("(?m)(?<=^- )[^\n(]+(?= \\\\()", prompt_str, perl = TRUE))[[1]]
+  rows <- paste0(
+    sprintf('{"taxon_name":"\%s","range_status":"native","prior_weight":1}',
+            trimws(taxa)),
+    collapse = ",\n  ")
+  paste0("[\n  ", rows, "\n]")
+}
+
+# Minimal call -- no context (see "Context" below for why this is weaker
+# evidence than a call with a real site context)
+result <- assign_taxa_llm(match_df, llm_fn = stub_llm_fn, pause_seconds = 0)
+
+# With shared context (all observations share one site)
+ctx <- data.frame(ecoregion = "California Coast", main_habitat = "estuarine")
+result <- assign_taxa_llm(match_df, context = ctx, llm_fn = stub_llm_fn,
+                           pause_seconds = 0)
+
 \dontrun{
-match_df <- readRDS(system.file("match_obj.rds", package = "TaxaMatch"))
-
-# Minimal call -- no context
-result <- assign_taxa_llm(match_df)
-
-# With shared context
-ctx <- data.frame(ecoregion = "California Coast", habitat = "estuarine")
-result <- assign_taxa_llm(match_df, context = ctx,
-                           llm_fn = TaxaTools::call_anthropic_api)
-
 # With per-observation context grouped by ecoregion (one LLM call per region)
-ctx <- data.frame(observation_id = match_df$observation_id,
-                  ecoregion = ...,
-                  stringsAsFactors = FALSE)
+ctx <- data.frame(observation_id = c("S1", "S2"),
+                   ecoregion      = c("California Coast", "Oregon Coast"),
+                   stringsAsFactors = FALSE)
 result <- assign_taxa_llm(match_df, context = ctx,
-                           context_group = "ecoregion")
+                           context_group = "ecoregion",
+                           llm_fn = TaxaTools::call_api)
 }
 }
 \seealso{

@@ -36,8 +36,9 @@ refinement
 
 \itemize{
 \item \code{\link{suggest_unreferenced_species}} -- LLM-first detection
-\item \code{\link{expand_unreferenced_hypotheses}} -- deprecated; moved to
-\code{TaxaLikely::expand_unreferenced_hypotheses()} (Session 150)
+\item \code{TaxaLikely::expand_unreferenced_hypotheses()} -- models
+likelihoods for named unreferenced taxa (lives in TaxaLikely, next to
+\code{TaxaLikely::unreferenced_candidates()})
 }
 }
 

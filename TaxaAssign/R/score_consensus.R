@@ -186,14 +186,20 @@ utils::globalVariables(c("score_val"))
 #' @seealso [posterior_consensus()] for the Bayesian posterior-based approach.
 #'
 #' @examples
-#' \dontrun{
+#' match_df <- data.frame(
+#'   observation_id  = c("S1", "S1", "S1"),
+#'   taxon_name      = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+#'   taxon_name_rank = c("species", "species", "genus"),
+#'   score_original  = c(99, 98.5, 90),
+#'   genus           = "Gadus",
+#'   family          = "Gadidae"
+#' )
 #' sc <- score_consensus(
 #'   match_df,
-#'   min_score = 97,
+#'   min_score       = 97,
 #'   rank_thresholds = c(species = 98, genus = 95, family = 90)
 #' )
-#' head(sc)
-#' }
+#' sc[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
 #'
 #' @importFrom cli cli_abort cli_inform
 #' @importFrom dplyr bind_rows
@@ -268,6 +274,11 @@ score_consensus <- function(match_df,
   # --- Resolve rank system ----------------------------------------------------
   if (is.null(rank_system)) {
     rank_system <- TaxaTools::detect_ranks(match_df)
+  } else {
+    # .find_lca() infers coarsest/finest from POSITION -- warn if a
+    # user-supplied vector disagrees in order with the standard Linnaean
+    # ranking, since that would silently swap "coarsest" and "finest".
+    .check_rank_system_order(rank_system, "score_consensus")
   }
 
   # --- Process each sample ----------------------------------------------------
@@ -326,23 +337,23 @@ score_consensus <- function(match_df,
 
   # Step 1: minimum score filter
   scores <- chunk[[score_col]]
-  keep   <- !is.na(scores) & scores >= min_score
-  chunk  <- chunk[keep, ]
-  if (nrow(chunk) == 0L) return(.empty_score_row())
+  keep1  <- !is.na(scores) & scores >= min_score
+  if (!any(keep1)) return(.empty_score_row())
 
-  # Step 2: gap filter (within max_gap of top score)
-  scores    <- chunk[[score_col]]
-  top_score <- max(scores, na.rm = TRUE)
-  keep      <- scores >= (top_score - max_gap)
-  chunk     <- chunk[keep, ]
-  if (nrow(chunk) == 0L) return(.empty_score_row())
+  # Step 2: gap filter (within max_gap of top score among step-1-retained
+  # scores). Combined with keep1 into one mask so chunk is only ever
+  # subsetted once, at the end, instead of being reassigned mid-filter.
+  top_score <- max(scores[keep1], na.rm = TRUE)
+  keep2     <- keep1 & scores >= (top_score - max_gap)
+  if (!any(keep2)) return(.empty_score_row())
+
+  chunk <- chunk[keep2, ]
 
   # Sort by score descending for retained_taxa ordering
   chunk <- chunk[order(chunk[[score_col]], decreasing = TRUE), ]
 
   # Deduplicate to unique taxon names (keep best score per taxon)
-  unique_taxa <- !duplicated(chunk$taxon_name)
-  taxa_unique <- chunk[unique_taxa, ]
+  taxa_unique <- chunk[!duplicated(chunk$taxon_name), ]
 
   n_retained  <- nrow(chunk)
   n_taxa      <- nrow(taxa_unique)
@@ -415,17 +426,13 @@ score_consensus <- function(match_df,
 #' @noRd
 .cap_rank_by_threshold <- function(lca, top_score, rank_thresholds,
                                    rank_system, taxa_df) {
-  # Find the finest rank whose threshold the top score meets
-  # Walk from finest to coarsest through rank_thresholds
+  # Find the finest rank whose threshold the top score meets (vectorized:
+  # threshold_ranks is already ordered finest-to-coarsest, so the first TRUE
+  # is the answer).
   threshold_ranks <- intersect(rev(rank_system), names(rank_thresholds))
-
-  allowed_rank <- NA_character_
-  for (rk in threshold_ranks) {
-    if (top_score >= rank_thresholds[[rk]]) {
-      allowed_rank <- rk
-      break
-    }
-  }
+  meets_threshold <- top_score >= unlist(rank_thresholds[threshold_ranks], use.names = FALSE)
+  first_met       <- which(meets_threshold)[1L]
+  allowed_rank    <- if (is.na(first_met)) NA_character_ else threshold_ranks[[first_met]]
 
   if (is.na(allowed_rank))
     return(list(taxon = NA_character_, rank = NA_character_))

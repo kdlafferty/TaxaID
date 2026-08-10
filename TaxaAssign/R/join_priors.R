@@ -98,13 +98,10 @@ utils::globalVariables(c(
   )
 
   # Columns to override in template rows with species-level values.
-  # Likelihood-side columns are always inherited from the template.
-  template_keep_cols <- c(
-    "observation_id", "score_likelihood", "score_likelihood_mean",
-    "score_likelihood_sd", "score_likelihood_cov", "hypothesis_type",
-    "grid_id", "main_habitat", "lab_contaminant_risk", "lab_contaminant_score",
-    "score_original", "Marker"
-  )
+  # Likelihood-side columns are always inherited from the template (this is
+  # implicit in how override_cols below is used, not a separate keep-list --
+  # a `template_keep_cols` variable enumerating them was found unused, dead
+  # code from an earlier draft, and removed during code review).
   override_cols <- intersect(
     names(sp_priors),
     c("taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type", tax_extra)
@@ -190,7 +187,10 @@ utils::globalVariables(c(
     key <- combo_keys[ii]
 
     cands_sp <- expansion_map[[key]]
-    if (is.null(cands_sp)) next   # no expansion found; dark floor handles this row
+    # No expansion found for this coarse-rank taxon -- leave it as-is; the
+    # dark-diversity fallback (main function body, below) assigns it a floor
+    # prior downstream, same as any other unmodelled candidate.
+    if (is.null(cands_sp)) next
 
     template <- result[i, , drop = FALSE]
 
@@ -297,6 +297,13 @@ utils::globalVariables(c(
   singleton_df$theta_s <- singleton_df$alpha / (singleton_df$alpha + singleton_df$beta)
 
   # Helper: compute alpha/beta from (n_singletons, prior_mean, ess)
+  # Helper: split a total probability mass evenly across n candidates,
+  # capped away from 1 (a defensive guard against pathological alpha/beta
+  # when downstream code divides by (1 - pm)). Reproduced in some form at
+  # five points in the recursive descent below; consolidated here so the
+  # capping constant only needs to change in one place.
+  .split_mean_cap <- function(mass, n) min(mass / n, 1 - 1e-9)
+
   .make_ab <- function(n_s, pm, ess) {
     eff_s <- max(1L, as.integer(n_s))
     phi   <- eff_s * ess
@@ -324,7 +331,7 @@ utils::globalVariables(c(
 
     if (depth > length(tax_ranks)) {
       # Exhausted all ranks -- group everything together
-      pm <- min((1L * parent_mean) / length(cpos), 1 - 1e-9)
+      pm <- .split_mean_cap(parent_mean, length(cpos))
       .record(cpos, length(spos), pm, "terminal")
       return(invisible(NULL))
     }
@@ -349,7 +356,7 @@ utils::globalVariables(c(
         # still_na fallback below (which checks is.na(g_label)) skips them.
         g_label[na_pos] <<- "no_phylum"
       } else {
-        pm <- min(parent_mean / length(na_pos), 1 - 1e-9)
+        pm <- .split_mean_cap(parent_mean, length(na_pos))
         .record(na_pos, 0L, pm, paste0("no_", rank))
       }
     }
@@ -373,7 +380,7 @@ utils::globalVariables(c(
 
       if (n_s == 0L) {
         # No singletons in this sub-clade -- form one combined group here
-        pm <- min(parent_mean / n_c, 1 - 1e-9)
+        pm <- .split_mean_cap(parent_mean, n_c)
         if (depth > 1L) {
           parent_rank <- tax_ranks[depth - 1L]
           if (parent_rank %in% names(unref_df)) {
@@ -392,7 +399,7 @@ utils::globalVariables(c(
         # Genus is terminal -- group all candidates in this genus
         val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
         if (!is.finite(val_mean)) val_mean <- parent_mean
-        pm <- min((n_s * val_mean) / n_c, 1 - 1e-9)
+        pm <- .split_mean_cap(n_s * val_mean, n_c)
         .record(val_cpos, n_s, pm, paste0(rank, ":", val))
 
       } else {
@@ -417,7 +424,7 @@ utils::globalVariables(c(
   still_na <- is.na(g_alpha) & is.na(g_label)
   if (any(still_na)) {
     n_c <- sum(still_na)
-    pm  <- min(gsm / n_c, 1 - 1e-9)
+    pm  <- .split_mean_cap(gsm, n_c)
     ab  <- .make_ab(0L, pm, singleton_ess)
     g_alpha[still_na] <- ab$a
     g_beta[still_na]  <- ab$b
@@ -497,8 +504,8 @@ utils::globalVariables(c(
 #'
 #' @param likelihoods Data frame of likelihoods, typically from
 #'   [TaxaLikely::apply_coverage_constraints()] or
-#'   [expand_unreferenced_hypotheses()]. Must contain `observation_id`,
-#'   `taxon_name`, `taxon_name_rank`.
+#'   [TaxaLikely::expand_unreferenced_hypotheses()]. Must contain
+#'   `observation_id`, `taxon_name`, `taxon_name_rank`.
 #' @param taxaexpect_priors Data frame of TaxaExpect priors. One row
 #'   per `taxon_name` x `grid_id` x `main_habitat`, with columns
 #'   `alpha`, `beta`, `undetected_type`, and taxonomy columns
@@ -517,6 +524,11 @@ utils::globalVariables(c(
 #'   }
 #'   If \code{main_habitat} is omitted, the error message lists available
 #'   habitats and row counts at the resolved grid cell.
+#'   \code{list(main_habitat = "Marine")} alone (no \code{lat}/\code{lon}/
+#'   \code{grid_id}) auto-fills coordinates from
+#'   \code{attr(taxaexpect_priors, "search_center")} when present (set by
+#'   \code{TaxaExpect::build_priors()}) -- \code{main_habitat} itself is
+#'   never auto-filled or guessed.
 #'   See Details.
 #' @param taxonomy_lookup Optional data frame mapping `taxon_name` to
 #'   taxonomy columns (e.g. `genus`, `family`). Used to fill taxonomy
@@ -547,8 +559,11 @@ utils::globalVariables(c(
 #' @param backbone_id Taxonomic backbone ID used for the taxonomy fallback
 #'   fill (see Details). Required, no default -- the correct value depends on
 #'   which backbone your input taxonomy was verified against, which varies by
-#'   project (e.g. `11` for GBIF, `4` for NCBI). See the Taxonomic Backbone ID
-#'   Reference in `TaxaID/CLAUDE.md` for the full list.
+#'   project. Passed straight through to
+#'   [TaxaTools::verify_taxon_names()]/`TaxaTools::change_backbone()`'s
+#'   `dataSources` ID (see <https://verifier.globalnames.org/> for the full
+#'   list). Common values: `1` Catalogue of Life, `3` ITIS, `4` NCBI, `9`
+#'   WoRMS, `11` GBIF.
 #' @param singleton_taxonomy Optional data frame mapping `taxon_name` to
 #'   taxonomy columns (`genus`, `family`, `order`, `class`, `phylum`). When
 #'   supplied, unmodelled candidates (those with no TaxaExpect prior) receive
@@ -600,17 +615,34 @@ utils::globalVariables(c(
 #'   (e.g. `alpha`, `beta`, `model_tier`) are included from the
 #'   join.
 #'
-#' @seealso [compute_posterior()], [expand_unreferenced_hypotheses()],
+#' @seealso [compute_posterior()], [TaxaLikely::expand_unreferenced_hypotheses()],
 #'   [TaxaLikely::apply_coverage_constraints()]
 #'
 #' @examples
-#' \dontrun{
-#' joined <- join_priors(
-#'   likelihoods     = expanded_likelihoods,
-#'   taxaexpect_priors = priors,
-#'   site            = list(grid_id = "Grid_34p4_m119p8", main_habitat = "Marine")
+#' likelihoods <- data.frame(
+#'   observation_id  = c("ASV_1", "ASV_1"),
+#'   taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+#'   taxon_name_rank = "species",
+#'   genus           = "Gadus",
+#'   family          = "Gadidae",
+#'   stringsAsFactors = FALSE
 #' )
-#' }
+#' taxaexpect_priors <- data.frame(
+#'   taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+#'   taxon_name_rank = "species",
+#'   grid_id         = "Grid_34p4_m119p8",
+#'   main_habitat    = "Marine",
+#'   alpha           = c(30, 5),
+#'   beta            = c(20, 45),
+#'   undetected_type = NA_character_
+#' )
+#' joined <- join_priors(
+#'   likelihoods       = likelihoods,
+#'   taxaexpect_priors = taxaexpect_priors,
+#'   site              = list(grid_id = "Grid_34p4_m119p8", main_habitat = "Marine"),
+#'   backbone_id       = 11L
+#' )
+#' joined[, c("observation_id", "taxon_name", "prior_mean")]
 #'
 #' @importFrom dplyr left_join distinct filter mutate select arrange
 #' @importFrom dplyr group_by summarise coalesce if_else desc na_if
@@ -638,8 +670,9 @@ join_priors <- function(likelihoods,
       "{.arg backbone_id} must be specified explicitly.",
       "i" = "There is no safe default: the correct backbone depends on which \\
       backbone your input taxonomy was verified against, and this varies by \\
-      project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See the \\
-      Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the full list."
+      project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See \\
+      TaxaTools::verify_taxon_names()'s {.arg backbone_id} docs, or \\
+      https://verifier.globalnames.org/ for the full list."
     ))
   }
 
@@ -677,6 +710,10 @@ join_priors <- function(likelihoods,
   if (!is.character(rank_system) || length(rank_system) < 2L) {
     cli::cli_abort("{.arg rank_system} must be a character vector of length >= 2.")
   }
+  # Coarsest/finest below are inferred from rank_system's POSITION -- warn if
+  # a user-supplied vector disagrees in order with the standard Linnaean
+  # ranking, since that would silently swap "coarsest" and "finest".
+  .check_rank_system_order(rank_system, "join_priors")
 
   if (!is.numeric(expansion_min_prior) || length(expansion_min_prior) != 1L ||
       expansion_min_prior < 0 || expansion_min_prior >= 1) {
@@ -749,6 +786,23 @@ join_priors <- function(likelihoods,
   }
 
   if (is.list(site) && !is.data.frame(site)) {
+
+    # Auto-fill lat/lon from taxaexpect_priors' own search_center attribute
+    # (set by build_priors()) when the caller supplied main_habitat but no
+    # location at all -- the coordinates are already known, so there is no
+    # reason to force the caller to retype them (main_habitat itself is
+    # still never auto-filled -- this function does not guess habitat).
+    if (!any(c("lat", "lon", "grid_id") %in% names(site))) {
+      search_center <- attr(taxaexpect_priors, "search_center")
+      if (!is.null(search_center) &&
+          !is.null(search_center$lat) && !is.null(search_center$lon)) {
+        site$lat <- search_center$lat
+        site$lon <- search_center$lon
+        cli::cli_inform(
+          "join_priors: using coordinates from build_priors()'s search_center: ({site$lat}, {site$lon})."
+        )
+      }
+    }
 
     # lat/lon path: resolve to nearest existing grid_id in priors
     if (all(c("lat", "lon") %in% names(site))) {
@@ -827,7 +881,7 @@ join_priors <- function(likelihoods,
                                        grid_coords)
         nearest_msg <- sprintf(
           " Nearest grid with priors: '%s'. Consider passing site = list(lat, lon) instead of a hardcoded grid_id.",
-          nearest
+          nearest$grid_id
         )
       }
       sprintf("'%s' / '%s' has 0 prior rows -- ALL species will get fallback priors.%s",
@@ -1225,16 +1279,14 @@ join_priors <- function(likelihoods,
       donor_lookup <- result[!is.na(result[[anchor_col]]), , drop = FALSE] |>
         dplyr::select(dplyr::all_of(c(anchor_col, coarser_cols))) |>
         dplyr::distinct(.data[[anchor_col]], .keep_all = TRUE)
-      for (i in needs_fill) {
-        anchor_val <- result[[anchor_col]][i]
-        donor_row <- donor_lookup[donor_lookup[[anchor_col]] == anchor_val, ,
-                                  drop = FALSE]
-        if (nrow(donor_row) == 0L) next
-        for (cc in coarser_cols) {
-          if (is.na(result[[cc]][i]) && !is.na(donor_row[[cc]][1L])) {
-            result[[cc]][i] <- donor_row[[cc]][1L]
-          }
-        }
+      # Vectorized match() lookup (one hash lookup per rank level) instead of
+      # a per-row linear scan through donor_lookup -- same semantics (first
+      # donor row sharing anchor_col's value; only fill cells that are NA).
+      donor_idx <- match(result[[anchor_col]][needs_fill], donor_lookup[[anchor_col]])
+      for (cc in coarser_cols) {
+        donor_vals <- donor_lookup[[cc]][donor_idx]
+        fillable   <- is.na(result[[cc]][needs_fill]) & !is.na(donor_vals)
+        result[[cc]][needs_fill[fillable]] <- donor_vals[fillable]
       }
     }
   }

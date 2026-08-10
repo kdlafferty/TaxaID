@@ -64,6 +64,23 @@ elevation is also guarded: if a taxon's current prior already exceeds the
 singleton floor (which can occur in high-singleton clades), the prior is
 left unchanged.
 }
+\examples{
+likelihoods_ready <- data.frame(
+  taxon_name      = c("Species alpha", "Species beta"),
+  alpha           = c(NA, 5),          # NA = unmodelled
+  prior_alpha     = c(1, 5),
+  prior_beta      = c(99, 15),
+  prior_mean      = c(0.01, 0.25),
+  singleton_alpha = c(2, 2),
+  singleton_beta  = c(18, 18)
+)
+inat_range <- data.frame(
+  taxon_name    = c("Species alpha", "Species beta"),
+  in_range      = c(TRUE, FALSE),
+  n_observations = c(800, 5)
+)
+adjust_inat_range_priors(likelihoods_ready, inat_range, n_obs_threshold = 500L)
+}
 \seealso{
 \code{join_priors()}, \code{TaxaFetch::check_inat_range()},
 \code{compute_posterior()}

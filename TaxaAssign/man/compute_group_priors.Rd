@@ -9,7 +9,7 @@ compute_group_priors(
   taxonomy_map,
   taxon_col = "taxon_name",
   theta_col = "theta_mean",
-  rank_cols = c("genus", "family")
+  rank_cols = c("species", "genus", "family")
 )
 }
 \arguments{
@@ -30,7 +30,10 @@ Must contain \code{taxon_col} and every column named in \code{rank_cols}.}
 occurrence-model share (default \code{"theta_mean"}).}
 
 \item{rank_cols}{Character vector. Which columns in \code{taxonomy_map} to
-aggregate by (default \code{c("genus", "family")}).}
+aggregate by (default \code{c("species", "genus", "family")}). See
+"Why \code{"species"} is in the default \code{rank_cols}" below -- \code{"species"} is
+auto-derived as \code{taxon_col}'s own identity when \code{taxonomy_map} has no
+explicit \code{"species"} column.}
 }
 \value{
 A data frame with one row per (rank, taxon) group actually
@@ -56,9 +59,9 @@ few candidates one observation's evidence happened to surface.
 records} -- one record belongs to exactly one taxon, so shares are
 mutually exclusive across taxa. That makes the group's true share the
 \emph{exact} sum of its members' shares, by finite additivity, with no
-independence assumption required (unlike a noisy-OR combination, which
-assumes independent Bernoulli presence events -- the wrong model here; see
-\code{TaxaFlag/REENTRY_PROMPT_axes_wrapup.md}'s Task 1 for the full derivation).
+independence assumption required -- unlike a noisy-OR combination
+(\code{1 - prod(1 - p_i)}), which assumes independent Bernoulli presence
+events per taxon and is the wrong model for a compositional share.
 
 \code{posterior_consensus()} only ever sees the candidate rows hypothesized for
 ONE observation, so it cannot compute a true group sum on its own -- a
@@ -66,6 +69,26 @@ genus with 13 locally modelled species might have only 2-3 of them appear
 as candidates for any single BLAST hit. This function does the
 aggregation once, up front, over the full \code{taxaexpect_priors} table, so
 \code{posterior_consensus()} only needs a cheap lookup per observation.
+}
+
+\section{Why \code{"species"} is in the default \code{rank_cols}}{
+
+\code{posterior_consensus()}'s \code{group_priors} lookup is keyed on
+\verb{(lca$rank, lca$taxon)}, and most real consensus calls resolve at
+\strong{species} rank -- but a species has no "group" to sum over in the
+usual genus/family sense, it IS the row. Without a \code{rank == "species"}
+entry, every species-level \code{consensus_taxon} finds nothing in
+\code{group_priors}, and \code{consensus_has_occurrence_record} reads \code{FALSE} (not
+\code{NA} -- \code{group_priors} was genuinely supplied, just missing this rank) for
+the vast majority of real observations, purely from this gap -- confirmed
+on real production data (504 of 616 real Mugu observations misread
+"unprecedented"). \code{rank_cols} therefore defaults to
+\code{c("species", "genus", "family")}; when \code{taxonomy_map} has no explicit
+\code{"species"} column, one is auto-derived as \code{taxon_col}'s own values
+(identity: a species' "group sum" is just its own \code{theta_col}, \code{n_members}
+= 1). Supply an explicit \code{"species"} column in \code{taxonomy_map} to override
+this (e.g. a backbone-resolved name differing from \code{taxon_col}), or omit
+\code{"species"} from \code{rank_cols} to disable it entirely.
 }
 
 \examples{

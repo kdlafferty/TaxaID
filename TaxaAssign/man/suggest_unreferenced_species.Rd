@@ -144,8 +144,17 @@ expanded family: \code{family}, \code{plausible_count}, \code{ncbi_count}, \code
 }
 \examples{
 \dontrun{
-match_df <- readRDS(
-  system.file("match_obj.rds", package = "TaxaMatch")
+# Requires real LLM (genus -> plausible species) and NCBI (barcode-count)
+# network calls; match_df is typically real TaxaMatch output, but any
+# data frame with these columns works.
+match_df <- data.frame(
+  observation_id   = c("S1", "S1", "S2", "S2"),
+  score_original   = c(99, 88, 97, 85),
+  taxon_name       = c("Fundulus lima", "Fundulus zebrinus",
+                       "Gambusia affinis", "Gambusia holbrooki"),
+  taxon_name_rank  = "species",
+  genus            = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
+  stringsAsFactors = FALSE
 )
 
 ctx <- data.frame(
@@ -156,7 +165,7 @@ ctx <- data.frame(
 # Genus-level unreferenced species only
 unref_names <- suggest_unreferenced_species(
   match_df, context = ctx, barcode_term = "12S",
-  llm_fn = TaxaTools::call_anthropic_api, max_date = "2024/12/31"
+  llm_fn = TaxaTools::call_api, max_date = "2024/12/31"
 )
 cat("Unreferenced taxa found:", length(unref_names), "\n")
 

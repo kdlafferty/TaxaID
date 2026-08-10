@@ -134,26 +134,17 @@
 #' assignments (more upranking to genus/family); decrease to 0.8 for more
 #' aggressive species-level calls.
 #'
-#' \strong{Empirical sensitivity (2026-07-09, real data):} a grid sweep against
-#' a real 3,000-observation subsample of PtConception 12S posteriors (see
-#' \code{diagnostics/posterior_threshold_sweep.R}) found the two defaults are
-#' NOT equally load-bearing. Holding \code{cumulative_threshold} at the
-#' default 0.90, sweeping \code{min_posterior} from 0 to 0.20 moved the
-#' finest-rank resolution rate by +8.2 points (72.3\% -> 80.5\%) -- a real,
-#' fairly linear effect. Holding \code{min_posterior} at the default 0.05,
-#' sweeping \code{cumulative_threshold} from 0.70 to 0.99 moved resolution by
-#' only -3.3 points (79.6\% -> 76.3\%) -- \code{cumulative_threshold} does
-#' comparatively little independent work once a reasonable \code{min_posterior}
-#' floor is already in place. The two parameters interact sharply only in the
-#' unrealistic corner of \code{min_posterior = 0} combined with
-#' \code{cumulative_threshold = 0.99} (resolution drops to 57.9\%), confirming
-#' the mechanism described above is real but not a practical risk at the
-#' current defaults. \strong{Caveat:} this sweep measures resolution
-#' \emph{rate} (how often the pipeline commits to a finest-rank call), not
-#' \emph{accuracy} (whether that call is correct) -- no ground-truth-validated
-#' observation set was available to check against, so a higher
-#' \code{min_posterior} driving up the resolved-\% is not itself evidence that
-#' those additional resolved calls are correct.
+#' \strong{Parameter sensitivity:} a grid sweep against a real posterior
+#' dataset (see \code{diagnostics/posterior_threshold_sweep.R}) found the two
+#' defaults are not equally load-bearing: \code{min_posterior} has a real,
+#' roughly linear effect on how often the pipeline resolves to the finest
+#' rank, while \code{cumulative_threshold} does comparatively little
+#' independent work once a reasonable \code{min_posterior} floor is already
+#' in place. The two interact sharply only in the unrealistic combination of
+#' \code{min_posterior = 0} with a very high \code{cumulative_threshold}.
+#' This sweep measures resolution \emph{rate}, not \emph{accuracy} -- no
+#' ground-truth-validated observation set was available, so a higher
+#' resolved-\% is not itself evidence those calls are correct.
 #'
 #' \strong{LCA method:}
 #' Lowest Common Ancestor is the standard conservative consensus method in
@@ -353,14 +344,21 @@
 #'   [suggest_unreferenced_species()]
 #'
 #' @examples
-#' \dontrun{
-#' consensus <- posterior_consensus(
-#'   result_updated,
-#'   cumulative_threshold = 0.9,
-#'   min_posterior = 0.05
+#' posterior_df <- data.frame(
+#'   observation_id   = c("S1", "S1", "S1"),
+#'   taxon_name       = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+#'   taxon_name_rank  = c("species", "species", "genus"),
+#'   hypothesis_type  = "specific_candidate",
+#'   genus            = "Gadus",
+#'   family           = "Gadidae",
+#'   posterior_mean   = c(0.75, 0.20, 0.05)
 #' )
-#' head(consensus)
-#' }
+#' consensus <- posterior_consensus(
+#'   posterior_df,
+#'   cumulative_threshold = 0.9,
+#'   min_posterior         = 0.05
+#' )
+#' consensus[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
 #'
 #' @importFrom cli cli_abort cli_inform cli_warn
 #' @importFrom dplyr bind_rows
@@ -410,6 +408,10 @@ posterior_consensus <- function(posterior_df,
   } else {
     # Keep user order but restrict to known standard ranks first; append others
     rank_system_eff <- rank_system
+    # .find_lca()/.build_species_ref() infer coarsest/finest from POSITION --
+    # warn if a user-supplied vector disagrees in order with the standard
+    # Linnaean ranking, since that would silently swap "coarsest" and "finest".
+    .check_rank_system_order(rank_system_eff, "posterior_consensus")
   }
 
   # --- Optional taxonomy lookup for unreferenced rows -------------------------
@@ -421,8 +423,8 @@ posterior_consensus <- function(posterior_df,
         "i" = "There is no safe default: the correct backbone depends on \\
         which backbone your input taxonomy was verified against, and this \\
         varies by project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). \\
-        See the Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the \\
-        full list."
+        See TaxaTools::verify_taxon_names()'s backbone_id docs, or \\
+        https://verifier.globalnames.org/ for the full list."
       ))
     }
     if (!requireNamespace("TaxaTools", quietly = TRUE)) {
@@ -509,6 +511,16 @@ posterior_consensus <- function(posterior_df,
 # Internal helpers
 # ==============================================================================
 
+#' Read a single-row data frame's column, or a default when the column is
+#' absent (an optional upstream output, e.g. a source predating this column,
+#' or posterior_df coming from assign_taxa_llm() rather than
+#' compute_posterior()). Consolidates a pattern repeated ~8 times below for
+#' the winner_* pass-through columns.
+#' @noRd
+.row_col_or <- function(row, col, default = NA_real_) {
+  if (col %in% names(row)) row[[col]][[1L]] else default
+}
+
 #' Compute consensus for one observation
 #' @noRd
 .consensus_one_observation <- function(chunk, sid, rank_system,
@@ -576,9 +588,9 @@ posterior_consensus <- function(posterior_df,
   # Extract prior and likelihood values; NA when the source column is absent
   # (e.g. when posterior_df comes from assign_taxa_llm() rather than compute_posterior()).
   winner_row            <- plausible[1L, ]
-  winner_prior          <- if ("prior_mean"           %in% names(winner_row)) winner_row$prior_mean[[1L]]           else NA_real_
-  winner_likelihood     <- if ("score_likelihood"     %in% names(winner_row)) winner_row$score_likelihood[[1L]]     else NA_real_
-  winner_likelihood_cov <- if ("score_likelihood_cov" %in% names(winner_row)) winner_row$score_likelihood_cov[[1L]] else NA_real_
+  winner_prior          <- .row_col_or(winner_row, "prior_mean")
+  winner_likelihood     <- .row_col_or(winner_row, "score_likelihood")
+  winner_likelihood_cov <- .row_col_or(winner_row, "score_likelihood_cov")
   # winner_theta_mean (2026-07-30): the winner's raw occurrence-model share
   # (TaxaExpect::prepare_model_dataframe()'s theta_mean = n_species /
   # n_total_at_site, a compositional share of local records), distinct from
@@ -588,7 +600,7 @@ posterior_consensus <- function(posterior_df,
   # "Rescaling onto the occurrence scale" section). Occurrence-plausibility
   # diagnostics below use this, not winner_prior, so a boost elsewhere in the
   # dataset cannot make an occurrence-implausible taxon read as "expected".
-  winner_theta_mean     <- if ("theta_mean"           %in% names(winner_row)) winner_row$theta_mean[[1L]]           else NA_real_
+  winner_theta_mean     <- .row_col_or(winner_row, "theta_mean")
 
   # Confusion-risk pass-through (TaxaLikely::evaluate_likelihoods()'s
   # species_confusion_risk/genus_confusion_risk/family_confusion_risk/
@@ -599,14 +611,10 @@ posterior_consensus <- function(posterior_df,
   # input). Purely informational -- never changes consensus_taxon/
   # consensus_rank. See TaxaFlag::add_posthoc_assessment()'s confusion-risk
   # wiring for how a downstream consumer reads these.
-  winner_species_confusion_risk <- if ("species_confusion_risk" %in% names(winner_row))
-    winner_row$species_confusion_risk[[1L]] else NA_real_
-  winner_genus_confusion_risk <- if ("genus_confusion_risk" %in% names(winner_row))
-    winner_row$genus_confusion_risk[[1L]] else NA_real_
-  winner_family_confusion_risk <- if ("family_confusion_risk" %in% names(winner_row))
-    winner_row$family_confusion_risk[[1L]] else NA_real_
-  winner_own_rank_confusion_risk <- if ("own_rank_confusion_risk" %in% names(winner_row))
-    winner_row$own_rank_confusion_risk[[1L]] else NA_real_
+  winner_species_confusion_risk   <- .row_col_or(winner_row, "species_confusion_risk")
+  winner_genus_confusion_risk     <- .row_col_or(winner_row, "genus_confusion_risk")
+  winner_family_confusion_risk    <- .row_col_or(winner_row, "family_confusion_risk")
+  winner_own_rank_confusion_risk  <- .row_col_or(winner_row, "own_rank_confusion_risk")
 
   # winner_rank_expanded (Session 149): TRUE when the winning hypothesis came
   # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
@@ -618,8 +626,7 @@ posterior_consensus <- function(posterior_df,
   # ID), but a downstream consumer treating every species-level consensus_taxon
   # as equally evidence-supported would be wrong to do so for these rows --
   # see ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md.
-  winner_hypothesis_type <- if ("hypothesis_type" %in% names(winner_row))
-    as.character(winner_row$hypothesis_type[[1L]]) else NA_character_
+  winner_hypothesis_type <- as.character(.row_col_or(winner_row, "hypothesis_type", NA_character_))
   winner_rank_expanded <- if (is.na(winner_hypothesis_type)) NA
     else identical(winner_hypothesis_type, "rank_expanded")
 
@@ -664,8 +671,9 @@ posterior_consensus <- function(posterior_df,
   has_tier   <- "model_tier" %in% names(named_all)
   plaus_mask <- if (has_tier) !is.na(named_all$model_tier) else NULL
 
-  winner_taxon <- if ("taxon_name" %in% names(winner_row))
-    as.character(winner_row$taxon_name[[1L]]) else NA_character_
+  # taxon_name is a required column (checked at input validation), unlike the
+  # winner_* pass-throughs above, so no presence check is needed here.
+  winner_taxon <- as.character(winner_row$taxon_name[[1L]])
 
   primary_n_plausible_competitors <- if (has_tier) {
     others <- if (is.na(winner_taxon)) rep(TRUE, nrow(named_all)) else
@@ -780,11 +788,17 @@ posterior_consensus <- function(posterior_df,
   # compute_posterior(), so the present rows may not sum to 1; summing directly
   # avoids the divide-by-present-rows trap (which always returns 1.0 for
   # single-hypothesis observations).
-  rank_vals_all <- if (!is.na(lca$rank) && !is.na(lca$taxon))
-    .extract_rank_values(named_all, lca$rank) else NULL
+  rank_vals_all <- if (!is.na(lca$rank) && !is.na(lca$taxon)) {
+    .extract_rank_values(named_all, lca$rank)
+  } else {
+    NULL
+  }
 
-  in_lca <- if (!is.null(rank_vals_all))
-    !is.na(rank_vals_all) & rank_vals_all == lca$taxon else NULL
+  in_lca <- if (!is.null(rank_vals_all)) {
+    !is.na(rank_vals_all) & rank_vals_all == lca$taxon
+  } else {
+    NULL
+  }
 
   consensus_posterior <- if (!is.null(in_lca)) {
     sum(named_all[[posterior_col]][in_lca], na.rm = TRUE)
@@ -929,6 +943,15 @@ posterior_consensus <- function(posterior_df,
     # bypassing this function), which is why the bug was invisible unless the
     # confidence columns were checked specifically. Found via a real end-to-end
     # Template run using this exact data shape.
+    #
+    # This trusts taxon_name_rank == "species" to mean taxon_name really is a
+    # full binomial (not, say, a bare genus mislabeled "species"). That
+    # contract is enforced upstream, not re-checked here: e.g.
+    # TaxaMatch::convert_taxonomy_backbone() corrects taxon_name_rank
+    # whenever a row's taxon_name falls back to a coarser resolved name
+    # (see that package's "Inu Inu" fabricated-pseudo-binomial fix). The same
+    # genus-derivation branch above makes the identical assumption for
+    # taxon_name_rank == "genus".
     derived <- ifelse(df$taxon_name_rank == "species", df$taxon_name, NA_character_)
     if (rank %in% names(df)) {
       vals <- as.character(df[[rank]])

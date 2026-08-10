@@ -11,9 +11,9 @@
 #' records** -- one record belongs to exactly one taxon, so shares are
 #' mutually exclusive across taxa. That makes the group's true share the
 #' *exact* sum of its members' shares, by finite additivity, with no
-#' independence assumption required (unlike a noisy-OR combination, which
-#' assumes independent Bernoulli presence events -- the wrong model here; see
-#' `TaxaFlag/REENTRY_PROMPT_axes_wrapup.md`'s Task 1 for the full derivation).
+#' independence assumption required -- unlike a noisy-OR combination
+#' (`1 - prod(1 - p_i)`), which assumes independent Bernoulli presence
+#' events per taxon and is the wrong model for a compositional share.
 #'
 #' `posterior_consensus()` only ever sees the candidate rows hypothesized for
 #' ONE observation, so it cannot compute a true group sum on its own -- a
@@ -21,6 +21,24 @@
 #' as candidates for any single BLAST hit. This function does the
 #' aggregation once, up front, over the full `taxaexpect_priors` table, so
 #' `posterior_consensus()` only needs a cheap lookup per observation.
+#'
+#' @section Why `"species"` is in the default `rank_cols`:
+#' `posterior_consensus()`'s `group_priors` lookup is keyed on
+#' `(lca$rank, lca$taxon)`, and most real consensus calls resolve at
+#' \strong{species} rank -- but a species has no "group" to sum over in the
+#' usual genus/family sense, it IS the row. Without a `rank == "species"`
+#' entry, every species-level `consensus_taxon` finds nothing in
+#' `group_priors`, and `consensus_has_occurrence_record` reads `FALSE` (not
+#' `NA` -- `group_priors` was genuinely supplied, just missing this rank) for
+#' the vast majority of real observations, purely from this gap -- confirmed
+#' on real production data (504 of 616 real Mugu observations misread
+#' "unprecedented"). `rank_cols` therefore defaults to
+#' `c("species", "genus", "family")`; when `taxonomy_map` has no explicit
+#' `"species"` column, one is auto-derived as `taxon_col`'s own values
+#' (identity: a species' "group sum" is just its own `theta_col`, `n_members`
+#' = 1). Supply an explicit `"species"` column in `taxonomy_map` to override
+#' this (e.g. a backbone-resolved name differing from `taxon_col`), or omit
+#' `"species"` from `rank_cols` to disable it entirely.
 #'
 #' @param taxaexpect_priors Data frame. The full local occurrence-prior
 #'   table (e.g. `TaxaExpect::generate_full_priors()`'s output, or the
@@ -35,7 +53,10 @@
 #' @param theta_col Character. Column in `taxaexpect_priors` holding the
 #'   occurrence-model share (default `"theta_mean"`).
 #' @param rank_cols Character vector. Which columns in `taxonomy_map` to
-#'   aggregate by (default `c("genus", "family")`).
+#'   aggregate by (default `c("species", "genus", "family")`). See
+#'   "Why `"species"` is in the default `rank_cols`" below -- `"species"` is
+#'   auto-derived as `taxon_col`'s own identity when `taxonomy_map` has no
+#'   explicit `"species"` column.
 #'
 #' @return A data frame with one row per (rank, taxon) group actually
 #'   present in the data: `rank` (the `rank_cols` value, e.g. `"genus"`),
@@ -68,7 +89,7 @@ compute_group_priors <- function(taxaexpect_priors,
                                   taxonomy_map,
                                   taxon_col = "taxon_name",
                                   theta_col = "theta_mean",
-                                  rank_cols = c("genus", "family")) {
+                                  rank_cols = c("species", "genus", "family")) {
 
   if (!is.data.frame(taxaexpect_priors))
     cli::cli_abort("{.arg taxaexpect_priors} must be a data frame.")
@@ -80,6 +101,14 @@ compute_group_priors <- function(taxaexpect_priors,
   }
   if (!taxon_col %in% names(taxonomy_map))
     cli::cli_abort("Column {.field {taxon_col}} not found in {.arg taxonomy_map}.")
+
+  # "species" is a group of one: auto-derive it as taxon_col's own identity
+  # when taxonomy_map has no explicit "species" column, rather than requiring
+  # every caller to add that column by hand (see @section above).
+  if ("species" %in% rank_cols && !"species" %in% names(taxonomy_map)) {
+    taxonomy_map$species <- taxonomy_map[[taxon_col]]
+  }
+
   missing_rank_cols <- setdiff(rank_cols, names(taxonomy_map))
   if (length(missing_rank_cols) > 0)
     cli::cli_abort(
@@ -99,9 +128,10 @@ compute_group_priors <- function(taxaexpect_priors,
   out_list <- lapply(rank_cols, function(rc) {
     vals <- merged[[rc]]
     ok   <- !is.na(vals) & nzchar(as.character(vals))
-    if (!any(ok))
+    if (!any(ok)) {
       return(data.frame(rank = character(0), taxon = character(0),
                         theta_sum = numeric(0), n_members = integer(0)))
+    }
     theta_ok <- merged$theta_[ok]
     taxon_ok <- vals[ok]
     theta_sum <- stats::aggregate(theta_ok, by = list(taxon = taxon_ok), FUN = sum)

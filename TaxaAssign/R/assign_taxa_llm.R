@@ -193,46 +193,35 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #'   each group call. Default `FALSE`.
 #'
 #' @details
-#' \strong{Empirical sensitivity (2026-07-09, real data):} a sweep of
-#' `score_sharpness`, `unknown_lik_weight`, `prior_phi`, and
-#' `absent_detection_prob` against a real, fixed LLM response (499
-#' PtConception 12S observations, 143 LLM-evaluated taxa; see
-#' `diagnostics/llm_prior_shape_sweep.R`) found these four parameters mostly
-#' shape \emph{confidence} (`consensus_posterior`), not \emph{which} taxon
-#' wins (`pct_resolved` was essentially flat -- within ~1.5 points -- across
-#' every parameter and grid tested):
-#' \itemize{
-#'   \item \strong{`unknown_lik_weight`} has the largest real effect: mean
-#'     winning-hypothesis posterior mass dropped from 0.997 to 0.911 sweeping
-#'     0.01 -> 0.20 (default 0.05 sits at 0.992). It siphons probability mass
-#'     from every named candidate uniformly, so the same candidate usually
-#'     still wins, just less confidently.
-#'   \item \strong{`score_sharpness`} had almost no effect in this dataset
-#'     (confidence moved only 0.9922 -> 0.9936 across the full 0-1 range) --
-#'     the LLM-derived prior is doing nearly all the discriminating work here,
-#'     consistent with the "LLM prior dominates over score" design intent
-#'     documented above.
-#'   \item \strong{`prior_phi`}: a flat scalar phi (any value 5-80) gave
-#'     statistically the same resolution/confidence as the default tiered
-#'     vector `c(high=50, moderate=10, low=3)` in this sweep -- only very low
-#'     phi (2-3) noticeably hurt. This does not prove the tiered structure is
-#'     unnecessary (it may matter more for datasets with more skewed
-#'     `information_quality`, or for accuracy rather than confidence), but it
-#'     is a real, open question about whether the added complexity is
-#'     earning its keep, not yet resolved.
-#'   \item \strong{`absent_detection_prob`}: tested via a disclosed synthetic
-#'     `known_absent` overlay (no real workflow in this ecosystem currently
-#'     supplies `known_absent`, so the real checkpoint had none to sweep
-#'     against) -- no meaningful aggregate effect was detected, but this
-#'     result is the weakest of the four: only 5 of 143 taxa were affected,
-#'     diluted across 499 observations. Not a validated finding either way.
-#' }
-#' \strong{Caveat:} this sweep measures resolution \emph{rate} and mean
-#' posterior \emph{mass}, not \emph{accuracy} -- no ground-truth-validated
-#' observations were available. It also reflects ONE real but
-#' non-reproducible LLM response (a single model call, not repeated draws),
-#' so treat the exact numbers as illustrative of sensitivity magnitude, not a
-#' precise calibration.
+#' \strong{Parameter sensitivity:} a sweep of `score_sharpness`,
+#' `unknown_lik_weight`, `prior_phi`, and `absent_detection_prob` against one
+#' real, fixed LLM response (see `diagnostics/llm_prior_shape_sweep.R`) found
+#' these four parameters mostly shape \emph{confidence}
+#' (`consensus_posterior`), not \emph{which} taxon wins. `unknown_lik_weight`
+#' has the largest effect (raising it toward 0.20 measurably lowers winning-
+#' hypothesis confidence); `score_sharpness` has almost none (the LLM-derived
+#' prior does most of the discriminating work); a flat scalar `prior_phi`
+#' performed comparably to the tiered default in this one sweep, so whether
+#' the tiered structure earns its complexity is a real, unresolved question;
+#' `absent_detection_prob` showed no aggregate effect in a small synthetic
+#' test (no real workflow in this ecosystem currently supplies
+#' `known_absent`). This reflects one non-reproducible LLM response, not a
+#' calibration study -- treat it as sensitivity direction, not a precise
+#' estimate.
+#'
+#' \strong{Context is optional but strongly recommended.} The prompt always
+#' asks the LLM to commit to `range_status` (geographic presence "in this
+#' region") regardless of whether `context` supplies a region at all. With no
+#' `context`, the LLM has nothing but each taxon's name to reason from and
+#' falls back on general knowledge of the species' typical range rather than
+#' anything about the actual survey site -- `range_status`/`prior_weight`
+#' from a context-less call should be treated as weak, unverified evidence,
+#' not a real site-specific assessment. A `cli_warn()` is emitted whenever
+#' `context` is `NULL`. `context` is not a hard requirement (rather than an
+#' error) because a coarse call -- e.g. flagging an unambiguously
+#' `taxonomically_impossible` candidate by genus/family alone -- can still be
+#' useful without any location at all; supply `context` whenever a real
+#' site is available.
 #'
 #' @return A data frame (the output of `compute_posterior()`) with columns:
 #'   `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`, `range_status`,
@@ -263,23 +252,45 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #' @export
 #'
 #' @examples
+#' match_df <- data.frame(
+#'   observation_id   = c("S1", "S1", "S1", "S2", "S2"),
+#'   score_original   = c(99, 93, 85, 100, 88),
+#'   taxon_name       = c("Eucyclogobius newberryi", "Quietula y-cauda",
+#'                        "Gillichthys mirabilis",
+#'                        "Eucyclogobius newberryi", "Gillichthys mirabilis"),
+#'   taxon_name_rank  = rep("species", 5),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' # A stub llm_fn stands in for a real API call so this example is runnable
+#' # offline; a real call would use llm_fn = TaxaTools::call_api instead.
+#' stub_llm_fn <- function(prompt_str) {
+#'   taxa <- regmatches(prompt_str,
+#'     gregexpr("(?m)(?<=^- )[^\n(]+(?= \\()", prompt_str, perl = TRUE))[[1]]
+#'   rows <- paste0(
+#'     sprintf('{"taxon_name":"%s","range_status":"native","prior_weight":1}',
+#'             trimws(taxa)),
+#'     collapse = ",\n  ")
+#'   paste0("[\n  ", rows, "\n]")
+#' }
+#'
+#' # Minimal call -- no context (see "Context" below for why this is weaker
+#' # evidence than a call with a real site context)
+#' result <- assign_taxa_llm(match_df, llm_fn = stub_llm_fn, pause_seconds = 0)
+#'
+#' # With shared context (all observations share one site)
+#' ctx <- data.frame(ecoregion = "California Coast", main_habitat = "estuarine")
+#' result <- assign_taxa_llm(match_df, context = ctx, llm_fn = stub_llm_fn,
+#'                            pause_seconds = 0)
+#'
 #' \dontrun{
-#' match_df <- readRDS(system.file("match_obj.rds", package = "TaxaMatch"))
-#'
-#' # Minimal call -- no context
-#' result <- assign_taxa_llm(match_df)
-#'
-#' # With shared context
-#' ctx <- data.frame(ecoregion = "California Coast", habitat = "estuarine")
-#' result <- assign_taxa_llm(match_df, context = ctx,
-#'                            llm_fn = TaxaTools::call_anthropic_api)
-#'
 #' # With per-observation context grouped by ecoregion (one LLM call per region)
-#' ctx <- data.frame(observation_id = match_df$observation_id,
-#'                   ecoregion = ...,
-#'                   stringsAsFactors = FALSE)
+#' ctx <- data.frame(observation_id = c("S1", "S2"),
+#'                    ecoregion      = c("California Coast", "Oregon Coast"),
+#'                    stringsAsFactors = FALSE)
 #' result <- assign_taxa_llm(match_df, context = ctx,
-#'                            context_group = "ecoregion")
+#'                            context_group = "ecoregion",
+#'                            llm_fn = TaxaTools::call_api)
 #' }
 assign_taxa_llm <- function(match_df,
                              context               = NULL,
@@ -334,6 +345,14 @@ assign_taxa_llm <- function(match_df,
   if (!is.numeric(absent_detection_prob) || length(absent_detection_prob) != 1L ||
       absent_detection_prob <= 0 || absent_detection_prob >= 1)
     cli::cli_abort("{.arg absent_detection_prob} must be a single number strictly between 0 and 1.")
+  if (is.null(context))
+    cli::cli_warn(c(
+      "{.arg context} is NULL -- the LLM will assign {.field range_status} \\
+      from general knowledge of each taxon's typical range, not any \\
+      confirmed survey location.",
+      "i" = "Supply {.arg context} (e.g. {.code data.frame(ecoregion = ..., \\
+      main_habitat = ...)}) when a real site is known."
+    ))
 
   # Validate prior_weight_guide
   if (!is.list(prior_weight_guide) || length(prior_weight_guide) == 0L)
@@ -705,18 +724,14 @@ assign_taxa_llm <- function(match_df,
   for (sid in observation_ids) {
     grp      <- group_map$group_label[group_map$observation_id == sid]
     lik_df   <- lik_list[[sid]]
+    # .parse_taxa_response() always returns a fixed column set (taxon_name,
+    # range_status, habitat_fit, information_quality, prior_mean,
+    # prior_source) -- it never passes through hypothesis_type/taxon_name_rank
+    # even if the LLM's raw JSON happened to include them, so no .x/.y
+    # collision-guard is needed on the join below.
     prior_df <- prior_tables[[grp]]
 
-    # Drop columns from prior_df that also exist in lik_df (other than the join key)
-    # to prevent dplyr from creating .x / .y suffixed duplicates.
-    prior_cols_to_drop <- intersect(
-      c("hypothesis_type", "taxon_name_rank"),
-      names(prior_df)
-    )
-    prior_df_clean <- prior_df[, setdiff(names(prior_df), prior_cols_to_drop),
-                                drop = FALSE]
-
-    merged <- dplyr::left_join(lik_df, prior_df_clean, by = "taxon_name")
+    merged <- dplyr::left_join(lik_df, prior_df, by = "taxon_name")
 
     # unreferenced_family prior: identified by NA taxon_name (fixed weight, not LLM-assigned)
     unk_idx <- is.na(merged$taxon_name)

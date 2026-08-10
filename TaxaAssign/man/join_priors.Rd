@@ -20,8 +20,8 @@ join_priors(
 \arguments{
 \item{likelihoods}{Data frame of likelihoods, typically from
 \code{\link[TaxaLikely:apply_coverage_constraints]{TaxaLikely::apply_coverage_constraints()}} or
-\code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}. Must contain \code{observation_id},
-\code{taxon_name}, \code{taxon_name_rank}.}
+\code{\link[TaxaLikely:expand_unreferenced_hypotheses]{TaxaLikely::expand_unreferenced_hypotheses()}}. Must contain
+\code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}.}
 
 \item{taxaexpect_priors}{Data frame of TaxaExpect priors. One row
 per \code{taxon_name} x \code{grid_id} x \code{main_habitat}, with columns
@@ -42,6 +42,11 @@ observations came from. Accepted formats:
 }
 If \code{main_habitat} is omitted, the error message lists available
 habitats and row counts at the resolved grid cell.
+\code{list(main_habitat = "Marine")} alone (no \code{lat}/\code{lon}/
+\code{grid_id}) auto-fills coordinates from
+\code{attr(taxaexpect_priors, "search_center")} when present (set by
+\code{TaxaExpect::build_priors()}) -- \code{main_habitat} itself is
+never auto-filled or guessed.
 See Details.}
 
 \item{taxonomy_lookup}{Optional data frame mapping \code{taxon_name} to
@@ -92,8 +97,11 @@ candidates).}
 \item{backbone_id}{Taxonomic backbone ID used for the taxonomy fallback
 fill (see Details). Required, no default -- the correct value depends on
 which backbone your input taxonomy was verified against, which varies by
-project (e.g. \code{11} for GBIF, \code{4} for NCBI). See the Taxonomic Backbone ID
-Reference in \code{TaxaID/CLAUDE.md} for the full list.}
+project. Passed straight through to
+\code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}}/\code{TaxaTools::change_backbone()}'s
+\code{dataSources} ID (see \url{https://verifier.globalnames.org/} for the full
+list). Common values: \code{1} Catalogue of Life, \code{3} ITIS, \code{4} NCBI, \code{9}
+WoRMS, \code{11} GBIF.}
 }
 \value{
 A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, with columns
@@ -199,16 +207,33 @@ unchanged and receive the dark diversity floor prior as before.
 }
 
 \examples{
-\dontrun{
-joined <- join_priors(
-  likelihoods     = expanded_likelihoods,
-  taxaexpect_priors = priors,
-  site            = list(grid_id = "Grid_34p4_m119p8", main_habitat = "Marine")
+likelihoods <- data.frame(
+  observation_id  = c("ASV_1", "ASV_1"),
+  taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+  taxon_name_rank = "species",
+  genus           = "Gadus",
+  family          = "Gadidae",
+  stringsAsFactors = FALSE
 )
-}
+taxaexpect_priors <- data.frame(
+  taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+  taxon_name_rank = "species",
+  grid_id         = "Grid_34p4_m119p8",
+  main_habitat    = "Marine",
+  alpha           = c(30, 5),
+  beta            = c(20, 45),
+  undetected_type = NA_character_
+)
+joined <- join_priors(
+  likelihoods       = likelihoods,
+  taxaexpect_priors = taxaexpect_priors,
+  site              = list(grid_id = "Grid_34p4_m119p8", main_habitat = "Marine"),
+  backbone_id       = 11L
+)
+joined[, c("observation_id", "taxon_name", "prior_mean")]
 
 }
 \seealso{
-\code{\link[=compute_posterior]{compute_posterior()}}, \code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}},
+\code{\link[=compute_posterior]{compute_posterior()}}, \code{\link[TaxaLikely:expand_unreferenced_hypotheses]{TaxaLikely::expand_unreferenced_hypotheses()}},
 \code{\link[TaxaLikely:apply_coverage_constraints]{TaxaLikely::apply_coverage_constraints()}}
 }

@@ -83,12 +83,20 @@ occurrence data enters the pipeline. Use
 slash names appear.
 }
 \examples{
-\dontrun{
-consensus <- posterior_consensus(posterior_df)
+posterior_df <- data.frame(
+  observation_id  = c("S1", "S1", "S2"),
+  taxon_name      = c("Homo sapiens", "Homo heidelbergensis", "Bos taurus"),
+  taxon_name_rank = "species",
+  hypothesis_type = "specific_candidate",
+  genus           = c("Homo", "Homo", "Bos"),
+  family          = c("Hominidae", "Hominidae", "Bovidae"),
+  posterior_mean  = c(0.55, 0.45, 1.0)
+)
+consensus <- posterior_consensus(posterior_df, min_posterior = 0)
 consensus <- add_slash_taxon(consensus)
+consensus[, c("observation_id", "slash_taxon_name", "irreducible_consensus")]
 
 # All reportable observations: singletons + irreducible slash taxa
 reportable <- consensus[consensus$irreducible_consensus \%in\% TRUE, ]
-}
 
 }

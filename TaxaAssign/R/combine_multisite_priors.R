@@ -136,9 +136,24 @@ utils::globalVariables(c(
 #' @seealso [join_priors()], [compute_posterior()]
 #'
 #' @examples
-#' \dontrun{
-#' joined   <- join_priors(likelihoods, taxaexpect_priors, site = site_df)
+#' # A candidate ("Gadus morhua") detected at two sites, plus a single-site
+#' # candidate ("Gadus chalcogrammus") for the same observation.
+#' joined <- data.frame(
+#'   observation_id  = c("ASV_1", "ASV_1", "ASV_1"),
+#'   taxon_name      = c("Gadus morhua", "Gadus morhua", "Gadus chalcogrammus"),
+#'   taxon_name_rank = "species",
+#'   grid_id         = c("Grid_A", "Grid_B", "Grid_A"),
+#'   main_habitat    = c("Neritic", "Neritic", "Neritic"),
+#'   prior_alpha     = c(80, 3, 10),
+#'   prior_beta      = c(20, 2, 90),
+#'   stringsAsFactors = FALSE
+#' )
 #' combined <- combine_multisite_priors(joined)
+#' combined
+#'
+#' \dontrun{
+#' joined    <- join_priors(likelihoods, taxaexpect_priors, site = site_df)
+#' combined  <- combine_multisite_priors(joined)
 #' posterior <- compute_posterior(combined)
 #' }
 #'
@@ -157,7 +172,7 @@ combine_multisite_priors <- function(joined) {
   if (length(missing_cols) > 0L) {
     cli::cli_abort(c(
       "{.arg joined} is missing required column(s): {.field {missing_cols}}",
-      "i" = "Pass {.fn join_priors} output (TaxaAssign >= Session 138, whose {.fn distinct} call is grid_id/main_habitat-aware)."
+      "i" = "Pass {.fn join_priors} output -- its final {.fn distinct} call is grid_id/main_habitat-aware, preserving one row per site."
     ))
   }
 

@@ -75,8 +75,9 @@
 #' @param backbone_id Integer. Backbone for taxonomy lookup in consensus.
 #'   Required, no default -- the correct value depends on which backbone
 #'   your input taxonomy was verified against, which varies by project
-#'   (e.g. \code{11} for GBIF, \code{4} for NCBI). See the Taxonomic
-#'   Backbone ID Reference in \code{TaxaID/CLAUDE.md} for the full list.
+#'   (e.g. \code{11} for GBIF, \code{4} for NCBI). See
+#'   \code{TaxaTools::verify_taxon_names()}'s \code{backbone_id} docs, or
+#'   \url{https://verifier.globalnames.org/} for the full list.
 #' @param lookup_missing_taxonomy Logical. Look up missing taxonomy in
 #'   consensus. Default \code{TRUE}.
 #' @param confirmation_quantile Numeric in (0, 1]. Quantile of confirming
@@ -117,6 +118,13 @@
 #'
 #' @examples
 #' \dontrun{
+#' # Requires a real match_obj from TaxaMatch and (by default) makes real LLM
+#' # API calls (auto_context, and suggest_unreferenced_species() via
+#' # detect_unreferenced) plus a TaxaTools::verify_taxon_names() lookup
+#' # (lookup_missing_taxonomy). See vignette("taxonomic-assignment", package
+#' # = "TaxaAssign") for a complete, step-by-step runnable version, and
+#' # assign_taxa_llm()'s own @examples for a fully offline stub-llm_fn demo
+#' # of the underlying LLM-prior mechanism this pipeline wraps.
 #' out <- run_llm_pipeline(
 #'   match_df        = match_obj,
 #'   geographic_hint = "Southern California",
@@ -171,8 +179,9 @@ run_llm_pipeline <- function(
       "{.arg backbone_id} must be specified explicitly.",
       "i" = "There is no safe default: the correct backbone depends on which \\
       backbone your input taxonomy was verified against, and this varies by \\
-      project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See the \\
-      Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the full list."
+      project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See \\
+      TaxaTools::verify_taxon_names()'s {.arg backbone_id} docs, or \\
+      https://verifier.globalnames.org/ for the full list."
     ))
   }
 
@@ -293,7 +302,8 @@ run_llm_pipeline <- function(
     llm_fn                = llm_fn,
     verbose               = verbose,
     .msg                  = .msg,
-    stage_prefix          = "run_llm_pipeline [4/4]"
+    stage_prefix          = "run_llm_pipeline [4/4]",
+    workflow              = "llm"
   )
 
   .msg("run_llm_pipeline: done.")

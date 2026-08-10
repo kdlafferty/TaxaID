@@ -63,6 +63,28 @@ test_that("custom rank_cols respected", {
   expect_false("genus" %in% out$rank)
 })
 
+test_that("rank_cols defaults to include species, auto-derived as taxon identity", {
+  out <- compute_group_priors(.priors(), .taxonomy())
+  sp <- out[out$rank == "species", ]
+  # Every priors row with a non-NA theta_mean gets its own species row,
+  # theta_sum = its own value, n_members = 1 (a group of one).
+  expect_true(all(c("species") %in% out$rank))
+  expect_setequal(sp$taxon, .priors()$taxon_name[!is.na(.priors()$theta_mean)])
+  expect_true(all(sp$n_members == 1L))
+})
+
+test_that("an explicit species column in taxonomy_map is respected, not overwritten", {
+  priors <- data.frame(taxon_name = c("X1", "X2"), theta_mean = c(0.1, 0.2))
+  taxonomy <- data.frame(taxon_name = c("X1", "X2"), species = c("Resolved A", "Resolved B"))
+  out <- compute_group_priors(priors, taxonomy, rank_cols = "species")
+  expect_setequal(out$taxon, c("Resolved A", "Resolved B"))
+})
+
+test_that("omitting species from rank_cols disables it (no auto-derivation forced)", {
+  out <- compute_group_priors(.priors(), .taxonomy(), rank_cols = "family")
+  expect_false("species" %in% out$rank)
+})
+
 test_that("stops on missing required columns", {
   expect_error(compute_group_priors("x", .taxonomy()), "must be a data frame")
   expect_error(compute_group_priors(.priors(), "x"), "must be a data frame")

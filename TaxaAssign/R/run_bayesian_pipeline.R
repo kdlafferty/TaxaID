@@ -68,8 +68,9 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #'   \code{\link{join_priors}} and consensus. Required, no default -- the
 #'   correct value depends on which backbone your input taxonomy was
 #'   verified against, which varies by project (e.g. \code{11} for GBIF,
-#'   \code{4} for NCBI). See the Taxonomic Backbone ID Reference in
-#'   \code{TaxaID/CLAUDE.md} for the full list.
+#'   \code{4} for NCBI). See
+#'   \code{TaxaTools::verify_taxon_names()}'s \code{backbone_id} docs, or
+#'   \url{https://verifier.globalnames.org/} for the full list.
 #' @param lookup_missing_taxonomy Logical. Look up missing taxonomy in
 #'   consensus. Default \code{TRUE}.
 #' @param confirmation_quantile Numeric in (0, 1]. Quantile of confirming
@@ -114,6 +115,13 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #'
 #' @examples
 #' \dontrun{
+#' # Requires real upstream objects this package alone cannot synthesize --
+#' # match_obj from TaxaMatch (sequence/image/acoustic match data), a fitted
+#' # trained_model from TaxaLikely::train_likelihood_model() (needs a real
+#' # reference sequence database), and priors from
+#' # TaxaExpect::generate_full_priors() (needs a real GBIF occurrence fetch).
+#' # See vignette("taxonomic-assignment", package = "TaxaAssign") for a
+#' # complete, step-by-step runnable version of this pipeline.
 #' out <- run_bayesian_pipeline(
 #'   match_df          = match_obj,
 #'   model_params      = trained_model,
@@ -159,7 +167,8 @@ run_bayesian_pipeline <- function(
       "i" = "There is no safe default: the correct backbone depends on which \\
       backbone your input taxonomy was verified against, which varies by \\
       project. Common values: {.val 11} (GBIF), {.val 4} (NCBI). See the \\
-      Taxonomic Backbone ID Reference in TaxaID/CLAUDE.md for the full list."
+      TaxaTools::verify_taxon_names()'s backbone_id docs, or \\
+      https://verifier.globalnames.org/ for the full list."
     ))
   }
 
@@ -565,7 +574,8 @@ run_bayesian_pipeline <- function(
     llm_fn                = llm_fn,
     verbose               = verbose,
     .msg                  = .msg,
-    stage_prefix          = "run_bayesian_pipeline [6/6]"
+    stage_prefix          = "run_bayesian_pipeline [6/6]",
+    workflow              = "bayesian"
   )
 
   .msg("run_bayesian_pipeline: done.")

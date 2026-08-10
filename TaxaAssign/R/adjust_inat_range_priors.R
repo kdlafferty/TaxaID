@@ -51,6 +51,22 @@ utils::globalVariables(c(
 #'   for elevated rows, FALSE otherwise).
 #' @seealso \code{join_priors()}, \code{TaxaFetch::check_inat_range()},
 #'   \code{compute_posterior()}
+#' @examples
+#' likelihoods_ready <- data.frame(
+#'   taxon_name      = c("Species alpha", "Species beta"),
+#'   alpha           = c(NA, 5),          # NA = unmodelled
+#'   prior_alpha     = c(1, 5),
+#'   prior_beta      = c(99, 15),
+#'   prior_mean      = c(0.01, 0.25),
+#'   singleton_alpha = c(2, 2),
+#'   singleton_beta  = c(18, 18)
+#' )
+#' inat_range <- data.frame(
+#'   taxon_name    = c("Species alpha", "Species beta"),
+#'   in_range      = c(TRUE, FALSE),
+#'   n_observations = c(800, 5)
+#' )
+#' adjust_inat_range_priors(likelihoods_ready, inat_range, n_obs_threshold = 500L)
 #' @export
 adjust_inat_range_priors <- function(
     likelihoods_ready,
@@ -119,8 +135,8 @@ adjust_inat_range_priors <- function(
   # --- Rows to elevate --------------------------------------------------------
   # Conditions: unmodelled, taxon in qualifying set, singleton floor available,
   # and the floor actually exceeds the current prior (guard for high-singleton clades).
-  singleton_floor <- likelihoods_ready$singleton_alpha /
-    (likelihoods_ready$singleton_alpha + likelihoods_ready$singleton_beta)
+  singleton_floor <- .beta_mean(likelihoods_ready$singleton_alpha,
+                                 likelihoods_ready$singleton_beta)
 
   elevate_mask <- is_unmod &
     likelihoods_ready$taxon_name %in% qualifying_names &
@@ -145,9 +161,8 @@ adjust_inat_range_priors <- function(
   likelihoods_ready$prior_alpha[elevate_mask] <- likelihoods_ready$singleton_alpha[elevate_mask]
   likelihoods_ready$prior_beta[elevate_mask]  <- likelihoods_ready$singleton_beta[elevate_mask]
   likelihoods_ready$prior_mean[elevate_mask]  <-
-    likelihoods_ready$prior_alpha[elevate_mask] /
-    (likelihoods_ready$prior_alpha[elevate_mask] +
-     likelihoods_ready$prior_beta[elevate_mask])
+    .beta_mean(likelihoods_ready$prior_alpha[elevate_mask],
+               likelihoods_ready$prior_beta[elevate_mask])
   likelihoods_ready$inat_range_elevated[elevate_mask] <- TRUE
 
   cli::cli_inform(

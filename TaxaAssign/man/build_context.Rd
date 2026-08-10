@@ -63,17 +63,37 @@ transitional environments (e.g. estuaries, coastal lagoons) than the
 mechanical argmax of habitat weights.
 }
 \examples{
-\dontrun{
+# A stub llm_fn stands in for a real API call so this example is runnable
+# offline; a real call would use llm_fn = TaxaTools::call_api instead.
+# It answers both prompt types build_context() sends: the per-chunk
+# habitat-weight CSV, and the final two-line synthesis prompt.
+stub_llm_fn <- function(prompt_str) {
+  if (grepl("main_habitat:", prompt_str, fixed = TRUE)) {
+    "main_habitat: rocky nearshore reef\necoregion: Southern California Bight"
+  } else {
+    paste(
+      "taxon_name,Marine,Freshwater,Terrestrial,Other_weight,habitat_best_guess",
+      "Sebastes mystinus,1.00,0.00,0.00,0.00,",
+      "Oncorhynchus mykiss,0.50,0.50,0.00,0.00,",
+      sep = "\n"
+    )
+  }
+}
+
 ctx <- build_context(
-  taxon_names     = unique(match_df$taxon_name),
+  taxon_names     = c("Sebastes mystinus", "Oncorhynchus mykiss"),
   geographic_hint = "Southern California",
   date            = "2025",
-  llm_fn          = TaxaTools::call_anthropic_api  # or any llm_fn provider
+  llm_fn          = stub_llm_fn
 )
-result <- assign_taxa_llm(match_df, context = ctx, llm_fn = llm_fn)
+ctx
 
 # Inspect per-species habitat weights
 attr(ctx, "habitats_df")
+
+\dontrun{
+# Feed the result into assign_taxa_llm()'s context argument
+result <- assign_taxa_llm(match_df, context = ctx, llm_fn = TaxaTools::call_api)
 }
 }
 \seealso{

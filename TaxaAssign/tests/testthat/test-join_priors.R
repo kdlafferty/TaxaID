@@ -53,6 +53,28 @@ test_that("join_priors errors on missing columns in likelihoods", {
   )
 })
 
+test_that("site = list(main_habitat = ...) alone auto-fills lat/lon from taxaexpect_priors' search_center attribute", {
+  priors <- .make_priors()
+  attr(priors, "search_center") <- list(lat = 34.1, lon = -119.1)
+
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_likelihoods(), priors,
+    site        = list(main_habitat = "Estuarine Bay"),
+    backbone_id = 11L
+  )))
+  expect_true(all(out$grid_id == "Grid_34p1_m119p1"))
+  expect_true(all(out$main_habitat == "Estuarine Bay"))
+})
+
+test_that("site = list(main_habitat = ...) alone still errors when no search_center is available", {
+  expect_error(
+    join_priors(.make_likelihoods(), .make_priors(),
+                site = list(main_habitat = "Estuarine Bay"),
+                backbone_id = 11L),
+    "missing element"
+  )
+})
+
 test_that("join_priors errors on missing site elements", {
   expect_error(
     join_priors(.make_likelihoods(), .make_priors(),

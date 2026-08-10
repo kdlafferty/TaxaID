@@ -1,7 +1,74 @@
 # Internal helpers for resolving `site` parameter and shared utilities
 
 
+#' Warn if a user-supplied rank_system disagrees in relative order with
+#' TaxaTools::standard_ranks
+#'
+#' Several functions in this package (`join_priors()`, `posterior_consensus()`,
+#' `score_consensus()`) infer coarsest/finest rank from a `rank_system`
+#' vector's POSITION (`rank_system[1]` = coarsest, `rank_system[length(...)]`
+#' = finest), on the assumption that the caller supplied it already ordered
+#' coarse-to-fine. There is no way to fully verify an arbitrary user-supplied
+#' vector is correctly ordered (a caller can use non-standard rank names this
+#' package has never heard of), but for the common case -- a `rank_system`
+#' built from Linnaean rank names TaxaTools already knows about -- this
+#' checks that any names shared with `TaxaTools::standard_ranks` appear in
+#' the SAME RELATIVE ORDER in both, catching the class of bug where a caller
+#' accidentally reverses or otherwise misorders a hand-typed vector (e.g.
+#' `c("species", "genus", "family")` instead of
+#' `c("family", "genus", "species")`), which would otherwise silently swap
+#' "coarsest" and "finest" throughout.
+#' @noRd
+.check_rank_system_order <- function(rank_system, caller = "this function") {
+  if (is.null(rank_system) || length(rank_system) < 2L) return(invisible(NULL))
+  if (!requireNamespace("TaxaTools", quietly = TRUE)) return(invisible(NULL))
+  known <- intersect(rank_system, TaxaTools::standard_ranks)
+  if (length(known) < 2L) return(invisible(NULL))
+
+  pos_in_rank_system <- match(known, rank_system)
+  pos_in_standard     <- match(known, TaxaTools::standard_ranks)
+  if (is.unsorted(pos_in_rank_system[order(pos_in_standard)])) {
+    cli::cli_warn(c(
+      "{caller}: {.arg rank_system} = {.val {rank_system}} disagrees in \\
+      relative order with the standard coarse-to-fine Linnaean ordering \\
+      ({.val {TaxaTools::standard_ranks}}) for the rank name(s) it shares \\
+      with that ordering.",
+      "i" = "Rank-position logic (coarsest/finest) assumes {.arg rank_system} \\
+      is ordered coarse-to-fine -- double-check this is intentional."
+    ))
+  }
+  invisible(NULL)
+}
+
+
+#' Beta distribution mean from alpha/beta
+#'
+#' Duplicated (not shared via a dependency) from `TaxaExpect:::.beta_mean()` --
+#' TaxaAssign does not depend on TaxaExpect, and the formula is a one-liner
+#' used in only two places in this package (`adjust_inat_range_priors()`), so
+#' a cross-package exported utility was not judged worth the coordination
+#' cost. See TaxaAssign's code review response for the full reasoning.
+#' @param a,b Numeric vectors. Beta shape parameters.
+#' @return Numeric vector.
+#' @noRd
+.beta_mean <- function(a, b) a / (a + b)
+
+
 #' Resolve llm_fn default: NULL → TaxaTools::call_api with clear error
+#'
+#' Known footgun (see TaxaID/CLAUDE.md's "Known R Footguns"): TaxaTools'
+#' provider auto-detection (`options(TaxaID.llm_fn = ...)`) is set by
+#' `TaxaTools::.onAttach()`, which only fires via `library(TaxaTools)` --
+#' never via a bare `TaxaTools::` namespace reference. A caller that never
+#' explicitly loads TaxaTools (e.g. a fully-namespaced script calling only
+#' `TaxaAssign::run_llm_pipeline()`) will find `getOption("TaxaID.llm_fn")`
+#' unset here even with a real API key configured, and fall through to the
+#' bare `TaxaTools::call_api` below -- which itself has no provider
+#' configured either, and (per that package's own documented behavior)
+#' degrades to a uniform/degraded fallback rather than erroring loudly. The
+#' `cli_warn()` below turns that silent degradation into a visible one at
+#' the point it becomes likely, rather than leaving it to surface later as a
+#' suspiciously-uniform LLM result with no explanation.
 #' @noRd
 .resolve_llm_fn <- function(llm_fn, caller = "this function") {
   if (!is.null(llm_fn)) return(llm_fn)
@@ -18,6 +85,18 @@
       "i" = "Install with: {.code devtools::install('<path_to_TaxaTools>')}"
     ))
   }
+  cli::cli_warn(c(
+    "{caller}: {.arg llm_fn} is NULL and no LLM provider was auto-detected \\
+    ({.code getOption(\"TaxaID.llm_fn\")} is unset).",
+    "i" = "This is expected if TaxaTools was never attached via \\
+    {.code library(TaxaTools)} -- namespaced calls alone \\
+    ({.code TaxaTools::fn()}) do not trigger its provider auto-detection.",
+    "i" = "Falling back to bare {.fn TaxaTools::call_api}, which may itself \\
+    silently return a degraded/uniform result if it also has no provider \\
+    configured. Run {.code library(TaxaTools)} first, or pass an explicit \\
+    {.arg llm_fn}, e.g. {.code function(prompt) TaxaTools::call_api(prompt, \\
+    provider = \"anthropic\")}."
+  ))
   TaxaTools::call_api
 }
 
@@ -74,10 +153,30 @@
 }
 
 #' Find nearest grid_id for given lat/lon
+#'
+#' Uses an equirectangular (cosine-latitude-corrected) approximation, not
+#' raw Euclidean degree distance -- a degree of longitude is shorter than a
+#' degree of latitude away from the equator (by a factor of
+#' cos(latitude)), so naive Euclidean distance in (lat, lon) degree-space
+#' over-weights longitude differences and can select the wrong "nearest"
+#' cell, especially at higher latitudes or for grids spanning a wide
+#' longitude range relative to latitude. Adequate for selecting among
+#' nearby grid cells (not intended as a general-purpose geodesic distance);
+#' a full haversine/great-circle formula was judged unnecessary complexity
+#' for this use.
+#'
+#' @return A list with `grid_id` (character) and `dist_deg` (numeric, the
+#'   equirectangular-approximated distance in degrees to the nearest cell) --
+#'   returning the distance too avoids `.latlon_to_grid()` recomputing the
+#'   identical nearest-point calculation a second time just to decide
+#'   whether to emit its "far from provided coordinates" warning.
 #' @noRd
 .find_nearest_grid <- function(lat, lon, grid_coords) {
-  dist_sq <- (grid_coords$grid_lat - lat)^2 + (grid_coords$grid_lon - lon)^2
-  grid_coords$grid_id[which.min(dist_sq)]
+  lat_scale <- cos(mean(c(lat, grid_coords$grid_lat), na.rm = TRUE) * pi / 180)
+  dist_sq <- (grid_coords$grid_lat - lat)^2 +
+    ((grid_coords$grid_lon - lon) * lat_scale)^2
+  idx <- which.min(dist_sq)
+  list(grid_id = grid_coords$grid_id[idx], dist_deg = sqrt(dist_sq[idx]))
 }
 
 #' Resolve `site` parameter to a standardized event_meta data frame
@@ -198,13 +297,16 @@
   all_grids <- all_grids[!is.na(all_grids)]
   grid_coords <- .parse_grid_ids(all_grids)
 
-  nearest_grid <- .find_nearest_grid(lat, lon, grid_coords)
+  # .find_nearest_grid() already computes the nearest cell's distance
+  # internally (to pick the minimum) -- reuse it here instead of
+  # recomputing the same calculation a second time.
+  nearest      <- .find_nearest_grid(lat, lon, grid_coords)
+  nearest_grid <- nearest$grid_id
+  dist_deg     <- nearest$dist_deg
 
   # Distance check: warn if nearest grid is far (> 1 degree)
-  nearest_row <- grid_coords[grid_coords$grid_id == nearest_grid, ]
-  dist_deg <- sqrt((nearest_row$grid_lat - lat)^2 +
-                    (nearest_row$grid_lon - lon)^2)
   if (dist_deg > 1.0) {
+    nearest_row <- grid_coords[grid_coords$grid_id == nearest_grid, ]
     cli::cli_warn(
       "Nearest grid cell {.val {nearest_grid}} \\
       ({sprintf('%.1f', nearest_row$grid_lat)}, {sprintf('%.1f', nearest_row$grid_lon)}) \\
@@ -217,6 +319,14 @@
 
   grid_rows <- taxaexpect_priors[taxaexpect_priors$grid_id == nearest_grid &
                                    !is.na(taxaexpect_priors$main_habitat), ]
+  if (nrow(grid_rows) == 0L) {
+    cli::cli_abort(c(
+      "No prior rows with a non-NA {.field main_habitat} exist at the \\
+      nearest grid cell {.val {nearest_grid}}.",
+      "i" = "Check {.arg taxaexpect_priors} coverage near ({sprintf('%.2f', lat)}, \\
+      {sprintf('%.2f', lon)})."
+    ))
+  }
   available <- unique(grid_rows$main_habitat)
   habitat_counts <- table(grid_rows$main_habitat)
 

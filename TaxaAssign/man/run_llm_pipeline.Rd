@@ -138,8 +138,9 @@ Default 0.05.}
 \item{backbone_id}{Integer. Backbone for taxonomy lookup in consensus.
 Required, no default -- the correct value depends on which backbone
 your input taxonomy was verified against, which varies by project
-(e.g. \code{11} for GBIF, \code{4} for NCBI). See the Taxonomic
-Backbone ID Reference in \code{TaxaID/CLAUDE.md} for the full list.}
+(e.g. \code{11} for GBIF, \code{4} for NCBI). See
+\code{TaxaTools::verify_taxon_names()}'s \code{backbone_id} docs, or
+\url{https://verifier.globalnames.org/} for the full list.}
 
 \item{lookup_missing_taxonomy}{Logical. Look up missing taxonomy in
 consensus. Default \code{TRUE}.}
@@ -196,6 +197,13 @@ control, use the individual functions directly.
 }
 \examples{
 \dontrun{
+# Requires a real match_obj from TaxaMatch and (by default) makes real LLM
+# API calls (auto_context, and suggest_unreferenced_species() via
+# detect_unreferenced) plus a TaxaTools::verify_taxon_names() lookup
+# (lookup_missing_taxonomy). See vignette("taxonomic-assignment", package
+# = "TaxaAssign") for a complete, step-by-step runnable version, and
+# assign_taxa_llm()'s own @examples for a fully offline stub-llm_fn demo
+# of the underlying LLM-prior mechanism this pipeline wraps.
 out <- run_llm_pipeline(
   match_df        = match_obj,
   geographic_hint = "Southern California",

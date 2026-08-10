@@ -12,7 +12,13 @@ Must contain columns: \code{observation_id}, \code{score_likelihood}, \code{scor
 \code{score_likelihood_sd}, \code{prior_mean}.
 Optional columns: \code{prior_alpha} and \code{prior_beta} (Beta distribution parameters).
 When present, Monte Carlo simulation samples priors from Beta(alpha, beta).
-When absent, priors are treated as fixed (no prior uncertainty).}
+When absent, priors are treated as fixed (no prior uncertainty). Not
+required unconditionally because a caller can have a genuinely fixed,
+non-probabilistic prior with no natural concentration parameter -- e.g.
+\code{\link[=assign_taxa_llm]{assign_taxa_llm()}}'s \code{prior_phi = NULL} disables Beta sampling entirely
+when the LLM's per-taxon confidence isn't being modelled as data volume.
+All other real callers in this ecosystem (\code{join_priors()}-derived
+TaxaExpect priors) always supply both columns.}
 
 \item{n_sims}{Integer. Number of Monte Carlo simulations. Default 1000.
 Set to 0 to skip simulation and return point estimates only.}
@@ -60,6 +66,31 @@ Only runs when \code{n_sims > 0} AND at least one source of uncertainty exists
 (non-zero \code{score_likelihood_sd}, or \code{prior_alpha}/\code{prior_beta} columns present).
 }
 
+\strong{Why truncated Normal, not the true generative distribution:} this
+function only receives \code{score_likelihood_mean}/\code{score_likelihood_sd} --
+already-summarized fitted values, not the raw match scores or the model
+object that produced them. The true generative model (e.g.
+\code{TaxaLikely::train_likelihood_model()}'s \code{score_transform} -- Normal on a
+logit or sqrt-mismatch-transformed scale, then back-transformed) is not
+available at this interface boundary, and \code{likelihood_w_prior} may equally
+come from a non-TaxaLikely source (e.g. \code{assign_taxa_llm()}'s own
+LLM-derived likelihood proxy). Treating the summary as approximately
+Normal, truncated only at 0 (likelihoods below zero are not meaningful; no
+upper truncation, since \code{score_likelihood} need not sum to 1 across
+candidates before \code{normalize_vec()} runs) is a documented approximation at
+this boundary, not a claim that match scores are truly Gaussian.
+
+\strong{The truncated mean can differ substantially from \code{mu}:} when
+\code{sigma} is large relative to \code{mu} (e.g. \code{mu = 0.001}, \code{sigma = 2}), the
+truncated distribution's mean is pulled well above \code{mu} -- e.g. \code{~1.60}
+for that pair, matching the standard truncated-normal expectation formula
+\eqn{E[X \mid X > 0] = \mu + \sigma \cdot \phi(\alpha) / (1 - \Phi(\alpha))},
+\eqn{\alpha = -\mu/\sigma}. This is the correct, intended behavior of
+truncation (the whole point of switching away from a clamp), not a bug --
+but it means a hypothesis with a small \code{mu} and large \code{sigma} is not
+"mostly sampled near \code{mu}"; a substantial share of its simulated draws can
+be far above it.
+
 Within each \code{observation_id}, likelihoods and posteriors are normalized to sum to 1
 across all competing hypotheses.
 
@@ -93,9 +124,17 @@ a fully-sampled genus (from \code{apply_coverage_constraints()}).
 }
 }
 \examples{
-\dontrun{
-result <- compute_posterior(likelihood_w_prior, n_sims = 1000)
-head(result[, c("observation_id", "taxon_name", "posterior_mean")])
-}
+likelihood_w_prior <- data.frame(
+  observation_id       = c("S1", "S1", "S1"),
+  taxon_name           = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+  score_likelihood      = c(0.85, 0.30, 0.10),
+  score_likelihood_mean = c(0.83, 0.31, 0.10),
+  score_likelihood_sd   = c(0.05, 0.04, 0.02),
+  prior_mean            = c(0.60, 0.30, 0.10),
+  prior_alpha           = c(30, 15, 5),
+  prior_beta            = c(20, 35, 45)
+)
+result <- compute_posterior(likelihood_w_prior, n_sims = 200)
+result[, c("observation_id", "taxon_name", "posterior_mean")]
 
 }

@@ -120,13 +120,21 @@
 #'   slash names appear.
 #'
 #' @examples
-#' \dontrun{
-#' consensus <- posterior_consensus(posterior_df)
+#' posterior_df <- data.frame(
+#'   observation_id  = c("S1", "S1", "S2"),
+#'   taxon_name      = c("Homo sapiens", "Homo heidelbergensis", "Bos taurus"),
+#'   taxon_name_rank = "species",
+#'   hypothesis_type = "specific_candidate",
+#'   genus           = c("Homo", "Homo", "Bos"),
+#'   family          = c("Hominidae", "Hominidae", "Bovidae"),
+#'   posterior_mean  = c(0.55, 0.45, 1.0)
+#' )
+#' consensus <- posterior_consensus(posterior_df, min_posterior = 0)
 #' consensus <- add_slash_taxon(consensus)
+#' consensus[, c("observation_id", "slash_taxon_name", "irreducible_consensus")]
 #'
 #' # All reportable observations: singletons + irreducible slash taxa
 #' reportable <- consensus[consensus$irreducible_consensus %in% TRUE, ]
-#' }
 #'
 #' @export
 add_slash_taxon <- function(consensus_df,
@@ -137,6 +145,28 @@ add_slash_taxon <- function(consensus_df,
     cli::cli_abort("Column {.field {taxa_col}} not found in {.arg consensus_df}.")
 
   raw_sets <- consensus_df[[taxa_col]]
+
+  # Defensive runtime check for the @note's documented failure mode:
+  # non-binomial entries ("Thunnus aff.", "Canis sp. Russia/33500") corrupt
+  # .make_slash_name()'s space-split logic. Prevention belongs upstream
+  # (TaxaFetch::filter_gbif_quality(require_species = TRUE)); this only
+  # makes the failure visible at the point it would actually corrupt output,
+  # rather than relying solely on upstream discipline.
+  if (requireNamespace("TaxaTools", quietly = TRUE)) {
+    all_taxa <- unique(unlist(raw_sets, use.names = FALSE))
+    all_taxa <- all_taxa[!is.na(all_taxa) & nzchar(all_taxa)]
+    implausible <- all_taxa[!TaxaTools::is_plausible_binomial(all_taxa)]
+    if (length(implausible) > 0L) {
+      cli::cli_warn(c(
+        "{length(implausible)} taxon name(s) in {.arg {taxa_col}} do not look \\
+        like plausible species binomials and may corrupt slash-name \\
+        formatting: {.val {utils::head(implausible, 5L)}}\\
+        {if (length(implausible) > 5L) '...' else ''}",
+        "i" = "See {.fn add_slash_taxon}'s documentation Note for the usual \\
+        cause and how to filter these upstream."
+      ))
+    }
+  }
 
   # Posterior vectors for ordering (NULL when unavailable)
   use_posteriors <- !is.null(posteriors_col) &&
@@ -151,7 +181,15 @@ add_slash_taxon <- function(consensus_df,
     x <- x[keep]
     if (length(x) == 0L) return(character(0L))
     if (use_posteriors) {
-      p <- raw_posts[[i]][keep]
+      post_vec <- raw_posts[[i]]
+      # posterior_consensus()'s plausible_posteriors is a NAMED vector keyed
+      # by taxon name (not just positionally aligned with plausible_taxa) --
+      # look up by name when available, so this is robust to the two list
+      # columns ever losing positional sync (e.g. a hand-built consensus_df,
+      # or any future reordering of one column without the other). Falls
+      # back to positional indexing for older/hand-built input where
+      # post_vec has no names.
+      p <- if (!is.null(names(post_vec))) unname(post_vec[x]) else post_vec[keep]
       p[is.na(p)] <- 0
       x[order(-p)]
     } else {

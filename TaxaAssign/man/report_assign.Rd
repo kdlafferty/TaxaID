@@ -4,7 +4,13 @@
 \alias{report_assign}
 \title{Generate a Report Section for Taxonomic Assignment}
 \usage{
-report_assign(result = NULL, consensus, data_type = NULL, verbose = FALSE)
+report_assign(
+  result = NULL,
+  consensus,
+  data_type = NULL,
+  workflow = NULL,
+  verbose = FALSE
+)
 }
 \arguments{
 \item{result}{Data frame or \code{NULL}. Posterior output from
@@ -16,6 +22,14 @@ or \code{\link{score_consensus}}.}
 
 \item{data_type}{Character or \code{NULL}. One of \code{"eDNA"},
 \code{"image"}, \code{"acoustic"}.}
+
+\item{workflow}{Character or \code{NULL}. One of \code{"bayesian"} or
+\code{"llm"} -- overrides the auto-detected workflow used to select
+Methods-text wording (same auto-detection caveat as
+\code{\link{generate_report}}'s \code{workflow} argument: reliable for
+this package's own pipeline output, but can misclassify a hand-built or
+third-party \code{result}). Ignored when \code{consensus} comes from
+\code{\link{score_consensus}} (workflow is always \code{"score"}).}
 
 \item{verbose}{Logical. Print summary messages. Default \code{FALSE}.}
 }
@@ -40,10 +54,18 @@ For the full-featured report (with LLM-generated results prose), use
 \code{\link{generate_report}} instead.
 }
 \examples{
-\dontrun{
-sec <- report_assign(result, consensus)
+result <- data.frame(
+  observation_id  = c("S1", "S1"),
+  taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+  taxon_name_rank = "species",
+  hypothesis_type = "specific_candidate",
+  genus           = "Gadus",
+  family          = "Gadidae",
+  posterior_mean  = c(0.8, 0.2)
+)
+consensus <- posterior_consensus(result)
+sec <- report_assign(result, consensus, data_type = "eDNA", workflow = "bayesian")
 print(sec)
-}
 
 }
 \seealso{
