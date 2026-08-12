@@ -74,9 +74,12 @@ mark which category each error mechanism produces.
 
 **Reference mislabeling** (FP) — Mislabeled sequences or images already
 present in the reference database produce confident wrong assignments
-that propagate to every query matching that reference. *TaxaLikely
-detects mislabels before model training and removes them from match
-data.*
+that propagate to every query matching that reference. *TaxaMatch
+BLASTs each reference accession against an independent database and
+flags accessions whose top hits disagree with their own listed
+taxonomy, before the reference set ever reaches model training
+(`evaluate_reference_accessions()`, `flag_incongruent_references()`,
+`remove_incongruent_references()`).*
 
 **Missing reference redirect** (FP + FN) — The reference database itself
 is incomplete: when the true species has no entry in the reference
@@ -156,10 +159,13 @@ most of these error types post-assignment.*
 4.  **TaxaMatch** standardizes match tables from external tools (BLAST,
     the Basic Local Alignment Search Tool -- Altschul et al. 1990,
     hosted by NCBI; camera-trap classifiers; acoustic detectors) into a
-    common format.
+    common format, and screens reference accessions for mislabels via
+    independent BLAST-based taxonomic congruence checking before the
+    reference set is used for model training.
 5.  **TaxaLikely** converts match scores into calibrated likelihoods
     using a hierarchical Bayesian model trained on the reference
-    library. It also audits references for mislabels and coverage gaps.
+    library, trimming poor-fitting matches during training and
+    auditing references for coverage gaps.
 6.  **TaxaExpect** builds spatially explicit Bayesian priors by modeling
     species occurrence probability across a geographic grid,
     incorporating habitat and spatial autocorrelation.
