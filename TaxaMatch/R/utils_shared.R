@@ -75,11 +75,11 @@
 
 #' Keep the top N rows per group, ordered by score descending
 #'
-#' \code{NULL} \code{top_n} is a no-op (returns \code{df} unchanged).
+#' \code{NULL} \code{top_n} is a no-op (returns \code{input_df} unchanged).
 #' @noRd
-.apply_top_n <- function(df, group_col, score_col, top_n) {
-  if (is.null(top_n) || nrow(df) == 0L) return(df)
-  groups <- split(df, df[[group_col]])
+.apply_top_n <- function(input_df, group_col, score_col, top_n) {
+  if (is.null(top_n) || nrow(input_df) == 0L) return(input_df)
+  groups <- split(input_df, input_df[[group_col]])
   out <- lapply(groups, function(g) {
     g[order(-g[[score_col]]), , drop = FALSE][seq_len(min(top_n, nrow(g))), , drop = FALSE]
   })
