@@ -629,15 +629,15 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 36                 | 13         | Yes      |
-| TaxaFetch   | 29                 | 15         | Yes      |
-| TaxaHabitat | 13                 | 5          | Yes      |
-| TaxaMatch   | 10                 | 7          | Yes      |
-| TaxaLikely  | 22                 | 14         | Yes      |
-| TaxaExpect  | 13                 | 9          | Yes      |
-| TaxaAssign  | 14                 | 13         | Yes      |
-| TaxaFlag    | 4                  | 4          | Yes      |
-| TaxaWizard  | 7                  | 3          | Yes      |
+| TaxaTools   | 44                 | 22         | Yes      |
+| TaxaFetch   | 31                 | 21         | Yes      |
+| TaxaHabitat | 13                 | 7          | Yes      |
+| TaxaMatch   | 23                 | 18         | Yes      |
+| TaxaLikely  | 36                 | 26         | Yes      |
+| TaxaExpect  | 16                 | 14         | Yes      |
+| TaxaAssign  | 16                 | 17         | Yes      |
+| TaxaFlag    | 9                  | 9          | Yes      |
+| TaxaWizard  | 5                  | 4          | Yes      |
 
 # U.S. Geological Survey Disclaimer
 
