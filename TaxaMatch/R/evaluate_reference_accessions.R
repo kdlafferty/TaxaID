@@ -394,6 +394,7 @@ utils::globalVariables(c(
     congruent_evidence_best_pident = numeric(0L),
     hierarchy_flag = character(0L),
     evaluated_at = as.POSIXct(character(0L)), params_key = character(0L),
+    taxonomy_resolution_source = character(0L),
     stringsAsFactors = FALSE
   )
   if (is.null(cache_dir)) return(empty)
@@ -615,7 +616,76 @@ utils::globalVariables(c(
 #'       fetch failure).}
 #'     \item{`cache_hit`}{`TRUE` if this row was read from `cache_dir`
 #'       rather than recomputed this call.}
+#'     \item{`taxonomy_resolution_source`}{`"direct"` (the accession's own
+#'       NCBI taxonomy, the normal case), `"hybrid_maternal_proxy"` (a
+#'       hybrid-labeled accession whose coarser-rank lineage was resolved
+#'       from its maternal parent species instead -- see `@section
+#'       Hybrid-labeled accessions` below), `"hybrid_unresolved"` (detected
+#'       as hybrid-labeled but no usable parent species name could be
+#'       extracted from the label, so the accession's own -- structurally
+#'       incomplete -- NCBI lineage is used as-is), or `NA` for a fetch
+#'       failure.}
+#'     \item{`listed_taxon_is_species`}{Logical. `FALSE` when `listed_taxon`
+#'       does not structurally look like a species-level binomial (via
+#'       [TaxaTools::is_plausible_binomial()] -- e.g. a family name used in
+#'       place of a genus with an informal specimen code, such as
+#'       `"Serranidae sp. JL-2015"`, a real GreatLakes case). A
+#'       structurally different problem from both mislabeling
+#'       (`hierarchy_flag`) and hybrid-labeling
+#'       (`taxonomy_resolution_source`): such a reference can't
+#'       discriminate at species level regardless of whether it's
+#'       internally self-consistent, so this can be `FALSE` even when
+#'       `hierarchy_flag` reads `"congruent"`. `NA` for a fetch failure
+#'       (never `FALSE` -- a fetch failure means "not evaluated," not
+#'       "evaluated and found non-species").}
 #'   }
+#'
+#' @section Hybrid-labeled accessions (2026-08-10):
+#' NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g.
+#' `"Ctenopharyngodon idella x Megalobrama amblycephala"`) is genuinely
+#' incomplete -- confirmed live against several real GreatLakes candidates:
+#' the lineage terminates at `"unclassified Cyprinoidei"`, with no family,
+#' genus, or species populated at all. Left as-is, such an accession can
+#' never agree with any independent hit at family rank or finer (there is
+#' nothing on the query side to compare), which this function's rank-walk
+#' mechanically reads as maximal disagreement -- a real, confirmed
+#' false-positive mode (10 of 13 `"incongruent"` flags on a real
+#' 1,183-accession GreatLakes run were this artifact, not genuine
+#' mislabels; the other 3, with complete normal lineages, were real
+#' candidates worth reviewing).
+#'
+#' Fixed by resolving the accession's maternal parent species' OWN real
+#' lineage instead, for every rank coarser than species: since mtDNA is
+#' maternally inherited in fish, a hybrid's barcode sequence genuinely IS
+#' its maternal parent's lineage at kingdom through genus, even though it
+#' is (correctly) not literally the same SPECIES as that parent. The
+#' maternal parent's name is extracted from `listed_taxon` via
+#' `TaxaTools::clean_taxon_names()`'s existing 3-token simplification (it
+#' already keeps only the first genus + epithet, discarding everything
+#' from `" x ..."` onward -- the same simplification this ecosystem
+#' already applies to hybrid-formula names elsewhere), then resolved via
+#' `TaxaTools::verify_taxon_names(backbone_id = 4L)` (NCBI, the same
+#' authority every other taxonomy resolution in this function uses).
+#' `species.x` (the finest rank) is deliberately left as the accession's
+#' own real listed hybrid label, never replaced by the proxy -- a hybrid
+#' genuinely is not the same species as its maternal parent, so a spurious
+#' species-level agreement would be biologically wrong in the opposite
+#' direction. Detection requires BOTH `listed_taxon` containing a
+#' standalone `" x "` token (the standard nomenclatural hybrid marker) AND
+#' the accession's own resolved `family` being unresolvable -- so an
+#' ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage
+#' (e.g. a real undescribed/unclassified species) is never routed through
+#' this maternal-parent substitution, which would have no biological
+#' justification for a non-hybrid. A leading lowercase breeding/ploidy-
+#' manipulation modifier (e.g. `"androgenetic"`, `"autodiploid"`,
+#' `"autotetraploid"` -- all found on real GreatLakes records, 2026-08-11)
+#' is stripped before `clean_taxon_names()` runs, since the maternal-
+#' inheritance argument still holds (these manipulate the nuclear genome,
+#' not which egg's cytoplasm/mitochondria the offspring develops in). A
+#' label the hybrid-marker regex catches but still cannot be parsed into a
+#' usable proxy even after that stripping falls back to the accession's
+#' own unresolved lineage, `taxonomy_resolution_source =
+#' "hybrid_unresolved"` -- an honest admission, not a guess.
 #'
 #' @section Identity diagnostics (2026-08-07):
 #' `hierarchy_flag`/`finest_common_rank` alone cannot distinguish a genuine
@@ -682,7 +752,7 @@ evaluate_reference_accessions <- function(accessions,
   # values (e.g. a pre-fix finest_common_rank = NA where a fresh
   # computation would now report "order") indefinitely. Cheap insurance,
   # not something a caller ever sets directly.
-  .EVAL_REF_ACC_VERSION <- "v3_pident_and_anywhere_diagnostics"
+  .EVAL_REF_ACC_VERSION <- "v4_hybrid_maternal_proxy"
 
   params_key <- paste(top_n, min_congruent_rank, submission_window,
                       hierarchy_incongruent_threshold, min_independent_partners,
@@ -719,7 +789,8 @@ evaluate_reference_accessions <- function(accessions,
                "n_top_matches_available", "frac_independent_below_min_congruent_rank",
                "finest_common_rank", "best_hit_pident", "best_agreeing_pident",
                "best_disagreeing_pident", "congruent_evidence_exists_anywhere",
-               "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit")
+               "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
+               "taxonomy_resolution_source")
 
   if (length(needs_eval) == 0L) {
     out <- cache_hit_rows[, out_cols, drop = FALSE]
@@ -779,6 +850,69 @@ evaluate_reference_accessions <- function(accessions,
     # identical, but the record's own listed organism is the more direct,
     # more defensible value for "the label being evaluated").
     query_meta$species.x <- query_meta$organism
+
+    # ---- Hybrid-labeled accessions: NCBI's own taxonomy for a hybrid-cross
+    # organism is genuinely incomplete (confirmed live, 2026-08-10, against
+    # real GreatLakes candidates -- lineage stops at "unclassified
+    # Cyprinoidei", no family/genus/species) -- see this function's own
+    # @section Hybrid-labeled accessions for the full mechanism and why
+    # it's biologically correct to substitute the maternal parent's real
+    # lineage at every rank coarser than species. Detection requires BOTH
+    # signals: a standalone " x " token in the listed organism name (the
+    # standard nomenclatural hybrid marker) AND the accession's own
+    # resolved family being unresolvable -- an ordinary non-hybrid taxon
+    # with a genuinely incomplete NCBI lineage is never routed through this
+    # maternal-parent substitution, which has no biological justification
+    # without a real hybrid cross.
+    query_meta$taxonomy_resolution_source <- "direct"
+    if ("family" %in% rank_system) {
+      is_hybrid_labeled <- grepl("(?<=\\s)x(?=\\s)", query_meta$organism, perl = TRUE)
+      needs_proxy <- is_hybrid_labeled & is.na(query_meta[["family.x"]])
+
+      if (any(needs_proxy)) {
+        # TaxaTools::clean_taxon_names() (2026-08-11 onward) already strips
+        # a single leading breeding/ploidy-manipulation modifier word (e.g.
+        # "androgenetic", "autodiploid", "autotetraploid" -- all found on
+        # real GreatLakes Carassius/Megalobrama hybrid records) before its
+        # own capital-letter filter, using a curated, safety-vetted word
+        # list (deliberately excludes uncertainty-hedge words like
+        # "possible"/"putative", which must keep failing the filter, not
+        # get silently rescued) -- see that function's own roxygen for the
+        # full list and reasoning. No local pre-processing needed here;
+        # calling it directly is both simpler and keeps this single-source-
+        # of-truth behavior available to every other caller in the
+        # ecosystem, not just this one mechanism.
+        proxy_name <- rep(NA_character_, nrow(query_meta))
+        proxy_name[needs_proxy] <- TaxaTools::clean_taxon_names(query_meta$organism[needs_proxy])
+        has_proxy <- needs_proxy & !is.na(proxy_name)
+
+        if (any(has_proxy)) {
+          proxy_verified <- tryCatch(
+            TaxaTools::verify_taxon_names(unique(proxy_name[has_proxy]), backbone_id = 4L),
+            error = function(e) NULL
+          )
+          if (!is.null(proxy_verified) && nrow(proxy_verified) > 0L) {
+            for (r in setdiff(rank_system, "species")) {
+              proxy_rank_val <- mapply(
+                TaxaTools::parse_classification_path,
+                proxy_verified$classification_path, proxy_verified$classification_ranks,
+                MoreArgs = list(target_rank = r)
+              )
+              resolved <- proxy_rank_val[match(proxy_name[has_proxy], proxy_verified$user_supplied_name)]
+              query_meta[[paste0(r, ".x")]][has_proxy] <- resolved
+            }
+            query_meta$taxonomy_resolution_source[has_proxy] <- "hybrid_maternal_proxy"
+          }
+        }
+        query_meta$taxonomy_resolution_source[needs_proxy & !has_proxy] <- "hybrid_unresolved"
+
+        if (verbose && any(has_proxy))
+          message(sprintf(
+            "evaluate_reference_accessions(): %d hybrid-labeled accession(s) resolved via maternal parent species proxy.",
+            sum(has_proxy)
+          ))
+      }
+    }
 
     # ---- BLAST every needs_eval accession's own sequence against the
     # broad, unrestricted database in one batched call ------------------------
@@ -907,25 +1041,43 @@ evaluate_reference_accessions <- function(accessions,
       )
     )
 
-    computed_rows <- data.frame(
-      accession = congruence$id_x,
-      listed_taxon = query_meta$organism[match(congruence$id_x, query_meta$accession)],
-      n_independent_top_matches = congruence$n_independent_top_matches,
-      n_top_matches_available = congruence$n_top_matches_available,
-      frac_independent_below_min_congruent_rank =
-        congruence$frac_independent_below_min_congruent_rank,
-      finest_common_rank = congruence$finest_common_rank,
-      best_hit_pident = congruence$best_hit_pident,
-      best_agreeing_pident = congruence$best_agreeing_pident,
-      best_disagreeing_pident = congruence$best_disagreeing_pident,
-      congruent_evidence_exists_anywhere = congruence$congruent_evidence_exists_anywhere,
-      congruent_evidence_best_pident = congruence$congruent_evidence_best_pident,
-      hierarchy_flag = congruence$hierarchy_flag,
-      evaluated_at = now,
-      cache_hit = FALSE,
-      params_key = params_key,
-      stringsAsFactors = FALSE
-    )
+    # nrow(congruence) == 0 is a real, reachable case -- not hypothetical --
+    # whenever EVERY accession still in query_meta at this point fails BLAST
+    # in the same call (e.g. a sustained NCBI server-side CPU-budget
+    # rejection wave affecting an entire batch): query_meta itself was
+    # already filtered to 0 rows above (via blast_failed_acc), so the
+    # merge() just above also produces 0 rows. Building computed_rows in
+    # that case previously crashed the ENTIRE call (losing every accession
+    # successfully evaluated earlier in the SAME call, since the persistent
+    # cache only writes once, at the very end) -- data.frame() does not
+    # recycle a length-1 scalar column (evaluated_at/cache_hit/params_key)
+    # down to 0 rows the way it recycles into a longer common length; it
+    # errors instead ("arguments imply differing number of rows"). Found
+    # live, 2026-08-10, on a real GreatLakes run where NCBI rejected every
+    # single one of 414 remaining accessions.
+    if (nrow(congruence) > 0L) {
+      computed_rows <- data.frame(
+        accession = congruence$id_x,
+        listed_taxon = query_meta$organism[match(congruence$id_x, query_meta$accession)],
+        n_independent_top_matches = congruence$n_independent_top_matches,
+        n_top_matches_available = congruence$n_top_matches_available,
+        frac_independent_below_min_congruent_rank =
+          congruence$frac_independent_below_min_congruent_rank,
+        finest_common_rank = congruence$finest_common_rank,
+        best_hit_pident = congruence$best_hit_pident,
+        best_agreeing_pident = congruence$best_agreeing_pident,
+        best_disagreeing_pident = congruence$best_disagreeing_pident,
+        congruent_evidence_exists_anywhere = congruence$congruent_evidence_exists_anywhere,
+        congruent_evidence_best_pident = congruence$congruent_evidence_best_pident,
+        hierarchy_flag = congruence$hierarchy_flag,
+        evaluated_at = now,
+        cache_hit = FALSE,
+        params_key = params_key,
+        taxonomy_resolution_source =
+          query_meta$taxonomy_resolution_source[match(congruence$id_x, query_meta$accession)],
+        stringsAsFactors = FALSE
+      )
+    }
   }
 
   # ---- Update the persistent cache -------------------------------------------
@@ -954,6 +1106,7 @@ evaluate_reference_accessions <- function(accessions,
       congruent_evidence_best_pident = NA_real_,
       hierarchy_flag = NA_character_,
       evaluated_at = as.POSIXct(NA), cache_hit = FALSE,
+      taxonomy_resolution_source = NA_character_,
       stringsAsFactors = FALSE
     )
   } else {
@@ -964,6 +1117,33 @@ evaluate_reference_accessions <- function(accessions,
     cache_hit_rows[, out_cols, drop = FALSE], computed_out, failed_out
   )))
   rownames(out) <- NULL
+
+  # listed_taxon_is_species: a structurally different problem from both
+  # mislabeling (hierarchy_flag) and hybrid-labeling (taxonomy_resolution_
+  # source) -- some real accessions are labeled at coarser-than-species
+  # resolution to begin with (e.g. "Serranidae sp. JL-2015", a family name
+  # used in place of a genus plus an informal specimen code -- found live,
+  # 2026-08-11, GreatLakes population). Such a reference can't discriminate
+  # at species level regardless of whether it's internally self-consistent,
+  # so it's worth surfacing even when hierarchy_flag itself reads
+  # "congruent". Reuses TaxaTools::is_plausible_binomial() directly (no new
+  # logic) -- purely a function of listed_taxon, which is already stored,
+  # so this is computed post-hoc on the final result rather than added to
+  # the persistent cache schema: no .EVAL_REF_ACC_VERSION bump, no cache
+  # invalidation, applies instantly even to an existing cache with zero
+  # recompute cost. Kept as its own column, not folded into hierarchy_flag,
+  # matching this file's own established design (Check 1/Check 2 in the
+  # archived DECIPHER-era design, best_agreeing_pident/best_disagreeing_
+  # pident here -- separate diagnostic signals, combined only by the
+  # caller, never conflated into one column).
+  # is_plausible_binomial()'s own grepl()-based implementation returns FALSE
+  # (not NA) for an NA input -- would misleadingly read "checked, not a
+  # species name" for a fetch-failure row (listed_taxon itself NA) rather
+  # than "unknown, not evaluated"; guarded explicitly here.
+  out$listed_taxon_is_species <- ifelse(
+    is.na(out$listed_taxon), NA, TaxaTools::is_plausible_binomial(out$listed_taxon)
+  )
+
   out
 }
 

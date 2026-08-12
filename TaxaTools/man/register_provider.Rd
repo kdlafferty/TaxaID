@@ -32,12 +32,12 @@ Example: \code{list(fast = "grok-3-mini", mid = "grok-3", top = "grok-3")}.}
 assignment from a live \code{/v1/models} response. Same structure as
 \code{inst/model_tiers.json}:
 \preformatted{
-  list(
-    fast = list(include = "mini",    exclude = NULL),
-    mid  = list(include = "grok-3$", exclude = "mini"),
-    top  = list(include = "heavy",   exclude = NULL)
-  )
-  }
+list(
+  fast = list(include = "mini",    exclude = NULL),
+  mid  = list(include = "grok-3$", exclude = "mini"),
+  top  = list(include = "heavy",   exclude = NULL)
+)
+}
 \code{NULL} (default): all tiers map to the first discovered model
 (no tier differentiation).}
 }

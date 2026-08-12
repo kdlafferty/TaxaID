@@ -14,10 +14,10 @@ rename_cols(input_df, col_map = NULL, strict = FALSE)
 \strong{value} is the desired new name. Both must be \strong{quoted
 strings}:
 \preformatted{
-  col_map = c("Latitude"   = "decimalLatitude",
-              "Longitude"  = "decimalLongitude",
-              "SurveyDate" = "eventDate")
-  }
+col_map = c("Latitude"   = "decimalLatitude",
+            "Longitude"  = "decimalLongitude",
+            "SurveyDate" = "eventDate")
+}
 When \code{col_map} is supplied it \strong{replaces} the default pattern
 matching entirely — only the mappings you specify are applied. When
 \code{NULL} (default), the built-in regex patterns are used instead

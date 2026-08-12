@@ -236,3 +236,60 @@ test_that("mixed vector with underscore names", {
   expect_true(is.na(out[3]))   # starts lowercase — NA
   expect_true(is.na(out[4]))
 })
+
+# ==============================================================================
+# strip_modifiers (2026-08-11): leading breeding/ploidy-manipulation terms
+# ==============================================================================
+
+test_that("strips a real leading breeding/ploidy modifier word (default list)", {
+  # Real GenBank hybrid-cross records, GreatLakes 12S audit, 2026-08-11.
+  out <- clean_taxon_names(c(
+    "androgenetic Carassius auratus red var. x Megalobrama amblycephala",
+    "autodiploid Carassius auratus red var. x Megalobrama amblycephala",
+    "autotetraploid Carassius auratus red var. x Megalobrama amblycephala",
+    "gynogenetic Carassius auratus", "allotriploid Cyprinus carpio",
+    "tetraploid Cyprinus carpio", "polyploid Cyprinus carpio"
+  ))
+  expect_equal(out, c(rep("Carassius auratus", 4L), rep("Cyprinus carpio", 3L)))
+})
+
+test_that("strip_modifiers matching is case-insensitive on the first token only", {
+  out <- clean_taxon_names("ANDROGENETIC Carassius auratus")
+  expect_equal(out, "Carassius auratus")
+})
+
+test_that("strip_modifiers only removes ONE leading word, never a repeated run", {
+  # Two leading lowercase words, the second NOT in strip_modifiers -- the
+  # regression guard for a real failure mode found before shipping: a
+  # repeated strip would consume the literal " x " hybrid marker itself
+  # along with both words, silently misattributing the SECOND-listed (and
+  # biologically unrelated) taxon as the intended one.
+  out <- clean_taxon_names("androgenetic hybrid x Megalobrama amblycephala")
+  expect_true(is.na(out))
+})
+
+test_that("strip_modifiers does not rescue an uncertainty-hedge word", {
+  # Deliberately NOT in the default list -- a hedge should keep failing the
+  # capital-letter filter, not get silently rescued into a confident binomial.
+  out <- clean_taxon_names(c("possible Homo sapiens", "putative Cottus asper",
+                             "cf. Cottus asper"))
+  expect_true(all(is.na(out)))
+})
+
+test_that("strip_modifiers is a no-op for a name that already starts with a capital letter", {
+  out <- clean_taxon_names("Ctenopharyngodon idella x Megalobrama amblycephala")
+  expect_equal(out, "Ctenopharyngodon idella")
+})
+
+test_that("strip_modifiers = character(0) disables the step entirely", {
+  out <- clean_taxon_names(
+    "androgenetic Carassius auratus red var. x Megalobrama amblycephala",
+    strip_modifiers = character(0)
+  )
+  expect_true(is.na(out))
+})
+
+test_that("strip_modifiers accepts a custom/extended list", {
+  out <- clean_taxon_names("mutant Danio rerio", strip_modifiers = "mutant")
+  expect_equal(out, "Danio rerio")
+})

@@ -24,7 +24,7 @@ draft_methods_text(
 
 \item{description}{Character. Brief study context to guide the LLM
 (e.g., \code{"eDNA metabarcoding of coral reef fish at Palmyra Atoll
-  using MiFish 12S primers"}). Default \code{NULL}. Ignored when
+using MiFish 12S primers"}). Default \code{NULL}. Ignored when
 \code{context} is provided (uses \code{context$study_description}).}
 
 \item{context}{A \code{report_context} object from

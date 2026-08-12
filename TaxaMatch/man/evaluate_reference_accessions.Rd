@@ -149,6 +149,27 @@ listing these; not cached, so a subsequent call retries them).}
 fetch failure).}
 \item{\code{cache_hit}}{\code{TRUE} if this row was read from \code{cache_dir}
 rather than recomputed this call.}
+\item{\code{taxonomy_resolution_source}}{\code{"direct"} (the accession's own
+NCBI taxonomy, the normal case), \code{"hybrid_maternal_proxy"} (a
+hybrid-labeled accession whose coarser-rank lineage was resolved
+from its maternal parent species instead -- see \verb{@section Hybrid-labeled accessions} below), \code{"hybrid_unresolved"} (detected
+as hybrid-labeled but no usable parent species name could be
+extracted from the label, so the accession's own -- structurally
+incomplete -- NCBI lineage is used as-is), or \code{NA} for a fetch
+failure.}
+\item{\code{listed_taxon_is_species}}{Logical. \code{FALSE} when \code{listed_taxon}
+does not structurally look like a species-level binomial (via
+\code{\link[TaxaTools:is_plausible_binomial]{TaxaTools::is_plausible_binomial()}} -- e.g. a family name used in
+place of a genus with an informal specimen code, such as
+\code{"Serranidae sp. JL-2015"}, a real GreatLakes case). A
+structurally different problem from both mislabeling
+(\code{hierarchy_flag}) and hybrid-labeling
+(\code{taxonomy_resolution_source}): such a reference can't
+discriminate at species level regardless of whether it's
+internally self-consistent, so this can be \code{FALSE} even when
+\code{hierarchy_flag} reads \code{"congruent"}. \code{NA} for a fetch failure
+(never \code{FALSE} -- a fetch failure means "not evaluated," not
+"evaluated and found non-species").}
 }
 }
 \description{
@@ -224,6 +245,54 @@ as stale (recomputed) if any parameter that affects the verdict itself
 \code{hierarchy_incongruent_threshold}, \code{min_independent_partners},
 \code{score_range}, \code{min_score}, \code{max_hits}, \code{method}, \code{database}) differs from
 the call that produced it.
+}
+
+\section{Hybrid-labeled accessions (2026-08-10)}{
+
+NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g.
+\code{"Ctenopharyngodon idella x Megalobrama amblycephala"}) is genuinely
+incomplete -- confirmed live against several real GreatLakes candidates:
+the lineage terminates at \code{"unclassified Cyprinoidei"}, with no family,
+genus, or species populated at all. Left as-is, such an accession can
+never agree with any independent hit at family rank or finer (there is
+nothing on the query side to compare), which this function's rank-walk
+mechanically reads as maximal disagreement -- a real, confirmed
+false-positive mode (10 of 13 \code{"incongruent"} flags on a real
+1,183-accession GreatLakes run were this artifact, not genuine
+mislabels; the other 3, with complete normal lineages, were real
+candidates worth reviewing).
+
+Fixed by resolving the accession's maternal parent species' OWN real
+lineage instead, for every rank coarser than species: since mtDNA is
+maternally inherited in fish, a hybrid's barcode sequence genuinely IS
+its maternal parent's lineage at kingdom through genus, even though it
+is (correctly) not literally the same SPECIES as that parent. The
+maternal parent's name is extracted from \code{listed_taxon} via
+\code{TaxaTools::clean_taxon_names()}'s existing 3-token simplification (it
+already keeps only the first genus + epithet, discarding everything
+from \code{" x ..."} onward -- the same simplification this ecosystem
+already applies to hybrid-formula names elsewhere), then resolved via
+\code{TaxaTools::verify_taxon_names(backbone_id = 4L)} (NCBI, the same
+authority every other taxonomy resolution in this function uses).
+\code{species.x} (the finest rank) is deliberately left as the accession's
+own real listed hybrid label, never replaced by the proxy -- a hybrid
+genuinely is not the same species as its maternal parent, so a spurious
+species-level agreement would be biologically wrong in the opposite
+direction. Detection requires BOTH \code{listed_taxon} containing a
+standalone \code{" x "} token (the standard nomenclatural hybrid marker) AND
+the accession's own resolved \code{family} being unresolvable -- so an
+ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage
+(e.g. a real undescribed/unclassified species) is never routed through
+this maternal-parent substitution, which would have no biological
+justification for a non-hybrid. A leading lowercase breeding/ploidy-
+manipulation modifier (e.g. \code{"androgenetic"}, \code{"autodiploid"},
+\code{"autotetraploid"} -- all found on real GreatLakes records, 2026-08-11)
+is stripped before \code{clean_taxon_names()} runs, since the maternal-
+inheritance argument still holds (these manipulate the nuclear genome,
+not which egg's cytoplasm/mitochondria the offspring develops in). A
+label the hybrid-marker regex catches but still cannot be parsed into a
+usable proxy even after that stripping falls back to the accession's
+own unresolved lineage, \code{taxonomy_resolution_source = "hybrid_unresolved"} -- an honest admission, not a guess.
 }
 
 \section{Identity diagnostics (2026-08-07)}{

@@ -6,8 +6,11 @@
 #' binomials to space-separated ones (e.g. \code{"Corallina_officinalis"} ->
 #' \code{"Corallina officinalis"}, as produced by Jonah Ventures and SILVA
 #' pipelines), trimming abbreviated second words (sp., spp., etc.) to
-#' genus-only, and stripping bracket artefacts. Returns a clean character
-#' vector suitable for API calls or downstream filtering.
+#' genus-only, stripping bracket artefacts, and stripping a single known
+#' leading breeding/ploidy-manipulation modifier word (e.g.
+#' \code{"androgenetic Carassius auratus"} -> \code{"Carassius auratus"}).
+#' Returns a clean character vector suitable for API calls or downstream
+#' filtering.
 #'
 #' This function operates on a plain character vector, not a dataframe.
 #' Common patterns for dataframe workflows:
@@ -24,6 +27,24 @@
 #'   name as genus-only (the abbreviation is dropped). Defaults to a standard
 #'   list of common abbreviations and placeholder terms. Pass a custom vector
 #'   to extend or replace the default list.
+#' @param strip_modifiers A character vector of known leading modifier words
+#'   (case-insensitive, matched against the FIRST whitespace-delimited token
+#'   only, and only ever removed once per name -- never a repeated strip).
+#'   Defaults to a curated list of real breeding/ploidy-manipulation terms
+#'   found on real GenBank hybrid-cross records (\code{"androgenetic"},
+#'   \code{"gynogenetic"}, \code{"autodiploid"}, \code{"autotriploid"},
+#'   \code{"autotetraploid"}, \code{"allodiploid"}, \code{"allotriploid"},
+#'   \code{"allotetraploid"}, \code{"diploid"}, \code{"triploid"},
+#'   \code{"tetraploid"}, \code{"polyploid"}). Deliberately does NOT include
+#'   uncertainty-hedge words (\code{"possible"}, \code{"putative"},
+#'   \code{"probable"}, \code{"tentative"}, \code{"presumed"}, etc.) or
+#'   \code{"hybrid"}/\code{"unidentified"} themselves -- those genuinely
+#'   change what the name means (a hedge should keep failing the capital-
+#'   letter filter below, not get silently rescued into a confident
+#'   binomial; \code{"hybrid X x Y"} with no named first parent has no real
+#'   maternal-parent identity to recover). Pass a custom vector to extend or
+#'   replace the default list; \code{character(0)} disables this step
+#'   entirely (restores this function's pre-2026-08-11 behavior).
 #'
 #' @return A character vector the same length as \code{name_vec}. Names that
 #'   do not start with a capital letter, are \code{NA}, or consist only of an
@@ -42,7 +63,7 @@
 #' clean_taxon_names(nms)
 #' # Returns: c("Homo sapiens", NA, NA, NA, "Canis lupus",
 #' #            "Homo sapiens", "Bacillus subtilis", NA)
-clean_taxon_names <- function(name_vec, remove_abbr = NULL) {
+clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NULL) {
 
   # --- Input validation ---
   if (is.factor(name_vec)) name_vec <- as.character(name_vec)
@@ -57,6 +78,14 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL) {
     )
   }
 
+  if (is.null(strip_modifiers)) {
+    strip_modifiers <- c(
+      "androgenetic", "gynogenetic", "autodiploid", "autotriploid",
+      "autotetraploid", "allodiploid", "allotriploid", "allotetraploid",
+      "diploid", "triploid", "tetraploid", "polyploid"
+    )
+  }
+
   # --- Normalise whitespace; coerce any "NA" string to real NA ---
   x <- stringr::str_squish(as.character(name_vec))
   x[x %in% c("NA", "<NA>")] <- NA_character_
@@ -66,6 +95,23 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL) {
   # capital-letter check below. Re-squish after removal.
   x <- gsub("\\[|\\]|[()]", "", x, perl = TRUE)
   x <- stringr::str_squish(x)
+
+  # --- Strip a single leading breeding/ploidy-manipulation modifier word,
+  # ALSO before the capital-letter filter (found live, 2026-08-11, on real
+  # GenBank hybrid-cross records: "androgenetic Carassius auratus red var.
+  # x Megalobrama amblycephala" etc.) -- these terms describe a real,
+  # confirmed genetic/breeding state, not uncertainty, so removing them is
+  # safe in the same sense bracket-stripping is: it reveals the genuinely
+  # intended name underneath, rather than rescuing a name that SHOULD stay
+  # rejected. Matched case-insensitively against the FIRST token only, and
+  # only ever stripped once (not a repeated run) -- deliberately narrow, to
+  # avoid ever consuming a second, unrelated leading word (e.g. a genuinely
+  # unidentified/unnamed first parent in a hybrid cross) and silently
+  # treating the wrong taxon as intended.
+  if (length(strip_modifiers) > 0L) {
+    modifier_pattern <- paste0("^(", paste(strip_modifiers, collapse = "|"), ")\\s+")
+    x <- sub(modifier_pattern, "", x, ignore.case = TRUE, perl = TRUE)
+  }
 
   # --- Set non-conforming names to NA (preserves vector length) ---
   # Names that are NA, empty, or do not begin with a capital letter become NA.

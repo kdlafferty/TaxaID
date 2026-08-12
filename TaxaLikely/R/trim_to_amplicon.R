@@ -76,11 +76,20 @@ utils::globalVariables(c("sequence"))
 #'   used to auto-resolve `min_len`/`max_len` via
 #'   [TaxaTools::resolve_barcode_lengths()] when those are not supplied
 #'   directly.
-#' @param min_len,max_len Integer. The plausible amplicon length range for
-#'   this marker. Sequences at or below `max_len` are left untouched
-#'   (assumed already barcode-length); an extracted amplicon outside
-#'   `[min_len, max_len]` is treated as an implausible match and rejected.
-#'   Default `NULL` auto-resolves from `barcode_term` when supplied.
+#' @param min_len,max_len Integer. Governs which sequences are left untouched
+#'   as already barcode-length (`<= max_len`) versus checked for the amplicon
+#'   region. Default `NULL` auto-resolves both from `barcode_term` via
+#'   [TaxaTools::resolve_barcode_lengths()] -- in that case, the FINAL
+#'   plausibility check on a matched amplicon span instead uses a bound
+#'   derived from the registered primer pair's own `amplicon_range` (the
+#'   literature-reported variable-region length) plus each primer's length,
+#'   since `min_len`/`max_len` alone describe a general marker-length window,
+#'   not a primer-inclusive matched span (a real, fixed 2026-08-10 bug: the
+#'   old behavior rejected every genuine MiFish-U hit as "implausible" by
+#'   ~11bp -- see this package's own Known Footguns entry). If you supply
+#'   `min_len`/`max_len` explicitly, that choice is used as-is for BOTH the
+#'   over-length decision and the final plausibility check, unchanged from
+#'   prior behavior.
 #' @param max_mismatch_rate Numeric in `[0, 1)` (default `0.15`). Maximum
 #'   fraction of primer positions allowed to mismatch the sequence at the
 #'   binding site (rounded down to an integer count of bases per primer).
@@ -143,6 +152,7 @@ trim_to_amplicon <- function(reference_df,
   if (xor(is.null(primer_fwd), is.null(primer_rev)))
     stop("trim_to_amplicon: supply both primer_fwd and primer_rev, or neither (to resolve them from barcode_term)")
 
+  primer_amplicon_range <- NULL
   if (is.null(primer_fwd)) {
     if (is.null(barcode_term))
       stop(paste0("trim_to_amplicon: supply barcode_term (to look up a registered primer pair ",
@@ -151,6 +161,7 @@ trim_to_amplicon <- function(reference_df,
     primer_info <- TaxaTools::resolve_barcode_primers(barcode_term)
     primer_fwd  <- primer_info$fwd
     primer_rev  <- primer_info$rev
+    primer_amplicon_range <- primer_info$amplicon_range
   }
 
   if (is.null(min_len) || is.null(max_len)) {
@@ -160,6 +171,14 @@ trim_to_amplicon <- function(reference_df,
                   "barcode-length (left untouched) versus over-length (checked for the ",
                   "amplicon region)."))
   }
+  # Captured BEFORE resolve_barcode_lengths() overwrites min_len/max_len below --
+  # needed so the plausible-span derivation further down can tell "the caller
+  # explicitly chose this bound" (their documented right, per @param min_len,
+  # max_len -- must be respected as-is) from "these were auto-resolved from
+  # barcode_term" (where the general min_len/max_len window is the wrong bound
+  # for a primer-inclusive matched span -- see below).
+  len_user_supplied <- !is.null(min_len) && !is.null(max_len)
+
   lens    <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len = min_len, max_len = max_len)
   min_len <- lens[["min_bp"]]
   max_len <- lens[["max_bp"]]
@@ -190,6 +209,39 @@ trim_to_amplicon <- function(reference_df,
   fwd_max_mm <- floor(nchar(primer_fwd) * max_mismatch_rate)
   rev_max_mm <- floor(nchar(primer_rev) * max_mismatch_rate)
 
+  # The plausibility check on a MATCHED span (forward-primer-start to
+  # reverse-primer-end, i.e. INCLUDING both primers) must not reuse
+  # min_len/max_len as-is -- those come from TaxaTools::resolve_barcode_lengths(),
+  # a general marker-length window meant for filtering raw sequence widths
+  # (deciding what's already barcode-length vs. over-length), not primer-to-
+  # primer span. `primer_info$amplicon_range` (from TaxaTools::
+  # barcode_primer_defaults, only available when a registered barcode_term
+  # resolved the primers) is the literature-reported *variable region* length,
+  # i.e. EXCLUDING primers -- confirmed empirically 2026-08-10, two real fish
+  # mitogenomes (Danio rerio, Cyprinus carpio) fetched live from NCBI both gave
+  # an identical real full span of 221bp for MiFish-U; MiFish-U's registered
+  # amplicon_range is 163-185bp, and 221 minus the 48bp of combined primer
+  # length lands at 173bp, squarely inside that range. Using min_len/max_len
+  # directly (130-210bp for MiFish-U) rejected every real, correctly-found hit
+  # as "implausible" (221 > 210) -- a systematic ~11bp miscalibration, not real
+  # primer absence, and the root cause of a real 0/107 Sebastes and 0/22
+  # Paralabrax rescue failure this package's own Known Footguns entry
+  # previously (and incompletely) attributed entirely to off-target NCBI
+  # search hits lacking the primer site at all -- see that entry's own
+  # amendment. Only applied when min_len/max_len were AUTO-resolved from
+  # barcode_term (`!len_user_supplied`) -- a caller who explicitly passes
+  # min_len/max_len is exercising their own documented right to set the
+  # plausibility bound directly (`@param min_len,max_len`), and that choice is
+  # respected as-is, exactly as before this fix.
+  if (!len_user_supplied && !is.null(primer_amplicon_range)) {
+    primer_total_len <- nchar(primer_fwd) + nchar(primer_rev)
+    span_min <- primer_amplicon_range[1] + primer_total_len
+    span_max <- primer_amplicon_range[2] + primer_total_len
+  } else {
+    span_min <- min_len
+    span_max <- max_len
+  }
+
   idx_to_check <- which(needs_trim)
   n_trimmed    <- 0L
 
@@ -200,8 +252,8 @@ trim_to_amplicon <- function(reference_df,
       rev_pattern_rc = primer_rev_rc,
       fwd_max_mm     = fwd_max_mm,
       rev_max_mm     = rev_max_mm,
-      min_len        = min_len,
-      max_len        = max_len
+      min_len        = span_min,
+      max_len        = span_max
     )
     amplicon_trim_note[i] <- result$note
     if (result$trimmed) {

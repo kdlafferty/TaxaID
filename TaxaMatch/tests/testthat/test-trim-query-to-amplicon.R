@@ -9,13 +9,18 @@
 .mf_fwd <- "GTCGGTAAAACTCGTGCCAGC"
 .mf_rev <- "CATAGTGGGGTATCTAATCCCAGTTTG"
 
-# Interior sized so fwd(21) + interior(96) + rev_rc(27) = 144bp total --
-# within MiFish-U's real registered range (130-210bp, TaxaTools::
-# resolve_barcode_lengths("MiFishU")), so tests relying on auto-resolved
-# length bounds (not an explicit min_len/max_len override) pass the
-# plausible-span check.
+# Interior sized so fwd(21) + interior(173) + rev_rc(27) = 221bp total --
+# matching the REAL, empirically-measured full primer-inclusive MiFish-U span
+# (confirmed 2026-08-10 against two real fish mitogenomes fetched live from
+# NCBI, Danio rerio and Cyprinus carpio -- both gave an identical 221bp span).
+# Deliberately NOT sized to fit inside TaxaTools::resolve_barcode_lengths(
+# "MiFishU")'s general 130-210bp marker-length window -- an earlier version of
+# this fixture was, and that silently masked a real bug where every genuine
+# real-data MiFish-U hit was rejected by the plausible-span check (which now
+# derives its bound from primer_info$amplicon_range + primer length instead;
+# see .trim_queries_to_amplicon()'s own comment for the full account).
 .build_genome_tm <- function(fwd = .mf_fwd, rev = .mf_rev,
-                             interior = paste(rep("AAACCCGGGTTT", 8), collapse = ""),
+                             interior = paste0(strrep("AAACCCGGGTTT", 14L), "AAAAA"),
                              flank5 = 300L, flank3 = 300L) {
   rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(rev)))
   amplicon <- paste0(fwd, interior, rev_rc)

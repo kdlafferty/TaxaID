@@ -18,8 +18,8 @@ build_report_context(
 \arguments{
 \item{study_description}{Character. One or two sentences describing the
 study (e.g., \code{"eDNA metabarcoding of coral reef fish at Palmyra
-  Atoll"}, or \code{"Phase III clinical trial of drug X in 500
-  patients"}). Default \code{NULL}.}
+Atoll"}, or \code{"Phase III clinical trial of drug X in 500
+patients"}). Default \code{NULL}.}
 
 \item{data_type}{Character. Type of data (e.g., \code{"eDNA"},
 \code{"survey"}, \code{"time series"}, \code{"spatial"},
@@ -27,7 +27,7 @@ study (e.g., \code{"eDNA metabarcoding of coral reef fish at Palmyra
 
 \item{workflow}{Character. Analysis pipeline or approach
 (e.g., \code{"Bayesian likelihood model"}, \code{"mixed-effects
-  regression"}, \code{"machine learning classification"}).
+regression"}, \code{"machine learning classification"}).
 Default \code{NULL}.}
 
 \item{packages}{Character vector. Software packages used, with optional
@@ -36,22 +36,22 @@ Default \code{NULL}.}
 
 \item{parameters}{Named list. Key analysis parameters and their values
 (e.g., \code{list(alpha = 0.05, n_iterations = 1000,
-  min_score = 70)}). Default \code{NULL}.}
+min_score = 70)}). Default \code{NULL}.}
 
 \item{statistics}{Named list. Summary statistics to report as verified
 facts (e.g., \code{list(n_samples = 70, n_resolved = 65,
-  resolution_rate = 92.9, mean_effect_size = 0.45)}). Default
+resolution_rate = 92.9, mean_effect_size = 0.45)}). Default
 \code{NULL}.}
 
 \item{citations}{Character vector. References to incorporate into the
 text (e.g., \code{c("Callahan et al. (2016) DADA2",
-  "R Core Team (2025)")}). Default \code{NULL}.}
+"R Core Team (2025)")}). Default \code{NULL}.}
 
 \item{facts}{Named list. Domain-specific grounding facts as key-value
 pairs. Use this for any information that does not fit the other
 fields (e.g., \code{list(location = "Palmyra Atoll",
-  marker = "12S MiFish", sampling_year = 2017,
-  model_type = "VAR(2)")}). Default \code{NULL}.}
+marker = "12S MiFish", sampling_year = 2017,
+model_type = "VAR(2)")}). Default \code{NULL}.}
 }
 \value{
 An S3 object of class \code{"report_context"} (a named list).

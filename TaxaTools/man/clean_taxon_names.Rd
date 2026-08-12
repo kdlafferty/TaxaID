@@ -4,7 +4,7 @@
 \alias{clean_taxon_names}
 \title{Extract and Clean Taxon Names from a Character Vector}
 \usage{
-clean_taxon_names(name_vec, remove_abbr = NULL)
+clean_taxon_names(name_vec, remove_abbr = NULL, strip_modifiers = NULL)
 }
 \arguments{
 \item{name_vec}{A character vector (or factor) of taxon names.}
@@ -13,6 +13,25 @@ clean_taxon_names(name_vec, remove_abbr = NULL)
 name as genus-only (the abbreviation is dropped). Defaults to a standard
 list of common abbreviations and placeholder terms. Pass a custom vector
 to extend or replace the default list.}
+
+\item{strip_modifiers}{A character vector of known leading modifier words
+(case-insensitive, matched against the FIRST whitespace-delimited token
+only, and only ever removed once per name -- never a repeated strip).
+Defaults to a curated list of real breeding/ploidy-manipulation terms
+found on real GenBank hybrid-cross records (\code{"androgenetic"},
+\code{"gynogenetic"}, \code{"autodiploid"}, \code{"autotriploid"},
+\code{"autotetraploid"}, \code{"allodiploid"}, \code{"allotriploid"},
+\code{"allotetraploid"}, \code{"diploid"}, \code{"triploid"},
+\code{"tetraploid"}, \code{"polyploid"}). Deliberately does NOT include
+uncertainty-hedge words (\code{"possible"}, \code{"putative"},
+\code{"probable"}, \code{"tentative"}, \code{"presumed"}, etc.) or
+\code{"hybrid"}/\code{"unidentified"} themselves -- those genuinely
+change what the name means (a hedge should keep failing the capital-
+letter filter below, not get silently rescued into a confident
+binomial; \code{"hybrid X x Y"} with no named first parent has no real
+maternal-parent identity to recover). Pass a custom vector to extend or
+replace the default list; \code{character(0)} disables this step
+entirely (restores this function's pre-2026-08-11 behavior).}
 }
 \value{
 A character vector the same length as \code{name_vec}. Names that
@@ -26,8 +45,11 @@ removing \code{NA}s, removing names that do not begin with a capital letter
 binomials to space-separated ones (e.g. \code{"Corallina_officinalis"} ->
 \code{"Corallina officinalis"}, as produced by Jonah Ventures and SILVA
 pipelines), trimming abbreviated second words (sp., spp., etc.) to
-genus-only, and stripping bracket artefacts. Returns a clean character
-vector suitable for API calls or downstream filtering.
+genus-only, stripping bracket artefacts, and stripping a single known
+leading breeding/ploidy-manipulation modifier word (e.g.
+\code{"androgenetic Carassius auratus"} -> \code{"Carassius auratus"}).
+Returns a clean character vector suitable for API calls or downstream
+filtering.
 }
 \details{
 This function operates on a plain character vector, not a dataframe.

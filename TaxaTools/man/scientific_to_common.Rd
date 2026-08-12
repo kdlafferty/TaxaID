@@ -31,7 +31,7 @@ sent to the LLM in a single batched call.  Default \code{FALSE}: returns
 \code{NA} for unresolved taxa without an LLM call.}
 
 \item{llm_fn}{Function with signature \code{function(prompt, ...) ->
-  character(1)}.  Required when \code{use_llm = TRUE} or
+character(1)}.  Required when \code{use_llm = TRUE} or
 \code{backbone_id} is unsupported / \code{NULL}.  Default
 \code{getOption("TaxaID.llm_fn")}.}
 

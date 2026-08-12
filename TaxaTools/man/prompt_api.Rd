@@ -23,9 +23,9 @@ Built-in alternatives: \code{\link{call_anthropic_api}},
 \code{\link{call_ollama_api}}.
 To use a non-default model or API key, pass a closure:
 \preformatted{
-  my_gemini <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash-lite")
-  raw_text  <- prompt_api(prompt, llm_fn = my_gemini)
-  }}
+my_gemini <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash-lite")
+raw_text  <- prompt_api(prompt, llm_fn = my_gemini)
+}}
 
 \item{pause_seconds}{Numeric. Seconds to pause between chunks to avoid
 rate limits. Default 1.}

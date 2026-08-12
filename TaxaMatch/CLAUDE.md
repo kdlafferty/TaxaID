@@ -1,6 +1,139 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-08 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_
+# Last updated: 2026-08-11 (Sonnet 5 -- a fourth real gap in the hybrid-maternal-proxy fix,
+# found the moment a full real GreatLakes run actually completed successfully (1163/1183
+# evaluated, 20 retrying next call): 3 real accessions -- "androgenetic"/"autodiploid"/
+# "autotetraploid Carassius auratus red var. x Megalobrama amblycephala" -- still read
+# "incongruent"/"hybrid_unresolved". Root cause: a real breeding/ploidy-manipulation
+# modifier prefixes the maternal parent's own name with a lowercase word, which
+# TaxaTools::clean_taxon_names() correctly refuses (no capital-letter start) -- exactly the
+# 2026-08-10 fix's own documented, intentional fallback case, just not yet resolved
+# further. The maternal-inheritance argument still holds for all three: androgenesis/
+# autoploidy manipulate the NUCLEAR genome, not which egg's cytoplasm (and therefore
+# mitochondria) the offspring develops in, so the mtDNA barcode is still genuinely the
+# first-listed parent's. Fixed by stripping a SINGLE leading lowercase word (not a
+# repeated run of them) before clean_taxon_names() runs -- verified empirically before
+# choosing the narrower (single, not repeated) form: a repeated strip on a hypothetical
+# "unidentified hybrid x Megalobrama amblycephala" would have consumed the literal " x "
+# hybrid marker itself along with both leading lowercase words, silently misattributing
+# the SECOND-listed (and biologically unrelated) taxon as the maternal parent -- confirmed
+# this exact failure mode directly before shipping, not just reasoned about. A no-op for
+# any label that already starts with a capital letter, so this only ever widens what gets
+# resolved, never changes an existing resolution. New regression test confirms the 3 real
+# modifier-prefixed accessions now resolve (`hybrid_maternal_proxy`, `congruent`); the
+# existing `hybrid_unresolved` fallback test was updated to a genuinely still-unresolvable
+# two-leading-lowercase-word case (doubling as the misattribution regression guard).
+# `devtools::test()` 0 failures (100/100 in this file, up from 98), `devtools::check()`
+# 0/0/0, reinstalled. `.EVAL_REF_ACC_VERSION` deliberately NOT bumped this time (unlike the
+# 2026-08-10 fix) -- this narrower change only affects accessions matching this exact
+# modifier-prefix pattern, confirmed via the regression suite to be a no-op for every other
+# accession shape, so forcing a full cache invalidation (and therefore a full re-BLAST of
+# all ~1,163 already-correctly-cached accessions) would have been real, unnecessary NCBI
+# cost -- especially with today's fair-use throttling concern still live. Instead, the 3
+# specific real cached rows (PQ240359/PV257635/PQ240357, all still carrying today's own
+# params_key from the fix immediately below) were surgically removed from the real
+# persistent cache directly (backed up first as `reference_accession_cache.rds.
+# bak_pre_modifier_word_fix`), so only those 3 accessions get re-evaluated on the next run.
+# Previous update, 2026-08-10, continued (Sonnet 5 -- a third real bug, found the moment the
+# hybrid-maternal-proxy fix (below) was actually run against the full real GreatLakes
+# population: a sustained NCBI server-side CPU-budget rejection wave affected 100% of the
+# 414 accessions still needing evaluation (every batch, at both batch_size=20 and the
+# batch_size=10 fallback retry, rejected) -- and this crashed the ENTIRE call
+# ("arguments imply differing number of rows: 0, 1"), losing all progress from that call
+# since the persistent cache only writes once, at the very end. Root cause, confirmed via
+# a minimal offline reproduction (not guessed): when literally every remaining accession in
+# one evaluate_reference_accessions() call fails BLAST, query_meta -- and therefore
+# congruence, built from it -- both correctly end up 0 rows, but computed_rows's
+# data.frame() call unconditionally mixed those 0-length columns with three scalar columns
+# (evaluated_at = now, cache_hit = FALSE, params_key = params_key) -- base R's data.frame()
+# does not recycle a length-1 scalar down to 0 rows the way it recycles a scalar UP into a
+# longer common length, it errors instead. This was a real, pre-existing landmine (nothing
+# to do with the hybrid fix itself, confirmed by reproducing it against non-hybrid
+# accessions too) that had simply never been reachable before today's first-ever
+# total-rejection-of-an-entire-call event. Fixed: computed_rows is only built
+# `if (nrow(congruence) > 0L)`, matching the existing `computed_rows <- NULL` default --
+# a call where everything fails now degrades gracefully to the same NA-verdict-per-
+# accession, "not cached, will retry next call" behavior the existing partial-failure
+# case already has, instead of crashing. New regression test reproduces the exact
+# real scenario (every accession failing BLAST within one call, mixed with the
+# already-passing partial-failure test immediately above it in the same file).
+# `devtools::test()` 0 failures (full suite, 98/98 in this file, up from 94), `devtools::
+# check()` 0/0/0, reinstalled. The underlying total-rejection wave itself is a separate,
+# real, external NCBI fair-use-throttling event (not a bug this fix addresses) --
+# very likely triggered by today's own cumulative heavy real usage across this whole
+# debugging thread (the amplicon-fix pilot, the full 1,183-accession run, and this
+# crashed attempt, plus live verification calls); see this file's top-of-session note
+# below for the recommendation to wait before the next real attempt.
+# Previous update, 2026-08-10 (Sonnet 5 -- two real fixes found live-debugging the user's
+# GreatLakes Goal-2 match-candidate screen (AuditNCBI_Goal2_MatchCandidateScreen.R), both
+# via direct live NCBI verification, not guessed. (1) trim_query_to_amplicon.R's
+# plausible-span check (barcode_term = "MiFishU" auto-trim, added 2026-08-09) compared the
+# FULL primer-inclusive matched span against min_len/max_len (130-210bp, a general
+# marker-length window meant for filtering raw sequence widths) instead of a bound derived
+# from the primer pair's own amplicon_range + primer length -- confirmed live against two
+# real fish mitogenomes (Danio rerio, Cyprinus carpio, both from NC_002333/NC_001606) that
+# BOTH give an identical real full span of 221bp, ~11bp over the old 210bp ceiling, so
+# EVERY genuine real MiFish-U hit was being rejected as "implausible" and BLASTed at full
+# mitogenome length instead -- the actual root cause of a real 92/92 (100%) extraction
+# failure and the resulting catastrophic remote-BLAST slowdown that originally motivated
+# this whole debugging thread. Fixed: the plausibility bound now derives from
+# primer_info$amplicon_range + combined primer length when barcode_term auto-resolved
+# min_len/max_len (an explicit caller-supplied min_len/max_len is still honored as-is,
+# unchanged). The identical bug, same duplicated algorithm, was fixed the same day in
+# TaxaLikely::trim_to_amplicon() -- see that package's own CLAUDE.md note and its Known
+# Footguns entry (amended, not deleted -- the original "0/107 Sebastes rescued, confirmed
+# not a bug" investigation's Paralabrax finding still stands on its own evidence, but the
+# broader "0% rescue is correct behavior" conclusion does not, since the two failure modes
+# were indistinguishable in that investigation's own data). Post-fix pilot run: 86/92
+# extracted (a plausible, non-systematic remainder), full 1,183-accession run completed in
+# a fraction of the pre-fix estimated wall time.
+#
+# (2) Real hybrid-cross false-positive mode found reviewing that same full run's 13
+# "incongruent" hierarchy_flag results with the user: 10 of 13 were real, correctly-labeled
+# hybrid-cross accessions (e.g. "Ctenopharyngodon idella x Megalobrama amblycephala"), not
+# mislabels. Confirmed live via direct efetch against several real accessions: NCBI's OWN
+# taxonomy entry for a hybrid-labeled organism is genuinely incomplete -- lineage terminates
+# at "unclassified Cyprinoidei", no family/genus/species populated at all -- so such an
+# accession structurally CANNOT agree with any independent BLAST hit at family rank or
+# finer (nothing on the query side to compare), which the rank-walk mechanically reads as
+# maximal disagreement. The 3 non-hybrid accessions in the same flagged list all had
+# complete normal lineages down to genus, confirming this is specific to the hybrid case,
+# not a general problem. Per the user's explicit choice (offered 3 options: mark hybrids as
+# a separate non-applicable status; resolve to the maternal parent species' real lineage;
+# leave as-is) -- option 2: new mechanism resolves a hybrid-labeled accession's lineage at
+# every rank COARSER than species from its maternal parent species instead (fish mtDNA is
+# maternally inherited, so this is the biologically correct comparison, not a guess);
+# species.x is deliberately left as the accession's own real hybrid label unchanged, since a
+# hybrid genuinely is not the same SPECIES as its parent -- only coarser ranks get the
+# substitution. Maternal parent name extracted via TaxaTools::clean_taxon_names()'s existing
+# 3-token simplification (already keeps only the first genus+epithet, discarding
+# " x ..." onward -- confirmed this is the "TaxaID decision to not use hybrids" the user
+# was recalling, already implicit in that function, not previously wired into this specific
+# check); resolved via TaxaTools::verify_taxon_names(backbone_id = 4L) (NCBI, same authority
+# every other taxonomy resolution in this function uses). Detection requires BOTH a
+# standalone " x " token in the listed organism name (the standard nomenclatural hybrid
+# marker, verified against all 13 real flagged accessions -- correctly separates the 10 real
+# hybrids from the 3 non-hybrids with zero false positives either direction) AND the
+# accession's own resolved family being unresolvable -- so an ordinary non-hybrid taxon with
+# a genuinely incomplete NCBI lineage is never routed through this maternal-parent
+# substitution, which would have no biological justification without a real hybrid cross
+# (a dedicated regression test confirms this). New `taxonomy_resolution_source` output
+# column ("direct"/"hybrid_maternal_proxy"/"hybrid_unresolved" -- the last for a hybrid-
+# marker-detected label `TaxaTools::clean_taxon_names()` still can't parse into a usable
+# proxy, e.g. "androgenetic Carassius auratus red var. x Megalobrama amblycephala", which
+# doesn't start with a capital letter -- an honest admission, not a guess) lets a reviewer
+# see which path produced any given verdict. `.EVAL_REF_ACC_VERSION` bumped
+# ("v4_hybrid_maternal_proxy") so previously-cached rows (computed under the old, false-
+# positive-prone logic) are correctly treated as stale and recomputed, not served as fresh.
+# 3 new tests (real hybrid case verified end-to-end against a live-data-shaped fixture,
+# including a mocked TaxaTools::verify_taxon_names() cross-package call -- this file's own
+# header note already documents that as an established, previously-used pattern; the
+# unparseable-label fallback; and a dedicated non-hybrid-with-incomplete-lineage regression
+# confirming the proxy mechanism never fires without a real hybrid marker). `devtools::test()`
+# 0 failures (full suite unaffected elsewhere), `devtools::check()` 0/0/0, reinstalled and
+# verified at `~/Library/R/4.0/library`. Not yet re-run against the full 1,183-accession
+# GreatLakes population with this second fix in place -- left for the user's next full run.
+# Previous update, 2026-08-08 (Sonnet 5 -- implements ecosystem_docs/REENTRY_PROMPT_
 # investigate_flagged_accession_prefilter_group_posthoc.md's top three menu items
 # (Question 1's Option A fix, Question 2 item 4, Question 3 items 1-2), per that doc's own
 # "Suggested next-session scope" ranking. Cluster-level mislabel detection (Question 3 item

@@ -131,24 +131,67 @@
   fwd_max_mm <- floor(nchar(primer_info$fwd) * max_mismatch_rate)
   rev_max_mm <- floor(nchar(primer_info$rev) * max_mismatch_rate)
 
+  # The plausibility check on a MATCHED span (forward-primer-start to
+  # reverse-primer-end, i.e. INCLUDING both primers) must not reuse
+  # min_len/max_len as-is -- those come from TaxaTools::resolve_barcode_lengths(),
+  # a general marker-length window meant for filtering raw sequence widths, not
+  # primer-to-primer span. `primer_info$amplicon_range` (from
+  # TaxaTools::barcode_primer_defaults) is the literature-reported *variable
+  # region* length, i.e. EXCLUDING primers (confirmed empirically 2026-08-10:
+  # two real fish mitogenomes, both distinct species, both gave an identical
+  # real full span of 221bp for MiFish-U -- primer_info$amplicon_range is
+  # 163-185bp, 221bp minus the 48bp of primer length lands at 173bp, squarely
+  # inside that range). Using min_len/max_len (130-210bp) directly rejected
+  # every real, correctly-found MiFish-U hit as "implausible" (221 > 210) --
+  # a systematic ~11bp miscalibration, not real primer absence, and the root
+  # cause of a real 92/92 extraction failure this fix was built to close. Falls
+  # back to min_len/max_len when a registered primer set has no amplicon_range.
+  if (!is.null(primer_info$amplicon_range)) {
+    primer_total_len <- nchar(primer_info$fwd) + nchar(primer_info$rev)
+    span_min <- primer_info$amplicon_range[1] + primer_total_len
+    span_max <- primer_info$amplicon_range[2] + primer_total_len
+  } else {
+    span_min <- min_len
+    span_max <- max_len
+  }
+
   out <- sequences
   n_trimmed <- 0L
+  fail_notes <- character(0L)
   for (i in which(needs_trim)) {
     result <- .extract_amplicon_one_tm(
       seq_char = sequences[i], fwd_pattern = primer_info$fwd, rev_pattern_rc = rev_rc,
-      fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = min_len, max_len = max_len
+      fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = span_min, max_len = span_max
     )
     if (result$trimmed) {
       out[i] <- result$sequence
       n_trimmed <- n_trimmed + 1L
+    } else {
+      fail_notes <- c(fail_notes, result$note)
     }
   }
 
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "evaluate_reference_accessions(): extracted the amplicon from %d of %d over-length query sequence(s); the rest are BLASTed at full length (primer site(s) not found).",
       n_trimmed, sum(needs_trim)
     ))
+    # Surfaces WHY extraction failed for the rest -- "primers_not_found_or_
+    # implausible_span" (real absence/mismatch of the primer sites, or a
+    # too-long/short implied product) is a materially different situation
+    # from "non_iupac_dna_skipped"/"invalid_dna_string" (a data-quality
+    # problem upstream of this function, e.g. non-ACGT characters slipping
+    # through), which .extract_amplicon_one_tm() already distinguishes via
+    # its own `note` field but this wrapper previously discarded entirely --
+    # a 0-of-N result gave no way to tell which case was happening.
+    if (length(fail_notes) > 0L) {
+      tally <- sort(table(fail_notes), decreasing = TRUE)
+      message(sprintf(
+        "  reason breakdown: %s",
+        paste(sprintf("%s=%d", names(tally), as.integer(tally)), collapse = ", ")
+      ))
+    }
+  }
 
   out
 }

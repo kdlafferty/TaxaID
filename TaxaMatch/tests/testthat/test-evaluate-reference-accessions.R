@@ -357,6 +357,45 @@ test_that("evaluate_reference_accessions() does not cache an accession whose BLA
   expect_equal(out2$hierarchy_flag, "insufficient_independent_evidence")
 })
 
+test_that("evaluate_reference_accessions() does not crash when EVERY accession in the call fails BLAST", {
+  # Regression test, 2026-08-10: a real, sustained NCBI server-side CPU-
+  # budget rejection wave affected 100% of a real 414-accession call (not
+  # just some, unlike the timeout test above). query_meta was filtered down
+  # to 0 rows (every accession excluded via failed_query_ids), so congruence
+  # ended up 0 rows too -- and building computed_rows unconditionally then
+  # crashed the ENTIRE call with "arguments imply differing number of rows:
+  # 0, 1" (data.frame() does not recycle scalar columns like
+  # evaluated_at/cache_hit/params_key down to 0 rows the way it recycles
+  # into a longer common length). This silently destroyed every accession
+  # successfully evaluated earlier in the SAME call, since the persistent
+  # cache only writes once, at the very end.
+  mock_blast_all_fail <- function(seq_df, ...) {
+    out <- data.frame(observation_id = character(0), accession = character(0),
+                      score = numeric(0), stringsAsFactors = FALSE)
+    attr(out, "failed_query_ids") <- seq_df$asv_id
+    out
+  }
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(
+    .resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(blast_sequences = mock_blast_all_fail, .package = "TaxaMatch")
+
+  expect_warning(
+    out <- evaluate_reference_accessions(
+      c("ACC001", "ACC002"), cache_dir = NULL, verbose = FALSE
+    ),
+    "queue timeout"
+  )
+
+  expect_equal(nrow(out), 2L)
+  expect_true(all(is.na(out$hierarchy_flag)))
+  expect_false(any(out$cache_hit))
+})
+
 test_that("evaluate_reference_accessions() dedupes input accessions", {
   .mock_all({
     out <- evaluate_reference_accessions(
@@ -364,6 +403,325 @@ test_that("evaluate_reference_accessions() dedupes input accessions", {
     )
   })
   expect_equal(nrow(out), 1L)
+})
+
+# ------------------------------------------------------------------------------
+# Hybrid-labeled accessions -- maternal parent species proxy (2026-08-10)
+# ------------------------------------------------------------------------------
+# Reproduces the real GreatLakes case directly: NCBI's own taxonomy for a
+# hybrid-cross-labeled accession is genuinely incomplete (family/genus/
+# species all NA, lineage stops at an "unclassified ..." rank) -- confirmed
+# live against real records, see this function's own @section Hybrid-labeled
+# accessions. Cross-package mock (TaxaTools::verify_taxon_names) needed here
+# specifically because the maternal-proxy path is the one place this
+# function reaches outside its own NCBI-taxonomy-DB mechanism -- matches
+# this file's own documented earlier precedent (see the top-of-file note).
+
+test_that("evaluate_reference_accessions() resolves a hybrid-labeled accession via its maternal parent species", {
+  hybrid_records <- data.frame(
+    accession = c("ACC_HYBRID", "HIT_H1", "HIT_H2", "HIT_H3"),
+    sequence = rep("ACGTACGTACGTACGT", 4L),
+    organism = c("Ctenopharyngodon idella x Megalobrama amblycephala",
+                rep(NA_character_, 3L)),
+    create_date = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
+    stringsAsFactors = FALSE
+  )
+  mock_fetch_hybrid <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL,
+                                verbose = TRUE) {
+    out <- hybrid_records[hybrid_records$accession %in% accessions, , drop = FALSE]
+    if (!want_sequence) out$sequence <- NA_character_
+    rownames(out) <- NULL
+    out
+  }
+
+  # NCBI's own taxonomy for the hybrid accession itself -- genuinely
+  # truncated, exactly as confirmed live: order populated, nothing finer.
+  mock_resolve_taxonomy_hybrid <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    fx <- data.frame(
+      accession = "ACC_HYBRID", kingdom = "Metazoa", phylum = "Chordata",
+      class = "Actinopteri", order = "Cypriniformes",
+      family = NA_character_, genus = NA_character_, species = NA_character_,
+      stringsAsFactors = FALSE
+    )
+    fx[fx$accession %in% accessions, , drop = FALSE]
+  }
+
+  # Independent BLAST hits, all genuinely agreeing with the MATERNAL
+  # PARENT's real lineage (Xenocyprididae / Ctenopharyngodon) -- never
+  # agreeing with the hybrid's own (nonexistent) family/genus, since no
+  # such taxon exists to agree with in the first place.
+  mock_blast_hybrid <- function(seq_df, ...) {
+    data.frame(
+      observation_id = "ACC_HYBRID", accession = c("HIT_H1", "HIT_H2", "HIT_H3"),
+      score = c(99, 98, 97), query_coverage = 95,
+      kingdom = "Metazoa", phylum = "Chordata", class = "Actinopteri",
+      order = "Cypriniformes", family = "Xenocyprididae",
+      genus = "Ctenopharyngodon", species = "Ctenopharyngodon idella",
+      stringsAsFactors = FALSE
+    )
+  }
+
+  # TaxaTools::verify_taxon_names(backbone_id = 4L) for the maternal proxy
+  # name -- shape matches the real live response (classification_path/
+  # classification_ranks pipe-delimited, verified 2026-08-10).
+  mock_verify_ncbi <- function(name_list, backbone_id, ...) {
+    tibble::tibble(
+      user_supplied_name = "Ctenopharyngodon idella",
+      matched_name = "Ctenopharyngodon idella",
+      matched_rank = "species",
+      classification_path =
+        "Metazoa|Chordata|Actinopteri|Cypriniformes|Xenocyprididae|Ctenopharyngodon|Ctenopharyngodon idella",
+      classification_ranks = "kingdom|phylum|class|order|family|genus|species"
+    )
+  }
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = mock_fetch_hybrid, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(blast_sequences = mock_blast_hybrid, .package = "TaxaMatch")
+  local_mocked_bindings(
+    .resolve_taxonomy_by_acc = mock_resolve_taxonomy_hybrid, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(verify_taxon_names = mock_verify_ncbi, .package = "TaxaTools")
+
+  out <- evaluate_reference_accessions("ACC_HYBRID", cache_dir = NULL, verbose = FALSE)
+
+  expect_equal(out$taxonomy_resolution_source, "hybrid_maternal_proxy")
+  # Without the proxy, this would read "incongruent" (no family/genus on the
+  # query side to ever agree with) -- the real, confirmed false-positive
+  # mode this fix closes.
+  expect_equal(out$hierarchy_flag, "congruent")
+  expect_equal(out$finest_common_rank, "genus")
+})
+
+test_that("evaluate_reference_accessions() resolves a real breeding/ploidy-modifier-prefixed hybrid label (2026-08-11)", {
+  # Regression test: found live against the real GreatLakes population --
+  # "androgenetic"/"autodiploid"/"autotetraploid" all precede the maternal
+  # parent's real name with a lowercase modifier word, which the ORIGINAL
+  # hybrid-proxy fix (2026-08-10) could not parse (clean_taxon_names()
+  # correctly refuses a non-capital-first string), silently falling back
+  # to "hybrid_unresolved" for all 3 real accessions. Fixed by stripping a
+  # single leading lowercase word before clean_taxon_names() runs -- the
+  # maternal-inheritance argument still holds (these are nuclear-genome
+  # manipulation techniques, not a different maternal cytoplasm source).
+  hybrid_records <- data.frame(
+    accession = c("ACC_ANDROGENETIC", "HIT_1", "HIT_2", "HIT_3"),
+    sequence = rep("ACGTACGTACGTACGT", 4L),
+    organism = c("androgenetic Carassius auratus red var. x Megalobrama amblycephala",
+                rep(NA_character_, 3L)),
+    create_date = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
+    stringsAsFactors = FALSE
+  )
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    out <- hybrid_records[hybrid_records$accession %in% accessions, , drop = FALSE]
+    if (!want_sequence) out$sequence <- rep(NA_character_, nrow(out))
+    rownames(out) <- NULL
+    out
+  }
+  mock_resolve_taxonomy <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    fx <- data.frame(
+      accession = "ACC_ANDROGENETIC", kingdom = "Metazoa", phylum = "Chordata",
+      class = "Actinopteri", order = "Cypriniformes",
+      family = NA_character_, genus = NA_character_, species = NA_character_,
+      stringsAsFactors = FALSE
+    )
+    fx[fx$accession %in% accessions, , drop = FALSE]
+  }
+  mock_blast <- function(seq_df, ...) {
+    data.frame(
+      observation_id = "ACC_ANDROGENETIC", accession = c("HIT_1", "HIT_2", "HIT_3"),
+      score = c(99, 98, 97), query_coverage = 95,
+      kingdom = "Metazoa", phylum = "Chordata",
+      class = "Actinopteri", order = "Cypriniformes", family = "Cyprinidae",
+      genus = "Carassius", species = "Carassius auratus",
+      stringsAsFactors = FALSE
+    )
+  }
+  mock_verify_ncbi <- function(name_list, backbone_id, ...) {
+    tibble::tibble(
+      user_supplied_name = "Carassius auratus",
+      matched_name = "Carassius auratus", matched_rank = "species",
+      classification_path = "Metazoa|Chordata|Actinopteri|Cypriniformes|Cyprinidae|Carassius|Carassius auratus",
+      classification_ranks = "kingdom|phylum|class|order|family|genus|species"
+    )
+  }
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = mock_fetch, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(blast_sequences = mock_blast, .package = "TaxaMatch")
+  local_mocked_bindings(
+    .resolve_taxonomy_by_acc = mock_resolve_taxonomy, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(verify_taxon_names = mock_verify_ncbi, .package = "TaxaTools")
+
+  out <- evaluate_reference_accessions("ACC_ANDROGENETIC", cache_dir = NULL, verbose = FALSE)
+  expect_equal(out$taxonomy_resolution_source, "hybrid_maternal_proxy")
+  expect_equal(out$hierarchy_flag, "congruent")
+})
+
+test_that("evaluate_reference_accessions() falls back to 'hybrid_unresolved' when no parent name can be extracted even after stripping one modifier word", {
+  hybrid_records <- data.frame(
+    accession = "ACC_HYBRID_UNPARSEABLE",
+    sequence = "ACGTACGTACGTACGT",
+    # TWO leading lowercase words -- stripping only one (the deliberate,
+    # safety-motivated choice, see the production code's own comment on
+    # why a repeated strip is NOT used) still leaves a lowercase start, so
+    # no proxy name can be extracted. Also a regression guard against a
+    # real failure mode found before shipping: a repeated-word strip would
+    # have consumed "hybrid" too, silently misattributing "Megalobrama
+    # amblycephala" (the SECOND-listed taxon, and an entirely different
+    # unrelated genus) as the maternal parent.
+    organism = "unidentified hybrid x Megalobrama amblycephala",
+    create_date = "2020/01/10",
+    stringsAsFactors = FALSE
+  )
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    out <- hybrid_records[hybrid_records$accession %in% accessions, , drop = FALSE]
+    if (!want_sequence) out$sequence <- NA_character_
+    rownames(out) <- NULL
+    out
+  }
+  mock_resolve_taxonomy <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    fx <- data.frame(
+      accession = "ACC_HYBRID_UNPARSEABLE", kingdom = "Metazoa", phylum = "Chordata",
+      class = "Actinopteri", order = "Cypriniformes",
+      family = NA_character_, genus = NA_character_, species = NA_character_,
+      stringsAsFactors = FALSE
+    )
+    fx[fx$accession %in% accessions, , drop = FALSE]
+  }
+  mock_blast_empty <- function(seq_df, ...) {
+    data.frame(observation_id = character(0), accession = character(0),
+              score = numeric(0), stringsAsFactors = FALSE)
+  }
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = mock_fetch, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(blast_sequences = mock_blast_empty, .package = "TaxaMatch")
+  local_mocked_bindings(
+    .resolve_taxonomy_by_acc = mock_resolve_taxonomy, .package = "TaxaMatch"
+  )
+
+  out <- evaluate_reference_accessions("ACC_HYBRID_UNPARSEABLE", cache_dir = NULL, verbose = FALSE)
+  expect_equal(out$taxonomy_resolution_source, "hybrid_unresolved")
+})
+
+test_that("evaluate_reference_accessions() does not apply the hybrid proxy to a non-hybrid accession with an incomplete lineage", {
+  # Same symptom (family.x is NA) but NO hybrid marker in the name -- the
+  # maternal-parent substitution must never fire here, since there is no
+  # hybrid biology to justify it.
+  odd_records <- data.frame(
+    accession = "ACC_UNCLASSIFIED", sequence = "ACGTACGTACGTACGT",
+    organism = "Unclassified fish sp.", create_date = "2020/01/10",
+    stringsAsFactors = FALSE
+  )
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    out <- odd_records[odd_records$accession %in% accessions, , drop = FALSE]
+    if (!want_sequence) out$sequence <- NA_character_
+    rownames(out) <- NULL
+    out
+  }
+  mock_resolve_taxonomy <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    fx <- data.frame(
+      accession = "ACC_UNCLASSIFIED", kingdom = "Metazoa", phylum = "Chordata",
+      class = "Actinopteri", order = "Perciformes",
+      family = NA_character_, genus = NA_character_, species = NA_character_,
+      stringsAsFactors = FALSE
+    )
+    fx[fx$accession %in% accessions, , drop = FALSE]
+  }
+  mock_blast_empty <- function(seq_df, ...) {
+    data.frame(observation_id = character(0), accession = character(0),
+              score = numeric(0), stringsAsFactors = FALSE)
+  }
+  verify_called <- FALSE
+  mock_verify_should_not_fire <- function(name_list, backbone_id, ...) {
+    verify_called <<- TRUE
+    stop("should not be called")
+  }
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = mock_fetch, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(blast_sequences = mock_blast_empty, .package = "TaxaMatch")
+  local_mocked_bindings(
+    .resolve_taxonomy_by_acc = mock_resolve_taxonomy, .package = "TaxaMatch"
+  )
+  local_mocked_bindings(verify_taxon_names = mock_verify_should_not_fire, .package = "TaxaTools")
+
+  out <- evaluate_reference_accessions("ACC_UNCLASSIFIED", cache_dir = NULL, verbose = FALSE)
+  expect_equal(out$taxonomy_resolution_source, "direct")
+  expect_false(verify_called)
+})
+
+# ------------------------------------------------------------------------------
+# listed_taxon_is_species (2026-08-11)
+# ------------------------------------------------------------------------------
+
+test_that("evaluate_reference_accessions() flags a family-level-only listed taxon as not species-resolved", {
+  # Real GreatLakes case: "Serranidae sp. JL-2015" -- a family name used in
+  # place of a genus, plus an informal specimen code. Not a mislabel, not a
+  # hybrid -- just never identified to species. hierarchy_flag can read
+  # "congruent" here (nothing contradicts the label); listed_taxon_is_species
+  # is the SEPARATE, orthogonal signal that catches this.
+  records <- data.frame(
+    accession = c("ACC_FAM", "HIT_A", "HIT_B", "HIT_C"),
+    sequence = rep("ACGTACGTACGTACGT", 4L),
+    organism = c("Serranidae sp. JL-2015", rep(NA_character_, 3L)),
+    create_date = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
+    stringsAsFactors = FALSE
+  )
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    out <- records[records$accession %in% accessions, , drop = FALSE]
+    if (!want_sequence) out$sequence <- rep(NA_character_, nrow(out))
+    rownames(out) <- NULL
+    out
+  }
+  mock_resolve_taxonomy <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    fx <- data.frame(
+      accession = "ACC_FAM", kingdom = "Metazoa", phylum = "Chordata",
+      class = "Actinopteri", order = "Perciformes", family = "Serranidae",
+      genus = NA_character_, species = NA_character_,
+      stringsAsFactors = FALSE
+    )
+    fx[fx$accession %in% accessions, , drop = FALSE]
+  }
+  mock_blast <- function(seq_df, ...) {
+    data.frame(
+      observation_id = "ACC_FAM", accession = c("HIT_A", "HIT_B", "HIT_C"),
+      score = c(99, 98, 97), query_coverage = 95,
+      kingdom = "Metazoa", phylum = "Chordata", class = "Actinopteri",
+      order = "Perciformes", family = "Serranidae", genus = "Epinephelus",
+      species = "Epinephelus sp.",
+      stringsAsFactors = FALSE
+    )
+  }
+
+  local_mocked_bindings(.fetch_reference_accession_records = mock_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(blast_sequences = mock_blast, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = mock_resolve_taxonomy, .package = "TaxaMatch")
+
+  out <- evaluate_reference_accessions("ACC_FAM", cache_dir = NULL, verbose = FALSE)
+  expect_false(out$listed_taxon_is_species)
+  expect_equal(out$hierarchy_flag, "congruent")  # nothing contradicts the label
+})
+
+test_that("evaluate_reference_accessions() reads listed_taxon_is_species = TRUE for a genuine species binomial", {
+  .mock_all({
+    out <- evaluate_reference_accessions("ACC001", cache_dir = NULL, verbose = FALSE)
+  })
+  expect_true(out$listed_taxon_is_species)
+})
+
+test_that("evaluate_reference_accessions() reads listed_taxon_is_species = NA (not FALSE) for a fetch failure", {
+  .mock_all({
+    suppressWarnings(
+      out <- evaluate_reference_accessions("GHOST999", cache_dir = NULL, verbose = FALSE)
+    )
+  })
+  expect_true(is.na(out$listed_taxon_is_species))
 })
 
 test_that("evaluate_reference_accessions() validates inputs", {
