@@ -111,6 +111,30 @@ test_that(".generate_outputs saves a context file alongside generated outputs", 
 
   generated2 <- TaxaWizard:::.generate_outputs(dag, outputs = "script", output_dir = dir)
   expect_true(isTRUE(attr(generated2, "appended")))
+  # No known_script_path was passed, so this append was discovered purely by
+  # same-day filename match -- from generated2's point of view, indistinguishable
+  # from appending to an unrelated same-day workflow.
+  expect_true(isTRUE(attr(generated2, "cross_session_append")))
+})
+
+test_that(".generate_outputs's known_script_path makes same-session continuation deterministic", {
+  dir <- .tw_test_dir()
+  dag <- .make_dag(1)
+
+  generated1 <- TaxaWizard:::.generate_outputs(dag, outputs = "script", output_dir = dir)
+  expect_false(isTRUE(attr(generated1, "appended")))
+  expect_false(isTRUE(attr(generated1, "cross_session_append")))
+  script_path <- attr(generated1, "script_path")
+  expect_true(file.exists(script_path))
+
+  # Passing back the script_path from the first call (as create.R's console/
+  # viewer loops now do) appends to the SAME file with no ambiguity, and is
+  # never flagged as a cross-session append.
+  generated2 <- TaxaWizard:::.generate_outputs(dag, outputs = "script", output_dir = dir,
+                                                known_script_path = script_path)
+  expect_true(isTRUE(attr(generated2, "appended")))
+  expect_false(isTRUE(attr(generated2, "cross_session_append")))
+  expect_equal(attr(generated2, "script_path"), script_path)
 })
 
 test_that(".generate_app falls back to a placeholder when no script is available", {

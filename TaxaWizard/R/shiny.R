@@ -45,14 +45,29 @@ utils::globalVariables(c("log_lines", "final_result"))
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # TaxaWizard script -- automatic
-#' workflow_app("taxaid_workflow_20260506.R")
+#' # A script already carrying TaxaWizard's own step markers needs no LLM
+#' # call and no interactive session to convert -- runnable as-is:
+#' if (requireNamespace("shiny", quietly = TRUE)) {
+#'   script <- tempfile(fileext = ".R")
+#'   writeLines(c(
+#'     "# --- User Parameters ---",
+#'     "min_score <- 97",
+#'     "",
+#'     "# --- Step 1: Load data ---",
+#'     "result <- .run_step(1, \"Load data\", quote({",
+#'     "  data.frame(score = c(95, 98, 99))",
+#'     "}))"
+#'   ), script)
+#'   app_path <- workflow_app(script, launch = FALSE)
+#'   cat(readLines(app_path)[1:3], sep = "\n")
+#' }
 #'
-#' # Any R script -- guided annotation
+#' \dontrun{
+#' # Any R script without TaxaWizard markers -- guided annotation
+#' # (needs an interactive session)
 #' workflow_app("my_analysis.R", annotate = "self")
 #'
-#' # Any R script -- LLM annotation
+#' # Any R script -- LLM annotation (needs a live LLM API call)
 #' workflow_app("my_analysis.R", annotate = "llm",
 #'              llm_fn = TaxaTools::call_anthropic_api)
 #'
@@ -157,12 +172,34 @@ workflow_app <- function(script_path,
 
 
 #' Extract library names from script
+#'
+#' Matches both \code{library(pkg)} and \code{require(pkg)} calls.
 #' @noRd
 .extract_libraries <- function(lines) {
-  m <- regmatches(lines, regexpr("^library\\(([^)]+)\\)", lines))
-  libs <- sub("^library\\(([^)]+)\\)", "\\1", m)
+  m <- regmatches(lines, regexpr("^(library|require)\\(([^)]+)\\)", lines))
+  libs <- sub("^(library|require)\\(([^)]+)\\)", "\\2", m)
   libs <- libs[!libs %in% c("TaxaWizard", "TaxaWorkflow", "base")]
   unique(libs)
+}
+
+
+#' Ask a yes/no confirmation question via readline()
+#'
+#' Consolidates this package's \code{readline()}-based (y/n) confirm prompts
+#' behind one explicit answer to what happens when the user just presses
+#' return: empty input means "no" (decline), matching every other confirm
+#' prompt in this package (\code{workflow_fix()}'s "Regenerate workflow?",
+#' \code{workflow_create()}'s "Generate workflow?"). One prompt in this file
+#' previously treated empty input as "yes" instead -- an isolated
+#' inconsistency flagged in code review; it now goes through this helper.
+#'
+#' @param prompt Character. The question to display (without a trailing
+#'   "(y/n):" -- this is appended).
+#' @return Logical.
+#' @noRd
+.confirm_yes <- function(prompt) {
+  resp <- readline(sprintf("%s (y/n): ", prompt))
+  tolower(trimws(resp)) %in% c("y", "yes")
 }
 
 
@@ -447,25 +484,46 @@ workflow_app <- function(script_path,
 }
 
 
+#' Get the function name called by an expression
+#'
+#' Returns the function name for a plain call (\code{fn(...)}) or a
+#' namespaced call (\code{pkg::fn(...)}/\code{pkg:::fn(...)}), unwrapping
+#' the \code{::}/\code{:::} operator. \code{as.character()} on the head of
+#' a namespaced call returns a length-3 vector (\code{"::"}, \code{"pkg"},
+#' \code{"fn"}), not a scalar -- comparing that directly against a single
+#' string (e.g. \code{fn == "source"}) silently produces a length>1 logical
+#' vector, which throws \code{"the condition has length > 1"} the moment a
+#' caller uses it inside \code{if()}. This is that scalar in every case.
+#'
+#' @param expr A call object.
+#' @return Character scalar function name, or \code{NA_character_} if
+#'   \code{expr} is not a call whose head resolves to a simple name.
+#' @noRd
+.call_fn_name <- function(expr) {
+  if (!is.call(expr)) return(NA_character_)
+  head <- expr[[1L]]
+  if (is.symbol(head)) return(as.character(head))
+  if (is.call(head) && length(head) == 3L &&
+      as.character(head[[1L]]) %in% c("::", ":::")) {
+    return(as.character(head[[3L]]))
+  }
+  NA_character_
+}
+
+
 #' Check if an expression is a library/require call
 #' @noRd
 .is_library_call <- function(expr) {
-  if (is.call(expr)) {
-    fn <- as.character(expr[[1L]])
-    return(fn %in% c("library", "require"))
-  }
-  FALSE
+  fn <- .call_fn_name(expr)
+  !is.na(fn) && fn %in% c("library", "require")
 }
 
 
 #' Check if an expression is a source() call
 #' @noRd
 .is_source_call <- function(expr) {
-  if (is.call(expr)) {
-    fn <- as.character(expr[[1L]])
-    return(fn == "source")
-  }
-  FALSE
+  fn <- .call_fn_name(expr)
+  !is.na(fn) && identical(fn, "source")
 }
 
 
@@ -473,8 +531,8 @@ workflow_app <- function(script_path,
 #' @noRd
 .is_simple_assignment <- function(expr) {
   if (!is.call(expr)) return(FALSE)
-  op <- as.character(expr[[1L]])
-  if (!op %in% c("<-", "=")) return(FALSE)
+  op <- .call_fn_name(expr)
+  if (is.na(op) || !op %in% c("<-", "=")) return(FALSE)
   if (length(expr) != 3L) return(FALSE)
 
   # LHS must be a simple name (not subset, not $)
@@ -505,10 +563,8 @@ workflow_app <- function(script_path,
   }
 
   # data.frame() call -- treat as parameter
-  if (is.call(expr)) {
-    fn_name <- tryCatch(as.character(expr[[1L]]), error = function(e) "")
-    if (fn_name == "data.frame") return(TRUE)
-  }
+  fn_name <- .call_fn_name(expr)
+  if (!is.na(fn_name) && fn_name == "data.frame") return(TRUE)
 
   FALSE
 }
@@ -654,8 +710,9 @@ workflow_app <- function(script_path,
   for (er in exprs) {
     e <- er$expr
     if (is.call(e)) {
-      op <- tryCatch(as.character(e[[1L]]), error = function(e) "")
-      if (op %in% c("<-", "=") && length(e) >= 2L && is.symbol(e[[2L]])) {
+      op <- .call_fn_name(e)
+      if (!is.na(op) && op %in% c("<-", "=") &&
+          length(e) >= 2L && is.symbol(e[[2L]])) {
         last_var <- as.character(e[[2L]])
       }
     }
@@ -812,12 +869,11 @@ annotate_script <- function(script_path,
   }
 
   # --- Question 3: Confirm ---
-  message(sprintf(
-    "\nReady to build app with %d parameter(s) and %d step(s). Proceed? (y/n): ",
+  proceed <- .confirm_yes(sprintf(
+    "\nReady to build app with %d parameter(s) and %d step(s). Proceed?",
     length(selected_params), length(selected_steps)
   ))
-  resp <- readline("")
-  if (!tolower(trimws(resp)) %in% c("y", "yes", "")) {
+  if (!proceed) {
     message("Annotation cancelled.")
     return(invisible(NULL))
   }

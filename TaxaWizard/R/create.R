@@ -5,6 +5,15 @@
 #' The conversation is powered by \code{\link{workflow_engine}} and can run
 #' either in the R console or in the RStudio Viewer pane.
 #'
+#' @details
+#' \strong{API cost.} Every reply you send makes a live LLM API call (billed
+#' by your provider, not free) -- there is no cap on how many turns a session
+#' can take. A long, exploratory conversation, or repeated calls to
+#' \code{\link{workflow_fix}} while debugging a generated script, can add up.
+#' Keep replies focused and type \code{"quit"} once you have what you need;
+#' the resulting script itself makes no further LLM calls (aside from any
+#' LLM-backed TaxaID step it explicitly includes, e.g. \code{assign_taxa_llm()}).
+#'
 #' @param mode Character. Where to run the chat interface:
 #'   \describe{
 #'     \item{\code{"auto"}}{(Default) Uses the browser if shiny is
@@ -23,7 +32,7 @@
 #'   uses the \code{ANTHROPIC_API_KEY} environment variable. Ignored when
 #'   \code{llm_fn} is supplied.
 #' @param llm_fn Function or NULL. Custom LLM caller for non-Anthropic
-#'   providers (Azure, OpenAI, Gemini, …). When non-NULL, \code{api_key} and
+#'   providers (Azure, OpenAI, Gemini, ...). When non-NULL, \code{api_key} and
 #'   the built-in Anthropic HTTP logic are bypassed entirely. The function
 #'   must accept four named arguments and return a single character string:
 #'   \itemize{
@@ -131,6 +140,8 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
   saved_ctx <- .load_context(output_dir)
 
   cat("=== TaxaWizard Designer ===\n")
+  cat("Note: each message you send makes a live, billed LLM API call ",
+      "(no per-session limit) -- see ?workflow_create for details.\n", sep = "")
   if (!is.null(saved_ctx)) {
     cat("Previous session context found.\n")
     use_ctx <- readline(prompt = "Use previous session defaults? (yes/no): ")
@@ -147,6 +158,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
   cat("Type 'quit' to exit.\n\n")
 
   auto_message <- NULL   # set non-NULL to skip readline on next iteration
+  session_script_path <- NULL   # script this session has generated, if any
 
   repeat {
     # --- Get user input (or use auto-message from phase transition) ---
@@ -155,7 +167,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
       auto_message <- NULL
     } else {
       user_input <- readline(prompt = "You: ")
-      if (tolower(trimws(user_input)) %in% c("quit", "exit", "q")) {
+      if (identical(tolower(trimws(user_input)), "quit")) {
         cat("Session ended.\n")
         return(invisible(NULL))
       }
@@ -167,13 +179,28 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
     cat("Processing...\n")
 
     # --- Call engine ---
+    # On the very first turn, if the user accepted saved defaults from a
+    # prior session in this output_dir, build the classify prompt explicitly
+    # so those defaults actually reach the LLM (subsequent turns fall back
+    # to normal phase auto-detection from history).
+    explicit_prompt <- NULL
+    if (!is.null(saved_ctx)) {
+      explicit_prompt <- .build_phase_prompt(
+        phase    = "classify",
+        context  = list(saved_context_text = .format_context_for_prompt(saved_ctx)),
+        metadata = metadata
+      )
+      saved_ctx <- NULL   # only inject on this first turn
+    }
+
     result <- tryCatch(
       workflow_engine(
-        history  = history,
-        metadata = metadata,
-        model    = model,
-        api_key  = api_key,
-        llm_fn   = llm_fn
+        history       = history,
+        metadata      = metadata,
+        model         = model,
+        api_key       = api_key,
+        llm_fn        = llm_fn,
+        system_prompt = explicit_prompt
       ),
       error = function(e) {
         list(status = "error", message = paste("Error:", conditionMessage(e)))
@@ -250,12 +277,21 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 
       confirm <- readline(prompt = "Generate workflow? (yes/no): ")
       if (tolower(trimws(confirm)) %in% c("yes", "y")) {
+        if (is.null(session_script_path) &&
+            !is.null(.find_existing_script(output_dir))) {
+          cat("Note: an existing taxaid_workflow_", format(Sys.Date(), "%Y%m%d"),
+              ".R was found in this directory from earlier today -- ",
+              "new steps will be appended to it. If this is a different, ",
+              "unrelated project, cancel and use a different output_dir.\n", sep = "")
+        }
         generated <- .generate_outputs(
-          dag        = dag,
-          outputs    = result$outputs %||% "script",
-          output_dir = output_dir,
-          trial      = trial
+          dag               = dag,
+          outputs           = result$outputs %||% "script",
+          output_dir        = output_dir,
+          trial             = trial,
+          known_script_path = session_script_path
         )
+        session_script_path <- attr(generated, "script_path") %||% session_script_path
         is_extension <- isTRUE(attr(generated, "appended"))
         cat(if (is_extension) "Updated files:\n" else "Generated files:\n")
         for (f in generated) cat(sprintf("  %s\n", f))
@@ -398,8 +434,12 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
     session$allowReconnect(TRUE)
 
     chat_history <- shiny::reactiveVal(list())
+    session_script_path <- NULL   # script this session has generated, if any
     display_msgs <- shiny::reactiveVal(list(
-      list(type = "system", text = "Describe your data and what you want to accomplish.")
+      list(type = "system", text = paste(
+        "Describe your data and what you want to accomplish.",
+        "Note: each message makes a live, billed LLM API call (no per-session limit)."
+      ))
     ))
 
     # Send on button click
@@ -501,11 +541,13 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
       if (identical(result$status, "complete") && !is.null(result$dag) &&
           length(result$dag$steps) > 0L) {
         generated <- .generate_outputs(
-          dag        = result$dag,
-          outputs    = result$outputs %||% "script",
-          output_dir = output_dir,
-          trial      = trial
+          dag               = result$dag,
+          outputs           = result$outputs %||% "script",
+          output_dir        = output_dir,
+          trial             = trial,
+          known_script_path = session_script_path
         )
+        session_script_path <<- attr(generated, "script_path") %||% session_script_path
 
         # Save session for workflow_fix()
         .save_session(hist, metadata, model, api_key, llm_fn, output_dir, trial)
@@ -520,10 +562,16 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         } else {
           "Run the script in the console. Use workflow_fix() if you hit errors."
         }
+        cross_session_note <- if (isTRUE(attr(generated, "cross_session_append"))) {
+          paste0("\n\nNote: this appended to an existing same-day workflow file ",
+                 "found in this directory, not one created in this session. If ",
+                 "that was a different, unrelated project, use a different ",
+                 "output_dir next time.")
+        } else ""
         msgs <- c(display_msgs(), list(list(
           type = "system",
           text = paste0(action_word, " files:\n  ", file_list,
-                        "\n\n", rerun_note,
+                        "\n\n", rerun_note, cross_session_note,
                         "\n\nYou can continue typing here to extend ",
                         "the workflow (e.g. add flagging or review). ",
                         "Or press Stop in the R console to exit.")

@@ -235,6 +235,28 @@ test_that("multi-input edges produce full Bayesian path", {
   expect_true(any(has_stepwise), info = "Stepwise Bayesian path should also be found")
 })
 
+test_that(".build_phase_prompt classify injects saved_context_text", {
+  # Regression test: workflow_context.json's saved parameter defaults were
+  # loaded and offered to the user in .create_console() but never actually
+  # reached the LLM's prompt anywhere -- .format_context_for_prompt()'s
+  # output was only ever consumed by the legacy .load_system_prompt(), not
+  # the active graph-based classify prompt. Confirms the fix wires it in.
+  ctx_text <- TaxaWizard:::.format_context_for_prompt(list(
+    parameters = list(list(name = "min_score", value = "97", description = "threshold"))
+  ))
+  prompt <- TaxaWizard:::.build_phase_prompt(
+    phase   = "classify",
+    context = list(saved_context_text = ctx_text)
+  )
+  expect_true(grepl("PREVIOUS SESSION CONTEXT", prompt, fixed = TRUE))
+  expect_true(grepl("min_score = 97", prompt, fixed = TRUE))
+})
+
+test_that(".build_phase_prompt classify is unaffected when no saved context is given", {
+  prompt <- TaxaWizard:::.build_phase_prompt(phase = "classify", context = list())
+  expect_false(grepl("PREVIOUS SESSION CONTEXT", prompt, fixed = TRUE))
+})
+
 test_that("edges are topologically sorted in path output", {
   .graph_env$graph <- NULL
   graph <- .load_graph()

@@ -9,19 +9,40 @@
 #'   \code{"methods"}, \code{"app"}.
 #' @param output_dir Character. Directory to write files.
 #' @param trial Logical. Include trial-mode subsetting.
+#' @param known_script_path Character or NULL. Path to a script this SAME
+#'   \code{workflow_create()} session already generated (i.e. what
+#'   \code{attr(result, "script_path")} returned from an earlier call in
+#'   this session). When supplied and it still exists, new steps are
+#'   appended to it directly -- no need to guess via
+#'   \code{\link{.find_existing_script}}'s same-day filename scan, and
+#'   \code{attr(result, "cross_session_append")} is always \code{FALSE}.
+#'   When \code{NULL} (the first generation of a session), a same-day file
+#'   found by \code{.find_existing_script()} may belong to an earlier,
+#'   unrelated session in the same \code{output_dir} -- callers should
+#'   check \code{attr(result, "cross_session_append")} and warn the user.
 #'
-#' @return Character vector of generated file paths.
+#' @return Character vector of generated file paths, with attributes
+#'   \code{appended} (logical), \code{script_path} (character or NULL --
+#'   pass this back in as \code{known_script_path} on the next call in the
+#'   same session), and \code{cross_session_append} (logical -- TRUE when
+#'   the appended-to file was discovered by same-day filename match rather
+#'   than known to belong to this session).
 #' @noRd
-.generate_outputs <- function(dag, outputs, output_dir, trial = FALSE) {
+.generate_outputs <- function(dag, outputs, output_dir, trial = FALSE,
+                              known_script_path = NULL) {
 
   generated <- character()
   appended <- FALSE
+  cross_session_append <- FALSE
   script_path <- NULL
 
   if ("script" %in% outputs) {
-    # Check whether we will append before generating
-    appended <- !is.null(.find_existing_script(output_dir))
-    script_path <- .generate_script(dag, output_dir, trial)
+    known_valid <- !is.null(known_script_path) && file.exists(known_script_path)
+    existing <- if (known_valid) known_script_path else .find_existing_script(output_dir)
+    appended <- !is.null(existing)
+    cross_session_append <- appended && !known_valid
+    script_path <- .generate_script(dag, output_dir, trial,
+                                    known_script_path = known_script_path)
     generated <- c(generated, script_path)
   }
 
@@ -39,6 +60,8 @@
   .save_context(dag, output_dir)
 
   attr(generated, "appended") <- appended
+  attr(generated, "cross_session_append") <- cross_session_append
+  attr(generated, "script_path") <- script_path
   generated
 }
 
@@ -55,15 +78,24 @@
 #' @param dag List. Workflow DAG.
 #' @param output_dir Character. Output directory.
 #' @param trial Logical. Include trial-mode subsetting.
+#' @param known_script_path Character or NULL. A script this same session
+#'   already generated (see \code{\link{.generate_outputs}}). Preferred
+#'   over \code{.find_existing_script()}'s same-day filename scan when
+#'   present and still on disk.
 #'
 #' @return Character: path to generated file.
 #' @noRd
-.generate_script <- function(dag, output_dir, trial = FALSE) {
+.generate_script <- function(dag, output_dir, trial = FALSE,
+                             known_script_path = NULL) {
 
   n_steps <- length(dag$steps)
 
   # --- Check for existing script to append to ---
-  existing <- .find_existing_script(output_dir)
+  existing <- if (!is.null(known_script_path) && file.exists(known_script_path)) {
+    known_script_path
+  } else {
+    .find_existing_script(output_dir)
+  }
 
   if (!is.null(existing)) {
     return(.append_to_script(existing, dag, output_dir))

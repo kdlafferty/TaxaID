@@ -1,5 +1,3 @@
-utils::globalVariables(character(0))
-
 #' Load the Workflow Graph
 #'
 #' Reads \code{inst/graph/workflow_graph.json} and returns a parsed list with
@@ -503,6 +501,13 @@ utils::globalVariables(character(0))
           "asks for something not on this list, tell them it is not available."
         ), prior_label, prior_out, prior_out, prior_out, reachable_text)
         prompt <- paste0(prompt, continuation)
+      }
+
+      # Saved-session context: parameter defaults from a previous
+      # workflow_context.json the user chose to reuse (see .create_console()).
+      saved_ctx_text <- context$saved_context_text
+      if (!is.null(saved_ctx_text) && nzchar(saved_ctx_text)) {
+        prompt <- paste0(prompt, "\n\n", saved_ctx_text)
       }
     },
     path_select = {

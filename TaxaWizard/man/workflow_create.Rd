@@ -36,7 +36,7 @@ uses the \code{ANTHROPIC_API_KEY} environment variable. Ignored when
 \code{llm_fn} is supplied.}
 
 \item{llm_fn}{Function or NULL. Custom LLM caller for non-Anthropic
-providers (Azure, OpenAI, Gemini, …). When non-NULL, \code{api_key} and
+providers (Azure, OpenAI, Gemini, ...). When non-NULL, \code{api_key} and
 the built-in Anthropic HTTP logic are bypassed entirely. The function
 must accept four named arguments and return a single character string:
 \itemize{
@@ -64,6 +64,15 @@ Interactive workflow designer that interviews you about your data and goals,
 then generates an executable .R script (and optionally a methods .md file).
 The conversation is powered by \code{\link{workflow_engine}} and can run
 either in the R console or in the RStudio Viewer pane.
+}
+\details{
+\strong{API cost.} Every reply you send makes a live LLM API call (billed
+by your provider, not free) -- there is no cap on how many turns a session
+can take. A long, exploratory conversation, or repeated calls to
+\code{\link{workflow_fix}} while debugging a generated script, can add up.
+Keep replies focused and type \code{"quit"} once you have what you need;
+the resulting script itself makes no further LLM calls (aside from any
+LLM-backed TaxaID step it explicitly includes, e.g. \code{assign_taxa_llm()}).
 }
 \examples{
 \dontrun{

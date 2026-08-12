@@ -29,7 +29,7 @@ available TaxaID package metadata automatically.}
 \code{llm_fn} is supplied.}
 
 \item{llm_fn}{Function or NULL. Custom LLM caller for non-Anthropic
-providers (Azure, OpenAI, Gemini, …). See \code{\link{workflow_create}}
+providers (Azure, OpenAI, Gemini, ...). See \code{\link{workflow_create}}
 for the required function signature.}
 
 \item{system_prompt}{Character or NULL. Custom system prompt override.

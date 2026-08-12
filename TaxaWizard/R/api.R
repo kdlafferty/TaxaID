@@ -7,7 +7,7 @@ NULL
 #' Low-level wrapper around httr2 that sends the conversation history
 #' and system prompt to the LLM API and returns the parsed JSON response.
 #' When \code{llm_fn} is supplied it is called instead of the built-in
-#' Anthropic HTTP logic, allowing any provider (Azure, OpenAI, Gemini, …).
+#' Anthropic HTTP logic, allowing any provider (Azure, OpenAI, Gemini, ...).
 #'
 #' @param messages List of message objects (role + content).
 #' @param system_prompt Character. The system prompt enforcing JSON schema.

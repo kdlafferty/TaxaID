@@ -75,6 +75,16 @@ test_that(".extract_libraries works", {
   expect_equal(libs, c("TaxaAssign", "TaxaFlag"))
 })
 
+test_that(".extract_libraries also captures require() calls", {
+  lines <- c(
+    "library(TaxaWizard)",
+    "require(TaxaAssign)",
+    "require(TaxaFlag)"
+  )
+  libs <- TaxaWizard:::.extract_libraries(lines)
+  expect_equal(libs, c("TaxaAssign", "TaxaFlag"))
+})
+
 test_that(".extract_params finds user parameters", {
   lines <- c(
     "# --- User Parameters ---",
@@ -417,6 +427,58 @@ test_that(".is_simple_assignment rejects function calls", {
   expect_false(TaxaWizard:::.is_simple_assignment(quote(x <- read.csv("f"))))
   expect_false(TaxaWizard:::.is_simple_assignment(quote(x <- lm(y ~ x))))
   expect_false(TaxaWizard:::.is_simple_assignment(quote(print("hello"))))
+})
+
+test_that(".call_fn_name unwraps pkg::fn and pkg:::fn calls to a scalar", {
+  expect_equal(TaxaWizard:::.call_fn_name(quote(data.frame(x = 1))), "data.frame")
+  expect_equal(TaxaWizard:::.call_fn_name(quote(TaxaTools::create_taxon_names(x))),
+               "create_taxon_names")
+  expect_equal(TaxaWizard:::.call_fn_name(quote(TaxaTools:::.internal_fn(x))),
+               ".internal_fn")
+  expect_true(is.na(TaxaWizard:::.call_fn_name(quote(x))))
+  expect_true(is.na(TaxaWizard:::.call_fn_name(1)))
+})
+
+test_that(".is_library_call/.is_source_call/.is_literal_value do not crash on a namespaced call", {
+  # Regression test: as.character(expr[[1L]]) on a pkg::fn() call returns a
+  # length-3 vector (c("::", "pkg", "fn")), which a bare `fn == "x"` or
+  # `fn %in% c(...)` silently turns into a length>1 logical -- fatal the
+  # moment a caller uses it inside if(). Every real snippet in this
+  # ecosystem is written package::function() style (see the ecosystem
+  # CLAUDE.md coding conventions), so this was reachable on nearly any
+  # real script passed to annotate_script()/.segment_script().
+  ns_call <- quote(TaxaTools::create_taxon_names(match_df))
+  expect_false(TaxaWizard:::.is_library_call(ns_call))
+  expect_false(TaxaWizard:::.is_source_call(ns_call))
+  expect_false(TaxaWizard:::.is_literal_value(ns_call))
+  expect_false(TaxaWizard:::.is_simple_assignment(quote(x <- TaxaTools::create_taxon_names(y))))
+
+  expect_true(TaxaWizard:::.is_library_call(quote(library(TaxaTools))))
+  expect_true(TaxaWizard:::.is_library_call(quote(require(TaxaTools))))
+  expect_true(TaxaWizard:::.is_source_call(quote(source("helpers.R"))))
+})
+
+test_that(".last_assignment_var does not crash on a namespaced call in the block", {
+  exprs <- list(
+    list(expr = quote(TaxaFetch::filter_gbif_quality(occ))),
+    list(expr = quote(result <- TaxaMatch::blast_sequences(seqs)))
+  )
+  expect_equal(TaxaWizard:::.last_assignment_var(exprs), "result")
+})
+
+test_that(".segment_script does not crash on a top-level namespaced call", {
+  lines <- c(
+    "# --- User Parameters ---",
+    "min_score <- 97",
+    "",
+    "# --- Step 1: Filter ---",
+    "TaxaFetch::filter_gbif_quality(occ)",
+    "result <- .run_step(1, \"Filter\", quote({",
+    "  TaxaMatch::blast_sequences(seqs)",
+    "}))"
+  )
+  seg <- TaxaWizard:::.segment_script(lines)
+  expect_true(length(seg$step_candidates) >= 1L)
 })
 
 test_that("workflow_app errors with annotate='none' on generic script", {

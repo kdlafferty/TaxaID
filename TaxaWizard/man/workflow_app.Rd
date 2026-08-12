@@ -60,14 +60,29 @@ markers), parsing is automatic. For generic R scripts, the \code{annotate}
 parameter controls how parameters and steps are identified.
 }
 \examples{
-\dontrun{
-# TaxaWizard script -- automatic
-workflow_app("taxaid_workflow_20260506.R")
+# A script already carrying TaxaWizard's own step markers needs no LLM
+# call and no interactive session to convert -- runnable as-is:
+if (requireNamespace("shiny", quietly = TRUE)) {
+  script <- tempfile(fileext = ".R")
+  writeLines(c(
+    "# --- User Parameters ---",
+    "min_score <- 97",
+    "",
+    "# --- Step 1: Load data ---",
+    "result <- .run_step(1, \"Load data\", quote({",
+    "  data.frame(score = c(95, 98, 99))",
+    "}))"
+  ), script)
+  app_path <- workflow_app(script, launch = FALSE)
+  cat(readLines(app_path)[1:3], sep = "\n")
+}
 
-# Any R script -- guided annotation
+\dontrun{
+# Any R script without TaxaWizard markers -- guided annotation
+# (needs an interactive session)
 workflow_app("my_analysis.R", annotate = "self")
 
-# Any R script -- LLM annotation
+# Any R script -- LLM annotation (needs a live LLM API call)
 workflow_app("my_analysis.R", annotate = "llm",
              llm_fn = TaxaTools::call_anthropic_api)
 

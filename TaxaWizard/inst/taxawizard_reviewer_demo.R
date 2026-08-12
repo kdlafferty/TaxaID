@@ -211,9 +211,6 @@ writeLines(generic_script, file.path(demo_dir, "generic_script.R"))
 
 
 # --- 7. Deprecated wrappers ---------------------------------------------------
-# workflow_chat()/workflow_gadget() are thin, still-exported wrappers around
-# workflow_create(mode = "console"/"viewer") -- confirm they print a
-# deprecation notice and forward correctly, without starting a second
-# interactive session:
-formals(workflow_chat)
-formals(workflow_gadget)
+# workflow_chat()/workflow_gadget() were removed (2026-08-11 code review response
+# -- never officially released, zero real callers anywhere in the monorepo).
+# Use workflow_create(mode = "console"/"viewer") directly instead.

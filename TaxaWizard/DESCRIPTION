@@ -12,6 +12,8 @@ Description: Provides a conversational assistant that helps users design
     (readline) and Shiny chat interfaces backed by a stateless LLM engine.
 License: CC0
 Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
 Roxygen: list(markdown = TRUE)
 Imports:
     httr2,

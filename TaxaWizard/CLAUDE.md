@@ -1,6 +1,48 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-09, continued yet again (Sonnet 5 -- TaxaWizard's first full code +
+# Last updated: 2026-08-11 (Sonnet 5 -- TaxaWizard's first human-authored code review
+# (Micah Wright, replacing the prior Claude-authored inst/taxawizard_review.Rmd entirely --
+# see inst/taxawizard_review_response.md and this file's Function Inventory below for the
+# full record). The review's own reported test crash ("Error in if (fn_name ==
+# \"data.frame\") ... condition has length > 1") traced to a real, previously-undiscovered
+# bug class in R/shiny.R's generic-script parser: as.character(expr[[1L]]) returns a
+# length-3 vector for ANY namespaced pkg::fn() call (not a scalar), so `fn == "x"`-style
+# checks throw the moment a real script -- i.e. nearly any script in this ecosystem, which
+# writes package::function() throughout by convention -- is parsed. Fixed via a new shared
+# .call_fn_name() scalar-unwrapping helper, applied at FOUR separate call sites
+# (.is_library_call/.is_source_call/.is_literal_value, matching the review's own report,
+# plus .is_simple_assignment and .last_assignment_var, found only by writing a reproducing
+# regression test and then grepping for the same pattern once the first fix revealed there
+# was more than one instance). Also fixed: .extract_libraries() never matched require(),
+# only library(); a genuine empty-input-handling inconsistency in shiny.R (one y/n prompt
+# defaulted Enter to "cancel", a different one to "proceed" -- unified via new
+# .confirm_yes()); workflow_chat()/workflow_gadget() removed entirely (not just deprecated
+# -- package has never been released, zero real callers confirmed via monorepo grep,
+# reviewer's own explicit suggestion); create.R's quit-check narrowed to the literal word
+# "quit" (was also "exit"/"q", risking an accidental early exit on a short reply); a
+# genuinely dead feature found investigating the review's context.R question -- saved
+# workflow_context.json defaults were loaded and offered to the user ("Use previous session
+# defaults?") but never actually reached the LLM prompt anywhere, since
+# .format_context_for_prompt()'s only caller was the legacy monolithic prompt builder the
+# Session 69 graph-engine redesign superseded -- fixed by wiring it into
+# .build_phase_prompt()'s classify branch for a session's first turn; a real cross-session-
+# append risk in .find_existing_script() (two unrelated workflow_create() calls in one
+# output_dir on the same day would silently merge into one script) -- fixed with a
+# known_script_path parameter making same-session continuation deterministic and a new
+# cross_session_append flag the console/viewer loops now warn on; DESCRIPTION now declares
+# Depends: R (>= 4.1.0) explicitly (silences the R CMD build auto-detected-dependency
+# warning the review quoted); workflow_app() gained a genuinely runnable @examples block
+# (no LLM call/interactive session needed to convert an already-marked script) --
+# workflow_create()/workflow_fix()/workflow_engine()/annotate_script() remain \dontrun{}
+# for functions that inherently need one or the other. workflow_create() gained an explicit
+# LLM-cost @details section plus a session-start console/viewer message, per the review's
+# domain-review comment about accidental API spend. `devtools::test()` 721/721 (0 failures,
+# up from 696), `devtools::check()` 0/0/0, reinstalled and verified at
+# ~/Library/R/4.0/library. See inst/taxawizard_review_response.md for the complete
+# file-by-file record, including several items investigated and confirmed intentional
+# rather than fixed (TaxaTools duplication in api.R/zzz.R, tempdir() session-scoping in
+# cli.R, the USGS release-governance question) -- with reasoning recorded for each.
+# Previous update, 2026-08-09, continued yet again (Sonnet 5 -- TaxaWizard's first full code +
 # domain review against inst/Code and Domain Review 2.Rmd, findings + fixes recorded in new
 # inst/taxawizard_review.Rmd (matches TaxaFetch/TaxaLikely/TaxaMatch/TaxaFlag's own
 # combined-review convention -- every other package already had one; this was the last gap).
@@ -367,7 +409,8 @@ Sits outside the TaxaID dependency chain -- depends on all TaxaID packages
 
 **Status: Graph-based engine implemented. 0 errors, 0 warnings, 0 notes on devtools::check().
 Metadata JSONs fully audited. First full code + domain review complete (2026-08-09, see
-inst/taxawizard_review.Rmd). 696 tests passing.**
+inst/taxawizard_review.Rmd); first human-authored review response complete (2026-08-11, see
+inst/taxawizard_review_response.md). 721 tests passing.**
 
 ---
 
@@ -433,8 +476,9 @@ Single entry point with `mode` parameter:
 - **`"viewer"`**: RStudio Viewer pane via `shiny::paneViewer()`
 - **`"console"`**: `readline()` loop in R console (no shiny dependency)
 
-Deprecated wrappers `workflow_chat()` and `workflow_gadget()` still exported
-(thin wrappers that print deprecation notice and call `workflow_create()`).
+`workflow_chat()`/`workflow_gadget()` (formerly deprecated thin wrappers) were removed
+entirely 2026-08-11 (code review response, zero real callers, package never released --
+see this file's own top session note). Use `workflow_create(mode = "console"/"viewer")`.
 
 ### Script-to-App Conversion: `workflow_app()`
 Takes any R script and converts it to a standalone Shiny `app.R` with file upload
@@ -497,8 +541,6 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | `workflow_fix()` | Resume conversation after script error | R/cli.R |
 | `workflow_app()` | Convert any R script to standalone Shiny app (auto/self/llm/none annotation) | R/shiny.R |
 | `annotate_script()` | Guided annotation of generic R scripts for Shiny conversion (self/llm modes) | R/shiny.R |
-| `workflow_chat()` | **Deprecated** wrapper -> `workflow_create(mode = "console")` | R/cli.R |
-| `workflow_gadget()` | **Deprecated** wrapper → `workflow_create(mode = "viewer")` | R/gadget.R |
 
 ### Internal helpers -- Graph engine (R/graph.R)
 

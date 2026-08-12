@@ -26,7 +26,7 @@
 #' @param api_key Character or NULL. Anthropic API key. Ignored when
 #'   \code{llm_fn} is supplied.
 #' @param llm_fn Function or NULL. Custom LLM caller for non-Anthropic
-#'   providers (Azure, OpenAI, Gemini, …). See \code{\link{workflow_create}}
+#'   providers (Azure, OpenAI, Gemini, ...). See \code{\link{workflow_create}}
 #'   for the required function signature.
 #' @param system_prompt Character or NULL. Custom system prompt override.
 #'   When \code{NULL} (default), builds phase-specific prompt automatically.
@@ -351,8 +351,11 @@ workflow_engine <- function(history,
 #' @noRd
 .looks_like_error <- function(text) {
   if (is.null(text) || length(text) == 0L || is.na(text[1L])) return(FALSE)
+  # "Error:" alone covers both "Error:" and "error:" -- every pattern here
+  # is matched with ignore.case = TRUE below, so no separate lower-case
+  # variant is needed.
   error_patterns <- c(
-    "Error in ", "Error:", "failed:", "error:",
+    "Error in ", "Error:", "failed:",
     "could not find function", "unused argument",
     "object .+ not found", "missing required column",
     "Step \\d+.*failed"
