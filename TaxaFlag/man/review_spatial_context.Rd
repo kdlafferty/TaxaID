@@ -175,7 +175,18 @@ exactly as supplied (the pre-2026-08-07 default behaviour).
 NULL} (unbinned) can render as a completely EMPTY tile at a real
 zoom/species combination that raw \code{.point} styles render
 correctly -- confirmed live, not a safe combination -- so this is only
-ever applied together with binning, never on its own.}
+ever applied together with binning, never on its own. \strong{A binned
+square can visually sit offset from a point's true location by up to
+\code{gbif_bin_size} pixels}, since GBIF snaps each occurrence to its
+containing bin before drawing it -- a real, expected consequence of
+aggregation, not a data or rendering bug (a single domestic-cat record
+appearing a few km into open water at the default \code{256L} binning
+is exactly this: GBIF's real, unfiltered occurrence data plus one
+coarse pixel's worth of legitimate positional imprecision from
+binning, not a broken map layer). See also
+\code{\link[=check_gbif_tile_range]{check_gbif_tile_range()}}'s own \verb{What the PNG can and can't tell
+you} section -- density tiles are a display aid, not an exact-count
+source, in this gadget as much as there.}
 
 \item{gbif_year_range}{Character or \code{NULL}. GBIF map API \code{year}
 query parameter (e.g. \code{"1995,2025"}), display-only -- affects

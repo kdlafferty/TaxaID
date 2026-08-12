@@ -1,304 +1,200 @@
 ---
-title: "TaxaFlag code and domain review"
+title: "TaxaFlag code review"
 output: html_document
 ---
 
-Review date: 2026-08-07. Package version reviewed: TaxaFlag 0.1.0. Review conducted by
-Claude Code, using the template in `inst/Code and Domain Review 2.Rmd` (the TaxaID-root
-copy). This review combines findings and fixes in one pass (no separate response
-document), matching the convention already used for `TaxaFetch`/`TaxaLikely`/`TaxaMatch`.
+### Code Review
 
-`devtools::check()`: 0 errors, 0 warnings, 0 notes (was 1 warning -- a broken `\link{}`
-target, fixed below). `devtools::test()`: 415 expectations (up from 382 before this
-review, plus 5 expected warnings from tests deliberately checking warning messages), 0
-failures.
+Purpose: To produce high quality code that is well written and organized according to best coding practices.
 
-------------------------------------------------------------------------
+* [x] **Functionality:** The code is readable, organized, and efficient. 
+  * Is the code readable? 
+  * Can you understand it?
+    * Code that is extremely cryptic and hard to follow is not ready to be released publicly. If the reviewer has trouble understanding it, a wider audience will, too. The intended audience should also be considered. The code should be understandable by someone with knowledge of the coding language and the problem to be solved.
+    
+   The code is readable and organized. See minor comment in coding standards section.
+   
+* [x] **Optimizations:** The code does not have any areas that could be optimized in a more efficient way. 
+  * Is additional documentation required?
+  
+  The documentation seems efficient. Code reproduction could be reduced and/or simplified in places, see individual comments.
+  
+* [x] **Coding standards:** The code does not contain any errors or bad coding practices. 
+  * Are there docstrings for functions that describe what the function does and its inputs/outputs? 
+  * Are in-line comments informative?
+  
+  I did not notice any major coding standard issues. However, suggest maintaining a consistent formatting spacing convention throughout. As I've reviewed these packages, many are formatted in such a way so arguments and operators are lined up. This is not my preference, but it is one accepted convention. The idea behind this convention is it's supposed to make the code easier to read. However, this only makes sense when the convention is strictly followed. In many of these files, everything has become misaligned, and in some cases new items are appended to the same row. As a result, it becomes much harder to read. I would suggest picking a formatting convention and then strictly following it.
 
-# Code Review
+* [x] **Automated tests:** Confirm that all tests pass when run locally.
 
-Purpose: To produce high quality code that is well written and organized according to
-best coding practices.
+  Here is the output from running `test_local` on the test directory: `[ FAIL 0 | WARN 5 | SKIP 0 | PASS 415 ]`
+  
+* [x] **Vulnerabilities:** The code does not have any areas that are vulnerable in any way.
 
-### [x] Functionality: The code is readable, organized, and efficient.
-
-Readable and consistently organized across all 10 files -- roxygen documentation,
-internal-helper naming (`.` prefix), and `package::function()` cross-package calls follow
-the same conventions throughout. `review_spatial_context.R` and `review_assignments.R`
-are large (964/1281 lines) but that reflects real, non-duplicated surface area (a Shiny
-gadget; a multi-context LLM prompt builder with retry logic) rather than disorganization
--- each is internally well-sectioned with clear internal helper boundaries.
-
-One real base-R name collision found and fixed (see File-specific comments): `df` was
-used as the primary parameter name in four exported functions (`flag_contaminant()`,
-`flag_handler()`, `review_assignments()`, `review_spatial_context()`) and three internal
-helpers, shadowing `stats::df()` (the F-distribution density function). Every other
-package in this ecosystem already made this exact fix (`TaxaTools::create_taxon_names()`'s
-`df` -> `input_df`; `TaxaHabitat`'s five functions' `data` -> `occurrence_data`) --
-renamed here the same way, for consistency and to close the last package in the ecosystem
-still carrying this pattern.
-
-### [x] Optimizations: No areas needing optimization; one missing dependency declaration found and fixed.
-
-No performance concerns -- nothing in this package does bulk/iterative work at a scale
-where an algorithmic change would matter (`check_gbif_tile_range()`'s tile-fetch/patch-growth
-cost is already analyzed and capped in its own roxygen; `review_assignments()`'s
-LLM-batching/retry logic is already the expensive step, and is already designed to
-minimize redundant calls).
-
-`DESCRIPTION` had no `Depends: R (>= 4.1.0)` despite three files
-(`build_review_covariates.R`, `compute_local_occurrence_distance.R`,
-`review_spatial_context.R`) using the native pipe `|>` (R >= 4.1.0 syntax) -- confirmed via
-`devtools::build()`, which emits an explicit `NB: this package now depends on R (>= 4.1.0)`
-message for exactly this reason. `TaxaHabitat`/`TaxaLikely`/`TaxaTools` already carry this
-same `Depends:` line for the identical reason; added here to match.
-
-### [x] Coding standards: One real doc-accuracy bug found and fixed; otherwise no bad practices.
-
-Every exported function has complete roxygen (title, `@param` for every argument,
-`@return` describing actual structure, `@examples`). `add_posthoc_assessment()`'s and
-several other files' roxygen carry substantial narrative about *why* a design choice was
-made (real-data numbers, rejected alternatives, session history) rather than a terser
-user-facing docstring alone -- verbose, but consistently applied across the whole
-ecosystem and accurate in every instance checked; not treated as a defect.
-
-**Real bug: broken `\link{}` cross-reference, present for many sessions.**
-`build_review_covariates.R`'s roxygen referenced `\code{\link{model_review_classification}}`
-twice (in `@description` and `@seealso`) -- no such function exists anywhere in this
-package (confirmed via `grep -r` across `R/`, `man/`, `tests/`). This produced a real
-`devtools::check()` WARNING (`Missing link(s) in Rd file`) that the package's own
-`CLAUDE.md` session notes had referred to as "1 pre-existing unrelated warning+note in
-`build_review_covariates.R`" across dozens of sessions without ever being resolved.
-Fixed by rewording both references to plain prose (no dedicated
-`model_review_classification()` wrapper exists in this package yet -- a user fits their
-own model directly on this function's output).
-
-### [x] Automated tests: Confirmed passing when run locally; one real coverage gap found and closed.
-
-`devtools::test()`: 415 expectations, 0 failures (up from 382).
-
-**Coverage gap: `build_review_covariates()` was the only exported function in the
-package with zero test coverage** (confirmed: no `test-build_review_covariates.R`
-existed, and no other test file called it). Added
-`tests/testthat/test-build_review_covariates.R` (22 expectations) covering the field-side
-aggregates, the two distinct "no data" cases (control-only detection vs. entirely absent
-from `reads_df`, which the function's own docs say are deliberately NOT treated the same
-way), the `contaminant_df`/`extra_covariate_cols` join paths, `sequence_col = NULL`,
-inconsistent-sequence-length handling, `read_quantile` edge behavior, and all seven input-
-validation errors. Every expected value in the new tests was checked against the real
-function's live output before being written into an assertion, not derived by reading the
-source alone.
-
-### [x] Vulnerabilities: No exploitable vulnerabilities found.
-
-This package's only network-facing code (`check_gbif_tile_range()`,
-`compute_local_occurrence_distance()`'s pure-arithmetic path, `review_spatial_context()`'s
-gadget) either takes no untrusted external input (GBIF/iNaturalist URLs are built from a
-caller-supplied `taxon_key`/coordinates typed by the analyst running the script, not from
-any external or multi-user input path) or uses `httr2::req_url_query()` (which
-URL-encodes correctly) for the one place a free-text taxon name is sent
-(`.resolve_gbif_taxon_key()`). `review_assignments()`'s LLM prompt construction has no
-code-execution path back from the LLM response -- `.parse_review_response()` only ever
-parses the response as JSON into a data frame of plain string fields, never `eval()`s or
-sources anything from it.
-
-One minor robustness note, not a vulnerability: `.gbif_tile_url()` (internal,
-`review_spatial_context.R`) interpolates the caller-supplied `style`/`year_range`
-arguments into a URL template via `sprintf()` without URL-encoding. Not exploitable (these
-are R function arguments the analyst running the gadget supplies directly, not data from
-any external or multi-user source), but noted in case this function is ever exposed to a
-less-trusted caller in the future -- `httr2::req_url_query()` (already used elsewhere in
-this same file) would be the safer construction.
-
+   I do not have the domain knowledge to assess any security issue or vulnerabilities. The package does query some APIs.
+  
 Any Additional comments, list below in comment section.
 
-None beyond the file-specific comments below.
+### Domain Review
 
-------------------------------------------------------------------------
+Purpose: To ensure the code produces outputs, data, interfaces, or software that is biologically reasonable when compared to other similar information available. Review should be conducted by someone with applicable subject-matter knowledge.
 
-# Domain Review
+* [x] **Scientific Rigor:** The code/software produces outputs that are biologically reasonable. 
+  * Are the values and units for constants (e.g., density of granite) correct? 
+  * Are any claims of what the code does substantiated? 
+  * If tests are included, are they adequate to evaluate functionality?
 
-Purpose: To ensure the code produces outputs, data, interfaces, or software that is
-biologically reasonable when compared to other similar information available. Review
-should be conducted by someone with applicable subject-matter knowledge.
+    I do not have the domain knowledge to fully evaluate all functionality, but I did not see any obvious errors.
 
-### [x] Scientific Rigor
+* [x] **Outputs:** The code/software produces outputs that are comparable, or within reasonable limits, to outputs of similar code, models, interfaces. 
+  * If equations are solved, are the equations input correctly into the code?
+  
+  I did not see any obvious errors.
 
-No physical/biological constants are used in this package (it operates on already-scored
-detections/read counts/timestamps, not raw measurements), so there is no "density of
-granite"-class check to make. The one statistical mechanism with real domain content --
-`flag_contaminant()`'s depth-weighted, Empirical-Bayes-shrunk contamination score -- is
-already extensively documented and empirically validated in its own roxygen (`Session
-151`/`152` real-data validation against PtConception 12S/18S datasets, including two
-rejected alternative designs and why each failed); nothing found in this review contradicts
-that record. `check_gbif_tile_range()`'s Web Mercator georeferencing math and GBIF tile-size
-assumptions (512px `@1x.png`, not the 256px slippy-map convention) are documented as
-empirically verified against live tiles, not assumed -- re-derived independently during
-this review and confirmed consistent with the standard Web Mercator ground-resolution
-formula.
+* [x] **Algorithms:** The code uses algorithms that are appropriate for its intended purpose. 
+  * Are standard data processing techniques (e.g., filtering) used appropriately? 
+  * Do you see any potential flaws or shortcomings in the methods, inputs, or algorithms used in the code?
 
-### [x] Outputs
-
-Outputs are internally consistent with the rest of the TaxaID ecosystem's documented
-conventions (the `observation_validity`/`validity_flag`/`validity_reason` schema shared
-between `flag_contaminant()` and `flag_handler()`; the Axis 1/Axis 2 columns
-`add_posthoc_assessment()` appends match `TaxaAssign::posterior_consensus()`'s real output
-column names). No equation-transcription errors found.
-
-### [x] Algorithms
-
-Found and fixed one real correctness bug (below): `flag_handler()`'s use of base R
-`merge()` did not preserve input row order, silently misaligning the appended
-`observation_validity`/`validity_flag`/`validity_reason`/`edge_anchor_source` columns
-against the original data whenever `group_col` groups appeared in the input in a
-non-alphabetical order. This is exactly the class of bug this ecosystem's own `merge()`
-usage elsewhere (e.g. `review_assignments.R`'s own `.join_key` merge, which already tracks
-a row index and re-sorts afterward) was written specifically to avoid -- `flag_handler()`
-was the one place in the package that hadn't adopted that pattern.
-
-Every other filtering/aggregation step reviewed (the depth-weighted rate computation in
-`.compute_contaminant_scores()`, the tile-mosaic stitching/8-connected patch growth in
-`check_gbif_tile_range()`, the haversine distance in `compute_local_occurrence_distance()`)
-uses standard, appropriately-applied techniques for its stated purpose, with edge cases
-(zero-read rows, `NA` coordinates, HTTP 204 empty tiles) handled explicitly rather than
-silently mishandled.
-
+  I did not see any obvious errors.
+  
 Any Additional comments, list below in comment section.
 
-None.
+- If possible, all exported functions should have a minimal runnable example, written as-is in the examples section. For example, in `flag_contaminants.R`, an object called `reads_long` is the input data. However, this is not loaded from a file shipped with the package, nor is it created in the example. Where I've noticed this in the file-specific comments I have put the comment "Example not runnable as-is".
 
-------------------------------------------------------------------------
-
-# File specific comments
-
-**flag_handler.R**
-
-* [x] reviewed
-
-- **Real bug, fixed**: `merge(df, group_edges, by = ".tmp_group", all.x = TRUE)` used
-  base R's default `sort = TRUE`, which re-sorts the output by the join key
-  (`.tmp_group`) -- for any input with more than one `group_col` value in
-  non-alphabetical row order, this silently reorders the returned data frame relative to
-  the input, even though this function's own documented contract is "the input data frame
-  with four columns appended." Fixed by adding an explicit `.row_id`, calling `merge(...,
-  sort = FALSE)`, and re-sorting by `.row_id` afterward -- the exact pattern
-  `review_assignments()`'s own `.join_key` merge already uses for the identical reason.
-  New regression test (`"row order is preserved when group order is not alphabetical"`)
-  added -- the pre-existing "min/max computed per group" test could never have caught this,
-  since its two-group fixture happened to already be in alphabetical order (`StationA`
-  before `StationB`).
-- `df` renamed to `input_df` (shadows `stats::df()`) -- see Code Review's Functionality
-  section.
-
-**flag_contaminant.R**
-
-* [x] reviewed
-
-- `df` renamed to `input_df` throughout (public function + internal
-  `.compute_contaminant_scores()`).
-- No other issues found. `.compute_contaminant_scores()`'s roxygen is unusually long for
-  an internal (`@noRd`) helper, but it is the load-bearing record of *why* the
-  depth-weighting/shrinkage design looks the way it does (including two rejected
-  alternatives found to fail on real data) -- kept as-is.
-
-**review_assignments.R**
-
-* [x] reviewed
-
-- `df` renamed to `input_df` throughout (public function; internal helpers already used
-  `df` only as a generic second parameter, also renamed for consistency).
-- `.build_candidate_label()`'s roxygen already documents that it deliberately duplicates
-  `TaxaAssign::.make_slash_name()`'s logic rather than depending on `TaxaAssign` -- a
-  documented, deliberate DRY trade-off (avoiding a hard package dependency for one small
-  helper), not an oversight; left as-is.
-- No functional issues found. The truncated-JSON recovery path
-  (`.recover_truncated_json()`) and the halve-and-retry batching logic
-  (`.review_batch_with_retry()`) are both exercised by dedicated tests, including the real
-  failure mode that motivated the parenthetical-rank-annotation stripping in
-  `.parse_review_response()` (documented inline as a real 2026-07-14 production bug, not
-  hypothetical).
-
-**review_spatial_context.R**
-
-* [x] reviewed
-
-- `df` renamed to `input_df` in `review_spatial_context()`, `.review_spatial_context_impl()`,
-  and `.build_spatial_context_server()`.
-- This is a live, actively-iterated Shiny/leaflet gadget (nine real click-through rounds
-  recorded in `CLAUDE.md`'s session history at the time of this review) -- reviewed for
-  correctness by reading, not by further live browser testing, since `shiny::testServer()`
-  coverage already exists and this review made no behavioral change to the gadget beyond
-  the parameter rename. No new issues found beyond the rename; the file's own documented
-  history already records and fixes two real bugs found via that live testing (the
-  `shiny::req()` silent-stop propagation bug; the paired `tileSize`/`zoomOffset` GBIF tile
-  regression) that this review has no reason to revisit.
-
-**build_review_covariates.R**
-
-* [x] reviewed
-
-- **Real bug, fixed**: `\code{\link{model_review_classification}}` (in `@description` and
-  `@seealso`) referenced a function that does not exist anywhere in this package -- a
-  `devtools::check()` WARNING left unresolved for many sessions (see Code Review's Coding
-  standards section). Fixed by rewording to plain prose.
-- **Coverage gap, fixed**: zero test coverage before this review; see Code Review's
-  Automated tests section. New `tests/testthat/test-build_review_covariates.R`, 22
-  expectations.
-- No parameter name shadows a base R/stats function (`reads_df`/`classification_df`, not
-  `df`/`data`) -- already correct, no change needed.
-
-**compute_local_occurrence_distance.R**
-
-* [x] reviewed
-
-- No issues found. Parameter names, docs, and tests are all accurate and consistent with
-  actual behavior.
-
-**check_gbif_tile_range.R**
-
-* [x] reviewed
-
-- No issues found. The zoom-escalation design, tile-stitching math, and patch-growth
-  iteration cap are all documented with the specific real measurements that motivated each
-  choice, and match what the code actually does. No parameter name shadows base R.
+Comments on specific files:
 
 **add_posthoc_assessment.R**
 
 * [x] reviewed
 
-- No issues found. `consensus_df` (not `df`) is already used throughout -- no rename
-  needed. Input validation is thorough (every threshold parameter range-checked, the
-  required `expected_theta_threshold` argument has a clear, actionable error when
-  omitted).
+- Line 1: what is this here for: `utils::globalVariables(character(0))`?
+
+- Line 80: I thought that `TaxaAssign` does provide default lists.
+
+- Suggest requiring specific column names.
+
+**build_review_covariates.R**
+
+* [x] reviewed
+
+- Based on the documentation for this function, it seems like this is not currently used in any workflows. Consider whether this should be included in the package.
+
+- Suggest requiring specific column names.
+
+**check_gbif_tile_range.R**
+
+* [x] reviewed
+
+- Is this the intended use of the GBIF tiles? I think these are for display, and not necessarily for use as raster information? The GBIF documentation says "primarily intended for display on websites".
+
+- Does the existance of `compute_local_occurrence_distance` makes this function redundant? Perhaps not for the global context, but is that needed? It may be simpler and/or faster, but it seems like having an exact answer is preferred over an answer that is less exact with unknown error. Given that the GBIF tiles are not intended for this purpose, suggest removing or finding data more suited to this purpose. If there are more precise data available than these tiles, suggest always using that.
+
+- Line 374: why have this on one line?
+
+- `.dilate8` only replaces the `FALSE` in the lower right corner for `matrix(c(rep(TRUE, 8), FALSE), ncol = 3, byrow = TRUE)`. Is that expected?
+
+- Assumed formulas are true as given.
+
+- Line 368: is this always the correct channel?
+
+**compute_local_occurrence_distance.R**
+
+* [x] reviewed
+
+- Suggest requiring specific column names.
+
+- Example not runnable as-is.
+
+**flag_contaminant.R**
+
+* [x] reviewed
+
+- Line 35: Since this is the initial release for this package, consider whether documenting development changes is useful here. Should some or all of this go elsewhere, such as the `NEWS` file?
+
+- Line 54, 57, 59, etc: Suggest requiring specific column names.
+
+- Why have `exclude_samples`? It seems reasonable to assume that a user will want to run a function on the entirety of an input dataset and will filter if that's not the case.
+
+- Example not runnable as-is.
+
+- Line 178: What is the justification for having `prior_weight` default to 20?
+
+- Line 291: could this just be created directly from scores, perhaps by removing unwanted columns?
+
+- Line 306: since the `data.frame` is build just before, why not specify the names there? 
+
+- Line 431: is there a reason to recreate `input_df` here? Can't it just be used?
+
+- I'm actually not sure why `.compute_contaminant_scores` is a separate function here- it's not iterating over anything so it's not being reapplied within `flag_contaminant`. Not a problem necessarily but it does make code inspection slightly harder.
+
+**flag_handler.R**
+
+* [x] reviewed
+
+- Example not runnable as-is.
+
+- `handler_taxa` can be specified. I'm curious what the handler could be other than Homo sapiens. I guess there could be domestic animals present.
+
+- Suggest requiring specific column names.
+
+- Line 185: do this first to avoid all the other date processing if it isn't needed.
+
+- Is `interval_minutes` supposed to be on each side of the interval? That's what I thought at first, but the output returns the following for 15 minutes from the nearest edge: `15.0 min from nearest edge; outside 30-min interval`. Have I misunderstood?
 
 **report_flags.R**
 
 * [x] reviewed
 
-- No issues found. `flagged_data` (not `df`/`data`) is already used -- no rename needed.
-  The three-era auto-detection logic (pre-Session-101 / post-Session-101 / the 2026-07-24
-  unified `validity_flag` schema) is more complex than a single-era function would need,
-  but that complexity is real and load-bearing (this function has to work against output
-  from any TaxaFlag version a caller's cached data might have been produced by), not
-  avoidable duplication.
+- Example not runnable as-is.
+
+- Suggest requiring specific column names.
+
+**review_assignments.R**
+
+* [x] reviewed
+
+- Suggest requiring specific column names.
+
+- Suggest no default for `data_type`.
+
+- Example not runnable as-is.
+
+- Line 303: I may be misunderstanding things, but consider enforcing even if older versions may not work.
+
+- Fails unless `TaxaTools` is loaded, `TaxaTools::` is insufficient.
+
+- Suggest removing `.build_candidate_label` and using a single function for the entire package ecosystem.
+
+- Ensure that multiline `if` statements use curly braces.
+
+- `.normalise_context` returns the first items of each row of `context`, no matter what they are. Is this expected? Can `context` ever be expected to be more than one row? If not does it even need to be a `data.frame`?
+
+- With these LLM calls, I wonder if showing the user the prompt might be useful. Perhaps even having some sort of override that allows a specific prompt to be specified, though that would be adding complexity to an already complex package ecosystem so maybe not. I suppose what I'm getting at is these prompts are static, and use cases may not always be as applicable to these specific prompts. Either way, it would be useful for the user to see the prompts.
+
+- Consider adding `parsed` as an argument to `.safe_col`. Has this functionality been produced elsewhere? Seems familiar. If so define once and reuse.
+
+- Could line 1238 be replaced with `make_default`?
+
+**review_spatial_context.R**
+
+* [x] reviewed
+
+- Suggest requiring specific column names.
+
+- How does `gbif_bin_size` relate to `tile_size` and `zoom` in `check_gbif_tile_range`? Edit: I see this is discussed lines 636+.
+
+- Example not runnable as-is.
+
+- This is noted in the comments, but it seems odd to split `.review_spatial_context_impl` from `review_spatial_context`. 
+
+- Not sure I understand why `.fetch_inat_points` reproduces functionality from `TaxaFetch`, defining functionality one time is the whole reason to have packages to begin with.
+
+- For `Felis catus` in the example file, one tile is shown several km out in the lake. This calls the reliability of the GBIF layer into question, at least at some zoom levels.
+
+- I didn't see the "Run AI Review" button when running the app.
+
+- Consider increasing transparency in gbif tile layer.
 
 **TaxaFlag-package.R**
 
 * [x] reviewed
-
-- No issues found. Package-level roxygen `@section` list is accurate and current.
-
-------------------------------------------------------------------------
-
-# Not fixed (out of scope for this pass)
-
-- `TaxaWizard/inst/metadata/TaxaFlag.json`'s `add_posthoc_assessment` entry still
-  describes the pre-2026-07-30 design (a single `posthoc_assessment` column driven by
-  `tiers`/`finest_rank`), superseded by the current Axis 1/Axis 2 (`primary_plausibility`/
-  `primary_discrimination`/etc.) redesign. This is pre-existing drift unrelated to
-  anything touched in this review (confirmed via `git log` -- last touched Session 104,
-  2026-06-08, well before the 2026-07-30 redesign) and TaxaWizard's own `CLAUDE.md`
-  documents this class of metadata drift as a known, separately-tracked issue
-  (`[[project_taxawizard_metadata_drift]]`). The three `"name": "df"` entries this review
-  *did* touch (`flag_contaminant`/`flag_handler`/`review_assignments`) were fixed since
-  they were a direct, mechanical consequence of the rename made here.

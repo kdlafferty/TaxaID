@@ -139,14 +139,23 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #' @seealso \code{\link{flag_handler}}, \code{\link{review_assignments}}
 #'
 #' @examples
-#' \dontrun{
+#' reads_long <- data.frame(
+#'   event_id   = c("Palmyra01", "Palmyra01", "Palmyra02", "Palmyra02",
+#'                  "Palmyra30", "Palmyra30"),
+#'   taxon_name = c("Kyphosus vaigiensis", "Homo sapiens",
+#'                  "Kyphosus vaigiensis", "Homo sapiens",
+#'                  "Kyphosus vaigiensis", "Homo sapiens"),
+#'   n_reads    = c(48000, 12, 51000, 8, 5, 4200)
+#' )
+#'
 #' # Identify extraction control columns, flag contaminants
 #' flagged <- flag_contaminant(
-#'   input_df             = reads_long,
-#'   control_samples  = c("Palmyra30", "Palmyra62"),
+#'   input_df         = reads_long,
+#'   control_samples  = "Palmyra30",
 #'   contaminant_type = "lab_contaminant"
 #' )
 #'
+#' \dontrun{
 #' # Using sample_type column instead
 #' flagged <- flag_contaminant(
 #'   input_df              = reads_long,
@@ -284,25 +293,21 @@ flag_contaminant <- function(input_df,
 
   # --- Build per-taxon result ---
   # Fixed column names (2026-07-24) -- see @section Unified validity schema.
-  flag_col    <- "validity_flag"
-  score_col   <- "observation_validity"
-  reason_col  <- "validity_reason"
-
-  result <- data.frame(
-    taxon            = scores$taxon,
-    score            = scores$contaminant_score,
-    flag             = scores$flag,
-    reason           = scores$reason,
-    mean_prop_field  = scores$mean_prop_field,
-    mean_prop_control  = scores$mean_prop_control,
-    field_rate         = scores$field_rate,
-    control_rate       = scores$control_rate,
-    n_field_present     = scores$n_field_present,
-    n_controls_present = scores$n_controls_present,
-    n_controls_total   = scores$n_controls_total,
-    n_reads_total      = scores$n_reads_total,
-    stringsAsFactors = FALSE
-  )
+  # Selects straight out of `scores` (dropping only its internal `contaminant_score`/
+  # `flag`/`reason` working names) rather than rebuilding every value by hand --
+  # `.compute_contaminant_scores()`'s own output columns stay the single source
+  # of truth. Column NAMES still can't be supplied as literal data.frame()
+  # arguments here (taxon_col/score_col/etc. are runtime strings, not syntactic
+  # names), so a select-then-rename via names<- is the direct way to do this in
+  # base R -- stats::setNames() would be equivalent, not simpler.
+  result <- scores[, c("taxon", "contaminant_score", "flag", "reason",
+                       "mean_prop_field", "mean_prop_control",
+                       "field_rate", "control_rate",
+                       "n_field_present", "n_controls_present", "n_controls_total",
+                       "n_reads_total"), drop = FALSE]
+  flag_col   <- "validity_flag"
+  score_col  <- "observation_validity"
+  reason_col <- "validity_reason"
   names(result) <- c(taxon_col, score_col, flag_col, reason_col,
                      "mean_prop_field", "mean_prop_control",
                      "field_rate", "control_rate",

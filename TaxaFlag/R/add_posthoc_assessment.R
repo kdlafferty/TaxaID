@@ -1,5 +1,3 @@
-utils::globalVariables(character(0))
-
 #' Add post-hoc plausibility and discrimination assessments to a consensus data frame
 #'
 #' Appends two independent, orthogonal diagnostic axes to a

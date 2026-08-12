@@ -69,13 +69,16 @@ here may still occur well outside it; \code{\link[=check_gbif_tile_range]{check_
 tool for that wider question.
 }
 \examples{
-\dontrun{
+occ <- data.frame(
+  taxon_name        = c("Neogobius melanostomus", "Neogobius melanostomus"),
+  decimalLatitude   = c(41.60, 42.10),
+  decimalLongitude  = c(-87.10, -87.80)
+)
 compute_local_occurrence_distance(
   taxon_names     = c("Neogobius melanostomus", "Salmo salar"),
   query_lat       = 41.67, query_lon = -87.15,
-  occurrence_data = occurrences_clean
+  occurrence_data = occ
 )
-}
 
 }
 \seealso{

@@ -1,6 +1,52 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-07, continued once more (Sonnet 5 -- first full TaxaFlag code +
+# Last updated: 2026-08-11 (Sonnet 5 -- closes out the 2026-08-07 review pass: that session
+# fixed 2 items (df->input_df rename, a broken build_review_covariates.R \link{}) but never
+# produced inst/taxaflag_review_response.md or worked through the remaining file-specific
+# comments across all 10 reviewed files -- this session does both. Real fixes, not just
+# documentation: (1) TaxaFlag-package.R was missing 5 of 9 exported functions from its own
+# package index (add_posthoc_assessment/build_review_covariates/check_gbif_tile_range/
+# compute_local_occurrence_distance/review_spatial_context) -- the same discoverability gap
+# class TaxaMatch's own review found; two new sections added. (2) add_posthoc_assessment.R's
+# `utils::globalVariables(character(0))` removed -- the file has no NSE references at all,
+# violating this ecosystem's own documented convention to omit the call entirely in that
+# case. (3) check_gbif_tile_range.R's `.fetch_gbif_tile_alpha()` hard-indexed `img[, , 4]`
+# (the alpha channel) with no guard; added a defensive dimension check with a clear error
+# instead of an opaque "subscript out of bounds" if GBIF's tile format ever changes.
+# (4) review_assignments.R gains real functionality: an `attr(result, "llm_prompts")`
+# (environment-based accumulator, survives rbind()/retry-recursion, named by batch label)
+# directly answering the review's "it would be useful for the user to see the prompts";
+# `.normalise_context()` now warns on a multi-row `context` instead of silently discarding
+# every row but the first; `make_default()` gained an optional `names` arg, closing a real
+# ~15-line duplication with the "LLM omitted these taxa" fallback path; `.safe_col()` now
+# takes its source data frame as an explicit argument instead of reading `parsed` via
+# lexical closure; `llm_fn`'s own roxygen now points directly at the
+# `.resolve_llm_fn()`-silently-degrades footgun already documented ecosystem-wide in
+# TaxaID/CLAUDE.md but previously missing from this specific function's own docs, despite
+# being one of the five affected call sites named there. (5) flag_contaminant.R's final
+# `result <- data.frame(...)` block, which manually re-listed and re-typed every one of
+# `.compute_contaminant_scores()`'s output columns by hand, now selects directly out of
+# `scores` instead -- removes a real sync-by-hand risk. (6) Four non-runnable `\dontrun{}`-
+# only examples (`compute_local_occurrence_distance.R`, `flag_contaminant.R`,
+# `flag_handler.R`, `report_flags.R`) now have a small synthetic-data runnable example each,
+# verified via R CMD check's own example execution. (7) `flag_handler()`'s
+# `interval_minutes`/reason-string interaction the review flagged as possibly backwards
+# ("15.0 min from nearest edge; outside 30-min interval") was live-tested directly against
+# the current, installed function and found already correct ("within 30-min interval") --
+# the reviewer's report doesn't reproduce against current code, most likely predating the
+# file's several subsequent rewrites (2026-07-24 unified-validity-schema rename, Session 151
+# edge-anchoring redesign). Also verified live (not just re-read): `.dilate8()`'s "only
+# replaces the FALSE in the lower right corner" observation is expected 8-connected dilation
+# behaviour, confirmed by direct execution, not a bug -- a clarifying comment + roxygen note
+# added either way. Several review comments recur across many files ("suggest requiring
+# specific column names") and are answered once, as a documented package-wide (in fact
+# ecosystem-wide) design convention, in the response doc rather than per file. Full
+# file-by-file record in inst/taxaflag_review_response.md, following this ecosystem's
+# established TaxaMatch/TaxaLikely/TaxaFetch/TaxaAssign/TaxaHabitat review-response format.
+# `devtools::test()` 415/415 (0 failures, 5 pre-existing `expect_warning()` warnings,
+# unchanged), `devtools::check()` 0 errors/0 warnings/0 notes, reinstalled and verified at
+# ~/Library/R/4.0/library.
+# Previous update, 2026-08-07, continued once more (Sonnet 5 -- first full TaxaFlag code +
 # domain review against inst/Code and Domain Review 2.Rmd, findings + fixes in one pass,
 # recorded in new inst/taxaflag_review.Rmd (matches TaxaFetch/TaxaLikely/TaxaMatch's own
 # combined-review convention). Two real bugs fixed: (1) flag_handler()'s internal
@@ -1155,7 +1201,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts. **Session 151**: optional `station_metadata` param anchors edges on real deploy/retrieve timestamps instead of the data's own min/max (opt-in, backward compatible; see "flag_handler() Design" below). **2026-07-24**: output columns renamed to the same unified schema as `flag_contaminant()` -- `observation_validity` (was `flag_handler_score`, high=good, unchanged direction/math), `validity_flag` (was `flag_handler`; values now `"valid"`/`"questionable_handling"`/`"invalid_handling"`, was `"likely"`/`"possible"`/`"unlikely"`), `validity_reason` (was `flag_handler_reason`). `edge_anchor_source` unchanged. |
 | `.parse_datetimes()` | `R/flag_handler.R` | Written | Internal: auto-detect datetime format |
 | `review_spatial_context()` | `R/review_spatial_context.R` | Written (2026-08-07) | Interactive click-through gadget (leaflet + miniUI + `shiny::paneViewer()`, matching `TaxaHabitat::review_spatial_flags()`'s pattern): taxon dropdown filterable by a plausibility column, a live GBIF density-tile map layer (`leaflet::addTiles()` with the density URL template -- pannable/zoomable, not a static snapshot), a sidebar with `check_gbif_tile_range()`/`compute_local_occurrence_distance()`/pre-supplied `inat_range` context, and an opt-in "Run AI Review" button (`review_assignments()`, the only billed step, never automatic). Server logic factored into internal `.build_spatial_context_server()` specifically so it's testable via `shiny::testServer()` -- standard browser automation hangs against a live Shiny session's persistent WebSocket (confirmed not a gadget bug via a direct `curl` check), so this is the real verification path for the reactive logic; a real bug (an unresolvable taxon name silently blanking the whole stats panel via `shiny::req()`'s propagating silent-stop) was caught this way before shipping. **2026-08-07, refined from first real click-through**: dropped an unneeded tile-opacity override (render GBIF's tiles as GBIF serves them) and toned down the occurrence-point styling so both layers stay readable together; iNat panel now always shows an explicit line when `inat_range` is supplied (real data or "no data for this taxon"), never silence; new `excluded_occurrence_data` param overlays GBIF records this study's own quality/outlier/institution filtering excluded (hollow red rings, distinct from kept points) -- reconstructable via a plain `anti_join` on `gbifID` between `raw_gbif` and a post-filter checkpoint, verified against real GreatLakes2023 data (530 real exclusions found). Not yet live-clicked-through in an actual RStudio session -- see this file's top session note. |
-| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. **2026-07-24**: gains `consensus_posterior_col`/`winner_prior_col`/`winner_rank_expanded_col`/`plausible_posteriors_col` (all optional, silently skipped when absent) -- when present, appends a compact pipeline-confidence/occurrence-prior/rank-expanded/candidate-weight annotation to each taxon's LLM prompt line, so the LLM's ecological judgment can be checked against the pipeline's own statistics. Also now prefers `df$consensus_OTU` (from `TaxaAssign::add_slash_taxon()`) for candidate-set labels when present, instead of always rebuilding independently -- closes a label-drift risk on downranked rows. **2026-08-07**: gains `dist_nearest_occupied_km_col`/`patch_diameter_km_col`/`beyond_buffer_col` (matching `check_gbif_tile_range()`) and `inat_in_range_col`/`inat_n_observations_col`/`inat_matched_name_col` (matching `TaxaFetch::check_inat_range()`) -- same optional/silently-skipped convention. Facts-only per-taxon annotation (e.g. `"GBIF: nearest occurrence ~41km away, patch ~0.9km across; iNat: in range, 1275 obs"`); a conditional GUIDELINES bullet (only when a batch has a spatial note) carries the interpretive caveats instead of pre-judging server-side -- see this file's top session note for why, and for the real *Gasterosteus gymnurus* case that motivated surfacing `matched_name` specifically. |
+| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. **2026-07-24**: gains `consensus_posterior_col`/`winner_prior_col`/`winner_rank_expanded_col`/`plausible_posteriors_col` (all optional, silently skipped when absent) -- when present, appends a compact pipeline-confidence/occurrence-prior/rank-expanded/candidate-weight annotation to each taxon's LLM prompt line, so the LLM's ecological judgment can be checked against the pipeline's own statistics. Also now prefers `df$consensus_OTU` (from `TaxaAssign::add_slash_taxon()`) for candidate-set labels when present, instead of always rebuilding independently -- closes a label-drift risk on downranked rows. **2026-08-07**: gains `dist_nearest_occupied_km_col`/`patch_diameter_km_col`/`beyond_buffer_col` (matching `check_gbif_tile_range()`) and `inat_in_range_col`/`inat_n_observations_col`/`inat_matched_name_col` (matching `TaxaFetch::check_inat_range()`) -- same optional/silently-skipped convention. Facts-only per-taxon annotation (e.g. `"GBIF: nearest occurrence ~41km away, patch ~0.9km across; iNat: in range, 1275 obs"`); a conditional GUIDELINES bullet (only when a batch has a spatial note) carries the interpretive caveats instead of pre-judging server-side -- see this file's top session note for why, and for the real *Gasterosteus gymnurus* case that motivated surfacing `matched_name` specifically. **2026-08-11:** return value gains `attr(result, "llm_prompts")` (named list, one entry per LLM batch call including retry sub-batches) -- see `inst/taxaflag_review_response.md`. |
 | `.normalise_context()` | `R/review_assignments.R` | Written | Internal: normalise build_context() or named list to standard fields |
 | `.build_review_prompt()` | `R/review_assignments.R` | Written | Internal: construct structured LLM prompt |
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |

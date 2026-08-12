@@ -129,7 +129,16 @@
 #'   guidance in the LLM prompt.
 #' @param llm_fn Function. LLM provider function with signature
 #'   \code{function(prompt_str, ...)}. Default
-#'   \code{TaxaTools::call_api}.
+#'   \code{TaxaTools::call_api}. \strong{Known footgun:} \code{call_api()}'s
+#'   provider auto-detection is set up by \code{TaxaTools}'s own
+#'   \code{.onAttach()}, which only runs via \code{library(TaxaTools)} --
+#'   calling this function from a fully-namespaced script (no
+#'   \code{library()} calls at all) never triggers it, and \code{call_api()}
+#'   silently falls back to degraded/uniform output rather than erroring. If
+#'   every plausibility column comes back suspiciously uniform, pass
+#'   \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
+#'   provider = "anthropic")}. See \code{TaxaID/CLAUDE.md}'s "Known R
+#'   Footguns" for the full record.
 #' @param taxa_per_call Integer. Maximum taxa (or candidate sets) per LLM call.
 #'   Default \code{15L}. Candidate-set entries are longer than single taxon
 #'   names; consider reducing to 8--10 when using \code{plausible_taxa_col}.
@@ -168,6 +177,12 @@
 #'   \item{\code{review_confidence}}{high / moderate / low}
 #'   \item{\code{review_comment}}{Free-text note, or \code{NA}}
 #' }
+#' Also carries an \code{"llm_prompts"} attribute -- a named list of the
+#' exact prompt string sent for each LLM call (named by batch number, with
+#' an \code{"a"}/\code{"b"} suffix per retry sub-batch split, e.g.
+#' \code{"2b"}). Inspect via \code{attr(reviewed, "llm_prompts")} to see
+#' precisely what the LLM was asked, e.g. before trusting an unexpected
+#' result or when tuning \code{context}/\code{target_group}/\code{marker}.
 #'
 #' @section Pipeline context:
 #' When \code{consensus_posterior_col}/\code{winner_prior_col}/
@@ -488,6 +503,7 @@ review_assignments <- function(input_df,
                     n_batches, taxa_per_call))
 
   batch_results <- vector("list", n_batches)
+  prompt_log    <- new.env(parent = emptyenv())
 
   for (b in seq_along(batch_idx)) {
     taxa_batch <- taxa_info[batch_idx[[b]], , drop = FALSE]
@@ -500,7 +516,8 @@ review_assignments <- function(input_df,
     batch_results[[b]] <- .review_batch_with_retry(
       taxa_batch, ctx, target_group, marker, data_type, use_candidates,
       llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
-      batch_label = as.character(b), max_retries = max_retries
+      batch_label = as.character(b), max_retries = max_retries,
+      prompt_log = prompt_log
     )
 
     if (b < n_batches) Sys.sleep(pause_seconds)
@@ -534,6 +551,10 @@ review_assignments <- function(input_df,
   result$.row_id  <- NULL
   result$.join_key <- NULL
   rownames(result) <- NULL
+
+  # Named by batch label (including any "a"/"b" retry sub-batch splits) --
+  # see @return below.
+  attr(result, "llm_prompts") <- as.list(prompt_log)
 
   result
 }
@@ -756,9 +777,21 @@ review_assignments <- function(input_df,
 
 
 #' Normalise Context to Standard Fields
+#'
+#' A \code{context} data frame is expected to describe ONE study (a single
+#' geography/habitat/date shared by every taxon in this call) -- there is no
+#' per-row context in \code{review_assignments()}'s design, so only the first
+#' row is ever read. A multi-row \code{context} most likely means the caller
+#' passed a per-observation table by mistake; warned explicitly rather than
+#' silently taking row 1 and discarding the rest.
 #' @noRd
 .normalise_context <- function(context) {
   if (is.data.frame(context)) {
+    if (nrow(context) > 1L)
+      warning(sprintf(
+        "review_assignments: 'context' has %d rows; only the first is used (context describes one study, not one row per observation).",
+        nrow(context)
+      ), call. = FALSE)
     ctx <- as.list(context[1, , drop = TRUE])
   } else if (is.list(context)) {
     ctx <- context
@@ -997,10 +1030,16 @@ review_assignments <- function(input_df,
                                      data_type, use_candidates, llm_fn,
                                      max_tokens, taxon_rank_col, verbose,
                                      pause_seconds, batch_label, max_retries,
-                                     depth = 0L) {
+                                     depth = 0L, prompt_log = NULL) {
 
   prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker,
                                  data_type, use_candidates)
+
+  # Recorded by reference (an environment, not a data-frame attribute) so it
+  # survives every rbind()/retry-recursion untouched -- lets a caller inspect
+  # exactly what was sent to the LLM via attr(result, "llm_prompts") without
+  # threading a second return value through every call site.
+  if (!is.null(prompt_log)) assign(batch_label, prompt, envir = prompt_log)
 
   call_error <- NULL
   raw <- tryCatch(
@@ -1044,13 +1083,13 @@ review_assignments <- function(input_df,
     left_result <- .review_batch_with_retry(
       left, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
-      paste0(batch_label, "a"), max_retries, depth + 1L
+      paste0(batch_label, "a"), max_retries, depth + 1L, prompt_log
     )
     Sys.sleep(pause_seconds)
     right_result <- .review_batch_with_retry(
       right, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
-      paste0(batch_label, "b"), max_retries, depth + 1L
+      paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log
     )
     return(rbind(left_result, right_result))
   }
@@ -1074,9 +1113,12 @@ review_assignments <- function(input_df,
                                    taxon_rank_col, use_candidates = FALSE) {
 
   expected_taxa <- taxa_batch$taxon_name
-  make_default <- function() {
+  # names = expected_taxa by default (the whole-batch NA-fill case); also
+  # reused below for the narrower "LLM omitted these specific taxa" case, so
+  # both NA-filled shapes are built from one place.
+  make_default <- function(names = expected_taxa) {
     data.frame(
-      taxon_name              = expected_taxa,
+      taxon_name              = names,
       habitat_plausibility    = NA_character_,
       geographic_plausibility = NA_character_,
       scope_plausibility      = NA_character_,
@@ -1158,26 +1200,31 @@ review_assignments <- function(input_df,
                         "LLM response missing 'taxon_name' field. Returning NA defaults."))
   }
 
-  .safe_col <- function(col_name) {
-    if (col_name %in% names(parsed)) {
-      vals <- as.character(parsed[[col_name]])
+  # Reads col_name out of `df` explicitly (not `parsed` via lexical scope) --
+  # a single-use helper local to this function; not duplicated elsewhere in
+  # the package or ecosystem (checked), so kept inline rather than factored
+  # into a shared utility, but taking `df` as an argument makes the
+  # dependency visible at each call site instead of implicit.
+  .safe_col <- function(df, col_name) {
+    if (col_name %in% names(df)) {
+      vals <- as.character(df[[col_name]])
       vals[vals %in% c("null", "NULL", "NA")] <- NA_character_
       vals
     } else {
-      rep(NA_character_, nrow(parsed))
+      rep(NA_character_, nrow(df))
     }
   }
 
   result <- data.frame(
     taxon_name              = as.character(parsed$taxon_name),
-    habitat_plausibility    = .safe_col("habitat_plausibility"),
-    geographic_plausibility = .safe_col("geographic_plausibility"),
-    scope_plausibility      = .safe_col("scope_plausibility"),
-    contamination_risk      = .safe_col("contamination_risk"),
-    review_alternatives     = .safe_col("review_alternatives"),
-    review_lower_hypotheses = .safe_col("review_lower_hypotheses"),
-    review_confidence       = .safe_col("review_confidence"),
-    review_comment          = .safe_col("review_comment"),
+    habitat_plausibility    = .safe_col(parsed, "habitat_plausibility"),
+    geographic_plausibility = .safe_col(parsed, "geographic_plausibility"),
+    scope_plausibility      = .safe_col(parsed, "scope_plausibility"),
+    contamination_risk      = .safe_col(parsed, "contamination_risk"),
+    review_alternatives     = .safe_col(parsed, "review_alternatives"),
+    review_lower_hypotheses = .safe_col(parsed, "review_lower_hypotheses"),
+    review_confidence       = .safe_col(parsed, "review_confidence"),
+    review_comment          = .safe_col(parsed, "review_comment"),
     stringsAsFactors = FALSE
   )
 
@@ -1235,19 +1282,7 @@ review_assignments <- function(input_df,
     pending <- c(pending, sprintf("LLM omitted %d taxa. Filling with NA defaults: %s",
                     length(missing_taxa),
                     paste(missing_taxa, collapse = ", ")))
-    missing_rows <- data.frame(
-      taxon_name              = missing_taxa,
-      habitat_plausibility    = NA_character_,
-      geographic_plausibility = NA_character_,
-      scope_plausibility      = NA_character_,
-      contamination_risk      = NA_character_,
-      review_alternatives     = NA_character_,
-      review_lower_hypotheses = NA_character_,
-      review_confidence       = NA_character_,
-      review_comment          = NA_character_,
-      stringsAsFactors = FALSE
-    )
-    result <- rbind(result, missing_rows)
+    result <- rbind(result, make_default(missing_taxa))
   }
 
   result <- result[result$taxon_name %in% expected_taxa, , drop = FALSE]

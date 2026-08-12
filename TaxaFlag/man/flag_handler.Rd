@@ -38,6 +38,10 @@ timestamp within each group to flag. Default \code{30}.}
 \item{handler_taxa}{Character vector or \code{NULL}. If supplied, only
 these taxa are flagged (e.g., \code{"Homo sapiens"}). Other taxa
 within the interval receive a score but are flagged \code{"valid"}.
+Besides the researcher themselves, this can include any species
+plausibly present specifically because of handling activity rather
+than the wildlife the camera is meant to detect -- e.g. a domestic dog
+accompanying a field crew (\code{c("Homo sapiens", "Canis familiaris")}).
 If \code{NULL}, all taxa within the interval are flagged. Default
 \code{NULL}.}
 
@@ -126,9 +130,22 @@ column name alone no longer identifies which check produced it.
 }
 
 \examples{
+camera_detections <- data.frame(
+  datetime   = as.POSIXct(c("2026-01-01 08:00:00", "2026-01-01 08:15:00",
+                            "2026-01-01 09:00:00", "2026-01-01 09:45:00")),
+  taxon_name = c("Homo sapiens", "Homo sapiens", "Lynx rufus", "Homo sapiens"),
+  station    = "A"
+)
+flag_handler(
+  input_df         = camera_detections,
+  group_col        = "station",
+  interval_minutes = 30,
+  handler_taxa     = "Homo sapiens"
+)
+
 \dontrun{
-# Flag detections within 30 minutes of camera setup/retrieval, anchored
-# on real per-station deploy/retrieve timestamps
+# Anchored on real per-station deploy/retrieve timestamps instead of the
+# detection data's own min/max (see "Edge anchoring" above)
 flagged <- flag_handler(
   input_df               = camera_detections,
   datetime_col     = "datetime",

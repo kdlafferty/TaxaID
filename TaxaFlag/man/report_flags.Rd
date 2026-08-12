@@ -29,11 +29,12 @@ types are present in the data. Works standalone or feeds into
 \code{TaxaTools::assemble_report()} for a unified pipeline report.
 }
 \examples{
-\dontrun{
-flagged <- flag_contaminant(data, control_samples = blanks)
+flagged <- data.frame(
+  taxon_name    = c("Oncorhynchus mykiss", "Homo sapiens", "Salmo salar"),
+  validity_flag = c("valid", "invalid_lab_contaminant", "questionable_lab_contaminant")
+)
 sec <- report_flags(flagged)
 print(sec)
-}
 
 }
 \seealso{

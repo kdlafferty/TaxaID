@@ -50,13 +50,16 @@
 #' @seealso [check_gbif_tile_range()]
 #'
 #' @examples
-#' \dontrun{
+#' occ <- data.frame(
+#'   taxon_name        = c("Neogobius melanostomus", "Neogobius melanostomus"),
+#'   decimalLatitude   = c(41.60, 42.10),
+#'   decimalLongitude  = c(-87.10, -87.80)
+#' )
 #' compute_local_occurrence_distance(
 #'   taxon_names     = c("Neogobius melanostomus", "Salmo salar"),
 #'   query_lat       = 41.67, query_lon = -87.15,
-#'   occurrence_data = occurrences_clean
+#'   occurrence_data = occ
 #' )
-#' }
 #'
 #' @importFrom dplyr filter transmute count group_by slice_min ungroup select left_join mutate coalesce
 #' @importFrom rlang .data

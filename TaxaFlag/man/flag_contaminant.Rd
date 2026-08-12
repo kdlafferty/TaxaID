@@ -168,14 +168,23 @@ column name alone no longer identifies which check produced it.
 }
 
 \examples{
-\dontrun{
+reads_long <- data.frame(
+  event_id   = c("Palmyra01", "Palmyra01", "Palmyra02", "Palmyra02",
+                 "Palmyra30", "Palmyra30"),
+  taxon_name = c("Kyphosus vaigiensis", "Homo sapiens",
+                 "Kyphosus vaigiensis", "Homo sapiens",
+                 "Kyphosus vaigiensis", "Homo sapiens"),
+  n_reads    = c(48000, 12, 51000, 8, 5, 4200)
+)
+
 # Identify extraction control columns, flag contaminants
 flagged <- flag_contaminant(
-  input_df             = reads_long,
-  control_samples  = c("Palmyra30", "Palmyra62"),
+  input_df         = reads_long,
+  control_samples  = "Palmyra30",
   contaminant_type = "lab_contaminant"
 )
 
+\dontrun{
 # Using sample_type column instead
 flagged <- flag_contaminant(
   input_df              = reads_long,

@@ -164,7 +164,16 @@ guidance in the LLM prompt.}
 
 \item{llm_fn}{Function. LLM provider function with signature
 \code{function(prompt_str, ...)}. Default
-\code{TaxaTools::call_api}.}
+\code{TaxaTools::call_api}. \strong{Known footgun:} \code{call_api()}'s
+provider auto-detection is set up by \code{TaxaTools}'s own
+\code{.onAttach()}, which only runs via \code{library(TaxaTools)} --
+calling this function from a fully-namespaced script (no
+\code{library()} calls at all) never triggers it, and \code{call_api()}
+silently falls back to degraded/uniform output rather than erroring. If
+every plausibility column comes back suspiciously uniform, pass
+\code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
+provider = "anthropic")}. See \code{TaxaID/CLAUDE.md}'s "Known R
+Footguns" for the full record.}
 
 \item{taxa_per_call}{Integer. Maximum taxa (or candidate sets) per LLM call.
 Default \code{15L}. Candidate-set entries are longer than single taxon
@@ -209,6 +218,12 @@ or \code{NA}}
 \item{\code{review_confidence}}{high / moderate / low}
 \item{\code{review_comment}}{Free-text note, or \code{NA}}
 }
+Also carries an \code{"llm_prompts"} attribute -- a named list of the
+exact prompt string sent for each LLM call (named by batch number, with
+an \code{"a"}/\code{"b"} suffix per retry sub-batch split, e.g.
+\code{"2b"}). Inspect via \code{attr(reviewed, "llm_prompts")} to see
+precisely what the LLM was asked, e.g. before trusting an unexpected
+result or when tuning \code{context}/\code{target_group}/\code{marker}.
 }
 \description{
 Sends unique taxa from a consensus table to an LLM for structured expert

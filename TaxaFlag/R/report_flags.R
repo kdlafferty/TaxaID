@@ -33,11 +33,12 @@
 #'   \code{\link{review_assignments}}
 #'
 #' @examples
-#' \dontrun{
-#' flagged <- flag_contaminant(data, control_samples = blanks)
+#' flagged <- data.frame(
+#'   taxon_name    = c("Oncorhynchus mykiss", "Homo sapiens", "Salmo salar"),
+#'   validity_flag = c("valid", "invalid_lab_contaminant", "questionable_lab_contaminant")
+#' )
 #' sec <- report_flags(flagged)
 #' print(sec)
-#' }
 #'
 #' @export
 report_flags <- function(flagged_data,

@@ -158,7 +158,18 @@
 #'   NULL} (unbinned) can render as a completely EMPTY tile at a real
 #'   zoom/species combination that raw \code{.point} styles render
 #'   correctly -- confirmed live, not a safe combination -- so this is only
-#'   ever applied together with binning, never on its own.
+#'   ever applied together with binning, never on its own. \strong{A binned
+#'   square can visually sit offset from a point's true location by up to
+#'   \code{gbif_bin_size} pixels}, since GBIF snaps each occurrence to its
+#'   containing bin before drawing it -- a real, expected consequence of
+#'   aggregation, not a data or rendering bug (a single domestic-cat record
+#'   appearing a few km into open water at the default \code{256L} binning
+#'   is exactly this: GBIF's real, unfiltered occurrence data plus one
+#'   coarse pixel's worth of legitimate positional imprecision from
+#'   binning, not a broken map layer). See also
+#'   [check_gbif_tile_range()]'s own \verb{What the PNG can and can't tell
+#'   you} section -- density tiles are a display aid, not an exact-count
+#'   source, in this gadget as much as there.
 #' @param gbif_year_range Character or \code{NULL}. GBIF map API \code{year}
 #'   query parameter (e.g. \code{"1995,2025"}), display-only -- affects
 #'   only the visual tile layer, NOT [check_gbif_tile_range()]'s own
@@ -665,6 +676,14 @@ review_spatial_context <- function(input_df,
         # regression a previous round hit and fully reverted. This is not a
         # repeat of that mistake: zoomOffset=-1 is the exact compensation
         # tileSize=512 needs to stay correctly addressed.
+        #
+        # No tileOptions(opacity=) here, deliberately: an earlier round DID
+        # add an opacity override to dim the tile layer, and a real
+        # click-through reported that made sparse species (this gadget's
+        # actual use case) HARDER to see against the basemap, not easier --
+        # reverted, and left off since. GBIF's own colour ramp already
+        # encodes density; a second opacity multiplier on top of it fights
+        # that signal rather than clarifying it.
         proxy <- leaflet::addTiles(
           proxy, urlTemplate = url, group = "gbif_tiles",
           options = leaflet::tileOptions(tileSize = 512, zoomOffset = -1)
@@ -908,11 +927,17 @@ review_spatial_context <- function(input_df,
 #' (see the observeEvent(input$taxon) call site's own comment for why:
 #' that endpoint's marker size has no working query parameter, confirmed
 #' live). Same underlying /v1/observations search endpoint
-#' TaxaFetch::fetch_inat_occurrences() counts against; a live check
+#' TaxaFetch::fetch_inat_occurrences() queries -- but NOT a duplicate of it:
+#' that function returns one COUNT per taxon (n_observations_local, via
+#' per_page=1, reading only total_results), never the individual records
+#' themselves, so it structurally cannot supply what map plotting needs
+#' (each observation's own lat/lon). Confirmed directly against its source
+#' before writing this function, not assumed. A live check separately
 #' confirmed this specific read-only, already-public-data query needs no
 #' Authorization header, so this stays self-contained in TaxaFlag (httr2,
 #' already required) rather than pulling in TaxaFetch as a hard dependency
-#' for one field. per_page hard-capped at iNat's own real server-side
+#' for what would otherwise be a genuinely new, count-vs-points signature on
+#' that function. per_page hard-capped at iNat's own real server-side
 #' maximum (confirmed live: requesting 201 silently returns 200) -- no
 #' pagination beyond one page, matching this gadget's "cheap map context,
 #' not a full census" scope. radius_km default 500 (not

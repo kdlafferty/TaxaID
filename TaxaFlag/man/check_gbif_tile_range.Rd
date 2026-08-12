@@ -52,10 +52,11 @@ A one-row data frame:
 \item{zoom_requested}{The \code{zoom} argument, as supplied.}
 \item{zoom_used}{The zoom level the reported values were actually
 computed at -- \code{zoom_requested} unless escalation stepped down to
-find something (or, if nothing was found at any level, the
-originally requested \code{zoom}, for reference). \code{NA} only when
-\code{escalate = FALSE} and nothing was found at \code{zoom} (nothing was
-ever "used").}
+find something. \code{NA} when \code{escalate = TRUE} (the default) and
+nothing was found anywhere from \code{zoom} down to \code{min_zoom} (nothing
+was ever "used"). When \code{escalate = FALSE}, this is always
+\code{zoom_requested}, even if nothing was found there -- the single
+attempted zoom is still reported, for reference.}
 \item{escalated}{Logical. \code{TRUE} when \code{zoom_used != zoom_requested}
 -- the answer came from a coarser search than requested.}
 \item{tile_size}{Pixel width/height of one fetched tile (512, GBIF's

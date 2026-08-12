@@ -87,10 +87,11 @@
 #'     \item{zoom_requested}{The `zoom` argument, as supplied.}
 #'     \item{zoom_used}{The zoom level the reported values were actually
 #'       computed at -- `zoom_requested` unless escalation stepped down to
-#'       find something (or, if nothing was found at any level, the
-#'       originally requested `zoom`, for reference). `NA` only when
-#'       `escalate = FALSE` and nothing was found at `zoom` (nothing was
-#'       ever "used").}
+#'       find something. `NA` when `escalate = TRUE` (the default) and
+#'       nothing was found anywhere from `zoom` down to `min_zoom` (nothing
+#'       was ever "used"). When `escalate = FALSE`, this is always
+#'       `zoom_requested`, even if nothing was found there -- the single
+#'       attempted zoom is still reported, for reference.}
 #'     \item{escalated}{Logical. `TRUE` when `zoom_used != zoom_requested`
 #'       -- the answer came from a coarser search than requested.}
 #'     \item{tile_size}{Pixel width/height of one fetched tile (512, GBIF's
@@ -365,10 +366,26 @@ check_gbif_tile_range <- function(taxon_key,
     return(matrix(0, tile_size, tile_size))
   }
   img <- png::readPNG(httr2::resp_body_raw(resp))
+  # GBIF's @1x.png tiles are always RGBA (confirmed empirically) -- guarded
+  # rather than assumed, since indexing a non-existent 4th channel would
+  # otherwise fail with an opaque "subscript out of bounds" far from this
+  # call site.
+  if (length(dim(img)) < 3L || dim(img)[3] < 4L) {
+    stop(sprintf(
+      "check_gbif_tile_range: tile z=%d/x=%d/y=%d has %d channel(s), expected 4 (RGBA) -- GBIF's tile format may have changed.",
+      zoom, x, y, if (length(dim(img)) < 3L) 1L else dim(img)[3]
+    ), call. = FALSE)
+  }
   img[, , 4]
 }
 
 #' 8-connected dilation of a logical matrix by one cell
+#' Includes the cell itself (dr=0, dc=0) alongside its 8 neighbours, matching
+#' standard morphological dilation -- an already-TRUE cell stays TRUE, and a
+#' FALSE cell flips to TRUE only if it or any neighbour is TRUE. Verified
+#' directly: dilating a 3x3 all-TRUE matrix with a single FALSE corner
+#' produces an all-TRUE result (every one of that corner's neighbours is
+#' TRUE), not a no-op -- correct region-growing behaviour.
 #' @noRd
 .dilate8 <- function(m) {
   nr <- nrow(m); nc <- ncol(m)
