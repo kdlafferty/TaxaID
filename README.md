@@ -79,7 +79,11 @@ BLASTs each reference accession against an independent database and
 flags accessions whose top hits disagree with their own listed
 taxonomy, before the reference set ever reaches model training
 (`evaluate_reference_accessions()`, `flag_incongruent_references()`,
-`remove_incongruent_references()`).*
+`remove_incongruent_references()`). A flag alone can't distinguish a
+genuine mislabel from a marker with poor resolving power for that
+lineage; `review_flagged_accessions()` optionally sends the flagged
+subset to an LLM for a free-text second look (known hybrid crosses,
+informal specimen codes) without ever re-deciding the flag itself.*
 
 **Missing reference redirect** (FP + FN) — The reference database itself
 is incomplete: when the true species has no entry in the reference

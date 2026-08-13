@@ -1,14 +1,14 @@
 # ==============================================================================
 # extra_functions_review_inputs.R
-# TaxaMatch -- small, ready-to-run inputs for 53 functions added AFTER the
+# TaxaMatch -- small, ready-to-run inputs for 58 functions added AFTER the
 # package's formal code review (reviewed 2026-07-13; see
 # inst/taxamatch_review.Rmd / inst/taxamatch_review_response.md)
 #
 # PURPOSE
 # -------
 # Prepared for external code review: gives the reviewer a concrete, small
-# input for each of 53 functions from two feature clusters that landed after
-# the review closed, so every one of them can actually be run/inspected
+# input for each of 58 functions from three feature clusters that landed
+# after the review closed, so every one of them can actually be run/inspected
 # rather than reverse-engineered from source. Modeled on
 # TaxaLikely/inst/review_function_inputs.R (same monorepo, same convention).
 #
@@ -23,6 +23,16 @@
 #     scoring, persistent caches, hybrid-labeled-accession handling). See
 #     TaxaMatch/CLAUDE.md's many session notes on these three functions for
 #     the full design history.
+#   Cluster 3 -- LLM second-look reviewer (2026-08-13): review_flagged_
+#     accessions(), implementing Question 2 of ecosystem_docs/REENTRY_PROMPT_
+#     flagged_accession_second_look.md, plus the internal prompt-building/
+#     retry/parsing machinery behind it. Also demonstrates
+#     best_disagreeing_taxon, a new output column on
+#     evaluate_reference_accessions()/.compute_hierarchy_congruence() shipped
+#     the same day specifically so this cluster's LLM reviewer can see the
+#     disagreeing taxon's NAME, not just its identity percentage -- shown
+#     inline in Cluster 2's own .compute_hierarchy_congruence() section
+#     below, not counted separately in the function total above.
 #
 # Inputs are pulled from three sources, cheapest first:
 #   1. Existing testthat fixtures reused verbatim or near-verbatim (the large
@@ -41,6 +51,12 @@
 #                     BLAST call via testthat::local_mocked_bindings() --
 #                     see "Why some functions are mocked instead of live"
 #                     below for which functions this applies to and why.
+#   OFFLINE(stub llm_fn) -- offline; the section passes a local stub function
+#                     as `llm_fn` (a real, first-class parameter every
+#                     LLM-calling function in this ecosystem accepts, not a
+#                     workaround) instead of the default
+#                     `TaxaTools::call_api`. No network/API call, no cost --
+#                     applies only to Cluster 3's review_flagged_accessions().
 #   NETWORK        -- hits real NCBI (via rentrez), no BLAST involved, no
 #                     credentials needed; every NETWORK section here is a
 #                     single small lookup, individually verified live at
@@ -293,10 +309,17 @@ congruence_ref_df <- data.frame(
   create_date  = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
   stringsAsFactors = FALSE
 )
-TaxaMatch:::.compute_hierarchy_congruence(
+congruence_out <- TaxaMatch:::.compute_hierarchy_congruence(
   congruence_sm, congruence_ref_df, rank_system = c("family", "genus", "species"),
   top_n = 5L, min_congruent_rank = "family", submission_window = 5L
 )
+congruence_out
+# best_disagreeing_taxon (new 2026-08-13, Cluster 3): the listed species of
+# the SAME highest-identity disagreeing hit best_disagreeing_pident is
+# already computed from -- here, HIT_D's "Sparus aurata" -- so a reviewer
+# (human or the new LLM second-look reviewer below) sees WHAT disagreed, not
+# just BY HOW MUCH.
+congruence_out[, c("best_disagreeing_pident", "best_disagreeing_taxon")]
 
 ## ---- .blast_server_rejected() ---- OFFLINE ----------------------------------------
 # Real captured NCBI server-side CPU-budget rejection message text
@@ -647,3 +670,113 @@ TaxaMatch:::.lookup_investigate_cache(
   iv_cache_reloaded, "ACC_FLAG", "Pseudorasbora parva", iv_params_key,
   inconclusive_ttl_days = 30
 )$verdict
+
+
+# ==============================================================================
+# CLUSTER 3 -- LLM second-look reviewer (2026-08-13)
+# review_flagged_accessions(), implementing Question 2 of ecosystem_docs/
+# REENTRY_PROMPT_flagged_accession_second_look.md. Unlike Cluster 2, this
+# cluster makes NO network/NCBI/BLAST call of any kind -- every section below
+# passes a local stub function as `llm_fn` (a real, first-class parameter,
+# not a workaround; see TaxaFlag::review_assignments()'s identical
+# convention), so nothing here costs money or requires credentials.
+#
+# The fixture below (.review_evaluated_df_fixture()) is reused verbatim from
+# tests/testthat/test-review-flagged-accessions.R's own .base_evaluated_df()
+# -- 4 accessions spanning every scope case: ACC001 (congruent, species-
+# resolved -- out of scope by default), ACC002 (incongruent, real diverse
+# disagreement -- the Stereolepis doederleini shape), ACC003 (incongruent
+# AND not species-resolved -- the NC_028197/"Serranidae sp. JL-2015" shape),
+# ACC004 (insufficient_independent_evidence).
+# ==============================================================================
+
+.review_evaluated_df_fixture <- function() {
+  data.frame(
+    accession = c("ACC001", "ACC002", "ACC003", "ACC004"),
+    listed_taxon = c("Menidia beryllina", "Stereolepis doederleini",
+                     "Serranidae sp. JL-2015", "Cottus asper"),
+    hierarchy_flag = c("congruent", "incongruent",
+                       "incongruent", "insufficient_independent_evidence"),
+    finest_common_rank = c("species", "order", "class", NA_character_),
+    best_agreeing_pident = c(99.5, NA_real_, NA_real_, NA_real_),
+    best_disagreeing_pident = c(NA_real_, 95.2, 87.3, NA_real_),
+    best_disagreeing_taxon = c(NA_character_, "Sinipercidae sp.",
+                               "Serranidae sp. JL-2015", NA_character_),
+    congruent_evidence_exists_anywhere = c(TRUE, FALSE, FALSE, FALSE),
+    congruent_evidence_best_pident = c(99.5, NA_real_, NA_real_, NA_real_),
+    taxonomy_resolution_source = c("direct", "direct", "direct", "direct"),
+    listed_taxon_is_species = c(TRUE, TRUE, FALSE, TRUE),
+    n_independent_top_matches = c(5L, 5L, 1L, 1L),
+    n_top_matches_available = c(5L, 5L, 3L, 1L),
+    frac_independent_below_min_congruent_rank = c(0.09, 0.9, 0.75, 0.5),
+    stringsAsFactors = FALSE
+  )
+}
+
+# A stub llm_fn that inspects the real prompt content and answers in the
+# real requested JSON shape -- demonstrates the actual request/response
+# contract review_flagged_accessions() expects from any llm_fn, real or
+# stubbed (see TaxaTools::call_api()'s own signature).
+.review_stub_llm_fn <- function(prompt, ...) {
+  accs <- unique(regmatches(prompt, gregexpr("ACC00[0-9]", prompt))[[1]])
+  jsonlite::toJSON(data.frame(
+    accession = accs,
+    accession_likely_explanation = ifelse(
+      accs == "ACC003", "hybrid_or_specimen_code_artifact", "poor_marker_resolution"
+    ),
+    accession_review_confidence = "high",
+    accession_review_comment = paste("Stub reviewer comment for", accs),
+    stringsAsFactors = FALSE
+  ), auto_unbox = TRUE)
+}
+
+## ---- .build_accession_review_prompt() ---- OFFLINE ---------------------------------
+# The prompt itself -- includes the evaluation guide's 5-category framework
+# and one line per in-scope accession (all 4 shown here regardless of real
+# scope, since this internal helper builds a prompt for whatever batch it's
+# handed; review_flagged_accessions() itself does the scope filtering before
+# calling it).
+review_prompt <- TaxaMatch:::.build_accession_review_prompt(.review_evaluated_df_fixture())
+cat(substr(review_prompt, 1, 600), "...\n")
+grepl("best_disagreeing_taxon=\"Sinipercidae sp.\"", review_prompt, fixed = TRUE)
+
+## ---- .parse_accession_review_response() ---- OFFLINE -------------------------------
+raw_response <- .review_stub_llm_fn(review_prompt)
+parsed_review <- TaxaMatch:::.parse_accession_review_response(
+  raw_response, .review_evaluated_df_fixture()
+)
+parsed_review[, c("accession", "accession_likely_explanation", "accession_review_comment")]
+attr(parsed_review, "status")  # "complete" -- all 4 accessions recovered
+
+## ---- .recover_truncated_accession_json() ---- OFFLINE, truncated-response recovery --
+# A response cut off mid-object (e.g. hit a real max_tokens ceiling) --
+# salvages every COMPLETE object before the cut, same strategy
+# review_assignments()'s own .recover_truncated_json() uses.
+truncated_json <- '[{"accession":"ACC002","accession_likely_explanation":"poor_marker_resolution","accession_review_confidence":"high","accession_review_comment":"Real diverse disagreement across families."},{"accession":"ACC003","accession_likely_e'
+recovered <- TaxaMatch:::.recover_truncated_accession_json(truncated_json)
+recovered$accession  # "ACC002" only -- the second (cut-off) object is correctly dropped
+
+## ---- .review_accession_batch_with_retry() ---- OFFLINE, stub llm_fn ----------------
+retry_result <- TaxaMatch:::.review_accession_batch_with_retry(
+  .review_evaluated_df_fixture()[2:4, ], llm_fn = .review_stub_llm_fn,
+  max_tokens = NULL, verbose = FALSE, pause_seconds = 0,
+  batch_label = "1", max_retries = 2L
+)
+retry_result[, c("accession", "accession_likely_explanation", "accession_review_confidence")]
+
+## ---- review_flagged_accessions() ---- OFFLINE(stub llm_fn) -------------------------
+# End-to-end: default scope selects ACC002/ACC003/ACC004 (ACC001 is
+# congruent + species-resolved, correctly excluded); ACC003's
+# listed_taxon_is_species = FALSE would keep it in scope even if it were
+# "congruent" (include_non_species_resolved = TRUE default), demonstrating
+# the two scope axes are independent.
+reviewed_df <- review_flagged_accessions(
+  .review_evaluated_df_fixture(), llm_fn = .review_stub_llm_fn, verbose = FALSE
+)
+reviewed_df[, c("accession", "hierarchy_flag", "accession_likely_explanation",
+                "accession_review_confidence", "accession_review_comment")]
+
+# Real, exact prompt(s) sent, named by batch (with "a"/"b" retry-sub-batch
+# suffixes when a batch was split) -- inspect before trusting an unexpected
+# review, or when tuning hierarchy_flags/include_non_species_resolved:
+names(attr(reviewed_df, "llm_prompts"))

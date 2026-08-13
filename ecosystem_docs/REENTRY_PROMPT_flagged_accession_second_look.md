@@ -1,7 +1,9 @@
 # Reentry prompt: a smarter second look at `evaluate_reference_accessions()`'s flagged/borderline accessions
 
 **Status update, 2026-08-13: Question 1 RESOLVED. Question 2 (the LLM second-look
-reviewer) is still fully open -- read this update, then jump to Question 2 below.**
+reviewer) is now IMPLEMENTED -- see the new status note directly below Question 2's own
+header for the full record. Both questions this doc was written to answer are now
+closed.**
 
 ## Question 1 resolution (2026-08-13)
 
@@ -190,6 +192,66 @@ check above first; it may make the choice among these obvious (or reveal a fourt
 not listed here).
 
 ## Question 2: an LLM second-look reviewer for flagged accessions
+
+**Status, 2026-08-13: IMPLEMENTED.** `TaxaMatch::review_flagged_accessions()`
+(`TaxaMatch/R/review_flagged_accessions.R`) answers all four of this section's own
+"real design questions to resolve before writing code" as follows, each a direct,
+deliberate answer to the question posed, not a default fallen into:
+
+1. **What does the LLM see?** Exactly the column set this section names, lifted
+   straight from `inst/reference_accession_evaluation_guide.md` (not re-derived): the
+   identity diagnostics, `taxonomy_resolution_source`/`listed_taxon_is_species`, and --
+   answering this section's own open question -- yes, the disagreeing taxon's actual
+   NAME is now included. Rather than a fresh per-review lookup, a new
+   `best_disagreeing_taxon` output column was added to `evaluate_reference_accessions()`
+   itself (via `.compute_hierarchy_congruence()`, same day): the listed species of the
+   same highest-identity disagreeing hit `best_disagreeing_pident` was already computed
+   from -- the identical "already computed as part of the rank-agreement walk, then
+   discarded" pattern the 2026-08-07 identity-diagnostics columns themselves were. This
+   was a deliberate choice over a live re-lookup at review time specifically to avoid
+   any new NCBI calls the LLM-review step itself would otherwise need.
+2. **What does it output?** A free-text `accession_review_comment` plus two small
+   structured fields (`accession_likely_explanation` -- one of the guide's own 5
+   categories, `accession_review_confidence`) -- never a re-decided `hierarchy_flag`,
+   exactly as this section's own answer already specified, citing the `trusted_rank`
+   precedent directly in the function's own roxygen.
+3. **Cost/scale.** Scoped by default to `hierarchy_flag %in% c("incongruent",
+   "insufficient_independent_evidence")` plus (separately, since it's an orthogonal
+   axis) `listed_taxon_is_species == FALSE`, both configurable
+   (`hierarchy_flags`/`include_non_species_resolved`) -- the exact scope this section
+   itself sized at ~7% of a real Goal-2 population.
+4. **Where does it live?** TaxaMatch, not TaxaFlag -- the package-placement question
+   this section flagged as needing "a deliberate conversation before writing code."
+   Resolved by architectural precedent rather than a live conversation: every other
+   reference-accession-quality function (`evaluate_reference_accessions()`,
+   `investigate_flagged_accession()`, `check_marker_mismatch()`,
+   `flag_incongruent_references()`, `remove_incongruent_references()`) already lives in
+   TaxaMatch and operates on this exact output shape; TaxaMatch -> TaxaFlag genuinely
+   isn't needed as a new dependency edge, since this function calls
+   `TaxaTools::call_api()` the same way `TaxaFlag::review_assignments()` does, and
+   TaxaMatch already depends on TaxaTools for several other reasons. See
+   `review_flagged_accessions()`'s own `@section Package placement` for the full
+   reasoning, recorded there for whoever revisits this choice.
+
+Implementation mirrors `TaxaFlag::review_assignments()`'s architecture closely (batching
++ retry-by-halving-on-truncation + JSON parsing with normalised-name recovery), not
+shared code (TaxaMatch must not depend on TaxaFlag, matching this ecosystem's documented
+dependency direction) -- deliberately the same shape, not reinvented. Fully offline test
+suite (`TaxaMatch/tests/testthat/test-review-flagged-accessions.R`, 13 tests, stub
+`llm_fn` throughout, never a real provider call) plus a live smoke test against the
+installed package using a stub reproducing this doc's own real `Stereolepis
+doederleini`/`NC_028197` motivating case. `devtools::test()` 778/778 (0 failures,
+up from 765), `devtools::check()` 0 errors/0 warnings/0 notes, reinstalled and verified
+at `~/Library/R/4.0/library`. Not yet run against a real LLM provider or real flagged
+GreatLakes output -- that live verification is the natural next step for whoever picks
+this back up, following this project's own "explicit test/re-run instructions" practice:
+run `TaxaMatch::review_flagged_accessions(evaluate_reference_accessions(real_accessions))`
+on a real flagged batch and read `accession_review_comment` by eye against the guide's
+own worked examples.
+
+---
+
+**Original design-only text below, retained for the reasoning trail.**
 
 **Read `TaxaMatch/inst/reference_accession_evaluation_guide.md` before designing this
 function's prompt/context.** That guide (new 2026-08-13) is written for exactly this

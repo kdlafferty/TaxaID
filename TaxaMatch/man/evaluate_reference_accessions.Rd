@@ -132,6 +132,11 @@ disagree. See \verb{@section Identity diagnostics} below for why this
 matters -- a high value here is a much stronger mislabel signal
 than a low one, information the binary \code{hierarchy_flag} alone
 cannot convey.}
+\item{\code{best_disagreeing_taxon}}{The listed species of that same
+highest-identity disagreeing hit (\code{NA} if none disagree). Lets a
+reviewer -- human or LLM -- recognize e.g. a known hybrid-cross
+partner or an informal specimen code by name, not just by percent
+identity alone.}
 \item{\code{congruent_evidence_exists_anywhere}}{Logical. Unlike
 \code{hierarchy_flag} (computed only from the \code{top_n} closest
 independent hits), this asks whether ANY independent hit anywhere

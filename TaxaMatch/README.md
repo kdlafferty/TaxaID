@@ -91,6 +91,12 @@ match_df <- filter_redundant_hypotheses(match_df)
 -   `filter_redundant_hypotheses()` -- drop coarser-rank rows superseded
     by finer-rank rows within the same lineage and observation
 -   `report_match()` -- summarize matching for `assemble_report()`
+-   `evaluate_reference_accessions()` -- BLAST-based reference-accession
+    quality screen; see [Reference Accession Quality](#reference-accession-quality)
+-   `flag_incongruent_references()` / `remove_incongruent_references()` --
+    annotate or remove candidates flagged by `evaluate_reference_accessions()`
+-   `review_flagged_accessions()` -- LLM second-look review of
+    flagged/borderline reference accessions
 
 ## Acoustic Workflow
 
@@ -316,6 +322,68 @@ exists at time of writing.
 | iNaturalist CV (saved JSON) | `read_inaturalist_cv_output()` | Softmax 0--1 | `rinat` (indirect) |
 | SpeciesNet (`google/cameratrapai`) | `read_speciesnet_output()` | Confidence 0--1 | Python `speciesnet` |
 | InsectNet | *(not yet compatible)* | Conformal sets | Web app only |
+
+## Reference Accession Quality
+
+A mislabeled reference in the underlying NCBI database produces confident
+wrong assignments that propagate to every query matching it. TaxaMatch
+screens the actual candidate accessions your queries match against — before
+they're trusted as candidates or used to train a likelihood model —
+independent of whatever else happens to be in a caller's own taxon list.
+
+`evaluate_reference_accessions()` BLASTs each accession's own deposited
+sequence against a broad, unrestricted NCBI database, keeps hits that are
+genuinely independent (not the same submission batch), and asks whether the
+closest independent hits agree with the accession's own listed taxon:
+
+``` r
+qc <- evaluate_reference_accessions(
+  c("LC649807", "MT083886", "NC_028197"),
+  cache_dir = tools::R_user_dir("TaxaMatch", "cache")
+)
+qc[, c("accession", "listed_taxon", "hierarchy_flag", "finest_common_rank")]
+```
+
+`hierarchy_flag` is `"congruent"` / `"incongruent"` /
+`"insufficient_independent_evidence"`. **`"incongruent"` is not a verdict on
+its own** — a genuine mislabel and "this marker has poor resolving power for
+this lineage" produce the same flag; the identity diagnostics
+(`best_agreeing_pident`, `best_disagreeing_pident`, `best_disagreeing_taxon`,
+`congruent_evidence_exists_anywhere`) distinguish them. Read
+[`inst/reference_accession_evaluation_guide.md`](inst/reference_accession_evaluation_guide.md)
+before acting on a flagged accession.
+
+Consume the result with `flag_incongruent_references()` (the recommended
+default — annotates a match object, never removes a row) or
+`remove_incongruent_references()` (a deliberate, reviewed opt-in that drops
+`"incongruent"` rows):
+
+``` r
+match_df <- flag_incongruent_references(match_df, qc)
+```
+
+For a deeper dive on one specific flagged accession, `investigate_flagged_accession()`
+(singular) / `investigate_flagged_accessions()` (batch) re-BLAST against the
+accession's own listed species and its top disagreeing taxon specifically,
+with cached results. `check_marker_mismatch()` is a cheap pre-check: does the
+record's own annotated `/gene`/`/product` qualifier actually match the marker
+an evaluation was scoped to (catches e.g. a 16S sequence deposited under a
+12S-scoped audit).
+
+**LLM second-look review** — `review_flagged_accessions()` sends the
+flagged/borderline subset (`hierarchy_flag %in% c("incongruent",
+"insufficient_independent_evidence")` plus non-species-resolved accessions)
+to an LLM for a free-text second look, the same "narrative judgment layer on
+top of statistical flags, never replacing them" pattern
+`TaxaFlag::review_assignments()` uses for posterior assignments. It adds
+what the statistical check can't — recognizing a known hybrid-cross name or
+an informal specimen code — but never re-decides `hierarchy_flag` itself:
+
+``` r
+qc_reviewed <- review_flagged_accessions(qc)
+qc_reviewed[!is.na(qc_reviewed$accession_review_comment),
+           c("accession", "accession_likely_explanation", "accession_review_comment")]
+```
 
 ## Downstream Tools
 

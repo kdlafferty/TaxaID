@@ -5,7 +5,8 @@ utils::globalVariables(c(
   "is_valid_partner", "below_min_congruent", "n_independent_top_matches",
   "n_top_matches_available", "frac_independent_below_min_congruent_rank",
   "finest_common_rank", "k_disagree",
-  "hierarchy_flag", "evaluated_at", "cache_hit", "accession", "listed_taxon"
+  "hierarchy_flag", "evaluated_at", "cache_hit", "accession", "listed_taxon",
+  "species.y"
 ))
 
 # ==============================================================================
@@ -140,6 +141,19 @@ utils::globalVariables(c(
 #' `evaluate_reference_accessions()`'s own `@section Species-resolved
 #' comparison partners` for the full real-data motivation and
 #' verification.
+#'
+#' @section 2026-08-13 divergence, continued further: gains
+#' `best_disagreeing_taxon` -- the listed species of the same highest-
+#' identity independent hit `best_disagreeing_pident` is already computed
+#' from (both read off the same position in the same desc(p_match)-sorted
+#' slice, so the two stay consistent by construction). Implements the
+#' reentry prompt's own Question 2 finding that a second-look reviewer
+#' (human or LLM) needs the disagreeing taxon's actual NAME, not just its
+#' identity percentage, to recognize e.g. a known hybrid-cross partner or an
+#' informal specimen code -- previously computed as part of the rank-
+#' agreement walk and then discarded, the same "already computed, silently
+#' dropped" pattern the 2026-08-07 identity diagnostics themselves were.
+#' `NA` when no independent hit disagrees.
 #' @noRd
 .compute_hierarchy_congruence <- function(seq_matrix,
                                           reference_df,
@@ -208,6 +222,11 @@ utils::globalVariables(c(
 
   sm$is_valid_partner <- sm$is_independent & sm$is_sufficient_coverage & sm$is_species_resolved_y
 
+  # Guarantee species.y always exists before it's referenced (below, and by
+  # any caller lacking it) -- mirrors the is_species_resolved_y guard just
+  # above, which already tolerates a seq_matrix without species.y.
+  if (!"species.y" %in% names(sm)) sm$species.y <- NA_character_
+
   n_available <- sm |>
     dplyr::count(id_x, name = "n_top_matches_available")
 
@@ -239,6 +258,19 @@ utils::globalVariables(c(
   # "no hit exists in this category," not an error.
   .safe_max <- function(x) if (length(x) == 0L || all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
 
+  # .safe_first_valid(): first non-NA value of x among positions where cond
+  # is TRUE. `sliced` (below) is already arranged desc(p_match) within each
+  # id_x group before this runs, so applied to species.y/below_min_congruent
+  # this returns the listed species of the SAME highest-identity disagreeing
+  # hit best_disagreeing_pident's own .safe_max(p_match[below_min_congruent])
+  # is computed from -- the two stay consistent with each other by
+  # construction, not by a second independent computation.
+  .safe_first_valid <- function(x, cond) {
+    v <- x[cond]
+    v <- v[!is.na(v)]
+    if (length(v) == 0L) NA_character_ else v[[1L]]
+  }
+
   # "Anywhere" diagnostic -- congruent evidence exists ANYWHERE in the full
   # independence-filtered pool, not limited to top_n.
   anywhere <- valid |>
@@ -264,6 +296,7 @@ utils::globalVariables(c(
       best_hit_pident            = dplyr::first(p_match) * 100,
       best_agreeing_pident        = .safe_max(p_match[!below_min_congruent]) * 100,
       best_disagreeing_pident     = .safe_max(p_match[below_min_congruent]) * 100,
+      best_disagreeing_taxon      = .safe_first_valid(species.y, below_min_congruent),
       .groups = "drop"
     ) |>
     dplyr::mutate(
@@ -425,7 +458,7 @@ utils::globalVariables(c(
     frac_independent_below_min_congruent_rank = numeric(0L),
     finest_common_rank = character(0L),
     best_hit_pident = numeric(0L), best_agreeing_pident = numeric(0L),
-    best_disagreeing_pident = numeric(0L),
+    best_disagreeing_pident = numeric(0L), best_disagreeing_taxon = character(0L),
     congruent_evidence_exists_anywhere = logical(0L),
     congruent_evidence_best_pident = numeric(0L),
     hierarchy_flag = character(0L),
@@ -635,6 +668,11 @@ utils::globalVariables(c(
 #'       matters -- a high value here is a much stronger mislabel signal
 #'       than a low one, information the binary `hierarchy_flag` alone
 #'       cannot convey.}
+#'     \item{`best_disagreeing_taxon`}{The listed species of that same
+#'       highest-identity disagreeing hit (`NA` if none disagree). Lets a
+#'       reviewer -- human or LLM -- recognize e.g. a known hybrid-cross
+#'       partner or an informal specimen code by name, not just by percent
+#'       identity alone.}
 #'     \item{`congruent_evidence_exists_anywhere`}{Logical. Unlike
 #'       `hierarchy_flag` (computed only from the `top_n` closest
 #'       independent hits), this asks whether ANY independent hit anywhere
@@ -867,7 +905,8 @@ evaluate_reference_accessions <- function(accessions,
   out_cols <- c("accession", "listed_taxon", "n_independent_top_matches",
                "n_top_matches_available", "frac_independent_below_min_congruent_rank",
                "finest_common_rank", "best_hit_pident", "best_agreeing_pident",
-               "best_disagreeing_pident", "congruent_evidence_exists_anywhere",
+               "best_disagreeing_pident", "best_disagreeing_taxon",
+               "congruent_evidence_exists_anywhere",
                "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
                "taxonomy_resolution_source")
 
@@ -1086,7 +1125,7 @@ evaluate_reference_accessions <- function(accessions,
         n_independent_top_matches = integer(0L), n_top_matches_available = integer(0L),
         frac_independent_below_min_congruent_rank = numeric(0L),
         best_hit_pident = numeric(0L), best_agreeing_pident = numeric(0L),
-        best_disagreeing_pident = numeric(0L),
+        best_disagreeing_pident = numeric(0L), best_disagreeing_taxon = character(0L),
         congruent_evidence_exists_anywhere = logical(0L),
         congruent_evidence_best_pident = numeric(0L),
         stringsAsFactors = FALSE
@@ -1146,6 +1185,7 @@ evaluate_reference_accessions <- function(accessions,
         best_hit_pident = congruence$best_hit_pident,
         best_agreeing_pident = congruence$best_agreeing_pident,
         best_disagreeing_pident = congruence$best_disagreeing_pident,
+        best_disagreeing_taxon = congruence$best_disagreeing_taxon,
         congruent_evidence_exists_anywhere = congruence$congruent_evidence_exists_anywhere,
         congruent_evidence_best_pident = congruence$congruent_evidence_best_pident,
         hierarchy_flag = congruence$hierarchy_flag,
@@ -1180,7 +1220,7 @@ evaluate_reference_accessions <- function(accessions,
       frac_independent_below_min_congruent_rank = NA_real_,
       finest_common_rank = NA_character_,
       best_hit_pident = NA_real_, best_agreeing_pident = NA_real_,
-      best_disagreeing_pident = NA_real_,
+      best_disagreeing_pident = NA_real_, best_disagreeing_taxon = NA_character_,
       congruent_evidence_exists_anywhere = NA,
       congruent_evidence_best_pident = NA_real_,
       hierarchy_flag = NA_character_,

@@ -144,6 +144,52 @@ test_that(".compute_hierarchy_congruence() flags an incongruent accession correc
   expect_gte(out$frac_independent_below_min_congruent_rank, 0.5)
 })
 
+test_that(".compute_hierarchy_congruence() reports best_disagreeing_taxon consistently with best_disagreeing_pident (2026-08-13)", {
+  sm <- data.frame(
+    id_x = rep("ACC002", 3), id_y = c("HIT_E", "HIT_F", "HIT_G"),
+    p_match = c(0.95, 0.93, 0.9),
+    family.x = "Cottidae", genus.x = "Cottus", species.x = "Cottus asper",
+    family.y = c("Salmonidae", "Salmonidae", "Salmonidae"),
+    genus.y = c("Salmo", "Salmo", "Salmo"),
+    species.y = c("Salmo salar", "Salmo trutta", "Salmo obtusirostris"),
+    stringsAsFactors = FALSE
+  )
+  ref_df <- data.frame(
+    composite_id = c("ACC002", "HIT_E", "HIT_F", "HIT_G"),
+    create_date  = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
+    stringsAsFactors = FALSE
+  )
+  out <- .compute_hierarchy_congruence_int(
+    sm, ref_df, rank_system = c("family", "genus", "species")
+  )
+  # HIT_E (p_match=0.95) is the highest-identity disagreeing hit -- its
+  # species.y ("Salmo salar") should be the reported best_disagreeing_taxon,
+  # matching best_disagreeing_pident's own value (95).
+  expect_equal(out$best_disagreeing_pident, 95)
+  expect_equal(out$best_disagreeing_taxon, "Salmo salar")
+})
+
+test_that(".compute_hierarchy_congruence() reports best_disagreeing_taxon = NA when nothing disagrees", {
+  sm <- data.frame(
+    id_x = rep("ACC001", 2), id_y = c("HIT_A", "HIT_B"),
+    p_match = c(0.98, 0.96),
+    family.x = "Atherinopsidae", genus.x = "Menidia", species.x = "Menidia beryllina",
+    family.y = c("Atherinopsidae", "Atherinopsidae"),
+    genus.y = c("Menidia", "Menidia"),
+    species.y = c("Menidia beryllina", "Menidia beryllina"),
+    stringsAsFactors = FALSE
+  )
+  ref_df <- data.frame(
+    composite_id = c("ACC001", "HIT_A", "HIT_B"),
+    create_date  = c("2020/01/01", "2021/05/01", "2019/07/01"),
+    stringsAsFactors = FALSE
+  )
+  out <- .compute_hierarchy_congruence_int(
+    sm, ref_df, rank_system = c("family", "genus", "species")
+  )
+  expect_true(is.na(out$best_disagreeing_taxon))
+})
+
 test_that(".compute_hierarchy_congruence() excludes a non-species-resolved comparison partner from the vote (2026-08-13)", {
   # Real GreatLakes Stereolepis doederleini case: the only real independent
   # hit found was itself never resolved to species ("Serranidae sp.
