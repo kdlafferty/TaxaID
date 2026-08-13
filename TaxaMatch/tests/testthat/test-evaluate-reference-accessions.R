@@ -144,6 +144,77 @@ test_that(".compute_hierarchy_congruence() flags an incongruent accession correc
   expect_gte(out$frac_independent_below_min_congruent_rank, 0.5)
 })
 
+test_that(".compute_hierarchy_congruence() excludes a non-species-resolved comparison partner from the vote (2026-08-13)", {
+  # Real GreatLakes Stereolepis doederleini case: the only real independent
+  # hit found was itself never resolved to species ("Serranidae sp.
+  # JL-2015" -- family used in place of a genus, informal specimen code).
+  # Its own agree/disagree status shouldn't count as a real vote.
+  sm <- data.frame(
+    id_x = rep("ACC_STEREO", 1), id_y = "HIT_UNRESOLVED",
+    p_match = 0.9963,
+    family.x = "Polyprionidae", genus.x = "Stereolepis",
+    species.x = "Stereolepis doederleini",
+    family.y = "Serranidae", genus.y = NA_character_,
+    species.y = "Serranidae sp. JL-2015",
+    stringsAsFactors = FALSE
+  )
+  ref_df <- data.frame(
+    composite_id = c("ACC_STEREO", "HIT_UNRESOLVED"),
+    create_date  = c("2022/01/18", "2015/11/01"),
+    stringsAsFactors = FALSE
+  )
+  out <- .compute_hierarchy_congruence_int(
+    sm, ref_df, rank_system = c("family", "genus", "species")
+  )
+  expect_equal(out$n_independent_top_matches, 0L)   # the only hit is excluded
+  expect_equal(out$n_top_matches_available, 1L)      # still counted here -- pre-exclusion diagnostic
+})
+
+test_that(".compute_hierarchy_congruence() still counts a real, species-resolved disagreeing partner (genuine mislabel evidence preserved)", {
+  # Regression guard: this fix must NOT suppress a genuine mislabel signal
+  # -- a disagreeing partner that IS itself resolved to species (a real,
+  # named, different species) still counts as a real vote.
+  sm <- data.frame(
+    id_x = rep("ACC002", 3), id_y = c("HIT_E", "HIT_F", "HIT_G"),
+    p_match = c(0.95, 0.93, 0.9),
+    family.x = "Cottidae", genus.x = "Cottus", species.x = "Cottus asper",
+    family.y = "Salmonidae", genus.y = "Salmo", species.y = "Salmo salar",
+    stringsAsFactors = FALSE
+  )
+  ref_df <- data.frame(
+    composite_id = c("ACC002", "HIT_E", "HIT_F", "HIT_G"),
+    create_date  = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
+    stringsAsFactors = FALSE
+  )
+  out <- .compute_hierarchy_congruence_int(
+    sm, ref_df, rank_system = c("family", "genus", "species")
+  )
+  expect_equal(out$n_independent_top_matches, 3L)  # unchanged from the pre-fix test above
+  expect_gte(out$frac_independent_below_min_congruent_rank, 0.5)
+})
+
+test_that(".compute_hierarchy_congruence(require_species_resolved_partner = FALSE) restores the old, unfiltered vote count", {
+  sm <- data.frame(
+    id_x = rep("ACC_STEREO", 1), id_y = "HIT_UNRESOLVED",
+    p_match = 0.9963,
+    family.x = "Polyprionidae", genus.x = "Stereolepis",
+    species.x = "Stereolepis doederleini",
+    family.y = "Serranidae", genus.y = NA_character_,
+    species.y = "Serranidae sp. JL-2015",
+    stringsAsFactors = FALSE
+  )
+  ref_df <- data.frame(
+    composite_id = c("ACC_STEREO", "HIT_UNRESOLVED"),
+    create_date  = c("2022/01/18", "2015/11/01"),
+    stringsAsFactors = FALSE
+  )
+  out <- .compute_hierarchy_congruence_int(
+    sm, ref_df, rank_system = c("family", "genus", "species"),
+    require_species_resolved_partner = FALSE
+  )
+  expect_equal(out$n_independent_top_matches, 1L)  # counted again, old behavior
+})
+
 # ------------------------------------------------------------------------------
 # evaluate_reference_accessions() -- full offline integration
 # ------------------------------------------------------------------------------
@@ -657,6 +728,64 @@ test_that("evaluate_reference_accessions() does not apply the hybrid proxy to a 
 })
 
 # ------------------------------------------------------------------------------
+# Species-resolved comparison partners -- end to end (2026-08-13)
+# ------------------------------------------------------------------------------
+
+test_that("evaluate_reference_accessions() reads 'insufficient_independent_evidence' (not 'incongruent') for an isolated species whose only disagreeing hit is non-species-resolved", {
+  # Reproduces the real GreatLakes Stereolepis doederleini case end to end:
+  # a genuinely isolated species (only 1 real conspecific in all of NCBI)
+  # whose sole other independent hit is itself never resolved to species.
+  # Before this fix: that non-species-resolved hit counted as a real
+  # "disagreeing" vote, outnumbering the 1 real agreeing vote ->
+  # "incongruent". After: it's excluded, leaving 1 real vote -- correctly
+  # below min_independent_partners (default 3), so the HONEST answer is
+  # "insufficient_independent_evidence", not a false "incongruent" or an
+  # overclaiming "congruent".
+  records <- data.frame(
+    accession = c("ACC_STEREO", "HIT_CONSPECIFIC", "HIT_UNRESOLVED"),
+    sequence = rep("ACGTACGTACGTACGT", 3L),
+    organism = c("Stereolepis doederleini", rep(NA_character_, 2L)),
+    create_date = c("2022/01/18", "2021/07/19", "2015/11/01"),
+    stringsAsFactors = FALSE
+  )
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    out <- records[records$accession %in% accessions, , drop = FALSE]
+    if (!want_sequence) out$sequence <- rep(NA_character_, nrow(out))
+    rownames(out) <- NULL
+    out
+  }
+  mock_resolve_taxonomy <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    fx <- data.frame(
+      accession = "ACC_STEREO", kingdom = "Metazoa", phylum = "Chordata",
+      class = "Actinopteri", order = "Acropomatiformes", family = "Polyprionidae",
+      genus = "Stereolepis", species = "Stereolepis doederleini",
+      stringsAsFactors = FALSE
+    )
+    fx[fx$accession %in% accessions, , drop = FALSE]
+  }
+  mock_blast <- function(seq_df, ...) {
+    data.frame(
+      observation_id = "ACC_STEREO", accession = c("HIT_CONSPECIFIC", "HIT_UNRESOLVED"),
+      score = c(99.99, 99.63), query_coverage = 95,
+      kingdom = "Metazoa", phylum = "Chordata", class = "Actinopteri",
+      order = c("Acropomatiformes", "Perciformes"),
+      family = c("Polyprionidae", "Serranidae"),
+      genus = c("Stereolepis", NA_character_),
+      species = c("Stereolepis doederleini", "Serranidae sp. JL-2015"),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  local_mocked_bindings(.fetch_reference_accession_records = mock_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(blast_sequences = mock_blast, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = mock_resolve_taxonomy, .package = "TaxaMatch")
+
+  out <- evaluate_reference_accessions("ACC_STEREO", cache_dir = NULL, verbose = FALSE)
+  expect_equal(out$hierarchy_flag, "insufficient_independent_evidence")
+  expect_equal(out$n_independent_top_matches, 1L)
+})
+
+# ------------------------------------------------------------------------------
 # listed_taxon_is_species (2026-08-11)
 # ------------------------------------------------------------------------------
 
@@ -689,12 +818,17 @@ test_that("evaluate_reference_accessions() flags a family-level-only listed taxo
     fx[fx$accession %in% accessions, , drop = FALSE]
   }
   mock_blast <- function(seq_df, ...) {
+    # Real, clean species binomials -- these ARE meaningful, species-
+    # resolved corroborating evidence (this test is about listed_taxon_
+    # is_species being a signal orthogonal to hierarchy_flag, not about
+    # the require_species_resolved_partner filter, which has its own
+    # dedicated tests above).
     data.frame(
       observation_id = "ACC_FAM", accession = c("HIT_A", "HIT_B", "HIT_C"),
       score = c(99, 98, 97), query_coverage = 95,
       kingdom = "Metazoa", phylum = "Chordata", class = "Actinopteri",
       order = "Perciformes", family = "Serranidae", genus = "Epinephelus",
-      species = "Epinephelus sp.",
+      species = "Epinephelus coioides",
       stringsAsFactors = FALSE
     )
   }

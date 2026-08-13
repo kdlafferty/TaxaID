@@ -109,7 +109,9 @@ A data frame, one row per unique input accession:
 \item{\code{listed_taxon}}{The accession's own labeled organism (from its
 real GenBank record).}
 \item{\code{n_independent_top_matches}}{Independent BLAST hits actually
-used for the verdict (\verb{<= top_n}).}
+used for the verdict (\verb{<= top_n}). Also excludes any hit whose OWN
+listed species isn't itself resolved to species level -- see
+\verb{@section Species-resolved comparison partners} below.}
 \item{\code{n_top_matches_available}}{All BLAST hits before the
 independence filter -- diagnostic only.}
 \item{\code{frac_independent_below_min_congruent_rank}}{Jeffreys-smoothed
@@ -293,6 +295,33 @@ not which egg's cytoplasm/mitochondria the offspring develops in). A
 label the hybrid-marker regex catches but still cannot be parsed into a
 usable proxy even after that stripping falls back to the accession's
 own unresolved lineage, \code{taxonomy_resolution_source = "hybrid_unresolved"} -- an honest admission, not a guess.
+}
+
+\section{Species-resolved comparison partners (2026-08-13)}{
+
+A comparison partner (an independent BLAST hit) whose OWN listed species
+isn't resolved to species level (e.g. \code{"Serranidae sp. JL-2015"} -- a
+family name used in place of a genus, with an informal specimen code) is
+excluded from \code{n_independent_top_matches}/
+\code{frac_independent_below_min_congruent_rank} entirely, via
+\code{require_species_resolved_partner = TRUE} (default, not currently a
+caller-facing parameter). Found live, 2026-08-11/13, on the real
+GreatLakes \emph{Stereolepis doederleini} case: both real accessions of this
+genuinely isolated species (Polyprionidae has only 2 genera) read
+\code{"incongruent"} purely because the one real independent hit available in
+all of NCBI to disagree with them was itself a non-species-resolved
+accession -- whether such a partner happens to agree or disagree isn't
+meaningful evidence either way, since its own identity is only fuzzily
+determined. Live-verified before shipping (a direct standalone BLAST re-
+run against the real accession, not assumed): after this exclusion, the
+real vote count for \emph{S. doederleini} drops to 1 (a single genuine
+independent conspecific), correctly producing
+\code{"insufficient_independent_evidence"} instead of \code{"incongruent"} -- the
+honest answer, not an inflated \code{"congruent"} either, since there really
+is only one real corroborating record in NCBI for this species. Reuses
+\code{TaxaTools::is_plausible_binomial()} (the same check
+\code{listed_taxon_is_species} already applies to the QUERY side) applied to
+the HIT side's own resolved species name.
 }
 
 \section{Identity diagnostics (2026-08-07)}{

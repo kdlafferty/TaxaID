@@ -1,6 +1,68 @@
 # Reentry prompt: a smarter second look at `evaluate_reference_accessions()`'s flagged/borderline accessions
 
-**Status: design-only, not yet implemented.** Written 2026-08-11 after a real full
+**Status update, 2026-08-13: Question 1 RESOLVED. Question 2 (the LLM second-look
+reviewer) is still fully open -- read this update, then jump to Question 2 below.**
+
+## Question 1 resolution (2026-08-13)
+
+The "first concrete step" this doc itself specified -- pull the real BLAST hit table for
+`LC649807`/`MT083886` and look at what the 100%-identity disagreeing hit actually is --
+was done, live, against real data. Short answer: **neither of the two stories this doc
+originally floated (pure isolation vs. sister-species confusability) was fully right, and
+a third real finding changed the picture again after the first fix shipped.**
+
+1. The disagreeing 100%-identity hit was `NC_028197`, `"Serranidae sp. JL-2015"` -- not
+   an unrelated distant fish (the "pure isolation" story) and not *Stereolepis gigas* or
+   any other real congener (the "sister-species confusability" story), but a reference
+   whose OWN listed species isn't resolved to species level at all (a family name plus an
+   informal specimen code). Whether such a partner "agrees" or "disagrees" isn't
+   meaningful evidence either way. Fixed via a new `require_species_resolved_partner =
+   TRUE` default on the internal `.compute_hierarchy_congruence()` -- excludes any
+   comparison partner failing `TaxaTools::is_plausible_binomial()` on its own species
+   from the vote entirely. This is effectively a new **Option D** this doc didn't
+   originally list: fix the vote's INPUT (which partners are valid evidence), not its
+   WEIGHTING (Option A) or the classification tiers (Option B) -- and it required no
+   real-data calibration risk, since it's a strict data-quality gate, not a tunable
+   weighting function.
+2. **But re-BLASTing after that fix, live, found the fix does NOT rescue Stereolepis
+   after all** -- and the reason is a real, separate methodological trap worth recording
+   for next time: the FIRST live check (the one that identified `NC_028197`) had
+   BLASTed the full ~16.5kb mitogenome directly, not the amplicon-trimmed ~217bp MiFish-U
+   region the real pipeline actually submits (`barcode_term = "MiFishU"`). Re-running
+   with the CORRECT amplicon-trimmed sequence surfaced a much broader, more diverse real
+   hit pool (20 hits/9 taxa vs. the earlier 3 hits/2 taxa) -- including real,
+   species-resolved, independent disagreeing hits from FOUR separate families
+   (Sinipercidae, Banjosidae, Epigonidae, Pentacerotidae, all at 94.9-95.9% identity).
+   **The real finding: MiFish-U's short 12S region genuinely doesn't discriminate
+   *Stereolepis doederleini* well from several unrelated families** -- a genuine "poor
+   marker resolving power for this lineage" case, not isolation and not congener
+   confusability. `hierarchy_flag = "incongruent"` is therefore a CORRECTLY earned flag
+   for *Stereolepis*, just for a third reason this doc didn't originally enumerate.
+3. **User's explicit decision, given this** (offered the choice: accept as correctly
+   earned vs. still pursue some form of identity-aware reweighting): accept it. No
+   Option A/B weighting mechanism was built -- the flag is real, on real evidence, and
+   building a mechanism to suppress it would repeat exactly the `trusted_rank` mistake
+   this doc's own Question 1 already warned against (letting one strong-but-outvoted
+   signal override a verdict genuinely supported by several other independent,
+   resolved, disagreeing hits).
+
+**Net effect for whoever revisits a similar case in the future**: `require_species_
+resolved_partner` is real, shipped, tested, and live-verified -- it correctly removes
+one genuine source of vote noise (non-species-resolved partners) and should be trusted
+going forward. It does NOT mean every taxonomically-isolated-looking `"incongruent"`
+flag will resolve to `"insufficient_independent_evidence"` -- some, like Stereolepis,
+have real competing evidence once you look at the CORRECT (amplicon-trimmed, pipeline-
+matching) BLAST result. **Always re-verify against the pipeline's actual amplicon-
+trimmed submission, never an ad hoc full-length re-BLAST** -- the two can surface
+completely different hit pools, and trusting the wrong one produces a confidently wrong
+diagnosis (as happened here, mid-investigation, before the amplicon-trimmed re-check
+caught it). See the new `TaxaMatch/inst/reference_accession_evaluation_guide.md` for
+this worked example written up for a general audience, and `TaxaMatch/CLAUDE.md`'s
+2026-08-13 session note for the full implementation/verification record.
+
+---
+
+**Status: design-only, not yet implemented (Question 2 only).** Written 2026-08-11 after a real full
 GreatLakes Goal-2 run (`AuditNCBI_Goal2_MatchCandidateScreen.R`, 1,183 accessions,
 1,138 congruent / 8 incongruent / 17 insufficient_independent_evidence / 20 retrying)
 surfaced two genuinely different patterns in the flagged list that the hybrid-
@@ -129,6 +191,16 @@ not listed here).
 
 ## Question 2: an LLM second-look reviewer for flagged accessions
 
+**Read `TaxaMatch/inst/reference_accession_evaluation_guide.md` before designing this
+function's prompt/context.** That guide (new 2026-08-13) is written for exactly this
+purpose: it walks every output column of `evaluate_reference_accessions()`, gives the
+decision logic a careful human reviewer already applies by hand (the same logic Question
+1's own resolution above worked through live), and includes the real worked examples
+(Stereolepis, `NC_028197`/Serranidae sp. JL-2015, the hybrid cases, Abylopsis) an LLM
+reviewer would need to reproduce. Do not re-derive this reasoning from scratch in a new
+prompt -- lift it from that guide directly, and keep the guide updated if the LLM
+function's real usage surfaces a case class the guide doesn't yet cover.
+
 **Real precedent exists and should be followed, not reinvented.**
 `TaxaFlag::review_assignments()` already does exactly this shape of thing for posterior
 taxonomic assignments: an LLM narrative-judgment layer added ON TOP of statistical
@@ -172,9 +244,13 @@ implementation/roxygen as the starting template rather than designing from scrat
   way `evaluate_reference_accessions()`'s own placement (TaxaMatch, not TaxaLikely) was
   argued through explicitly rather than assumed.
 
-## What's already shipped, for context (2026-08-10/11, same broader thread)
+## What's already shipped, for context (2026-08-10/11/13, same broader thread)
 
 Not part of what this reentry prompt defers -- already built, tested, and live:
+
+- `require_species_resolved_partner = TRUE` (2026-08-13, see Question 1 resolution
+  above) -- excludes a comparison partner whose own listed species isn't resolved to
+  species level from the hierarchy-congruence vote entirely.
 
 - `TaxaMatch::evaluate_reference_accessions(barcode_term = "MiFishU")` amplicon-
   extraction plausibility-bound fix (was rejecting every genuine hit as "implausible"),

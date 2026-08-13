@@ -131,6 +131,15 @@ utils::globalVariables(c(
 #' `TaxaLikely/archive_decipher_reference_audit/R/hierarchy_congruence.R` is
 #' NOT updated to match -- it is dead code, kept for historical reference
 #' only, not a shared implementation to keep in sync.
+#'
+#' @section 2026-08-13 divergence, continued: gains
+#' `require_species_resolved_partner` (default `TRUE`) -- excludes a
+#' comparison partner whose own listed species isn't resolved to species
+#' level from the vote entirely (`is_valid_partner`, alongside the
+#' existing independence/coverage filters). See
+#' `evaluate_reference_accessions()`'s own `@section Species-resolved
+#' comparison partners` for the full real-data motivation and
+#' verification.
 #' @noRd
 .compute_hierarchy_congruence <- function(seq_matrix,
                                           reference_df,
@@ -138,7 +147,8 @@ utils::globalVariables(c(
                                           top_n              = 5L,
                                           min_congruent_rank = "family",
                                           submission_window  = 5L,
-                                          min_coverage        = NULL) {
+                                          min_coverage        = NULL,
+                                          require_species_resolved_partner = TRUE) {
 
   rank_system <- tolower(rank_system)
   min_congruent_rank <- tolower(min_congruent_rank)
@@ -170,7 +180,33 @@ utils::globalVariables(c(
   } else {
     sm$is_sufficient_coverage <- TRUE
   }
-  sm$is_valid_partner <- sm$is_independent & sm$is_sufficient_coverage
+
+  # A comparison partner (id_y) whose OWN listed species isn't resolved to
+  # species level (e.g. "Serranidae sp. JL-2015" -- a family name used in
+  # place of a genus, with an informal specimen code) isn't meaningful
+  # evidence either way: whether it happens to "agree" or "disagree" with
+  # the query's own rank columns says little when its own identity is
+  # itself only fuzzily determined. Found live, 2026-08-11/13, on the real
+  # GreatLakes Stereolepis doederleini case -- both real accessions of this
+  # genuinely rare, taxonomically isolated species (Polyprionidae has only
+  # 2 genera) read "incongruent" purely because the one real independent
+  # hit available to disagree with them WAS this exact non-species-resolved
+  # accession. Reuses TaxaTools::is_plausible_binomial() (no new logic,
+  # same check `listed_taxon_is_species` already applies to the QUERY side
+  # -- this applies the identical standard to the HIT side). `species.y` is
+  # `NA` when taxonomy resolution found no species-rank entry at all for
+  # that hit -- treated the same as a non-binomial string (excluded), not
+  # differently -- both mean "this partner's own species identity isn't
+  # usable evidence."
+  if (require_species_resolved_partner && "species.y" %in% names(sm)) {
+    sm$is_species_resolved_y <- ifelse(
+      is.na(sm$species.y), FALSE, TaxaTools::is_plausible_binomial(sm$species.y)
+    )
+  } else {
+    sm$is_species_resolved_y <- TRUE
+  }
+
+  sm$is_valid_partner <- sm$is_independent & sm$is_sufficient_coverage & sm$is_species_resolved_y
 
   n_available <- sm |>
     dplyr::count(id_x, name = "n_top_matches_available")
@@ -575,7 +611,9 @@ utils::globalVariables(c(
 #'     \item{`listed_taxon`}{The accession's own labeled organism (from its
 #'       real GenBank record).}
 #'     \item{`n_independent_top_matches`}{Independent BLAST hits actually
-#'       used for the verdict (`<= top_n`).}
+#'       used for the verdict (`<= top_n`). Also excludes any hit whose OWN
+#'       listed species isn't itself resolved to species level -- see
+#'       `@section Species-resolved comparison partners` below.}
 #'     \item{`n_top_matches_available`}{All BLAST hits before the
 #'       independence filter -- diagnostic only.}
 #'     \item{`frac_independent_below_min_congruent_rank`}{Jeffreys-smoothed
@@ -687,6 +725,31 @@ utils::globalVariables(c(
 #' own unresolved lineage, `taxonomy_resolution_source =
 #' "hybrid_unresolved"` -- an honest admission, not a guess.
 #'
+#' @section Species-resolved comparison partners (2026-08-13):
+#' A comparison partner (an independent BLAST hit) whose OWN listed species
+#' isn't resolved to species level (e.g. `"Serranidae sp. JL-2015"` -- a
+#' family name used in place of a genus, with an informal specimen code) is
+#' excluded from `n_independent_top_matches`/
+#' `frac_independent_below_min_congruent_rank` entirely, via
+#' `require_species_resolved_partner = TRUE` (default, not currently a
+#' caller-facing parameter). Found live, 2026-08-11/13, on the real
+#' GreatLakes *Stereolepis doederleini* case: both real accessions of this
+#' genuinely isolated species (Polyprionidae has only 2 genera) read
+#' `"incongruent"` purely because the one real independent hit available in
+#' all of NCBI to disagree with them was itself a non-species-resolved
+#' accession -- whether such a partner happens to agree or disagree isn't
+#' meaningful evidence either way, since its own identity is only fuzzily
+#' determined. Live-verified before shipping (a direct standalone BLAST re-
+#' run against the real accession, not assumed): after this exclusion, the
+#' real vote count for *S. doederleini* drops to 1 (a single genuine
+#' independent conspecific), correctly producing
+#' `"insufficient_independent_evidence"` instead of `"incongruent"` -- the
+#' honest answer, not an inflated `"congruent"` either, since there really
+#' is only one real corroborating record in NCBI for this species. Reuses
+#' `TaxaTools::is_plausible_binomial()` (the same check
+#' `listed_taxon_is_species` already applies to the QUERY side) applied to
+#' the HIT side's own resolved species name.
+#'
 #' @section Identity diagnostics (2026-08-07):
 #' `hierarchy_flag`/`finest_common_rank` alone cannot distinguish a genuine
 #' mislabel from "the listed rank has no well-covered independent relative
@@ -752,6 +815,22 @@ evaluate_reference_accessions <- function(accessions,
   # values (e.g. a pre-fix finest_common_rank = NA where a fresh
   # computation would now report "order") indefinitely. Cheap insurance,
   # not something a caller ever sets directly.
+  #
+  # 2026-08-13 require_species_resolved_partner fix: deliberately NOT
+  # bumped, matching the 2026-08-11 modifier-prefix fix's own precedent.
+  # params_key is one global string applied uniformly to every cached row
+  # (not conditional per row), so bumping it here would invalidate and
+  # force a fresh re-BLAST of all ~1,163 already-correctly-cached real
+  # GreatLakes rows -- real, unnecessary NCBI cost for a fix whose effect
+  # is narrow (only rows whose top-N independent BLAST hits include a
+  # non-species-resolved reference can possibly change) and, on the one
+  # real case fully investigated (Stereolepis doederleini vs. its
+  # Serranidae sp. JL-2015 partner), was confirmed to be a no-op on the
+  # actual verdict. Instead, the specific rows worth re-checking (every
+  # currently non-"congruent" row, the only rows where this filter could
+  # plausibly change what a reviewer sees) were surgically removed from
+  # the real persistent cache directly, so only those get re-evaluated
+  # under the new logic on the next run.
   .EVAL_REF_ACC_VERSION <- "v4_hybrid_maternal_proxy"
 
   params_key <- paste(top_n, min_congruent_rank, submission_window,
@@ -993,7 +1072,7 @@ evaluate_reference_accessions <- function(accessions,
       congruence <- .compute_hierarchy_congruence(
         sm, ref_lookup, rank_system = rank_system, top_n = top_n,
         min_congruent_rank = min_congruent_rank, submission_window = submission_window,
-        min_coverage = NULL
+        min_coverage = NULL, require_species_resolved_partner = TRUE
       )
     } else {
       # No hits survived (either none returned at all, or all were self-hits)

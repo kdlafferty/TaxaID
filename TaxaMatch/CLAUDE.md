@@ -1,6 +1,59 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-11 (Sonnet 5 -- a fourth real gap in the hybrid-maternal-proxy fix,
+# Last updated: 2026-08-13 (Sonnet 5 -- closes out the real 5-row incongruent tail left by the
+# 2026-08-11 modifier fix, via a new `require_species_resolved_partner = TRUE` param on
+# `.compute_hierarchy_congruence()` (`evaluate_reference_accessions.R`). Motivated by a live
+# investigation of the user's "review the 3 [non-hybrid] candidates, then do Stereolepis"
+# request: `Niphon spinosus` and `Pseudorasbora parva` turned out weak/inconclusive on direct
+# re-BLAST, not confirmed problems; `Stereolepis doederleini` (2 real accessions) was traced to
+# its one real independent NCBI hit being `NC_028197`, "Serranidae sp. JL-2015" -- a
+# non-species-resolved reference (family name + informal specimen code, not a real binomial).
+# Whether such a partner happens to "agree" or "disagree" isn't meaningful evidence either way,
+# since its own identity is only fuzzily determined -- so it's now excluded from the vote
+# entirely (`is_valid_partner` gains `is_species_resolved_y`, applying the exact same
+# `TaxaTools::is_plausible_binomial()` check `listed_taxon_is_species` already applies to the
+# QUERY side, now applied to the HIT side too).
+#
+# Live-verified before shipping, not assumed: a direct re-BLAST of `LC649807`'s AMPLICON-TRIMMED
+# sequence (not the full mitogenome -- the amplicon-trimmed version is what the real pipeline
+# actually submits via `barcode_term = "MiFishU"`, and BLASTing the short, more conserved region
+# surfaces a much broader real hit pool -- 20 hits/9 taxa -- than an earlier, methodologically
+# mismatched full-mitogenome test had found) showed the fix behaves exactly as designed
+# (`NC_028197` correctly excluded) but does NOT rescue Stereolepis after all: real,
+# species-resolved, independent hits from 4 OTHER families (Sinipercidae, Banjosidae,
+# Epigonidae, Pentacerotidae, all at 94.9-95.9% identity) are genuinely present and genuinely
+# disagree. This overturned the original working theory (pure taxonomic isolation) -- the real
+# picture is that MiFish-U's short 12S region doesn't discriminate *Stereolepis doederleini*
+# well from several unrelated families, a genuine "poor marker resolving power for this
+# lineage" case, not a "too few real competitors" one. User's explicit call, given this: accept
+# it as a correctly-earned flag (real, independent, resolved evidence), no further weighting
+# mechanism -- closing out the Stereolepis half of `ecosystem_docs/REENTRY_PROMPT_
+# flagged_accession_second_look.md` (see that doc's own updated status).
+#
+# `.EVAL_REF_ACC_VERSION` deliberately NOT bumped (reverted from an initial `"v5_..."` bump
+# partway through this session, once it became clear `params_key` is one global string applied
+# uniformly to every cached row, not conditional per row -- bumping it would have forced a full
+# re-BLAST of all ~1,163 already-correctly-cached real GreatLakes rows for a fix whose effect is
+# narrow and, on the one real case fully investigated, a no-op on the final verdict). Same
+# surgical-cache-row-removal pattern as the 2026-08-11 modifier fix: backed up the real
+# persistent cache (`reference_accession_cache.rds.bak_pre_species_resolved_partner_fix`), then
+# removed exactly the 22 rows NOT already `"congruent"` (the only rows where this filter could
+# plausibly change what a reviewer sees), leaving the other 1,141 rows to keep hitting cache
+# untouched. Real re-run result (partial -- NCBI rejected 2 of 3 BLAST batches for exceeding its
+# server CPU budget, the same throttling pattern already documented 2026-08-10): 4 incongruent
+# (2x Stereolepis, `NC_028197` itself -- expected, it's the non-species-resolved reference,
+# already separately flagged via `listed_taxon_is_species = FALSE` -- and `Pseudorasbora parva`,
+# matching the earlier weak/inconclusive finding), 18 insufficient, 20 still pending retry
+# (including `Niphon spinosus`, not yet re-evaluated). `devtools::test()` 0 failures
+# (full suite, including 4 new offline tests for `require_species_resolved_partner`),
+# `devtools::check()` 0/0/0, reinstalled and re-verified at `~/Library/R/4.0/library`.
+#
+# Also new this session: `TaxaMatch/inst/reference_accession_evaluation_guide.md` -- a
+# comprehensive, worked-example-driven guide to every `evaluate_reference_accessions()` output
+# column (written for both a human reviewer and the LLM second-look reviewer function the
+# reentry prompt above still has open), and `TaxaTools::clean_taxon_names(strip_modifiers=)`
+# from 2026-08-11 (see that entry directly below, unchanged this session).
+# Previous update, 2026-08-11 (Sonnet 5 -- a fourth real gap in the hybrid-maternal-proxy fix,
 # found the moment a full real GreatLakes run actually completed successfully (1163/1183
 # evaluated, 20 retrying next call): 3 real accessions -- "androgenetic"/"autodiploid"/
 # "autotetraploid Carassius auratus red var. x Megalobrama amblycephala" -- still read
@@ -984,7 +1037,7 @@ likelihood output downstream — it is NOT part of the match object.
 | `investigate_flagged_accession()` | R/investigate_flagged_accession.R | Written, tested (offline), 2026-08-08 | Deep-dive verification for ONE `evaluate_reference_accessions()`-flagged accession: self-consistency (vs. other real accessions of its own listed species) and cross-taxon consistency (vs. other real accessions of its top independent disagreeing BLAST hit's species), both independence-filtered the same way `evaluate_reference_accessions()` is. **2026-08-08**: both comparisons now run via `.blast_against_comparison_set()` (internal, reuses `blast_sequences()` itself) instead of a hand-rolled `pwalign::pairwiseAlignment()` loop -- see this file's top session note (Option A of `ecosystem_docs/REENTRY_PROMPT_investigate_flagged_accession_prefilter_group_posthoc.md`). Gains a persistent, accession-keyed cache (`cache_dir`, asymmetric TTL: `"inconclusive_length_mismatch"` verdicts expire after `inconclusive_ttl_days`, default 30; any other verdict cached indefinitely). |
 | `investigate_flagged_accessions()` | R/investigate_flagged_accession.R | Written, tested (offline), new 2026-08-08 | Batch wrapper -- shares one in-memory NCBI-species-search cache across a whole flagged-accession list (a `listed_species`/`disagreeing_taxon` repeated across several accessions is only fetched from NCBI once per batch) and shares `investigate_flagged_accession()`'s own persistent cache. Does NOT do cross-accession pattern detection (see this file's top session note for why that's deliberately separate, not-yet-designed future work). |
 | `check_marker_mismatch()` | R/check_marker_mismatch.R | Written, tested (offline), new 2026-08-08 | Cheap pre-filter (Question 2, item 4 of the reentry prompt above): a single GBSeq XML fetch checks a flagged accession's own annotated `/gene`/`/product` feature-table qualifier against the marker an evaluation was scoped to (e.g. does a "12S"-scoped audit's flagged record actually say `/product="16S ribosomal RNA"`?) -- no BLAST, no alignment, meant to route a flagged accession to a much simpler resolution path (correct the marker label) before ever reaching `investigate_flagged_accession()`'s deep dive. Directly grounded in a real confirmed case (`AY850362`, a genuine 16S-vs-12S marker mislabel) -- see this file's top session note for why the earlier "coarse rank of disagreement signals marker mislabel" hypothesis was tested and refuted first. |
-| `evaluate_reference_accessions()` | R/evaluate_reference_accessions.R | Written, tested (offline) | Implements `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md`. For each accession, BLASTs its own sequence against a broad, unrestricted database (`method`/`database`/`score_range`/`min_score`/`max_hits` passed through to `blast_sequences()`), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed `hierarchy_flag` (`"congruent"`/`"incongruent"`/`"insufficient_independent_evidence"`) -- the same congruence math `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()` used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now fed from real, broad BLAST hits instead. `finest_common_rank` walks the FULL `kingdom`->`species` ladder (2026-08-07), not just `family`/`genus`/`species`. **2026-08-07, continued**: gains 5 identity/coverage-anywhere diagnostic columns (`best_hit_pident`/`best_agreeing_pident`/`best_disagreeing_pident`/`congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) -- see this file's own top session note and `evaluate_reference_accessions()`'s own `@section Identity diagnostics` for why: `hierarchy_flag` alone cannot distinguish a genuine mislabel from "correct label, thin coverage/poor marker resolving power at this rank," and these columns give a reviewer the real percent-identity numbers to judge that with. Persistent, accession-keyed cross-run cache (`cache_dir`, default `tools::R_user_dir("TaxaMatch", "cache")`), asymmetric TTL (`insufficient_evidence_ttl_days`, default 180 -- only `"insufficient_independent_evidence"` expires; `"congruent"`/`"incongruent"` cached indefinitely). See this file's own top session note for the full design record and the real bugs found/fixed before shipping. |
+| `evaluate_reference_accessions()` | R/evaluate_reference_accessions.R | Written, tested (offline) | Implements `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md`. For each accession, BLASTs its own sequence against a broad, unrestricted database (`method`/`database`/`score_range`/`min_score`/`max_hits` passed through to `blast_sequences()`), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed `hierarchy_flag` (`"congruent"`/`"incongruent"`/`"insufficient_independent_evidence"`) -- the same congruence math `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()` used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now fed from real, broad BLAST hits instead. `finest_common_rank` walks the FULL `kingdom`->`species` ladder (2026-08-07), not just `family`/`genus`/`species`. **2026-08-07, continued**: gains 5 identity/coverage-anywhere diagnostic columns (`best_hit_pident`/`best_agreeing_pident`/`best_disagreeing_pident`/`congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) -- see this file's own top session note and `evaluate_reference_accessions()`'s own `@section Identity diagnostics` for why: `hierarchy_flag` alone cannot distinguish a genuine mislabel from "correct label, thin coverage/poor marker resolving power at this rank," and these columns give a reviewer the real percent-identity numbers to judge that with. **2026-08-13**: internal `.compute_hierarchy_congruence()` gains `require_species_resolved_partner = TRUE` -- excludes a comparison partner whose own listed species isn't resolved to species level from the vote entirely (real motivating case: `Stereolepis doederleini`'s one real independent hit was `NC_028197`, a family-name-plus-specimen-code reference, not a real binomial). See this file's own top session note and `evaluate_reference_accessions()`'s `@section Species-resolved comparison partners`. Persistent, accession-keyed cross-run cache (`cache_dir`, default `tools::R_user_dir("TaxaMatch", "cache")`), asymmetric TTL (`insufficient_evidence_ttl_days`, default 180 -- only `"insufficient_independent_evidence"` expires; `"congruent"`/`"incongruent"` cached indefinitely). See this file's own top session note for the full design record and the real bugs found/fixed before shipping. **Full output-column interpretation guide**: `inst/reference_accession_evaluation_guide.md` (new 2026-08-13) -- written for both a human reviewer and the not-yet-built LLM second-look reviewer function. |
 | `flag_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), 2026-08-07 continued | **The RECOMMENDED default consumer.** Left-joins `evaluate_reference_accessions()`'s full output (hierarchy_flag + all diagnostics) onto a match object by accession (version-suffix-stripped), never removes a row. Added after a real live case (`Abylopsis eschscholtzii`) showed why an unreviewed hard drop is the wrong default -- see this file's own top session note. |
 | `remove_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline) | The harder, deliberate opt-in -- mirrors `TaxaLikely::remove_flagged_references()`'s exact pattern. Drops only rows whose accession was flagged `"incongruent"` by `evaluate_reference_accessions()` (version-suffix-stripped match); `"insufficient_independent_evidence"` is retained by default (`remove_insufficient_evidence = FALSE`). **No longer the recommended default pipeline step as of 2026-08-07 continued** -- its own roxygen now says to reach for `flag_incongruent_references()` first and only use this deliberately, after reviewing the identity diagnostics. Deliberately consumes only the binary blacklist decision, not the full quality signal -- see this file's top session note for the TaxaLikely-side graded-weighting work this does NOT yet do. |
 
