@@ -504,424 +504,42 @@ utils::globalVariables(c(
   invisible(NULL)
 }
 
-#' Evaluate Reference-Accession Quality via Unrestricted BLAST Comparison
+#' Evaluate One Chunk of Accessions -- Fetch, BLAST, Score
 #'
-#' For each accession, BLASTs its own sequence against a broad,
-#' \strong{unrestricted} database (not scope-limited to any caller-chosen
-#' taxon list), applies the same-submission-batch independence filter, and
-#' computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict --
-#' the same congruence math
-#' `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()`
-#' used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now
-#' fed from real, broad BLAST hits instead.
+#' Extracted from `evaluate_reference_accessions()`'s own body (2026-08-14,
+#' see `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`'s
+#' chunking/circuit-breaker follow-on work) so the caller can run it once per
+#' CHUNK of `needs_eval` accessions and write the persistent cache
+#' incrementally after each one, instead of once for the entire accession
+#' list at the very end -- see `evaluate_reference_accessions()`'s own
+#' `@section Chunked evaluation and NCBI rate-limiting resilience` for the
+#' full rationale. Byte-identical logic to what this function's body used to
+#' do inline; `chunk_acc` plays the role `needs_eval` used to play, scoped to
+#' one chunk instead of the whole call.
 #'
-#' @section Why this exists (and why the old approach was abandoned):
-#' The superseded approach's "among"/foreign comparison population for ANY
-#' accession was exactly and only whatever else got fetched under the
-#' caller's own `taxa` argument -- no broader NCBI comparison existed
-#' anywhere in that pipeline. This produces both false positives (real,
-#' correctly-labeled accessions read "incongruent" purely because nothing
-#' else from their own family happened to be in the caller's list) and false
-#' negatives (a mislabeled accession's true contaminating identity can only
-#' ever be caught if its genus happens to be on the caller's list too).
-#' BLASTing each accession against an unrestricted database removes the
-#' `taxa`-list dependency for both directions at once. See
-#' `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md` for the
-#' full real-data evidence (a real 6-genus GreatLakes 12S test flagged 15
-#' genuine, Smithsonian-vouchered `Menidia` accessions "incongruent" purely
-#' because `Menidia`'s family had no other representative on the list).
-#'
-#' @section Coarse-rank diagnostic (2026-08-07):
-#' `finest_common_rank` walks the FULL `kingdom`->`species` ladder
-#' (`TaxaTools::standard_ranks`), not just `min_congruent_rank` and finer.
-#' `hierarchy_flag`'s classification threshold is unaffected -- it still
-#' fires at `min_congruent_rank` (default `"family"`) exactly as before --
-#' but `finest_common_rank` can now report a real coarser match (e.g.
-#' `"order"`) instead of collapsing straight to `NA` the moment `"family"`
-#' fails. This distinction is real, not cosmetic: found live-testing against
-#' a real PtConception 18S accession (`Abylopsis eschscholtzii`,
-#' `KY594854`/`KX384617`) whose top independent BLAST hits are consistently
-#' `Diphyidae` -- a SISTER family within the same order (Siphonophorae,
-#' Calycophorae), not an unrelated organism. Both accessions flagged
-#' `"incongruent"` under the family-only version with no way to tell that
-#' apart from a genuine cross-phylum mismatch; `finest_common_rank = "order"`
-#' now reports that real, more specific picture. The likely underlying
-#' cause here is 18S's well-documented poor resolving power within
-#' Calycophorae combined with thin `Abylidae` GenBank coverage at this
-#' locus -- NOT necessarily a mislabel -- and this diagnostic is what makes
-#' that distinguishable at all from the output alone, without re-BLASTing
-#' by hand. Query-side taxonomy for every rank is resolved via the internal
-#' `.resolve_taxonomy_by_acc()` (the same NCBI-taxonomy-DB mechanism already
-#' used to classify BLAST hits), not `TaxaTools::fill_higher_ranks()`
-#' (GNVerifier-backed, and only ever resolved genus/family) -- keeps both
-#' sides of every comparison authority-consistent.
-#'
-#' @section Caching:
-#' Deduplication (`unique(accessions)`) happens regardless of caching -- an
-#' accession is never re-evaluated twice within one call. A persistent,
-#' cross-run cache underneath (keyed by accession alone, not by
-#' taxon/genus/project) is what lets a project only pay evaluation cost for
-#' accessions that are genuinely new or previously out of scope anywhere --
-#' no `taxa` list to decide up front. Staleness is handled asymmetrically:
-#' `"congruent"`/`"incongruent"` verdicts are cached indefinitely (an
-#' accession's own sequence/label doesn't change once deposited); only
-#' `"insufficient_independent_evidence"` verdicts expire after
-#' `insufficient_evidence_ttl_days` and are retried, since new NCBI deposits
-#' could genuinely change that specific answer. A cached row is also treated
-#' as stale (recomputed) if any parameter that affects the verdict itself
-#' (`top_n`, `min_congruent_rank`, `submission_window`,
-#' `hierarchy_incongruent_threshold`, `min_independent_partners`,
-#' `score_range`, `min_score`, `max_hits`, `method`, `database`) differs from
-#' the call that produced it.
-#'
-#' @param accessions Character vector of NCBI accessions to evaluate.
-#'   Deduplicated internally.
-#' @param cache_dir Character or `NULL`. Default
-#'   `tools::R_user_dir("TaxaMatch", "cache")`. Set `NULL` to disable
-#'   caching entirely (every call re-evaluates every accession).
-#' @param insufficient_evidence_ttl_days Numeric (default `180`). See
-#'   Caching above.
-#' @param top_n Integer (default `5L`). Max independent BLAST hits ranked
-#'   per accession for the congruence verdict.
-#' @param min_congruent_rank Character (default `"family"`). Passed to the
-#'   shared congruence math -- see
-#'   `TaxaLikely::audit_reference_database()`'s own roxygen for why
-#'   `"family"`, not a coarser rank, is this ecosystem's default.
-#' @param hierarchy_incongruent_threshold Numeric (default `0.5`). An
-#'   accession's smoothed `frac_independent_below_min_congruent_rank` at or
-#'   above this value reads `"incongruent"`.
-#' @param min_independent_partners Integer (default `3L`). Fewer independent
-#'   top matches than this reads `"insufficient_independent_evidence"`
-#'   regardless of the fraction -- mirrors
-#'   `TaxaLikely::repair_thin_evidence()`'s identical floor.
-#' @param submission_window Integer (default `5L`). Days (or accession-number
-#'   proximity) within which two accessions are treated as the same
-#'   submission batch, and therefore non-independent evidence of each other.
-#' @param method,database,score_range,min_score,max_hits Passed through to
-#'   `blast_sequences()` -- see that function's own documentation.
-#' @param ncbi_api_key Character or `NULL`. Optional NCBI API key for higher
-#'   rate limits (also forwarded to `blast_sequences()`).
-#' @param poll_max_wait Numeric (default `1800`, i.e. 30 minutes). Forwarded
-#'   to `blast_sequences(poll_max_wait =)` -- how long to keep polling NCBI
-#'   for one BLAST batch's results before giving up on it. An accession
-#'   whose batch times out (even after `blast_sequences()`'s own automatic
-#'   halved-batch-size retry) is treated the same as one NCBI has no record
-#'   for at all -- excluded from this call's cache write and reported via
-#'   `$unresolved`-style warning, NOT scored as
-#'   `"insufficient_independent_evidence"` -- a real, previously-possible
-#'   silent-miscache risk found 2026-08-09 on a real, large (1,183-
-#'   accession), multi-hour remote-BLAST run: sustained NCBI queue
-#'   congestion caused most batches after the first to time out at the old
-#'   hardcoded 600s ceiling, and every one of those accessions would
-#'   otherwise have been cached as a false `"insufficient_independent_
-#'   evidence"` verdict for up to `insufficient_evidence_ttl_days` (180 days
-#'   by default) -- masking the real infrastructure failure as if it were a
-#'   genuine evidentiary finding.
-#' @param barcode_term Character or `NULL` (default). When supplied, any
-#'   query sequence exceeding the marker's expected length (via
-#'   `TaxaTools::resolve_barcode_lengths(barcode_term)`) is trimmed to its
-#'   amplicon region (via `TaxaTools::resolve_barcode_primers(barcode_term)`
-#'   + the same primer-matching algorithm as `TaxaLikely::trim_to_amplicon()`,
-#'   duplicated here -- see `.extract_amplicon_one_tm()`'s own documentation)
-#'   before being BLASTed, instead of submitting the full sequence.
-#'   BLASTing a full-length over-length reference (e.g. a complete
-#'   mitogenome, ~16.5kb) against a broad database is dramatically more
-#'   CPU-expensive than BLASTing its short barcode region, and was found
-#'   2026-08-09 to be the real cause of a live NCBI server-side CPU-budget
-#'   rejection on a real, large run whose queries were often full
-#'   mitogenomes (see `poll_max_wait`'s own documentation for the real
-#'   captured case) -- the accession's own species-identity signal lives in
-#'   the short barcode region regardless, so trimming answers the identical
-#'   question at a fraction of the cost. A sequence whose primer sites
-#'   can't be found is left at full length (never dropped or errored) and
-#'   BLASTed as before. `NULL` (default) submits every sequence at full
-#'   length, unchanged from prior behavior.
-#' @param verbose Logical (default `TRUE`). Print progress messages.
-#'
-#' @return A data frame, one row per unique input accession:
-#'   \describe{
-#'     \item{`accession`}{Exactly as supplied by the caller.}
-#'     \item{`listed_taxon`}{The accession's own labeled organism (from its
-#'       real GenBank record).}
-#'     \item{`n_independent_top_matches`}{Independent BLAST hits actually
-#'       used for the verdict (`<= top_n`). Also excludes any hit whose OWN
-#'       listed species isn't itself resolved to species level -- see
-#'       `@section Species-resolved comparison partners` below.}
-#'     \item{`n_top_matches_available`}{All BLAST hits before the
-#'       independence filter -- diagnostic only.}
-#'     \item{`frac_independent_below_min_congruent_rank`}{Jeffreys-smoothed
-#'       fraction of independent hits disagreeing at or above
-#'       `min_congruent_rank`.}
-#'     \item{`finest_common_rank`}{Finest rank at which the single best
-#'       independent hit agrees with the listed taxon (`NA` if none), walking
-#'       the full `kingdom`->`species` ladder -- see `@section Coarse-rank
-#'       diagnostic` above.}
-#'     \item{`best_hit_pident`}{Percent identity (0-100) of the single best
-#'       independent hit, regardless of whether it agrees or disagrees.}
-#'     \item{`best_agreeing_pident`}{Percent identity of the highest-identity
-#'       independent hit that agrees at or above `min_congruent_rank`, among
-#'       the `top_n` slice used for the verdict itself. `NA` if none agree.}
-#'     \item{`best_disagreeing_pident`}{Percent identity of the highest-
-#'       identity independent hit that disagrees (coarser than
-#'       `min_congruent_rank`), among the `top_n` slice. `NA` if none
-#'       disagree. See `@section Identity diagnostics` below for why this
-#'       matters -- a high value here is a much stronger mislabel signal
-#'       than a low one, information the binary `hierarchy_flag` alone
-#'       cannot convey.}
-#'     \item{`best_disagreeing_taxon`}{The listed species of that same
-#'       highest-identity disagreeing hit (`NA` if none disagree). Lets a
-#'       reviewer -- human or LLM -- recognize e.g. a known hybrid-cross
-#'       partner or an informal specimen code by name, not just by percent
-#'       identity alone.}
-#'     \item{`congruent_evidence_exists_anywhere`}{Logical. Unlike
-#'       `hierarchy_flag` (computed only from the `top_n` closest
-#'       independent hits), this asks whether ANY independent hit anywhere
-#'       in the full BLAST result (up to `max_hits`) agrees at or above
-#'       `min_congruent_rank`. `FALSE` here is a stronger statement than an
-#'       `"incongruent"` `hierarchy_flag` alone -- it means the listed rank
-#'       has no representation at all among this accession's independent
-#'       matches, not just none close enough to make the `top_n` cut.}
-#'     \item{`congruent_evidence_best_pident`}{Percent identity of the best
-#'       such anywhere-agreeing hit. `NA` when
-#'       `congruent_evidence_exists_anywhere` is `FALSE`.}
-#'     \item{`hierarchy_flag`}{`"congruent"`, `"incongruent"`, or
-#'       `"insufficient_independent_evidence"`. `NA` if the accession's own
-#'       GenBank record could not be fetched (a `warning()` is issued
-#'       listing these; not cached, so a subsequent call retries them).}
-#'     \item{`evaluated_at`}{When this verdict was computed (`NA` for a
-#'       fetch failure).}
-#'     \item{`cache_hit`}{`TRUE` if this row was read from `cache_dir`
-#'       rather than recomputed this call.}
-#'     \item{`taxonomy_resolution_source`}{`"direct"` (the accession's own
-#'       NCBI taxonomy, the normal case), `"hybrid_maternal_proxy"` (a
-#'       hybrid-labeled accession whose coarser-rank lineage was resolved
-#'       from its maternal parent species instead -- see `@section
-#'       Hybrid-labeled accessions` below), `"hybrid_unresolved"` (detected
-#'       as hybrid-labeled but no usable parent species name could be
-#'       extracted from the label, so the accession's own -- structurally
-#'       incomplete -- NCBI lineage is used as-is), or `NA` for a fetch
-#'       failure.}
-#'     \item{`listed_taxon_is_species`}{Logical. `FALSE` when `listed_taxon`
-#'       does not structurally look like a species-level binomial (via
-#'       [TaxaTools::is_plausible_binomial()] -- e.g. a family name used in
-#'       place of a genus with an informal specimen code, such as
-#'       `"Serranidae sp. JL-2015"`, a real GreatLakes case). A
-#'       structurally different problem from both mislabeling
-#'       (`hierarchy_flag`) and hybrid-labeling
-#'       (`taxonomy_resolution_source`): such a reference can't
-#'       discriminate at species level regardless of whether it's
-#'       internally self-consistent, so this can be `FALSE` even when
-#'       `hierarchy_flag` reads `"congruent"`. `NA` for a fetch failure
-#'       (never `FALSE` -- a fetch failure means "not evaluated," not
-#'       "evaluated and found non-species").}
-#'   }
-#'
-#' @section Hybrid-labeled accessions (2026-08-10):
-#' NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g.
-#' `"Ctenopharyngodon idella x Megalobrama amblycephala"`) is genuinely
-#' incomplete -- confirmed live against several real GreatLakes candidates:
-#' the lineage terminates at `"unclassified Cyprinoidei"`, with no family,
-#' genus, or species populated at all. Left as-is, such an accession can
-#' never agree with any independent hit at family rank or finer (there is
-#' nothing on the query side to compare), which this function's rank-walk
-#' mechanically reads as maximal disagreement -- a real, confirmed
-#' false-positive mode (10 of 13 `"incongruent"` flags on a real
-#' 1,183-accession GreatLakes run were this artifact, not genuine
-#' mislabels; the other 3, with complete normal lineages, were real
-#' candidates worth reviewing).
-#'
-#' Fixed by resolving the accession's maternal parent species' OWN real
-#' lineage instead, for every rank coarser than species: since mtDNA is
-#' maternally inherited in fish, a hybrid's barcode sequence genuinely IS
-#' its maternal parent's lineage at kingdom through genus, even though it
-#' is (correctly) not literally the same SPECIES as that parent. The
-#' maternal parent's name is extracted from `listed_taxon` via
-#' `TaxaTools::clean_taxon_names()`'s existing 3-token simplification (it
-#' already keeps only the first genus + epithet, discarding everything
-#' from `" x ..."` onward -- the same simplification this ecosystem
-#' already applies to hybrid-formula names elsewhere), then resolved via
-#' `TaxaTools::verify_taxon_names(backbone_id = 4L)` (NCBI, the same
-#' authority every other taxonomy resolution in this function uses).
-#' `species.x` (the finest rank) is deliberately left as the accession's
-#' own real listed hybrid label, never replaced by the proxy -- a hybrid
-#' genuinely is not the same species as its maternal parent, so a spurious
-#' species-level agreement would be biologically wrong in the opposite
-#' direction. Detection requires BOTH `listed_taxon` containing a
-#' standalone `" x "` token (the standard nomenclatural hybrid marker) AND
-#' the accession's own resolved `family` being unresolvable -- so an
-#' ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage
-#' (e.g. a real undescribed/unclassified species) is never routed through
-#' this maternal-parent substitution, which would have no biological
-#' justification for a non-hybrid. A leading lowercase breeding/ploidy-
-#' manipulation modifier (e.g. `"androgenetic"`, `"autodiploid"`,
-#' `"autotetraploid"` -- all found on real GreatLakes records, 2026-08-11)
-#' is stripped before `clean_taxon_names()` runs, since the maternal-
-#' inheritance argument still holds (these manipulate the nuclear genome,
-#' not which egg's cytoplasm/mitochondria the offspring develops in). A
-#' label the hybrid-marker regex catches but still cannot be parsed into a
-#' usable proxy even after that stripping falls back to the accession's
-#' own unresolved lineage, `taxonomy_resolution_source =
-#' "hybrid_unresolved"` -- an honest admission, not a guess.
-#'
-#' @section Species-resolved comparison partners (2026-08-13):
-#' A comparison partner (an independent BLAST hit) whose OWN listed species
-#' isn't resolved to species level (e.g. `"Serranidae sp. JL-2015"` -- a
-#' family name used in place of a genus, with an informal specimen code) is
-#' excluded from `n_independent_top_matches`/
-#' `frac_independent_below_min_congruent_rank` entirely, via
-#' `require_species_resolved_partner = TRUE` (default, not currently a
-#' caller-facing parameter). Found live, 2026-08-11/13, on the real
-#' GreatLakes *Stereolepis doederleini* case: both real accessions of this
-#' genuinely isolated species (Polyprionidae has only 2 genera) read
-#' `"incongruent"` purely because the one real independent hit available in
-#' all of NCBI to disagree with them was itself a non-species-resolved
-#' accession -- whether such a partner happens to agree or disagree isn't
-#' meaningful evidence either way, since its own identity is only fuzzily
-#' determined. Live-verified before shipping (a direct standalone BLAST re-
-#' run against the real accession, not assumed): after this exclusion, the
-#' real vote count for *S. doederleini* drops to 1 (a single genuine
-#' independent conspecific), correctly producing
-#' `"insufficient_independent_evidence"` instead of `"incongruent"` -- the
-#' honest answer, not an inflated `"congruent"` either, since there really
-#' is only one real corroborating record in NCBI for this species. Reuses
-#' `TaxaTools::is_plausible_binomial()` (the same check
-#' `listed_taxon_is_species` already applies to the QUERY side) applied to
-#' the HIT side's own resolved species name.
-#'
-#' @section Identity diagnostics (2026-08-07):
-#' `hierarchy_flag`/`finest_common_rank` alone cannot distinguish a genuine
-#' mislabel from "the listed rank has no well-covered independent relative
-#' in GenBank at this marker" -- both produce identical rank-agreement
-#' output. Percent identity is the cheapest available discriminator and was
-#' already being computed (`p_match`, used only to ORDER hits) and then
-#' discarded. A DISAGREEING hit at ~99% identity is a real mislabel signal
-#' (the deposited sequence is nearly identical to something in a different
-#' family); a disagreeing hit at ~85-90% is unremarkable for a conserved
-#' marker (e.g. 18S) with poor resolving power at that rank. This does NOT
-#' resolve the ambiguity on its own -- it is a design-consult finding
-#' (2026-08-07, grounded in a real case: `Abylopsis eschscholtzii`,
-#' `KY594854`/`KX384617`, both flagged `"incongruent"` with disagreeing
-#' hits at family that are consistently a SISTER family within the same
-#' order) that these columns give a caller genuinely new information to
-#' judge that question with, not a verdict. No classification threshold in
-#' this function reads these columns; they are informational only.
-#'
-#' @seealso [remove_incongruent_references()], [flag_incongruent_references()],
-#'   [blast_sequences()]
-#'
-#' @export
-evaluate_reference_accessions <- function(accessions,
-                                          cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
-                                          insufficient_evidence_ttl_days = 180,
-                                          top_n = 5L,
-                                          min_congruent_rank = "family",
-                                          hierarchy_incongruent_threshold = 0.5,
-                                          min_independent_partners = 3L,
-                                          submission_window = 5L,
-                                          method = c("remote", "local"),
-                                          database = "nt",
-                                          score_range = 8,
-                                          min_score = 70,
-                                          max_hits = 20L,
-                                          ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
-                                          poll_max_wait = 1800,
-                                          barcode_term = NULL,
-                                          verbose = TRUE) {
-
-  if (!is.character(accessions) || length(accessions) == 0L)
-    stop("accessions must be a non-empty character vector.", call. = FALSE)
-  method <- match.arg(method)
-
-  unique_acc <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
-  if (length(unique_acc) == 0L)
-    stop("No valid (non-NA, non-blank) accessions supplied.", call. = FALSE)
-
-  # Full kingdom->species ladder, not just family/genus/species -- see
-  # this function's own @section Coarse-rank diagnostic below. min_congruent_
-  # rank (default "family") still controls the CLASSIFICATION threshold
-  # unchanged; the extra coarser ranks only give finest_common_rank more to
-  # report when family (or finer) fails, so a caller can tell "missed
-  # family but still same order" from "no agreement even at phylum" instead
-  # of both collapsing to the identical NA.
-  rank_system <- TaxaTools::standard_ranks
-
-  # .EVAL_REF_ACC_VERSION: bump this any time an internal computation
-  # detail changes without any caller-visible parameter changing (e.g. the
-  # 2026-08-07 rank_system extension below) -- otherwise a cached row
-  # computed under the OLD internal logic gets served as a "fresh" cache
-  # hit forever under an unchanged params_key, silently keeping stale
-  # values (e.g. a pre-fix finest_common_rank = NA where a fresh
-  # computation would now report "order") indefinitely. Cheap insurance,
-  # not something a caller ever sets directly.
-  #
-  # 2026-08-13 require_species_resolved_partner fix: deliberately NOT
-  # bumped, matching the 2026-08-11 modifier-prefix fix's own precedent.
-  # params_key is one global string applied uniformly to every cached row
-  # (not conditional per row), so bumping it here would invalidate and
-  # force a fresh re-BLAST of all ~1,163 already-correctly-cached real
-  # GreatLakes rows -- real, unnecessary NCBI cost for a fix whose effect
-  # is narrow (only rows whose top-N independent BLAST hits include a
-  # non-species-resolved reference can possibly change) and, on the one
-  # real case fully investigated (Stereolepis doederleini vs. its
-  # Serranidae sp. JL-2015 partner), was confirmed to be a no-op on the
-  # actual verdict. Instead, the specific rows worth re-checking (every
-  # currently non-"congruent" row, the only rows where this filter could
-  # plausibly change what a reviewer sees) were surgically removed from
-  # the real persistent cache directly, so only those get re-evaluated
-  # under the new logic on the next run.
-  .EVAL_REF_ACC_VERSION <- "v4_hybrid_maternal_proxy"
-
-  params_key <- paste(top_n, min_congruent_rank, submission_window,
-                      hierarchy_incongruent_threshold, min_independent_partners,
-                      score_range, min_score, max_hits, method, database,
-                      .EVAL_REF_ACC_VERSION, sep = "|")
-
-  cache <- .load_reference_accession_cache(cache_dir)
-  if (!"params_key" %in% names(cache)) cache$params_key <- NA_character_
-
-  now <- Sys.time()
-  ttl_secs <- insufficient_evidence_ttl_days * 86400
-
-  in_cache <- cache[cache$accession %in% unique_acc &
-                    !is.na(cache$params_key) & cache$params_key == params_key, ,
-                    drop = FALSE]
-  fresh_enough <- in_cache$hierarchy_flag != "insufficient_independent_evidence" |
-    (as.numeric(now) - as.numeric(in_cache$evaluated_at)) < ttl_secs
-  cache_hit_rows <- in_cache[fresh_enough, , drop = FALSE]
-  # A scalar assigned onto a NEW column of a possibly-zero-row data frame
-  # does not recycle the way it would on an existing column -- base R
-  # errors ("replacement has 1 row, data has 0") rather than silently
-  # producing a zero-length column, so this must be sized explicitly.
-  cache_hit_rows$cache_hit <- rep(TRUE, nrow(cache_hit_rows))
-
-  needs_eval <- setdiff(unique_acc, cache_hit_rows$accession)
-
-  if (verbose)
-    message(sprintf(
-      "evaluate_reference_accessions(): %d unique accession(s), %d from cache, %d to evaluate.",
-      length(unique_acc), nrow(cache_hit_rows), length(needs_eval)
-    ))
-
-  out_cols <- c("accession", "listed_taxon", "n_independent_top_matches",
-               "n_top_matches_available", "frac_independent_below_min_congruent_rank",
-               "finest_common_rank", "best_hit_pident", "best_agreeing_pident",
-               "best_disagreeing_pident", "best_disagreeing_taxon",
-               "congruent_evidence_exists_anywhere",
-               "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
-               "taxonomy_resolution_source")
-
-  if (length(needs_eval) == 0L) {
-    out <- cache_hit_rows[, out_cols, drop = FALSE]
-    rownames(out) <- NULL
-    return(out)
-  }
+#' @return A list: `computed_rows` (data.frame or `NULL`, same shape the
+#'   caller writes to the persistent cache), `missing_acc` (character
+#'   vector -- accessions in `chunk_acc` not evaluated this call: not found,
+#'   no usable sequence, or BLAST did not complete), `circuit_breaker_
+#'   tripped` (logical -- `TRUE` when this chunk's own `blast_sequences()`
+#'   call reported sustained batch failures and stopped early; see
+#'   `blast_sequences(max_consecutive_batch_failures=)`).
+#' @noRd
+.evaluate_reference_accessions_chunk <- function(chunk_acc, rank_system, method, database,
+                                                 score_range, min_score, max_hits,
+                                                 ncbi_api_key, poll_max_wait, barcode_term,
+                                                 max_consecutive_batch_failures,
+                                                 top_n, min_congruent_rank, submission_window,
+                                                 min_independent_partners,
+                                                 hierarchy_incongruent_threshold,
+                                                 params_key, now, verbose) {
 
   # ---- Fetch the accessions being evaluated: sequence + listed taxon +
   # create_date, all from one GBSeq XML round trip -----------------------------
   query_meta_raw <- .fetch_reference_accession_records(
-    needs_eval, want_sequence = TRUE, ncbi_api_key = ncbi_api_key, verbose = verbose
+    chunk_acc, want_sequence = TRUE, ncbi_api_key = ncbi_api_key, verbose = verbose
   )
-  not_found_acc <- setdiff(needs_eval, query_meta_raw$accession)
+  not_found_acc <- setdiff(chunk_acc, query_meta_raw$accession)
   query_meta <- query_meta_raw[!is.na(query_meta_raw$sequence) &
                                nzchar(query_meta_raw$sequence), , drop = FALSE]
   # An accession NCBI has a record for but with no usable sequence content
@@ -943,6 +561,7 @@ evaluate_reference_accessions <- function(accessions,
   }
 
   computed_rows <- NULL
+  circuit_breaker_tripped <- FALSE
 
   if (nrow(query_meta) > 0L) {
     # ---- Query's own full kingdom->species lineage, via the SAME NCBI
@@ -1032,29 +651,34 @@ evaluate_reference_accessions <- function(accessions,
       }
     }
 
-    # ---- BLAST every needs_eval accession's own sequence against the
+    # ---- BLAST every chunk_acc accession's own sequence against the
     # broad, unrestricted database in one batched call ------------------------
     seq_df <- data.frame(asv_id = query_meta$accession, sequence = query_meta$sequence,
                          stringsAsFactors = FALSE)
     hits <- blast_sequences(
       seq_df, method = method, database = database, score_range = score_range,
       min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
-      ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait, verbose = verbose
+      ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
+      max_consecutive_batch_failures = max_consecutive_batch_failures, verbose = verbose
     )
+    circuit_breaker_tripped <- isTRUE(attr(hits, "circuit_breaker_tripped"))
 
     # An accession whose BLAST search never completed (timed out, even after
-    # blast_sequences()'s own halved-batch-size retry) must NOT flow through
-    # to a computed hierarchy_flag below -- it would read identically to a
-    # genuine zero-hit "insufficient_independent_evidence" verdict and get
-    # cached as one, silently. Folded into missing_acc/query_meta exclusion
-    # here so it gets the exact same "not cached, will retry next call"
-    # treatment as an accession NCBI has no record for at all. See
+    # blast_sequences()'s own halved-batch-size retry, OR skipped outright
+    # because blast_sequences()'s own circuit breaker tripped) must NOT flow
+    # through to a computed hierarchy_flag below -- it would read identically
+    # to a genuine zero-hit "insufficient_independent_evidence" verdict and
+    # get cached as one, silently. Folded into missing_acc/query_meta
+    # exclusion here so it gets the exact same "not cached, will retry next
+    # call" treatment as an accession NCBI has no record for at all. See
     # poll_max_wait's own documentation for the real run that found this.
     blast_failed_acc <- attr(hits, "failed_query_ids")
     if (!is.null(blast_failed_acc) && length(blast_failed_acc) > 0L) {
       warning(sprintf(
-        "evaluate_reference_accessions(): %d accession(s)' BLAST search did not complete this call (NCBI queue timeout) -- will retry next call, not cached:\n  %s",
-        length(blast_failed_acc), paste(blast_failed_acc, collapse = ", ")
+        "evaluate_reference_accessions(): %d accession(s)' BLAST search did not complete this call (NCBI queue timeout%s) -- will retry next call, not cached:\n  %s",
+        length(blast_failed_acc),
+        if (circuit_breaker_tripped) ", or sustained rate-limiting" else "",
+        paste(blast_failed_acc, collapse = ", ")
       ), call. = FALSE)
       query_meta <- query_meta[!query_meta$accession %in% blast_failed_acc, , drop = FALSE]
       missing_acc <- union(missing_acc, blast_failed_acc)
@@ -1199,13 +823,541 @@ evaluate_reference_accessions <- function(accessions,
     }
   }
 
-  # ---- Update the persistent cache -------------------------------------------
-  if (!is.null(computed_rows) && nrow(computed_rows) > 0L) {
-    cache <- cache[!(cache$accession %in% computed_rows$accession &
-                     cache$params_key == params_key), , drop = FALSE]
-    cache <- rbind(cache, computed_rows[, names(cache), drop = FALSE])
-    .save_reference_accession_cache(cache_dir, cache)
+  list(computed_rows = computed_rows, missing_acc = missing_acc,
+       circuit_breaker_tripped = circuit_breaker_tripped)
+}
+
+#' Evaluate Reference-Accession Quality via Unrestricted BLAST Comparison
+#'
+#' For each accession, BLASTs its own sequence against a broad,
+#' \strong{unrestricted} database (not scope-limited to any caller-chosen
+#' taxon list), applies the same-submission-batch independence filter, and
+#' computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict --
+#' the same congruence math
+#' `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()`
+#' used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now
+#' fed from real, broad BLAST hits instead.
+#'
+#' @section Why this exists (and why the old approach was abandoned):
+#' The superseded approach's "among"/foreign comparison population for ANY
+#' accession was exactly and only whatever else got fetched under the
+#' caller's own `taxa` argument -- no broader NCBI comparison existed
+#' anywhere in that pipeline. This produces both false positives (real,
+#' correctly-labeled accessions read "incongruent" purely because nothing
+#' else from their own family happened to be in the caller's list) and false
+#' negatives (a mislabeled accession's true contaminating identity can only
+#' ever be caught if its genus happens to be on the caller's list too).
+#' BLASTing each accession against an unrestricted database removes the
+#' `taxa`-list dependency for both directions at once. See
+#' `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md` for the
+#' full real-data evidence (a real 6-genus GreatLakes 12S test flagged 15
+#' genuine, Smithsonian-vouchered `Menidia` accessions "incongruent" purely
+#' because `Menidia`'s family had no other representative on the list).
+#'
+#' @section Coarse-rank diagnostic (2026-08-07):
+#' `finest_common_rank` walks the FULL `kingdom`->`species` ladder
+#' (`TaxaTools::standard_ranks`), not just `min_congruent_rank` and finer.
+#' `hierarchy_flag`'s classification threshold is unaffected -- it still
+#' fires at `min_congruent_rank` (default `"family"`) exactly as before --
+#' but `finest_common_rank` can now report a real coarser match (e.g.
+#' `"order"`) instead of collapsing straight to `NA` the moment `"family"`
+#' fails. This distinction is real, not cosmetic: found live-testing against
+#' a real PtConception 18S accession (`Abylopsis eschscholtzii`,
+#' `KY594854`/`KX384617`) whose top independent BLAST hits are consistently
+#' `Diphyidae` -- a SISTER family within the same order (Siphonophorae,
+#' Calycophorae), not an unrelated organism. Both accessions flagged
+#' `"incongruent"` under the family-only version with no way to tell that
+#' apart from a genuine cross-phylum mismatch; `finest_common_rank = "order"`
+#' now reports that real, more specific picture. The likely underlying
+#' cause here is 18S's well-documented poor resolving power within
+#' Calycophorae combined with thin `Abylidae` GenBank coverage at this
+#' locus -- NOT necessarily a mislabel -- and this diagnostic is what makes
+#' that distinguishable at all from the output alone, without re-BLASTing
+#' by hand. Query-side taxonomy for every rank is resolved via the internal
+#' `.resolve_taxonomy_by_acc()` (the same NCBI-taxonomy-DB mechanism already
+#' used to classify BLAST hits), not `TaxaTools::fill_higher_ranks()`
+#' (GNVerifier-backed, and only ever resolved genus/family) -- keeps both
+#' sides of every comparison authority-consistent.
+#'
+#' @section Caching:
+#' Deduplication (`unique(accessions)`) happens regardless of caching -- an
+#' accession is never re-evaluated twice within one call. A persistent,
+#' cross-run cache underneath (keyed by accession alone, not by
+#' taxon/genus/project) is what lets a project only pay evaluation cost for
+#' accessions that are genuinely new or previously out of scope anywhere --
+#' no `taxa` list to decide up front. Staleness is handled asymmetrically:
+#' `"congruent"`/`"incongruent"` verdicts are cached indefinitely (an
+#' accession's own sequence/label doesn't change once deposited); only
+#' `"insufficient_independent_evidence"` verdicts expire after
+#' `insufficient_evidence_ttl_days` and are retried, since new NCBI deposits
+#' could genuinely change that specific answer. A cached row is also treated
+#' as stale (recomputed) if any parameter that affects the verdict itself
+#' (`top_n`, `min_congruent_rank`, `submission_window`,
+#' `hierarchy_incongruent_threshold`, `min_independent_partners`,
+#' `score_range`, `min_score`, `max_hits`, `method`, `database`) differs from
+#' the call that produced it.
+#'
+#' @param accessions Character vector of NCBI accessions to evaluate.
+#'   Deduplicated internally.
+#' @param cache_dir Character or `NULL`. Default
+#'   `tools::R_user_dir("TaxaMatch", "cache")`. Set `NULL` to disable
+#'   caching entirely (every call re-evaluates every accession).
+#' @param insufficient_evidence_ttl_days Numeric (default `180`). See
+#'   Caching above.
+#' @param top_n Integer (default `5L`). Max independent BLAST hits ranked
+#'   per accession for the congruence verdict.
+#' @param min_congruent_rank Character (default `"family"`). Passed to the
+#'   shared congruence math -- see
+#'   `TaxaLikely::audit_reference_database()`'s own roxygen for why
+#'   `"family"`, not a coarser rank, is this ecosystem's default.
+#' @param hierarchy_incongruent_threshold Numeric (default `0.5`). An
+#'   accession's smoothed `frac_independent_below_min_congruent_rank` at or
+#'   above this value reads `"incongruent"`.
+#' @param min_independent_partners Integer (default `3L`). Fewer independent
+#'   top matches than this reads `"insufficient_independent_evidence"`
+#'   regardless of the fraction -- mirrors
+#'   `TaxaLikely::repair_thin_evidence()`'s identical floor.
+#' @param submission_window Integer (default `5L`). Days (or accession-number
+#'   proximity) within which two accessions are treated as the same
+#'   submission batch, and therefore non-independent evidence of each other.
+#' @param method,database,score_range,min_score,max_hits Passed through to
+#'   `blast_sequences()` -- see that function's own documentation.
+#' @param ncbi_api_key Character or `NULL`. Optional NCBI API key for higher
+#'   rate limits (also forwarded to `blast_sequences()`).
+#' @param poll_max_wait Numeric (default `1800`, i.e. 30 minutes). Forwarded
+#'   to `blast_sequences(poll_max_wait =)` -- how long to keep polling NCBI
+#'   for one BLAST batch's results before giving up on it. An accession
+#'   whose batch times out (even after `blast_sequences()`'s own automatic
+#'   halved-batch-size retry) is treated the same as one NCBI has no record
+#'   for at all -- excluded from this call's cache write and reported via
+#'   `$unresolved`-style warning, NOT scored as
+#'   `"insufficient_independent_evidence"` -- a real, previously-possible
+#'   silent-miscache risk found 2026-08-09 on a real, large (1,183-
+#'   accession), multi-hour remote-BLAST run: sustained NCBI queue
+#'   congestion caused most batches after the first to time out at the old
+#'   hardcoded 600s ceiling, and every one of those accessions would
+#'   otherwise have been cached as a false `"insufficient_independent_
+#'   evidence"` verdict for up to `insufficient_evidence_ttl_days` (180 days
+#'   by default) -- masking the real infrastructure failure as if it were a
+#'   genuine evidentiary finding.
+#' @param barcode_term Character or `NULL` (default). When supplied, any
+#'   query sequence exceeding the marker's expected length (via
+#'   `TaxaTools::resolve_barcode_lengths(barcode_term)`) is trimmed to its
+#'   amplicon region (via `TaxaTools::resolve_barcode_primers(barcode_term)`
+#'   + the same primer-matching algorithm as `TaxaLikely::trim_to_amplicon()`,
+#'   duplicated here -- see `.extract_amplicon_one_tm()`'s own documentation)
+#'   before being BLASTed, instead of submitting the full sequence.
+#'   BLASTing a full-length over-length reference (e.g. a complete
+#'   mitogenome, ~16.5kb) against a broad database is dramatically more
+#'   CPU-expensive than BLASTing its short barcode region, and was found
+#'   2026-08-09 to be the real cause of a live NCBI server-side CPU-budget
+#'   rejection on a real, large run whose queries were often full
+#'   mitogenomes (see `poll_max_wait`'s own documentation for the real
+#'   captured case) -- the accession's own species-identity signal lives in
+#'   the short barcode region regardless, so trimming answers the identical
+#'   question at a fraction of the cost. A sequence whose primer sites
+#'   can't be found is left at full length (never dropped or errored) and
+#'   BLASTed as before. `NULL` (default) submits every sequence at full
+#'   length, unchanged from prior behavior.
+#' @param chunk_size Integer (default `200L`). Accessions needing real
+#'   evaluation are processed this many at a time, with the persistent
+#'   cache written after EACH chunk -- see `@section Chunked evaluation and
+#'   NCBI rate-limiting resilience` below. `Inf` restores the pre-2026-08-14
+#'   single-shot behavior (one chunk covering every accession, cache written
+#'   only once at the very end).
+#' @param max_consecutive_batch_failures Numeric (default `3L`). Forwarded
+#'   to `blast_sequences()` -- see that function's own documentation for the
+#'   full circuit-breaker mechanism (a `.blast_server_rejected()` rejection
+#'   counts double toward this threshold; a plain poll timeout counts once).
+#'   `Inf` disables it.
+#' @param verbose Logical (default `TRUE`). Print progress messages.
+#'
+#' @return A data frame, one row per unique input accession:
+#'   \describe{
+#'     \item{`accession`}{Exactly as supplied by the caller.}
+#'     \item{`listed_taxon`}{The accession's own labeled organism (from its
+#'       real GenBank record).}
+#'     \item{`n_independent_top_matches`}{Independent BLAST hits actually
+#'       used for the verdict (`<= top_n`). Also excludes any hit whose OWN
+#'       listed species isn't itself resolved to species level -- see
+#'       `@section Species-resolved comparison partners` below.}
+#'     \item{`n_top_matches_available`}{All BLAST hits before the
+#'       independence filter -- diagnostic only.}
+#'     \item{`frac_independent_below_min_congruent_rank`}{Jeffreys-smoothed
+#'       fraction of independent hits disagreeing at or above
+#'       `min_congruent_rank`.}
+#'     \item{`finest_common_rank`}{Finest rank at which the single best
+#'       independent hit agrees with the listed taxon (`NA` if none), walking
+#'       the full `kingdom`->`species` ladder -- see `@section Coarse-rank
+#'       diagnostic` above.}
+#'     \item{`best_hit_pident`}{Percent identity (0-100) of the single best
+#'       independent hit, regardless of whether it agrees or disagrees.}
+#'     \item{`best_agreeing_pident`}{Percent identity of the highest-identity
+#'       independent hit that agrees at or above `min_congruent_rank`, among
+#'       the `top_n` slice used for the verdict itself. `NA` if none agree.}
+#'     \item{`best_disagreeing_pident`}{Percent identity of the highest-
+#'       identity independent hit that disagrees (coarser than
+#'       `min_congruent_rank`), among the `top_n` slice. `NA` if none
+#'       disagree. See `@section Identity diagnostics` below for why this
+#'       matters -- a high value here is a much stronger mislabel signal
+#'       than a low one, information the binary `hierarchy_flag` alone
+#'       cannot convey.}
+#'     \item{`best_disagreeing_taxon`}{The listed species of that same
+#'       highest-identity disagreeing hit (`NA` if none disagree). Lets a
+#'       reviewer -- human or LLM -- recognize e.g. a known hybrid-cross
+#'       partner or an informal specimen code by name, not just by percent
+#'       identity alone.}
+#'     \item{`congruent_evidence_exists_anywhere`}{Logical. Unlike
+#'       `hierarchy_flag` (computed only from the `top_n` closest
+#'       independent hits), this asks whether ANY independent hit anywhere
+#'       in the full BLAST result (up to `max_hits`) agrees at or above
+#'       `min_congruent_rank`. `FALSE` here is a stronger statement than an
+#'       `"incongruent"` `hierarchy_flag` alone -- it means the listed rank
+#'       has no representation at all among this accession's independent
+#'       matches, not just none close enough to make the `top_n` cut.}
+#'     \item{`congruent_evidence_best_pident`}{Percent identity of the best
+#'       such anywhere-agreeing hit. `NA` when
+#'       `congruent_evidence_exists_anywhere` is `FALSE`.}
+#'     \item{`hierarchy_flag`}{`"congruent"`, `"incongruent"`, or
+#'       `"insufficient_independent_evidence"`. `NA` if the accession's own
+#'       GenBank record could not be fetched (a `warning()` is issued
+#'       listing these; not cached, so a subsequent call retries them).}
+#'     \item{`evaluated_at`}{When this verdict was computed (`NA` for a
+#'       fetch failure).}
+#'     \item{`cache_hit`}{`TRUE` if this row was read from `cache_dir`
+#'       rather than recomputed this call.}
+#'     \item{`taxonomy_resolution_source`}{`"direct"` (the accession's own
+#'       NCBI taxonomy, the normal case), `"hybrid_maternal_proxy"` (a
+#'       hybrid-labeled accession whose coarser-rank lineage was resolved
+#'       from its maternal parent species instead -- see `@section
+#'       Hybrid-labeled accessions` below), `"hybrid_unresolved"` (detected
+#'       as hybrid-labeled but no usable parent species name could be
+#'       extracted from the label, so the accession's own -- structurally
+#'       incomplete -- NCBI lineage is used as-is), or `NA` for a fetch
+#'       failure.}
+#'     \item{`listed_taxon_is_species`}{Logical. `FALSE` when `listed_taxon`
+#'       does not structurally look like a species-level binomial (via
+#'       [TaxaTools::is_plausible_binomial()] -- e.g. a family name used in
+#'       place of a genus with an informal specimen code, such as
+#'       `"Serranidae sp. JL-2015"`, a real GreatLakes case). A
+#'       structurally different problem from both mislabeling
+#'       (`hierarchy_flag`) and hybrid-labeling
+#'       (`taxonomy_resolution_source`): such a reference can't
+#'       discriminate at species level regardless of whether it's
+#'       internally self-consistent, so this can be `FALSE` even when
+#'       `hierarchy_flag` reads `"congruent"`. `NA` for a fetch failure
+#'       (never `FALSE` -- a fetch failure means "not evaluated," not
+#'       "evaluated and found non-species").}
+#'   }
+#'
+#'   Also carries `attr(result, "run_summary")` -- a list (`n_total`,
+#'   `n_from_cache`, `n_evaluated_this_call`, `n_pending`, `pct_complete`,
+#'   `circuit_breaker_tripped`, `recommended_pause_minutes`) summarizing
+#'   what happened this call -- see `@section Chunked evaluation and NCBI
+#'   rate-limiting resilience` below.
+#'
+#' @section Chunked evaluation and NCBI rate-limiting resilience (2026-08-14):
+#' A large accession list is evaluated `chunk_size` accessions at a time,
+#' with the persistent cache written after EACH chunk rather than once at
+#' the very end. Combined with `blast_sequences()`'s own circuit breaker
+#' (`max_consecutive_batch_failures` -- stops submitting further BLAST
+#' batches once several in a row have failed, rather than continuing to pay
+#' up to `poll_max_wait` for each of dozens of doomed batches), this means a
+#' sustained NCBI rate-limiting or CPU-budget-throttling episode is detected
+#' and this function stops itself early, rather than grinding through the
+#' full accession list at up to 30 minutes per doomed batch. When this
+#' happens: every accession successfully evaluated in an EARLIER chunk this
+#' call is already safely cached (nothing already computed is lost);
+#' `attr(result, "run_summary")$circuit_breaker_tripped` is `TRUE`; and an
+#' actionable `message()` reports how many accessions were resolved this
+#' call (as a percentage), how many are still pending, and recommends a
+#' pause before calling `evaluate_reference_accessions()` again with the
+#' *same* accessions and `cache_dir` -- already-cached accessions are read
+#' straight from the cache (no re-BLAST), so a resumed call only pays for
+#' what's still genuinely outstanding. Before this existed, the documented
+#' workaround for a large real run (e.g.
+#' `AuditNCBI_Goal2_MatchCandidateScreen.R`, a real external GreatLakes
+#' workflow) was to manually pre-split the accession list into chunks of
+#' ~200 and call this function once per chunk -- `chunk_size` automates
+#' exactly that.
+#'
+#' @section Hybrid-labeled accessions (2026-08-10):
+#' NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g.
+#' `"Ctenopharyngodon idella x Megalobrama amblycephala"`) is genuinely
+#' incomplete -- confirmed live against several real GreatLakes candidates:
+#' the lineage terminates at `"unclassified Cyprinoidei"`, with no family,
+#' genus, or species populated at all. Left as-is, such an accession can
+#' never agree with any independent hit at family rank or finer (there is
+#' nothing on the query side to compare), which this function's rank-walk
+#' mechanically reads as maximal disagreement -- a real, confirmed
+#' false-positive mode (10 of 13 `"incongruent"` flags on a real
+#' 1,183-accession GreatLakes run were this artifact, not genuine
+#' mislabels; the other 3, with complete normal lineages, were real
+#' candidates worth reviewing).
+#'
+#' Fixed by resolving the accession's maternal parent species' OWN real
+#' lineage instead, for every rank coarser than species: since mtDNA is
+#' maternally inherited in fish, a hybrid's barcode sequence genuinely IS
+#' its maternal parent's lineage at kingdom through genus, even though it
+#' is (correctly) not literally the same SPECIES as that parent. The
+#' maternal parent's name is extracted from `listed_taxon` via
+#' `TaxaTools::clean_taxon_names()`'s existing 3-token simplification (it
+#' already keeps only the first genus + epithet, discarding everything
+#' from `" x ..."` onward -- the same simplification this ecosystem
+#' already applies to hybrid-formula names elsewhere), then resolved via
+#' `TaxaTools::verify_taxon_names(backbone_id = 4L)` (NCBI, the same
+#' authority every other taxonomy resolution in this function uses).
+#' `species.x` (the finest rank) is deliberately left as the accession's
+#' own real listed hybrid label, never replaced by the proxy -- a hybrid
+#' genuinely is not the same species as its maternal parent, so a spurious
+#' species-level agreement would be biologically wrong in the opposite
+#' direction. Detection requires BOTH `listed_taxon` containing a
+#' standalone `" x "` token (the standard nomenclatural hybrid marker) AND
+#' the accession's own resolved `family` being unresolvable -- so an
+#' ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage
+#' (e.g. a real undescribed/unclassified species) is never routed through
+#' this maternal-parent substitution, which would have no biological
+#' justification for a non-hybrid. A leading lowercase breeding/ploidy-
+#' manipulation modifier (e.g. `"androgenetic"`, `"autodiploid"`,
+#' `"autotetraploid"` -- all found on real GreatLakes records, 2026-08-11)
+#' is stripped before `clean_taxon_names()` runs, since the maternal-
+#' inheritance argument still holds (these manipulate the nuclear genome,
+#' not which egg's cytoplasm/mitochondria the offspring develops in). A
+#' label the hybrid-marker regex catches but still cannot be parsed into a
+#' usable proxy even after that stripping falls back to the accession's
+#' own unresolved lineage, `taxonomy_resolution_source =
+#' "hybrid_unresolved"` -- an honest admission, not a guess.
+#'
+#' @section Species-resolved comparison partners (2026-08-13):
+#' A comparison partner (an independent BLAST hit) whose OWN listed species
+#' isn't resolved to species level (e.g. `"Serranidae sp. JL-2015"` -- a
+#' family name used in place of a genus, with an informal specimen code) is
+#' excluded from `n_independent_top_matches`/
+#' `frac_independent_below_min_congruent_rank` entirely, via
+#' `require_species_resolved_partner = TRUE` (default, not currently a
+#' caller-facing parameter). Found live, 2026-08-11/13, on the real
+#' GreatLakes *Stereolepis doederleini* case: both real accessions of this
+#' genuinely isolated species (Polyprionidae has only 2 genera) read
+#' `"incongruent"` purely because the one real independent hit available in
+#' all of NCBI to disagree with them was itself a non-species-resolved
+#' accession -- whether such a partner happens to agree or disagree isn't
+#' meaningful evidence either way, since its own identity is only fuzzily
+#' determined. Live-verified before shipping (a direct standalone BLAST re-
+#' run against the real accession, not assumed): after this exclusion, the
+#' real vote count for *S. doederleini* drops to 1 (a single genuine
+#' independent conspecific), correctly producing
+#' `"insufficient_independent_evidence"` instead of `"incongruent"` -- the
+#' honest answer, not an inflated `"congruent"` either, since there really
+#' is only one real corroborating record in NCBI for this species. Reuses
+#' `TaxaTools::is_plausible_binomial()` (the same check
+#' `listed_taxon_is_species` already applies to the QUERY side) applied to
+#' the HIT side's own resolved species name.
+#'
+#' @section Identity diagnostics (2026-08-07):
+#' `hierarchy_flag`/`finest_common_rank` alone cannot distinguish a genuine
+#' mislabel from "the listed rank has no well-covered independent relative
+#' in GenBank at this marker" -- both produce identical rank-agreement
+#' output. Percent identity is the cheapest available discriminator and was
+#' already being computed (`p_match`, used only to ORDER hits) and then
+#' discarded. A DISAGREEING hit at ~99% identity is a real mislabel signal
+#' (the deposited sequence is nearly identical to something in a different
+#' family); a disagreeing hit at ~85-90% is unremarkable for a conserved
+#' marker (e.g. 18S) with poor resolving power at that rank. This does NOT
+#' resolve the ambiguity on its own -- it is a design-consult finding
+#' (2026-08-07, grounded in a real case: `Abylopsis eschscholtzii`,
+#' `KY594854`/`KX384617`, both flagged `"incongruent"` with disagreeing
+#' hits at family that are consistently a SISTER family within the same
+#' order) that these columns give a caller genuinely new information to
+#' judge that question with, not a verdict. No classification threshold in
+#' this function reads these columns; they are informational only.
+#'
+#' @seealso [remove_incongruent_references()], [flag_incongruent_references()],
+#'   [blast_sequences()]
+#'
+#' @export
+evaluate_reference_accessions <- function(accessions,
+                                          cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
+                                          insufficient_evidence_ttl_days = 180,
+                                          top_n = 5L,
+                                          min_congruent_rank = "family",
+                                          hierarchy_incongruent_threshold = 0.5,
+                                          min_independent_partners = 3L,
+                                          submission_window = 5L,
+                                          method = c("remote", "local"),
+                                          database = "nt",
+                                          score_range = 8,
+                                          min_score = 70,
+                                          max_hits = 20L,
+                                          ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
+                                          poll_max_wait = 1800,
+                                          barcode_term = NULL,
+                                          chunk_size = 200L,
+                                          max_consecutive_batch_failures = 3L,
+                                          verbose = TRUE) {
+
+  if (!is.character(accessions) || length(accessions) == 0L)
+    stop("accessions must be a non-empty character vector.", call. = FALSE)
+  method <- match.arg(method)
+  if (!is.numeric(chunk_size) || length(chunk_size) != 1L || is.na(chunk_size) ||
+      chunk_size < 1L)
+    stop("chunk_size must be a positive integer (Inf for a single unchunked call).",
+         call. = FALSE)
+
+  unique_acc <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
+  if (length(unique_acc) == 0L)
+    stop("No valid (non-NA, non-blank) accessions supplied.", call. = FALSE)
+
+  # Full kingdom->species ladder, not just family/genus/species -- see
+  # this function's own @section Coarse-rank diagnostic below. min_congruent_
+  # rank (default "family") still controls the CLASSIFICATION threshold
+  # unchanged; the extra coarser ranks only give finest_common_rank more to
+  # report when family (or finer) fails, so a caller can tell "missed
+  # family but still same order" from "no agreement even at phylum" instead
+  # of both collapsing to the identical NA.
+  rank_system <- TaxaTools::standard_ranks
+
+  # .EVAL_REF_ACC_VERSION: bump this any time an internal computation
+  # detail changes without any caller-visible parameter changing (e.g. the
+  # 2026-08-07 rank_system extension below) -- otherwise a cached row
+  # computed under the OLD internal logic gets served as a "fresh" cache
+  # hit forever under an unchanged params_key, silently keeping stale
+  # values (e.g. a pre-fix finest_common_rank = NA where a fresh
+  # computation would now report "order") indefinitely. Cheap insurance,
+  # not something a caller ever sets directly.
+  #
+  # 2026-08-13 require_species_resolved_partner fix: deliberately NOT
+  # bumped, matching the 2026-08-11 modifier-prefix fix's own precedent.
+  # params_key is one global string applied uniformly to every cached row
+  # (not conditional per row), so bumping it here would invalidate and
+  # force a fresh re-BLAST of all ~1,163 already-correctly-cached real
+  # GreatLakes rows -- real, unnecessary NCBI cost for a fix whose effect
+  # is narrow (only rows whose top-N independent BLAST hits include a
+  # non-species-resolved reference can possibly change) and, on the one
+  # real case fully investigated (Stereolepis doederleini vs. its
+  # Serranidae sp. JL-2015 partner), was confirmed to be a no-op on the
+  # actual verdict. Instead, the specific rows worth re-checking (every
+  # currently non-"congruent" row, the only rows where this filter could
+  # plausibly change what a reviewer sees) were surgically removed from
+  # the real persistent cache directly, so only those get re-evaluated
+  # under the new logic on the next run.
+  .EVAL_REF_ACC_VERSION <- "v4_hybrid_maternal_proxy"
+
+  params_key <- paste(top_n, min_congruent_rank, submission_window,
+                      hierarchy_incongruent_threshold, min_independent_partners,
+                      score_range, min_score, max_hits, method, database,
+                      .EVAL_REF_ACC_VERSION, sep = "|")
+
+  cache <- .load_reference_accession_cache(cache_dir)
+  if (!"params_key" %in% names(cache)) cache$params_key <- NA_character_
+
+  now <- Sys.time()
+  ttl_secs <- insufficient_evidence_ttl_days * 86400
+
+  in_cache <- cache[cache$accession %in% unique_acc &
+                    !is.na(cache$params_key) & cache$params_key == params_key, ,
+                    drop = FALSE]
+  fresh_enough <- in_cache$hierarchy_flag != "insufficient_independent_evidence" |
+    (as.numeric(now) - as.numeric(in_cache$evaluated_at)) < ttl_secs
+  cache_hit_rows <- in_cache[fresh_enough, , drop = FALSE]
+  # A scalar assigned onto a NEW column of a possibly-zero-row data frame
+  # does not recycle the way it would on an existing column -- base R
+  # errors ("replacement has 1 row, data has 0") rather than silently
+  # producing a zero-length column, so this must be sized explicitly.
+  cache_hit_rows$cache_hit <- rep(TRUE, nrow(cache_hit_rows))
+
+  needs_eval <- setdiff(unique_acc, cache_hit_rows$accession)
+
+  if (verbose)
+    message(sprintf(
+      "evaluate_reference_accessions(): %d unique accession(s), %d from cache, %d to evaluate.",
+      length(unique_acc), nrow(cache_hit_rows), length(needs_eval)
+    ))
+
+  out_cols <- c("accession", "listed_taxon", "n_independent_top_matches",
+               "n_top_matches_available", "frac_independent_below_min_congruent_rank",
+               "finest_common_rank", "best_hit_pident", "best_agreeing_pident",
+               "best_disagreeing_pident", "best_disagreeing_taxon",
+               "congruent_evidence_exists_anywhere",
+               "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
+               "taxonomy_resolution_source")
+
+  if (length(needs_eval) == 0L) {
+    out <- cache_hit_rows[, out_cols, drop = FALSE]
+    rownames(out) <- NULL
+    return(out)
   }
+
+  # ---- Chunked evaluation with incremental cache writes --------------------
+  # needs_eval is processed chunk_size accessions at a time (default 200L,
+  # matching this ecosystem's own previously-manual chunking convention --
+  # see AuditNCBI_Goal2_MatchCandidateScreen.R's header comment, written
+  # before this was automated). The persistent cache is written after EACH
+  # chunk, not once at the very end -- an interruption (crash, Ctrl+C, lost
+  # connection) after that point only loses whatever chunk was still in
+  # flight, not every accession successfully evaluated earlier in the same
+  # call. See @section Chunked evaluation and NCBI rate-limiting resilience
+  # below for the full rationale.
+  chunks <- split(needs_eval, ceiling(seq_along(needs_eval) / chunk_size))
+
+  all_computed_rows <- vector("list", length(chunks))
+  missing_acc <- character(0)
+  circuit_breaker_tripped <- FALSE
+  n_chunks_attempted <- 0L
+
+  for (ci in seq_along(chunks)) {
+    chunk_acc <- chunks[[ci]]
+    if (verbose && length(chunks) > 1L)
+      message(sprintf(
+        "evaluate_reference_accessions(): chunk %d/%d (%d accession(s))...",
+        ci, length(chunks), length(chunk_acc)
+      ))
+
+    chunk_result <- .evaluate_reference_accessions_chunk(
+      chunk_acc, rank_system = rank_system, method = method, database = database,
+      score_range = score_range, min_score = min_score, max_hits = max_hits,
+      ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
+      barcode_term = barcode_term,
+      max_consecutive_batch_failures = max_consecutive_batch_failures,
+      top_n = top_n, min_congruent_rank = min_congruent_rank,
+      submission_window = submission_window,
+      min_independent_partners = min_independent_partners,
+      hierarchy_incongruent_threshold = hierarchy_incongruent_threshold,
+      params_key = params_key, now = now, verbose = verbose
+    )
+    n_chunks_attempted <- ci
+    missing_acc <- union(missing_acc, chunk_result$missing_acc)
+
+    if (!is.null(chunk_result$computed_rows) && nrow(chunk_result$computed_rows) > 0L) {
+      all_computed_rows[[ci]] <- chunk_result$computed_rows
+      # ---- Incremental cache write: persist THIS chunk's results now,
+      # rather than waiting for every remaining chunk to also finish. ----
+      cache <- cache[!(cache$accession %in% chunk_result$computed_rows$accession &
+                       cache$params_key == params_key), , drop = FALSE]
+      cache <- rbind(cache, chunk_result$computed_rows[, names(cache), drop = FALSE])
+      .save_reference_accession_cache(cache_dir, cache)
+    }
+
+    if (isTRUE(chunk_result$circuit_breaker_tripped)) {
+      circuit_breaker_tripped <- TRUE
+      break  # stop processing further chunks -- see the chunk loop's own
+             # header comment; nothing past this point is worth submitting
+             # to a confirmed-throttled NCBI connection right now.
+    }
+  }
+
+  # Every accession in a chunk the loop never even reached (the tail after
+  # an early circuit-breaker stop) is "not evaluated this call" too --
+  # identical treatment to any other missing_acc, so it shows up as an NA
+  # row below and is retried on the next call, never silently dropped.
+  if (circuit_breaker_tripped && n_chunks_attempted < length(chunks)) {
+    missing_acc <- union(
+      missing_acc,
+      unlist(chunks[(n_chunks_attempted + 1L):length(chunks)], use.names = FALSE)
+    )
+  }
+
+  computed_rows <- Filter(Negate(is.null), all_computed_rows)
+  computed_rows <- if (length(computed_rows) > 0L) do.call(rbind, computed_rows) else NULL
 
   computed_out <- if (!is.null(computed_rows) && nrow(computed_rows) > 0L) {
     computed_rows[, out_cols, drop = FALSE]
@@ -1262,6 +1414,47 @@ evaluate_reference_accessions <- function(accessions,
   out$listed_taxon_is_species <- ifelse(
     is.na(out$listed_taxon), NA, TaxaTools::is_plausible_binomial(out$listed_taxon)
   )
+
+  # ---- Run summary: what happened this call, in one place -------------------
+  # See @section Chunked evaluation and NCBI rate-limiting resilience below.
+  # n_evaluated_this_call counts accessions that got a REAL verdict this
+  # call (present in computed_rows) -- NOT nrow(out), which also includes
+  # cache hits and NA missing_acc rows.
+  n_evaluated_this_call <- if (!is.null(computed_rows)) nrow(computed_rows) else 0L
+  n_total <- length(unique_acc)
+  n_resolved <- nrow(cache_hit_rows) + n_evaluated_this_call
+  pct_complete <- if (n_total > 0L) round(100 * n_resolved / n_total, 1) else 100
+  recommended_pause_minutes <- 15L
+
+  run_summary <- list(
+    n_total = n_total,
+    n_from_cache = nrow(cache_hit_rows),
+    n_evaluated_this_call = n_evaluated_this_call,
+    n_pending = length(missing_acc),
+    pct_complete = pct_complete,
+    circuit_breaker_tripped = circuit_breaker_tripped,
+    recommended_pause_minutes = if (circuit_breaker_tripped) recommended_pause_minutes else NA_integer_
+  )
+  attr(out, "run_summary") <- run_summary
+
+  if (circuit_breaker_tripped) {
+    message(sprintf(
+      paste0(
+        "\nevaluate_reference_accessions(): stopped early -- NCBI appears to be ",
+        "rate-limiting or CPU-throttling this connection.\n",
+        "  %d of %d accession(s) resolved this call (%.1f%% of the full request); ",
+        "%d still pending.\n",
+        "  Results so far are cached%s.\n",
+        "  Recommended: wait at least %d minutes, then call ",
+        "evaluate_reference_accessions() again with the SAME accessions and ",
+        "cache_dir -- already-cached accessions will not be re-BLASTed, only ",
+        "the %d still-pending one(s) will be attempted.\n"
+      ),
+      n_resolved, n_total, pct_complete, length(missing_acc),
+      if (!is.null(cache_dir)) sprintf(" at %s", cache_dir) else " (cache_dir = NULL -- NOT persisted; nothing will be resumable next call)",
+      recommended_pause_minutes, length(missing_acc)
+    ))
+  }
 
   out
 }

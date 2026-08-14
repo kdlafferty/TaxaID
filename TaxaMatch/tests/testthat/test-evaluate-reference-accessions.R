@@ -523,6 +523,160 @@ test_that("evaluate_reference_accessions() dedupes input accessions", {
 })
 
 # ------------------------------------------------------------------------------
+# Chunked evaluation + circuit-breaker interaction (2026-08-14)
+# ------------------------------------------------------------------------------
+
+test_that("evaluate_reference_accessions(chunk_size = 1) gives the same verdicts as an unchunked call", {
+  .mock_all({
+    out_chunked <- evaluate_reference_accessions(
+      c("ACC001", "ACC002", "ACC003"), cache_dir = NULL, verbose = FALSE, chunk_size = 1L
+    )
+  })
+  .mock_all({
+    out_unchunked <- evaluate_reference_accessions(
+      c("ACC001", "ACC002", "ACC003"), cache_dir = NULL, verbose = FALSE, chunk_size = Inf
+    )
+  })
+  out_chunked   <- out_chunked[order(out_chunked$accession), ]
+  out_unchunked <- out_unchunked[order(out_unchunked$accession), ]
+  rownames(out_chunked) <- NULL
+  rownames(out_unchunked) <- NULL
+  expect_equal(out_chunked$hierarchy_flag, out_unchunked$hierarchy_flag)
+  expect_equal(out_chunked$best_disagreeing_taxon, out_unchunked$best_disagreeing_taxon)
+  expect_equal(out_chunked$finest_common_rank, out_unchunked$finest_common_rank)
+})
+
+test_that("evaluate_reference_accessions() writes the persistent cache once per chunk, not once for the whole call", {
+  save_calls <- 0L
+  save_row_counts <- integer(0)
+  mock_save <- function(cache_dir, cache_df) {
+    save_calls <<- save_calls + 1L
+    save_row_counts <<- c(save_row_counts, nrow(cache_df))
+    invisible(NULL)
+  }
+  cache_dir_path <- withr::local_tempdir()
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records,
+    blast_sequences = .mock_blast_sequences,
+    .resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc,
+    .save_reference_accession_cache = mock_save,
+    .package = "TaxaMatch"
+  )
+  evaluate_reference_accessions(
+    c("ACC001", "ACC002", "ACC003"), cache_dir = cache_dir_path, verbose = FALSE,
+    chunk_size = 1L
+  )
+  # Once per chunk (all 3 accessions get a real verdict, including ACC003's
+  # genuine zero-hit "insufficient_independent_evidence") -- NOT once for
+  # the whole call. Cache grows monotonically as each chunk's own accession
+  # is added to the running accumulated cache before the next chunk writes.
+  expect_equal(save_calls, 3L)
+  expect_equal(save_row_counts, c(1L, 2L, 3L))
+})
+
+test_that("evaluate_reference_accessions() stops at a circuit-breaker trip: earlier chunks stay cached, later chunks are left pending", {
+  # 3 accessions, chunk_size = 1 (3 chunks): ACC001 succeeds (real fixture,
+  # congruent), ACC_TRIP's own blast_sequences() call reports a circuit-
+  # breaker trip, ACC_NEVER (the un-reached 3rd chunk) must never even be
+  # fetched or BLASTed.
+  trip_records <- rbind(
+    # ACC001's own row PLUS the HIT_* rows its real fixture BLAST hits point
+    # at (needed for the hit_meta/create_date lookup inside the chunk
+    # helper) -- only ACC_TRIP/ACC_NEVER are genuinely new here.
+    .records_fixture(),
+    data.frame(
+      accession = c("ACC_TRIP", "ACC_NEVER"),
+      sequence = c("GGGGCCCCAAAATTTT", "AAAACCCCGGGGTTTT"),
+      organism = c("Trippus interruptus", "Neverus reachedus"),
+      create_date = c("2021/01/01", "2021/02/01"),
+      stringsAsFactors = FALSE
+    )
+  )
+  fetch_log <- character(0)
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    fetch_log <<- c(fetch_log, accessions)
+    out <- trip_records[trip_records$accession %in% accessions, , drop = FALSE]
+    if (!want_sequence) out$sequence <- NA_character_
+    rownames(out) <- NULL
+    out
+  }
+  mock_tax <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    fx <- .query_taxonomy_fixture()
+    extra <- data.frame(
+      accession = "ACC_TRIP", kingdom = "Animalia", phylum = "Chordata",
+      class = "Actinopteri", order = "Testiformes", family = "Testifamilia",
+      genus = "Trippus", species = "Trippus interruptus",
+      stringsAsFactors = FALSE
+    )
+    fx <- rbind(fx, extra)
+    out <- fx[fx$accession %in% accessions, , drop = FALSE]
+    rownames(out) <- NULL
+    out
+  }
+  blast_log <- character(0)
+  mock_blast <- function(seq_df, ...) {
+    blast_log <<- c(blast_log, seq_df$asv_id)
+    if (identical(seq_df$asv_id, "ACC_TRIP")) {
+      res <- data.frame(observation_id = character(0), accession = character(0),
+                        score = numeric(0), query_coverage = numeric(0),
+                        stringsAsFactors = FALSE)
+      attr(res, "circuit_breaker_tripped") <- TRUE
+      attr(res, "failed_query_ids") <- "ACC_TRIP"
+      return(res)
+    }
+    fx <- .hits_fixture()
+    fx[fx$observation_id %in% seq_df$asv_id, , drop = FALSE]
+  }
+
+  cache_dir_path <- withr::local_tempdir()
+  local_mocked_bindings(
+    .fetch_reference_accession_records = mock_fetch,
+    blast_sequences = mock_blast,
+    .resolve_taxonomy_by_acc = mock_tax,
+    .package = "TaxaMatch"
+  )
+
+  out <- suppressWarnings(suppressMessages(evaluate_reference_accessions(
+    c("ACC001", "ACC_TRIP", "ACC_NEVER"), cache_dir = cache_dir_path,
+    verbose = FALSE, chunk_size = 1L
+  )))
+
+  expect_false("ACC_NEVER" %in% fetch_log)
+  expect_false("ACC_NEVER" %in% blast_log)
+
+  acc1 <- out[out$accession == "ACC001", ]
+  expect_equal(acc1$hierarchy_flag, "congruent")
+  trip <- out[out$accession == "ACC_TRIP", ]
+  expect_true(is.na(trip$hierarchy_flag))
+  never <- out[out$accession == "ACC_NEVER", ]
+  expect_true(is.na(never$hierarchy_flag))
+
+  summary <- attr(out, "run_summary")
+  expect_true(summary$circuit_breaker_tripped)
+  expect_equal(summary$n_evaluated_this_call, 1L)
+  expect_equal(summary$n_pending, 2L)
+
+  # ACC001's real verdict from the completed first chunk must have survived
+  # to disk even though the call as a whole stopped early on chunk 2.
+  reloaded <- TaxaMatch:::.load_reference_accession_cache(cache_dir_path)
+  expect_true("ACC001" %in% reloaded$accession)
+  expect_false("ACC_TRIP" %in% reloaded$accession)
+})
+
+test_that("evaluate_reference_accessions() run_summary reports 100% complete and no trip on an ordinary successful call", {
+  .mock_all({
+    out <- evaluate_reference_accessions(
+      c("ACC001", "ACC002"), cache_dir = NULL, verbose = FALSE
+    )
+  })
+  summary <- attr(out, "run_summary")
+  expect_false(summary$circuit_breaker_tripped)
+  expect_equal(summary$pct_complete, 100)
+  expect_equal(summary$n_pending, 0L)
+  expect_true(is.na(summary$recommended_pause_minutes))
+})
+
+# ------------------------------------------------------------------------------
 # Hybrid-labeled accessions -- maternal parent species proxy (2026-08-10)
 # ------------------------------------------------------------------------------
 # Reproduces the real GreatLakes case directly: NCBI's own taxonomy for a

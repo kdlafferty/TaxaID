@@ -611,6 +611,192 @@ test_that("blast_server_rejected is FALSE for an empty-hits (genuine no-match) r
 
 
 # ==============================================================================
+# .blast_remote() circuit breaker -- max_consecutive_batch_failures
+# Mocks .blast_submit()/.blast_poll() (the network boundary) and
+# .parse_blast_xml() (so a "successful" mocked response doesn't need to be
+# real, well-formed BLAST XML) -- same real captured CPU-budget rejection
+# text as .blast_server_rejected()'s own tests above, not a synthetic guess.
+# batch_size = 1 throughout so each batch is exactly one query, making
+# per-batch call counts directly interpretable.
+# ==============================================================================
+
+.reject_msg <- paste0(
+  "<Iteration_message>[blastsrv4.REAL]: Error: CPU usage limit was ",
+  "exceeded, resulting in SIGXCPU (24).</Iteration_message>"
+)
+
+.cb_seq_df <- function(n = 5L) {
+  data.frame(
+    asv_id = paste0("Q", seq_len(n)),
+    sequence = rep("ACGTACGTACGT", n),
+    stringsAsFactors = FALSE
+  )
+}
+
+# One-hit fixture returned by every mocked "successful" .parse_blast_xml()
+# call -- content doesn't matter for these tests, only that a batch
+# completed and produced something.
+.cb_one_hit <- data.frame(qseqid = "Q", sseqid = "HIT", pident = 99,
+                          stringsAsFactors = FALSE)
+
+test_that(".blast_remote() circuit breaker trips after 2 consecutive CPU-budget rejections (weighted 2x each)", {
+  submit_calls <- 0L
+  poll_calls   <- 0L
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
+    .blast_poll   = function(...) { poll_calls   <<- poll_calls   + 1L; .reject_msg },
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+
+  result <- suppressWarnings(TaxaMatch:::.blast_remote(
+    .cb_seq_df(5L), database = "nt", program = "blastn", megablast = FALSE,
+    max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+    verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
+  ))
+
+  # weight 2 per rejection: 2 + 2 = 4 >= 3 -- trips on the 2nd batch, the
+  # remaining 3 (never submitted) are reported as failed too.
+  expect_equal(submit_calls, 2L)
+  expect_equal(poll_calls, 2L)
+  expect_true(attr(result, "circuit_breaker_tripped"))
+  expect_setequal(attr(result, "failed_query_ids"), paste0("Q", 1:5))
+})
+
+test_that(".blast_remote() circuit breaker does NOT trip on 2 consecutive plain timeouts (weight 1 each, default threshold 3)", {
+  poll_calls <- 0L
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) "RID_FAKE",
+    .blast_poll = function(...) {
+      poll_calls <<- poll_calls + 1L
+      if (poll_calls <= 2L) NULL else "<BlastOutput></BlastOutput>"  # timeout, timeout, then success
+    },
+    .parse_blast_xml = function(...) .cb_one_hit,
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+
+  result <- suppressWarnings(TaxaMatch:::.blast_remote(
+    .cb_seq_df(3L), database = "nt", program = "blastn", megablast = FALSE,
+    max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+    verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
+  ))
+
+  expect_false(attr(result, "circuit_breaker_tripped"))
+  # 3 initial batches (breaker never reached) + the pre-existing, unchanged
+  # retry-on-failure pass for the 2 that timed out (both succeed on retry,
+  # since the mock returns success for any call beyond the 2nd regardless
+  # of which pass it's in) -- confirms the ordinary non-tripped retry
+  # mechanism still runs exactly as before this feature existed.
+  expect_equal(poll_calls, 5L)
+  expect_null(attr(result, "failed_query_ids"))  # both timeouts recovered on retry
+})
+
+test_that(".blast_remote() circuit breaker trips after 3 consecutive plain timeouts", {
+  submit_calls <- 0L
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
+    .blast_poll = function(...) NULL,  # every batch times out
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+
+  result <- suppressWarnings(TaxaMatch:::.blast_remote(
+    .cb_seq_df(5L), database = "nt", program = "blastn", megablast = FALSE,
+    max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+    verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
+  ))
+
+  expect_equal(submit_calls, 3L)  # trips exactly at the 3rd consecutive timeout
+  expect_true(attr(result, "circuit_breaker_tripped"))
+  expect_setequal(attr(result, "failed_query_ids"), paste0("Q", 1:5))
+})
+
+test_that(".blast_remote() circuit breaker counter resets on a successful batch (non-consecutive failures don't accumulate)", {
+  poll_calls <- 0L
+  # Pattern: fail, fail, SUCCESS, fail, fail, fail -- trips at the 6th
+  # batch (3rd of the second run), not the 5th (would be a 4th cumulative
+  # failure if the counter didn't reset on the successful 3rd batch).
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) "RID_FAKE",
+    .blast_poll = function(...) {
+      poll_calls <<- poll_calls + 1L
+      if (poll_calls == 3L) "<BlastOutput></BlastOutput>" else NULL
+    },
+    .parse_blast_xml = function(...) .cb_one_hit,
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+
+  result <- suppressWarnings(TaxaMatch:::.blast_remote(
+    .cb_seq_df(6L), database = "nt", program = "blastn", megablast = FALSE,
+    max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+    verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
+  ))
+
+  expect_equal(poll_calls, 6L)
+  expect_true(attr(result, "circuit_breaker_tripped"))
+  # Q1/Q2 failed pre-reset, Q3 succeeded, Q4-Q6 failed post-reset and tripped --
+  # Q3 must NOT appear in failed_query_ids.
+  expect_setequal(attr(result, "failed_query_ids"), c("Q1", "Q2", "Q4", "Q5", "Q6"))
+})
+
+test_that(".blast_remote() skips the retry pass entirely once the circuit breaker trips", {
+  submit_calls <- 0L
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
+    .blast_poll   = function(...) .reject_msg,
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+
+  suppressWarnings(TaxaMatch:::.blast_remote(
+    .cb_seq_df(5L), database = "nt", program = "blastn", megablast = FALSE,
+    max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+    verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
+  ))
+
+  # 2 initial submissions (trips on the 2nd) + 0 retry submissions -- if the
+  # retry pass ran despite tripping, this would be higher.
+  expect_equal(submit_calls, 2L)
+})
+
+test_that(".blast_remote(max_consecutive_batch_failures = Inf) disables the breaker and the retry pass still runs", {
+  submit_calls <- 0L
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
+    .blast_poll   = function(...) .reject_msg,  # every batch rejected, every retry too
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+
+  result <- suppressWarnings(TaxaMatch:::.blast_remote(
+    .cb_seq_df(3L), database = "nt", program = "blastn", megablast = FALSE,
+    max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+    verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = Inf
+  ))
+
+  expect_false(attr(result, "circuit_breaker_tripped"))
+  # 3 initial submissions (never trips) + 3 retry submissions (batch_size
+  # can't halve below 1, so each failed batch retries as itself once) --
+  # confirms the existing retry-on-failure behavior is fully preserved when
+  # the breaker is disabled.
+  expect_equal(submit_calls, 6L)
+  expect_setequal(attr(result, "failed_query_ids"), paste0("Q", 1:3))
+})
+
+test_that("blast_sequences() validates max_consecutive_batch_failures", {
+  seq_df <- data.frame(asv_id = "A1", sequence = "ACGT", stringsAsFactors = FALSE)
+  expect_error(blast_sequences(seq_df, max_consecutive_batch_failures = 0),
+              "max_consecutive_batch_failures")
+  expect_error(blast_sequences(seq_df, max_consecutive_batch_failures = NA),
+              "max_consecutive_batch_failures")
+  expect_error(blast_sequences(seq_df, max_consecutive_batch_failures = "3"),
+              "max_consecutive_batch_failures")
+})
+
+
+# ==============================================================================
 # .parse_taxonomy_xml() — XML parsing
 # ==============================================================================
 

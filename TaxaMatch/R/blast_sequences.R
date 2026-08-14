@@ -144,6 +144,28 @@ NULL
 #'   address's remote-BLAST usage; the real remedy is fewer/smaller/less
 #'   frequent real calls (or \code{method = "local"} for a large batch job),
 #'   not a longer wait.
+#' @param max_consecutive_batch_failures Integer. Remote BLAST only. Default
+#'   \code{3L}. A circuit breaker, distinct from \code{poll_max_wait} --
+#'   that parameter bounds how long ONE batch is allowed to take;
+#'   this bounds how many CONSECUTIVE batches are allowed to fail before
+#'   concluding the problem is systemic (sustained NCBI rate-limiting or
+#'   CPU-budget throttling), not one unlucky batch, and stopping rather than
+#'   continuing to submit batches that are likely doomed too. Without this,
+#'   a sustained throttling episode means every remaining batch still pays
+#'   its own full \code{poll_max_wait} before giving up -- for a large run
+#'   (e.g. 60 batches at the default \code{batch_size}), that is many hours
+#'   of guaranteed-doomed work before the function ever returns. A
+#'   \code{.blast_server_rejected()} rejection counts double toward this
+#'   threshold (a real, unambiguous throttle signal from NCBI itself); a
+#'   plain poll timeout or submission failure counts once (could just be one
+#'   slow/large batch). The counter resets to 0 on any batch that completes
+#'   normally (including a real zero-hit result). When tripped: no further
+#'   batches are submitted, every not-yet-attempted batch's queries are
+#'   added to \code{failed_query_ids} (see below) alongside whatever had
+#'   already failed, and the halved-batch-size retry pass is skipped
+#'   entirely (retrying under a confirmed-systemic throttle wastes real NCBI
+#'   time on batches already judged doomed). Set to \code{Inf} to disable
+#'   and restore the old unconditional-retry-every-batch behavior.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
 #' @return A data frame with one row per query x hit, containing:
@@ -192,6 +214,18 @@ NULL
 #'   \code{out} at all. Present regardless of which return path this
 #'   function takes, including every early-return-on-empty-result branch.
 #'   See \code{poll_max_wait}'s own documentation.
+#'
+#'   \code{attr(out, "circuit_breaker_tripped")} (logical, always present for
+#'   remote BLAST, \code{FALSE} for local) -- \code{TRUE} when
+#'   \code{max_consecutive_batch_failures} was reached and remaining batches
+#'   were skipped rather than attempted. Every skipped query's \code{asv_id}
+#'   is included in \code{failed_query_ids} either way, so a caller that
+#'   only checks \code{failed_query_ids} still behaves correctly (nothing is
+#'   silently miscoded as "searched, found nothing") -- this attribute is
+#'   for a caller that wants to distinguish "sustained throttling, stop
+#'   trying more of this list right now" from an isolated batch failure and
+#'   react differently (e.g. \code{evaluate_reference_accessions()} uses it
+#'   to stop processing further chunks and surface an actionable message).
 #'
 #' @details
 #' ## Score window algorithm
@@ -326,6 +360,7 @@ blast_sequences <- function(seq_df,
                             resolve_taxonomy = TRUE,
                             resolve_location = FALSE,
                             poll_max_wait = 1800,
+                            max_consecutive_batch_failures = 3L,
                             verbose = TRUE) {
 
   # --- Input validation -------------------------------------------------------
@@ -382,6 +417,10 @@ blast_sequences <- function(seq_df,
   if (!is.numeric(batch_size) || length(batch_size) != 1L ||
       is.na(batch_size) || batch_size < 1L)
     stop("batch_size must be a positive integer")
+  if (!is.numeric(max_consecutive_batch_failures) ||
+      length(max_consecutive_batch_failures) != 1L ||
+      is.na(max_consecutive_batch_failures) || max_consecutive_batch_failures < 1L)
+    stop("max_consecutive_batch_failures must be a positive number (Inf to disable)")
 
   # Empty-string env-var defaults (email/ncbi_api_key) mean "not supplied".
   if (identical(email, "")) email <- NULL
@@ -423,7 +462,8 @@ blast_sequences <- function(seq_df,
       )
     raw_hits <- .blast_remote(
       seq_df, database, program, megablast, max_target_seqs, batch_size,
-      email, ncbi_api_key, verbose, max_wait = poll_max_wait
+      email, ncbi_api_key, verbose, max_wait = poll_max_wait,
+      max_consecutive_batch_failures = max_consecutive_batch_failures
     )
   } else {
     raw_hits <- .blast_local(
@@ -438,11 +478,13 @@ blast_sequences <- function(seq_df,
   # queries' BLAST search never completed" apart from "completed and found
   # nothing" -- see poll_max_wait's own documentation for why this matters.
   failed_query_ids <- attr(raw_hits, "failed_query_ids")
+  circuit_breaker_tripped <- isTRUE(attr(raw_hits, "circuit_breaker_tripped"))
 
   if (nrow(raw_hits) == 0L) {
     warning("BLAST returned no hits")
     empty <- .empty_blast_result(resolve_taxonomy)
     attr(empty, "failed_query_ids") <- failed_query_ids
+    attr(empty, "circuit_breaker_tripped") <- circuit_breaker_tripped
     return(empty)
   }
 
@@ -473,6 +515,7 @@ blast_sequences <- function(seq_df,
       warning("All hits removed by filtering")
       empty <- .empty_blast_result(resolve_taxonomy)
       attr(empty, "failed_query_ids") <- failed_query_ids
+      attr(empty, "circuit_breaker_tripped") <- circuit_breaker_tripped
       return(empty)
     }
 
@@ -506,6 +549,7 @@ blast_sequences <- function(seq_df,
     warning("All hits removed by filtering")
     empty <- .empty_blast_result(resolve_taxonomy)
     attr(empty, "failed_query_ids") <- failed_query_ids
+    attr(empty, "circuit_breaker_tripped") <- circuit_breaker_tripped
     return(empty)
   }
 
@@ -591,6 +635,7 @@ blast_sequences <- function(seq_df,
     n_samples = length(unique(out$observation_id))
   )
   attr(out, "failed_query_ids") <- failed_query_ids
+  attr(out, "circuit_breaker_tripped") <- circuit_breaker_tripped
 
   out
 }
@@ -600,9 +645,22 @@ blast_sequences <- function(seq_df,
 # Internal: Remote NCBI BLAST via URL API
 # ==============================================================================
 
+#' Thin wrapper around Sys.sleep() for NCBI rate-limit pauses
+#'
+#' Exists purely so tests can mock this one call (via
+#' \code{testthat::local_mocked_bindings()}) to a no-op instead of actually
+#' waiting out real 11-second NCBI rate-limit pauses -- a circuit-breaker
+#' test exercising several consecutive batches would otherwise cost real
+#' wall-clock minutes for no real verification benefit. Production behavior
+#' is unchanged: a real \code{Sys.sleep()} call, same duration, every time.
+#' @noRd
+.blast_rate_limit_sleep <- function(seconds) {
+  Sys.sleep(seconds)
+}
+
 .blast_remote <- function(seq_df, database, program, megablast, max_target_seqs,
                           batch_size, email, ncbi_api_key, verbose, entrez_query = NULL,
-                          max_wait = 1800) {
+                          max_wait = 1800, max_consecutive_batch_failures = 3L) {
   .check_pkg("httr2")
 
   base_url <- "https://blast.ncbi.nlm.nih.gov/blast/Blast.cgi"
@@ -613,7 +671,15 @@ blast_sequences <- function(seq_df,
 
   all_hits <- vector("list", length(batches))
   failed_batches <- integer(0)
-  failed_query_ids <- character(0)
+  # Circuit breaker: weighted count of CONSECUTIVE batch failures (reset to
+  # 0 on any batch that completes normally). A .blast_server_rejected()
+  # rejection -- a real, unambiguous throttle signal from NCBI itself --
+  # counts double toward max_consecutive_batch_failures; a plain poll
+  # timeout or submission failure counts once, since either could just be
+  # one unusually slow/large batch rather than sustained throttling. See
+  # max_consecutive_batch_failures's own roxygen for the full rationale.
+  consec_failure_score <- 0
+  breaker_tripped <- FALSE
 
   for (i in seq_along(batches)) {
     idx <- batches[[i]]
@@ -631,55 +697,98 @@ blast_sequences <- function(seq_df,
     rid <- .blast_submit(base_url, query_str, database, program, megablast,
                          max_target_seqs, email, ncbi_api_key, entrez_query)
 
+    failure_weight <- 0
+
     if (is.null(rid)) {
       warning(sprintf("Batch %d/%d: BLAST submission failed. Skipping.", i, length(batches)))
       failed_batches <- c(failed_batches, i)
-      next
+      failure_weight <- 1
+
+    } else {
+      if (verbose) message(sprintf("  RID: %s -- polling for results...", rid))
+
+      # --- Poll (GET) -----------------------------------------------------------
+      result_text <- .blast_poll(base_url, rid, verbose, max_wait = max_wait)
+
+      if (is.null(result_text)) {
+        warning(sprintf("Batch %d/%d: No results retrieved (RID: %s). Skipping.", i, length(batches), rid))
+        failed_batches <- c(failed_batches, i)
+        failure_weight <- 1
+
+      } else if (.blast_server_rejected(result_text)) {
+        # NCBI can report Status=READY (a real, successfully-retrieved XML
+        # document) while having aborted the actual computation server-side
+        # for exceeding a CPU-time fair-use budget -- see
+        # .blast_server_rejected()'s own documentation for the real case
+        # that found this. Treated as a batch failure (same as a poll
+        # timeout), not "searched, found nothing".
+        warning(sprintf(
+          "Batch %d/%d: NCBI rejected this search for exceeding its server CPU budget (RID: %s). Skipping.",
+          i, length(batches), rid
+        ))
+        failed_batches <- c(failed_batches, i)
+        failure_weight <- 2
+
+      } else {
+        # --- Parse XML output -----------------------------------------------------
+        hits <- .parse_blast_xml(result_text)
+        if (!is.null(hits) && nrow(hits) > 0L) {
+          all_hits[[i]] <- hits
+        }
+      }
     }
 
-    if (verbose) message(sprintf("  RID: %s -- polling for results...", rid))
+    consec_failure_score <- if (failure_weight > 0) consec_failure_score + failure_weight else 0
 
-    # --- Poll (GET) -----------------------------------------------------------
-    result_text <- .blast_poll(base_url, rid, verbose, max_wait = max_wait)
-
-    if (is.null(result_text)) {
-      warning(sprintf("Batch %d/%d: No results retrieved (RID: %s). Skipping.", i, length(batches), rid))
-      failed_batches <- c(failed_batches, i)
-      next
-    }
-
-    # NCBI can report Status=READY (a real, successfully-retrieved XML
-    # document) while having aborted the actual computation server-side for
-    # exceeding a CPU-time fair-use budget -- see .blast_server_rejected()'s
-    # own documentation for the real case that found this. Treated as a
-    # batch failure (same as a poll timeout), not "searched, found nothing".
-    if (.blast_server_rejected(result_text)) {
-      warning(sprintf(
-        "Batch %d/%d: NCBI rejected this search for exceeding its server CPU budget (RID: %s). Skipping.",
-        i, length(batches), rid
-      ))
-      failed_batches <- c(failed_batches, i)
-      next
-    }
-
-    # --- Parse XML output -----------------------------------------------------
-    hits <- .parse_blast_xml(result_text)
-    if (!is.null(hits) && nrow(hits) > 0L) {
-      all_hits[[i]] <- hits
+    if (consec_failure_score >= max_consecutive_batch_failures) {
+      breaker_tripped <- TRUE
+      n_remaining <- length(batches) - i
+      if (verbose)
+        message(sprintf(
+          paste0(
+            "NCBI appears to be rate-limiting or CPU-throttling this IP ",
+            "(weighted %g consecutive batch failure(s), threshold %g) -- ",
+            "stopping after batch %d/%d rather than continuing to submit ",
+            "batches likely to fail the same way. %d remaining batch(es) ",
+            "will be reported as not attempted, not as a real verdict."
+          ),
+          consec_failure_score, max_consecutive_batch_failures, i, length(batches),
+          n_remaining
+        ))
+      break
     }
 
     # Rate limiting between batches
     if (i < length(batches)) {
       if (verbose) message("  Waiting 11 seconds (NCBI rate limit)...")
-      Sys.sleep(11)
+      .blast_rate_limit_sleep(11)
     }
   }
 
+  # A batch never attempted at all (the tail skipped when the circuit
+  # breaker tripped) must be treated identically to a batch that WAS
+  # attempted and failed -- both mean "no real verdict for these queries
+  # this call" -- so nothing downstream (e.g.
+  # evaluate_reference_accessions()) can mistake "never even tried" for a
+  # genuine zero-hit result and miscache it as one.
+  if (breaker_tripped && i < length(batches)) {
+    failed_batches <- union(failed_batches, (i + 1L):length(batches))
+  }
+  failed_query_ids <- if (length(failed_batches) > 0L) {
+    unique(unlist(lapply(failed_batches, function(bi) seq_df$asv_id[batches[[bi]]])))
+  } else {
+    character(0)
+  }
+
   # --- Retry failed batches with halved batch size ----------------------------
-  # NCBI poll timeouts are the most common failure mode for large batches.
+  # Skipped entirely once the circuit breaker has tripped -- retrying under
+  # a confirmed-systemic throttle would just re-submit batches already
+  # judged doomed, spending more real NCBI time to relearn the same
+  # conclusion. NCBI poll timeouts are the most common failure mode for
+  # large batches in the NON-tripped case.
   # Re-submitting with fewer sequences per batch reduces the server-side
   # processing time and avoids the 10-minute poll ceiling.
-  if (length(failed_batches) > 0L) {
+  if (!breaker_tripped && length(failed_batches) > 0L) {
     retry_batch_size <- max(1L, batch_size %/% 2L)
     if (verbose)
       message(sprintf(
@@ -708,7 +817,7 @@ blast_sequences <- function(seq_df,
             fi, ri, nrow(rb_df)
           ))
 
-        Sys.sleep(11)  # rate-limit before retry submission
+        .blast_rate_limit_sleep(11)  # rate-limit before retry submission
         rid <- .blast_submit(base_url, query_str, database, program, megablast,
                              max_target_seqs, email, ncbi_api_key, entrez_query)
 
@@ -749,11 +858,21 @@ blast_sequences <- function(seq_df,
     failed_query_ids <- unique(still_failed_ids)
   }
 
-  if (length(failed_batches) > 0L) {
+  if (length(failed_batches) > 0L && !breaker_tripped) {
     warning(sprintf(
       "%d of %d original BLAST batch(es) could not be recovered: batches %s. ",
       length(failed_batches), length(batches),
       paste(failed_batches, collapse = ", ")
+    ))
+  } else if (breaker_tripped) {
+    warning(sprintf(
+      paste0(
+        "Stopped early after sustained BLAST batch failures (circuit breaker): ",
+        "%d of %d batch(es) were never attempted or could not be recovered. ",
+        "This usually means NCBI is rate-limiting or CPU-throttling this IP -- ",
+        "consider pausing before the next call."
+      ),
+      length(failed_batches), length(batches)
     ))
   }
 
@@ -761,6 +880,7 @@ blast_sequences <- function(seq_df,
   result <- if (length(all_hits) == 0L) .empty_raw_hits() else do.call(rbind, all_hits)
   attr(result, "failed_batches") <- if (length(failed_batches) > 0L) failed_batches else NULL
   attr(result, "failed_query_ids") <- if (length(failed_query_ids) > 0L) failed_query_ids else NULL
+  attr(result, "circuit_breaker_tripped") <- breaker_tripped
   result
 }
 

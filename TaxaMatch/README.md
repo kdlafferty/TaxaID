@@ -394,6 +394,31 @@ record's own annotated `/gene`/`/product` qualifier actually match the marker
 an evaluation was scoped to (catches e.g. a 16S sequence deposited under a
 12S-scoped audit).
 
+**A large accession list is resilient to NCBI rate-limiting/CPU-budget
+throttling by default.** `evaluate_reference_accessions()` processes
+accessions `chunk_size` at a time (default `200L`), writing the persistent
+cache after each chunk rather than once at the end -- an interruption only
+loses whatever chunk was still in flight. If `blast_sequences()`'s own
+circuit breaker (`max_consecutive_batch_failures`, default `3L`) detects
+sustained batch failures, `evaluate_reference_accessions()` stops itself
+early rather than grinding through every remaining accession at up to 30
+minutes per doomed BLAST batch -- everything evaluated so far stays cached,
+and a `message()` reports how much completed and recommends a pause before
+calling the exact same command again to resume (already-cached accessions
+are read straight from cache, not re-BLASTed):
+
+``` r
+qc <- evaluate_reference_accessions(large_accession_list, cache_dir = my_cache_dir)
+# if NCBI throttles partway through:
+#   evaluate_reference_accessions(): stopped early -- NCBI appears to be
+#   rate-limiting or CPU-throttling this connection.
+#     412 of 1183 accession(s) resolved this call (34.8%); 771 still pending.
+#     ...
+#   Recommended: wait at least 15 minutes, then call evaluate_reference_
+#   accessions() again with the SAME accessions and cache_dir.
+attr(qc, "run_summary")  # n_total, n_evaluated_this_call, pct_complete, ...
+```
+
 **LLM second-look review** — `review_flagged_accessions()` sends the
 flagged/borderline subset (`hierarchy_flag %in% c("incongruent",
 "insufficient_independent_evidence")` plus non-species-resolved accessions)

@@ -25,6 +25,7 @@ blast_sequences(
   resolve_taxonomy = TRUE,
   resolve_location = FALSE,
   poll_max_wait = 1800,
+  max_consecutive_batch_failures = 3L,
   verbose = TRUE
 )
 }
@@ -175,6 +176,29 @@ address's remote-BLAST usage; the real remedy is fewer/smaller/less
 frequent real calls (or \code{method = "local"} for a large batch job),
 not a longer wait.}
 
+\item{max_consecutive_batch_failures}{Integer. Remote BLAST only. Default
+\code{3L}. A circuit breaker, distinct from \code{poll_max_wait} --
+that parameter bounds how long ONE batch is allowed to take;
+this bounds how many CONSECUTIVE batches are allowed to fail before
+concluding the problem is systemic (sustained NCBI rate-limiting or
+CPU-budget throttling), not one unlucky batch, and stopping rather than
+continuing to submit batches that are likely doomed too. Without this,
+a sustained throttling episode means every remaining batch still pays
+its own full \code{poll_max_wait} before giving up -- for a large run
+(e.g. 60 batches at the default \code{batch_size}), that is many hours
+of guaranteed-doomed work before the function ever returns. A
+\code{.blast_server_rejected()} rejection counts double toward this
+threshold (a real, unambiguous throttle signal from NCBI itself); a
+plain poll timeout or submission failure counts once (could just be one
+slow/large batch). The counter resets to 0 on any batch that completes
+normally (including a real zero-hit result). When tripped: no further
+batches are submitted, every not-yet-attempted batch's queries are
+added to \code{failed_query_ids} (see below) alongside whatever had
+already failed, and the halved-batch-size retry pass is skipped
+entirely (retrying under a confirmed-systemic throttle wastes real NCBI
+time on batches already judged doomed). Set to \code{Inf} to disable
+and restore the old unconditional-retry-every-batch behavior.}
+
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
 \value{
@@ -224,6 +248,18 @@ completed and genuinely found nothing, which simply has no rows in
 \code{out} at all. Present regardless of which return path this
 function takes, including every early-return-on-empty-result branch.
 See \code{poll_max_wait}'s own documentation.
+
+\code{attr(out, "circuit_breaker_tripped")} (logical, always present for
+remote BLAST, \code{FALSE} for local) -- \code{TRUE} when
+\code{max_consecutive_batch_failures} was reached and remaining batches
+were skipped rather than attempted. Every skipped query's \code{asv_id}
+is included in \code{failed_query_ids} either way, so a caller that
+only checks \code{failed_query_ids} still behaves correctly (nothing is
+silently miscoded as "searched, found nothing") -- this attribute is
+for a caller that wants to distinguish "sustained throttling, stop
+trying more of this list right now" from an isolated batch failure and
+react differently (e.g. \code{evaluate_reference_accessions()} uses it
+to stop processing further chunks and surface an actionable message).
 }
 \description{
 Searches query sequences against NCBI nucleotide (remote) or a local BLAST

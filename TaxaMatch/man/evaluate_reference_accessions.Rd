@@ -21,6 +21,8 @@ evaluate_reference_accessions(
   ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
   poll_max_wait = 1800,
   barcode_term = NULL,
+  chunk_size = 200L,
+  max_consecutive_batch_failures = 3L,
   verbose = TRUE
 )
 }
@@ -100,6 +102,18 @@ BLASTed as before. \code{NULL} (default) submits every sequence at full
 length, unchanged from prior behavior.
 }}
 
+\item{chunk_size}{Integer (default \code{200L}). Accessions needing real
+evaluation are processed this many at a time, with the persistent
+cache written after EACH chunk -- see \verb{@section Chunked evaluation and NCBI rate-limiting resilience} below. \code{Inf} restores the pre-2026-08-14
+single-shot behavior (one chunk covering every accession, cache written
+only once at the very end).}
+
+\item{max_consecutive_batch_failures}{Numeric (default \code{3L}). Forwarded
+to \code{blast_sequences()} -- see that function's own documentation for the
+full circuit-breaker mechanism (a \code{.blast_server_rejected()} rejection
+counts double toward this threshold; a plain poll timeout counts once).
+\code{Inf} disables it.}
+
 \item{verbose}{Logical (default \code{TRUE}). Print progress messages.}
 }
 \value{
@@ -178,6 +192,11 @@ internally self-consistent, so this can be \code{FALSE} even when
 (never \code{FALSE} -- a fetch failure means "not evaluated," not
 "evaluated and found non-species").}
 }
+
+Also carries \code{attr(result, "run_summary")} -- a list (\code{n_total},
+\code{n_from_cache}, \code{n_evaluated_this_call}, \code{n_pending}, \code{pct_complete},
+\code{circuit_breaker_tripped}, \code{recommended_pause_minutes}) summarizing
+what happened this call -- see \verb{@section Chunked evaluation and NCBI rate-limiting resilience} below.
 }
 \description{
 For each accession, BLASTs its own sequence against a broad,
@@ -252,6 +271,33 @@ as stale (recomputed) if any parameter that affects the verdict itself
 \code{hierarchy_incongruent_threshold}, \code{min_independent_partners},
 \code{score_range}, \code{min_score}, \code{max_hits}, \code{method}, \code{database}) differs from
 the call that produced it.
+}
+
+\section{Chunked evaluation and NCBI rate-limiting resilience (2026-08-14)}{
+
+A large accession list is evaluated \code{chunk_size} accessions at a time,
+with the persistent cache written after EACH chunk rather than once at
+the very end. Combined with \code{blast_sequences()}'s own circuit breaker
+(\code{max_consecutive_batch_failures} -- stops submitting further BLAST
+batches once several in a row have failed, rather than continuing to pay
+up to \code{poll_max_wait} for each of dozens of doomed batches), this means a
+sustained NCBI rate-limiting or CPU-budget-throttling episode is detected
+and this function stops itself early, rather than grinding through the
+full accession list at up to 30 minutes per doomed batch. When this
+happens: every accession successfully evaluated in an EARLIER chunk this
+call is already safely cached (nothing already computed is lost);
+\code{attr(result, "run_summary")$circuit_breaker_tripped} is \code{TRUE}; and an
+actionable \code{message()} reports how many accessions were resolved this
+call (as a percentage), how many are still pending, and recommends a
+pause before calling \code{evaluate_reference_accessions()} again with the
+\emph{same} accessions and \code{cache_dir} -- already-cached accessions are read
+straight from the cache (no re-BLAST), so a resumed call only pays for
+what's still genuinely outstanding. Before this existed, the documented
+workaround for a large real run (e.g.
+\code{AuditNCBI_Goal2_MatchCandidateScreen.R}, a real external GreatLakes
+workflow) was to manually pre-split the accession list into chunks of
+~200 and call this function once per chunk -- \code{chunk_size} automates
+exactly that.
 }
 
 \section{Hybrid-labeled accessions (2026-08-10)}{

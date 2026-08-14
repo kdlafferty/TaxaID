@@ -351,6 +351,16 @@ LLM expert review.
 -   **Internet access** is required for GBIF queries, NCBI BLAST, and
     LLM API calls. Offline operation is possible when using cached data
     and local Ollama models.
+-   **NCBI rate limits**: a large remote-BLAST run (e.g.
+    `TaxaMatch::evaluate_reference_accessions()` over hundreds of reference
+    accessions) can hit NCBI's own fair-use rate limiting or CPU-budget
+    throttling partway through. `blast_sequences()`'s circuit breaker
+    (`max_consecutive_batch_failures`) detects sustained failures and stops
+    early rather than waiting out every remaining doomed batch;
+    `evaluate_reference_accessions()` caches its results incrementally
+    (`chunk_size`) so an interrupted or throttled run only loses whatever
+    chunk was in flight, and reports a recommended pause before resuming
+    the same call.
 -   **No specialized hardware** is required. All packages run on
     standard desktop hardware (macOS, Linux, or Windows) with R >=
     4.1.0.
