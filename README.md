@@ -360,7 +360,10 @@ LLM expert review.
     `evaluate_reference_accessions()` caches its results incrementally
     (`chunk_size`) so an interrupted or throttled run only loses whatever
     chunk was in flight, and reports a recommended pause before resuming
-    the same call.
+    the same call. `TaxaMatch::review_flagged_accessions()`'s LLM second-look
+    review is real, billed API cost too, and caches on the same principle
+    (`cache_dir`) — re-running it only pays for accessions whose inputs
+    genuinely changed since the last review, not the whole set again.
 -   **No specialized hardware** is required. All packages run on
     standard desktop hardware (macOS, Linux, or Windows) with R >=
     4.1.0.

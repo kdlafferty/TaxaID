@@ -8,6 +8,7 @@ review_flagged_accessions(
   evaluated_df,
   hierarchy_flags = c("incongruent", "insufficient_independent_evidence"),
   include_non_species_resolved = TRUE,
+  cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   taxa_per_call = 10L,
   max_tokens = NULL,
@@ -41,6 +42,15 @@ evaluation guide documents separately (see its own "listed_taxon_is_
 species = FALSE" section). Silently ignored if \code{listed_taxon_is_species}
 is absent from \code{evaluated_df}.}
 
+\item{cache_dir}{Character or \code{NULL}. Default
+\code{tools::R_user_dir("TaxaMatch", "cache")} (same default/convention as
+\code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} and \code{investigate_flagged_accession()}).
+Persistent, accession-keyed cache of LLM reviews -- an accession already
+reviewed with UNCHANGED inputs (see \verb{@section Caching} below) is served
+from cache instead of making a real LLM call. Set \code{NULL} to disable
+caching entirely (every call re-reviews every in-scope accession, the
+pre-2026-08-14 behavior).}
+
 \item{llm_fn}{Function. LLM provider function with signature
 \verb{function(prompt_str, ...)}. Default \code{TaxaTools::call_api}.
 \strong{Known footgun:} \code{call_api()}'s provider auto-detection is set up
@@ -70,7 +80,7 @@ calls.}
 \item{verbose}{Logical (default \code{TRUE}). Print progress messages.}
 }
 \value{
-\code{evaluated_df} with 3 columns appended (\code{NA} for out-of-scope
+\code{evaluated_df} with 4 columns appended (\code{NA} for out-of-scope
 rows):
 \describe{
 \item{\code{accession_likely_explanation}}{One of \code{"genuine_mislabel"},
@@ -80,11 +90,16 @@ categorization of WHY the accession was flagged, never a re-decided
 \code{hierarchy_flag}.}
 \item{\code{accession_review_confidence}}{\code{"high"} / \code{"moderate"} / \code{"low"}.}
 \item{\code{accession_review_comment}}{Free-text note, or \code{NA}.}
+\item{\code{accession_review_cache_hit}}{Logical. \code{TRUE} if this row's review
+was read from \code{cache_dir} rather than freshly generated this call
+(always \code{FALSE}, never \code{NA}, for an in-scope row when
+\code{cache_dir = NULL}). \code{NA} for an out-of-scope row.}
 }
 Also carries \code{attr(result, "llm_prompts")} -- a named list of the exact
-prompt string sent for each LLM call (named by batch number, with an
-\code{"a"}/\code{"b"} suffix per retry sub-batch split), matching
-\code{review_assignments()}'s own convention.
+prompt string sent for each LLM call actually made this call (named by
+batch number, with an \code{"a"}/\code{"b"} suffix per retry sub-batch split),
+matching \code{review_assignments()}'s own convention. A batch entirely served
+from cache makes no LLM call at all and so has no entry here.
 }
 \description{
 Sends \code{evaluate_reference_accessions()}'s flagged/borderline rows to an LLM
@@ -152,6 +167,24 @@ Only reviews rows matching \code{hierarchy_flags}/\code{include_non_species_reso
 population this reentry prompt was written against, the default scope
 selects 8 + 17 + 57 = 82 of 1,183 accessions (~7\%), a tractable LLM batch
 size -- see the reentry prompt's own "Cost/scale" discussion.
+}
+
+\section{Caching}{
+
+An in-scope accession is served from \code{cache_dir} instead of a real LLM
+call when a cached review exists AND its stored content fingerprint
+(built from \code{listed_taxon}/\code{hierarchy_flag}/\code{finest_common_rank}/the
+identity diagnostics/\code{taxonomy_resolution_source}/
+\code{listed_taxon_is_species}/the independence-filtering counts -- see
+\code{.accession_review_fingerprint()}) matches the CURRENT row in
+\code{evaluated_df}. Re-running \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} on an
+accession and getting a genuinely different verdict or diagnostic value
+therefore triggers a fresh review automatically -- the cache never masks
+a real change, unlike a plain accession-keyed or TTL-based cache would.
+The cache is written incrementally, once per LLM batch actually sent
+(matching \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s own per-chunk cache-write
+design) -- an interruption partway through a large review run only loses
+whatever batch was still in flight, not every batch completed so far.
 }
 
 \seealso{

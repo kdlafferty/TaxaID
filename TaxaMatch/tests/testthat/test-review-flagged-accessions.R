@@ -51,7 +51,7 @@ test_that("review_flagged_accessions() warns on duplicate accessions", {
     ))
   }
   expect_warning(
-    review_flagged_accessions(dup_df, llm_fn = stub, verbose = FALSE),
+    review_flagged_accessions(dup_df, cache_dir = NULL, llm_fn = stub, verbose = FALSE),
     "duplicate values"
   )
 })
@@ -67,7 +67,7 @@ test_that("review_flagged_accessions() defaults to the incongruent/insufficient_
       accession_review_comment = c("Real diverse disagreement.", "Not species-resolved.", "Thin evidence.")
     ))
   }
-  out <- review_flagged_accessions(.base_evaluated_df(), llm_fn = stub, verbose = FALSE)
+  out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE)
 
   # ACC001 is "congruent" and listed_taxon_is_species = TRUE -- out of scope.
   expect_true(is.na(out$accession_review_comment[out$accession == "ACC001"]))
@@ -90,7 +90,7 @@ test_that("review_flagged_accessions(include_non_species_resolved = TRUE) also r
       accession_review_comment = "stub"
     ))
   }
-  out <- review_flagged_accessions(df, llm_fn = stub, verbose = FALSE)
+  out <- review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   expect_true("ACC003" %in% reviewed_accessions)
   expect_false(is.na(out$accession_review_comment[out$accession == "ACC003"]))
 })
@@ -106,7 +106,7 @@ test_that("review_flagged_accessions(include_non_species_resolved = FALSE) exclu
     ))
   }
   out <- review_flagged_accessions(
-    df, include_non_species_resolved = FALSE, llm_fn = stub, verbose = FALSE
+    df, include_non_species_resolved = FALSE, cache_dir = NULL, llm_fn = stub, verbose = FALSE
   )
   expect_true(is.na(out$accession_review_comment[out$accession == "ACC003"]))
 })
@@ -130,7 +130,7 @@ test_that("review_flagged_accessions() normalises an out-of-enum accession_likel
     accession_review_confidence = c("high", "low", "low"),
     accession_review_comment = c("x", "y", "z")
   ))
-  out <- review_flagged_accessions(.base_evaluated_df(), llm_fn = stub, verbose = FALSE)
+  out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   expect_equal(out$accession_likely_explanation[out$accession == "ACC002"], "uncertain")
 })
 
@@ -142,7 +142,7 @@ test_that("review_flagged_accessions() fills a missing accession with NA default
     accession_review_comment = c("x", "y")
   ))
   expect_warning(
-    out <- review_flagged_accessions(.base_evaluated_df(), llm_fn = stub, verbose = FALSE),
+    out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE),
     "omitted"
   )
   expect_true(is.na(out$accession_review_comment[out$accession == "ACC003"]))
@@ -163,7 +163,7 @@ test_that("review_flagged_accessions() batches by taxa_per_call and preserves pr
     ))
   }
   out <- review_flagged_accessions(.base_evaluated_df(), taxa_per_call = 1L,
-                                   llm_fn = stub, verbose = FALSE)
+                                   cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   expect_equal(n_calls, 3L)  # ACC002, ACC003, ACC004 each their own call
   expect_equal(length(attr(out, "llm_prompts")), 3L)
   expect_true(all(!is.na(out$accession_review_comment[out$accession %in% c("ACC002","ACC003","ACC004")])))
@@ -192,7 +192,7 @@ test_that("review_flagged_accessions() retries a truncated batch as smaller sub-
   }
   df <- .base_evaluated_df()  # ACC002, ACC003, ACC004 in scope (3 accessions)
   out <- review_flagged_accessions(df, taxa_per_call = 3L, max_retries = 2L,
-                                   llm_fn = stub, verbose = FALSE)
+                                   cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   # Every retry sub-batch above eventually shrinks to a single accession,
   # where the stub always succeeds -- so every in-scope accession ends up
   # reviewed with real (not NA-default) values, and no warning is needed.
@@ -204,7 +204,7 @@ test_that("review_flagged_accessions() retries a truncated batch as smaller sub-
 test_that("review_flagged_accessions() degrades gracefully (not an error) on a hard llm_fn failure", {
   stub <- function(prompt, ...) stop("simulated network failure")
   expect_warning(
-    out <- review_flagged_accessions(.base_evaluated_df(), llm_fn = stub, verbose = FALSE),
+    out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE),
     "LLM call failed"
   )
   expect_true(is.na(out$accession_review_comment[out$accession == "ACC002"]))
@@ -221,11 +221,130 @@ test_that("review_flagged_accessions() prompt includes the guide's 4-category fr
       accession_review_comment = "stub"
     ))
   }
-  review_flagged_accessions(.base_evaluated_df(), llm_fn = stub, verbose = FALSE)
+  review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   expect_true(grepl("GENUINE MISLABEL", captured_prompt, fixed = TRUE))
   expect_true(grepl("POOR MARKER RESOLVING POWER", captured_prompt, fixed = TRUE))
   expect_true(grepl("SISTER-FAMILY", captured_prompt, fixed = TRUE))
   expect_true(grepl("HYBRID-CROSS", captured_prompt, fixed = TRUE))
   expect_true(grepl("best_disagreeing_taxon=\"Sinipercidae sp.\"", captured_prompt, fixed = TRUE))
   expect_true(grepl("NOT to override hierarchy_flag", captured_prompt, fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+# Caching (2026-08-14)
+# ------------------------------------------------------------------------------
+
+.crfa_stub <- function(prompt, ...) {
+  accs <- unique(regmatches(prompt, gregexpr("ACC00[0-9]", prompt))[[1]])
+  .canned_json(data.frame(
+    accession = accs,
+    accession_likely_explanation = "poor_marker_resolution",
+    accession_review_confidence = "high",
+    accession_review_comment = paste("Fresh review for", accs)
+  ))
+}
+
+test_that("review_flagged_accessions() writes a fresh review to cache and serves it on a second, unchanged call", {
+  cache_dir_path <- withr::local_tempdir()
+  call_count <- 0L
+  counting_stub <- function(prompt, ...) { call_count <<- call_count + 1L; .crfa_stub(prompt) }
+
+  out1 <- review_flagged_accessions(
+    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = counting_stub, verbose = FALSE
+  )
+  expect_true(call_count > 0L)
+  expect_true(all(!out1$accession_review_cache_hit[out1$accession %in% c("ACC002","ACC003","ACC004")]))
+
+  first_call_count <- call_count
+  out2 <- review_flagged_accessions(
+    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = counting_stub, verbose = FALSE
+  )
+  expect_equal(call_count, first_call_count)  # no new LLM calls on the second, identical call
+  expect_true(all(out2$accession_review_cache_hit[out2$accession %in% c("ACC002","ACC003","ACC004")]))
+  expect_equal(out2$accession_review_comment, out1$accession_review_comment)
+})
+
+test_that("review_flagged_accessions() re-reviews an accession whose input changed, but leaves unchanged ones cached", {
+  cache_dir_path <- withr::local_tempdir()
+  call_log <- list()
+  logging_stub <- function(prompt, ...) {
+    accs <- unique(regmatches(prompt, gregexpr("ACC00[0-9]", prompt))[[1]])
+    call_log[[length(call_log) + 1L]] <<- accs
+    .crfa_stub(prompt)
+  }
+
+  review_flagged_accessions(
+    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
+  )
+  n_calls_first <- length(call_log)
+
+  # ACC002's best_disagreeing_pident changes -- a real evaluate_reference_
+  # accessions() re-run finding new evidence -- so it must be re-reviewed;
+  # ACC003/ACC004 are untouched and must stay cache hits.
+  df2 <- .base_evaluated_df()
+  df2$best_disagreeing_pident[df2$accession == "ACC002"] <- 60.0
+
+  out <- review_flagged_accessions(
+    df2, cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
+  )
+  reviewed_this_call <- unique(unlist(call_log[(n_calls_first + 1L):length(call_log)]))
+  expect_equal(reviewed_this_call, "ACC002")
+  expect_false(out$accession_review_cache_hit[out$accession == "ACC002"])
+  expect_true(out$accession_review_cache_hit[out$accession == "ACC003"])
+  expect_true(out$accession_review_cache_hit[out$accession == "ACC004"])
+})
+
+test_that("review_flagged_accessions() writes the cache once per LLM batch, not once for the whole call", {
+  cache_dir_path <- withr::local_tempdir()
+  save_calls <- 0L
+  local_mocked_bindings(
+    .save_accession_review_cache = function(cache_dir, cache_df) {
+      save_calls <<- save_calls + 1L
+      invisible(NULL)
+    },
+    .package = "TaxaMatch"
+  )
+  review_flagged_accessions(
+    .base_evaluated_df(), taxa_per_call = 1L, cache_dir = cache_dir_path,
+    llm_fn = .crfa_stub, verbose = FALSE
+  )
+  expect_equal(save_calls, 3L)  # ACC002, ACC003, ACC004 -- one batch each
+})
+
+test_that("review_flagged_accessions() does not cache a failed/NA review, so it is retried next call", {
+  cache_dir_path <- withr::local_tempdir()
+  attempt <- 0L
+  flaky_stub <- function(prompt, ...) {
+    attempt <<- attempt + 1L
+    if (attempt == 1L) stop("simulated transient failure")
+    .crfa_stub(prompt)
+  }
+
+  out1 <- suppressWarnings(review_flagged_accessions(
+    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = flaky_stub, verbose = FALSE
+  ))
+  expect_true(all(is.na(out1$accession_review_comment[out1$accession %in% c("ACC002","ACC003","ACC004")])))
+
+  out2 <- review_flagged_accessions(
+    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = flaky_stub, verbose = FALSE
+  )
+  expect_true(all(!is.na(out2$accession_review_comment[out2$accession %in% c("ACC002","ACC003","ACC004")])))
+})
+
+test_that("review_flagged_accessions() gracefully discards an old-schema review cache instead of erroring", {
+  cache_dir_path <- withr::local_tempdir()
+  old_schema_cache <- data.frame(
+    accession = "ACC002", accession_review_comment = "stale",
+    stringsAsFactors = FALSE
+  )
+  saveRDS(old_schema_cache, file.path(cache_dir_path, "accession_review_cache.rds"))
+
+  expect_warning(
+    out <- review_flagged_accessions(
+      .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = .crfa_stub, verbose = FALSE
+    ),
+    "predates this package version"
+  )
+  expect_false(out$accession_review_cache_hit[out$accession == "ACC002"])
+  expect_equal(out$accession_review_comment[out$accession == "ACC002"], "Fresh review for ACC002")
 })

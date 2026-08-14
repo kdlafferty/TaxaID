@@ -426,12 +426,23 @@ to an LLM for a free-text second look, the same "narrative judgment layer on
 top of statistical flags, never replacing them" pattern
 `TaxaFlag::review_assignments()` uses for posterior assignments. It adds
 what the statistical check can't — recognizing a known hybrid-cross name or
-an informal specimen code — but never re-decides `hierarchy_flag` itself:
+an informal specimen code — but never re-decides `hierarchy_flag` itself.
+LLM calls are real, billed API cost, so this also caches: an accession
+already reviewed with *unchanged* inputs is served from `cache_dir` instead
+of a fresh call, but a genuine change (e.g. re-running
+`evaluate_reference_accessions()` flips `hierarchy_flag` or
+`best_disagreeing_taxon` for that accession) triggers a real re-review
+automatically — the cache is keyed on a content fingerprint of the
+review-relevant columns, not just the accession name:
 
 ``` r
-qc_reviewed <- review_flagged_accessions(qc)
+qc_reviewed <- review_flagged_accessions(qc, cache_dir = my_cache_dir)
 qc_reviewed[!is.na(qc_reviewed$accession_review_comment),
-           c("accession", "accession_likely_explanation", "accession_review_comment")]
+           c("accession", "accession_likely_explanation", "accession_review_comment",
+             "accession_review_cache_hit")]
+
+# Re-running the same call makes zero new LLM calls -- everything with
+# unchanged inputs is served from cache_dir.
 ```
 
 ## Downstream Tools
