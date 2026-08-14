@@ -334,15 +334,39 @@ independent of whatever else happens to be in a caller's own taxon list.
 `evaluate_reference_accessions()` BLASTs each accession's own deposited
 sequence against a broad, unrestricted NCBI database, keeps hits that are
 genuinely independent (not the same submission batch), and asks whether the
-closest independent hits agree with the accession's own listed taxon:
+closest independent hits agree with the accession's own listed taxon.
+
+**Getting an accession list from your own downloaded/BLASTed sequences:**
+`evaluate_reference_accessions()` takes NCBI accessions, not sequences
+directly — but you don't need to look any up by hand. `blast_sequences()`
+(see [Quick Start](#quick-start) above) already returns the reference
+database's own accession for every hit, so the accessions worth screening
+are just the candidates your own queries actually matched:
 
 ``` r
+blast_hits <- blast_sequences(filtered, database = "nt", barcode_term = "12S")
+
 qc <- evaluate_reference_accessions(
-  c("LC649807", "MT083886", "NC_028197"),
+  unique(blast_hits$accession),
   cache_dir = tools::R_user_dir("TaxaMatch", "cache")
 )
 qc[, c("accession", "listed_taxon", "hierarchy_flag", "finest_common_rank")]
 ```
+
+If instead you're starting from a locally downloaded reference FASTA (e.g.
+fetched via `TaxaLikely::fetch_ncbi_reference_sequences()` or downloaded by
+hand from NCBI) rather than your own BLAST hits, `read_sequence_table()`
+already extracts the accession from each header's first whitespace-delimited
+token (default `header_format = "none"`) — no manual header parsing needed:
+
+``` r
+ref_seqs <- read_sequence_table("my_reference_sequences.fasta")
+qc <- evaluate_reference_accessions(unique(ref_seqs$accession))
+```
+
+`evaluate_reference_accessions()` re-fetches each accession's own sequence
+from NCBI directly (it doesn't take a sequence as input) — this only needs
+the accession strings, not the downloaded sequence content itself.
 
 `hierarchy_flag` is `"congruent"` / `"incongruent"` /
 `"insufficient_independent_evidence"`. **`"incongruent"` is not a verdict on
