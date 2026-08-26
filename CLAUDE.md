@@ -1,7 +1,23 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
+# Last updated: 2026-08-26, later still (Fable 5 -- w-CALIBRATION + HELD-OUT LAMAR
+# VALIDATION close out the mixture redesign's Phase 2 calibration (D4/D5).
+# TaxaExpect::generate_regional_proximity_evidence() gains `w_scale` (default 1;
+# GreatLakes workflow sets 0.05, calibrated against the site checklist with Lamar
+# sealed: 0/110 zero-bbox candidates on the checklist at any distance); all 6
+# workflows' INVASIVE_WATCH_WEIGHT 0.6 -> 0.05 (0.6 violated the ordering bound).
+# Held-out Lamar validation of the a-priori-declared primary config: species
+# co-detections 74 -> 224, unique-species intersection 4 -> 11 of 61, no_match
+# 1/1081, overconfidence 0; perch + flathead catfish resolve; mechanism
+# ambiguous_rank_fallback 515 -> 205. Full record: reentry doc "D4/D5
+# CALIBRATION DONE" section + REVIEW_w_calibration_run.R /
+# REVIEW_formal_lamar_check.R in the GreatLakes data dir. TaxaExpect test 697/0,
+# check 0/0/0, reinstalled. STILL OPEN (Phase 2/3): iNat evidence generator (D6,
+# blocked on the fuzzy-match TODO), TaxaFlag surveillance caveat (D4), veto-bound
+# printer, soft confirmation update (D7, literature check first), D9 domestic
+# sanity pass, posterior_consensus default-column alignment.
+# Previous update, 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
 # Chunk B (Phase 2 core) of the mixture redesign implemented: presence-mixture
 # schema + moment-matched n_eff in TaxaExpect::apply_undetected_evidence() (free
 # n_eff/n_eff_base knobs RETIRED; generators emit p_conc instead -- see the two new
@@ -3024,3 +3040,4 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-08-26 (Fable 5) | `apply_undetected_evidence()` no-singleton ceiling: floor-collapse no-op replaced by an anchor ladder | TaxaExpect | **Behavioral, not signature.** With zero `singleton_mirror` rows the blend ceiling previously collapsed onto the floor (every elevation a weight-independent no-op, warning only). Now descends: singleton mean -> minimum modelled theta (site-scoped preferred; evidence/domestic named rows excluded as anchors) -> `1/(median n_obs + 1)` -> only then the old warning fallback. Datasets WITH singletons are unchanged. `devtools::test()` 689/0, `devtools::check()` 0/0/0. See the reentry doc (D2). |
 | 2026-08-26, continued (Fable 5) | `apply_undetected_evidence()`: `evidence$n_eff` retired -> optional `p_conc` (default 1); Beta concentration now moment-matched; new `prior_mix_w`/`prior_mix_theta_present`/`prior_mix_theta_absent`/`prior_mix_p_conc` output columns | TaxaExpect | **Breaking for evidence-table callers.** An `evidence` frame carrying `n_eff` without `p_conc` errors with migration guidance. `generate_invasive_watch_evidence(n_eff=)` -> `p_conc = 1` (signature change); `generate_regional_proximity_evidence()` loses `n_eff_base` (p_conc = exp(-age/age_half)). All 6 real production workflows' call sites updated same session (`INVASIVE_WATCH_N_EFF` -> `INVASIVE_WATCH_P_CONC`). Blend means unchanged byte-for-byte (verified on all 121 real GreatLakes rows); only the Beta concentration and new mixture columns differ. `devtools::test()` 694/0, `check()` 0/0/0. See the reentry doc (D3/D8). |
 | 2026-08-26, continued (Fable 5) | `compute_posterior()` gains presence-draw sampling for `prior_mix_*` rows; `join_priors()` passes the columns through expansion; `update_prior_from_consensus()` clears the mixture on confirmation-raised rows | TaxaAssign | **Additive/behavioral.** Mixture rows draw `z ~ Bernoulli(prior_mix_w)` in simulation instead of being pinned at the mean by the `alpha <= 1` J-guard; `posterior_mean` integrates over presence states, `confidence_score` = fraction of presence states won. Point path unchanged. Non-mixture rows completely unaffected (regression-tested). `devtools::test()` 682/0, `check()` 0/0/0. Operative consensus column unchanged (`posterior_point_est`) pending the D8 verdict -- the three-way experiment found the choice second-order vs w calibration. |
+| 2026-08-26, later still (Fable 5) | `generate_regional_proximity_evidence(w_scale = 1)` added | TaxaExpect | **Additive, backward compatible** (default 1 = prior behavior). `weight = w_scale * exp(-distance_km/d_half)`; `w_scale` = P(locally present) for a species with a record just outside the bbox and none inside. The default is documented as almost certainly too high for real studies; calibrate against a local checklist (GreatLakes2023: 0/110 zero-bbox candidates on the 53-species site checklist at any distance -> adopted 0.05, validated against held-out Lamar: species co-detections 74 -> 224, no_match 1/1081). GreatLakes workflow sets `w_scale = 0.05`; all 6 workflows' `INVASIVE_WATCH_WEIGHT` updated 0.6 -> 0.05 (0.6 violated the never-veto-an-observed-native ordering bound). `devtools::test()` 697/0, `check()` 0/0/0. |

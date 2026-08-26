@@ -100,7 +100,46 @@ w < (1/19)·(θ_min-observed/θ_ceiling)-scaled ≈ 0.05 at likelihood parity, r
 ~0.10–0.15 given the typical 2–3× likelihood edge a truly-present native has. The
 current w = 0.6 is ~10× too strong by the user's own ordering criterion.
 
+### D4/D5 CALIBRATION DONE (2026-08-26, GreatLakes2023) -- RESULTS
+Calibration truth = the site's expert checklist
+(`great_lakes_fish_species_expanded.csv`, 53 species; Lamar SEALED during
+calibration so the subsequent check is genuine held-out validation). Finding:
+**0 of 110** zero-bbox regional candidates (nearest external record 12-990 km)
+and 0 of 223 censored candidates are on the checklist, at ANY distance --
+while 44/53 checklist species have in-bbox GBIF records. So zero in-bbox
+records is already near-conclusive evidence of local absence, and the raw
+`exp(-d/150)` (w = 0.72 at 50 km) overstates presence by an order of
+magnitude. Jeffreys 95% upper bounds: 0.107 (<=100 km bin), 0.027 (pooled).
+Adopted PRIMARY config, declared a priori before any Lamar-facing output:
+**regional w(d) = 0.05 * exp(-d/150)** (new `w_scale` param on
+`generate_regional_proximity_evidence()`, default 1 with roxygen calibration
+guidance; workflow sets 0.05) and **invasive w = 0.05** (all 6 workflows'
+INVASIVE_WATCH_WEIGHT updated 0.6 -> 0.05). Sensitivity (internal only):
+w0 = 0.02 -> 344 species obs / 19 unique; 0.05 -> 293/16 (perch + flathead
+catfish resolve; the review's Ictaluridae example ends as P. olivaris at
+species rank); 0.10 -> 220/15. Round goby resolves only at w0 = 0.02.
+
+**HELD-OUT LAMAR VALIDATION (primary config, 103 matched samples,
+REVIEW_formal_lamar_check.R / *_wcal.rds checkpoints):** sample-level species
+co-detections **74 -> 224** (ours_only 22 -> 118, ext_only 1007 -> 857);
+genus co-detections 504 -> 623; unique species TaxaID 16 / Lamar 61 /
+intersection 11 (was 6/61/4). Tiered match of Lamar's 1,081 species calls:
+species_exact 224, primary_taxon 339, candidate_list 186, genus/family-
+consistent 331, **no_match 1** (Amia calva in one sample). Overconfidence
+check: 0 -- TaxaID resolves at least one species in every sample where Lamar
+does. Mechanism shift: ambiguous_rank_fallback 515 -> 205,
+specific_species_agree 5 -> 112. TaxaID-only species (plausible, for review,
+not obvious errors): Luxilus chrysocephalus, Oncorhynchus gorbuscha,
+Aphredoderus sayanus, Esox americanus. Caveat: the checklist's provenance/
+completeness is an assumption (53 species; a fuller list could raise the
+bounds somewhat); the D5 leave-the-bbox-out GBIF regression remains the
+package-generic aspiration -- with zero checklist positives the curve SHAPE
+is unidentified here, only bounded.
+
 ### D5. Regional proximity: per-dataset self-calibrating distance curve
+(ORIGINAL DESIGN, retained; the GreatLakes calibration above used the
+checklist variant because the zero-positives result made a fitted curve
+unidentifiable -- only bounded)
 Fit P(present | distance-to-nearest-external-record) from the study's own regional
 pool via a leave-the-bbox-out regression: species with in-bbox records are positives;
 for every species compute distance to its nearest record OUTSIDE the bbox; regress

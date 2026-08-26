@@ -47,8 +47,9 @@
 #' that judgment, rather than encoding a rule.
 #'
 #' Weight (how far toward the singleton ceiling this pulls the prior's MEAN)
-#' is a saturating decay in distance: \code{weight = exp(-distance_km /
-#' d_half)} -- read as P(locally present | nearest record at this distance)
+#' is a saturating decay in distance: \code{weight = w_scale *
+#' exp(-distance_km / d_half)} -- read as P(locally present | nearest record
+#' at this distance, no in-bbox records)
 #' under the 2026-08-26 presence-mixture redesign. Presence-claim confidence
 #' (\code{p_conc}, how much weight the claim carries against future
 #' evidence -- NOT the static prior's concentration, which is now
@@ -74,10 +75,11 @@
 #' each one shapes the output.
 #'
 #' @section Choosing d_half/age_half:
-#' \code{weight = exp(-distance_km / d_half)} -- \code{d_half} is the
-#' distance at which the pull toward the singleton-mirror ceiling has
-#' decayed to half its maximum. At the default \code{d_half = 150}: a record
-#' 100km away gives \code{weight ~= 0.51} (a real, substantial pull); a
+#' \code{weight = w_scale * exp(-distance_km / d_half)} -- \code{d_half} is
+#' the distance at which the pull toward the singleton-mirror ceiling has
+#' decayed to half its near-boundary value \code{w_scale}. At
+#' \code{d_half = 150}: a record
+#' 100km away gives \code{weight ~= 0.51 * w_scale}; a
 #' record 3000km away gives \code{weight ~= 4e-9} (indistinguishable from no
 #' evidence at all). Halving \code{d_half} halves how far a given weight
 #' reaches; doubling it reaches twice as far for the same weight.
@@ -91,6 +93,21 @@
 #'   from \code{taxaexpect_priors} entirely. Required, no default.
 #' @param lat,lng Numeric scalars. The study site's own coordinates (Stage 1
 #'   and Stage 2 both search around this point).
+#' @param w_scale Numeric in (0, 1]. Near-boundary presence probability:
+#'   \code{weight = w_scale * exp(-distance_km / d_half)}, so \code{w_scale}
+#'   is P(locally present) for a species whose nearest record sits just
+#'   outside the study bbox but that has NO records inside it. The default 1
+#'   is almost certainly too high for any real study -- a species with zero
+#'   in-bbox records is usually genuinely absent even when nearby records
+#'   exist. Calibrate against a local expert checklist: the GreatLakes2023
+#'   test case found 0 of 110 zero-bbox candidates with records at 12-990 km
+#'   on the site's 53-species checklist (Jeffreys 95 percent upper bounds:
+#'   0.107 for the under-100 km bin, 0.027 pooled), and adopted
+#'   \code{w_scale = 0.05} -- which also satisfies the dataset-independent
+#'   ordering bound that an unobserved species should never veto a
+#'   singleton-level observed native at likelihood parity (w below roughly
+#'   1/19). See ecosystem_docs/
+#'   REENTRY_PROMPT_undetected_evidence_mixture_redesign.md (D4/D5).
 #' @param d_half Numeric > 0. Distance (km) at which \code{weight} decays to
 #'   half its maximum -- see \verb{Choosing d_half/age_half}. Default
 #'   \code{150}.
@@ -191,6 +208,7 @@ generate_regional_proximity_evidence <- function(
     zero_bbox_taxa,
     lat, lng,
     d_half                = 150,
+    w_scale               = 1,
     age_half              = 15,
     tile_zoom             = 6L,
     buffer_margin         = 1.5,
@@ -209,6 +227,10 @@ generate_regional_proximity_evidence <- function(
   if (!is.numeric(lat) || length(lat) != 1L || is.na(lat) ||
       !is.numeric(lng) || length(lng) != 1L || is.na(lng)) {
     stop("generate_regional_proximity_evidence: `lat`/`lng` must be single non-NA numeric values.")
+  }
+  if (!is.numeric(w_scale) || length(w_scale) != 1L || is.na(w_scale) ||
+      w_scale <= 0 || w_scale > 1) {
+    stop("generate_regional_proximity_evidence: `w_scale` must be a single value in (0, 1].")
   }
   for (nm in c("d_half", "age_half", "near_lat_tolerance_deg")) {
     val <- get(nm)
@@ -370,7 +392,7 @@ generate_regional_proximity_evidence <- function(
     record_year <- suppressWarnings(as.numeric(dist_out$nearest_date))
     age_years   <- if (is.na(record_year)) NA_real_ else max(0, as.numeric(format(Sys.Date(), "%Y")) - record_year)
 
-    weight <- exp(-dist_out$dist_nearest_km / d_half)
+    weight <- w_scale * exp(-dist_out$dist_nearest_km / d_half)
     p_conc <- if (is.na(age_years)) 1 else exp(-age_years / age_half)
 
     rows[[i]] <- tibble::tibble(

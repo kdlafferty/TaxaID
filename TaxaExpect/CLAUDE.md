@@ -1,6 +1,28 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
+# Last updated: 2026-08-26, later still (Fable 5, branch undetected-evidence-mixture --
+# w-CALIBRATION (D4/D5): generate_regional_proximity_evidence() gains `w_scale`
+# (default 1, range (0,1]) -- the near-boundary presence probability, so weight =
+# w_scale * exp(-distance_km/d_half). Calibrated on GreatLakes2023 against the
+# site's 53-species expert checklist with Lamar SEALED as held-out validation:
+# 0 of 110 zero-bbox regional candidates (records at 12-990 km) and 0 of 223
+# censored candidates were on the checklist at ANY distance, while 44/53
+# checklist species have in-bbox GBIF records -- zero in-bbox records is already
+# near-conclusive evidence of local absence, and the raw exp(-d/150) (w=0.72 at
+# 50km) overstates presence ~10x (Jeffreys 95% UBs: 0.107 for <=100km, 0.027
+# pooled). Adopted (declared a priori): w_scale = 0.05 regional + invasive w =
+# 0.05 (all 6 workflows' INVASIVE_WATCH_WEIGHT 0.6 -> 0.05 -- 0.6 violated the
+# dataset-independent ordering bound w < ~1/19). Held-out Lamar validation of
+# that one config: sample-level species co-detections 74 -> 224 (3x), unique
+# species intersection 4 -> 11 of 61, no_match 1 of 1081 Lamar calls,
+# overconfidence 0; yellow perch and flathead catfish now resolve (round goby
+# only at w0=0.02). Sensitivity monotone, no cliffs (w0 0.02/0.05/0.10 -> 344/
+# 293/220 species obs). Reproducible: REVIEW_w_calibration_run.R +
+# REVIEW_formal_lamar_check.R (GreatLakes data dir; *_wcal.rds checkpoints,
+# *_v2.rds left intact). roxygen on w_scale carries the calibration method.
+# devtools::test() 697/0, check() 0/0/0, reinstalled. See the reentry doc's new
+# "D4/D5 CALIBRATION DONE" section.
+# Previous update, 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
 # Chunk B: apply_undetected_evidence() now emits the PRESENCE MIXTURE itself
 # (prior_mix_w/prior_mix_theta_present/prior_mix_theta_absent/prior_mix_p_conc) and
 # MOMENT-MATCHES the Beta summary's concentration to the mixture variance

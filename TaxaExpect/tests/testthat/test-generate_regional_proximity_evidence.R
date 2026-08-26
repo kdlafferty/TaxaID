@@ -631,3 +631,24 @@ test_that(".resolve_gbif_taxon_keys_batch() falls back to NA gbif_species (not a
   expect_equal(out$usage_key, 1)
   expect_true(is.na(out$gbif_species))
 })
+
+test_that("w_scale scales the distance weight and validates its range", {
+  local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
+  local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
+  local_mocked_bindings(
+    get_gbif_occurrences = .mock_occ("Gadus morhua", year = 2020),
+    filter_gbif_quality  = .passthrough_filter,
+    .package = "TaxaFetch"
+  )
+  out <- generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15,
+                                               w_scale = 0.05)
+  expect_equal(out$weight, 0.05 * exp(-out$distance_km / 150), tolerance = 1e-6)
+  expect_error(
+    generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15, w_scale = 0),
+    "w_scale"
+  )
+  expect_error(
+    generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15, w_scale = 1.5),
+    "w_scale"
+  )
+})
