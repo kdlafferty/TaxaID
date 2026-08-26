@@ -509,3 +509,28 @@ test_that("never-demote still holds under rescaling", {
   sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
   expect_equal(sp_a_s2, 0.9)   # already well above q*ceiling (0.0475) -- untouched
 })
+
+test_that("a raised presence-mixture row has its mixture cleared (presence established)", {
+  res <- .make_result()
+  # Make S2's Sp_A a presence-mixture row with a low pre-confirmation prior
+  mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
+  res$prior_mean[mixify]  <- 0.01
+  res$prior_alpha[mixify] <- 0.02
+  res$prior_beta[mixify]  <- 1.98
+  res$prior_mix_w             <- ifelse(mixify, 0.5, NA_real_)
+  res$prior_mix_theta_present <- ifelse(mixify, 0.02, NA_real_)
+  res$prior_mix_theta_absent  <- ifelse(mixify, 1e-4, NA_real_)
+  res$prior_mix_p_conc        <- ifelse(mixify, 1, NA_real_)
+
+  out <- suppressMessages(suppressWarnings(
+    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+  ))
+  boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_true(boosted$prior_mean > 0.01)              # confirmation raised it
+  expect_true(is.na(boosted$prior_mix_w))             # mixture dissolved
+  expect_true(is.na(boosted$prior_mix_theta_present))
+  expect_true(is.na(boosted$prior_mix_p_conc))
+  # the resolved S1 rows never had a mixture and are untouched
+  s1 <- out[out$observation_id == "S1", ]
+  expect_true(all(is.na(s1$prior_mix_w)))
+})

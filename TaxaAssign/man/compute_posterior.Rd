@@ -101,6 +101,24 @@ taxa). The posterior probability for hypothesis \eqn{i} is:
 where \eqn{L} is the likelihood (from TaxaLikely or score-based proxy) and
 \eqn{\pi} is the prior (from TaxaExpect or LLM-based estimation).
 
+\strong{Presence-mixture priors (2026-08-26 mixture redesign):}
+rows carrying non-NA \code{prior_mix_w}/\code{prior_mix_theta_present}/
+\code{prior_mix_theta_absent} (emitted by
+\code{TaxaExpect::apply_undetected_evidence()} for evidence-elevated
+species) are presence mixtures: with probability \code{prior_mix_w} the
+species is locally present (theta at the ceiling-anchor state), otherwise
+absent (theta at the floor). In simulation these rows draw presence
+explicitly (\code{z ~ Bernoulli(w)}; \code{theta = z*theta_present +
+(1-z)*theta_absent}) instead of sampling their Beta summary -- which is
+J-shaped by construction and would otherwise be pinned at its mean by the
+\code{prior_alpha <= 1} guard, erasing exactly the bimodality the mixture
+expresses. \code{posterior_mean} therefore integrates over presence
+states, and \code{confidence_score} reads as the fraction of presence
+states in which the hypothesis wins. The point-estimate path is unchanged:
+\code{prior_mean} equals the mixture's exact expectation by construction.
+Non-mixture rows are completely unaffected. See
+\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}.
+
 \strong{Prior uncertainty (Beta distribution):}
 When \code{prior_alpha} and \code{prior_beta} columns are present, the prior
 for each hypothesis is modelled as \eqn{Beta(\alpha, \beta)} rather than a

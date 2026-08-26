@@ -99,7 +99,7 @@ test_that("stops on invalid lat/lng", {
   )
 })
 
-test_that("stops on non-positive d_half/age_half/n_eff_base", {
+test_that("stops on non-positive d_half/age_half", {
   expect_error(
     generate_regional_proximity_evidence("Gadus morhua", lat = 41, lng = -87, d_half = 0),
     "d_half"
@@ -107,10 +107,6 @@ test_that("stops on non-positive d_half/age_half/n_eff_base", {
   expect_error(
     generate_regional_proximity_evidence("Gadus morhua", lat = 41, lng = -87, age_half = -1),
     "age_half"
-  )
-  expect_error(
-    generate_regional_proximity_evidence("Gadus morhua", lat = 41, lng = -87, n_eff_base = NA_real_),
-    "n_eff_base"
   )
 })
 
@@ -129,7 +125,7 @@ test_that("a taxon clearing both stages gets a correctly-computed evidence row",
 
   out <- generate_regional_proximity_evidence(
     "Etheostoma chlorosomum", lat = 41.67, lng = -87.15,
-    d_half = 150, age_half = 15, n_eff_base = 5
+    d_half = 150, age_half = 15
   )
 
   expect_equal(nrow(out), 1L)
@@ -139,11 +135,11 @@ test_that("a taxon clearing both stages gets a correctly-computed evidence row",
   expect_equal(out$weight, exp(-out$distance_km / 150), tolerance = 1e-6)
   current_year <- as.numeric(format(Sys.Date(), "%Y"))
   expect_equal(out$age_years, current_year - 2020)
-  expect_equal(out$n_eff, 5 * exp(-out$age_years / 15), tolerance = 1e-6)
+  expect_equal(out$p_conc, exp(-out$age_years / 15), tolerance = 1e-6)
 })
 
-test_that("weight/n_eff scale correctly with d_half/age_half overrides", {
-  # Note: weight/n_eff are driven by Stage 2's REAL (haversine) distance --
+test_that("weight/p_conc scale correctly with d_half/age_half overrides", {
+  # Note: weight/p_conc are driven by Stage 2's REAL (haversine) distance --
   # dist_out$dist_nearest_km, computed from the mocked occurrence point's own
   # lat/lon -- not Stage 1's coarse tile-based dist_km (which only sizes the
   # Stage 2 fetch radius). So this asserts self-consistency against whatever
@@ -161,10 +157,10 @@ test_that("weight/n_eff scale correctly with d_half/age_half overrides", {
   )
   expect_equal(out$weight, exp(-out$distance_km / 50), tolerance = 1e-6)
   expect_equal(out$age_years, 0)
-  expect_equal(out$n_eff, 5)  # age 0 -> n_eff == n_eff_base exactly
+  expect_equal(out$p_conc, 1)  # age 0 -> a fresh record = one pseudo-observation
 })
 
-test_that("a record with no usable year gets n_eff == n_eff_base, not a value in between", {
+test_that("a record with no usable year gets p_conc == 1, not a value in between", {
   local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
@@ -173,9 +169,9 @@ test_that("a record with no usable year gets n_eff == n_eff_base, not a value in
     .package = "TaxaFetch"
   )
 
-  out <- generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15, n_eff_base = 7)
+  out <- generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15)
   expect_true(is.na(out$age_years))
-  expect_equal(out$n_eff, 7)
+  expect_equal(out$p_conc, 1)
 })
 
 # =============================================================================
@@ -229,7 +225,7 @@ test_that("a taxon with no GBIF backbone match is skipped, not an error", {
 
   out <- generate_regional_proximity_evidence("Completely Fictional sp.", lat = 41.67, lng = -87.15)
   expect_equal(nrow(out), 0L)
-  expect_true(all(c("taxon_name", "weight", "n_eff", "source") %in% names(out)))
+  expect_true(all(c("taxon_name", "weight", "p_conc", "source") %in% names(out)))
 })
 
 test_that("a bare genus name that resolves to a GENUS-rank record is rejected, not silently accepted (real bug found on real GreatLakes2023 data: 'Ictalurus' alone matched via name_backbone(rank='species') despite that argument being a hint, not an enforced constraint)", {

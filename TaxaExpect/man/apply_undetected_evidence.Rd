@@ -28,8 +28,12 @@ prior-generating function in this package.}
 \item{evidence}{Data frame (typically the row-bound output of one or more
 evidence-generating functions, e.g.
 \code{\link{generate_invasive_watch_evidence}}). Required columns:
-\code{taxon_name} (character), \code{weight} (numeric, 0-1),
-\code{n_eff} (numeric, > 0), \code{source} (character, for audit only).
+\code{taxon_name} (character), \code{weight} (numeric, 0-1 -- the
+source's probability of local presence), \code{source} (character, for
+audit only). Optional: \code{p_conc} (numeric, > 0; default 1) -- how
+much weight the presence claim carries against future evidence, in
+pseudo-observations. \code{n_eff} is retired (errors with migration
+guidance): the Beta concentration is now moment-matched, not supplied.
 Additional source-specific columns are ignored by this function.}
 
 \item{grid_id}{Character. Single grid cell identifier this call applies
@@ -73,8 +77,12 @@ entirely when \code{model_obj} has no habitat concept).}
 alongside \code{"singleton_mirror"}/\code{"global_floor"}.}
 \item{evidence_weight}{The combined \code{w_combined} for this taxon
 (audit column).}
-\item{evidence_n_eff}{The combined \code{n_eff_combined} (audit
-column).}
+\item{prior_mix_w, prior_mix_theta_present, prior_mix_theta_absent}{
+The presence mixture itself, consumed by
+\code{TaxaAssign::compute_posterior()}'s presence-draw sampler.}
+\item{prior_mix_p_conc}{Combined presence-claim confidence
+(pseudo-observations) -- reserved for the confirmation update; does
+not affect the static prior's marginal moments.}
 \item{evidence_sources}{Semicolon-joined distinct \code{source}
 values that contributed to this row (audit column).}
 }
@@ -115,9 +123,10 @@ given taxon is combined \emph{before} one row is written.
 source function (e.g. an invasive-watch-list generator) never touches
 \code{taxaexpect_priors}, never does Beta-parameter math, and knows
 nothing about the floor/singleton anchors. It only answers, per taxon:
-how plausible is this (\code{weight}), and how confident is that
-assessment (\code{n_eff})? This function is the only consumer that turns
-those into an actual prior.
+how probable is local presence (\code{weight} = P(present | this source's
+evidence)) and how much weight that presence claim should carry against
+future evidence (\code{p_conc}, pseudo-observations; optional, default 1)?
+This function is the only consumer that turns those into an actual prior.
 }
 
 \section{How the elevation works}{
@@ -127,21 +136,32 @@ For each taxon in \code{evidence} that is genuinely unobserved (see
 \code{(alpha, beta)} is read directly out of \code{taxaexpect_priors}
 (not recomputed), and the site's own singleton-mirror mean is used as an
 upper anchor -- the two values \code{\link{generate_undetected_diversity}}
-already produces. The taxon's mean is linearly blended between them by
-its combined weight, holding the resulting Beta's concentration at the
-taxon's combined \code{n_eff}:
+already produces. The elevated prior is a PRESENCE MIXTURE (2026-08-26
+mixture redesign): with probability \code{w_combined} the species is
+locally present (theta ~ the ceiling-anchor state), with probability
+\code{1 - w_combined} absent (theta ~ the floor state). The blended mean
+is that mixture's exact expectation, and the Beta summary's concentration
+is moment-matched to the mixture's variance -- not caller-chosen:
 \preformatted{
   theta_new = theta_floor + (theta_singleton - theta_floor) * w_combined
-  alpha_new = theta_new * n_eff_combined
-  beta_new  = (1 - theta_new) * n_eff_combined
+  v         = w*Var_ceiling + (1-w)*Var_floor + w*(1-w)*(theta_c-theta_f)^2
+  n_eff_mm  = theta_new*(1-theta_new)/v - 1
+  alpha_new = theta_new * n_eff_mm;  beta_new = (1-theta_new) * n_eff_mm
 }
+The mixture itself is also emitted (\code{prior_mix_w}/
+\code{prior_mix_theta_present}/\code{prior_mix_theta_absent}) so
+\code{TaxaAssign::compute_posterior()} can integrate over presence states
+directly (an explicit Bernoulli presence draw) instead of sampling the
+J-shaped Beta summary; alpha/beta remain the point-path summary.
+\code{prior_mix_p_conc} does NOT affect these marginal moments (for a
+two-point presence mixture, uncertainty about w cancels out of the
+marginal variance) -- it records how much weight the presence claim
+carries against future evidence, for the confirmation update.
 Blending toward \code{theta_singleton} (rather than, say, multiplying the
 floor's own alpha by a factor) gives this a principled ceiling for free:
 at \code{w_combined = 1} the elevated prior equals the singleton-mirror
 mean exactly, so external evidence -- however strong -- can never make an
 unobserved species look more plausible than one genuinely detected once.
-\code{n_eff_combined} still bounds how tightly that mean is held; a
-single weak-confidence source does not manufacture false precision.
 
 \strong{Ceiling anchor ladder (datasets without singletons):} when
 \code{taxaexpect_priors} carries no \code{singleton_mirror} rows at all,
@@ -160,9 +180,9 @@ computable, the previous floor-equals-ceiling no-op with a warning.
 When more than one evidence row names the same taxon (e.g. a regional-
 proximity signal and an invasive-watch-list signal both fire for one
 species), the weights combine via
-\code{w_combined = 1 - prod(1 - weight_i)} and the confidences combine
-via \code{n_eff_combined = sum(n_eff_i)} (independent pseudo-observation
-counts add). \strong{This assumes the evidence sources are independent
+\code{w_combined = 1 - prod(1 - weight_i)} and the presence-claim
+confidences combine via \code{p_conc_combined = sum(p_conc_i)}
+(independent pseudo-observation counts add). \strong{This assumes the evidence sources are independent
 readers of different underlying facts} -- e.g. a curated invasion-biology
 database and raw occurrence geography are evidentially unrelated, not two
 noisy reads of the same signal. This is NOT a safe assumption for every
@@ -212,7 +232,7 @@ surfaced as two distinct reviewer-facing caveats (see
 \dontrun{
 invasive_evidence <- generate_invasive_watch_evidence(
   invasive_taxa = c("Gymnocephalus cernua", "Neogobius melanostomus"),
-  weight = 0.6, n_eff = 4
+  weight = 0.1
 )
 elevated <- apply_undetected_evidence(
   taxaexpect_priors, model_fit,

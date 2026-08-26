@@ -10,7 +10,6 @@ generate_regional_proximity_evidence(
   lng,
   d_half = 150,
   age_half = 15,
-  n_eff_base = 5,
   tile_zoom = 6L,
   buffer_margin = 1.5,
   min_buffer_km = 50,
@@ -35,14 +34,10 @@ and Stage 2 both search around this point).}
 half its maximum -- see \verb{Choosing d_half/age_half}. Default
 \code{150}.}
 
-\item{age_half}{Numeric > 0. Record age (years) at which \code{n_eff}
-decays to half \code{n_eff_base} -- see \verb{Choosing d_half/age_half}.
+\item{age_half}{Numeric > 0. Record age (years) at which \code{p_conc}
+decays to half its fresh-record value of 1 -- see
+\verb{Choosing d_half/age_half}.
 Default \code{15}.}
-
-\item{n_eff_base}{Numeric > 0. \code{n_eff} for a record with age exactly
-0 (or no usable age at all). Matches
-\code{\link{generate_domestic_food_priors}}'s baseline-\code{ess}
-convention. Default \code{5}.}
 
 \item{tile_zoom}{Integer. Forwarded to
 \code{TaxaFlag::check_gbif_tile_range(zoom = )} for Stage 1. Default
@@ -113,7 +108,7 @@ for checkpointing. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.}
 }
 \value{
 A tibble with one row per taxon that cleared both stages:
-\code{taxon_name}, \code{weight}, \code{n_eff}, \code{source} (always
+\code{taxon_name}, \code{weight}, \code{p_conc}, \code{source} (always
 \code{"regional_proximity"}) -- matches the evidence-table schema
 \code{\link{apply_undetected_evidence}} expects -- plus audit columns
 \code{distance_km}, \code{record_year}, \code{age_years} (\code{NA} when
@@ -158,7 +153,7 @@ survivors ever produce an evidence row. \code{\link[TaxaFlag]{compute_local_occu
 AND the matched record's age from the filtered data.
 }
 
-\section{From distance/age to weight/n_eff -- deliberately NOT a connectivity check}{
+\section{From distance/age to weight/p_conc -- deliberately NOT a connectivity check}{
 
 An earlier design explored a watershed/basin-connectivity gate (is the
 nearby record even in a hydrologically connected water body) before being
@@ -175,19 +170,24 @@ that judgment, rather than encoding a rule.
 
 Weight (how far toward the singleton ceiling this pulls the prior's MEAN)
 is a saturating decay in distance: \code{weight = exp(-distance_km /
-d_half)}. Confidence (\code{n_eff}, how tightly that mean is held) is a
-saturating decay in record age: \code{n_eff = n_eff_base *
-exp(-age_years / age_half)}. These are deliberately two independent
+d_half)} -- read as P(locally present | nearest record at this distance)
+under the 2026-08-26 presence-mixture redesign. Presence-claim confidence
+(\code{p_conc}, how much weight the claim carries against future
+evidence -- NOT the static prior's concentration, which is now
+moment-matched by \code{\link{apply_undetected_evidence}}) is a
+saturating decay in record age: \code{p_conc = exp(-age_years /
+age_half)} -- a fresh record counts as one pseudo-observation about
+presence, an old record as less than one. These are deliberately two independent
 knobs, not one composite score -- an old record doesn't mean the species
 is systematically LESS likely to be present (it could reflect a real,
 still-extant population never resurveyed, or a range that has since
 contracted; occurrence data alone can't tell these apart), so age widens
 uncertainty around the same distance-driven mean rather than discounting
 the mean itself. A record with no usable \code{year} value gets
-\code{n_eff = n_eff_base} (no extra discount, not a value in between) --
+\code{p_conc = 1} (no extra discount, not a value in between) --
 absence of age information is not evidence of great age.
 
-\code{d_half}/\code{age_half}/\code{n_eff_base} all ship with a default
+\code{d_half}/\code{age_half} ship with a default
 but are fully overridable -- there is no universally defensible distance
 or age scale across taxa (a sedentary benthic invertebrate and a highly
 vagile bird do not share a dispersal-distance order of magnitude), so the
@@ -206,8 +206,8 @@ record 3000km away gives \code{weight ~= 4e-9} (indistinguishable from no
 evidence at all). Halving \code{d_half} halves how far a given weight
 reaches; doubling it reaches twice as far for the same weight.
 \code{age_half} works the same way on \code{age_years} instead of
-\code{distance_km}, controlling \code{n_eff} instead of the mean -- at the
-default \code{age_half = 15}, a 15-year-old record's evidence is held
+\code{distance_km}, controlling \code{p_conc} instead of the mean -- at the
+default \code{age_half = 15}, a 15-year-old record's presence claim is held
 with half the effective confidence of a fresh one.
 }
 

@@ -32,7 +32,7 @@
 #' (extended this session with \code{date_col}) then gives the real distance
 #' AND the matched record's age from the filtered data.
 #'
-#' @section From distance/age to weight/n_eff -- deliberately NOT a connectivity check:
+#' @section From distance/age to weight/p_conc -- deliberately NOT a connectivity check:
 #' An earlier design explored a watershed/basin-connectivity gate (is the
 #' nearby record even in a hydrologically connected water body) before being
 #' explicitly dropped: this package needs to stay simple and generalize
@@ -48,19 +48,24 @@
 #'
 #' Weight (how far toward the singleton ceiling this pulls the prior's MEAN)
 #' is a saturating decay in distance: \code{weight = exp(-distance_km /
-#' d_half)}. Confidence (\code{n_eff}, how tightly that mean is held) is a
-#' saturating decay in record age: \code{n_eff = n_eff_base *
-#' exp(-age_years / age_half)}. These are deliberately two independent
+#' d_half)} -- read as P(locally present | nearest record at this distance)
+#' under the 2026-08-26 presence-mixture redesign. Presence-claim confidence
+#' (\code{p_conc}, how much weight the claim carries against future
+#' evidence -- NOT the static prior's concentration, which is now
+#' moment-matched by \code{\link{apply_undetected_evidence}}) is a
+#' saturating decay in record age: \code{p_conc = exp(-age_years /
+#' age_half)} -- a fresh record counts as one pseudo-observation about
+#' presence, an old record as less than one. These are deliberately two independent
 #' knobs, not one composite score -- an old record doesn't mean the species
 #' is systematically LESS likely to be present (it could reflect a real,
 #' still-extant population never resurveyed, or a range that has since
 #' contracted; occurrence data alone can't tell these apart), so age widens
 #' uncertainty around the same distance-driven mean rather than discounting
 #' the mean itself. A record with no usable \code{year} value gets
-#' \code{n_eff = n_eff_base} (no extra discount, not a value in between) --
+#' \code{p_conc = 1} (no extra discount, not a value in between) --
 #' absence of age information is not evidence of great age.
 #'
-#' \code{d_half}/\code{age_half}/\code{n_eff_base} all ship with a default
+#' \code{d_half}/\code{age_half} ship with a default
 #' but are fully overridable -- there is no universally defensible distance
 #' or age scale across taxa (a sedentary benthic invertebrate and a highly
 #' vagile bird do not share a dispersal-distance order of magnitude), so the
@@ -77,8 +82,8 @@
 #' evidence at all). Halving \code{d_half} halves how far a given weight
 #' reaches; doubling it reaches twice as far for the same weight.
 #' \code{age_half} works the same way on \code{age_years} instead of
-#' \code{distance_km}, controlling \code{n_eff} instead of the mean -- at the
-#' default \code{age_half = 15}, a 15-year-old record's evidence is held
+#' \code{distance_km}, controlling \code{p_conc} instead of the mean -- at the
+#' default \code{age_half = 15}, a 15-year-old record's presence claim is held
 #' with half the effective confidence of a fresh one.
 #'
 #' @param zero_bbox_taxa Character vector of taxon names with no in-bbox
@@ -89,13 +94,10 @@
 #' @param d_half Numeric > 0. Distance (km) at which \code{weight} decays to
 #'   half its maximum -- see \verb{Choosing d_half/age_half}. Default
 #'   \code{150}.
-#' @param age_half Numeric > 0. Record age (years) at which \code{n_eff}
-#'   decays to half \code{n_eff_base} -- see \verb{Choosing d_half/age_half}.
+#' @param age_half Numeric > 0. Record age (years) at which \code{p_conc}
+#'   decays to half its fresh-record value of 1 -- see
+#'   \verb{Choosing d_half/age_half}.
 #'   Default \code{15}.
-#' @param n_eff_base Numeric > 0. \code{n_eff} for a record with age exactly
-#'   0 (or no usable age at all). Matches
-#'   \code{\link{generate_domestic_food_priors}}'s baseline-\code{ess}
-#'   convention. Default \code{5}.
 #' @param tile_zoom Integer. Forwarded to
 #'   \code{TaxaFlag::check_gbif_tile_range(zoom = )} for Stage 1. Default
 #'   \code{6L} (roughly continental scale).
@@ -156,7 +158,7 @@
 #'   \code{FALSE}.
 #'
 #' @return A tibble with one row per taxon that cleared both stages:
-#'   \code{taxon_name}, \code{weight}, \code{n_eff}, \code{source} (always
+#'   \code{taxon_name}, \code{weight}, \code{p_conc}, \code{source} (always
 #'   \code{"regional_proximity"}) -- matches the evidence-table schema
 #'   \code{\link{apply_undetected_evidence}} expects -- plus audit columns
 #'   \code{distance_km}, \code{record_year}, \code{age_years} (\code{NA} when
@@ -190,7 +192,6 @@ generate_regional_proximity_evidence <- function(
     lat, lng,
     d_half                = 150,
     age_half              = 15,
-    n_eff_base            = 5,
     tile_zoom             = 6L,
     buffer_margin         = 1.5,
     min_buffer_km         = 50,
@@ -209,7 +210,7 @@ generate_regional_proximity_evidence <- function(
       !is.numeric(lng) || length(lng) != 1L || is.na(lng)) {
     stop("generate_regional_proximity_evidence: `lat`/`lng` must be single non-NA numeric values.")
   }
-  for (nm in c("d_half", "age_half", "n_eff_base", "near_lat_tolerance_deg")) {
+  for (nm in c("d_half", "age_half", "near_lat_tolerance_deg")) {
     val <- get(nm)
     if (!is.numeric(val) || length(val) != 1L || is.na(val) || val <= 0) {
       stop(sprintf("generate_regional_proximity_evidence: `%s` must be a single positive numeric value.", nm))
@@ -370,27 +371,27 @@ generate_regional_proximity_evidence <- function(
     age_years   <- if (is.na(record_year)) NA_real_ else max(0, as.numeric(format(Sys.Date(), "%Y")) - record_year)
 
     weight <- exp(-dist_out$dist_nearest_km / d_half)
-    n_eff  <- if (is.na(age_years)) n_eff_base else n_eff_base * exp(-age_years / age_half)
+    p_conc <- if (is.na(age_years)) 1 else exp(-age_years / age_half)
 
     rows[[i]] <- tibble::tibble(
       taxon_name     = nm,
       weight         = weight,
-      n_eff          = n_eff,
+      p_conc         = p_conc,
       source         = "regional_proximity",
       distance_km    = dist_out$dist_nearest_km,
       record_year    = record_year,
       age_years      = age_years,
       tile_zoom_used = tile$zoom_used
     )
-    if (verbose) message(sprintf("  applied: weight=%.3f, n_eff=%.2f (distance=%.0fkm, age=%s)",
-                                  weight, n_eff, dist_out$dist_nearest_km,
+    if (verbose) message(sprintf("  applied: weight=%.3f, p_conc=%.2f (distance=%.0fkm, age=%s)",
+                                  weight, p_conc, dist_out$dist_nearest_km,
                                   if (is.na(age_years)) "unknown" else sprintf("%.0fy", age_years)))
   }
 
   result <- dplyr::bind_rows(Filter(Negate(is.null), rows))
   if (nrow(result) == 0L) {
     result <- tibble::tibble(
-      taxon_name = character(0), weight = numeric(0), n_eff = numeric(0),
+      taxon_name = character(0), weight = numeric(0), p_conc = numeric(0),
       source = character(0), distance_km = numeric(0), record_year = numeric(0),
       age_years = numeric(0), tile_zoom_used = integer(0)
     )

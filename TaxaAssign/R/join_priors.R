@@ -111,7 +111,11 @@ utils::globalVariables(c(
     # modelled row is promotable only on a real habitat mismatch) instead of
     # the template coarse row's NA values.
     c("taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type",
-      "model_tier", "observed_in_habitat", tax_extra)
+      "model_tier", "observed_in_habitat",
+      # presence-mixture columns (2026-08-26 D8): expanded evidence rows keep
+      # their own mixture so compute_posterior()'s presence-draw sampler sees it
+      "prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent",
+      "prior_mix_p_conc", tax_extra)
   )
 
   # Build expansion map: unique (crank | cvalue | grid | hab) -> filtered species df

@@ -189,7 +189,24 @@ posterior updates w directly. This gives the package one coherent story: prior f
 unobserved-but-plausible species is a presence mixture; the consensus integrates over
 presence; confirmation updates presence probability.
 
-**Decision experiment (the operative-column choice is made with data, not priors):**
+**EXPERIMENT RUN (2026-08-26, post-implementation) -- RESULT:** three arms on the
+real GreatLakes2023 checkpoints, identical inputs/seed: A point_est 103 species obs
+(12 unique, 9 in Lamar); B posterior_mean J-guarded 95 (10, 7); C posterior_mean
+mixture-aware 93 (10, 8). The rebuild of the 121 evidence rows under the mixture
+schema left every blend mean byte-identical (max delta 1.7e-18), confirming the
+point path is untouched. Verdict: the operative-column choice is SECOND-ORDER
+relative to w calibration -- at w = 0.6 a blocker draws full singleton parity in
+60% of presence states (E[share] ~ 7%, still above the 5% retention floor), and
+the MC arms resolve slightly fewer observations because integrating likelihood
+uncertainty honestly flattens shares. Recommendation pending user verdict: keep
+posterior_point_est operative (auditable, deterministic, best Lamar recall at
+statistically indistinguishable precision), align posterior_consensus()'s default
+to it, and revisit the column after Phase 2's w calibration (where blockers at
+honest small w drop below retention in both paths anyway). The mixture sampler
+stays in place regardless -- it is the defensible carrier for presence bimodality
+and the Phase 3 soft update operates on prior_mix_w.
+
+**Decision experiment (the original design, retained for reference):**
 after Phase 1 + the mixture sampler land, run the ablation harness three ways —
 `posterior_point_est`, current J-guarded `posterior_mean`, mixture-aware
 `posterior_mean` — on GreatLakes. Predicted direction: uncertain-presence candidates

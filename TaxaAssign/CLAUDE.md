@@ -1,6 +1,29 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-26 (Fable 5, branch undetected-evidence-mixture -- join_priors()'s
+# Last updated: 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
+# Chunk B of the mixture redesign: compute_posterior() gains a PRESENCE-DRAW sampler
+# for mixture rows (D8). Rows carrying non-NA prior_mix_w/prior_mix_theta_present/
+# prior_mix_theta_absent (from TaxaExpect::apply_undetected_evidence()) draw
+# z ~ Bernoulli(w), theta = z*theta_present + (1-z)*theta_absent in simulation,
+# bypassing the alpha <= 1 J-guard that would otherwise pin their J-shaped Beta
+# summary at its mean and erase the bimodality; point path unchanged (prior_mean is
+# the mixture's exact expectation). join_priors() passes the prior_mix_* columns
+# through coarse-rank expansion; update_prior_from_consensus() clears the mixture on
+# confirmation-raised rows (presence established -- interim rule until Phase 3's soft
+# update operates on prior_mix_w directly). Three-way operative-column experiment run
+# on real GreatLakes2023 checkpoints (identical inputs/seed): point_est 103 species
+# obs (12 unique, 9 Lamar-corroborated) vs J-guarded posterior_mean 95 (10, 7) vs
+# mixture-aware posterior_mean 93 (10, 8) -- the column choice is SECOND-ORDER
+# relative to w calibration (a w=0.6 blocker draws full singleton parity in 60% of
+# presence states, E[share] ~ 7%, still above the 0.05 retention floor); MC arms
+# resolve slightly fewer because integrating likelihood uncertainty flattens shares.
+# Recommendation (user verdict pending): keep posterior_point_est operative, align
+# posterior_consensus()'s default to it, revisit post-Phase-2 w calibration. 6 new
+# tests (test-compute_posterior.R mixture block: exact presence-integral check,
+# confidence_score = fraction-of-presence-states-won, w=0/1 degenerate,
+# non-mixture-rows-unaffected, prior_mix_w validation; test-update_prior.R mixture
+# clearing). devtools::test() 682/0, devtools::check() 0/0/0, reinstalled.
+# Previous update, 2026-08-26 (Fable 5, branch undetected-evidence-mixture -- join_priors()'s
 # Session-117 modelled-species floor promotion SCOPED BY CAUSE, Phase 1 of the
 # undetected-evidence mixture redesign (design spec:
 # ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md; motivating

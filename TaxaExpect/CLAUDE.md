@@ -1,6 +1,26 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-26 (Fable 5, branch undetected-evidence-mixture --
+# Last updated: 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
+# Chunk B: apply_undetected_evidence() now emits the PRESENCE MIXTURE itself
+# (prior_mix_w/prior_mix_theta_present/prior_mix_theta_absent/prior_mix_p_conc) and
+# MOMENT-MATCHES the Beta summary's concentration to the mixture variance
+# (v = w*Var_c + (1-w)*Var_f + w(1-w)*(theta_c-theta_f)^2; n_eff_mm = m(1-m)/v - 1,
+# ~2 at this dataset's anchors) -- the free caller-chosen n_eff is RETIRED (errors
+# with migration guidance when supplied without p_conc). Evidence schema: required
+# taxon_name/weight/source; optional p_conc (default 1) = how much weight the
+# presence claim carries against future evidence -- NOT the static prior (derived
+# insight, documented in roxygen: for a two-point presence mixture, uncertainty
+# about w cancels out of the marginal variance, so record age honestly cannot
+# change today's prior; it changes the claim's weight in the Phase 3 confirmation
+# update). generate_invasive_watch_evidence(): n_eff param -> p_conc (default 1);
+# generate_regional_proximity_evidence(): n_eff_base RETIRED, p_conc =
+# exp(-age_years/age_half) (fresh record = one pseudo-observation). All 6 real
+# production workflows' call sites updated (INVASIVE_WATCH_N_EFF -> _P_CONC).
+# Verified on real GreatLakes2023 data: rebuilt all 121 evidence rows under the new
+# schema with blend means byte-identical (max delta 1.7e-18). devtools::test()
+# 694/0, devtools::check() 0/0/0, reinstalled. See TaxaAssign/CLAUDE.md's top note
+# for the sampler + the three-way operative-column experiment result.
+# Previous update, 2026-08-26 (Fable 5, branch undetected-evidence-mixture --
 # apply_undetected_evidence() gains a ceiling anchor LADDER for datasets without
 # singleton mirrors, Phase 1 (D2) of the undetected-evidence mixture redesign
 # (ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md). Previously,

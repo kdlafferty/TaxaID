@@ -30,9 +30,10 @@
 #' source function (e.g. an invasive-watch-list generator) never touches
 #' \code{taxaexpect_priors}, never does Beta-parameter math, and knows
 #' nothing about the floor/singleton anchors. It only answers, per taxon:
-#' how plausible is this (\code{weight}), and how confident is that
-#' assessment (\code{n_eff})? This function is the only consumer that turns
-#' those into an actual prior.
+#' how probable is local presence (\code{weight} = P(present | this source's
+#' evidence)) and how much weight that presence claim should carry against
+#' future evidence (\code{p_conc}, pseudo-observations; optional, default 1)?
+#' This function is the only consumer that turns those into an actual prior.
 #'
 #' @section How the elevation works:
 #' For each taxon in \code{evidence} that is genuinely unobserved (see
@@ -40,21 +41,32 @@
 #' \code{(alpha, beta)} is read directly out of \code{taxaexpect_priors}
 #' (not recomputed), and the site's own singleton-mirror mean is used as an
 #' upper anchor -- the two values \code{\link{generate_undetected_diversity}}
-#' already produces. The taxon's mean is linearly blended between them by
-#' its combined weight, holding the resulting Beta's concentration at the
-#' taxon's combined \code{n_eff}:
+#' already produces. The elevated prior is a PRESENCE MIXTURE (2026-08-26
+#' mixture redesign): with probability \code{w_combined} the species is
+#' locally present (theta ~ the ceiling-anchor state), with probability
+#' \code{1 - w_combined} absent (theta ~ the floor state). The blended mean
+#' is that mixture's exact expectation, and the Beta summary's concentration
+#' is moment-matched to the mixture's variance -- not caller-chosen:
 #' \preformatted{
 #'   theta_new = theta_floor + (theta_singleton - theta_floor) * w_combined
-#'   alpha_new = theta_new * n_eff_combined
-#'   beta_new  = (1 - theta_new) * n_eff_combined
+#'   v         = w*Var_ceiling + (1-w)*Var_floor + w*(1-w)*(theta_c-theta_f)^2
+#'   n_eff_mm  = theta_new*(1-theta_new)/v - 1
+#'   alpha_new = theta_new * n_eff_mm;  beta_new = (1-theta_new) * n_eff_mm
 #' }
+#' The mixture itself is also emitted (\code{prior_mix_w}/
+#' \code{prior_mix_theta_present}/\code{prior_mix_theta_absent}) so
+#' \code{TaxaAssign::compute_posterior()} can integrate over presence states
+#' directly (an explicit Bernoulli presence draw) instead of sampling the
+#' J-shaped Beta summary; alpha/beta remain the point-path summary.
+#' \code{prior_mix_p_conc} does NOT affect these marginal moments (for a
+#' two-point presence mixture, uncertainty about w cancels out of the
+#' marginal variance) -- it records how much weight the presence claim
+#' carries against future evidence, for the confirmation update.
 #' Blending toward \code{theta_singleton} (rather than, say, multiplying the
 #' floor's own alpha by a factor) gives this a principled ceiling for free:
 #' at \code{w_combined = 1} the elevated prior equals the singleton-mirror
 #' mean exactly, so external evidence -- however strong -- can never make an
 #' unobserved species look more plausible than one genuinely detected once.
-#' \code{n_eff_combined} still bounds how tightly that mean is held; a
-#' single weak-confidence source does not manufacture false precision.
 #'
 #' \strong{Ceiling anchor ladder (datasets without singletons):} when
 #' \code{taxaexpect_priors} carries no \code{singleton_mirror} rows at all,
@@ -71,9 +83,9 @@
 #' When more than one evidence row names the same taxon (e.g. a regional-
 #' proximity signal and an invasive-watch-list signal both fire for one
 #' species), the weights combine via
-#' \code{w_combined = 1 - prod(1 - weight_i)} and the confidences combine
-#' via \code{n_eff_combined = sum(n_eff_i)} (independent pseudo-observation
-#' counts add). \strong{This assumes the evidence sources are independent
+#' \code{w_combined = 1 - prod(1 - weight_i)} and the presence-claim
+#' confidences combine via \code{p_conc_combined = sum(p_conc_i)}
+#' (independent pseudo-observation counts add). \strong{This assumes the evidence sources are independent
 #' readers of different underlying facts} -- e.g. a curated invasion-biology
 #' database and raw occurrence geography are evidentially unrelated, not two
 #' noisy reads of the same signal. This is NOT a safe assumption for every
@@ -126,8 +138,12 @@
 #' @param evidence Data frame (typically the row-bound output of one or more
 #'   evidence-generating functions, e.g.
 #'   \code{\link{generate_invasive_watch_evidence}}). Required columns:
-#'   \code{taxon_name} (character), \code{weight} (numeric, 0-1),
-#'   \code{n_eff} (numeric, > 0), \code{source} (character, for audit only).
+#'   \code{taxon_name} (character), \code{weight} (numeric, 0-1 -- the
+#'   source's probability of local presence), \code{source} (character, for
+#'   audit only). Optional: \code{p_conc} (numeric, > 0; default 1) -- how
+#'   much weight the presence claim carries against future evidence, in
+#'   pseudo-observations. \code{n_eff} is retired (errors with migration
+#'   guidance): the Beta concentration is now moment-matched, not supplied.
 #'   Additional source-specific columns are ignored by this function.
 #' @param grid_id Character. Single grid cell identifier this call applies
 #'   to -- required, no default (mirrors
@@ -167,8 +183,12 @@
 #'       alongside \code{"singleton_mirror"}/\code{"global_floor"}.}
 #'     \item{evidence_weight}{The combined \code{w_combined} for this taxon
 #'       (audit column).}
-#'     \item{evidence_n_eff}{The combined \code{n_eff_combined} (audit
-#'       column).}
+#'     \item{prior_mix_w, prior_mix_theta_present, prior_mix_theta_absent}{
+#'       The presence mixture itself, consumed by
+#'       \code{TaxaAssign::compute_posterior()}'s presence-draw sampler.}
+#'     \item{prior_mix_p_conc}{Combined presence-claim confidence
+#'       (pseudo-observations) -- reserved for the confirmation update; does
+#'       not affect the static prior's marginal moments.}
 #'     \item{evidence_sources}{Semicolon-joined distinct \code{source}
 #'       values that contributed to this row (audit column).}
 #'   }
@@ -184,7 +204,7 @@
 #' \dontrun{
 #' invasive_evidence <- generate_invasive_watch_evidence(
 #'   invasive_taxa = c("Gymnocephalus cernua", "Neogobius melanostomus"),
-#'   weight = 0.6, n_eff = 4
+#'   weight = 0.1
 #' )
 #' elevated <- apply_undetected_evidence(
 #'   taxaexpect_priors, model_fit,
@@ -230,10 +250,19 @@ apply_undetected_evidence <- function(
          "habitat_col = NULL, so `main_habitat` must be NULL too.")
   }
 
-  required_evidence_cols <- c("taxon_name", "weight", "n_eff", "source")
+  required_evidence_cols <- c("taxon_name", "weight", "source")
   if (!is.data.frame(evidence) || !all(required_evidence_cols %in% names(evidence))) {
     stop("apply_undetected_evidence: `evidence` must be a data frame with columns ",
          paste(required_evidence_cols, collapse = ", "), ".")
+  }
+  if ("n_eff" %in% names(evidence) && !"p_conc" %in% names(evidence)) {
+    stop("apply_undetected_evidence: `evidence$n_eff` is retired (2026-08-26 ",
+         "mixture redesign). The elevated prior's Beta concentration is now ",
+         "moment-matched from the presence mixture, not caller-chosen; supply ",
+         "`p_conc` (confidence in the presence probability itself, in ",
+         "pseudo-observations -- used by the confirmation update, not by the ",
+         "static prior) or omit both. See ",
+         "ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md.")
   }
   if (nrow(evidence) == 0L) {
     message("apply_undetected_evidence: `evidence` has zero rows -- nothing to apply.")
@@ -242,8 +271,9 @@ apply_undetected_evidence <- function(
   if (any(evidence$weight < 0 | evidence$weight > 1, na.rm = TRUE) || anyNA(evidence$weight)) {
     stop("apply_undetected_evidence: every `evidence$weight` must be a non-NA value in [0, 1].")
   }
-  if (any(evidence$n_eff <= 0, na.rm = TRUE) || anyNA(evidence$n_eff)) {
-    stop("apply_undetected_evidence: every `evidence$n_eff` must be a non-NA positive value.")
+  if (!"p_conc" %in% names(evidence)) evidence$p_conc <- 1
+  if (any(evidence$p_conc <= 0, na.rm = TRUE) || anyNA(evidence$p_conc)) {
+    stop("apply_undetected_evidence: every `evidence$p_conc` must be a non-NA positive value.")
   }
 
   # ---- Floor anchor: read directly from taxaexpect_priors, don't recompute ---
@@ -260,6 +290,7 @@ apply_undetected_evidence <- function(
   floor_alpha <- mean(floor_rows$alpha, na.rm = TRUE)
   floor_beta  <- mean(floor_rows$beta,  na.rm = TRUE)
   theta_floor <- .beta_mean(floor_alpha, floor_beta)
+  var_floor   <- .beta_sd(floor_alpha, floor_beta)^2
 
   # ---- Singleton anchor: prefer this site's own singleton mirrors, fall
   # back to the global singleton mean when this site has none. Mirrors
@@ -286,6 +317,7 @@ apply_undetected_evidence <- function(
     #   (4) only if neither is computable: the old floor-equals-ceiling
     #       no-op, with the original warning.
     theta_singleton <- NA_real_
+    var_singleton   <- NA_real_
     modelled <- taxaexpect_priors[
       is.na(taxaexpect_priors$undetected_type) &
         !is.na(taxaexpect_priors$taxon_name) &
@@ -320,6 +352,12 @@ apply_undetected_evidence <- function(
         theta_singleton
       ))
     }
+    if (is.finite(theta_singleton) && theta_singleton > theta_floor) {
+      # Ladder-derived anchors carry no fitted Beta of their own -- hold them at
+      # the singleton_ess = 2 convention (generate_undetected_diversity()'s own
+      # mirror concentration), the same "observed about once" epistemic state.
+      var_singleton <- theta_singleton * (1 - theta_singleton) / 3
+    }
     if (!is.finite(theta_singleton) || theta_singleton <= theta_floor) {
       warning(
         "apply_undetected_evidence: taxaexpect_priors has no singleton_mirror ",
@@ -329,6 +367,7 @@ apply_undetected_evidence <- function(
         call. = FALSE
       )
       theta_singleton <- theta_floor
+      var_singleton   <- var_floor
     }
   } else {
     site_singletons <- singleton_rows[
@@ -344,6 +383,8 @@ apply_undetected_evidence <- function(
     use_singletons <- if (nrow(site_singletons) > 0L) site_singletons else singleton_rows
     theta_singleton <- .beta_mean(mean(use_singletons$alpha, na.rm = TRUE),
                                    mean(use_singletons$beta,  na.rm = TRUE))
+    var_singleton   <- .beta_sd(mean(use_singletons$alpha, na.rm = TRUE),
+                                 mean(use_singletons$beta,  na.rm = TRUE))^2
   }
 
   # ---- Exclude already-observed taxa: any row anywhere in taxaexpect_priors
@@ -372,7 +413,7 @@ apply_undetected_evidence <- function(
     sub <- evidence[evidence$taxon_name == nm, , drop = FALSE]
     list(
       w_combined  = 1 - prod(1 - sub$weight),
-      n_combined  = sum(sub$n_eff),
+      p_combined  = sum(sub$p_conc),
       sources     = paste(sort(unique(sub$source)), collapse = ";")
     )
   })
@@ -384,12 +425,37 @@ apply_undetected_evidence <- function(
   # tibble::tibble(), onto the resulting columns) that has nothing to do with
   # the data itself.
   w_combined_vec <- vapply(combined, function(x) x$w_combined, numeric(1), USE.NAMES = FALSE)
-  n_eff_new      <- vapply(combined, function(x) x$n_combined, numeric(1), USE.NAMES = FALSE)
+  p_conc_new     <- vapply(combined, function(x) x$p_combined, numeric(1), USE.NAMES = FALSE)
   sources_vec    <- vapply(combined, function(x) x$sources, character(1), USE.NAMES = FALSE)
 
+  # ---- Presence-mixture prior (2026-08-26 mixture redesign, D3/D8) ----------
+  # The elevated prior IS a presence mixture: with probability w the species is
+  # locally present (theta ~ the ceiling-anchor state), with probability 1 - w
+  # absent (theta ~ the floor state). The blended mean is that mixture's exact
+  # expectation; the Beta summary's concentration is now MOMENT-MATCHED to the
+  # mixture's variance instead of caller-chosen (the retired free n_eff):
+  #   v = w*Var_ceiling + (1-w)*Var_floor + w*(1-w)*(theta_c - theta_f)^2
+  #   n_eff_mm = m(1-m)/v - 1
+  # Note the marginal moments are independent of p_conc: for a two-point
+  # presence mixture, uncertainty ABOUT w cancels out of the marginal variance
+  # (E[p(1-p)] + Var(p) = w(1-w)), so record age etc. honestly cannot change
+  # today's prior -- p_conc instead records how much weight the presence claim
+  # carries against future evidence (the confirmation update; stored as
+  # prior_mix_p_conc). The prior_mix_* columns carry the mixture itself for
+  # TaxaAssign::compute_posterior()'s presence-draw sampler; alpha/beta remain
+  # the point-path/back-compat summary.
   theta_new <- theta_floor + (theta_singleton - theta_floor) * w_combined_vec
-  alpha_new <- theta_new * n_eff_new
-  beta_new  <- (1 - theta_new) * n_eff_new
+  delta_sq  <- (theta_singleton - theta_floor)^2
+  v_mix <- w_combined_vec * var_singleton +
+    (1 - w_combined_vec) * var_floor +
+    w_combined_vec * (1 - w_combined_vec) * delta_sq
+  n_eff_mm <- ifelse(
+    is.finite(v_mix) & v_mix > 0,
+    pmax(theta_new * (1 - theta_new) / v_mix - 1, 1e-3),
+    2  # degenerate anchors (ceiling == floor): singleton_ess convention
+  )
+  alpha_new <- theta_new * n_eff_mm
+  beta_new  <- (1 - theta_new) * n_eff_mm
 
   result <- tibble::tibble(
     taxon_name       = taxa,
@@ -402,8 +468,11 @@ apply_undetected_evidence <- function(
     model_tier       = "tier_undetected_evidence",
     undetected_type  = "evidence_blend",
     evidence_weight  = w_combined_vec,
-    evidence_n_eff   = n_eff_new,
-    evidence_sources = sources_vec
+    evidence_sources = sources_vec,
+    prior_mix_w             = w_combined_vec,
+    prior_mix_theta_present = theta_singleton,
+    prior_mix_theta_absent  = theta_floor,
+    prior_mix_p_conc        = p_conc_new
   )
   if (!is.null(habitat_col)) {
     result[[habitat_col]] <- main_habitat
@@ -449,8 +518,11 @@ apply_undetected_evidence <- function(
     model_tier       = character(0),
     undetected_type  = character(0),
     evidence_weight  = numeric(0),
-    evidence_n_eff   = numeric(0),
-    evidence_sources = character(0)
+    evidence_sources = character(0),
+    prior_mix_w             = numeric(0),
+    prior_mix_theta_present = numeric(0),
+    prior_mix_theta_absent  = numeric(0),
+    prior_mix_p_conc        = numeric(0)
   )
   if (!is.null(habitat_col)) result[[habitat_col]] <- character(0)
   result

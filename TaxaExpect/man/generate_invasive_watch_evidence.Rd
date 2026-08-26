@@ -7,7 +7,7 @@
 generate_invasive_watch_evidence(
   invasive_taxa,
   weight,
-  n_eff,
+  p_conc = 1,
   match_list_taxa = NULL
 )
 }
@@ -24,9 +24,13 @@ about locally warrants a different weight than a precautionary
 watch-list entry, and this function has no way to know which is which
 for your study).}
 
-\item{n_eff}{Numeric, > 0. Effective pseudo-observation count backing
-\code{weight} -- controls how tightly the resulting prior is held, not
-its mean. Required, no default, same reasoning as \code{weight}.}
+\item{p_conc}{Numeric, > 0. How much weight the presence claim carries
+against future evidence (the confirmation update), in
+pseudo-observations. Default 1 -- a curated listing counts as roughly
+one direct observation about presence. Does NOT affect the static
+prior's mean or concentration (both now derive from \code{weight} via
+\code{\link{apply_undetected_evidence}}'s presence-mixture moment
+matching -- the former \code{n_eff} knob is retired).}
 
 \item{match_list_taxa}{Optional character vector of taxa that actually
 have a likelihood this run (e.g. \code{unique(match_obj$taxon_name)}).
@@ -36,7 +40,7 @@ candidates this run. Default \code{NULL} (no restriction).}
 }
 \value{
 A tibble with one row per taxon in scope: \code{taxon_name},
-\code{weight}, \code{n_eff}, \code{source} (always
+\code{weight}, \code{p_conc}, \code{source} (always
 \code{"invasive_watch"}). Matches the evidence-table schema
 \code{\link{apply_undetected_evidence}} expects. Empty tibble (correct
 schema, zero rows) when nothing is in scope.
@@ -69,7 +73,7 @@ this function only knows "is this taxon on the list," nothing else.
 If different taxa on your list warrant different confidence (e.g. a
 species with multiple confirmed regional populations vs. one with a
 single distant record), call this function once per tier with a
-different \code{weight}/\code{n_eff} and \code{dplyr::bind_rows()} the
+different \code{weight}/\code{p_conc} and \code{dplyr::bind_rows()} the
 results before passing them to \code{apply_undetected_evidence()} --
 \code{evidence} tables from any number of calls combine naturally, so no
 tiering logic needs to live inside this function itself.
@@ -81,7 +85,7 @@ tiering logic needs to live inside this function itself.
 # to species genuinely relevant to your study region.
 invasive_evidence <- generate_invasive_watch_evidence(
   invasive_taxa = c("Gymnocephalus cernua", "Neogobius melanostomus"),
-  weight = 0.6, n_eff = 4
+  weight = 0.05
 )
 }
 

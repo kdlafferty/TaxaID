@@ -430,6 +430,35 @@ update_prior_from_consensus <- function(result,
 
   unresolved_rows$prior_mean[boost_mask] <- new_prior
 
+  # --- Clear presence-mixture columns on raised rows (2026-08-26, D8) ---------
+  # A raised row's species was confirmed present elsewhere at this site, so it
+  # is no longer a presence MIXTURE -- presence is established, and the row
+  # should revert to ordinary Beta/point handling at its boosted prior. Leaving
+  # the mixture columns in place would make compute_posterior()'s presence-draw
+  # sampler use the stale, pre-confirmation prior_mix_w while the point path
+  # uses the boosted mean -- an inconsistency, not a design. (The Phase 3 soft
+  # confirmation update will instead update prior_mix_w continuously; until
+  # then, hard confirmation simply dissolves the mixture. See
+  # ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md.)
+  mix_cols_present <- intersect(
+    c("prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent",
+      "prior_mix_p_conc"),
+    names(unresolved_rows)
+  )
+  if ("prior_mix_w" %in% mix_cols_present && any(raise_mask)) {
+    raised_idx <- which(boost_mask)[raise_mask]
+    was_mix <- !is.na(unresolved_rows$prior_mix_w[raised_idx])
+    if (any(was_mix)) {
+      for (.mc in mix_cols_present) {
+        unresolved_rows[[.mc]][raised_idx[was_mix]] <- NA_real_
+      }
+      cli::cli_inform(
+        "{sum(was_mix)} raised row(s) were presence mixtures -- mixture cleared \\
+        (presence now established by confirmation)."
+      )
+    }
+  }
+
   # --- Recompute posteriors for unresolved observations ------------------------
   # Drop existing posterior columns so compute_posterior() produces fresh values
   post_cols       <- intersect(
