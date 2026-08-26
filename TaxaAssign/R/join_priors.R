@@ -5,7 +5,8 @@ utils::globalVariables(c(
   "singleton_alpha", "singleton_beta",
   "source_taxon_name", "theta_s",
   "group_prior_alpha", "group_prior_beta",
-  "dark_diversity_group", "n_singletons_group", "n_undetected_group"
+  "dark_diversity_group", "n_singletons_group", "n_undetected_group",
+  ".ha_theta_mean"
 ))
 
 # ==============================================================================
@@ -104,7 +105,13 @@ utils::globalVariables(c(
   # code from an earlier draft, and removed during code review).
   override_cols <- intersect(
     names(sp_priors),
-    c("taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type", tax_extra)
+    # model_tier/observed_in_habitat carried so the modelled-species floor
+    # promotion downstream sees each expanded row's own provenance (an
+    # evidence_blend/tier_domestic_food row must never be promoted; a
+    # modelled row is promotable only on a real habitat mismatch) instead of
+    # the template coarse row's NA values.
+    c("taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type",
+      "model_tier", "observed_in_habitat", tax_extra)
   )
 
   # Build expansion map: unique (crank | cvalue | grid | hab) -> filtered species df
@@ -476,6 +483,23 @@ utils::globalVariables(c(
 #' non-zero prior, reflecting the possibility that unobserved species
 #' could be present.
 #'
+#' ## Habitat-agnostic named-species prior fallback
+#' A named prior row can legitimately have no habitat concept at all --
+#' `TaxaExpect::generate_domestic_food_priors()`'s output is the real example
+#' (a food/domestic species' plausibility is governed by human food supply,
+#' not local habitat suitability, so `main_habitat = NA` there is intentional,
+#' not a missing value to fill in). The primary composite-key join above
+#' requires an exact `main_habitat` match, so such a row could never match a
+#' real observation's specific habitat on its own -- this function re-matches
+#' any row whose primary join failed on `(taxon_name, taxon_name_rank,
+#' grid_id)` alone against habitat-agnostic (`main_habitat = NA`)
+#' `taxaexpect_priors` rows, ranked below a real per-habitat match but above
+#' the dark-diversity/global-floor fallback below. Confirmed a real,
+#' previously-shipping gap on real data: a domestic-food prior row never
+#' matched a real observation under habitat-scoped priors, silently falling
+#' back to the generic floor instead of the tailored prior
+#' `generate_domestic_food_priors()` computed for it.
+#'
 #' **Domestic/synanthropic species caveat (Session 149):** this fallback
 #' assumes unmodelled species are exchangeable draws from one detection
 #' process. Domestic/synanthropic species (pets, livestock) violate this in
@@ -578,6 +602,24 @@ utils::globalVariables(c(
 #'   passed as `taxonomy` to `generate_undetected_diversity()` (built from
 #'   `occurrences_std`). Default `NULL` (flat global-floor for all unmodelled
 #'   candidates).
+#'
+#' @section Modelled-species floor (scoped by cause):
+#' A modelled species whose prior at the focal habitat falls below the
+#' singleton-mirror mean is promoted up to that mean -- but only when the low
+#' value is habitat EXTRAPOLATION (`observed_in_habitat` is `FALSE`: the
+#' species was never recorded in this habitat during training, so the
+#' habitat-conditional estimate is model extrapolation rather than data).
+#' A genuinely low in-habitat estimate is real rarity signal and is left
+#' alone. Named evidence-derived rows (`undetected_type == "evidence_blend"`,
+#' `model_tier` `"tier_undetected_evidence"`/`"tier_domestic_food"`) are
+#' never promoted under any condition: their sub-singleton theta is the
+#' deliberate output of a graded evidence blend
+#' (\code{TaxaExpect::apply_undetected_evidence()}) or ESS-based domestic
+#' scale, and promotion would silently erase that gradation (the central
+#' finding of the 2026-08-26 upranking review -- see
+#' \code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}).
+#' When `taxaexpect_priors` carries no `observed_in_habitat` column, the
+#' pre-2026-08-26 blanket promotion is retained for modelled rows.
 #'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
@@ -909,6 +951,74 @@ join_priors <- function(likelihoods,
       by = c("taxon_name", "taxon_name_rank", "grid_id", "main_habitat")
     )
 
+  # ---- Habitat-agnostic named-species prior fallback --------------------------
+  # A named prior row can legitimately have no habitat concept at all --
+  # TaxaExpect::generate_domestic_food_priors()'s output is the real example: a
+  # food/domestic species' plausibility is governed by human food supply, not
+  # local habitat suitability, so it has no single correct main_habitat value
+  # (a grid_id can span more than one real habitat). Such rows carry
+  # main_habitat = NA by design. The primary composite-key join above requires
+  # an EXACT main_habitat match, so a habitat-agnostic row can never match a
+  # real observation's specific habitat there -- without this fallback it
+  # would silently receive the same generic dark-diversity/global-floor
+  # treatment as a species with no tailored prior at all, defeating the entire
+  # point of a named per-species evidence source. Confirmed a real, not
+  # hypothetical, gap: a real Gadus morhua domestic-food row on real
+  # GreatLakes2023 data never matched, and the affected observation's theta
+  # came out ~3.4x lower than the prior this function computed for it.
+  #
+  # This tier rescues any row whose primary join failed (alpha still NA) by
+  # re-matching on (taxon_name, taxon_name_rank, grid_id) alone against
+  # habitat-agnostic (main_habitat = NA) taxaexpect_priors rows -- ranked
+  # below a real per-habitat match (which always wins when one exists, since
+  # this only touches rows where alpha is still NA after the primary join)
+  # and above the coarse-rank/dark-diversity fallbacks below. If more than one
+  # habitat-agnostic row exists for the same (taxon_name, taxon_name_rank,
+  # grid_id) -- e.g. two independent evidence sources both naming the same
+  # species -- the strongest (highest theta_mean) is used, matching this
+  # function's own final dedup convention further below, rather than an
+  # ambiguous many-to-many join.
+  habitat_agnostic_priors <- taxaexpect_priors |>
+    dplyr::filter(is.na(main_habitat), !is.na(taxon_name), !is.na(alpha)) |>
+    dplyr::mutate(.ha_theta_mean = alpha / (alpha + beta)) |>
+    dplyr::arrange(dplyr::desc(.ha_theta_mean)) |>
+    dplyr::distinct(taxon_name, taxon_name_rank, grid_id, .keep_all = TRUE) |>
+    dplyr::select(taxon_name, taxon_name_rank, grid_id,
+                  .ha_alpha = alpha, .ha_beta = beta,
+                  # provenance carried so the modelled-species floor promotion
+                  # downstream can recognize a rescued row's origin (e.g. a
+                  # tier_domestic_food row must never be promoted to singleton
+                  # parity -- its tiny theta IS the design, not an artifact).
+                  dplyr::any_of(c(.ha_model_tier      = "model_tier",
+                                  .ha_undetected_type = "undetected_type")))
+
+  needs_ha_fallback <- is.na(result$alpha) & !is.na(result$taxon_name)
+  if (any(needs_ha_fallback) && nrow(habitat_agnostic_priors) > 0L) {
+    ha_match <- result[needs_ha_fallback, c("taxon_name", "taxon_name_rank", "grid_id")] |>
+      dplyr::left_join(habitat_agnostic_priors,
+                        by = c("taxon_name", "taxon_name_rank", "grid_id"))
+    n_ha_applied <- sum(!is.na(ha_match$.ha_alpha))
+    result$alpha[needs_ha_fallback] <- dplyr::coalesce(
+      result$alpha[needs_ha_fallback], ha_match$.ha_alpha
+    )
+    result$beta[needs_ha_fallback] <- dplyr::coalesce(
+      result$beta[needs_ha_fallback], ha_match$.ha_beta
+    )
+    for (.prov in c("model_tier", "undetected_type")) {
+      .ha_col <- paste0(".ha_", .prov)
+      if (.ha_col %in% names(ha_match) && .prov %in% names(result)) {
+        result[[.prov]][needs_ha_fallback] <- dplyr::coalesce(
+          result[[.prov]][needs_ha_fallback], ha_match[[.ha_col]]
+        )
+      }
+    }
+    if (n_ha_applied > 0L) {
+      cli::cli_inform(
+        "join_priors: applied {n_ha_applied} habitat-agnostic named-species prior row(s) (e.g. domestic/food priors with no habitat concept)."
+      )
+    }
+  }
+
   # ---- Coarse-rank expansion -------------------------------------------------
   # Rows where the primary join failed because taxon_name_rank is coarser than
   # species (e.g. a family- or genus-level identification). Expand into
@@ -1037,25 +1147,66 @@ join_priors <- function(likelihoods,
     )
 
   # ---- Modelled-species floor: never worse than singleton-mirror mean --------
-  # A species the model has seen (non-NA alpha) at the wrong habitat can get
+  # A species the model has seen (non-NA alpha) at the WRONG habitat can get
   # theta ~= 0, producing prior_alpha well below the singleton-mirror level.
   # This inverts the intended ordering: unobserved species beat observed ones.
-  # Fix: if a modelled species has prior_mean below the singleton-mirror mean,
-  # promote it to the singleton-mirror level. We use singleton_mean (not
-  # dark_mean) because dark_mean is pulled down by the global floor -- using it
-  # would also promote Tier 2 species with genuine small-but-positive theta,
-  # erasing spatial signal. Singleton_mean is the correct floor: the rarest
-  # known detection rate in the system. Issue 2 fix -- Session 117.
-  has_model     <- !is.na(result$alpha)
+  # Fix: promote such rows to the singleton-mirror level. We use singleton_mean
+  # (not dark_mean) because dark_mean is pulled down by the global floor.
+  # Issue 2 fix -- Session 117.
+  #
+  # SCOPED BY CAUSE (2026-08-26 mixture redesign, D1 -- see ecosystem_docs/
+  # REENTRY_PROMPT_undetected_evidence_mixture_redesign.md). The original
+  # blanket `!is.na(alpha) & below-singleton` condition promoted far more than
+  # its motivating case:
+  # (a) Named evidence-derived rows (undetected_type == "evidence_blend",
+  #     model_tier tier_undetected_evidence/tier_domestic_food) sit below the
+  #     singleton mean BY CONSTRUCTION -- their graded theta IS the design
+  #     (TaxaExpect::apply_undetected_evidence()'s weighted blend,
+  #     generate_domestic_food_priors()'s ESS-based scale). Promoting them to
+  #     exact singleton parity silently erased every weight/distance/age
+  #     gradation and converted the blend into a binary admission gate --
+  #     the central finding of the 2026-08-26 GreatLakes upranking review
+  #     (verified by ablation: byte-identical consensus output across a 4x
+  #     d_half sweep; 177 observations flipped species->coarser). Never
+  #     promoted, under any condition.
+  # (b) Modelled rows whose low theta is a genuine, in-habitat estimate
+  #     (observed_in_habitat TRUE) are data, not artifact -- promoting them
+  #     discards real rarity signal. Only rows whose low prior is habitat
+  #     EXTRAPOLATION (observed_in_habitat explicitly FALSE -- the species was
+  #     never recorded in this habitat in training, the rule's actual
+  #     motivating case) are promoted. When taxaexpect_priors carries no
+  #     observed_in_habitat column at all (priors not from
+  #     generate_full_priors()), the pre-redesign behavior is retained for
+  #     modelled rows so older callers are unaffected.
+  has_model      <- !is.na(result$alpha)
   singleton_mean <- result$singleton_alpha / (result$singleton_alpha + result$singleton_beta)
-  below_singleton <- has_model & result$prior_mean < singleton_mean
+
+  not_evidence_row <- rep(TRUE, nrow(result))
+  if ("undetected_type" %in% names(result)) {
+    not_evidence_row <- not_evidence_row &
+      (is.na(result$undetected_type) | result$undetected_type != "evidence_blend")
+  }
+  if ("model_tier" %in% names(result)) {
+    not_evidence_row <- not_evidence_row &
+      (is.na(result$model_tier) |
+         !result$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"))
+  }
+
+  habitat_mismatch <- if ("observed_in_habitat" %in% names(result)) {
+    !is.na(result$observed_in_habitat) & !result$observed_in_habitat
+  } else {
+    rep(TRUE, nrow(result))
+  }
+
+  below_singleton <- has_model & not_evidence_row & habitat_mismatch &
+    result$prior_mean < singleton_mean
   if (any(below_singleton, na.rm = TRUE)) {
     n_promoted <- sum(below_singleton, na.rm = TRUE)
     result$prior_alpha[below_singleton] <- result$singleton_alpha[below_singleton]
     result$prior_beta[below_singleton]  <- result$singleton_beta[below_singleton]
     result$prior_mean[below_singleton]  <- singleton_mean[below_singleton]
     cli::cli_inform(
-      "join_priors: promoted {n_promoted} modelled row(s) with priors below singleton-mirror floor."
+      "join_priors: promoted {n_promoted} habitat-mismatch modelled row(s) with priors below the singleton-mirror floor."
     )
   }
 

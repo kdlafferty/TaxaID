@@ -1,7 +1,393 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-08-09 (Sonnet 5 -- TaxaWizard's first full code + domain review against
+# Last updated: 2026-08-26 (Fable 5, branch undetected-evidence-mixture -- Phase 1 of the
+# undetected-evidence MIXTURE REDESIGN implemented: TaxaAssign::join_priors()'s
+# Session-117 modelled-species floor promotion scoped by cause, and
+# TaxaExpect::apply_undetected_evidence() gains a ceiling anchor ladder for
+# no-singleton datasets. Motivated by the same-day statistical review of GreatLakes2023
+# conservative upranking (GreatLakes data/REVIEW_fable_conservative_upranking.md +
+# REVIEW_uprank_ablation.R), whose central finding: the blanket promotion clamped every
+# evidence_blend/domestic prior row to exact singleton parity, erasing the entire
+# graded weight=exp(-d/150) design (consensus output byte-identical across a 4x d_half
+# sweep; posteriors reduced to pure likelihood ratios, reproduced to 3 decimals;
+# 3,326 rows promoted; yellow perch suppressed in 78 observations by the watch-listed,
+# not-established-in-NA zander). Full settled design (all user verdicts recorded):
+# ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md -- w reread as
+# P(locally present | evidence) via a presence-mixture interpretation of the linear
+# blend, moment-matched n_eff, per-dataset GBIF distance-curve fit, iNat as a third
+# evidence generator, likelihood-side TaxaFlag surveillance caveat, soft (power-prior/
+# soft-EM) confirmation update replacing the hard 0.8-threshold donor rule, and a
+# mixture-aware compute_posterior() sampler feeding a three-way operative-column
+# decision experiment. Phase 1 live-verified against the real GreatLakes2023
+# checkpoints via the review's ablation harness: promotion 3,326 -> 112 rows;
+# species-resolved observations 33 -> 103 (6 -> 12 unique species, 9/12
+# Lamar-corroborated); the d_half sweep now changes real output (121 observations
+# differ at d_half=75) -- the graded design finally reaches the posterior. Both
+# packages devtools::test() 0 failures (TaxaAssign 670, TaxaExpect 689),
+# devtools::check() 0/0/0, reinstalled. Phases 2-3 not started; the GreatLakes
+# workflow's cached *_consensus_final.rds/posterior checkpoints are STALE for any
+# re-run against the new install. See both packages' own CLAUDE.md top notes.
+# Previous update, 2026-08-25 (Sonnet 5 -- uprank/downrank terminology audit, no code changes.
+# PROMPT_uprank_downrank_consistency.md asked for a full-monorepo inventory of "uprank"/
+# "downrank" usage against the agreed convention (uprank = toward a COARSER rank,
+# downrank = toward a FINER rank), specifically flagging two suspected inconsistencies to
+# verify directly against source: TaxaAssign::posterior_consensus()'s `downranked` output
+# column, and TaxaAssign::generate_report()'s auto-generated methods/results narration.
+# Grepped the whole monorepo (all 9 packages, inst/workflows, vignettes, tests, roxygen,
+# man/*.Rd, ecosystem_docs, session-note archives) for uprank/downrank/upranked/downranked:
+# 190 hits across ~40 files. Read every hit in context rather than trusting the count.
+# Verdict: EVERY SINGLE occurrence already follows the agreed convention correctly --
+# including the two specifically-flagged suspects. `.downrank_consensus()`/`downranked` in
+# TaxaAssign::posterior_consensus() (R/posterior_consensus.R) narrows a coarse LCA to a
+# FINER rank when species_reference shows exactly one plausible finer taxon (`downranked =
+# TRUE` means "moved to a finer rank") -- correct, not backwards. generate_report()'s
+# narration ("Upranked to coarser rank due to ambiguity", "Downranked to finer taxonomic
+# level via species reference") is likewise correct. No inconsistency found anywhere: not
+# in TaxaAssign::score_consensus()'s whitelist-upranking, TaxaFlag::review_assignments()/
+# add_posthoc_assessment(), TaxaLikely::compute_likelihoods(), TaxaExpect's README/
+# supplemental-methods prose, any package's CLAUDE.md, any man/*.Rd (auto-generated, so
+# expected to match), any test file, or any ecosystem_docs design/audit doc. No breaking
+# change, no rename, no reinstall needed -- this was a verification-only pass with a null
+# result. Created (but did not need) a feature branch, `uprank-downrank-consistency`, per
+# this ecosystem's own [[feedback_git_branches]] convention; no package source was touched.
+# Recorded here so a future session doesn't re-run this same audit from scratch believing
+# the two flagged spots are still open questions -- they were checked directly against
+# source, not assumed correct.
+# Previous update, 2026-08-23 (Sonnet 5 -- real-production confirmation of the GBIF synonym-
+# resolution fix in generate_regional_proximity_evidence() (see the entry directly below):
+# the user re-ran it against the full real 194-taxon GreatLakes2023 zero_bbox_taxa list.
+# Result: 5 of 194 taxa elevated (up from 0), apply_undetected_evidence() correctly added 5
+# new prior rows. Confirms the fix at real production scale, not just the single isolated
+# case verified at implementation time. Pure verification, no code changes. See
+# TaxaExpect/CLAUDE.md's own top note for the full record.
+# Previous update, 2026-08-22, continued (Sonnet 5 -- a real, more serious PRE-EXISTING bug
+# found when the batching change below was actually run at real production scale (194
+# real GreatLakes2023 taxa): the user reported 0 of 194 elevated despite the log clearly
+# showing dozens of real, quality-filtered Stage 2 fetches succeeding. Verified directly
+# against the user's own real GBIF keys (not assumed): several real fish taxon names are
+# GBIF SYNONYMS (e.g. "Erimonax monachus" -> usageKey 2367386, status SYNONYM, real
+# occurrence records filed under the ACCEPTED name "Cyprinella monacha") -- GBIF's
+# occurrence search transparently resolves a synonym key to its accepted key's real
+# records (the fetch genuinely succeeds), but matching those records' `species` field
+# against the ORIGINAL query name (what the code did) can never succeed, since the
+# records are filed under the accepted name instead. This bug predates today's batching
+# work entirely -- it existed identically in the original single-call resolver, just
+# never exercised by the 3-species validation, since none of those three happen to be
+# under active GBIF synonymy. Fixed by capturing GBIF's own resolved `species` name
+# alongside the usageKey and using it (not the query string) for internal occurrence
+# matching -- the OUTPUT `taxon_name` still reports the original query name, so the
+# caller's own join key is unaffected. Live re-verified against the user's exact real
+# case: "Erimonax monachus" now correctly produces a real evidence row instead of
+# silently vanishing, while the two already-working species reproduce byte-identical
+# results. `devtools::test()` 665/665 (up from 654), `devtools::check()` 0/0/0,
+# reinstalled. See TaxaExpect/CLAUDE.md's own 2026-08-22-continued top note for the full
+# investigation record.
+# Previous update, 2026-08-22 (Sonnet 5 -- generate_regional_proximity_evidence()'s per-taxon
+# GBIF-key resolution replaced with one batched rgbif::name_backbone_checklist() call,
+# after the user asked whether more efficient GBIF query modes exist for its "one taxon at
+# a time" Stage 0 step. Investigated with real, live rgbif tests (not assumed) before
+# writing any code: Stage 0 (name -> key) is a genuine batching win (11 individual calls
+# 3.51s vs. 1 batched call 1.17s, correctness identical including the pathological bare-
+# genus-resolves-to-a-coarser-rank case); Stage 2 (occurrence fetch) was investigated and
+# explicitly REJECTED as a batching opportunity once `rgbif::occ_data(taxonKey = vector)`
+# was confirmed to be a client-side loop (`attr(., "type") == "many"`, one real HTTP request
+# per key) rather than a true single-request batch -- and `TaxaFetch::fetch_gbif_
+# occurrences()`'s own internal per-key loop does the identical thing, so the ecosystem's
+# existing "combine taxa into one call" convention there is a code-convenience abstraction,
+# not a real network-request reduction. Live end-to-end re-verified against the installed
+# package and the real GBIF API: reproduces byte-identical real numbers to the original
+# pre-batching verification for the same three motivating species. `devtools::test()`
+# 654/654 (up from 641), `devtools::check()` 0/0/0, reinstalled. Also fixed, found only by
+# running TaxaExpect's full suite for the first time since the "Ictalurus" fix below landed:
+# 3 pre-existing test assertions in `test-generate_domestic_food_priors.R` broke on
+# `clean_taxon_names()`'s new `collapsed_to_genus` attribute (that fix's own verification
+# only ran TaxaTools's/TaxaMatch's suites) -- fixed the same way as TaxaTools's own test
+# suite (`ignore_attr = "collapsed_to_genus"`); confirmed via grep this was the only
+# ecosystem-wide fallout. See TaxaExpect/CLAUDE.md's own 2026-08-22 top note for the full
+# record, including why Stage 2 batching was rejected.
+# Previous update, 2026-08-21, still later (Sonnet 5 -- the "Ictalurus" root-cause fix directly
+# below was verified against a REAL re-run of GreatLakes2023 and still found 33 stale rows --
+# the first fix was real but incomplete, not a stale-cache artifact. Root-caused a SECOND,
+# structurally different failure mode by reading the real query's own `taxonomy_collision`
+# value directly, not by guessing: NCBI's own taxonomy DB genuinely contains real leaf-level
+# nodes for informally-named specimens (e.g. `"Ictalurus sp. UM 105-1789"`), RANKED "species"
+# BY NCBI ITSELF -- found in the target backbone, `matched_rank` genuinely IS "species" (fully
+# backbone-consistent, so the existing rank-mismatch-driven correction correctly does nothing
+# at all), but the classification path's own species-rank VALUE is that same informal label,
+# which `clean_taxon_names()` correctly collapses to "Ictalurus" -- a case no rank-MISMATCH-
+# based correction can ever catch, since the backbone's own rank claim is genuinely self-
+# consistent. Generalized the not-found-only fix into ONE unified mechanism covering all
+# three sources that can populate `taxon_name` in `TaxaMatch::convert_taxonomy_backbone()`,
+# rather than adding a third parallel patch. Deliberately rejected a shape-based re-
+# derivation (`TaxaTools::is_plausible_binomial()` on the final value) in favor of tracking
+# the actual collapse event through the pipeline -- the shape-based regex would have wrongly
+# demoted every real hyphenated-genus species (e.g. *Pseudo-nitzschia*), confirmed via a
+# dedicated regression test. Live-verified against the installed package for both real cases
+# side by side. `devtools::test()` 883/883 (up from 876), `devtools::check()` 0/0/0,
+# reinstalled. See TaxaMatch/CLAUDE.md's own 2026-08-21-continued top note for the full
+# second-round investigation.
+# Previous update, 2026-08-21, later still (Sonnet 5 -- root-cause fix for the real "Ictalurus"
+# bug found live-debugging the GreatLakes2023 regional-proximity work below: 33 real
+# `match_obj_restored` rows had `taxon_name = "Ictalurus"` (bare genus) but
+# `taxon_name_rank = "species"`, having already been shown to cause a genus-vs-species
+# GBIF-lookup bug in `generate_regional_proximity_evidence()` (fixed there as a downstream
+# safeguard, this session's earlier work). Per the user's explicit "we have not shipped the
+# package... a robust way to fix this problem that does not require repeated post-hoc
+# fixes" instruction, traced the full function chain rather than patching the symptom:
+# `TaxaTools::clean_taxon_names()` gains a new `collapsed_to_genus` attribute (surfacing an
+# already-computed-but-discarded internal signal); `TaxaMatch::convert_taxonomy_backbone()`
+# gains a second, independent rank-correction mechanism for NOT-found rows (the existing
+# 2026-07-25 "Inu Inu" mechanism only ever covers rows the target backbone DID find, just at
+# a coarser rank) using that new attribute. Confirmed `TaxaTools::fill_higher_ranks()` is
+# genuinely unrelated (different signal, doesn't call `clean_taxon_names()`) before
+# concluding the fix belonged in exactly these two places. Both packages' `devtools::test()`/
+# `check()` clean (TaxaTools 847/847, TaxaMatch 876/876; 0/0/{0,1} both, the 1 note pre-
+# existing/environmental), both reinstalled and live-verified end to end against the
+# installed packages. See TaxaTools/CLAUDE.md's and TaxaMatch/CLAUDE.md's own 2026-08-21
+# top session notes for the full chain-of-functions investigation and fix record.
+# Previous update, 2026-08-21, later same day (Sonnet 5 -- builds
+# TaxaExpect::generate_regional_proximity_evidence(), the regional-proximity thread's own
+# evidence generator, closing out ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_
+# check.md against the shared TaxaExpect::apply_undetected_evidence() applier the parallel
+# invasive-watch-list chat built (see the entries directly below). Two-stage design, exactly
+# as planned: Stage 1 (cheap gate) calls TaxaFlag::check_gbif_tile_range() per candidate
+# taxon (after resolving a GBIF backbone key via a new internal .resolve_gbif_taxon_key(),
+# rgbif::name_backbone()); species with beyond_buffer = TRUE cost nothing further. Stage 2
+# (real, filtered fetch, only for species Stage 1 found something for) scopes a real
+# TaxaFetch::get_gbif_occurrences() call to a buffer sized from Stage 1's own reported
+# distance (clamped [50km, 1000km]), runs it through TaxaFetch::filter_gbif_quality() (the
+# eDNA/coordinate-quality screening Stage 1's raw density tiles structurally cannot
+# provide), then reads the real distance and the matched record's age via
+# TaxaFlag::compute_local_occurrence_distance() (extended this session with a new date_col
+# param -- fully backward compatible, NULL default). Distance drives weight
+# (exp(-distance_km/d_half)); age drives n_eff independently (n_eff_base *
+# exp(-age_years/age_half)) -- age widens/narrows confidence, never shifts the mean, per the
+# design conversation's own resolution of "an old record could mean a real unresurveyed
+# population or a contracted range, and occurrence data alone can't tell." Both
+# d_half/age_half ship with a default but are fully documented/overridable, per explicit
+# user direction (not the "no default, errors if omitted" convention used elsewhere in this
+# ecosystem for values with no defensible number). Watershed/basin connectivity was
+# explicitly dropped from scope earlier in this same design thread (this package needs to
+# stay simple/generic across taxa and geography); the geographic-plausibility judgment goes
+# to a human/LLM reviewer instead of a hardcoded gate.
+#
+# Live-verified against the real GBIF API, not just synthetic tests -- the same three
+# species the very first reentry-doc session flagged as the real motivating case
+# (Etheostoma chlorosomum/Ictalurus furcatus/Alburnus alburnus, GreatLakes2023, lat=41.4/
+# lng=-86.7): E. chlorosomum resolved to a real record 74km away from 1986 (40 years old --
+# confirming the reentry doc's own "mostly dated" recollection with a real number),
+# weight=0.612/n_eff=0.347 (a real pull, appropriately loosely held given the record's
+# age); I. furcatus 83km/1999/weight=0.575/n_eff=0.826; A. alburnus's nearest tile hit was
+# ~1690km away, beyond the 1000km fetch-buffer cap, so Stage 2 correctly found nothing and
+# the species got no evidence row at all rather than a fabricated number.
+#
+# TaxaFlag devtools::test() 419/419 (up from 415), TaxaExpect devtools::test() 641/641 (up
+# from 614), both devtools::check() 0/0/0. Both reinstalled via ecosystem_docs/
+# install_all.R and verified against the installed copies directly. Both this session's own
+# generator and the applier it targets were read/verified directly against source before
+# either side trusted the other's summary -- see the 2026-08-20 entry below for two real,
+# unrelated production bugs (TaxaExpect::generate_domestic_food_priors()/
+# TaxaAssign::join_priors()) found and fixed along the way while cross-checking the
+# applier's design. See TaxaExpect/CLAUDE.md's and TaxaFlag/CLAUDE.md's own top session
+# notes, and ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md's own new
+# "Resolved" section, for the full per-package record.
+# Previous update, 2026-08-21 (Sonnet 5 -- real-data verification of the invasive-watch-list
+# evidence mechanism (TaxaExpect::generate_invasive_watch_evidence()/
+# apply_undetected_evidence(), built 2026-08-20 -- see the entry directly below for the full
+# design record). Wired by the user into the real production
+# GreatLakes2023_ConsensusWorkflow.R. Real result: Gymnocephalus cernua (Ruffe), with zero
+# occurrence evidence in this dataset, correctly elevated from the dark-diversity floor;
+# Neogobius melanostomus (Round Goby), on the same watch list, correctly left untouched
+# because it already has a real, occurrence-fitted tier1 model prior -- confirming the
+# "already observed" exclusion logic works against a real production taxaexpect_priors
+# table, not just synthetic fixtures. Pure verification, no code changes. See
+# TaxaExpect/CLAUDE.md's and ecosystem_docs/REENTRY_PROMPT_invasive_species_watch_list_
+# priors.md's own top/new sections for the full record.
+# Previous update, 2026-08-20, continued yet further (Sonnet 5 -- the invasive-species watch-list
+# prior mechanism (ecosystem_docs/REENTRY_PROMPT_invasive_species_watch_list_priors.md) is
+# redesigned and re-implemented, closing out the real-time cross-session negotiation with the
+# concurrent regional-proximity chat recorded in the entry directly below. Two real
+# architecture corrections came out of that negotiation, both landed the same session:
+#
+# (1) The first pass (a live USGS NAS API query + HUC8 watershed scoping, built and verified
+# working earlier the same day) was REMOVED at the user's direct instruction: TaxaID is meant
+# to stay a generic, taxon-/geography-agnostic toolkit, and a narrow (aquatic-only, US-only)
+# external database plus freshwater-specific watershed math doesn't belong baked into a
+# package function -- see TaxaFetch/CLAUDE.md's removal note for the distinguishing principle
+# (broad infrastructure like iNat/GBIF, already relied on elsewhere, is fine; a single-
+# country single-taxon-group database is not).
+#
+# (2) The replacement mechanism converged with the regional-proximity chat's own design onto
+# one shared architecture, reached via several rounds of direct cross-session messages (both
+# sides' full exchange is summarized in each package's own top session note --
+# TaxaExpect/CLAUDE.md carries the fullest record). The key insight: neither mechanism has a
+# real per-species "dark diversity prior" object to adjust -- generate_undetected_diversity()
+# emits one anonymous global_floor row, applied generically by TaxaAssign::join_priors() at
+# join time -- so "elevate this species' floor" has to mean creating a genuinely named row.
+# Once the user required the two mechanisms to compose ADDITIVELY (a species both nearby and
+# invasive-listed should read higher than either alone, capped at the singleton-mirror
+# ceiling), having each mechanism independently bind_rows() its own row became a real bug
+# risk (two rows sharing one join key is an ambiguous join) -- fixed architecturally by
+# splitting each mechanism into a thin evidence generator (taxon_name/weight/n_eff/source, no
+# prior-construction knowledge) and one shared applier,
+# TaxaExpect::apply_undetected_evidence(), that is the only place a new row is ever written.
+# generate_domestic_food_priors() was deliberately excluded from ever feeding this shared
+# applier -- a food/domestic detection and an occurrence-plausibility detection are opposite
+# claims about the same zero-detection fact (contamination-risk vs. genuine population), not
+# combinable evidence.
+#
+# TaxaExpect devtools::test() 614/614, devtools::check() 0/0/0; TaxaFetch devtools::test()
+# 619/619 (2 pre-existing, unrelated CoordinateCleaner/terra environment failures),
+# devtools::check() 0/0/0. Both reinstalled. Live-verified end to end through the REAL
+# pipeline (create_sites_from_grid() through generate_undetected_diversity() through the new
+# evidence mechanism), not just synthetic test fixtures. See TaxaExpect/CLAUDE.md's and
+# TaxaFetch/CLAUDE.md's own top session notes and the reentry doc's own new "Resolved"
+# section for the complete record.
+# Previous update, 2026-08-20, later same day (Sonnet 5 -- real production bug found and fixed
+# while cross-session-collaborating on the regional-proximity/invasive-watch prior-mechanism
+# design (see ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md). Diagnosing
+# how a habitat-agnostic evidence source should join into taxaexpect_priors surfaced a real
+# question about TaxaExpect::generate_domestic_food_priors() (the existing precedent both
+# design threads were citing), which the user then confirmed empirically on their own real
+# GreatLakes2023 data before any fix was written: a real Gadus morhua domestic-food row
+# (alpha=5, beta=8775, theta ~= 0.00057) never actually applied to the matching real
+# observation -- TaxaAssign::join_priors() gave it theta ~= 0.000167 instead (~3.4x lower,
+# the ordinary group-dark-diversity fallback), meaning this function's whole elevated-prior
+# mechanism has been silently inert for every habitat-scoped study since it shipped
+# (2026-07-23). Root cause, two independent gaps in the SAME rows: taxon_name_rank was never
+# set (defaulted NA via bind_rows(), now fixed to "species"); main_habitat is deliberately
+# NA (a food species has no single correct habitat -- a grid_id can span several, and
+# plausibility here is governed by human food supply, not habitat suitability) but
+# join_priors()'s primary composite-key join treated NA as literal, not a wildcard. Fixed at
+# the correct layer per the user's own explicit framing ("food does not have a habitat" --
+# don't stamp a real habitat value, fix the join instead): join_priors() gains a new
+# habitat-agnostic named-species prior fallback tier, re-matching a failed primary-join row
+# on (taxon_name, taxon_name_rank, grid_id) alone against main_habitat = NA rows, ranked
+# below a real per-habitat match and above the generic floor -- a general primitive, not a
+# food-specific patch, reusable by any future habitat-agnostic evidence source (flagged to
+# the parallel invasive-watch-list design chat, whose regional/watch-list evidence was
+# judged to legitimately want to STAY habitat-aware, unlike food -- a freshwater species
+# found nearby is only plausible in a freshwater habitat locally, a real physical
+# constraint food doesn't have). TaxaExpect devtools::test() 586/586 (up from 580),
+# devtools::check() 0/0/0; TaxaAssign devtools::test() 664/664 (up from 655), devtools::check()
+# 0/0/0. Both reinstalled via ecosystem_docs/install_all.R and verified against the
+# installed copies directly (not just the reinstall command's exit status). See
+# TaxaExpect/CLAUDE.md's and TaxaAssign/CLAUDE.md's own top session notes for the full
+# per-package record, and this file's own Recent Breaking Changes table below for the two
+# new rows.
+# Previous update, 2026-08-20 (Sonnet 5 -- initiates ecosystem_docs/REENTRY_PROMPT_
+# invasive_species_watch_list_priors.md end to end, the same day it was written (a design-
+# idea reentry doc prompted by the user reviewing real GreatLakes2023 output: Alburnus
+# alburnus has zero GBIF records in the study bbox, correctly reflecting genuine local
+# absence, but has a real North American invasion record the user recalled from domain
+# knowledge -- should a species on a documented invasive-species watch list get an elevated
+# prior the way generate_domestic_food_priors() already does for domestic species?). New
+# TaxaFetch::fetch_nas_occurrences()/lookup_huc8() (acquisition side, live-queries the real
+# USGS Nonindigenous Aquatic Species API and Watershed Boundary Dataset) feed new
+# TaxaExpect::generate_invasive_watch_priors() (prior-generation side, architecturally
+# mirroring generate_domestic_food_priors() -- named taxon_name rows, match_list_taxa-gated,
+# prior_source_type categorical column). Full design record, real-API verification, and the
+# real Alburnus/Ruffe live-test results are in TaxaFetch/CLAUDE.md's and TaxaExpect/
+# CLAUDE.md's own top session notes -- summarized here: (1) the reentry doc's own design
+# question 1 ("check whether NAS has a queryable API before committing to a design") was
+# answered by directly querying the real API before writing any code -- yes, a real, no-key-
+# needed JSON API exists, and its per-record `status` field (established/stocked/collected/
+# failed/unknown) and huc8/10/12 codes turned out to answer the doc's own design questions
+# 2 (tiering) and 3 (regional scoping) almost for free. (2) A real, load-bearing finding from
+# that same API check: NAS is United States-only and has ZERO entries for Alburnus alburnus
+# -- the species that motivated the whole doc -- confirmed via NAS's full species catalog
+# plus a live global GBIF cross-check (133 real 2019-2021 Canadian eDNA MATERIAL_SAMPLE
+# records exist, no vouchered specimen, no NAS-trackable establishment signal). Presented to
+# the user directly (AskUserQuestion) before proceeding rather than silently building around
+# or past it; user chose "NAS only, for now," explicitly accepting this as a known,
+# documented gap over a broader (weaker-confidence) global-GBIF-fallback alternative that was
+# offered and declined. (3) Live end-to-end verification against the real APIs found a
+# genuine, non-trivial correctness result, not just a passing test suite: Gymnocephalus
+# cernua (Ruffe, a real, famous Great Lakes invader) correctly resolves to
+# "nonindigenous_watch" rather than "nonindigenous_established" at a real southern-Lake-
+# Michigan HUC8, because NAS's own establishment records for Ruffe concentrate in the Lake
+# Superior/Duluth-Superior basin -- a genuinely different HUC8 -- demonstrating the two-tier
+# design correctly distinguishes "established somewhere in the US" from "established in THIS
+# region," on real data. Both packages' `devtools::test()`/`check()` clean (TaxaFetch
+# 671/671, 2 pre-existing unrelated CoordinateCleaner/terra environment failures; TaxaExpect
+# 580/580, 0/0/0), both reinstalled. Companion doc REENTRY_PROMPT_regional_proximity_prior_
+# check.md remains untouched -- its own text says the machinery-sharing question with this
+# mechanism "probably shouldn't be decided until at least one of the two is prototyped
+# against real data," and this session prototyped only the invasive-watch side.
+# Previous update, 2026-08-18 (Sonnet 5 -- closes out a real, previously-unnoticed train/inference
+# reference-screening inconsistency the user asked to discuss after the same-day TaxaMatch
+# rate-limit-resilience work: does TaxaLikely::train_likelihood_model() screen its own training
+# reference_df at all, given TaxaMatch::evaluate_reference_accessions()/
+# flag_incongruent_references() exist to screen match-candidate accessions? First answer given
+# was WRONG (grepped only for external workflow calls to flag_reference_errors()/
+# remove_flagged_references(), found none, concluded no screening happens) -- corrected after
+# the user pushed back ("I had thought this was the whole point of the code we wrote"):
+# train_likelihood_model() calls flag_reference_errors() UNCONDITIONALLY on every real training
+# run (R/train.R:940-950, "Removing mislabeled references...") and silently drops every
+# "likely_mislabeled" accession before fitting H1/H2/H3 -- this has always been true, just never
+# checked by reading the function body instead of grepping for external callers. So training IS
+# screened, automatically, using the OLDER, known-over-flagging heuristic (2026-08-08 audit:
+# 39% same-submission-batch artifacts + 61% tight-congener false positives), while TaxaMatch's
+# newer, stronger BLAST-based screen exists but isn't even switched on yet in the one real
+# workflow that computes it (AuditNCBI_Goal2_MatchCandidateScreen.R's own
+# flag_incongruent_references() call is still commented out, pending review).
+#
+# Real numbers gathered before recommending anything (not guessed): GreatLakes 12S training
+# reference_df is actually LARGER than the match-candidate population TaxaMatch's rate-limit
+# work was built for this same day (2,638-2,653 unique accessions vs. the 1,183-accession Goal-2
+# run that already tripped a real NCBI CPU-budget rejection) -- ruling out "just BLAST the whole
+# training set with the better tool" as a naive fix, given the user's explicit concern about
+# repeated NCBI shutouts. flag_reference_errors() itself flags 231/280 accessions
+# "likely_mislabeled" per dataset (~9-11%) -- the ONLY category train_likelihood_model() actually
+# removes by default ("unverified_singleton_high_match" is computed but never acted on). A real,
+# live 40-accession pilot BLAST verification of BurnsHarbor's "likely_mislabeled" subset (run in
+# the background, ~40 min real NCBI queue time) found **0 of 40 confirmed as genuine mislabels;
+# 34/40 (85%) "congruent" (false positives), 6/40 "insufficient_independent_evidence"** -- a
+# concrete, real confirmation that this over-flagging is not hypothetical for this dataset.
+#
+# Design chosen (per the user's explicit direction: "skip straight to building the correction
+# mechanism"), deliberately NOT touching train_likelihood_model()'s existing, always-on
+# flag_reference_errors() call (a "don't break what works" constraint the user raised directly)
+# and deliberately NOT BLASTing the whole reference set (the NCBI-cost constraint): (1)
+# TaxaLikely::flag_reference_errors() gains `verified_clean` (character vector of accession IDs,
+# default NULL) -- forces those accessions to `error_type = "clean"` regardless of what the
+# heuristic computes, so a confirmed false positive survives every future retrain without needing
+# reference_df pre-filtering (which alone wouldn't work -- the SAME accessions would just get
+# re-flagged and re-removed on the next call, since nothing about removing OTHER accessions
+# changes why one specific accession trips the heuristic). Only ever rescues, never removes.
+# `train_likelihood_model()` gains the identical param, forwarded straight to its internal call.
+# (2) New `TaxaMatch::verify_flagged_references()` (R/evaluate_reference_accessions.R) bridges
+# the two packages without adding a new cross-package Imports dependency either direction
+# (confirmed TaxaLikely's DESCRIPTION has no TaxaMatch dependency; the bridge lives in TaxaMatch,
+# which already owns evaluate_reference_accessions()) -- takes flag_reference_errors()'s own
+# output (or a plain accession vector), screens ONLY the flagged subset (default
+# error_types = "likely_mislabeled", matching what train_likelihood_model() actually removes;
+# "unverified_singleton_high_match" is opt-in via error_types, since verifying it too would
+# roughly double NCBI cost for a category that changes nothing today), and returns
+# `verified_clean` -- everything NOT confirmed `"incongruent"` -- ready to pass straight into
+# `flag_reference_errors(verified_clean=)`/`train_likelihood_model(verified_clean=)`. Turns
+# "BLAST thousands of training accessions" into "BLAST only the ~230-280 actually disputed."
+# `cache_dir` shares evaluate_reference_accessions()'s own default and convention -- pointing it
+# at the SAME project cache_dir a real match-candidate screen already used means any accession
+# appearing in both populations (real, if limited, overlap exists) is served free from cache.
+#
+# 12 new tests (TaxaLikely: 6 in test-train.R, including one exercising the full
+# train_likelihood_model() pipeline via the existing 5-species .make_genus_raw_df() fixture --
+# had to relocate the new test block below that fixture's own definition after a first attempt
+# failed with "could not find function" from being sourced before the fixture existed;
+# TaxaMatch: 7 in new test-verify-flagged-references.R, offline via
+# local_mocked_bindings(evaluate_reference_accessions=, .package="TaxaMatch"), covering the
+# data-frame/character-vector input forms, error_types scoping, trust_insufficient_evidence,
+# the "incongruent never counts as verified" invariant, the zero-NCBI-call short circuit when
+# nothing matches, and input validation). devtools::test() 0 failures both packages (TaxaLikely
+# 1051/1051 up from 1040, TaxaMatch 845/845 up from 832), devtools::check() 0/0/0 both,
+# reinstalled and verified at ~/Library/R/4.0/library. Not yet run against the FULL real
+# 231/280-accession "likely_mislabeled" populations (only the 40-accession BurnsHarbor pilot) --
+# left for the user to run when ready, using the new verify_flagged_references() mechanism
+# directly rather than the throwaway pilot script (DoesTrainingScreenMatter_Pilot.R, GreatLakes
+# data directory, not under git).
+# Previous update, 2026-08-09 (Sonnet 5 -- TaxaWizard's first full code + domain review against
 # inst/Code and Domain Review 2.Rmd, closing the last gap in this ecosystem's review coverage
 # (every other package already had one). Findings + fixes recorded in new TaxaWizard/inst/
 # taxawizard_review.Rmd. Two real, fixed security findings: an eval(parse(text = input$...))
@@ -2269,13 +2655,21 @@ devtools::install()    # required before using library(Package) from another pro
 switching to another project that calls the package.
 
 **⚠️ Claude Code instruction: whenever you make changes that require reinstall,**
-**end your response with an explicit "To apply these changes" block using this exact pattern:**
+**end your response with an explicit "To apply these changes" block using this exact pattern.**
+**The block must always cover all four steps below — restart, install, un-cache, load —**
+**never just restart+install.** Real incident (2026-08-24): a stale-in-memory-package bug
+took three re-run cycles to diagnose because the block only said restart+install; the user
+kept forgetting the explicit `library()` reload was a separate, required step, and asked
+that this be made permanent going forward — see `[[feedback_restart_install_cache_library_checklist]]`
+in the memory system.
 
 **If only TaxaTools changed:**
 ```r
 .rs.restartR()
 devtools::install("~/My Drive/Rscripts/projects/TaxaID/TaxaTools")
 .rs.restartR()
+library(TaxaTools)
+packageDescription("TaxaTools")$Built   # confirm this session picked up the fresh build, not a stale one
 ```
 
 **If multiple packages changed, or if unsure which downstream packages are affected:**
@@ -2283,12 +2677,34 @@ devtools::install("~/My Drive/Rscripts/projects/TaxaID/TaxaTools")
 .rs.restartR()
 source("~/My Drive/Rscripts/projects/TaxaID/ecosystem_docs/install_all.R")
 .rs.restartR()
+library(TaxaTools)  # repeat for every touched package
+packageDescription("TaxaTools")$Built
 ```
 
 **Always include two `.rs.restartR()` calls** — the first clears the stale session before
 installing, the second ensures the freshly installed packages are loaded cleanly.
 The `source()` line installs all packages in dependency order without opening each project.
 Do not tell the user to use Session → Restart R or Cmd+Shift+F10 (does not work on this machine).
+
+**Always include an explicit `library(Package)` + `packageDescription()$Built` check as its
+own visible step, even though restarting R and reattaching would normally cover it** — do
+not assume the user's next script will call `library()` itself, and do not assume a restart
+alone is sufficient proof the fix is live. This is the single most common way a real fix
+silently fails to take effect: the workflow session that actually runs the long script was
+never itself the one restarted, so it keeps using whatever version of the package it loaded
+earlier in that same session, regardless of what's now on disk. `packageDescription($Built)`
+is the cheap, concrete way to confirm which build is actually loaded before trusting any
+output from a long run.
+
+**Always call out, by name, any stale cache that could hide the fix**, whenever the change
+touches something with its own on-disk cache independent of the R package build itself —
+e.g. a `TaxaFetch`/`TaxaFlag` `cache_dir` (`tools::R_user_dir("TaxaFetch", "cache")` by
+default), or a workflow's own `.rds` checkpoint files (the `.save()`/`file.exists()` gate
+pattern several of the external eDNA workflows use — see this file's own caching-gate notes
+elsewhere). State plainly whether the specific fix needs a cache cleared or not — don't make
+the user guess or ask; a raw-data fetch cache generally does NOT need clearing when only
+downstream filtering/statistical logic changed (the cached raw records are still valid
+inputs), but say so explicitly rather than leaving it ambiguous.
 
 ---
 
@@ -2585,3 +3001,7 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-08-08 (Sonnet 5) | `flag_reference_errors(singleton_match_threshold = 0.98)` added; `train_likelihood_model(singleton_match_threshold = 0.98)` added | TaxaLikely | **Additive, fully backward compatible** -- same default and comparison direction (`>`) as the prior hardcoded `0.98` literal, so no existing caller's behavior changes. The literal previously had an inline comment suggesting a caller "consider raising to 99% for ITS" with no actual way to do so; now a real parameter, threaded through `train_likelihood_model()` (which calls `flag_reference_errors()` internally) too. |
 | 2026-08-08 (Sonnet 5) | `audit_barcode_coverage_gbif()` removed entirely | TaxaLikely | **Breaking, but zero real callers** -- confirmed via a full monorepo grep and `NAMESPACE`: never exported (`@noRd`), zero test coverage, zero real callers anywhere, a genuinely abandoned "DRAFT" function (matches this ecosystem's established zero-real-callers removal precedent, e.g. `fetch_reference_sequences()`/`audit_barcode_coverage_ncbi()`/`expand_consensus_candidates()`). Its GBIF-only species-enumeration code path (`.get_species_gbif()`, `use_gbif`/`version_tag` plumbing in the internal scaffold) removed with it; `rgbif` dropped from `DESCRIPTION` `Suggests` (now genuinely unused). Internal `.audit_barcode_coverage_new_()` renamed `.audit_barcode_coverage_impl()` (not user-facing). |
 | 2026-08-11 (Sonnet 5) | `workflow_chat()`/`workflow_gadget()` removed entirely | TaxaWizard | **Breaking, but zero real callers, package never released** -- first human-authored TaxaWizard code review (Micah Wright) explicitly suggested removing both; confirmed via monorepo grep. Use `workflow_create(mode = "console"/"viewer")` directly. Also this session: real fix for a namespaced-call (`pkg::fn()`) crash bug in `R/shiny.R`'s generic-script parser (4 instances, `as.character(expr[[1L]])` silently returning length>1 for any `::`-call), `.extract_libraries()` now also matches `require()`, an empty-input confirm-prompt inconsistency fixed, and a real dead-feature bug (saved `workflow_context.json` defaults were loaded/offered but never reached the live LLM prompt) -- see `TaxaWizard/CLAUDE.md`'s top session note and `TaxaWizard/inst/taxawizard_review_response.md` for the full record. |
+| 2026-08-20 (Sonnet 5) | `generate_domestic_food_priors()` output rows now carry `taxon_name_rank = "species"` | TaxaExpect | **Real bug fix, behavioral not signature.** Found live-testing the GreatLakes2023 workflow (a food-fish species added by the user), confirmed with real numbers before fixing: this column was previously unset on every emitted row, defaulting to `NA` via `bind_rows()` -- since `TaxaAssign::join_priors()`'s primary composite-key join requires an exact `(taxon_name, taxon_name_rank, grid_id, main_habitat)` match, every domestic-food prior row has been silently un-joinable since the function shipped (2026-07-23), for any real observation (which always carries a real, non-`NA` `taxon_name_rank`). Confirmed on real data: a real `Gadus morhua` domestic-food row (`alpha=5, beta=8775`, theta ~= 0.00057) never matched; the affected observation's applied prior came out theta ~= 0.000167 instead (~3.4x lower), the ordinary group-dark-diversity fallback. `main_habitat` is deliberately left `NA` (not stamped with a real value) -- see the paired `join_priors()` fix below for why. `devtools::test()` 586/586 (up from 580), `devtools::check()` 0/0/0. |
+| 2026-08-20 (Sonnet 5) | `join_priors()` gains a habitat-agnostic named-species prior fallback tier | TaxaAssign | **Behavioral, not signature -- the other half of the fix above.** A `taxaexpect_priors` row with a real `taxon_name` but `main_habitat = NA` (by design -- e.g. a food/domestic species has no single correct habitat value, since its plausibility is governed by human food supply, not habitat suitability) previously could never match the primary composite-key join at all. New fallback tier re-matches any row whose primary join failed on `(taxon_name, taxon_name_rank, grid_id)` alone against `main_habitat = NA` rows -- ranked below a real per-habitat match, above the dark-diversity/global-floor fallback. When more than one habitat-agnostic row exists for the same key (e.g. two independent evidence sources naming the same species), the strongest (highest theta_mean) is used rather than an ambiguous many-to-many join. Emits a `cli::cli_inform()` count of rows rescued. Any existing caller whose `taxaexpect_priors` already contains `main_habitat = NA` named rows (in practice, only `generate_domestic_food_priors()` output) now gets a materially different, correct result instead of a silent no-op. `devtools::test()` 664/664 (up from 655, 1 pre-existing skip unchanged), `devtools::check()` 0/0/0. |
+| 2026-08-26 (Fable 5) | `join_priors()`'s modelled-species floor promotion scoped by cause | TaxaAssign | **Behavioral, not signature -- a real results change for every workflow using evidence/domestic priors.** The Session-117 blanket promotion (`!is.na(alpha)` + below-singleton-mean -> promote to singleton parity) now (a) NEVER promotes evidence-derived rows (`undetected_type == "evidence_blend"`, `model_tier` `tier_undetected_evidence`/`tier_domestic_food` -- their sub-singleton theta is the graded design, and promotion silently erased every weight/distance/age gradation, the central finding of the 2026-08-26 GreatLakes upranking review); (b) promotes modelled rows only on a genuine habitat mismatch (`observed_in_habitat` explicitly `FALSE`, the rule's actual motivating case), never for a genuinely low in-habitat estimate; (c) retains the old blanket behavior when `taxaexpect_priors` has no `observed_in_habitat` column (older callers unaffected). Habitat-agnostic fallback rows now also carry `model_tier`/`undetected_type` provenance; coarse-rank expansion's `override_cols` gains `model_tier`/`observed_in_habitat`. Live-verified on real GreatLakes2023 data: promotion 3,326 -> 112 rows, species-resolved observations 33 -> 103. Any cached consensus/posterior checkpoint computed pre-fix is stale. `devtools::test()` 670/0, `devtools::check()` 0/0/0. See `ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md` (D1). |
+| 2026-08-26 (Fable 5) | `apply_undetected_evidence()` no-singleton ceiling: floor-collapse no-op replaced by an anchor ladder | TaxaExpect | **Behavioral, not signature.** With zero `singleton_mirror` rows the blend ceiling previously collapsed onto the floor (every elevation a weight-independent no-op, warning only). Now descends: singleton mean -> minimum modelled theta (site-scoped preferred; evidence/domestic named rows excluded as anchors) -> `1/(median n_obs + 1)` -> only then the old warning fallback. Datasets WITH singletons are unchanged. `devtools::test()` 689/0, `devtools::check()` 0/0/0. See the reentry doc (D2). |

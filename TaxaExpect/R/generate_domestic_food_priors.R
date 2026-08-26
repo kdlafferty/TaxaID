@@ -958,6 +958,11 @@
 #'   \describe{
 #'     \item{taxon_name}{The real taxon name (never NA, unlike
 #'       \code{generate_undetected_diversity()}'s anonymous proxies).}
+#'     \item{taxon_name_rank}{Always \code{"species"} -- every candidate
+#'       channel here resolves to a real species-level name. Required for
+#'       \code{TaxaAssign::join_priors()}'s composite-key join to ever match
+#'       these rows at all (a previously-real gap: this column was unset
+#'       before, silently defeating every row's elevated prior).}
 #'     \item{grid_id}{As supplied.}
 #'     \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 #'     \item{theta_mean, theta_sd}{Derived from alpha/beta.}
@@ -998,11 +1003,31 @@
 #'       is detected (including when it can't be checked at all, e.g. no
 #'       \code{taxonomy} kingdom column supplied).}
 #'   }
-#'   plus \code{<habitat_col>} (NA) when \code{model_obj} has one, and
+#'   plus \code{<habitat_col>} (\code{NA}) when \code{model_obj} has one, and
 #'   taxonomy rank columns when \code{taxonomy} is supplied.
+#'
+#' @section Why habitat is always NA here, deliberately:
+#' A food/domestic species' plausibility is governed by human food supply and
+#' cultivation, not by local habitat suitability -- it has no single correct
+#' habitat value to assign, and a \code{grid_id} can span more than one real
+#' habitat anyway. Do not "fix" a row not joining to real observation data by
+#' stamping a real habitat value here -- the correct fix lives in
+#' \code{TaxaAssign::join_priors()}, which reads a \code{NA main_habitat}
+#' named-species prior row as applying to ANY habitat at that \code{grid_id}
+#' (its own dedicated fallback tier, ranked below a real per-habitat match but
+#' above the generic dark-diversity floor). A row here that predates this
+#' fallback tier, or predates \code{taxon_name_rank} being set at all (both
+#' fixed the same session), was silently defeated by \code{join_priors()}'s
+#' primary composite-key join for any workflow using habitat-scoped priors --
+#' confirmed on real GreatLakes2023 data (a real \emph{Gadus morhua} row never
+#' matched; the observation fell back to the ordinary group-dark-diversity
+#' prior, theta_mean off by ~3.4x from what this function intended).
 #'
 #' @seealso \code{\link{generate_undetected_diversity}},
 #'   \code{TaxaFetch::fetch_inat_occurrences()},
+#'   \code{TaxaAssign::join_priors()} (its habitat-agnostic named-prior
+#'   fallback tier is what makes this function's \code{NA main_habitat} rows
+#'   actually apply),
 #'   \code{TaxaFlag::add_posthoc_assessment()} (the downstream categorical
 #'   re-labelling this complements).
 #'
@@ -1294,6 +1319,7 @@ generate_domestic_food_priors <- function(
 
       proxy_tbl <- tibble::tibble(
         taxon_name                = row$taxon_name,
+        taxon_name_rank           = "species",
         grid_id                   = grid_id,
         alpha                     = alpha_i,
         beta                      = beta_i,
@@ -1306,6 +1332,15 @@ generate_domestic_food_priors <- function(
         inat_kingdom              = inat_kingdom,
         inat_kingdom_mismatch     = isTRUE(kingdom_mismatch)
       )
+      # main_habitat is intentionally set to NA (never a real habitat value) --
+      # a food/domestic species' plausibility is governed by human food supply,
+      # not local habitat suitability, so it genuinely has no single habitat
+      # value to assign (a grid_id can span several). TaxaAssign::join_priors()'s
+      # habitat-agnostic named-prior fallback tier is what makes a NA-habitat
+      # row here actually match a real (non-NA-habitat) observation -- see that
+      # function's own roxygen. Do NOT "fix" this by stamping a real habitat
+      # value; taxon_name_rank above is set for the same match-key reason but
+      # has no such NA-is-correct nuance.
       if (!is.null(habitat_col)) {
         proxy_tbl[[habitat_col]] <- NA_character_
       }
@@ -1319,6 +1354,7 @@ generate_domestic_food_priors <- function(
     message("generate_domestic_food_priors: no candidates produced a prior row.")
     result <- tibble::tibble(
       taxon_name                = character(0),
+      taxon_name_rank           = character(0),
       grid_id                   = character(0),
       alpha                     = numeric(0),
       beta                      = numeric(0),

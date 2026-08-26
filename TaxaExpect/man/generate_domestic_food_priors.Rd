@@ -107,6 +107,11 @@ A tibble with one row per resolved domestic/food/plant taxon:
 \describe{
 \item{taxon_name}{The real taxon name (never NA, unlike
 \code{generate_undetected_diversity()}'s anonymous proxies).}
+\item{taxon_name_rank}{Always \code{"species"} -- every candidate
+channel here resolves to a real species-level name. Required for
+\code{TaxaAssign::join_priors()}'s composite-key join to ever match
+these rows at all (a previously-real gap: this column was unset
+before, silently defeating every row's elevated prior).}
 \item{grid_id}{As supplied.}
 \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 \item{theta_mean, theta_sd}{Derived from alpha/beta.}
@@ -147,7 +152,7 @@ normally if it's on a fixed list; only the extra confidence from a
 is detected (including when it can't be checked at all, e.g. no
 \code{taxonomy} kingdom column supplied).}
 }
-plus \code{<habitat_col>} (NA) when \code{model_obj} has one, and
+plus \code{<habitat_col>} (\code{NA}) when \code{model_obj} has one, and
 taxonomy rank columns when \code{taxonomy} is supplied.
 }
 \description{
@@ -288,6 +293,25 @@ this fix (strong matches resolve correctly regardless of prior magnitude)
 degraded matches, not sequence resolution itself.
 }
 
+\section{Why habitat is always NA here, deliberately}{
+
+A food/domestic species' plausibility is governed by human food supply and
+cultivation, not by local habitat suitability -- it has no single correct
+habitat value to assign, and a \code{grid_id} can span more than one real
+habitat anyway. Do not "fix" a row not joining to real observation data by
+stamping a real habitat value here -- the correct fix lives in
+\code{TaxaAssign::join_priors()}, which reads a \code{NA main_habitat}
+named-species prior row as applying to ANY habitat at that \code{grid_id}
+(its own dedicated fallback tier, ranked below a real per-habitat match but
+above the generic dark-diversity floor). A row here that predates this
+fallback tier, or predates \code{taxon_name_rank} being set at all (both
+fixed the same session), was silently defeated by \code{join_priors()}'s
+primary composite-key join for any workflow using habitat-scoped priors --
+confirmed on real GreatLakes2023 data (a real \emph{Gadus morhua} row never
+matched; the observation fell back to the ordinary group-dark-diversity
+prior, theta_mean off by ~3.4x from what this function intended).
+}
+
 \examples{
 \dontrun{
 domestic_food <- generate_domestic_food_priors(
@@ -300,6 +324,9 @@ taxaexpect_priors <- dplyr::bind_rows(taxaexpect_priors, domestic_food)
 \seealso{
 \code{\link{generate_undetected_diversity}},
 \code{TaxaFetch::fetch_inat_occurrences()},
+\code{TaxaAssign::join_priors()} (its habitat-agnostic named-prior
+fallback tier is what makes this function's \code{NA main_habitat} rows
+actually apply),
 \code{TaxaFlag::add_posthoc_assessment()} (the downstream categorical
 re-labelling this complements).
 }

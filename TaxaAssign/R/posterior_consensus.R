@@ -913,15 +913,15 @@ posterior_consensus <- function(posterior_df,
 #' own comment for why this was missing and what it silently broke). All
 #' other missing columns return NA.
 #' @noRd
-.extract_rank_values <- function(df, rank) {
+.extract_rank_values <- function(input_df, rank) {
   if (rank == "genus") {
     # Derive genus from binomial as fallback for any NA values
     derived <- ifelse(
-      df$taxon_name_rank == "species", sub(" .*", "", df$taxon_name),
-      ifelse(df$taxon_name_rank == "genus", df$taxon_name, NA_character_)
+      input_df$taxon_name_rank == "species", sub(" .*", "", input_df$taxon_name),
+      ifelse(input_df$taxon_name_rank == "genus", input_df$taxon_name, NA_character_)
     )
-    if (rank %in% names(df)) {
-      vals <- as.character(df[[rank]])
+    if (rank %in% names(input_df)) {
+      vals <- as.character(input_df[[rank]])
       return(ifelse(is.na(vals), derived, vals))
     }
     return(derived)
@@ -952,19 +952,19 @@ posterior_consensus <- function(posterior_df,
     # (see that package's "Inu Inu" fabricated-pseudo-binomial fix). The same
     # genus-derivation branch above makes the identical assumption for
     # taxon_name_rank == "genus".
-    derived <- ifelse(df$taxon_name_rank == "species", df$taxon_name, NA_character_)
-    if (rank %in% names(df)) {
-      vals <- as.character(df[[rank]])
+    derived <- ifelse(input_df$taxon_name_rank == "species", input_df$taxon_name, NA_character_)
+    if (rank %in% names(input_df)) {
+      vals <- as.character(input_df[[rank]])
       return(ifelse(is.na(vals), derived, vals))
     }
     return(derived)
   }
 
-  if (rank %in% names(df))
-    return(as.character(df[[rank]]))
+  if (rank %in% names(input_df))
+    return(as.character(input_df[[rank]]))
 
   # All other ranks require an explicit column
-  rep(NA_character_, nrow(df))
+  rep(NA_character_, nrow(input_df))
 }
 
 

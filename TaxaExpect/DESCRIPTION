@@ -19,7 +19,8 @@ Imports:
     utils,
     stringr,
     tibble,
-    tidyr
+    tidyr,
+    TaxaTools
 Suggests:
     knitr,
     leaflet,
@@ -29,8 +30,8 @@ Suggests:
     rgbif,
     shiny,
     TaxaFetch,
+    TaxaFlag,
     TaxaHabitat,
-    TaxaTools,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr

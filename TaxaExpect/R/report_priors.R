@@ -37,7 +37,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' bp <- build_priors(taxon_list = taxa, geometry = bbox)
+#' bp <- build_priors(taxa = c("Sebastes atrovirens"), lat = 34.4, lon = -119.7)
 #' sec <- report_priors(bp)
 #' print(sec)
 #' }
