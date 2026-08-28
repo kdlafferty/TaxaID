@@ -126,7 +126,7 @@ consensus <- posterior_consensus(result, cumulative_threshold = 0.90)
 
 result_updated <- update_prior_from_consensus(
   result, consensus,
-  confirmation_quantile = 0.9, min_confirmation_confidence = 0.8
+  confirmation_quantile = 0.9, confirmation_discount = 0.25
 )
 
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.90)
@@ -168,7 +168,7 @@ consensus_final <- posterior_consensus(result_updated)
 | `cumulative_threshold` | 0.90 | Lower for more liberal assignments |
 | `min_posterior` | 0.05 | Raise to exclude weak hypotheses |
 | `confirmation_quantile` | 0.9 | Quantile of confirming observations' posterior used as the EB boost |
-| `min_confirmation_confidence` | 0.8 | Minimum confirmation quantile to count as confirmed; 0 disables |
+| `confirmation_discount` | 0.25 | Power-prior discount on cross-observation support mass; 0 disables |
 | `n_sims` | 1000 | 0 for point estimates only |
 | `score_sharpness` | 0.1 | LLM only: higher makes scores dominate |
 | `prior_phi` | c(high=50, moderate=10, low=3) | LLM only: controls prior tightness |

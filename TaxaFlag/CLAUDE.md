@@ -1,6 +1,36 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-11 (Sonnet 5 -- closes out the 2026-08-07 review pass: that session
+# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- NEW
+# flag_watch_candidates() (R/flag_watch_candidates.R): the likelihood-side
+# watch-list surveillance guarantee (mixture redesign D4, user verdict "make the
+# flag report for sure"). With invasive priors calibrated down to honest small
+# probabilities (w = 0.05), watch species rarely surface through the posterior --
+# this flag fires from RAW match scores alone whenever a watch-list species ties
+# or beats the consensus winner's own best match (margin param; winner-is-watch
+# and no-watch-candidate cases handled; unreferenced/rank-expanded winners fall
+# back to the best non-watch score). Purely informational, never edits consensus
+# columns. Wired into GreatLakes2023_ConsensusWorkflow.R Step 8i.5. 5 new tests
+# (test-flag_watch_candidates.R). devtools::test() 434/0 (up from 419), check()
+# 0/0/0, reinstalled.
+# Previous update, 2026-08-21 (Sonnet 5 -- compute_local_occurrence_distance() gains a new
+# date_col param (character or NULL, default NULL -- fully backward compatible, all 24
+# pre-existing tests pass unchanged with no behavior change). When supplied and present in
+# occurrence_data, surfaces the matched nearest record's raw date/year value as a new
+# nearest_date output column (no parsing/normalization -- whatever type the source column
+# already was, e.g. GBIF's own numeric "year"). Built for
+# TaxaExpect::generate_regional_proximity_evidence() (new this session, in the parallel
+# design thread ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md), which
+# needs a nearby record's age to size how tightly its evidence should be held (an old
+# record could reflect a real unresurveyed population or a genuinely contracted range --
+# occurrence data alone can't tell, so age widens/narrows confidence rather than shifting
+# the distance-driven mean). A `date_col` naming a column absent from `occurrence_data` is
+# silently ignored (no `nearest_date` column at all), matching this function's own
+# established "silent no-op on an unavailable optional signal" convention. 4 new tests.
+# `devtools::test()` 419/419 (up from 415), `devtools::check()` 0/0/0. Reinstalled to
+# `~/Library/R/4.0/library`. See TaxaExpect/CLAUDE.md's and TaxaID/CLAUDE.md's own top
+# session notes for the full cross-package record, including a real live-GBIF verification
+# against the exact three GreatLakes2023 species that originally motivated this thread.
+# Previous update, 2026-08-11 (Sonnet 5 -- closes out the 2026-08-07 review pass: that session
 # fixed 2 items (df->input_df rename, a broken build_review_covariates.R \link{}) but never
 # produced inst/taxaflag_review_response.md or worked through the remaining file-specific
 # comments across all 10 reviewed files -- this session does both. Real fixes, not just
@@ -1209,7 +1239,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 
 | `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | **Redesigned 2026-07-30, superseding everything below this row from Session 149 onward.** The old single-column `posthoc_assessment` (9 categories, `tiers`/`taxon_col`/`tier_col`/`finest_rank` params, including `"vague_rank"` and `"unsupported_rank"`) is entirely retired -- see this file's top session note. Now appends FIVE columns implementing two independent, orthogonal axes, reported for `primary_taxon` and `consensus_taxon` separately, neither gating the other: **Axis 1** (`primary_plausibility`/`consensus_plausibility`, "how expected is this taxon here?") -- `"expected"`/`"unexpected"`/`"unprecedented"`/`"not_modeled"`, driven by `winner_theta_col` (default `"winner_theta_mean"`) + `winner_record_col` (default `"winner_has_occurrence_record"`) at primary scope, `consensus_prior_col` (default `"consensus_prior"`) + `consensus_record_col` (default `"consensus_has_occurrence_record"`, 2026-07-30 new) at consensus scope, compared against `expected_theta_threshold` -- a REQUIRED named vector keyed by rank (`"species"` mandatory, `genus`/`family` optional; a rank absent from the vector gets `"not_modeled"`). `"unprecedented"` is driven by record presence (the `*_record_col`), never by a low threshold value -- a never-reported taxon and a genuine singleton can share the same numeric floor while meaning opposite things. **Axis 2** (`primary_discrimination`/`consensus_discrimination`, "could the evidence tell this taxon apart from a plausible relative?") -- `"discriminating"`/`"weak"`/`"indistinguishable"`/`"not_modeled"`, driven by `primary_confusion_risk_col`/`consensus_confusion_risk_col` against `discriminating_threshold`/`indistinguishable_threshold` (default 0.05/0.5) -- this is the direct successor to the old `confusion_risk_flag` column (now two rank-scoped columns instead of one). `domestic_prior_caveat` (logical) is unchanged in purpose (Session 149) but now reads `primary_plausibility` instead of the retired tier lookup. See this file's top session note for the full real-data verification record. |
 
-| `compute_local_occurrence_distance()` | `R/compute_local_occurrence_distance.R` | Written (2026-08-06) | Free (no network call): geodesic distance from a query point to the nearest already-fetched occurrence of a taxon in a supplied `occurrence_data` frame (e.g. a workflow's own `all_occurrences`/`occurrences_clean`). `n_local_records = 0` is exactly the situation behind an "unprecedented" Axis 1 call -- answers *why*, using data already in hand. Scope-limited to whatever bbox the caller's occurrence data covers. |
+| `compute_local_occurrence_distance()` | `R/compute_local_occurrence_distance.R` | Written (2026-08-06), `date_col` added (2026-08-21) | Free (no network call): geodesic distance from a query point to the nearest already-fetched occurrence of a taxon in a supplied `occurrence_data` frame (e.g. a workflow's own `all_occurrences`/`occurrences_clean`). `n_local_records = 0` is exactly the situation behind an "unprecedented" Axis 1 call -- answers *why*, using data already in hand. Scope-limited to whatever bbox the caller's occurrence data covers. **2026-08-21:** new optional `date_col` param surfaces the matched nearest record's raw date/year value as `nearest_date` -- built for `TaxaExpect::generate_regional_proximity_evidence()`, which uses record age to size confidence independently of distance. `NULL` default, fully backward compatible. |
 | `check_gbif_tile_range()` | `R/check_gbif_tile_range.R` | Written (2026-08-06), escalation + km output added (2026-08-07) | Downloads GBIF's occurrence-density map tiles around a point and reads presence/absence from the alpha channel only (never decodes the colour ramp). Reports `point_occupied`, `dist_nearest_occupied_km`, `patch_area_km2`/`patch_diameter_km` (real-world-scaled; `patch_size_px`/`patch_size_capped` kept as the underlying pixel count, capped at 15 growth iterations for bounded latency -- a widespread/capped patch is itself the "not a rarity report" signal). **2026-08-07**: `escalate`/`min_zoom` params (default `TRUE`/`0L`) widen the search to coarser zoom levels when nothing is found at the requested zoom, so a genuinely-far species reports a real (if coarse) distance instead of `NA` -- `zoom_used`/`escalated` expose what actually happened. Complements the function above with the global range context a bbox-limited local fetch can't give, at the cost of a handful of tile downloads (more if escalation fires). Does not distinguish data error from genuine rarity -- see `TaxaFetch::check_geographic_outliers()` for that separate, prior question. Requires `httr2`/`png` (Suggests, hard-stops if missing). |
 
 **Dropped (Session 62):** `flag_allochthonous()` and `flag_taxonomic_scope()` -- absorbed

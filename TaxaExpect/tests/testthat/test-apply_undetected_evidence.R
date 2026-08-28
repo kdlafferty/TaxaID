@@ -340,3 +340,13 @@ test_that("legacy n_eff column without p_conc errors with migration guidance", {
     regexp = "retired"
   )
 })
+
+test_that("prints the dataset-specific veto bound (D4)", {
+  msgs <- capture_messages(
+    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+      .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic")
+  )
+  expect_true(any(grepl("veto bound", msgs)))
+  # bound value for these anchors: ((0.05/0.95)*0.025 - 0.001)/(0.025 - 0.001)
+  expect_true(any(grepl("0.013", msgs)))
+})

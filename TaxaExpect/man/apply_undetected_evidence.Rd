@@ -175,6 +175,16 @@ site effort, \code{1 / (median(n_obs) + 1)}; (3) only if neither is
 computable, the previous floor-equals-ceiling no-op with a warning.
 }
 
+\section{The printed veto bound}{
+
+Each call prints the dataset-specific weight above which an unobserved
+species can block species-level resolution of a singleton-level observed
+native at likelihood parity (derived from the anchors and the consensus
+default \code{min_posterior = 0.05}). Choose watch-list weights BELOW this
+bound unless you deliberately intend elevated species to compete with
+observed ones.
+}
+
 \section{Combining multiple sources for one taxon}{
 
 When more than one evidence row names the same taxon (e.g. a regional-

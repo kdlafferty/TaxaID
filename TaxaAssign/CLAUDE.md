@@ -1,6 +1,25 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
+# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- D7 soft
+# confirmation update: update_prior_from_consensus() rewritten around soft,
+# leave-one-out, power-prior-discounted support aggregation (new
+# confirmation_discount = 0.25 param; min_confirmation_confidence REMOVED,
+# breaking, propagated through run_bayesian_pipeline/run_llm_pipeline/
+# consensus_refinement/generate_report methods text/inst workflows/vignette);
+# mixture rows update prior_mix_w (replaces the interim clearing rule); update is
+# provably continuous (regression test sweeps the old 0.8 gate). Verified
+# citations in roxygen: Ibrahim & Chen 2000 (power prior), Celeux & Govaert 1992
+# (soft vs classification EM), Dorazio & Erickson 2018 (occupancy analog).
+# Held-out Lamar on identical production inputs: soft beats hard on every axis
+# (co-det 236->238, ours_only 120->97, uniq sp 17->23, in-Lamar 12->18, precision
+# 0.66->0.71). Also: posterior_consensus() default posterior_col aligned to
+# "posterior_point_est" (D8 drift fix; fixtures/examples updated);
+# adjust_inat_range_priors() gains require_name_match = TRUE (fuzzy-misresolution
+# gate) and a superseded-for-mixture note. Real bug found by testing: 0-row
+# scalar assignment crash in the all-unresolved split (rep() fix + regression
+# test). devtools::test() 691/0, check() 0/0/0, reinstalled. See the ecosystem
+# CLAUDE.md 2026-08-28 note + the reentry doc ledger for the full seven-item record.
+# Previous update, 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
 # Chunk B of the mixture redesign: compute_posterior() gains a PRESENCE-DRAW sampler
 # for mixture rows (D8). Rows carrying non-NA prior_mix_w/prior_mix_theta_present/
 # prior_mix_theta_absent (from TaxaExpect::apply_undetected_evidence()) draw

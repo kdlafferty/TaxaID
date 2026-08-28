@@ -1,6 +1,22 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-26, later still (Fable 5, branch undetected-evidence-mixture --
+# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- three
+# additions closing the redesign's remaining TaxaExpect items: (1)
+# apply_undetected_evidence() now PRINTS the dataset-specific veto bound (D4) --
+# the weight above which an unobserved species can block species-level resolution
+# of a singleton-level observed native at likelihood parity, derived from the
+# call's own anchors. (2) NEW generate_inat_range_evidence() (D6): iNat as the
+# third evidence generator through the shared applier (w = 0.8, p_conc = 1,
+# n_obs >= 500, gated on check_inat_range()'s new name_match column -- a fuzzy
+# misresolution to a different species must never drive an elevation); wired as
+# GreatLakes Step 7a.7d; adjust_inat_range_priors() remains for post-join
+# unreferenced rows, now name-gated. (3) NEW fit_regional_presence_curve() (D5):
+# the generic distance-to-presence fitter (binomial GLM, log link, to
+# w_scale*exp(-d/d_half); logistic fallback; ZERO-POSITIVE case -- the real
+# GreatLakes outcome -- returns per-bin + pooled Jeffreys 95% upper bounds
+# first-class instead of a fake fit). devtools::test() 731/0, check() 0/0/0,
+# reinstalled. See the ecosystem CLAUDE.md 2026-08-28 note for the full record.
+# Previous update, 2026-08-26, later still (Fable 5, branch undetected-evidence-mixture --
 # w-CALIBRATION (D4/D5): generate_regional_proximity_evidence() gains `w_scale`
 # (default 1, range (0,1]) -- the near-boundary presence probability, so weight =
 # w_scale * exp(-distance_km/d_half). Calibrated on GreatLakes2023 against the

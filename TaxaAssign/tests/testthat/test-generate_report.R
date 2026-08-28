@@ -190,7 +190,7 @@ test_that(".build_methods_text produces Bayesian workflow methods", {
     cumulative_threshold        = 0.9,
     min_posterior               = 0.05,
     confirmation_quantile       = 0.9,
-    min_confirmation_confidence = 0.8
+    confirmation_discount = 0.25
   )
 
   text <- .build_methods_text("bayesian", params, "eDNA", NULL,

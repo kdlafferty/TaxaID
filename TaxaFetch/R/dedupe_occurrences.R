@@ -14,7 +14,7 @@
 #' one data source has no reason to skip this step, unlike
 #' \code{stack_occurrences} itself.
 #'
-#' @param data A single data frame of occurrence records, typically the
+#' @param occurrence_data A single data frame of occurrence records, typically the
 #'   output of \code{\link{get_gbif_occurrences}}, \code{\link{stack_occurrences}},
 #'   or any other TaxaFetch source function.
 #' @param collapse_duplicate_occasions Logical. Default \code{TRUE}. Collapse
@@ -44,14 +44,14 @@
 #'   Default \code{3} (~111 m at the equator). Ignored if
 #'   \code{collapse_duplicate_occasions = FALSE}.
 #'
-#' @return \code{data} as a tibble with duplicate rows removed. If a
+#' @return \code{occurrence_data} as a tibble with duplicate rows removed. If a
 #'   \code{report_params} attribute is present (as attached by
 #'   \code{\link{stack_occurrences}}), its \code{n_records} entry is
 #'   refreshed to the post-dedup row count and a \code{n_duplicates_removed}
 #'   entry is added.
 #'
 #' @details
-#' \strong{gbifID deduplication:} If \code{data} has a \code{gbifID} column,
+#' \strong{gbifID deduplication:} If \code{occurrence_data} has a \code{gbifID} column,
 #' rows with a duplicated non-\code{NA} \code{gbifID} are dropped (first
 #' occurrence kept). This is defense-in-depth against the same GBIF record
 #' being counted twice -- e.g. two separately-issued queries with overlapping
@@ -132,7 +132,7 @@
 #' occ <- stack_occurrences(gbif_occ, dataone_occ)
 #' occ <- dedupe_occurrences(occ)
 #' }
-dedupe_occurrences <- function(data,
+dedupe_occurrences <- function(occurrence_data,
                                 collapse_duplicate_occasions = TRUE,
                                 taxon_col = "scientificName",
                                 date_col = "eventDate",
@@ -140,11 +140,11 @@ dedupe_occurrences <- function(data,
                                 lon_col = "decimalLongitude",
                                 coord_precision = 3L) {
 
-  if (!is.data.frame(data)) {
-    stop("dedupe_occurrences: 'data' must be a data frame.", call. = FALSE)
+  if (!is.data.frame(occurrence_data)) {
+    stop("dedupe_occurrences: 'occurrence_data' must be a data frame.", call. = FALSE)
   }
 
-  out           <- data
+  out           <- occurrence_data
   n_gbifid_dup  <- 0L
   n_occasion_dup <- 0L
 
@@ -224,7 +224,7 @@ dedupe_occurrences <- function(data,
   out <- tibble::as_tibble(out)
 
   # --- Refresh report_params if present (see @return) --------------------------
-  rp <- attr(data, "report_params")
+  rp <- attr(occurrence_data, "report_params")
   if (!is.null(rp)) {
     rp$n_records            <- nrow(out)
     rp$n_duplicates_removed <- n_gbifid_dup + n_occasion_dup

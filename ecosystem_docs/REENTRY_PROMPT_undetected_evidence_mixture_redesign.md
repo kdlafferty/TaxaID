@@ -1,8 +1,44 @@
 # REENTRY: Undetected-evidence mixture redesign (promotion-clamp fix + w-as-probability)
 
-**Status:** Design SETTLED (all verdicts given by the user, 2026-08-26). Implementation
-NOT started. Spans TaxaAssign, TaxaExpect, TaxaFlag. Use a feature branch
-(per [[feedback_git_branches]]).
+**Status (2026-08-28): ALL ITEMS IMPLEMENTED** on branch `undetected-evidence-mixture`
+(commits 7b5b2c5 Phase 1, a2d3271 Phase 2 core, 88926f1 w-calibration, plus the
+2026-08-28 remaining-items commit). Ledger:
+- D1/D2 clamp scoping + anchor ladder: DONE, live-validated (33 -> 103 species obs).
+- D3/D8 mixture semantics + presence-draw sampler + moment-matched n_eff: DONE;
+  three-way column experiment run; point_est kept operative.
+- D4 w semantics: DONE -- invasive w 0.6 -> 0.05 all 6 workflows; veto bound now
+  PRINTED by apply_undetected_evidence(); the likelihood-side surveillance
+  guarantee is TaxaFlag::flag_watch_candidates() (wired into GreatLakes 8i.5).
+- D5 calibration: DONE via the checklist recipe (0/110 zero-positive bound ->
+  w_scale = 0.05, held-out Lamar validated 74 -> 224 co-detections); the generic
+  fitter now exists as TaxaExpect::fit_regional_presence_curve() (handles the
+  zero-positive bounded case first-class).
+- D6 iNat: DONE -- TaxaFetch::check_inat_range() gains a derived name_match
+  column (fuzzy-misresolution gate, closes
+  [[project_inat_range_backbone_mismatch_todo]]);
+  TaxaExpect::generate_inat_range_evidence() feeds the shared applier (w = 0.8);
+  TaxaAssign::adjust_inat_range_priors() name-gated (require_name_match = TRUE)
+  and marked superseded for the mixture pathway; GreatLakes workflow Step 7a.7d.
+- D7 soft confirmation: DONE -- update_prior_from_consensus() rewritten: every
+  observation's posterior support aggregates as fractional presence evidence
+  (soft EM vs classification EM, Celeux & Govaert 1992), leave-one-out,
+  discounted by new `confirmation_discount` a0 = 0.25 (power prior, Ibrahim &
+  Chen 2000, Stat Sci 15:46-60 -- VERIFIED citations, plus Dorazio & Erickson
+  2018 MER 18:368-380 for the occupancy analog), saturating m/(1+m) move toward
+  a support-weighted confirmation quantile; mixture rows update prior_mix_w
+  itself (replaces the interim clearing rule); `min_confirmation_confidence`
+  REMOVED (breaking) across pipelines/report/vignette/inst workflows; update is
+  provably continuous (regression test sweeps the old 0.8 gate).
+- D8 leftover: posterior_consensus() default posterior_col aligned to
+  "posterior_point_est" (drift resolved).
+- D9 domestic sanity: rows verified at design magnitudes (theta 4.8e-4, 5x
+  floor, correctly ordered/un-promoted; 6 plausible-set appearances, never win);
+  found + fixed: the workflow never passed domestic_taxa to
+  add_posthoc_assessment(), so domestic_prior_caveat was silently inert --
+  now wired from the priors table.
+All four packages test 691/731/434/620 passed 0 failed (TaxaFetch's 2 = the
+documented pre-existing CoordinateCleaner/terra environment failures), check
+0/0/0 x4. Spans TaxaAssign, TaxaExpect, TaxaFlag, TaxaFetch.
 
 **Origin:** the 2026-08-26 statistical review of GreatLakes2023 conservative upranking
 (`GreatLakes data/REVIEW_fable_conservative_upranking.md`, ablation script

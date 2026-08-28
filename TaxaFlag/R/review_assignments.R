@@ -1205,13 +1205,13 @@ review_assignments <- function(input_df,
   # the package or ecosystem (checked), so kept inline rather than factored
   # into a shared utility, but taking `df` as an argument makes the
   # dependency visible at each call site instead of implicit.
-  .safe_col <- function(df, col_name) {
-    if (col_name %in% names(df)) {
-      vals <- as.character(df[[col_name]])
+  .safe_col <- function(input_df, col_name) {
+    if (col_name %in% names(input_df)) {
+      vals <- as.character(input_df[[col_name]])
       vals[vals %in% c("null", "NULL", "NA")] <- NA_character_
       vals
     } else {
-      rep(NA_character_, nrow(df))
+      rep(NA_character_, nrow(input_df))
     }
   }
 

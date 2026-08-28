@@ -82,12 +82,14 @@ test_that("update_prior_from_consensus boosts confirmed species in unresolved sa
 
   out <- update_prior_from_consensus(result, consensus, n_sims = 0)
 
-  # Sp_A confirmed in S1 at posterior 0.9 (clears the default gate); should be
-  # boosted (substituted, not multiplied) in S2 since 0.9 > the existing 0.5.
+  # Soft design (2026-08-28): support for Sp_A = S1's 0.8 + S2's own 0.5;
+  # leave-one-out mass for S2 = 0.8; discounted m = 0.25*0.8 = 0.2;
+  # saturation s = 0.2/1.2 = 1/6; target = support-weighted 0.9-quantile of
+  # {0.5 (w 0.5), 0.8 (w 0.8)} = 0.8; new = 0.5 + (0.8-0.5)*(1/6) = 0.55.
   s2_sp_a <- out |> filter(observation_id == "S2", taxon_name == "Sp_A")
   expect_true(nrow(s2_sp_a) == 1L)
   expect_true(s2_sp_a$prior_updated)
-  expect_equal(s2_sp_a$prior_mean, 0.9)
+  expect_equal(s2_sp_a$prior_mean, 0.55, tolerance = 1e-8)
 })
 
 test_that("report_params from the input `result` survive the call, merged with this function's own (real bug, code review 2026-08)", {
@@ -108,43 +110,59 @@ test_that("report_params from the input `result` survive the call, merged with t
   expect_equal(rp$confirmation_quantile, 0.85)
 })
 
-test_that("update_prior_from_consensus handles case with no resolved species", {
+test_that("soft update still operates when no observation is resolved", {
+  # Old (hard-gate) behavior: no resolved donors -> nothing boosted. Soft
+  # design (2026-08-28): support flows from posteriors regardless of
+  # resolution status, so cross-observation evidence still applies.
   result    <- .make_result()
   consensus <- .make_consensus()
   consensus$is_resolved <- FALSE
 
   out <- update_prior_from_consensus(result, consensus, n_sims = 0)
   expect_s3_class(out, "data.frame")
-  # No species should be boosted — prior_updated may not exist or be all FALSE
-  if ("prior_updated" %in% names(out)) {
-    expect_true(all(!out$prior_updated))
-  }
+  # S1's Sp_A gets S2's 0.5 support: m = 0.125, s = 1/9, target 0.8 ->
+  # 0.5 + 0.3/9; S2's Sp_A gets S1's 0.8: 0.55 as elsewhere.
+  s1_sp_a <- out$prior_mean[out$observation_id == "S1" & out$taxon_name == "Sp_A"]
+  expect_equal(s1_sp_a, 0.5 + 0.3 * (0.125 / 1.125), tolerance = 1e-8)
 })
 
-# ---- min_confirmation_confidence gate ----------------------------------------
+# ---- Soft design: no confirmation gate, continuous everywhere ----------------
 
-test_that("a confirmation below min_confirmation_confidence is not used by default", {
+test_that("consensus confidence no longer gates the update (soft design, 2026-08-28)", {
   result    <- .make_result()
-  consensus <- .make_consensus(s1_posterior = 0.6)  # resolved, but weakly so
+  consensus <- .make_consensus(s1_posterior = 0.6)  # weakly resolved donor
 
   out <- update_prior_from_consensus(result, consensus, n_sims = 0)
 
-  # Default min_confirmation_confidence = 0.8; 0.6 doesn't clear it -> unchanged.
-  expect_equal(nrow(out), nrow(result))
+  # Support now comes from the posteriors table itself, not the consensus
+  # confidence, so the outcome is identical to the 0.9-confidence case: 0.55.
+  s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_true(s2_sp_a$prior_updated)
+  expect_equal(s2_sp_a$prior_mean, 0.55, tolerance = 1e-8)
+})
+
+test_that("confirmation_discount = 0 disables the update entirely", {
+  result    <- .make_result()
+  consensus <- .make_consensus()
+
+  out <- update_prior_from_consensus(result, consensus, n_sims = 0,
+                                     confirmation_discount = 0)
   s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   expect_equal(s2_sp_a$prior_mean, 0.5)
 })
 
-test_that("min_confirmation_confidence = 0 disables the gate entirely", {
-  result    <- .make_result()
-  consensus <- .make_consensus(s1_posterior = 0.6)
-
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0,
-                                     min_confirmation_confidence = 0)
-
-  s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
-  expect_true(s2_sp_a$prior_updated)
-  expect_equal(s2_sp_a$prior_mean, 0.6)
+test_that("the update is continuous in the support (no cliff at any threshold)", {
+  # Sweep S1's posterior support for Sp_A across the old 0.8 hard gate: the
+  # boosted prior must move smoothly, with no jump anywhere.
+  news <- vapply(c(0.70, 0.78, 0.80, 0.82, 0.90), function(p1) {
+    result <- .make_result()
+    result$posterior_point_est[result$observation_id == "S1" &
+                                 result$taxon_name == "Sp_A"] <- p1
+    out <- suppressMessages(update_prior_from_consensus(result, .make_consensus(), n_sims = 0))
+    out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
+  }, numeric(1))
+  expect_true(all(diff(news) > 0))          # monotone in support
+  expect_true(max(abs(diff(news))) < 0.05)  # and smooth -- no gate-sized jumps
 })
 
 # ---- never-demote guard -------------------------------------------------------
@@ -195,11 +213,24 @@ test_that("confirmation_quantile combines multiple donor observations correctly"
            is_resolved = TRUE, consensus_posterior = 0.95, n_plausible = 1L)
   )
 
-  expected_q90 <- stats::quantile(c(0.90, 0.95), probs = 0.9, names = FALSE)
-
   out <- update_prior_from_consensus(result, consensus, n_sims = 0)
   s3_sp_a <- out[out$observation_id == "S3" & out$taxon_name == "Sp_A", ]
-  expect_equal(s3_sp_a$prior_mean, expected_q90)
+
+  # Soft design: support for Sp_A across the posteriors table = S1 0.8 +
+  # S2 0.5 + S3 1.0; leave-one-out mass for S3 = 1.3; m = 0.25*1.3 = 0.325;
+  # s = 0.325/1.325; target = support-weighted 0.9-quantile of
+  # {0.5, 0.8, 1.0} (weights = values) = 1.0; new = 0.4 + 0.6*s.
+  s_sat <- 0.325 / 1.325
+  expect_equal(s3_sp_a$prior_mean, 0.4 + 0.6 * s_sat, tolerance = 1e-8)
+
+  # A consensus-only donor (S4 has no rows in `result`) contributes nothing
+  # under the soft design -- support is sourced from the posteriors table.
+  out2 <- update_prior_from_consensus(result,
+    consensus[consensus$observation_id != "S4", ], n_sims = 0)
+  expect_equal(
+    out2$prior_mean[out2$observation_id == "S3" & out2$taxon_name == "Sp_A"],
+    s3_sp_a$prior_mean, tolerance = 1e-12
+  )
 })
 
 # ---- prior_alpha/prior_beta consistency (Session 149 latent-bug fix) --------
@@ -212,32 +243,31 @@ test_that("prior_alpha/prior_beta are recomputed consistently with a boosted pri
   s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
 
   phi <- 5 + 5  # original prior_alpha + prior_beta for this row
-  expect_equal(s2_sp_a$prior_alpha, 0.9 * phi)
-  expect_equal(s2_sp_a$prior_beta,  0.1 * phi)
+  expect_equal(s2_sp_a$prior_alpha, 0.55 * phi, tolerance = 1e-8)
+  expect_equal(s2_sp_a$prior_beta,  0.45 * phi, tolerance = 1e-8)
   # Mean implied by the recomputed Beta matches the boosted prior_mean exactly
   expect_equal(s2_sp_a$prior_alpha / (s2_sp_a$prior_alpha + s2_sp_a$prior_beta),
                s2_sp_a$prior_mean)
 })
 
-test_that("a confirmation_quantile of exactly 1.0 does not produce a zero prior_beta", {
-  # consensus_posterior = 1.0 is a real, common value -- any unambiguously
-  # resolved single-candidate donor observation produces it. Before the
-  # boundary clamp, new_beta = (1 - 1) * phi = 0, which compute_posterior()
-  # rejects (Session 152 bug, found live in PtConceptionWorkflow_12S.R).
-  result    <- .make_result()
-  consensus <- .make_consensus(s1_posterior = 1.0)
-
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+test_that("even maximal support keeps the prior strictly inside (0, 1) with a valid Beta", {
+  # Under the hard design, a donor at consensus_posterior = 1.0 could
+  # substitute exactly 1.0 and (pre-clamp) produce prior_beta = 0, which
+  # compute_posterior() rejects (Session 152 bug). The soft saturation can
+  # never reach the target exactly, and the boundary clamp guards the Beta
+  # derivation regardless.
+  result <- .make_result()
+  result$posterior_point_est[result$observation_id == "S1" &
+                               result$taxon_name == "Sp_A"] <- 1.0
+  out <- suppressMessages(update_prior_from_consensus(result, .make_consensus(), n_sims = 0))
   s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
 
-  expect_equal(s2_sp_a$prior_mean, 1.0)
+  # mass = 1.0 (S1) ; m = 0.25 ; s = 0.2 ; target = 1.0 ; new = 0.5 + 0.5*0.2
+  expect_equal(s2_sp_a$prior_mean, 0.6, tolerance = 1e-8)
+  expect_true(s2_sp_a$prior_mean < 1)
   expect_true(is.finite(s2_sp_a$prior_alpha) && s2_sp_a$prior_alpha > 0)
   expect_true(is.finite(s2_sp_a$prior_beta)  && s2_sp_a$prior_beta  > 0)
-
-  # compute_posterior() must accept the recomputed Beta shape without erroring,
-  # including on the Monte Carlo path (n_sims > 0), which is what the real
-  # failure surfaced on.
-  expect_no_error(update_prior_from_consensus(result, consensus, n_sims = 100))
+  expect_no_error(update_prior_from_consensus(result, .make_consensus(), n_sims = 100))
 })
 
 # ---- spatial_group_map: multi-member vs. single-observation spatial groups ---
@@ -362,17 +392,17 @@ test_that("confirmation_quantile must be in (0, 1]", {
   )
 })
 
-test_that("min_confirmation_confidence must be in [0, 1]", {
+test_that("confirmation_discount must be in [0, 1]", {
   result    <- .make_result()
   consensus <- .make_consensus()
 
   expect_error(
-    update_prior_from_consensus(result, consensus, min_confirmation_confidence = -0.1),
-    "min_confirmation_confidence"
+    update_prior_from_consensus(result, consensus, confirmation_discount = -0.1),
+    "confirmation_discount"
   )
   expect_error(
-    update_prior_from_consensus(result, consensus, min_confirmation_confidence = 1.1),
-    "min_confirmation_confidence"
+    update_prior_from_consensus(result, consensus, confirmation_discount = 1.1),
+    "confirmation_discount"
   )
 })
 
@@ -461,9 +491,14 @@ test_that("boost is rescaled onto the occurrence-scale ceiling, not used directl
   out <- update_prior_from_consensus(result, consensus, n_sims = 0)
   sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
 
-  # q = 0.95 (the sole S1 donor's consensus_posterior); expected = q * ceiling
-  expect_equal(sp_a_s2, 0.95 * theta_ceiling, tolerance = 1e-8)
-  # and NOT the raw, unscaled quantile value (the pre-fix behavior)
+  # Soft design: support for Sp_A = S1 0.95 + S2 0.5; leave-one-out mass for
+  # S2 = 0.95; m = 0.25*0.95; s = m/(1+m); target = support-weighted
+  # 0.9-quantile of {0.5, 0.95} = 0.95, rescaled onto the ceiling ->
+  # candidate = 0.95 * 0.05; new = old + (candidate - old) * s.
+  m <- 0.25 * 0.95; s_sat <- m / (1 + m)
+  expected <- 0.001 + (0.95 * theta_ceiling - 0.001) * s_sat
+  expect_equal(sp_a_s2, expected, tolerance = 1e-8)
+  # and NOT the raw, unscaled target (the pre-2026-07-30 behavior)
   expect_false(isTRUE(all.equal(sp_a_s2, 0.95)))
 })
 
@@ -496,9 +531,10 @@ test_that("falls back to unscaled substitution when result has no theta_mean col
   consensus <- .make_consensus()
   out <- update_prior_from_consensus(result, consensus, n_sims = 0)
   expect_false("theta_mean" %in% names(result))
-  # existing behavior: raw quantile substituted directly (0.9 default s1_posterior)
+  # no occurrence scale: the support-weighted target (0.8) is used directly;
+  # soft move: 0.5 + (0.8 - 0.5) * (1/6) = 0.55
   sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
-  expect_equal(sp_a_s2, 0.9, tolerance = 1e-8)
+  expect_equal(sp_a_s2, 0.55, tolerance = 1e-8)
 })
 
 test_that("never-demote still holds under rescaling", {
@@ -510,11 +546,10 @@ test_that("never-demote still holds under rescaling", {
   expect_equal(sp_a_s2, 0.9)   # already well above q*ceiling (0.0475) -- untouched
 })
 
-test_that("a raised presence-mixture row has its mixture cleared (presence established)", {
+test_that("a presence-mixture row has prior_mix_w updated (not cleared) by soft support", {
   res <- .make_result()
-  # Make S2's Sp_A a presence-mixture row with a low pre-confirmation prior
   mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
-  res$prior_mean[mixify]  <- 0.01
+  res$prior_mean[mixify]  <- 1e-4 + (0.02 - 1e-4) * 0.5   # blend at w = 0.5
   res$prior_alpha[mixify] <- 0.02
   res$prior_beta[mixify]  <- 1.98
   res$prior_mix_w             <- ifelse(mixify, 0.5, NA_real_)
@@ -526,11 +561,18 @@ test_that("a raised presence-mixture row has its mixture cleared (presence estab
     update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
   ))
   boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
-  expect_true(boosted$prior_mean > 0.01)              # confirmation raised it
-  expect_true(is.na(boosted$prior_mix_w))             # mixture dissolved
-  expect_true(is.na(boosted$prior_mix_theta_present))
-  expect_true(is.na(boosted$prior_mix_p_conc))
-  # the resolved S1 rows never had a mixture and are untouched
+  # leave-one-out mass = S1's 0.8; m = 0.25*0.8 = 0.2;
+  # w1 = (1*0.5 + 0.2)/(1 + 0.2) = 0.5833...; theta1 = blend at w1
+  w1 <- (1 * 0.5 + 0.2) / 1.2
+  th1 <- 1e-4 + (0.02 - 1e-4) * w1
+  expect_equal(boosted$prior_mix_w, w1, tolerance = 1e-8)
+  expect_equal(boosted$prior_mean, th1, tolerance = 1e-8)
+  expect_equal(boosted$prior_mix_p_conc, 1.2, tolerance = 1e-8)
+  # Beta summary re-moment-matched to the updated mixture
+  expect_equal(boosted$prior_alpha / (boosted$prior_alpha + boosted$prior_beta),
+               th1, tolerance = 1e-6)
+  # never demoted; resolved rows untouched
+  expect_gt(boosted$prior_mix_w, 0.5)
   s1 <- out[out$observation_id == "S1", ]
   expect_true(all(is.na(s1$prior_mix_w)))
 })

@@ -228,20 +228,27 @@ test_that("undetected rows are appended when undetected is supplied", {
   expect_gt(nrow(out_with), nrow(out_base))
 })
 
-test_that("Tier 1 predictions are unaffected by the Tier-2-only theta_epsilon floor", {
+test_that("Tier 1 predictions are unaffected by the Tier-2-only singleton-mirror floor", {
   # Regression test for a real bug found 2026-07-03: theta_epsilon's
   # singleton-mirror-derived auto-raise (meant to protect Tier 2 from
   # collapsing to the dark-diversity floor) was being applied globally,
   # silently flattening Tier 1 species whose real predicted probability fell
   # below the raised floor to an identical value. Tier 1's output must be
-  # IDENTICAL whether or not `undetected` (the thing that triggers the raise)
-  # is supplied at all.
+  # IDENTICAL whether or not `undetected` supplies singleton_mirror rows --
+  # narrowed 2026-08-27 to singleton_mirror specifically (see the new
+  # global_floor-only tests below): `undetected` CAN now legitimately change
+  # Tier 1 output via the separate, smaller global_floor-derived raise added
+  # that day, so this test isolates the ORIGINAL bug's own trigger
+  # (singleton_mirror rows only, no global_floor row) to keep asserting
+  # exactly what it always asserted.
   skip_if_not_installed("glmmTMB")
   mod   <- .fit_minimal_model()
   sites <- .make_new_sites()
   undet <- generate_undetected_diversity(mod)
+  undet_sm_only <- undet[is.na(undet$undetected_type) |
+                           undet$undetected_type != "global_floor", , drop = FALSE]
 
-  out_with <- generate_full_priors(mod, new_sites = sites, undetected = undet)
+  out_with <- generate_full_priors(mod, new_sites = sites, undetected = undet_sm_only)
   out_base <- generate_full_priors(mod, new_sites = sites, undetected = NULL)
 
   t1_with <- out_with |>
@@ -254,6 +261,75 @@ test_that("Tier 1 predictions are unaffected by the Tier-2-only theta_epsilon fl
     dplyr::pull(theta_mean)
 
   expect_equal(t1_with, t1_base)
+})
+
+test_that("Tier 1 predictions are raised to the global_floor value when they fall below it", {
+  # New 2026-08-27: a genuinely fitted Tier 1 estimate for a real,
+  # in-habitat species must never sit below that study's own dark-diversity
+  # global_floor (the "we have zero occurrence evidence for this taxon at
+  # all" baseline) -- real motivating case: GreatLakes2023's Salmo trutta
+  # (18 real occurrence records, observed_in_habitat = TRUE, fitted
+  # theta_mean = 4.18e-6) sat below that dataset's own global_floor
+  # (~9.59e-5), letting several zero-evidence Old World Salmo relatives
+  # (correctly at the generic floor) outscore it on posterior mass. An
+  # artificially extreme synthetic global_floor (theta = 0.999) is used here
+  # to guarantee every real Tier 1 prediction from the minimal fitted model
+  # falls below it, so the raise is deterministically exercised without
+  # needing to engineer a specific tiny model fit.
+  skip_if_not_installed("glmmTMB")
+  mod   <- .fit_minimal_model()
+  sites <- .make_new_sites()
+
+  out_base <- generate_full_priors(mod, new_sites = sites, undetected = NULL)
+  t1_base  <- out_base[out_base$model_tier == "tier1", ]
+  expect_true(all(t1_base$theta_mean < 0.999))  # sanity: the raise must have real work to do
+
+  extreme_floor <- generate_undetected_diversity(mod)
+  extreme_floor <- extreme_floor[extreme_floor$undetected_type == "global_floor", ]
+  extreme_floor$alpha <- 999
+  extreme_floor$beta  <- 1
+  out_raised <- generate_full_priors(mod, new_sites = sites, undetected = extreme_floor)
+  t1_raised  <- out_raised[out_raised$model_tier == "tier1", ]
+
+  expect_true(all(t1_raised$theta_mean >= 0.999 - 1e-9))
+})
+
+test_that("a global_floor-only undetected does NOT trigger the separate Tier-2/singleton-mirror raise", {
+  # The two mechanisms must stay independent: supplying only a global_floor
+  # row (no singleton_mirror rows) must not accidentally also raise Tier 2's
+  # own, separate floor.
+  skip_if_not_installed("glmmTMB")
+  mod   <- .fit_minimal_model()
+  sites <- .make_new_sites()
+
+  out_base <- generate_full_priors(mod, new_sites = sites, undetected = NULL)
+  extreme_floor <- generate_undetected_diversity(mod)
+  extreme_floor <- extreme_floor[extreme_floor$undetected_type == "global_floor", ]
+  extreme_floor$alpha <- 999
+  extreme_floor$beta  <- 1
+  out_gf <- generate_full_priors(mod, new_sites = sites, undetected = extreme_floor)
+
+  t2_base <- out_base[out_base$model_tier == "tier2", ] |> dplyr::arrange(taxon_name, grid_id) |> dplyr::pull(theta_mean)
+  t2_gf   <- out_gf[out_gf$model_tier == "tier2", ]   |> dplyr::arrange(taxon_name, grid_id) |> dplyr::pull(theta_mean)
+  expect_equal(t2_base, t2_gf)
+})
+
+test_that("real generate_undetected_diversity() output never leaves a Tier 1 row below its own global_floor", {
+  # General invariant check against the real (not synthetic-extreme)
+  # generate_undetected_diversity() output, confirming the fix holds under
+  # realistic conditions too, not just the deterministic extreme-floor case
+  # above.
+  skip_if_not_installed("glmmTMB")
+  mod   <- .fit_minimal_model()
+  sites <- .make_new_sites()
+  undet <- generate_undetected_diversity(mod)
+  gf_row <- undet[!is.na(undet$undetected_type) & undet$undetected_type == "global_floor", ]
+  skip_if(nrow(gf_row) == 0, "no global_floor row produced for this fixture")
+  floor_val <- gf_row$alpha[1] / (gf_row$alpha[1] + gf_row$beta[1])
+
+  out <- generate_full_priors(mod, new_sites = sites, undetected = undet)
+  t1  <- out[out$model_tier == "tier1", ]
+  expect_true(all(t1$theta_mean >= floor_val - 1e-9))
 })
 
 test_that("undetected rows have taxon_name = NA", {

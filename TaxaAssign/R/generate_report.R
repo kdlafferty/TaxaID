@@ -744,11 +744,11 @@ generate_report <- function(result,
   cum_thresh <- if (!is.null(params$cumulative_threshold)) params$cumulative_threshold else 0.9
   min_post   <- if (!is.null(params$min_posterior)) params$min_posterior else 0.05
 
-  confirm_q     <- params$confirmation_quantile
-  min_confirm_p <- params$min_confirmation_confidence
+  confirm_q  <- params$confirmation_quantile
+  confirm_a0 <- params$confirmation_discount
   has_eb <- !is.null(confirm_q) || has_empirical_bayes
-  if (is.null(confirm_q))     confirm_q     <- 0.9  # default
-  if (is.null(min_confirm_p)) min_confirm_p <- 0.8  # default
+  if (is.null(confirm_q))  confirm_q  <- 0.9   # default
+  if (is.null(confirm_a0)) confirm_a0 <- 0.25  # default
 
   cons_text <- sprintf(
     paste0(
@@ -770,17 +770,20 @@ generate_report <- function(result,
     eb_text <- sprintf(
       paste0(
         "Following the initial consensus, a single-pass empirical Bayes ",
-        "refinement was applied: for each species confidently identified in at least ",
-        "one observation, the %s%% quantile of the confirming observations' consensus ",
-        "posterior probability was computed; where this exceeded both %s and the ",
-        "species' existing prior in a given unresolved observation, the prior was ",
-        "raised to that value in all remaining unresolved observations, reflecting the ",
-        "confirmed evidence of presence at the site. Posteriors were then recomputed and ",
-        "the consensus algorithm was re-run for the affected observations. This step ",
-        "used only cross-observation evidence (an observation's own posterior was never ",
-        "used to update its own prior)."
+        "refinement was applied: each observation's posterior support for a species ",
+        "was treated as fractional evidence of site-level presence (soft assignment; ",
+        "cf. classification vs. standard EM, Celeux & Govaert 1992). Per species, ",
+        "this support was summed across observations, the target observation's own ",
+        "support excluded, and the total discounted by a power-prior factor of %s ",
+        "to account for non-independence among same-site observations (Ibrahim & ",
+        "Chen 2000). The discounted mass entered a saturating weight that moved each ",
+        "unresolved observation's prior smoothly toward the support-weighted %s%% ",
+        "quantile of per-observation support (never lowering an existing prior), ",
+        "after which posteriors were recomputed and the consensus algorithm re-run ",
+        "for the affected observations. This update is continuous in all inputs ",
+        "(no confirmation threshold) and used only cross-observation evidence."
       ),
-      round(confirm_q * 100, 1), min_confirm_p
+      confirm_a0, round(confirm_q * 100, 1)
     )
     sections <- c(sections, eb_text)
   }

@@ -61,7 +61,8 @@ result <- data.frame(
   hypothesis_type = "specific_candidate",
   genus           = "Gadus",
   family          = "Gadidae",
-  posterior_mean  = c(0.8, 0.2)
+  posterior_mean  = c(0.8, 0.2),
+  posterior_point_est = c(0.8, 0.2)
 )
 consensus <- posterior_consensus(result)
 sec <- report_assign(result, consensus, data_type = "eDNA", workflow = "bayesian")

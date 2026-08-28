@@ -127,7 +127,8 @@
 #'   hypothesis_type = "specific_candidate",
 #'   genus           = c("Homo", "Homo", "Bos"),
 #'   family          = c("Hominidae", "Hominidae", "Bovidae"),
-#'   posterior_mean  = c(0.55, 0.45, 1.0)
+#'   posterior_mean  = c(0.55, 0.45, 1.0),
+#'   posterior_point_est = c(0.55, 0.45, 1.0)
 #' )
 #' consensus <- posterior_consensus(posterior_df, min_posterior = 0)
 #' consensus <- add_slash_taxon(consensus)

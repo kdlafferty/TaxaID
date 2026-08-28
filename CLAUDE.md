@@ -1,7 +1,47 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-08-26, later still (Fable 5 -- w-CALIBRATION + HELD-OUT LAMAR
+# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- ALL SEVEN
+# remaining mixture-redesign items implemented in one pass (user: "Do them all in
+# order"); the reentry doc now carries a full per-item status ledger. (1) NEW
+# TaxaFlag::flag_watch_candidates(): the likelihood-side surveillance guarantee --
+# flags any observation where a watch-list species' RAW match score ties/beats the
+# winner's own best; wired into GreatLakes 8i.5. (2) apply_undetected_evidence() now
+# PRINTS the dataset-specific veto bound at call time. (3) D6 iNat:
+# TaxaFetch::check_inat_range() gains a derived name_match column (computed at
+# assembly, never cached-stale) closing the fuzzy-misresolution TODO
+# ([[project_inat_range_backbone_mismatch_todo]]); NEW
+# TaxaExpect::generate_inat_range_evidence() (w=0.8) feeds the shared applier;
+# TaxaAssign::adjust_inat_range_priors() name-gated (require_name_match=TRUE) and
+# marked superseded for the mixture pathway; GreatLakes Step 7a.7d wired. (4) D7
+# SOFT CONFIRMATION UPDATE replaces the hard 0.8 donor gate in
+# update_prior_from_consensus(): every observation's posterior support aggregates as
+# fractional presence evidence (leave-one-out), discounted by NEW
+# `confirmation_discount` a0=0.25 (power prior -- Ibrahim & Chen 2000 Stat Sci
+# 15:46-60; soft-vs-classification EM -- Celeux & Govaert 1992 CSDA 14:315-332;
+# occupancy analog -- Dorazio & Erickson 2018 MER 18:368-380; all three VERIFIED via
+# live search, not recalled), saturating m/(1+m) move toward a support-weighted
+# confirmation quantile; mixture rows update prior_mix_w itself (replaces the
+# interim clearing rule); `min_confirmation_confidence` REMOVED (breaking)
+# everywhere; continuity regression-tested across the old gate. Held-out-Lamar
+# validation on identical production inputs: soft beats hard on every axis --
+# co-detections 236->238, uncorroborated ours_only 120->97, unique species 17->23,
+# Lamar-corroborated 12->18, sample-level precision 0.66->0.71 (the hard cascade's
+# bulk resolutions were largely uncorroborated repetition). (5) D8:
+# posterior_consensus() default posterior_col aligned to "posterior_point_est"
+# (drift resolved). (6) D9: domestic rows verified at design magnitudes (theta
+# 4.8e-4, 5x floor, correctly ordered); found+fixed: the workflow never passed
+# domestic_taxa to add_posthoc_assessment(), so domestic_prior_caveat was silently
+# inert (0/885) -- now wired from the priors table. (7) NEW
+# TaxaExpect::fit_regional_presence_curve(): the generic D5 leave-the-bbox-out /
+# checklist distance-to-presence fitter (log-link binomial GLM to
+# w_scale*exp(-d/d_half); zero-positive case returns Jeffreys bounds first-class,
+# exactly the real GreatLakes outcome). Two real bugs found by testing, both fixed:
+# 0-row scalar assignment in the all-unresolved split; test fixtures/examples
+# relying on the old posterior_mean default. Tests: TaxaAssign 691/0, TaxaExpect
+# 731/0, TaxaFlag 434/0, TaxaFetch 620/2-preexisting-env; check 0/0/0 all four;
+# reinstalled. See both packages' top notes + the reentry doc ledger.
+# Previous update, 2026-08-26, later still (Fable 5 -- w-CALIBRATION + HELD-OUT LAMAR
 # VALIDATION close out the mixture redesign's Phase 2 calibration (D4/D5).
 # TaxaExpect::generate_regional_proximity_evidence() gains `w_scale` (default 1;
 # GreatLakes workflow sets 0.05, calibrated against the site checklist with Lamar
@@ -3041,3 +3081,8 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-08-26, continued (Fable 5) | `apply_undetected_evidence()`: `evidence$n_eff` retired -> optional `p_conc` (default 1); Beta concentration now moment-matched; new `prior_mix_w`/`prior_mix_theta_present`/`prior_mix_theta_absent`/`prior_mix_p_conc` output columns | TaxaExpect | **Breaking for evidence-table callers.** An `evidence` frame carrying `n_eff` without `p_conc` errors with migration guidance. `generate_invasive_watch_evidence(n_eff=)` -> `p_conc = 1` (signature change); `generate_regional_proximity_evidence()` loses `n_eff_base` (p_conc = exp(-age/age_half)). All 6 real production workflows' call sites updated same session (`INVASIVE_WATCH_N_EFF` -> `INVASIVE_WATCH_P_CONC`). Blend means unchanged byte-for-byte (verified on all 121 real GreatLakes rows); only the Beta concentration and new mixture columns differ. `devtools::test()` 694/0, `check()` 0/0/0. See the reentry doc (D3/D8). |
 | 2026-08-26, continued (Fable 5) | `compute_posterior()` gains presence-draw sampling for `prior_mix_*` rows; `join_priors()` passes the columns through expansion; `update_prior_from_consensus()` clears the mixture on confirmation-raised rows | TaxaAssign | **Additive/behavioral.** Mixture rows draw `z ~ Bernoulli(prior_mix_w)` in simulation instead of being pinned at the mean by the `alpha <= 1` J-guard; `posterior_mean` integrates over presence states, `confidence_score` = fraction of presence states won. Point path unchanged. Non-mixture rows completely unaffected (regression-tested). `devtools::test()` 682/0, `check()` 0/0/0. Operative consensus column unchanged (`posterior_point_est`) pending the D8 verdict -- the three-way experiment found the choice second-order vs w calibration. |
 | 2026-08-26, later still (Fable 5) | `generate_regional_proximity_evidence(w_scale = 1)` added | TaxaExpect | **Additive, backward compatible** (default 1 = prior behavior). `weight = w_scale * exp(-distance_km/d_half)`; `w_scale` = P(locally present) for a species with a record just outside the bbox and none inside. The default is documented as almost certainly too high for real studies; calibrate against a local checklist (GreatLakes2023: 0/110 zero-bbox candidates on the 53-species site checklist at any distance -> adopted 0.05, validated against held-out Lamar: species co-detections 74 -> 224, no_match 1/1081). GreatLakes workflow sets `w_scale = 0.05`; all 6 workflows' `INVASIVE_WATCH_WEIGHT` updated 0.6 -> 0.05 (0.6 violated the never-veto-an-observed-native ordering bound). `devtools::test()` 697/0, `check()` 0/0/0. |
+| 2026-08-28 (Fable 5) | `update_prior_from_consensus()`: soft confirmation replaces the hard donor gate; `min_confirmation_confidence` REMOVED -> new `confirmation_discount = 0.25` | TaxaAssign | **Breaking signature + behavioral change** (D7). Support aggregates softly from every observation's posteriors (leave-one-out, power-prior-discounted, saturating; mixture rows update `prior_mix_w`); no thresholds anywhere -- continuity regression-tested. Propagated through `run_bayesian_pipeline()`/`run_llm_pipeline()`/`consensus_refinement`/`generate_report()` methods text/inst workflows/vignette. Held-out Lamar: soft beats hard on every axis (co-det 236->238, ours_only 120->97, uniq species 17->23, in-Lamar 12->18, precision 0.66->0.71). Citations verified live (Ibrahim & Chen 2000; Celeux & Govaert 1992; Dorazio & Erickson 2018). |
+| 2026-08-28 (Fable 5) | `posterior_consensus(posterior_col)` default `"posterior_mean"` -> `"posterior_point_est"` | TaxaAssign | **Behavioral default change** (D8 drift fix): aligns the low-level default with `run_bayesian_pipeline()` and every production workflow. Rank by the MC mean by passing `"posterior_mean"` explicitly (with mixture priors that column integrates presence states). Test fixtures/examples updated to carry both columns. |
+| 2026-08-28 (Fable 5) | `check_inat_range()` output gains `name_match`; `adjust_inat_range_priors(require_name_match = TRUE)` added | TaxaFetch, TaxaAssign | **Behavioral**: an in-range verdict resting on a fuzzy misresolution to a DIFFERENT species (real case: Gasterosteus gymnurus -> aculeatus) can no longer drive a prior elevation by default. `name_match` is derived at assembly time (cached rows get it too); pre-2026-08-28 `inat_range` tables elevate nothing until re-checked (guidance message). `adjust_inat_range_priors()` is marked superseded for the mixture pathway by `generate_inat_range_evidence()`. |
+| 2026-08-28 (Fable 5) | `flag_watch_candidates()` added | TaxaFlag | New function (D4): likelihood-side watch-list surveillance -- flags observations where a watch species' raw score ties/beats the winner's best match; prior-free, purely informational, never edits consensus columns. Wired into the GreatLakes workflow (8i.5). |
+| 2026-08-28 (Fable 5) | `generate_inat_range_evidence()` + `fit_regional_presence_curve()` added; `apply_undetected_evidence()` prints the veto bound | TaxaExpect | Additive (D6/D5/D4): iNat as the third evidence generator through the shared applier (w = 0.8, name-gated); the generic distance-to-presence fitter (log-link binomial to `w_scale*exp(-d/d_half)`, zero-positive Jeffreys-bounds path first-class); every `apply_undetected_evidence()` call now prints the dataset-specific weight bound above which an unobserved species can veto a singleton-level native. |

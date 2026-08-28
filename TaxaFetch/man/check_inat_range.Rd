@@ -34,7 +34,10 @@ downloaded GeoJSON files. Speeds up repeated calls for the same taxa.}
 }
 \value{
 A tibble with columns \code{taxon_name}, \code{taxon_id},
-\code{matched_name}, \code{rank}, \code{iconic_taxon_name},
+\code{matched_name}, \code{name_match} (does the resolved iNat name
+equal the query, case-insensitively -- FALSE flags a fuzzy-match
+resolution to a DIFFERENT taxon, which must never drive a prior
+elevation), \code{rank}, \code{iconic_taxon_name},
 \code{inat_kingdom}, \code{n_observations}, \code{in_range},
 \code{range_status}. \code{inat_kingdom} is derived from
 \code{iconic_taxon_name} via a fixed lookup (no additional API call);

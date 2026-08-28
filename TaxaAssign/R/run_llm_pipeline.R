@@ -84,9 +84,10 @@
 #'   observations' \code{consensus_posterior} used for the empirical Bayes
 #'   prior boost of confirmed species. Default 0.9. See
 #'   \code{\link{update_prior_from_consensus}}.
-#' @param min_confirmation_confidence Numeric in \[0, 1\]. Minimum confirmation
-#'   quantile required before a species counts as confirmed at all. Default
-#'   0.8; set to 0 to disable. See \code{\link{update_prior_from_consensus}}.
+#' @param confirmation_discount Numeric in \[0, 1\]. Power-prior discount on
+#'   the cross-observation support mass in the soft confirmation update.
+#'   Default 0.25; 0 disables the update. See
+#'   \code{\link{update_prior_from_consensus}}.
 #' @param generate_report Logical. Generate a Methods + Results report.
 #'   Default \code{FALSE}.
 #' @param report_params Named list of additional arguments passed to
@@ -167,7 +168,7 @@ run_llm_pipeline <- function(
     backbone_id,
     lookup_missing_taxonomy = TRUE,
     confirmation_quantile       = 0.9,
-    min_confirmation_confidence = 0.8,
+    confirmation_discount       = 0.25,
     generate_report      = FALSE,
     report_params        = list(),
     reference_errors     = NULL,
@@ -294,7 +295,7 @@ run_llm_pipeline <- function(
     backbone_id           = backbone_id,
     rank_system           = rank_system,
     confirmation_quantile       = confirmation_quantile,
-    min_confirmation_confidence = min_confirmation_confidence,
+    confirmation_discount       = confirmation_discount,
     n_sims                = n_sims,
     generate_report_flag  = generate_report,
     report_params         = report_params,

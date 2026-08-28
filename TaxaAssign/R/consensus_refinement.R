@@ -28,7 +28,7 @@
                                        backbone_id,
                                        rank_system,
                                        confirmation_quantile,
-                                       min_confirmation_confidence,
+                                       confirmation_discount,
                                        n_sims,
                                        generate_report_flag,
                                        report_params,
@@ -59,7 +59,7 @@
   result_updated <- update_prior_from_consensus(
     result, consensus,
     confirmation_quantile       = confirmation_quantile,
-    min_confirmation_confidence = min_confirmation_confidence,
+    confirmation_discount       = confirmation_discount,
     n_sims                      = n_sims
   )
 

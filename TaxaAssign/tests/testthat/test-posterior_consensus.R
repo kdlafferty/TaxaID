@@ -13,6 +13,9 @@ make_posterior <- function(observation_id, taxon_name, taxon_name_rank,
     taxon_name_rank = taxon_name_rank,
     hypothesis_type = hypothesis_type,
     posterior_mean  = posterior_mean,
+    # mirrored so fixtures exercise the (2026-08-28) default
+    # posterior_col = "posterior_point_est" without each test opting in
+    posterior_point_est = posterior_mean,
     stringsAsFactors = FALSE
   )
   if (!is.null(genus))   df$genus   <- genus
@@ -547,6 +550,7 @@ make_competitor_df <- function(model_tier = c("tier1", "tier2", NA, NA),
     taxon_name_rank = rep("species", 4),
     hypothesis_type = rep("specific_candidate", 4),
     posterior_mean  = posterior_mean,
+    posterior_point_est = posterior_mean,
     genus           = c("Aa", "Aa", "Bb", "Bb"),
     family          = rep("Fam1", 4),
     species         = c("Aa one", "Aa two", "Bb one", "Bb two"),
@@ -663,6 +667,7 @@ make_theta_df <- function(model_tier      = c("tier1", "tier2", NA, NA),
     taxon_name_rank = rep("species", 4),
     hypothesis_type = rep("specific_candidate", 4),
     posterior_mean  = posterior_mean,
+    posterior_point_est = posterior_mean,
     prior_mean      = prior_mean,
     theta_mean      = theta_mean,
     genus           = c("Aa", "Aa", "Bb", "Bb"),

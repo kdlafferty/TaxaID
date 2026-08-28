@@ -47,14 +47,18 @@ flagged <- flag_contaminant(
   contaminant_type = "lab_contaminant"
 )
 
-# Output adds: lab_contaminant_risk, lab_contaminant_score, lab_contaminant_reason
-table(flagged$lab_contaminant_risk)
+# Output adds: observation_validity, validity_flag, validity_reason
+table(flagged$validity_flag)
 ```
 
-Risk values:
-- `"low"` -- taxon found mainly in field samples (likely genuine detection)
-- `"moderate"` -- elevated in controls but not conclusive
-- `"high"` -- strong evidence of contamination (found mainly in controls)
+`validity_flag` values (the qualifier reflects `contaminant_type`, here
+`"lab_contaminant"`):
+- `"valid"` -- taxon found mainly in field samples (likely genuine detection)
+- `"questionable_lab_contaminant"` -- elevated in controls but not conclusive
+- `"invalid_lab_contaminant"` -- strong evidence of contamination (found mainly in controls)
+
+`observation_validity` is the numeric score behind the flag -- high = good/genuine,
+low = likely contaminant.
 
 ## Handler Artifact Flagging
 
@@ -76,8 +80,9 @@ flagged <- flag_handler(
   interval_minutes = 30
 )
 
-# Result adds: flag_handler column
-table(flagged$flag_handler)
+# Result adds: observation_validity, validity_flag, validity_reason
+# validity_flag values: "valid" / "questionable_handling" / "invalid_handling"
+table(flagged$validity_flag)
 
 # Better: anchor edges on real deploy/retrieve times, not the data's own
 # min/max, so a genuine detection right when the camera happened to start
@@ -132,16 +137,20 @@ appropriate weighting depends on your study design and risk tolerance:
 
 ```{r combine-example, eval = FALSE}
 # Example: conservative approach (flag if ANY mechanism triggers)
+# lab_flags/handler_flags are each the output of a separate flag_contaminant()/
+# flag_handler() call joined onto the same taxon/observation, so their
+# validity_flag columns need a per-check prefix -- see the README's
+# "Combine results" example for a full join.
 flagged$any_flag <- with(flagged,
-  lab_contaminant_risk == "high" |
-  flag_handler         == "unlikely" |
+  lab_validity_flag    == "invalid_lab_contaminant" |
+  handler_validity_flag == "invalid_handling" |
   contamination_risk   %in% c("high", "moderate") |
   review_confidence    == "low"
 )
 
 # Example: permissive approach (only flag if multiple mechanisms agree)
 flagged$multi_flag <- with(flagged,
-  (lab_contaminant_risk == "high") +
+  (lab_validity_flag == "invalid_lab_contaminant") +
   (contamination_risk %in% c("high", "moderate")) >= 2
 )
 ```

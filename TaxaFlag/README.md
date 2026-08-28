@@ -120,9 +120,9 @@ flagged <- flag_contaminant(
   contaminant_type = "lab_contaminant"
 )
 
-# Output adds: lab_contaminant_risk, lab_contaminant_score, lab_contaminant_reason
-# Filter to high-risk taxa (probable contaminants)
-flagged[flagged$lab_contaminant_risk == "high", ]
+# Output adds: observation_validity, validity_flag, validity_reason
+# Filter to invalid taxa (probable contaminants)
+flagged[flagged$validity_flag == "invalid_lab_contaminant", ]
 ```
 
 ### Flag handler artifacts (camera traps)

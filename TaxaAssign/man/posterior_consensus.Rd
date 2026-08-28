@@ -9,7 +9,7 @@ posterior_consensus(
   rank_system = NULL,
   cumulative_threshold = 0.9,
   min_posterior = 0.05,
-  posterior_col = "posterior_mean",
+  posterior_col = "posterior_point_est",
   lookup_missing_taxonomy = FALSE,
   backbone_id = NULL,
   species_reference = NULL,
@@ -46,7 +46,17 @@ hold at least 5\% posterior probability to influence the consensus taxon.
 Default 0.05. Set to 0 to disable.}
 
 \item{posterior_col}{Character. Name of the posterior column to rank
-hypotheses by. Default \code{"posterior_mean"}.}
+hypotheses by. Default \code{"posterior_point_est"} -- aligned (2026-08-28)
+with \code{run_bayesian_pipeline()} and every production workflow, which had
+always passed the point-estimate column explicitly while this function
+alone defaulted to \code{"posterior_mean"} (undocumented drift; the
+three-way operative-column experiment in
+\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}
+(D8) found the choice second-order and settled on point estimates: best
+external corroboration, deterministic, and exactly auditable as
+prior x likelihood products). Pass \code{"posterior_mean"} to rank by the
+Monte Carlo mean instead -- with presence-mixture priors that column
+integrates over presence states (see \code{compute_posterior()}).}
 
 \item{lookup_missing_taxonomy}{Logical. If \code{TRUE}, calls
 \code{TaxaTools::verify_taxon_names()} to fill in taxonomy columns for
@@ -351,7 +361,8 @@ posterior_df <- data.frame(
   hypothesis_type  = "specific_candidate",
   genus            = "Gadus",
   family           = "Gadidae",
-  posterior_mean   = c(0.75, 0.20, 0.05)
+  posterior_mean   = c(0.75, 0.20, 0.05),
+  posterior_point_est = c(0.75, 0.20, 0.05)
 )
 consensus <- posterior_consensus(
   posterior_df,

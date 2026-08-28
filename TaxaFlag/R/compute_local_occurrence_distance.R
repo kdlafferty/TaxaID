@@ -32,6 +32,15 @@
 #' @param taxon_col,lat_col,lon_col Character scalars. Column names in
 #'   `occurrence_data`. Defaults match `TaxaFetch`'s DarwinCore-aligned
 #'   convention.
+#' @param date_col Character or `NULL`. Optional column in `occurrence_data`
+#'   giving the nearest record's collection date/year (e.g. GBIF's own
+#'   `"year"` standard column). When supplied and present, the matched
+#'   nearest record's raw value is surfaced as `nearest_date` -- lets a
+#'   caller weigh a fresh vs. a decades-old nearest record differently
+#'   without a second lookup. Default `NULL` (no age column requested,
+#'   fully backward compatible -- `nearest_date` is simply absent from the
+#'   output). No parsing/normalization is done on the raw value; a `"year"`
+#'   column comes back as whatever numeric/character type it already was.
 #'
 #' @return A data frame, one row per unique entry in `taxon_names`:
 #'   \describe{
@@ -45,6 +54,10 @@
 #'       `n_local_records == 0`.}
 #'     \item{nearest_lat, nearest_lon}{Coordinates of that nearest record.
 #'       `NA` when `n_local_records == 0`.}
+#'     \item{nearest_date}{The nearest record's raw `date_col` value. Only
+#'       present when `date_col` is supplied and found in `occurrence_data`.
+#'       `NA` when `n_local_records == 0` or the nearest record's own
+#'       `date_col` value is missing.}
 #'   }
 #'
 #' @seealso [check_gbif_tile_range()]
@@ -53,12 +66,14 @@
 #' occ <- data.frame(
 #'   taxon_name        = c("Neogobius melanostomus", "Neogobius melanostomus"),
 #'   decimalLatitude   = c(41.60, 42.10),
-#'   decimalLongitude  = c(-87.10, -87.80)
+#'   decimalLongitude  = c(-87.10, -87.80),
+#'   year              = c(2019, 2003)
 #' )
 #' compute_local_occurrence_distance(
 #'   taxon_names     = c("Neogobius melanostomus", "Salmo salar"),
 #'   query_lat       = 41.67, query_lon = -87.15,
-#'   occurrence_data = occ
+#'   occurrence_data = occ,
+#'   date_col        = "year"
 #' )
 #'
 #' @importFrom dplyr filter transmute count group_by slice_min ungroup select left_join mutate coalesce
@@ -70,7 +85,8 @@ compute_local_occurrence_distance <- function(taxon_names,
                                                occurrence_data,
                                                taxon_col = "taxon_name",
                                                lat_col   = "decimalLatitude",
-                                               lon_col   = "decimalLongitude") {
+                                               lon_col   = "decimalLongitude",
+                                               date_col  = NULL) {
 
   if (!is.character(taxon_names) || length(taxon_names) == 0L) {
     stop("compute_local_occurrence_distance: taxon_names must be a non-empty character vector.")
@@ -87,6 +103,7 @@ compute_local_occurrence_distance <- function(taxon_names,
     stop("compute_local_occurrence_distance: occurrence_data is missing columns: ",
          paste(missing_cols, collapse = ", "))
   }
+  use_date <- !is.null(date_col) && date_col %in% names(occurrence_data)
 
   taxa_unique <- unique(taxon_names)
 
@@ -99,6 +116,7 @@ compute_local_occurrence_distance <- function(taxon_names,
       taxon_name = .data[[taxon_col]],
       .lat       = .data[[lat_col]],
       .lon       = .data[[lon_col]],
+      .date      = if (use_date) .data[[date_col]] else NA,
       .dist_km   = .haversine_km(query_lat, query_lon, .data[[lat_col]], .data[[lon_col]])
     )
 
@@ -113,8 +131,10 @@ compute_local_occurrence_distance <- function(taxon_names,
       taxon_name      = "taxon_name",
       dist_nearest_km = ".dist_km",
       nearest_lat     = ".lat",
-      nearest_lon     = ".lon"
+      nearest_lon     = ".lon",
+      nearest_date    = ".date"
     )
+  if (!use_date) nearest_rows$nearest_date <- NULL
 
   result <- data.frame(taxon_name = taxa_unique, stringsAsFactors = FALSE) |>
     dplyr::left_join(counts, by = "taxon_name") |>

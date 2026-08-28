@@ -79,6 +79,14 @@
 #' site effort, \code{1 / (median(n_obs) + 1)}; (3) only if neither is
 #' computable, the previous floor-equals-ceiling no-op with a warning.
 #'
+#' @section The printed veto bound:
+#' Each call prints the dataset-specific weight above which an unobserved
+#' species can block species-level resolution of a singleton-level observed
+#' native at likelihood parity (derived from the anchors and the consensus
+#' default \code{min_posterior = 0.05}). Choose watch-list weights BELOW this
+#' bound unless you deliberately intend elevated species to compete with
+#' observed ones.
+#'
 #' @section Combining multiple sources for one taxon:
 #' When more than one evidence row names the same taxon (e.g. a regional-
 #' proximity signal and an invasive-watch-list signal both fire for one
@@ -385,6 +393,32 @@ apply_undetected_evidence <- function(
                                    mean(use_singletons$beta,  na.rm = TRUE))
     var_singleton   <- .beta_sd(mean(use_singletons$alpha, na.rm = TRUE),
                                  mean(use_singletons$beta,  na.rm = TRUE))^2
+  }
+
+  # ---- Dataset-specific veto bound (2026-08-26 mixture redesign, D4) --------
+  # At likelihood parity, an elevated species stays in the consensus plausible
+  # set against an observed competitor at theta_obs whenever
+  #   theta_e >= (m/(1-m)) * theta_obs,   m = the retention floor
+  # (TaxaAssign::posterior_consensus() min_posterior, default 0.05). Solved
+  # against the WEAKEST observed level -- the singleton ceiling itself -- this
+  # gives a weight bound specific to THIS dataset's anchors. Printed so a
+  # caller choosing `weight` for a watch list can see where "surfaces for
+  # review" ends and "vetoes the resolution of genuinely observed natives"
+  # begins. (The GreatLakes2023 case: the bound ~0.05; the pre-calibration
+  # w = 0.6 sat far above it and suppressed yellow perch in 78 observations.)
+  if (theta_singleton > theta_floor) {
+    m_ret  <- 0.05
+    w_veto <- ((m_ret / (1 - m_ret)) * theta_singleton - theta_floor) /
+      (theta_singleton - theta_floor)
+    message(sprintf(
+      paste0(
+        "apply_undetected_evidence: veto bound for these anchors -- weight above %.3f ",
+        "lets an unobserved species block species-level resolution of a singleton-level ",
+        "observed native at likelihood parity (assumes the consensus default ",
+        "min_posterior = 0.05; abundant natives tolerate proportionally more)."
+      ),
+      max(w_veto, 0)
+    ))
   }
 
   # ---- Exclude already-observed taxa: any row anywhere in taxaexpect_priors

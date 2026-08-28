@@ -41,7 +41,10 @@
 #'   downloaded GeoJSON files. Speeds up repeated calls for the same taxa.
 #' @param verbose Logical. If TRUE, prints progress for each taxon. Default FALSE.
 #' @return A tibble with columns \code{taxon_name}, \code{taxon_id},
-#'   \code{matched_name}, \code{rank}, \code{iconic_taxon_name},
+#'   \code{matched_name}, \code{name_match} (does the resolved iNat name
+#'   equal the query, case-insensitively -- FALSE flags a fuzzy-match
+#'   resolution to a DIFFERENT taxon, which must never drive a prior
+#'   elevation), \code{rank}, \code{iconic_taxon_name},
 #'   \code{inat_kingdom}, \code{n_observations}, \code{in_range},
 #'   \code{range_status}. \code{inat_kingdom} is derived from
 #'   \code{iconic_taxon_name} via a fixed lookup (no additional API call);
@@ -135,7 +138,24 @@ check_inat_range <- function(
     )
   }
 
-  dplyr::bind_rows(results)
+  out <- dplyr::bind_rows(results)
+
+  # ---- name_match (2026-08-28): derived at assembly time, never cached ------
+  # iNaturalist's taxon search takes the single best TEXT match, so a query
+  # can silently resolve to a DIFFERENT species (real case: Gasterosteus
+  # gymnurus -> G. aculeatus, returning in_range = TRUE for the wrong
+  # organism -- see the review_assignments() caveat wiring, 2026-08-07).
+  # Every consumer that ELEVATES a prior on an in_range verdict must gate on
+  # this column (see TaxaExpect::generate_inat_range_evidence() /
+  # TaxaAssign::adjust_inat_range_priors(require_name_match=)). Computed from
+  # taxon_name/matched_name here, after any caching, so previously cached
+  # rows get it too.
+  .norm <- function(x) tolower(trimws(x))
+  out$name_match <- !is.na(out$matched_name) &
+    .norm(out$matched_name) == .norm(out$taxon_name)
+  out$name_match[is.na(out$matched_name)] <- NA
+
+  out
 }
 
 

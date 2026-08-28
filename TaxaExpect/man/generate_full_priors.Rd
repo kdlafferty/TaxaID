@@ -40,21 +40,47 @@ more informative priors than undetected-diversity fallbacks. Default
 \item{theta_epsilon}{Numeric. Floor/ceiling applied to back-transformed
 theta before alpha/beta conversion, to avoid boundary values. Applied to
 \strong{Tier 1} predictions as supplied (default \code{1e-6}), preserving
-real differentiation among low-but-genuine probabilities.
+real differentiation among low-but-genuine probabilities -- a Tier 1
+species is free to have a genuinely low, well-differentiated theta
+without being flattened to some artificially higher floor.
 
-For \strong{Tier 2} only, a separate, higher floor is derived
-automatically when \code{undetected} is supplied and contains
-\code{"singleton_mirror"} rows: the floor is raised to the mean
-singleton-mirror detection rate if that exceeds \code{theta_epsilon}.
-This ensures Tier 2 species (sparse but detected) always receive priors
-above the dark-diversity floor computed in \code{TaxaAssign::join_priors()},
-preventing conflation with species that have never been detected in the
-system. \strong{This raised floor is Tier-2-only} -- a real bug found
-2026-07-03 applied it globally, silently flattening every Tier 1 species
-whose real predicted probability fell below the floor to the same
-identical value (invisible with a handful of well-separated candidates,
-but visibly wrong with a broader, more realistic candidate pool where
-many species legitimately have low individual probabilities).}
+Two SEPARATE, automatically-derived raises are layered on top of this
+base value when \code{undetected} is supplied -- deliberately different
+in both scale and scope, so neither can be confused for the other:
+
+\itemize{
+\item \strong{Tier 2 only}, raised to the mean \code{"singleton_mirror"}
+detection rate (a real, if sparse, DETECTION rate -- the ceiling
+reserved for species observed at least once). Ensures Tier 2 species
+always receive priors above the dark-diversity floor computed in
+\code{TaxaAssign::join_priors()}, preventing conflation with species
+never detected in the system at all. A real bug found 2026-07-03
+applied this globally instead of Tier-2-only, silently flattening
+every Tier 1 species whose real predicted probability fell below the
+floor to the same identical value -- invisible with a handful of
+well-separated candidates, but visibly wrong with a broader, more
+realistic candidate pool where many species legitimately have low
+individual probabilities. Fixed by scoping the raise to Tier 2 only.
+\item \strong{Tier 1 only}, raised to the \code{"global_floor"} row's
+own theta (the "we have zero occurrence evidence for this taxon at
+all" baseline -- much smaller than the singleton-mirror ceiling
+above, and the two are never conflated). A genuinely fitted Tier 1
+estimate for a real, in-habitat species can still legitimately sit
+anywhere below the singleton-mirror ceiling, including quite low --
+but it should never be treated as LESS plausible than a taxon with
+literally no occurrence evidence anywhere, which is exactly what
+happens if its fitted theta falls below that taxon's own
+\code{global_floor} value. Real motivating case (GreatLakes2023,
+2026-08-27): \emph{Salmo trutta} (Brown Trout) -- 18 real occurrence
+records, \code{observed_in_habitat = TRUE} -- had a genuinely fitted
+Tier 1 theta of 4.18e-6, below that dataset's own global_floor of
+~9.59e-5; with no protection, several Old World \emph{Salmo}
+relatives carrying only the generic (and, for them, genuinely
+appropriate) global_floor prior could outscore the real,
+locally-documented species on posterior mass. Confirmed not an
+isolated case: 5 of 76 real Tier 1 species in that dataset had a
+real, in-habitat theta below their own study's global_floor.
+}}
 }
 \value{
 A tibble with one row per taxon_name x site x habitat combination

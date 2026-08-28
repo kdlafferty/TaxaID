@@ -1,6 +1,107 @@
 # CLAUDE.md -- TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-08 (Sonnet 5 -- first human-authored code + domain review response.
+# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture --
+# check_inat_range() output gains a `name_match` column (mixture redesign D6
+# prerequisite; closes [[project_inat_range_backbone_mismatch_todo]]): iNat's
+# taxon search takes the single best TEXT match, so a query can silently resolve
+# to a DIFFERENT species (real case: Gasterosteus gymnurus -> G. aculeatus with
+# in_range = TRUE for the wrong organism). name_match is DERIVED AT ASSEMBLY TIME
+# from taxon_name/matched_name -- never cached -- so previously cached rows get
+# it too; consumers that elevate priors on an in_range verdict now gate on it
+# (TaxaExpect::generate_inat_range_evidence(), TaxaAssign::
+# adjust_inat_range_priors(require_name_match = TRUE)). 1 new offline test + the
+# nine-columns schema test updated to ten. devtools::test() 620 passed / 2
+# pre-existing unrelated CoordinateCleaner/terra environment failures, check()
+# 0/0/0, reinstalled.
+# Previous update, 2026-08-20, continued (Sonnet 5 -- fetch_nas_occurrences()/lookup_huc8()
+# REMOVED, same day they were added (see the entry directly below for the original build).
+# The user corrected the architecture directly: TaxaID is meant to stay a generic, taxon-
+# and geography-agnostic toolkit, and baking a narrow (aquatic-only, US-only) external
+# database plus freshwater-specific watershed-connectivity math into a package function ties
+# the whole ecosystem to one client's one study system. The distinguishing principle from
+# what's already shipped: iNat/GBIF calls (e.g. TaxaFetch::fetch_inat_occurrences(), already
+# used by TaxaExpect::generate_domestic_food_priors()) are fine because they're broad, generic
+# infrastructure used across many studies; a single-country single-taxon-group database, and
+# HUC8 watershed math, are not. Both functions deleted entirely (source, tests, man/ pages,
+# NAMESPACE exports) -- no deprecation shim, since neither had any real caller yet (added and
+# removed same session). devtools::test() 619/619 (down from 671, exactly the 52 tests removed
+# with the two files; same 2 pre-existing, unrelated filter_gbif_quality()/CoordinateCleaner
+# environment failures as before), devtools::check() 0/0/0. Reinstalled.
+#
+# The replacement design (TaxaExpect::apply_undetected_evidence(), built the same day) moves
+# region-scoping and list-curation entirely to the caller's own workflow -- e.g. hand-pull a
+# species list from NAS yourself, restricted to your own study region, and pass it in as a
+# plain character vector. See TaxaExpect/CLAUDE.md's matching session note for the full
+# redesign, including a cross-session design negotiation with a concurrent chat building a
+# companion regional-proximity mechanism (ecosystem_docs/REENTRY_PROMPT_
+# regional_proximity_prior_check.md) that converged on a shared "evidence generator + one
+# shared applier" architecture both mechanisms now use.
+# Previous update, 2026-08-20 (Sonnet 5 -- initiates ecosystem_docs/REENTRY_PROMPT_
+# invasive_species_watch_list_priors.md: TaxaFetch gains fetch_nas_occurrences() (new,
+# R/fetch_nas_occurrences.R) and lookup_huc8() (new, R/lookup_huc8.R), the acquisition side
+# of an invasive/nonindigenous-species watch-list prior mechanism (consumer:
+# TaxaExpect::generate_invasive_watch_priors(), see that package's own CLAUDE.md).
+# fetch_nas_occurrences() queries the USGS Nonindigenous Aquatic Species (NAS) database's
+# real, live v2 API (nas.er.usgs.gov/api/v2) -- confirmed this session, not assumed from the
+# reentry doc's own design question 1 ("check whether NAS has a queryable API before
+# committing to a design"): a real JSON API exists, needs no API key for the
+# /species (full 1,515-species catalog) and /occurrence/search?species_id= endpoints used
+# here, and a plain httr::GET() with R's default user-agent works fine (only a bare curl
+# request without a browser-spoofed UA hit Cloudflare's bot-check page -- httr's own UA
+# apparently doesn't trip it). Critically, NAS's per-occurrence-record `status` field
+# (established/stocked/collected/failed/unknown) gives a real, ready-made tiering signal the
+# reentry doc's own design question 2 asked for, and huc8/huc10/huc12 codes come free on
+# every record, answering design question 3 (regional scoping) without needing a separate
+# Watershed Boundary Dataset join for the NAS side. lookup_huc8() resolves a study's own
+# lat/lon to its HUC8 via a second live, no-key USGS service (hydro.nationalmap.gov's WBD
+# ArcGIS MapServer, layer 4 = 8-digit HU/Subbasin -- confirmed via that service's own layer
+# list, not guessed) -- so a caller never has to hand-look-up a HUC8 code.
+#
+# A real, load-bearing finding from checking the API before building anything (per the
+# reentry doc's own explicit instruction): NAS is United States-only, and does NOT contain
+# the Alburnus alburnus/Nova Scotia record that originally motivated this whole design --
+# confirmed by pulling NAS's full species catalog and finding zero Alburnus entries at all.
+# Cross-checked via a live GLOBAL (non-bbox-restricted) GBIF query: the Nova Scotia
+# detections DO exist (133 real 2019-2021 Canadian records), but every one is a
+# MATERIAL_SAMPLE eDNA metabarcoding record, not a vouchered specimen, with no
+# established-population signal of any kind. Presented this finding to the user directly
+# before proceeding (AskUserQuestion) rather than silently building around it or silently
+# extending scope to cover it -- user chose "NAS only, for now," explicitly accepting the
+# Alburnus-style foreign-detection gap as a known, documented limitation rather than solving
+# it this session (a global-GBIF-fallback channel was offered and declined). Both
+# fetch_nas_occurrences()'s own roxygen (`@section Scope`) and
+# TaxaExpect::generate_invasive_watch_priors()'s roxygen state this limitation explicitly,
+# with the real Alburnus case as the concrete example.
+#
+# Live-verified end to end before considering this done (not just devtools::test()/check()):
+# lookup_huc8(41.6, -87.15) (a real BurnsHarbor-area Lake Michigan point) correctly resolves
+# to "04040001"/"Little Calumet-Galien"; fetch_nas_occurrences() against three real species
+# (Ictalurus furcatus, Alburnus alburnus, Gymnocephalus cernua) correctly returns "ok" with
+# 5,092+ real occurrence rows for the two NAS-tracked species and "not_in_nas" for Alburnus;
+# and a full generate_invasive_watch_priors() run against that real HUC8 correctly reports
+# Gymnocephalus cernua (Ruffe, a real, famous Great Lakes invader) as
+# "nonindigenous_watch" rather than "nonindigenous_established" -- NAS's own establishment
+# records for Ruffe are concentrated in the Lake Superior/Duluth-Superior basin, a DIFFERENT
+# HUC8 than this southern-Lake-Michigan test point, so the tiering mechanism correctly
+# distinguishes "established somewhere in the US" from "established in THIS region" rather
+# than over-crediting a real invader for the wrong watershed -- a genuine, non-trivial
+# correctness demonstration, not a coincidence of the test data.
+#
+# devtools::test() 671/671 (up from 646 -- 25 new tests across
+# test-fetch_nas_occurrences.R/test-lookup_huc8.R; 2 pre-existing, unrelated failures in
+# test-filter_gbif_quality.R, the documented CoordinateCleaner/terra/sf environment-version
+# issue from the 2026-08-08 note below, confirmed unrelated -- neither new file touches
+# CoordinateCleaner or filter_gbif_quality.R). devtools::check() 0 errors/0 warnings/1 note
+# (pre-existing "unable to verify current time" clock artifact). Reinstalled to
+# ~/Library/R/4.0/library. No new package dependency -- httr/dplyr/tibble were already
+# Imports. See TaxaExpect/CLAUDE.md's matching note for the consumer side, and the reentry
+# doc itself for the full design record, including the two still-open design questions this
+# session's own findings partially answer (tiering ESS magnitudes are a first-pass heuristic,
+# not yet empirically calibrated; whether this mechanism should share machinery with the
+# companion REENTRY_PROMPT_regional_proximity_prior_check.md doc remains undecided, per that
+# doc's own "prototype one first" guidance -- this session prototyped the invasive-watch
+# side only).
+# Previous update, 2026-08-08 (Sonnet 5 -- first human-authored code + domain review response.
 # The user replaced the old Claude-authored inst/taxafetch_review.Rmd (Session 148) with a
 # fresh human-authored review by Micah Wright, covering the same 24-file structure. Full
 # record in inst/taxafetch_review_response.md. Real bugs found and fixed, all confirmed via
