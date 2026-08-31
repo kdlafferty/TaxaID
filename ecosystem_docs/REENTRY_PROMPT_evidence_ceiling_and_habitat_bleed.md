@@ -774,3 +774,41 @@ transport budget + within-clade allocation.
 - NEXT: user reinstalls TaxaExpect+TaxaAssign (no live NCBI/R jobs), runs GL
   from Step 5, we score the gates (Lamar >= 0.748 precision; runtime;
   branch-budget audit) against the parked baseline.
+
+### B8 VALIDATION RESULT (2026-08-31): KERNEL PATH PASSES DECISIVELY
+
+GL fastpath run (GreatLakes_kernel_fastpath.R, 16.6 min first run, zero NCBI)
+vs the parked correct-grid GLMM baseline, scored by REVIEW_formal_lamar_check.R:
+
+| metric | wrong-grid GLMM | correct-grid GLMM | KERNEL |
+| species co-detections | 238 | 237 | 564 |
+| ours_only | 97 | 80 | 86 |
+| precision both/(both+ours) | 0.710 | 0.748 | 0.868 |
+| unique species (∩ Lamar) | 23 (18/61) | 16 (13/61) | 29 (27/61) |
+| Lamar species we resolved nothing for | 63/1081 | -- | 1/1081 |
+
+Resolution 211 -> 489 of 885 observations. Perca flavescens BACK (78 obs;
+walleye ALSO resolves separately -- the depth-sharpened 8.2:1 prior plus
+likelihoods now separate the percids instead of LCA-collapsing). Osmerus
+mordax back (5), Notropis hudsonius back (13); Morone americana /
+O. gorbuscha / E. americanus stay unresolved (honest regional ambiguity).
+Gained 15 species (bluegill, alewife, gizzard shad, walleye, darters,
+minnows -- the core harbor community), 27/29 Lamar-corroborated. Small real
+regressions to note: Pylodictis olivaris + Luxilus chrysocephalus dropped to
+coarser ranks (were resolved under GLMM); ours_only 80 -> 86.
+Gates: precision 0.868 >= 0.748 PASS; LOCO 3.214 <= 3.267 PASS; runtime PASS.
+Still owed: PtCon data-rich near-invariance control (gate d).
+
+NEW ITEMS from the run:
+- Posthoc Axis-1 plausibility says 873/885 "unprecedented" -- a SEMANTICS
+  SHIFT, not a finding: the kernel table names only locally-evidenced
+  species (86) where the GLMM table named all 652 regional taxa, so
+  "has occurrence record" needs recalibration for kernel tables (fold into
+  the post-Phase-2 prior work).
+- Veto-bound printer reports "weight above 0.000" under kernel anchors --
+  diagnose during the anchor redesign.
+- fill_higher_ranks warning: "Salvenlinus malma" (misspelled genus in the
+  unreferenced list) has no family -- upstream data quirk, harmless.
+- Fixed live during B8: kingdom-vocabulary false homonym in
+  generate_domestic_food_priors (Metazoa vs Animalia -- commit 2aa685a);
+  fastpath read_depth join gap.
