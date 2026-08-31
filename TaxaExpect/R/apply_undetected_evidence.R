@@ -176,6 +176,17 @@
 #'   \code{phylum}, joined onto the result the same way
 #'   \code{generate_undetected_diversity(taxonomy = ...)} does. Default
 #'   \code{NULL}.
+#' @param pricing \code{"blend"} (default, the original floor-additive
+#'   presence mixture: \code{theta = floor + w*(ceiling - floor)}) or
+#'   \code{"curve"} (unobserved-taxa redesign, 2026-08-31: \code{theta = w *
+#'   theta_present} with \code{theta_present = missing_mass / chao_missing}
+#'   from the kernel fit -- the Good-Turing budget's per-spot value -- and
+#'   \code{theta_absent = 0}). Curve pricing makes the branch budget close
+#'   exactly in count units (branch evidence total = \code{theta_present *
+#'   sum(w)}, coherent iff \code{sum(w) = chao_missing}) and removes the
+#'   floor term that dominated every blended row. Requires a
+#'   \code{taxaexpect_kernel_priors} \code{model_obj} with a finite
+#'   \code{theta_present} (at least one neighborhood singleton).
 #'
 #' @return A tibble with one row per eligible taxon named in \code{evidence}:
 #'   \describe{
@@ -235,8 +246,29 @@ apply_undetected_evidence <- function(
     evidence,
     grid_id,
     main_habitat = NULL,
-    taxonomy     = NULL
+    taxonomy     = NULL,
+    pricing      = c("blend", "curve")
 ) {
+  pricing <- match.arg(pricing)
+  # Curve pricing (unobserved-taxa redesign, 2026-08-31): theta = w *
+  # theta_present, with theta_present = missing_mass / chao_missing from the
+  # kernel fit (the Good-Turing budget's per-spot value) and theta_absent = 0
+  # (an absent species contributes nothing -- the honest mixture reading,
+  # replacing the floor-additive blend whose floor term dominated every row).
+  # Requires a kernel model_obj carrying a finite theta_present.
+  kernel_theta_present <- NA_real_
+  if (inherits(model_obj, "taxaexpect_kernel_priors")) {
+    kernel_theta_present <- model_obj$theta_present %||% NA_real_
+  }
+  if (pricing == "curve" &&
+      (!is.numeric(kernel_theta_present) || !is.finite(kernel_theta_present) ||
+       kernel_theta_present <= 0)) {
+    stop("apply_undetected_evidence: pricing = \"curve\" requires a ",
+         "taxaexpect_kernel_priors model_obj whose theta_present is a finite ",
+         "positive value (missing_mass / chao_missing -- needs at least one ",
+         "neighborhood singleton). Re-fit with estimate_kernel_priors() or ",
+         "use pricing = \"blend\".")
+  }
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     # Kernel-priors adapter (Phase 2, 2026-08-31): only the habitat concept is
     # read from model_obj here; kernel estimates are always habitat-stratified.
@@ -416,7 +448,27 @@ apply_undetected_evidence <- function(
   # review" ends and "vetoes the resolution of genuinely observed natives"
   # begins. (The GreatLakes2023 case: the bound ~0.05; the pre-calibration
   # w = 0.6 sat far above it and suppressed yellow perch in 78 observations.)
-  if (theta_singleton > theta_floor) {
+  if (pricing == "curve") {
+    # Curve-mode veto bound: an unobserved species VETOES (pushes a
+    # singleton-level native below min_posterior at likelihood parity) when
+    # theta_e = w * theta_present > ((1-m)/m) * theta_singleton, i.e.
+    # w > 19 * theta_singleton / theta_present at the default m = 0.05.
+    # Since theta_present ~ the singleton scale by construction, this bound
+    # sits near 19-23 -- unreachable for any admissible w <= 1.
+    m_ret <- 0.05
+    w_veto_curve <- ((1 - m_ret) / m_ret) * theta_singleton / kernel_theta_present
+    message(sprintf(
+      paste0(
+        "apply_undetected_evidence: curve pricing (theta = w * theta_present, ",
+        "theta_present = %.3g). Veto bound: weight above %.1f would block ",
+        "species-level resolution of a singleton-level observed native at ",
+        "likelihood parity%s."
+      ),
+      kernel_theta_present, w_veto_curve,
+      if (w_veto_curve > 1) " -- unreachable for any admissible weight <= 1"
+      else ""
+    ))
+  } else if (theta_singleton > theta_floor) {
     m_ret  <- 0.05
     w_veto <- ((m_ret / (1 - m_ret)) * theta_singleton - theta_floor) /
       (theta_singleton - theta_floor)
@@ -488,15 +540,26 @@ apply_undetected_evidence <- function(
   # prior_mix_p_conc). The prior_mix_* columns carry the mixture itself for
   # TaxaAssign::compute_posterior()'s presence-draw sampler; alpha/beta remain
   # the point-path/back-compat summary.
-  theta_new <- theta_floor + (theta_singleton - theta_floor) * w_combined_vec
-  delta_sq  <- (theta_singleton - theta_floor)^2
-  v_mix <- w_combined_vec * var_singleton +
-    (1 - w_combined_vec) * var_floor +
-    w_combined_vec * (1 - w_combined_vec) * delta_sq
+  if (pricing == "curve") {
+    # Two-point mixture at {0, theta_present}: theta = w * theta_present
+    # exactly; marginal variance is pure presence uncertainty.
+    mix_present <- kernel_theta_present
+    mix_absent  <- 0
+    theta_new   <- w_combined_vec * mix_present
+    v_mix       <- w_combined_vec * (1 - w_combined_vec) * mix_present^2
+  } else {
+    mix_present <- theta_singleton
+    mix_absent  <- theta_floor
+    theta_new <- theta_floor + (theta_singleton - theta_floor) * w_combined_vec
+    delta_sq  <- (theta_singleton - theta_floor)^2
+    v_mix <- w_combined_vec * var_singleton +
+      (1 - w_combined_vec) * var_floor +
+      w_combined_vec * (1 - w_combined_vec) * delta_sq
+  }
   n_eff_mm <- ifelse(
     is.finite(v_mix) & v_mix > 0,
     pmax(theta_new * (1 - theta_new) / v_mix - 1, 1e-3),
-    2  # degenerate anchors (ceiling == floor): singleton_ess convention
+    2  # degenerate anchors (ceiling == floor, or w in {0,1}): singleton_ess convention
   )
   alpha_new <- theta_new * n_eff_mm
   beta_new  <- (1 - theta_new) * n_eff_mm
@@ -515,8 +578,8 @@ apply_undetected_evidence <- function(
     evidence_weight  = w_combined_vec,
     evidence_sources = sources_vec,
     prior_mix_w             = w_combined_vec,
-    prior_mix_theta_present = theta_singleton,
-    prior_mix_theta_absent  = theta_floor,
+    prior_mix_theta_present = mix_present,
+    prior_mix_theta_absent  = mix_absent,
     prior_mix_p_conc        = p_conc_new
   )
   if (!is.null(habitat_col)) {
@@ -542,7 +605,10 @@ apply_undetected_evidence <- function(
   }
 
   message(sprintf(
-    "--- Undetected evidence applied: %d row(s) elevated above the floor (of %d taxa named in evidence) ---",
+    if (pricing == "curve")
+      "--- Undetected evidence applied: %d row(s) priced by the presence curve (of %d taxa named in evidence) ---"
+    else
+      "--- Undetected evidence applied: %d row(s) elevated above the floor (of %d taxa named in evidence) ---",
     nrow(result), n_evidence_taxa
   ))
 

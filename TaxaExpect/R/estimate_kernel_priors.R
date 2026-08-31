@@ -105,6 +105,17 @@
 #'     \item{missing_mass}{Weighted Good-Turing missing mass: the summed
 #'       effective share of singleton species -- the budget available to the
 #'       resident-undetected branch (consumed by later machinery, not here).}
+#'     \item{f1, f2}{Neighborhood-support singleton and doubleton species
+#'       counts (records with kernel weight >= \code{support_weight}).}
+#'     \item{chao_missing}{Chao (1984) estimated number of locally-present
+#'       but unrecorded species: \code{f1^2/(2*f2)}, with the standard
+#'       \code{f1*(f1-1)/2} fallback when \code{f2 = 0}; \code{0} when
+#'       \code{f1 = 0}.}
+#'     \item{theta_present}{\code{missing_mass / chao_missing}: the typical
+#'       unseen resident's share-if-present -- the per-spot value of the
+#'       Good-Turing budget, used by
+#'       \code{\link{apply_undetected_evidence}}'s curve pricing.
+#'       \code{NA} when no singleton anchor exists.}
 #'     \item{regional_composition}{Named numeric: the unweighted
 #'       habitat-stratified composition used for back-off.}
 #'     \item{params}{The call's tuning values, for provenance.}
@@ -235,6 +246,18 @@ estimate_kernel_priors <- function(occurrence_data,
   # branch's budget -- emitted for downstream machinery, not consumed here.
   missing_mass <- if (nrow(singletons) > 0L)
     sum(as.numeric(c_raw[singletons$taxon_name])) / W else 0
+  # Chao (1984) missing-species count from the neighborhood-support counts:
+  # f1^2/(2 f2), with the standard f1(f1-1)/2 fallback when f2 = 0. Together
+  # with missing_mass this prices the typical unseen resident:
+  # theta_present = missing_mass / chao_missing ("share if present", the
+  # per-spot value of the Good-Turing budget). NA when f1 = 0 (no unseen-mass
+  # anchor at all -- callers fall back to their own ladder).
+  f1 <- sum(is_singleton)
+  f2 <- sum(n_support == 2L)
+  chao_missing <- if (f1 == 0L) 0
+    else if (f2 > 0L) f1^2 / (2 * f2) else f1 * (f1 - 1) / 2
+  theta_present <- if (f1 > 0L && chao_missing > 0) missing_mass / chao_missing
+    else NA_real_
 
   priors <- data.frame(
     taxon_name = sp,
@@ -262,6 +285,10 @@ estimate_kernel_priors <- function(occurrence_data,
     W = W,
     singletons = singletons,
     missing_mass = missing_mass,
+    f1 = f1,
+    f2 = f2,
+    chao_missing = chao_missing,
+    theta_present = theta_present,
     regional_composition = stats::setNames(p_i, sp),
     params = list(site_lat = site_lat, site_lon = site_lon,
                   site_habitat = site_habitat, site_id = site_id,

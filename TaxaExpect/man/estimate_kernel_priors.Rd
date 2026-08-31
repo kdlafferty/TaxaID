@@ -91,6 +91,17 @@ exactly one supporting record): \code{taxon_name}, record \code{lat}/\code{lon},
 \item{missing_mass}{Weighted Good-Turing missing mass: the summed
 effective share of singleton species -- the budget available to the
 resident-undetected branch (consumed by later machinery, not here).}
+\item{f1, f2}{Neighborhood-support singleton and doubleton species
+counts (records with kernel weight >= \code{support_weight}).}
+\item{chao_missing}{Chao (1984) estimated number of locally-present
+but unrecorded species: \code{f1^2/(2*f2)}, with the standard
+\code{f1*(f1-1)/2} fallback when \code{f2 = 0}; \code{0} when
+\code{f1 = 0}.}
+\item{theta_present}{\code{missing_mass / chao_missing}: the typical
+unseen resident's share-if-present -- the per-spot value of the
+Good-Turing budget, used by
+\code{\link{apply_undetected_evidence}}'s curve pricing.
+\code{NA} when no singleton anchor exists.}
 \item{regional_composition}{Named numeric: the unweighted
 habitat-stratified composition used for back-off.}
 \item{params}{The call's tuning values, for provenance.}

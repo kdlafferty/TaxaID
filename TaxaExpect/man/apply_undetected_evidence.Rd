@@ -10,7 +10,8 @@ apply_undetected_evidence(
   evidence,
   grid_id,
   main_habitat = NULL,
-  taxonomy = NULL
+  taxonomy = NULL,
+  pricing = c("blend", "curve")
 )
 }
 \arguments{
@@ -61,6 +62,18 @@ any subset of \code{genus}, \code{family}, \code{order}, \code{class},
 \code{phylum}, joined onto the result the same way
 \code{generate_undetected_diversity(taxonomy = ...)} does. Default
 \code{NULL}.}
+
+\item{pricing}{\code{"blend"} (default, the original floor-additive
+presence mixture: \code{theta = floor + w*(ceiling - floor)}) or
+\code{"curve"} (unobserved-taxa redesign, 2026-08-31: \code{theta = w *
+theta_present} with \code{theta_present = missing_mass / chao_missing}
+from the kernel fit -- the Good-Turing budget's per-spot value -- and
+\code{theta_absent = 0}). Curve pricing makes the branch budget close
+exactly in count units (branch evidence total = \code{theta_present *
+sum(w)}, coherent iff \code{sum(w) = chao_missing}) and removes the
+floor term that dominated every blended row. Requires a
+\code{taxaexpect_kernel_priors} \code{model_obj} with a finite
+\code{theta_present} (at least one neighborhood singleton).}
 }
 \value{
 A tibble with one row per eligible taxon named in \code{evidence}:

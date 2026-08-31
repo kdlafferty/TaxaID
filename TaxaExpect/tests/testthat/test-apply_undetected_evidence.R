@@ -350,3 +350,82 @@ test_that("prints the dataset-specific veto bound (D4)", {
   # bound value for these anchors: ((0.05/0.95)*0.025 - 0.001)/(0.025 - 0.001)
   expect_true(any(grepl("0.013", msgs)))
 })
+
+# ==============================================================================
+# Curve pricing (unobserved-taxa redesign, 2026-08-31): theta = w * theta_present
+# ==============================================================================
+
+.make_kernel_fit_for_curve <- function() {
+  # Real estimator on a tiny fixture: 3 records of A near the site, 1 of B, 1
+  # of C (two singletons), so theta_present = missing_mass / chao_missing is a
+  # genuine, hand-checkable kernel quantity, not a mock.
+  occ <- data.frame(
+    taxon_name = c("A", "A", "A", "B", "C"),
+    decimalLatitude = 34 + (1:5) * 1e-6, decimalLongitude = -120,
+    main_habitat = "Lentic", depth_m = NA_real_, stringsAsFactors = FALSE)
+  estimate_kernel_priors(occ, 34, -120, "Lentic", lambda_km = 1e9, m = 0)
+}
+
+test_that("kernel fit emits f1/f2/chao_missing/theta_present", {
+  kp <- .make_kernel_fit_for_curve()
+  expect_equal(kp$f1, 2L)              # B and C are singletons
+  expect_equal(kp$f2, 0L)
+  expect_equal(kp$chao_missing, 1)     # f2 = 0 fallback: f1*(f1-1)/2
+  expect_equal(kp$missing_mass, 2/5, tolerance = 1e-6)
+  expect_equal(kp$theta_present, (2/5) / 1, tolerance = 1e-6)
+})
+
+test_that("curve pricing yields theta = w * theta_present with theta_absent = 0", {
+  kp <- .make_kernel_fit_for_curve()
+  priors <- dplyr::bind_rows(kp$priors,
+                             .make_priors(grid = "budget", hab = "Lentic"))
+  ev <- data.frame(taxon_name = c("Esox niger", "Ameiurus melas"),
+                   weight = c(0.05, 0.5), source = "regional_proximity",
+                   stringsAsFactors = FALSE)
+  out <- apply_undetected_evidence(priors, kp, ev,
+                                   grid_id = "budget", main_habitat = "Lentic",
+                                   pricing = "curve")
+  expect_equal(nrow(out), 2L)
+  expect_equal(out$theta_mean, ev$weight * kp$theta_present, tolerance = 1e-6)
+  expect_equal(out$prior_mix_theta_present, rep(kp$theta_present, 2))
+  expect_equal(out$prior_mix_theta_absent, rep(0, 2))
+  expect_equal(out$prior_mix_w, ev$weight)
+  expect_equal(out$prior_branch, rep("resident_undetected", 2))
+  # budget closure: branch evidence total = theta_present * sum(w)
+  expect_equal(sum(out$theta_mean), kp$theta_present * sum(ev$weight),
+               tolerance = 1e-9)
+})
+
+test_that("curve pricing refuses a GLMM model_obj or a no-singleton kernel fit", {
+  priors <- .make_priors()
+  ev <- data.frame(taxon_name = "X y", weight = 0.1, source = "s",
+                   stringsAsFactors = FALSE)
+  expect_error(
+    apply_undetected_evidence(priors, .make_mock_model_obj(), ev,
+                              grid_id = "Grid_A", main_habitat = "Lentic",
+                              pricing = "curve"),
+    "theta_present")
+  # kernel fit with no singletons (both species have 2+ records)
+  occ <- data.frame(taxon_name = rep(c("A", "B"), each = 3),
+                    decimalLatitude = 34, decimalLongitude = -120,
+                    main_habitat = "Lentic", stringsAsFactors = FALSE)
+  kp0 <- estimate_kernel_priors(occ, 34, -120, "Lentic", lambda_km = 1e9, m = 0)
+  expect_error(
+    apply_undetected_evidence(dplyr::bind_rows(kp0$priors, priors), kp0, ev,
+                              grid_id = "Grid_A", main_habitat = "Lentic",
+                              pricing = "curve"),
+    "theta_present")
+})
+
+test_that("blend pricing is byte-identical with the pricing param defaulted", {
+  kp <- .make_kernel_fit_for_curve()
+  priors <- dplyr::bind_rows(kp$priors,
+                             .make_priors(grid = "budget", hab = "Lentic"))
+  ev <- data.frame(taxon_name = "Esox niger", weight = 0.3,
+                   source = "regional_proximity", stringsAsFactors = FALSE)
+  o1 <- apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
+                                  main_habitat = "Lentic")
+  o2 <- apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
+                                  main_habitat = "Lentic", pricing = "blend")
+  expect_identical(o1, o2)
+})
