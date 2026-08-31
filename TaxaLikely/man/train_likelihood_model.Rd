@@ -14,6 +14,7 @@ train_likelihood_model(
   anchor_perfect = TRUE,
   mislabel_threshold = 0.02,
   singleton_match_threshold = 0.98,
+  verified_clean = NULL,
   logit_epsilon = 1e-04,
   max_gap_ceiling = NULL,
   score_transform = "logit"
@@ -65,6 +66,14 @@ self-match.  Lower values are stricter, flagging more sequences.}
 \item{singleton_match_threshold}{Numeric.  Passed to
 \code{flag_reference_errors()} (default \code{0.98}) -- see that function's own
 documentation of this parameter.}
+
+\item{verified_clean}{Character vector or \code{NULL} (default).  Passed to
+\code{flag_reference_errors()} -- see that function's own \verb{@param verified_clean} for the full rationale.  Accessions listed here are
+never removed from training regardless of what the internal mislabel
+heuristic computes for them, because they have already been verified
+clean by a stronger, independent check (e.g.
+\code{TaxaMatch::evaluate_reference_accessions()}/
+\code{TaxaMatch::verify_flagged_references()}).}
 
 \item{logit_epsilon}{Numeric.  Logit-clipping value (default \code{1e-4}).
 Used only when \code{score_transform = "logit"}.}

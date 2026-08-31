@@ -52,6 +52,42 @@ test_that("flag_reference_errors: singleton_match_threshold is a real, working p
                     out_lower$error_type == "unverified_singleton_high_match"))
 })
 
+test_that("flag_reference_errors: verified_clean rescues a flagged accession", {
+  df <- .make_raw_df()
+  df$p_match[df$id_x == "A1" & df$id_y == "B1"] <- 0.99
+  out_default <- flag_reference_errors(df)
+  expect_true("A1" %in% out_default$id_x)
+
+  out_rescued <- flag_reference_errors(df, verified_clean = "A1", return_all = TRUE)
+  expect_equal(out_rescued$error_type[out_rescued$id_x == "A1"], "clean")
+  # A1 no longer appears in the default (clean-excluded) output
+  out_rescued_default <- flag_reference_errors(df, verified_clean = "A1")
+  expect_false("A1" %in% out_rescued_default$id_x)
+})
+
+test_that("flag_reference_errors: verified_clean never forces the opposite direction", {
+  # An accession genuinely clean by the heuristic, listed in verified_clean
+  # anyway, should be unaffected (still "clean") -- this parameter only
+  # ever rescues, never removes.
+  out <- flag_reference_errors(.make_raw_df(), verified_clean = "A2", return_all = TRUE)
+  expect_equal(out$error_type[out$id_x == "A2"], "clean")
+})
+
+test_that("flag_reference_errors: verified_clean = NULL is a no-op (default behavior unchanged)", {
+  df <- .make_raw_df()
+  df$p_match[df$id_x == "A1" & df$id_y == "B1"] <- 0.99
+  out1 <- flag_reference_errors(df)
+  out2 <- flag_reference_errors(df, verified_clean = NULL)
+  expect_equal(out1, out2)
+})
+
+test_that("flag_reference_errors: verified_clean validates input type", {
+  expect_error(
+    flag_reference_errors(.make_raw_df(), verified_clean = 123),
+    "verified_clean"
+  )
+})
+
 test_that("flag_reference_errors: singleton_match_threshold validates input", {
   expect_error(
     flag_reference_errors(.make_raw_df(), singleton_match_threshold = "x"),
@@ -325,6 +361,30 @@ test_that("train_likelihood_model: prior_weight validation", {
   grid$genus.x, grid$genus.y)
   grid
 }
+
+test_that("train_likelihood_model: verified_clean is forwarded to the internal flag_reference_errors() call", {
+  skip_if_not_installed("TaxaTools")
+  # .make_genus_raw_df() has 5 species x 2 accessions each -- flagging one
+  # accession out of "aa" still leaves plenty of other real within-species
+  # pairs for train_likelihood_model() to fit on (unlike the smaller
+  # .make_raw_df() fixture, where removing the only cross-partner for a
+  # species leaves nothing to train that species on at all).
+  df <- .make_genus_raw_df()
+  df$p_match[df$id_x == "A1" & df$id_y == "D1"] <- 0.999
+
+  model_default <- train_likelihood_model(df, rank_system = c("genus", "species"),
+                                           use_hierarchy = FALSE, anchor_perfect = FALSE)
+  expect_true("A1" %in% model_default$reference_errors$id_x)
+  expect_equal(model_default$reference_errors$error_type[
+    model_default$reference_errors$id_x == "A1"], "likely_mislabeled")
+
+  model_verified <- train_likelihood_model(df, rank_system = c("genus", "species"),
+                                            use_hierarchy = FALSE, anchor_perfect = FALSE,
+                                            verified_clean = "A1")
+  expect_false("A1" %in% model_verified$reference_errors$id_x[
+    model_verified$reference_errors$error_type == "likely_mislabeled"
+  ])
+})
 
 test_that("train_likelihood_model: score_transform = 'sqrt_mismatch' trains end to end and evaluates (Session 158)", {
   skip_if_not_installed("TaxaTools")

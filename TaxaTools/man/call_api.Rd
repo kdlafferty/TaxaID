@@ -14,7 +14,8 @@ call_api(
   base_url = NULL,
   images = NULL,
   show_tokens = FALSE,
-  max_input_tokens = NULL
+  max_input_tokens = NULL,
+  timeout = 120
 )
 }
 \arguments{
@@ -77,6 +78,11 @@ estimates the prompt length as \code{ceiling(nchar(prompt_str) / 3.5)}
 informative error before making the HTTP request if the estimate exceeds
 the limit. Use this as a pre-flight guard against accidentally sending very
 large prompts. Default \code{NULL} (no check performed).}
+
+\item{timeout}{Numeric. Request timeout in seconds, passed to
+\code{httr2::req_timeout()}. Default \code{120}. Raise this for a slow
+provider/model (e.g. a large local Ollama model) or a large multi-image
+PDF-vision call that can legitimately take longer than two minutes.}
 }
 \value{
 A length-1 character string containing the model's response text.

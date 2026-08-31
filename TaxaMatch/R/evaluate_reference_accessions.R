@@ -1596,21 +1596,42 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' @param evaluation Data frame. Output of [evaluate_reference_accessions()].
 #' @param remove_insufficient_evidence Logical (default `FALSE`). If `TRUE`,
 #'   also removes accessions flagged `"insufficient_independent_evidence"`.
+#' @param override_accessions Character vector of accession IDs (default
+#'   `NULL`), or `NULL` to disable. Accessions listed here are NEVER removed,
+#'   regardless of `hierarchy_flag` -- the automated counterpart to the
+#'   `@section Use flag_incongruent_references() first` caution above.
+#'   `hierarchy_flag = "incongruent"` alone cannot distinguish a genuine
+#'   mislabel from a correctly-labeled record with poor marker resolution or
+#'   thin corroborating coverage (a real confirmed case in this ecosystem:
+#'   `Stereolepis doederleini` was flagged `"incongruent"` by a broad screen,
+#'   then separately investigated and found to be exactly this -- not a real
+#'   mislabel). [resolve_review_overrides()] derives this argument
+#'   automatically from [review_flagged_accessions()]'s LLM second-look
+#'   verdicts, so a caller can safely default to removing every flagged
+#'   accession while still letting a specific, reviewed explanation override
+#'   that default for the one accession it actually applies to -- rather
+#'   than choosing between "remove everything, including real correctly-
+#'   labeled records" and "remove nothing, unreviewed." Only ever rescues,
+#'   never removes an accession `hierarchy_flag` would otherwise have kept.
 #'
 #' @return The input `match_df` with flagged rows removed. Unchanged if no
 #'   flagged accessions are found.
 #'
-#' @seealso [evaluate_reference_accessions()], [flag_incongruent_references()]
+#' @seealso [evaluate_reference_accessions()], [flag_incongruent_references()],
+#'   [resolve_review_overrides()]
 #'
 #' @export
 remove_incongruent_references <- function(match_df,
                                           evaluation,
-                                          remove_insufficient_evidence = FALSE) {
+                                          remove_insufficient_evidence = FALSE,
+                                          override_accessions = NULL) {
 
   if (!is.data.frame(match_df))
     stop("match_df must be a data frame.", call. = FALSE)
   if (!is.data.frame(evaluation))
     stop("evaluation must be a data frame.", call. = FALSE)
+  if (!is.null(override_accessions) && !is.character(override_accessions))
+    stop("override_accessions must be NULL or a character vector of accessions.", call. = FALSE)
 
   needed <- c("accession", "hierarchy_flag")
   missing_cols <- setdiff(needed, names(evaluation))
@@ -1634,6 +1655,16 @@ remove_incongruent_references <- function(match_df,
     flags_to_remove <- c(flags_to_remove, "insufficient_independent_evidence")
 
   bad_ids <- evaluation$accession[evaluation$hierarchy_flag %in% flags_to_remove]
+
+  override_clean <- sub("\\.[0-9]+$", "", override_accessions)
+  bad_ids_clean_check <- sub("\\.[0-9]+$", "", bad_ids)
+  n_overridden <- length(intersect(bad_ids_clean_check, override_clean))
+  bad_ids <- bad_ids[!bad_ids_clean_check %in% override_clean]
+  if (n_overridden > 0L)
+    message(sprintf(
+      "%d flagged accession(s) kept despite hierarchy_flag, per override_accessions.",
+      n_overridden
+    ))
 
   if (length(bad_ids) == 0L) {
     message("No incongruent references to remove.")
@@ -1660,4 +1691,144 @@ remove_incongruent_references <- function(match_df,
   ))
 
   result
+}
+
+#' Verify a Small, Flagged Reference Subset via BLAST, Not the Whole Database
+#'
+#' Bridges `TaxaLikely::flag_reference_errors()`'s free, offline (but known
+#' over-flagging) within-reference-set mislabel screen to this package's
+#' stronger, BLAST-based `evaluate_reference_accessions()` -- purpose-built
+#' so a caller never has to BLAST an entire training reference database to
+#' get the benefit of the better screen.
+#'
+#' @section Why the flagged subset, not the whole reference set (2026-08-18):
+#' `TaxaLikely::train_likelihood_model()` calls `flag_reference_errors()`
+#' unconditionally on every training run and silently drops every
+#' `"likely_mislabeled"` accession before fitting H1/H2/H3 -- this has
+#' always been true, it just went unnoticed until a user asked directly
+#' whether it was happening at all. That screen is known to over-flag (see
+#' `flag_reference_errors()`'s own `@param verified_clean`): a real pilot
+#' check against a real GreatLakes 12S reference set found 0 of 40
+#' randomly-sampled `"likely_mislabeled"` accessions confirmed as genuine
+#' mislabels by this package's own `evaluate_reference_accessions()` (a
+#' BLAST-based check against a broad, independent database) -- 85% looked
+#' like false positives.
+#'
+#' `evaluate_reference_accessions()` is the right tool to adjudicate this,
+#' but BLASTing an entire training reference database (which can be LARGER
+#' than a typical match-candidate screening population -- confirmed on real
+#' GreatLakes data, ~2,650 accessions vs. a 1,183-accession match-candidate
+#' run that already tripped a real NCBI CPU-budget rejection) risks exactly
+#' the shutout this package's rate-limit resilience
+#' (`evaluate_reference_accessions(chunk_size=,
+#' max_consecutive_batch_failures=)`) exists to survive, not avoid entirely.
+#' `flag_reference_errors()` is already running for free (no NCBI call,
+#' reuses the `seq_matrix` already built for training) -- this function
+#' verifies only the small subset it actually flagged, turning "BLAST
+#' thousands of accessions to find a few real mislabels" into "BLAST only
+#' the disputed ones."
+#'
+#' @param flagged Either a data frame (output of
+#'   `TaxaLikely::flag_reference_errors()`, with `id_x`/`error_type`
+#'   columns) or a plain character vector of accession IDs to verify.
+#' @param error_types Character vector (default `"likely_mislabeled"`).
+#'   When `flagged` is a data frame, only rows whose `error_type` is in this
+#'   set are verified. The default matches what
+#'   `train_likelihood_model()` actually removes by default --
+#'   `"unverified_singleton_high_match"` is computed by
+#'   `flag_reference_errors()` but never acted on automatically, so
+#'   verifying it too roughly doubles NCBI cost for a category that isn't
+#'   currently removing anything from training. Pass
+#'   `c("likely_mislabeled", "unverified_singleton_high_match")` to verify
+#'   both.
+#' @param trust_insufficient_evidence Logical (default `FALSE`). Whether an
+#'   `"insufficient_independent_evidence"` verdict (broader evidence exists,
+#'   but too little of it to say either way) counts as verified-clean.
+#'   `FALSE` is the conservative choice -- an accession this ambiguous stays
+#'   removed from training rather than being restored on thin grounds.
+#' @param cache_dir,ncbi_api_key,barcode_term,... Forwarded to
+#'   `evaluate_reference_accessions()`. `cache_dir` deliberately shares that
+#'   function's own default (`tools::R_user_dir("TaxaMatch", "cache")`) --
+#'   pass an explicit, project-scoped path shared with a real match-candidate
+#'   screen so any accession appearing in both populations is served from
+#'   cache for free rather than BLASTed twice.
+#'
+#' @return A list: `verified_clean` (character vector of accessions safe to
+#'   pass to `flag_reference_errors(verified_clean=)`/
+#'   `train_likelihood_model(verified_clean=)` -- everything NOT confirmed
+#'   `"incongruent"`), and `evaluation` (the full
+#'   `evaluate_reference_accessions()` output, for review). `verified_clean`
+#'   is `character(0)` and `evaluation` is `NULL` when `flagged` contains no
+#'   matching accessions -- no NCBI call is made in that case.
+#'
+#' @seealso [evaluate_reference_accessions()],
+#'   [TaxaLikely::flag_reference_errors()]
+#'
+#' @examples
+#' \dontrun{
+#' seq_matrix <- TaxaLikely::build_sequence_matrix(reference_df,
+#'   rank_system = c("family", "genus", "species"))
+#' errors <- TaxaLikely::flag_reference_errors(seq_matrix)
+#' result <- verify_flagged_references(errors,
+#'   cache_dir = "~/my_project_ref_eval_cache")
+#' lik_model <- TaxaLikely::train_likelihood_model(seq_matrix,
+#'   rank_system = c("family", "genus", "species"),
+#'   verified_clean = result$verified_clean)
+#' }
+#'
+#' @export
+verify_flagged_references <- function(flagged,
+                                       error_types = "likely_mislabeled",
+                                       trust_insufficient_evidence = FALSE,
+                                       cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
+                                       ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
+                                       barcode_term = NULL,
+                                       ...) {
+
+  if (is.data.frame(flagged)) {
+    needed <- c("id_x", "error_type")
+    missing_cols <- setdiff(needed, names(flagged))
+    if (length(missing_cols) > 0L)
+      stop(sprintf(
+        "flagged is missing required columns: %s",
+        paste(missing_cols, collapse = ", ")
+      ), call. = FALSE)
+    accessions <- unique(flagged$id_x[flagged$error_type %in% error_types])
+  } else if (is.character(flagged)) {
+    accessions <- unique(flagged)
+  } else {
+    stop(
+      "flagged must be a data frame (TaxaLikely::flag_reference_errors() ",
+      "output) or a character vector of accessions.",
+      call. = FALSE
+    )
+  }
+
+  if (length(accessions) == 0L) {
+    message("No flagged accessions to verify -- no NCBI call made.")
+    return(list(verified_clean = character(0L), evaluation = NULL))
+  }
+
+  qc <- evaluate_reference_accessions(
+    accessions,
+    cache_dir    = cache_dir,
+    ncbi_api_key = ncbi_api_key,
+    barcode_term = barcode_term,
+    ...
+  )
+
+  keep_flags <- if (isTRUE(trust_insufficient_evidence)) {
+    c("congruent", "insufficient_independent_evidence")
+  } else {
+    "congruent"
+  }
+  verified_clean <- unique(qc$accession[qc$hierarchy_flag %in% keep_flags])
+  n_incongruent  <- sum(qc$hierarchy_flag == "incongruent", na.rm = TRUE)
+
+  message(sprintf(
+    "%d of %d flagged accession(s) verified NOT incongruent (safe to keep in training); %d confirmed incongruent.",
+    length(verified_clean), length(accessions), n_incongruent
+  ))
+
+  list(verified_clean = verified_clean, evaluation = qc)
 }

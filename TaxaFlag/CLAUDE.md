@@ -1,6 +1,19 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- NEW
+# Last updated: 2026-08-29 (Fable 5, branch undetected-evidence-mixture --
+# add_posthoc_assessment() gains domestic_caveat_type (additive character column,
+# NA unless domestic_prior_caveat fired): "no_local_records" (primary_plausibility
+# "unprecedented" -- classic food/domestic-contamination reading) vs
+# "local_records" ("unexpected" -- winner HAS real local records at an implausibly
+# low modelled rate, so a genuine allochthonous cross-habitat detection is at
+# least as plausible as food contamination; the real Sus scrofa PtCon case, 98
+# terrestrial records + Marine collapse, and likely the Canis lupus beach
+# dog/coyote calls). Implements the user rule "a food should only get a food
+# label IF it has no reports in GBIF" as a relabel, not a silence -- the logical
+# flag still fires for both classes. 3 new tests; devtools::test() 443/0,
+# check() 0/0/0, reinstalled. Design context + open ceiling/habitat-bleed
+# questions: ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md.)
+# Previous update, 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- NEW
 # flag_watch_candidates() (R/flag_watch_candidates.R): the likelihood-side
 # watch-list surveillance guarantee (mixture redesign D4, user verdict "make the
 # flag report for sure"). With invasive priors calibrated down to honest small

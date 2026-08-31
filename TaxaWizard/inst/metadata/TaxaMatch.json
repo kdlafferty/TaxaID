@@ -104,7 +104,7 @@
           "name": "score_range",
           "type": "numeric",
           "required": false,
-          "default": 5,
+          "default": 8,
           "description": "Keep hits within this % of top hit per query"
         },
         {

@@ -190,6 +190,27 @@ utils::globalVariables(c(
 #'   literal with a comment suggesting it be raised for ITS but no actual way
 #'   for a caller to do so -- now a real parameter, with the exact same
 #'   default and comparison (`>`) as before.
+#' @param verified_clean Character vector of `id_x` accessions (default
+#'   `NULL`), or `NULL` to disable. Forces these accessions to `error_type =
+#'   "clean"` regardless of what the within-reference-set heuristic above
+#'   computes for them. Exists because this heuristic is known to over-flag
+#'   (a 2026-08-08 audit against `TaxaMatch::evaluate_reference_accessions()`
+#'   -- a BLAST-based check against a broad, independent database -- found
+#'   0 of 40 randomly-sampled real `"likely_mislabeled"` flags on one real
+#'   dataset were confirmed as genuine mislabels; most were same-submission-
+#'   batch artifacts or tight-congener false positives this function's
+#'   narrow same-reference-set comparison cannot distinguish from a real
+#'   error). `train_likelihood_model()` calls this function unconditionally
+#'   on every training run and silently drops every `"likely_mislabeled"`
+#'   accession before fitting -- without a way to override a specific
+#'   false-positive verdict, an accession independently confirmed clean by a
+#'   stronger check would be re-flagged and re-removed on every retrain.
+#'   Supply the accessions `TaxaMatch::evaluate_reference_accessions()`
+#'   verdicts `"congruent"` (or `"insufficient_independent_evidence"`, if
+#'   you choose to trust that too) here to keep them in training. Does not
+#'   change `"clean"`-when-return_all rows, and does not force the OPPOSITE
+#'   direction (an accession this heuristic calls `"clean"` is never forced
+#'   to `"likely_mislabeled"` -- this parameter only rescues, never removes).
 #'
 #' @return A data frame with one row per unique `id_x` and columns:
 #'   \describe{
@@ -221,7 +242,8 @@ flag_reference_errors <- function(raw_df,
                                   mislabel_threshold = 0.02,
                                   return_all = FALSE,
                                   min_coverage = NULL,
-                                  singleton_match_threshold = 0.98) {
+                                  singleton_match_threshold = 0.98,
+                                  verified_clean = NULL) {
   if (!is.data.frame(raw_df))
     stop("raw_df must be a data frame")
   needed <- c("id_x", "id_y", "species.x", "species.y", "p_match")
@@ -241,6 +263,8 @@ flag_reference_errors <- function(raw_df,
       is.na(singleton_match_threshold) || singleton_match_threshold <= 0 ||
       singleton_match_threshold > 1)
     stop("singleton_match_threshold must be a single numeric value in (0, 1]")
+  if (!is.null(verified_clean) && !is.character(verified_clean))
+    stop("verified_clean must be NULL or a character vector of id_x accessions")
 
   # .compute_reference_qc_stats() gained median_foreign_match/n_foreign_pairs/
   # n_foreign_taxa (audit_reference_database() consumes all three); this
@@ -250,6 +274,7 @@ flag_reference_errors <- function(raw_df,
   qc <- .compute_reference_qc_stats(raw_df, min_coverage = min_coverage) |>
     dplyr::mutate(
       error_type = dplyr::case_when(
+        id_x %in% verified_clean ~ "clean",
         integrity_gap < -mislabel_threshold & n_self_neighbors > 0 ~
           "likely_mislabeled",
         n_self_neighbors == 0 & max_foreign_match > singleton_match_threshold ~
@@ -757,6 +782,14 @@ flag_reference_errors <- function(raw_df,
 #' @param singleton_match_threshold Numeric.  Passed to
 #'   `flag_reference_errors()` (default `0.98`) -- see that function's own
 #'   documentation of this parameter.
+#' @param verified_clean Character vector or `NULL` (default).  Passed to
+#'   `flag_reference_errors()` -- see that function's own `@param
+#'   verified_clean` for the full rationale.  Accessions listed here are
+#'   never removed from training regardless of what the internal mislabel
+#'   heuristic computes for them, because they have already been verified
+#'   clean by a stronger, independent check (e.g.
+#'   `TaxaMatch::evaluate_reference_accessions()`/
+#'   `TaxaMatch::verify_flagged_references()`).
 #' @param logit_epsilon Numeric.  Logit-clipping value (default `1e-4`).
 #'   Used only when `score_transform = "logit"`.
 #' @param max_gap_ceiling Numeric or `NULL` (default).  Gap cap.  `NULL`
@@ -886,8 +919,7 @@ flag_reference_errors <- function(raw_df,
 #' interpret_model(model)
 #' }
 #'
-#' @importFrom dplyr bind_rows distinct ends_with filter group_by left_join
-#'   mutate n rename_with select slice_max summarise ungroup case_when
+#' @importFrom dplyr bind_rows distinct ends_with filter group_by left_join mutate n rename_with select slice_max summarise ungroup case_when
 #' @importFrom stats median setNames var lm coef
 #' @export
 train_likelihood_model <- function(raw_df,
@@ -899,6 +931,7 @@ train_likelihood_model <- function(raw_df,
                                    anchor_perfect     = TRUE,
                                    mislabel_threshold  = 0.02,
                                    singleton_match_threshold = 0.98,
+                                   verified_clean     = NULL,
                                    logit_epsilon      = 1e-4,
                                    max_gap_ceiling    = NULL,
                                    score_transform    = "logit") {
@@ -942,7 +975,8 @@ train_likelihood_model <- function(raw_df,
   errors <- flag_reference_errors(raw_df,
                                   mislabel_threshold = mislabel_threshold,
                                   return_all        = FALSE,
-                                  singleton_match_threshold = singleton_match_threshold)
+                                  singleton_match_threshold = singleton_match_threshold,
+                                  verified_clean    = verified_clean)
   n_removed <- sum(errors$error_type == "likely_mislabeled")
   if (n_removed > 0)
     message(sprintf("Removed %d likely-mislabeled sequence(s) before training", n_removed))

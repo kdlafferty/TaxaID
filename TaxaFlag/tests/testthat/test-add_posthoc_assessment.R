@@ -141,6 +141,37 @@ test_that("domestic_prior_source = 'augmented' disables the flag", {
   expect_false(out$domestic_prior_caveat)
 })
 
+# domestic_caveat_type (2026-08-29, the Sus scrofa collision) ------------------
+
+test_that("domestic_caveat_type = 'local_records' when the winner has real records", {
+  # record = TRUE + tiny theta -> primary_plausibility "unexpected" (the real
+  # Sus scrofa shape: terrestrial records, Marine-collapsed rate)
+  out <- .add_posthoc(.make_domestic_cons(theta = 0.001, record = TRUE),
+                      domestic_taxa = "Felis catus")
+  expect_true(out$domestic_prior_caveat)
+  expect_equal(out$primary_plausibility, "unexpected")
+  expect_equal(out$domestic_caveat_type, "local_records")
+})
+
+test_that("domestic_caveat_type = 'no_local_records' when the winner has none", {
+  out <- .add_posthoc(.make_domestic_cons(record = FALSE),
+                      domestic_taxa = "Felis catus")
+  expect_true(out$domestic_prior_caveat)
+  expect_equal(out$primary_plausibility, "unprecedented")
+  expect_equal(out$domestic_caveat_type, "no_local_records")
+})
+
+test_that("domestic_caveat_type is NA whenever the caveat did not fire", {
+  # feature disabled
+  out <- .add_posthoc(.make_domestic_cons())
+  expect_true(is.na(out$domestic_caveat_type))
+  # fired = FALSE (expected-tier winner)
+  out2 <- .add_posthoc(.make_domestic_cons(theta = 0.9),
+                       domestic_taxa = "Felis catus")
+  expect_false(out2$domestic_prior_caveat)
+  expect_true(is.na(out2$domestic_caveat_type))
+})
+
 test_that("stops on non-character domestic_taxa", {
   expect_error(
     .add_posthoc(.make_domestic_cons(), domestic_taxa = 42),

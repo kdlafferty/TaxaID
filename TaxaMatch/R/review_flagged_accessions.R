@@ -785,3 +785,94 @@ review_flagged_accessions <- function(evaluated_df,
 
   NULL
 }
+
+#' Derive Removal Overrides from an LLM Second-Look Review
+#'
+#' Bridges [review_flagged_accessions()]'s LLM-based second-look verdicts to
+#' [remove_incongruent_references()]'s `override_accessions` argument,
+#' automating a "remove everything flagged by default, but let a specific
+#' reviewed explanation override that default for the one accession it
+#' actually applies to" pipeline -- rather than choosing between removing
+#' every flagged accession (including real, correctly-labeled records the
+#' raw BLAST verdict can't distinguish from a genuine mislabel) or removing
+#' nothing until every flag has been manually reviewed.
+#'
+#' @section Real motivating case (2026-08-19):
+#' A real GreatLakes match-candidate screen flagged `Stereolepis
+#' doederleini` (`LC649807`) `hierarchy_flag = "incongruent"`. A separate,
+#' earlier investigation into this exact accession found it is very likely
+#' a correctly-labeled record with genuinely poor marker resolution at this
+#' rank, not a real mislabel -- exactly the ambiguity
+#' [remove_incongruent_references()]'s own `@section Use
+#' flag_incongruent_references() first` documents. This function is the
+#' automated version of applying that finding: run
+#' [review_flagged_accessions()] once, and any accession the LLM
+#' categorizes as something other than a genuine mislabel is kept, without
+#' needing a human to individually re-decide each one every time the
+#' pipeline re-runs.
+#'
+#' @param review_result Data frame. Output of [review_flagged_accessions()]
+#'   (must have `accession`, `accession_likely_explanation`,
+#'   `accession_review_confidence` columns).
+#' @param keep_explanations Character vector (default
+#'   `c("poor_marker_resolution", "sister_family_thin_coverage",
+#'   "hybrid_or_specimen_code_artifact")`) -- the
+#'   `accession_likely_explanation` values that should override an automatic
+#'   removal. Deliberately excludes `"uncertain"` from the default: an LLM
+#'   verdict that is ITSELF uncertain should not automatically override a
+#'   hard BLAST-based `"incongruent"` flag -- pass `"uncertain"` explicitly
+#'   if you want to trust it too. `"genuine_mislabel"` is never included
+#'   (that verdict CONFIRMS removal, it never overrides it).
+#' @param min_confidence Character vector (default `c("high", "moderate")`).
+#'   Only a `accession_review_confidence` value in this set is trusted as an
+#'   override -- a `"low"`-confidence review falls through to removal
+#'   (the same conservative-default behavior as an unreviewed accession),
+#'   even if its `accession_likely_explanation` is in `keep_explanations`.
+#'
+#' @return Character vector of accessions to pass directly as
+#'   `remove_incongruent_references(override_accessions = ...)`.
+#'
+#' @seealso [review_flagged_accessions()], [remove_incongruent_references()]
+#'
+#' @examples
+#' \dontrun{
+#' evaluation <- evaluate_reference_accessions(accessions_to_screen)
+#' review <- review_flagged_accessions(evaluation, llm_fn = my_llm_fn)
+#' overrides <- resolve_review_overrides(review)
+#' match_df_clean <- remove_incongruent_references(match_df, evaluation,
+#'   override_accessions = overrides)
+#' }
+#'
+#' @export
+resolve_review_overrides <- function(review_result,
+                                     keep_explanations = c("poor_marker_resolution",
+                                                           "sister_family_thin_coverage",
+                                                           "hybrid_or_specimen_code_artifact"),
+                                     min_confidence = c("high", "moderate")) {
+  if (!is.data.frame(review_result))
+    stop("review_result must be a data frame.", call. = FALSE)
+  needed <- c("accession", "accession_likely_explanation", "accession_review_confidence")
+  missing_cols <- setdiff(needed, names(review_result))
+  if (length(missing_cols) > 0L)
+    stop(sprintf(
+      "review_result is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
+  if (!is.character(keep_explanations) || length(keep_explanations) == 0L)
+    stop("keep_explanations must be a non-empty character vector.", call. = FALSE)
+  if (!is.character(min_confidence) || length(min_confidence) == 0L)
+    stop("min_confidence must be a non-empty character vector.", call. = FALSE)
+  if ("genuine_mislabel" %in% keep_explanations)
+    stop(
+      "keep_explanations cannot include \"genuine_mislabel\" -- that verdict ",
+      "confirms removal, it never overrides it.",
+      call. = FALSE
+    )
+
+  keep_mask <- !is.na(review_result$accession_likely_explanation) &
+    review_result$accession_likely_explanation %in% keep_explanations &
+    !is.na(review_result$accession_review_confidence) &
+    review_result$accession_review_confidence %in% min_confidence
+
+  unique(review_result$accession[keep_mask])
+}

@@ -7,7 +7,8 @@
 remove_incongruent_references(
   match_df,
   evaluation,
-  remove_insufficient_evidence = FALSE
+  remove_insufficient_evidence = FALSE,
+  override_accessions = NULL
 )
 }
 \arguments{
@@ -18,6 +19,24 @@ remove_incongruent_references(
 
 \item{remove_insufficient_evidence}{Logical (default \code{FALSE}). If \code{TRUE},
 also removes accessions flagged \code{"insufficient_independent_evidence"}.}
+
+\item{override_accessions}{Character vector of accession IDs (default
+\code{NULL}), or \code{NULL} to disable. Accessions listed here are NEVER removed,
+regardless of \code{hierarchy_flag} -- the automated counterpart to the
+\verb{@section Use flag_incongruent_references() first} caution above.
+\code{hierarchy_flag = "incongruent"} alone cannot distinguish a genuine
+mislabel from a correctly-labeled record with poor marker resolution or
+thin corroborating coverage (a real confirmed case in this ecosystem:
+\verb{Stereolepis doederleini} was flagged \code{"incongruent"} by a broad screen,
+then separately investigated and found to be exactly this -- not a real
+mislabel). \code{\link[=resolve_review_overrides]{resolve_review_overrides()}} derives this argument
+automatically from \code{\link[=review_flagged_accessions]{review_flagged_accessions()}}'s LLM second-look
+verdicts, so a caller can safely default to removing every flagged
+accession while still letting a specific, reviewed explanation override
+that default for the one accession it actually applies to -- rather
+than choosing between "remove everything, including real correctly-
+labeled records" and "remove nothing, unreviewed." Only ever rescues,
+never removes an accession \code{hierarchy_flag} would otherwise have kept.}
 }
 \value{
 The input \code{match_df} with flagged rows removed. Unchanged if no
@@ -56,5 +75,6 @@ consulted.
 }
 
 \seealso{
-\code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}}
+\code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
+\code{\link[=resolve_review_overrides]{resolve_review_overrides()}}
 }

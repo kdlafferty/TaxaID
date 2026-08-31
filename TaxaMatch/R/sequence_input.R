@@ -67,7 +67,7 @@
 #' (e.g., from a sequencing provider's CSV) into a tidy data frame with one
 #' row per unique sequence.
 #'
-#' @param data One of:
+#' @param input_data One of:
 #'   \itemize{
 #'     \item A DADA2 sequence table (matrix with samples as rows and DNA
 #'       sequences as column names)
@@ -81,7 +81,7 @@
 #'   DNA sequences. Default \code{"sequence"}. Matching is case-insensitive
 #'   (all column names are lowercased internally for matching), though the
 #'   returned columns other than the four core ones are lowercased in the
-#'   output regardless of their original casing in \code{data}.
+#'   output regardless of their original casing in \code{input_data}.
 #' @param observation_id_col For data frame input: name of an existing observation/ESV
 #'   identifier column to use as \code{asv_id}. If \code{NULL} (default),
 #'   sequential IDs are generated using \code{id_prefix}.
@@ -165,7 +165,7 @@
 #' }
 #'
 #' @export
-read_sequence_table <- function(data,
+read_sequence_table <- function(input_data,
                                 sequence_col = "sequence",
                                 observation_id_col = NULL,
                                 abundance_cols = NULL,
@@ -182,24 +182,24 @@ read_sequence_table <- function(data,
     stop("taxonomy must be a data frame or NULL")
 
   # --- Dispatch by input type -------------------------------------------------
-  if (is.data.frame(data)) {
-    result <- .read_esv_dataframe(data, sequence_col, observation_id_col,
+  if (is.data.frame(input_data)) {
+    result <- .read_esv_dataframe(input_data, sequence_col, observation_id_col,
                                   abundance_cols, id_prefix)
-  } else if (is.matrix(data)) {
-    result <- .read_dada2_matrix(data, id_prefix)
-  } else if (is.character(data) && length(data) == 1L && !is.na(data)) {
-    result <- .read_fasta_file(data, header_format, id_prefix)
-  } else if (inherits(data, "DNAStringSet")) {
-    result <- .read_dna_stringset(data, header_format, id_prefix)
+  } else if (is.matrix(input_data)) {
+    result <- .read_dada2_matrix(input_data, id_prefix)
+  } else if (is.character(input_data) && length(input_data) == 1L && !is.na(input_data)) {
+    result <- .read_fasta_file(input_data, header_format, id_prefix)
+  } else if (inherits(input_data, "DNAStringSet")) {
+    result <- .read_dna_stringset(input_data, header_format, id_prefix)
   } else {
     stop(
-      "data must be a data frame, a DADA2 sequence table (matrix), ",
+      "input_data must be a data frame, a DADA2 sequence table (matrix), ",
       "a path to a FASTA file, or a Biostrings::DNAStringSet object"
     )
   }
 
   # --- Join external taxonomy if supplied (non-df inputs only) ----------------
-  if (!is.null(taxonomy) && !is.data.frame(data)) {
+  if (!is.null(taxonomy) && !is.data.frame(input_data)) {
     result <- .join_taxonomy(result, taxonomy)
   }
 

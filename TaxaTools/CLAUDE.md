@@ -1,6 +1,59 @@
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-07-25, later same day (Sonnet 5 -- fill_higher_ranks() now corrects
+# Last updated: 2026-08-21 (Sonnet 5 -- clean_taxon_names() gains a new `collapsed_to_genus`
+# R attribute on its returned vector, closing the ROOT CAUSE of a real "Ictalurus" bug found
+# live-debugging real GreatLakes2023 production data (`match_obj_restored %>% filter(
+# taxon_name_rank == "species", taxon_name == "Ictalurus")` returned 33 real rows). User's
+# explicit framing before any fix was written: "We have not shipped the package... let's
+# think carefully about a robust way to fix this problem that does not require repeated
+# post-hoc fixes." Traced the FULL chain, not just the symptom: TaxaLikely::
+# restore_suppressed_candidates()'s `.build_restored_row()` copies a reference row's raw
+# species value (e.g. "Ictalurus cf. pricei USON-01120-1", a specimen-voucher-tagged NCBI
+# open-nomenclature label) into a restored candidate row, then calls
+# `TaxaTools::create_taxon_names()`, which sets `taxon_name_rank = "species"` purely because
+# the species column is POPULATED -- it never inspects the value's own shape. This is
+# correct, documented `create_taxon_names()` behavior (column-occupancy-only derivation,
+# confirmed too central/high-blast-radius to change unilaterally -- "one of the most-called
+# internal functions" per this file's own Design Notes) and NOT where the fix belongs.
+#
+# `clean_taxon_names()` itself was ALSO already behaving correctly, collapsing the
+# open-nomenclature label to genus-only ("Ictalurus") exactly as documented -- but it
+# discarded the one piece of information a caller needs to correct `taxon_name_rank`
+# alongside the name: whether a collapse actually happened. The function already computes
+# this internally (`keep_epithet`) and simply never surfaced it. Fixed additively: a new
+# `collapsed_to_genus` logical attribute (same length as the input) is now attached to the
+# returned vector -- `TRUE` only when a real second token was present and dropped (not for
+# input that was already genus-only, and not for rejected/`NA` output). Zero behavioral
+# change to the returned character vector itself; every pre-existing caller that only reads
+# the plain vector is unaffected (confirmed: `expect_equal()` on the bare vector needed
+# `ignore_attr = "collapsed_to_genus"` added to ~30 pre-existing assertions in this file's
+# own test suite -- a mechanical, non-substantive update, not a behavior change).
+#
+# The user's own follow-up question -- "Does the fix interact with
+# convert_taxonomy_backbone(), fill_higher_ranks()?" -- was answered by tracing the real
+# data flow directly, not by inspection alone: `TaxaMatch::convert_taxonomy_backbone()` DOES
+# run on this exact restored-candidate data (same real workflow, right after
+# `restore_suppressed_candidates()`), and it already has its OWN, separate rank-correction
+# mechanism from the 2026-07-25 "Inu Inu" fix -- but that mechanism only fires for a row the
+# target backbone actually FOUND (just at a coarser rank than claimed), driven by
+# `verify_taxon_names()`'s `matched_rank` field. "Ictalurus cf. pricei USON-01120-1" is a
+# full open-nomenclature string with a specimen voucher tag, essentially certain to fail an
+# exact-name backbone lookup entirely (`found_mask = FALSE`) -- a genuinely different code
+# path the existing mechanism has no coverage for at all. `fill_higher_ranks()` was checked
+# too and confirmed genuinely unrelated: it never calls `clean_taxon_names()`, and its own
+# `genus` correction is driven by the same `matched_rank == "genus"` backbone-synonym signal,
+# not a local syntactic collapse. See `TaxaMatch/CLAUDE.md`'s matching 2026-08-21 note for
+# the actual consuming-side fix built on this new attribute (a wholly new not-found-row
+# demotion block in `convert_taxonomy_backbone()`, genuinely separate from its existing
+# found-row correction, not a modification of it).
+#
+# `devtools::test()` 847/847 (0 failures, 10 pre-existing/expected warnings), `devtools::
+# check()` 0 errors/0 warnings/1 pre-existing note (timestamp verification, environmental).
+# Reinstalled and verified at `~/Library/R/4.0/library`; live end-to-end smoke test against
+# the installed package (not just `load_all()`) confirms the real motivating case now
+# resolves correctly through both packages together -- see TaxaMatch/CLAUDE.md's note for
+# the exact command and output.
+# Previous update, 2026-07-25, later same day (Sonnet 5 -- fill_higher_ranks() now corrects
 # `genus` (not just `family`) to the backbone's resolved name when an API lookup shows the
 # queried genus is a taxonomic synonym at genus rank, closing a real consistency gap the
 # user asked to double-check after the same-day verify_taxon_names()/convert_taxonomy_
@@ -135,7 +188,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 |---|---|---|---|
 | `verify_taxon_names()` | Verify names against a taxonomic backbone via Global Names Verifier API; batched; returns `user_supplied_name`, `matched_name`, `matched_rank`, `is_synonym`, `classification_path`, `classification_ranks`, `score`, `verified`. **2026-07-25**: `matched_name` now sourced from GNVerifier's own `matchedCanonicalSimple`/`currentCanonicalSimple` fields (authority-free, rank-complete) rather than a local regex — preserves a full trinomial at subspecies rank (previously silently truncated to a binomial) and prefers the backbone's currently-accepted name over a synonym when `is_synonym = TRUE`. New `matched_rank` reports the rank the match actually resolved at (may be coarser than the query implied — e.g. a species-level query resolving only to genus). Backbone-general, not GBIF-specific: `matched_rank` is normalised identically by GNVerifier across every backbone; `is_synonym`/`currentName` reflect each backbone's own real taxonomic opinion (verified: NCBI and GBIF can genuinely disagree on whether a name is a synonym). `backbone_id = 4` (NCBI) bypasses this API entirely (`.verify_via_ncbi()`) and never gets synonym data, but still gets `matched_rank`. | Complete | R/verify_taxon_names.R |
 | `create_taxon_names()` | Add `taxon_name` and `taxon_name_rank` columns from separate rank columns; case-insensitive column matching; most-specific non-NA rank wins | Complete | R/create_taxon_names.R |
-| `clean_taxon_names()` | Normalise, deduplicate, and filter a character vector of taxon names; removes NA, non-capital-initial, abbreviations, bracket artefacts; converts underscore-encoded binomials (`Genus_epithet`) to space-separated (Jonah Ventures / SILVA pipelines) | Complete | R/clean_taxon_names.R |
+| `clean_taxon_names()` | Normalise, deduplicate, and filter a character vector of taxon names; removes NA, non-capital-initial, abbreviations, bracket artefacts; converts underscore-encoded binomials (`Genus_epithet`) to space-separated (Jonah Ventures / SILVA pipelines). **2026-08-21**: returned vector gains a `collapsed_to_genus` R attribute (logical, same length) -- `TRUE` when a row HAD a real epithet-shaped second token that was dropped (e.g. an open-nomenclature label collapsing to genus-only), letting a caller building `taxon_name`/`taxon_name_rank` pairs correct the rank alongside the name. See `TaxaMatch::convert_taxonomy_backbone()`'s consuming-side fix. | Complete | R/clean_taxon_names.R |
 | `change_backbone()` | Post-process `verify_taxon_names()` output; rename source/translated name columns; parse pipe-delimited classification into wide rank columns | Complete | R/change_backbone.R |
 | `rename_cols()` | Rename data frame columns using an explicit `col_map` or built-in case-insensitive regex patterns for common DarwinCore alternatives; `strict` arg controls missing-key behaviour | Complete | R/rename_cols.R |
 | `find_taxonomy_conflicts()` | Detect higher-rank inconsistencies in taxonomy data frames; returns `taxon_name`, `taxon_rank`, `parent_rank`, `parent_values`, `n_values` | Complete | R/find_taxonomy_conflicts.R |

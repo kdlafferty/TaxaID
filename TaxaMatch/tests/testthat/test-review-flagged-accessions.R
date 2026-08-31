@@ -348,3 +348,79 @@ test_that("review_flagged_accessions() gracefully discards an old-schema review 
   expect_false(out$accession_review_cache_hit[out$accession == "ACC002"])
   expect_equal(out$accession_review_comment[out$accession == "ACC002"], "Fresh review for ACC002")
 })
+
+# ---- resolve_review_overrides() ---------------------------------------------
+
+.review_result_fixture <- function() {
+  data.frame(
+    accession = c("A1", "A2", "A3", "A4", "A5", "A6"),
+    accession_likely_explanation = c(
+      "genuine_mislabel", "poor_marker_resolution", "sister_family_thin_coverage",
+      "hybrid_or_specimen_code_artifact", "uncertain", "poor_marker_resolution"
+    ),
+    accession_review_confidence = c(
+      "high", "high", "moderate", "high", "high", "low"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("resolve_review_overrides() keeps only non-mislabel explanations at sufficient confidence", {
+  out <- resolve_review_overrides(.review_result_fixture())
+  expect_setequal(out, c("A2", "A3", "A4"))
+  expect_false("A1" %in% out)  # genuine_mislabel -- confirms removal, never overrides
+})
+
+test_that("resolve_review_overrides() excludes 'uncertain' by default", {
+  out <- resolve_review_overrides(.review_result_fixture())
+  expect_false("A5" %in% out)
+})
+
+test_that("resolve_review_overrides() excludes low-confidence reviews even with a keep-worthy explanation", {
+  out <- resolve_review_overrides(.review_result_fixture())
+  expect_false("A6" %in% out)  # poor_marker_resolution but confidence = "low"
+})
+
+test_that("resolve_review_overrides() can be widened to trust 'uncertain' explicitly", {
+  out <- resolve_review_overrides(
+    .review_result_fixture(),
+    keep_explanations = c("poor_marker_resolution", "sister_family_thin_coverage",
+                          "hybrid_or_specimen_code_artifact", "uncertain")
+  )
+  expect_true("A5" %in% out)
+})
+
+test_that("resolve_review_overrides() output feeds directly into remove_incongruent_references()", {
+  review <- .review_result_fixture()
+  overrides <- resolve_review_overrides(review)
+  match_df <- data.frame(
+    observation_id = c("O1", "O2", "O3", "O4"),
+    accession = c("A1", "A2", "A3", "A4"),
+    stringsAsFactors = FALSE
+  )
+  evaluation <- data.frame(
+    accession = c("A1", "A2", "A3", "A4"),
+    hierarchy_flag = "incongruent",
+    stringsAsFactors = FALSE
+  )
+  out <- remove_incongruent_references(match_df, evaluation, override_accessions = overrides)
+  # A1 (genuine_mislabel) removed; A2/A3/A4 (overridden) retained
+  expect_equal(out$accession, c("A2", "A3", "A4"))
+})
+
+test_that("resolve_review_overrides() rejects 'genuine_mislabel' in keep_explanations", {
+  expect_error(
+    resolve_review_overrides(.review_result_fixture(),
+                             keep_explanations = c("genuine_mislabel", "uncertain")),
+    "cannot include"
+  )
+})
+
+test_that("resolve_review_overrides() validates inputs", {
+  expect_error(resolve_review_overrides("not_a_df"), "must be a data frame")
+  expect_error(resolve_review_overrides(data.frame(x = 1)), "missing required columns")
+  expect_error(resolve_review_overrides(.review_result_fixture(), keep_explanations = character(0)),
+              "keep_explanations must be")
+  expect_error(resolve_review_overrides(.review_result_fixture(), min_confidence = character(0)),
+              "min_confidence must be")
+})

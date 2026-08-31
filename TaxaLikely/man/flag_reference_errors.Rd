@@ -9,7 +9,8 @@ flag_reference_errors(
   mislabel_threshold = 0.02,
   return_all = FALSE,
   min_coverage = NULL,
-  singleton_match_threshold = 0.98
+  singleton_match_threshold = 0.98,
+  verified_clean = NULL
 )
 }
 \arguments{
@@ -45,6 +46,27 @@ variation is higher, consider raising to \code{0.99}. Previously a hardcoded
 literal with a comment suggesting it be raised for ITS but no actual way
 for a caller to do so -- now a real parameter, with the exact same
 default and comparison (\code{>}) as before.}
+
+\item{verified_clean}{Character vector of \code{id_x} accessions (default
+\code{NULL}), or \code{NULL} to disable. Forces these accessions to \code{error_type = "clean"} regardless of what the within-reference-set heuristic above
+computes for them. Exists because this heuristic is known to over-flag
+(a 2026-08-08 audit against \code{TaxaMatch::evaluate_reference_accessions()}
+-- a BLAST-based check against a broad, independent database -- found
+0 of 40 randomly-sampled real \code{"likely_mislabeled"} flags on one real
+dataset were confirmed as genuine mislabels; most were same-submission-
+batch artifacts or tight-congener false positives this function's
+narrow same-reference-set comparison cannot distinguish from a real
+error). \code{train_likelihood_model()} calls this function unconditionally
+on every training run and silently drops every \code{"likely_mislabeled"}
+accession before fitting -- without a way to override a specific
+false-positive verdict, an accession independently confirmed clean by a
+stronger check would be re-flagged and re-removed on every retrain.
+Supply the accessions \code{TaxaMatch::evaluate_reference_accessions()}
+verdicts \code{"congruent"} (or \code{"insufficient_independent_evidence"}, if
+you choose to trust that too) here to keep them in training. Does not
+change \code{"clean"}-when-return_all rows, and does not force the OPPOSITE
+direction (an accession this heuristic calls \code{"clean"} is never forced
+to \code{"likely_mislabeled"} -- this parameter only rescues, never removes).}
 }
 \value{
 A data frame with one row per unique \code{id_x} and columns:

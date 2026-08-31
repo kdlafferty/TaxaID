@@ -36,7 +36,20 @@ entirely (restores this function's pre-2026-08-11 behavior).}
 \value{
 A character vector the same length as \code{name_vec}. Names that
 do not start with a capital letter, are \code{NA}, or consist only of an
-abbreviation are set to \code{NA}.
+abbreviation are set to \code{NA}. An R attribute \code{collapsed_to_genus}
+(logical, same length) is also set: \code{TRUE} for a row that HAD a real
+second token (an epithet-shaped string, e.g. an open-nomenclature label
+like \code{"Ictalurus cf. pricei USON-01120-1"}) which was dropped because
+it matched \code{remove_abbr} or was too short -- i.e. this row's output
+is a genus-only name that used to be (or claimed to be) something finer.
+\code{FALSE} for a row that was already genus-only to begin with, or that
+was rejected outright (\code{NA} output). Added so a caller building
+\code{taxon_name}/\code{taxon_name_rank} pairs from this function's output
+can correct \code{taxon_name_rank} to \code{"genus"} alongside the name
+itself -- see \code{\link[TaxaMatch]{convert_taxonomy_backbone}}'s own
+not-found fallback path for the motivating real bug this closes (a
+restored candidate's \code{taxon_name_rank} silently staying
+\code{"species"} after its name was correctly collapsed to genus-only).
 }
 \description{
 Cleans a character vector of taxon names by normalising whitespace,

@@ -90,8 +90,7 @@ utils::globalVariables(c("taxon_name", "genus", "family", "family.local",
 #' unreferenced_df <- dplyr::rename(unreferenced_df, species = taxon_name)
 #' }
 #'
-#' @importFrom dplyr bind_rows filter distinct left_join mutate coalesce
-#'   select any_of
+#' @importFrom dplyr bind_rows filter distinct left_join mutate coalesce select any_of
 #' @importFrom tibble tibble
 #' @export
 fill_higher_ranks <- function(taxon_names,

@@ -5,7 +5,7 @@
 \title{Read Sequence Data into a Tidy ASV Table}
 \usage{
 read_sequence_table(
-  data,
+  input_data,
   sequence_col = "sequence",
   observation_id_col = NULL,
   abundance_cols = NULL,
@@ -15,7 +15,7 @@ read_sequence_table(
 )
 }
 \arguments{
-\item{data}{One of:
+\item{input_data}{One of:
 \itemize{
 \item A DADA2 sequence table (matrix with samples as rows and DNA
 sequences as column names)
@@ -30,7 +30,7 @@ computed.
 DNA sequences. Default \code{"sequence"}. Matching is case-insensitive
 (all column names are lowercased internally for matching), though the
 returned columns other than the four core ones are lowercased in the
-output regardless of their original casing in \code{data}.}
+output regardless of their original casing in \code{input_data}.}
 
 \item{observation_id_col}{For data frame input: name of an existing observation/ESV
 identifier column to use as \code{asv_id}. If \code{NULL} (default),

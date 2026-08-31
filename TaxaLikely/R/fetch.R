@@ -592,8 +592,7 @@ utils::globalVariables(c(
 #' head(ref)
 #' }
 #'
-#' @importFrom dplyr filter mutate group_by slice_sample ungroup n select
-#'   all_of left_join distinct
+#' @importFrom dplyr filter mutate group_by slice_sample ungroup n select all_of left_join distinct
 #' @export
 fetch_ncbi_reference_sequences <- function(taxa,
                                       barcode_term,

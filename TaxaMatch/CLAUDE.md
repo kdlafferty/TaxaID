@@ -1,6 +1,87 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-14, continued (Sonnet 5 -- review_flagged_accessions() gains a
+# Last updated: 2026-08-21, continued (Sonnet 5 -- convert_taxonomy_backbone()'s rank-
+# collapse fix (this file's own entry directly below) was verified against a REAL re-run of
+# the GreatLakes2023 production workflow and still found 33 stale `taxon_name = "Ictalurus"`/
+# `taxon_name_rank = "species"` rows -- the first fix was real but INCOMPLETE, not a stale-
+# cache artifact as first suspected. Root-caused a SECOND, structurally different failure
+# mode by reading the real query's own `taxonomy_collision` column directly
+# (`"backbone_4[species]"` -- i.e. FOUND in NCBI, species column flagged CHANGED) rather than
+# guessing: NCBI's own taxonomy database genuinely contains real leaf-level nodes for
+# informally-named specimens (e.g. `"Ictalurus sp. UM 105-1789"`), RANKED "species" BY NCBI
+# ITSELF -- `found_mask = TRUE`, `matched_rank` genuinely IS `"species"` (fully backbone-
+# consistent, so the existing `matched_rank`-driven correction correctly does nothing at
+# all), but the classification path's own species-rank VALUE is that same informal label,
+# which `clean_taxon_names()` correctly collapses to `"Ictalurus"` when building
+# `target_species`. No rank-MISMATCH-based correction (the original mechanism, or the
+# not-found-only fix below) can ever see this -- the backbone's own rank claim is genuinely
+# self-consistent; only the collapse signal itself reveals the problem.
+#
+# Generalized the not-found-only fix into ONE unified mechanism (replacing it, not adding a
+# third parallel block) covering all three sources that can populate `taxon_name`: (A) a
+# found row using its own rank's `target_<rank>` value directly (the newly-discovered case --
+# `target_collapsed_mat`, threaded through the same `target_<rk>` construction loop that
+# already builds `target_<rk>` itself, tracks `collapsed_to_genus` per rank/row); (B) a found
+# row falling back to `matched_name_clean` (its own `collapsed_to_genus` now consulted too,
+# though not yet observed triggering on real data); (C) the original not-found fallback case.
+# Whichever source actually produced the final value is the one consulted -- never mixed
+# across cases. Considered and explicitly REJECTED a shape-based re-derivation instead (e.g.
+# `TaxaTools::is_plausible_binomial()` on the final value) -- that function's binomial regex
+# requires a literal space immediately after the genus token, which a real hyphenated genus
+# (*Pseudo-nitzschia*, already a real fixture elsewhere in this ecosystem's test suite) fails,
+# which would have wrongly demoted every hyphenated-genus species row; a dedicated regression
+# test (`Pseudo-nitzschia australis`, found=TRUE, nothing collapsed) confirms the shipped
+# collapse-tracking approach does NOT make this mistake.
+#
+# Live end-to-end re-verified against the INSTALLED package for BOTH real cases side by side:
+# the not-found open-nomenclature case (unchanged from the first fix) and this new found-but-
+# placeholder-species-node case both correctly resolve to `taxon_name = "Ictalurus"`,
+# `taxon_name_rank = "genus"`, `species = NA`. 2 new tests added to the 6 from the first fix
+# (8 total this session): the real found-case placeholder-node demotion, and the
+# *Pseudo-nitzschia* false-positive regression guard. `devtools::test()` 883/883 (0 failures,
+# up from 876), `devtools::check()` 0 errors/0 warnings/0 notes, reinstalled and verified at
+# `~/Library/R/4.0/library`.
+# Previous update, 2026-08-21 (Sonnet 5 -- convert_taxonomy_backbone() gains a SECOND,
+# genuinely separate rank-correction mechanism for NOT-found rows, closing what was AT THE
+# TIME believed to be the full root cause of a real "Ictalurus" bug found live-debugging real
+# GreatLakes2023 production data -- see the entry directly above for the second, structurally
+# different case found when this fix was verified against a real re-run and only partially
+# held (see TaxaTools/CLAUDE.md's matching 2026-08-21 note for the full chain-of-functions
+# investigation this session did before writing any fix, per the user's explicit "does not
+# require repeated post-hoc fixes" instruction). Real bug: 33 real `match_obj_restored` rows
+# had `taxon_name = "Ictalurus"` (a bare genus) but `taxon_name_rank = "species"` -- a bare
+# genus silently treated downstream as if it were a real species (e.g.
+# `TaxaExpect::generate_regional_proximity_evidence()`'s GBIF species-rank lookup would
+# have resolved the GENUS's own key, a separate bug already fixed 2026-08-21 elsewhere in
+# TaxaExpect as a downstream safeguard, not the root cause).
+#
+# The EXISTING rank-correction mechanism (2026-07-25, "Inu Inu" fix, still unchanged) only
+# ever fires for a row the target backbone actually FOUND, just at a coarser rank than
+# claimed (driven by `verify_taxon_names()`'s `matched_rank`). "Ictalurus cf. pricei
+# USON-01120-1" -- a real, restored candidate's raw reference-row species value, a specimen-
+# voucher-tagged open-nomenclature label -- fails an exact-name backbone lookup entirely
+# (`found_mask = FALSE`), a genuinely different code path with no prior coverage. This
+# function's OWN not-found fallback already correctly collapses `taxon_name` to
+# "Ictalurus" via `TaxaTools::clean_taxon_names()` (a pre-existing 2026-07-24 fix), but had
+# no way to know a collapse had happened, so `taxon_name_rank` stayed stale.
+#
+# Fix (superseded/generalized by the entry above the same day): uses `TaxaTools::
+# clean_taxon_names()`'s new `collapsed_to_genus` attribute (same-day companion fix, see
+# TaxaTools/CLAUDE.md) on the not-found fallback value.
+#
+# Grepped the whole monorepo for other `clean_taxon_names()` call sites that build a
+# `taxon_name`/`taxon_name_rank` pair the same vulnerable way (assigning a cleaned name
+# without ever touching the rank column) -- several exist (`TaxaAssign_llm_workflow.R`,
+# `inst/TaxaID_Workflow_Template_TEST.R`, several TaxaWizard snippets), but none of them sit
+# between a restored/derived candidate row and `TaxaAssign::join_priors()` the way this
+# function does for the real production pipeline this bug was found on -- `TaxaExpect::
+# generate_domestic_food_priors()`/`generate_invasive_watch_evidence()`'s own
+# `clean_taxon_names()` calls are for list-matching normalization, not rank-labeled row
+# construction (and already hardcode `taxon_name_rank = "species"` per the 2026-08-20 fix).
+# Not touched this session -- flagged, not a silent gap, since this fix's real reach is
+# `convert_taxonomy_backbone()` itself (called on every real production match object before
+# `join_priors()`), not every individual `clean_taxon_names()` call site ecosystem-wide.
+# Previous update, 2026-08-14, continued (Sonnet 5 -- review_flagged_accessions() gains a
 # persistent, accession-keyed LLM-review cache, same session, prompted directly by the
 # user after confirming the new evaluate_reference_accessions() rate-limit resilience
 # against a real live run (see the note directly below): they pointed out
@@ -1199,6 +1280,7 @@ likelihood output downstream — it is NOT part of the match object.
 | `evaluate_reference_accessions()` | R/evaluate_reference_accessions.R | Written, tested (offline) | Implements `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md`. For each accession, BLASTs its own sequence against a broad, unrestricted database (`method`/`database`/`score_range`/`min_score`/`max_hits` passed through to `blast_sequences()`), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed `hierarchy_flag` (`"congruent"`/`"incongruent"`/`"insufficient_independent_evidence"`) -- the same congruence math `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()` used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now fed from real, broad BLAST hits instead. `finest_common_rank` walks the FULL `kingdom`->`species` ladder (2026-08-07), not just `family`/`genus`/`species`. **2026-08-07, continued**: gains 5 identity/coverage-anywhere diagnostic columns (`best_hit_pident`/`best_agreeing_pident`/`best_disagreeing_pident`/`congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) -- see this file's own top session note and `evaluate_reference_accessions()`'s own `@section Identity diagnostics` for why: `hierarchy_flag` alone cannot distinguish a genuine mislabel from "correct label, thin coverage/poor marker resolving power at this rank," and these columns give a reviewer the real percent-identity numbers to judge that with. **2026-08-13**: internal `.compute_hierarchy_congruence()` gains `require_species_resolved_partner = TRUE` -- excludes a comparison partner whose own listed species isn't resolved to species level from the vote entirely (real motivating case: `Stereolepis doederleini`'s one real independent hit was `NC_028197`, a family-name-plus-specimen-code reference, not a real binomial). See this file's own top session note and `evaluate_reference_accessions()`'s `@section Species-resolved comparison partners`. **2026-08-13, continued**: gains `best_disagreeing_taxon` -- the listed species of the same highest-identity independent hit `best_disagreeing_pident` is already computed from (same row, so the two stay consistent by construction); needed by `review_flagged_accessions()` (below) so an LLM second-look reviewer can recognize a known hybrid-cross partner or informal specimen code by name, not just by percent identity. `NA` when nothing disagrees. Persistent, accession-keyed cross-run cache (`cache_dir`, default `tools::R_user_dir("TaxaMatch", "cache")`), asymmetric TTL (`insufficient_evidence_ttl_days`, default 180 -- only `"insufficient_independent_evidence"` expires; `"congruent"`/`"incongruent"` cached indefinitely). See this file's own top session note for the full design record and the real bugs found/fixed before shipping. **Full output-column interpretation guide**: `inst/reference_accession_evaluation_guide.md` (new 2026-08-13) -- written for both a human reviewer and `review_flagged_accessions()` (below). **2026-08-14**: gains `chunk_size` (default `200L`) and `max_consecutive_batch_failures` (default `3L`, forwarded to `blast_sequences()`) -- `needs_eval` is now processed `chunk_size` accessions at a time, with the persistent cache written after EACH chunk (not once at the very end), so an interruption only loses whatever chunk was still in flight. When a chunk's own `blast_sequences()` call reports `circuit_breaker_tripped`, the remaining chunks are never attempted this call (their accessions fold into `missing_acc`, same treatment as any other not-yet-evaluated accession). New `attr(result, "run_summary")` and an actionable `message()` on a circuit-breaker trip -- see this file's own top session note. |
 | `flag_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), 2026-08-07 continued | **The RECOMMENDED default consumer.** Left-joins `evaluate_reference_accessions()`'s full output (hierarchy_flag + all diagnostics) onto a match object by accession (version-suffix-stripped), never removes a row. Added after a real live case (`Abylopsis eschscholtzii`) showed why an unreviewed hard drop is the wrong default -- see this file's own top session note. |
 | `remove_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline) | The harder, deliberate opt-in -- mirrors `TaxaLikely::remove_flagged_references()`'s exact pattern. Drops only rows whose accession was flagged `"incongruent"` by `evaluate_reference_accessions()` (version-suffix-stripped match); `"insufficient_independent_evidence"` is retained by default (`remove_insufficient_evidence = FALSE`). **No longer the recommended default pipeline step as of 2026-08-07 continued** -- its own roxygen now says to reach for `flag_incongruent_references()` first and only use this deliberately, after reviewing the identity diagnostics. Deliberately consumes only the binary blacklist decision, not the full quality signal -- see this file's top session note for the TaxaLikely-side graded-weighting work this does NOT yet do. |
+| `verify_flagged_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), new 2026-08-18 | Bridges `TaxaLikely::flag_reference_errors()`'s free/offline (but known over-flagging) mislabel screen to this function -- **without** BLASTing an entire training reference database. Takes `flag_reference_errors()`'s output (or a plain accession vector), screens only the `"likely_mislabeled"` subset (`error_types` param) via `evaluate_reference_accessions()`, and returns `verified_clean` (accessions NOT confirmed `"incongruent"` -- pass straight to `TaxaLikely::flag_reference_errors(verified_clean=)`/`train_likelihood_model(verified_clean=)`). Built after discovering `train_likelihood_model()` calls `flag_reference_errors()` unconditionally on every training run and silently drops flagged accessions -- a real pilot on GreatLakes 12S data found 0 of 40 randomly-sampled `"likely_mislabeled"` accessions confirmed as genuine mislabels (85% false positives). Screening only the flagged subset (not the whole ~2,650-accession reference set, which is LARGER than a typical match-candidate screening population on real data) keeps NCBI cost bounded -- see `TaxaID/CLAUDE.md`'s top session note for the full cost analysis and pilot numbers. |
 | `review_flagged_accessions()` | R/review_flagged_accessions.R | Written, tested (offline), new 2026-08-13 | Implements Question 2 of `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md` -- an LLM second-look reviewer for `evaluate_reference_accessions()`'s flagged/borderline rows, mirroring `TaxaFlag::review_assignments()`'s architecture (batching + retry-by-halving-on-truncation + JSON parsing) without a cross-package dependency on TaxaFlag. Default scope: `hierarchy_flag %in% c("incongruent", "insufficient_independent_evidence")` (`hierarchy_flags` param) plus `listed_taxon_is_species == FALSE` (`include_non_species_resolved`, default `TRUE`, orthogonal axis). Prompt content is lifted directly from `inst/reference_accession_evaluation_guide.md`'s own 5-category decision framework and worked examples. Output: `accession_likely_explanation` (`"genuine_mislabel"`/`"poor_marker_resolution"`/`"sister_family_thin_coverage"`/`"hybrid_or_specimen_code_artifact"`/`"uncertain"`), `accession_review_confidence` (`"high"`/`"moderate"`/`"low"`), `accession_review_comment` (free text) -- never a re-decided `hierarchy_flag`. See this file's own top session note for the full design-question-by-design-question record. **2026-08-14, continued**: gains `cache_dir` (default `tools::R_user_dir("TaxaMatch", "cache")`, same convention as `evaluate_reference_accessions()`) -- a persistent cache keyed on accession + a content fingerprint of the review-relevant input columns (`.accession_review_fingerprint()`), not a TTL, so a re-evaluated accession whose `hierarchy_flag`/diagnostics genuinely changed gets a fresh review automatically while an unchanged one is served from cache indefinitely. New `accession_review_cache_hit` output column. Written incrementally, once per LLM batch. A failed/NA review is never cached (retried next call, not treated as a permanent verdict). See this file's own top session note. |
 
 ### Standardization (original)
@@ -1208,7 +1290,7 @@ likelihood output downstream — it is NOT part of the match object.
 | `standardize_match_data()` | R/standardize_match_data.R | Written | Rename columns, derive `taxon_name`, validate structure |
 | `filter_redundant_hypotheses()` | R/standardize_match_data.R | Written | Drop higher-rank rows superseded by finer-rank rows within the same lineage and sample |
 | `add_lowest_consistent_rank()` | R/taxonomy_consistency.R | Written | Per-observation: find finest rank with a single unambiguous value across all candidate rows. `majority_threshold` param (numeric in (0,1]) switches to majority mode — consistent when top value reaches threshold. Majority mode adds `rank_majority_value`, `rank_majority_fraction`, `is_rank_outlier` columns. `na_as_inconsistent` controls NA handling. Auto-detects `rank_system` from `TaxaTools::extended_ranks`. |
-| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Vectorized: `match()`-based index into verified table — ~100× faster than row-by-row loop for large data frames. Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. **2026-07-24:** the not-found fallback value is now also cleaned via `TaxaTools::clean_taxon_names()` (previously only the target-backbone-matched path was) — fixes a real case where an exotic compound hybrid-formula name from a raw NCBI accession label passed through completely uncleaned when GBIF had no match for it. Does not change which rows count as "found." **2026-07-25:** `taxon_name_rank` is now corrected (not just `taxon_name`) when a row's own claimed rank has no matching target value and falls back to a coarser resolved name — uses `verify_taxon_names()`'s new `matched_rank` column when present, silently skipped otherwise (backward compatible). Closes the "Inu Inu" fabricated-pseudo-binomial bug. **2026-07-25, later same day:** rank columns FINER than the corrected rank are now also cleared to `NA` on the same rows (e.g. `species` when demoted to genus) — closes a real regression found by testing against production (`Mugu_Match_from_BLAST.R`'s own second `create_taxon_names()` call was silently reverting the rank fix by reading the still-populated, now-stale `species` column). See this file's top session note. NOTE: generic utility — move to TaxaTools after manuscript review. |
+| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Vectorized: `match()`-based index into verified table — ~100× faster than row-by-row loop for large data frames. Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. **2026-07-24:** the not-found fallback value is now also cleaned via `TaxaTools::clean_taxon_names()` (previously only the target-backbone-matched path was) — fixes a real case where an exotic compound hybrid-formula name from a raw NCBI accession label passed through completely uncleaned when GBIF had no match for it. Does not change which rows count as "found." **2026-07-25:** `taxon_name_rank` is now corrected (not just `taxon_name`) when a row's own claimed rank has no matching target value and falls back to a coarser resolved name — uses `verify_taxon_names()`'s new `matched_rank` column when present, silently skipped otherwise (backward compatible). Closes the "Inu Inu" fabricated-pseudo-binomial bug. **2026-07-25, later same day:** rank columns FINER than the corrected rank are now also cleared to `NA` on the same rows (e.g. `species` when demoted to genus) — closes a real regression found by testing against production (`Mugu_Match_from_BLAST.R`'s own second `create_taxon_names()` call was silently reverting the rank fix by reading the still-populated, now-stale `species` column). **2026-08-21:** a SECOND, independent rank-correction mechanism added, covering any row whose final `taxon_name` value was produced by `TaxaTools::clean_taxon_names()` collapsing a real second token to genus-only -- regardless of source (a not-found row's fallback cleaning; a found row's `matched_name_clean` fallback; or, discovered when the first version of this fix was verified against a real re-run and still found stale rows, a found row whose OWN claimed rank genuinely matches the backbone's answer but whose rank VALUE itself is an informal placeholder name, e.g. a real NCBI taxonomy node literally named `"Ictalurus sp. UM 105-1789"`, ranked "species" by NCBI itself -- no rank-mismatch-based correction can ever see this case). Uses `collapsed_to_genus` (the same-day `TaxaTools::clean_taxon_names()` companion fix) tracked through the pipeline, not a shape-based re-derivation (rejected -- would misfire on real hyphenated genera like *Pseudo-nitzschia*). See this file's top session notes for the full two-round "Ictalurus" bug this closes. NOTE: generic utility — move to TaxaTools after manuscript review. |
 
 ### Internal helpers
 
