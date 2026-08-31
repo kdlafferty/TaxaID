@@ -1,7 +1,39 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- ALL SEVEN
+# Last updated: 2026-08-30/31 (Fable 5, branch kernel-priors -- a landmark two-day arc,
+# full record in ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md
+# (READ ITS LATER SECTIONS FIRST -- they supersede this file's older prior-related
+# claims). (1) FOCAL-GRID BUG: "most-represented grid" SITE_GRID_ID selection was an
+# alphabetical tie-break on zero-filled model frames -- PtCon 12S priors were evaluated
+# at a San Diego cell 292 km off-site across the Point Conception biogeographic
+# boundary; GreatLakes' cell was 40 km off (inland, 18 records vs the shore cell's 82).
+# Fixed in 5 workflows incl. both package tutorials (TaxaExpect's own KNOWN FOOTGUN
+# comment RECOMMENDED the pattern). GL re-run at the correct grid: Lamar precision
+# 0.710 -> 0.748 but breadth 18 -> 13/61 (small-n cell compression) -- which exposed the
+# real problem: single-cell priors waste neighborhood data. (2) GENERAL PRIOR
+# FRAMEWORK designed with the user (compositional priors; Good-Turing/Chao budgets;
+# branch taxonomy resident_observed/resident_undetected/transport; count reframing) --
+# decision points deferred until after (3). (3) KERNEL-PRIORS PHASE 2 (grid -> site-
+# centered distance-kernel estimation) DESIGNED, BUILT, VALIDATED: NEW
+# TaxaExpect::estimate_kernel_priors() (geo x depth product kernel, Kish n_eff, Beta
+# concentration = n_eff + m, m-pseudo-record regional back-off, weighted GT singletons;
+# schema: prior_branch + effective_records replace model_tier on kernel output) + NEW
+# calibrate_kernel_bandwidth() (leave-one-block-out composition prediction -- replaces
+# AIC screening; single-nearest-cell scored WORSE than ignoring space entirely, the
+# empirical nail in the old architecture). generate_undetected_diversity()/
+# apply_undetected_evidence()/generate_domestic_food_priors() accept kernel objects
+# (adapters; two-scale floor/ceiling fix); TaxaAssign::join_priors() gates promotion on
+# prior_branch. GL workflow runs the kernel path (USE_KERNEL_PRIORS switch; GLMM path
+# retained until PtCon migrates -- B7 deprecation pending). NEW
+# GreatLakes_kernel_fastpath.R (GL data dir): prior-side-only iteration, zero NCBI,
+# ~minutes. VALIDATION (Lamar): species co-detections 237 -> 564, precision 0.868,
+# unique species 27/61, missed-species 1/1081; yellow perch back (78 obs) with walleye
+# resolving separately. Also fixed live: kingdom-vocabulary false homonym in
+# generate_domestic_food_priors (Metazoa vs Animalia). PtCon accession screen still
+# NCBI-throttled; PtCon kernel migration + near-invariance control + post-Phase-2
+# unobserved-taxa redesign are the next chat's work. All committed on kernel-priors.)
+# Previous update, 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- ALL SEVEN
 # remaining mixture-redesign items implemented in one pass (user: "Do them all in
 # order"); the reentry doc now carries a full per-item status ledger. (1) NEW
 # TaxaFlag::flag_watch_candidates(): the likelihood-side surveillance guarantee --
@@ -3085,4 +3117,8 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-08-28 (Fable 5) | `posterior_consensus(posterior_col)` default `"posterior_mean"` -> `"posterior_point_est"` | TaxaAssign | **Behavioral default change** (D8 drift fix): aligns the low-level default with `run_bayesian_pipeline()` and every production workflow. Rank by the MC mean by passing `"posterior_mean"` explicitly (with mixture priors that column integrates presence states). Test fixtures/examples updated to carry both columns. |
 | 2026-08-28 (Fable 5) | `check_inat_range()` output gains `name_match`; `adjust_inat_range_priors(require_name_match = TRUE)` added | TaxaFetch, TaxaAssign | **Behavioral**: an in-range verdict resting on a fuzzy misresolution to a DIFFERENT species (real case: Gasterosteus gymnurus -> aculeatus) can no longer drive a prior elevation by default. `name_match` is derived at assembly time (cached rows get it too); pre-2026-08-28 `inat_range` tables elevate nothing until re-checked (guidance message). `adjust_inat_range_priors()` is marked superseded for the mixture pathway by `generate_inat_range_evidence()`. |
 | 2026-08-28 (Fable 5) | `flag_watch_candidates()` added | TaxaFlag | New function (D4): likelihood-side watch-list surveillance -- flags observations where a watch species' raw score ties/beats the winner's best match; prior-free, purely informational, never edits consensus columns. Wired into the GreatLakes workflow (8i.5). |
+| 2026-08-30/31 (Fable 5) | `estimate_kernel_priors()` + `calibrate_kernel_bandwidth()` added | TaxaExpect | New (additive), branch kernel-priors. Site-centered distance-kernel prior estimation (geo x covariate product kernel, Kish n_eff, concentration n_eff+m, weighted Good-Turing singletons) + leave-one-block-out bandwidth calibration. Output schema: `prior_branch` + `effective_records` + `observed_in_habitat=TRUE` (NO `model_tier` -- retirement in progress). Validated on GreatLakes (Lamar precision 0.748 -> 0.868). |
+| 2026-08-31 (Fable 5) | `generate_undetected_diversity()`/`apply_undetected_evidence()`/`generate_domestic_food_priors()` accept `taxaexpect_kernel_priors` objects | TaxaExpect | Additive adapters; frozen rules on kernel ingredients. Undetected floor uses the RAW stratum record count while mirrors carry site-scale effective shares (two scales -- mapping both to n_eff inverts the floor/ceiling interval). Emitted undetected rows now also carry `prior_branch = "resident_undetected"`; domestic rows `"transport"`. |
+| 2026-08-31 (Fable 5) | `join_priors()` promotion gated on `prior_branch`; `report_priors()` falls back to `prior_branch` | TaxaAssign, TaxaExpect | Behavioral, additive-safe: when `prior_branch` is present only `"resident_observed"` rows are promotion-eligible (subsumes the model_tier value checks once that column retires); new schema columns carried through coarse-rank expansion + habitat-agnostic fallback. Legacy tables without the column are unaffected. |
+| 2026-08-31 (Fable 5) | `generate_domestic_food_priors()` kingdom cross-check normalizes backbone vocabularies | TaxaExpect | Behavioral bug fix (commit 2aa685a): NCBI "Metazoa"/"Viridiplantae" vs iNat "Animalia"/"Plantae" was treated as a cross-kingdom homonym, silently discarding every NCBI-taxonomy candidate's local-evidence boost since the check shipped. |
 | 2026-08-28 (Fable 5) | `generate_inat_range_evidence()` + `fit_regional_presence_curve()` added; `apply_undetected_evidence()` prints the veto bound | TaxaExpect | Additive (D6/D5/D4): iNat as the third evidence generator through the shared applier (w = 0.8, name-gated); the generic distance-to-presence fitter (log-link binomial to `w_scale*exp(-d/d_half)`, zero-positive Jeffreys-bounds path first-class); every `apply_undetected_evidence()` call now prints the dataset-specific weight bound above which an unobserved species can veto a singleton-level native. |

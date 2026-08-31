@@ -32,14 +32,34 @@
 # singletons, GT mass 1.5e-3. 29 new test assertions (top-hat reduction to
 # classical counts/f1-n is the key invariant; Kish math; m-backoff; depth
 # down-weighting incl. NA-neutral; singleton support radius; schema; validation
-# errors; a two-region CV fixture proving locality wins). STILL TO DO (next
-# session, in order): port generate_undetected_diversity() to kernel inputs;
-# port join_priors()/report_priors() value keys model_tier -> prior_branch;
-# deprecate the GLMM fit path (verdict (b), archive precedent); workflow switch;
-# GL validation gates (LOCO <= 3.267 baseline, Lamar precision >= 0.748);
-# REINSTALL ONLY AFTER the user's overnight PtCon run finishes. NOTE the
-# uncommitted-work backlog on this branch (inherited dirty tree spanning several
-# sessions' shipped fixes) -- raise a commit conversation with the user.)
+# errors; a two-region CV fixture proving locality wins). CONTINUED 2026-08-31:
+# B5-B8 ALL DONE AND VALIDATED. B5: generate_undetected_diversity() accepts
+# taxaexpect_kernel_priors (frozen rules on kernel ingredients; mirrors stamped
+# with the SITE id; TWO-SCALE anchor fix found via real-data dry run -- floor
+# N = raw stratum count, ceiling = site-scale mirror shares; mapping both to
+# n_eff INVERTS the floor/ceiling interval). B6: join_priors() promotion gated
+# on prior_branch; evidence/domestic generators stamp prior_branch;
+# report_priors() falls back to prior_branch; apply_undetected_evidence() +
+# generate_domestic_food_priors() gained kernel adapters. REAL BUG fixed
+# (commit 2aa685a, found live by the user): the domestic generator's cross-
+# kingdom homonym guard compared raw backbone vocabularies (NCBI "Metazoa" vs
+# iNat "Animalia"), wrongly discarding every NCBI-taxonomy candidate's local-
+# evidence boost -- kingdoms now normalized before compare. B8: GreatLakes
+# workflow switched (USE_KERNEL_PRIORS branch, GLMM path retained until PtCon
+# migrates); NEW GreatLakes_kernel_fastpath.R (GL data dir, not under git) =
+# the prior-side-only iteration path (reloads prior-independent checkpoints,
+# ZERO NCBI -- the accession screen's cache retries insufficient-evidence
+# accessions every call, grinding the throttle; 16.6 min first run).
+# VALIDATION vs the parked correct-grid GLMM baseline (Lamar harness): species
+# co-detections 237 -> 564, precision 0.748 -> 0.868, unique species 13/61 ->
+# 27/61, Lamar-species-we-missed 63 -> 1 of 1081; PERCH BACK (78 obs) with
+# walleye resolving separately (depth-sharpened 8.2:1 percid split). Known
+# follow-ups: posthoc Axis-1 "873/885 unprecedented" is a SEMANTICS SHIFT
+# (kernel tables name only locally-evidenced species; recalibrate during the
+# post-Phase-2 prior work); veto-bound printer prints "0.000" under kernel
+# anchors; B7 GLMM deprecation, PtCon migration, and the PtCon near-invariance
+# control still owed. Function Inventory: ADD estimate_kernel_priors() +
+# calibrate_kernel_bandwidth() rows when next editing that section.)
 # Previous update, 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- three
 # additions closing the redesign's remaining TaxaExpect items: (1)
 # apply_undetected_evidence() now PRINTS the dataset-specific veto bound (D4) --

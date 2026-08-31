@@ -1,6 +1,19 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- D7 soft
+# Last updated: 2026-08-31 (Fable 5, branch kernel-priors -- join_priors() made
+# prior_branch-aware for the kernel-priors redesign (see the ecosystem CLAUDE.md
+# top note + ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md):
+# (1) the habitat-mismatch singleton-parity promotion is now gated so that, when
+# a prior_branch column is present, ONLY "resident_observed" rows are eligible --
+# a transport/evidence/undetected row's magnitude is its design, never a habitat-
+# extrapolation artifact (subsumes the model_tier value exemptions once that
+# column retires; legacy tables without prior_branch behave exactly as before,
+# regression-tested both directions in test-join_priors.R); (2) prior_branch +
+# effective_records carried through coarse-rank expansion override_cols and the
+# habitat-agnostic fallback's provenance coalesce. Validated end to end in the
+# GreatLakes kernel B8 run (Lamar precision 0.748 -> 0.868). devtools::check()
+# 0/0/0.)
+# Previous update, 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- D7 soft
 # confirmation update: update_prior_from_consensus() rewritten around soft,
 # leave-one-out, power-prior-discounted support aggregation (new
 # confirmation_discount = 0.25 param; min_confirmation_confidence REMOVED,
