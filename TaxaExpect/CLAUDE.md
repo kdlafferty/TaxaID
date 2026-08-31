@@ -1,6 +1,46 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- three
+# Last updated: 2026-08-30/31 overnight (Fable 5, branch kernel-priors -- PHASE 2 of
+# the kernel-priors redesign BEGUN: NEW estimate_kernel_priors() +
+# calibrate_kernel_bandwidth() (R/estimate_kernel_priors.R,
+# R/calibrate_kernel_bandwidth.R), the site-centered distance-kernel estimator
+# replacing grid-cell GLMM *prediction* (the GLMM fit itself not yet deprecated --
+# consumers not yet ported; everything this session is ADDITIVE, no existing
+# function touched, deliberately NOT reinstalled because the user's PtCon re-run
+# was live overnight). Full design record + all four user verdicts:
+# ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md. Estimator:
+# theta_i = (c_i*s + m*p_reg_i)/(n_eff + m), c_i = sum of exp(-d/lambda_km) *
+# exp(-|depth-site_depth|/lambda_covariate) record weights, s = n_eff/W, Kish
+# n_eff; Beta concentration = n_eff + m BY CONSTRUCTION (replaces the phi-cap,
+# whose VarCorr source is already silently broken in production -- "fallback phi
+# cap of 1000"); NEW SCHEMA per verdict (c): prior_branch ("resident_observed")
+# + effective_records REPLACE model_tier tier1/tier2 on kernel output (collision-
+# checked names); weighted Good-Turing singletons + missing mass emitted for the
+# still-frozen undetected machinery. calibrate_kernel_bandwidth() = leave-one-
+# block-out composition prediction (multinomial log-loss) over lambda/
+# lambda_covariate/m grids with regional + nearest_block reference rows -- the
+# redesign's replacement for AIC screening; the CV blocks are the one honorable
+# surviving job of the grid. REAL-DATA VALIDATION (GreatLakes, via load_all):
+# calibration reproduces the Phase-1 diagnostic (kernel 25-50km beats regional
+# AND nearest-block; nearest-block worst of all -- the retired architecture);
+# DEPTH KERNEL EARNS ITS KEEP OUT-OF-SAMPLE (weighted log-loss 3.385 -> 3.267 at
+# geo 50km x depth 50); Burns Harbor site estimate: n_eff = 2,397 (29x the old
+# focal cell's 82), Perca:Sander sharpens 4.3:1 -> 8.2:1 (depth kernel pushes
+# deep-skewing walleye down, exactly the user-confirmed pelagic/nearshore
+# discrimination), Osmerus mordax theta 0.027 with 64 effective records (the
+# ingredient that un-vetoes it once evidence rules are re-plumbed), 9 weighted
+# singletons, GT mass 1.5e-3. 29 new test assertions (top-hat reduction to
+# classical counts/f1-n is the key invariant; Kish math; m-backoff; depth
+# down-weighting incl. NA-neutral; singleton support radius; schema; validation
+# errors; a two-region CV fixture proving locality wins). STILL TO DO (next
+# session, in order): port generate_undetected_diversity() to kernel inputs;
+# port join_priors()/report_priors() value keys model_tier -> prior_branch;
+# deprecate the GLMM fit path (verdict (b), archive precedent); workflow switch;
+# GL validation gates (LOCO <= 3.267 baseline, Lamar precision >= 0.748);
+# REINSTALL ONLY AFTER the user's overnight PtCon run finishes. NOTE the
+# uncommitted-work backlog on this branch (inherited dirty tree spanning several
+# sessions' shipped fixes) -- raise a commit conversation with the user.)
+# Previous update, 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- three
 # additions closing the redesign's remaining TaxaExpect items: (1)
 # apply_undetected_evidence() now PRINTS the dataset-specific veto bound (D4) --
 # the weight above which an unobserved species can block species-level resolution
