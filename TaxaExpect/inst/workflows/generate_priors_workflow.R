@@ -560,18 +560,35 @@ message(sprintf("  To reuse without re-generating, paste:\n    priors_undetected
 # ==============================================================================
 # KNOWN FOOTGUN: grid_id's format depends on the chosen grid resolution
 # (Step 1's grid_opt$best_grid), which varies by dataset -- a hardcoded
-# SITE_GRID_ID config constant breaks the moment grid_size changes. Instead,
-# derive it as the most-frequent grid_id at the focal habitat -- from `sites`
-# (Step 2/3's raw gridded occurrences), NOT model_data (see the note above
-# new_sites_focal below for why model_data is the wrong object here).
+# SITE_GRID_ID config constant breaks the moment grid_size changes. Derive it
+# dynamically -- but ALWAYS from the study site's COORDINATES, never from data
+# representation. An earlier revision of this workflow derived it as the
+# "most-frequent grid_id at the focal habitat"; that pattern was copied into
+# real production workflows, where (on a zero-filled model frame) the counts
+# tied across every grid and slice_max() silently returned the alphabetically
+# first grid id -- placing one study's priors 292 km from its sampling site
+# (found 2026-08-30). Even on raw gridded occurrences, "busiest grid" is the
+# best-SURVEYED cell, which has no necessary relationship to where the samples
+# were collected. Use `sites` (Step 2/3's raw gridded occurrences), NOT
+# model_data (see the note above new_sites_focal below for why model_data is
+# the wrong object here).
 # ==============================================================================
 
-message("\n--- Step 8: Deriving focal SITE_GRID_ID dynamically ---")
+message("\n--- Step 8: Deriving focal SITE_GRID_ID from the study coordinates ---")
+
+# The demo region's center; a real study must set its actual sampling
+# coordinates here (the same ones its occurrence fetch was scoped around).
+SITE_LAT <- 60.0
+SITE_LON <- 2.0
 
 SITE_GRID_ID <- sites |>
   dplyr::filter(main_habitat == SITE_HABITAT) |>
-  dplyr::count(grid_id) |>
-  dplyr::slice_max(n, n = 1, with_ties = FALSE) |>
+  dplyr::group_by(grid_id) |>
+  dplyr::summarise(.lat = mean(decimalLatitude), .lon = mean(decimalLongitude),
+                   .groups = "drop") |>
+  dplyr::mutate(.dist2 = (.lat - SITE_LAT)^2 +
+                         ((.lon - SITE_LON) * cos(SITE_LAT * pi / 180))^2) |>
+  dplyr::slice_min(.dist2, n = 1, with_ties = FALSE) |>
   dplyr::pull(grid_id)
 
 if (length(SITE_GRID_ID) == 0) {
