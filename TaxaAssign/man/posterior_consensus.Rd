@@ -252,19 +252,32 @@ already answered by \code{winner_prior}. A count of \code{0} therefore means
 The \code{primary_} version counts rival taxa; the \code{consensus_} version
 counts distinct plausible groups at \code{consensus_rank} (rival genera
 when the LCA landed at genus, rival families at family), reducing to
-the \code{primary_} count at species rank. Both are \code{NA} when
-\code{posterior_df} carries no \code{model_tier} column.}
+the \code{primary_} count at species rank. "Plausible" means "joined to
+a NAMED prior row": non-\code{NA} \code{prior_branch} when that column is
+present (kernel-priors schema, 2026-08-31 -- any branch counts,
+resident, undetected-evidence, or transport), else non-\code{NA}
+\code{model_tier} (legacy GLMM tables). Both are \code{NA} when
+\code{posterior_df} carries neither column.}
 \item{\code{winner_has_occurrence_record}, \code{consensus_prior},
 \code{consensus_has_occurrence_record}}{Support for the
 prior/occurrence-plausibility axis, answering what \code{winner_prior}'s
 VALUE cannot: has this taxon ever been reported here at all? A
 never-reported taxon and a genuine singleton can carry the SAME
 numeric prior (both land on the dark-diversity floor) while meaning
-opposite things, so presence is read off \code{model_tier} rather than
-inferred from a low prior.
+opposite things, so presence is read off the prior row's provenance
+rather than inferred from a low prior.
 \code{winner_has_occurrence_record} is \code{TRUE} when the winning
-hypothesis carries a real occurrence record, \code{NA} when
-\code{posterior_df} has no \code{model_tier} column.
+hypothesis carries a real occurrence record. When \code{posterior_df}
+has a \code{prior_branch} column (kernel-priors schema, 2026-08-31) this
+means \code{prior_branch == "resident_observed"} -- a kernel estimate
+from real in-habitat local evidence; \code{resident_undetected}
+(evidence-elevated species with zero local records) and
+\code{transport} (domestic/food) winners read \code{FALSE}, with a transport
+winner's interpretation carried separately by
+\code{TaxaFlag::add_posthoc_assessment()}'s \code{domestic_prior_caveat}.
+Legacy GLMM tables (no \code{prior_branch}) keep the original
+non-\code{NA}-\code{model_tier} reading; \code{NA} when \code{posterior_df} has
+neither column.
 \code{consensus_prior} is a \code{theta_mean}-based group share
 (2026-07-30; previously \code{prior_mean} -- changed because
 \code{prior_mean} can be inflated by the confirmation boost above,

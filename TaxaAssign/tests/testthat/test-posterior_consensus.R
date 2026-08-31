@@ -709,6 +709,58 @@ test_that("winner_has_occurrence_record is unaffected by a boosted prior_mean", 
 })
 
 # ==============================================================================
+# Kernel-priors schema (2026-08-31): prior_branch supersedes model_tier.
+# Real-bug regression: kernel tables carry model_tier only as a legacy column
+# on their undetected/domestic rows (NA on every locally-evidenced resident
+# row), so the legacy non-NA-model_tier reading was exactly INVERTED on real
+# GreatLakes kernel output (873/885 winners read "unprecedented"; the only
+# TRUE rows were evidence-blend species with ZERO local records).
+# ==============================================================================
+
+test_that("winner_has_occurrence_record reads prior_branch when present (kernel schema)", {
+  # The kernel inversion in miniature: the resident winner carries legacy
+  # model_tier = NA; a losing evidence-blend row carries a non-NA legacy tier.
+  df <- make_theta_df(model_tier     = c(NA, "tier_undetected_evidence", NA, NA),
+                      posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  df$prior_branch <- c("resident_observed", "resident_undetected", NA, NA)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_equal(out$consensus_taxon, "Aa one")
+  expect_true(out$winner_has_occurrence_record)   # legacy reading gave FALSE
+
+  # An evidence-elevated winner (zero local records) reads FALSE, even though
+  # its legacy model_tier is non-NA (legacy reading gave TRUE).
+  df2 <- make_theta_df(model_tier     = c("tier_undetected_evidence", NA, NA, NA),
+                       posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  df2$prior_branch <- c("resident_undetected", "resident_observed", NA, NA)
+  out2 <- posterior_consensus(df2, rank_system = c("family", "genus", "species"))
+  expect_equal(out2$consensus_taxon, "Aa one")
+  expect_false(out2$winner_has_occurrence_record)
+})
+
+test_that("transport (domestic/food) winners read FALSE under the kernel schema", {
+  df <- make_theta_df(model_tier     = c("tier_domestic_food", NA, NA, NA),
+                      posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  df$prior_branch <- c("transport", NA, NA, NA)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_false(out$winner_has_occurrence_record)
+})
+
+test_that("plausible-competitor counts read prior_branch when present", {
+  # Winner Aa one (resident) + one named rival on any branch = 1 competitor;
+  # the two floor rows (NA branch) never count.
+  df <- make_theta_df(model_tier = c(NA, NA, NA, NA))
+  df$prior_branch <- c("resident_observed", "transport", NA, NA)
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_equal(out$primary_n_plausible_competitors, 1L)
+})
+
+test_that("legacy tables without prior_branch keep the model_tier reading", {
+  df <- make_theta_df(model_tier = c("tier1", NA, NA, NA))
+  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  expect_true(out$winner_has_occurrence_record)
+})
+
+# ==============================================================================
 # consensus_prior via group_priors (2026-07-30, Task 1): SUM over ALL locally
 # modelled group members, not just this observation's own candidates.
 # consensus_prior REQUIRES group_priors -- there is no MAX fallback (removed

@@ -308,19 +308,32 @@
 #'       The `primary_` version counts rival taxa; the `consensus_` version
 #'       counts distinct plausible groups at `consensus_rank` (rival genera
 #'       when the LCA landed at genus, rival families at family), reducing to
-#'       the `primary_` count at species rank. Both are `NA` when
-#'       `posterior_df` carries no `model_tier` column.}
+#'       the `primary_` count at species rank. "Plausible" means "joined to
+#'       a NAMED prior row": non-`NA` `prior_branch` when that column is
+#'       present (kernel-priors schema, 2026-08-31 -- any branch counts,
+#'       resident, undetected-evidence, or transport), else non-`NA`
+#'       `model_tier` (legacy GLMM tables). Both are `NA` when
+#'       `posterior_df` carries neither column.}
 #'     \item{`winner_has_occurrence_record`, `consensus_prior`,
 #'       `consensus_has_occurrence_record`}{Support for the
 #'       prior/occurrence-plausibility axis, answering what `winner_prior`'s
 #'       VALUE cannot: has this taxon ever been reported here at all? A
 #'       never-reported taxon and a genuine singleton can carry the SAME
 #'       numeric prior (both land on the dark-diversity floor) while meaning
-#'       opposite things, so presence is read off `model_tier` rather than
-#'       inferred from a low prior.
+#'       opposite things, so presence is read off the prior row's provenance
+#'       rather than inferred from a low prior.
 #'       `winner_has_occurrence_record` is `TRUE` when the winning
-#'       hypothesis carries a real occurrence record, `NA` when
-#'       `posterior_df` has no `model_tier` column.
+#'       hypothesis carries a real occurrence record. When `posterior_df`
+#'       has a `prior_branch` column (kernel-priors schema, 2026-08-31) this
+#'       means `prior_branch == "resident_observed"` -- a kernel estimate
+#'       from real in-habitat local evidence; `resident_undetected`
+#'       (evidence-elevated species with zero local records) and
+#'       `transport` (domestic/food) winners read `FALSE`, with a transport
+#'       winner's interpretation carried separately by
+#'       `TaxaFlag::add_posthoc_assessment()`'s `domestic_prior_caveat`.
+#'       Legacy GLMM tables (no `prior_branch`) keep the original
+#'       non-`NA`-`model_tier` reading; `NA` when `posterior_df` has
+#'       neither column.
 #'       `consensus_prior` is a \code{theta_mean}-based group share
 #'       (2026-07-30; previously \code{prior_mean} -- changed because
 #'       \code{prior_mean} can be inflated by the confirmation boost above,
@@ -680,13 +693,24 @@ posterior_consensus <- function(posterior_df,
   # therefore means "nothing plausible to lose to", never "the winner is
   # implausible".
   has_tier   <- "model_tier" %in% names(named_all)
-  plaus_mask <- if (has_tier) !is.na(named_all$model_tier) else NULL
+  # Kernel-priors schema (2026-08-31): `prior_branch` supersedes `model_tier`
+  # when present. "Plausible" here means "joined to a NAMED prior row" (any
+  # branch -- resident, undetected-evidence, or transport); a row that fell
+  # through to the anonymous dark-diversity floor has NA in both columns.
+  # Kernel tables carry model_tier only as a legacy column on their
+  # undetected/domestic rows (NA on every resident row), so reading
+  # model_tier there is exactly inverted -- confirmed on real GreatLakes
+  # kernel output (86 locally-evidenced resident rows all NA-tier).
+  has_branch <- "prior_branch" %in% names(named_all)
+  has_plaus  <- has_branch || has_tier
+  plaus_mask <- if (has_branch) !is.na(named_all$prior_branch)
+    else if (has_tier) !is.na(named_all$model_tier) else NULL
 
   # taxon_name is a required column (checked at input validation), unlike the
   # winner_* pass-throughs above, so no presence check is needed here.
   winner_taxon <- as.character(winner_row$taxon_name[[1L]])
 
-  primary_n_plausible_competitors <- if (has_tier) {
+  primary_n_plausible_competitors <- if (has_plaus) {
     others <- if (is.na(winner_taxon)) rep(TRUE, nrow(named_all)) else
       is.na(named_all$taxon_name) | named_all$taxon_name != winner_taxon
     as.integer(sum(plaus_mask & others, na.rm = TRUE))
@@ -696,7 +720,7 @@ posterior_consensus <- function(posterior_df,
   # excluding the consensus taxon itself. At species rank this reduces to the
   # primary count; at genus/family it counts rival genera/families, which is
   # the rank-appropriate reading of "did it compete".
-  consensus_n_plausible_competitors <- if (has_tier && !is.na(lca$rank) && !is.na(lca$taxon)) {
+  consensus_n_plausible_competitors <- if (has_plaus && !is.na(lca$rank) && !is.na(lca$taxon)) {
     grp <- .extract_rank_values(named_all, lca$rank)
     if (is.null(grp)) NA_integer_ else {
       ok <- plaus_mask & !is.na(grp) & grp != lca$taxon
@@ -720,7 +744,19 @@ posterior_consensus <- function(posterior_df,
   # dark-diversity group had only 3 members) -- so thresholding the prior
   # value alone would call a never-reported taxon "expected". Hence a separate
   # presence signal rather than a lower cutoff.
-  winner_has_occurrence_record <- if (has_tier)
+  # Under the kernel-priors schema, "has occurrence record" narrows to the
+  # resident_observed branch: a kernel estimate from real, in-habitat local
+  # evidence. resident_undetected (floor/evidence-blend rows -- species with
+  # ZERO local records, elevated by regional/watch/iNat evidence) and
+  # transport (domestic/food) winners correctly read FALSE: under the legacy
+  # model_tier logic those legacy-columned rows read TRUE while every
+  # genuinely evidenced resident row read FALSE -- fully inverted (real
+  # GreatLakes B8 run: 873/885 "unprecedented"). A transport winner's
+  # interpretation is carried separately by add_posthoc_assessment()'s
+  # domestic_prior_caveat, which is the designed pairing.
+  winner_has_occurrence_record <- if (has_branch)
+    isTRUE(winner_row$prior_branch[[1L]] == "resident_observed")
+  else if (has_tier)
     !is.na(winner_row$model_tier[[1L]]) else NA
   # `consensus_prior`: the occurrence-model share for the consensus GROUP,
   # not just its candidates. NA when nothing qualifies -- so NA doubles as

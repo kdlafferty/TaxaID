@@ -840,3 +840,32 @@ locally-evidenced species, so add_posthoc_assessment()'s
 "has occurrence record" concept needs rebasing), then the post-Phase-2
 unobserved-taxa redesign (the framework decision points queued above).
 Iterate via GreatLakes_kernel_fastpath.R (zero NCBI, ~minutes).
+
+### POSTHOC AXIS-1 RECALIBRATION DONE (2026-08-31, follow-on session)
+
+Root cause was sharper than "semantics shift": the legacy reading
+(`winner_has_occurrence_record = !is.na(model_tier)`) was fully INVERTED on
+kernel tables -- resident rows carry no model_tier (all 86 locally-evidenced
+species read FALSE) while the undetected/domestic adapters' legacy columns
+made zero-local-record evidence species read TRUE (the 12 "TRUE" winners were
+grass carp/L. ardens/P. phoxinus/R. atratulus-class evidence rows). Fix in
+TaxaAssign::posterior_consensus(): when `prior_branch` exists,
+has-record = `prior_branch == "resident_observed"`; plausible-competitor mask
+= any non-NA branch (named row, any branch); legacy model_tier logic retained
+byte-for-byte for GLMM tables. Transport winners read FALSE by design
+(domestic_prior_caveat carries the interpretation).
+consensus_has_occurrence_record needed NO change (group_priors lookup already
+branch-agnostic; read TRUE for 883/885 under kernel).
+VALIDATED via fastpath re-run (16.7 min): plausibility 2/10/873 ->
+860/12/13 expected/unexpected/unprecedented (GLMM baseline 864/15/6); the 13
+unprecedented are exactly the evidence-elevated zero-local-record winners;
+consensus_taxon/consensus_rank byte-identical to B8 (posthoc-only change,
+as designed). B8 pre-recal consensus parked as
+*.kernel_b8_pre_axis1_recal. 5 regression tests added; TaxaAssign 700/0,
+check 0/0/0, reinstalled.
+
+STILL OPEN from the B8 new-items list: veto-bound printer "weight above
+0.000" under kernel anchors (diagnose during the anchor redesign);
+"Salvenlinus malma" upstream data quirk (harmless). NEXT: the post-Phase-2
+unobserved-taxa redesign -- decision points 1-5 queued above, one per
+discussion, now unblocked (post-fix numbers exist).

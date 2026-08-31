@@ -1,6 +1,23 @@
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-31 (Fable 5, branch kernel-priors -- join_priors() made
+# Last updated: 2026-08-31, later same day (Fable 5, branch kernel-priors -- POSTHOC
+# AXIS-1 RECALIBRATION for kernel prior tables: posterior_consensus()'s
+# winner_has_occurrence_record and the plausible-competitor mask now read
+# prior_branch when that column is present (has-record = "resident_observed";
+# plausible competitor = any non-NA branch), keeping the legacy
+# !is.na(model_tier) logic byte-for-byte for GLMM tables. The legacy reading
+# was fully INVERTED on kernel output (resident rows have no model_tier; the
+# undetected/domestic adapters' legacy columns made zero-local-record evidence
+# species read TRUE) -- real B8 run said 873/885 "unprecedented". Transport
+# winners read FALSE by design; domestic_prior_caveat carries their
+# interpretation. consensus_has_occurrence_record unchanged (group_priors
+# lookup already branch-agnostic). Validated on the real GL fastpath:
+# plausibility 2/10/873 -> 860/12/13 (GLMM baseline 864/15/6), the 13
+# unprecedented exactly the evidence-elevated zero-local-record winners,
+# consensus_taxon/consensus_rank byte-identical to B8. 5 regression tests
+# (kernel inversion in miniature, transport FALSE, competitor mask, legacy
+# fallback); devtools::test() 700/0, check() 0/0/0, reinstalled.)
+# Previous update: 2026-08-31 (Fable 5, branch kernel-priors -- join_priors() made
 # prior_branch-aware for the kernel-priors redesign (see the ecosystem CLAUDE.md
 # top note + ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md):
 # (1) the habitat-mismatch singleton-parity promotion is now gated so that, when
