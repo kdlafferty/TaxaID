@@ -38,8 +38,11 @@
 #' low-prior-vs-strong-likelihood contrast for review if augmentation isn't
 #' practical for your workflow.
 #'
-#' @param model_obj A biofreq_model object. Output of
-#'   train_biodiversity_model().
+#' @param model_obj A biofreq_model object (output of
+#'   \code{train_biodiversity_model()}) or a taxaexpect_kernel_priors object
+#'   (output of \code{estimate_kernel_priors()} -- kernel-priors redesign): the
+#'   same rules then run on kernel ingredients (N = Kish effective sample size,
+#'   singletons = neighborhood singletons stamped with the site id).
 #' @param jeffreys_threshold Integer. If N_total is below this value, use a
 #'   Jeffreys prior Beta(0.5, 0.5) for the global floor instead of
 #'   Beta(1, N_total - 1). Default 2.
@@ -155,9 +158,32 @@ generate_undetected_diversity <- function(model_obj,
                                           taxonomy           = NULL) {
 
   # --- Input checks -----------------------------------------------------------
-  if (!inherits(model_obj, "biofreq_model")) {
+  if (inherits(model_obj, "taxaexpect_kernel_priors")) {
+    # Kernel-priors adapter (Phase 2 redesign, 2026-08-31): re-plumb the same
+    # frozen rules onto kernel-estimated ingredients. N_total becomes the Kish
+    # effective sample size; singletons are the kernel's neighborhood
+    # singletons (species with exactly one supporting record), with
+    # theta_obs = their effective share and grid_id = the SITE id -- an
+    # improvement over the grid world, where mirrors carried their own distant
+    # cells and a focal-grid filter dropped them all.
+    kp <- model_obj
+    N_total <- as.integer(round(kp$n_eff))
+    habitat_col <- "main_habitat"
+    sing <- kp$singletons
+    singletons <- tibble::tibble(
+      taxon_name      = sing$taxon_name,
+      grid_id         = kp$params$site_id,
+      theta_obs       = sing$effective_records / kp$n_eff,
+      n_total_at_site = N_total,
+      main_habitat    = kp$params$site_habitat
+    )
+    model_obj <- list(N_total = N_total, singletons = singletons,
+                      meta = list(taxon_col = "taxon_name",
+                                  habitat_col = habitat_col))
+  } else if (!inherits(model_obj, "biofreq_model")) {
     stop("generate_undetected_diversity: model_obj must be a biofreq_model ",
-         "object from train_biodiversity_model().")
+         "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
+         "object from estimate_kernel_priors().")
   }
 
   N_total     <- model_obj$N_total
@@ -230,6 +256,7 @@ generate_undetected_diversity <- function(model_obj,
         theta_sd          = .beta_sd(alpha_i, beta_i),
         n_obs             = row$n_total_at_site,
         model_tier        = "tier3_undetected",
+        prior_branch      = "resident_undetected",
         undetected_type   = "singleton_mirror",
         source_taxon_name = as.character(row[[model_obj$meta$taxon_col]])
       )
@@ -272,6 +299,7 @@ generate_undetected_diversity <- function(model_obj,
     theta_sd          = .beta_sd(alpha_floor, beta_floor),
     n_obs             = N_total,
     model_tier        = "tier3_undetected",
+    prior_branch      = "resident_undetected",
     undetected_type   = "global_floor",
     source_taxon_name = NA_character_
   )

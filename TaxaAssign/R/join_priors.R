@@ -112,6 +112,9 @@ utils::globalVariables(c(
     # the template coarse row's NA values.
     c("taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type",
       "model_tier", "observed_in_habitat",
+      # kernel-priors redesign (2026-08-31): branch label + effective evidence
+      # travel with expanded rows; prior_branch also gates the promotion below.
+      "prior_branch", "effective_records",
       # presence-mixture columns (2026-08-26 D8): expanded evidence rows keep
       # their own mixture so compute_posterior()'s presence-draw sampler sees it
       "prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent",
@@ -994,6 +997,7 @@ join_priors <- function(likelihoods,
                   # tier_domestic_food row must never be promoted to singleton
                   # parity -- its tiny theta IS the design, not an artifact).
                   dplyr::any_of(c(.ha_model_tier      = "model_tier",
+                                  .ha_prior_branch    = "prior_branch",
                                   .ha_undetected_type = "undetected_type")))
 
   needs_ha_fallback <- is.na(result$alpha) & !is.na(result$taxon_name)
@@ -1008,7 +1012,7 @@ join_priors <- function(likelihoods,
     result$beta[needs_ha_fallback] <- dplyr::coalesce(
       result$beta[needs_ha_fallback], ha_match$.ha_beta
     )
-    for (.prov in c("model_tier", "undetected_type")) {
+    for (.prov in c("model_tier", "prior_branch", "undetected_type")) {
       .ha_col <- paste0(".ha_", .prov)
       if (.ha_col %in% names(ha_match) && .prov %in% names(result)) {
         result[[.prov]][needs_ha_fallback] <- dplyr::coalesce(
@@ -1194,6 +1198,15 @@ join_priors <- function(likelihoods,
     not_evidence_row <- not_evidence_row &
       (is.na(result$model_tier) |
          !result$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"))
+  }
+  # Kernel-priors schema (2026-08-31): when prior_branch is present, only
+  # "resident_observed" rows are promotion-eligible -- every other branch's
+  # magnitude (evidence blends, transport/domestic, undetected floors) is its
+  # design, not a habitat-extrapolation artifact. Subsumes the model_tier
+  # value checks above once that column is retired.
+  if ("prior_branch" %in% names(result)) {
+    not_evidence_row <- not_evidence_row &
+      (is.na(result$prior_branch) | result$prior_branch == "resident_observed")
   }
 
   habitat_mismatch <- if ("observed_in_habitat" %in% names(result)) {

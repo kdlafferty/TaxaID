@@ -225,6 +225,11 @@ estimate_kernel_priors <- function(occurrence_data,
     theta_sd = theta_sd,
     prior_branch = "resident_observed",
     effective_records = c_eff,
+    # TRUE by construction (records are stratified to the focal habitat before
+    # weighting) -- and load-bearing downstream: TaxaAssign::join_priors()'s
+    # habitat-mismatch promotion clause falls back to legacy blanket promotion
+    # when this column is absent from the priors table.
+    observed_in_habitat = TRUE,
     stringsAsFactors = FALSE
   )
   priors <- priors[order(-priors$theta_mean), , drop = FALSE]

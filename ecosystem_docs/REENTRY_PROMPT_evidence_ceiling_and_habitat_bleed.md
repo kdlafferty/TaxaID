@@ -715,11 +715,23 @@ re-run was live overnight; install in the morning after it finishes):
   geo 50 x depth 50); Burns Harbor: n_eff 2,397 (vs 82), Perca:Sander
   8.2:1 (was 4.3), Osmerus 64 effective records.
 
+DONE 2026-08-31 morning:
+- B5. generate_undetected_diversity() accepts taxaexpect_kernel_priors
+  (adapter: N = Kish n_eff, mirrors = neighborhood singletons stamped with
+  the SITE id -- fixing the old dropped-distant-mirror wart; frozen rules
+  untouched); emitted rows carry prior_branch = "resident_undetected"
+  alongside legacy columns. Kernel priors table gains observed_in_habitat =
+  TRUE (true by construction; guards join_priors D1 fallback).
+- B6 (partial). join_priors(): prior_branch now gates promotion (only
+  resident_observed rows eligible; subsumes the model_tier value checks once
+  that column retires); prior_branch/effective_records carried through
+  coarse-rank expansion override_cols + habitat-agnostic fallback
+  provenance. report_priors() reports by prior_branch when model_tier is
+  absent. Tests added both packages; checks pending/green.
+
 TODO (dependency order):
-- B5. Port generate_undetected_diversity() to kernel inputs (weighted
-  singletons, n_eff as N) -- rules frozen, plumbing new.
-- B6. Port join_priors()/report_priors() model_tier value keys ->
-  prior_branch; evidence/domestic generators stamp prior_branch.
+- B6-remainder. Evidence/domestic generators stamp prior_branch
+  ("resident_undetected"/"transport") on their rows.
 - B7. Deprecate the GLMM fit path (verdict b, archive precedent) + retire
   model_tier vocabulary; breaking-changes row + NAME_CHANGE_HISTORY.
 - B8. GL workflow switch + validation gates (LOCO <= 3.267; Lamar precision

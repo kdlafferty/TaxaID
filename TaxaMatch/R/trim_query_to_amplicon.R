@@ -73,6 +73,21 @@
     if (length(downstream) == 0L) next
     rev_end <- Biostrings::end(rev_hits)[which(rev_starts == min(downstream))[1L]]
 
+    # Defensive bounds guard before subseq(): fwd_start/rev_end are ordinarily
+    # guaranteed within [1, length(subj)] by construction (both come from
+    # matchPattern() hits on subj itself), but a malformed/edge-case match
+    # (e.g. a primer hit degenerate enough to make matchPattern's own
+    # start/end bookkeeping inconsistent) can still slip through -- found via
+    # a real production crash where one bad accession's amplicon_width passed
+    # the plausibility check above but Biostrings::subseq() then threw
+    # "Invalid sequence coordinates", killing the entire in-flight BLAST
+    # chunk (200 accessions) instead of just skipping the one bad sequence.
+    # Treat an out-of-bounds/inverted span the same as "not found" rather
+    # than letting subseq() error -- this strand's match is unusable either
+    # way.
+    seq_len <- length(subj)
+    if (fwd_start < 1L || rev_end > seq_len || fwd_start > rev_end) next
+
     amplicon_width <- rev_end - fwd_start + 1L
     if (amplicon_width < min_len || amplicon_width > max_len) next
 

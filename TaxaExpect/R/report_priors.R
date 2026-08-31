@@ -91,6 +91,10 @@ report_priors <- function(priors_output,
   if ("model_tier" %in% names(priors_df)) {
     tier_counts <- table(priors_df$model_tier)
     tier_breakdown <- as.list(tier_counts)
+  } else if ("prior_branch" %in% names(priors_df)) {
+    # Kernel-priors schema (2026-08-31): report by branch when the retired
+    # model_tier column is absent.
+    tier_breakdown <- as.list(table(priors_df$prior_branch))
   }
 
   # --- Citations (propagated from occurrence data) ----------------------------

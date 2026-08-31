@@ -594,3 +594,47 @@ test_that("priors with no observed_in_habitat column keep the pre-redesign blank
   row <- out[out$taxon_name == "Perca flavescens", ]
   expect_equal(row$prior_mean[1], 0.02, tolerance = 1e-8)  # old behavior retained
 })
+
+test_that("prior_branch gates promotion: only resident_observed rows are eligible (kernel schema, 2026-08-31)", {
+  # A transport-branch row below the singleton mean must NOT be promoted even
+  # with a habitat mismatch -- its magnitude is the design (the measured
+  # transport rate), not a habitat-extrapolation artifact.
+  pri <- .make_promo_priors(tibble(
+    taxon_name          = "Sus scrofa",
+    taxon_name_rank     = "species",
+    grid_id             = "Grid_41p4_m86p7",
+    main_habitat        = "Lentic",
+    alpha               = 0.01,
+    beta                = 9.99,
+    undetected_type     = NA_character_,
+    model_tier          = "tier1",           # legacy label alone would allow promotion
+    observed_in_habitat = FALSE,
+    prior_branch        = "transport"
+  ))
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Sus scrofa"), pri,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row <- out[out$taxon_name == "Sus scrofa", ]
+  expect_equal(row$prior_mean[1], 0.001, tolerance = 1e-8)   # NOT promoted
+
+  # A resident_observed row with a genuine habitat mismatch stays promotable.
+  pri2 <- .make_promo_priors(tibble(
+    taxon_name          = "Sus scrofa",
+    taxon_name_rank     = "species",
+    grid_id             = "Grid_41p4_m86p7",
+    main_habitat        = "Lentic",
+    alpha               = 0.01,
+    beta                = 9.99,
+    undetected_type     = NA_character_,
+    model_tier          = "tier1",
+    observed_in_habitat = FALSE,
+    prior_branch        = "resident_observed"
+  ))
+  out2 <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Sus scrofa"), pri2,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row2 <- out2[out2$taxon_name == "Sus scrofa", ]
+  expect_equal(row2$prior_mean[1], 0.02, tolerance = 1e-8)   # promoted
+})

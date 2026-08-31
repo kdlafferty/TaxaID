@@ -132,3 +132,40 @@ test_that("calibrate_kernel_bandwidth validates inputs", {
   expect_error(calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = -5),
                "lambda_grid")
 })
+
+test_that("generate_undetected_diversity() accepts a kernel-priors object (B5 port)", {
+  occ <- .mk_occ(c("A", "A", "A", "B", "C"),
+                 lat = 34 + (1:5) * 1e-6, lon = rep(-120, 5))
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                               site_id = "KTest")
+  ud <- suppressMessages(generate_undetected_diversity(kp))
+  # one mirror per neighborhood singleton (B, C) + one global floor
+  expect_equal(sum(ud$undetected_type == "singleton_mirror"), 2L)
+  expect_equal(sum(ud$undetected_type == "global_floor"), 1L)
+  # mirrors are stamped with the SITE id and focal habitat (not dropped-distant cells)
+  mir <- ud[ud$undetected_type == "singleton_mirror", ]
+  expect_true(all(mir$grid_id == "KTest"))
+  expect_true(all(mir$main_habitat == "Marine"))
+  expect_setequal(mir$source_taxon_name, c("B", "C"))
+  # mirror theta ~ singleton effective share (1/5 in the top-hat limit)
+  expect_equal(mir$theta_mean, rep(1 / 5, 2), tolerance = 1e-6)
+  # floor = Beta(1, N_eff - 1) on the Kish N
+  fl <- ud[ud$undetected_type == "global_floor", ]
+  expect_equal(fl$alpha, 1); expect_equal(fl$beta, 5 - 1)
+  expect_equal(fl$n_obs, 5L)
+  # frozen-machinery columns + new branch label both present
+  expect_true(all(ud$model_tier == "tier3_undetected"))
+  expect_true(all(ud$prior_branch == "resident_undetected"))
+  # taxonomy join still works through the adapter
+  tx <- data.frame(taxon_name = c("B", "C"), genus = c("Bg", "Cg"),
+                   family = c("Bf", "Cf"), stringsAsFactors = FALSE)
+  ud2 <- suppressMessages(generate_undetected_diversity(kp, taxonomy = tx))
+  mir2 <- ud2[ud2$undetected_type == "singleton_mirror", ]
+  expect_setequal(mir2$genus, c("Bg", "Cg"))
+})
+
+test_that("kernel priors carry observed_in_habitat = TRUE (join_priors D1 guard)", {
+  occ <- .mk_occ(c("A", "B"), c(34, 34), c(-120, -120))
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50)
+  expect_true(all(kp$priors$observed_in_habitat))
+})
