@@ -1289,8 +1289,18 @@ generate_domestic_food_priors <- function(
       } else {
         unname(kingdom_lookup[row$taxon_name])  # single-bracket: NA for an unmatched name, not an error
       }
+      # Normalize backbone kingdom vocabularies before comparing: NCBI says
+      # "Metazoa"/"Viridiplantae" where iNat (and GBIF) say "Animalia"/
+      # "Plantae" -- a vocabulary difference, not a homonym. (Real bug found
+      # 2026-08-31: every NCBI-taxonomy candidate, e.g. Gadus morhua, was
+      # wrongly flagged as a cross-kingdom homonym and lost its boost.)
+      .norm_kingdom <- function(k) {
+        if (is.na(k)) return(k)
+        map <- c(Metazoa = "Animalia", Viridiplantae = "Plantae")
+        if (k %in% names(map)) unname(map[[k]]) else k
+      }
       kingdom_mismatch <- !is.na(known_kingdom) && !is.na(inat_kingdom) &&
-        !identical(known_kingdom, inat_kingdom)
+        !identical(.norm_kingdom(known_kingdom), .norm_kingdom(inat_kingdom))
       if (isTRUE(kingdom_mismatch)) {
         warning(sprintf(
           paste0(
