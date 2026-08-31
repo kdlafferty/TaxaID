@@ -869,3 +869,69 @@ STILL OPEN from the B8 new-items list: veto-bound printer "weight above
 "Salvenlinus malma" upstream data quirk (harmless). NEXT: the post-Phase-2
 unobserved-taxa redesign -- decision points 1-5 queued above, one per
 discussion, now unblocked (post-fix numbers exist).
+
+### UNOBSERVED-TAXA REDESIGN: CURVE PRICING BUILT + GL-VALIDATED (2026-08-31)
+
+Design settled in-session (full derivation in chat; decision points 1-5 all
+resolved or dissolved):
+- DECISION 1 (branch budget): AUDITED, not enforced. Headline statistic in
+  COUNT units: sum(w) over named claimants vs Chao missing-species count
+  (theta_present = mass/Chao makes the two audits one identity). Enforcement
+  rejected: pool-dependent priors + erases the graded design + f1=0 zeroes
+  the branch.
+- REFINED FRAMEWORK (user, recorded): the proper P=1 composition is the
+  RESIDENT community (observed shares + GT unseen mass, interior not
+  enumerated). Non-regional species, invaders, transport (bleed/domestic/
+  food), contaminants sit OUTSIDE the simplex as presence-weighted
+  hypotheses on their own evidence scales -- commensurable units required
+  (rows meet in candidate sets; ratios decide), each branch calibrated
+  against its own measurement. Supersedes the 2026-08-30 "transport is part
+  of the composition" phrasing (operationally identical).
+- THETA_PRESENT: mass/Chao (2.04e-4 at GL) for ALL unseen claimants -- the
+  zero-record evidence caps share-if-present regardless of species identity
+  (P(0 records in n_eff=2963 | share s) ~ e^(-2963 s)); establishment
+  status raises w, never theta_present; abundance shows up in the reads.
+  Invader refinement (recency-limited n_eff, record-lag argument) noted,
+  needs eventDate (dropped from occurrences_clean) -- deferred.
+- PRICING: theta = w * theta_present, theta_absent = 0 (replaces the
+  floor-additive blend whose floor term dominated every row ~98%). ONE
+  presence-distance curve prices all unobserved claimants:
+  w = w_scale*exp(-min(d, d_cap)/d_half); named regional at real distance;
+  WATCH species: bandwidth stretched K_LIFT-fold (= log-space "halfway"
+  rho = 0.5; formally exp(-d/(k*lambda)) = [exp(-d/lambda)]^(1/k)) at their
+  own nearest-record distance; iNat w = 0.8 (own instrument); everything
+  else the DISTANCE CLAMP w_scale*exp(-d_cap/d_half) = 6.4e-5 (beyond the
+  instrument cap distance stops discriminating -- human-vector-dominated
+  tail). Settled: w_scale 0.05, d_half 150, d_cap 1000 km, K_LIFT 2.
+  reserve/N floor REJECTED by pressure test (N not enumerable; GL gave
+  N=7 -> w=1.03>1). Jeffreys guard: 0 confirmed of 221 clamped
+  non-regionals -> 2.3e-3 upper scale; tripwire if any is ever confirmed.
+- LATITUDE ANISOTROPY: estimate_kernel_priors(lambda_latitude=) +
+  calibrate grid (commit fb9e902) -- absolute-latitude climate factor,
+  hemisphere-symmetric. GL LOBO verdict: Inf (off) at regional scale;
+  intended scale is the continental curve (evidence generators; not yet
+  wired there).
+
+BUILT (commit 0499c24 + fastpath prototype, .bak_pre_curve_pricing):
+estimate_kernel_priors() emits f1/f2/chao_missing/theta_present;
+apply_undetected_evidence(pricing = "curve"); fastpath USE_CURVE_PRICING
+block (distances first over the FULL zero-bbox set incl. watch; watch
+k-lift; clamp rows; branch-budget audit print). NOT yet package-ified:
+clamp/watch-lift generators, per-species user w override (+provenance +
+veto-bound reporting), anisotropic curve in the generators.
+
+VALIDATED (fastpath 70.9 min incl. fresh 376-species distance pass; Lamar):
+co-detections 564 -> 594, ours_only 86 -> 102, precision 0.868 -> 0.853
+(>= 0.748 gate PASS), unique species 29 -> 33 (28/61 Lamar), missed 1/1081.
+STRICTLY ADDITIVE species change: +Percina maculata(8), +Paranotropis
+volucellus(4), +Pimephales vigilax(1), +Esox americanus(1 -- one of the six
+corrected-grid losses, recovered), 0 lost. Mechanism: floor-deflated
+evidence rows stop interfering in LCA contests, residents resolve finer.
+Audit at GL: sum(w) = 6.67 vs Chao 14.4 (within budget; iNat 4.0 of it).
+Baselines parked: *_consensus_final.rds.blend_pricing_20260831,
+*_taxaexpect_priors.rds.blend_pricing_20260831.
+
+STILL OWED: user verdict on adopting curve pricing as default; PtCon
+near-invariance control (gate d, both for kernel path and curve pricing);
+package-ification of the prototype pieces; A2 discovery-rate cross-check;
+manuscript methods rewrite (now covers GLMM deprecation + curve pricing).
