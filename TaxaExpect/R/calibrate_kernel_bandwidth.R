@@ -30,6 +30,12 @@
 #'   supplied, every (lambda, lambda_covariate, m) combination is scored; the
 #'   block's mean covariate value stands in for the "site" value. `NULL`
 #'   (default) disables the covariate factor.
+#' @param lambda_latitude_grid Optional numeric vector: candidate bandwidths
+#'   (km) for [estimate_kernel_priors()]'s climate-similarity factor on the
+#'   absolute-latitude difference. `Inf` (factor off) is always added to the
+#'   sweep so the no-factor case competes on equal footing -- a best row with
+#'   `lambda_latitude = Inf` means the data rejected the factor. `NULL`
+#'   (default) omits the dimension entirely.
 #' @param block_size_deg Numeric scalar: CV block size in degrees (default
 #'   `0.5`). A block enters scoring only if it holds at least
 #'   `min_block_records` records.
@@ -41,7 +47,8 @@
 #' @return A list with \describe{
 #'   \item{results}{Data frame: one row per parameter combination plus the
 #'     `regional` and `nearest_block` references; columns `lambda_km`,
-#'     `lambda_covariate`, `m`, `mean_logloss` (simple mean over blocks),
+#'     `lambda_covariate`, `lambda_latitude`, `m`, `mean_logloss` (simple
+#'     mean over blocks),
 #'     `weighted_logloss` (record-weighted), `blocks_beating_nearest`.}
 #'   \item{best}{The row minimizing `weighted_logloss` among kernel rows.}
 #'   \item{n_blocks}{Number of scored blocks.}
@@ -54,6 +61,7 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
                                        m_grid = 1,
                                        covariate_col = NULL,
                                        lambda_covariate_grid = NULL,
+                                       lambda_latitude_grid = NULL,
                                        block_size_deg = 0.5,
                                        min_block_records = 20L,
                                        smoothing = 0.5,
@@ -78,6 +86,16 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
       stop("lambda_covariate_grid (positive numerics) is required with covariate_col.")
   } else {
     lambda_covariate_grid <- NA_real_
+  }
+  if (!is.null(lambda_latitude_grid)) {
+    if (!is.numeric(lambda_latitude_grid) || any(lambda_latitude_grid <= 0))
+      stop("lambda_latitude_grid must be positive numerics (or NULL).")
+    # Include Inf explicitly so the factor-off case competes in the same sweep
+    # (exp(-x/Inf) = 1 reproduces the no-factor weights exactly).
+    if (!any(is.infinite(lambda_latitude_grid)))
+      lambda_latitude_grid <- c(lambda_latitude_grid, Inf)
+  } else {
+    lambda_latitude_grid <- NA_real_
   }
 
   hab <- occurrence_data[[habitat_col]]
@@ -117,6 +135,7 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
 
   grid <- expand.grid(lambda_km = lambda_grid,
                       lambda_covariate = unique(lambda_covariate_grid),
+                      lambda_latitude = unique(lambda_latitude_grid),
                       m = m_grid, KEEP.OUT.ATTRS = FALSE)
   n_par <- nrow(grid)
   # loss[block, config]; two extra columns for the references
@@ -136,6 +155,10 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
       if (use_cov && !is.na(grid$lambda_covariate[gi])) {
         w <- w * ifelse(is.na(cov_v[held]), 1,
                         exp(-abs(cov_v[held] - ci$ccov) / grid$lambda_covariate[gi]))
+      }
+      if (!is.na(grid$lambda_latitude[gi]) && is.finite(grid$lambda_latitude[gi])) {
+        w <- w * exp(-111 * abs(abs(lat[held]) - abs(ci$clat)) /
+                       grid$lambda_latitude[gi])
       }
       # m pseudo-records of held-out regional composition
       if (grid$m[gi] > 0) {
@@ -168,7 +191,8 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
                blocks_beating_nearest = colSums(loss[, seq_len(n_par), drop = FALSE] <
                                                   loss[, n_par + 2L]),
                stringsAsFactors = FALSE),
-    data.frame(lambda_km = NA_real_, lambda_covariate = NA_real_, m = NA_real_,
+    data.frame(lambda_km = NA_real_, lambda_covariate = NA_real_,
+               lambda_latitude = NA_real_, m = NA_real_,
                mean_logloss = c(mean(loss[, "regional"]), mean(loss[, "nearest_block"])),
                weighted_logloss = c(sum(loss[, "regional"] * n_target),
                                     sum(loss[, "nearest_block"] * n_target)) / sum(n_target),

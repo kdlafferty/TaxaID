@@ -169,3 +169,80 @@ test_that("kernel priors carry observed_in_habitat = TRUE (join_priors D1 guard)
   kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50)
   expect_true(all(kp$priors$observed_in_habitat))
 })
+
+# ------------------------------------------------------------------------------
+# Climate-similarity (absolute-latitude) kernel factor (2026-08-31)
+# ------------------------------------------------------------------------------
+
+test_that("lambda_latitude = NULL reproduces the unfactored weights exactly", {
+  occ <- .mk_occ(c("A", "B", "B"), lat = c(34, 35, 34),
+                 lon = c(-120, -120, -119))
+  kp0 <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0)
+  kp1 <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0,
+                                lambda_latitude = NULL)
+  expect_equal(kp0$priors$theta_mean, kp1$priors$theta_mean, tolerance = 1e-12)
+  expect_null(kp1$params$lambda_latitude)
+})
+
+test_that("lambda_latitude penalizes N-S displacement more than E-W", {
+  # A due north of the site, B due east, both exactly 111 km away: the
+  # geographic factor is identical, so only the climate factor separates them.
+  occ <- .mk_occ(c("A", "B"), lat = c(35, 34),
+                 lon = c(-120, -120 + 1 / cos(34 * pi / 180)))
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 100, m = 0,
+                               lambda_latitude = 111)
+  th <- kp$priors$theta_mean[match(c("A", "B"), kp$priors$taxon_name)]
+  # A carries the extra factor exp(-111*1/111) = exp(-1); B carries none.
+  expect_equal(th[1] / th[2], exp(-1), tolerance = 1e-6)
+})
+
+test_that("climate factor is hemisphere-symmetric (absolute latitude)", {
+  # site at 10 N; A at 10 S (|dlat| = 20 geographically, climate delta 0),
+  # B at 30 N (|dlat| = 20 geographically, climate delta 20 deg). Same
+  # longitude, same geographic distance -- only climate separates them.
+  occ <- .mk_occ(c("A", "B"), lat = c(-10, 30), lon = c(-120, -120))
+  kp <- estimate_kernel_priors(occ, 10, -120, "Marine", lambda_km = 1e9, m = 0,
+                               lambda_latitude = 555)
+  th <- kp$priors$theta_mean[match(c("A", "B"), kp$priors$taxon_name)]
+  # A: climate factor exp(0) = 1; B: exp(-111*20/555) = exp(-4)
+  expect_equal(th[1] / th[2], exp(4), tolerance = 1e-4)
+})
+
+test_that("calibrate_kernel_bandwidth sweeps lambda_latitude with an Inf off-switch", {
+  set.seed(42)
+  n <- 240
+  occ <- .mk_occ(sample(c("A", "B", "C"), n, replace = TRUE),
+                 lat = runif(n, 34, 36), lon = runif(n, -121, -119))
+  cal <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(50, 100),
+                                    lambda_latitude_grid = c(50),
+                                    block_size_deg = 0.5,
+                                    min_block_records = 10L)
+  expect_true("lambda_latitude" %in% names(cal$results))
+  # Inf added automatically: both 50 and Inf appear among kernel rows
+  ll <- cal$results$lambda_latitude
+  expect_true(any(is.infinite(ll[!is.na(ll)])))
+  expect_true(any(ll[!is.na(ll)] == 50))
+  # NULL grid still works and yields NA column (references) without the sweep
+  cal0 <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(50, 100),
+                                     block_size_deg = 0.5,
+                                     min_block_records = 10L)
+  expect_true(all(is.na(cal0$results$lambda_latitude)))
+})
+
+test_that("lambda_latitude = Inf in the sweep scores identically to no factor", {
+  set.seed(7)
+  n <- 200
+  occ <- .mk_occ(sample(c("A", "B"), n, replace = TRUE),
+                 lat = runif(n, 34, 36), lon = runif(n, -121, -119))
+  cal_off <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = 50,
+                                        block_size_deg = 0.5,
+                                        min_block_records = 10L)
+  cal_inf <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = 50,
+                                        lambda_latitude_grid = c(25),
+                                        block_size_deg = 0.5,
+                                        min_block_records = 10L)
+  off_ll <- cal_off$results$weighted_logloss[1]
+  inf_row <- which(is.infinite(cal_inf$results$lambda_latitude))
+  expect_equal(cal_inf$results$weighted_logloss[inf_row], off_ll,
+               tolerance = 1e-12)
+})

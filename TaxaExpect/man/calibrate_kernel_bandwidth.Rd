@@ -11,6 +11,7 @@ calibrate_kernel_bandwidth(
   m_grid = 1,
   covariate_col = NULL,
   lambda_covariate_grid = NULL,
+  lambda_latitude_grid = NULL,
   block_size_deg = 0.5,
   min_block_records = 20L,
   smoothing = 0.5,
@@ -35,6 +36,13 @@ supplied, every (lambda, lambda_covariate, m) combination is scored; the
 block's mean covariate value stands in for the "site" value. \code{NULL}
 (default) disables the covariate factor.}
 
+\item{lambda_latitude_grid}{Optional numeric vector: candidate bandwidths
+(km) for \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}'s climate-similarity factor on the
+absolute-latitude difference. \code{Inf} (factor off) is always added to the
+sweep so the no-factor case competes on equal footing -- a best row with
+\code{lambda_latitude = Inf} means the data rejected the factor. \code{NULL}
+(default) omits the dimension entirely.}
+
 \item{block_size_deg}{Numeric scalar: CV block size in degrees (default
 \code{0.5}). A block enters scoring only if it holds at least
 \code{min_block_records} records.}
@@ -49,7 +57,8 @@ a predicted composition, so held-out species never score \code{-Inf}
 A list with \describe{
 \item{results}{Data frame: one row per parameter combination plus the
 \code{regional} and \code{nearest_block} references; columns \code{lambda_km},
-\code{lambda_covariate}, \code{m}, \code{mean_logloss} (simple mean over blocks),
+\code{lambda_covariate}, \code{lambda_latitude}, \code{m}, \code{mean_logloss} (simple
+mean over blocks),
 \code{weighted_logloss} (record-weighted), \code{blocks_beating_nearest}.}
 \item{best}{The row minimizing \code{weighted_logloss} among kernel rows.}
 \item{n_blocks}{Number of scored blocks.}

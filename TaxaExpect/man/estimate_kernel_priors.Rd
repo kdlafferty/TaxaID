@@ -14,6 +14,7 @@ estimate_kernel_priors(
   covariate_col = NULL,
   site_covariate = NULL,
   lambda_covariate = NULL,
+  lambda_latitude = NULL,
   site_id = NULL,
   taxon_col = "taxon_name",
   lat_col = "decimalLatitude",
@@ -52,6 +53,14 @@ covariate's own units. Required when \code{covariate_col} is supplied.
 Records with \code{NA} covariate values receive the neutral weight 1 for the
 covariate factor (distance factor still applies) rather than being
 dropped.}
+
+\item{lambda_latitude}{Optional numeric scalar. Bandwidth (km) for a
+climate-similarity factor \verb{exp(-111 * ||lat| - |site_lat|| / lambda_latitude)} on the ABSOLUTE latitude difference -- records from
+the site's own climate band (same |latitude|, either hemisphere) keep
+full weight while records poleward/equatorward of it decay, making
+north-south kilometers cost more than east-west kilometers. \code{NULL}
+(default) disables the factor. Tunable via
+\code{\link[=calibrate_kernel_bandwidth]{calibrate_kernel_bandwidth()}}'s \code{lambda_latitude_grid}.}
 
 \item{site_id}{Character scalar. Identifier stamped on the output rows'
 \code{grid_id} column (kept under that name for downstream join

@@ -71,6 +71,14 @@
 #'   Records with `NA` covariate values receive the neutral weight 1 for the
 #'   covariate factor (distance factor still applies) rather than being
 #'   dropped.
+#' @param lambda_latitude Optional numeric scalar. Bandwidth (km) for a
+#'   climate-similarity factor `exp(-111 * ||lat| - |site_lat|| /
+#'   lambda_latitude)` on the ABSOLUTE latitude difference -- records from
+#'   the site's own climate band (same |latitude|, either hemisphere) keep
+#'   full weight while records poleward/equatorward of it decay, making
+#'   north-south kilometers cost more than east-west kilometers. `NULL`
+#'   (default) disables the factor. Tunable via
+#'   [calibrate_kernel_bandwidth()]'s `lambda_latitude_grid`.
 #' @param site_id Character scalar. Identifier stamped on the output rows'
 #'   `grid_id` column (kept under that name for downstream join
 #'   compatibility; the value is treated as opaque everywhere downstream).
@@ -113,6 +121,7 @@ estimate_kernel_priors <- function(occurrence_data,
                                    covariate_col = NULL,
                                    site_covariate = NULL,
                                    lambda_covariate = NULL,
+                                   lambda_latitude = NULL,
                                    site_id = NULL,
                                    taxon_col = "taxon_name",
                                    lat_col = "decimalLatitude",
@@ -148,6 +157,8 @@ estimate_kernel_priors <- function(occurrence_data,
     .chk_num(site_covariate, "site_covariate")
     .chk_num(lambda_covariate, "lambda_covariate", min_ok = .Machine$double.eps)
   }
+  if (!is.null(lambda_latitude))
+    .chk_num(lambda_latitude, "lambda_latitude", min_ok = .Machine$double.eps)
   if (!is.numeric(support_weight) || length(support_weight) != 1L ||
       is.na(support_weight) || support_weight <= 0 || support_weight > 1)
     stop("support_weight must be a single numeric in (0, 1].")
@@ -171,6 +182,16 @@ estimate_kernel_priors <- function(occurrence_data,
     cv <- rec[[covariate_col]]
     w_cov <- ifelse(is.na(cv), 1, exp(-abs(cv - site_covariate) / lambda_covariate))
     w <- w * w_cov
+  }
+  if (!is.null(lambda_latitude)) {
+    # Climate-similarity factor on ABSOLUTE latitude difference: two records at
+    # the same |latitude| share a climate band regardless of hemisphere (a
+    # 42 deg S temperate source is climatically ~0 deg from a 42 deg N site,
+    # not 84 deg). Deliberately double-counts the N-S displacement already
+    # inside d_km -- the product of the two decays is the intended anisotropy
+    # (N-S km cost more than E-W km), same construction as the covariate
+    # factor. lambda_latitude = NULL (default) disables it exactly.
+    w <- w * exp(-111 * abs(abs(rec[[lat_col]]) - abs(site_lat)) / lambda_latitude)
   }
   W <- sum(w)
   if (W <= 0) stop("All kernel weights are zero -- check coordinates and lambda_km.")
@@ -248,6 +269,7 @@ estimate_kernel_priors <- function(occurrence_data,
                   covariate_col = covariate_col,
                   site_covariate = site_covariate,
                   lambda_covariate = lambda_covariate,
+                  lambda_latitude = lambda_latitude,
                   support_weight = support_weight,
                   n_records_stratum = nrow(rec))
   ), class = "taxaexpect_kernel_priors")
@@ -259,9 +281,13 @@ print.taxaexpect_kernel_priors <- function(x, ...) {
     "taxaexpect_kernel_priors: %d taxa at %s (%s)\n  n_eff = %.0f effective records (of %d in stratum), lambda = %g km%s, m = %g\n  singletons: %d, Good-Turing missing mass: %.3g\n",
     nrow(x$priors), x$params$site_id, x$params$site_habitat,
     x$n_eff, x$params$n_records_stratum, x$params$lambda_km,
-    if (!is.null(x$params$covariate_col))
-      sprintf(", %s kernel lambda = %g", x$params$covariate_col,
-              x$params$lambda_covariate) else "",
+    paste0(
+      if (!is.null(x$params$covariate_col))
+        sprintf(", %s kernel lambda = %g", x$params$covariate_col,
+                x$params$lambda_covariate) else "",
+      if (!is.null(x$params$lambda_latitude))
+        sprintf(", |lat| kernel lambda = %g km", x$params$lambda_latitude)
+      else ""),
     x$params$m, nrow(x$singletons), x$missing_mass))
   invisible(x)
 }
