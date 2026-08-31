@@ -500,6 +500,7 @@ apply_undetected_evidence <- function(
     theta_mean       = .beta_mean(alpha_new, beta_new),
     theta_sd         = .beta_sd(alpha_new, beta_new),
     model_tier       = "tier_undetected_evidence",
+    prior_branch     = "resident_undetected",
     undetected_type  = "evidence_blend",
     evidence_weight  = w_combined_vec,
     evidence_sources = sources_vec,

@@ -118,6 +118,43 @@ test_that("evaluate_reference_accessions(barcode_term =) trims an over-length qu
   expect_lt(nchar(seen_sequence), nchar(g$genome))
 })
 
+test_that(".trim_queries_to_amplicon() isolates a per-accession extraction error instead of crashing the whole batch", {
+  skip_if_not_installed("Biostrings")
+  # Reproduces a real production crash (2026-08-30, PtConception 12S screen,
+  # chunk 1/5 of a 200-accession batch): one accession's amplicon-extraction
+  # coordinate math threw Biostrings::subseq()'s "Invalid sequence
+  # coordinates" error, and with no per-accession isolation this aborted the
+  # ENTIRE chunk -- losing progress on every other accession in it, not just
+  # the one bad record. Confirms the fix: a per-accession error now degrades
+  # to "leave this one sequence untrimmed" (the same fallback an ordinary
+  # "primers not found" result gets), and a second, unrelated over-length
+  # sequence in the same batch is still processed normally.
+  g <- .build_genome_tm()
+
+  call_n <- 0L
+  mock_extract <- function(seq_char, ...) {
+    call_n <<- call_n + 1L
+    if (call_n == 1L) {
+      stop(paste0(
+        "Invalid sequence coordinates.\n",
+        "  Please make sure the supplied 'start', 'end' and 'width' arguments\n",
+        "  are defining a region that is within the limits of the sequence.."
+      ))
+    }
+    list(sequence = g$amplicon, trimmed = TRUE, note = "extracted_via_primer_match_sense_strand")
+  }
+  local_mocked_bindings(.extract_amplicon_one_tm = mock_extract, .package = "TaxaMatch")
+
+  sequences <- c(g$genome, g$genome)
+  out <- NULL
+  expect_no_error(
+    out <- .trim_queries_to_amplicon(sequences, barcode_term = "MiFishU", verbose = FALSE)
+  )
+
+  expect_equal(out[1], g$genome)    # the crashing sequence: left untrimmed, not lost
+  expect_equal(out[2], g$amplicon)  # a second, unrelated sequence: still processed normally
+})
+
 test_that("evaluate_reference_accessions() with barcode_term = NULL (default) submits queries at full length, unchanged", {
   skip_if_not_installed("Biostrings")
   g <- .build_genome_tm()

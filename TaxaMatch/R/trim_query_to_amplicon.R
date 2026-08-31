@@ -174,9 +174,24 @@
   n_trimmed <- 0L
   fail_notes <- character(0L)
   for (i in which(needs_trim)) {
-    result <- .extract_amplicon_one_tm(
-      seq_char = sequences[i], fwd_pattern = primer_info$fwd, rev_pattern_rc = rev_rc,
-      fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = span_min, max_len = span_max
+    # tryCatch, not just the bounds guard inside .extract_amplicon_one_tm()
+    # itself: a real production run crashed an entire 200-accession BLAST
+    # chunk on one accession's coordinate math (IRanges "Invalid sequence
+    # coordinates" from Biostrings::subseq()), with no per-accession
+    # isolation -- this restores the guarantee this function's own roxygen
+    # already documents ("this function only ever shortens a query, never
+    # discards or errors on one it can't trim"): any unforeseen extraction
+    # failure degrades to leaving that one sequence untrimmed, exactly like
+    # a normal "primers not found" result, instead of aborting the caller.
+    result <- tryCatch(
+      .extract_amplicon_one_tm(
+        seq_char = sequences[i], fwd_pattern = primer_info$fwd, rev_pattern_rc = rev_rc,
+        fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = span_min, max_len = span_max
+      ),
+      error = function(e) {
+        list(sequence = NA_character_, trimmed = FALSE,
+             note = paste0("extraction_error: ", conditionMessage(e)))
+      }
     )
     if (result$trimmed) {
       out[i] <- result$sequence

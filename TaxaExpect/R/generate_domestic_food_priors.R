@@ -1326,6 +1326,7 @@ generate_domestic_food_priors <- function(
         theta_mean                = .beta_mean(alpha_i, beta_i),
         theta_sd                  = .beta_sd(alpha_i, beta_i),
         model_tier                = "tier_domestic_food",
+        prior_branch              = "transport",
         prior_source_type         = category,
         cultivar_evidence_source  = row$cultivar_evidence_source,
         inat_n_observations_local = n_local,
