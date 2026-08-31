@@ -812,3 +812,31 @@ NEW ITEMS from the run:
 - Fixed live during B8: kingdom-vocabulary false homonym in
   generate_domestic_food_priors (Metazoa vs Animalia -- commit 2aa685a);
   fastpath read_depth join gap.
+
+### B7 DONE -- GENTLE GLMM DEPRECATION (2026-08-31, follow-on session)
+
+Shipped the "gentle" form (full archival deferred to PtCon migration, since
+PtCon/Mugu still run the GLMM path while NCBI-throttled):
+- All 9 GLMM-chain functions (build_priors, optimize_grid_size,
+  prepare_model_dataframe, add_pca_covariates, compute_moran_basis,
+  screen_spatial_formula, train_biodiversity_model,
+  train_biodiversity_model_by_group, generate_full_priors) emit a
+  once-per-session rlang::inform() notice (shared .frequency_id, new internal
+  .glmm_deprecation_notice()) + roxygen @section Deprecated pointing at
+  estimate_kernel_priors()/calibrate_kernel_bandwidth(). Zero behavior change.
+- model_tier doc-deprecated on its four emitters; vocabulary retires fully at
+  archival.
+- Records: NAME_CHANGE_HISTORY.md row, TaxaID/CLAUDE.md breaking-changes row,
+  TaxaExpect/CLAUDE.md top note. Manuscript supplemental methods still
+  describe the GLMM -- rewrite remains flagged, its own task.
+- devtools::test() 773/0; devtools::check() 0/0/1 (environmental note).
+- REMAINING at archival time (PtCon migration): move the chain + its tests to
+  an archive dir; retire model_tier emission + join_priors()'s model_tier
+  value checks; rewrite supplemental methods.
+
+NEXT UP (user's 2026-08-31 ordering): posthoc Axis-1 recalibration (the
+873/885 "unprecedented" semantics shift -- kernel tables name only
+locally-evidenced species, so add_posthoc_assessment()'s
+"has occurrence record" concept needs rebasing), then the post-Phase-2
+unobserved-taxa redesign (the framework decision points queued above).
+Iterate via GreatLakes_kernel_fastpath.R (zero NCBI, ~minutes).

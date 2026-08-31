@@ -72,7 +72,11 @@ row to match \code{TaxaAssign::join_priors()}'s composite join key.}
 entirely when \code{model_obj} has no habitat concept).}
 \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 \item{theta_mean, theta_sd}{Derived from alpha/beta.}
-\item{model_tier}{Always \code{"tier_undetected_evidence"}.}
+\item{model_tier}{Always \code{"tier_undetected_evidence"}. Deprecated
+vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
+output replaces \code{model_tier} with \code{prior_branch} +
+\code{effective_records}; this column is retained only while
+the GLMM path remains in use.}
 \item{undetected_type}{Always \code{"evidence_blend"} -- a new value
 alongside \code{"singleton_mirror"}/\code{"global_floor"}.}
 \item{evidence_weight}{The combined \code{w_combined} for this taxon

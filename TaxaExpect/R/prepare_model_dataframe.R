@@ -162,12 +162,26 @@ utils::globalVariables(c(
 #' @importFrom tidyr complete nesting replace_na
 #' @importFrom rlang sym :=
 #' @importFrom stats cor
+#' @section Deprecated (kernel-priors redesign, 2026-08-31):
+#' This function is part of the grid/GLMM prior-fitting path, which is
+#' deprecated in favor of site-centered kernel estimation -- see
+#' \code{\link{estimate_kernel_priors}} and
+#' \code{\link{calibrate_kernel_bandwidth}}. Leave-one-block-out
+#' validation on real data found single-cell prediction scored worse than
+#' ignoring space entirely, while the kernel estimator improved both
+#' composition prediction and downstream assignment precision. The GLMM
+#' path remains fully functional (existing workflows still run it) and
+#' emits a once-per-session notice; it will be archived once remaining
+#' workflows migrate.
+#'
 #' @export
 prepare_model_dataframe <- function(data,
                                     covariates    = c("lat_r", "lon_r"),
                                     habitat_col   = "main_habitat",
                                     cor_threshold = 0.7,
                                     sampling_group_col = NULL) {
+
+  .glmm_deprecation_notice("prepare_model_dataframe")
 
   # --- Required column check --------------------------------------------------
   # habitat_col = NULL means "no habitat modeling" -- the caller has no habitat

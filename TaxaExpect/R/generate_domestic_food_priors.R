@@ -969,7 +969,10 @@
 #'     \item{model_tier}{Always \code{"tier_domestic_food"} -- deliberately
 #'       distinct from \code{"tier3_undetected"} so downstream code can
 #'       tell a named domestic/food prior apart from an anonymous dark-
-#'       diversity proxy.}
+#'       diversity proxy. Deprecated vocabulary (kernel-priors redesign,
+#'       2026-08-31): kernel-path output replaces \code{model_tier} with
+#'       \code{prior_branch} + \code{effective_records}; this column is
+#'       retained only while the GLMM path remains in use.}
 #'     \item{prior_source_type}{One of \code{"domestic_animal"},
 #'       \code{"food_species"}, \code{"domestic_plant"} -- the categorical
 #'       column this function exists to add. \code{"domestic_plant"} is

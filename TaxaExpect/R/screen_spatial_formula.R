@@ -108,6 +108,18 @@
 #' @importFrom stats AIC logLik as.formula
 #' @importFrom glmmTMB VarCorr
 #'
+#' @section Deprecated (kernel-priors redesign, 2026-08-31):
+#' This function is part of the grid/GLMM prior-fitting path, which is
+#' deprecated in favor of site-centered kernel estimation -- see
+#' \code{\link{estimate_kernel_priors}} and
+#' \code{\link{calibrate_kernel_bandwidth}}. Leave-one-block-out
+#' validation on real data found single-cell prediction scored worse than
+#' ignoring space entirely, while the kernel estimator improved both
+#' composition prediction and downstream assignment precision. The GLMM
+#' path remains fully functional (existing workflows still run it) and
+#' emits a once-per-session notice; it will be archived once remaining
+#' workflows migrate.
+#'
 #' @export
 screen_spatial_formula <- function(data,
                                    formula_full,
@@ -115,6 +127,8 @@ screen_spatial_formula <- function(data,
                                    delta_aic_max = 2.0,
                                    verbose       = TRUE,
                                    ...) {
+
+  .glmm_deprecation_notice("screen_spatial_formula")
 
   # Capture ... and strip any arguments that belong to screen_spatial_formula
   # only (verbose, sd_threshold, delta_aic_max). If users call via do.call()

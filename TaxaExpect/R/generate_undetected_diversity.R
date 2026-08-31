@@ -75,7 +75,11 @@
 #'     \item{theta_sd}{Derived: SD of Beta(alpha, beta).}
 #'     \item{n_obs}{Total community count N at the source cell, or N_total
 #'       for the global floor.}
-#'     \item{model_tier}{Always "tier3_undetected".}
+#'     \item{model_tier}{Always "tier3_undetected". Deprecated
+#'       vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
+#'       output replaces \code{model_tier} with \code{prior_branch} +
+#'       \code{effective_records}; this column is retained only while
+#'       the GLMM path remains in use.}
 #'     \item{undetected_type}{Character: "singleton_mirror" or
 #'       "global_floor".}
 #'     \item{source_taxon_name}{Taxon name of the singleton source, or NA for

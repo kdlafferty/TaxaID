@@ -72,3 +72,31 @@
     stringsAsFactors = FALSE
   )
 }
+
+#' Once-per-session deprecation notice for the GLMM prior-fitting path
+#'
+#' B7 of the kernel-priors redesign (2026-08-31): the grid/GLMM fitting chain
+#' is deprecated in favor of estimate_kernel_priors() +
+#' calibrate_kernel_bandwidth(). The GLMM path stays functional (a message,
+#' never a warning or error) until the remaining production workflows
+#' (PtConception, Mugu) migrate to the kernel estimator, at which point the
+#' chain moves to an archive directory (DECIPHER-module precedent).
+#' One shared .frequency_id so a full GLMM pipeline run emits the notice once,
+#' not once per stage.
+#' @param fn_name Character scalar, the user-facing function name (no parens).
+#' @return Invisibly, NULL.
+#' @noRd
+.glmm_deprecation_notice <- function(fn_name) {
+  rlang::inform(
+    message = paste0(
+      fn_name, "() is part of the deprecated GLMM prior-fitting path. ",
+      "New analyses should use estimate_kernel_priors() and ",
+      "calibrate_kernel_bandwidth() instead (kernel-priors redesign, ",
+      "2026-08-31). The GLMM path remains functional until existing ",
+      "workflows migrate."
+    ),
+    .frequency = "once",
+    .frequency_id = "taxaexpect_glmm_path_deprecation"
+  )
+  invisible(NULL)
+}

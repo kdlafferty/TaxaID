@@ -96,7 +96,11 @@ A tibble with one row per taxon_name x site x habitat combination
 \item{theta_sd}{Derived: SD of Beta(alpha, beta). Reflects model
 uncertainty at this site, not sampling effort.}
 \item{n_obs}{n_total_at_site from new_sites if present, otherwise NA.}
-\item{model_tier}{"tier1", "tier2", or "tier3_undetected".}
+\item{model_tier}{"tier1", "tier2", or "tier3_undetected". Deprecated
+vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
+output replaces \code{model_tier} with \code{prior_branch} +
+\code{effective_records}; this column is retained only while
+the GLMM path remains in use.}
 \item{effort_flag}{Logical: was N below the training effort threshold?
 NA if n_total_at_site was not supplied in new_sites.}
 \item{observed_in_habitat}{Logical: was this taxon_name ever
@@ -192,6 +196,20 @@ If passing directly to \code{TaxaAssign::join_priors()} (which requires
 \code{TaxaTools::create_taxon_names(priors, rank_system)} to add the column.
 The \code{\link{build_priors}} wrapper handles this automatically.
 }
+\section{Deprecated (kernel-priors redesign, 2026-08-31)}{
+
+This function is part of the grid/GLMM prior-fitting path, which is
+deprecated in favor of site-centered kernel estimation -- see
+\code{\link{estimate_kernel_priors}} and
+\code{\link{calibrate_kernel_bandwidth}}. Leave-one-block-out
+validation on real data found single-cell prediction scored worse than
+ignoring space entirely, while the kernel estimator improved both
+composition prediction and downstream assignment precision. The GLMM
+path remains fully functional (existing workflows still run it) and
+emits a once-per-session notice; it will be archived once remaining
+workflows migrate.
+}
+
 \examples{
 \dontrun{
 priors <- generate_full_priors(

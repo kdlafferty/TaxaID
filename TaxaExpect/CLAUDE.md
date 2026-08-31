@@ -1,6 +1,26 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-30/31 overnight (Fable 5, branch kernel-priors -- PHASE 2 of
+# Last updated: 2026-08-31 (Fable 5, branch kernel-priors -- B7 GENTLE GLMM
+# DEPRECATION: the whole grid/GLMM prior-fitting chain (build_priors,
+# optimize_grid_size, prepare_model_dataframe, add_pca_covariates,
+# compute_moran_basis, screen_spatial_formula, train_biodiversity_model,
+# train_biodiversity_model_by_group, generate_full_priors) now emits a
+# once-per-session rlang::inform() deprecation notice (shared .frequency_id via
+# new internal .glmm_deprecation_notice() in utils_internal.R -- one line per
+# session, not nine) plus a roxygen @section Deprecated pointing at
+# estimate_kernel_priors()/calibrate_kernel_bandwidth(). ZERO behavior change --
+# gentle by design: PtCon/Mugu workflows still run the GLMM path, so full
+# archival (DECIPHER-module precedent, per the user's Phase-2 verdict (b)) is
+# deferred to the PtCon kernel migration. model_tier doc-deprecated on all four
+# emitters (generate_full_priors, generate_undetected_diversity,
+# apply_undetected_evidence, generate_domestic_food_priors) -- kernel schema is
+# prior_branch + effective_records. devtools::test() 773/0 (40 warns = the
+# pre-existing glmmTMB/TMB version-mismatch noise), devtools::check() 0/0/1
+# (pre-existing environmental timestamp note). NAME_CHANGE_HISTORY.md +
+# TaxaID/CLAUDE.md breaking-changes rows added. STILL FLAGGED: the manuscript
+# supplemental methods (inst/TaxaExpect_supplemental_methods.md) describe the
+# GLMM -- rewrite is its own future task, per the verdict.)
+# Previous update: 2026-08-30/31 overnight (Fable 5, branch kernel-priors -- PHASE 2 of
 # the kernel-priors redesign BEGUN: NEW estimate_kernel_priors() +
 # calibrate_kernel_bandwidth() (R/estimate_kernel_priors.R,
 # R/calibrate_kernel_bandwidth.R), the site-centered distance-kernel estimator
