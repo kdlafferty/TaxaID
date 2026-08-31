@@ -233,9 +233,15 @@ apply_undetected_evidence <- function(
     main_habitat = NULL,
     taxonomy     = NULL
 ) {
-  if (!inherits(model_obj, "biofreq_model")) {
+  if (inherits(model_obj, "taxaexpect_kernel_priors")) {
+    # Kernel-priors adapter (Phase 2, 2026-08-31): only the habitat concept is
+    # read from model_obj here; kernel estimates are always habitat-stratified.
+    model_obj <- list(meta = list(habitat_col = "main_habitat"))
+    class(model_obj) <- "biofreq_model_shim"
+  } else if (!inherits(model_obj, "biofreq_model")) {
     stop("apply_undetected_evidence: model_obj must be a biofreq_model ",
-         "object from train_biodiversity_model().")
+         "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
+         "object from estimate_kernel_priors().")
   }
   if (!is.data.frame(taxaexpect_priors)) {
     stop("apply_undetected_evidence: taxaexpect_priors must be a data frame.")

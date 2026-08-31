@@ -1060,9 +1060,16 @@ generate_domestic_food_priors <- function(
     api_token             = Sys.getenv("INAT_API_TOKEN"),
     verbose               = FALSE
 ) {
-  if (!inherits(model_obj, "biofreq_model")) {
+  if (inherits(model_obj, "taxaexpect_kernel_priors")) {
+    # Kernel-priors adapter (Phase 2, 2026-08-31): N = Kish effective sample
+    # size; habitat concept always present on kernel estimates.
+    model_obj <- list(N_total = as.integer(model_obj$params$n_records_stratum),
+                      meta = list(habitat_col = "main_habitat"))
+    class(model_obj) <- "biofreq_model_shim"
+  } else if (!inherits(model_obj, "biofreq_model")) {
     stop("generate_domestic_food_priors: model_obj must be a biofreq_model ",
-         "object from train_biodiversity_model().")
+         "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
+         "object from estimate_kernel_priors().")
   }
   if (!is.numeric(lat) || length(lat) != 1L || is.na(lat)) {
     stop("generate_domestic_food_priors: `lat` must be a single non-NA numeric value.")

@@ -1,6 +1,39 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-21, continued (Sonnet 5 -- convert_taxonomy_backbone()'s rank-
+# Last updated: 2026-08-30 (Sonnet 5 -- real production crash fixed in
+# .trim_queries_to_amplicon()/.extract_amplicon_one_tm() (R/trim_query_to_amplicon.R),
+# found live: `evaluate_reference_accessions(barcode_term = "MiFishU")` on a real
+# PtConception 995-accession screen crashed chunk 1/5 (200 accessions) with a bare
+# IRanges "Invalid sequence coordinates" error from `Biostrings::subseq()`, killing the
+# whole chunk on one bad accession -- 101 accessions from earlier calls stayed safely
+# cached, but the in-flight chunk's progress was lost entirely, with no way to identify
+# or skip just the offending accession. Root cause not fully pinned to a single
+# reproducible trigger (the coordinate math in `.extract_amplicon_one_tm()` is
+# structurally supposed to keep `fwd_start`/`rev_end` within the subject sequence's own
+# bounds, since both come from `Biostrings::matchPattern()` hits on that same subject --
+# but real production data hit an inconsistent state regardless). Fixed at both layers,
+# per this function's own already-documented "never discards or errors, only shortens or
+# leaves unchanged" contract: (1) an explicit bounds/ordering guard
+# (`fwd_start < 1L || rev_end > seq_len || fwd_start > rev_end`) before the `subseq()`
+# call, converting an invalid span into the same "primers not found" outcome an ordinary
+# no-match already gets; (2) a `tryCatch()` around each per-accession call inside
+# `.trim_queries_to_amplicon()`'s loop, so ANY unforeseen extraction error (not just the
+# specific coordinate case the guard targets) degrades to leaving that one sequence
+# untrimmed rather than aborting the whole batch -- restoring genuine per-accession
+# isolation, matching the same pattern already used elsewhere in this file for fetch
+# failures. New regression test
+# (`test-trim-query-to-amplicon.R`, ".trim_queries_to_amplicon() isolates a per-accession
+# extraction error instead of crashing the whole batch") mocks `.extract_amplicon_one_tm()`
+# to throw on the first of two sequences, confirming the first is left untrimmed and the
+# second is still processed normally. No cache-version bump needed -- the only behavior
+# change is that a previously-crashing (never-cached) accession now succeeds; every
+# already-cached row is unaffected. `devtools::test()` 886/886 (0 failures, 0 warnings, up
+# from 883), `devtools::check()` 0/0/0, reinstalled and verified at
+# `~/Library/R/4.0/library` (`Built` timestamp 2026-08-31 01:52:40 UTC). The user's blocked
+# PtConception `evaluate_reference_accessions()` run (995 unique accessions, 101 already
+# cached) can now be safely re-run from where it left off -- the persistent cache means
+# the 101 cached accessions won't be re-BLASTed.
+# Previous update, 2026-08-21, continued (Sonnet 5 -- convert_taxonomy_backbone()'s rank-
 # collapse fix (this file's own entry directly below) was verified against a REAL re-run of
 # the GreatLakes2023 production workflow and still found 33 stale `taxon_name = "Ictalurus"`/
 # `taxon_name_rank = "species"` rows -- the first fix was real but INCOMPLETE, not a stale-

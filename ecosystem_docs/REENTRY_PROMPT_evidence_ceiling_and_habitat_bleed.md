@@ -737,3 +737,40 @@ TODO (dependency order):
 - B8. GL workflow switch + validation gates (LOCO <= 3.267; Lamar precision
   >= 0.748; runtime seconds). Then PtCon control (verdict d).
 - B9. Commit conversation: branch inherited a large uncommitted backlog.
+
+### Interim bleed behavior under the kernel path (2026-08-31, user-acknowledged)
+
+The kernel estimator stratifies to the focal habitat, so wrong-habitat
+species have NO resident row -- join_priors clause (b) promotion retires
+itself (nothing to promote). Interim: listed domestic species keep transport
+rows (~5x floor, close to the measured bleed rate); UNLISTED wild bleeders
+(elk/woodrat/coyote-class) fall to the dark floor until the bleed generator
+exists. REQUIREMENT for the future bleed generator (post-Phase-2 Question B
+work): restore coverage for unlisted wild bleeders via the measured
+transport budget + within-clade allocation.
+
+### B8 progress (2026-08-31)
+
+- apply_undetected_evidence() + generate_domestic_food_priors() gained kernel
+  adapters (read only habitat concept / N; class shim). REAL-DATA COHERENCE
+  BUG found in the B5 adapter via dry run and FIXED: mapping the floor's N to
+  n_eff inverted the floor/ceiling interval (distance-discounted singleton
+  shares sit below 1/n_eff). Two scales now: floor N = raw stratum record
+  count ("one detection across all available effort", 1.62e-4 at GL);
+  ceiling = site-scale mirror shares (~2.9e-4). Verified to the digit:
+  evidence theta = floor + w*(ceiling - floor) exactly. Top-hat limit
+  unchanged (scales coincide).
+- Full kernel Step 5 dry-run on real GL data PASSED end to end: calibration
+  (best 100km x depth 25, LOBO 3.214 -- beats the Phase-1 3.267 baseline
+  already), assembly (86 resident + 13 undetected rows), domestic generator
+  (2 transport rows), applier (synthetic watch evidence, coherent blend).
+- GL WORKFLOW SWITCHED: USE_KERNEL_PRIORS <- TRUE branch in Step 5 (GLMM
+  path retained in the else until PtCon migrates -- B7 deferred, "gentle");
+  model_fit aliased to the kernel object so all downstream model_obj
+  consumers run through the adapters unchanged; session metadata records
+  bandwidths/n_eff on the kernel path. Backup:
+  *.bak_pre_kernel_switch. GLMM-path outputs parked as
+  *.glmm_path_20260831 (the B8 comparison baseline).
+- NEXT: user reinstalls TaxaExpect+TaxaAssign (no live NCBI/R jobs), runs GL
+  from Step 5, we score the gates (Lamar >= 0.748 precision; runtime;
+  branch-budget audit) against the parked baseline.

@@ -167,7 +167,14 @@ generate_undetected_diversity <- function(model_obj,
     # improvement over the grid world, where mirrors carried their own distant
     # cells and a focal-grid filter dropped them all.
     kp <- model_obj
-    N_total <- as.integer(round(kp$n_eff))
+    # Two scales, deliberately (found via real-data dry run 2026-08-31): the
+    # FLOOR uses the raw stratum record count ("one detection across all
+    # sampling effort available to this neighborhood"), while mirrors carry
+    # site-scale effective shares (~1/n_eff). Mapping both to n_eff inverts
+    # the floor/ceiling interval, because distance-discounted singleton
+    # shares can sit below 1/n_eff. In the top-hat limit the two scales
+    # coincide and everything reduces to the classical grid quantities.
+    N_total <- as.integer(kp$params$n_records_stratum)
     habitat_col <- "main_habitat"
     sing <- kp$singletons
     singletons <- tibble::tibble(
