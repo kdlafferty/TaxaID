@@ -935,3 +935,52 @@ STILL OWED: user verdict on adopting curve pricing as default; PtCon
 near-invariance control (gate d, both for kernel path and curve pricing);
 package-ification of the prototype pieces; A2 discovery-rate cross-check;
 manuscript methods rewrite (now covers GLMM deprecation + curve pricing).
+
+### ADOPTION + PACKAGE-IFICATION + PTCON CONTROL (2026-08-31, closing the arc)
+
+USER VERDICTS: curve pricing ADOPTED as GL default (ported to the full
+workflow's 7a.7b-e, branch on USE_KERNEL_PRIORS, backup
+.bak_pre_curve_pricing; legacy blend in the else); PtCon control next;
+package-ify generators + user-w.
+
+PACKAGE-IFIED (commit 52fd9e0, TaxaExpect 818/0, check 0/0/0, reinstalled):
+- generate_presence_curve_evidence(): one curve serves clamp (no distances),
+  plain regional pricing (distances, k=1), and the listed-invader lift
+  (distances, k>1). w_scale required (no default, calibration-forcing).
+- generate_user_specified_evidence(): named w vector -> provenance rows
+  (source = "user_specified") + dilution-threshold (1/9) disclosure message.
+- apply_undetected_evidence() curve mode no longer requires a global_floor
+  anchor row (anchors gated to blend mode; curve printer anchors on the
+  kernel object's own singleton scale).
+- Fastpath + workflow both call the real generators. VERIFIED: fastpath
+  re-run reproduces the adopted result exactly (506/885, 33 species,
+  audit byte-identical, 17.6 min warm).
+
+PTCON NEAR-INVARIANCE CONTROL (gate d) -- PASS. Priors-level, zero NCBI:
+REVIEW_ptcon_kernel_control.R (PtCon data dir; saves *_cmp.rds). The
+workflow's exact GLMM Step 5 vs estimate_kernel_priors() on the same Aug-29
+occurrence pool (1.25M Marine-stratum records; kernel n_eff 224,780 at
+LOBO-chosen lambda = 25 km):
+- Abundant head: top-10 GLMM species match within 3-5% (|log10 ratio|
+  <= 0.05). All-507 Spearman 0.923; excluding epsilon-clamped GLMM rows
+  (theta_glmm = 1e-6 exactly -- NOT model predictions) n = 415, Spearman
+  0.919, median |log10 ratio| 0.348; tier1-only n = 347, Spearman 0.927,
+  median 0.285 (~1.9x typical).
+- The big divergences are the kernel being MORE honest: Microtus/
+  Phasianus/Odocoileus carry tier1 "Marine" rows (habitat bleed) that the
+  GLMM priced ~1e-6-8e-6 and the kernel prices ~1e-10; Bering-Sea/Atlantic
+  fish similarly. Both PtCon LOBO and the earlier GL LOCO already scored the
+  kernel ABOVE the single-cell architecture predictively, so the control's
+  role (no wild behavior at a data-rich site) is met: head invariant, tail
+  corrected, predictive standard favors the kernel.
+- lambda_latitude = Inf wins the PtCon LOBO too -- SECOND dataset rejecting
+  the climate factor at regional scale (its home remains the continental
+  presence curve).
+- PtCon curve anchors recorded for the migration: theta_present = 2.59e-6
+  (mass 1.86e-4 / Chao 72; f1 48, f2 16) -- a data-rich site prices unseen
+  species ~80x finer than Burns Harbor, exactly as it should.
+ALL FOUR PHASE-2 VALIDATION GATES NOW MET. Remaining for the PtCon kernel
+MIGRATION (its own task, needs no NCBI for priors but a full consensus
+re-run does): port Step 5 + 7a.7 to the kernel/curve path as in GL.
+Also still open: iNat w = 0.8 calibration check; A2 discovery-rate
+cross-check; manuscript supplemental-methods rewrite.
