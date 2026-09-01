@@ -86,15 +86,19 @@ report_priors <- function(priors_output,
     NA_integer_
   }
 
-  # Tier breakdown
+  # Tier/branch breakdown. prior_branch takes PRECEDENCE when present:
+  # kernel tables still carry model_tier as a legacy column on their
+  # undetected/domestic rows only (NA on every resident row), so counting by
+  # model_tier there silently omits the resident majority -- found on the
+  # first real kernel-path GL report (2026-09-01: 86 resident rows missing
+  # from a 467-taxon breakdown).
   tier_breakdown <- NULL
-  if ("model_tier" %in% names(priors_df)) {
-    tier_counts <- table(priors_df$model_tier)
-    tier_breakdown <- as.list(tier_counts)
-  } else if ("prior_branch" %in% names(priors_df)) {
-    # Kernel-priors schema (2026-08-31): report by branch when the retired
-    # model_tier column is absent.
+  kernel_schema <- "prior_branch" %in% names(priors_df) &&
+    any(!is.na(priors_df$prior_branch))
+  if (kernel_schema) {
     tier_breakdown <- as.list(table(priors_df$prior_branch))
+  } else if ("model_tier" %in% names(priors_df)) {
+    tier_breakdown <- as.list(table(priors_df$model_tier))
   }
 
   # --- Citations (propagated from occurrence data) ----------------------------
@@ -112,7 +116,8 @@ report_priors <- function(priors_output,
   if (!is.null(tier_breakdown)) statistics$tier_breakdown <- tier_breakdown
 
   # --- Params -----------------------------------------------------------------
-  params <- list(method = "hierarchical biodiversity model")
+  params <- list(method = if (kernel_schema)
+    "site-centered kernel estimation" else "hierarchical biodiversity model")
   if (!is.null(habitat_scheme)) params$habitat_scheme <- habitat_scheme
   if (!is.na(n_grid_cells)) params$n_grid_cells <- n_grid_cells
   if (!is.null(rp)) {
@@ -128,12 +133,19 @@ report_priors <- function(priors_output,
       " from %s occurrence records", format(n_occurrence_records, big.mark = ",")))
   }
 
-  methods_text <- paste0(methods_text,
-    " using a hierarchical biodiversity model")
-
-  if (!is.na(n_grid_cells)) {
-    methods_text <- paste0(methods_text, sprintf(
-      " across %d spatial grid cells", n_grid_cells))
+  if (kernel_schema) {
+    methods_text <- paste0(methods_text,
+      " by site-centered kernel estimation (habitat-stratified,",
+      " distance-weighted record shares with a regional back-off;",
+      " unrecorded species priced as presence mixtures on a calibrated",
+      " presence-distance curve)")
+  } else {
+    methods_text <- paste0(methods_text,
+      " using a hierarchical biodiversity model")
+    if (!is.na(n_grid_cells)) {
+      methods_text <- paste0(methods_text, sprintf(
+        " across %d spatial grid cells", n_grid_cells))
+    }
   }
   methods_text <- paste0(methods_text, ".")
 
@@ -155,7 +167,9 @@ report_priors <- function(priors_output,
       sprintf("%s: %d", nm, tier_breakdown[[nm]])
     }, character(1L))
     results_parts <- c(results_parts, sprintf(
-      "Model tier breakdown: %s.", paste(tier_strs, collapse = ", ")))
+      if (kernel_schema) "Prior branch breakdown: %s."
+      else "Model tier breakdown: %s.",
+      paste(tier_strs, collapse = ", ")))
   }
 
   results_text <- if (length(results_parts) > 0L) {

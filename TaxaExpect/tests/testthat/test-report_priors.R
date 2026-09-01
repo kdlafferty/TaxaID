@@ -94,3 +94,26 @@ test_that("report_priors errors on invalid input", {
   expect_error(report_priors(data.frame()))
   expect_error(report_priors("not valid"))
 })
+
+test_that("kernel tables report by prior_branch including resident rows (2026-09-01)", {
+  df <- data.frame(
+    taxon_name = c("A a", "B b", "C c", "D d"),
+    theta_mean = c(0.3, 0.2, 1e-4, 5e-4),
+    prior_branch = c("resident_observed", "resident_observed",
+                     "resident_undetected", "transport"),
+    model_tier = c(NA, NA, "tier_undetected_evidence", "tier_domestic_food"),
+    stringsAsFactors = FALSE
+  )
+  sec <- report_priors(df)
+  tb <- sec$statistics$tier_breakdown
+  expect_equal(tb$resident_observed, 2L)        # legacy counting dropped these
+  expect_equal(tb$resident_undetected, 1L)
+  expect_equal(tb$transport, 1L)
+  expect_true(grepl("Prior branch breakdown", sec$results))
+  expect_true(grepl("kernel estimation", sec$methods))
+  expect_false(grepl("hierarchical biodiversity model", sec$methods))
+  # legacy tables unchanged
+  df2 <- df; df2$prior_branch <- NULL; df2$model_tier <- c("tier1","tier2",NA,NA)
+  sec2 <- report_priors(df2)
+  expect_true(grepl("hierarchical biodiversity model", sec2$methods))
+})
