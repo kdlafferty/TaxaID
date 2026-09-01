@@ -20,6 +20,7 @@ blast_sequences(
   max_subject_length = NULL,
   max_target_seqs = 100L,
   batch_size = 20L,
+  max_batch_bp = 100000L,
   email = Sys.getenv("NCBI_EMAIL", unset = ""),
   ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
   resolve_taxonomy = TRUE,
@@ -130,6 +131,27 @@ for comprehensive searches; lower for speed.}
 \item{batch_size}{Integer. For remote BLAST, number of sequences per
 submission (default \code{20L}). Larger batches reduce API overhead but
 risk timeout on NCBI's server. NCBI handles multi-FASTA queries.}
+
+\item{max_batch_bp}{Numeric. Remote BLAST only. Default \code{100000L}.
+Cumulative-length (bp) cap per submission batch, applied ALONGSIDE
+\code{batch_size} -- a batch closes when EITHER the count or the bp
+limit is reached, whichever comes first. Added 2026-09-01: a long
+query (e.g. one of several full mitogenomes sharing a batch with mostly
+short amplicons) consumes vastly more server CPU than its count-based
+"1 of \code{batch_size}" share suggests -- one expensive query can doom
+an otherwise-cheap batch to a CPU-budget rejection
+(\code{.blast_server_rejected()}), and losing that whole batch to
+\code{max_consecutive_batch_failures}'s circuit breaker costs every
+query it was sharing with, not just the expensive one. A single query
+at or above half of \code{max_batch_bp} rides ALONE in its own batch
+(closing whatever batch was already accumulating first, if any) --
+isolating it this way guarantees a doomed batch only ever costs that
+ONE query's own progress. \code{Inf} disables the bp cap entirely,
+fully restoring the old count-only \code{batch_size} behavior. See
+\code{.split_batches_by_length()} for the implementation. Most calls at
+the default \code{batch_size}/typical amplicon lengths never approach
+\code{100000L} bp per batch, so this is a no-op for ordinary data --
+it only ever triggers for real long-sequence batches.}
 
 \item{email}{Character. Email address sent to NCBI (required by their usage
 policy for remote BLAST). Defaults to the \code{NCBI_EMAIL} environment

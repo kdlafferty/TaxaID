@@ -188,3 +188,148 @@ test_that("evaluate_reference_accessions() with barcode_term = NULL (default) su
 
   expect_equal(seen_sequence, g$genome)
 })
+
+# ==============================================================================
+# Feature-table-guided extraction fallback (2026-09-01) --
+# .resolve_expected_marker() / .extract_feature_table_fallback() -- the
+# rescue tried when primer trimming above leaves a query over-length.
+# ==============================================================================
+
+test_that(".resolve_expected_marker() bridges MiFish/Teleo-style barcode_term values to '12S'", {
+  expect_equal(.resolve_expected_marker("MiFishU"), "12S")
+  expect_equal(.resolve_expected_marker("mifish-e"), "12S")
+  expect_equal(.resolve_expected_marker("teleo"), "12S")
+})
+
+test_that(".resolve_expected_marker() passes through a term .resolve_marker_pattern() already handles unchanged", {
+  expect_equal(.resolve_expected_marker("18S_2"), "18S_2")
+  expect_equal(.resolve_expected_marker("COI-Leray"), "COI-Leray")
+})
+
+.mock_ann_for_fallback <- function(feature_from = 301, feature_to = 500,
+                                   gene = "12S", product = "12S ribosomal RNA",
+                                   accession = "ACC001") {
+  function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    data.frame(
+      accession = accession, feature_key = "rRNA",
+      gene = gene, product = product,
+      feature_from = feature_from, feature_to = feature_to,
+      stringsAsFactors = FALSE
+    )
+  }
+}
+
+test_that(".extract_feature_table_fallback() extracts the matching feature's span plus margin", {
+  full_seq <- strrep("N", 800L)  # content-agnostic -- coordinate math only
+  local_mocked_bindings(
+    .fetch_marker_annotation = .mock_ann_for_fallback(feature_from = 301, feature_to = 500),
+    .package = "TaxaMatch"
+  )
+  out <- .extract_feature_table_fallback(
+    accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU",
+    margin = 100L, verbose = FALSE
+  )
+  # from = max(1, 301-100) = 201; to = min(800, 500+100) = 600 -> 400bp.
+  expect_equal(nchar(out), 400L)
+  expect_equal(out, substr(full_seq, 201L, 600L))
+})
+
+test_that(".extract_feature_table_fallback() leaves a sequence unchanged when no annotated feature matches the marker", {
+  full_seq <- strrep("N", 800L)
+  local_mocked_bindings(
+    .fetch_marker_annotation = .mock_ann_for_fallback(gene = "16S", product = "16S ribosomal RNA"),
+    .package = "TaxaMatch"
+  )
+  out <- .extract_feature_table_fallback(
+    accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU", verbose = FALSE
+  )
+  expect_equal(out, full_seq)
+})
+
+test_that(".extract_feature_table_fallback() leaves a sequence unchanged when the record has no annotation at all", {
+  full_seq <- strrep("N", 800L)
+  local_mocked_bindings(
+    .fetch_marker_annotation = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = "ACC001", feature_key = NA_character_,
+                gene = NA_character_, product = NA_character_,
+                feature_from = NA_real_, feature_to = NA_real_,
+                stringsAsFactors = FALSE)
+    },
+    .package = "TaxaMatch"
+  )
+  out <- .extract_feature_table_fallback(
+    accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU", verbose = FALSE
+  )
+  expect_equal(out, full_seq)
+})
+
+test_that(".extract_feature_table_fallback() leaves a sequence unchanged on a degenerate zero-width feature span (bounds guard)", {
+  full_seq <- strrep("N", 800L)
+  local_mocked_bindings(
+    # A single-point feature (from == to) with margin = 0 collapses to
+    # from == to after clamping -- the same "not a usable span" outcome
+    # .extract_amplicon_one_tm()'s own 2026-08-30 bounds guard produces for
+    # an inverted/degenerate primer match; must degrade to "not rescued",
+    # never a zero-length or nonsensical substr() result.
+    .fetch_marker_annotation = .mock_ann_for_fallback(feature_from = 10, feature_to = 10),
+    .package = "TaxaMatch"
+  )
+  out <- .extract_feature_table_fallback(
+    accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU",
+    margin = 0L, verbose = FALSE
+  )
+  expect_equal(out, full_seq)
+})
+
+test_that(".extract_feature_table_fallback() never errors when .fetch_marker_annotation() itself fails", {
+  full_seq <- strrep("N", 800L)
+  local_mocked_bindings(
+    .fetch_marker_annotation = function(...) stop("simulated NCBI failure"),
+    .package = "TaxaMatch"
+  )
+  out <- NULL
+  expect_no_error(
+    out <- .extract_feature_table_fallback(
+      accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU", verbose = FALSE
+    )
+  )
+  expect_equal(out, full_seq)
+})
+
+test_that("evaluate_reference_accessions(barcode_term=) feature-table fallback rescues a query with no primer hits but a matching annotated feature", {
+  skip_if_not_installed("Biostrings")
+  full_seq <- strrep("N", 800L)  # no MiFish-U primer sites anywhere
+
+  seen_sequence <- NULL
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    data.frame(accession = "ACC001", organism = "Testus fishus", create_date = "2020/01/01",
+              sequence = full_seq, stringsAsFactors = FALSE)
+  }
+  mock_blast <- function(seq_df, ...) {
+    seen_sequence <<- seq_df$sequence[seq_df$asv_id == "ACC001"]
+    data.frame(
+      observation_id = character(0), accession = character(0), score = numeric(0),
+      family = character(0), genus = character(0), species = character(0),
+      stringsAsFactors = FALSE
+    )
+  }
+  mock_tax <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    data.frame(accession = character(0), stringsAsFactors = FALSE)
+  }
+
+  local_mocked_bindings(.fetch_reference_accession_records = mock_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(
+    .fetch_marker_annotation = .mock_ann_for_fallback(feature_from = 301, feature_to = 500),
+    .package = "TaxaMatch"
+  )
+  local_mocked_bindings(blast_sequences = mock_blast, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = mock_tax, .package = "TaxaMatch")
+
+  suppressWarnings(suppressMessages(evaluate_reference_accessions(
+    "ACC001", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
+  )))
+
+  expect_false(is.null(seen_sequence))
+  expect_lt(nchar(seen_sequence), nchar(full_seq))
+  expect_equal(nchar(seen_sequence), 400L)  # 201-600, see the unit test above
+})

@@ -101,6 +101,34 @@ test_that("check_marker_mismatch() checks multiple accessions and dedupes input"
   expect_true(out$marker_match[out$accession == "MZ605481"])
 })
 
+# ------------------------------------------------------------------------------
+# .fetch_marker_annotation() -- feature_from/feature_to columns (2026-09-01,
+# added for the feature-table-guided extraction fallback in
+# R/trim_query_to_amplicon.R; check_marker_mismatch() itself never reads
+# them). Schema-only check via the zero-accession early-return path -- no
+# network call, real code path (not mocked).
+# ------------------------------------------------------------------------------
+
+test_that(".fetch_marker_annotation() empty-input result carries feature_from/feature_to columns", {
+  out <- .fetch_marker_annotation(character(0L))
+  expect_true(all(c("feature_from", "feature_to") %in% names(out)))
+  expect_equal(nrow(out), 0L)
+  expect_true(is.numeric(out$feature_from))
+  expect_true(is.numeric(out$feature_to))
+})
+
+test_that("check_marker_mismatch() output is unaffected by the new feature_from/feature_to columns on the fetch side", {
+  # .mock_fetch_marker_annotation() (above) deliberately does NOT carry
+  # feature_from/feature_to -- confirms check_marker_mismatch() never reads
+  # them and keeps working against a fetcher shaped like the pre-2026-09-01
+  # schema.
+  local_mocked_bindings(
+    .fetch_marker_annotation = .mock_fetch_marker_annotation, .package = "TaxaMatch"
+  )
+  out <- check_marker_mismatch("MZ605481", "12S", verbose = FALSE)
+  expect_true(out$marker_match)
+})
+
 test_that("check_marker_mismatch() validates inputs", {
   expect_error(check_marker_mismatch(123, "12S"), "character vector")
   expect_error(check_marker_mismatch(character(0L), "12S"), "non-empty")

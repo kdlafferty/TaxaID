@@ -203,7 +203,7 @@
 
   if (verbose) {
     message(sprintf(
-      "evaluate_reference_accessions(): extracted the amplicon from %d of %d over-length query sequence(s); the rest are BLASTed at full length (primer site(s) not found).",
+      "evaluate_reference_accessions(): extracted the amplicon from %d of %d over-length query sequence(s); the rest are checked against the record's own annotated feature table next (barcode_term auto-trim), or BLASTed at full length otherwise.",
       n_trimmed, sum(needs_trim)
     ))
     # Surfaces WHY extraction failed for the rest -- "primers_not_found_or_
@@ -222,6 +222,163 @@
       ))
     }
   }
+
+  out
+}
+
+#' Bridge TaxaTools' marker-family barcode_term keys onto
+#' check_marker_mismatch()'s own marker vocabulary
+#'
+#' `check_marker_mismatch()`'s `.resolve_marker_pattern()` (`R/
+#' check_marker_mismatch.R`) already resolves a marker string like `"12S"`,
+#' `"18S_2"`, or `"COI-Leray"` directly, via its own exact-match-then-
+#' substring-match fallback against `.MARKER_ANNOTATION_PATTERNS`. A
+#' MiFish/Teleo-style `barcode_term` (the primer SET name, e.g.
+#' `"MiFishU"`) never contains the literal substring `"12S"` even though it
+#' targets that exact marker, so it would otherwise fall through to that
+#' function's own last-resort literal-string fallback and never match real
+#' `"12S ribosomal RNA"` annotation text. This is a small, additive bridge
+#' between two vocabularies that already exist elsewhere in this package
+#' (`TaxaTools::barcode_length_defaults`'s own marker-family keys on one
+#' side, `.MARKER_ANNOTATION_PATTERNS` on the other) -- it does NOT add a
+#' new qualifier-matching regex of its own; every barcode_term not covered
+#' here still reaches `.resolve_marker_pattern()`'s own existing fallback
+#' unchanged.
+#' @noRd
+.MIFISH_STYLE_TO_MARKER <- c(mifish = "12S", teleo = "12S")
+
+#' @noRd
+.resolve_expected_marker <- function(barcode_term) {
+  bt  <- barcode_term[1L]
+  key <- tolower(trimws(bt))
+  for (nm in names(.MIFISH_STYLE_TO_MARKER)) {
+    if (startsWith(key, nm) || grepl(nm, key, fixed = TRUE))
+      return(.MIFISH_STYLE_TO_MARKER[[nm]])
+  }
+  bt
+}
+
+#' Feature-table-guided extraction fallback for a query still over-length after primer trimming
+#'
+#' The second-line rescue for a query `.trim_queries_to_amplicon()` could
+#' not shorten (no primer match, or an implausible matched span): before
+#' submitting it to BLAST at full length, check the accession's OWN
+#' annotated GBSeq feature table for a feature whose `/gene` or `/product`
+#' qualifier matches the marker `barcode_term` implies, and extract that
+#' feature's coordinate span (plus `margin` bp of context on each side, so
+#' primer-adjacent flanking sequence -- useful for a later primer-based
+#' re-trim attempt -- survives) instead of the whole record.
+#'
+#' Reuses `check_marker_mismatch()`'s own fetch/matching internals
+#' (`.fetch_marker_annotation()`, `.resolve_marker_pattern()`,
+#' `.MARKER_ANNOTATION_PATTERNS`) directly, per this feature's own design
+#' doc -- no second fetcher, no new qualifier vocabulary. `.
+#' fetch_marker_annotation()` batches its own `rentrez::entrez_fetch()`
+#' call across every accession passed to it in one round trip (2026-08-08),
+#' so calling it once per chunk here (never per-accession) keeps this
+#' mechanism's real NCBI cost to one cheap `efetch`, nothing like BLAST.
+#'
+#' Extraction uses plain `substr()` on the already-fetched full nucleotide
+#' string (GenBank feature coordinates are 1-based and inclusive, and index
+#' directly into `GBSeq_sequence`) -- no `Biostrings` needed for this step.
+#' Deliberately does NOT reverse-complement a feature on the minus strand:
+#' `blast_sequences()` never sets an explicit strand (see that function's
+#' own `megablast` documentation), so remote/local `blastn` already searches
+#' both strands regardless of which orientation the extracted subsequence
+#' happens to be in -- orientation therefore does not affect correctness
+#' here, only, in principle, which strand a hit's alignment coordinates are
+#' reported against (not consumed by anything in this package).
+#'
+#' Per-accession `tryCatch()` isolation, matching the same pattern
+#' `.trim_queries_to_amplicon()`'s own loop already established
+#' (2026-08-30) -- one accession's malformed interval data must never abort
+#' the whole fallback pass.
+#'
+#' @param accessions Character vector of accessions still over-length after
+#'   primer trimming, in the same order as `sequences`.
+#' @param sequences Character vector, same length/order as `accessions` --
+#'   each accession's own (still full-length or primer-trim-unchanged)
+#'   sequence.
+#' @param barcode_term Character. Resolved to a marker via
+#'   `.resolve_expected_marker()` above, then to a matching regex via
+#'   `.resolve_marker_pattern()`.
+#' @param margin Integer (default `100L`). Extra bp kept on each side of the
+#'   matched feature's own coordinate span.
+#' @param ncbi_api_key,verbose As in `evaluate_reference_accessions()`.
+#' @return Character vector, same length/order as `sequences` -- the
+#'   extracted feature region (plus margin) where a matching, coordinate-
+#'   bearing annotation was found; unchanged (same value as `sequences`)
+#'   otherwise. Never discards or errors -- an accession this fallback can't
+#'   rescue is left exactly as it was handed in, for the caller's next stage
+#'   (the `max_query_len` hard cap) to decide.
+#' @noRd
+.extract_feature_table_fallback <- function(accessions, sequences, barcode_term,
+                                            margin = 100L, ncbi_api_key = NULL,
+                                            verbose = TRUE) {
+  out <- sequences
+  if (length(accessions) == 0L) return(out)
+
+  marker  <- .resolve_expected_marker(barcode_term)
+  pattern <- .resolve_marker_pattern(marker)
+
+  ann <- tryCatch(
+    .fetch_marker_annotation(accessions, ncbi_api_key = ncbi_api_key, verbose = verbose),
+    error = function(e) NULL
+  )
+
+  n_rescued <- 0L
+  if (!is.null(ann) && nrow(ann) > 0L) {
+    for (i in seq_along(accessions)) {
+      acc   <- accessions[i]
+      seq_i <- sequences[i]
+      if (is.na(seq_i) || !nzchar(seq_i)) next
+
+      # extract_one() wraps the actual logic in its OWN function so that
+      # return(NULL) below returns from extract_one() alone -- return()
+      # inside a bare tryCatch({...}) block (no enclosing function of its
+      # own) would otherwise return from .extract_feature_table_fallback()
+      # ITSELF, silently abandoning every remaining accession still to be
+      # processed in this loop. A real bug caught by this file's own tests
+      # (a "no match" or "out-of-bounds span" outcome for accession i was
+      # returning NULL for the WHOLE function instead of just leaving
+      # sequence i unrescued) before this fix.
+      extract_one <- function() {
+        sub_ann <- ann[!is.na(ann$accession) & ann$accession == acc &
+                       !is.na(ann$feature_from) & !is.na(ann$feature_to), , drop = FALSE]
+        if (nrow(sub_ann) == 0L) return(NULL)
+
+        is_match <- (!is.na(sub_ann$gene) & grepl(pattern, sub_ann$gene, ignore.case = TRUE)) |
+          (!is.na(sub_ann$product) & grepl(pattern, sub_ann$product, ignore.case = TRUE))
+        sub_ann <- sub_ann[is_match, , drop = FALSE]
+        if (nrow(sub_ann) == 0L) return(NULL)
+
+        seq_len <- nchar(seq_i)
+        span_lo <- min(sub_ann$feature_from, sub_ann$feature_to)
+        span_hi <- max(sub_ann$feature_from, sub_ann$feature_to)
+        # Bounds guard before substr(), same convention as
+        # .extract_amplicon_one_tm()'s own 2026-08-30 fix: an inverted or
+        # out-of-range span degrades to "not rescued" rather than producing
+        # a nonsensical (or, for substr(), silently empty/truncated) result.
+        from <- max(1L, span_lo - margin)
+        to   <- min(seq_len, span_hi + margin)
+        if (!is.finite(from) || !is.finite(to) || from >= to) return(NULL)
+
+        substr(seq_i, from, to)
+      }
+      rescued <- tryCatch(extract_one(), error = function(e) NULL)
+
+      if (!is.null(rescued) && nzchar(rescued)) {
+        out[i] <- rescued
+        n_rescued <- n_rescued + 1L
+      }
+    }
+  }
+
+  if (verbose)
+    message(sprintf(
+      "evaluate_reference_accessions(): feature-table fallback rescued %d of %d still-over-length query sequence(s) via the record's own GBSeq annotation (marker '%s'); the rest are BLASTed at full length, subject to max_query_len.",
+      n_rescued, length(accessions), marker
+    ))
 
   out
 }

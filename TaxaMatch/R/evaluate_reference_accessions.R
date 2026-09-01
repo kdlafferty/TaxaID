@@ -517,6 +517,12 @@ utils::globalVariables(c(
 #' do inline; `chunk_acc` plays the role `needs_eval` used to play, scoped to
 #' one chunk instead of the whole call.
 #'
+#' `max_query_len`/`max_batch_bp` (2026-09-01, see
+#' `ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md`)
+#' implement the hard submission cap and length-aware BLAST batching -- see
+#' `evaluate_reference_accessions()`'s own `@section Long-sequence
+#' robustness` for the full design.
+#'
 #' @return A list: `computed_rows` (data.frame or `NULL`, same shape the
 #'   caller writes to the persistent cache), `missing_acc` (character
 #'   vector -- accessions in `chunk_acc` not evaluated this call: not found,
@@ -529,6 +535,7 @@ utils::globalVariables(c(
                                                  score_range, min_score, max_hits,
                                                  ncbi_api_key, poll_max_wait, barcode_term,
                                                  max_consecutive_batch_failures,
+                                                 max_query_len, max_batch_bp,
                                                  top_n, min_congruent_rank, submission_window,
                                                  min_independent_partners,
                                                  hierarchy_incongruent_threshold,
@@ -558,6 +565,74 @@ utils::globalVariables(c(
     query_meta$sequence <- .trim_queries_to_amplicon(
       query_meta$sequence, barcode_term = barcode_term, verbose = verbose
     )
+
+    # ---- Mechanism 1: feature-table-guided extraction fallback for a query
+    # STILL over the marker's own length window after primer trimming
+    # (primer site(s) not found, or an implausible matched span) -- see
+    # .extract_feature_table_fallback() (R/trim_query_to_amplicon.R) for the
+    # full mechanism. Only reachable when barcode_term is supplied (the same
+    # precondition primer trimming itself already requires).
+    bt_max_len <- tryCatch(
+      TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]],
+      error = function(e) NA_real_
+    )
+    if (!is.na(bt_max_len)) {
+      still_over <- !is.na(query_meta$sequence) & nchar(query_meta$sequence) > bt_max_len
+      if (any(still_over)) {
+        query_meta$sequence[still_over] <- .extract_feature_table_fallback(
+          accessions = query_meta$accession[still_over],
+          sequences  = query_meta$sequence[still_over],
+          barcode_term = barcode_term, ncbi_api_key = ncbi_api_key, verbose = verbose
+        )
+      }
+    }
+  }
+
+  # ---- Mechanism 2: hard submission cap. After BOTH rescue strategies
+  # above, any query still longer than max_query_len is NOT submitted to
+  # BLAST -- a full-length mitogenome (or larger) that neither primer-
+  # matched nor had a usable feature-table annotation would otherwise be
+  # BLASTed at full length, consuming orders of magnitude more server CPU
+  # than a short amplicon and risking a real CPU-budget rejection (see
+  # barcode_term's own documentation for the real captured case). The
+  # contract this revises ("never discards or errors, only shortens or
+  # leaves unchanged") is honored EXPLICITLY, not silently: such an
+  # accession gets a real, labeled cached row (hierarchy_flag =
+  # "not_evaluated_oversized") below, with the same insufficient-evidence-
+  # style TTL (retryable after expiry, so a future annotation/primer fix or
+  # a raised max_query_len can rescue it later) -- never just dropped.
+  oversized_rows <- NULL
+  if (nrow(query_meta) > 0L && is.finite(max_query_len)) {
+    seq_lens <- nchar(query_meta$sequence)
+    is_oversized <- !is.na(seq_lens) & seq_lens > max_query_len
+    if (any(is_oversized)) {
+      oversized_meta <- query_meta[is_oversized, , drop = FALSE]
+      oversized_rows <- data.frame(
+        accession = oversized_meta$accession,
+        listed_taxon = oversized_meta$organism,
+        n_independent_top_matches = NA_integer_,
+        n_top_matches_available = NA_integer_,
+        frac_independent_below_min_congruent_rank = NA_real_,
+        finest_common_rank = NA_character_,
+        best_hit_pident = NA_real_, best_agreeing_pident = NA_real_,
+        best_disagreeing_pident = NA_real_, best_disagreeing_taxon = NA_character_,
+        congruent_evidence_exists_anywhere = NA,
+        congruent_evidence_best_pident = NA_real_,
+        hierarchy_flag = "not_evaluated_oversized",
+        evaluated_at = now,
+        cache_hit = FALSE,
+        params_key = params_key,
+        taxonomy_resolution_source = NA_character_,
+        stringsAsFactors = FALSE
+      )
+      if (verbose)
+        message(sprintf(
+          "evaluate_reference_accessions(): %d accession(s) still exceed max_query_len (%d bp) after trimming/feature-table extraction -- deferred as 'not_evaluated_oversized', never submitted to BLAST:\n  %s",
+          nrow(oversized_meta), as.integer(max_query_len),
+          paste(oversized_meta$accession, collapse = ", ")
+        ))
+      query_meta <- query_meta[!is_oversized, , drop = FALSE]
+    }
   }
 
   computed_rows <- NULL
@@ -659,7 +734,8 @@ utils::globalVariables(c(
       seq_df, method = method, database = database, score_range = score_range,
       min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
       ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
-      max_consecutive_batch_failures = max_consecutive_batch_failures, verbose = verbose
+      max_consecutive_batch_failures = max_consecutive_batch_failures,
+      max_batch_bp = max_batch_bp, verbose = verbose
     )
     circuit_breaker_tripped <- isTRUE(attr(hits, "circuit_breaker_tripped"))
 
@@ -823,6 +899,17 @@ utils::globalVariables(c(
     }
   }
 
+  # Fold mechanism 2's oversized rows in regardless of whether the BLAST
+  # block above ran at all (query_meta can be legitimately empty here purely
+  # because every remaining accession this chunk was oversized).
+  if (!is.null(oversized_rows)) {
+    computed_rows <- if (is.null(computed_rows)) {
+      oversized_rows
+    } else {
+      rbind(computed_rows, oversized_rows[, names(computed_rows), drop = FALSE])
+    }
+  }
+
   list(computed_rows = computed_rows, missing_acc = missing_acc,
        circuit_breaker_tripped = circuit_breaker_tripped)
 }
@@ -888,14 +975,22 @@ utils::globalVariables(c(
 #' no `taxa` list to decide up front. Staleness is handled asymmetrically:
 #' `"congruent"`/`"incongruent"` verdicts are cached indefinitely (an
 #' accession's own sequence/label doesn't change once deposited); only
-#' `"insufficient_independent_evidence"` verdicts expire after
+#' `"insufficient_independent_evidence"` and (2026-09-01)
+#' `"not_evaluated_oversized"` verdicts expire after
 #' `insufficient_evidence_ttl_days` and are retried, since new NCBI deposits
-#' could genuinely change that specific answer. A cached row is also treated
-#' as stale (recomputed) if any parameter that affects the verdict itself
-#' (`top_n`, `min_congruent_rank`, `submission_window`,
-#' `hierarchy_incongruent_threshold`, `min_independent_partners`,
-#' `score_range`, `min_score`, `max_hits`, `method`, `database`) differs from
-#' the call that produced it.
+#' (for the former) or a later annotation/primer fix or a raised
+#' `max_query_len` (for the latter) could genuinely change that specific
+#' answer -- `retry_insufficient = FALSE` opts a single call out of retrying
+#' either past its TTL, serving the stale row instead (see that param's own
+#' documentation). A cached row is also treated as stale (recomputed) if any
+#' parameter that affects the verdict itself (`top_n`, `min_congruent_rank`,
+#' `submission_window`, `hierarchy_incongruent_threshold`,
+#' `min_independent_partners`, `score_range`, `min_score`, `max_hits`,
+#' `method`, `database`) differs from the call that produced it --
+#' `chunk_size`, `max_consecutive_batch_failures`, `max_query_len`,
+#' `max_batch_bp`, `prioritize_uncached`, and `retry_insufficient` are
+#' deliberately NOT in this list (see `@section Long-sequence robustness`
+#' below for why).
 #'
 #' @param accessions Character vector of NCBI accessions to evaluate.
 #'   Deduplicated internally.
@@ -956,9 +1051,13 @@ utils::globalVariables(c(
 #'   captured case) -- the accession's own species-identity signal lives in
 #'   the short barcode region regardless, so trimming answers the identical
 #'   question at a fraction of the cost. A sequence whose primer sites
-#'   can't be found is left at full length (never dropped or errored) and
-#'   BLASTed as before. `NULL` (default) submits every sequence at full
-#'   length, unchanged from prior behavior.
+#'   can't be found is next tried against the record's own annotated
+#'   feature table (2026-09-01 -- see `@section Long-sequence robustness`
+#'   below), then, if still over-length, subject to the `max_query_len`
+#'   hard cap -- never silently dropped or errored either way; at worst it
+#'   is deferred as `"not_evaluated_oversized"`, an explicit, labeled,
+#'   TTL-retryable non-result. `NULL` (default) submits every sequence at
+#'   full length, unchanged from prior behavior.
 #' @param chunk_size Integer (default `200L`). Accessions needing real
 #'   evaluation are processed this many at a time, with the persistent
 #'   cache written after EACH chunk -- see `@section Chunked evaluation and
@@ -970,6 +1069,46 @@ utils::globalVariables(c(
 #'   full circuit-breaker mechanism (a `.blast_server_rejected()` rejection
 #'   counts double toward this threshold; a plain poll timeout counts once).
 #'   `Inf` disables it.
+#' @param max_query_len Numeric or `NULL` (default). The hard submission
+#'   cap -- after BOTH `barcode_term` rescue strategies (primer trimming,
+#'   then the feature-table-guided extraction fallback) have been tried, any
+#'   query still longer than this is NOT submitted to BLAST at all. `NULL`
+#'   resolves a default: `10x` the marker's own `amplicon_range` upper bound
+#'   (via `TaxaTools::resolve_barcode_primers(barcode_term)`) when
+#'   `barcode_term` is supplied -- generous enough to never reject a real
+#'   amplicon-length sequence, but small enough to exclude a full
+#'   mitogenome or larger record -- or a flat `5000` when it is not (no
+#'   marker-specific bound to derive one from). `Inf` disables the cap
+#'   entirely, restoring the pre-2026-09-01 behavior (an unrescuable
+#'   over-length query is always BLASTed at full length). See `@section
+#'   Long-sequence robustness` below for the full mechanism and the new
+#'   `"not_evaluated_oversized"` verdict this produces.
+#' @param max_batch_bp Numeric (default `100000L`). Forwarded to
+#'   `blast_sequences()` -- see that function's own documentation for the
+#'   length-aware BLAST batching this adds alongside the existing
+#'   count-based batching. `Inf` disables it.
+#' @param prioritize_uncached Logical (default `TRUE`). Orders `needs_eval`
+#'   so accessions with NO existing cached verdict under the current call's
+#'   parameters are evaluated before expired
+#'   `"insufficient_independent_evidence"`/`"not_evaluated_oversized"` rows
+#'   being retried past their TTL -- a budget-limited call (one that trips
+#'   `blast_sequences()`'s own circuit breaker partway through) buys real
+#'   NEW coverage first, rather than re-spending BLAST budget re-checking
+#'   accessions that already have SOME cached answer. A pure ordering
+#'   change within one call -- never changes which accessions end up
+#'   evaluated, only in what order -- so, unlike every other new parameter
+#'   here, this one changes existing default behavior deliberately: it is
+#'   strictly better (or a no-op), never worse.
+#' @param retry_insufficient Logical (default `TRUE`). `FALSE` skips
+#'   retrying EXPIRED `"insufficient_independent_evidence"`/
+#'   `"not_evaluated_oversized"` cached rows entirely for this call -- they
+#'   are served from cache as-is (their TTL notwithstanding) instead of
+#'   being re-submitted to NCBI. Addresses a real documented complaint: by
+#'   default, a call the caller expects to be purely cache-served (every
+#'   accession already evaluated at least once) can still spend real BLAST
+#'   budget re-checking every TTL-expired row, grinding against the same
+#'   CPU-budget throttle this whole feature exists to survive. Set `FALSE`
+#'   on a call where zero new NCBI cost is required this time.
 #' @param verbose Logical (default `TRUE`). Print progress messages.
 #'
 #' @return A data frame, one row per unique input accession:
@@ -1018,10 +1157,16 @@ utils::globalVariables(c(
 #'     \item{`congruent_evidence_best_pident`}{Percent identity of the best
 #'       such anywhere-agreeing hit. `NA` when
 #'       `congruent_evidence_exists_anywhere` is `FALSE`.}
-#'     \item{`hierarchy_flag`}{`"congruent"`, `"incongruent"`, or
-#'       `"insufficient_independent_evidence"`. `NA` if the accession's own
-#'       GenBank record could not be fetched (a `warning()` is issued
-#'       listing these; not cached, so a subsequent call retries them).}
+#'     \item{`hierarchy_flag`}{`"congruent"`, `"incongruent"`,
+#'       `"insufficient_independent_evidence"`, or
+#'       `"not_evaluated_oversized"` (added 2026-09-01 -- see `@section
+#'       Long-sequence robustness` below; the query was never submitted to
+#'       BLAST at all, so this is NOT evidence of anything, and downstream
+#'       consumers ([flag_incongruent_references()],
+#'       [remove_incongruent_references()]) never treat it as a flag).
+#'       `NA` if the accession's own GenBank record could not be fetched (a
+#'       `warning()` is issued listing these; not cached, so a subsequent
+#'       call retries them).}
 #'     \item{`evaluated_at`}{When this verdict was computed (`NA` for a
 #'       fetch failure).}
 #'     \item{`cache_hit`}{`TRUE` if this row was read from `cache_dir`
@@ -1171,6 +1316,51 @@ utils::globalVariables(c(
 #' judge that question with, not a verdict. No classification threshold in
 #' this function reads these columns; they are informational only.
 #'
+#' @section Long-sequence robustness (2026-09-01):
+#' Implements `ecosystem_docs/REENTRY_PROMPT_
+#' eval_ref_accessions_long_sequence_robustness.md`. `barcode_term`
+#' trimming already shortens an over-length query when the primer sites can
+#' be found; four further mechanisms address what happens when they
+#' CAN'T -- a full mitogenome (or larger) record submitted to remote BLAST
+#' at full length is dramatically more CPU-expensive than a short amplicon,
+#' the real, confirmed cause of sustained NCBI server-side CPU-budget
+#' rejections that stall this function's own progress:
+#' \enumerate{
+#'   \item{Feature-table-guided extraction fallback -- a query still
+#'     over-length after primer trimming is checked against the record's
+#'     OWN annotated GBSeq feature table for a feature matching the marker
+#'     `barcode_term` implies, and that coordinate span (plus margin) is
+#'     extracted instead. See `.extract_feature_table_fallback()`
+#'     (`R/trim_query_to_amplicon.R`), which reuses
+#'     `check_marker_mismatch()`'s own fetch/matching internals
+#'     (`R/check_marker_mismatch.R`) rather than duplicating them.}
+#'   \item{Hard submission cap -- `max_query_len`: a query still over-length
+#'     after BOTH rescue strategies is never submitted to BLAST at all. Gets
+#'     a real cached row, `hierarchy_flag = "not_evaluated_oversized"`,
+#'     every diagnostic column `NA` -- an explicit, labeled non-result, not
+#'     a silent drop. TTL-retryable like `"insufficient_independent_
+#'     evidence"` (see `@section Caching` above), so a later annotation fix,
+#'     primer update, or a raised `max_query_len` can rescue it.}
+#'   \item{Length-aware BLAST batching -- `max_batch_bp`, forwarded to
+#'     `blast_sequences()`: closes a submission batch on a cumulative bp cap
+#'     as well as the existing count cap, and rides one very long query
+#'     alone rather than letting it doom a whole batch of otherwise-cheap
+#'     queries.}
+#'   \item{Retry-priority ordering + a retry switch -- `prioritize_uncached`
+#'     (default `TRUE`, changes existing default ordering, deliberately
+#'     safe) and `retry_insufficient` (default `TRUE`; `FALSE` makes a call
+#'     purely cache-served, spending zero new NCBI budget on expired
+#'     retries this call).}
+#' }
+#' `max_query_len`, `max_batch_bp`, `prioritize_uncached`, and
+#' `retry_insufficient` are all additive and deliberately excluded from
+#' `params_key` -- like `chunk_size`/`max_consecutive_batch_failures`
+#' before them, they govern call MECHANICS/scheduling policy (how/whether
+#' work is submitted this call), not what verdict a given accession's
+#' evidence would produce, so changing them between calls never invalidates
+#' an already-`"congruent"`/`"incongruent"`-cached row. `.EVAL_REF_ACC_
+#' VERSION` is unchanged by this work.
+#'
 #' @seealso [remove_incongruent_references()], [flag_incongruent_references()],
 #'   [blast_sequences()]
 #'
@@ -1193,6 +1383,10 @@ evaluate_reference_accessions <- function(accessions,
                                           barcode_term = NULL,
                                           chunk_size = 200L,
                                           max_consecutive_batch_failures = 3L,
+                                          max_query_len = NULL,
+                                          max_batch_bp = 100000L,
+                                          prioritize_uncached = TRUE,
+                                          retry_insufficient = TRUE,
                                           verbose = TRUE) {
 
   if (!is.character(accessions) || length(accessions) == 0L)
@@ -1202,6 +1396,43 @@ evaluate_reference_accessions <- function(accessions,
       chunk_size < 1L)
     stop("chunk_size must be a positive integer (Inf for a single unchunked call).",
          call. = FALSE)
+  if (!is.null(max_query_len) &&
+      (!is.numeric(max_query_len) || length(max_query_len) != 1L ||
+       is.na(max_query_len) || max_query_len < 1))
+    stop("max_query_len must be NULL, a positive number, or Inf to disable.", call. = FALSE)
+  if (!is.numeric(max_batch_bp) || length(max_batch_bp) != 1L ||
+      is.na(max_batch_bp) || max_batch_bp < 1)
+    stop("max_batch_bp must be a positive number (Inf to disable).", call. = FALSE)
+  if (!is.logical(prioritize_uncached) || length(prioritize_uncached) != 1L ||
+      is.na(prioritize_uncached))
+    stop("prioritize_uncached must be TRUE or FALSE.", call. = FALSE)
+  if (!is.logical(retry_insufficient) || length(retry_insufficient) != 1L ||
+      is.na(retry_insufficient))
+    stop("retry_insufficient must be TRUE or FALSE.", call. = FALSE)
+
+  # max_query_len's default depends on barcode_term (a marker-aware bound
+  # when one is supplied, a flat absolute fallback otherwise) -- resolved
+  # here, once, rather than as a literal default value in the signature
+  # above. tryCatch(): TaxaTools::resolve_barcode_primers() requires the
+  # SPECIFIC primer variant and errors on an ambiguous/unlisted barcode_term
+  # -- the SAME error .trim_queries_to_amplicon() would already raise later
+  # for the identical reason, just deferred to chunk-processing time; caught
+  # here purely so resolving this default never introduces a NEW upfront
+  # failure mode ahead of where one already existed, falling back to the
+  # flat 5000L default instead.
+  if (is.null(max_query_len)) {
+    max_query_len <- if (!is.null(barcode_term)) {
+      primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
+                              error = function(e) NULL)
+      if (!is.null(primer_info) && !is.null(primer_info$amplicon_range)) {
+        as.numeric(primer_info$amplicon_range[2L]) * 10
+      } else {
+        5000
+      }
+    } else {
+      5000
+    }
+  }
 
   unique_acc <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
   if (length(unique_acc) == 0L)
@@ -1256,8 +1487,22 @@ evaluate_reference_accessions <- function(accessions,
   in_cache <- cache[cache$accession %in% unique_acc &
                     !is.na(cache$params_key) & cache$params_key == params_key, ,
                     drop = FALSE]
-  fresh_enough <- in_cache$hierarchy_flag != "insufficient_independent_evidence" |
-    (as.numeric(now) - as.numeric(in_cache$evaluated_at)) < ttl_secs
+  # TTL-expiring flags -- "insufficient_independent_evidence" (original) and
+  # (2026-09-01) "not_evaluated_oversized" (new: never actually submitted to
+  # BLAST, so a later annotation/primer fix or a raised max_query_len could
+  # genuinely change the answer, same rationale as new NCBI deposits for the
+  # original flag).
+  is_capped_flag <- in_cache$hierarchy_flag %in%
+    c("insufficient_independent_evidence", "not_evaluated_oversized")
+  fresh_enough <- if (isTRUE(retry_insufficient)) {
+    !is_capped_flag | (as.numeric(now) - as.numeric(in_cache$evaluated_at)) < ttl_secs
+  } else {
+    # retry_insufficient = FALSE: never retry an EXPIRED capped row this
+    # call -- serve it from cache regardless of age, so a caller expecting a
+    # purely cache-served run (nothing new to evaluate) doesn't silently pay
+    # real NCBI cost anyway. See @param retry_insufficient.
+    rep(TRUE, nrow(in_cache))
+  }
   cache_hit_rows <- in_cache[fresh_enough, , drop = FALSE]
   # A scalar assigned onto a NEW column of a possibly-zero-row data frame
   # does not recycle the way it would on an existing column -- base R
@@ -1266,6 +1511,21 @@ evaluate_reference_accessions <- function(accessions,
   cache_hit_rows$cache_hit <- rep(TRUE, nrow(cache_hit_rows))
 
   needs_eval <- setdiff(unique_acc, cache_hit_rows$accession)
+
+  if (isTRUE(prioritize_uncached)) {
+    # Never-before-cached (or cached under a different params_key)
+    # accessions first; expired capped rows actually being retried this call
+    # last -- see @param prioritize_uncached. Purely a reordering of
+    # needs_eval's own elements (setdiff()/intersect() both preserve the
+    # first argument's order), never changes its membership.
+    retried_expired <- if (isTRUE(retry_insufficient)) {
+      in_cache$accession[!fresh_enough]
+    } else {
+      character(0L)
+    }
+    never_evaluated <- setdiff(needs_eval, retried_expired)
+    needs_eval <- c(never_evaluated, intersect(needs_eval, retried_expired))
+  }
 
   if (verbose)
     message(sprintf(
@@ -1318,6 +1578,7 @@ evaluate_reference_accessions <- function(accessions,
       ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
       barcode_term = barcode_term,
       max_consecutive_batch_failures = max_consecutive_batch_failures,
+      max_query_len = max_query_len, max_batch_bp = max_batch_bp,
       top_n = top_n, min_congruent_rank = min_congruent_rank,
       submission_window = submission_window,
       min_independent_partners = min_independent_partners,

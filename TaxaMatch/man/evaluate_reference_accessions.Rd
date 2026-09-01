@@ -23,6 +23,10 @@ evaluate_reference_accessions(
   barcode_term = NULL,
   chunk_size = 200L,
   max_consecutive_batch_failures = 3L,
+  max_query_len = NULL,
+  max_batch_bp = 100000L,
+  prioritize_uncached = TRUE,
+  retry_insufficient = TRUE,
   verbose = TRUE
 )
 }
@@ -97,9 +101,13 @@ mitogenomes (see \code{poll_max_wait}'s own documentation for the real
 captured case) -- the accession's own species-identity signal lives in
 the short barcode region regardless, so trimming answers the identical
 question at a fraction of the cost. A sequence whose primer sites
-can't be found is left at full length (never dropped or errored) and
-BLASTed as before. \code{NULL} (default) submits every sequence at full
-length, unchanged from prior behavior.
+can't be found is next tried against the record's own annotated
+feature table (2026-09-01 -- see \verb{@section Long-sequence robustness}
+below), then, if still over-length, subject to the \code{max_query_len}
+hard cap -- never silently dropped or errored either way; at worst it
+is deferred as \code{"not_evaluated_oversized"}, an explicit, labeled,
+TTL-retryable non-result. \code{NULL} (default) submits every sequence at
+full length, unchanged from prior behavior.
 }}
 
 \item{chunk_size}{Integer (default \code{200L}). Accessions needing real
@@ -113,6 +121,49 @@ to \code{blast_sequences()} -- see that function's own documentation for the
 full circuit-breaker mechanism (a \code{.blast_server_rejected()} rejection
 counts double toward this threshold; a plain poll timeout counts once).
 \code{Inf} disables it.}
+
+\item{max_query_len}{Numeric or \code{NULL} (default). The hard submission
+cap -- after BOTH \code{barcode_term} rescue strategies (primer trimming,
+then the feature-table-guided extraction fallback) have been tried, any
+query still longer than this is NOT submitted to BLAST at all. \code{NULL}
+resolves a default: \verb{10x} the marker's own \code{amplicon_range} upper bound
+(via \code{TaxaTools::resolve_barcode_primers(barcode_term)}) when
+\code{barcode_term} is supplied -- generous enough to never reject a real
+amplicon-length sequence, but small enough to exclude a full
+mitogenome or larger record -- or a flat \code{5000} when it is not (no
+marker-specific bound to derive one from). \code{Inf} disables the cap
+entirely, restoring the pre-2026-09-01 behavior (an unrescuable
+over-length query is always BLASTed at full length). See \verb{@section Long-sequence robustness} below for the full mechanism and the new
+\code{"not_evaluated_oversized"} verdict this produces.}
+
+\item{max_batch_bp}{Numeric (default \code{100000L}). Forwarded to
+\code{blast_sequences()} -- see that function's own documentation for the
+length-aware BLAST batching this adds alongside the existing
+count-based batching. \code{Inf} disables it.}
+
+\item{prioritize_uncached}{Logical (default \code{TRUE}). Orders \code{needs_eval}
+so accessions with NO existing cached verdict under the current call's
+parameters are evaluated before expired
+\code{"insufficient_independent_evidence"}/\code{"not_evaluated_oversized"} rows
+being retried past their TTL -- a budget-limited call (one that trips
+\code{blast_sequences()}'s own circuit breaker partway through) buys real
+NEW coverage first, rather than re-spending BLAST budget re-checking
+accessions that already have SOME cached answer. A pure ordering
+change within one call -- never changes which accessions end up
+evaluated, only in what order -- so, unlike every other new parameter
+here, this one changes existing default behavior deliberately: it is
+strictly better (or a no-op), never worse.}
+
+\item{retry_insufficient}{Logical (default \code{TRUE}). \code{FALSE} skips
+retrying EXPIRED \code{"insufficient_independent_evidence"}/
+\code{"not_evaluated_oversized"} cached rows entirely for this call -- they
+are served from cache as-is (their TTL notwithstanding) instead of
+being re-submitted to NCBI. Addresses a real documented complaint: by
+default, a call the caller expects to be purely cache-served (every
+accession already evaluated at least once) can still spend real BLAST
+budget re-checking every TTL-expired row, grinding against the same
+CPU-budget throttle this whole feature exists to survive. Set \code{FALSE}
+on a call where zero new NCBI cost is required this time.}
 
 \item{verbose}{Logical (default \code{TRUE}). Print progress messages.}
 }
@@ -162,10 +213,15 @@ matches, not just none close enough to make the \code{top_n} cut.}
 \item{\code{congruent_evidence_best_pident}}{Percent identity of the best
 such anywhere-agreeing hit. \code{NA} when
 \code{congruent_evidence_exists_anywhere} is \code{FALSE}.}
-\item{\code{hierarchy_flag}}{\code{"congruent"}, \code{"incongruent"}, or
-\code{"insufficient_independent_evidence"}. \code{NA} if the accession's own
-GenBank record could not be fetched (a \code{warning()} is issued
-listing these; not cached, so a subsequent call retries them).}
+\item{\code{hierarchy_flag}}{\code{"congruent"}, \code{"incongruent"},
+\code{"insufficient_independent_evidence"}, or
+\code{"not_evaluated_oversized"} (added 2026-09-01 -- see \verb{@section Long-sequence robustness} below; the query was never submitted to
+BLAST at all, so this is NOT evidence of anything, and downstream
+consumers (\code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
+\code{\link[=remove_incongruent_references]{remove_incongruent_references()}}) never treat it as a flag).
+\code{NA} if the accession's own GenBank record could not be fetched (a
+\code{warning()} is issued listing these; not cached, so a subsequent
+call retries them).}
 \item{\code{evaluated_at}}{When this verdict was computed (\code{NA} for a
 fetch failure).}
 \item{\code{cache_hit}}{\code{TRUE} if this row was read from \code{cache_dir}
@@ -263,14 +319,22 @@ accessions that are genuinely new or previously out of scope anywhere --
 no \code{taxa} list to decide up front. Staleness is handled asymmetrically:
 \code{"congruent"}/\code{"incongruent"} verdicts are cached indefinitely (an
 accession's own sequence/label doesn't change once deposited); only
-\code{"insufficient_independent_evidence"} verdicts expire after
+\code{"insufficient_independent_evidence"} and (2026-09-01)
+\code{"not_evaluated_oversized"} verdicts expire after
 \code{insufficient_evidence_ttl_days} and are retried, since new NCBI deposits
-could genuinely change that specific answer. A cached row is also treated
-as stale (recomputed) if any parameter that affects the verdict itself
-(\code{top_n}, \code{min_congruent_rank}, \code{submission_window},
-\code{hierarchy_incongruent_threshold}, \code{min_independent_partners},
-\code{score_range}, \code{min_score}, \code{max_hits}, \code{method}, \code{database}) differs from
-the call that produced it.
+(for the former) or a later annotation/primer fix or a raised
+\code{max_query_len} (for the latter) could genuinely change that specific
+answer -- \code{retry_insufficient = FALSE} opts a single call out of retrying
+either past its TTL, serving the stale row instead (see that param's own
+documentation). A cached row is also treated as stale (recomputed) if any
+parameter that affects the verdict itself (\code{top_n}, \code{min_congruent_rank},
+\code{submission_window}, \code{hierarchy_incongruent_threshold},
+\code{min_independent_partners}, \code{score_range}, \code{min_score}, \code{max_hits},
+\code{method}, \code{database}) differs from the call that produced it --
+\code{chunk_size}, \code{max_consecutive_batch_failures}, \code{max_query_len},
+\code{max_batch_bp}, \code{prioritize_uncached}, and \code{retry_insufficient} are
+deliberately NOT in this list (see \verb{@section Long-sequence robustness}
+below for why).
 }
 
 \section{Chunked evaluation and NCBI rate-limiting resilience (2026-08-14)}{
@@ -393,6 +457,50 @@ hits at family that are consistently a SISTER family within the same
 order) that these columns give a caller genuinely new information to
 judge that question with, not a verdict. No classification threshold in
 this function reads these columns; they are informational only.
+}
+
+\section{Long-sequence robustness (2026-09-01)}{
+
+Implements \verb{ecosystem_docs/REENTRY_PROMPT_ eval_ref_accessions_long_sequence_robustness.md}. \code{barcode_term}
+trimming already shortens an over-length query when the primer sites can
+be found; four further mechanisms address what happens when they
+CAN'T -- a full mitogenome (or larger) record submitted to remote BLAST
+at full length is dramatically more CPU-expensive than a short amplicon,
+the real, confirmed cause of sustained NCBI server-side CPU-budget
+rejections that stall this function's own progress:
+\enumerate{
+\item{Feature-table-guided extraction fallback -- a query still
+over-length after primer trimming is checked against the record's
+OWN annotated GBSeq feature table for a feature matching the marker
+\code{barcode_term} implies, and that coordinate span (plus margin) is
+extracted instead. See \code{.extract_feature_table_fallback()}
+(\code{R/trim_query_to_amplicon.R}), which reuses
+\code{check_marker_mismatch()}'s own fetch/matching internals
+(\code{R/check_marker_mismatch.R}) rather than duplicating them.}
+\item{Hard submission cap -- \code{max_query_len}: a query still over-length
+after BOTH rescue strategies is never submitted to BLAST at all. Gets
+a real cached row, \code{hierarchy_flag = "not_evaluated_oversized"},
+every diagnostic column \code{NA} -- an explicit, labeled non-result, not
+a silent drop. TTL-retryable like \code{"insufficient_independent_ evidence"} (see \verb{@section Caching} above), so a later annotation fix,
+primer update, or a raised \code{max_query_len} can rescue it.}
+\item{Length-aware BLAST batching -- \code{max_batch_bp}, forwarded to
+\code{blast_sequences()}: closes a submission batch on a cumulative bp cap
+as well as the existing count cap, and rides one very long query
+alone rather than letting it doom a whole batch of otherwise-cheap
+queries.}
+\item{Retry-priority ordering + a retry switch -- \code{prioritize_uncached}
+(default \code{TRUE}, changes existing default ordering, deliberately
+safe) and \code{retry_insufficient} (default \code{TRUE}; \code{FALSE} makes a call
+purely cache-served, spending zero new NCBI budget on expired
+retries this call).}
+}
+\code{max_query_len}, \code{max_batch_bp}, \code{prioritize_uncached}, and
+\code{retry_insufficient} are all additive and deliberately excluded from
+\code{params_key} -- like \code{chunk_size}/\code{max_consecutive_batch_failures}
+before them, they govern call MECHANICS/scheduling policy (how/whether
+work is submitted this call), not what verdict a given accession's
+evidence would produce, so changing them between calls never invalidates
+an already-\code{"congruent"}/\code{"incongruent"}-cached row. \verb{.EVAL_REF_ACC_ VERSION} is unchanged by this work.
 }
 
 \seealso{

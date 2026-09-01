@@ -1186,6 +1186,306 @@ test_that("evaluate_reference_accessions() retries insufficient_independent_evid
 })
 
 # ------------------------------------------------------------------------------
+# Mechanism 2: max_query_len hard submission cap -- "not_evaluated_oversized"
+# (ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md)
+# ------------------------------------------------------------------------------
+
+test_that("evaluate_reference_accessions(max_query_len=) defers an unrescuable over-length query as not_evaluated_oversized, never BLASTed", {
+  long_seq <- strrep("ACGT", 50L)  # 200bp, no barcode_term supplied at all
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    data.frame(accession = "ACC_LONG", organism = "Longus fishus",
+              create_date = "2020/01/01", sequence = long_seq, stringsAsFactors = FALSE)
+  }
+  blast_called <- FALSE
+  mock_blast <- function(seq_df, ...) { blast_called <<- TRUE; stop("must never be reached") }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = mock_fetch, blast_sequences = mock_blast,
+    .package = "TaxaMatch"
+  )
+
+  out <- suppressMessages(evaluate_reference_accessions(
+    "ACC_LONG", cache_dir = NULL, verbose = FALSE, max_query_len = 50L
+  ))
+
+  expect_false(blast_called)
+  expect_equal(out$hierarchy_flag, "not_evaluated_oversized")
+  expect_equal(out$listed_taxon, "Longus fishus")
+  expect_true(is.na(out$best_hit_pident))
+  expect_true(is.na(out$n_independent_top_matches))
+  expect_true(is.na(out$taxonomy_resolution_source))
+  expect_false(out$cache_hit)
+})
+
+test_that("evaluate_reference_accessions(max_query_len = Inf) disables the cap entirely (pre-2026-09-01 behavior)", {
+  long_seq <- strrep("ACGT", 50L)
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    data.frame(accession = "ACC_LONG", organism = "Longus fishus",
+              create_date = "2020/01/01", sequence = long_seq, stringsAsFactors = FALSE)
+  }
+  seen_sequence <- NULL
+  mock_blast <- function(seq_df, ...) {
+    seen_sequence <<- seq_df$sequence
+    data.frame(observation_id = character(0), accession = character(0), score = numeric(0),
+              stringsAsFactors = FALSE)
+  }
+  mock_tax <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    data.frame(accession = character(0), stringsAsFactors = FALSE)
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = mock_fetch, blast_sequences = mock_blast,
+    .resolve_taxonomy_by_acc = mock_tax, .package = "TaxaMatch"
+  )
+
+  out <- evaluate_reference_accessions(
+    "ACC_LONG", cache_dir = NULL, verbose = FALSE, max_query_len = Inf
+  )
+  expect_equal(seen_sequence, long_seq)
+  expect_equal(out$hierarchy_flag, "insufficient_independent_evidence")
+})
+
+test_that("evaluate_reference_accessions() a not_evaluated_oversized row survives a cache round-trip with TTL semantics like insufficient_independent_evidence", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  long_seq <- strrep("ACGT", 50L)
+  fetch_calls <- 0L
+  mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    fetch_calls <<- fetch_calls + 1L
+    data.frame(accession = "ACC_LONG", organism = "Longus fishus",
+              create_date = "2020/01/01", sequence = long_seq, stringsAsFactors = FALSE)
+  }
+  local_mocked_bindings(.fetch_reference_accession_records = mock_fetch, .package = "TaxaMatch")
+
+  out1 <- suppressMessages(evaluate_reference_accessions(
+    "ACC_LONG", cache_dir = cache_dir, verbose = FALSE, max_query_len = 50L
+  ))
+  expect_equal(out1$hierarchy_flag, "not_evaluated_oversized")
+  expect_false(out1$cache_hit)
+  calls_after_first <- fetch_calls
+
+  # Immediately re-calling stays a cache hit (well within the default 180-day TTL).
+  out2 <- evaluate_reference_accessions(
+    "ACC_LONG", cache_dir = cache_dir, verbose = FALSE, max_query_len = 50L
+  )
+  expect_equal(fetch_calls, calls_after_first)
+  expect_true(out2$cache_hit)
+  expect_equal(out2$hierarchy_flag, "not_evaluated_oversized")
+
+  # Backdate past a short TTL -- retried, same as insufficient_independent_evidence.
+  cache_path <- file.path(cache_dir, "reference_accession_cache.rds")
+  cached <- readRDS(cache_path)
+  cached$evaluated_at <- cached$evaluated_at - 1000
+  saveRDS(cached, cache_path)
+
+  suppressMessages(evaluate_reference_accessions(
+    "ACC_LONG", cache_dir = cache_dir, verbose = FALSE, max_query_len = 50L,
+    insufficient_evidence_ttl_days = 0.001
+  ))
+  expect_true(fetch_calls > calls_after_first)
+})
+
+test_that("flag_incongruent_references()/remove_incongruent_references() never treat not_evaluated_oversized as a flag", {
+  match_df <- data.frame(accession = c("A1", "A2"), stringsAsFactors = FALSE)
+  full_eval <- data.frame(
+    accession = c("A1", "A2"),
+    hierarchy_flag = c("not_evaluated_oversized", "congruent"),
+    finest_common_rank = NA_character_,
+    frac_independent_below_min_congruent_rank = NA_real_,
+    n_independent_top_matches = NA_integer_, n_top_matches_available = NA_integer_,
+    best_hit_pident = NA_real_, best_agreeing_pident = NA_real_,
+    best_disagreeing_pident = NA_real_,
+    congruent_evidence_exists_anywhere = NA, congruent_evidence_best_pident = NA_real_,
+    stringsAsFactors = FALSE
+  )
+
+  flagged <- flag_incongruent_references(match_df, full_eval)
+  expect_equal(flagged$hierarchy_flag, c("not_evaluated_oversized", "congruent"))
+
+  # Never removed by default...
+  removed_default <- remove_incongruent_references(match_df, full_eval)
+  expect_equal(nrow(removed_default), 2L)
+  # ...and never removed even with remove_insufficient_evidence = TRUE (that
+  # flag only ever adds "insufficient_independent_evidence", never the new
+  # oversized verdict -- see remove_incongruent_references()'s own roxygen).
+  removed_broad <- remove_incongruent_references(
+    match_df, full_eval, remove_insufficient_evidence = TRUE
+  )
+  expect_equal(nrow(removed_broad), 2L)
+})
+
+# ------------------------------------------------------------------------------
+# Mechanism 4: prioritize_uncached / retry_insufficient
+# ------------------------------------------------------------------------------
+
+.priority_records <- function(accessions) {
+  data.frame(
+    accession = accessions,
+    sequence = rep("ACGTACGTACGTACGT", length(accessions)),
+    organism = rep("Priorus testus", length(accessions)),
+    create_date = rep("2020/01/01", length(accessions)),
+    stringsAsFactors = FALSE
+  )
+}
+.priority_mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL,
+                                 verbose = TRUE) .priority_records(accessions)
+.priority_mock_blast <- function(seq_df, ...) {
+  data.frame(observation_id = character(0), accession = character(0), score = numeric(0),
+            stringsAsFactors = FALSE)
+}
+.priority_mock_tax <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+  data.frame(accession = character(0), stringsAsFactors = FALSE)
+}
+
+test_that("evaluate_reference_accessions(prioritize_uncached = TRUE, default) evaluates never-cached accessions before an expired retry", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .priority_mock_fetch,
+    blast_sequences = .priority_mock_blast, .resolve_taxonomy_by_acc = .priority_mock_tax,
+    .package = "TaxaMatch"
+  )
+  # Seed ACC_OLD as a genuine "insufficient_independent_evidence" verdict
+  # (zero BLAST hits, matches .priority_mock_blast()).
+  evaluate_reference_accessions("ACC_OLD", cache_dir = cache_dir, verbose = FALSE)
+
+  # Backdate it past a short TTL.
+  cache_path <- file.path(cache_dir, "reference_accession_cache.rds")
+  cached <- readRDS(cache_path)
+  cached$evaluated_at <- cached$evaluated_at - 1e6
+  saveRDS(cached, cache_path)
+
+  fetch_order <- character(0)
+  order_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    fetch_order <<- c(fetch_order, accessions)
+    .priority_records(accessions)
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = order_fetch,
+    blast_sequences = .priority_mock_blast, .resolve_taxonomy_by_acc = .priority_mock_tax,
+    .package = "TaxaMatch"
+  )
+
+  suppressMessages(evaluate_reference_accessions(
+    c("ACC_OLD", "ACC_NEW"), cache_dir = cache_dir, verbose = FALSE,
+    chunk_size = 1L, insufficient_evidence_ttl_days = 0.0001
+  ))
+
+  # ACC_NEW (never cached) is evaluated before ACC_OLD (an expired retry),
+  # even though the caller supplied ACC_OLD first.
+  expect_equal(fetch_order, c("ACC_NEW", "ACC_OLD"))
+})
+
+test_that("evaluate_reference_accessions(prioritize_uncached = FALSE) preserves the caller's own supplied order", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .priority_mock_fetch,
+    blast_sequences = .priority_mock_blast, .resolve_taxonomy_by_acc = .priority_mock_tax,
+    .package = "TaxaMatch"
+  )
+  evaluate_reference_accessions("ACC_OLD", cache_dir = cache_dir, verbose = FALSE)
+
+  cache_path <- file.path(cache_dir, "reference_accession_cache.rds")
+  cached <- readRDS(cache_path)
+  cached$evaluated_at <- cached$evaluated_at - 1e6
+  saveRDS(cached, cache_path)
+
+  fetch_order <- character(0)
+  order_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    fetch_order <<- c(fetch_order, accessions)
+    .priority_records(accessions)
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = order_fetch,
+    blast_sequences = .priority_mock_blast, .resolve_taxonomy_by_acc = .priority_mock_tax,
+    .package = "TaxaMatch"
+  )
+
+  suppressMessages(evaluate_reference_accessions(
+    c("ACC_OLD", "ACC_NEW"), cache_dir = cache_dir, verbose = FALSE,
+    chunk_size = 1L, insufficient_evidence_ttl_days = 0.0001,
+    prioritize_uncached = FALSE
+  ))
+
+  expect_equal(fetch_order, c("ACC_OLD", "ACC_NEW"))
+})
+
+test_that("evaluate_reference_accessions(retry_insufficient = FALSE) serves an expired insufficient row from cache without any new NCBI call", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .priority_mock_fetch,
+    blast_sequences = .priority_mock_blast, .resolve_taxonomy_by_acc = .priority_mock_tax,
+    .package = "TaxaMatch"
+  )
+  evaluate_reference_accessions("ACC_OLD", cache_dir = cache_dir, verbose = FALSE)
+
+  cache_path <- file.path(cache_dir, "reference_accession_cache.rds")
+  cached <- readRDS(cache_path)
+  cached$evaluated_at <- cached$evaluated_at - 1e6
+  saveRDS(cached, cache_path)
+
+  fetch_calls <- 0L
+  counting_fetch <- function(accessions, ...) {
+    fetch_calls <<- fetch_calls + 1L
+    .priority_records(accessions)
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = counting_fetch,
+    blast_sequences = .priority_mock_blast, .resolve_taxonomy_by_acc = .priority_mock_tax,
+    .package = "TaxaMatch"
+  )
+
+  out <- evaluate_reference_accessions(
+    "ACC_OLD", cache_dir = cache_dir, verbose = FALSE,
+    insufficient_evidence_ttl_days = 0.0001, retry_insufficient = FALSE
+  )
+
+  expect_equal(fetch_calls, 0L)
+  expect_true(out$cache_hit)
+  expect_equal(out$hierarchy_flag, "insufficient_independent_evidence")
+})
+
+test_that("evaluate_reference_accessions(retry_insufficient = FALSE) still evaluates a genuinely never-cached accession", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .priority_mock_fetch,
+    blast_sequences = .priority_mock_blast, .resolve_taxonomy_by_acc = .priority_mock_tax,
+    .package = "TaxaMatch"
+  )
+  out <- evaluate_reference_accessions(
+    "ACC_BRAND_NEW", cache_dir = cache_dir, verbose = FALSE, retry_insufficient = FALSE
+  )
+  expect_false(out$cache_hit)
+  expect_equal(out$hierarchy_flag, "insufficient_independent_evidence")
+})
+
+test_that("evaluate_reference_accessions() cached rows are unaffected by changing max_query_len/max_batch_bp/prioritize_uncached/retry_insufficient (excluded from params_key)", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  fetch_calls <- 0L
+  counting_fetch <- function(...) { fetch_calls <<- fetch_calls + 1L; .mock_fetch_records(...) }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = counting_fetch, blast_sequences = .mock_blast_sequences,
+    .resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch"
+  )
+  evaluate_reference_accessions("ACC001", cache_dir = cache_dir, verbose = FALSE)
+  calls_after_first <- fetch_calls
+
+  out2 <- evaluate_reference_accessions(
+    "ACC001", cache_dir = cache_dir, verbose = FALSE,
+    max_query_len = 999999L, max_batch_bp = 5000L,
+    prioritize_uncached = FALSE, retry_insufficient = FALSE
+  )
+  expect_equal(fetch_calls, calls_after_first)
+  expect_true(out2$cache_hit)
+  expect_equal(out2$hierarchy_flag, "congruent")
+})
+
+# ------------------------------------------------------------------------------
 # flag_incongruent_references() / remove_incongruent_references()
 # ------------------------------------------------------------------------------
 

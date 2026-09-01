@@ -1,6 +1,126 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-30 (Sonnet 5 -- real production crash fixed in
+# Last updated: 2026-09-01 (Sonnet 5, branch ncbi-screen-robustness -- implements
+# ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md end to
+# end: the four mechanisms the reentry doc specced to stop long/unrescuable query
+# sequences from eating `evaluate_reference_accessions()`'s NCBI CPU budget and stalling
+# real PtConception runs. Delegated by the user; live NCBI validation deliberately
+# reserved for their next window -- everything below is offline-verified only.
+#
+# (1) Feature-table-guided extraction fallback (the main fix) -- new
+# `.extract_feature_table_fallback()` (`R/trim_query_to_amplicon.R`): when
+# `.trim_queries_to_amplicon()` leaves a query over-length (primer sites not found),
+# this checks the accession's OWN annotated GBSeq feature table for a `/gene`/`/product`
+# qualifier matching the marker `barcode_term` implies, and extracts that feature's
+# coordinate span (+/- a 100bp margin) instead of submitting the full record. Reuses
+# `check_marker_mismatch()`'s existing fetch/matching internals directly -- no second
+# fetcher, no new qualifier vocabulary, per the reentry doc's explicit instruction.
+# `.fetch_marker_annotation()` (`R/check_marker_mismatch.R`) gained two new columns,
+# `feature_from`/`feature_to` (parsed from `GBFeature_intervals/GBInterval`, min/max
+# across intervals) -- additive; `check_marker_mismatch()` itself never reads them, so
+# its own behavior and tests are byte-unchanged. A small new bridge,
+# `.resolve_expected_marker()`/`.MIFISH_STYLE_TO_MARKER`, maps MiFish/Teleo-style
+# `barcode_term` primer-SET names (which never literally contain "12S") onto
+# `.resolve_marker_pattern()`'s own existing marker vocabulary -- every other
+# `barcode_term` value (`"18S_2"`, `"COI-Leray"`, etc.) already resolves via that
+# function's own substring fallback, unchanged. Extraction uses plain `substr()` (GenBank
+# feature coordinates index directly into `GBSeq_sequence`, 1-based inclusive) -- no
+# `Biostrings` call needed for this step, and deliberately does NOT reverse-complement a
+# minus-strand feature, since `blast_sequences()` never sets an explicit strand and
+# already searches both regardless (documented explicitly in the new function's own
+# roxygen, not silently assumed).
+#
+# Found and fixed a real bug while writing this function's own tests (not caught by
+# manual review): `return(NULL)` inside a bare `tryCatch({...})` block with no wrapping
+# function of its own returns from the ENCLOSING FUNCTION in R, not just supplies the
+# tryCatch expression's value -- the first draft's "no match" and "out-of-bounds span"
+# early-outs were each returning `NULL` from `.extract_feature_table_fallback()` ITSELF,
+# silently abandoning every remaining accession still to be processed in that call's
+# loop the moment the first non-rescuable one was hit. Fixed by wrapping the per-
+# accession extraction logic in its own local `extract_one()` closure inside the
+# `tryCatch()`, so `return(NULL)` only ever exits that one accession's own attempt. 3
+# tests caught this immediately (each expecting an unchanged sequence back got `NULL`
+# for the whole function instead) -- flagging this pattern in case it recurs elsewhere
+# in this codebase's other bare-`tryCatch({...break-out-of-loop...})` call sites.
+#
+# (2) Hard submission cap -- new `max_query_len` param (default `NULL`, resolving to
+# `10x` the marker's own `amplicon_range` upper bound when `barcode_term` is supplied,
+# else a flat `5000`; `Inf` disables). After BOTH rescue strategies, a query still over
+# `max_query_len` is NEVER submitted to BLAST -- gets a real cached row instead, new
+# `hierarchy_flag` value `"not_evaluated_oversized"`, every diagnostic column `NA`. This
+# is the contract revision the reentry doc called for: the pre-existing "never discards
+# or errors, only shortens or leaves unchanged" contract is honored EXPLICITLY (a
+# labeled, TTL-retryable non-result -- same asymmetric TTL treatment as
+# `"insufficient_independent_evidence"`, so a later annotation/primer fix or a raised
+# `max_query_len` can rescue it), not silently (never just BLASTed at full length
+# unconditionally, the prior behavior). Verified downstream: `flag_incongruent_
+# references()`/`remove_incongruent_references()` never pattern-match this new value as
+# a flag (`remove_insufficient_evidence = TRUE` only ever adds
+# `"insufficient_independent_evidence"` to what's removed, never the new verdict --
+# confirmed by a dedicated test, not just read). `verify_flagged_references()`'s
+# whitelist-based `keep_flags` also naturally excludes it by default, identical to how
+# `"insufficient_independent_evidence"` is already excluded unless
+# `trust_insufficient_evidence = TRUE` -- no code change needed there, verified by
+# inspection.
+#
+# (3) Length-aware BLAST batching -- `blast_sequences()`/`.blast_remote()` gain
+# `max_batch_bp` (default `100000L`). New internal `.split_batches_by_length()`
+# (`R/blast_sequences.R`) replaces the old count-only `split(seq_len(n),
+# ceiling(seq_len(n)/batch_size))` in both the initial batch plan and the halved-batch-
+# size retry pass: a batch closes on EITHER the count cap or a cumulative-bp cap,
+# whichever comes first, and any single query at or above half of `max_batch_bp` rides
+# ALONE (closing whatever batch was accumulating first). `Inf` restores the exact old
+# count-only behavior (confirmed byte-identical to the old `split()` call via a dedicated
+# test). Existing circuit-breaker/failed-batch bookkeeping is completely untouched --
+# `.split_batches_by_length()` only changes what goes INTO each batch index, not how
+# batch failures are counted or retried.
+#
+# (4) Retry-priority ordering + retry switch -- `evaluate_reference_accessions()` gains
+# `prioritize_uncached` (default `TRUE` -- reorders `needs_eval` so never-before-cached
+# accessions are evaluated before expired `"insufficient_independent_evidence"`/
+# `"not_evaluated_oversized"` retries; the ONE new default that changes existing
+# behavior, deliberately, since it's a pure processing-order change that never alters
+# which accessions end up evaluated) and `retry_insufficient` (default `TRUE`; `FALSE`
+# serves an expired capped row from cache AS-IS instead of retrying it this call --
+# directly answers the fastpath header's documented complaint that a call meant to be
+# purely cache-served still "RETRIES insufficient accessions every call, so even a
+# cache-served run grinds against the throttle").
+#
+# Cache-version discipline (binding constraint, re-verified before shipping): NONE of
+# the four new `evaluate_reference_accessions()` params (`max_query_len`, `max_batch_bp`,
+# `prioritize_uncached`, `retry_insufficient`) were added to `params_key`, and
+# `.EVAL_REF_ACC_VERSION` was NOT bumped -- worked through explicitly, not just asserted:
+# `params_key` is one global string applied uniformly to every cached row (the same
+# 2026-08-11/13 precedent this file already documents), so adding a new token to it would
+# have changed EVERY row's own key regardless of whether the new param's actual value
+# differed, forcing a full re-BLAST of the real ~1,163-row GreatLakes/PtConception cache
+# on the very next call -- exactly the outcome this whole feature exists to prevent. All
+# four instead behave like the pre-existing `chunk_size`/`max_consecutive_batch_failures`
+# precedent: call mechanics/scheduling policy, not verdict-affecting inputs, so changing
+# them between calls never invalidates an already-`"congruent"`/`"incongruent"`-cached
+# row (confirmed by a dedicated regression test). `"not_evaluated_oversized"`'s own TTL-
+# based retryability does the real work of letting a later `max_query_len` change
+# eventually reach an already-cached oversized row, without needing a global key bump.
+#
+# 64 new offline tests (950 total, up from 886): `.split_batches_by_length()` (count-cap
+# parity with the old `split()`, bp-cap-closes-before-count-cap, solo-ride isolation, NA-
+# length handling, `blast_sequences()` end-to-end batch-plan verification via a mocked
+# `.blast_submit()`), `.extract_feature_table_fallback()`/`.resolve_expected_marker()`
+# (match/no-match/no-annotation/degenerate-span/fetch-failure cases, plus the full
+# `evaluate_reference_accessions(barcode_term=)` integration path), `max_query_len`
+# (oversized defer + never-BLASTed, `Inf` disables, cache round-trip with TTL retry,
+# downstream flag-safety), `prioritize_uncached`/`retry_insufficient` (evaluation-order
+# proof via a call-order-recording mock, `FALSE` preserves caller order, zero-new-NCBI-
+# call proof for a purely cache-served run, a genuinely-new accession still evaluates
+# normally), and the params_key-exclusion regression test above. `devtools::document()`
+# clean, `devtools::test()` 950/950 (0 failures, 0 warnings), `devtools::check()`
+# 0 errors/0 warnings/0 notes. NOT reinstalled -- per the reentry doc's own constraint
+# (`devtools::install()` explicitly out of scope for the implementing agent) and this
+# ecosystem's restart/install/un-cache/library checklist convention, installation is left
+# to the user's own next session; exact re-run instructions (including that the
+# persistent accession cache needs NO clearing) are appended to the reentry doc's own
+# Status section.
+# Previous update, 2026-08-30 (Sonnet 5 -- real production crash fixed in
 # .trim_queries_to_amplicon()/.extract_amplicon_one_tm() (R/trim_query_to_amplicon.R),
 # found live: `evaluate_reference_accessions(barcode_term = "MiFishU")` on a real
 # PtConception 995-accession screen crashed chunk 1/5 (200 accessions) with a bare

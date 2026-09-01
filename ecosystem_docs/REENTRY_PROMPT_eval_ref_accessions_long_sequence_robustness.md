@@ -151,3 +151,98 @@ current behavior except the (safe, strictly-better) ordering.
 ## Status
 
 - 2026-09-01: doc written; delegated to a Sonnet agent for implementation.
+- 2026-09-01: IMPLEMENTED, offline-verified, branch `ncbi-screen-robustness`. All four
+  mechanisms shipped as specced above: (1) `.extract_feature_table_fallback()`
+  (`TaxaMatch/R/trim_query_to_amplicon.R`), reusing `check_marker_mismatch()`'s fetch/
+  matching internals (`.fetch_marker_annotation()` gained `feature_from`/`feature_to`
+  columns); (2) `max_query_len` + new `hierarchy_flag = "not_evaluated_oversized"`
+  (TTL-retryable, never treated as a flag by `remove_incongruent_references()`/
+  `flag_incongruent_references()`); (3) `blast_sequences()`/`.blast_remote()` gain
+  `max_batch_bp` via new `.split_batches_by_length()`; (4) `evaluate_reference_
+  accessions()` gains `prioritize_uncached` (default `TRUE`) and `retry_insufficient`
+  (default `TRUE`). `.EVAL_REF_ACC_VERSION` NOT bumped; all four new params deliberately
+  excluded from `params_key` (see `TaxaMatch/CLAUDE.md`'s 2026-09-01 top note for the
+  full reasoning) -- the persistent cache needs no clearing and no rows were invalidated.
+  One real bug found and fixed while writing tests: `return(NULL)` inside a bare
+  `tryCatch({...})` block (no wrapping function) returns from the whole enclosing
+  function in R, not just the tryCatch expression -- see the CLAUDE.md note for detail.
+  `devtools::document()` clean, `devtools::test()` 950/950 (0 failures, 0 warnings, up
+  from the 886 baseline -- 64 new tests), `devtools::check()` 0 errors/0 warnings/0
+  notes. NOT reinstalled (out of scope for the implementing agent, per this doc's own
+  constraint) -- see "Re-run instructions for the next live NCBI window" below.
+  Ecosystem CLAUDE.md's Recent Breaking Changes table and
+  `ecosystem_docs/NAME_CHANGE_HISTORY.md` both updated with additive rows.
+
+## Re-run instructions for the next live NCBI window
+
+Follow this ecosystem's restart/install/un-cache/library checklist convention in full --
+all four steps, every time, not just a subset:
+
+1. **Restart R** (a fresh session -- a stale in-memory `TaxaMatch` from before this work
+   landed is the single most common cause of a "it doesn't work" report that turns out
+   to be nothing of the kind).
+2. **Install the updated package** from the `ncbi-screen-robustness` branch worktree:
+   ```r
+   .libPaths(c(path.expand(Sys.getenv("R_LIBS_USER")), .libPaths()))
+   devtools::install(
+     "/private/tmp/claude-501/-Users-lafferty/bb8c80c5-240a-4a66-a6b3-eda9f8dd7c12/scratchpad/taxaid-ncbi-robustness/TaxaMatch",
+     upgrade = "never"
+   )
+   ```
+   (Set `.libPaths()` BEFORE calling `install()` -- this is the documented library
+   footgun: a bare `Rscript` call can otherwise silently install to, or load
+   dependencies from, the wrong R library, e.g. `TaxaTools` resolving from a stale
+   system library instead of `~/Library/R/4.0/library`.) Verify the install actually
+   landed the new code before trusting anything downstream:
+   ```r
+   packageVersion("TaxaMatch")  # sanity check only -- version number itself wasn't bumped
+   "max_query_len" %in% names(formals(TaxaMatch::evaluate_reference_accessions))  # must be TRUE
+   "max_batch_bp" %in% names(formals(TaxaMatch::blast_sequences))  # must be TRUE
+   ```
+3. **Un-cache**: nothing to clear. The persistent accession cache
+   (`tools::R_user_dir("TaxaMatch", "cache")`, or whatever `cache_dir` your real workflow
+   already passes) needs **NO clearing, deletion, or backup-and-surgical-edit** before
+   this re-run -- unlike several past sessions' fixes in this file's own history
+   (2026-08-11, 2026-08-13), this change deliberately did NOT bump `.EVAL_REF_ACC_
+   VERSION` and deliberately did NOT add any of the four new params to `params_key`
+   specifically so every already-cached `"congruent"`/`"incongruent"` row (real count:
+   ~1,163 across the GreatLakes/PtConception populations) stays valid and untouched. A
+   PREVIOUSLY-cached `"insufficient_independent_evidence"` row past its TTL will retry as
+   before; nothing new needs to expire or be forced.
+4. **Verify `.libPaths()`** right before the real run itself (not just at install time --
+   a new R session/terminal can silently reset it):
+   ```r
+   .libPaths(c(path.expand(Sys.getenv("R_LIBS_USER")), .libPaths()))
+   .libPaths()  # confirm ~/Library/R/4.0/library is first
+   ```
+
+Then re-run the SAME blocked call the user already had in flight (same `accessions`,
+same `cache_dir`) -- no changes needed to the call itself to benefit from mechanisms
+1-3 (the barcode_term-scoped rescue chain and length-aware batching apply automatically
+whenever `barcode_term` is supplied, exactly as before); to benefit from mechanism 4's
+new default ordering, no action is needed either (`prioritize_uncached = TRUE` is now
+the default). Optionally pass `max_query_len =` explicitly to override the auto-derived
+default, or `retry_insufficient = FALSE` for a run intended to be purely cache-served.
+
+**What to look for in the first real run**, to confirm the fix is doing real work, not
+just present:
+- A `message()` naming how many accessions were deferred as `"not_evaluated_oversized"`
+  this call, and how many were rescued via the feature-table fallback (both new,
+  `verbose = TRUE` messages -- see `.evaluate_reference_accessions_chunk()`'s own
+  `if (verbose)` blocks in `R/evaluate_reference_accessions.R` and
+  `.extract_feature_table_fallback()`'s own in `R/trim_query_to_amplicon.R`).
+- Fewer/no `.blast_server_rejected()` CPU-budget-rejection warnings than the pre-fix
+  baseline, for the SAME accession population -- the whole point.
+- `attr(result, "run_summary")$pct_complete` climbing further per call than before, since
+  a budget-limited call now spends its budget on never-evaluated accessions first
+  (`prioritize_uncached`).
+- After the run: `table(result$hierarchy_flag)` should show a real, non-zero
+  `"not_evaluated_oversized"` count only if genuinely unrescuable long sequences exist in
+  this population (full mitogenomes/larger with no locatable primer sites AND no
+  matching feature-table annotation) -- zero is a perfectly plausible, correct outcome
+  too, not evidence the mechanism didn't run.
+
+If a real run surfaces a genuinely new failure mode (e.g. a marker/barcode_term whose
+`.resolve_expected_marker()` bridge doesn't yet cover it, or a GBSeq feature-table shape
+this fetch code doesn't parse correctly), that is real signal for a follow-up session,
+not something to work around silently in the field.

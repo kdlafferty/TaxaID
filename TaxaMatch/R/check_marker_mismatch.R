@@ -81,16 +81,27 @@
 #' `country`, or the whole-record sequence/organism/create-date.
 #'
 #' @param accessions Character vector, deduped internally.
-#' @return data.frame(accession, feature_key, gene, product). One row per
-#'   (accession, matched feature) pair for `gene`/`CDS`/`rRNA`/
-#'   `misc_feature` features found; an accession with NO such feature at
-#'   all still gets exactly one row, with `feature_key`/`gene`/`product`
-#'   all `NA` (so a caller can distinguish "checked, no relevant annotation
-#'   exists" from "not fetched at all").
+#' @return data.frame(accession, feature_key, gene, product, feature_from,
+#'   feature_to). One row per (accession, matched feature) pair for
+#'   `gene`/`CDS`/`rRNA`/`misc_feature` features found; an accession with NO
+#'   such feature at all still gets exactly one row, with
+#'   `feature_key`/`gene`/`product`/`feature_from`/`feature_to` all `NA` (so
+#'   a caller can distinguish "checked, no relevant annotation exists" from
+#'   "not fetched at all"). `feature_from`/`feature_to` (added 2026-09-01,
+#'   for `.extract_feature_table_fallback()` in
+#'   `R/trim_query_to_amplicon.R` -- the feature-table-guided extraction
+#'   fallback for a query too long to primer-trim) are the min/max of the
+#'   feature's own `GBFeature_intervals/GBInterval` `from`/`to` coordinates
+#'   (numeric, 1-based, inclusive, as GenBank reports them) -- `NA` when the
+#'   feature has no interval data at all. `check_marker_mismatch()` itself
+#'   never reads these two columns; they exist purely so that function's
+#'   own fetch/matching internals can be reused, not duplicated, by the
+#'   extraction fallback.
 #' @noRd
 .fetch_marker_annotation <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
   empty <- data.frame(accession = character(0L), feature_key = character(0L),
                       gene = character(0L), product = character(0L),
+                      feature_from = numeric(0L), feature_to = numeric(0L),
                       stringsAsFactors = FALSE)
 
   .check_pkg("rentrez")
@@ -131,6 +142,7 @@
           if (length(feats) == 0L) {
             return(data.frame(accession = acc, feature_key = NA_character_,
                               gene = NA_character_, product = NA_character_,
+                              feature_from = NA_real_, feature_to = NA_real_,
                               stringsAsFactors = FALSE))
           }
           do.call(rbind, lapply(feats, function(feat) {
@@ -143,11 +155,24 @@
             ))
             gene_val    <- qvals[qnames == "gene"]
             product_val <- qvals[qnames == "product"]
+            # GBFeature_intervals/GBInterval's own from/to -- min/max across
+            # every interval covers a multi-interval feature (e.g. a
+            # spliced CDS) by its full outer span; NA when the feature
+            # carries no interval data at all (found, not assumed).
+            iv_from <- suppressWarnings(as.numeric(xml2::xml_text(xml2::xml_find_all(
+              feat, "./GBFeature_intervals/GBInterval/GBInterval_from"
+            ))))
+            iv_to <- suppressWarnings(as.numeric(xml2::xml_text(xml2::xml_find_all(
+              feat, "./GBFeature_intervals/GBInterval/GBInterval_to"
+            ))))
+            iv_all <- c(iv_from, iv_to)
             data.frame(
               accession   = acc,
               feature_key = fkey,
               gene        = if (length(gene_val) > 0L) gene_val[1L] else NA_character_,
               product     = if (length(product_val) > 0L) product_val[1L] else NA_character_,
+              feature_from = if (any(!is.na(iv_all))) min(iv_all, na.rm = TRUE) else NA_real_,
+              feature_to   = if (any(!is.na(iv_all))) max(iv_all, na.rm = TRUE) else NA_real_,
               stringsAsFactors = FALSE
             )
           }))
@@ -160,7 +185,7 @@
           if (verbose) warning(sprintf(
             "Marker-annotation fetch failed for batch %d: %s", i, conditionMessage(e)
           ), call. = FALSE)
-          empty
+          empty  # already carries feature_from/feature_to (0-row, schema-only)
         }
       })
       if (!is.null(fetched)) { res[[i]] <- fetched; break }
