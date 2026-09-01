@@ -775,9 +775,6 @@ not shown above.)
 Chao, A. (1984). Nonparametric estimation of the number of classes in a
 population. *Scandinavian Journal of Statistics*, 11(4), 265-270.
 
-Gelman, A., Carlin, J.B., Stern, H.S., Dunson, D.B., Vehtari, A. and
-Rubin, D.B. (2013). *Bayesian Data Analysis*. 3rd edn. CRC Press.
-
 Good, I.J. (1953). The population frequencies of species and the
 estimation of population parameters. *Biometrika*, 40(3-4), 237-264.
 
@@ -787,44 +784,6 @@ estimation problems. *Proceedings of the Royal Society of London A*,
 
 Kish, L. (1965). *Survey Sampling*. New York: Wiley.
 
-MacKenzie, D.I., Nichols, J.D., Lachman, G.B., Droege, S., Royle, J.A.
-and Langtimm, C.A. (2002). Estimating site occupancy rates when
-detection probabilities are less than one. *Ecology*, 83(8), 2248--2255.
-[doi:10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2](doi:10.1890/0012-9658(2002)083%5B2248:ESORWD%5D2.0.CO;2){.uri}
-
 Pärtel, M., Szava-Kovats, R. and Zobel, M. (2011). Dark diversity:
 shedding light on absent species. *Trends in Ecology & Evolution*,
 26(3), 124--128. <doi:10.1016/j.tree.2010.12.004>
-
-Warton, D.I., Blanchet, F.G., O'Hara, R.B., Ovaskainen, O., Taskinen,
-S., Walker, S.C. and Hui, F.K.C. (2015). So many variables: joint
-modeling in community ecology. *Trends in Ecology & Evolution*, 30(12),
-766--779. <doi:10.1016/j.tree.2015.09.007>
-
-*The following references pertain to the retired grid/GLMM prior
-architecture (Section 1), which remains in the package as deprecated
-functions but is not otherwise described in this document.*
-
-Brooks, M.E., Kristensen, K., van Benthem, K.J., Magnusson, A., Berg,
-C.W., Nielsen, A., Skaug, H.J., Maechler, M. and Bolker, B.M. (2017).
-glmmTMB balances speed and flexibility among packages for zero-inflated
-generalized linear mixed modeling. *The R Journal*, 9(2), 378--400.
-<doi:10.32614/RJ-2017-066>
-
-Dormann, C.F., Elith, J., Bacher, S., Buchmann, C., Carl, G., Carré, G.,
-Marquéz, J.R.G., Gruber, B., Lafourcade, B., Leitão, P.J., Münkemüller,
-T., McClean, C., Osborne, P.E., Reineking, B., Schröder, B., Skidmore,
-A.K., Zurell, D. and Lautenbach, S. (2013). Collinearity: a review of
-methods to deal with it and a simulation study evaluating their
-performance. *Ecography*, 36(1), 27--46.
-<doi:10.1111/j.1600-0587.2012.07348.x>
-
-Dray, S., Legendre, P. and Peres-Neto, P.R. (2006). Spatial modelling: a
-comprehensive framework for principal coordinate analysis of neighbour
-matrices (PCNM). *Ecological Modelling*, 196(3--4), 483--493.
-<doi:10.1016/j.ecolmodel.2006.02.015>
-
-Griffith, D.A. and Peres-Neto, P.R. (2006). Spatial modeling in ecology:
-the flexibility of eigenfunction spatial analyses. *Ecology*, 87(10),
-2603--2613.
-[doi:10.1890/0012-9658(2006)87[2603:SMIETF]2.0.CO;2](doi:10.1890/0012-9658(2006)87%5B2603:SMIETF%5D2.0.CO;2){.uri}
