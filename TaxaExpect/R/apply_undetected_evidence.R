@@ -257,8 +257,12 @@ apply_undetected_evidence <- function(
   # replacing the floor-additive blend whose floor term dominated every row).
   # Requires a kernel model_obj carrying a finite theta_present.
   kernel_theta_present <- NA_real_
+  kernel_theta_singleton <- NA_real_
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     kernel_theta_present <- model_obj$theta_present %||% NA_real_
+    f1_k <- model_obj$f1 %||% 0L
+    if (is.numeric(f1_k) && f1_k > 0)
+      kernel_theta_singleton <- (model_obj$missing_mass %||% NA_real_) / f1_k
   }
   if (pricing == "curve" &&
       (!is.numeric(kernel_theta_present) || !is.finite(kernel_theta_present) ||
@@ -326,6 +330,14 @@ apply_undetected_evidence <- function(
     stop("apply_undetected_evidence: every `evidence$p_conc` must be a non-NA positive value.")
   }
 
+  # ---- Anchors --------------------------------------------------------------
+  # Curve mode needs NO floor/ceiling anchors (theta = w * theta_present,
+  # theta_absent = 0); its printer anchor (the observed singleton scale) comes
+  # from the kernel object directly, so a table without a global_floor row is
+  # fine there. The blend path keeps its original anchor requirements.
+  theta_floor <- var_floor <- theta_singleton <- var_singleton <- NA_real_
+  if (pricing == "curve") theta_singleton <- kernel_theta_singleton
+  if (pricing == "blend") {
   # ---- Floor anchor: read directly from taxaexpect_priors, don't recompute ---
   floor_rows <- taxaexpect_priors[
     !is.na(taxaexpect_priors$undetected_type) &
@@ -436,6 +448,8 @@ apply_undetected_evidence <- function(
     var_singleton   <- .beta_sd(mean(use_singletons$alpha, na.rm = TRUE),
                                  mean(use_singletons$beta,  na.rm = TRUE))^2
   }
+
+  }  # end blend-mode anchor block
 
   # ---- Dataset-specific veto bound (2026-08-26 mixture redesign, D4) --------
   # At likelihood parity, an elevated species stays in the consensus plausible
