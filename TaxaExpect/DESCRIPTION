@@ -15,6 +15,8 @@ Imports:
     dplyr,
     rlang,
     glmmTMB,
+    grDevices,
+    graphics,
     stats,
     utils,
     stringr,
