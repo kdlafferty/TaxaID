@@ -261,6 +261,14 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     length(s$lat_grid), length(s$lon_grid), paste(taxa, collapse = ", "),
     min(s$lat_grid), max(s$lat_grid), min(s$lon_grid), max(s$lon_grid),
     s$params$lambda_km, s$params$m))
+  # Show the map. A function named plot_*() that prints only a text summary
+  # is a trap: at the console the summary looks like success while nothing is
+  # drawn, so a STALE object from an earlier call keeps displaying (exactly
+  # what happened on the 2026-09-01 click-through -- a three-species call
+  # printed its summary while an earlier single-species object's map stayed
+  # on screen, reading as "the selector is missing"). Printing the object now
+  # prints the map too, so what you see is always the object you just built.
+  if (!is.null(x$plot)) print(x$plot)
   invisible(x)
 }
 

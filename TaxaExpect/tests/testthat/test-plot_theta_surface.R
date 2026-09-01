@@ -314,3 +314,25 @@ test_that("interactive map carries legend, hover labels, small site marker and a
   rect <- m$x$calls[[which(calls == "addRectangles")[1]]]
   expect_true(any(grepl("theta =", unlist(rect$args), fixed = TRUE)))
 })
+
+test_that("printing the object renders the map, not just a summary (2026-09-01)", {
+  occ <- data.frame(taxon_name = rep(c("A", "B"), each = 3),
+                    decimalLatitude = rep(c(34.0, 34.1, 34.2), 2),
+                    decimalLongitude = rep(c(-120.0, -119.9, -119.8), 2),
+                    main_habitat = "Marine", stringsAsFactors = FALSE)
+  kp <- estimate_kernel_priors(occ, 34.1, -119.9, "Marine", lambda_km = 50)
+  # static path: base graphics draws at construction, so $plot is NULL and the
+  # summary alone is correct behaviour
+  s <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 16L)
+  expect_output(print(s), "taxaexpect_theta_surface")
+  expect_invisible(print(s))
+
+  # interactive path: the widget MUST be carried on the result and printed,
+  # otherwise a console call shows only a summary while a stale earlier map
+  # stays on screen -- the real 2026-09-01 confusion this guards against.
+  skip_if_not_installed("leaflet")
+  si <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L, interactive = TRUE)
+  expect_false(is.null(si$plot))
+  expect_s3_class(si$plot, "leaflet")
+  expect_output(print(si), "taxaexpect_theta_surface")
+})
