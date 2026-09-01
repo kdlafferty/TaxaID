@@ -88,7 +88,12 @@ report_habitat <- function(habitat_data,
       mean(habitat_data[[hc]], na.rm = TRUE)
     }, numeric(1L))
     dominant_habitat <- names(which.max(col_means))
-    dominant_pct <- round(max(col_means) * 100, 0)
+    # Read the pct off the SELECTED column, not max(col_means): which.max()
+    # skips NA means (an all-NA habitat column) but a bare max() returns NA
+    # whenever any column's mean is NA -- yielding a valid dominant_habitat
+    # paired with an NA pct, which is what actually crashed the %d sprintf
+    # below on the first real kernel-path GL report run (2026-09-01).
+    dominant_pct <- round(col_means[[dominant_habitat]] * 100, 0)
   }
 
   statistics <- list(
@@ -128,7 +133,10 @@ report_habitat <- function(habitat_data,
 
   if (!is.null(dominant_habitat)) {
     results_parts <- c(results_parts, sprintf(
-      "Dominant habitat: %s (mean weight %d%%).",
+      # %.0f, not %d: round() returns a double, and sprintf's %d errors on
+      # non-integer doubles (found by the first real kernel-path GL report
+      # run, 2026-09-01 -- this ecosystem's documented sprintf footgun class).
+      "Dominant habitat: %s (mean weight %.0f%%).",
       dominant_habitat, dominant_pct
     ))
   }

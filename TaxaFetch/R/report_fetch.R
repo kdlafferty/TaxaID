@@ -104,8 +104,13 @@ report_fetch <- function(occurrences,
 
   # --- Statistics -------------------------------------------------------------
   n_records   <- nrow(occurrences)
-  n_taxa      <- length(unique(occurrences$scientificName[
-    !is.na(occurrences$scientificName)]))
+  # Standardized occurrence frames carry taxon_name, raw GBIF frames carry
+  # scientificName -- accept either (a bare $scientificName on a tibble
+  # missing the column warns and silently reports 0 taxa; found by the first
+  # real kernel-path GL report run, 2026-09-01).
+  .taxon_col <- intersect(c("scientificName", "taxon_name"), names(occurrences))[1]
+  n_taxa <- if (is.na(.taxon_col)) 0L else
+    length(unique(occurrences[[.taxon_col]][!is.na(occurrences[[.taxon_col]])]))
   n_sources   <- max(1L, length(sources))
 
   statistics <- list(
