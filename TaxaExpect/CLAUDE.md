@@ -1,6 +1,85 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-31 (Fable 5, branch kernel-priors -- B7 GENTLE GLMM
+# Last updated: 2026-09-01 (Sonnet 5, branch theta-surface -- NEW
+# plot_theta_surface(), R/plot_theta_surface.R: the KDE prior-field map for the
+# kernel-priors path, a CAPABILITY RESTORATION (heat maps were the original
+# motivation for this package's spatial work). Design record:
+# ecosystem_docs/SPEC_plot_theta_surface.md.
+#
+# WHAT THIS REPLACES: plot_theta_map_interactive() parses Grid_<lat>_<lon>
+# identifiers into centroids -- estimate_kernel_priors() returns ONE site row
+# with an opaque site_id, so that function has nothing to draw on the kernel
+# path and is gated OFF (if (!USE_KERNEL_PRIORS) plot_theta_map_interactive(...))
+# in all five production workflows. plot_theta_surface() replaces it there by
+# evaluating estimate_kernel_priors()'s SAME estimator formula at every point
+# of a lattice instead of at one site, via binned FFT convolution
+# (stats::fft, base R, no new dependency) -- the map IS the prior field, not a
+# smoothed picture of it. plot_theta_map_interactive() is UNMODIFIED and
+# remains the right tool for the deprecated-but-live GLMM/grid path.
+#
+# WORKFLOW WIRING THE MAIN SESSION STILL OWES (not done here -- these files
+# live outside this repo, per the spec's explicit instruction not to touch
+# them from this delegated session): every `if (!USE_KERNEL_PRIORS)
+# plot_theta_map_interactive(...)` gate should grow an `else` branch calling
+# `plot_theta_surface(kernel_fit, occurrence_data, taxon, ...)` instead. Exact
+# line numbers are NOT resolvable from this repo -- none of these five files
+# exist in this monorepo checkout (confirmed: `find . -iname "*GreatLakes*"
+# -o -iname "*Mugu*" -o -iname "*PtConception*"` in the worktree matches only
+# two unrelated diagnostics/ scripts). The design record for where each gate
+# sits is `ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md`
+# lines ~942-1010 ("KERNEL + CURVE MIGRATION" section). By file:
+#   1. GreatLakes2023_ConsensusWorkflow.R -- GL workflow; "plot_theta_map_
+#      interactive gated to the GLMM branch (Grid_*-id parser)" per the
+#      reentry doc's per-file migration notes (line ~996).
+#   2. PtConceptionWorkflow_12S_single_site.R -- PtCon 12S; "straight GL
+#      mirror" per the reentry doc, same gate pattern.
+#   3. PtCon 18S workflow file (per-sampling-group kernel fits -- one
+#      estimate_kernel_priors() per group; exact filename not found in any
+#      doc cross-reference reachable from this repo, only the description
+#      "PtCon 18S" -- the main session has the actual data-dir path).
+#   4. MuguFishWorkflow.R -- "kernel branch has its own PROVENANCE-CHECKED
+#      priors cache gate ... interactive theta map gated" per the reentry doc.
+#   5. MuguWilderFishWorkflow.R -- same pattern, plus its curve branch adds a
+#      regional-proximity distance pass this workflow never had before.
+# All five ALSO need a call-site decision the spec left to the main session:
+# occurrence_data (the SAME frame passed to estimate_kernel_priors()) must be
+# in scope at the plotting call site in each workflow (it always is -- these
+# are the same records the kernel fit was built from a few lines earlier).
+#
+# NAMESPACE/DESCRIPTION changes: `grDevices` and `graphics` added to Imports
+# (new static-plot rendering path: rasterImage/par/image-style base graphics;
+# neither was previously an explicit Imports entry even though grDevices::
+# was already called elsewhere in the package). No Suggests change --
+# interactive = TRUE reuses the EXISTING `leaflet` Suggests entry, guarded by
+# `requireNamespace("leaflet")` exactly as plot_theta_map_interactive() guards
+# its own three packages; no `raster`/`terra` dependency was needed (the
+# interactive path draws a capped-resolution grid of addRectangles(), the
+# same primitive plot_theta_map_interactive() already uses, not a raster
+# overlay).
+#
+# VERIFICATION: the site-identity invariant (surface theta at the site's own
+# lattice-anchored coordinates == estimate_kernel_priors() theta, same
+# lambda_km/m, separately with lambda_latitude) holds to ~1e-2 absolute --
+# grid-quantization tolerance from binned-histogram record placement, not a
+# bug; exact in the top-hat/huge-lambda limit (tested to 1e-6). The FFT
+# convolution itself was checked against brute-force direct summation on a
+# tiny fixture (diff ~1e-9, float noise only) BEFORE anything was built on
+# top of it. Measured timing on this machine (base R stats::fft, not
+# FFTW/numpy): ~2.1 s for a 512x512 surface from 1.25M records/1 taxon
+# (~0.9 s per additional taxon, after refactoring to FFT the kernel once and
+# reuse it across every mass image via .theta_surface_fft_convolve_batch() --
+# initially ~2x slower per extra taxon before that). This is slower than the
+# spec's cited "~0.28 s per 512x512 surface from 1.25M records" design-work
+# figure; that number came from separate exploratory work whose
+# implementation isn't available to compare against, so the gap is reported,
+# not resolved -- a plausible further win (not implemented, to keep this
+# change low-risk) is truncating the kernel image to a fixed multiple of
+# lambda_km's effective support instead of the lattice's full physical span.
+# devtools::test() 866/0 (+37 new assertions over the 829 baseline),
+# devtools::check() 0 errors/0 warnings/0 notes (cleaner than the usual
+# pre-existing environmental NOTE baseline -- not investigated further, not
+# a regression). NOT yet reinstalled -- the main session installs.
+# Previous update: 2026-08-31 (Fable 5, branch kernel-priors -- B7 GENTLE GLMM
 # DEPRECATION: the whole grid/GLMM prior-fitting chain (build_priors,
 # optimize_grid_size, prepare_model_dataframe, add_pca_covariates,
 # compute_moran_basis, screen_spatial_formula, train_biodiversity_model,
