@@ -290,3 +290,27 @@ test_that("generate_report validates inputs", {
     "data frame"
   )
 })
+
+test_that(".build_methods_text describes kernel + curve priors when flagged (2026-09-01)", {
+  params <- list(n_sims = 1000L, cumulative_threshold = 0.9, min_posterior = 0.05,
+                 confirmation_quantile = 0.9, confirmation_discount = 0.25)
+  text <- .build_methods_text("bayesian", params, "eDNA", NULL,
+                              context_source = "user",
+                              has_unreferenced = FALSE,
+                              has_family_expansion = FALSE,
+                              has_empirical_bayes = TRUE,
+                              kernel_priors = TRUE)
+  expect_true(grepl("kernel", text))
+  expect_true(grepl("Good-Turing", text))
+  expect_true(grepl("Chao", text))
+  expect_true(grepl("presence-distance curve", text))
+  expect_true(grepl("transport branch", text))
+  expect_false(grepl("habitat models", text))  # the GLMM-era paragraph must be gone
+  # default (legacy tables) keeps the original paragraph byte-identical
+  legacy <- .build_methods_text("bayesian", params, "eDNA", NULL,
+                                context_source = "user",
+                                has_unreferenced = FALSE,
+                                has_family_expansion = FALSE,
+                                has_empirical_bayes = TRUE)
+  expect_true(grepl("habitat models", legacy))
+})
