@@ -602,7 +602,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     # swaps the legend along with the surface.
     map <- leaflet::addLegend(
       map, position = "bottomright", pal = pal, values = th_v,
-      title = sprintf("theta<br/><span style='font-weight:normal'>%s</span>", nm),
+      title = sprintf("theta<br/><span class='taxa-legend-tag' data-group=\"%s\" style='font-weight:normal'>%s</span>", nm, nm),
       opacity = 0.7, group = nm, na.label = "masked/absent"
     )
   }
@@ -620,7 +620,22 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     map <- leaflet::addLayersControl(
       map, baseGroups = nms,
       options = leaflet::layersControlOptions(collapsed = length(nms) > 6L))
-    map <- leaflet::hideGroup(map, nms[-1])
+    # Legend/base-group sync. leaflet's own addLegend(group=) binding follows
+    # OVERLAY toggles only -- with baseGroups (the radio selector this map
+    # wants, so surfaces never stack) every species' legend stays visible at
+    # once, which is what the first real click-through showed (three legends
+    # stacked down the right edge). Verified in a real browser, not inferred.
+    # Each legend title carries a data-group tag; this handler shows only the
+    # active one and re-syncs on every baselayerchange. hideGroup() is
+    # deliberately NOT used: Leaflet already guarantees base-group
+    # exclusivity, and hiding them fights its own bookkeeping.
+    if (requireNamespace("htmlwidgets", quietly = TRUE)) {
+      first <- gsub('"', '\\\\"', nms[1L], fixed = TRUE)
+      js <- sprintf(
+        "function(el, x) { var sync = function(name) { var tags = el.querySelectorAll('.taxa-legend-tag'); for (var i = 0; i < tags.length; i++) { var leg = tags[i].closest('.legend'); if (leg) { leg.style.display = (tags[i].getAttribute('data-group') === name) ? '' : 'none'; } } }; sync(\"%s\"); this.on('baselayerchange', function(e) { sync(e.name); }); }",
+        first)
+      map <- htmlwidgets::onRender(map, js)
+    }
   }
   map
 }

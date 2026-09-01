@@ -25,6 +25,7 @@ Imports:
     TaxaTools
 Suggests:
     htmltools,
+    htmlwidgets,
     knitr,
     leaflet,
     miniUI,
