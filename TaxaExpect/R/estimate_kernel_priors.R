@@ -278,6 +278,17 @@ estimate_kernel_priors <- function(occurrence_data,
   )
   priors <- priors[order(-priors$theta_mean), , drop = FALSE]
   rownames(priors) <- NULL
+  # Return a TIBBLE, matching generate_full_priors()'s own return class: this
+  # object is its drop-in replacement, and callers built against the GLMM path
+  # rely on tibble `[` semantics. A plain data.frame silently DROPS a
+  # single-column `[` selection to a bare vector (real breakage, found on the
+  # first Mugu kernel run 2026-09-01: `priors[rows, c("taxon_name")] |>
+  # left_join()` errored with "no applicable method for left_join applied to
+  # an object of class character"). dplyr::bind_rows() also takes its output
+  # class from its FIRST argument, so this keeps every assembled
+  # taxaexpect_priors table a tibble exactly as the GLMM path did.
+  priors <- tibble::as_tibble(priors)
+  singletons <- tibble::as_tibble(singletons)
 
   structure(list(
     priors = priors,

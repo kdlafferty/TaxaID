@@ -246,3 +246,19 @@ test_that("lambda_latitude = Inf in the sweep scores identically to no factor", 
   expect_equal(cal_inf$results$weighted_logloss[inf_row], off_ll,
                tolerance = 1e-12)
 })
+
+test_that("priors/singletons are tibbles (drop-in parity with generate_full_priors)", {
+  # Real breakage this guards (2026-09-01, first Mugu kernel run): a plain
+  # data.frame drops a single-column `[` selection to a bare vector, so
+  # workflow code written against the GLMM path's tibble output errored with
+  # "no applicable method for 'left_join' applied to an object of class
+  # character". bind_rows() also inherits its class from its first argument.
+  occ <- .mk_occ(c("A", "A", "B"), lat = 34, lon = -120)
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50)
+  expect_s3_class(kp$priors, "tbl_df")
+  expect_s3_class(kp$singletons, "tbl_df")
+  # the operative invariant: single-column selection stays a data frame
+  expect_true(is.data.frame(kp$priors[!is.na(kp$priors$taxon_name), c("taxon_name")]))
+  # and an assembled table keeps the class through bind_rows()
+  expect_s3_class(dplyr::bind_rows(kp$priors, kp$priors), "tbl_df")
+})

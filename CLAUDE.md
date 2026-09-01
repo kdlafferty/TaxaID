@@ -2877,6 +2877,27 @@ bug) -- this is the verified-safe paired form, not a contradiction of it. See
 `TaxaFlag/CLAUDE.md`'s own top session note for where this landed
 (`review_spatial_context()`'s GBIF tile layer).
 
+### Single-column `[` drops a data.frame to a vector (but not a tibble) (found 2026-09-01)
+`df[rows, c("one_col")]` returns a bare VECTOR when `df` is a plain
+`data.frame`, and a one-column data frame when `df` is a `tbl_df`. Any
+pipeline written against a tibble-returning function silently breaks if that
+function's return class later changes to `data.frame` -- the failure surfaces
+far downstream as an opaque method error, e.g.
+`Error in UseMethod("left_join") : no applicable method for 'left_join'
+applied to an object of class "character"`. Real incident: the kernel-priors
+migration replaced `generate_full_priors()` (returned a tibble) with
+`estimate_kernel_priors()` (returned a plain `data.frame` built by
+`data.frame()`), and four production workflows' `taxaexpect_species_df <-
+priors[rows, c("taxon_name")] |> left_join(...)` line crashed on the first
+real Mugu run. Note `dplyr::bind_rows()` takes its output class from its
+FIRST argument, so one data.frame at the head of an assembly propagates the
+class through the whole table. Fixed at both layers, and both are worth
+copying: (1) the estimator now returns `tibble::as_tibble()` output, restoring
+drop-in class parity with the function it replaces (a returned class is part
+of a function's contract); (2) the workflow lines were rewritten
+class-agnostically as `filter() |> distinct() |> left_join()`. When replacing
+any function, check its return CLASS as deliberately as its columns.
+
 ### Split-string sprintf bug (recurring)
 `sprintf()` does NOT concatenate multiple string arguments.
 ```r
