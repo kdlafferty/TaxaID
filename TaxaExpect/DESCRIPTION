@@ -24,12 +24,14 @@ Imports:
     tidyr,
     TaxaTools
 Suggests:
+    htmltools,
     knitr,
     leaflet,
     miniUI,
     rentrez,
     rmarkdown,
     rgbif,
+    sf,
     shiny,
     TaxaFetch,
     TaxaFlag,

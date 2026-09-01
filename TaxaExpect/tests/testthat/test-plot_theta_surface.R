@@ -250,3 +250,67 @@ test_that("plot_theta_surface(interactive = TRUE) requires leaflet and returns a
   out <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 24L, interactive = TRUE)
   expect_s3_class(out$plot, "leaflet")
 })
+
+# ------------------------------------------------------------------------------
+# User-feedback round (2026-09-01, first real click-through): mask parameter,
+# and the interactive map's marker/legend/hover/selector behaviour.
+# ------------------------------------------------------------------------------
+
+test_that("mask (lon/lat matrix) NAs out cells outside the polygon", {
+  occ <- data.frame(
+    taxon_name = rep(c("A", "B"), each = 6),
+    decimalLatitude = c(34.0, 34.1, 34.2, 34.3, 34.4, 34.5, 34.0, 34.1, 34.2, 34.3, 34.4, 34.5),
+    decimalLongitude = rep(c(-120.0, -119.9, -119.8), 4),
+    main_habitat = "Marine", stringsAsFactors = FALSE)
+  kp <- estimate_kernel_priors(occ, 34.2, -119.9, "Marine", lambda_km = 50)
+  # a small box around the site only
+  box <- cbind(c(-120.0, -119.8, -119.8, -120.0),
+               c(34.15,  34.15,  34.25,  34.25))
+  s_all  <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L)
+  s_mask <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L, mask = box)
+  expect_true(all(is.finite(s_all$surface$theta)))
+  expect_true(any(is.na(s_mask$surface$theta)))
+  # inside the box the values are untouched
+  ilat <- which.min(abs(s_mask$surface$lat_grid - 34.2))
+  ilon <- which.min(abs(s_mask$surface$lon_grid - -119.9))
+  expect_equal(s_mask$surface$theta[ilat, ilon], s_all$surface$theta[ilat, ilon])
+  expect_gt(s_mask$surface$params$masked_cells, 0)
+  # n_eff/W are masked consistently with theta
+  expect_true(all(is.na(s_mask$surface$n_eff[is.na(s_mask$surface$theta)])))
+})
+
+test_that("mask accepts a list of polygons and validates its input", {
+  occ <- data.frame(taxon_name = c("A", "A", "B"),
+                    decimalLatitude = c(34, 34.1, 34.2),
+                    decimalLongitude = c(-120, -119.9, -119.8),
+                    main_habitat = "Marine", stringsAsFactors = FALSE)
+  kp <- estimate_kernel_priors(occ, 34.1, -119.9, "Marine", lambda_km = 50)
+  two <- list(cbind(c(-120.05, -119.95, -119.95, -120.05), c(33.95, 33.95, 34.05, 34.05)),
+              cbind(c(-119.85, -119.75, -119.75, -119.85), c(34.15, 34.15, 34.25, 34.25)))
+  s <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 24L, mask = two)
+  expect_true(any(is.na(s$surface$theta)))
+  expect_true(any(is.finite(s$surface$theta)))   # both boxes survive
+  expect_error(plot_theta_surface(kp, occ, taxon = "A", n_grid = 16L,
+                                  mask = cbind(1:2, 1:2)), "at least 3 vertices")
+})
+
+test_that("interactive map carries legend, hover labels, small site marker and a species selector", {
+  skip_if_not_installed("leaflet")
+  occ <- data.frame(taxon_name = rep(c("A", "B"), each = 4),
+                    decimalLatitude = rep(c(34.0, 34.1, 34.2, 34.3), 2),
+                    decimalLongitude = rep(c(-120.0, -119.9), 4),
+                    main_habitat = "Marine", stringsAsFactors = FALSE)
+  kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
+  m <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L, interactive = TRUE)$plot
+  calls <- vapply(m$x$calls, function(cl) cl$method, character(1))
+  expect_true("addLegend" %in% calls)          # legend present
+  expect_true("addCircleMarkers" %in% calls)   # small hollow site marker, not addMarkers
+  expect_false("addMarkers" %in% calls)
+  expect_true("addLayersControl" %in% calls)   # species selector
+  # radio (baseGroups), not stacked overlays
+  lc <- m$x$calls[[which(calls == "addLayersControl")[1]]]
+  expect_setequal(unlist(lc$args[[1]]), c("A", "B"))
+  # hover labels reached the rectangles
+  rect <- m$x$calls[[which(calls == "addRectangles")[1]]]
+  expect_true(any(grepl("theta =", unlist(rect$args), fixed = TRUE)))
+})

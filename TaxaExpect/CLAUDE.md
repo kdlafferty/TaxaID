@@ -1,6 +1,30 @@
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-01 (Sonnet 5, branch theta-surface -- NEW
+# Last updated: 2026-09-01, later (Fable 5 -- plot_theta_surface() USER-FEEDBACK
+# ROUND after the first real click-through on GreatLakes. Five changes, all in
+# the leaflet renderer unless noted: (1) the default pin marker covered the heat
+# map exactly where a reader needs it -- now a small hollow circle
+# (site_marker_radius = 5, unfilled, drawn last so it sits above the surface);
+# (2) NO LEGEND -> addLegend per species, group-tied so it swaps with the layer
+# selector; (3) no values on hover -> each rendered cell carries a label with
+# theta + local n_eff (hover_labels = TRUE); (4) species selection moved from
+# overlayGroups (checkboxes, surfaces stacking unreadably) to baseGroups (radio,
+# one species at a time) + hideGroup on the rest; (5) NEW mask param --
+# deliberately a parameter with no default, since the right mask (lake outline,
+# bay, survey boundary) is application-specific: accepts an sf/sfc polygon or a
+# plain two-column lon/lat matrix, or a list of them (kept if inside ANY), via
+# a dependency-free ray-casting point-in-polygon (.theta_surface_in_polygon());
+# masked cells become NA in theta/n_eff/W alike. REAL BUG the mask exposed and
+# fixed: the STATIC renderer passed NA colour indices to grDevices::rgb(), which
+# errors -- NA cells now render as transparent background. htmltools + sf added
+# to Suggests (R CMD check flagged both as undeclared). Verified on real
+# GreatLakes data: 3 legends for 3 species, radio selector, hover label reads
+# "Perca flavescens | theta = 0.0474 | n_eff = 2862", mask demo retained 345 of
+# 16,384 cells. devtools::test() 880/0, check() 0/0/0, reinstalled.
+# STILL OPEN (user-raised, not built): none of the five workflows call
+# plot_theta_surface() yet -- their plot_theta_map_interactive() gates remain
+# GLMM-only; wiring them is the main session's task.)
+# Previous update: 2026-09-01 (Sonnet 5, branch theta-surface -- NEW
 # plot_theta_surface(), R/plot_theta_surface.R: the KDE prior-field map for the
 # kernel-priors path, a CAPABILITY RESTORATION (heat maps were the original
 # motivation for this package's spatial work). Design record:

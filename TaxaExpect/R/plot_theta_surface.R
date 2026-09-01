@@ -134,6 +134,22 @@
 #' @param n_eff_floor Optional numeric. Lattice points with `n_eff(x)` below
 #'   this value are masked outright (drawn as background, not just faded),
 #'   independent of `alpha_by_n_eff`. Default `NULL`: no outright mask.
+#' @param mask Optional geometry restricting the surface to a region of
+#'   interest (a lake outline, a bay, a survey boundary). Cells whose centres
+#'   fall outside become `NA` -- transparent on the map, and excluded from
+#'   any summary of the returned matrices. Accepts an `sf`/`sfc` polygon
+#'   (requires the `sf` package) or a plain two-column lon/lat
+#'   matrix/data frame, or a list of such matrices (a cell is kept if it
+#'   falls inside ANY of them, for islands or multi-basin masks).
+#'   Deliberately a parameter with no default: the correct mask is
+#'   application-specific, so the package supplies none.
+#' @param site_marker_radius Numeric (default `5`). Radius in pixels of the
+#'   hollow circle marking the site on the interactive map. The marker is
+#'   drawn unfilled and on top so it cannot hide the cell it marks (the
+#'   default pin marker did, which is why this is small and hollow).
+#' @param hover_labels Logical (default `TRUE`). Show `theta` and the local
+#'   effective sample size on hover over each rendered cell of the
+#'   interactive map.
 #' @param interactive Logical (default `FALSE`). `FALSE` returns a static
 #'   base-graphics plot. `TRUE` returns a Leaflet overlay (guarded by
 #'   `requireNamespace("leaflet")`, exactly as
@@ -175,6 +191,9 @@ plot_theta_surface <- function(kernel_fit,
                                covariate_at = NULL,
                                alpha_by_n_eff = TRUE,
                                n_eff_floor = NULL,
+                               mask = NULL,
+                               site_marker_radius = 5,
+                               hover_labels = TRUE,
                                interactive = FALSE,
                                taxon_col = "taxon_name",
                                lat_col = "decimalLatitude",
@@ -217,10 +236,14 @@ plot_theta_surface <- function(kernel_fit,
     taxon_col = taxon_col, lat_col = lat_col, lon_col = lon_col, habitat_col = habitat_col
   )
 
+  if (!is.null(mask)) surf <- .theta_surface_apply_mask(surf, mask)
+
   plt <- if (isTRUE(interactive)) {
     .theta_surface_plot_leaflet(surf, site_lat = p$site_lat, site_lon = p$site_lon,
                                 site_id = p$site_id, alpha_by_n_eff = alpha_by_n_eff,
-                                n_eff_floor = n_eff_floor, ...)
+                                n_eff_floor = n_eff_floor,
+                                site_marker_radius = site_marker_radius,
+                                hover_labels = hover_labels, ...)
   } else {
     .theta_surface_plot_static(surf, site_lat = p$site_lat, site_lon = p$site_lon,
                                alpha_by_n_eff = alpha_by_n_eff, n_eff_floor = n_eff_floor, ...)
@@ -497,12 +520,19 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   rng <- range(theta_mat, na.rm = TRUE)
   if (diff(rng) == 0) rng <- c(0, max(rng, 1e-9))
   idx <- pmin(256L, pmax(1L, round((theta_mat - rng[1]) / diff(rng) * 255) + 1L))
+  # NA cells (outside a `mask`, or a species absent from a masked region)
+  # must render as fully transparent background rather than reaching
+  # grDevices::rgb(), which errors on an NA colour index.
+  na_cell <- is.na(as.numeric(theta_mat))
+  idx[na_cell] <- 1L
   alpha <- rep(1, length(theta_mat))
   if (isTRUE(alpha_by_n_eff)) {
     ref <- max(n_eff_mat, na.rm = TRUE)
     if (ref > 0) alpha <- pmin(1, sqrt(as.numeric(n_eff_mat) / ref))
   }
   if (!is.null(n_eff_floor)) alpha[as.numeric(n_eff_mat) < n_eff_floor] <- 0
+  alpha[na_cell] <- 0
+  alpha[is.na(alpha)] <- 0
   rgba_vec <- grDevices::rgb(pal_rgb[1, idx], pal_rgb[2, idx], pal_rgb[3, idx],
                              alpha * 255, maxColorValue = 255)
   rgba <- matrix(rgba_vec, nrow(theta_mat), ncol(theta_mat))
@@ -515,9 +545,20 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' guards its package requirements. Renders at a capped resolution (the
 #' returned $surface stays at full n_grid) since a leaflet map with
 #' n_grid^2 rectangles is impractical in a browser.
+#'
+#' User-feedback round 2026-09-01 (first real click-through, GreatLakes):
+#' (1) the default pin marker covered the heat map exactly where the reader
+#' most needs it -- replaced with a small hollow circle; (2) no legend --
+#' added, per species and group-tied so it follows the layer selector;
+#' (3) no values on hover -- rectangles now carry a label with theta and the
+#' local effective sample size; (4) species selection is now a RADIO
+#' selector (baseGroups: one species at a time) rather than independent
+#' overlay checkboxes that stack unreadably.
 #' @noRd
 .theta_surface_plot_leaflet <- function(surf, site_lat, site_lon, site_id,
-                                        alpha_by_n_eff, n_eff_floor, ...) {
+                                        alpha_by_n_eff, n_eff_floor,
+                                        site_marker_radius = 5,
+                                        hover_labels = TRUE, ...) {
   if (!requireNamespace("leaflet", quietly = TRUE)) {
     stop("plot_theta_surface: package 'leaflet' is required for interactive = TRUE. Install with: install.packages('leaflet')")
   }
@@ -529,31 +570,58 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   lat_v <- rep(ds$lat_grid, times = length(ds$lon_grid))
   lon_v <- rep(ds$lon_grid, each = length(ds$lat_grid))
 
-  map <- leaflet::leaflet() |> leaflet::addProviderTiles("Esri.OceanBasemap") |>
-    leaflet::addMarkers(lng = site_lon, lat = site_lat, popup = sprintf("site: %s", site_id))
+  map <- leaflet::leaflet() |> leaflet::addProviderTiles("Esri.OceanBasemap")
 
-  for (nm in names(theta)) {
+  nms <- names(theta)
+  for (nm in nms) {
     th_ds <- .theta_surface_downsample_matrix(theta[[nm]], surf, ds)
     n_eff_ds <- .theta_surface_downsample_matrix(surf$n_eff, surf, ds)
     th_v <- as.vector(th_ds); ne_v <- as.vector(n_eff_ds)
-    pal <- leaflet::colorNumeric("YlOrRd", domain = range(th_v, na.rm = TRUE), na.color = "transparent")
+    pal <- leaflet::colorNumeric("YlOrRd", domain = range(th_v, na.rm = TRUE),
+                                 na.color = "transparent")
     opac <- rep(0.7, length(th_v))
     if (isTRUE(alpha_by_n_eff)) {
       ref <- max(ne_v, na.rm = TRUE)
       opac <- if (ref > 0) 0.7 * pmin(1, sqrt(ne_v / ref)) else opac
     }
     if (!is.null(n_eff_floor)) opac[ne_v < n_eff_floor] <- 0
+    labs <- NULL
+    if (isTRUE(hover_labels)) {
+      labs <- sprintf("%s\ntheta = %.3g\nn_eff = %.0f", nm, th_v, ne_v)
+      labs[is.na(th_v)] <- NA_character_
+      labs <- lapply(labs, function(x) if (is.na(x)) NULL else htmltools::HTML(gsub("\n", "<br/>", x)))
+    }
     map <- leaflet::addRectangles(
       map,
       lng1 = lon_v - cell_hw_lon, lat1 = lat_v - cell_hw_lat,
       lng2 = lon_v + cell_hw_lon, lat2 = lat_v + cell_hw_lat,
       fillColor = pal(th_v), fillOpacity = opac, stroke = FALSE,
-      group = nm, ...
+      label = labs, group = nm, ...
+    )
+    # Legend per species, tied to the same group so the radio selector
+    # swaps the legend along with the surface.
+    map <- leaflet::addLegend(
+      map, position = "bottomright", pal = pal, values = th_v,
+      title = sprintf("theta<br/><span style='font-weight:normal'>%s</span>", nm),
+      opacity = 0.7, group = nm, na.label = "masked/absent"
     )
   }
-  if (length(theta) > 1L)
-    map <- leaflet::addLayersControl(map, overlayGroups = names(theta),
-                                     options = leaflet::layersControlOptions(collapsed = FALSE))
+
+  # Site marker LAST so it draws above the surface, and small + hollow so it
+  # never hides the cell it marks (2026-09-01 user feedback).
+  map <- leaflet::addCircleMarkers(
+    map, lng = site_lon, lat = site_lat,
+    radius = site_marker_radius, stroke = TRUE, weight = 2,
+    color = "#1a1a1a", opacity = 1, fill = FALSE,
+    label = htmltools::HTML(sprintf("site: %s", site_id))
+  )
+
+  if (length(theta) > 1L) {
+    map <- leaflet::addLayersControl(
+      map, baseGroups = nms,
+      options = leaflet::layersControlOptions(collapsed = length(nms) > 6L))
+    map <- leaflet::hideGroup(map, nms[-1])
+  }
   map
 }
 
@@ -571,4 +639,67 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' @noRd
 .theta_surface_downsample_matrix <- function(mat, surf, ds) {
   mat[ds$i_keep, ds$j_keep, drop = FALSE]
+}
+
+#' Point-in-polygon mask for a theta surface
+#'
+#' `mask` is deliberately a PARAMETER, not built-in geometry: the right mask
+#' (a lake outline, a bay, a survey boundary) is application-specific, and a
+#' package-level default would be wrong for most deployments. Cells whose
+#' centres fall outside the mask become `NA` in every surface matrix, so they
+#' render transparent and drop out of summaries alike.
+#'
+#' Accepts an `sf`/`sfc` polygon (when `sf` is installed) or a plain
+#' two-column lon/lat matrix/data frame -- or a list of such matrices, in
+#' which case a cell is kept if it falls inside ANY of them (islands,
+#' multi-basin masks).
+#' @noRd
+.theta_surface_apply_mask <- function(surf, mask) {
+  lat_v <- rep(surf$lat_grid, times = length(surf$lon_grid))
+  lon_v <- rep(surf$lon_grid, each = length(surf$lat_grid))
+
+  if (inherits(mask, c("sf", "sfc"))) {
+    if (!requireNamespace("sf", quietly = TRUE))
+      stop("plot_theta_surface: 'mask' is an sf object but the 'sf' package is not installed. Install sf, or pass a two-column lon/lat matrix instead.")
+    crs_use <- tryCatch(sf::st_crs(mask), error = function(e) NA)
+    if (is.na(crs_use)) crs_use <- 4326
+    pts <- sf::st_as_sf(data.frame(lon = lon_v, lat = lat_v),
+                        coords = c("lon", "lat"), crs = crs_use)
+    keep <- lengths(sf::st_intersects(pts, sf::st_union(mask))) > 0L
+  } else {
+    polys <- if (is.list(mask) && !is.data.frame(mask)) mask else list(mask)
+    keep <- rep(FALSE, length(lat_v))
+    for (poly in polys) {
+      poly <- as.matrix(poly)
+      if (!is.numeric(poly) || ncol(poly) < 2L)
+        stop("plot_theta_surface: each 'mask' polygon must be a two-column numeric lon/lat matrix or data frame.")
+      keep <- keep | .theta_surface_in_polygon(lon_v, lat_v, poly[, 1L], poly[, 2L])
+    }
+  }
+
+  drop_mat <- function(mat) { mat[!keep] <- NA_real_; mat }
+  surf$theta <- if (is.list(surf$theta)) lapply(surf$theta, drop_mat) else drop_mat(surf$theta)
+  surf$n_eff <- drop_mat(surf$n_eff)
+  surf$W     <- drop_mat(surf$W)
+  surf$params$masked_cells <- sum(!keep)
+  surf
+}
+
+#' Vectorised ray-casting point-in-polygon (no spatial dependency)
+#' @noRd
+.theta_surface_in_polygon <- function(x, y, poly_x, poly_y) {
+  n <- length(poly_x)
+  if (n < 3L) stop("plot_theta_surface: a 'mask' polygon needs at least 3 vertices.")
+  inside <- rep(FALSE, length(x))
+  j <- n
+  for (i in seq_len(n)) {
+    yi <- poly_y[i]; yj <- poly_y[j]
+    straddles <- (yi > y) != (yj > y)
+    if (any(straddles)) {
+      xint <- (poly_x[j] - poly_x[i]) * (y - yi) / (yj - yi) + poly_x[i]
+      inside <- xor(inside, straddles & (x < xint))
+    }
+    j <- i
+  }
+  inside
 }

@@ -14,6 +14,9 @@ plot_theta_surface(
   covariate_at = NULL,
   alpha_by_n_eff = TRUE,
   n_eff_floor = NULL,
+  mask = NULL,
+  site_marker_radius = 5,
+  hover_labels = TRUE,
   interactive = FALSE,
   taxon_col = "taxon_name",
   lat_col = "decimalLatitude",
@@ -69,6 +72,25 @@ extrapolation for a well-evidenced estimate.}
 \item{n_eff_floor}{Optional numeric. Lattice points with \code{n_eff(x)} below
 this value are masked outright (drawn as background, not just faded),
 independent of \code{alpha_by_n_eff}. Default \code{NULL}: no outright mask.}
+
+\item{mask}{Optional geometry restricting the surface to a region of
+interest (a lake outline, a bay, a survey boundary). Cells whose centres
+fall outside become \code{NA} -- transparent on the map, and excluded from
+any summary of the returned matrices. Accepts an \code{sf}/\code{sfc} polygon
+(requires the \code{sf} package) or a plain two-column lon/lat
+matrix/data frame, or a list of such matrices (a cell is kept if it
+falls inside ANY of them, for islands or multi-basin masks).
+Deliberately a parameter with no default: the correct mask is
+application-specific, so the package supplies none.}
+
+\item{site_marker_radius}{Numeric (default \code{5}). Radius in pixels of the
+hollow circle marking the site on the interactive map. The marker is
+drawn unfilled and on top so it cannot hide the cell it marks (the
+default pin marker did, which is why this is small and hollow).}
+
+\item{hover_labels}{Logical (default \code{TRUE}). Show \code{theta} and the local
+effective sample size on hover over each rendered cell of the
+interactive map.}
 
 \item{interactive}{Logical (default \code{FALSE}). \code{FALSE} returns a static
 base-graphics plot. \code{TRUE} returns a Leaflet overlay (guarded by
