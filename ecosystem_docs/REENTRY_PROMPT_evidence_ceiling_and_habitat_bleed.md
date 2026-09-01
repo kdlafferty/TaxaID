@@ -984,3 +984,39 @@ MIGRATION (its own task, needs no NCBI for priors but a full consensus
 re-run does): port Step 5 + 7a.7 to the kernel/curve path as in GL.
 Also still open: iNat w = 0.8 calibration check; A2 discovery-rate
 cross-check; manuscript supplemental-methods rewrite.
+
+### KERNEL + CURVE MIGRATION: PtCon 12S, PtCon 18S, BOTH MUGU (2026-09-01)
+
+All four remaining workflows migrated (backups *.bak_pre_kernel_migration;
+all parse; NONE yet run -- Mugu verification is the next real run, per the
+user). Pattern per file: USE_KERNEL_PRIORS switch, GLMM verbatim in the
+else, geographic-only kernel (no depth_m at any of these sites --
+[[project_depth_covariate_propagation]] still pending), curve-pricing
+evidence with the packaged generators, branch-budget audit,
+plot_theta_map_interactive gated to the GLMM branch (Grid_*-id parser).
+File-specific notes:
+- PtCon 12S: straight GL mirror (domestic -> watch-lift -> regional-kept ->
+  clamp; no iNat block, matching its legacy scope); metadata conditionals.
+  Gate-d control already validated this site (lambda 25 km).
+- MuguFishWorkflow: kernel branch has its own PROVENANCE-CHECKED priors
+  cache gate (a GLMM-era cached table without resident_observed
+  prior_branch rows is regenerated, never silently loaded); interactive
+  theta map gated.
+- MuguWilderFishWorkflow: same, PLUS the curve branch ADDS the
+  regional-proximity distance pass this workflow never had (it is the
+  pricing instrument; first run pays the GBIF tile checks). Legacy branch
+  untouched (still no regional block there).
+- PtCon 18S: PER-SAMPLING-GROUP kernel fits (one estimate_kernel_priors per
+  group, mirroring the per-group GLMM loop; composition only means anything
+  within a detection-process group), bandwidth calibrated once on the pooled
+  stratum, kernel_fits saved as the model_fits analog. Evidence keeps the
+  LEGACY SCOPE (domestic + watch only; watch prices at the lifted clamp, no
+  distance pass) via the POOLED kernel fit as the applier representative --
+  the same cross-group approximation the legacy .domestic_food_model made.
+  FLAGGED OPEN (not decided): per-group theta_present for evidence pricing,
+  and whether 18S gets the regional distance pass + clamp (costs a large
+  GBIF pass over a many-kingdom match list).
+
+NEXT REAL RUNS: Mugu verification (user, next session); full GL workflow
+run in flight (user). PtCon accession screen still NCBI-throttled -- advice
+given (NCBI_KEY, off-peak, trust_insufficient_evidence / defer the screen).
