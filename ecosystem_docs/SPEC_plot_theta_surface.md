@@ -253,3 +253,24 @@ a depth-conditioned field when it does not.
      should know about.
   No change was made to `estimate_kernel_priors()` itself -- everything the
   surface needs is recomputed from `occurrence_data` and `kernel_fit$params`.
+
+- 2026-09-01, main session: user click-through feedback round applied
+  (smaller hollow site marker, per-species legends, hover values, radio
+  species selector, application-specific `mask`), then verified in a REAL
+  browser -- which caught two things the widget structure alone did not:
+  every species' legend rendered at once (leaflet's `addLegend(group=)`
+  follows overlay toggles, not `baseGroups`; fixed with a tagged-legend +
+  `baselayerchange` handler) and a `plot_*()` that printed only a text
+  summary let a STALE object keep displaying (print now renders the map).
+  WORKFLOW WIRING NOW DONE -- all five call `plot_theta_surface()` on the
+  kernel path, showing the top 5 species by theta with the radio selector,
+  guarded by `interactive()`: GreatLakes2023_ConsensusWorkflow.R (block
+  placed AFTER the USE_KERNEL_PRIORS branch -- the comment it replaced sat
+  in the GLMM else-branch, where kernel_priors_fit does not exist),
+  PtConceptionWorkflow_12S_single_site.R, PtConceptionWorkflow_18S_2_single
+  _site.R (backed by the POOLED kernel fit; per-group surfaces would need
+  one call per kernel_fits[[g]]), MuguFishWorkflow.R,
+  MuguWilderFishWorkflow.R. Only GreatLakes passes `covariate_at`
+  (SITE_DEPTH) -- the other sites have no depth covariate yet. `mask` is
+  left unset everywhere: the right outline is per-site and the user asked
+  for it not to be hard-wired.
