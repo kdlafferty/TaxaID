@@ -1049,13 +1049,28 @@ utils::globalVariables(c(
 #' cache forever -- and it is the one verdict
 #' [remove_incongruent_references()] acts on destructively.
 #'
-#' What a TTL fixes, and what it does not: it fixes staleness with respect to
-#' new NCBI deposits, and it gives an unlucky hit set a periodic chance to
-#' self-correct. It does NOT fix run-to-run variability in what BLAST returns
-#' -- in the `OP056918` case the corroborating records had been in GenBank
-#' since January, so elapsed time was never the actual problem. See
-#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`
-#' for the open lead on that.
+#' What the flip was, established by
+#' `diagnostics/blast_verdict_repeatability_probe.R` the same day: NOT
+#' instability. Three back-to-back replicates of all 12 PtConception
+#' `"incongruent"` accessions, each into a fresh cache, returned identical
+#' verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000,
+#' 14-20 partners each) -- BLAST is exactly reproducible at a fixed
+#' `params_key`. The corroborating records' GenBank create- AND update-dates
+#' are both months earlier, so they were not newly released either. The
+#' surviving explanation is that NCBI's `nt` is a periodically-rebuilt
+#' SNAPSHOT rather than the live nuccore database: a record public in Entrez
+#' since January need not be in the `nt` volume BLAST searches until a rebuild
+#' includes it.
+#'
+#' That reframes this TTL. The 09-02 verdict was not a correction of a
+#' malfunction -- both verdicts were correct given the database each was
+#' computed against. What goes stale is the SNAPSHOT, which is exactly what a
+#' TTL is for. Note the cadence mismatch, though: `nt` rebuilds run on the
+#' order of days to weeks, so 90 days can still serve a stale `"incongruent"`
+#' long after the evidence that overturns it became searchable. A shorter
+#' default would be better matched to the mechanism; it is a cost decision,
+#' and the recheck is ~1% of an accession population. See
+#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`.
 #'
 #' @section Coarse-rank diagnostic (2026-08-07):
 #' `finest_common_rank` walks the FULL `kingdom`->`species` ladder
@@ -1657,13 +1672,18 @@ evaluate_reference_accessions <- function(accessions,
   # PtConception screen), so a shorter TTL than the "we do not know yet"
   # flags costs almost nothing while protecting the destructive decision.
   #
-  # NOTE what a TTL does and does not fix. It fixes staleness with respect to
-  # new deposits, and it gives an unlucky hit set a periodic chance to
-  # self-correct. It does NOT fix the underlying run-to-run variability in
-  # what BLAST returns -- in the OP056918 case the corroborating records had
-  # been in GenBank since January, so elapsed time was never the problem.
-  # See ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_
-  # downstream_use.md for the open lead on that.
+  # WHAT GOES STALE IS NCBI'S `nt` SNAPSHOT, not the accession and not this
+  # package's math. Established 2026-09-02 by
+  # diagnostics/blast_verdict_repeatability_probe.R: three back-to-back
+  # replicates of all 12 PtConception "incongruent" accessions returned
+  # identical verdicts AND identical hit sets (Jaccard 1.000), so BLAST is
+  # exactly reproducible at a fixed params_key; and the corroborating
+  # records' create- and update-dates are both months earlier, so they were
+  # not newly released. `nt` is a periodically-rebuilt snapshot of nuccore,
+  # and a record public in Entrez need not be searchable in `nt` until a
+  # rebuild includes it. Both verdicts were correct given the database each
+  # was computed against -- which is precisely the situation a TTL exists
+  # for.
   ttl_days_for_flag <- function(flag) {
     ifelse(
       flag %in% c("insufficient_independent_evidence", "not_evaluated_oversized"),

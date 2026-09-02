@@ -23,10 +23,27 @@
 # the cheapest recheck available. `incongruent_ttl_days = Inf` restores the old policy.
 # TTLs stay OUT of params_key -- changing one must never invalidate a cache.
 #
-# WHAT A TTL DOES NOT FIX, stated so nobody re-derives it: run-to-run variability in what
-# BLAST returns. In the OP056918 case the corroborating records had been in GenBank since
-# January, so elapsed time was never the actual problem. A TTL fixes staleness w.r.t. new
-# deposits and gives an unlucky hit set a periodic chance to self-correct; that is all.
+# WHAT ACTUALLY GOES STALE -- settled the same day by
+# diagnostics/blast_verdict_repeatability_probe.R (new), so nobody re-derives it. Three
+# back-to-back replicates of all 12 PtCon "incongruent" accessions, each into a fresh cache:
+# IDENTICAL verdicts, identical diagnostics, and identical hit sets -- Jaccard 1.000, not one
+# partner accession differed anywhere (14-20 partners each). So BLAST is EXACTLY REPRODUCIBLE
+# at a fixed params_key; within-run nondeterminism and CPU-pressure degradation are both
+# dead as explanations. The corroborating records' GenBank create- AND update-dates are both
+# months earlier (Jan/Apr 2026), so they were not newly released either.
+#
+# The surviving explanation: NCBI's `nt` is a periodically-rebuilt SNAPSHOT, not the live
+# nuccore database. A record public in Entrez since January need not be in the `nt` volume
+# BLAST searches until a rebuild includes it. Not retrospectively provable (there is no way
+# to ask what `nt` held on 09-01), but it fits every observation.
+#
+# THIS REFRAMES THE WHOLE FINDING: there is NO correctness bug in this pipeline. Both
+# verdicts were correct given the database each was computed against; the 09-02 run is the
+# screen getting BETTER. That makes the TTL the right fix rather than a mitigation -- what
+# goes stale is precisely the snapshot the verdict was computed against. One caveat worth
+# a decision: `nt` rebuilds run days-to-weeks, so a 90-day TTL can still serve a stale
+# "incongruent" for months after the overturning evidence became searchable. ~30 would match
+# the mechanism better; the recheck is ~1% of a population. Left at 90 pending the user.
 #
 # (B) THE `still_over` MISCALIBRATION -- the 2026-09-01 feature-table-fallback caller tested
 # an already-primer-trimmed query against `resolve_barcode_lengths()$max_bp`.

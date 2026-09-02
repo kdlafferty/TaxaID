@@ -340,12 +340,49 @@ counting an untouched sequence as a rescue.
 **But it does not explain the verdict flip.** Verified directly: the fallback
 was returning the trimmed sequence UNCHANGED, so the correct ~217 bp amplicon
 was always what went to BLAST. The fix removes a wasted NCBI annotation
-round-trip per chunk and makes the log honest; it changes no verdict. The
-instability is still unexplained -- the remaining candidates are run-to-run
-variability in NCBI's own hit selection (`max_hits = 20` truncation combined
-with a large, shifting `nt`), or degraded results under server-side CPU
-pressure, both of which this pipeline has documented elsewhere. Not
-investigated.
+round-trip per chunk and makes the log honest; it changes no verdict.
+
+## 2026-09-02, repeatability probe: BLAST is NOT the unstable part
+
+`diagnostics/blast_verdict_repeatability_probe.R` evaluates the same 12
+accessions three times back to back, each into its own fresh cache directory so
+no replicate can be served from cache. Result:
+
+- **All 12 accessions: identical verdict AND identical diagnostics in all 3
+  replicates.**
+- **All 12 hit sets identical, Jaccard 1.000 across replicates** -- not one
+  partner accession differed anywhere (14-20 valid partners each).
+
+So the two leading hypotheses are dead. It is not within-run nondeterminism in
+NCBI's hit selection, and it is not degraded results under CPU pressure --
+BLAST is exactly reproducible at a fixed `params_key` within a session.
+
+The second hypothesis is dead too: the corroborating records' GenBank
+`create-date` AND `update-date` are both 2026-01-12 / 2026-04-26, so they were
+not released or revised recently. They had been public in Entrez for months.
+
+**What is left, and it fits every observation:** NCBI's `nt` BLAST database is
+a periodically-rebuilt SNAPSHOT, not the live Entrez/nuccore database. A record
+public in nuccore since January need not be present in the `nt` volume BLAST
+searches until a rebuild that includes it. That explains stability within a
+day, change between days, and records that were public earlier. It cannot be
+verified retrospectively -- there is no way to ask what `nt` contained on
+2026-09-01 -- so this is the surviving explanation, not a proven one.
+
+**Consequence: the flip was the screen getting BETTER, not misbehaving.** The
+09-02 verdict is the correct one; the 09-01 verdict was correct given what
+`nt` then contained. That reframes the whole finding -- there is no correctness
+bug to chase in this pipeline -- and it makes `incongruent_ttl_days` exactly
+the right fix rather than a mitigation, because the thing that goes stale is
+precisely the database snapshot the verdict was computed against.
+
+**Open question it raises about the TTL's VALUE, not its existence:** `nt`
+rebuilds run on the order of days to weeks, so a 90-day TTL can still serve a
+stale `"incongruent"` for months after the evidence that would overturn it
+became searchable. The recheck costs ~1% of an accession population (12 of 995
+on PtCon). Shortening the default to ~30 days is cheap and better matched to
+the mechanism now understood. Not changed unilaterally -- it is a cost
+decision.
 
 ## What is still open
 
@@ -358,12 +395,12 @@ investigated.
    count inconsistency.
 3. The full PtCon/GreatLakes re-BLAST that would give Thread 1 pair data at
    scale -- postponed, not cancelled.
-3b. **The verdict instability itself.** The TTL bounds how long a wrong
-   `"incongruent"` survives; it does not stop one being produced. Remaining
-   candidates: `max_hits = 20` truncation against a large, shifting `nt`, and
-   degraded hit sets under NCBI CPU pressure. A cheap probe would be to
-   evaluate the same handful of accessions three times in a row with
-   `cache_dir = NULL` and diff the hit sets.
+3b. ~~**The verdict instability itself.**~~ RESOLVED 2026-09-02 by
+   `diagnostics/blast_verdict_repeatability_probe.R` -- BLAST is exactly
+   reproducible (3/3 replicates, Jaccard 1.000 on every hit set), so the
+   surviving explanation is an `nt` snapshot rebuild between the two dates.
+   No correctness bug. What remains is the cost decision above: whether
+   `incongruent_ttl_days` should default to 30 rather than 90.
 4. `margin_scale = 1` is a convention. If a labelled set of genuinely
    mislabeled accessions ever exists, it is fittable.
 5. Whether a candidate taxon whose references are COLLECTIVELY dubious wants

@@ -305,13 +305,28 @@ Under the old policy that first, wrong verdict would have been served from
 cache forever -- and it is the one verdict
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}} acts on destructively.
 
-What a TTL fixes, and what it does not: it fixes staleness with respect to
-new NCBI deposits, and it gives an unlucky hit set a periodic chance to
-self-correct. It does NOT fix run-to-run variability in what BLAST returns
--- in the \code{OP056918} case the corroborating records had been in GenBank
-since January, so elapsed time was never the actual problem. See
-\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}
-for the open lead on that.
+What the flip was, established by
+\code{diagnostics/blast_verdict_repeatability_probe.R} the same day: NOT
+instability. Three back-to-back replicates of all 12 PtConception
+\code{"incongruent"} accessions, each into a fresh cache, returned identical
+verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000,
+14-20 partners each) -- BLAST is exactly reproducible at a fixed
+\code{params_key}. The corroborating records' GenBank create- AND update-dates
+are both months earlier, so they were not newly released either. The
+surviving explanation is that NCBI's \code{nt} is a periodically-rebuilt
+SNAPSHOT rather than the live nuccore database: a record public in Entrez
+since January need not be in the \code{nt} volume BLAST searches until a rebuild
+includes it.
+
+That reframes this TTL. The 09-02 verdict was not a correction of a
+malfunction -- both verdicts were correct given the database each was
+computed against. What goes stale is the SNAPSHOT, which is exactly what a
+TTL is for. Note the cadence mismatch, though: \code{nt} rebuilds run on the
+order of days to weeks, so 90 days can still serve a stale \code{"incongruent"}
+long after the evidence that overturns it became searchable. A shorter
+default would be better matched to the mechanism; it is a cost decision,
+and the recheck is ~1\% of an accession population. See
+\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}.
 }
 
 \section{Coarse-rank diagnostic (2026-08-07)}{
