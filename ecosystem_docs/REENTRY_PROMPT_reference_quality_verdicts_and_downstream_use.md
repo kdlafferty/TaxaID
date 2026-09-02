@@ -166,4 +166,21 @@ workflows from `remove_incongruent_references()` to
 
 ## Status
 
-- 2026-09-02: written. Nothing implemented. No verdicts taken.
+- 2026-09-02: written. Threads 1-3 not started, no verdicts taken.
+- 2026-09-02, same day: the **immediate safety valve is IN** (user-approved).
+  Both call sites (`PtConceptionWorkflow_12S_single_site.R`,
+  `MuguFishWorkflow.R` -- the only two workflows that call
+  `remove_incongruent_references()`) now add an evidence-gated spare list to
+  `override_accessions` alongside the LLM review's own overrides. An
+  accession is removed ONLY when nothing anywhere corroborates its label AND
+  something better-matching contradicts it:
+  `congruent_evidence_exists_anywhere %in% TRUE |
+   (!is.na(best_agreeing_pident) & (is.na(best_disagreeing_pident) |
+    best_agreeing_pident >= best_disagreeing_pident))` -> spared.
+  VERIFIED against the real 995-accession PtCon evaluation: 12 incongruent
+  -> 8 spared (1,666 observations, cabezon included), 4 removed
+  (16 observations: Cryptacanthodes maculatus, Rathbunella hypoplecta,
+  Jordania zonope, Zaniolepis frenata -- exactly the no-corroboration set).
+  This is a CALL-SITE filter only; `hierarchy_flag`'s own definition and the
+  cached verdicts are untouched, so Thread 2's question (should the package
+  itself carry an evidence-gated verdict column?) remains fully open.
