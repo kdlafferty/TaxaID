@@ -2898,6 +2898,33 @@ of a function's contract); (2) the workflow lines were rewritten
 class-agnostically as `filter() |> distinct() |> left_join()`. When replacing
 any function, check its return CLASS as deliberately as its columns.
 
+### A cache gate that tests only file.exists() silently serves stale results (found 2026-09-01)
+Every workflow in this ecosystem checkpoints intermediate objects and skips
+recomputation when the file exists (`.use_cache(path, step)` /
+`if (file.exists(path))`). Neither form compares the checkpoint against the
+files it was DERIVED from, so refreshing an upstream checkpoint leaves every
+downstream one silently stale -- no warning, no error, just old results that
+look current. Real incident (Mugu, found by tracing a scientific oddity, not
+by any test): `raw_gbif` was refreshed 2026-08-29, but the cached
+`geo_outlier_check` (2026-07-26) and `occurrences_clean` (2026-07-30) were
+reused, so a month of new GBIF occurrence data -- including EVERY tidewater
+goby record, 38 of them -- never reached the priors. The species' entire
+prior rested on one literature record, and the resulting species call was
+argued about for some time before the cause was found. Note the workflow had
+already grown one hand-rolled patch for this exact class
+(`.match_src_newer`), and a comment admitting `.use_cache()` "has no
+automatic staleness check" -- a documented gap nobody generalised.
+FIX, now in all four exposed workflows: the gate takes an `inputs =`
+argument naming the files the cache derives from, and rejects the cache when
+any input is NEWER (`file.mtime`), printing `STALE CACHE: <file> predates
+<input> -- regenerating`. Wired across the real dependency chain
+(`raw_gbif -> geo_outlier_check -> occurrences_clean -> model_fit/priors`).
+`inputs = NULL` keeps the old existence-only behaviour, so un-wired call
+sites are unaffected -- and note the NULL case must be guarded explicitly:
+`file.exists(NULL)` ERRORS ("invalid 'file' argument"), which a unit test
+caught before it reached a real run. When you add a checkpoint, declare what
+it derives from.
+
 ### Split-string sprintf bug (recurring)
 `sprintf()` does NOT concatenate multiple string arguments.
 ```r
