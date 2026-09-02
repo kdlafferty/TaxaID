@@ -386,11 +386,67 @@ prevent. Hence 30, not the 180 of the "we do not know yet" flags. The recheck
 costs ~1% of an accession population (12 of 995 on PtCon), and a test pins the
 default so a future change to it is deliberate.
 
+## 2026-09-02, Thread-3 validation run: INCONCLUSIVE, and it found a scale defect
+
+`diagnostics/validate_reference_quality_covariate.R` (new, fully offline) is
+the harness. Design, so it is not re-derived: ground truth is
+`identify_confident_observations()` -- observations whose genus has exactly one
+locally-plausible species in the occurrence priors, so the species call is
+fixed by geography and the likelihood never enters it. The metric is the
+MARGIN of the correct species over its best competitor (both columns are
+normalised within an observation, so a correct candidate already winning reads
+1.0 in both and would look unchanged). `evidence_col` is deliberately not
+passed, isolating reference quality. Pre-registered criteria: helped:hurt
+>= 10:1, plus a veto on any correct->wrong winner flip.
+
+**It reports 34:1 helped and zero flips, and that number means nothing.** Two
+reasons, both printed by the script's own power check:
+
+**1. `label_confidence` never reaches 1, so nothing is ever a true no-op.**
+The ceiling is the Jeffreys-smoothed vote plus the capped margin: a PERFECTLY
+corroborated 5-partner reference scores 0.99939, not 1.0. Fed to a slot that
+treats the value as an evidence ratio, that is a 0.03% sigma widening applied
+to every candidate in the dataset. `reference_quality_col`'s own `@param`
+promises "1 means a fully corroborated reference, which is the no-op" -- the
+scale cannot deliver it. **279 of the 408 moved H1 rows have
+`label_confidence > 0.99`**: they moved because of this artefact, not because
+their reference was dubious. Only **5** moved rows have `label_confidence <
+0.25`, the population the covariate exists for.
+
+The fix is the one `evidence_col` already has and this axis lacks: a BASELINE.
+`evidence_col` divides raw read depth by `reference_evidence`; reference
+quality divides by nothing. Dividing `label_confidence` by the confidence a
+maximally-corroborated reference with the same partner count would achieve
+(computable per row, and it cancels the n-dependence of the Jeffreys ceiling),
+capped at 1, makes a clean reference exactly 1.0. NOT IMPLEMENTED -- it changes
+what the covariate means and belongs to a decision.
+
+**2. The covariate is genuinely very sparse, independent of that defect.** It
+acts only where a candidate BOTH rests on a dubious reference AND sits far
+enough from its trained mean for the crossover gate to fire -- and those rarely
+co-occur, because a query that matches a dubious reference *well* is near the
+mean and correctly left alone. Ground-truth observations 6,429; those with a
+genuinely low-confidence candidate 528; overlap 315; of that overlap, **3**
+actually moved. Arm B (the exactly-0.5 "no evidence" accessions, 723
+observations) moved nothing at all, so the open question of whether absence of
+evidence should widen sigma is still untested rather than answered.
+
+**Verdict: INCONCLUSIVE, not PASS.** The script now fails a third,
+power criterion (>= 20 moved observations in the measured-low arm) and says so
+rather than reporting the flattering ratio. `score_likelihood_refq` stays a
+diagnostic. Next steps, in order: fix the scale so a clean reference maps to
+1.0; re-run; if arm A is still this thin, this dataset simply cannot decide and
+the test needs a reference set with more dubious accessions -- GreatLakes, or
+18S, which has never been screened under the current machinery at all.
+
 ## What is still open
 
-1. The Thread-3 validation run: helped-vs-hurt on real 12S PtCon/GreatLakes,
-   the same harness the sigma gate itself had to pass (163/3). Until it runs,
-   `score_likelihood_refq` stays a diagnostic.
+1. ~~The Thread-3 validation run.~~ RUN 2026-09-02, INCONCLUSIVE -- see the
+   section above. What it leaves: (a) the `label_confidence` scale never
+   reaching 1.0, which must be fixed before any re-run is interpretable;
+   (b) a re-run after that fix; (c) if arm A stays thin, a dataset with more
+   dubious references (GreatLakes, or the never-screened 18S).
+   `score_likelihood_refq` remains a diagnostic.
 2. ~~`diagnostics/partner_trust_small_test.R` has not been run against live
    NCBI.~~ RUN 2026-09-02 -- see the section above. It raised two NEW open
    items: whether `"incongruent"` should get a TTL, and the amplicon-trimming
