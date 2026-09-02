@@ -460,6 +460,87 @@ test_that("score_likelihood_evidence equals score_likelihood when evidence_col i
   expect_equal(out$score_likelihood_evidence, out$score_likelihood)
 })
 
+# ---- reference-quality sigma rescaling (score_likelihood_refq, 2026-09-02) ---
+
+test_that("score_likelihood_refq equals score_likelihood when reference_quality_col is absent", {
+  skip_if_not_installed("TaxaTools")
+  out <- evaluate_likelihoods(.make_match_df(), .make_model_params(),
+                              c("family", "genus", "species"))$likelihoods
+  expect_true("score_likelihood_refq" %in% names(out))
+  expect_equal(out$score_likelihood_refq, out$score_likelihood)
+})
+
+test_that("score_likelihood_refq: gate allows the rescale for a far match to a dubious reference", {
+  skip_if_not_installed("TaxaTools")
+  df <- .make_match_df()
+  df$score <- c(75, 50, 30)              # top candidate far from the trained mean
+  df$label_confidence <- c(0.1, 1, 1)    # ...and supported by a dubious reference
+  out <- evaluate_likelihoods(df, .make_model_params(),
+                              c("family", "genus", "species"),
+                              ratio_threshold = 0, min_match_threshold = 0,
+                              reference_quality_col = "label_confidence")$likelihoods
+  h1 <- out[out$hypothesis_type == "specific_candidate" &
+              out$taxon_name == "Hybognathus nuchalis", ]
+  expect_false(isTRUE(all.equal(h1$score_likelihood_refq, h1$score_likelihood)))
+})
+
+test_that("score_likelihood_refq: gate blocks the rescale for a near-mean match to a dubious reference", {
+  skip_if_not_installed("TaxaTools")
+  df <- .make_match_df()                 # top candidate score 95, close to the mean
+  df$label_confidence <- c(0.1, 1, 1)
+  out <- evaluate_likelihoods(df, .make_model_params(),
+                              c("family", "genus", "species"),
+                              ratio_threshold = 0,
+                              reference_quality_col = "label_confidence")$likelihoods
+  h1 <- out[out$hypothesis_type == "specific_candidate" &
+              out$taxon_name == "Hybognathus nuchalis", ]
+  # A GOOD match is unaffected by its reference's quality -- the widening only
+  # pays off in the tail. This is the property that makes the covariate safe.
+  expect_equal(h1$score_likelihood_refq, h1$score_likelihood)
+})
+
+test_that("score_likelihood_refq: a fully-trusted reference (1) is a no-op", {
+  skip_if_not_installed("TaxaTools")
+  df <- .make_match_df()
+  df$score <- c(75, 50, 30)
+  df$label_confidence <- 1
+  out <- evaluate_likelihoods(df, .make_model_params(),
+                              c("family", "genus", "species"),
+                              ratio_threshold = 0, min_match_threshold = 0,
+                              reference_quality_col = "label_confidence")$likelihoods
+  expect_equal(out$score_likelihood_refq, out$score_likelihood)
+})
+
+test_that("reference_quality_col warns when the named column is not in match_df", {
+  skip_if_not_installed("TaxaTools")
+  expect_warning(
+    evaluate_likelihoods(.make_match_df(), .make_model_params(),
+                         c("family", "genus", "species"),
+                         reference_quality_col = "label_confidence"),
+    "is not a column of match_df"
+  )
+})
+
+test_that("score_likelihood_refq combines the query-evidence and reference-quality ratios", {
+  skip_if_not_installed("TaxaTools")
+  params <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
+  df <- .make_match_df()
+  df$score <- c(75, 50, 30)
+  df$depth <- c(5, 10, 10)               # evidence_ratio 0.5 on its own
+  df$label_confidence <- c(0.5, 1, 1)    # quality ratio 0.5 on its own
+  out <- evaluate_likelihoods(df, params, c("family", "genus", "species"),
+                              ratio_threshold = 0, min_match_threshold = 0,
+                              evidence_col = "depth",
+                              reference_quality_col = "label_confidence")$likelihoods
+  h1 <- out[out$hypothesis_type == "specific_candidate" &
+              out$taxon_name == "Hybognathus nuchalis", ]
+  # The product (0.25) widens strictly more than the evidence ratio alone
+  # (0.5) does, so the refq column must differ from the evidence column --
+  # if the two ratios were not multiplied they would be identical here.
+  expect_false(isTRUE(all.equal(h1$score_likelihood_refq,
+                                h1$score_likelihood_evidence)))
+})
+
 # ---- filter_top_hypotheses --------------------------------------------------
 
 test_that("filter_top_hypotheses: removes coarser specific candidates", {

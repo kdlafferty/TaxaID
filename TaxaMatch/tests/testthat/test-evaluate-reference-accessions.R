@@ -1574,20 +1574,22 @@ test_that("flag_incongruent_references() validates inputs", {
 })
 
 test_that("remove_incongruent_references() removes only incongruent accessions by default", {
-  out <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture())
+  out <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture(),
+                                       gate = "flag")
   expect_equal(nrow(out), 2L)
   expect_false(any(out$accession %in% c("ACC002", "ACC002.1")))
   expect_true("ACC003" %in% out$accession)  # insufficient evidence retained by default
 })
 
 test_that("remove_incongruent_references() strips version suffixes before matching", {
-  out <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture())
+  out <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture(),
+                                       gate = "flag")
   expect_false("ACC002.1" %in% out$accession)
 })
 
 test_that("remove_incongruent_references(remove_insufficient_evidence = TRUE) also drops insufficient evidence", {
   out <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture(),
-                                       remove_insufficient_evidence = TRUE)
+                                       remove_insufficient_evidence = TRUE, gate = "flag")
   expect_equal(nrow(out), 1L)
   expect_equal(out$accession, "ACC001")
 })
@@ -1595,7 +1597,7 @@ test_that("remove_incongruent_references(remove_insufficient_evidence = TRUE) al
 test_that("remove_incongruent_references() warns and returns unchanged with no accession column", {
   match_df <- data.frame(observation_id = "O1", stringsAsFactors = FALSE)
   expect_warning(
-    out <- remove_incongruent_references(match_df, .evaluation_fixture()),
+    out <- remove_incongruent_references(match_df, .evaluation_fixture(), gate = "flag"),
     "no 'accession' column"
   )
   expect_equal(out, match_df)
@@ -1604,12 +1606,12 @@ test_that("remove_incongruent_references() warns and returns unchanged with no a
 test_that("remove_incongruent_references() is a no-op when nothing is flagged", {
   clean_eval <- data.frame(accession = "ACC999", hierarchy_flag = "congruent",
                            stringsAsFactors = FALSE)
-  out <- remove_incongruent_references(.match_df_fixture(), clean_eval)
+  out <- remove_incongruent_references(.match_df_fixture(), clean_eval, gate = "flag")
   expect_equal(nrow(out), 4L)
 })
 
 test_that("remove_incongruent_references() validates inputs", {
-  expect_error(remove_incongruent_references("not_a_df", .evaluation_fixture()),
+  expect_error(remove_incongruent_references("not_a_df", .evaluation_fixture(), gate = "flag"),
               "match_df must be a data frame")
   expect_error(remove_incongruent_references(.match_df_fixture(), "not_a_df"),
               "evaluation must be a data frame")
@@ -1625,11 +1627,13 @@ test_that("remove_incongruent_references() validates inputs", {
 })
 
 test_that("remove_incongruent_references(override_accessions=) keeps a specific flagged accession", {
-  out_default <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture())
+  out_default <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture(),
+                                               gate = "flag")
   expect_false(any(out_default$accession %in% c("ACC002", "ACC002.1")))
 
   out_overridden <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture(),
-                                                   override_accessions = "ACC002")
+                                                   override_accessions = "ACC002",
+                                                   gate = "flag")
   expect_true(any(out_overridden$accession %in% c("ACC002", "ACC002.1")))
   # ACC001 (congruent, never flagged) is untouched either way
   expect_true("ACC001" %in% out_overridden$accession)
@@ -1637,14 +1641,14 @@ test_that("remove_incongruent_references(override_accessions=) keeps a specific 
 
 test_that("remove_incongruent_references(override_accessions=) strips version suffixes", {
   out <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture(),
-                                       override_accessions = "ACC002.1")
+                                       override_accessions = "ACC002.1", gate = "flag")
   expect_true(any(out$accession %in% c("ACC002", "ACC002.1")))
 })
 
 test_that("remove_incongruent_references(override_accessions=) never removes an accession hierarchy_flag would have kept", {
   # ACC001 is "congruent" -- listing it in override_accessions changes nothing
   out <- remove_incongruent_references(.match_df_fixture(), .evaluation_fixture(),
-                                       override_accessions = "ACC001")
+                                       override_accessions = "ACC001", gate = "flag")
   expect_equal(nrow(out), 2L)
   expect_false(any(out$accession %in% c("ACC002", "ACC002.1")))
 })

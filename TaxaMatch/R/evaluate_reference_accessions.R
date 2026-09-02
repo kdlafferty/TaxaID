@@ -324,6 +324,29 @@ utils::globalVariables(c(
   out$congruent_evidence_exists_anywhere <- ifelse(
     is.na(out$congruent_evidence_exists_anywhere), FALSE, out$congruent_evidence_exists_anywhere
   )
+
+  # Per-partner pair table, carried out as an attribute rather than folded
+  # into the returned per-accession frame (whose one-row-per-accession shape
+  # every caller already depends on). This is the ONLY place the individual
+  # votes behind `frac_independent_below_min_congruent_rank` exist -- they
+  # were previously built, summarised, and discarded, so no verdict could
+  # ever be recomputed without a fresh BLAST. `refine_reference_verdicts()`
+  # (Thread 1 of REENTRY_PROMPT_reference_quality_verdicts_and_downstream_
+  # use.md) needs exactly these rows to re-run the vote with each partner
+  # weighted by its own trustworthiness.
+  #
+  # `pair_finest_common_rank` is stored rather than the derived
+  # `below_min_congruent` boolean deliberately: the boolean is a function of
+  # `min_congruent_rank`, the rank is not, so a stored pair table stays
+  # reusable if a caller later re-votes at a different rank.
+  attr(out, "pair_table") <- data.frame(
+    id_x                    = valid$id_x,
+    id_y                    = valid$id_y,
+    p_match                 = valid$p_match,
+    pair_finest_common_rank = valid$finest_common_rank,
+    species_y               = valid$species.y,
+    stringsAsFactors        = FALSE
+  )
   out
 }
 
@@ -504,6 +527,64 @@ utils::globalVariables(c(
   invisible(NULL)
 }
 
+#' Sidecar cache of the per-partner votes behind each accession's verdict
+#'
+#' A SECOND file in the same `cache_dir`, deliberately not folded into
+#' `reference_accession_cache.rds`: that file is strictly one row per
+#' accession and several consumers rely on it (including
+#' `.load_reference_accession_cache()`'s own schema check, which discards a
+#' whole file whose columns don't match). The pair table is one row per
+#' (accession, valid comparison partner) -- a different grain entirely.
+#'
+#' Being a separate file also makes it purely ADDITIVE: an existing cache
+#' directory with no `reference_pair_cache.rds` keeps working unchanged, and
+#' simply has no pair data until its accessions are re-evaluated. Nothing
+#' reads this file except [refine_reference_verdicts()], which degrades to a
+#' documented no-op for any accession absent from it.
+#'
+#' @param cache_dir Character or `NULL` (no-op).
+#' @return `.load_reference_pair_cache()`: a data frame with columns
+#'   `id_x`, `id_y`, `p_match`, `pair_finest_common_rank`, `species_y`,
+#'   `params_key`, `evaluated_at` -- zero rows if the file is absent or its
+#'   schema doesn't match (same discard-and-start-fresh policy as the
+#'   per-accession cache, for the same reason: a partially-readable file is
+#'   worse than none).
+#' @noRd
+.empty_reference_pair_cache <- function() {
+  data.frame(
+    id_x = character(0L), id_y = character(0L), p_match = numeric(0L),
+    pair_finest_common_rank = character(0L), species_y = character(0L),
+    params_key = character(0L), evaluated_at = as.POSIXct(character(0L)),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @noRd
+.load_reference_pair_cache <- function(cache_dir) {
+  empty <- .empty_reference_pair_cache()
+  if (is.null(cache_dir)) return(empty)
+  path <- file.path(cache_dir, "reference_pair_cache.rds")
+  if (!file.exists(path)) return(empty)
+  cached <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (!is.data.frame(cached) || !all(names(empty) %in% names(cached))) {
+    if (!is.null(cached))
+      warning(sprintf(
+        "Discarding pair cache at %s -- unexpected schema. It will be rebuilt as accessions are re-evaluated.",
+        path
+      ), call. = FALSE)
+    return(empty)
+  }
+  cached[, names(empty), drop = FALSE]
+}
+
+#' @noRd
+.save_reference_pair_cache <- function(cache_dir, pair_df) {
+  if (is.null(cache_dir)) return(invisible(NULL))
+  if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  saveRDS(pair_df, file.path(cache_dir, "reference_pair_cache.rds"))
+  invisible(NULL)
+}
+
 #' Evaluate One Chunk of Accessions -- Fetch, BLAST, Score
 #'
 #' Extracted from `evaluate_reference_accessions()`'s own body (2026-08-14,
@@ -636,6 +717,7 @@ utils::globalVariables(c(
   }
 
   computed_rows <- NULL
+  pair_table    <- NULL
   circuit_breaker_tripped <- FALSE
 
   if (nrow(query_meta) > 0L) {
@@ -813,6 +895,9 @@ utils::globalVariables(c(
         min_congruent_rank = min_congruent_rank, submission_window = submission_window,
         min_coverage = NULL, require_species_resolved_partner = TRUE
       )
+      # Lifted off the attribute BEFORE the merge()/subset()ing below, which
+      # would silently drop it (base R attributes don't survive those).
+      pair_table <- attr(congruence, "pair_table")
     } else {
       # No hits survived (either none returned at all, or all were self-hits)
       # -- an empty frame in the FULL shape .compute_hierarchy_congruence()
@@ -911,6 +996,7 @@ utils::globalVariables(c(
   }
 
   list(computed_rows = computed_rows, missing_acc = missing_acc,
+       pair_table = pair_table,
        circuit_breaker_tripped = circuit_breaker_tripped)
 }
 
@@ -1563,6 +1649,7 @@ evaluate_reference_accessions <- function(accessions,
   missing_acc <- character(0)
   circuit_breaker_tripped <- FALSE
   n_chunks_attempted <- 0L
+  pair_cache <- .load_reference_pair_cache(cache_dir)
 
   for (ci in seq_along(chunks)) {
     chunk_acc <- chunks[[ci]]
@@ -1596,6 +1683,21 @@ evaluate_reference_accessions <- function(accessions,
                        cache$params_key == params_key), , drop = FALSE]
       cache <- rbind(cache, chunk_result$computed_rows[, names(cache), drop = FALSE])
       .save_reference_accession_cache(cache_dir, cache)
+
+      # Sidecar pair table, written on the same incremental schedule and for
+      # the same reason (an interruption should only lose the chunk still in
+      # flight). Superseded rows for these accessions are dropped first, so
+      # re-evaluating an accession replaces its votes rather than
+      # accumulating a second, stale copy alongside them.
+      if (!is.null(chunk_result$pair_table) && nrow(chunk_result$pair_table) > 0L) {
+        new_pairs <- chunk_result$pair_table
+        new_pairs$params_key   <- params_key
+        new_pairs$evaluated_at <- now
+        pair_cache <- pair_cache[!(pair_cache$id_x %in% new_pairs$id_x &
+                                     pair_cache$params_key == params_key), , drop = FALSE]
+        pair_cache <- rbind(pair_cache, new_pairs[, names(pair_cache), drop = FALSE])
+        .save_reference_pair_cache(cache_dir, pair_cache)
+      }
     }
 
     if (isTRUE(chunk_result$circuit_breaker_tripped)) {
@@ -1675,6 +1777,16 @@ evaluate_reference_accessions <- function(accessions,
   out$listed_taxon_is_species <- ifelse(
     is.na(out$listed_taxon), NA, TaxaTools::is_plausible_binomial(out$listed_taxon)
   )
+
+  # label_confidence / label_identity_margin / reference_action -- derived
+  # here, post-hoc, from columns already in the result, for exactly the
+  # reason listed_taxon_is_species just above is: a pure function of stored
+  # columns costs no .EVAL_REF_ACC_VERSION bump, no cache invalidation, and
+  # applies instantly to an existing cache. `hierarchy_flag`'s own meaning
+  # and cached values are untouched -- these are additive columns beside it,
+  # not a redefinition of it. See score_reference_labels() for the formula,
+  # its one free parameter, and why "remove" carries two hard vetoes.
+  out <- score_reference_labels(out)
 
   # ---- Run summary: what happened this call, in one place -------------------
   # See @section Chunked evaluation and NCBI rate-limiting resilience below.
@@ -1762,9 +1874,14 @@ evaluate_reference_accessions <- function(accessions,
 #'   `frac_independent_below_min_congruent_rank`, `n_independent_top_matches`,
 #'   `n_top_matches_available`, `best_hit_pident`, `best_agreeing_pident`,
 #'   `best_disagreeing_pident`, `congruent_evidence_exists_anywhere`, and
-#'   `congruent_evidence_best_pident` joined on. A row whose accession was
-#'   not found in `evaluation` gets `NA` in all of these (not evaluated
-#'   yet, not evidence of anything). Row count and order are unchanged.
+#'   `congruent_evidence_best_pident` joined on, plus `label_confidence`,
+#'   `label_identity_margin`, `reference_action` and `listed_taxon_is_species`
+#'   whenever `evaluation` carries them (it always does when it came from
+#'   [evaluate_reference_accessions()] or [score_reference_labels()]; an
+#'   `evaluation` read straight off a pre-2026-09-02 cache file will not).
+#'   A row whose accession was not found in `evaluation` gets `NA` in all of
+#'   these (not evaluated yet, not evidence of anything). Row count and order
+#'   are unchanged.
 #'
 #' @seealso [evaluate_reference_accessions()], [remove_incongruent_references()]
 #'
@@ -1782,6 +1899,19 @@ flag_incongruent_references <- function(match_df, evaluation) {
                  "best_hit_pident", "best_agreeing_pident", "best_disagreeing_pident",
                  "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident")
   missing_cols <- setdiff(c("accession", join_cols), names(evaluation))
+  # Carried when present, not required: an `evaluation` read straight off a
+  # pre-2026-09-02 cache file has the diagnostics but not the derived
+  # verdict columns, and joining what exists beats erroring on what doesn't.
+  # `label_confidence` is the column
+  # `TaxaLikely::evaluate_likelihoods(reference_quality_col=)` consumes, so
+  # this join is the whole path by which per-accession reference quality
+  # reaches the likelihood model.
+  optional_cols <- intersect(
+    c("label_confidence", "label_identity_margin", "reference_action",
+      "listed_taxon_is_species"),
+    names(evaluation)
+  )
+  join_cols <- c(join_cols, optional_cols)
   if (length(missing_cols) > 0L)
     stop(sprintf(
       "evaluation is missing required columns: %s",
@@ -1841,22 +1971,46 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' identity diagnostics (`best_agreeing_pident`/`best_disagreeing_pident`/
 #' `congruent_evidence_exists_anywhere`), not as an unreviewed default step.
 #'
-#' @section Full-signal weighting is separate, later work:
-#' This function only ever consumes `hierarchy_flag`'s binary blacklist
-#' decision. The full per-accession quality signal (`frac_independent_
-#' below_min_congruent_rank`, etc.) needs to survive through to
-#' `TaxaLikely::evaluate_likelihoods()` so it can inflate/discount
-#' likelihood the same way `score_likelihood_cov` already does for
-#' alignment coverage -- that TaxaLikely-side consumption is real, agreed-on
-#' future work, not designed or implemented here. Do not let this function's
-#' use become the only place the full `evaluation` object's signal is
-#' consulted.
+#' @section The evidence gate is now the default (2026-09-02):
+#' `gate = "action"` (the default) removes an accession only when
+#' [score_reference_labels()] resolved it to `reference_action == "remove"`
+#' -- flagged `"incongruent"` AND uncorroborated anywhere AND below the
+#' confidence threshold -- rather than on `hierarchy_flag == "incongruent"`
+#' alone. `hierarchy_flag` is a majority vote over the top-N neighbours in
+#' which percent identity never appears, so in a thinly-covered clade it
+#' fires on correct references by construction. Measured on the real
+#' 995-accession PtConception screen: the old `gate = "flag"` behaviour would
+#' have removed 12 accessions behind 1,688 observations -- including cabezon
+#' (`OK172573`, 1,120 observations, agreeing hit at 100%) -- to catch the 4
+#' (16 observations) that genuinely had no corroboration anywhere.
+#' `gate = "action"` removes exactly those 4. Pass `gate = "flag"` to get the
+#' pre-2026-09-02 behaviour back.
+#'
+#' @section Full-signal weighting is separate work:
+#' Even under `gate = "action"` this function consumes only a BLACKLIST
+#' decision. The continuous signal (`label_confidence`) reaches the
+#' likelihood model by a different route entirely --
+#' [flag_incongruent_references()] joins it onto the match object and
+#' `TaxaLikely::evaluate_likelihoods(reference_quality_col = "label_confidence")`
+#' widens H1 sigma with it (2026-09-02, emitted as the diagnostic
+#' `score_likelihood_refq`, not yet adopted as the default likelihood). Do
+#' not let this function's use become the only place the full `evaluation`
+#' object's signal is consulted.
 #'
 #' @param match_df Data frame. A standardized match object (from
 #'   [standardize_match_data()]) containing an `accession` column.
 #' @param evaluation Data frame. Output of [evaluate_reference_accessions()].
+#' @param gate Character, `"action"` (default) or `"flag"`. `"action"` removes
+#'   accessions whose `reference_action` is `"remove"`; `"flag"` removes every
+#'   accession whose `hierarchy_flag` is `"incongruent"`, the pre-2026-09-02
+#'   behaviour. Under `"action"`, `reference_action` is computed on the fly
+#'   via [score_reference_labels()] if `evaluation` does not already carry it.
 #' @param remove_insufficient_evidence Logical (default `FALSE`). If `TRUE`,
 #'   also removes accessions flagged `"insufficient_independent_evidence"`.
+#'   Applies under both `gate` settings -- `reference_action` can never be
+#'   `"remove"` for that flag on its own (see [score_reference_labels()]'s
+#'   `@section Why "remove" also requires no corroboration anywhere`), so this
+#'   argument stays the only way to drop them.
 #' @param override_accessions Character vector of accession IDs (default
 #'   `NULL`), or `NULL` to disable. Accessions listed here are NEVER removed,
 #'   regardless of `hierarchy_flag` -- the automated counterpart to the
@@ -1885,7 +2039,8 @@ flag_incongruent_references <- function(match_df, evaluation) {
 remove_incongruent_references <- function(match_df,
                                           evaluation,
                                           remove_insufficient_evidence = FALSE,
-                                          override_accessions = NULL) {
+                                          override_accessions = NULL,
+                                          gate = c("action", "flag")) {
 
   if (!is.data.frame(match_df))
     stop("match_df must be a data frame.", call. = FALSE)
@@ -1893,6 +2048,7 @@ remove_incongruent_references <- function(match_df,
     stop("evaluation must be a data frame.", call. = FALSE)
   if (!is.null(override_accessions) && !is.character(override_accessions))
     stop("override_accessions must be NULL or a character vector of accessions.", call. = FALSE)
+  gate <- match.arg(gate)
 
   needed <- c("accession", "hierarchy_flag")
   missing_cols <- setdiff(needed, names(evaluation))
@@ -1901,6 +2057,25 @@ remove_incongruent_references <- function(match_df,
       "evaluation is missing required columns: %s",
       paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
+
+  if (gate == "action" && !"reference_action" %in% names(evaluation)) {
+    # An `evaluation` from a pre-2026-09-02 cache read straight off disk has
+    # the diagnostics but no derived verdict. Deriving it here (rather than
+    # silently falling back to gate = "flag", which would remove ~3x more
+    # accessions than the caller asked for) keeps the default meaningful;
+    # a frame genuinely lacking the diagnostics gets a message naming the
+    # explicit escape hatch instead of a bare column-not-found error.
+    evaluation <- tryCatch(
+      score_reference_labels(evaluation),
+      error = function(e) stop(sprintf(
+        paste0("gate = \"action\" needs `reference_action`, or the diagnostic columns ",
+               "score_reference_labels() derives it from, and evaluation has neither ",
+               "(%s).\n  Re-run evaluate_reference_accessions(), or pass gate = \"flag\" ",
+               "for the pre-2026-09-02 hierarchy_flag-only behaviour."),
+        conditionMessage(e)
+      ), call. = FALSE)
+    )
+  }
 
   if (!"accession" %in% names(match_df)) {
     warning(
@@ -1911,11 +2086,15 @@ remove_incongruent_references <- function(match_df,
     return(match_df)
   }
 
-  flags_to_remove <- "incongruent"
+  flags_to_remove <- if (gate == "flag") "incongruent" else character(0L)
   if (isTRUE(remove_insufficient_evidence))
     flags_to_remove <- c(flags_to_remove, "insufficient_independent_evidence")
 
   bad_ids <- evaluation$accession[evaluation$hierarchy_flag %in% flags_to_remove]
+  if (gate == "action")
+    bad_ids <- unique(c(
+      bad_ids, evaluation$accession[evaluation$reference_action %in% "remove"]
+    ))
 
   override_clean <- sub("\\.[0-9]+$", "", override_accessions)
   bad_ids_clean_check <- sub("\\.[0-9]+$", "", bad_ids)
@@ -1946,9 +2125,14 @@ remove_incongruent_references <- function(match_df,
 
   result <- match_df[!flagged_mask, , drop = FALSE]
 
+  removed_for <- if (gate == "action") {
+    c("reference_action == \"remove\"", flags_to_remove)
+  } else {
+    flags_to_remove
+  }
   message(sprintf(
     "Removed %d row(s) (%d accession(s)) flagged as %s.",
-    n_rows_removed, n_accessions, paste(flags_to_remove, collapse = " or ")
+    n_rows_removed, n_accessions, paste(removed_for, collapse = " or ")
   ))
 
   result

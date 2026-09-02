@@ -1,6 +1,53 @@
 # CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-08 (Sonnet 5 -- first HUMAN-authored code + domain review response
+# Last updated: 2026-09-02 (Opus 5, branch kernel-priors -- Thread 3 of
+# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md: reference
+# quality as a likelihood covariate. Threads 1-2 land in TaxaMatch; see its CLAUDE.md.
+#
+# `evaluate_likelihoods()` gains `reference_quality_col`. The likelihood model has always
+# assumed every reference is correctly labeled; `TaxaMatch::score_reference_labels()` now
+# measures per accession whether independent NCBI evidence corroborates that accession's
+# own listed taxon, as a `label_confidence` in (0, 1). A poor match to an UNCERTAIN
+# reference should worry us less than a poor match to a CERTAIN one.
+#
+# THE SLOT ALREADY EXISTED AND WAS ALREADY VALIDATED -- this is the deferred "quality
+# covariate" thread ([[project_quality_covariate_deferred]], 2026-07-10) reaching the
+# mechanism `evidence_col` built in Session 156. Reference quality enters as a SECOND ratio
+# multiplied into the query-evidence ratio, and the closed-form crossover gate
+# (`-0.5*log(c) + 0.5*z^2*(1 - 1/c) > 0`) is applied ONCE, to the product. Applying it to
+# each factor separately would let a jointly-harmful rescale through because neither half
+# looked harmful alone. The existing axis is QUERY evidence (read depth, per observation);
+# reference quality is a per-ACCESSION property, aggregated to the candidate taxon by
+# median across that taxon's own rows -- the same aggregation `coverage` and `evidence_col`
+# already use, and the answer to the reentry doc's open granularity question.
+#
+# The gate already encodes the user's intuition formally, which is why this is the right
+# slot rather than a new mechanism: widening sigma pays off only where the observed score
+# sits far from the trained mean. A poor match to a low-confidence reference is forgiven;
+# a GOOD match is untouched. Only the VARIANCE moves -- reference quality never shifts the
+# MEAN (Session 157's principle): a dubious reference makes us less sure, it does not make
+# the species less likely a priori.
+#
+# DIAGNOSTIC, NOT ADOPTED (user's explicit decision). Emitted as `raw_likelihood_refq` /
+# `score_likelihood_refq`, in the same shape as `score_likelihood_cov`/`*_evidence`;
+# `score_likelihood` is unchanged and the posterior still reads it. The evidence axis
+# measured 27 helped / 2053 hurt BEFORE its gate and 163 helped / 3 hurt after -- a
+# covariate in this slot earns its default by measurement, and reference quality has not
+# yet had that run. Both the PtConception and Mugu workflows now pass
+# `reference_quality_col = "label_confidence"` so the column is computed on real data and
+# the helped-vs-hurt count becomes possible.
+#
+# REAL-DATA SMOKE CHECK (not the validation run): on 400 real PtConception observations
+# that touch a sub-0.75-confidence reference, 20 of 457 H1 rows moved, 19 of them UP --
+# the forgiveness direction, and rare, exactly as the gate implies. A silent-no-op trap is
+# guarded: naming a `reference_quality_col` that is not in `match_df` warns rather than
+# quietly producing a column identical to `score_likelihood_evidence`.
+#
+# Tests: 6 new in `test-evaluate.R` (no-op when absent, no-op at quality 1, gate fires far
+# from the mean, gate blocks near it, the ratios genuinely multiply, missing-column
+# warning). `devtools::test()` 992/992, 0 failures.
+#
+# Previous update, 2026-08-08 (Sonnet 5 -- first HUMAN-authored code + domain review response
 # (Micah Wright, not Claude -- this replaces the prior, Claude-authored review's response
 # doc entirely; see `inst/taxalikely_review.Rmd`/`inst/taxalikely_review_response.md` for the
 # full record). Walked every checklist item and every one of ~24 files' worth of comments.

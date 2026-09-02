@@ -403,7 +403,8 @@ test_that("resolve_review_overrides() output feeds directly into remove_incongru
     hierarchy_flag = "incongruent",
     stringsAsFactors = FALSE
   )
-  out <- remove_incongruent_references(match_df, evaluation, override_accessions = overrides)
+  out <- remove_incongruent_references(match_df, evaluation, override_accessions = overrides,
+                                      gate = "flag")
   # A1 (genuine_mislabel) removed; A2/A3/A4 (overridden) retained
   expect_equal(out$accession, c("A2", "A3", "A4"))
 })

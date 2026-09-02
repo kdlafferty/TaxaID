@@ -184,3 +184,92 @@ workflows from `remove_incongruent_references()` to
   This is a CALL-SITE filter only; `hierarchy_flag`'s own definition and the
   cached verdicts are untouched, so Thread 2's question (should the package
   itself carry an evidence-gated verdict column?) remains fully open.
+- 2026-09-02, later the same day (Opus 5, branch `kernel-priors`): **all three
+  threads IMPLEMENTED**, verdicts taken as recorded below. The call-site filter
+  above is DELETED from both workflows -- it now lives in the package, so there
+  is one definition of the rule.
+
+## Verdicts taken (2026-09-02)
+
+**Thread 2 -- ADDITIVE, not a redefinition.** `hierarchy_flag` keeps its exact
+meaning and cached values. `TaxaMatch::score_reference_labels()` (new, exported)
+adds `label_confidence` (numeric, HIGH = the label is more likely CORRECT --
+named for its direction rather than following the `*_risk` convention),
+`label_identity_margin`, and `reference_action`
+(`keep`/`caution`/`inspect`/`remove`/`untested`). All three are a PURE FUNCTION
+of columns already in the cache, derived post-hoc at the end of
+`evaluate_reference_accessions()` -- the trick `listed_taxon_is_species`
+already used. No `.EVAL_REF_ACC_VERSION` bump, no re-BLAST, existing
+PtCon/GreatLakes caches gain them instantly, and changing `margin_scale` costs
+nothing. Formula:
+
+    logit(label_confidence) = logit(1 - frac_independent_below_min_congruent_rank)
+                              + d / margin_scale
+    d = (best_agreeing_pident, else congruent_evidence_best_pident)
+        - best_disagreeing_pident,   capped to +/- margin_cap (5)
+
+i.e. one percent-identity point of margin = one unit of log-odds at the default
+`margin_scale = 1`. That is the ONE free parameter, and it is a stated
+convention, not a fit. `"remove"` carries two HARD VETOES: only `"incongruent"`
+is removable at all, and corroborating evidence anywhere spares the accession
+however low its number. `remove_incongruent_references(gate = c("action",
+"flag"))` defaults to the action gate; `"flag"` restores the old behaviour.
+
+On the real 995-accession PtCon cache: 919 congruent -> all `keep`; the 12
+incongruent -> 4 `remove` (exactly the no-corroboration set), 3 `inspect`,
+3 `caution`, 2 `keep` (cabezon `OK172573` at 0.892 among them).
+
+**Thread 1 -- implemented, with a blocker the brief above did not know about.**
+The per-partner votes were built, summarised and DISCARDED, so no verdict could
+be recomputed without a fresh BLAST. `.compute_hierarchy_congruence()` now
+carries them out as an attribute and `evaluate_reference_accessions()` persists
+them to a sidecar `reference_pair_cache.rds`.
+`TaxaMatch::refine_reference_verdicts()` runs the trust-weighted fixpoint over
+them: weighted (not binary) discounting, deterministic by construction (Jacobi
+sweep + id_y tie-break), iteration cap, and the cascade guard the brief asked
+for -- never discount on `insufficient_*`, and never on `congruent` either
+(shaving ordinary partners to 0.999 would flip an accession with exactly three
+of them below `min_independent_partners` on rounding alone).
+
+**Askoldia was not the culprit.** `MT627596`'s own row reads
+`insufficient_independent_evidence` with a 100% agreeing hit and nothing
+disagreeing -- `label_confidence` 0.999. The cascade guard correctly leaves it
+at full weight: it is an under-evaluated partner, not a likely error, and the
+family-level disagreement it registers is real in a thin clade. The mechanism
+is right; this accession was not what it looked like.
+
+No existing cache has pair rows, so `refine_reference_verdicts()` is a
+documented no-op on PtCon/GreatLakes until those accessions are re-evaluated.
+The full re-BLAST is postponed by decision;
+`diagnostics/partner_trust_small_test.R` is the small-subset live-NCBI exercise
+that stands in for it (two BLAST stages: the 12 flagged accessions, then the
+partners that actually voted against them -- previously unknowable, since only
+the disagreeing taxon's NAME was ever stored -- then the fixpoint over the
+union). NOT YET RUN.
+
+**Thread 3 -- built as a diagnostic, deliberately not adopted.**
+`TaxaLikely::evaluate_likelihoods(reference_quality_col=)` multiplies the
+quality ratio into the query-evidence ratio and applies the closed-form
+crossover gate ONCE to the product (separately per factor would let a jointly
+harmful rescale through). The granularity question is answered by existing
+machinery: `flag_incongruent_references()` joins `label_confidence` per
+accession, and `evaluate_likelihoods()` already medians it to the candidate
+taxon exactly as it does `coverage`. Emitted as
+`raw_likelihood_refq`/`score_likelihood_refq`; `score_likelihood` unchanged.
+Both workflows now pass the column so the validation run becomes possible.
+Real-data smoke check (not the validation): on 400 PtCon observations touching
+a sub-0.75 reference, 20 of 457 H1 rows moved, 19 of them UP -- the forgiveness
+direction, and rare, as the gate implies.
+
+## What is still open
+
+1. The Thread-3 validation run: helped-vs-hurt on real 12S PtCon/GreatLakes,
+   the same harness the sigma gate itself had to pass (163/3). Until it runs,
+   `score_likelihood_refq` stays a diagnostic.
+2. `diagnostics/partner_trust_small_test.R` has not been run against live NCBI.
+3. The full PtCon/GreatLakes re-BLAST that would give Thread 1 pair data at
+   scale -- postponed, not cancelled.
+4. `margin_scale = 1` is a convention. If a labelled set of genuinely
+   mislabeled accessions ever exists, it is fittable.
+5. Whether a candidate taxon whose references are COLLECTIVELY dubious wants
+   its own treatment, distinct from the per-accession median.
