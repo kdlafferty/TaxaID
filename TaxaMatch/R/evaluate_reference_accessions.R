@@ -1065,11 +1065,13 @@ utils::globalVariables(c(
 #' That reframes this TTL. The 09-02 verdict was not a correction of a
 #' malfunction -- both verdicts were correct given the database each was
 #' computed against. What goes stale is the SNAPSHOT, which is exactly what a
-#' TTL is for. Note the cadence mismatch, though: `nt` rebuilds run on the
-#' order of days to weeks, so 90 days can still serve a stale `"incongruent"`
-#' long after the evidence that overturns it became searchable. A shorter
-#' default would be better matched to the mechanism; it is a cost decision,
-#' and the recheck is ~1% of an accession population. See
+#' TTL is for -- and it is also what sets the right cadence for one. `nt`
+#' rebuilds run on the order of days to weeks, so the default is 30 days, not
+#' the 180 of the "we do not know yet" flags: a TTL much longer than the
+#' rebuild interval would keep serving a stale `"incongruent"` long after the
+#' evidence that overturns it became searchable, which is the exact failure
+#' this TTL exists to prevent. The recheck costs ~1% of an accession
+#' population. See
 #' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`.
 #'
 #' @section Coarse-rank diagnostic (2026-08-07):
@@ -1110,7 +1112,7 @@ utils::globalVariables(c(
 #'     evidence WAS FOUND, and nothing a later BLAST returns can withdraw a
 #'     match already observed; new deposits can only add more.}
 #'   \item{`"incongruent"` -- expires after `incongruent_ttl_days`
-#'     (default 90; **new 2026-09-02**, previously cached indefinitely). It
+#'     (default 30; **new 2026-09-02**, previously cached indefinitely). It
 #'     asserts corroborating evidence was NOT found, which is a statement
 #'     about ABSENCE, and absence is exactly what later evidence overturns.
 #'     See `@section Why "incongruent" gained a TTL` below.}
@@ -1143,14 +1145,16 @@ utils::globalVariables(c(
 #'   caching entirely (every call re-evaluates every accession).
 #' @param insufficient_evidence_ttl_days Numeric (default `180`). See
 #'   Caching above.
-#' @param incongruent_ttl_days Numeric (default `90`). Days after which an
+#' @param incongruent_ttl_days Numeric (default `30`). Days after which an
 #'   `"incongruent"` cached verdict is re-evaluated. `Inf` restores the
-#'   pre-2026-09-02 behaviour (cached indefinitely). Shorter than
-#'   `insufficient_evidence_ttl_days` on purpose: `"incongruent"` is the only
-#'   verdict that causes a reference to be REMOVED, and it is ~1% of a real
-#'   accession population, so re-checking it often is both the most valuable
-#'   and the cheapest recheck available. See `@section Why "incongruent"
-#'   gained a TTL`.
+#'   pre-2026-09-02 behaviour (cached indefinitely). Much shorter than
+#'   `insufficient_evidence_ttl_days` on purpose, for two compounding reasons:
+#'   `"incongruent"` is the only verdict that causes a reference to be
+#'   REMOVED, and the thing that goes stale underneath it -- NCBI's `nt`
+#'   snapshot -- is rebuilt on the order of days to weeks, not months. It is
+#'   also ~1% of a real accession population (12 of 995 on the PtConception
+#'   screen), so this is simultaneously the most valuable and the cheapest
+#'   recheck available. See `@section Why "incongruent" gained a TTL`.
 #' @param top_n Integer (default `5L`). Max independent BLAST hits ranked
 #'   per accession for the congruence verdict.
 #' @param min_congruent_rank Character (default `"family"`). Passed to the
@@ -1520,7 +1524,7 @@ utils::globalVariables(c(
 evaluate_reference_accessions <- function(accessions,
                                           cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
                                           insufficient_evidence_ttl_days = 180,
-                                          incongruent_ttl_days = 90,
+                                          incongruent_ttl_days = 30,
                                           top_n = 5L,
                                           min_congruent_rank = "family",
                                           hierarchy_incongruent_threshold = 0.5,
@@ -1669,8 +1673,12 @@ evaluate_reference_accessions <- function(accessions,
   # reference to be REMOVED (see remove_incongruent_references()), so a
   # permanently stale one is the most costly kind. The recheck is cheap:
   # "incongruent" is ~1% of a real accession population (12 of 995 on the
-  # PtConception screen), so a shorter TTL than the "we do not know yet"
+  # PtConception screen), so a much shorter TTL than the "we do not know yet"
   # flags costs almost nothing while protecting the destructive decision.
+  # 30 days, not 180, because the thing that goes stale underneath the
+  # verdict is NCBI's `nt` snapshot, and that is rebuilt on the order of days
+  # to weeks -- a TTL far longer than the rebuild interval would defeat the
+  # purpose (see the note just below).
   #
   # WHAT GOES STALE IS NCBI'S `nt` SNAPSHOT, not the accession and not this
   # package's math. Established 2026-09-02 by

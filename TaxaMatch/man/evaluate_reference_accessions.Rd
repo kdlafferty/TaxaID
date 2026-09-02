@@ -8,7 +8,7 @@ evaluate_reference_accessions(
   accessions,
   cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
   insufficient_evidence_ttl_days = 180,
-  incongruent_ttl_days = 90,
+  incongruent_ttl_days = 30,
   top_n = 5L,
   min_congruent_rank = "family",
   hierarchy_incongruent_threshold = 0.5,
@@ -42,13 +42,16 @@ caching entirely (every call re-evaluates every accession).}
 \item{insufficient_evidence_ttl_days}{Numeric (default \code{180}). See
 Caching above.}
 
-\item{incongruent_ttl_days}{Numeric (default \code{90}). Days after which an
+\item{incongruent_ttl_days}{Numeric (default \code{30}). Days after which an
 \code{"incongruent"} cached verdict is re-evaluated. \code{Inf} restores the
-pre-2026-09-02 behaviour (cached indefinitely). Shorter than
-\code{insufficient_evidence_ttl_days} on purpose: \code{"incongruent"} is the only
-verdict that causes a reference to be REMOVED, and it is ~1\% of a real
-accession population, so re-checking it often is both the most valuable
-and the cheapest recheck available. See \verb{@section Why "incongruent" gained a TTL}.}
+pre-2026-09-02 behaviour (cached indefinitely). Much shorter than
+\code{insufficient_evidence_ttl_days} on purpose, for two compounding reasons:
+\code{"incongruent"} is the only verdict that causes a reference to be
+REMOVED, and the thing that goes stale underneath it -- NCBI's \code{nt}
+snapshot -- is rebuilt on the order of days to weeks, not months. It is
+also ~1\% of a real accession population (12 of 995 on the PtConception
+screen), so this is simultaneously the most valuable and the cheapest
+recheck available. See \verb{@section Why "incongruent" gained a TTL}.}
 
 \item{top_n}{Integer (default \code{5L}). Max independent BLAST hits ranked
 per accession for the congruence verdict.}
@@ -321,11 +324,13 @@ includes it.
 That reframes this TTL. The 09-02 verdict was not a correction of a
 malfunction -- both verdicts were correct given the database each was
 computed against. What goes stale is the SNAPSHOT, which is exactly what a
-TTL is for. Note the cadence mismatch, though: \code{nt} rebuilds run on the
-order of days to weeks, so 90 days can still serve a stale \code{"incongruent"}
-long after the evidence that overturns it became searchable. A shorter
-default would be better matched to the mechanism; it is a cost decision,
-and the recheck is ~1\% of an accession population. See
+TTL is for -- and it is also what sets the right cadence for one. \code{nt}
+rebuilds run on the order of days to weeks, so the default is 30 days, not
+the 180 of the "we do not know yet" flags: a TTL much longer than the
+rebuild interval would keep serving a stale \code{"incongruent"} long after the
+evidence that overturns it became searchable, which is the exact failure
+this TTL exists to prevent. The recheck costs ~1\% of an accession
+population. See
 \code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}.
 }
 
@@ -370,7 +375,7 @@ per flag, and the asymmetry follows what each verdict actually CLAIMS:
 evidence WAS FOUND, and nothing a later BLAST returns can withdraw a
 match already observed; new deposits can only add more.}
 \item{\code{"incongruent"} -- expires after \code{incongruent_ttl_days}
-(default 90; \strong{new 2026-09-02}, previously cached indefinitely). It
+(default 30; \strong{new 2026-09-02}, previously cached indefinitely). It
 asserts corroborating evidence was NOT found, which is a statement
 about ABSENCE, and absence is exactly what later evidence overturns.
 See \verb{@section Why "incongruent" gained a TTL} below.}

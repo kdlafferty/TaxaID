@@ -300,18 +300,20 @@ not a short-vs-long query-length artifact either.
    verdict cannot be overturned, and this run showed it can, so a wrong
    `"incongruent"` from one unlucky BLAST call was permanent -- in the one
    verdict that is acted on destructively. **FIXED 2026-09-02**: new
-   `incongruent_ttl_days` (default 90). The TTL is now per-flag and the
+   `incongruent_ttl_days` (default 30). The TTL is now per-flag and the
    asymmetry follows what each verdict CLAIMS -- `"congruent"` asserts
    evidence WAS found (nothing later can withdraw an observed match, so still
    cached forever); `"incongruent"` asserts it was NOT found, a statement about
-   absence, which is exactly what later evidence overturns. 90 < 180 because
-   `"incongruent"` is ~1% of a real population, making it simultaneously the
+   absence, which is exactly what later evidence overturns. 30 << 180 because
+   the thing that goes stale underneath the verdict is NCBI's `nt` snapshot,
+   rebuilt days-to-weeks (see the repeatability-probe section below), and
+   because `"incongruent"` is ~1% of a real population -- simultaneously the
    most valuable and the cheapest recheck. `incongruent_ttl_days = Inf`
    restores the old policy.
 
    **Caveat for the existing caches**: the PtCon incongruent rows are dated
-   2026-08-30/09-01, so under the 90-day default they will not be retried until
-   late November. To act on this sooner, either pass a short
+   2026-08-30/09-01, so under the 30-day default they will not be retried until
+   the end of September. To act on this sooner, either pass a short
    `incongruent_ttl_days` for one call, or surgically drop the non-congruent
    rows from `reference_accession_cache.rds` -- the same manoeuvre this file's
    own `.EVAL_REF_ACC_VERSION` comment records doing before, and cheaper than a
@@ -376,13 +378,13 @@ bug to chase in this pipeline -- and it makes `incongruent_ttl_days` exactly
 the right fix rather than a mitigation, because the thing that goes stale is
 precisely the database snapshot the verdict was computed against.
 
-**Open question it raises about the TTL's VALUE, not its existence:** `nt`
-rebuilds run on the order of days to weeks, so a 90-day TTL can still serve a
-stale `"incongruent"` for months after the evidence that would overturn it
-became searchable. The recheck costs ~1% of an accession population (12 of 995
-on PtCon). Shortening the default to ~30 days is cheap and better matched to
-the mechanism now understood. Not changed unilaterally -- it is a cost
-decision.
+**It also sets the TTL's VALUE, and that is now DECIDED: 30 days.** `nt`
+rebuilds run on the order of days to weeks, so a TTL much longer than the
+rebuild interval keeps serving a stale `"incongruent"` long after the evidence
+that overturns it became searchable -- the exact failure the TTL exists to
+prevent. Hence 30, not the 180 of the "we do not know yet" flags. The recheck
+costs ~1% of an accession population (12 of 995 on PtCon), and a test pins the
+default so a future change to it is deliberate.
 
 ## What is still open
 
@@ -399,8 +401,9 @@ decision.
    `diagnostics/blast_verdict_repeatability_probe.R` -- BLAST is exactly
    reproducible (3/3 replicates, Jaccard 1.000 on every hit set), so the
    surviving explanation is an `nt` snapshot rebuild between the two dates.
-   No correctness bug. What remains is the cost decision above: whether
-   `incongruent_ttl_days` should default to 30 rather than 90.
+   No correctness bug -- and the mechanism set the TTL's value:
+   `incongruent_ttl_days` defaults to 30, matching the `nt` rebuild cadence.
+   Nothing outstanding on this item.
 4. `margin_scale = 1` is a convention. If a labelled set of genuinely
    mislabeled accessions ever exists, it is fittable.
 5. Whether a candidate taxon whose references are COLLECTIVELY dubious wants

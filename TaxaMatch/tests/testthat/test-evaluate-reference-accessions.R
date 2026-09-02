@@ -1216,7 +1216,7 @@ test_that("evaluate_reference_accessions() retries an 'incongruent' row past inc
   .seed_cache_with_flag(cache_dir, "incongruent", age_secs = 100 * 86400)
   calls_after_seed <- fetch_calls
 
-  # 100 days old, default TTL 90 -- expired, so it must be re-evaluated.
+  # 100 days old, default TTL 30 -- expired, so it must be re-evaluated.
   evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE)
   expect_true(fetch_calls > calls_after_seed)
 })
@@ -1230,6 +1230,7 @@ test_that("evaluate_reference_accessions() serves an 'incongruent' row from cach
   local_mocked_bindings(blast_sequences = .mock_blast_sequences, .package = "TaxaMatch")
   local_mocked_bindings(.resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch")
 
+  # 10 days old, well inside the 30-day default.
   .seed_cache_with_flag(cache_dir, "incongruent", age_secs = 10 * 86400)
   calls_after_seed <- fetch_calls
 
@@ -1290,6 +1291,17 @@ test_that("retry_insufficient = FALSE also suppresses the incongruent retry", {
   evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE,
                                 retry_insufficient = FALSE)
   expect_equal(fetch_calls, calls_after_seed)
+})
+
+test_that("incongruent_ttl_days defaults to 30, matching NCBI's nt rebuild cadence", {
+  # Not a style assertion. The verdict goes stale because NCBI's `nt` is a
+  # periodically-rebuilt SNAPSHOT (established 2026-09-02 -- BLAST itself is
+  # exactly reproducible, Jaccard 1.000 over 3 replicates), and rebuilds run
+  # days-to-weeks. A TTL much longer than the rebuild interval defeats the
+  # purpose, so this default is load-bearing rather than arbitrary.
+  expect_equal(eval(formals(evaluate_reference_accessions)$incongruent_ttl_days), 30)
+  expect_lt(eval(formals(evaluate_reference_accessions)$incongruent_ttl_days),
+            eval(formals(evaluate_reference_accessions)$insufficient_evidence_ttl_days))
 })
 
 test_that("evaluate_reference_accessions() validates incongruent_ttl_days", {

@@ -3,7 +3,7 @@
 # Last updated: 2026-09-02, later the same day (Opus 5, branch kernel-priors -- two fixes
 # that both came out of RUNNING diagnostics/partner_trust_small_test.R against live NCBI.
 #
-# (A) `"incongruent"` NOW HAS A TTL -- new `incongruent_ttl_days` (default 90). It was
+# (A) `"incongruent"` NOW HAS A TTL -- new `incongruent_ttl_days` (default 30). It was
 # cached indefinitely on the reasoning that an accession's own sequence and label don't
 # change once deposited. True, and irrelevant: the verdict is not a property of the
 # accession, it is a property of what BLAST returned about the accession's NEIGHBOURHOOD,
@@ -18,12 +18,15 @@
 # still cached forever (nothing a later BLAST returns can withdraw a match already
 # observed); `"incongruent"` asserts it was NOT found -- a statement about ABSENCE, and
 # absence is exactly what later evidence overturns; `insufficient_*`/`not_evaluated_*` mean
-# "we don't know yet" (180 days, unchanged). 90 < 180 deliberately: `"incongruent"` is ~1%
-# of a real population (12 of 995 on PtCon), so it is simultaneously the most valuable and
-# the cheapest recheck available. `incongruent_ttl_days = Inf` restores the old policy.
-# TTLs stay OUT of params_key -- changing one must never invalidate a cache.
+# "we don't know yet" (180 days, unchanged). 30 << 180 deliberately, and the number is
+# load-bearing rather than arbitrary -- see (C) below: what goes stale underneath the verdict
+# is NCBI's `nt` SNAPSHOT, rebuilt on the order of days to weeks, so a TTL much longer than
+# the rebuild interval would defeat the purpose. `"incongruent"` is also ~1% of a real
+# population (12 of 995 on PtCon), so it is simultaneously the most valuable and the cheapest
+# recheck available. `incongruent_ttl_days = Inf` restores the old policy. TTLs stay OUT of
+# params_key -- changing one must never invalidate a cache.
 #
-# WHAT ACTUALLY GOES STALE -- settled the same day by
+# (C) WHAT ACTUALLY GOES STALE -- settled the same day by
 # diagnostics/blast_verdict_repeatability_probe.R (new), so nobody re-derives it. Three
 # back-to-back replicates of all 12 PtCon "incongruent" accessions, each into a fresh cache:
 # IDENTICAL verdicts, identical diagnostics, and identical hit sets -- Jaccard 1.000, not one
@@ -41,9 +44,11 @@
 # verdicts were correct given the database each was computed against; the 09-02 run is the
 # screen getting BETTER. That makes the TTL the right fix rather than a mitigation -- what
 # goes stale is precisely the snapshot the verdict was computed against. One caveat worth
-# a decision: `nt` rebuilds run days-to-weeks, so a 90-day TTL can still serve a stale
-# "incongruent" for months after the overturning evidence became searchable. ~30 would match
-# the mechanism better; the recheck is ~1% of a population. Left at 90 pending the user.
+# the DEFAULT: `nt` rebuilds run days-to-weeks, so the TTL is 30 days, not 90 and certainly
+# not the 180 of the "we don't know yet" flags -- a TTL far longer than the rebuild interval
+# would keep serving a stale "incongruent" long after the overturning evidence became
+# searchable, the exact failure the TTL exists to prevent. A test pins the default so a
+# future change to it is a deliberate one.
 #
 # (B) THE `still_over` MISCALIBRATION -- the 2026-09-01 feature-table-fallback caller tested
 # an already-primer-trimmed query against `resolve_barcode_lengths()$max_bp`.
