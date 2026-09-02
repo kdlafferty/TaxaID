@@ -261,12 +261,71 @@ Real-data smoke check (not the validation): on 400 PtCon observations touching
 a sub-0.75 reference, 20 of 457 H1 rows moved, 19 of them UP -- the forgiveness
 direction, and rare, as the gate implies.
 
+## 2026-09-02, small test RUN -- and it found a verdict-stability problem
+
+`diagnostics/partner_trust_small_test.R` ran end to end against live NCBI
+(exit 0): 15 accessions in stage 1, 40 disagreeing partners in stage 2,
+776 pair rows cached, fixpoint converged in 8 iterations over 55 accessions.
+
+**Thread 1's own result: 0 actions changed.** The weighting is live, not
+inert -- `OR582690` (Zaprora silenus) moved 0.642 -> 0.462 with
+`n_effective_partners` 3.698, i.e. partners were genuinely discounted -- it
+simply does not move any accession across a threshold here. Askoldia kept
+full weight exactly as the cascade guard predicts.
+
+**The unexpected finding: the same accession gets a different verdict one day
+apart under an IDENTICAL `params_key`.** Comparing the fresh run against the
+PtCon cache rows written 2026-09-01:
+
+| accession | PtCon (09-01) | fresh (09-02) |
+|---|---|---|
+| `OP056918` Cryptacanthodes maculatus | no agreeing hit, `anywhere = FALSE`, conf 0.001 -> **`remove`** | four conspecific hits at 100%, `congruent`, conf 0.923 -> **`keep`** |
+| `NC_066931` Apodichthys flavidus | best agreeing 97.22 in top-5, conf 0.210 | no agreeing hit in top-5, conf 0.053 |
+| `OR582690` Zaprora silenus | conf 0.642 | two conspecific hits at 100% |
+
+`OP056918`'s four corroborators (`PZ284804`/`PZ284806`/`PZ284809`,
+`PX704709`) were deposited 2026-01-12 and 2026-04-26 -- they were in GenBank
+months before the PtCon screen ran, so this is NOT a database that grew. They
+are also full mitogenomes (~16.5 kb), the same shape as the query, so it is
+not a short-vs-long query-length artifact either.
+
+**Two consequences that matter more than Thread 1:**
+
+1. The "4 defensible removals" figure this whole document is built on is NOT
+   stable. `OP056918` is one of those 4, and on the very next day it reads
+   `congruent`/`keep` with 100% conspecific corroboration. Treat it as a
+   likely false positive. The evidence gate and the numeric machinery are not
+   at fault -- the INPUT evidence changed.
+2. `"incongruent"` is cached INDEFINITELY (`is_capped_flag` covers only
+   `insufficient_independent_evidence` and `not_evaluated_oversized`). That
+   policy assumes an incongruent verdict cannot be overturned, and this run
+   shows it can. A wrong `"incongruent"` from one unlucky BLAST call is
+   permanent, and thin coverage -- the exact condition that manufactures false
+   `"incongruent"` -- is also the condition most likely to resolve later.
+   **Recommendation: give `"incongruent"` a TTL, or re-verify before any
+   removal.** Not implemented; it is a cache-policy change with a re-BLAST
+   cost and belongs to a decision, not a drive-by.
+
+**Lead on the cause, NOT investigated.** The run log reports internally
+inconsistent counts from the 2026-09-01 long-sequence mechanism: "extracted
+the amplicon from 40 of 40 over-length query sequence(s)" immediately followed
+by "feature-table fallback rescued 40 of 40 still-over-length query
+sequence(s)" -- if all 40 were amplicon-extracted, none should still be
+over-length. If what is actually SUBMITTED to BLAST differs between builds or
+runs, the top-20 hit set differs, which is precisely the observed symptom.
+This is in `.trim_queries_to_amplicon()`/`.extract_feature_table_fallback()`
+(`R/trim_query_to_amplicon.R`), not in anything Threads 1-3 added. Worth
+chasing before trusting any removal decision.
+
 ## What is still open
 
 1. The Thread-3 validation run: helped-vs-hurt on real 12S PtCon/GreatLakes,
    the same harness the sigma gate itself had to pass (163/3). Until it runs,
    `score_likelihood_refq` stays a diagnostic.
-2. `diagnostics/partner_trust_small_test.R` has not been run against live NCBI.
+2. ~~`diagnostics/partner_trust_small_test.R` has not been run against live
+   NCBI.~~ RUN 2026-09-02 -- see the section above. It raised two NEW open
+   items: whether `"incongruent"` should get a TTL, and the amplicon-trimming
+   count inconsistency.
 3. The full PtCon/GreatLakes re-BLAST that would give Thread 1 pair data at
    scale -- postponed, not cancelled.
 4. `margin_scale = 1` is a convention. If a labelled set of genuinely
