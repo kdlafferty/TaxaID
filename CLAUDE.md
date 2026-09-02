@@ -2942,8 +2942,11 @@ near-uninformative. Great Lakes was unaffected (0 capped), which is why its
 validation still stands. FIXES: `get_gbif_occurrences()` now detects any key
 returning exactly `limit`, reports it via `attr(x, "capped_keys")`, and takes
 `on_cap = c("warn", "escalate", "error")` -- `"escalate"` re-fetches those
-keys through the download API with `limit = NULL`. All three workflows now
-pass `limit = NULL, on_cap = "escalate"`. Related post-hoc guards, since the
+keys through the download API with `limit = NULL`. `download_gbif_occurrences()`
+(which the production workflows call DIRECTLY, bypassing the wrapper -- so the
+guard had to live in both) now raises a WARNING rather than a message when
+`limit` truncates a key, exposes `attr(x, "capped_keys")`, and takes
+`on_cap = c("warn", "error")`. All three workflows now pass `limit = NULL`. Related post-hoc guards, since the
 fetch radius cannot be chosen from lambda a priori (lambda is estimated FROM
 the fetched data): `calibrate_kernel_bandwidth()` warns when the best lambda
 sits at the top of `lambda_grid`, and `estimate_kernel_priors()` warns when

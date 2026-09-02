@@ -30,6 +30,13 @@ utils::globalVariables("taxonKey")
 #'   (default) retains all records for every key. When \code{taxonKey} is
 #'   absent from the download, the cap is applied to the total row count
 #'   instead, with a warning.
+#' @param on_cap Character. What to do when `limit` actually truncates a
+#'   taxon key. `"warn"` (default) raises a warning naming the affected keys
+#'   and records them in `attr(result, "capped_keys")`; `"error"` stops.
+#'   Truncation keeps GBIF's return order -- a non-random prefix -- so both
+#'   abundance and spatial pattern become unreliable for capped taxa; prefer
+#'   `limit = NULL`, which costs nothing since the records are already
+#'   downloaded.
 #' @param cache_dir Character or \code{NULL}. Directory for the downloaded
 #'   zip file and a small metadata file. Defaults to a persistent user-level
 #'   cache directory. Re-running with the same arguments reuses the cached
@@ -189,6 +196,7 @@ download_gbif_occurrences <- function(
     geometry,
     year_range     = .gbif_default_year_range(),
     limit          = NULL,
+    on_cap         = c("warn", "error"),
     cache_dir      = tools::R_user_dir("TaxaFetch", "cache"),
     overwrite      = FALSE,
     status_ping    = 15,
@@ -219,6 +227,8 @@ download_gbif_occurrences <- function(
     gbif_pwd    = Sys.getenv("GBIF_PWD"),
     gbif_email  = Sys.getenv("GBIF_EMAIL"),
     beep        = FALSE) {
+
+  on_cap <- match.arg(on_cap)
 
   # --- Dependency check -------------------------------------------------------
   if (!requireNamespace("rgbif", quietly = TRUE)) {
@@ -417,15 +427,33 @@ download_gbif_occurrences <- function(
 
   # --- Apply per-key limit ----------------------------------------------------
   t_limit <- proc.time()["elapsed"]
+  capped_keys <- integer(0)
   if (!is.null(limit)) {
     if ("taxonKey" %in% names(raw)) {
       counts  <- tapply(seq_len(nrow(raw)), raw$taxonKey, length)
       n_over  <- sum(counts > limit)
+      # Truncation is applied HERE, after import -- and what survives is
+      # GBIF's own return order, a non-random prefix, NOT a sample. Reported
+      # as a warning (not a message) because a silent cap destroys exactly
+      # the quantity an occurrence-composition prior is built from: measured
+      # 2026-09-02, a limit of 10,000 truncated 45 of Mugu's 231 taxa (95% of
+      # the pool) and 110 of PtConception's 666, leaving every capped species
+      # with an IDENTICAL spatial distribution because the prefixes came from
+      # the same few large survey datasets. `limit = NULL` avoids this
+      # entirely and costs nothing -- the records are already downloaded.
       if (n_over > 0L) {
-        message(sprintf(
-          "  %d taxon key(s) had more than %d records and were truncated.",
-          n_over, limit
-        ))
+        .cap_msg <- sprintf(
+          paste0(
+            "download_gbif_occurrences: %d of %d taxon key(s) exceeded limit = %s and were TRUNCATED (%.0f%% of rows). ",
+            "Kept records are GBIF's return order, not a random sample, so abundance AND spatial pattern are ",
+            "unreliable for those taxa. Pass limit = NULL to keep every record -- they are already downloaded."
+          ),
+          n_over, length(counts), format(limit),
+          100 * sum(counts[counts > limit]) / nrow(raw)
+        )
+        if (identical(on_cap, "error")) stop(.cap_msg, call. = FALSE)
+        warning(.cap_msg, call. = FALSE)
+        capped_keys <- as.integer(names(counts)[counts > limit])
       }
       raw <- raw |>
         dplyr::group_by(taxonKey) |>
@@ -467,6 +495,7 @@ download_gbif_occurrences <- function(
 
   # --- Attributes -------------------------------------------------------------
   attr(raw, "download_key") <- dl_key %||% NA_character_
+  attr(raw, "capped_keys") <- capped_keys
   attr(raw, "report_params") <- list(
     source     = "GBIF (async download)",
     n_keys     = length(keys),
