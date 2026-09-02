@@ -2954,6 +2954,27 @@ the record pool does not reach ~6 lambda from the site (beyond which a record
 carries <0.25% weight) -- i.e. when the kernel is truncated by the fetch
 boundary rather than by distance.
 
+### A hand-drawn search polygon must persist, or every run has its own scope (found 2026-09-02)
+The interactive `define_search_polygon()` gadget produces an ANALYST
+DECISION, not a computed artifact: the polygon sets the scope of every
+occurrence-derived quantity downstream (composition priors, the regional
+back-off, the Good-Turing/Chao budget, which species exist at all). Treating
+it like a recomputable cache means two runs of the same workflow silently
+answer different questions. Found when a `RERUN_FROM_STEP <- 3` re-fetch
+re-opened the gadget. A survey then found FOUR different behaviours across
+five workflows: GreatLakes gated on `file.exists()` (correct);
+MuguFishWorkflow gated it at step 3, so any step-3 rerun redrew it;
+**MuguWilderFishWorkflow redrew it on EVERY run and never saved it**, so no
+two runs shared a scope; both PtConception workflows read a hardcoded
+absolute path to the 18S-prefixed file (stable, but an undocumented
+cross-workflow dependency -- regenerating it rescopes both). Standardised:
+every workflow now loads the saved polygon unless `REDRAW_BBOX <- TRUE`
+(never invalidated by `RERUN_FROM_STEP`), backs up the old polygon before
+replacing it, and logs the polygon's vertex count and lon/lat extent on
+every run via `.bbox_report()` so each run's scope appears in its own log.
+The general rule: anything a human draws, types, or curates is an input to
+be versioned, not an intermediate to be regenerated.
+
 ### Split-string sprintf bug (recurring)
 `sprintf()` does NOT concatenate multiple string arguments.
 ```r
