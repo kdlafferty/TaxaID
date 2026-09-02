@@ -51,6 +51,7 @@ those two cases apart.
 | `taxonomy_resolution_source` | character | `"direct"` (normal case), `"hybrid_maternal_proxy"` (hybrid-labeled accession, coarser ranks resolved from the maternal parent species -- see below), `"hybrid_unresolved"` (detected as hybrid but couldn't extract a usable parent name), or `NA` (fetch failure). |
 | `label_confidence` | numeric (0-1) or `NA` | **(2026-09-02)** How confident we are that `listed_taxon` is CORRECT -- high = good, low = concerning. A log-odds sum of the vote (`frac_independent_below_min_congruent_rank`) and the percent-identity margin the vote itself ignores. This is the column downstream models consume; see "The numeric verdict" below. `NA` for `"not_evaluated_oversized"` and fetch failures. |
 | `label_identity_margin` | numeric or `NA` | The percent-identity margin behind `label_confidence`: best agreeing identity minus best disagreeing identity, capped at ±5. Positive means the label's own clade matches better than whatever contradicts it. `NA` when there is no identity information at all. |
+| `label_quality` | numeric (0-1] or `NA` | **(2026-09-02)** The MODEL-facing companion to `label_confidence`: the same evidence divided by the highest confidence a maximally-corroborated reference with this row's own partner count could reach, capped at 1. Exactly `1` means "as corroborated as this row's evidence allows" -- a true no-op. `NA` when there were zero comparison partners. Point `TaxaLikely::evaluate_likelihoods(reference_quality_col=)` at THIS, never at `label_confidence`. |
 | `reference_action` | character | **(2026-09-02)** What to DO: `"keep"` / `"caution"` / `"inspect"` / `"remove"` / `"untested"`. Derived from `label_confidence` by documented thresholds, plus two hard vetoes on `"remove"`. This is what `remove_incongruent_references()` reads by default. |
 | `listed_taxon_is_species` | logical or `NA` | `FALSE` when `listed_taxon` doesn't structurally look like a species-level binomial (e.g. `"Serranidae sp. JL-2015"`). Orthogonal to `hierarchy_flag` -- can be `FALSE` even when the accession is internally `"congruent"`. `NA` only for a fetch failure. |
 | `evaluated_at` | POSIXct | When this verdict was computed. |
@@ -206,13 +207,31 @@ Two things `label_confidence` is deliberately NOT:
   untouched. Both columns ship side by side, and the derived pair is recomputed
   post-hoc from the cache on every call, so changing `margin_scale` costs nothing.
 
+### Two scales: which column to read
+
+`label_confidence` is a probability, and it can never reach 1 -- Jeffreys smoothing
+floors the disagreement fraction and the identity margin is capped, so a *perfectly*
+corroborated 5-partner reference scores 0.99939. That is the honest number for a human
+reading it as "how sure are we the label is right", and it is kept as-is.
+
+It is the wrong scale for a model that reads the value as a *ratio* where 1 means "no
+adjustment". Feeding `label_confidence` into that slot applied a ~0.03% widening to
+every candidate in the dataset; on the real PtConception data 279 of the 408 rows that
+moved did so because of this ceiling, not because their reference was dubious.
+
+So there are two columns. **Humans read `label_confidence`. Models read
+`label_quality`.** The split is forced rather than stylistic: the ceiling depends on
+`n_independent_top_matches`, which only this package still has at that point.
+
 ### Downstream: quality as a likelihood covariate
 
-`flag_incongruent_references()` joins `label_confidence` onto a match object, and
-`TaxaLikely::evaluate_likelihoods(reference_quality_col = "label_confidence")` uses it
-to widen H1 `sigma_score` -- a poor match to a dubious reference is forgiven; a good
-match is untouched; the mean never moves. It arrives as the diagnostic
-`score_likelihood_refq` and is not yet the default likelihood.
+`flag_incongruent_references()` joins both columns onto a match object, and
+`TaxaLikely::evaluate_likelihoods(reference_quality_col = "label_quality")` uses the
+model-facing one to widen H1 `sigma_score` -- a poor match to a dubious reference is
+forgiven; a good match is untouched; the mean never moves. It arrives as the diagnostic
+`score_likelihood_refq` and is **not** the default likelihood: on the one dataset
+validated so far it helps 20 observations and hurts 0, but only 5 observations could
+possibly have been hurt, so the safety side is not yet tested at any scale.
 
 ### Recursive screening: `refine_reference_verdicts()`
 

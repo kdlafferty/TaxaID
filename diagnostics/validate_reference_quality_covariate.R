@@ -33,8 +33,10 @@
 # THE TWO ARMS, which is the real point of this script:
 #   A  MEASURED-LOW  -- label_confidence is low because evidence was gathered
 #      and it was bad. This is the mechanism working as designed.
-#   B  NO-EVIDENCE   -- label_confidence is EXACTLY 0.5 because the accession
-#      had zero valid comparison partners. 0.5 is the honest number for "no
+#   B  NO-EVIDENCE   -- zero valid comparison partners. As of 2026-09-02 these
+#      carry label_quality = NA and are a documented no-op, so arm B should
+#      now be empty by construction; it is kept as a regression check.
+#      (Historically label_confidence read 0.5 there and was fed in.) 0.5 is the honest number for "no
 #      evidence either way", but feeding it into the sigma slot widens sigma
 #      by 41% on the strength of an absence, which is a PRIOR, not a
 #      measurement. Nobody has decided that deliberately. On the real data
@@ -94,7 +96,7 @@ lik <- evaluate_likelihoods(
   rank_system        = c("family", "genus", "species"),
   n_sims             = 0L,
   ratio_threshold    = 0,
-  reference_quality_col = "label_confidence"
+  reference_quality_col = "label_quality"
 )$likelihoods
 
 # ---- 3. Movement audit (Session 156 comparability) ---------------------------
@@ -142,9 +144,9 @@ margins <- lik |>
 # sub-0.75 reference behind it is an exactly-0.5 (zero-partner) row; if any
 # reference was genuinely measured low, it belongs to the measured arm.
 acc_arm <- match_df |>
-  filter(!is.na(label_confidence), label_confidence < 0.75) |>
+  filter(!is.na(label_quality), label_quality < 0.999) |>
   group_by(observation_id) |>
-  summarise(any_measured = any(abs(label_confidence - 0.5) > 1e-9), .groups = "drop")
+  summarise(any_measured = TRUE, .groups = "drop")
 
 margins <- margins |>
   left_join(acc_arm, by = "observation_id") |>
@@ -208,22 +210,44 @@ if (nrow(hurt_rows) == 0L) {
 #      co-occur: a query matching a dubious reference well is near the mean.
 cand_lc <- match_df |>
   group_by(observation_id, taxon_name) |>
-  summarise(lc = median(label_confidence, na.rm = TRUE), .groups = "drop")
+  summarise(lc = median(label_quality, na.rm = TRUE), .groups = "drop")
 moved_lc <- moved |> select(observation_id, taxon_name) |>
   inner_join(cand_lc, by = c("observation_id", "taxon_name"))
 
 cat("\n\n================ POWER CHECK ================\n")
-cat(sprintf("Ceiling of label_confidence in this cache: %.5f (never 1.0, so every\n  candidate gets a small widening regardless of how well corroborated it is)\n",
-            max(match_df$label_confidence, na.rm = TRUE)))
+cat(sprintf("Max label_quality in this cache: %.5f (should be exactly 1.0 -- a\n  maximally-corroborated reference must be a true no-op)\n",
+            max(match_df$label_quality, na.rm = TRUE)))
+cat(sprintf("Candidates at exactly 1.0 (no-op): %d of %d match rows; NA (no partners): %d\n",
+            sum(match_df$label_quality >= 1, na.rm = TRUE), nrow(match_df),
+            sum(is.na(match_df$label_quality))))
 cat(sprintf("Of %d moved H1 rows: %d have lc > 0.99 (artefact of the ceiling),\n  %d have lc < 0.25 (the population this covariate exists for)\n",
             nrow(moved_lc), sum(moved_lc$lc > 0.99, na.rm = TRUE),
             sum(moved_lc$lc < 0.25, na.rm = TRUE)))
 conf_ids <- unique(margins$observation_id)
-low_ids  <- unique(match_df$observation_id[!is.na(match_df$label_confidence) &
-                                             match_df$label_confidence < 0.25])
+low_ids  <- unique(match_df$observation_id[!is.na(match_df$label_quality) &
+                                             match_df$label_quality < 0.25])
 cat(sprintf("Ground-truth observations: %d;  with a genuinely low candidate: %d;  overlap: %d\n",
             length(conf_ids), length(low_ids), length(intersect(conf_ids, low_ids))))
 cat("  -> of that overlap, only the ones where the gate ALSO fires can move at all.\n")
+
+# HARM EXPOSURE -- the asymmetry that a raw helped:hurt ratio hides.
+# The crossover gate guarantees a widened candidate's own density never falls,
+# so anything that moves, moves UP. The correct species being widened is
+# therefore help by construction; harm can arise ONLY when a WRONG candidate
+# rests on the dubious reference and is widened past the correct one. If that
+# configuration barely exists in the data, "0 hurt" is not evidence of safety,
+# it is evidence that safety was never tested.
+gt_lookup <- margins |> select(observation_id, confident_species)
+moved_gt <- moved |> select(observation_id, taxon_name) |>
+  inner_join(gt_lookup, by = "observation_id") |>
+  mutate(is_correct = taxon_name == confident_species)
+harm_available <- cand_lc |>
+  inner_join(gt_lookup, by = "observation_id") |>
+  filter(!is.na(lc), lc < 0.25, taxon_name != confident_species)
+cat(sprintf("\nHarm exposure: of %d moved rows inside the truth set, %d widened the CORRECT\n  species (help by construction) and %d widened a WRONG one (the only way to be hurt).\n",
+            nrow(moved_gt), sum(moved_gt$is_correct), sum(!moved_gt$is_correct)))
+cat(sprintf("  Ground-truth observations where a wrong candidate rests on a dubious\n  reference at all: %d. Read '0 hurt' against THAT number, not against the helped count.\n",
+            n_distinct(harm_available$observation_id)))
 
 cat("\n\n================ VERDICT ================\n")
 arm_a <- margins |> filter(arm == "A measured-low", abs(delta) > 1e-9)
@@ -240,7 +264,7 @@ cat(sprintf("\n=> %s\n",
   if (!power_ok)
     "INCONCLUSIVE. Criteria 1-2 are computed on too few genuinely-affected observations to mean anything, and the movement that does exist is dominated by the label_confidence ceiling artefact above. Fix the scale so a clean reference maps to exactly 1.0, then re-run; if arm A is still this thin, this dataset cannot decide and a reference set with more dubious accessions is needed."
   else if (ratio_ok && veto_ok)
-    "Both criteria met with adequate power on this dataset. Adoption is still a decision, not an automatic consequence."
+    "Criteria met with adequate power on the HELP side. Weigh that against the harm-exposure line above before adopting: if only a handful of observations could possibly have been hurt, '0 hurt' is a weak safety claim and one more dataset is cheap insurance."
   else
     "Not adopted. See the arm breakdown for whether the failure is the mechanism or the no-evidence arm."))
 

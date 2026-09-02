@@ -20,6 +20,7 @@
     # OVER1  : never submitted to BLAST at all
     frac_independent_below_min_congruent_rank = c(0.08333, 0.75, 0.91667, 0.875,
                                                   0.16667, NA),
+    n_independent_top_matches = c(5L, 5L, 5L, 3L, 2L, NA_integer_),
     best_agreeing_pident        = c(99.5, 100, NA, NA, 100, NA),
     best_disagreeing_pident     = c(NA, 96.79, 94.01, 98.62, NA, NA),
     congruent_evidence_exists_anywhere = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
@@ -88,6 +89,7 @@ test_that("the identity margin shifts log-odds by exactly d / margin_scale", {
   ev <- data.frame(
     accession = c("A", "B"),
     frac_independent_below_min_congruent_rank = c(0.5, 0.5),
+    n_independent_top_matches = c(5L, 5L),
     best_agreeing_pident    = c(99, 97),
     best_disagreeing_pident = c(97, 97),
     congruent_evidence_exists_anywhere = TRUE,
@@ -108,6 +110,7 @@ test_that("no identity information at all leaves the vote unmodified", {
   ev <- data.frame(
     accession = "A",
     frac_independent_below_min_congruent_rank = 0.25,
+    n_independent_top_matches = 5L,
     best_agreeing_pident = NA_real_, best_disagreeing_pident = NA_real_,
     congruent_evidence_exists_anywhere = FALSE,
     congruent_evidence_best_pident = NA_real_,
@@ -150,6 +153,74 @@ test_that("score_reference_labels() defaults match .LABEL_VERDICT_DEFAULTS", {
   shared   <- TaxaMatch:::.LABEL_VERDICT_DEFAULTS
   for (nm in names(shared))
     expect_equal(eval(defaults[[nm]]), shared[[nm]], info = nm)
+})
+
+# ---- label_quality: the model-facing scale (2026-09-02) ----------------------
+
+test_that("label_quality is exactly 1 for a maximally-corroborated reference, at any n", {
+  # The point of the ceiling normalisation: "as corroborated as this row's
+  # evidence allows" must be exactly 1 -- a true no-op in a consumer that
+  # reads the value as a ratio -- whether the row had 2 partners or 20.
+  # label_confidence itself cannot deliver that (0.99866 at n=2, 0.99984 at
+  # n=20), and deliberately still doesn't.
+  ev <- data.frame(
+    accession = c("N2", "N5", "N20"),
+    n_independent_top_matches = c(2L, 5L, 20L),
+    frac_independent_below_min_congruent_rank = 0.5 / (c(2L, 5L, 20L) + 1),
+    best_agreeing_pident = 100, best_disagreeing_pident = NA_real_,
+    congruent_evidence_exists_anywhere = TRUE, congruent_evidence_best_pident = 100,
+    hierarchy_flag = "congruent", stringsAsFactors = FALSE
+  )
+  out <- score_reference_labels(ev)
+  expect_equal(out$label_quality, rep(1, 3))
+  expect_true(all(out$label_confidence < 1))       # the honest probability is kept
+  expect_false(isTRUE(all.equal(out$label_confidence[1], out$label_confidence[3])))
+})
+
+test_that("label_quality leaves a genuinely dubious reference essentially untouched", {
+  out <- score_reference_labels(.verdict_eval_fixture())
+  bad <- out[out$accession == "REMOVE1", ]
+  # Division by a ~0.999 ceiling is near-identity at the low end -- the
+  # normalisation fixes the top of the scale without distorting the bottom.
+  expect_equal(bad$label_quality, bad$label_confidence, tolerance = 1e-2)
+  expect_lt(bad$label_quality, 0.01)
+})
+
+test_that("label_quality is NA when there were zero comparison partners", {
+  # label_confidence reads 0.5 there -- an honest Jeffreys vote with zero
+  # votes, but NOT a calibrated P(label correct). Feeding it to the sigma slot
+  # would widen sigma 41% on the strength of an absence of evidence.
+  ev <- .verdict_eval_fixture()
+  ev$n_independent_top_matches[ev$accession == "INSUF1"] <- 0L
+  ev$frac_independent_below_min_congruent_rank[ev$accession == "INSUF1"] <- 0.5
+  ev$best_agreeing_pident[ev$accession == "INSUF1"] <- NA_real_
+  ev$best_disagreeing_pident[ev$accession == "INSUF1"] <- NA_real_
+  ev$congruent_evidence_exists_anywhere[ev$accession == "INSUF1"] <- FALSE
+  ev$congruent_evidence_best_pident[ev$accession == "INSUF1"] <- NA_real_
+  out <- score_reference_labels(ev)
+  row <- out[out$accession == "INSUF1", ]
+  expect_equal(row$label_confidence, 0.5)   # honest, and kept
+  expect_true(is.na(row$label_quality))     # but not fed to a model
+})
+
+test_that("an accession with FEW partners but real evidence still gets a label_quality", {
+  # The NA rule keys on n == 0, not on hierarchy_flag: "insufficient
+  # independent evidence" at n = 1 or 2 still has real evidence, and the
+  # ceiling normalisation already handles the small n. Real case: Askoldia
+  # variegata, 2 partners, one 100% agreeing hit, nothing disagreeing.
+  out <- score_reference_labels(.verdict_eval_fixture())
+  askoldia <- out[out$accession == "INSUF1", ]
+  expect_equal(askoldia$hierarchy_flag, "insufficient_independent_evidence")
+  expect_false(is.na(askoldia$label_quality))
+  # tolerance: the fixture stores frac as a rounded literal (0.16667) rather
+  # than 0.5/3, so the ratio lands a hair under 1.
+  expect_equal(askoldia$label_quality, 1, tolerance = 1e-6)
+})
+
+test_that("score_reference_labels() needs n_independent_top_matches", {
+  ev <- .verdict_eval_fixture()
+  ev$n_independent_top_matches <- NULL
+  expect_error(score_reference_labels(ev), "missing required columns")
 })
 
 # ---- remove_incongruent_references(gate=) -----------------------------------

@@ -1996,7 +1996,8 @@ evaluate_reference_accessions <- function(accessions,
 #'   `n_top_matches_available`, `best_hit_pident`, `best_agreeing_pident`,
 #'   `best_disagreeing_pident`, `congruent_evidence_exists_anywhere`, and
 #'   `congruent_evidence_best_pident` joined on, plus `label_confidence`,
-#'   `label_identity_margin`, `reference_action` and `listed_taxon_is_species`
+#'   `label_identity_margin`, `label_quality`, `reference_action` and
+#'   `listed_taxon_is_species`
 #'   whenever `evaluation` carries them (it always does when it came from
 #'   [evaluate_reference_accessions()] or [score_reference_labels()]; an
 #'   `evaluation` read straight off a pre-2026-09-02 cache file will not).
@@ -2028,8 +2029,8 @@ flag_incongruent_references <- function(match_df, evaluation) {
   # this join is the whole path by which per-accession reference quality
   # reaches the likelihood model.
   optional_cols <- intersect(
-    c("label_confidence", "label_identity_margin", "reference_action",
-      "listed_taxon_is_species"),
+    c("label_confidence", "label_identity_margin", "label_quality",
+      "reference_action", "listed_taxon_is_species"),
     names(evaluation)
   )
   join_cols <- c(join_cols, optional_cols)

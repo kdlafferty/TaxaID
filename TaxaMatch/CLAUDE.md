@@ -1,6 +1,53 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-02, later the same day (Opus 5, branch kernel-priors -- two fixes
+# Last updated: 2026-09-02, third pass (Opus 5, branch kernel-priors -- `label_quality`, a
+# second MODEL-FACING column beside `label_confidence`, after a Fable design consult.
+#
+# THE DEFECT: `label_confidence` is a probability and CANNOT REACH 1 -- Jeffreys smoothing
+# floors the disagreement fraction at 0.5/(n+1) and the identity margin is capped, so a
+# PERFECTLY corroborated 5-partner reference scores 0.99939. Fed to
+# `TaxaLikely::evaluate_likelihoods(reference_quality_col=)`, which reads the value as a
+# RATIO where 1 means no-op, that applied a ~0.03% sigma widening to EVERY candidate in the
+# dataset. Measured: 279 of the 408 H1 rows that moved had confidence > 0.99 and moved
+# because of the ceiling, not because their reference was dubious -- which left the Thread-3
+# validation unable to measure the covariate at all.
+#
+# THE FIX, and why it is TWO columns rather than a rescale in place: `label_confidence`
+# stays exactly as it is, because 0.9994 genuinely IS the right answer from 5 partners and
+# rounding it to 1 to suit a consumer would make the human-facing number dishonest. New
+# `label_quality` = confidence / the ceiling a maximally-corroborated reference with THIS
+# ROW'S partner count could reach, capped at 1. THE SPLIT IS FORCED, NOT STYLISTIC: the
+# ceiling needs `n_independent_top_matches`, and by the time evaluate_likelihoods() sees a
+# quality value it has been medianed per candidate taxon and n is gone -- only this package
+# can compute it. Consumers point at `label_quality`, NEVER `label_confidence`.
+#
+# Bonus the normalisation buys: it removes the n-dependence. Maximally corroborated FOR THE
+# EVIDENCE IT HAS scores exactly 1 whether n was 2 or 20 -- real case Askoldia variegata
+# (MT627596), n=2, one 100% agreeing hit, confidence 0.99866, ceiling for n=2 also 0.99866,
+# quality exactly 1 and correctly a no-op.
+#
+# ZERO-PARTNER ROWS ARE NOW NA. Their 0.5 is a Jeffreys vote fraction with ZERO VOTES, not a
+# calibrated P(label correct): 98.7% of the accessions this screen actually evaluated came
+# back "congruent", so the base rate for an unexamined label is nowhere near a coin flip,
+# and feeding 0.5 widened sigma 41% on the strength of an ABSENCE. The rule keys on n == 0,
+# NOT on hierarchy_flag -- an accession with 1-2 partners reads
+# "insufficient_independent_evidence" but has real evidence, and the ceiling normalisation
+# already handles small n. Every consumer's existing !is.na() guard makes NA a free no-op.
+#
+# RESULT: moved H1 rows 408 -> 30, ceiling artefact gone, 20 helped / 0 hurt / no winner
+# flips, all three pre-registered criteria clear. DO NOT OVER-READ IT -- the gate guarantees
+# a widened candidate's density never falls, so anything that moves moves UP and the correct
+# species being widened is help BY CONSTRUCTION. Harm needs a WRONG candidate to rest on the
+# dubious reference, which happens in 5 ground-truth observations in the whole dataset. It
+# was exercised (5 of 25 moved rows) so the test is not blind, just nearly powerless.
+# score_likelihood_refq STAYS A DIAGNOSTIC. Full record, including the (b) mixture-variance
+# design held in reserve and a verified variance-vs-SD units discrepancy in PRE-EXISTING
+# code that must NOT be casually fixed:
+# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md
+#
+# `devtools::test()` 1057/1057, 0 warnings.
+#
+# Previous update, 2026-09-02, later the same day (Opus 5, branch kernel-priors -- two fixes
 # that both came out of RUNNING diagnostics/partner_trust_small_test.R against live NCBI.
 #
 # (A) `"incongruent"` NOW HAS A TTL -- new `incongruent_ttl_days` (default 30). It was

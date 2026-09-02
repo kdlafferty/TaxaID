@@ -45,6 +45,13 @@ failure).}
 \item{\code{label_identity_margin}}{Numeric, the capped \code{d} in
 percent-identity points. \code{NA} when the row carries no identity
 information of any kind.}
+\item{\code{label_quality}}{Numeric in (0, 1]. The MODEL-facing companion to
+\code{label_confidence}: the same evidence divided by the highest
+confidence a maximally-corroborated reference with this row's own
+partner count could achieve, capped at 1. \code{NA} where there were zero
+valid comparison partners. This -- never \code{label_confidence} -- is what
+\code{TaxaLikely::evaluate_likelihoods(reference_quality_col=)} should be
+pointed at. See \verb{@section Two scales, and which one a model reads}.}
 \item{\code{reference_action}}{\code{"keep"}, \code{"caution"}, \code{"inspect"},
 \code{"remove"}, or \code{"untested"}.}
 }
@@ -62,6 +69,31 @@ classify-then-review shape. The numeric is what a downstream model
 consumes (see \code{TaxaLikely::evaluate_likelihoods(reference_quality_col=)});
 the categorical is for humans and for \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}.
 }
+\section{Two scales, and which one a model reads (2026-09-02)}{
+
+\code{label_confidence} is a probability and cannot reach 1 -- Jeffreys smoothing
+floors the disagreement fraction at \code{0.5/(n+1)} and the identity margin is
+capped, so a PERFECT reference scores 0.99939 with 5 partners. That is the
+honest number and it is kept as-is: a Bayesian does not reach certainty from
+five neighbours, and rounding it to 1 to suit a consumer would make the
+human-facing column dishonest.
+
+But a consumer that reads the value as a RATIO, where 1 means "no
+adjustment", cannot use that scale. \code{TaxaLikely::evaluate_likelihoods( reference_quality_col=)} is exactly such a consumer, and feeding it
+\code{label_confidence} applied a ~0.03\% sigma widening to every candidate in the
+dataset: measured on the real PtConception data, 279 of the 408 H1 rows that
+moved had \code{label_confidence > 0.99} and moved because of the ceiling, not
+because their reference was dubious -- which left the Thread-3 validation
+run unable to measure the covariate at all.
+
+Hence two columns. \code{label_quality} divides by the per-row achievable ceiling
+so that "maximally corroborated for the evidence this row has" is exactly 1,
+independent of partner count. The split is also forced rather than stylistic:
+the ceiling depends on \code{n_independent_top_matches}, and by the time
+\code{evaluate_likelihoods()} sees a quality value it has been aggregated per
+candidate taxon and \code{n} is gone -- only this package can compute it.
+}
+
 \section{Polarity}{
 
 HIGH \code{label_confidence} means MORE confidence that the label is correct,

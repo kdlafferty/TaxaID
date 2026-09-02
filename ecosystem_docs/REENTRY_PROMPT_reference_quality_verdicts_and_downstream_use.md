@@ -439,14 +439,130 @@ diagnostic. Next steps, in order: fix the scale so a clean reference maps to
 the test needs a reference set with more dubious accessions -- GreatLakes, or
 18S, which has never been screened under the current machinery at all.
 
+## 2026-09-02, scale fixed + consult: the covariate now measures something
+
+Consulted Fable on the mapping from `label_confidence` to a variance ratio.
+Its verdict, adopted: **(a) and (b) are not rivals, they are different layers**
+-- (a) is a units fix belonging in TaxaMatch, (b) a semantics fix belonging in
+TaxaLikely -- and given how sparse the covariate is, do (a) now and record (b).
+
+**Implemented (a): `label_quality`, a second, MODEL-facing column.**
+`label_confidence` is unchanged and stays the human-facing probability; 0.9994
+genuinely IS the right answer from 5 partners, and rounding it to 1 to suit a
+consumer would make it dishonest. `label_quality` divides it by the ceiling a
+maximally-corroborated reference with that row's own partner count could
+achieve, capped at 1. The split is FORCED, not stylistic: the ceiling needs
+`n_independent_top_matches`, and by the time `evaluate_likelihoods()` sees a
+quality value it has been medianed per candidate taxon and n is gone. Only
+TaxaMatch can compute it. Consumers point at `label_quality`, never
+`label_confidence`.
+
+A bonus the normalisation buys: it removes the n-dependence. A reference that
+is maximally corroborated FOR THE EVIDENCE IT HAS scores exactly 1 whether it
+had 2 partners or 20 -- real case `Askoldia variegata` (`MT627596`), 2
+partners, one 100% agreeing hit, `label_confidence` 0.99866, ceiling for n=2
+also 0.99866, `label_quality` exactly 1 and correctly a no-op.
+
+**Zero-partner rows are now `NA`, a documented no-op.** Their 0.5 is a Jeffreys
+vote fraction with ZERO votes, not a calibrated P(label correct) -- 98.7% of
+the accessions this screen actually evaluated came back `"congruent"`, so the
+base rate for an unexamined label is nowhere near a coin flip, and feeding 0.5
+widened sigma 41% on the strength of an absence. The rule keys on `n == 0`,
+NOT on `hierarchy_flag`: an accession with 1-2 partners reads
+`"insufficient_independent_evidence"` but does have real evidence, and the
+ceiling normalisation already handles small n correctly.
+
+**Re-run result.** Moved H1 rows 408 -> 30, and the ceiling artefact is gone
+(0 moved rows now have quality > 0.99, vs 279 before). Arm B is empty by
+construction. Every moved observation is now genuinely in arm A: **20 moved,
+20 helped, 0 hurt, no winner flips**, clearing all three pre-registered
+criteria including the power floor.
+
+**Do not over-read that.** The crossover gate guarantees a widened candidate's
+own density never falls, so anything that moves, moves UP -- the correct
+species being widened is help BY CONSTRUCTION. Harm can only arise when a
+WRONG candidate rests on the dubious reference and is widened past the correct
+one, and that configuration exists in **5** ground-truth observations in the
+entire dataset (it was exercised -- 5 of the 25 moved rows widened a wrong
+candidate -- so the test is not blind to it, just nearly powerless). "0 hurt"
+against 5 opportunities is a weak safety claim. The harness now prints this
+exposure asymmetry every run so the ratio cannot be read naively.
+
+**Recommendation: keep `score_likelihood_refq` a diagnostic.** The help side is
+now real and measured; the safety side is not yet tested at any scale. Re-run
+on GreatLakes or 18S when either is screened for its own reasons, and adopt
+only if the harm side has genuine exposure there.
+
+## Recorded, deliberately NOT built
+
+**(b) the mixture-variance mapping, with its free parameter eliminated.** The
+"label is wrong" distribution is already trained -- it is H2. Moment-matching
+the mixture's second moment about the FIXED H1 mean (Session 157 forbids moving
+the mean) gives:
+
+    c_refq = p + (1 - p) * (sigma2^2 + (mu1 - mu2)^2) / sigma1^2
+
+exactly 1 at p = 1 by construction, with the bad component's mean shift
+honestly converted into spread. Every quantity is already fitted, so there is
+no `sigma_wide` knob for `arbitrariness_audit.md` to register beyond the choice
+of H2 (rather than H3) as the bad component -- the conservative,
+smallest-inflation choice. Belongs inside `.calc_likelihoods()` where
+`use_mu`, `use_sigma` and the H2 params are all in scope, combined as
+`c_total = c_evidence * c_refq` with the gate applied once. Build this only if
+the covariate ever earns adoption.
+
+**The generatively exact treatment**, for completeness: not a widened Gaussian
+at all but the explicit two-component density
+`p*N(mu1, sigma1^2) + (1-p)*N_H2(x)`, which needs no gate because the diffuse
+component supplies the forgiveness. It multiplies a PERFECT match's density by
+~p, i.e. punishes good matches to dubious references. Defensible (a perfect
+match to a probably-wrong label is evidence for the disagreeing taxon) but it
+crosses this project's deliberate forgive-only line and the hard lesson of the
+27:2053 experiment. Noted, not proposed.
+
+**A units discrepancy in PRE-EXISTING code, found by the consult and verified.**
+`use_sigma[1,1]` is a VARIANCE (`model_sd_score <- sqrt(global_sigma[1,1])`;
+`z_sq` divides by it un-squared). But the coverage inflation reasons in SD --
+"SE(logit) proportional to 1/sqrt(N_aligned) ... so sigma_eff = sigma /
+sqrt(coverage)" -- and applies `/sqrt(coverage)` to the variance slot. If
+SE is proportional to 1/sqrt(N) then variance is proportional to 1/N, so the
+variance factor should be `1/coverage`. Same shape for the evidence axis
+(`1/sqrt(ratio)`). Nothing is broken: the gate treats `c` as the variance
+factor consistently throughout, so the mechanism is self-consistent, merely
+weaker than its own stated derivation implies. **DO NOT "fix" this casually** --
+the evidence axis was validated at 163 helped / 3 hurt AT THIS STRENGTH, so
+changing it invalidates that result. It is a comments-vs-code discrepancy
+needing its own decision and its own re-validation.
+
+**This thread is a re-entry of a CLOSED one.** `[[project_mislabel_probability_weighting_closed]]`
+(2026-08-08) closed graded P(mislabeled) weighting after an Opus consult
+returned "don't build it", citing a ~1% effect and, verbatim, sigma-widening
+being "structurally blocked by a mechanism already shipped" -- the gate. The
+Thread-3 measurement is that prediction confirmed on independent machinery. Any
+future session proposing reference quality as a likelihood covariate should
+read that closure FIRST.
+
+**Why the sparseness is structural, not a property of this dataset.** The
+target population is an intersection of four conditions, three of which the
+ecosystem itself shrinks: dubious references are ~1-8% of accessions;
+`remove_incongruent_references()` DELETES the worst of them, cannibalising
+exactly the accessions this covariate exists for and leaving the
+moderately-dubious spared set where honest inflation is small; the crossover
+gate restricts action to tail matches, and a query matching a dubious reference
+WELL is near the mean by definition; and then it intersects with a deliberately
+small truth set. A different dataset moves only the first of those.
+
 ## What is still open
 
-1. ~~The Thread-3 validation run.~~ RUN 2026-09-02, INCONCLUSIVE -- see the
-   section above. What it leaves: (a) the `label_confidence` scale never
-   reaching 1.0, which must be fixed before any re-run is interpretable;
-   (b) a re-run after that fix; (c) if arm A stays thin, a dataset with more
-   dubious references (GreatLakes, or the never-screened 18S).
-   `score_likelihood_refq` remains a diagnostic.
+1. The Thread-3 ADOPTION decision. The scale defect is fixed and the re-run
+   clears all three criteria (20 helped / 0 hurt), but only 5 ground-truth
+   observations could possibly have been hurt, so the safety side is untested.
+   Re-run on GreatLakes or 18S when either is screened; adopt only if the harm
+   side has real exposure there. `score_likelihood_refq` stays a diagnostic
+   until then. If the harm side is thin there too, write the closure doc on the
+   `widen_blast` precedent and retire it as an adoption candidate.
+1b. The variance-vs-SD units discrepancy recorded above -- its own decision,
+   and it would require re-validating the evidence axis.
 2. ~~`diagnostics/partner_trust_small_test.R` has not been run against live
    NCBI.~~ RUN 2026-09-02 -- see the section above. It raised two NEW open
    items: whether `"incongruent"` should get a TTL, and the amplicon-trimming
