@@ -653,10 +653,19 @@ utils::globalVariables(c(
     # .extract_feature_table_fallback() (R/trim_query_to_amplicon.R) for the
     # full mechanism. Only reachable when barcode_term is supplied (the same
     # precondition primer trimming itself already requires).
-    bt_max_len <- tryCatch(
-      TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]],
-      error = function(e) NA_real_
-    )
+    # .resolve_trimmed_span_max(), NOT resolve_barcode_lengths()$max_bp.
+    # `.trim_queries_to_amplicon()` returns a primer-INCLUSIVE span
+    # (211-233 bp for MiFish-U); max_bp reports the variable region
+    # EXCLUDING primers (130-210 bp). Those windows are disjoint, so the
+    # original test called every correctly-trimmed query "still over-length"
+    # -- 100% of them, by construction -- and sent each one through an extra
+    # NCBI annotation fetch that could not help it. Measured 2026-09-02 on a
+    # real run: "extracted the amplicon from 40 of 40" immediately followed
+    # by "feature-table fallback rescued 40 of 40 still-over-length", which
+    # cannot both be true. This is the same primer-length miscalibration
+    # `.trim_queries_to_amplicon()` was itself fixed for on 2026-08-10,
+    # reintroduced here; both sites now read one shared definition.
+    bt_max_len <- .resolve_trimmed_span_max(barcode_term)
     if (!is.na(bt_max_len)) {
       still_over <- !is.na(query_meta$sequence) & nchar(query_meta$sequence) > bt_max_len
       if (any(still_over)) {
@@ -1027,6 +1036,27 @@ utils::globalVariables(c(
 #' genuine, Smithsonian-vouchered `Menidia` accessions "incongruent" purely
 #' because `Menidia`'s family had no other representative on the list).
 #'
+#' @section Why "incongruent" gained a TTL (2026-09-02):
+#' It was cached indefinitely on the reasoning that an accession's own
+#' sequence and label do not change once deposited. That is true and still
+#' irrelevant: the verdict is not a property of the accession, it is a
+#' property of what BLAST returned about the accession's NEIGHBOURHOOD, and
+#' that changes. Measured, not hypothesised: `OP056918`
+#' (`Cryptacanthodes maculatus`) read `"incongruent"` with no corroborating
+#' evidence anywhere on 2026-09-01, and `"congruent"` with four conspecific
+#' hits at 100% identity on 2026-09-02, under an IDENTICAL `params_key`.
+#' Under the old policy that first, wrong verdict would have been served from
+#' cache forever -- and it is the one verdict
+#' [remove_incongruent_references()] acts on destructively.
+#'
+#' What a TTL fixes, and what it does not: it fixes staleness with respect to
+#' new NCBI deposits, and it gives an unlucky hit set a periodic chance to
+#' self-correct. It does NOT fix run-to-run variability in what BLAST returns
+#' -- in the `OP056918` case the corroborating records had been in GenBank
+#' since January, so elapsed time was never the actual problem. See
+#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`
+#' for the open lead on that.
+#'
 #' @section Coarse-rank diagnostic (2026-08-07):
 #' `finest_common_rank` walks the FULL `kingdom`->`species` ladder
 #' (`TaxaTools::standard_ranks`), not just `min_congruent_rank` and finer.
@@ -1058,17 +1088,30 @@ utils::globalVariables(c(
 #' cross-run cache underneath (keyed by accession alone, not by
 #' taxon/genus/project) is what lets a project only pay evaluation cost for
 #' accessions that are genuinely new or previously out of scope anywhere --
-#' no `taxa` list to decide up front. Staleness is handled asymmetrically:
-#' `"congruent"`/`"incongruent"` verdicts are cached indefinitely (an
-#' accession's own sequence/label doesn't change once deposited); only
-#' `"insufficient_independent_evidence"` and (2026-09-01)
-#' `"not_evaluated_oversized"` verdicts expire after
-#' `insufficient_evidence_ttl_days` and are retried, since new NCBI deposits
-#' (for the former) or a later annotation/primer fix or a raised
-#' `max_query_len` (for the latter) could genuinely change that specific
-#' answer -- `retry_insufficient = FALSE` opts a single call out of retrying
-#' either past its TTL, serving the stale row instead (see that param's own
-#' documentation). A cached row is also treated as stale (recomputed) if any
+#' no `taxa` list to decide up front. Staleness is handled asymmetrically,
+#' per flag, and the asymmetry follows what each verdict actually CLAIMS:
+#' \itemize{
+#'   \item{`"congruent"` -- cached indefinitely. It asserts corroborating
+#'     evidence WAS FOUND, and nothing a later BLAST returns can withdraw a
+#'     match already observed; new deposits can only add more.}
+#'   \item{`"incongruent"` -- expires after `incongruent_ttl_days`
+#'     (default 90; **new 2026-09-02**, previously cached indefinitely). It
+#'     asserts corroborating evidence was NOT found, which is a statement
+#'     about ABSENCE, and absence is exactly what later evidence overturns.
+#'     See `@section Why "incongruent" gained a TTL` below.}
+#'   \item{`"insufficient_independent_evidence"` (original) and
+#'     `"not_evaluated_oversized"` (2026-09-01) -- expire after
+#'     `insufficient_evidence_ttl_days` (default 180). Both explicitly mean
+#'     "we do not know yet": new NCBI deposits (for the former) or a later
+#'     annotation/primer fix or a raised `max_query_len` (for the latter)
+#'     could genuinely change the answer.}
+#' }
+#' `retry_insufficient = FALSE` opts a single call out of retrying ANY
+#' expired row past its TTL, serving the stale row instead (see that param's
+#' own documentation; the name predates `"incongruent"` gaining a TTL).
+#' Setting `incongruent_ttl_days = Inf` restores the pre-2026-09-02 policy
+#' exactly. TTLs are deliberately NOT part of `params_key` -- changing one
+#' must not invalidate a cache. A cached row is also treated as stale (recomputed) if any
 #' parameter that affects the verdict itself (`top_n`, `min_congruent_rank`,
 #' `submission_window`, `hierarchy_incongruent_threshold`,
 #' `min_independent_partners`, `score_range`, `min_score`, `max_hits`,
@@ -1085,6 +1128,14 @@ utils::globalVariables(c(
 #'   caching entirely (every call re-evaluates every accession).
 #' @param insufficient_evidence_ttl_days Numeric (default `180`). See
 #'   Caching above.
+#' @param incongruent_ttl_days Numeric (default `90`). Days after which an
+#'   `"incongruent"` cached verdict is re-evaluated. `Inf` restores the
+#'   pre-2026-09-02 behaviour (cached indefinitely). Shorter than
+#'   `insufficient_evidence_ttl_days` on purpose: `"incongruent"` is the only
+#'   verdict that causes a reference to be REMOVED, and it is ~1% of a real
+#'   accession population, so re-checking it often is both the most valuable
+#'   and the cheapest recheck available. See `@section Why "incongruent"
+#'   gained a TTL`.
 #' @param top_n Integer (default `5L`). Max independent BLAST hits ranked
 #'   per accession for the congruence verdict.
 #' @param min_congruent_rank Character (default `"family"`). Passed to the
@@ -1454,6 +1505,7 @@ utils::globalVariables(c(
 evaluate_reference_accessions <- function(accessions,
                                           cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
                                           insufficient_evidence_ttl_days = 180,
+                                          incongruent_ttl_days = 90,
                                           top_n = 5L,
                                           min_congruent_rank = "family",
                                           hierarchy_incongruent_threshold = 0.5,
@@ -1495,6 +1547,10 @@ evaluate_reference_accessions <- function(accessions,
   if (!is.logical(retry_insufficient) || length(retry_insufficient) != 1L ||
       is.na(retry_insufficient))
     stop("retry_insufficient must be TRUE or FALSE.", call. = FALSE)
+  if (!is.numeric(incongruent_ttl_days) || length(incongruent_ttl_days) != 1L ||
+      is.na(incongruent_ttl_days) || incongruent_ttl_days <= 0)
+    stop("incongruent_ttl_days must be a positive number (Inf to never expire an \"incongruent\" verdict).",
+         call. = FALSE)
 
   # max_query_len's default depends on barcode_term (a marker-aware bound
   # when one is supplied, a flat absolute fallback otherwise) -- resolved
@@ -1568,25 +1624,62 @@ evaluate_reference_accessions <- function(accessions,
   if (!"params_key" %in% names(cache)) cache$params_key <- NA_character_
 
   now <- Sys.time()
-  ttl_secs <- insufficient_evidence_ttl_days * 86400
 
   in_cache <- cache[cache$accession %in% unique_acc &
                     !is.na(cache$params_key) & cache$params_key == params_key, ,
                     drop = FALSE]
-  # TTL-expiring flags -- "insufficient_independent_evidence" (original) and
-  # (2026-09-01) "not_evaluated_oversized" (new: never actually submitted to
-  # BLAST, so a later annotation/primer fix or a raised max_query_len could
-  # genuinely change the answer, same rationale as new NCBI deposits for the
-  # original flag).
-  is_capped_flag <- in_cache$hierarchy_flag %in%
-    c("insufficient_independent_evidence", "not_evaluated_oversized")
+
+  # Per-flag TTL. The asymmetry between the three expiring flags and
+  # "congruent" is not caution, it is what each verdict actually claims:
+  #
+  #   "congruent" asserts that corroborating evidence WAS FOUND. New NCBI
+  #     deposits can only add more of it; nothing a later BLAST returns can
+  #     withdraw a match that was already observed. Cached indefinitely.
+  #
+  #   "incongruent" asserts that corroborating evidence was NOT found -- a
+  #     statement about ABSENCE, and absence is exactly what later evidence
+  #     overturns. Expires after incongruent_ttl_days (2026-09-02).
+  #
+  #   "insufficient_independent_evidence" (original) and
+  #     "not_evaluated_oversized" (2026-09-01, never actually submitted to
+  #     BLAST, so a later annotation/primer fix or a raised max_query_len
+  #     could change the answer) are both explicitly "we do not know yet".
+  #
+  # The incongruent TTL was added after a measured case, not on principle:
+  # OP056918 (Cryptacanthodes maculatus) read "incongruent" with no
+  # corroboration anywhere on 2026-09-01 and "congruent" with four
+  # conspecific hits at 100% on 2026-09-02, under an IDENTICAL params_key.
+  # Under the previous policy that first, wrong verdict would have been
+  # cached forever -- and "incongruent" is the only verdict that causes a
+  # reference to be REMOVED (see remove_incongruent_references()), so a
+  # permanently stale one is the most costly kind. The recheck is cheap:
+  # "incongruent" is ~1% of a real accession population (12 of 995 on the
+  # PtConception screen), so a shorter TTL than the "we do not know yet"
+  # flags costs almost nothing while protecting the destructive decision.
+  #
+  # NOTE what a TTL does and does not fix. It fixes staleness with respect to
+  # new deposits, and it gives an unlucky hit set a periodic chance to
+  # self-correct. It does NOT fix the underlying run-to-run variability in
+  # what BLAST returns -- in the OP056918 case the corroborating records had
+  # been in GenBank since January, so elapsed time was never the problem.
+  # See ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_
+  # downstream_use.md for the open lead on that.
+  ttl_days_for_flag <- function(flag) {
+    ifelse(
+      flag %in% c("insufficient_independent_evidence", "not_evaluated_oversized"),
+      insufficient_evidence_ttl_days,
+      ifelse(flag %in% "incongruent", incongruent_ttl_days, Inf)
+    )
+  }
+  row_ttl_secs <- ttl_days_for_flag(in_cache$hierarchy_flag) * 86400
   fresh_enough <- if (isTRUE(retry_insufficient)) {
-    !is_capped_flag | (as.numeric(now) - as.numeric(in_cache$evaluated_at)) < ttl_secs
+    is.infinite(row_ttl_secs) |
+      (as.numeric(now) - as.numeric(in_cache$evaluated_at)) < row_ttl_secs
   } else {
-    # retry_insufficient = FALSE: never retry an EXPIRED capped row this
-    # call -- serve it from cache regardless of age, so a caller expecting a
-    # purely cache-served run (nothing new to evaluate) doesn't silently pay
-    # real NCBI cost anyway. See @param retry_insufficient.
+    # retry_insufficient = FALSE: never retry ANY expired row this call --
+    # serve it from cache regardless of age, so a caller expecting a purely
+    # cache-served run (nothing new to evaluate) doesn't silently pay real
+    # NCBI cost anyway. See @param retry_insufficient.
     rep(TRUE, nrow(in_cache))
   }
   cache_hit_rows <- in_cache[fresh_enough, , drop = FALSE]

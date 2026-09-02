@@ -8,6 +8,7 @@ evaluate_reference_accessions(
   accessions,
   cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
   insufficient_evidence_ttl_days = 180,
+  incongruent_ttl_days = 90,
   top_n = 5L,
   min_congruent_rank = "family",
   hierarchy_incongruent_threshold = 0.5,
@@ -40,6 +41,14 @@ caching entirely (every call re-evaluates every accession).}
 
 \item{insufficient_evidence_ttl_days}{Numeric (default \code{180}). See
 Caching above.}
+
+\item{incongruent_ttl_days}{Numeric (default \code{90}). Days after which an
+\code{"incongruent"} cached verdict is re-evaluated. \code{Inf} restores the
+pre-2026-09-02 behaviour (cached indefinitely). Shorter than
+\code{insufficient_evidence_ttl_days} on purpose: \code{"incongruent"} is the only
+verdict that causes a reference to be REMOVED, and it is ~1\% of a real
+accession population, so re-checking it often is both the most valuable
+and the cheapest recheck available. See \verb{@section Why "incongruent" gained a TTL}.}
 
 \item{top_n}{Integer (default \code{5L}). Max independent BLAST hits ranked
 per accession for the congruence verdict.}
@@ -282,6 +291,29 @@ genuine, Smithsonian-vouchered \code{Menidia} accessions "incongruent" purely
 because \code{Menidia}'s family had no other representative on the list).
 }
 
+\section{Why "incongruent" gained a TTL (2026-09-02)}{
+
+It was cached indefinitely on the reasoning that an accession's own
+sequence and label do not change once deposited. That is true and still
+irrelevant: the verdict is not a property of the accession, it is a
+property of what BLAST returned about the accession's NEIGHBOURHOOD, and
+that changes. Measured, not hypothesised: \code{OP056918}
+(\verb{Cryptacanthodes maculatus}) read \code{"incongruent"} with no corroborating
+evidence anywhere on 2026-09-01, and \code{"congruent"} with four conspecific
+hits at 100\% identity on 2026-09-02, under an IDENTICAL \code{params_key}.
+Under the old policy that first, wrong verdict would have been served from
+cache forever -- and it is the one verdict
+\code{\link[=remove_incongruent_references]{remove_incongruent_references()}} acts on destructively.
+
+What a TTL fixes, and what it does not: it fixes staleness with respect to
+new NCBI deposits, and it gives an unlucky hit set a periodic chance to
+self-correct. It does NOT fix run-to-run variability in what BLAST returns
+-- in the \code{OP056918} case the corroborating records had been in GenBank
+since January, so elapsed time was never the actual problem. See
+\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}
+for the open lead on that.
+}
+
 \section{Coarse-rank diagnostic (2026-08-07)}{
 
 \code{finest_common_rank} walks the FULL \code{kingdom}->\code{species} ladder
@@ -316,17 +348,30 @@ accession is never re-evaluated twice within one call. A persistent,
 cross-run cache underneath (keyed by accession alone, not by
 taxon/genus/project) is what lets a project only pay evaluation cost for
 accessions that are genuinely new or previously out of scope anywhere --
-no \code{taxa} list to decide up front. Staleness is handled asymmetrically:
-\code{"congruent"}/\code{"incongruent"} verdicts are cached indefinitely (an
-accession's own sequence/label doesn't change once deposited); only
-\code{"insufficient_independent_evidence"} and (2026-09-01)
-\code{"not_evaluated_oversized"} verdicts expire after
-\code{insufficient_evidence_ttl_days} and are retried, since new NCBI deposits
-(for the former) or a later annotation/primer fix or a raised
-\code{max_query_len} (for the latter) could genuinely change that specific
-answer -- \code{retry_insufficient = FALSE} opts a single call out of retrying
-either past its TTL, serving the stale row instead (see that param's own
-documentation). A cached row is also treated as stale (recomputed) if any
+no \code{taxa} list to decide up front. Staleness is handled asymmetrically,
+per flag, and the asymmetry follows what each verdict actually CLAIMS:
+\itemize{
+\item{\code{"congruent"} -- cached indefinitely. It asserts corroborating
+evidence WAS FOUND, and nothing a later BLAST returns can withdraw a
+match already observed; new deposits can only add more.}
+\item{\code{"incongruent"} -- expires after \code{incongruent_ttl_days}
+(default 90; \strong{new 2026-09-02}, previously cached indefinitely). It
+asserts corroborating evidence was NOT found, which is a statement
+about ABSENCE, and absence is exactly what later evidence overturns.
+See \verb{@section Why "incongruent" gained a TTL} below.}
+\item{\code{"insufficient_independent_evidence"} (original) and
+\code{"not_evaluated_oversized"} (2026-09-01) -- expire after
+\code{insufficient_evidence_ttl_days} (default 180). Both explicitly mean
+"we do not know yet": new NCBI deposits (for the former) or a later
+annotation/primer fix or a raised \code{max_query_len} (for the latter)
+could genuinely change the answer.}
+}
+\code{retry_insufficient = FALSE} opts a single call out of retrying ANY
+expired row past its TTL, serving the stale row instead (see that param's
+own documentation; the name predates \code{"incongruent"} gaining a TTL).
+Setting \code{incongruent_ttl_days = Inf} restores the pre-2026-09-02 policy
+exactly. TTLs are deliberately NOT part of \code{params_key} -- changing one
+must not invalidate a cache. A cached row is also treated as stale (recomputed) if any
 parameter that affects the verdict itself (\code{top_n}, \code{min_congruent_rank},
 \code{submission_window}, \code{hierarchy_incongruent_threshold},
 \code{min_independent_partners}, \code{score_range}, \code{min_score}, \code{max_hits},

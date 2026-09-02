@@ -333,3 +333,82 @@ test_that("evaluate_reference_accessions(barcode_term=) feature-table fallback r
   expect_lt(nchar(seen_sequence), nchar(full_seq))
   expect_equal(nchar(seen_sequence), 400L)  # 201-600, see the unit test above
 })
+
+# ---- primer-inclusive vs variable-region length conventions (2026-09-02) -----
+# The bug this section pins: .trim_queries_to_amplicon() returns a span that
+# INCLUDES both primers, while TaxaTools::resolve_barcode_lengths() reports the
+# variable region EXCLUDING them. For MiFish-U those windows are disjoint
+# (211-233 vs 130-210), so testing a correctly-trimmed query against max_bp
+# calls it over-length 100% of the time. It was fixed once inside the trimmer
+# (2026-08-10) and reintroduced by the 2026-09-01 feature-table-fallback caller.
+
+test_that(".resolve_trimmed_span_max() reports the primer-INCLUSIVE bound, above max_bp", {
+  skip_if_not_installed("TaxaTools")
+  span_max <- .resolve_trimmed_span_max("MiFishU")
+  pi <- TaxaTools::resolve_barcode_primers("MiFishU")
+  expect_equal(span_max,
+               pi$amplicon_range[2] + nchar(pi$fwd) + nchar(pi$rev))
+  # The regression guard: the two conventions must not be confused again.
+  expect_gt(span_max, TaxaTools::resolve_barcode_lengths("MiFishU")[["max_bp"]])
+})
+
+test_that("a correctly primer-trimmed MiFish-U query is NOT classified still-over-length", {
+  skip_if_not_installed("TaxaTools")
+  pi <- TaxaTools::resolve_barcode_primers("MiFishU")
+  rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(pi$rev)))
+  set.seed(42)
+  variable <- paste(sample(c("A", "C", "G", "T"), 170L, replace = TRUE), collapse = "")
+  flank    <- paste(sample(c("A", "C", "G", "T"), 2000L, replace = TRUE), collapse = "")
+  full_seq <- paste0(flank, pi$fwd, variable, rev_rc, flank)
+
+  trimmed <- .trim_queries_to_amplicon(full_seq, barcode_term = "MiFishU", verbose = FALSE)
+  # Really trimmed, and to the primer-inclusive span.
+  expect_lt(nchar(trimmed), nchar(full_seq))
+  expect_equal(nchar(trimmed), nchar(pi$fwd) + 170L + nchar(pi$rev))
+
+  # The test evaluate_reference_accessions() actually applies. Under the old
+  # max_bp bound this was TRUE for every successfully trimmed query.
+  expect_false(nchar(trimmed) > .resolve_trimmed_span_max("MiFishU"))
+  expect_true(nchar(trimmed) > TaxaTools::resolve_barcode_lengths("MiFishU")[["max_bp"]])
+})
+
+test_that(".extract_feature_table_fallback() refuses a span that does not fit the sequence in hand", {
+  # The failure this closes: feature coordinates describe the FULL deposited
+  # record. Handed an already-trimmed 217bp query, the clamp degraded to
+  # substr(seq, 1, 217) -- returning the input unchanged while counting itself
+  # a rescue, which is how a real run reported "rescued 40 of 40" queries it
+  # had not touched.
+  short_seq <- strrep("A", 217L)
+  local_mocked_bindings(
+    .fetch_marker_annotation = .mock_ann_for_fallback(feature_from = 68, feature_to = 1015),
+    .package = "TaxaMatch"
+  )
+  out <- .extract_feature_table_fallback(
+    accessions = "ACC001", sequences = short_seq, barcode_term = "MiFishU",
+    margin = 100L, verbose = FALSE
+  )
+  expect_equal(out, short_seq)   # unchanged...
+  expect_message(
+    .extract_feature_table_fallback(
+      accessions = "ACC001", sequences = short_seq, barcode_term = "MiFishU",
+      margin = 100L, verbose = TRUE
+    ),
+    "rescued 0 of 1"             # ...and honestly reported as no rescue
+  )
+})
+
+test_that(".extract_feature_table_fallback() still rescues when the span genuinely fits", {
+  full_seq <- strrep("N", 1200L)
+  local_mocked_bindings(
+    .fetch_marker_annotation = .mock_ann_for_fallback(feature_from = 68, feature_to = 1015),
+    .package = "TaxaMatch"
+  )
+  expect_message(
+    out <- .extract_feature_table_fallback(
+      accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU",
+      margin = 100L, verbose = TRUE
+    ),
+    "rescued 1 of 1"
+  )
+  expect_equal(nchar(out), 1115L)  # from = 1, to = min(1200, 1115)
+})

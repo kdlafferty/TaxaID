@@ -1,6 +1,69 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-02 (Opus 5, branch kernel-priors -- implements Threads 1 and 2 of
+# Last updated: 2026-09-02, later the same day (Opus 5, branch kernel-priors -- two fixes
+# that both came out of RUNNING diagnostics/partner_trust_small_test.R against live NCBI.
+#
+# (A) `"incongruent"` NOW HAS A TTL -- new `incongruent_ttl_days` (default 90). It was
+# cached indefinitely on the reasoning that an accession's own sequence and label don't
+# change once deposited. True, and irrelevant: the verdict is not a property of the
+# accession, it is a property of what BLAST returned about the accession's NEIGHBOURHOOD,
+# and that changes. Measured, not hypothesised: `OP056918` (Cryptacanthodes maculatus)
+# read `"incongruent"` with no corroboration anywhere on 2026-09-01 and `"congruent"` with
+# four conspecific hits at 100% on 2026-09-02, under an IDENTICAL params_key. Under the old
+# policy that first, wrong verdict would have been served from cache forever -- and it is
+# the one verdict `remove_incongruent_references()` acts on DESTRUCTIVELY.
+#
+# The TTL is now per-flag, and the asymmetry follows what each verdict CLAIMS, which is the
+# part worth remembering: `"congruent"` asserts corroborating evidence WAS FOUND and is
+# still cached forever (nothing a later BLAST returns can withdraw a match already
+# observed); `"incongruent"` asserts it was NOT found -- a statement about ABSENCE, and
+# absence is exactly what later evidence overturns; `insufficient_*`/`not_evaluated_*` mean
+# "we don't know yet" (180 days, unchanged). 90 < 180 deliberately: `"incongruent"` is ~1%
+# of a real population (12 of 995 on PtCon), so it is simultaneously the most valuable and
+# the cheapest recheck available. `incongruent_ttl_days = Inf` restores the old policy.
+# TTLs stay OUT of params_key -- changing one must never invalidate a cache.
+#
+# WHAT A TTL DOES NOT FIX, stated so nobody re-derives it: run-to-run variability in what
+# BLAST returns. In the OP056918 case the corroborating records had been in GenBank since
+# January, so elapsed time was never the actual problem. A TTL fixes staleness w.r.t. new
+# deposits and gives an unlucky hit set a periodic chance to self-correct; that is all.
+#
+# (B) THE `still_over` MISCALIBRATION -- the 2026-09-01 feature-table-fallback caller tested
+# an already-primer-trimmed query against `resolve_barcode_lengths()$max_bp`.
+# `.trim_queries_to_amplicon()` returns a primer-INCLUSIVE span (211-233 bp for MiFish-U);
+# `max_bp` reports the variable region EXCLUDING primers (130-210 bp). THOSE WINDOWS ARE
+# DISJOINT, so every correctly-trimmed query was called "still over-length" -- 100% of them,
+# by construction. That is what produced the impossible log line pair "extracted the
+# amplicon from 40 of 40 over-length" followed by "feature-table fallback rescued 40 of 40
+# still-over-length". Measured on the real 15-accession set: 13 of 15 misclassified before,
+# 1 of 15 after (the one genuine primer-extraction failure the fallback exists for).
+#
+# THIS IS THE SAME BUG TWICE. `.trim_queries_to_amplicon()` was itself fixed for this exact
+# primer-length miscalibration on 2026-08-10 (its own comment: using min_len/max_len
+# directly "rejected every real, correctly-found MiFish-U hit as implausible (221 > 210) --
+# a systematic ~11bp miscalibration ... the root cause of a real 92/92 extraction failure").
+# The 2026-09-01 caller had no way to know the two length conventions differed and
+# reintroduced it. The remedy is therefore structural, not a patched comparison: new
+# `.resolve_trimmed_span_max()` is the ONE definition of "how long may a correctly trimmed
+# query be", and BOTH sites now read it.
+#
+# Second, smaller fix in the same area: `.extract_feature_table_fallback()` now returns NULL
+# when the annotated span does not FIT the sequence in hand (`span_hi > seq_len`). Feature
+# coordinates describe the full deposited record; handed an already-trimmed 217bp query the
+# clamp silently degraded to `substr(seq, 1, 217)` -- returning the input UNCHANGED while
+# still counting itself a rescue. That is why the log claimed 40 rescues it had not
+# performed.
+#
+# IMPORTANT SCOPE LIMIT: fix (B) does NOT change what is submitted to BLAST. Verified
+# directly -- the fallback was returning the trimmed sequence unchanged, so the correct
+# ~217bp amplicon always went out. It removes a wasted NCBI annotation round-trip per chunk
+# (in a mechanism whose entire purpose is conserving NCBI budget) and makes the log honest.
+# IT DOES NOT EXPLAIN THE VERDICT INSTABILITY. That remains open -- see
+# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md.
+#
+# `devtools::test()` 1044/1044 (0 failures, 0 warnings), `devtools::check()` 0/0/0.
+#
+# Previous update, 2026-09-02 (Opus 5, branch kernel-priors -- implements Threads 1 and 2 of
 # ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md; Thread 3
 # lands in TaxaLikely, see its own CLAUDE.md. New file `R/reference_label_verdict.R`.
 #

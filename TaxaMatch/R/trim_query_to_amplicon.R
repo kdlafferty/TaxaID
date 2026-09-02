@@ -164,7 +164,11 @@
   if (!is.null(primer_info$amplicon_range)) {
     primer_total_len <- nchar(primer_info$fwd) + nchar(primer_info$rev)
     span_min <- primer_info$amplicon_range[1] + primer_total_len
-    span_max <- primer_info$amplicon_range[2] + primer_total_len
+    # Upper bound via .resolve_trimmed_span_max() (below), the shared
+    # definition the feature-table-fallback caller also reads -- same value
+    # this line computed inline before, now stated in one place so the two
+    # sites cannot drift apart again.
+    span_max <- .resolve_trimmed_span_max(barcode_term)
   } else {
     span_min <- min_len
     span_max <- max_len
@@ -312,6 +316,45 @@
 #'   rescue is left exactly as it was handed in, for the caller's next stage
 #'   (the `max_query_len` hard cap) to decide.
 #' @noRd
+#' Longest plausible length for a CORRECTLY primer-trimmed query
+#'
+#' `.trim_queries_to_amplicon()` returns a span that INCLUDES both primers
+#' (forward-primer-start to reverse-primer-end), but
+#' `TaxaTools::resolve_barcode_lengths()` reports the variable region
+#' EXCLUDING them. For MiFish-U those are 211-233 bp and 130-210 bp
+#' respectively -- disjoint windows. Testing a trimmed query against
+#' `max_bp` therefore calls EVERY correctly-trimmed query over-length, 100%
+#' of the time.
+#'
+#' That exact miscalibration was already found and fixed once, inside
+#' `.trim_queries_to_amplicon()` itself (2026-08-10; see its own comment --
+#' it caused a real 92/92 extraction failure), and then reintroduced at a
+#' second site by the 2026-09-01 feature-table-fallback caller in
+#' `evaluate_reference_accessions()`, which had no way to know the two
+#' length conventions differed. This helper exists so there is ONE
+#' definition both sites read, rather than two places that must independently
+#' remember to add the primer lengths back on.
+#'
+#' @param barcode_term Character. As passed to
+#'   [evaluate_reference_accessions()].
+#' @return Numeric: the maximum plausible primer-INCLUSIVE trimmed length, or
+#'   `NA_real_` if `barcode_term` resolves to neither a primer pair with an
+#'   `amplicon_range` nor a registered length window (in which case a caller
+#'   should skip the over-length test rather than guess).
+#' @noRd
+.resolve_trimmed_span_max <- function(barcode_term) {
+  primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
+                          error = function(e) NULL)
+  if (!is.null(primer_info) && !is.null(primer_info$amplicon_range))
+    return(as.numeric(primer_info$amplicon_range[2]) +
+             nchar(primer_info$fwd) + nchar(primer_info$rev))
+  # No amplicon_range: fall back to the marker's own length window, the same
+  # fallback .trim_queries_to_amplicon() uses for its plausibility check.
+  bt <- tryCatch(TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]],
+                 error = function(e) NA_real_)
+  as.numeric(bt)
+}
+
 .extract_feature_table_fallback <- function(accessions, sequences, barcode_term,
                                             margin = 100L, ncbi_api_key = NULL,
                                             verbose = TRUE) {
@@ -355,6 +398,17 @@
         seq_len <- nchar(seq_i)
         span_lo <- min(sub_ann$feature_from, sub_ann$feature_to)
         span_hi <- max(sub_ann$feature_from, sub_ann$feature_to)
+
+        # The feature coordinates describe the FULL deposited record. If they
+        # do not fit inside the sequence actually in hand, this is not the
+        # sequence they belong to -- typically an already-primer-trimmed
+        # query that should never have reached this fallback at all. Without
+        # this guard the clamp below silently degrades to
+        # substr(seq_i, 1, seq_len), i.e. returns the input unchanged while
+        # still counting itself a "rescue": the mechanism reported rescuing
+        # 40 of 40 queries it had not touched (found 2026-09-02 in a real run
+        # log). Refusing here keeps the count honest.
+        if (span_hi > seq_len) return(NULL)
         # Bounds guard before substr(), same convention as
         # .extract_amplicon_one_tm()'s own 2026-08-30 fix: an inverted or
         # out-of-range span degrades to "not rescued" rather than producing

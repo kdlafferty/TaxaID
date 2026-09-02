@@ -1185,6 +1185,122 @@ test_that("evaluate_reference_accessions() retries insufficient_independent_evid
   expect_true(fetch_calls > calls_after_first)
 })
 
+# ---- incongruent_ttl_days (2026-09-02) ---------------------------------------
+# "incongruent" was cached indefinitely until a real case showed the verdict is
+# a property of what BLAST returned about the accession's NEIGHBOURHOOD, not of
+# the accession: OP056918 read "incongruent" with no corroboration anywhere on
+# 2026-09-01 and "congruent" with four conspecific hits at 100% on 2026-09-02,
+# under an identical params_key.
+
+# Runs one evaluation to create a real cache (correct params_key), then rewrites
+# the cached row's flag/age in place. Returns the cache dir.
+.seed_cache_with_flag <- function(cache_dir, flag, age_secs) {
+  evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE)
+  cache_path <- file.path(cache_dir, "reference_accession_cache.rds")
+  cached <- readRDS(cache_path)
+  cached$hierarchy_flag <- flag
+  cached$evaluated_at   <- cached$evaluated_at - age_secs
+  saveRDS(cached, cache_path)
+  cache_path
+}
+
+test_that("evaluate_reference_accessions() retries an 'incongruent' row past incongruent_ttl_days", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  fetch_calls <- 0L
+  counting_fetch <- function(...) { fetch_calls <<- fetch_calls + 1L; .mock_fetch_records(...) }
+  local_mocked_bindings(.fetch_reference_accession_records = counting_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(blast_sequences = .mock_blast_sequences, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch")
+
+  .seed_cache_with_flag(cache_dir, "incongruent", age_secs = 100 * 86400)
+  calls_after_seed <- fetch_calls
+
+  # 100 days old, default TTL 90 -- expired, so it must be re-evaluated.
+  evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE)
+  expect_true(fetch_calls > calls_after_seed)
+})
+
+test_that("evaluate_reference_accessions() serves an 'incongruent' row from cache inside its TTL", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  fetch_calls <- 0L
+  counting_fetch <- function(...) { fetch_calls <<- fetch_calls + 1L; .mock_fetch_records(...) }
+  local_mocked_bindings(.fetch_reference_accession_records = counting_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(blast_sequences = .mock_blast_sequences, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch")
+
+  .seed_cache_with_flag(cache_dir, "incongruent", age_secs = 10 * 86400)
+  calls_after_seed <- fetch_calls
+
+  evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE)
+  expect_equal(fetch_calls, calls_after_seed)
+})
+
+test_that("incongruent_ttl_days = Inf restores the pre-2026-09-02 cache-forever policy", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  fetch_calls <- 0L
+  counting_fetch <- function(...) { fetch_calls <<- fetch_calls + 1L; .mock_fetch_records(...) }
+  local_mocked_bindings(.fetch_reference_accession_records = counting_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(blast_sequences = .mock_blast_sequences, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch")
+
+  .seed_cache_with_flag(cache_dir, "incongruent", age_secs = 10000 * 86400)
+  calls_after_seed <- fetch_calls
+
+  evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE,
+                                incongruent_ttl_days = Inf)
+  expect_equal(fetch_calls, calls_after_seed)
+})
+
+test_that("'congruent' is still never expired, however old", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  fetch_calls <- 0L
+  counting_fetch <- function(...) { fetch_calls <<- fetch_calls + 1L; .mock_fetch_records(...) }
+  local_mocked_bindings(.fetch_reference_accession_records = counting_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(blast_sequences = .mock_blast_sequences, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch")
+
+  .seed_cache_with_flag(cache_dir, "congruent", age_secs = 10000 * 86400)
+  calls_after_seed <- fetch_calls
+
+  # A "congruent" verdict asserts corroborating evidence WAS found; no later
+  # BLAST can withdraw a match already observed, so it has no TTL at all --
+  # not even the shortest one a caller could ask for.
+  evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE,
+                                incongruent_ttl_days = 0.0001,
+                                insufficient_evidence_ttl_days = 0.0001)
+  expect_equal(fetch_calls, calls_after_seed)
+})
+
+test_that("retry_insufficient = FALSE also suppresses the incongruent retry", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  fetch_calls <- 0L
+  counting_fetch <- function(...) { fetch_calls <<- fetch_calls + 1L; .mock_fetch_records(...) }
+  local_mocked_bindings(.fetch_reference_accession_records = counting_fetch, .package = "TaxaMatch")
+  local_mocked_bindings(blast_sequences = .mock_blast_sequences, .package = "TaxaMatch")
+  local_mocked_bindings(.resolve_taxonomy_by_acc = .mock_resolve_taxonomy_by_acc, .package = "TaxaMatch")
+
+  .seed_cache_with_flag(cache_dir, "incongruent", age_secs = 10000 * 86400)
+  calls_after_seed <- fetch_calls
+
+  evaluate_reference_accessions("ACC003", cache_dir = cache_dir, verbose = FALSE,
+                                retry_insufficient = FALSE)
+  expect_equal(fetch_calls, calls_after_seed)
+})
+
+test_that("evaluate_reference_accessions() validates incongruent_ttl_days", {
+  expect_error(evaluate_reference_accessions("ACC001", cache_dir = NULL,
+                                             incongruent_ttl_days = 0),
+               "incongruent_ttl_days must be a positive number")
+  expect_error(evaluate_reference_accessions("ACC001", cache_dir = NULL,
+                                             incongruent_ttl_days = c(1, 2)),
+               "incongruent_ttl_days must be a positive number")
+})
+
 # ------------------------------------------------------------------------------
 # Mechanism 2: max_query_len hard submission cap -- "not_evaluated_oversized"
 # (ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md)

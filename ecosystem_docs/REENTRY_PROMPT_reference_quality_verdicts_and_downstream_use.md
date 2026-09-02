@@ -296,26 +296,56 @@ not a short-vs-long query-length artifact either.
    `congruent`/`keep` with 100% conspecific corroboration. Treat it as a
    likely false positive. The evidence gate and the numeric machinery are not
    at fault -- the INPUT evidence changed.
-2. `"incongruent"` is cached INDEFINITELY (`is_capped_flag` covers only
-   `insufficient_independent_evidence` and `not_evaluated_oversized`). That
-   policy assumes an incongruent verdict cannot be overturned, and this run
-   shows it can. A wrong `"incongruent"` from one unlucky BLAST call is
-   permanent, and thin coverage -- the exact condition that manufactures false
-   `"incongruent"` -- is also the condition most likely to resolve later.
-   **Recommendation: give `"incongruent"` a TTL, or re-verify before any
-   removal.** Not implemented; it is a cache-policy change with a re-BLAST
-   cost and belongs to a decision, not a drive-by.
+2. `"incongruent"` was cached INDEFINITELY. That policy assumed an incongruent
+   verdict cannot be overturned, and this run showed it can, so a wrong
+   `"incongruent"` from one unlucky BLAST call was permanent -- in the one
+   verdict that is acted on destructively. **FIXED 2026-09-02**: new
+   `incongruent_ttl_days` (default 90). The TTL is now per-flag and the
+   asymmetry follows what each verdict CLAIMS -- `"congruent"` asserts
+   evidence WAS found (nothing later can withdraw an observed match, so still
+   cached forever); `"incongruent"` asserts it was NOT found, a statement about
+   absence, which is exactly what later evidence overturns. 90 < 180 because
+   `"incongruent"` is ~1% of a real population, making it simultaneously the
+   most valuable and the cheapest recheck. `incongruent_ttl_days = Inf`
+   restores the old policy.
 
-**Lead on the cause, NOT investigated.** The run log reports internally
-inconsistent counts from the 2026-09-01 long-sequence mechanism: "extracted
-the amplicon from 40 of 40 over-length query sequence(s)" immediately followed
-by "feature-table fallback rescued 40 of 40 still-over-length query
-sequence(s)" -- if all 40 were amplicon-extracted, none should still be
-over-length. If what is actually SUBMITTED to BLAST differs between builds or
-runs, the top-20 hit set differs, which is precisely the observed symptom.
-This is in `.trim_queries_to_amplicon()`/`.extract_feature_table_fallback()`
-(`R/trim_query_to_amplicon.R`), not in anything Threads 1-3 added. Worth
-chasing before trusting any removal decision.
+   **Caveat for the existing caches**: the PtCon incongruent rows are dated
+   2026-08-30/09-01, so under the 90-day default they will not be retried until
+   late November. To act on this sooner, either pass a short
+   `incongruent_ttl_days` for one call, or surgically drop the non-congruent
+   rows from `reference_accession_cache.rds` -- the same manoeuvre this file's
+   own `.EVAL_REF_ACC_VERSION` comment records doing before, and cheaper than a
+   version bump because it re-BLASTs 12 accessions rather than 995.
+
+**The log inconsistency: CHASED, ROOT-CAUSED, FIXED -- and it is NOT the cause
+of the instability.** The impossible pair of log lines ("extracted the amplicon
+from 40 of 40 over-length" then "feature-table fallback rescued 40 of 40
+still-over-length") had a precise cause: the 2026-09-01 caller tested an
+already-primer-trimmed query against `resolve_barcode_lengths()$max_bp`.
+`.trim_queries_to_amplicon()` returns a primer-INCLUSIVE span (211-233 bp for
+MiFish-U); `max_bp` reports the variable region EXCLUDING primers (130-210 bp).
+The windows are DISJOINT, so every correctly-trimmed query was called
+"still over-length", 100% of the time. Measured on the real 15-accession set:
+13 of 15 misclassified before the fix, 1 of 15 after (the one genuine
+primer-extraction failure the fallback exists for).
+
+It is the same bug twice: `.trim_queries_to_amplicon()` was itself fixed for
+this exact miscalibration on 2026-08-10, and the 2026-09-01 caller reintroduced
+it. The remedy is structural -- `.resolve_trimmed_span_max()` is now the one
+definition both sites read. A second fix in the same area:
+`.extract_feature_table_fallback()` now refuses a span that does not FIT the
+sequence in hand, instead of silently clamping to `substr(seq, 1, seq_len)` and
+counting an untouched sequence as a rescue.
+
+**But it does not explain the verdict flip.** Verified directly: the fallback
+was returning the trimmed sequence UNCHANGED, so the correct ~217 bp amplicon
+was always what went to BLAST. The fix removes a wasted NCBI annotation
+round-trip per chunk and makes the log honest; it changes no verdict. The
+instability is still unexplained -- the remaining candidates are run-to-run
+variability in NCBI's own hit selection (`max_hits = 20` truncation combined
+with a large, shifting `nt`), or degraded results under server-side CPU
+pressure, both of which this pipeline has documented elsewhere. Not
+investigated.
 
 ## What is still open
 
@@ -328,6 +358,12 @@ chasing before trusting any removal decision.
    count inconsistency.
 3. The full PtCon/GreatLakes re-BLAST that would give Thread 1 pair data at
    scale -- postponed, not cancelled.
+3b. **The verdict instability itself.** The TTL bounds how long a wrong
+   `"incongruent"` survives; it does not stop one being produced. Remaining
+   candidates: `max_hits = 20` truncation against a large, shifting `nt`, and
+   degraded hit sets under NCBI CPU pressure. A cheap probe would be to
+   evaluate the same handful of accessions three times in a row with
+   `cache_dir = NULL` and diff the hit sets.
 4. `margin_scale = 1` is a convention. If a labelled set of genuinely
    mislabeled accessions ever exists, it is fittable.
 5. Whether a candidate taxon whose references are COLLECTIVELY dubious wants
