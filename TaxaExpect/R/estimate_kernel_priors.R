@@ -204,6 +204,18 @@ estimate_kernel_priors <- function(occurrence_data,
     # factor. lambda_latitude = NULL (default) disables it exactly.
     w <- w * exp(-111 * abs(abs(rec[[lat_col]]) - abs(site_lat)) / lambda_latitude)
   }
+  # Fetch-radius check (2026-09-02). A record at 6 lambda carries exp(-6) =
+  # 0.25% of the weight of one at the site, so if the record pool does not
+  # reach ~6 lambda from the site, the kernel is being truncated by the FETCH
+  # BOUNDARY rather than by distance -- the prior then reflects how far the
+  # occurrence search went, not the species' distribution. Checked post hoc
+  # because lambda is chosen from the data (see calibrate_kernel_bandwidth()).
+  .reach <- if (length(d_km)) stats::quantile(d_km, 0.999, na.rm = TRUE) else NA_real_
+  if (is.finite(.reach) && .reach < 6 * lambda_km) {
+    warning(sprintf(
+      "estimate_kernel_priors: the record pool reaches only ~%.0f km from the site but lambda_km = %g (6 lambda = %.0f km). The kernel is truncated by the fetch boundary; widen the occurrence search or treat these priors as radius-limited.",
+      .reach, lambda_km, 6 * lambda_km), call. = FALSE)
+  }
   W <- sum(w)
   if (W <= 0) stop("All kernel weights are zero -- check coordinates and lambda_km.")
   n_eff <- W^2 / sum(w^2)

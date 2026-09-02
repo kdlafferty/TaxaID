@@ -262,3 +262,43 @@ test_that("priors/singletons are tibbles (drop-in parity with generate_full_prio
   # and an assembled table keeps the class through bind_rows()
   expect_s3_class(dplyr::bind_rows(kp$priors, kp$priors), "tbl_df")
 })
+
+# ------------------------------------------------------------------------------
+# Post-hoc fetch-scope guards (2026-09-02). lambda cannot inform the fetch
+# radius a priori -- it is estimated FROM the fetched data -- so the honest
+# controls are checked after the fact.
+# ------------------------------------------------------------------------------
+
+test_that("estimate_kernel_priors warns when the pool does not reach 6 lambda", {
+  # records confined to ~10 km, lambda 50 km => 6 lambda = 300 km >> reach
+  occ <- .mk_occ(rep(c("A", "B"), each = 5),
+                 lat = 34 + seq(0, 0.09, length.out = 10), lon = -120)
+  expect_warning(
+    estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50),
+    "truncated by the fetch boundary")
+  # a small lambda against the same pool is fine
+  expect_no_warning(
+    estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1))
+})
+
+test_that("calibrate_kernel_bandwidth warns when the best lambda is the grid maximum", {
+  set.seed(11)
+  n <- 300
+  occ <- .mk_occ(sample(c("A", "B", "C"), n, replace = TRUE),
+                 lat = runif(n, 34, 36), lon = runif(n, -121, -119))
+  # Grid chosen by measuring this fixture, not by assumption: on these
+  # spatially unstructured labels the loss curve is nearly flat, and among
+  # c(50, 100) the larger bandwidth wins -- pinning the optimum at the top of
+  # the grid, which is what the warning exists to report. (Very LARGE lambdas
+  # would not test it: the kernel saturates, ties on loss, and which.min then
+  # returns the FIRST row, i.e. the grid minimum.)
+  expect_warning(
+    calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(50, 100),
+                               block_size_deg = 0.5, min_block_records = 10L),
+    "LARGEST value in lambda_grid")
+  # and the opposite edge is reported too, as a message rather than a warning
+  expect_message(
+    calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(1, 5, 25),
+                               block_size_deg = 0.5, min_block_records = 10L),
+    "SMALLEST value offered")
+})

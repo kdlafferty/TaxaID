@@ -202,5 +202,22 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
   )
   kernel_rows <- seq_len(n_par)
   best <- res[kernel_rows, ][which.min(res$weighted_logloss[kernel_rows]), ]
+  # Edge-of-grid check (2026-09-02). The radius of the occurrence fetch cannot
+  # be chosen from lambda a priori -- lambda is what this function estimates --
+  # so the honest control is a POST-HOC one: if the best lambda sits at the
+  # largest value offered, the optimum may lie outside the grid and the fetch
+  # radius may be truncating real spatial structure. A lambda at the SMALLEST
+  # value is reported too, since that usually means the neighbourhood is
+  # dominated by very local records (or, as at Mugu 2026-09-02, that per-key
+  # truncation made every species spatially identical).
+  if (isTRUE(best$lambda_km >= max(lambda_grid))) {
+    warning(sprintf(
+      "calibrate_kernel_bandwidth: best lambda_km (%g) is the LARGEST value in lambda_grid -- the optimum may lie beyond it. Widen lambda_grid, and check the fetch radius extends to at least ~6x lambda.",
+      best$lambda_km), call. = FALSE)
+  } else if (isTRUE(best$lambda_km <= min(lambda_grid)) && length(lambda_grid) > 1L) {
+    message(sprintf(
+      "  calibrate_kernel_bandwidth: best lambda_km (%g) is the SMALLEST value offered -- extend lambda_grid downward to confirm it is a real interior optimum.",
+      best$lambda_km))
+  }
   list(results = res, best = best, n_blocks = length(score_blocks))
 }

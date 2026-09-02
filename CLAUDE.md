@@ -2925,6 +2925,32 @@ sites are unaffected -- and note the NULL case must be guarded explicitly:
 caught before it reached a real run. When you add a checkpoint, declare what
 it derives from.
 
+### A per-key GBIF `limit` truncates by RETURN ORDER, not by sampling (found 2026-09-02)
+`get_gbif_occurrences(limit =)` / `download_gbif_occurrences(limit =)` cap
+records **per taxon key**, and the records kept are GBIF's own return order --
+a non-random prefix. On the download backend the cap is applied AFTER import,
+so it buys nothing: `limit = NULL` keeps everything and costs no extra API
+load. Real damage, found only by chasing why every species' prior map looked
+identical: with `GBIF_LIMIT <- 10000L`, 45 of Mugu's 231 taxa (95% of the
+pool) and 110 of PtCon's 666 (61%) sat exactly at the cap. Because each
+species' first 10,000 records came from the same few large multi-species
+survey datasets, all 45 capped taxa emerged with an IDENTICAL spatial
+distribution (per-species median distance 104 km, IQR 104-104 -- versus
+81-217 for uncapped taxa), so both abundance and spatial pattern were
+truncation artifacts and the composition priors were near-uniform and
+near-uninformative. Great Lakes was unaffected (0 capped), which is why its
+validation still stands. FIXES: `get_gbif_occurrences()` now detects any key
+returning exactly `limit`, reports it via `attr(x, "capped_keys")`, and takes
+`on_cap = c("warn", "escalate", "error")` -- `"escalate"` re-fetches those
+keys through the download API with `limit = NULL`. All three workflows now
+pass `limit = NULL, on_cap = "escalate"`. Related post-hoc guards, since the
+fetch radius cannot be chosen from lambda a priori (lambda is estimated FROM
+the fetched data): `calibrate_kernel_bandwidth()` warns when the best lambda
+sits at the top of `lambda_grid`, and `estimate_kernel_priors()` warns when
+the record pool does not reach ~6 lambda from the site (beyond which a record
+carries <0.25% weight) -- i.e. when the kernel is truncated by the fetch
+boundary rather than by distance.
+
 ### Split-string sprintf bug (recurring)
 `sprintf()` does NOT concatenate multiple string arguments.
 ```r
