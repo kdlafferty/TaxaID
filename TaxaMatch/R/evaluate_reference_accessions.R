@@ -2168,7 +2168,11 @@ evaluate_reference_accessions <- function(accessions,
   # and cached values are untouched -- these are additive columns beside it,
   # not a redefinition of it. See score_reference_labels() for the formula,
   # its one free parameter, and why "remove" carries two hard vetoes.
-  out <- score_reference_labels(out)
+  # 2026-09-03: forward the caller's local-corroboration table so the veto
+  # (remove -> inspect on an independently corroborated accession) and the
+  # corroboration_source provenance are applied here, not only when a caller
+  # remembers to call score_reference_labels() a second time.
+  out <- score_reference_labels(out, local_corroboration = local_corroboration)
 
   # ---- Run summary: what happened this call, in one place -------------------
   # See @section Chunked evaluation and NCBI rate-limiting resilience below.
