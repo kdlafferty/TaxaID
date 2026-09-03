@@ -7,6 +7,14 @@ numeric below was computed in-session from real checkpoints, not recalled.
 Read this before touching `theta_present`, `chao_missing`, the budget audit,
 or `sampling_group_col` in `estimate_kernel_priors()`.
 
+> **UPDATE 2026-09-03, later the same day (Opus 5).** Read the closing section
+> **"2026-09-03 UPDATE: the PtConception 18S diagnostic"** FIRST -- it supersedes
+> this document's "Next step, recommended" (done), its cost estimate for that
+> step (no GBIF fetch was needed -- an 18S checkpoint already existed), part of
+> Finding 2 (mass/Chao is NOT always below the singleton mean), and open decision
+> #4 (implemented). Open decision #2 is now evidenced, not blocked; #1 and #3
+> remain open and untouched.
+
 ## The three quantities, and which job each does
 
 ```
@@ -194,3 +202,165 @@ packages (that session hit the corrupt-`.rdb` error the same evening).
 `posterior_mean`/`posterior_sd`/`confidence_score` ARE drawn -- add
 `set.seed()` to the workflows for bit-reproducibility of reported
 uncertainty.
+
+---
+
+# 2026-09-03 UPDATE: the PtConception 18S diagnostic
+
+Run: `diagnostics/kernel_budget_18S_sampling_groups.R`
+(results cached in `diagnostics/kernel_budget_18S_sampling_groups_result.rds`).
+Prior-side only -- no NCBI, no BLAST, no likelihood model, no reference fetch.
+
+## The cost estimate above was wrong: no GBIF fetch was needed
+
+This document says "PtConception 18S has NO occurrence or prior checkpoint yet"
+and scoped a GBIF download over ~1,300 genera. A real 18S `occurrences_clean`
+checkpoint has been sitting in the TaxaID project root since 2026-06-15:
+**2,185,193 records, 7,392 taxa, 3,133 genera**, with the workflow's own
+11-way `sampling_group` column attached, 970,556 of them in the Marine stratum.
+The diagnostic re-derives `sampling_group` from the classification the
+checkpoint was built under and requires an exact match (0 mismatches of
+2,185,193) before using it, so this is verified provenance, not a filename
+guess.
+
+## A real bug found on the way in: the fishes group was 5 records
+
+The workflow's fishes clause read
+`class %in% c("Actinopteri", "Chondrichthyes", "Myxini")`. GBIF's backbone
+carries **no class at all** for the ray-finned fishes and names the
+sharks/rays **"Elasmobranchii"**, so that clause matched 5 of 484,077 real fish
+records (the Myxini). The other 484,072 fell through to the
+`macroinvertebrates` catch-all, making the largest group **54% fish**. Nothing
+downstream complained -- a catch-all group cannot fail loudly.
+
+Fixed 2026-09-03 in all three places the pattern lives:
+`PtConceptionWorkflow_18S_2_single_site.R` (empty-string normalization +
+class-less-Chordata fish clause + a regression guard that warns if the fish
+clause ever goes quiet again), `TaxaID_eDNA_Workflow_Template.R`, and
+`18S_stuff/PtConception18S_groupings.r`. This is the same empty-string
+taxonomy quirk `compute_adaptive_sampling_groups()` already normalizes with
+`na_if()`. **The saved checkpoint still carries the old column**; the
+diagnostic re-derives the corrected grouping in memory, so it does not depend
+on a checkpoint rebuild.
+
+## The answer: YES, by three independent cuts
+
+Marine stratum, lambda = 25 km (LOBO-calibrated, an interior optimum over
+{10, 25, 50, 100}), `support_weight` at its `exp(-3)` default.
+
+| group | n_eff | f1 | f2 | chao_missing | theta_present | x pooled |
+|---|---|---|---|---|---|---|
+| other_vascular_plants | 27 | 13 | 4 | 21.1 | 2.14e-02 | 2343x |
+| terrestrial_arthropods | 24 | 9 | 3 | 13.5 | 1.74e-02 | 1906x |
+| zooplankton | 643 | 3 | 7 | 0.64 | 5.08e-03 | 556x |
+| birds_mammals | 608 | 4 | 1 | 8.0 | 1.14e-03 | 125x |
+| macroalgae | 6,680 | 23 | 9 | 29.4 | 1.20e-04 | 13.1x |
+| macroinvertebrates | 38,869 | 108 | 44 | 132.5 | 2.89e-05 | 3.16x |
+| fishes | 54,441 | 22 | 6 | 40.3 | 1.15e-05 | 1.26x |
+| meiofauna / parasites / sea_grasses | 1-137 | 0 | 0 | 0 | NA (unpriced) | -- |
+| **POOLED (what the workflow prices with today)** | 99,975 | 182 | 74 | 223.8 | **9.14e-06** | 1x |
+
+* spread across all priced groups: **1859x**
+* spread among groups the 18S assay can actually amplify: **441x**
+* spread among groups with n_eff >= 100 (drops the thin downwash groups): **441x**
+* `compute_adaptive_sampling_groups(min_n = 100)`, a taxonomy-driven grouping
+  independent of the workflow's hand curation: 68 groups, 33 priced,
+  spread **6644x**
+
+The 441x figure is the decision-relevant one: it survives deleting both extreme
+groups and every group with fewer than 100 effective records. **Per-group curve
+pricing is justified** -- the single pooled price underprices every group by
+1.26x to 2343x, and the pooled number is not even a compromise between them, it
+sits BELOW all seven.
+
+This is also the first measurement of Finding 5's scope effect on a genuinely
+heterogeneous pool. Note how it works here: the non-detectable groups
+(birds/mammals, land plants, terrestrial arthropods) supply **14% of the pooled
+f1 on 0.66% of the pooled n_eff** -- singletons without mass, exactly the
+mechanism, inflating Chao while leaving `missing_mass` almost untouched.
+
+## Finding 2 needs a correction: mass/Chao is NOT always below the singleton mean
+
+This document states that `mass/Chao` is "properly BELOW the singleton mean
+since an unseen species is rarer than a once-seen one." That holds at
+GreatLakes and Mugu but is not general. `mass/Chao < mass/f1` requires
+`Chao > f1`, i.e. `f1 > 2*f2`. Real counterexample here: **zooplankton, f1 = 3,
+f2 = 7 -> Chao = 0.64**, so the "average anonymous unseen species" is priced
+**4.7x ABOVE** a species actually seen once, and the estimated number of unseen
+species is below ONE species. Six of the 68 adaptive groups show the same
+pattern. Small groups make `f1 < 2*f2` ordinary, so per-group pricing meets
+this case routinely where the pooled fit never did.
+
+The consequence for the `apply_undetected_evidence()` curve-mode veto bound
+(`w > 19 * theta_singleton / theta_present`) is that its comment's claim of
+"unreachable by construction" was an overstatement; the code already computes
+the bound and prints the "unreachable" clause conditionally, so the behaviour
+was right and only the comment was wrong. Corrected in place.
+
+## What per-group pricing would have to guard (Section 5 of the diagnostic)
+
+Measured, not hypothesized, on the 10 real groups:
+
+* **no singleton anchor** (`f1 = 0`): 3 of 10 groups. No budget at all.
+* **mass but no price** (`f1 = 1, f2 = 0`): Chao's `f1(f1-1)/2` fallback returns
+  0, so a real `missing_mass` is silently discarded. 8 of 68 adaptive groups;
+  `sea_grasses` hits it at lambda 50 and 100.
+* **Chao below one species**: zooplankton (0.64), and 6 adaptive groups.
+* **price above 1% of the community**: `other_vascular_plants` (2.1%) and
+  `terrestrial_arthropods` (1.7%) -- both on ~25 effective records. At
+  lambda = 10 `terrestrial_arthropods` prices a single unseen species at
+  **0.755**, i.e. 75% of its group's community.
+* **thin groups** (`n_eff < 100`): 4 of 10.
+
+A per-group implementation therefore cannot just index `budget$theta_present`
+by group. It needs a minimum-support rule and a documented fallback for groups
+below it. `mass/f1` (open decision #1) is defined for every group with a
+singleton, including the three `mass/Chao` cannot price -- reported for
+information only; the two decisions stay independent, and GreatLakes already
+settled #1 on its own evidence.
+
+## Open decision #4: IMPLEMENTED
+
+* NEW `TaxaExpect::kernel_budget_sensitivity(fit, occurrence_data,
+  support_weight_grid, lambda_grid)`: re-runs the estimator across counting
+  radii (and optionally bandwidths) and returns per-group `$budget` rows plus a
+  `$summary` giving the f1/f2/Chao ranges, the `theta_present` spread, and the
+  count of settings where a group had no price. `$reproduces_fit` is FALSE if
+  the supplied occurrence data is not what the fit was computed from. It calls
+  the estimator rather than recomputing statistics, so its numbers cannot drift
+  from it. Its `print()` carries a CAUTION line naming the smallest `f2`.
+* `estimate_kernel_priors()` now records `taxon_col`/`lat_col`/`lon_col`/
+  `habitat_col` in `$params` (so a fit can be re-computed from its own
+  provenance), and its `print()` shows `f1`, `f2`, `chao_missing` and
+  `theta_present` in the UNGROUPED case too, not only for multi-group fits,
+  with the same single-digit-f2 caution.
+* `apply_undetected_evidence(pricing = "curve")`'s message now names the
+  `f1`/`f2` the price came from and says so when `f2` is in single digits.
+
+Measured radius sensitivity on real 18S groups (1-5 bandwidths, lambda fixed):
+`other_vascular_plants` 1.9x, `macroalgae` 6.2x, `zooplankton` 19x,
+`birds_mammals` 23x, `macroinvertebrates` 38x, `fishes` 66x,
+`terrestrial_arthropods` 137x. Over the lambda grid instead: up to 1060x
+(`birds_mammals`). Consistent with Mugu's 4x and GreatLakes' 21x, and worse in
+the thin groups.
+
+TaxaExpect: 30 new tests (`test-kernel_budget_sensitivity.R`) + 2 in
+`test-apply_undetected_evidence.R`; `devtools::test()` 956 passing / 0 failing;
+`devtools::check()` 0 errors, 0 warnings, 0 notes. Reaching 0 errors also
+required fixing a PRE-EXISTING check failure unrelated to this work:
+`vignettes/building-priors.Rmd` set `purl = FALSE` via `opts_chunk$set()` in its
+setup chunk, which `knitr::purl()` does not honour (it never executes that
+chunk), so R CMD check tangled and sourced the whole documentation-only vignette
+and errored on a live `build_priors()` call. Every chunk now carries
+`eval = FALSE, purl = FALSE` in its own header, with a comment saying why the
+repetition must not be DRY-ed up.
+
+## Still open, untouched
+
+1. **Switch the price to `mass/f1`?** Unchanged. GreatLakes evidence (0/880
+   flips) still stands; the 18S per-group ratios are reported in Section 8 of
+   the diagnostic for information, deliberately not as an argument.
+2. **Per-group curve pricing.** No longer blocked -- evidenced above, and the
+   guards it needs are enumerated. Not built: `apply_undetected_evidence()`
+   still refuses a multi-group fit with its actionable message.
+3. **Singleton theta DISTRIBUTION instead of a scalar.** Unchanged.

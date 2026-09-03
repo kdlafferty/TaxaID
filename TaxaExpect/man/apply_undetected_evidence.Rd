@@ -200,6 +200,15 @@ native at likelihood parity (derived from the anchors and the consensus
 default \code{min_posterior = 0.05}). Choose watch-list weights BELOW this
 bound unless you deliberately intend elevated species to compete with
 observed ones.
+
+Under \code{pricing = "curve"} the message also names the \code{f1} and
+\code{f2} counts the price came from, and says so when \code{f2} is in
+single digits: \code{theta_present = missing_mass / chao_missing} with
+\code{chao_missing = f1^2/(2 f2)} is hypersensitive to \code{f2} at that
+scale, and nothing upstream constrains it (the bandwidth is calibrated on
+composition prediction, which has no stake in singleton/doubleton counts).
+Quantify it with \code{\link{kernel_budget_sensitivity}()} before acting
+on a budget figure.
 }
 
 \section{Combining multiple sources for one taxon}{

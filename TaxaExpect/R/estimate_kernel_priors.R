@@ -431,6 +431,12 @@ estimate_kernel_priors <- function(occurrence_data,
                   lambda_covariate = lambda_covariate,
                   lambda_latitude = lambda_latitude,
                   support_weight = support_weight,
+                  # Column names recorded 2026-09-03 so the fit can be
+                  # re-computed from its own provenance -- kernel_budget_
+                  # sensitivity() re-runs the estimator rather than
+                  # reconstructing its statistics, and needs them.
+                  taxon_col = taxon_col, lat_col = lat_col,
+                  lon_col = lon_col, habitat_col = habitat_col,
                   n_records_stratum = nrow(rec))
   ), class = "taxaexpect_kernel_priors")
 }
@@ -459,6 +465,22 @@ print.taxaexpect_kernel_priors <- function(x, ...) {
     b$chao_missing <- round(b$chao_missing, 1)
     b$theta_present <- signif(b$theta_present, 3)
     print(b, row.names = FALSE)
+  } else {
+    # Print f1 and f2 with the budget they produce, ALWAYS -- not only in the
+    # grouped case. chao_missing = f1^2/(2 f2) is hypersensitive to f2 in single
+    # digits, and theta_present inherits every bit of that, so a reader who sees
+    # only theta_present cannot tell a figure resting on 74 doubletons from one
+    # resting on four. Open decision #4 of the kernel budget/pricing re-entry
+    # doc; kernel_budget_sensitivity() quantifies it.
+    cat(sprintf("  budget: f1 = %d, f2 = %d, chao_missing = %.3g, theta_present = %.3g\n",
+                x$f1, x$f2, x$chao_missing, x$theta_present))
   }
+  # Both branches: name the doubleton counts the budget is actually resting on.
+  # Only groups with a singleton anchor (f1 > 0) have a budget to rest on.
+  f2v <- x$budget$f2[!is.na(x$budget$f1) & x$budget$f1 > 0]
+  f2v <- f2v[!is.na(f2v)]
+  if (length(f2v) && min(f2v) < 10)
+    cat(sprintf("  CAUTION: chao_missing rests on as few as %d doubleton(s) -- see kernel_budget_sensitivity(),\n           and report the radius sensitivity next to any budget figure.\n",
+                min(f2v)))
   invisible(x)
 }

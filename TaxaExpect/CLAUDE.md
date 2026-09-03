@@ -1,5 +1,45 @@
 # CLAUDE.md -- TaxaExpect
-# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- SAMPLING-GROUP SCOPE restored to
+# Last updated: 2026-09-03, later the same day (Opus 5, branch kernel-priors -- BUDGET
+# TRANSPARENCY: NEW kernel_budget_sensitivity(), and f1/f2 now printed next to every budget
+# figure. Open decision #4 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md
+# ("report f1, f2 and the radius sensitivity next to any budget figure so a reader can see
+# when it rests on four doubletons. No downside.").
+#
+# WHY: chao_missing = f1^2/(2 f2) is hypersensitive to f2 in single digits, and NOTHING
+# upstream constrains f2 -- lambda is chosen by leave-one-block-out COMPOSITION prediction,
+# which has no stake in singleton/doubleton counts, and support_weight is a fixed default. A
+# theta_present quoted without its f2 and its radius sensitivity is a number whose stability
+# the reader cannot assess. Measured on real PtConception 18S sampling groups (counting radius
+# 1-5 bandwidths, lambda fixed): other_vascular_plants 1.9x, macroalgae 6.2x, zooplankton 19x,
+# birds_mammals 23x, macroinvertebrates 38x, fishes 66x, terrestrial_arthropods 137x. Over the
+# lambda grid instead: up to 1060x. Consistent with Mugu's 4x and GreatLakes' 21x.
+#
+# WHAT:
+#   * NEW kernel_budget_sensitivity(fit, occurrence_data, support_weight_grid, lambda_grid) --
+#     re-runs the estimator across counting radii (and optionally bandwidths); returns the
+#     per-group $budget rows long, a $summary with f1/f2/chao ranges + the theta_present
+#     spread + how many settings left a group unpriced, $at_fit, and $reproduces_fit (FALSE
+#     when the supplied data is not what the fit was computed from). It CALLS the estimator
+#     rather than recomputing its statistics, so its numbers cannot drift from it. print()
+#     carries a CAUTION line naming the smallest f2.
+#   * estimate_kernel_priors() records taxon_col/lat_col/lon_col/habitat_col in $params (so a
+#     fit can be re-computed from its own provenance), and its print() now shows f1, f2,
+#     chao_missing and theta_present in the UNGROUPED case too, not only for multi-group fits.
+#   * apply_undetected_evidence(pricing = "curve") names the f1/f2 its price came from, and
+#     says so when f2 is in single digits. Its veto-bound comment claimed theta_present sits
+#     at-or-below the singleton scale "by construction" -- FALSE: mass/Chao exceeds mass/f1
+#     whenever f1 < 2*f2 (real case: PtCon 18S zooplankton, f1=3, f2=7, Chao=0.64, price 4.7x
+#     ABOVE the singleton mean). The code already computed the bound and printed its
+#     "unreachable" clause conditionally, so only the comment was wrong. Corrected.
+#
+# Also fixed, PRE-EXISTING and unrelated: vignettes/building-priors.Rmd set purl = FALSE via
+# opts_chunk$set() in its setup chunk, which knitr::purl() does not honour (it never executes
+# that chunk) -- so R CMD check tangled and sourced this documentation-only vignette and
+# errored on a live build_priors() call. Every chunk now carries eval = FALSE, purl = FALSE in
+# its own header, with a comment saying why the repetition must not be DRY-ed up.
+# devtools::test() 956/0; devtools::check() 0/0/0.
+#
+# Previous update, 2026-09-03 (Opus 5, branch kernel-priors -- SAMPLING-GROUP SCOPE restored to
 # the kernel estimator, plus WKT masks for the prior-field map.
 #
 # estimate_kernel_priors() gains `sampling_group_col` (default NULL = the previous behaviour

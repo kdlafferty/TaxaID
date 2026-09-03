@@ -7,19 +7,26 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include = FALSE, purl = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   eval = FALSE,
-  # purl = FALSE is load-bearing, not redundant with eval = FALSE.
-  # R CMD check's "running R code from vignettes" step TANGLES the vignette
-  # (knitr::purl()) and sources the result -- purl() honours purl=, not eval=,
-  # so without this a documentation-only vignette still executes during check
-  # and errors on objects its prose never defines.
   purl = FALSE
 )
 ```
+
+<!--
+  EVERY chunk below carries `eval = FALSE, purl = FALSE` in its own header, and
+  that repetition is load-bearing -- do not "DRY it up" into the setup chunk.
+  R CMD check's "running R code from vignettes" step TANGLES the vignette with
+  knitr::purl(), and purl() does NOT execute the setup chunk, so an
+  opts_chunk$set(purl = FALSE) written there has no effect at tangle time: every
+  chunk still lands in the tangled .R file and is sourced. This vignette is
+  documentation-only (its code makes live GBIF calls and references objects its
+  prose never defines), so a tangled chunk is a guaranteed check ERROR. It was
+  one until 2026-09-03, on the quickstart chunk's build_priors() call.
+-->
 
 ## Purpose
 
@@ -33,7 +40,7 @@ likely is it that this species occurs at this site?"*
 
 ## Quick Start
 
-```{r quickstart}
+```{r quickstart, eval = FALSE, purl = FALSE}
 library(TaxaExpect)
 
 bp <- build_priors(
@@ -50,7 +57,7 @@ print(bp$model)
 
 ### Step 1: Fetch GBIF occurrences (TaxaFetch)
 
-```{r fetch}
+```{r fetch, eval = FALSE, purl = FALSE}
 library(TaxaFetch)
 
 keys <- get_keys_from_context(data.frame(taxon_name = c("Fundulidae", "Gobiidae")))
@@ -62,7 +69,7 @@ occurrences <- filter_gbif_quality(gbif_raw)
 
 ### Step 2: Assign habitat (TaxaHabitat)
 
-```{r habitat}
+```{r habitat, eval = FALSE, purl = FALSE}
 library(TaxaHabitat)
 
 prompt <- build_habitat_prompt(
@@ -79,14 +86,14 @@ occurrences <- assign_habitat_biological(occurrences, habitats_df)
 
 ### Step 3: Spatial gridding
 
-```{r grid}
+```{r grid, eval = FALSE, purl = FALSE}
 grid_result <- optimize_grid_size(occurrences, n_covariates = 2)
 occurrences_gridded <- create_sites_from_grid(occurrences, grid_size = grid_result$best_grid)
 ```
 
 ### Step 4: Prepare model data
 
-```{r model-data}
+```{r model-data, eval = FALSE, purl = FALSE}
 model_data <- prepare_model_dataframe(occurrences_gridded)
 
 basis <- compute_moran_basis(unique(model_data$grid_id), k = 5)
@@ -95,7 +102,7 @@ model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
 
 ### Step 5: Train biodiversity model
 
-```{r train}
+```{r train, eval = FALSE, purl = FALSE}
 model_fit <- screen_spatial_formula(
   data         = model_data,
   formula_full = cbind(n_species, n_other) ~ main_habitat +
@@ -107,7 +114,7 @@ model_fit <- screen_spatial_formula(
 
 ### Step 6: Generate priors
 
-```{r priors}
+```{r priors, eval = FALSE, purl = FALSE}
 priors_observed   <- generate_full_priors(model_fit, new_sites = model_data)
 priors_undetected <- generate_undetected_diversity(model_fit)
 priors_combined   <- dplyr::bind_rows(priors_observed, priors_undetected)
@@ -115,7 +122,7 @@ priors_combined   <- dplyr::bind_rows(priors_observed, priors_undetected)
 
 ### Step 7: Translate to target backbone
 
-```{r translate}
+```{r translate, eval = FALSE, purl = FALSE}
 library(TaxaTools)
 
 ncbi_lookup <- verify_taxon_names(unique(priors_combined$taxon_name), backbone_id = 4) |>

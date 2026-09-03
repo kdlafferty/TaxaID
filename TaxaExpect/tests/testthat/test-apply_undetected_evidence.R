@@ -396,6 +396,23 @@ test_that("curve pricing yields theta = w * theta_present with theta_absent = 0"
                tolerance = 1e-9)
 })
 
+test_that("curve pricing prints f1/f2 next to the price it produced", {
+  # Open decision #4 of the kernel budget/pricing re-entry doc: a budget figure
+  # quoted without its doubleton count cannot be assessed by the reader.
+  kp <- .make_kernel_fit_for_curve()
+  priors <- dplyr::bind_rows(kp$priors,
+                             .make_priors(grid = "budget", hab = "Lentic"))
+  ev <- data.frame(taxon_name = "Esox niger", weight = 0.05,
+                   source = "regional_proximity", stringsAsFactors = FALSE)
+  msgs <- capture_messages(
+    apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
+                              main_habitat = "Lentic", pricing = "curve"))
+  expect_true(any(grepl("f1 = 2 singletons", msgs, fixed = TRUE)))
+  expect_true(any(grepl("f2 = 0 doubletons", msgs, fixed = TRUE)))
+  # f2 = 0 is the Chao fallback branch, not the single-digit caution branch
+  expect_false(any(grepl("hypersensitive", msgs)))
+})
+
 test_that("curve pricing refuses a GLMM model_obj or a no-singleton kernel fit", {
   priors <- .make_priors()
   ev <- data.frame(taxon_name = "X y", weight = 0.1, source = "s",

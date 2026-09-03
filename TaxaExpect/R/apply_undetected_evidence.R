@@ -87,6 +87,15 @@
 #' bound unless you deliberately intend elevated species to compete with
 #' observed ones.
 #'
+#' Under \code{pricing = "curve"} the message also names the \code{f1} and
+#' \code{f2} counts the price came from, and says so when \code{f2} is in
+#' single digits: \code{theta_present = missing_mass / chao_missing} with
+#' \code{chao_missing = f1^2/(2 f2)} is hypersensitive to \code{f2} at that
+#' scale, and nothing upstream constrains it (the bandwidth is calibrated on
+#' composition prediction, which has no stake in singleton/doubleton counts).
+#' Quantify it with \code{\link{kernel_budget_sensitivity}()} before acting
+#' on a budget figure.
+#'
 #' @section Combining multiple sources for one taxon:
 #' When more than one evidence row names the same taxon (e.g. a regional-
 #' proximity signal and an invasive-watch-list signal both fire for one
@@ -258,9 +267,16 @@ apply_undetected_evidence <- function(
   # Requires a kernel model_obj carrying a finite theta_present.
   kernel_theta_present <- NA_real_
   kernel_theta_singleton <- NA_real_
+  # Captured HERE, not at the printout: `model_obj` is replaced by a stub
+  # further down (the GLMM-compat branch), so anything read off the kernel fit
+  # has to be taken before that point.
+  kernel_f1 <- NA_integer_
+  kernel_f2 <- NA_integer_
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     kernel_theta_present <- model_obj$theta_present %||% NA_real_
     f1_k <- model_obj$f1 %||% 0L
+    kernel_f1 <- model_obj$f1 %||% NA_integer_
+    kernel_f2 <- model_obj$f2 %||% NA_integer_
     # NA-safe: a multi-group fit reports NA pooled scalars by design, and
     # `TRUE && NA` is NA, which `if` rejects outright (this ecosystem's
     # documented is.logical(NA) footgun).
@@ -485,21 +501,39 @@ apply_undetected_evidence <- function(
     # singleton-level native below min_posterior at likelihood parity) when
     # theta_e = w * theta_present > ((1-m)/m) * theta_singleton, i.e.
     # w > 19 * theta_singleton / theta_present at the default m = 0.05.
-    # Since theta_present ~ the singleton scale by construction, this bound
-    # sits near 19-23 -- unreachable for any admissible w <= 1.
+    # theta_present is USUALLY at or below the singleton scale, putting this
+    # bound near 19-23 and out of reach for any admissible w <= 1 -- but not
+    # "by construction": theta_present = missing_mass/Chao exceeds the
+    # singleton mean missing_mass/f1 whenever Chao < f1, i.e. whenever
+    # f1 < 2*f2 (real case: PtConception 18S zooplankton, f1 = 3, f2 = 7,
+    # Chao = 0.64, price 4.7x the singleton mean). The bound is computed, not
+    # assumed, and the "unreachable" clause below is conditional for that
+    # reason. f1/f2 are printed with the price so a caller can see how thin
+    # the estimate is -- see kernel_budget_sensitivity().
     m_ret <- 0.05
     w_veto_curve <- ((1 - m_ret) / m_ret) * theta_singleton / kernel_theta_present
+    .f1_msg <- kernel_f1
+    .f2_msg <- kernel_f2
     message(sprintf(
       paste0(
         "apply_undetected_evidence: curve pricing (theta = w * theta_present, ",
-        "theta_present = %.3g). Veto bound: weight above %.1f would block ",
+        "theta_present = %.3g from f1 = %s singletons / f2 = %s doubletons). ",
+        "Veto bound: weight above %.1f would block ",
         "species-level resolution of a singleton-level observed native at ",
         "likelihood parity%s."
       ),
-      kernel_theta_present, w_veto_curve,
+      kernel_theta_present,
+      if (is.na(.f1_msg)) "?" else format(.f1_msg),
+      if (is.na(.f2_msg)) "?" else format(.f2_msg),
+      w_veto_curve,
       if (w_veto_curve > 1) " -- unreachable for any admissible weight <= 1"
       else ""
     ))
+    if (!is.na(.f2_msg) && .f2_msg > 0 && .f2_msg < 10)
+      message(sprintf(
+        paste0("apply_undetected_evidence: that price rests on %d doubleton(s) ",
+               "-- chao_missing = f1^2/(2 f2) is hypersensitive there. Run ",
+               "kernel_budget_sensitivity() before quoting it."), .f2_msg))
   } else if (theta_singleton > theta_floor) {
     m_ret  <- 0.05
     w_veto <- ((m_ret / (1 - m_ret)) * theta_singleton - theta_floor) /
