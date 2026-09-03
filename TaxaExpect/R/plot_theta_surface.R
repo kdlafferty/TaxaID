@@ -137,10 +137,14 @@
 #' @param mask Optional geometry restricting the surface to a region of
 #'   interest (a lake outline, a bay, a survey boundary). Cells whose centres
 #'   fall outside become `NA` -- transparent on the map, and excluded from
-#'   any summary of the returned matrices. Accepts an `sf`/`sfc` polygon
-#'   (requires the `sf` package) or a plain two-column lon/lat
-#'   matrix/data frame, or a list of such matrices (a cell is kept if it
-#'   falls inside ANY of them, for islands or multi-basin masks).
+#'   any summary of the returned matrices. Accepts a WKT `POLYGON`/
+#'   `MULTIPOLYGON` string -- including, directly, the same search polygon a
+#'   workflow already passes to its GBIF fetch, which is usually what you
+#'   want, since it clips the map to the geometry the records were fetched
+#'   under -- or an `sf`/`sfc` polygon (requires the `sf` package), or a
+#'   plain two-column lon/lat matrix/data frame, or a list of such matrices
+#'   (a cell is kept if it falls inside ANY of them, for islands or
+#'   multi-basin masks).
 #'   Deliberately a parameter with no default: the correct mask is
 #'   application-specific, so the package supplies none.
 #' @param site_marker_radius Numeric (default `5`). Radius in pixels of the
@@ -677,9 +681,61 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' which case a cell is kept if it falls inside ANY of them (islands,
 #' multi-basin masks).
 #' @noRd
+#' Convert a WKT POLYGON/MULTIPOLYGON string to lon/lat polygon matrices
+#'
+#' Uses `sf` when available, which handles interior rings (holes) and
+#' multipart geometry correctly. Without `sf`, falls back to a
+#' dependency-free parse that is only safe for a single-ring polygon --
+#' the hand-drawn search-polygon case -- and refuses anything more complex
+#' rather than silently filling in a hole.
+#' @noRd
+.theta_surface_wkt_to_polys <- function(wkt) {
+  if (length(wkt) != 1L || is.na(wkt) || !nzchar(trimws(wkt)))
+    stop("plot_theta_surface: 'mask' given as text must be a single non-empty WKT POLYGON string.")
+  if (!grepl("POLYGON", wkt, ignore.case = TRUE))
+    stop("plot_theta_surface: 'mask' given as text must be a WKT POLYGON or MULTIPOLYGON string.")
+
+  if (requireNamespace("sf", quietly = TRUE)) {
+    geom <- tryCatch(sf::st_sfc(sf::st_as_sfc(wkt), crs = 4326),
+                     error = function(e)
+                       stop(sprintf("plot_theta_surface: could not parse 'mask' as WKT: %s",
+                                    conditionMessage(e)), call. = FALSE))
+    return(geom)
+  }
+
+  rings <- regmatches(wkt, gregexpr("\\(([^()]*)\\)", wkt))[[1L]]
+  if (length(rings) == 0L)
+    stop("plot_theta_surface: 'mask' WKT contained no coordinate ring.")
+  if (length(rings) > 1L)
+    stop(paste0("plot_theta_surface: this 'mask' WKT has ", length(rings),
+                " rings (a hole or a multipart polygon), which cannot be handled ",
+                "without the 'sf' package -- treating them as separate outer ",
+                "rings would fill in the holes. Install sf, or pass a two-column ",
+                "lon/lat matrix."))
+
+  coords <- gsub("^\\(|\\)$", "", rings[[1L]])
+  pairs  <- strsplit(trimws(strsplit(coords, ",")[[1L]]), "[[:space:]]+")
+  ok <- vapply(pairs, length, integer(1L)) >= 2L
+  if (!any(ok))
+    stop("plot_theta_surface: 'mask' WKT ring had no parseable lon/lat pairs.")
+  m <- do.call(rbind, lapply(pairs[ok], function(p) as.numeric(p[1:2])))
+  if (anyNA(m))
+    stop("plot_theta_surface: 'mask' WKT contained non-numeric coordinates.")
+  # WKT is lon-first, which is the orientation the matrix branch expects.
+  list(m)
+}
+
+
 .theta_surface_apply_mask <- function(surf, mask) {
   lat_v <- rep(surf$lat_grid, times = length(surf$lon_grid))
   lon_v <- rep(surf$lon_grid, each = length(surf$lat_grid))
+
+  # A WKT POLYGON string is what every workflow in this ecosystem already holds
+  # -- TaxaTools::define_search_polygon() returns one, and it is the same object
+  # passed to the GBIF fetch. Accepting it here means the map can be clipped to
+  # the SAME geometry the records were fetched under, in one argument, instead
+  # of the caller hand-converting a string it already has.
+  if (is.character(mask)) mask <- .theta_surface_wkt_to_polys(mask)
 
   if (inherits(mask, c("sf", "sfc"))) {
     if (!requireNamespace("sf", quietly = TRUE))

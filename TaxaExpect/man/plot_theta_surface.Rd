@@ -76,10 +76,14 @@ independent of \code{alpha_by_n_eff}. Default \code{NULL}: no outright mask.}
 \item{mask}{Optional geometry restricting the surface to a region of
 interest (a lake outline, a bay, a survey boundary). Cells whose centres
 fall outside become \code{NA} -- transparent on the map, and excluded from
-any summary of the returned matrices. Accepts an \code{sf}/\code{sfc} polygon
-(requires the \code{sf} package) or a plain two-column lon/lat
-matrix/data frame, or a list of such matrices (a cell is kept if it
-falls inside ANY of them, for islands or multi-basin masks).
+any summary of the returned matrices. Accepts a WKT \code{POLYGON}/
+\code{MULTIPOLYGON} string -- including, directly, the same search polygon a
+workflow already passes to its GBIF fetch, which is usually what you
+want, since it clips the map to the geometry the records were fetched
+under -- or an \code{sf}/\code{sfc} polygon (requires the \code{sf} package), or a
+plain two-column lon/lat matrix/data frame, or a list of such matrices
+(a cell is kept if it falls inside ANY of them, for islands or
+multi-basin masks).
 Deliberately a parameter with no default: the correct mask is
 application-specific, so the package supplies none.}
 

@@ -336,3 +336,63 @@ test_that("printing the object renders the map, not just a summary (2026-09-01)"
   expect_s3_class(si$plot, "leaflet")
   expect_output(print(si), "taxaexpect_theta_surface")
 })
+
+# ------------------------------------------------------------------------------
+# WKT mask (2026-09-02): a workflow already holds its search polygon as a WKT
+# string (TaxaTools::define_search_polygon()'s own return, and the very object
+# passed to the GBIF fetch). Accepting it directly is what lets the map be
+# clipped to the geometry the records were actually fetched under -- the
+# surface lattice is otherwise a rectangle over the DATA extent, i.e. the
+# bounding box of a coast-hugging polygon, not the polygon itself.
+# ------------------------------------------------------------------------------
+
+test_that("a WKT POLYGON mask clips identically to the equivalent lon/lat matrix", {
+  occ <- data.frame(
+    taxon_name = rep(c("A", "B"), each = 6),
+    decimalLatitude = c(34.0, 34.1, 34.2, 34.3, 34.4, 34.5, 34.0, 34.1, 34.2, 34.3, 34.4, 34.5),
+    decimalLongitude = rep(c(-120.0, -119.9, -119.8), 4),
+    main_habitat = "Marine", stringsAsFactors = FALSE)
+  kp <- estimate_kernel_priors(occ, 34.2, -119.9, "Marine", lambda_km = 50)
+
+  box <- cbind(c(-120.0, -119.8, -119.8, -120.0),
+               c(34.15,  34.15,  34.25,  34.25))
+  wkt <- "POLYGON((-120.0 34.15, -119.8 34.15, -119.8 34.25, -120.0 34.25, -120.0 34.15))"
+
+  s_box <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L, mask = box)
+  s_wkt <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L, mask = wkt)
+
+  # Same cells masked, same values kept -- the string is just another spelling
+  # of the same geometry, not a different clip.
+  expect_identical(is.na(s_wkt$surface$theta), is.na(s_box$surface$theta))
+  expect_equal(s_wkt$surface$theta, s_box$surface$theta)
+  expect_equal(s_wkt$surface$params$masked_cells,
+               s_box$surface$params$masked_cells)
+  expect_gt(s_wkt$surface$params$masked_cells, 0)
+})
+
+test_that("WKT mask parsing rejects input it cannot handle rather than guessing", {
+  w2p <- TaxaExpect:::.theta_surface_wkt_to_polys
+
+  expect_error(w2p("LINESTRING(0 0, 1 1)"), "POLYGON")
+  expect_error(w2p(""), "non-empty")
+  expect_error(w2p(NA_character_), "non-empty")
+  expect_error(w2p(c("POLYGON((0 0,1 0,1 1,0 0))",
+                     "POLYGON((0 0,1 0,1 1,0 0))")), "single")
+
+  # A valid single-ring polygon parses to something the masker accepts.
+  g <- w2p("POLYGON((-120 34, -119 34, -119 35, -120 35, -120 34))")
+  expect_true(inherits(g, c("sfc", "list")))
+})
+
+test_that("the no-sf WKT fallback refuses a polygon with a hole", {
+  # Without sf, treating a hole as a second outer ring would FILL the hole --
+  # silently masking in the exact region the caller asked to exclude. The
+  # fallback must refuse instead. (Skipped when sf is present, since sf then
+  # handles holes correctly and this branch is unreachable.)
+  skip_if(requireNamespace("sf", quietly = TRUE),
+          "sf installed: the dependency-free fallback branch is not exercised")
+  w2p <- TaxaExpect:::.theta_surface_wkt_to_polys
+  donut <- paste0("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0),",
+                  "(4 4, 6 4, 6 6, 4 6, 4 4))")
+  expect_error(w2p(donut), "rings")
+})

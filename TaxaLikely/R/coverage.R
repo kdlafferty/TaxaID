@@ -693,10 +693,17 @@ audit_barcode_coverage <- function(match_df,
 
   len_range      <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
   term_label     <- paste(barcode_term, collapse = "/")
-  barcode_clause <- if (length(barcode_term) == 1L)
-    sprintf("%s[All Fields]", barcode_term)
+  # Lengths resolve from the caller's own term (a primer variant carries the
+  # tighter, correct window), but the SEARCH must target the marker: a query
+  # for "COI-Folmer[All Fields]" matches no GenBank record at all, and this
+  # function would then report every species as having no barcode -- silently,
+  # since "no sequences" is a legitimate result here, not an error. That
+  # inflates `unreferenced` and feeds apply_coverage_constraints() a fiction.
+  search_term    <- TaxaTools::resolve_barcode_marker(barcode_term)
+  barcode_clause <- if (length(search_term) == 1L)
+    sprintf("%s[All Fields]", search_term)
   else
-    sprintf("(%s)", paste(sprintf("%s[All Fields]", barcode_term), collapse = " OR "))
+    sprintf("(%s)", paste(sprintf("%s[All Fields]", search_term), collapse = " OR "))
   # 1900 as the lower bound is a "no meaningful floor" sentinel (predates
   # GenBank's own 1982 founding), matching fetch.R's .build_search_term()
   # min_date default of "1900/01/01" -- this function has no min_date
