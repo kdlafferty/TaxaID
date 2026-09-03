@@ -90,17 +90,18 @@ have removed 12 accessions behind 1,688 observations -- including cabezon
 pre-2026-09-02 behaviour back.
 }
 
-\section{Full-signal weighting is separate work}{
+\section{This is a blacklist decision, not the whole signal}{
 
-Even under \code{gate = "action"} this function consumes only a BLACKLIST
-decision. The continuous signal (\code{label_confidence}) reaches the
-likelihood model by a different route entirely --
-\code{\link[=flag_incongruent_references]{flag_incongruent_references()}} joins it onto the match object and
-\code{TaxaLikely::evaluate_likelihoods(reference_quality_col = "label_confidence")}
-widens H1 sigma with it (2026-09-02, emitted as the diagnostic
-\code{score_likelihood_refq}, not yet adopted as the default likelihood). Do
-not let this function's use become the only place the full \code{evaluation}
-object's signal is consulted.
+Even under \code{gate = "action"} this function consumes only a yes/no removal
+decision. The continuous signal (\code{\link[=score_reference_labels]{score_reference_labels()}}'s
+\code{label_confidence}) travels separately, via
+\code{\link[=flag_incongruent_references]{flag_incongruent_references()}}, and is meant for review. A likelihood-model
+covariate driven by it was prototyped on 2026-09-02 and removed the same
+day -- see
+\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}
+for what was measured, before proposing it again. Do not let this
+function's use become the only place the full \code{evaluation} object's signal
+is consulted.
 }
 
 \seealso{

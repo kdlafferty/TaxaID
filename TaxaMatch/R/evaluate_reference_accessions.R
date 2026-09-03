@@ -1996,8 +1996,7 @@ evaluate_reference_accessions <- function(accessions,
 #'   `n_top_matches_available`, `best_hit_pident`, `best_agreeing_pident`,
 #'   `best_disagreeing_pident`, `congruent_evidence_exists_anywhere`, and
 #'   `congruent_evidence_best_pident` joined on, plus `label_confidence`,
-#'   `label_identity_margin`, `label_quality`, `reference_action` and
-#'   `listed_taxon_is_species`
+#'   `label_identity_margin`, `reference_action` and `listed_taxon_is_species`
 #'   whenever `evaluation` carries them (it always does when it came from
 #'   [evaluate_reference_accessions()] or [score_reference_labels()]; an
 #'   `evaluation` read straight off a pre-2026-09-02 cache file will not).
@@ -2024,13 +2023,9 @@ flag_incongruent_references <- function(match_df, evaluation) {
   # Carried when present, not required: an `evaluation` read straight off a
   # pre-2026-09-02 cache file has the diagnostics but not the derived
   # verdict columns, and joining what exists beats erroring on what doesn't.
-  # `label_confidence` is the column
-  # `TaxaLikely::evaluate_likelihoods(reference_quality_col=)` consumes, so
-  # this join is the whole path by which per-accession reference quality
-  # reaches the likelihood model.
   optional_cols <- intersect(
-    c("label_confidence", "label_identity_margin", "label_quality",
-      "reference_action", "listed_taxon_is_species"),
+    c("label_confidence", "label_identity_margin", "reference_action",
+      "listed_taxon_is_species"),
     names(evaluation)
   )
   join_cols <- c(join_cols, optional_cols)
@@ -2108,16 +2103,17 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' `gate = "action"` removes exactly those 4. Pass `gate = "flag"` to get the
 #' pre-2026-09-02 behaviour back.
 #'
-#' @section Full-signal weighting is separate work:
-#' Even under `gate = "action"` this function consumes only a BLACKLIST
-#' decision. The continuous signal (`label_confidence`) reaches the
-#' likelihood model by a different route entirely --
-#' [flag_incongruent_references()] joins it onto the match object and
-#' `TaxaLikely::evaluate_likelihoods(reference_quality_col = "label_confidence")`
-#' widens H1 sigma with it (2026-09-02, emitted as the diagnostic
-#' `score_likelihood_refq`, not yet adopted as the default likelihood). Do
-#' not let this function's use become the only place the full `evaluation`
-#' object's signal is consulted.
+#' @section This is a blacklist decision, not the whole signal:
+#' Even under `gate = "action"` this function consumes only a yes/no removal
+#' decision. The continuous signal ([score_reference_labels()]'s
+#' `label_confidence`) travels separately, via
+#' [flag_incongruent_references()], and is meant for review. A likelihood-model
+#' covariate driven by it was prototyped on 2026-09-02 and removed the same
+#' day -- see
+#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`
+#' for what was measured, before proposing it again. Do not let this
+#' function's use become the only place the full `evaluation` object's signal
+#' is consulted.
 #'
 #' @param match_df Data frame. A standardized match object (from
 #'   [standardize_match_data()]) containing an `accession` column.

@@ -552,9 +552,55 @@ gate restricts action to tail matches, and a query matching a dubious reference
 WELL is near the mean by definition; and then it intersects with a deliberately
 small truth set. A different dataset moves only the first of those.
 
+## 2026-09-02, FINAL: Thread 3 REMOVED from the packages (user decision)
+
+Threads 1 and 2 are kept and integrated. **Thread 3 -- reference quality as a
+likelihood covariate -- is deleted from the code.** `TaxaLikely/R/evaluate.R`
+is byte-identical to its pre-session state (`reference_quality_col`,
+`refq_vec`, `raw_likelihood_refq`, `score_likelihood_refq` and their tests all
+gone); `label_quality` and `.label_confidence_ceiling()` are gone from
+TaxaMatch; `diagnostics/validate_reference_quality_covariate.R` is deleted;
+both workflows no longer pass the covariate. Nothing in either package
+consumes reference quality as a likelihood input.
+
+**Before proposing it again, read this and
+`[[project_mislabel_probability_weighting_closed]]` (2026-08-08), which had
+ALREADY closed the idea** -- predicting a ~1% effect and sigma-widening
+"structurally blocked by a mechanism already shipped" (the crossover gate).
+The 2026-09-02 measurement confirmed that prediction on independent machinery.
+That is two independent closures now.
+
+The findings worth keeping, none of which require the code:
+
+- **`label_confidence` cannot reach 1.** Jeffreys floors the disagreement
+  fraction at `0.5/(n+1)` and the identity margin is capped, so a perfectly
+  corroborated 5-partner reference scores 0.99939. Correct for a human-facing
+  probability. But ANY future consumer that reads it as a ratio where 1 means
+  "no adjustment" must normalise by the per-row achievable ceiling
+  (`plogis(qlogis(1 - 0.5/(n+1)) + margin_cap/margin_scale)`) first, or it
+  silently adjusts every candidate in the dataset. That normalisation also
+  cancels the n-dependence -- maximally corroborated FOR THE EVIDENCE IT HAS
+  scores exactly 1 whether n was 2 or 20.
+- **Zero-partner rows must be a no-op, not 0.5.** Their 0.5 is a Jeffreys vote
+  fraction with zero votes, not a calibrated P(label correct); the base rate is
+  98.7% congruent among evaluated accessions. Key that decision on `n == 0`,
+  not on `hierarchy_flag` -- 1-2 partners is thin evidence, not no evidence.
+- **The sparseness is structural.** Dubious references are ~1-8% of accessions;
+  `remove_incongruent_references()` deletes the worst, cannibalising the target
+  population; the gate only fires on tail matches, and a query matching a
+  dubious reference WELL is near the mean. A different dataset moves only the
+  first of those.
+- **The (b) mixture-variance design with its free parameter eliminated** (H2 is
+  the already-trained "label is wrong" distribution;
+  `c = p + (1-p)(sigma2^2 + (mu1-mu2)^2)/sigma1^2`) is recorded above. It is
+  the right shape IF this is ever revisited -- but the reason not to build it
+  was never the mapping.
+
 ## What is still open
 
-1. The Thread-3 ADOPTION decision. The scale defect is fixed and the re-run
+1. ~~The Thread-3 ADOPTION decision.~~ CLOSED: removed from the packages,
+   2026-09-02. Superseded text follows for the record.
+1-old. The Thread-3 adoption decision. The scale defect is fixed and the re-run
    clears all three criteria (20 helped / 0 hurt), but only 5 ground-truth
    observations could possibly have been hurt, so the safety side is untested.
    Re-run on GreatLakes or 18S when either is screened; adopt only if the harm

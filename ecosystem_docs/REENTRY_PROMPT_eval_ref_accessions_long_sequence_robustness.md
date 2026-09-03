@@ -1,3 +1,156 @@
+
+# ==============================================================================
+# HANDOFF FROM THE REFERENCE-QUALITY-VERDICTS SESSION (2026-09-02, Opus 5)
+# Read this before touching the long-sequence mechanisms again. A parallel
+# session changed code in YOUR area, found a real bug in it, and learned two
+# things about the screen that change how a re-run should be interpreted.
+# Full record: REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md
+# ==============================================================================
+
+## 1. A REAL BUG IN MECHANISM 1, FIXED -- and it was the same bug twice
+
+`evaluate_reference_accessions()` decided which queries were "still over-length
+after primer trimming" (and so needed the feature-table fallback) by comparing
+against `TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]]`.
+
+That is the wrong bound. `.trim_queries_to_amplicon()` returns a span that
+INCLUDES both primers (211-233 bp for MiFish-U); `max_bp` reports the variable
+region EXCLUDING them (130-210 bp). **The two windows are disjoint**, so every
+correctly-trimmed query was classified "still over-length" -- 100% of them, by
+construction. Measured on a real 15-accession set: 13 of 15 misclassified
+before, 1 of 15 after (that 1 being the genuine primer-extraction failure the
+fallback exists for).
+
+This is the signature you may have seen in run logs and dismissed as a
+counting quirk:
+
+    extracted the amplicon from 40 of 40 over-length query sequence(s)
+    feature-table fallback rescued 40 of 40 still-over-length query sequence(s)
+
+Both cannot be true.
+
+**`.trim_queries_to_amplicon()` had ALREADY been fixed for this exact
+miscalibration on 2026-08-10** (see its own comment: using min_len/max_len
+directly "rejected every real, correctly-found MiFish-U hit as implausible
+(221 > 210) ... the root cause of a real 92/92 extraction failure"). The
+2026-09-01 fallback caller had no way to know the two length conventions
+differed and reintroduced it. The remedy is therefore structural, not a patched
+comparison: new **`.resolve_trimmed_span_max(barcode_term)`** in
+`R/trim_query_to_amplicon.R` is now the ONE definition of "how long may a
+correctly trimmed query be", and both sites read it. **Do not reintroduce
+`max_bp` at either site.**
+
+Second, smaller fix in the same function: `.extract_feature_table_fallback()`
+now returns `NULL` when the annotated span does not FIT the sequence in hand
+(`span_hi > seq_len`). Feature coordinates describe the full deposited record;
+handed an already-trimmed 217 bp query, the clamp silently degraded to
+`substr(seq, 1, 217)` -- returning the input UNCHANGED while still counting
+itself a rescue. That is why the log claimed rescues it had not performed.
+
+**SCOPE LIMIT, so you do not over-credit this:** the fix changes NOTHING about
+what is submitted to BLAST. Verified directly -- the fallback was returning the
+trimmed sequence unchanged either way, so the correct ~217 bp amplicon always
+went out. What it removes is a wasted NCBI annotation round-trip per chunk, in
+a mechanism whose entire purpose is conserving NCBI budget, and it makes the
+log honest. No verdict changed.
+
+## 2. THE ONE REMAINING `not_evaluated_oversized` ACCESSION IS A MARKER
+##    MISMATCH, NOT A SIZE PROBLEM
+
+PtConception's 995-accession screen has exactly ONE skipped accession:
+`HM561627` (*Lasiurus intermedius*), 2,657 bp against a 2,100 bp
+`max_query_len`. It was checked directly during the 2026-09-02 session:
+
+- primer trimming does not shorten it (no MiFish-U sites -- correctly, it is
+  not a 12S record);
+- its GBSeq feature table contains exactly ONE feature: **16S ribosomal RNA**,
+  spanning 1061-2657. There is no 12S feature to extract, so the feature-table
+  fallback correctly declines to rescue it.
+
+So this accession is skipped for a GOOD reason, and no amount of
+length-rescue machinery will ever help it: **it is a 16S record sitting in a
+12S screen.** The `"not_evaluated_oversized"` flag is telling the truth about
+the symptom and lying about the cause.
+
+**Suggested direction** (not built, deliberately left to you): route this case
+through the package's existing marker-mismatch concept
+(`R/check_marker_mismatch.R`) so it reads "wrong marker for this barcode_term"
+rather than "too long". That is actionable -- it tells a reviewer the accession
+should not be in the candidate set at all -- whereas "oversized" implies a size
+problem the caller cannot solve. Before building more rescue machinery, check
+how many of your oversized population are actually this case; on PtCon it is
+100% of them (1 of 1).
+
+## 3. TWO THINGS THAT CHANGE HOW A RE-RUN IS INTERPRETED
+
+**(i) A verdict is a property of what `nt` contained that day, not of the
+accession.** `OP056918` read `"incongruent"` with no corroborating evidence
+anywhere on 2026-09-01 and `"congruent"` with four conspecific hits at 100% on
+2026-09-02, under an IDENTICAL `params_key`. This was chased down:
+`diagnostics/blast_verdict_repeatability_probe.R` ran the same 12 accessions
+three times back to back and got identical verdicts AND identical hit sets
+(Jaccard 1.000) -- **BLAST is exactly reproducible**, so it is not
+nondeterminism and not CPU-pressure degradation. The corroborating records'
+GenBank create- and update-dates are both months earlier, so they were not
+newly released. The surviving explanation is that NCBI's `nt` is a
+periodically-rebuilt SNAPSHOT of nuccore, and a record public in Entrez need
+not be searchable in `nt` until a rebuild includes it.
+
+Consequence for you: **if a re-run gives different verdicts than a previous
+run, that is not evidence of a bug in the trimming/submission path.** Rule that
+out with the repeatability probe before investigating.
+
+**(ii) `"incongruent"` now has a TTL** -- new `incongruent_ttl_days`, default
+30, matched to the `nt` rebuild cadence. `"congruent"` is still cached forever
+(it asserts evidence WAS found; nothing later withdraws an observed match).
+`insufficient_independent_evidence` / `not_evaluated_oversized` keep their
+180-day TTL, unchanged. So a screen re-run now costs slightly more than before:
+the ~1% of accessions reading `"incongruent"` come back after 30 days.
+
+## 4. NEW THINGS IN THE CACHE DIRECTORY AND THE OUTPUT
+
+- **`reference_pair_cache.rds`** -- a NEW sidecar file written alongside
+  `reference_accession_cache.rds`, on the same per-chunk schedule. It holds the
+  per-partner votes behind each verdict (`id_x`, `id_y`, `p_match`,
+  `pair_finest_common_rank`, `species_y`), which were previously computed,
+  summarised and discarded. Nothing in the long-sequence path reads it; do not
+  be surprised by it, and do not delete it -- it is what makes a verdict
+  recomputable without a fresh BLAST.
+- **New output columns**: `label_confidence` (numeric, high = the label is more
+  likely correct), `label_identity_margin`, `reference_action`
+  (`keep`/`caution`/`inspect`/`remove`/`untested`). All derived post-hoc from
+  already-cached columns, so no `.EVAL_REF_ACC_VERSION` bump and existing
+  caches gained them for free. **`not_evaluated_oversized` rows now surface as
+  `reference_action = "untested"`** rather than hiding among NAs -- that is the
+  handle to find your population with.
+- **`remove_incongruent_references()` gained `gate = c("action", "flag")`** and
+  defaults to `"action"`. `"flag"` is the pre-2026-09-02 behaviour.
+
+## 5. SOMETHING BUILT AND THEN DELETED -- do not resurrect it by accident
+
+A reference-quality covariate for the likelihood model
+(`TaxaLikely::evaluate_likelihoods(reference_quality_col=)`, emitting
+`score_likelihood_refq`, plus a `label_quality` column in TaxaMatch) was built,
+validated and then REMOVED at the user's direction the same day.
+`TaxaLikely/R/evaluate.R` is byte-identical to its pre-session state. If you
+encounter references to `score_likelihood_refq` or `label_quality` in any
+older note, they describe code that no longer exists. The reasoning is in
+`REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`.
+
+## 6. ONE VERIFIED DISCREPANCY LEFT ALONE, in case you trip over it
+
+`use_sigma[1,1]` in `TaxaLikely:::.calc_likelihoods()` is a VARIANCE
+(`model_sd_score <- sqrt(global_sigma[1,1])`; `z_sq` divides by it un-squared).
+But the coverage inflation reasons in SD -- "SE proportional to
+1/sqrt(N_aligned), so sigma_eff = sigma / sqrt(coverage)" -- and applies
+`/sqrt(coverage)` to the variance slot. If SE is proportional to 1/sqrt(N) then
+variance is proportional to 1/N, so the variance factor should be
+`1/coverage`. The mechanism is self-consistent (the gate treats `c` as the
+variance factor throughout), merely weaker than its own stated derivation.
+**Do not "fix" it casually** -- the evidence axis was validated at 163 helped /
+3 hurt AT THIS STRENGTH. Nothing to do with long sequences; recorded so it is
+not rediscovered as a fresh bug.
+
 # REENTRY: evaluate_reference_accessions() long-sequence / throttle robustness
 
 Written 2026-09-01 (Fable 5 session, with the user). Implementation intended

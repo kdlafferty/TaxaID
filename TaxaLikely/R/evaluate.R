@@ -1,7 +1,6 @@
 utils::globalVariables(c(
   "p_med", "p_b", "score_logit", "gap_logit", "p_norm",
   "raw_likelihood", "raw_likelihood_cov", "raw_likelihood_evidence",
-  "raw_likelihood_refq", "score_likelihood_refq",
   "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
   "score_likelihood_cov", "score_likelihood_evidence",
   "hypothesis_type", "taxon_name", "taxon_name_rank",
@@ -90,7 +89,6 @@ utils::globalVariables(c(
                                 min_coverage           = NULL,
                                 evidence_col           = NULL,
                                 evidence_max_ratio     = 1,
-                                reference_quality_col  = NULL,
                                 verbose                = FALSE) {
 
   names(candidate_df) <- tolower(names(candidate_df))
@@ -181,15 +179,6 @@ utils::globalVariables(c(
                     ~ stats::median(.x, na.rm = TRUE)),
       dplyr::across(dplyr::any_of(evidence_col),
                     ~ stats::median(.x, na.rm = TRUE)),
-      # Reference quality is a PER-ACCESSION property, but a candidate taxon
-      # can be supported by several accessions of differing quality. The
-      # median across this taxon's own rows is the same aggregation
-      # `coverage` and `evidence_col` already use, and it answers the right
-      # question -- "how good is the typical reference behind this
-      # candidate" -- without letting one bad accession in a well-referenced
-      # taxon dominate.
-      dplyr::across(dplyr::any_of(reference_quality_col),
-                    ~ stats::median(.x, na.rm = TRUE)),
       dplyr::across(dplyr::any_of(existing_rank_cols), dplyr::first),
       .groups = "drop"
     ) |>
@@ -205,13 +194,11 @@ utils::globalVariables(c(
       raw_likelihood           = numeric(0),
       raw_likelihood_cov       = numeric(0),
       raw_likelihood_evidence  = numeric(0),
-      raw_likelihood_refq      = numeric(0),
       score_likelihood         = numeric(0),
       score_likelihood_mean    = numeric(0),
       score_likelihood_sd      = numeric(0),
       score_likelihood_cov     = numeric(0),
       score_likelihood_evidence = numeric(0),
-      score_likelihood_refq     = numeric(0),
       species_confusion_risk          = numeric(0),
       genus_confusion_risk            = numeric(0),
       family_confusion_risk           = numeric(0),
@@ -288,7 +275,6 @@ utils::globalVariables(c(
   # directly observed.
   .calc_likelihoods <- function(s_vec, g_vec, p_raw, taxa_names, use_1d,
                                 cov_vec = NULL, genus_vec = NULL, evidence_vec = NULL,
-                                refq_vec = NULL,
                                 mu_override = NULL, delta_override = NULL) {
     h1_vals      <- numeric(length(s_vec))
     used_mu1     <- rep(NA_real_, length(s_vec))
@@ -407,39 +393,8 @@ utils::globalVariables(c(
       # For singleton (1D) queries the density actually evaluated below IS
       # exactly this univariate form, so the gate is exact there, not an
       # approximation.
-      #
-      # REFERENCE quality (2026-09-02, Thread 3 of REENTRY_PROMPT_reference_
-      # quality_verdicts_and_downstream_use.md) enters this same slot as a
-      # SECOND ratio, multiplied into the first. The existing axis is QUERY
-      # evidence -- read depth, per observation; reference quality is a
-      # per-candidate property of the accessions BEHIND the candidate
-      # (`TaxaMatch::score_reference_labels()`'s `label_confidence`, in
-      # (0, 1], where 1 is a fully corroborated label). The product is the
-      # right combination because both are ratios of effective evidence
-      # against a "typical" baseline of 1, and the widening they imply is
-      # multiplicative on the variance in exactly the same
-      # SE proportional-to-1/sqrt(N) sense.
-      #
-      # The crossover gate then applies ONCE, to the product -- not
-      # separately to each factor. Applying it twice would let a rescale
-      # that is jointly harmful pass because each half looked harmless on
-      # its own, which is precisely the failure the gate exists to prevent.
-      #
-      # Note what this does and does not do: a poor match to a dubious
-      # reference gets its sigma widened, so the observation is forgiven for
-      # sitting far from the trained mean; a GOOD match to a dubious
-      # reference is untouched, because the gate only fires in the tail.
-      # And the MEAN is never shifted -- a dubious reference makes us less
-      # sure, it does not make the species less likely a priori
-      # (Session 157's principle, preserved deliberately).
-      ratio_i <- 1
-      if (!is.null(evidence_vec) && !is.na(evidence_vec[i]) && evidence_vec[i] > 0)
-        ratio_i <- ratio_i * evidence_vec[i]
-      if (!is.null(refq_vec) && !is.na(refq_vec[i]) && refq_vec[i] > 0)
-        ratio_i <- ratio_i * refq_vec[i]
-
-      if (!is.null(evidence_vec) || !is.null(refq_vec)) {
-        widen_ratio <- min(ratio_i, evidence_max_ratio)
+      if (!is.null(evidence_vec) && !is.na(evidence_vec[i]) && evidence_vec[i] > 0) {
+        widen_ratio <- min(evidence_vec[i], evidence_max_ratio)
         if (!isTRUE(all.equal(widen_ratio, 1))) {
           var_scale <- 1 / sqrt(widen_ratio)
           z_sq  <- (s_vec[i] - use_mu[1L])^2 / use_sigma[1L, 1L]
@@ -646,35 +601,12 @@ utils::globalVariables(c(
     genus_vec = genus_vec
   )
 
-  # Reference-quality-adjusted point estimate (2026-09-02). Same slot and
-  # same crossover gate as the evidence pass above; the quality ratio needs
-  # no baseline division because it is already a ratio -- 1 means "a fully
-  # corroborated reference," which is the no-op. Values are not clamped
-  # here: a caller supplying a column on some other scale gets whatever that
-  # scale implies, capped only by evidence_max_ratio -- the same contract
-  # evidence_col already has.
-  #
-  # This pass includes the query-evidence ratio too when one was supplied,
-  # so `score_likelihood_refq` reads as "everything we know about how much
-  # this candidate's evidence is worth" rather than as a second, isolated
-  # axis -- the product the single crossover gate is applied to (see
-  # .calc_likelihoods() above).
-  has_refq <- !is.null(reference_quality_col) && reference_quality_col %in% names(cand)
-  primary_refq <- .calc_likelihoods(
-    cand$score_logit, cand$gap_logit, cand$p_med, cand$taxon_name,
-    use_1d = is_singleton,
-    evidence_vec = if (has_evidence) cand[[evidence_col]] / reference_evidence else NULL,
-    refq_vec = if (has_refq) cand[[reference_quality_col]] else NULL,
-    genus_vec = genus_vec
-  )
-
   # Build result rows for H1
   df_h1 <- cand |>
     dplyr::mutate(hypothesis_type          = "specific_candidate",
                   raw_likelihood           = primary$h1,
                   raw_likelihood_cov       = primary_cov$h1,
-                  raw_likelihood_evidence  = primary_evidence$h1,
-                  raw_likelihood_refq      = primary_refq$h1)
+                  raw_likelihood_evidence  = primary_evidence$h1)
 
   # Build H2/H3 rows from the best candidate
   best_i   <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
@@ -693,7 +625,6 @@ utils::globalVariables(c(
   row_h2$raw_likelihood          <- primary$h2
   row_h2$raw_likelihood_cov      <- primary$h2   # H2 sigma is global fixed; no inflation
   row_h2$raw_likelihood_evidence <- primary$h2   # H2 sigma is global fixed; no inflation
-  row_h2$raw_likelihood_refq     <- primary$h2   # H2 sigma is global fixed; no inflation
   row_h2$h2_delta_source    <- primary$h2_delta_source
 
   row_h3 <- best_row
@@ -706,7 +637,6 @@ utils::globalVariables(c(
   row_h3$raw_likelihood          <- primary$h3
   row_h3$raw_likelihood_cov      <- primary$h3   # H3 sigma is global fixed; no inflation
   row_h3$raw_likelihood_evidence <- primary$h3   # H3 sigma is global fixed; no inflation
-  row_h3$raw_likelihood_refq     <- primary$h3   # H3 sigma is global fixed; no inflation
   row_h3$h2_delta_source    <- primary$h2_delta_source
 
   res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
@@ -776,7 +706,6 @@ utils::globalVariables(c(
     dplyr::summarise(raw_likelihood          = max(raw_likelihood,          na.rm = TRUE),
                      raw_likelihood_cov      = max(raw_likelihood_cov,      na.rm = TRUE),
                      raw_likelihood_evidence = max(raw_likelihood_evidence, na.rm = TRUE),
-                     raw_likelihood_refq     = max(raw_likelihood_refq,     na.rm = TRUE),
                      species_confusion_risk = dplyr::first(species_confusion_risk),
                      genus_confusion_risk   = dplyr::first(genus_confusion_risk),
                      family_confusion_risk  = dplyr::first(family_confusion_risk),
@@ -805,18 +734,15 @@ utils::globalVariables(c(
   max_lik          <- max(res_agg$raw_likelihood,          na.rm = TRUE)
   max_lik_cov      <- max(res_agg$raw_likelihood_cov,      na.rm = TRUE)
   max_lik_evidence <- max(res_agg$raw_likelihood_evidence, na.rm = TRUE)
-  max_lik_refq     <- max(res_agg$raw_likelihood_refq,     na.rm = TRUE)
   if (max_lik          == 0 || is.na(max_lik))          max_lik          <- 1
   if (max_lik_cov      == 0 || is.na(max_lik_cov))      max_lik_cov      <- 1
   if (max_lik_evidence == 0 || is.na(max_lik_evidence)) max_lik_evidence <- 1
-  if (max_lik_refq     == 0 || is.na(max_lik_refq))     max_lik_refq     <- 1
 
   res_agg <- res_agg |>
     dplyr::mutate(
       score_likelihood          = raw_likelihood          / max_lik,
       score_likelihood_cov      = raw_likelihood_cov      / max_lik_cov,
-      score_likelihood_evidence = raw_likelihood_evidence / max_lik_evidence,
-      score_likelihood_refq     = raw_likelihood_refq     / max_lik_refq
+      score_likelihood_evidence = raw_likelihood_evidence / max_lik_evidence
     ) |>
     dplyr::filter(
       score_likelihood >= ratio_threshold |
@@ -953,10 +879,8 @@ utils::globalVariables(c(
   res_agg |>
     dplyr::select(hypothesis_type, taxon_name, taxon_name_rank,
                   raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
-                  raw_likelihood_refq,
                   score_likelihood, score_likelihood_mean, score_likelihood_sd,
-                  score_likelihood_cov, score_likelihood_evidence,
-                  score_likelihood_refq, h2_delta_source,
+                  score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
                   species_confusion_risk, genus_confusion_risk, family_confusion_risk,
                   own_rank_confusion_risk) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
@@ -1063,20 +987,6 @@ utils::globalVariables(c(
 #'   direction using the same criterion as widening, but has not itself been
 #'   validated against real over-tightening cases the way the widen-only
 #'   default has been.
-#' @param reference_quality_col Character or `NULL` (default `NULL`). Name of a
-#'   column of `match_df` holding a per-row REFERENCE-quality ratio in
-#'   \code{(0, 1]}, where `1` means "a fully corroborated reference" and is a
-#'   no-op -- in practice
-#'   `TaxaMatch::score_reference_labels()`'s `label_confidence`, joined onto
-#'   the match object by `TaxaMatch::flag_incongruent_references()`. Aggregated
-#'   to the candidate taxon by median across that taxon's own rows (the same
-#'   aggregation `coverage` and `evidence_col` use), then multiplied into the
-#'   `evidence_col` ratio and fed through the SAME closed-form crossover gate,
-#'   so it widens `sigma_score` only where widening provably does not lower the
-#'   candidate's density. Emitted as the diagnostic `score_likelihood_refq`;
-#'   `score_likelihood` itself is untouched. See `@section Reference-quality
-#'   sigma rescaling` for what this is for and what is still unvalidated
-#'   about it.
 #' @param verbose Logical (default `FALSE`). When `TRUE`, prints a message
 #'   each time a species falls back to global parameters (no species-specific
 #'   lookup entry found).
@@ -1087,8 +997,7 @@ utils::globalVariables(c(
 #'       hypothesis, suitable for input to `TaxaAssign::compute_posterior()`:
 #'       `observation_id`, `taxon_name`, `taxon_name_rank`, `hypothesis_type`
 #'       (`"specific_candidate"`, `"unreferenced_species"`, or `"unreferenced_genus"`),
-#'       `raw_likelihood`, `raw_likelihood_cov`, `raw_likelihood_evidence`,
-#'       `raw_likelihood_refq` (the
+#'       `raw_likelihood`, `raw_likelihood_cov`, `raw_likelihood_evidence` (the
 #'       bivariate-normal density -- `mvtnorm::dmvnorm()` over `(score_logit,
 #'       gap_logit)` jointly -- BEFORE ratio-normalization against the best
 #'       candidate in the same observation; `score_likelihood` etc. below are
@@ -1102,8 +1011,7 @@ utils::globalVariables(c(
 #'       mu/sigma), but a within-marker relative comparison such as "above or
 #'       below this marker's own median" sidesteps that),
 #'       `score_likelihood`, `score_likelihood_mean`, `score_likelihood_sd`,
-#'       `score_likelihood_cov`, `score_likelihood_evidence`,
-#'       `score_likelihood_refq`, `h2_delta_source`
+#'       `score_likelihood_cov`, `score_likelihood_evidence`, `h2_delta_source`
 #'       (`"genus_specific"` or `"global_fallback"` for
 #'       `unreferenced_species`/`unreferenced_genus` rows; `NA` for
 #'       `specific_candidate` rows), plus the `*_confusion_risk` columns
@@ -1222,39 +1130,6 @@ utils::globalVariables(c(
 #' the true joint density change relative to the marginal prediction. Bounded
 #' in practice (largest observed swing under 1% of the score range) but a real,
 #' understood limitation of the approximation, not a bug.
-#'
-#' \strong{Reference-quality sigma rescaling (`score_likelihood_refq`,
-#' 2026-09-02):} The likelihood model assumes every reference sequence is
-#' correctly labeled. It is not: `TaxaMatch::evaluate_reference_accessions()`
-#' measures, per accession, whether independent NCBI evidence corroborates
-#' that accession's own listed taxon, and
-#' `TaxaMatch::score_reference_labels()` turns that into a
-#' `label_confidence` in \eqn{(0, 1)}. A poor match to an UNCERTAIN reference
-#' should worry us less than a poor match to a CERTAIN one -- so reference
-#' quality enters the same multiplicative sigma slot as query evidence
-#' (`evidence_col`), as a second ratio multiplied into the first, with the
-#' crossover gate applied ONCE to the product. Applying the gate to each
-#' factor separately would let a jointly-harmful rescale through because
-#' neither half looked harmful alone.
-#'
-#' The gate already encodes the intuition formally, which is why this is the
-#' right slot rather than a new mechanism: widening a candidate's sigma pays
-#' off only when the observed score sits far from the trained mean (large
-#' \eqn{z}). A poor match to a low-confidence reference is forgiven; a good
-#' match is untouched. And only the VARIANCE moves -- reference quality never
-#' shifts the mean, because a dubious reference makes us less sure, it does
-#' not make the species less likely a priori.
-#'
-#' \strong{This is a diagnostic, not the default.} `score_likelihood` is
-#' unchanged; `score_likelihood_refq` is a parallel point estimate in the
-#' same shape as `score_likelihood_cov`/`score_likelihood_evidence`. The
-#' evidence axis itself measured 27 helped / 2053 hurt before its gate and
-#' 163 helped / 3 hurt after, both on real 12S -- a covariate in this slot
-#' earns its default by measurement, not by argument, and reference quality
-#' has not yet had that run. What is also not yet settled: whether
-#' per-accession quality (median-aggregated to the candidate taxon, as
-#' implemented) is the right granularity, or whether a taxon whose references
-#' are COLLECTIVELY dubious wants its own treatment.
 #'
 #' \strong{Genus-specific H2/H3 delta (`h2_delta_source`):}
 #' `H2$delta`/`H3$delta` are single values pooled across every genus seen
@@ -1420,7 +1295,6 @@ evaluate_likelihoods <- function(match_df,
                                  min_coverage           = NULL,
                                  evidence_col           = NULL,
                                  evidence_max_ratio     = 1,
-                                 reference_quality_col  = NULL,
                                  verbose                = FALSE) {
   if (!is.data.frame(match_df))
     stop("match_df must be a data frame")
@@ -1480,17 +1354,6 @@ evaluate_likelihoods <- function(match_df,
 
   names(match_df) <- tolower(names(match_df))
   if (!is.null(evidence_col)) evidence_col <- tolower(evidence_col)
-  if (!is.null(reference_quality_col)) {
-    reference_quality_col <- tolower(reference_quality_col)
-    if (!reference_quality_col %in% names(match_df))
-      # A silent no-op here would be indistinguishable from "the covariate
-      # ran and changed nothing," which is exactly the reading a validation
-      # run must not be able to make by accident.
-      warning(sprintf(
-        "reference_quality_col '%s' is not a column of match_df -- score_likelihood_refq will be identical to score_likelihood_evidence. Did flag_incongruent_references() run first?",
-        reference_quality_col
-      ), call. = FALSE)
-  }
 
   if (!"observation_id" %in% names(match_df))
     stop("match_df must have an 'observation_id' column")
@@ -1526,7 +1389,6 @@ evaluate_likelihoods <- function(match_df,
         min_coverage           = min_coverage,
         evidence_col           = evidence_col,
         evidence_max_ratio     = evidence_max_ratio,
-        reference_quality_col  = reference_quality_col,
         verbose                = verbose
       ),
       error = function(e) {
@@ -1593,11 +1455,9 @@ evaluate_likelihoods <- function(match_df,
   likelihoods <- dplyr::select(out, observation_id, taxon_name, taxon_name_rank,
                                hypothesis_type,
                                raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
-                               raw_likelihood_refq,
                                score_likelihood,
                                score_likelihood_mean, score_likelihood_sd,
                                score_likelihood_cov, score_likelihood_evidence,
-                               score_likelihood_refq,
                                h2_delta_source,
                                species_confusion_risk, genus_confusion_risk, family_confusion_risk,
                                own_rank_confusion_risk)

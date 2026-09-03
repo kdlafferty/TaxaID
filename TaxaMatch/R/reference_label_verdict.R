@@ -114,33 +114,8 @@ utils::globalVariables(c(
 #' columns -- the same split this ecosystem already uses for
 #' `TaxaFlag::observation_validity` (numeric) vs `validity_flag`
 #' (categorical), and for `TaxaHabitat::flag_institution_candidates()`'s
-#' classify-then-review shape. The numeric is what a downstream model
-#' consumes (see `TaxaLikely::evaluate_likelihoods(reference_quality_col=)`);
-#' the categorical is for humans and for [remove_incongruent_references()].
-#'
-#' @section Two scales, and which one a model reads (2026-09-02):
-#' `label_confidence` is a probability and cannot reach 1 -- Jeffreys smoothing
-#' floors the disagreement fraction at `0.5/(n+1)` and the identity margin is
-#' capped, so a PERFECT reference scores 0.99939 with 5 partners. That is the
-#' honest number and it is kept as-is: a Bayesian does not reach certainty from
-#' five neighbours, and rounding it to 1 to suit a consumer would make the
-#' human-facing column dishonest.
-#'
-#' But a consumer that reads the value as a RATIO, where 1 means "no
-#' adjustment", cannot use that scale. `TaxaLikely::evaluate_likelihoods(
-#' reference_quality_col=)` is exactly such a consumer, and feeding it
-#' `label_confidence` applied a ~0.03% sigma widening to every candidate in the
-#' dataset: measured on the real PtConception data, 279 of the 408 H1 rows that
-#' moved had `label_confidence > 0.99` and moved because of the ceiling, not
-#' because their reference was dubious -- which left the Thread-3 validation
-#' run unable to measure the covariate at all.
-#'
-#' Hence two columns. `label_quality` divides by the per-row achievable ceiling
-#' so that "maximally corroborated for the evidence this row has" is exactly 1,
-#' independent of partner count. The split is also forced rather than stylistic:
-#' the ceiling depends on `n_independent_top_matches`, and by the time
-#' `evaluate_likelihoods()` sees a quality value it has been aggregated per
-#' candidate taxon and `n` is gone -- only this package can compute it.
+#' classify-then-review shape. The numeric grades the evidence; the categorical
+#' is for humans and for [remove_incongruent_references()].
 #'
 #' @section Polarity:
 #' HIGH `label_confidence` means MORE confidence that the label is correct,
@@ -196,8 +171,7 @@ utils::globalVariables(c(
 #' what makes the outcome robust rather than lucky: raise
 #' `action_remove_below` to 0.2 and it is still `"inspect"`, while the
 #' genuinely uncorroborated accessions are still `"remove"`. That is the right
-#' treatment: a borderline reference should widen uncertainty downstream (see
-#' `TaxaLikely::evaluate_likelihoods(reference_quality_col=)`), not be
+#' treatment: a borderline reference should be surfaced for review, not
 #' deleted.
 #'
 #' `"remove"` is furthermore unreachable for any flag other than
@@ -231,13 +205,6 @@ utils::globalVariables(c(
 #'     \item{`label_identity_margin`}{Numeric, the capped `d` in
 #'       percent-identity points. `NA` when the row carries no identity
 #'       information of any kind.}
-#'     \item{`label_quality`}{Numeric in (0, 1]. The MODEL-facing companion to
-#'       `label_confidence`: the same evidence divided by the highest
-#'       confidence a maximally-corroborated reference with this row's own
-#'       partner count could achieve, capped at 1. `NA` where there were zero
-#'       valid comparison partners. This -- never `label_confidence` -- is what
-#'       `TaxaLikely::evaluate_likelihoods(reference_quality_col=)` should be
-#'       pointed at. See `@section Two scales, and which one a model reads`.}
 #'     \item{`reference_action`}{`"keep"`, `"caution"`, `"inspect"`,
 #'       `"remove"`, or `"untested"`.}
 #'   }
@@ -285,8 +252,7 @@ score_reference_labels <- function(evaluation,
     stop("Thresholds must be ordered: action_remove_below <= action_inspect_below <= action_caution_below.",
          call. = FALSE)
 
-  new_cols <- c("label_confidence", "label_identity_margin", "label_quality",
-                "reference_action")
+  new_cols <- c("label_confidence", "label_identity_margin", "reference_action")
   present  <- intersect(new_cols, names(evaluation))
   if (length(present) > 0L && !isTRUE(overwrite))
     stop(sprintf(
@@ -295,7 +261,6 @@ score_reference_labels <- function(evaluation,
     ), call. = FALSE)
 
   needed <- c("hierarchy_flag", "frac_independent_below_min_congruent_rank",
-              "n_independent_top_matches",
               "best_agreeing_pident", "best_disagreeing_pident",
               "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident")
   missing_cols <- setdiff(needed, names(evaluation))
@@ -308,7 +273,6 @@ score_reference_labels <- function(evaluation,
   if (nrow(evaluation) == 0L) {
     evaluation$label_confidence      <- numeric(0L)
     evaluation$label_identity_margin <- numeric(0L)
-    evaluation$label_quality         <- numeric(0L)
     evaluation$reference_action      <- character(0L)
     return(evaluation)
   }
@@ -326,29 +290,6 @@ score_reference_labels <- function(evaluation,
   evaluation$label_confidence      <- lc$confidence
   evaluation$label_identity_margin <- lc$margin
 
-  # label_quality: the MODEL-facing column. Same evidence, rescaled so a
-  # maximally-corroborated reference is exactly 1 and therefore a true no-op
-  # in a consumer that reads it as a ratio. See .label_confidence_ceiling().
-  #
-  # NA when there is NO evidence either way -- zero valid comparison partners.
-  # `label_confidence` is 0.5 for those rows, which is the honest reading of a
-  # Jeffreys vote with zero votes, but it is NOT a calibrated P(label correct):
-  # 98.7% of the accessions this screen actually evaluated came back
-  # "congruent", so the base rate for an unexamined label is nowhere near a
-  # coin flip. Passing 0.5 into the sigma slot would widen sigma by 41% on the
-  # strength of an ABSENCE of evidence. NA is the honest input, and every
-  # consumer already treats it as "no information" rather than as low quality.
-  # Note this keys on n == 0, not on hierarchy_flag: an accession with 1 or 2
-  # partners reads "insufficient_independent_evidence" but does have real
-  # evidence, and the ceiling normalisation already handles the small n
-  # correctly.
-  n_partners <- evaluation$n_independent_top_matches
-  ceiling_lc <- .label_confidence_ceiling(n_partners, margin_scale, margin_cap)
-  evaluation$label_quality <- ifelse(
-    is.na(n_partners) | n_partners == 0L, NA_real_,
-    pmin(1, lc$confidence / ceiling_lc)
-  )
-
   evaluation$reference_action      <- .reference_action_from_confidence(
     label_confidence = lc$confidence,
     hierarchy_flag   = evaluation$hierarchy_flag,
@@ -358,40 +299,6 @@ score_reference_labels <- function(evaluation,
     action_caution_below = action_caution_below
   )
   evaluation
-}
-
-#' Highest `label_confidence` a maximally-corroborated reference could score
-#'
-#' `label_confidence` is a probability and can never reach 1: the Jeffreys
-#' smoothing floors the disagreement fraction at `0.5 / (n + 1)`, and the
-#' identity margin is capped at `margin_cap`. So a PERFECT reference -- nothing
-#' disagreeing, full positive margin -- scores 0.99904 with 3 partners, 0.99939
-#' with 5, 0.99984 with 20. That is the honest probability, and
-#' [score_reference_labels()] keeps it.
-#'
-#' It is the wrong scale for a CONSUMER that reads the value as a ratio where
-#' 1 means "no adjustment", though, which is exactly what
-#' `TaxaLikely::evaluate_likelihoods(reference_quality_col=)` does. Measured
-#' 2026-09-02 on the real PtConception data: feeding `label_confidence`
-#' directly applied a ~0.03% sigma widening to EVERY candidate in the dataset,
-#' and 279 of the 408 H1 rows that moved had `label_confidence > 0.99` -- they
-#' moved because of this ceiling, not because their reference was dubious,
-#' which left the validation unable to measure the covariate at all.
-#'
-#' Dividing by this ceiling fixes that and, as a bonus, removes the
-#' n-dependence: a reference that is maximally corroborated FOR THE EVIDENCE IT
-#' HAS scores exactly 1 whether it had 2 partners or 20. (Real case: `Askoldia
-#' variegata`, `MT627596` -- 2 partners, one 100% agreeing hit, nothing
-#' disagreeing. `label_confidence` 0.99866, ceiling for n=2 also 0.99866, so
-#' `label_quality` is exactly 1 and it is correctly a no-op downstream.)
-#'
-#' @param n Integer vector, `n_independent_top_matches`.
-#' @param margin_scale,margin_cap As in [score_reference_labels()].
-#' @return Numeric vector in (0, 1).
-#' @noRd
-.label_confidence_ceiling <- function(n, margin_scale = 1, margin_cap = 5) {
-  frac_min <- 0.5 / (n + 1)
-  stats::plogis(stats::qlogis(1 - frac_min) + margin_cap / margin_scale)
 }
 
 #' Defaults for the label-confidence / action parameters, in one place

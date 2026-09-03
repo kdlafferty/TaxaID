@@ -18,7 +18,6 @@ evaluate_likelihoods(
   min_coverage = NULL,
   evidence_col = NULL,
   evidence_max_ratio = 1,
-  reference_quality_col = NULL,
   verbose = FALSE
 )
 }
@@ -120,20 +119,6 @@ direction using the same criterion as widening, but has not itself been
 validated against real over-tightening cases the way the widen-only
 default has been.}
 
-\item{reference_quality_col}{Character or \code{NULL} (default \code{NULL}). Name of a
-column of \code{match_df} holding a per-row REFERENCE-quality ratio in
-\code{(0, 1]}, where \code{1} means "a fully corroborated reference" and is a
-no-op -- in practice
-\code{TaxaMatch::score_reference_labels()}'s \code{label_confidence}, joined onto
-the match object by \code{TaxaMatch::flag_incongruent_references()}. Aggregated
-to the candidate taxon by median across that taxon's own rows (the same
-aggregation \code{coverage} and \code{evidence_col} use), then multiplied into the
-\code{evidence_col} ratio and fed through the SAME closed-form crossover gate,
-so it widens \code{sigma_score} only where widening provably does not lower the
-candidate's density. Emitted as the diagnostic \code{score_likelihood_refq};
-\code{score_likelihood} itself is untouched. See \verb{@section Reference-quality sigma rescaling} for what this is for and what is still unvalidated
-about it.}
-
 \item{verbose}{Logical (default \code{FALSE}). When \code{TRUE}, prints a message
 each time a species falls back to global parameters (no species-specific
 lookup entry found).}
@@ -145,8 +130,7 @@ A named list with two components:
 hypothesis, suitable for input to \code{TaxaAssign::compute_posterior()}:
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{hypothesis_type}
 (\code{"specific_candidate"}, \code{"unreferenced_species"}, or \code{"unreferenced_genus"}),
-\code{raw_likelihood}, \code{raw_likelihood_cov}, \code{raw_likelihood_evidence},
-\code{raw_likelihood_refq} (the
+\code{raw_likelihood}, \code{raw_likelihood_cov}, \code{raw_likelihood_evidence} (the
 bivariate-normal density -- \code{mvtnorm::dmvnorm()} over \verb{(score_logit, gap_logit)} jointly -- BEFORE ratio-normalization against the best
 candidate in the same observation; \code{score_likelihood} etc. below are
 each \code{raw_likelihood / max(raw_likelihood)} within that observation.
@@ -159,8 +143,7 @@ way the ratio never was; not calibration-free in an absolute sense
 mu/sigma), but a within-marker relative comparison such as "above or
 below this marker's own median" sidesteps that),
 \code{score_likelihood}, \code{score_likelihood_mean}, \code{score_likelihood_sd},
-\code{score_likelihood_cov}, \code{score_likelihood_evidence},
-\code{score_likelihood_refq}, \code{h2_delta_source}
+\code{score_likelihood_cov}, \code{score_likelihood_evidence}, \code{h2_delta_source}
 (\code{"genus_specific"} or \code{"global_fallback"} for
 \code{unreferenced_species}/\code{unreferenced_genus} rows; \code{NA} for
 \code{specific_candidate} rows), plus the \verb{*_confusion_risk} columns
@@ -295,39 +278,6 @@ boundary, where the neglected score/gap covariance term flips the sign of
 the true joint density change relative to the marginal prediction. Bounded
 in practice (largest observed swing under 1\% of the score range) but a real,
 understood limitation of the approximation, not a bug.
-
-\strong{Reference-quality sigma rescaling (\code{score_likelihood_refq},
-2026-09-02):} The likelihood model assumes every reference sequence is
-correctly labeled. It is not: \code{TaxaMatch::evaluate_reference_accessions()}
-measures, per accession, whether independent NCBI evidence corroborates
-that accession's own listed taxon, and
-\code{TaxaMatch::score_reference_labels()} turns that into a
-\code{label_confidence} in \eqn{(0, 1)}. A poor match to an UNCERTAIN reference
-should worry us less than a poor match to a CERTAIN one -- so reference
-quality enters the same multiplicative sigma slot as query evidence
-(\code{evidence_col}), as a second ratio multiplied into the first, with the
-crossover gate applied ONCE to the product. Applying the gate to each
-factor separately would let a jointly-harmful rescale through because
-neither half looked harmful alone.
-
-The gate already encodes the intuition formally, which is why this is the
-right slot rather than a new mechanism: widening a candidate's sigma pays
-off only when the observed score sits far from the trained mean (large
-\eqn{z}). A poor match to a low-confidence reference is forgiven; a good
-match is untouched. And only the VARIANCE moves -- reference quality never
-shifts the mean, because a dubious reference makes us less sure, it does
-not make the species less likely a priori.
-
-\strong{This is a diagnostic, not the default.} \code{score_likelihood} is
-unchanged; \code{score_likelihood_refq} is a parallel point estimate in the
-same shape as \code{score_likelihood_cov}/\code{score_likelihood_evidence}. The
-evidence axis itself measured 27 helped / 2053 hurt before its gate and
-163 helped / 3 hurt after, both on real 12S -- a covariate in this slot
-earns its default by measurement, not by argument, and reference quality
-has not yet had that run. What is also not yet settled: whether
-per-accession quality (median-aggregated to the candidate taxon, as
-implemented) is the right granularity, or whether a taxon whose references
-are COLLECTIVELY dubious wants its own treatment.
 
 \strong{Genus-specific H2/H3 delta (\code{h2_delta_source}):}
 \code{H2$delta}/\code{H3$delta} are single values pooled across every genus seen

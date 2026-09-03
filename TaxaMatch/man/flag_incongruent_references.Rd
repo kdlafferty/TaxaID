@@ -18,8 +18,7 @@ flag_incongruent_references(match_df, evaluation)
 \code{n_top_matches_available}, \code{best_hit_pident}, \code{best_agreeing_pident},
 \code{best_disagreeing_pident}, \code{congruent_evidence_exists_anywhere}, and
 \code{congruent_evidence_best_pident} joined on, plus \code{label_confidence},
-\code{label_identity_margin}, \code{label_quality}, \code{reference_action} and
-\code{listed_taxon_is_species}
+\code{label_identity_margin}, \code{reference_action} and \code{listed_taxon_is_species}
 whenever \code{evaluation} carries them (it always does when it came from
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} or \code{\link[=score_reference_labels]{score_reference_labels()}}; an
 \code{evaluation} read straight off a pre-2026-09-02 cache file will not).
