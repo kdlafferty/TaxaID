@@ -261,12 +261,30 @@ apply_undetected_evidence <- function(
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     kernel_theta_present <- model_obj$theta_present %||% NA_real_
     f1_k <- model_obj$f1 %||% 0L
-    if (is.numeric(f1_k) && f1_k > 0)
+    # NA-safe: a multi-group fit reports NA pooled scalars by design, and
+    # `TRUE && NA` is NA, which `if` rejects outright (this ecosystem's
+    # documented is.logical(NA) footgun).
+    if (is.numeric(f1_k) && length(f1_k) == 1L && !is.na(f1_k) && f1_k > 0)
       kernel_theta_singleton <- (model_obj$missing_mass %||% NA_real_) / f1_k
   }
   if (pricing == "curve" &&
       (!is.numeric(kernel_theta_present) || !is.finite(kernel_theta_present) ||
        kernel_theta_present <= 0)) {
+    # Distinguish the two ways theta_present can be unusable, because the fix
+    # differs. Multi-group fits set it NA deliberately: there is no single
+    # price when groups have different detection processes, and silently
+    # picking one group's would misprice every other group.
+    if (inherits(model_obj, "taxaexpect_kernel_priors") &&
+        (model_obj$params$n_sampling_groups %||% 1L) > 1L) {
+      stop("apply_undetected_evidence: this model_obj was fitted with ",
+           "sampling_group_col = '", model_obj$params$sampling_group_col,
+           "' (", model_obj$params$n_sampling_groups, " groups), so there is ",
+           "no single theta_present -- each group has its own budget (see ",
+           "model_fit$budget). Per-group curve pricing is not wired up yet: ",
+           "either fit one group at a time (subset the occurrence data to the ",
+           "assay's own taxonomic scope) and price each separately, or use ",
+           "pricing = \"blend\".")
+    }
     stop("apply_undetected_evidence: pricing = \"curve\" requires a ",
          "taxaexpect_kernel_priors model_obj whose theta_present is a finite ",
          "positive value (missing_mass / chao_missing -- needs at least one ",

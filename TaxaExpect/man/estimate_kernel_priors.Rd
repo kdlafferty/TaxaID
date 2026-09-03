@@ -20,6 +20,7 @@ estimate_kernel_priors(
   lat_col = "decimalLatitude",
   lon_col = "decimalLongitude",
   habitat_col = "main_habitat",
+  sampling_group_col = NULL,
   support_weight = exp(-3)
 )
 }
@@ -70,6 +71,25 @@ Default: \code{"Site_<lat>_<lon>"}.}
 \item{taxon_col, lat_col, lon_col, habitat_col}{Column names in
 \code{occurrence_data} (defaults \code{"taxon_name"}, \code{"decimalLatitude"},
 \code{"decimalLongitude"}, \code{"main_habitat"}).}
+
+\item{sampling_group_col}{Optional column naming a detection-process
+grouping (e.g. \code{"sampling_group"}). Default \code{NULL}: all taxa share one
+composition and one Good-Turing budget, the pre-2026-09-03 behaviour
+exactly. When supplied, \code{theta} AND the budget (\code{f1}, \code{f2},
+\code{missing_mass}, \code{chao_missing}, \code{theta_present}) are computed WITHIN each
+group, because both are shared-denominator quantities that assume a
+common detection process. Pooling across processes dilutes a detectable
+taxon's share with records the assay could never amplify, and lets
+barely-sampled groups contribute singletons that inflate \code{f1} -- and so
+\code{chao_missing}, quadratically -- while adding almost nothing to
+\code{missing_mass}, deflating \code{theta_present}. Build the column with
+\code{\link[=compute_adaptive_sampling_groups]{compute_adaptive_sampling_groups()}}, or supply your own if you know the
+split. Note this is a no-op for a taxonomically homogeneous pool (a fish
+assay whose occurrence pool is all fish), which is why it changes nothing
+at sites like GreatLakes; it matters for broad markers (18S) spanning
+groups with very different detection probabilities. With more than one
+group the pooled scalars are \code{NA} by design and \verb{$budget} is
+authoritative -- a single number would be silently wrong.}
 
 \item{support_weight}{Numeric in (0, 1]. A record counts toward the
 discrete neighborhood-support statistics (singleton detection, record

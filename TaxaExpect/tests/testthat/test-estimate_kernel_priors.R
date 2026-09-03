@@ -302,3 +302,121 @@ test_that("calibrate_kernel_bandwidth warns when the best lambda is the grid max
                                block_size_deg = 0.5, min_block_records = 10L),
     "SMALLEST value offered")
 })
+
+# ------------------------------------------------------------------------------
+# sampling_group_col (2026-09-03). Composition and the Good-Turing budget are
+# both SHARED-DENOMINATOR quantities that assume one detection process. The
+# GLMM path enforced this (prepare_model_dataframe(sampling_group_col=),
+# Session 149); the kernel rewrite dropped it. Restored here.
+# ------------------------------------------------------------------------------
+
+.mixed_pool <- function() {
+  set.seed(42)
+  fish <- do.call(rbind, lapply(1:20, function(i) data.frame(
+    taxon_name = sprintf("Fish_%02d", i),
+    decimalLatitude = 34.1 + rnorm(30, 0, .05),
+    decimalLongitude = -119.1 + rnorm(30, 0, .05),
+    main_habitat = "Coastal", sampling_group = "fish", stringsAsFactors = FALSE)))
+  fish_rare <- do.call(rbind, lapply(1:4, function(i) data.frame(
+    taxon_name = sprintf("FishRare_%02d", i),
+    decimalLatitude = 34.1 + rnorm(1, 0, .05),
+    decimalLongitude = -119.1 + rnorm(1, 0, .05),
+    main_habitat = "Coastal", sampling_group = "fish", stringsAsFactors = FALSE)))
+  # "downwash" taxa: present in the occurrence pool, one record each, and
+  # effectively unsampleable by the assay the priors are for.
+  bird <- do.call(rbind, lapply(1:30, function(i) data.frame(
+    taxon_name = sprintf("Bird_%02d", i),
+    decimalLatitude = 34.1 + rnorm(1, 0, .05),
+    decimalLongitude = -119.1 + rnorm(1, 0, .05),
+    main_habitat = "Coastal", sampling_group = "bird", stringsAsFactors = FALSE)))
+  rbind(fish, fish_rare, bird)
+}
+
+test_that("sampling_group_col = NULL reproduces the ungrouped result exactly", {
+  occ <- .mixed_pool()
+  a <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+                                               lambda_km = 25, m = 1))
+  # one constant group must be identical to no grouping at all
+  occ$one <- "only"
+  b <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+                                               lambda_km = 25, m = 1,
+                                               sampling_group_col = "one"))
+  expect_equal(a$priors$theta_mean,
+               b$priors$theta_mean[match(a$priors$taxon_name, b$priors$taxon_name)])
+  expect_equal(a$n_eff, b$n_eff)
+  expect_equal(a$f1, b$f1); expect_equal(a$f2, b$f2)
+  expect_equal(a$theta_present, b$theta_present)
+  # the ungrouped schema must not gain a column
+  expect_false("sampling_group" %in% names(a$priors))
+  expect_true("sampling_group" %in% names(b$priors))
+})
+
+test_that("pooling groups with different detection processes deflates theta_present", {
+  # The mechanism: barely-sampled taxa contribute singletons that inflate f1 --
+  # and so Chao, quadratically -- while adding almost nothing to missing_mass.
+  occ <- .mixed_pool()
+  pooled  <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+                                                     lambda_km = 25, m = 1))
+  grouped <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+                                                     lambda_km = 25, m = 1,
+                                                     sampling_group_col = "sampling_group"))
+  tp_fish <- grouped$budget$theta_present[grouped$budget$sampling_group == "fish"]
+
+  # pooling drags the detectable group's price DOWN, substantially
+  expect_true(pooled$theta_present < tp_fish)
+  expect_gt(tp_fish / pooled$theta_present, 2)
+
+  # the pooled f1 is the sum of the groups' f1; the fish group's own is small
+  expect_equal(pooled$f1, sum(grouped$budget$f1))
+  expect_lt(grouped$budget$f1[grouped$budget$sampling_group == "fish"], pooled$f1)
+})
+
+test_that("grouped fits give each group its own simplex and its own budget", {
+  occ <- .mixed_pool()
+  g <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+                                               lambda_km = 25, m = 1,
+                                               sampling_group_col = "sampling_group"))
+  for (grp in c("fish", "bird")) {
+    s <- sum(g$priors$theta_mean[g$priors$sampling_group == grp])
+    expect_equal(s, 1, tolerance = 1e-6)
+  }
+  expect_equal(nrow(g$budget), 2L)
+  expect_setequal(g$budget$sampling_group, c("fish", "bird"))
+  expect_true(all(g$budget$n_eff > 0))
+})
+
+test_that("a multi-group fit reports NA pooled scalars rather than a wrong number", {
+  occ <- .mixed_pool()
+  g <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+                                               lambda_km = 25, m = 1,
+                                               sampling_group_col = "sampling_group"))
+  # There is no single budget across detection processes; a scalar would be
+  # silently wrong wherever it were used.
+  expect_true(is.na(g$theta_present))
+  expect_true(is.na(g$chao_missing))
+  expect_true(is.na(g$f1)); expect_true(is.na(g$f2))
+  expect_equal(g$params$n_sampling_groups, 2L)
+  # ...but the per-group table is complete
+  expect_false(any(is.na(g$budget$theta_present)))
+})
+
+test_that("curve pricing refuses a multi-group fit with an actionable message", {
+  occ <- .mixed_pool()
+  g <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+                                               lambda_km = 25, m = 1,
+                                               sampling_group_col = "sampling_group"))
+  ev <- data.frame(taxon_name = "Fish_01", w = 0.5, p_conc = 1,
+                   source = "test", stringsAsFactors = FALSE)
+  expect_error(
+    apply_undetected_evidence(taxaexpect_priors = g$priors, evidence = ev,
+                              model_obj = g, grid_id = "x", pricing = "curve"),
+    "no single theta_present|sampling_group_col")
+})
+
+test_that("sampling_group_col validates its input", {
+  occ <- .mixed_pool()
+  expect_error(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal", lambda_km = 25,
+                                      sampling_group_col = "nope"), "not found")
+  expect_error(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal", lambda_km = 25,
+                                      sampling_group_col = c("a", "b")), "single column")
+})

@@ -86,6 +86,24 @@
 #' @param taxon_col,lat_col,lon_col,habitat_col Column names in
 #'   `occurrence_data` (defaults `"taxon_name"`, `"decimalLatitude"`,
 #'   `"decimalLongitude"`, `"main_habitat"`).
+#' @param sampling_group_col Optional column naming a detection-process
+#'   grouping (e.g. `"sampling_group"`). Default `NULL`: all taxa share one
+#'   composition and one Good-Turing budget, the pre-2026-09-03 behaviour
+#'   exactly. When supplied, `theta` AND the budget (`f1`, `f2`,
+#'   `missing_mass`, `chao_missing`, `theta_present`) are computed WITHIN each
+#'   group, because both are shared-denominator quantities that assume a
+#'   common detection process. Pooling across processes dilutes a detectable
+#'   taxon's share with records the assay could never amplify, and lets
+#'   barely-sampled groups contribute singletons that inflate `f1` -- and so
+#'   `chao_missing`, quadratically -- while adding almost nothing to
+#'   `missing_mass`, deflating `theta_present`. Build the column with
+#'   [compute_adaptive_sampling_groups()], or supply your own if you know the
+#'   split. Note this is a no-op for a taxonomically homogeneous pool (a fish
+#'   assay whose occurrence pool is all fish), which is why it changes nothing
+#'   at sites like GreatLakes; it matters for broad markers (18S) spanning
+#'   groups with very different detection probabilities. With more than one
+#'   group the pooled scalars are `NA` by design and `$budget` is
+#'   authoritative -- a single number would be silently wrong.
 #' @param support_weight Numeric in (0, 1]. A record counts toward the
 #'   discrete neighborhood-support statistics (singleton detection, record
 #'   counts) when its total kernel weight is at least
@@ -138,6 +156,7 @@ estimate_kernel_priors <- function(occurrence_data,
                                    lat_col = "decimalLatitude",
                                    lon_col = "decimalLongitude",
                                    habitat_col = "main_habitat",
+                                   sampling_group_col = NULL,
                                    support_weight = exp(-3)) {
   # ---- validation -----------------------------------------------------------
   if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L)
@@ -173,6 +192,13 @@ estimate_kernel_priors <- function(occurrence_data,
   if (!is.numeric(support_weight) || length(support_weight) != 1L ||
       is.na(support_weight) || support_weight <= 0 || support_weight > 1)
     stop("support_weight must be a single numeric in (0, 1].")
+  if (!is.null(sampling_group_col)) {
+    if (!is.character(sampling_group_col) || length(sampling_group_col) != 1L)
+      stop("sampling_group_col must be a single column name, or NULL.")
+    if (!sampling_group_col %in% names(occurrence_data))
+      stop(sprintf("sampling_group_col '%s' not found in occurrence_data.",
+                   sampling_group_col))
+  }
   if (is.null(site_id))
     site_id <- sprintf("Site_%.4f_%.4f", site_lat, site_lon)
 
@@ -216,60 +242,139 @@ estimate_kernel_priors <- function(occurrence_data,
       "estimate_kernel_priors: the record pool reaches only ~%.0f km from the site but lambda_km = %g (6 lambda = %.0f km). The kernel is truncated by the fetch boundary; widen the occurrence search or treat these priors as radius-limited.",
       .reach, lambda_km, 6 * lambda_km), call. = FALSE)
   }
-  W <- sum(w)
-  if (W <= 0) stop("All kernel weights are zero -- check coordinates and lambda_km.")
-  n_eff <- W^2 / sum(w^2)
-  s <- n_eff / W  # effective-scale factor
+  # ---- sampling-group strata ------------------------------------------------
+  # Composition AND the Good-Turing budget are both shared-denominator
+  # quantities: theta is a share of n_eff, and f1/f2/missing_mass describe the
+  # unseen part of one sampling process. Pooling taxa that are detected by
+  # DIFFERENT processes therefore breaks both -- a fish's share is diluted by
+  # bird records that the assay could never have amplified, and singletons
+  # contributed by barely-sampled groups inflate f1 (hence Chao, quadratically)
+  # while adding almost nothing to missing_mass, deflating theta_present. This
+  # is the same principle already adopted for the GLMM path's effort
+  # denominator (prepare_model_dataframe(sampling_group_col=), Session 149);
+  # the kernel rewrite dropped it, and this restores it. Build the column with
+  # compute_adaptive_sampling_groups() or supply your own.
+  # NULL (default) = one group over the whole stratum = the pre-2026-09-03
+  # behaviour, exactly (regression-tested).
+  grp_all <- if (is.null(sampling_group_col)) rep("__all__", nrow(rec))
+             else as.character(rec[[sampling_group_col]])
+  grp_all[is.na(grp_all)] <- "__ungrouped__"
+  grp_levels <- sort(unique(grp_all))
 
-  # ---- compositions ---------------------------------------------------------
-  c_raw <- tapply(w, taxa, sum)                       # kernel-weighted counts
-  p_reg <- table(taxa); p_reg <- p_reg / sum(p_reg)   # regional back-off target
-  sp <- sort(unique(taxa))
-  c_eff <- as.numeric(c_raw[sp]) * s                  # effective-record counts
-  p_i <- as.numeric(p_reg[sp])
-  alpha <- c_eff + m * p_i
-  beta <- (n_eff + m) - alpha
-  theta <- alpha / (n_eff + m)
-  theta_sd <- sqrt(alpha * beta / ((alpha + beta)^2 * (alpha + beta + 1)))
+  .kernel_block <- function(idx) {
+    w_g    <- w[idx]
+    taxa_g <- taxa[idx]
+    W_g <- sum(w_g)
+    if (W_g <= 0)
+      stop("All kernel weights are zero -- check coordinates and lambda_km.")
+    n_eff_g <- W_g^2 / sum(w_g^2)
+    s_g <- n_eff_g / W_g  # effective-scale factor
 
-  # ---- neighborhood support + singletons ------------------------------------
-  supported <- w >= support_weight
-  n_support <- tapply(supported, taxa, sum)[sp]
-  n_support[is.na(n_support)] <- 0L
-  is_singleton <- n_support == 1L
-  singles <- character(0)
-  if (any(is_singleton)) singles <- sp[is_singleton]
-  singletons <- do.call(rbind, lapply(singles, function(s_nm) {
-    idx <- which(taxa == s_nm & supported)
-    data.frame(taxon_name = s_nm,
-               lat = rec[[lat_col]][idx[1L]],
-               lon = rec[[lon_col]][idx[1L]],
-               weight = w[idx[1L]],
-               effective_records = as.numeric(c_raw[s_nm]) * s,
+    # ---- compositions -------------------------------------------------------
+    c_raw <- tapply(w_g, taxa_g, sum)                     # kernel-weighted counts
+    p_reg <- table(taxa_g); p_reg <- p_reg / sum(p_reg)   # regional back-off target
+    sp <- sort(unique(taxa_g))
+    c_eff <- as.numeric(c_raw[sp]) * s_g                  # effective-record counts
+    p_i <- as.numeric(p_reg[sp])
+    alpha <- c_eff + m * p_i
+    beta <- (n_eff_g + m) - alpha
+    theta <- alpha / (n_eff_g + m)
+    theta_sd <- sqrt(alpha * beta / ((alpha + beta)^2 * (alpha + beta + 1)))
+
+    # ---- neighborhood support + singletons ----------------------------------
+    supported <- w_g >= support_weight
+    n_support <- tapply(supported, taxa_g, sum)[sp]
+    n_support[is.na(n_support)] <- 0L
+    is_singleton <- n_support == 1L
+    singles <- character(0)
+    if (any(is_singleton)) singles <- sp[is_singleton]
+    rec_g <- rec[idx, , drop = FALSE]
+    singletons <- do.call(rbind, lapply(singles, function(s_nm) {
+      j <- which(taxa_g == s_nm & supported)
+      data.frame(taxon_name = s_nm,
+                 lat = rec_g[[lat_col]][j[1L]],
+                 lon = rec_g[[lon_col]][j[1L]],
+                 weight = w_g[j[1L]],
+                 effective_records = as.numeric(c_raw[s_nm]) * s_g,
+                 stringsAsFactors = FALSE)
+    }))
+    if (is.null(singletons))
+      singletons <- data.frame(taxon_name = character(0), lat = numeric(0),
+                               lon = numeric(0), weight = numeric(0),
+                               effective_records = numeric(0),
+                               stringsAsFactors = FALSE)
+    # Weighted Good-Turing missing mass: summed effective share of singleton
+    # species (reduces to f1/n under a top-hat kernel). The resident-undetected
+    # branch's budget -- emitted for downstream machinery, not consumed here.
+    missing_mass <- if (nrow(singletons) > 0L)
+      sum(as.numeric(c_raw[singletons$taxon_name])) / W_g else 0
+    # Chao (1984) missing-species count from the neighborhood-support counts:
+    # f1^2/(2 f2), with the standard f1(f1-1)/2 fallback when f2 = 0. Together
+    # with missing_mass this prices the typical unseen resident:
+    # theta_present = missing_mass / chao_missing ("share if present", the
+    # per-spot value of the Good-Turing budget). NA when f1 = 0 (no unseen-mass
+    # anchor at all -- callers fall back to their own ladder).
+    f1 <- sum(is_singleton)
+    f2 <- sum(n_support == 2L)
+    chao_missing <- if (f1 == 0L) 0
+      else if (f2 > 0L) f1^2 / (2 * f2) else f1 * (f1 - 1) / 2
+    theta_present <- if (f1 > 0L && chao_missing > 0) missing_mass / chao_missing
+      else NA_real_
+
+    list(sp = sp, alpha = alpha, beta = beta, theta = theta,
+         theta_sd = theta_sd, c_eff = c_eff, p_i = p_i,
+         n_eff = n_eff_g, W = W_g, singletons = singletons,
+         missing_mass = missing_mass, f1 = f1, f2 = f2,
+         chao_missing = chao_missing, theta_present = theta_present)
+  }
+
+  blocks <- lapply(grp_levels, function(g) .kernel_block(which(grp_all == g)))
+  names(blocks) <- grp_levels
+  grouped <- !is.null(sampling_group_col)
+
+  budget <- do.call(rbind, lapply(grp_levels, function(g) {
+    b <- blocks[[g]]
+    data.frame(sampling_group = g, n_taxa = length(b$sp), n_eff = b$n_eff,
+               f1 = b$f1, f2 = b$f2, missing_mass = b$missing_mass,
+               chao_missing = b$chao_missing, theta_present = b$theta_present,
                stringsAsFactors = FALSE)
+  }))
+  if (!grouped) budget$sampling_group <- NA_character_
+  rownames(budget) <- NULL
+
+  # Scalars keep their meaning for the single-group case (every existing
+  # caller). With real strata there is no single budget -- a scalar would be
+  # silently wrong wherever it were used -- so they become NA and the per-group
+  # table is authoritative. Consumers that need a scalar must fail loudly.
+  one <- length(grp_levels) == 1L
+  n_eff         <- if (one) blocks[[1L]]$n_eff        else sum(budget$n_eff)
+  W             <- if (one) blocks[[1L]]$W            else sum(vapply(blocks, `[[`, numeric(1), "W"))
+  missing_mass  <- if (one) blocks[[1L]]$missing_mass  else NA_real_
+  f1            <- if (one) blocks[[1L]]$f1            else NA_integer_
+  f2            <- if (one) blocks[[1L]]$f2            else NA_integer_
+  chao_missing  <- if (one) blocks[[1L]]$chao_missing  else NA_real_
+  theta_present <- if (one) blocks[[1L]]$theta_present else NA_real_
+
+  singletons <- do.call(rbind, lapply(grp_levels, function(g) {
+    s <- blocks[[g]]$singletons
+    if (grouped && nrow(s) > 0L) s$sampling_group <- g
+    s
   }))
   if (is.null(singletons))
     singletons <- data.frame(taxon_name = character(0), lat = numeric(0),
                              lon = numeric(0), weight = numeric(0),
                              effective_records = numeric(0),
                              stringsAsFactors = FALSE)
-  # Weighted Good-Turing missing mass: summed effective share of singleton
-  # species (reduces to f1/n under a top-hat kernel). The resident-undetected
-  # branch's budget -- emitted for downstream machinery, not consumed here.
-  missing_mass <- if (nrow(singletons) > 0L)
-    sum(as.numeric(c_raw[singletons$taxon_name])) / W else 0
-  # Chao (1984) missing-species count from the neighborhood-support counts:
-  # f1^2/(2 f2), with the standard f1(f1-1)/2 fallback when f2 = 0. Together
-  # with missing_mass this prices the typical unseen resident:
-  # theta_present = missing_mass / chao_missing ("share if present", the
-  # per-spot value of the Good-Turing budget). NA when f1 = 0 (no unseen-mass
-  # anchor at all -- callers fall back to their own ladder).
-  f1 <- sum(is_singleton)
-  f2 <- sum(n_support == 2L)
-  chao_missing <- if (f1 == 0L) 0
-    else if (f2 > 0L) f1^2 / (2 * f2) else f1 * (f1 - 1) / 2
-  theta_present <- if (f1 > 0L && chao_missing > 0) missing_mass / chao_missing
-    else NA_real_
+
+  sp    <- unlist(lapply(blocks, `[[`, "sp"), use.names = FALSE)
+  alpha <- unlist(lapply(blocks, `[[`, "alpha"), use.names = FALSE)
+  beta  <- unlist(lapply(blocks, `[[`, "beta"), use.names = FALSE)
+  theta <- unlist(lapply(blocks, `[[`, "theta"), use.names = FALSE)
+  theta_sd <- unlist(lapply(blocks, `[[`, "theta_sd"), use.names = FALSE)
+  c_eff <- unlist(lapply(blocks, `[[`, "c_eff"), use.names = FALSE)
+  p_i   <- unlist(lapply(blocks, `[[`, "p_i"), use.names = FALSE)
+  grp_of_taxon <- unlist(lapply(grp_levels, function(g)
+    rep(g, length(blocks[[g]]$sp))), use.names = FALSE)
 
   priors <- data.frame(
     taxon_name = sp,
@@ -288,6 +393,8 @@ estimate_kernel_priors <- function(occurrence_data,
     observed_in_habitat = TRUE,
     stringsAsFactors = FALSE
   )
+  # Added only when grouping is in use, so the ungrouped schema is untouched.
+  if (grouped) priors$sampling_group <- grp_of_taxon
   priors <- priors[order(-priors$theta_mean), , drop = FALSE]
   rownames(priors) <- NULL
   # Return a TIBBLE, matching generate_full_priors()'s own return class: this
@@ -312,8 +419,11 @@ estimate_kernel_priors <- function(occurrence_data,
     f2 = f2,
     chao_missing = chao_missing,
     theta_present = theta_present,
+    budget = budget,
     regional_composition = stats::setNames(p_i, sp),
     params = list(site_lat = site_lat, site_lon = site_lon,
+                  sampling_group_col = sampling_group_col,
+                  n_sampling_groups = length(grp_levels),
                   site_habitat = site_habitat, site_id = site_id,
                   lambda_km = lambda_km, m = m,
                   covariate_col = covariate_col,
@@ -339,5 +449,16 @@ print.taxaexpect_kernel_priors <- function(x, ...) {
         sprintf(", |lat| kernel lambda = %g km", x$params$lambda_latitude)
       else ""),
     x$params$m, nrow(x$singletons), x$missing_mass))
+  ng <- x$params$n_sampling_groups %||% 1L
+  if (!is.null(x$params$sampling_group_col) && ng > 1L) {
+    cat(sprintf("  %d sampling groups ('%s') -- theta and the Good-Turing budget are WITHIN group;\n  the pooled f1/f2/Chao/theta_present scalars are NA by design, see $budget:\n",
+                ng, x$params$sampling_group_col))
+    b <- x$budget
+    b$n_eff <- round(b$n_eff, 1)
+    b$missing_mass <- signif(b$missing_mass, 3)
+    b$chao_missing <- round(b$chao_missing, 1)
+    b$theta_present <- signif(b$theta_present, 3)
+    print(b, row.names = FALSE)
+  }
   invisible(x)
 }
