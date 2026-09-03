@@ -2,7 +2,8 @@
 # R CMD CHECK "no visible binding" note.
 utils::globalVariables(c(
   "id_x", "id_y", "p_match", "w_y", "below_min_congruent",
-  "pair_finest_common_rank", "label_confidence", "reference_action"
+  "pair_finest_common_rank", "label_confidence", "reference_action",
+  "local_tier"
 ))
 
 # ==============================================================================
@@ -177,12 +178,40 @@ utils::globalVariables(c(
 #' `"remove"` is furthermore unreachable for any flag other than
 #' `"incongruent"`. `"insufficient_independent_evidence"` is retryable, not
 #' removable (it may simply mean a sparsely-referenced region of the
-#' database), and `"not_evaluated_oversized"` was never submitted to BLAST at
-#' all.
+#' database), `"not_evaluated_oversized"` was never submitted to BLAST at
+#' all, and `"locally_corroborated"` (2026-09-03) was deliberately not
+#' submitted because the caller's own reference set already corroborates it
+#' -- it reads `"keep"` with `label_confidence = NA` (there is no BLAST
+#' evidence to grade).
+#'
+#' @section Local corroboration: provenance and the veto (2026-09-03):
+#' When `local_corroboration` ([corroborate_references_locally()] output) is
+#' supplied, three things happen, and one deliberately does not.
+#' `corroboration_source` records where the corroboration for each label
+#' came from: `"blast"` (`congruent_evidence_exists_anywhere`), `"local"`
+#' (`local_tier == "corroborated"`, or the row was skipped as
+#' `"locally_corroborated"`), `"both"`, or `"none"`.
+#' `local_best_independent_pident` and `local_n_independent_conspecific`
+#' carry the local numbers beside the BLAST ones. And a row that resolves to
+#' `"remove"` while the local set corroborates it is VETOED to `"inspect"`,
+#' with `action_reason = "vetoed_by_local_corroboration"`.
+#'
+#' What does not happen: `label_confidence` stays the BLAST-only probability.
+#' Local evidence is not folded into it, on purpose, so a reviewer can see
+#' the two disagree -- that disagreement is exactly what found the
+#' primer-inclusive-query blind spot (`KM057996`, *Zaniolepis frenata*,
+#' actioned `"remove"` by BLAST while `OQ846041` in the local set matched it
+#' at 100% over 97% of the amplicon; see [evaluate_reference_accessions()]'s
+#' `@section Why the query is the primer-stripped amplicon`). All four
+#' columns are present (`NA`/`"none"`-filled) even when no table is
+#' supplied, so downstream code can rely on them.
 #'
 #' @param evaluation Data frame. Output of [evaluate_reference_accessions()]
 #'   (or any data frame carrying its diagnostic columns -- a cache file read
 #'   straight off disk works).
+#' @param local_corroboration Data frame or `NULL` (default). Output of
+#'   [corroborate_references_locally()]. Joined by version-stripped
+#'   accession. See `@section Local corroboration`.
 #' @param margin_scale Numeric (default `1`). Percent-identity points per unit
 #'   of log-odds. Larger = the identity margin matters less relative to the
 #'   vote. See `@section Where the numbers come from`.
@@ -193,11 +222,12 @@ utils::globalVariables(c(
 #'   thresholds on `label_confidence` (defaults `0.05`, `0.25`, `0.75`)
 #'   separating `"remove"`/`"inspect"`/`"caution"`/`"keep"`.
 #' @param overwrite Logical (default `FALSE`). `TRUE` recomputes and replaces
-#'   `label_confidence`/`label_identity_margin`/`reference_action` if they are
-#'   already present; `FALSE` errors instead, so a second call with different
-#'   parameters can't silently produce a mixed-provenance table.
+#'   `label_confidence`/`label_identity_margin`/`reference_action` (and the
+#'   local-corroboration columns) if they are already present; `FALSE` errors
+#'   instead, so a second call with different parameters can't silently
+#'   produce a mixed-provenance table.
 #'
-#' @return `evaluation` with three columns added:
+#' @return `evaluation` with seven columns added:
 #'   \describe{
 #'     \item{`label_confidence`}{Numeric in (0, 1). `NA` for a row with no
 #'       computed congruence at all (`"not_evaluated_oversized"`, or a fetch
@@ -207,6 +237,16 @@ utils::globalVariables(c(
 #'       information of any kind.}
 #'     \item{`reference_action`}{`"keep"`, `"caution"`, `"inspect"`,
 #'       `"remove"`, or `"untested"`.}
+#'     \item{`action_reason`}{`"vetoed_by_local_corroboration"` where a
+#'       `"remove"` was downgraded to `"inspect"` by the local set,
+#'       `"locally_corroborated_not_blasted"` for a skipped row, `NA`
+#'       otherwise.}
+#'     \item{`corroboration_source`}{`"blast"`, `"local"`, `"both"`, or
+#'       `"none"`. `NA` for a row with no verdict at all.}
+#'     \item{`local_best_independent_pident`}{Percent identity (0-100) of
+#'       the best independent local conspecific; `NA` without a table.}
+#'     \item{`local_n_independent_conspecific`}{Its count; `NA` without a
+#'       table.}
 #'   }
 #'   Row count and order are unchanged.
 #'
@@ -232,10 +272,17 @@ score_reference_labels <- function(evaluation,
                                    action_remove_below  = 0.05,
                                    action_inspect_below = 0.25,
                                    action_caution_below = 0.75,
-                                   overwrite            = FALSE) {
+                                   overwrite            = FALSE,
+                                   local_corroboration  = NULL) {
 
   if (!is.data.frame(evaluation))
     stop("evaluation must be a data frame.", call. = FALSE)
+  if (!is.null(local_corroboration)) {
+    if (!is.data.frame(local_corroboration) ||
+        !all(c("accession", "local_tier") %in% names(local_corroboration)))
+      stop("local_corroboration must be NULL or corroborate_references_locally() output (accession, local_tier).",
+           call. = FALSE)
+  }
   .pos_num <- function(x, nm) {
     if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0)
       stop(sprintf("%s must be a single positive number.", nm), call. = FALSE)
@@ -252,7 +299,9 @@ score_reference_labels <- function(evaluation,
     stop("Thresholds must be ordered: action_remove_below <= action_inspect_below <= action_caution_below.",
          call. = FALSE)
 
-  new_cols <- c("label_confidence", "label_identity_margin", "reference_action")
+  new_cols <- c("label_confidence", "label_identity_margin", "reference_action",
+                "action_reason", "corroboration_source",
+                "local_best_independent_pident", "local_n_independent_conspecific")
   present  <- intersect(new_cols, names(evaluation))
   if (length(present) > 0L && !isTRUE(overwrite))
     stop(sprintf(
@@ -274,6 +323,10 @@ score_reference_labels <- function(evaluation,
     evaluation$label_confidence      <- numeric(0L)
     evaluation$label_identity_margin <- numeric(0L)
     evaluation$reference_action      <- character(0L)
+    evaluation$action_reason         <- character(0L)
+    evaluation$corroboration_source  <- character(0L)
+    evaluation$local_best_independent_pident   <- numeric(0L)
+    evaluation$local_n_independent_conspecific <- integer(0L)
     return(evaluation)
   }
 
@@ -290,7 +343,7 @@ score_reference_labels <- function(evaluation,
   evaluation$label_confidence      <- lc$confidence
   evaluation$label_identity_margin <- lc$margin
 
-  evaluation$reference_action      <- .reference_action_from_confidence(
+  action <- .reference_action_from_confidence(
     label_confidence = lc$confidence,
     hierarchy_flag   = evaluation$hierarchy_flag,
     anywhere         = evaluation$congruent_evidence_exists_anywhere,
@@ -298,7 +351,84 @@ score_reference_labels <- function(evaluation,
     action_inspect_below = action_inspect_below,
     action_caution_below = action_caution_below
   )
+
+  # ---- Local corroboration: provenance + veto (2026-09-03) -----------------
+  local <- .local_corroboration_columns(evaluation, local_corroboration)
+  is_skipped <- evaluation$hierarchy_flag %in% "locally_corroborated"
+  local_ok   <- local$corroborated | is_skipped
+  blast_ok   <- evaluation$congruent_evidence_exists_anywhere %in% TRUE & !is_skipped
+  no_verdict <- is.na(evaluation$hierarchy_flag)
+
+  source <- ifelse(blast_ok & local_ok, "both",
+                   ifelse(blast_ok, "blast", ifelse(local_ok, "local", "none")))
+  source[no_verdict] <- NA_character_
+
+  veto   <- .apply_local_veto(action, local_ok)
+  reason <- rep(NA_character_, nrow(evaluation))
+  reason[veto$vetoed] <- "vetoed_by_local_corroboration"
+  reason[is_skipped]  <- "locally_corroborated_not_blasted"
+
+  # A skipped row has no BLAST evidence to grade, so its confidence is NA and
+  # its local numbers come from the row itself (the skip wrote them into
+  # best_agreeing_pident / n_independent_top_matches) when no table is here
+  # to supply them.
+  local_pident <- local$best_pident
+  local_n      <- local$n_independent
+  fill <- is_skipped & is.na(local_pident)
+  local_pident[fill] <- evaluation$best_agreeing_pident[fill]
+  fill_n <- is_skipped & is.na(local_n)
+  local_n[fill_n] <- as.integer(evaluation$n_independent_top_matches[fill_n])
+
+  evaluation$reference_action                <- veto$action
+  evaluation$action_reason                   <- reason
+  evaluation$corroboration_source            <- source
+  evaluation$local_best_independent_pident   <- local_pident
+  evaluation$local_n_independent_conspecific <- local_n
+  # Best-effort provenance for review_flagged_accessions()'s prompt line
+  # (attributes do not survive subsetting; the column values above do).
+  if (!is.null(local_corroboration) &&
+      !is.null(attr(local_corroboration, "local_corroboration_params")))
+    attr(evaluation, "local_corroboration_params") <-
+      attr(local_corroboration, "local_corroboration_params")
   evaluation
+}
+
+#' Join a corroborate_references_locally() table onto an evaluation
+#'
+#' @return List of parallel vectors (one per `evaluation` row):
+#'   `corroborated` (logical, `FALSE` where no table or no row),
+#'   `best_pident` (percent, 0-100, `NA` where unknown), `n_independent`
+#'   (integer, `NA` where unknown).
+#' @noRd
+.local_corroboration_columns <- function(evaluation, local_corroboration) {
+  n <- nrow(evaluation)
+  out <- list(corroborated = rep(FALSE, n), best_pident = rep(NA_real_, n),
+              n_independent = rep(NA_integer_, n))
+  if (is.null(local_corroboration) || nrow(local_corroboration) == 0L) return(out)
+  lc  <- local_corroboration[!duplicated(.strip_acc_version(local_corroboration$accession)), ,
+                             drop = FALSE]
+  idx <- match(.strip_acc_version(evaluation$accession), .strip_acc_version(lc$accession))
+  hit <- !is.na(idx)
+  out$corroborated[hit] <- lc$local_tier[idx[hit]] %in% "corroborated"
+  if ("best_independent_pident" %in% names(lc))
+    out$best_pident[hit] <- 100 * as.numeric(lc$best_independent_pident[idx[hit]])
+  if ("n_independent_conspecific" %in% names(lc))
+    out$n_independent[hit] <- as.integer(lc$n_independent_conspecific[idx[hit]])
+  out
+}
+
+#' The local-corroboration veto, in one place
+#'
+#' A `"remove"` that the local reference set corroborates becomes
+#' `"inspect"`. Used by both [score_reference_labels()] and the trust-
+#' weighted re-vote in [refine_reference_verdicts()], so the two cannot
+#' drift.
+#' @return List: `action` (character, vetoed), `vetoed` (logical).
+#' @noRd
+.apply_local_veto <- function(action, local_ok) {
+  vetoed <- action %in% "remove" & local_ok %in% TRUE
+  action[vetoed] <- "inspect"
+  list(action = action, vetoed = vetoed)
 }
 
 #' Defaults for the label-confidence / action parameters, in one place
@@ -357,6 +487,10 @@ score_reference_labels <- function(evaluation,
   action[is.na(label_confidence) |
            is.na(hierarchy_flag) |
            hierarchy_flag %in% "not_evaluated_oversized"] <- "untested"
+  # "locally_corroborated" (2026-09-03): never BLASTed, so label_confidence
+  # is NA -- but it is a positive verdict (an independent conspecific in the
+  # caller's own reference set), not an untested one. Keep.
+  action[hierarchy_flag %in% "locally_corroborated"] <- "keep"
   action
 }
 
@@ -464,6 +598,9 @@ score_reference_labels <- function(evaluation,
 #' @param tol Numeric (default `1e-4`). Converged when no accession's
 #'   `label_confidence` moves by more than this.
 #' @param verbose Logical (default `TRUE`).
+#' @param local_corroboration Data frame or `NULL` (default). Forwarded to
+#'   [score_reference_labels()]; the same veto (a locally-corroborated
+#'   `"remove"` becomes `"inspect"`) is applied to `reference_action_trust`.
 #' @param ... Passed to [score_reference_labels()] (`margin_scale`,
 #'   `margin_cap`, the three action thresholds) -- use the SAME values here
 #'   as anywhere else in a pipeline, or the refined and unrefined columns are
@@ -501,6 +638,7 @@ refine_reference_verdicts <- function(evaluation,
                                       max_iter = 10L,
                                       tol = 1e-4,
                                       verbose = TRUE,
+                                      local_corroboration = NULL,
                                       ...) {
 
   if (!is.data.frame(evaluation))
@@ -523,7 +661,10 @@ refine_reference_verdicts <- function(evaluation,
 
   lp <- .resolve_label_params(...)
   if (!all(c("label_confidence", "reference_action") %in% names(evaluation)))
-    evaluation <- do.call(score_reference_labels, c(list(evaluation), lp))
+    evaluation <- do.call(score_reference_labels,
+                          c(list(evaluation, local_corroboration = local_corroboration), lp))
+  local_ok <- .local_corroboration_columns(evaluation, local_corroboration)$corroborated |
+    evaluation$hierarchy_flag %in% "locally_corroborated"
 
   if (is.null(pair_table)) pair_table <- .load_reference_pair_cache(cache_dir)
   needed <- c("id_x", "id_y", "p_match", "pair_finest_common_rank")
@@ -640,6 +781,7 @@ refine_reference_verdicts <- function(evaluation,
     )
 
     at <- match(refined_ids, acc)
+    action_new <- .apply_local_veto(action_new, local_ok[at])$action
     evaluation$hierarchy_flag_trust[at]   <- flag_new
     evaluation$label_confidence_trust[at] <- lc_new$confidence
     evaluation$reference_action_trust[at] <- action_new

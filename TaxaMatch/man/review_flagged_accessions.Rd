@@ -14,7 +14,8 @@ review_flagged_accessions(
   max_tokens = NULL,
   max_retries = 2L,
   pause_seconds = 1,
-  verbose = TRUE
+  verbose = TRUE,
+  local_min_overlap = NULL
 )
 }
 \arguments{
@@ -78,6 +79,15 @@ many times, matching \code{review_assignments()}'s own retry mechanism.}
 calls.}
 
 \item{verbose}{Logical (default \code{TRUE}). Print progress messages.}
+
+\item{local_min_overlap}{Numeric in (0, 1] or \code{NULL} (default). The
+\code{min_overlap} \code{\link[=corroborate_references_locally]{corroborate_references_locally()}} was run with, quoted in
+the prompt's local-corroboration line ("best identity X\% over >= 80\% of
+the amplicon"). \code{NULL} reads it from
+\code{attr(evaluated_df, "local_corroboration_params")} when
+\code{\link[=score_reference_labels]{score_reference_labels()}} left one there, and otherwise words the line
+without a number. Only matters when \code{evaluated_df} carries
+\code{local_n_independent_conspecific}/\code{local_best_independent_pident}.}
 }
 \value{
 \code{evaluated_df} with 4 columns appended (\code{NA} for out-of-scope

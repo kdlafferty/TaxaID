@@ -67,10 +67,19 @@ test_that(".trim_queries_to_amplicon() trims only over-length sequences, leaves 
   short_seq <- g$amplicon  # already barcode-length, should NOT be touched
   sequences <- c(g$genome, short_seq)
 
-  out <- .trim_queries_to_amplicon(sequences, barcode_term = "MiFishU", verbose = FALSE)
-
+  # Primer-INCLUSIVE span (the only behaviour before 2026-09-03).
+  out <- .trim_queries_to_amplicon(sequences, barcode_term = "MiFishU",
+                                   strip_primers = FALSE, verbose = FALSE)
   expect_equal(out[1], g$amplicon)   # over-length -> trimmed
   expect_equal(out[2], short_seq)    # already short -> untouched
+
+  # Default (2026-09-03): primer-STRIPPED. The genome trims to the interior,
+  # and a primer-inclusive input (221 bp > max_bp) is stripped to the same
+  # interior; a primer-free interior passes through unchanged.
+  interior <- substr(g$amplicon, nchar(.mf_fwd) + 1L, nchar(g$amplicon) - nchar(.mf_rev))
+  out_default <- .trim_queries_to_amplicon(c(g$genome, short_seq, interior),
+                                           barcode_term = "MiFishU", verbose = FALSE)
+  expect_equal(out_default, c(interior, interior, interior))
 })
 
 test_that(".trim_queries_to_amplicon() leaves an over-length sequence unchanged when primers can't be found", {
@@ -111,11 +120,18 @@ test_that("evaluate_reference_accessions(barcode_term =) trims an over-length qu
   local_mocked_bindings(.resolve_taxonomy_by_acc = mock_tax, .package = "TaxaMatch")
 
   suppressWarnings(evaluate_reference_accessions(
-    "ACC001", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
+    "ACC001", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE,
+    query_span = "primer_inclusive"
   ))
-
   expect_equal(seen_sequence, g$amplicon)
   expect_lt(nchar(seen_sequence), nchar(g$genome))
+
+  # Default query_span = "amplicon" (2026-09-03): the primers are stripped.
+  suppressWarnings(evaluate_reference_accessions(
+    "ACC001", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
+  ))
+  expect_equal(seen_sequence,
+               substr(g$amplicon, nchar(.mf_fwd) + 1L, nchar(g$amplicon) - nchar(.mf_rev)))
 })
 
 test_that(".trim_queries_to_amplicon() isolates a per-accession extraction error instead of crashing the whole batch", {
@@ -361,7 +377,8 @@ test_that("a correctly primer-trimmed MiFish-U query is NOT classified still-ove
   flank    <- paste(sample(c("A", "C", "G", "T"), 2000L, replace = TRUE), collapse = "")
   full_seq <- paste0(flank, pi$fwd, variable, rev_rc, flank)
 
-  trimmed <- .trim_queries_to_amplicon(full_seq, barcode_term = "MiFishU", verbose = FALSE)
+  trimmed <- .trim_queries_to_amplicon(full_seq, barcode_term = "MiFishU",
+                                       strip_primers = FALSE, verbose = FALSE)
   # Really trimmed, and to the primer-inclusive span.
   expect_lt(nchar(trimmed), nchar(full_seq))
   expect_equal(nchar(trimmed), nchar(pi$fwd) + 170L + nchar(pi$rev))
@@ -370,6 +387,12 @@ test_that("a correctly primer-trimmed MiFish-U query is NOT classified still-ove
   # max_bp bound this was TRUE for every successfully trimmed query.
   expect_false(nchar(trimmed) > .resolve_trimmed_span_max("MiFishU"))
   expect_true(nchar(trimmed) > TaxaTools::resolve_barcode_lengths("MiFishU")[["max_bp"]])
+
+  # And the stripped counterpart (2026-09-03): the same query under the
+  # default query_span is not still-over-length under the STRIPPED bound.
+  stripped <- .trim_queries_to_amplicon(full_seq, barcode_term = "MiFishU", verbose = FALSE)
+  expect_equal(nchar(stripped), 170L)
+  expect_false(nchar(stripped) > .resolve_trimmed_span_max("MiFishU", strip_primers = TRUE))
 })
 
 test_that(".extract_feature_table_fallback() refuses a span that does not fit the sequence in hand", {

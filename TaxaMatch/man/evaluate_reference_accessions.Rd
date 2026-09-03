@@ -22,12 +22,15 @@ evaluate_reference_accessions(
   ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
   poll_max_wait = 1800,
   barcode_term = NULL,
+  query_span = c("amplicon", "primer_inclusive"),
   chunk_size = 200L,
   max_consecutive_batch_failures = 3L,
   max_query_len = NULL,
   max_batch_bp = 100000L,
   prioritize_uncached = TRUE,
   retry_insufficient = TRUE,
+  local_corroboration = NULL,
+  skip_locally_corroborated = TRUE,
   verbose = TRUE
 )
 }
@@ -122,6 +125,14 @@ TTL-retryable non-result. \code{NULL} (default) submits every sequence at
 full length, unchanged from prior behavior.
 }}
 
+\item{query_span}{Character, \code{"amplicon"} (default) or
+\code{"primer_inclusive"}. Which span of a \code{barcode_term}-trimmed query is
+submitted to BLAST: the primer-STRIPPED amplicon (the region between the
+two primer sites, ~169 bp for MiFish-U) or the primer-INCLUSIVE span
+(~217 bp), the only behaviour before 2026-09-03. See \verb{@section Why the query is the primer-stripped amplicon}. Verdict-affecting, so it is part
+of \code{params_key}. Ignored when \code{barcode_term} is \code{NULL} (nothing is
+trimmed).}
+
 \item{chunk_size}{Integer (default \code{200L}). Accessions needing real
 evaluation are processed this many at a time, with the persistent
 cache written after EACH chunk -- see \verb{@section Chunked evaluation and NCBI rate-limiting resilience} below. \code{Inf} restores the pre-2026-08-14
@@ -177,6 +188,24 @@ budget re-checking every TTL-expired row, grinding against the same
 CPU-budget throttle this whole feature exists to survive. Set \code{FALSE}
 on a call where zero new NCBI cost is required this time.}
 
+\item{local_corroboration}{Data frame or \code{NULL} (default). Output of
+\code{\link[=corroborate_references_locally]{corroborate_references_locally()}} for the caller's own reference set.
+When supplied (and \code{skip_locally_corroborated = TRUE}), any accession
+whose \code{local_tier} is \code{"corroborated"} and that has no fresh cached
+verdict is NOT BLASTed: it is written to the cache as
+\code{hierarchy_flag = "locally_corroborated"} with
+\code{n_independent_top_matches = n_independent_conspecific},
+\code{best_agreeing_pident = 100 * best_independent_pident},
+\code{congruent_evidence_exists_anywhere = TRUE},
+\code{finest_common_rank = "species"}, and every other diagnostic \code{NA}. See
+\verb{@section Local corroboration}.}
+
+\item{skip_locally_corroborated}{Logical (default \code{TRUE}). \code{FALSE} sends
+locally-corroborated accessions to BLAST like any other, and also
+re-evaluates any row previously cached as \code{"locally_corroborated"}
+(that flag records a decision not to evaluate, not an evaluation).
+Not part of \code{params_key}.}
+
 \item{verbose}{Logical (default \code{TRUE}). Print progress messages.}
 }
 \value{
@@ -226,11 +255,16 @@ matches, not just none close enough to make the \code{top_n} cut.}
 such anywhere-agreeing hit. \code{NA} when
 \code{congruent_evidence_exists_anywhere} is \code{FALSE}.}
 \item{\code{hierarchy_flag}}{\code{"congruent"}, \code{"incongruent"},
-\code{"insufficient_independent_evidence"}, or
+\code{"insufficient_independent_evidence"},
 \code{"not_evaluated_oversized"} (added 2026-09-01 -- see \verb{@section Long-sequence robustness} below; the query was never submitted to
 BLAST at all, so this is NOT evidence of anything, and downstream
 consumers (\code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
-\code{\link[=remove_incongruent_references]{remove_incongruent_references()}}) never treat it as a flag).
+\code{\link[=remove_incongruent_references]{remove_incongruent_references()}}) never treat it as a flag), or
+\code{"locally_corroborated"} (added 2026-09-03 -- skipped because an
+independent conspecific in the caller's own reference set already
+corroborates it; see \verb{@section Local corroboration}. Treated like
+\code{"congruent"} everywhere downstream: never a flag, never removable,
+\code{reference_action = "keep"}).
 \code{NA} if the accession's own GenBank record could not be fetched (a
 \code{warning()} is issued listing these; not cached, so a subsequent
 call retries them).}
@@ -262,7 +296,8 @@ internally self-consistent, so this can be \code{FALSE} even when
 }
 
 Also carries \code{attr(result, "run_summary")} -- a list (\code{n_total},
-\code{n_from_cache}, \code{n_evaluated_this_call}, \code{n_pending}, \code{pct_complete},
+\code{n_from_cache}, \code{n_evaluated_this_call},
+\code{n_skipped_locally_corroborated}, \code{n_pending}, \code{pct_complete},
 \code{circuit_breaker_tripped}, \code{recommended_pause_minutes}) summarizing
 what happened this call -- see \verb{@section Chunked evaluation and NCBI rate-limiting resilience} below.
 }
@@ -385,6 +420,11 @@ See \verb{@section Why "incongruent" gained a TTL} below.}
 "we do not know yet": new NCBI deposits (for the former) or a later
 annotation/primer fix or a raised \code{max_query_len} (for the latter)
 could genuinely change the answer.}
+\item{\code{"locally_corroborated"} (2026-09-03) -- cached indefinitely,
+like \code{"congruent"}: it asserts corroborating evidence WAS found, in
+the caller's own reference set. The one way it is re-evaluated is a
+later call with \code{skip_locally_corroborated = FALSE}, which sends it
+to BLAST after all.}
 }
 \code{retry_insufficient = FALSE} opts a single call out of retrying ANY
 expired row past its TTL, serving the stale row instead (see that param's
@@ -395,11 +435,15 @@ must not invalidate a cache. A cached row is also treated as stale (recomputed) 
 parameter that affects the verdict itself (\code{top_n}, \code{min_congruent_rank},
 \code{submission_window}, \code{hierarchy_incongruent_threshold},
 \code{min_independent_partners}, \code{score_range}, \code{min_score}, \code{max_hits},
-\code{method}, \code{database}) differs from the call that produced it --
-\code{chunk_size}, \code{max_consecutive_batch_failures}, \code{max_query_len},
-\code{max_batch_bp}, \code{prioritize_uncached}, and \code{retry_insufficient} are
-deliberately NOT in this list (see \verb{@section Long-sequence robustness}
-below for why).
+\code{method}, \code{database}, \code{query_span}) differs from the call that produced
+it -- \code{chunk_size}, \code{max_consecutive_batch_failures}, \code{max_query_len},
+\code{max_batch_bp}, \code{prioritize_uncached}, \code{retry_insufficient},
+\code{local_corroboration} and \code{skip_locally_corroborated} are deliberately
+NOT in this list (see \verb{@section Long-sequence robustness} below for
+why). The 2026-09-03 \code{query_span} change bumped the internal cache
+version to \code{"v5_amplicon_query"}, which invalidates every row cached
+before it; run \code{\link[=migrate_reference_cache]{migrate_reference_cache()}} on an existing cache directory
+first so its \code{"congruent"} rows are carried forward instead of re-BLASTed.
 }
 
 \section{Chunked evaluation and NCBI rate-limiting resilience (2026-08-14)}{
@@ -565,10 +609,59 @@ retries this call).}
 before them, they govern call MECHANICS/scheduling policy (how/whether
 work is submitted this call), not what verdict a given accession's
 evidence would produce, so changing them between calls never invalidates
-an already-\code{"congruent"}/\code{"incongruent"}-cached row. \verb{.EVAL_REF_ACC_ VERSION} is unchanged by this work.
+an already-\code{"congruent"}/\code{"incongruent"}-cached row. \verb{.EVAL_REF_ACC_ VERSION} was unchanged by that work (it was bumped on 2026-09-03 for
+\code{query_span}, see below).
+}
+
+\section{Why the query is the primer-stripped amplicon (2026-09-03)}{
+
+The screen runs \code{blastn} (\code{megablast = FALSE}, +2 match / -3 mismatch).
+With the primer-INCLUSIVE 217 bp MiFish-U query, a 169 bp perfect
+conspecific amplicon-only deposit scores 338 raw, while every full-length
+relative at >= 93.1\% identity over the whole 217 bp scores >= 359 -- so
+NCBI's \code{HITLIST_SIZE = 100} list fills with mitogenome relatives and the
+short perfect conspecific never arrives. Behind that,
+\code{\link[=blast_sequences]{blast_sequences()}}'s default \code{min_query_coverage = 80} would have
+dropped it anyway (169/217 = 77.9\%). Found on the real PtConception
+screen: \code{KM057996} (\emph{Zaniolepis frenata}) was actioned \code{"remove"} ("no
+conspecific evidence anywhere in nt") while the user's own reference set
+held \code{OQ846041}, a 169 bp \emph{Z. frenata} deposit from 2023 at 100\% identity
+over 97\% overlap. A live probe (\verb{diagnostics/blast_coverage_blindspot_ probe.R}) confirmed the mechanism: the 217 bp query returns no
+conspecific but itself among 100 hits; the same query with the primers
+stripped (169 bp) returns \code{OQ846041} at rank 2, score 100, coverage 100.
+Amplicon-only deposits are 33\% of PtConception's references and 25\% of
+GreatLakes', so the whole class was invisible as corroborators. With the
+stripped query both barriers vanish and \code{min_query_coverage} needs no
+change. Because this changes what is submitted, it is verdict-affecting:
+\code{query_span} is in \code{params_key} and the cache version was bumped to
+\code{"v5_amplicon_query"}; \code{\link[=migrate_reference_cache]{migrate_reference_cache()}} carries an existing
+cache's \code{"congruent"} rows forward (stripping primers only ADDS hits, it
+cannot withdraw a match already observed) and leaves everything else to
+re-BLAST under the new query.
+}
+
+\section{Local corroboration (2026-09-03)}{
+
+If an ASV matches several references of the same species that agree with
+each other, why BLAST any of them? \code{\link[=corroborate_references_locally]{corroborate_references_locally()}}
+answers that from the workflow's own \code{seq_matrix}, for free: a reference
+whose best INDEPENDENT (different submission batch, the screen's own
+rule) conspecific matches at >= \code{min_pident} over >= \code{min_overlap} of
+the amplicon is \code{"corroborated"}. Passed here as \code{local_corroboration},
+such accessions are skipped rather than BLASTed (about 40\% of the
+PtConception population, 15\% of GreatLakes), cached as
+\code{"locally_corroborated"} with TTL \code{Inf}. \code{\link[=score_reference_labels]{score_reference_labels()}} uses
+the same table for provenance (\code{corroboration_source}) and to VETO a
+BLAST \code{"remove"} down to \code{"inspect"} when the local set corroborates the
+label -- the disagreement between the two is what exposed the blind spot
+above. The overlap filter is not optional: \code{KM057967} (\emph{Jordania zonope})
+looked corroborated by \code{LC126244} at "100\%" over a 5.6\% overlap (~40 bp
+of a different 12S region); it is a true singleton and its removal
+stands.
 }
 
 \seealso{
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
-\code{\link[=blast_sequences]{blast_sequences()}}
+\code{\link[=corroborate_references_locally]{corroborate_references_locally()}}, \code{\link[=match_driving_accessions]{match_driving_accessions()}},
+\code{\link[=migrate_reference_cache]{migrate_reference_cache()}}, \code{\link[=blast_sequences]{blast_sequences()}}
 }

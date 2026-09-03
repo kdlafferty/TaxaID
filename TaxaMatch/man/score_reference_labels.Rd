@@ -11,7 +11,8 @@ score_reference_labels(
   action_remove_below = 0.05,
   action_inspect_below = 0.25,
   action_caution_below = 0.75,
-  overwrite = FALSE
+  overwrite = FALSE,
+  local_corroboration = NULL
 )
 }
 \arguments{
@@ -32,12 +33,17 @@ thresholds on \code{label_confidence} (defaults \code{0.05}, \code{0.25}, \code{
 separating \code{"remove"}/\code{"inspect"}/\code{"caution"}/\code{"keep"}.}
 
 \item{overwrite}{Logical (default \code{FALSE}). \code{TRUE} recomputes and replaces
-\code{label_confidence}/\code{label_identity_margin}/\code{reference_action} if they are
-already present; \code{FALSE} errors instead, so a second call with different
-parameters can't silently produce a mixed-provenance table.}
+\code{label_confidence}/\code{label_identity_margin}/\code{reference_action} (and the
+local-corroboration columns) if they are already present; \code{FALSE} errors
+instead, so a second call with different parameters can't silently
+produce a mixed-provenance table.}
+
+\item{local_corroboration}{Data frame or \code{NULL} (default). Output of
+\code{\link[=corroborate_references_locally]{corroborate_references_locally()}}. Joined by version-stripped
+accession. See \verb{@section Local corroboration}.}
 }
 \value{
-\code{evaluation} with three columns added:
+\code{evaluation} with seven columns added:
 \describe{
 \item{\code{label_confidence}}{Numeric in (0, 1). \code{NA} for a row with no
 computed congruence at all (\code{"not_evaluated_oversized"}, or a fetch
@@ -47,6 +53,16 @@ percent-identity points. \code{NA} when the row carries no identity
 information of any kind.}
 \item{\code{reference_action}}{\code{"keep"}, \code{"caution"}, \code{"inspect"},
 \code{"remove"}, or \code{"untested"}.}
+\item{\code{action_reason}}{\code{"vetoed_by_local_corroboration"} where a
+\code{"remove"} was downgraded to \code{"inspect"} by the local set,
+\code{"locally_corroborated_not_blasted"} for a skipped row, \code{NA}
+otherwise.}
+\item{\code{corroboration_source}}{\code{"blast"}, \code{"local"}, \code{"both"}, or
+\code{"none"}. \code{NA} for a row with no verdict at all.}
+\item{\code{local_best_independent_pident}}{Percent identity (0-100) of
+the best independent local conspecific; \code{NA} without a table.}
+\item{\code{local_n_independent_conspecific}}{Its count; \code{NA} without a
+table.}
 }
 Row count and order are unchanged.
 }
@@ -125,8 +141,35 @@ deleted.
 \code{"remove"} is furthermore unreachable for any flag other than
 \code{"incongruent"}. \code{"insufficient_independent_evidence"} is retryable, not
 removable (it may simply mean a sparsely-referenced region of the
-database), and \code{"not_evaluated_oversized"} was never submitted to BLAST at
-all.
+database), \code{"not_evaluated_oversized"} was never submitted to BLAST at
+all, and \code{"locally_corroborated"} (2026-09-03) was deliberately not
+submitted because the caller's own reference set already corroborates it
+-- it reads \code{"keep"} with \code{label_confidence = NA} (there is no BLAST
+evidence to grade).
+}
+
+\section{Local corroboration}{
+ provenance and the veto (2026-09-03):
+When \code{local_corroboration} (\code{\link[=corroborate_references_locally]{corroborate_references_locally()}} output) is
+supplied, three things happen, and one deliberately does not.
+\code{corroboration_source} records where the corroboration for each label
+came from: \code{"blast"} (\code{congruent_evidence_exists_anywhere}), \code{"local"}
+(\code{local_tier == "corroborated"}, or the row was skipped as
+\code{"locally_corroborated"}), \code{"both"}, or \code{"none"}.
+\code{local_best_independent_pident} and \code{local_n_independent_conspecific}
+carry the local numbers beside the BLAST ones. And a row that resolves to
+\code{"remove"} while the local set corroborates it is VETOED to \code{"inspect"},
+with \code{action_reason = "vetoed_by_local_corroboration"}.
+
+What does not happen: \code{label_confidence} stays the BLAST-only probability.
+Local evidence is not folded into it, on purpose, so a reviewer can see
+the two disagree -- that disagreement is exactly what found the
+primer-inclusive-query blind spot (\code{KM057996}, \emph{Zaniolepis frenata},
+actioned \code{"remove"} by BLAST while \code{OQ846041} in the local set matched it
+at 100\% over 97\% of the amplicon; see \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s
+\verb{@section Why the query is the primer-stripped amplicon}). All four
+columns are present (\code{NA}/\code{"none"}-filled) even when no table is
+supplied, so downstream code can rely on them.
 }
 
 \examples{

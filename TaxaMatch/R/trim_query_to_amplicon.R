@@ -27,13 +27,26 @@
 #' @param rev_pattern_rc Character scalar, reverse-complement of the reverse
 #'   primer (i.e. the pattern to search for on the same strand as `fwd_pattern`).
 #' @param fwd_max_mm,rev_max_mm Integer. Max mismatches allowed for each primer.
-#' @param min_len,max_len Integer. Plausible amplicon length range; a match
-#'   implying a span outside this range is rejected.
+#' @param min_len,max_len Integer. Plausible amplicon length range for the
+#'   primer-INCLUSIVE span (forward-primer start to reverse-primer end); a
+#'   match implying a span outside this range is rejected. The plausibility
+#'   test is always made on the inclusive span, whatever `strip_primers`
+#'   says, so the two settings accept exactly the same primer matches.
+#' @param strip_primers Logical (default `FALSE`). `TRUE` returns the
+#'   region BETWEEN the two primer sites (`fwd_end + 1` to `rev_start - 1`)
+#'   instead of the primer-inclusive span. Added 2026-09-03 for
+#'   `evaluate_reference_accessions(query_span = "amplicon")`: an
+#'   amplicon-only GenBank deposit is ~169 bp for MiFish-U and carries no
+#'   primer sequence, so a 217 bp primer-inclusive query out-scores it with
+#'   every full-length relative at >= 93% identity and it never reaches the
+#'   BLAST hit list (see that function's own `@section Why the query is the
+#'   primer-stripped amplicon`).
 #' @return List with `sequence` (character or `NA`), `trimmed` (logical),
 #'   `note` (character).
 #' @noRd
 .extract_amplicon_one_tm <- function(seq_char, fwd_pattern, rev_pattern_rc,
-                                     fwd_max_mm, rev_max_mm, min_len, max_len) {
+                                     fwd_max_mm, rev_max_mm, min_len, max_len,
+                                     strip_primers = FALSE) {
 
   if (is.na(seq_char) || !nzchar(seq_char))
     return(list(sequence = NA_character_, trimmed = FALSE, note = "missing_sequence"))
@@ -71,7 +84,8 @@
     rev_starts <- Biostrings::start(rev_hits)
     downstream <- rev_starts[rev_starts > fwd_end]
     if (length(downstream) == 0L) next
-    rev_end <- Biostrings::end(rev_hits)[which(rev_starts == min(downstream))[1L]]
+    rev_start <- min(downstream)
+    rev_end <- Biostrings::end(rev_hits)[which(rev_starts == rev_start)[1L]]
 
     # Defensive bounds guard before subseq(): fwd_start/rev_end are ordinarily
     # guaranteed within [1, length(subj)] by construction (both come from
@@ -90,6 +104,23 @@
 
     amplicon_width <- rev_end - fwd_start + 1L
     if (amplicon_width < min_len || amplicon_width > max_len) next
+
+    # strip_primers: the region BETWEEN the primer sites. The plausibility
+    # test above was made on the inclusive span, so the same primer matches
+    # are accepted either way; only the returned coordinates differ. A
+    # degenerate interior (primer sites touching or overlapping) is treated
+    # as "not found" rather than handed to subseq() as an inverted span.
+    if (isTRUE(strip_primers)) {
+      in_start <- fwd_end + 1L
+      in_end   <- rev_start - 1L
+      if (in_start > in_end) next
+      amplicon <- Biostrings::subseq(subj, start = in_start, end = in_end)
+      return(list(
+        sequence = as.character(amplicon),
+        trimmed  = TRUE,
+        note     = paste0("extracted_via_primer_match_", strand, "_strand_stripped")
+      ))
+    }
 
     amplicon <- Biostrings::subseq(subj, start = fwd_start, end = rev_end)
     return(list(
@@ -116,12 +147,21 @@
 #' @param barcode_term Character. Passed to `TaxaTools::resolve_barcode_primers()`
 #'   and `TaxaTools::resolve_barcode_lengths()`.
 #' @param max_mismatch_rate Numeric in `[0, 1)`, default `0.15`.
+#' @param strip_primers Logical (default `TRUE`, 2026-09-03). `TRUE` returns
+#'   the primer-STRIPPED amplicon (the region between the two primer sites,
+#'   ~169 bp for MiFish-U); `FALSE` the primer-INCLUSIVE span (~217 bp), the
+#'   only behaviour before 2026-09-03. See `.extract_amplicon_one_tm()`'s
+#'   own `@param strip_primers` for why the stripped form is what
+#'   `evaluate_reference_accessions()` now submits by default. A sequence
+#'   with no primer sites (an amplicon-only deposit is already primer-free)
+#'   is returned unchanged under either setting.
 #' @param verbose Logical, default `TRUE`.
 #' @return Character vector, same length as `sequences` -- trimmed where
 #'   possible, unchanged otherwise.
 #' @noRd
 .trim_queries_to_amplicon <- function(sequences, barcode_term,
-                                      max_mismatch_rate = 0.15, verbose = TRUE) {
+                                      max_mismatch_rate = 0.15,
+                                      strip_primers = TRUE, verbose = TRUE) {
   if (!requireNamespace("Biostrings", quietly = TRUE))
     stop("Package 'Biostrings' is required for barcode_term trimming. ",
         "Install it with: BiocManager::install('Biostrings')", call. = FALSE)
@@ -190,7 +230,8 @@
     result <- tryCatch(
       .extract_amplicon_one_tm(
         seq_char = sequences[i], fwd_pattern = primer_info$fwd, rev_pattern_rc = rev_rc,
-        fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = span_min, max_len = span_max
+        fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = span_min, max_len = span_max,
+        strip_primers = strip_primers
       ),
       error = function(e) {
         list(sequence = NA_character_, trimmed = FALSE,
@@ -207,7 +248,8 @@
 
   if (verbose) {
     message(sprintf(
-      "evaluate_reference_accessions(): extracted the amplicon from %d of %d over-length query sequence(s); the rest are checked against the record's own annotated feature table next (barcode_term auto-trim), or BLASTed at full length otherwise.",
+      "evaluate_reference_accessions(): extracted the %s amplicon from %d of %d over-length query sequence(s); the rest are checked against the record's own annotated feature table next (barcode_term auto-trim), or BLASTed at full length otherwise.",
+      if (isTRUE(strip_primers)) "primer-stripped" else "primer-inclusive",
       n_trimmed, sum(needs_trim)
     ))
     # Surfaces WHY extraction failed for the rest -- "primers_not_found_or_
@@ -260,6 +302,60 @@
       return(.MIFISH_STYLE_TO_MARKER[[nm]])
   }
   bt
+}
+
+#' Longest plausible length for a CORRECTLY primer-trimmed query
+#'
+#' `.trim_queries_to_amplicon()` returns a span that INCLUDES both primers
+#' (forward-primer-start to reverse-primer-end), but
+#' `TaxaTools::resolve_barcode_lengths()` reports the variable region
+#' EXCLUDING them. For MiFish-U those are 211-233 bp and 130-210 bp
+#' respectively -- disjoint windows. Testing a trimmed query against
+#' `max_bp` therefore calls EVERY correctly-trimmed query over-length, 100%
+#' of the time.
+#'
+#' That exact miscalibration was already found and fixed once, inside
+#' `.trim_queries_to_amplicon()` itself (2026-08-10; see its own comment --
+#' it caused a real 92/92 extraction failure), and then reintroduced at a
+#' second site by the 2026-09-01 feature-table-fallback caller in
+#' `evaluate_reference_accessions()`, which had no way to know the two
+#' length conventions differed. This helper exists so there is ONE
+#' definition both sites read, rather than two places that must independently
+#' remember to add the primer lengths back on.
+#'
+#' 2026-09-03: `strip_primers` selects the matching bound for the
+#' primer-STRIPPED span `.trim_queries_to_amplicon(strip_primers = TRUE)`
+#' now returns -- the inclusive bound minus the two primer lengths. Still one
+#' definition: both the trimmer and `evaluate_reference_accessions()`'s
+#' feature-table-fallback caller read the bound for whichever `query_span`
+#' was chosen, so the two conventions cannot be crossed a third time. When
+#' the registered primer set has no `amplicon_range` the fallback is the
+#' marker's own `max_bp`, which already EXCLUDES primers, so it is returned
+#' unchanged for both settings rather than having primer lengths subtracted
+#' from a number that never contained them.
+#'
+#' @param barcode_term Character. As passed to
+#'   [evaluate_reference_accessions()].
+#' @param strip_primers Logical (default `FALSE`). `TRUE` returns the bound
+#'   for the primer-stripped span.
+#' @return Numeric: the maximum plausible trimmed length for the chosen
+#'   span, or `NA_real_` if `barcode_term` resolves to neither a primer pair
+#'   with an `amplicon_range` nor a registered length window (in which case
+#'   a caller should skip the over-length test rather than guess).
+#' @noRd
+.resolve_trimmed_span_max <- function(barcode_term, strip_primers = FALSE) {
+  primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
+                          error = function(e) NULL)
+  if (!is.null(primer_info) && !is.null(primer_info$amplicon_range)) {
+    primer_total_len <- nchar(primer_info$fwd) + nchar(primer_info$rev)
+    inclusive <- as.numeric(primer_info$amplicon_range[2]) + primer_total_len
+    return(if (isTRUE(strip_primers)) inclusive - primer_total_len else inclusive)
+  }
+  # No amplicon_range: fall back to the marker's own length window, the same
+  # fallback .trim_queries_to_amplicon() uses for its plausibility check.
+  bt <- tryCatch(TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]],
+                 error = function(e) NA_real_)
+  as.numeric(bt)
 }
 
 #' Feature-table-guided extraction fallback for a query still over-length after primer trimming
@@ -316,45 +412,6 @@
 #'   rescue is left exactly as it was handed in, for the caller's next stage
 #'   (the `max_query_len` hard cap) to decide.
 #' @noRd
-#' Longest plausible length for a CORRECTLY primer-trimmed query
-#'
-#' `.trim_queries_to_amplicon()` returns a span that INCLUDES both primers
-#' (forward-primer-start to reverse-primer-end), but
-#' `TaxaTools::resolve_barcode_lengths()` reports the variable region
-#' EXCLUDING them. For MiFish-U those are 211-233 bp and 130-210 bp
-#' respectively -- disjoint windows. Testing a trimmed query against
-#' `max_bp` therefore calls EVERY correctly-trimmed query over-length, 100%
-#' of the time.
-#'
-#' That exact miscalibration was already found and fixed once, inside
-#' `.trim_queries_to_amplicon()` itself (2026-08-10; see its own comment --
-#' it caused a real 92/92 extraction failure), and then reintroduced at a
-#' second site by the 2026-09-01 feature-table-fallback caller in
-#' `evaluate_reference_accessions()`, which had no way to know the two
-#' length conventions differed. This helper exists so there is ONE
-#' definition both sites read, rather than two places that must independently
-#' remember to add the primer lengths back on.
-#'
-#' @param barcode_term Character. As passed to
-#'   [evaluate_reference_accessions()].
-#' @return Numeric: the maximum plausible primer-INCLUSIVE trimmed length, or
-#'   `NA_real_` if `barcode_term` resolves to neither a primer pair with an
-#'   `amplicon_range` nor a registered length window (in which case a caller
-#'   should skip the over-length test rather than guess).
-#' @noRd
-.resolve_trimmed_span_max <- function(barcode_term) {
-  primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
-                          error = function(e) NULL)
-  if (!is.null(primer_info) && !is.null(primer_info$amplicon_range))
-    return(as.numeric(primer_info$amplicon_range[2]) +
-             nchar(primer_info$fwd) + nchar(primer_info$rev))
-  # No amplicon_range: fall back to the marker's own length window, the same
-  # fallback .trim_queries_to_amplicon() uses for its plausibility check.
-  bt <- tryCatch(TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]],
-                 error = function(e) NA_real_)
-  as.numeric(bt)
-}
-
 .extract_feature_table_fallback <- function(accessions, sequences, barcode_term,
                                             margin = 100L, ncbi_api_key = NULL,
                                             verbose = TRUE) {
