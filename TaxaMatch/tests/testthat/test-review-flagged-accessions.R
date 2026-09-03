@@ -230,6 +230,55 @@ test_that("review_flagged_accessions() prompt includes the guide's 4-category fr
   expect_true(grepl("NOT to override hierarchy_flag", captured_prompt, fixed = TRUE))
 })
 
+test_that("review_flagged_accessions() adds the local-corroboration line only where the columns are populated (2026-09-03)", {
+  df <- .base_evaluated_df()
+  df$local_n_independent_conspecific <- c(NA, 1L, NA, NA)
+  df$local_best_independent_pident   <- c(NA, 100, NA, NA)
+  captured_prompt <- NULL
+  stub <- function(prompt, ...) {
+    captured_prompt <<- prompt
+    .canned_json(data.frame(
+      accession = c("ACC002", "ACC003", "ACC004"),
+      accession_likely_explanation = "uncertain",
+      accession_review_confidence = "low",
+      accession_review_comment = "stub"
+    ))
+  }
+  review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE,
+                            local_min_overlap = 0.8)
+  expect_true(grepl(
+    "accession=ACC002:.*local reference set: 1 independent conspecific\\(s\\), best identity 100.0% over >= 80% of the amplicon",
+    captured_prompt))
+  # ACC003 has no local evidence: no line for it.
+  acc3_line <- regmatches(captured_prompt, regexpr("- accession=ACC003:[^\n]*", captured_prompt))
+  expect_false(grepl("local reference set", acc3_line, fixed = TRUE))
+
+  # Without a min_overlap the line is worded without a number; with the
+  # attribute score_reference_labels() leaves, it is read from there.
+  review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE)
+  expect_true(grepl("over the required amplicon overlap", captured_prompt, fixed = TRUE))
+  attr(df, "local_corroboration_params") <- list(min_overlap = 0.9)
+  review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE)
+  expect_true(grepl("over >= 90% of the amplicon", captured_prompt, fixed = TRUE))
+  expect_error(review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE,
+                                         local_min_overlap = 2), "local_min_overlap")
+})
+
+test_that("the review fingerprint ignores absent/NA local columns but changes when they are populated", {
+  base <- .base_evaluated_df()
+  fp0 <- .accession_review_fingerprint(base)
+  with_na <- base
+  with_na$local_n_independent_conspecific <- NA_integer_
+  with_na$local_best_independent_pident   <- NA_real_
+  expect_equal(.accession_review_fingerprint(with_na), fp0)
+  with_val <- with_na
+  with_val$local_n_independent_conspecific[2] <- 1L
+  with_val$local_best_independent_pident[2]   <- 100
+  fp1 <- .accession_review_fingerprint(with_val)
+  expect_equal(fp1[-2], fp0[-2])
+  expect_false(fp1[2] == fp0[2])
+})
+
 # ------------------------------------------------------------------------------
 # Caching (2026-08-14)
 # ------------------------------------------------------------------------------

@@ -38,7 +38,7 @@ those two cases apart.
 |---|---|---|
 | `accession` | character | Exactly as you supplied it. |
 | `listed_taxon` | character | The accession's own GenBank-labeled organism. |
-| `hierarchy_flag` | character | `"congruent"` / `"incongruent"` / `"insufficient_independent_evidence"` / `NA` (fetch failed, not cached, retried next call). The headline verdict -- see below for what each value actually means and doesn't. |
+| `hierarchy_flag` | character | `"congruent"` / `"incongruent"` / `"insufficient_independent_evidence"` / `"not_evaluated_oversized"` / `"locally_corroborated"` (2026-09-03, see below) / `NA` (fetch failed, not cached, retried next call). The headline verdict -- see below for what each value actually means and doesn't. |
 | `finest_common_rank` | character | Finest rank at which the single best independent hit agrees with `listed_taxon`, walking the *full* `kingdom→species` ladder (not just down to `min_congruent_rank`). `NA` if nothing agrees at all. |
 | `n_independent_top_matches` | integer | How many independent, species-resolved hits were actually used for the verdict (`<= top_n`, default 5). Low values (0-2) mean the verdict rests on thin evidence -- see `insufficient_independent_evidence` below. |
 | `n_top_matches_available` | integer | All BLAST hits before the independence filter -- diagnostic only, not part of the verdict. A big gap between this and `n_independent_top_matches` usually means most hits were same-submission-batch duplicates. |
@@ -52,6 +52,10 @@ those two cases apart.
 | `label_confidence` | numeric (0-1) or `NA` | **(2026-09-02)** How confident we are that `listed_taxon` is CORRECT -- high = good, low = concerning. A log-odds sum of the vote (`frac_independent_below_min_congruent_rank`) and the percent-identity margin the vote itself ignores. This is the column downstream models consume; see "The numeric verdict" below. `NA` for `"not_evaluated_oversized"` and fetch failures. |
 | `label_identity_margin` | numeric or `NA` | The percent-identity margin behind `label_confidence`: best agreeing identity minus best disagreeing identity, capped at ±5. Positive means the label's own clade matches better than whatever contradicts it. `NA` when there is no identity information at all. |
 | `reference_action` | character | **(2026-09-02)** What to DO: `"keep"` / `"caution"` / `"inspect"` / `"remove"` / `"untested"`. Derived from `label_confidence` by documented thresholds, plus two hard vetoes on `"remove"`. This is what `remove_incongruent_references()` reads by default. |
+| `action_reason` | character or `NA` | **(2026-09-03)** `"vetoed_by_local_corroboration"` where a BLAST `"remove"` was downgraded to `"inspect"` because the caller's own reference set corroborates the label; `"locally_corroborated_not_blasted"` for a skipped row; `NA` otherwise. |
+| `corroboration_source` | character | **(2026-09-03)** Where the corroboration for the label came from: `"blast"` (`congruent_evidence_exists_anywhere`), `"local"` (an independent conspecific in the caller's own reference set at >= 99% identity over >= 80% of the amplicon), `"both"`, or `"none"`. `"local"` on a `"remove"`-shaped row is exactly the disagreement that found the primer-inclusive-query blind spot (`KM057996`). |
+| `local_best_independent_pident` | numeric (0-100) or `NA` | **(2026-09-03)** Identity of the best independent local conspecific (from `corroborate_references_locally()`). `NA` when no local table was supplied. |
+| `local_n_independent_conspecific` | integer or `NA` | **(2026-09-03)** Its count. |
 | `listed_taxon_is_species` | logical or `NA` | `FALSE` when `listed_taxon` doesn't structurally look like a species-level binomial (e.g. `"Serranidae sp. JL-2015"`). Orthogonal to `hierarchy_flag` -- can be `FALSE` even when the accession is internally `"congruent"`. `NA` only for a fetch failure. |
 | `evaluated_at` | POSIXct | When this verdict was computed. |
 | `cache_hit` | logical | `TRUE` if read from the persistent cache rather than freshly BLASTed this call. |
@@ -74,6 +78,20 @@ those two cases apart.
 - **`"incongruent"`** -- most of the independent top-N evidence disagrees. **Do not treat this
   as "confirmed mislabel" on its own.** Cross-check against the diagnostics below before
   deciding anything.
+
+- **`"not_evaluated_oversized"`** -- never submitted to BLAST (still over `max_query_len`
+  after primer trimming and the feature-table fallback). Not evidence of anything;
+  retried after the TTL.
+
+- **`"locally_corroborated"`** (2026-09-03) -- never submitted to BLAST either, but for the
+  opposite reason: an INDEPENDENT conspecific in the caller's own reference set (a different
+  submission batch, >= 99% identity over >= 80% of the amplicon, per
+  `corroborate_references_locally()`) already corroborates the label, so the BLAST question
+  is answered for free. `n_independent_top_matches` and `best_agreeing_pident` hold the local
+  numbers; the other diagnostics are `NA`; `reference_action = "keep"`; `label_confidence`
+  is `NA` (there is no BLAST evidence to grade). Treated like `"congruent"` everywhere
+  downstream: never a flag, never removable, cached indefinitely. Pass
+  `skip_locally_corroborated = FALSE` to BLAST these after all.
 
 - **`NA`** -- the accession's own GenBank record couldn't be fetched this call (network/NCBI
   issue). Not cached; retried automatically next call.
@@ -183,6 +201,20 @@ corroborating and nothing contradicting gives the full positive cap.
 | `"remove"` | `label_confidence < 0.05` **AND** `hierarchy_flag == "incongruent"` **AND** `congruent_evidence_exists_anywhere == FALSE` | Nothing anywhere corroborates the label and something contradicts it. |
 | `"untested"` | `hierarchy_flag` is `"not_evaluated_oversized"` or `NA` | No verdict was computed at all. |
 
+**The local-corroboration veto (2026-09-03).** When `score_reference_labels()` is given the
+`corroborate_references_locally()` table, a row that resolves to `"remove"` while the caller's
+own reference set corroborates the label (`local_tier = "corroborated"`) is downgraded to
+`"inspect"` and `action_reason` says why. `label_confidence` is NOT changed -- it stays the
+BLAST-only probability, so the two sources can be seen to disagree. The case that motivated
+this: `KM057996` (*Zaniolepis frenata*) was actioned `"remove"` ("no conspecific evidence
+anywhere in nt") while `OQ846041`, a 169 bp *Z. frenata* deposit from 2023, sat in the local
+reference set at 100% identity over 97% of the amplicon. BLAST never returned it because the
+screen's query was the primer-INCLUSIVE 217 bp span, against which a 169 bp perfect match is
+out-scored by every full-length relative at >= 93%; the screen now submits the primer-stripped
+amplicon (`query_span = "amplicon"`). The overlap floor is not optional: `KM057967`
+(*Jordania zonope*) looked corroborated by `LC126244` at "100%" over a 5.6% overlap -- a
+different 12S region -- and is a true singleton whose removal stands.
+
 The two extra conditions on `"remove"` are hard vetoes, not additive terms. An
 accession that is not `"incongruent"` can never be actioned `"remove"` --
 `"insufficient_independent_evidence"` is retryable, not removable. And a single
@@ -252,6 +284,8 @@ candidate generation.
 | `reference_action = "remove"` | The packaged version of every row below it: nothing corroborates the label anywhere and something contradicts it. `remove_incongruent_references()` drops exactly these by default. |
 | `reference_action = "inspect"` | Review by hand (e.g. `investigate_flagged_accession()`). Usually thin coverage rather than a mislabel. |
 | `hierarchy_flag = "congruent"` | Trust by default. No action. |
+| `hierarchy_flag = "locally_corroborated"` | Trust by default; the caller's own reference set corroborates it. No action. |
+| `reference_action = "inspect"`, `action_reason = "vetoed_by_local_corroboration"` | BLAST said remove, the local reference set says the label is corroborated. Read `corroboration_source`/`local_best_independent_pident` beside the BLAST diagnostics; the local evidence is usually right when the BLAST verdict predates the primer-stripped query (2026-09-03). |
 | `hierarchy_flag = "insufficient_independent_evidence"` | No action -- not evidence of a problem. Will retry automatically after the TTL. |
 | `hierarchy_flag = "incongruent"`, `best_disagreeing_pident` near 100%, `congruent_evidence_exists_anywhere = FALSE` | Strong mislabel candidate -- review the specific accession by hand (e.g. `investigate_flagged_accession()`) before excluding. |
 | `hierarchy_flag = "incongruent"`, several real species-resolved disagreeing hits across multiple families at moderate-high identity | Likely genuine poor marker resolving power for this lineage, not a mislabel -- accept the flag as correctly earned; do not "fix" by weighting or overriding. |

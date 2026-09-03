@@ -23,6 +23,95 @@ utils::globalVariables(c(
 # whatever else a caller's own `taxa` argument happened to fetch.
 # ==============================================================================
 
+#' Cache-version tag for evaluate_reference_accessions()
+#'
+#' Bump this any time an internal computation detail changes the verdict
+#' without any caller-visible parameter changing -- otherwise a cached row
+#' computed under the OLD logic is served as a "fresh" cache hit forever
+#' under an unchanged `params_key`. Cheap insurance, not something a caller
+#' ever sets directly. History:
+#' \itemize{
+#'   \item{`v4_hybrid_maternal_proxy` (2026-08-11) -- the 2026-08-13
+#'     `require_species_resolved_partner` fix deliberately did NOT bump it,
+#'     matching the 2026-08-11 modifier-prefix precedent: `params_key` is one
+#'     global string applied uniformly to every cached row, so a bump forces
+#'     a full re-BLAST of every real cached row, and that fix's effect was
+#'     narrow (the rows worth re-checking were removed from the real cache by
+#'     hand instead).}
+#'   \item{`v5_amplicon_query` (2026-09-03) -- the query submitted to BLAST
+#'     changed from the primer-INCLUSIVE trimmed span to the primer-STRIPPED
+#'     amplicon (`query_span = "amplicon"`), which changes what the hit list
+#'     can contain (see [evaluate_reference_accessions()]'s `@section Why the
+#'     query is the primer-stripped amplicon`). A bump IS warranted here, and
+#'     [migrate_reference_cache()] exists so the ~3,000 real cached rows are
+#'     not all re-BLASTed for it: `"congruent"` rows are carried forward
+#'     (stripping primers only ADDS short-deposit hits, it cannot withdraw a
+#'     match already observed), everything else re-evaluates.}
+#' }
+#' @noRd
+.EVAL_REF_ACC_VERSION <- "v5_amplicon_query"
+
+#' Build the one global params_key every cached row is stamped with
+#'
+#' Factored out of [evaluate_reference_accessions()] (2026-09-03) so
+#' [migrate_reference_cache()] can compute the key the current defaults
+#' would produce with the SAME code, rather than a second hand-maintained
+#' `paste()`. Every argument that affects the verdict itself is in the key;
+#' call mechanics (`chunk_size`, TTLs, `max_query_len`, `max_batch_bp`,
+#' `prioritize_uncached`, `retry_insufficient`, `skip_locally_corroborated`)
+#' are deliberately NOT -- changing one must never invalidate a cache. See
+#' `@section Caching` in [evaluate_reference_accessions()].
+#'
+#' `query_span` (2026-09-03) IS in the key: it changes what is submitted to
+#' BLAST and therefore what the hit list can contain.
+#' @noRd
+.build_params_key <- function(top_n, min_congruent_rank, submission_window,
+                              hierarchy_incongruent_threshold, min_independent_partners,
+                              score_range, min_score, max_hits, method, database,
+                              query_span) {
+  paste(top_n, min_congruent_rank, submission_window,
+        hierarchy_incongruent_threshold, min_independent_partners,
+        score_range, min_score, max_hits, method, database,
+        query_span, .EVAL_REF_ACC_VERSION, sep = "|")
+}
+
+#' The params_key evaluate_reference_accessions()'s own defaults produce
+#'
+#' Reads the defaults off the function's formals, so this can never drift
+#' from the signature. `match.arg()`-style vector defaults (`method`,
+#' `query_span`) resolve to their first element, exactly as the function
+#' itself resolves them.
+#' @noRd
+.default_params_key <- function() {
+  f <- formals(evaluate_reference_accessions)
+  first_of <- function(x) { v <- eval(x); v[[1L]] }
+  .build_params_key(
+    top_n = eval(f$top_n), min_congruent_rank = eval(f$min_congruent_rank),
+    submission_window = eval(f$submission_window),
+    hierarchy_incongruent_threshold = eval(f$hierarchy_incongruent_threshold),
+    min_independent_partners = eval(f$min_independent_partners),
+    score_range = eval(f$score_range), min_score = eval(f$min_score),
+    max_hits = eval(f$max_hits), method = first_of(f$method),
+    database = eval(f$database), query_span = first_of(f$query_span)
+  )
+}
+
+#' Strip a GenBank version suffix ("ACC.1" -> "ACC"), the ecosystem convention
+#' @noRd
+.strip_acc_version <- function(x) sub("\\.[0-9]+$", "", x)
+
+#' Add any column the persistent cache carries that new rows lack
+#'
+#' [migrate_reference_cache()] stamps a `migrated_from` column onto the cache
+#' file; rows computed afterwards do not have it, and
+#' `rbind(cache, new_rows[, names(cache)])` would error on the absent column.
+#' `NA`-fills, then orders to the cache's own columns.
+#' @noRd
+.align_to_cache_columns <- function(rows, cache) {
+  for (nm in setdiff(names(cache), names(rows))) rows[[nm]] <- rep(NA, nrow(rows))
+  rows[, names(cache), drop = FALSE]
+}
+
 #' Per-accession attributes for the same-submission-batch independence rule
 #'
 #' Duplicated from `TaxaLikely::.build_submission_batch_lookup()`
@@ -620,7 +709,9 @@ utils::globalVariables(c(
                                                  top_n, min_congruent_rank, submission_window,
                                                  min_independent_partners,
                                                  hierarchy_incongruent_threshold,
-                                                 params_key, now, verbose) {
+                                                 params_key, now, verbose,
+                                                 query_span = "amplicon") {
+  strip_primers <- identical(query_span, "amplicon")
 
   # ---- Fetch the accessions being evaluated: sequence + listed taxon +
   # create_date, all from one GBSeq XML round trip -----------------------------
@@ -644,7 +735,8 @@ utils::globalVariables(c(
 
   if (!is.null(barcode_term) && nrow(query_meta) > 0L) {
     query_meta$sequence <- .trim_queries_to_amplicon(
-      query_meta$sequence, barcode_term = barcode_term, verbose = verbose
+      query_meta$sequence, barcode_term = barcode_term,
+      strip_primers = strip_primers, verbose = verbose
     )
 
     # ---- Mechanism 1: feature-table-guided extraction fallback for a query
@@ -664,8 +756,10 @@ utils::globalVariables(c(
     # by "feature-table fallback rescued 40 of 40 still-over-length", which
     # cannot both be true. This is the same primer-length miscalibration
     # `.trim_queries_to_amplicon()` was itself fixed for on 2026-08-10,
-    # reintroduced here; both sites now read one shared definition.
-    bt_max_len <- .resolve_trimmed_span_max(barcode_term)
+    # reintroduced here; both sites now read one shared definition -- and,
+    # since 2026-09-03, the bound for whichever span (`query_span`) the
+    # trimmer was asked for.
+    bt_max_len <- .resolve_trimmed_span_max(barcode_term, strip_primers = strip_primers)
     if (!is.na(bt_max_len)) {
       still_over <- !is.na(query_meta$sequence) & nchar(query_meta$sequence) > bt_max_len
       if (any(still_over)) {
@@ -1122,6 +1216,11 @@ utils::globalVariables(c(
 #'     "we do not know yet": new NCBI deposits (for the former) or a later
 #'     annotation/primer fix or a raised `max_query_len` (for the latter)
 #'     could genuinely change the answer.}
+#'   \item{`"locally_corroborated"` (2026-09-03) -- cached indefinitely,
+#'     like `"congruent"`: it asserts corroborating evidence WAS found, in
+#'     the caller's own reference set. The one way it is re-evaluated is a
+#'     later call with `skip_locally_corroborated = FALSE`, which sends it
+#'     to BLAST after all.}
 #' }
 #' `retry_insufficient = FALSE` opts a single call out of retrying ANY
 #' expired row past its TTL, serving the stale row instead (see that param's
@@ -1132,11 +1231,15 @@ utils::globalVariables(c(
 #' parameter that affects the verdict itself (`top_n`, `min_congruent_rank`,
 #' `submission_window`, `hierarchy_incongruent_threshold`,
 #' `min_independent_partners`, `score_range`, `min_score`, `max_hits`,
-#' `method`, `database`) differs from the call that produced it --
-#' `chunk_size`, `max_consecutive_batch_failures`, `max_query_len`,
-#' `max_batch_bp`, `prioritize_uncached`, and `retry_insufficient` are
-#' deliberately NOT in this list (see `@section Long-sequence robustness`
-#' below for why).
+#' `method`, `database`, `query_span`) differs from the call that produced
+#' it -- `chunk_size`, `max_consecutive_batch_failures`, `max_query_len`,
+#' `max_batch_bp`, `prioritize_uncached`, `retry_insufficient`,
+#' `local_corroboration` and `skip_locally_corroborated` are deliberately
+#' NOT in this list (see `@section Long-sequence robustness` below for
+#' why). The 2026-09-03 `query_span` change bumped the internal cache
+#' version to `"v5_amplicon_query"`, which invalidates every row cached
+#' before it; run [migrate_reference_cache()] on an existing cache directory
+#' first so its `"congruent"` rows are carried forward instead of re-BLASTed.
 #'
 #' @param accessions Character vector of NCBI accessions to evaluate.
 #'   Deduplicated internally.
@@ -1214,6 +1317,14 @@ utils::globalVariables(c(
 #'   is deferred as `"not_evaluated_oversized"`, an explicit, labeled,
 #'   TTL-retryable non-result. `NULL` (default) submits every sequence at
 #'   full length, unchanged from prior behavior.
+#' @param query_span Character, `"amplicon"` (default) or
+#'   `"primer_inclusive"`. Which span of a `barcode_term`-trimmed query is
+#'   submitted to BLAST: the primer-STRIPPED amplicon (the region between the
+#'   two primer sites, ~169 bp for MiFish-U) or the primer-INCLUSIVE span
+#'   (~217 bp), the only behaviour before 2026-09-03. See `@section Why the
+#'   query is the primer-stripped amplicon`. Verdict-affecting, so it is part
+#'   of `params_key`. Ignored when `barcode_term` is `NULL` (nothing is
+#'   trimmed).
 #' @param chunk_size Integer (default `200L`). Accessions needing real
 #'   evaluation are processed this many at a time, with the persistent
 #'   cache written after EACH chunk -- see `@section Chunked evaluation and
@@ -1265,6 +1376,22 @@ utils::globalVariables(c(
 #'   budget re-checking every TTL-expired row, grinding against the same
 #'   CPU-budget throttle this whole feature exists to survive. Set `FALSE`
 #'   on a call where zero new NCBI cost is required this time.
+#' @param local_corroboration Data frame or `NULL` (default). Output of
+#'   [corroborate_references_locally()] for the caller's own reference set.
+#'   When supplied (and `skip_locally_corroborated = TRUE`), any accession
+#'   whose `local_tier` is `"corroborated"` and that has no fresh cached
+#'   verdict is NOT BLASTed: it is written to the cache as
+#'   `hierarchy_flag = "locally_corroborated"` with
+#'   `n_independent_top_matches = n_independent_conspecific`,
+#'   `best_agreeing_pident = 100 * best_independent_pident`,
+#'   `congruent_evidence_exists_anywhere = TRUE`,
+#'   `finest_common_rank = "species"`, and every other diagnostic `NA`. See
+#'   `@section Local corroboration`.
+#' @param skip_locally_corroborated Logical (default `TRUE`). `FALSE` sends
+#'   locally-corroborated accessions to BLAST like any other, and also
+#'   re-evaluates any row previously cached as `"locally_corroborated"`
+#'   (that flag records a decision not to evaluate, not an evaluation).
+#'   Not part of `params_key`.
 #' @param verbose Logical (default `TRUE`). Print progress messages.
 #'
 #' @return A data frame, one row per unique input accession:
@@ -1314,12 +1441,17 @@ utils::globalVariables(c(
 #'       such anywhere-agreeing hit. `NA` when
 #'       `congruent_evidence_exists_anywhere` is `FALSE`.}
 #'     \item{`hierarchy_flag`}{`"congruent"`, `"incongruent"`,
-#'       `"insufficient_independent_evidence"`, or
+#'       `"insufficient_independent_evidence"`,
 #'       `"not_evaluated_oversized"` (added 2026-09-01 -- see `@section
 #'       Long-sequence robustness` below; the query was never submitted to
 #'       BLAST at all, so this is NOT evidence of anything, and downstream
 #'       consumers ([flag_incongruent_references()],
-#'       [remove_incongruent_references()]) never treat it as a flag).
+#'       [remove_incongruent_references()]) never treat it as a flag), or
+#'       `"locally_corroborated"` (added 2026-09-03 -- skipped because an
+#'       independent conspecific in the caller's own reference set already
+#'       corroborates it; see `@section Local corroboration`. Treated like
+#'       `"congruent"` everywhere downstream: never a flag, never removable,
+#'       `reference_action = "keep"`).
 #'       `NA` if the accession's own GenBank record could not be fetched (a
 #'       `warning()` is issued listing these; not cached, so a subsequent
 #'       call retries them).}
@@ -1352,7 +1484,8 @@ utils::globalVariables(c(
 #'   }
 #'
 #'   Also carries `attr(result, "run_summary")` -- a list (`n_total`,
-#'   `n_from_cache`, `n_evaluated_this_call`, `n_pending`, `pct_complete`,
+#'   `n_from_cache`, `n_evaluated_this_call`,
+#'   `n_skipped_locally_corroborated`, `n_pending`, `pct_complete`,
 #'   `circuit_breaker_tripped`, `recommended_pause_minutes`) summarizing
 #'   what happened this call -- see `@section Chunked evaluation and NCBI
 #'   rate-limiting resilience` below.
@@ -1515,10 +1648,56 @@ utils::globalVariables(c(
 #' work is submitted this call), not what verdict a given accession's
 #' evidence would produce, so changing them between calls never invalidates
 #' an already-`"congruent"`/`"incongruent"`-cached row. `.EVAL_REF_ACC_
-#' VERSION` is unchanged by this work.
+#' VERSION` was unchanged by that work (it was bumped on 2026-09-03 for
+#' `query_span`, see below).
+#'
+#' @section Why the query is the primer-stripped amplicon (2026-09-03):
+#' The screen runs `blastn` (`megablast = FALSE`, +2 match / -3 mismatch).
+#' With the primer-INCLUSIVE 217 bp MiFish-U query, a 169 bp perfect
+#' conspecific amplicon-only deposit scores 338 raw, while every full-length
+#' relative at >= 93.1% identity over the whole 217 bp scores >= 359 -- so
+#' NCBI's `HITLIST_SIZE = 100` list fills with mitogenome relatives and the
+#' short perfect conspecific never arrives. Behind that,
+#' [blast_sequences()]'s default `min_query_coverage = 80` would have
+#' dropped it anyway (169/217 = 77.9%). Found on the real PtConception
+#' screen: `KM057996` (*Zaniolepis frenata*) was actioned `"remove"` ("no
+#' conspecific evidence anywhere in nt") while the user's own reference set
+#' held `OQ846041`, a 169 bp *Z. frenata* deposit from 2023 at 100% identity
+#' over 97% overlap. A live probe (`diagnostics/blast_coverage_blindspot_
+#' probe.R`) confirmed the mechanism: the 217 bp query returns no
+#' conspecific but itself among 100 hits; the same query with the primers
+#' stripped (169 bp) returns `OQ846041` at rank 2, score 100, coverage 100.
+#' Amplicon-only deposits are 33% of PtConception's references and 25% of
+#' GreatLakes', so the whole class was invisible as corroborators. With the
+#' stripped query both barriers vanish and `min_query_coverage` needs no
+#' change. Because this changes what is submitted, it is verdict-affecting:
+#' `query_span` is in `params_key` and the cache version was bumped to
+#' `"v5_amplicon_query"`; [migrate_reference_cache()] carries an existing
+#' cache's `"congruent"` rows forward (stripping primers only ADDS hits, it
+#' cannot withdraw a match already observed) and leaves everything else to
+#' re-BLAST under the new query.
+#'
+#' @section Local corroboration (2026-09-03):
+#' If an ASV matches several references of the same species that agree with
+#' each other, why BLAST any of them? [corroborate_references_locally()]
+#' answers that from the workflow's own `seq_matrix`, for free: a reference
+#' whose best INDEPENDENT (different submission batch, the screen's own
+#' rule) conspecific matches at >= `min_pident` over >= `min_overlap` of
+#' the amplicon is `"corroborated"`. Passed here as `local_corroboration`,
+#' such accessions are skipped rather than BLASTed (about 40% of the
+#' PtConception population, 15% of GreatLakes), cached as
+#' `"locally_corroborated"` with TTL `Inf`. [score_reference_labels()] uses
+#' the same table for provenance (`corroboration_source`) and to VETO a
+#' BLAST `"remove"` down to `"inspect"` when the local set corroborates the
+#' label -- the disagreement between the two is what exposed the blind spot
+#' above. The overlap filter is not optional: `KM057967` (*Jordania zonope*)
+#' looked corroborated by `LC126244` at "100%" over a 5.6% overlap (~40 bp
+#' of a different 12S region); it is a true singleton and its removal
+#' stands.
 #'
 #' @seealso [remove_incongruent_references()], [flag_incongruent_references()],
-#'   [blast_sequences()]
+#'   [corroborate_references_locally()], [match_driving_accessions()],
+#'   [migrate_reference_cache()], [blast_sequences()]
 #'
 #' @export
 evaluate_reference_accessions <- function(accessions,
@@ -1538,17 +1717,37 @@ evaluate_reference_accessions <- function(accessions,
                                           ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                                           poll_max_wait = 1800,
                                           barcode_term = NULL,
+                                          query_span = c("amplicon", "primer_inclusive"),
                                           chunk_size = 200L,
                                           max_consecutive_batch_failures = 3L,
                                           max_query_len = NULL,
                                           max_batch_bp = 100000L,
                                           prioritize_uncached = TRUE,
                                           retry_insufficient = TRUE,
+                                          local_corroboration = NULL,
+                                          skip_locally_corroborated = TRUE,
                                           verbose = TRUE) {
 
   if (!is.character(accessions) || length(accessions) == 0L)
     stop("accessions must be a non-empty character vector.", call. = FALSE)
   method <- match.arg(method)
+  query_span <- match.arg(query_span)
+  if (!is.logical(skip_locally_corroborated) || length(skip_locally_corroborated) != 1L ||
+      is.na(skip_locally_corroborated))
+    stop("skip_locally_corroborated must be TRUE or FALSE.", call. = FALSE)
+  if (!is.null(local_corroboration)) {
+    lc_needed <- c("accession", "local_tier", "n_independent_conspecific",
+                   "best_independent_pident")
+    if (!is.data.frame(local_corroboration))
+      stop("local_corroboration must be NULL or a data frame from corroborate_references_locally().",
+           call. = FALSE)
+    lc_missing <- setdiff(lc_needed, names(local_corroboration))
+    if (length(lc_missing) > 0L)
+      stop(sprintf(
+        "local_corroboration is missing required column(s): %s (expected corroborate_references_locally() output).",
+        paste(lc_missing, collapse = ", ")
+      ), call. = FALSE)
+  }
   if (!is.numeric(chunk_size) || length(chunk_size) != 1L || is.na(chunk_size) ||
       chunk_size < 1L)
     stop("chunk_size must be a positive integer (Inf for a single unchunked call).",
@@ -1608,36 +1807,20 @@ evaluate_reference_accessions <- function(accessions,
   # of both collapsing to the identical NA.
   rank_system <- TaxaTools::standard_ranks
 
-  # .EVAL_REF_ACC_VERSION: bump this any time an internal computation
-  # detail changes without any caller-visible parameter changing (e.g. the
-  # 2026-08-07 rank_system extension below) -- otherwise a cached row
-  # computed under the OLD internal logic gets served as a "fresh" cache
-  # hit forever under an unchanged params_key, silently keeping stale
-  # values (e.g. a pre-fix finest_common_rank = NA where a fresh
-  # computation would now report "order") indefinitely. Cheap insurance,
-  # not something a caller ever sets directly.
-  #
-  # 2026-08-13 require_species_resolved_partner fix: deliberately NOT
-  # bumped, matching the 2026-08-11 modifier-prefix fix's own precedent.
-  # params_key is one global string applied uniformly to every cached row
-  # (not conditional per row), so bumping it here would invalidate and
-  # force a fresh re-BLAST of all ~1,163 already-correctly-cached real
-  # GreatLakes rows -- real, unnecessary NCBI cost for a fix whose effect
-  # is narrow (only rows whose top-N independent BLAST hits include a
-  # non-species-resolved reference can possibly change) and, on the one
-  # real case fully investigated (Stereolepis doederleini vs. its
-  # Serranidae sp. JL-2015 partner), was confirmed to be a no-op on the
-  # actual verdict. Instead, the specific rows worth re-checking (every
-  # currently non-"congruent" row, the only rows where this filter could
-  # plausibly change what a reviewer sees) were surgically removed from
-  # the real persistent cache directly, so only those get re-evaluated
-  # under the new logic on the next run.
-  .EVAL_REF_ACC_VERSION <- "v4_hybrid_maternal_proxy"
-
-  params_key <- paste(top_n, min_congruent_rank, submission_window,
-                      hierarchy_incongruent_threshold, min_independent_partners,
-                      score_range, min_score, max_hits, method, database,
-                      .EVAL_REF_ACC_VERSION, sep = "|")
+  # params_key: one global string per cached row. The version tag
+  # (.EVAL_REF_ACC_VERSION, file scope -- see its own roxygen for the bump
+  # history and the discipline around bumping it) and every verdict-
+  # affecting argument go in; call mechanics stay out. Built by
+  # .build_params_key() so migrate_reference_cache() computes the identical
+  # key from the identical code.
+  params_key <- .build_params_key(
+    top_n = top_n, min_congruent_rank = min_congruent_rank,
+    submission_window = submission_window,
+    hierarchy_incongruent_threshold = hierarchy_incongruent_threshold,
+    min_independent_partners = min_independent_partners,
+    score_range = score_range, min_score = min_score, max_hits = max_hits,
+    method = method, database = database, query_span = query_span
+  )
 
   cache <- .load_reference_accession_cache(cache_dir)
   if (!"params_key" %in% names(cache)) cache$params_key <- NA_character_
@@ -1692,11 +1875,17 @@ evaluate_reference_accessions <- function(accessions,
   # rebuild includes it. Both verdicts were correct given the database each
   # was computed against -- which is precisely the situation a TTL exists
   # for.
+  #
+  # "locally_corroborated" (2026-09-03) is Inf like "congruent" and for the
+  # same reason: it asserts corroborating evidence WAS found (in the
+  # caller's own reference set rather than in nt). Enumerated explicitly so
+  # the next new flag value has to be placed here deliberately.
   ttl_days_for_flag <- function(flag) {
     ifelse(
       flag %in% c("insufficient_independent_evidence", "not_evaluated_oversized"),
       insufficient_evidence_ttl_days,
-      ifelse(flag %in% "incongruent", incongruent_ttl_days, Inf)
+      ifelse(flag %in% "incongruent", incongruent_ttl_days,
+             ifelse(flag %in% c("congruent", "locally_corroborated"), Inf, Inf))
     )
   }
   row_ttl_secs <- ttl_days_for_flag(in_cache$hierarchy_flag) * 86400
@@ -1710,6 +1899,12 @@ evaluate_reference_accessions <- function(accessions,
     # NCBI cost anyway. See @param retry_insufficient.
     rep(TRUE, nrow(in_cache))
   }
+  # A cached "locally_corroborated" row is a cache hit only while the caller
+  # still wants the skip. skip_locally_corroborated = FALSE says "BLAST these
+  # after all", so such a row goes back into needs_eval regardless of TTL --
+  # the flag records a decision not to evaluate, not an evaluation.
+  if (!isTRUE(skip_locally_corroborated))
+    fresh_enough <- fresh_enough & !(in_cache$hierarchy_flag %in% "locally_corroborated")
   cache_hit_rows <- in_cache[fresh_enough, , drop = FALSE]
   # A scalar assigned onto a NEW column of a possibly-zero-row data frame
   # does not recycle the way it would on an existing column -- base R
@@ -1734,6 +1929,63 @@ evaluate_reference_accessions <- function(accessions,
     needs_eval <- c(never_evaluated, intersect(needs_eval, retried_expired))
   }
 
+  # ---- Local corroboration skip (2026-09-03) --------------------------------
+  # An accession that still needs a verdict but is independently corroborated
+  # by a conspecific in the caller's OWN reference set (corroborate_
+  # references_locally(): a different submission batch, identity >=
+  # min_pident over >= min_overlap of the amplicon) is not BLASTed at all.
+  # It gets a real cached row, hierarchy_flag = "locally_corroborated", with
+  # the corroboration's own numbers where the BLAST diagnostics would have
+  # gone and NA elsewhere -- never a fabricated BLAST result. Measured on the
+  # real PtConception screen this is ~40% of the BLAST population (15% on
+  # GreatLakes), and it is free. Applied to needs_eval only: a row that
+  # already has a BLAST verdict keeps it.
+  skipped_rows <- NULL
+  if (!is.null(local_corroboration) && isTRUE(skip_locally_corroborated) &&
+      length(needs_eval) > 0L) {
+    lc_acc <- .strip_acc_version(local_corroboration$accession)
+    corroborated_acc <- lc_acc[local_corroboration$local_tier %in% "corroborated"]
+    is_skip <- .strip_acc_version(needs_eval) %in% corroborated_acc
+    if (any(is_skip)) {
+      skip_acc <- needs_eval[is_skip]
+      idx <- match(.strip_acc_version(skip_acc), lc_acc)
+      skipped_rows <- data.frame(
+        accession = skip_acc,
+        listed_taxon = if ("species" %in% names(local_corroboration)) {
+          as.character(local_corroboration$species[idx])
+        } else {
+          NA_character_
+        },
+        n_independent_top_matches = as.integer(local_corroboration$n_independent_conspecific[idx]),
+        n_top_matches_available = NA_integer_,
+        frac_independent_below_min_congruent_rank = NA_real_,
+        finest_common_rank = "species",
+        best_hit_pident = NA_real_,
+        best_agreeing_pident = 100 * as.numeric(local_corroboration$best_independent_pident[idx]),
+        best_disagreeing_pident = NA_real_, best_disagreeing_taxon = NA_character_,
+        congruent_evidence_exists_anywhere = TRUE,
+        congruent_evidence_best_pident = NA_real_,
+        hierarchy_flag = "locally_corroborated",
+        evaluated_at = now,
+        cache_hit = FALSE,
+        params_key = params_key,
+        taxonomy_resolution_source = NA_character_,
+        stringsAsFactors = FALSE
+      )
+      needs_eval <- needs_eval[!is_skip]
+      cache <- cache[!(cache$accession %in% skipped_rows$accession &
+                       cache$params_key == params_key), , drop = FALSE]
+      cache <- rbind(cache, .align_to_cache_columns(skipped_rows, cache))
+      .save_reference_accession_cache(cache_dir, cache)
+      if (verbose)
+        message(sprintf(
+          "evaluate_reference_accessions(): %d skipped: independently corroborated in the local reference set (hierarchy_flag = 'locally_corroborated', never submitted to BLAST).",
+          nrow(skipped_rows)
+        ))
+    }
+  }
+  n_skipped_local <- if (is.null(skipped_rows)) 0L else nrow(skipped_rows)
+
   if (verbose)
     message(sprintf(
       "evaluate_reference_accessions(): %d unique accession(s), %d from cache, %d to evaluate.",
@@ -1748,11 +2000,13 @@ evaluate_reference_accessions <- function(accessions,
                "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
                "taxonomy_resolution_source")
 
-  if (length(needs_eval) == 0L) {
-    out <- cache_hit_rows[, out_cols, drop = FALSE]
-    rownames(out) <- NULL
-    return(out)
-  }
+  # No early return for a purely cache-served call (removed 2026-09-03): the
+  # general path below handles an empty needs_eval (the chunk loop simply
+  # does not run), and it is the only path that appends the post-hoc
+  # listed_taxon_is_species / label_confidence / reference_action columns
+  # and the run_summary attribute -- the old early return silently omitted
+  # all of them from a fully-cached result, and could not carry the
+  # locally-corroborated rows either.
 
   # ---- Chunked evaluation with incremental cache writes --------------------
   # needs_eval is processed chunk_size accessions at a time (default 200L,
@@ -1764,7 +2018,11 @@ evaluate_reference_accessions <- function(accessions,
   # flight, not every accession successfully evaluated earlier in the same
   # call. See @section Chunked evaluation and NCBI rate-limiting resilience
   # below for the full rationale.
-  chunks <- split(needs_eval, ceiling(seq_along(needs_eval) / chunk_size))
+  chunks <- if (length(needs_eval) > 0L) {
+    split(needs_eval, ceiling(seq_along(needs_eval) / chunk_size))
+  } else {
+    list()
+  }
 
   all_computed_rows <- vector("list", length(chunks))
   missing_acc <- character(0)
@@ -1791,7 +2049,8 @@ evaluate_reference_accessions <- function(accessions,
       submission_window = submission_window,
       min_independent_partners = min_independent_partners,
       hierarchy_incongruent_threshold = hierarchy_incongruent_threshold,
-      params_key = params_key, now = now, verbose = verbose
+      params_key = params_key, now = now, verbose = verbose,
+      query_span = query_span
     )
     n_chunks_attempted <- ci
     missing_acc <- union(missing_acc, chunk_result$missing_acc)
@@ -1802,7 +2061,7 @@ evaluate_reference_accessions <- function(accessions,
       # rather than waiting for every remaining chunk to also finish. ----
       cache <- cache[!(cache$accession %in% chunk_result$computed_rows$accession &
                        cache$params_key == params_key), , drop = FALSE]
-      cache <- rbind(cache, chunk_result$computed_rows[, names(cache), drop = FALSE])
+      cache <- rbind(cache, .align_to_cache_columns(chunk_result$computed_rows, cache))
       .save_reference_accession_cache(cache_dir, cache)
 
       # Sidecar pair table, written on the same incremental schedule and for
@@ -1868,8 +2127,10 @@ evaluate_reference_accessions <- function(accessions,
     NULL
   }
 
+  skipped_out <- if (!is.null(skipped_rows)) skipped_rows[, out_cols, drop = FALSE] else NULL
+
   out <- do.call(rbind, Filter(Negate(is.null), list(
-    cache_hit_rows[, out_cols, drop = FALSE], computed_out, failed_out
+    cache_hit_rows[, out_cols, drop = FALSE], skipped_out, computed_out, failed_out
   )))
   rownames(out) <- NULL
 
@@ -1916,7 +2177,7 @@ evaluate_reference_accessions <- function(accessions,
   # cache hits and NA missing_acc rows.
   n_evaluated_this_call <- if (!is.null(computed_rows)) nrow(computed_rows) else 0L
   n_total <- length(unique_acc)
-  n_resolved <- nrow(cache_hit_rows) + n_evaluated_this_call
+  n_resolved <- nrow(cache_hit_rows) + n_evaluated_this_call + n_skipped_local
   pct_complete <- if (n_total > 0L) round(100 * n_resolved / n_total, 1) else 100
   recommended_pause_minutes <- 15L
 
@@ -1924,6 +2185,7 @@ evaluate_reference_accessions <- function(accessions,
     n_total = n_total,
     n_from_cache = nrow(cache_hit_rows),
     n_evaluated_this_call = n_evaluated_this_call,
+    n_skipped_locally_corroborated = n_skipped_local,
     n_pending = length(missing_acc),
     pct_complete = pct_complete,
     circuit_breaker_tripped = circuit_breaker_tripped,
@@ -2025,7 +2287,9 @@ flag_incongruent_references <- function(match_df, evaluation) {
   # verdict columns, and joining what exists beats erroring on what doesn't.
   optional_cols <- intersect(
     c("label_confidence", "label_identity_margin", "reference_action",
-      "listed_taxon_is_species"),
+      "listed_taxon_is_species",
+      "corroboration_source", "local_best_independent_pident",
+      "local_n_independent_conspecific", "action_reason"),
     names(evaluation)
   )
   join_cols <- c(join_cols, optional_cols)
@@ -2380,10 +2644,15 @@ verify_flagged_references <- function(flagged,
     ...
   )
 
+  # "locally_corroborated" (2026-09-03) counts as verified-clean alongside
+  # "congruent": both assert corroborating evidence WAS found, only the
+  # source differs (the caller's own reference set vs nt). It can only
+  # appear here if the caller forwarded a local_corroboration table through
+  # `...`.
   keep_flags <- if (isTRUE(trust_insufficient_evidence)) {
-    c("congruent", "insufficient_independent_evidence")
+    c("congruent", "locally_corroborated", "insufficient_independent_evidence")
   } else {
-    "congruent"
+    c("congruent", "locally_corroborated")
   }
   verified_clean <- unique(qc$accession[qc$hierarchy_flag %in% keep_flags])
   n_incongruent  <- sum(qc$hierarchy_flag == "incongruent", na.rm = TRUE)

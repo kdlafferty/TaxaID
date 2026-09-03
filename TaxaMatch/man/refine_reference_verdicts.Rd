@@ -17,6 +17,7 @@ refine_reference_verdicts(
   max_iter = 10L,
   tol = 1e-04,
   verbose = TRUE,
+  local_corroboration = NULL,
   ...
 )
 }
@@ -51,6 +52,10 @@ partner's weight; \code{0} means an accession resolved to
 \code{label_confidence} moves by more than this.}
 
 \item{verbose}{Logical (default \code{TRUE}).}
+
+\item{local_corroboration}{Data frame or \code{NULL} (default). Forwarded to
+\code{\link[=score_reference_labels]{score_reference_labels()}}; the same veto (a locally-corroborated
+\code{"remove"} becomes \code{"inspect"}) is applied to \code{reference_action_trust}.}
 
 \item{...}{Passed to \code{\link[=score_reference_labels]{score_reference_labels()}} (\code{margin_scale},
 \code{margin_cap}, the three action thresholds) -- use the SAME values here
