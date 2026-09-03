@@ -1,6 +1,17 @@
+# CLAUDE.md -- TaxaAssign
+# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- suggest_unreferenced_species() builds
+# its NCBI query from TaxaTools::resolve_barcode_marker(barcode_term) rather than the raw term.
+#
+# A registered primer-variant name ("COI-Folmer", "16S-Palumbi", "rbcLa", ...) is correct for
+# primer/length resolution but is not indexed by NCBI, so a query built from it matched nothing --
+# silently, since an empty search result is legitimate here, making every species look
+# unreferenced. Lengths still resolve from the caller's own tighter term. See TaxaTools/CLAUDE.md
+# for the full record and the live before/after hit counts.
+#
+# devtools::test() 707/0, devtools::check() 0/0/0, reinstalled.
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-31, later same day (Fable 5, branch kernel-priors -- POSTHOC
+# Previous update: 2026-08-31, later same day (Fable 5, branch kernel-priors -- POSTHOC
 # AXIS-1 RECALIBRATION for kernel prior tables: posterior_consensus()'s
 # winner_has_occurrence_record and the plausible-competitor mask now read
 # prior_branch when that column is present (has-record = "resident_observed";

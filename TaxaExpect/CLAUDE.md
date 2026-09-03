@@ -1,6 +1,55 @@
+# CLAUDE.md -- TaxaExpect
+# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- SAMPLING-GROUP SCOPE restored to
+# the kernel estimator, plus WKT masks for the prior-field map.
+#
+# estimate_kernel_priors() gains `sampling_group_col` (default NULL = the previous behaviour
+# EXACTLY, verified against the real 529,091-record Mugu run at max |delta| = 0 across all 214
+# taxa). Composition (theta) AND the Good-Turing budget (f1/f2/missing_mass/chao_missing/
+# theta_present) are both SHARED-DENOMINATOR quantities that assume one detection process. The
+# GLMM path enforced this via prepare_model_dataframe(sampling_group_col=) /
+# train_biodiversity_model_by_group() (Session 149, motivated by the real PtConception 18S
+# workflow's 11 sampling groups); the kernel rewrite dropped it. Restored here.
+#
+# The failure mode (raised by the user): an assay whose occurrence pool is broader than what it
+# can detect -- water sampled for vertebrate diversity, signal 95% fish -- lets barely-sampled
+# groups contribute singletons that inflate f1, hence Chao QUADRATICALLY, while adding almost
+# nothing to missing_mass, deflating theta_present. Their ~3x estimate is confirmed
+# algebraically; a stark fixture (20 well-recorded fish + 30 single-record "downwash" taxa)
+# measures 11x, and detectable taxa's own theta is separately diluted by records the assay could
+# never amplify. NOT the explanation at either validated site, checked directly: GreatLakes'
+# curve-priced pool is 376/376 Actinopteri and Mugu's singletons are fish throughout -- it is a
+# no-op on a homogeneous pool BY CONSTRUCTION, which is also why it cannot disturb either
+# validation. PtConception 18S, where it would bite, has no occurrence or prior checkpoint yet.
+#
+# With >1 group each gets its own simplex (theta sums to 1 within group) and its own row in the
+# new $budget table; the pooled scalars are NA BY DESIGN (no single budget exists across
+# detection processes -- a scalar would be silently wrong) and print() shows the per-group table.
+# apply_undetected_evidence(pricing = "curve") REFUSES a multi-group fit with an actionable
+# message rather than pricing every group off one group's budget; per-group curve pricing is
+# deliberately NOT wired up. Build the column with compute_adaptive_sampling_groups() (merges
+# order -> class -> phylum only as far as each group needs, phylum ceiling, so no single rank has
+# to be chosen) or supply your own.
+#
+# ALSO: plot_theta_surface(mask=) now accepts a WKT POLYGON/MULTIPOLYGON string. The lattice is a
+# RECTANGLE over the data extent, so a coast-hugging search polygon paints well inland -- correct
+# by construction, surprising in practice. Every workflow already holds its polygon as the WKT
+# string define_search_polygon() returns and passes to GBIF, so `mask = bbox` now clips the map to
+# the exact geometry the records were fetched under. Uses sf when installed (holes/multipart); the
+# dependency-free fallback REFUSES a multi-ring polygon rather than silently filling a hole. Wired
+# into all 4 kernel-path workflows.
+#
+# STILL OPEN, with full numbers and the arguments on both sides:
+# ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md -- (1) whether to price from
+# mass/f1 (observed) instead of mass/chao_missing (estimated, radius-unstable: 4x at Mugu, 21x at
+# GL, driven by f2 in single digits); GL is robust to the switch (0 of 880 winners flip). (2)
+# per-group curve pricing. (3) using the singleton theta DISTRIBUTION (4x-19x spread) rather than
+# a scalar. Note missing_mass/f1 is ALREADY computed as kernel_theta_singleton in
+# apply_undetected_evidence(), used only for the veto-bound printout.
+#
+# devtools::test() 923/0, devtools::check() 0/0/0, reinstalled.
 # CLAUDE.md — TaxaExpect
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-01, later (Fable 5 -- plot_theta_surface() USER-FEEDBACK
+# Previous update: 2026-09-01, later (Fable 5 -- plot_theta_surface() USER-FEEDBACK
 # ROUND after the first real click-through on GreatLakes. Five changes, all in
 # the leaflet renderer unless noted: (1) the default pin marker covered the heat
 # map exactly where a reader needs it -- now a small hollow circle

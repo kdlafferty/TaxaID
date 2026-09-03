@@ -1,6 +1,24 @@
 # CLAUDE.md -- TaxaLikely
+# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- the primer-variant search bug, and
+# correctly-shaped empty returns.
+#
+# .build_search_term() now resolves a registered primer-variant barcode_term through
+# TaxaTools::resolve_barcode_marker() before building the NCBI query (see that package's own
+# note for the full record and the live before/after counts). audit_barcode_coverage() does the
+# same -- and that one was the SILENT failure: with a variant term it would report every species
+# as having no barcode, inflating `unreferenced` and feeding apply_coverage_constraints() and the
+# unobserved-taxa machinery a fiction. Lengths still resolve from the caller's own tighter term.
+#
+# fetch_ncbi_reference_sequences()'s three early returns (zero hits, nothing passed filters,
+# empty FASTA) now carry the SAME columns a successful return does, via the new
+# .empty_reference_df(). The bare 2-column frame made a caller's ordinary next step --
+# clean_taxon_names(reference_df$species) -- die on NULL with "`name_vec` must be a character
+# vector", burying the function's own already-correct explanation of why the result was empty.
+#
+# 3 new tests. devtools::test() 1024/0, devtools::check() 0/0/0, reinstalled.
+# CLAUDE.md -- TaxaLikely
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-02 (Opus 5, branch kernel-priors -- Thread 3 of
+# Previous update: 2026-09-02 (Opus 5, branch kernel-priors -- Thread 3 of
 # ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md: reference
 # quality as a likelihood covariate. Threads 1-2 land in TaxaMatch; see its CLAUDE.md.
 #

@@ -1,6 +1,33 @@
+# CLAUDE.md -- TaxaTools
+# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- NEW resolve_barcode_marker().
+#
+# A registered primer-variant term ("COI-Folmer", "16S-Palumbi", "rbcLa", "cytb-Kocher",
+# "matK-Kim", "trnL-Taberlet") is the right term for resolving primers and amplicon lengths, but
+# NO sequence database indexes it -- no GenBank record is tagged "Folmer". Any NCBI query built
+# from such a term matched NOTHING, and because an empty search result is legitimate, the failure
+# was SILENT: downstream it read as "this taxon has no barcode", not "this query was malformed".
+#
+# Live-confirmed before and after: Leptocottus COI 0 hits -> 23, Paralabrax 0 -> 46, Girella
+# 0 -> 15. Found when a workflow's COI term was changed "COI" -> "COI-Folmer" to resolve a
+# genuine resolve_barcode_primers() ambiguity; the defect predated that change and covered every
+# registered variant except the MiFish pair.
+#
+# resolve_barcode_marker() maps a variant to the marker it amplifies. Identity for anything
+# unrecognised, so a custom term still searches as itself. MiFish is deliberately NOT remapped --
+# real records ARE annotated with that primer name, and callers already OR it with 12S. It lives
+# here, not in TaxaLikely, because the same failure reached THREE packages (TaxaLikely's
+# .build_search_term and audit_barcode_coverage, TaxaAssign's suggest_unreferenced_species) and
+# TaxaTools already owns the primer/length registries the terms come from.
+#
+# The two SILENT consumers were the dangerous ones: audit_barcode_coverage() and
+# suggest_unreferenced_species() would have reported every species as having no barcode,
+# inflating `unreferenced` and feeding apply_coverage_constraints() and the unobserved-taxa
+# machinery a fiction that looks like a finding.
+#
+# 6 new tests. devtools::test() 865/0, devtools::check() 0/0/0, reinstalled.
 # CLAUDE.md — TaxaTools
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-21 (Sonnet 5 -- clean_taxon_names() gains a new `collapsed_to_genus`
+# Previous update: 2026-08-21 (Sonnet 5 -- clean_taxon_names() gains a new `collapsed_to_genus`
 # R attribute on its returned vector, closing the ROOT CAUSE of a real "Ictalurus" bug found
 # live-debugging real GreatLakes2023 production data (`match_obj_restored %>% filter(
 # taxon_name_rank == "species", taxon_name == "Ictalurus")` returned 33 real rows). User's
@@ -206,6 +233,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `extended_ranks` | Character vector: standard + subspecies, variety, form | Complete | R/rank_utils.R |
 | `detect_ranks()` | Auto-detect which rank columns exist in a data frame; returns coarse-to-fine character vector | Complete | R/rank_utils.R |
 | `barcode_length_defaults` | Named list of 12 barcode markers → `list(min, max)` bp ranges. MiFish range: `c(130L, 210L)` (tightened Session 116 from c(100L,600L); excludes bacterial cross-amplification at ~256bp). | Complete | R/barcode_utils.R |
+| `resolve_barcode_marker()` | Resolve a registered primer-variant term (`"COI-Folmer"`, `"16S-Palumbi"`, `"rbcLa"`, `"cytb-Kocher"`, `"matK-Kim"`, `"trnL-Taberlet"`) to the marker it amplifies, for building a database query -- no GenBank record is tagged "Folmer", so a variant-named search matches nothing, SILENTLY. Identity for unrecognised terms; MiFish deliberately not remapped. | Complete | R/barcode_utils.R |
 | `resolve_barcode_lengths()` | Resolve min/max bp from `barcode_term` vector; takes union across multiple terms; user overrides | Complete | R/barcode_utils.R |
 | `barcode_primer_defaults` | Named list of primer sets → `list(fwd, rev, amplicon_range)`. Requires the *specific* primer variant (e.g. `"mifish-u"`), unlike `barcode_length_defaults`'s generic marker keys -- different variants can have genuinely different primer sequences. **Session 140**: MiFish-U, MiFish-E (12S; Miya et al. 2015). **Session 141**: 6 more entries added, one per mitochondrial/chloroplast marker in `barcode_length_defaults` -- `16s-palumbi` (Palumbi 16Sar-L/16Sbr-H), `coi-folmer` (Folmer et al. 1994 LCO1490/HCO2198; documented invertebrate-only scope, empirically confirmed to fail on human/vertebrate COI at default mismatch tolerance), `cytb-kocher` (Kocher et al. 1989 L14841/H15149), `rbcla` (Levin 2003 rbcLa-F / Kress & Erickson 2007 rbcLa-R), `matk-kim` (Hollingsworth et al. 2009 matK-3F_KIM/matK-1R_KIM), `trnl-taberlet` (Taberlet et al. 2007 primers g/h). Nuclear markers (18S, ITS/ITS2) deliberately still unpopulated -- no single canonical primer pair exists to verify for either. Every Session 141 entry was empirically tested with `Biostrings::matchPattern()` against a real GenBank mitogenome or chloroplast genome, not just cross-checked against literature -- see that session's note for two real errors this caught. **Session 142**: `coi-leray` added (mlCOIintF/dgHCO2198, Leray et al. 2013 / Meyer 2003) -- the actual eDNA/metabarcoding-relevant COI mini-barcode, distinct from `coi-folmer`'s full-length Sanger-era product. Deliberately pairs Leray's forward primer with Meyer's *inosine-free* degenerate reverse primer rather than Geller et al. (2013)'s `jgHCO2198`, which uses inosine (a base analog `Biostrings::DNAString` cannot represent) -- confirmed via a real published precedent for this exact pairing, not invented. Empirically confirmed on real *Drosophila melanogaster* mtDNA: 365bp full product, which exactly reconciles to the ubiquitous "313bp Leray fragment" figure once both primers (52bp combined) are excluded. Bare `"COI"` is now deliberately ambiguous between `coi-folmer` and `coi-leray` (same ambiguity-over-guessing discipline as MiFish-U/E). | Complete (incremental) | R/barcode_utils.R |
 | `resolve_barcode_primers()` | Resolve `fwd`/`rev`/`amplicon_range` from a specific `barcode_term`. Errors (does not guess) on an ambiguous bare term (e.g. `"mifish"` alone) or an unregistered marker, with guidance to supply primers directly or pre-trim with CRABS. | Complete | R/barcode_utils.R |
