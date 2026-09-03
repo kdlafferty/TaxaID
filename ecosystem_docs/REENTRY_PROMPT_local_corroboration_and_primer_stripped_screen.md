@@ -270,3 +270,29 @@ the before/after `table(hierarchy_flag)` and `table(reference_action)`.
   amplicon (Run C: the conspecific ranks 2nd of 100).
 - Re-deriving the 0.99 threshold from the trained H1 within-species
   distribution: a good later refinement; record it, do not build it now.
+
+## Status
+
+- 2026-09-03: IMPLEMENTED (delegated agent, offline, mocked BLAST) on branch
+  `local-corroboration`; tests 1228/0, check 0/0/0. Verified independently:
+  the PtCon tier diagnostic reproduces 286/554/23/26/106 through the package
+  and the veto flips exactly KM057996. Subset workflow test
+  (`diagnostics/subset_workflow_local_corroboration_test.R`) RUN LIVE, 6/6
+  checks pass; KM057996 forced through the amplicon query reads congruent
+  with OQ846041 + two Z. latipinnis at 100%.
+- 2026-09-03: MERGED into `kernel-priors` (6d7d3d9) plus 9ce583b (the screen
+  now forwards `local_corroboration` into its own scoring). Workflows rewired
+  (PtCon 12S 7a.10, GreatLakes 7a.6 -- a stale hard-coded `match_eval <-
+  readRDS()` reload removed there -- and Mugu); backups
+  `*.bak_pre_local_corroboration`.
+- NOT YET DONE: `devtools::install()` from the main checkout;
+  `migrate_reference_cache()` on the four real cache dirs (PtCon + three
+  GreatLakes); the first live re-run. Expected on PtCon: ~106 skipped, ~76
+  re-BLASTed, KM057996 no longer removed.
+- Two loose ends for the next session: (1) MN883227 (Fundulus luciae, the
+  "confirmed mislabel") read insufficient/keep with ONE independent partner,
+  NC_083019, a F. luciae mitogenome at 100% -- re-examine that premise;
+  (2) 743 of 995 PtCon match candidates are absent from reference_df, so
+  local corroboration reaches only ~25% of candidates there; a reference
+  fetch that also pulls the match candidates' conspecific short deposits
+  would widen it (not designed).
