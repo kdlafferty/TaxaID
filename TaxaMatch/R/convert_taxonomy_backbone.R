@@ -60,6 +60,47 @@
 #' conversion") would otherwise see `species` still populated, apply
 #' "most specific non-NA rank wins", and silently undo the correction.
 #'
+#' @section Rank correction on a genus-collapsing name, any source (2026-08-21):
+#' The `matched_rank`-driven correction above only fires when the target
+#' backbone's own reported rank disagrees with the row's claimed rank. A
+#' second, independent mechanism corrects `taxon_name_rank` whenever the
+#' value that actually ended up in `taxon_name` was produced by
+#' [TaxaTools::clean_taxon_names()] COLLAPSING a real second token to
+#' genus-only -- regardless of which of the three possible sources produced
+#' it (a not-found row's fallback cleaning; a found row's `matched_name_clean`
+#' fallback when its own rank had no target value; or a found row's own
+#' `target_<rank>` value at its claimed rank). This closes two real,
+#' independently-discovered cases from GreatLakes2023 production data:
+#' (1) an open-nomenclature, specimen-voucher-tagged reference label (e.g.
+#' `"Ictalurus cf. pricei USON-01120-1"`) that never resolves in the target
+#' backbone at all (`found_mask = FALSE`); and (2), found only after
+#' verifying (1)'s original fix against a real re-run and still finding
+#' stale rows: NCBI's own taxonomy DB genuinely contains leaf-level nodes
+#' for informally-named specimens (e.g. a real node literally named
+#' `"Ictalurus sp. UM 105-1789"`, ranked `"species"` by NCBI itself) -- here
+#' `found_mask = TRUE` and `matched_rank` genuinely IS `"species"`
+#' (backbone-consistent, so the `matched_rank`-driven correction correctly
+#' does nothing), but the classification path's own species-rank VALUE is
+#' that same informal label, which collapses to genus-only when cleaned.
+#' No rank-MISMATCH-based correction can ever catch case (2) -- the
+#' backbone's own rank claim is genuinely self-consistent; only the collapse
+#' signal itself reveals the problem. Before this fix, `taxon_name_rank`
+#' stayed stale at whatever rank the row claimed before conversion,
+#' mislabeling a bare genus as if it were still species-level.
+#'
+#' Deliberately tracks the actual collapse event through the pipeline (via
+#' `collapsed_to_genus`) rather than re-deriving the signal from the final
+#' value's shape (e.g. via [TaxaTools::is_plausible_binomial()]) -- that
+#' function's binomial regex requires a literal space immediately after the
+#' genus token, which a real hyphenated genus (e.g. *Pseudo-nitzschia*,
+#' already a real fixture elsewhere in this ecosystem's own test suite)
+#' fails, which would have wrongly demoted every hyphenated-genus species
+#' row. Requires `"genus"` to be present in `rank_system`; a no-op
+#' otherwise. Gracefully absent (no-op) for a `clean_taxon_names()`-alike
+#' that predates the `collapsed_to_genus` attribute. Rank columns finer than
+#' the demoted rank are cleared, same as the `matched_rank`-driven
+#' correction above.
+#'
 #' An R attribute `backbone_cols` is set on the returned data frame recording
 #' which rank columns were subject to backbone conversion. A summary message
 #' is also printed.
@@ -297,6 +338,14 @@ convert_taxonomy_backbone <- function(
   path_list  <- strsplit(verified$classification_path,  "|", fixed = TRUE)
   ranks_list <- strsplit(verified$classification_ranks, "|", fixed = TRUE)
 
+  # target_collapsed_list[[rk]]: parallel to target_<rk>, TRUE where
+  # clean_taxon_names() collapsed that rank's raw classification_path value
+  # to genus-only (see the unified collapse-correction block below -- this is
+  # what lets a row whose BACKBONE-reported rank is genuinely "species", but
+  # whose species-rank NAME is an informal/open-nomenclature placeholder, be
+  # caught -- a case the matched_rank-driven correction cannot see, since
+  # matched_rank itself is correct/consistent in that scenario).
+  target_collapsed_list <- list()
   for (rk in rank_system) {
     raw_vals <- mapply(function(path, ranks) {
       if (length(ranks) == 1L && is.na(ranks)) return(NA_character_)
@@ -307,7 +356,14 @@ convert_taxonomy_backbone <- function(
     # otherwise a classification_path entry carrying an authority string
     # can register a false "changed" collision against an already-clean
     # original rank value that names the same taxon.
-    verified[[paste0("target_", rk)]] <- TaxaTools::clean_taxon_names(raw_vals)
+    cleaned_rk <- TaxaTools::clean_taxon_names(raw_vals)
+    verified[[paste0("target_", rk)]] <- cleaned_rk
+    collapsed_rk <- attr(cleaned_rk, "collapsed_to_genus")
+    target_collapsed_list[[rk]] <- if (is.null(collapsed_rk)) {
+      rep(FALSE, length(raw_vals))
+    } else {
+      collapsed_rk
+    }
   }
 
   # ---------------------------------------------------------------------------
@@ -363,6 +419,77 @@ convert_taxonomy_backbone <- function(
   # ---------------------------------------------------------------------------
   taxon_col_clean_fallback <- TaxaTools::clean_taxon_names(match_df[[taxon_col]])
   rank_clean_fallback <- lapply(original_ranks, TaxaTools::clean_taxon_names)
+
+  # ---------------------------------------------------------------------------
+  # Second-pass verification of names that CLEANING CHANGED (2026-09-04).
+  #
+  # clean_taxon_names() reduces a GenBank hybrid-formula label to its maternal
+  # parent. That parent binomial has never itself been looked up, so it keeps
+  # whatever spelling the submitting author used -- and NCBI carries taxon
+  # records for the hybrids themselves, so this is NOT confined to the
+  # unresolved path: "Ctenopharyngodon idellus x Elopichthys bambusa" verifies
+  # with score 1, and only afterwards becomes "Ctenopharyngodon idellus" at
+  # matched_name_clean. That is how NC_025590 emitted the variant spelling into
+  # GreatLakes while three direct references emitted the accepted
+  # "Ctenopharyngodon idella": one species split into two competing candidates
+  # (posterior 0.5005 / 0.4945), forcing a genus back-off that ultimately
+  # dropped a Lamar-confirmed grass carp detection. Its two sibling hybrids came
+  # out right only because their labels already used the accepted spelling.
+  #
+  # Both sources of a cleaned name are covered: (a) matched_name_clean on a
+  # RESOLVED row, and (b) the not-found fallback just above. Only names the
+  # cleaning actually changed, and that were not already in the first pass, are
+  # re-queried -- one small batched call when hybrid labels are present, and
+  # nothing at all when they are not. The result is applied to the rank columns
+  # as well, so taxon_name and species cannot disagree about which spelling of
+  # one taxon is in use.
+  # ---------------------------------------------------------------------------
+  .clean_changed <- c(
+    verified$matched_name_clean[
+      !is.na(verified$matched_name) & !is.na(verified$matched_name_clean) &
+        verified$matched_name_clean != verified$matched_name],
+    taxon_col_clean_fallback[
+      !found_mask & !is.na(taxon_col_clean_fallback) &
+        !is.na(match_df[[taxon_col]]) &
+        taxon_col_clean_fallback != match_df[[taxon_col]]]
+  )
+  .second <- setdiff(unique(.clean_changed), unique_names)
+  .second <- .second[!is.na(.second) & nzchar(.second)]
+  if (length(.second) > 0L) {
+    v2 <- tryCatch(verify_fn(.second, backbone_id = target_backbone_id),
+                   error = function(e) NULL)
+    if (!is.null(v2) && is.data.frame(v2) && nrow(v2) > 0L &&
+        all(c("user_supplied_name", "matched_name") %in% names(v2))) {
+      # Only rows we actually asked about, and compare against the CLEANED
+      # match: a backbone may return an authority-bearing name
+      # ("Girella nigricans (Ayres, 1860)"), which is not a rename and must
+      # not be written back over an already-clean value.
+      v2 <- v2[!is.na(v2$user_supplied_name) & v2$user_supplied_name %in% .second, ,
+               drop = FALSE]
+      v2_clean <- if (nrow(v2)) TaxaTools::clean_taxon_names(v2$matched_name) else character(0)
+      ok <- nrow(v2) > 0L & !is.na(v2$matched_name) & !is.na(v2_clean) &
+        nzchar(v2_clean) & v2_clean != v2$user_supplied_name
+      if (any(ok)) {
+        nm_map <- stats::setNames(v2_clean[ok], v2$user_supplied_name[ok])
+        .remap <- function(x) {
+          hit <- !is.na(x) & x %in% names(nm_map)
+          x[hit] <- unname(nm_map[x[hit]])
+          x
+        }
+        verified$matched_name_clean <- .remap(verified$matched_name_clean)
+        taxon_col_clean_fallback    <- .remap(taxon_col_clean_fallback)
+        rank_clean_fallback         <- lapply(rank_clean_fallback, .remap)
+        for (.tc in grep("^target_", names(verified), value = TRUE))
+          verified[[.tc]] <- .remap(verified[[.tc]])
+        if (isTRUE(verbose))
+          message(sprintf(
+            "  %d cleaned name(s) re-resolved on a second pass: %s",
+            sum(ok),
+            paste(sprintf("'%s' -> '%s'", v2$user_supplied_name[ok],
+                          v2_clean[ok]), collapse = ", ")))
+      }
+    }
+  }
 
   # ---------------------------------------------------------------------------
   # Vectorised collision detection
@@ -439,12 +566,18 @@ convert_taxonomy_backbone <- function(
         if (col %in% names(verified)) verified[[col]]
         else rep(NA_character_, nrow(verified))
       }))
+      target_collapsed_mat <- do.call(cbind, lapply(rank_system, function(rk) {
+        if (!is.null(target_collapsed_list[[rk]])) target_collapsed_list[[rk]]
+        else rep(FALSE, nrow(verified))
+      }))
 
       rank_col_idx <- match(match_df$taxon_name_rank, rank_system)
       rank_vals    <- rep(NA_character_, nrow(match_df))
+      rank_vals_collapsed <- rep(FALSE, nrow(match_df))
       valid        <- !is.na(lookup_idx) & !is.na(rank_col_idx)
       if (any(valid)) {
         rank_vals[valid] <- target_mat[cbind(lookup_idx[valid], rank_col_idx[valid])]
+        rank_vals_collapsed[valid] <- target_collapsed_mat[cbind(lookup_idx[valid], rank_col_idx[valid])]
       }
 
       # A row's own taxon_name_rank has no target value at that SAME rank --
@@ -525,6 +658,103 @@ convert_taxonomy_backbone <- function(
           if (!rk %in% rank_cols_present) next
           clear_mask <- update_rank_mask & !is.na(matched_rank_pos) & (j > matched_rank_pos)
           if (any(clear_mask)) match_df[[rk]][clear_mask] <- NA_character_
+        }
+      }
+    }
+
+    # -------------------------------------------------------------------
+    # Correct taxon_name_rank whenever the value that ended up populating
+    # taxon_name was produced by clean_taxon_names() COLLAPSING a real
+    # second token to genus-only -- regardless of WHICH of the three
+    # possible sources produced it (2026-08-21). This is a genuinely
+    # different, unified successor to a narrower same-day fix that only
+    # covered the not-found path (see git history) -- kept as ONE
+    # mechanism, not three, specifically because a second real case was
+    # found the same day that the narrower fix could not catch:
+    #
+    # Real motivating cases, both from GreatLakes2023 production data.
+    # (1) Not-found path: TaxaLikely::restore_suppressed_candidates()
+    # copies a reference row's raw, open-nomenclature species value
+    # ("Ictalurus cf. pricei USON-01120-1", a specimen-voucher-tagged NCBI
+    # label) into a restored candidate; TaxaTools::create_taxon_names()
+    # sets taxon_name_rank = "species" purely because the species column
+    # is populated. This name fails an exact-name lookup entirely
+    # (found_mask = FALSE); the not-found fallback's own
+    # clean_taxon_names() call correctly collapses taxon_name to
+    # "Ictalurus" (case C below).
+    # (2) Found path, discovered when case (1)'s original fix was verified
+    # against real re-run output and still found 33 stale rows: NCBI's own
+    # taxonomy DB genuinely contains leaf-level nodes for informally-named
+    # specimens (e.g. a real node literally named
+    # "Ictalurus sp. UM 105-1789", ranked "species" by NCBI itself, not a
+    # rank mismatch at all) -- found_mask = TRUE, matched_rank IS "species"
+    # (backbone-consistent, so the matched_rank-driven correction above
+    # correctly does nothing), but the classification_path's own
+    # species-rank VALUE is that same informal label, which
+    # clean_taxon_names() correctly collapses to "Ictalurus" when building
+    # target_species (case A below). No rank-mismatch-based correction can
+    # ever catch this -- the backbone's own rank claim is genuinely
+    # self-consistent; only the collapse signal reveals the problem.
+    #
+    # Three possible sources for the final taxon_name value, matching the
+    # three branches above that build new_names / taxon_col_clean_fallback:
+    #   A. found_mask & the row's own claimed rank has a target value
+    #      (rank_vals, from target_<rank> -- collapse tracked per rank via
+    #      target_collapsed_mat/rank_vals_collapsed).
+    #   B. found_mask & no target value at that rank (used_fallback) ->
+    #      matched_name_clean.
+    #   C. !found_mask -> taxon_col_clean_fallback (the original
+    #      not-found-only fix, now folded in as one case of this one).
+    # Whichever source actually produced the value is the one whose own
+    # collapsed_to_genus flag is consulted -- never mixed across cases.
+    #
+    # Uses clean_taxon_names()'s own collapsed_to_genus attribute
+    # throughout rather than re-deriving the signal from the final value's
+    # shape (e.g. via TaxaTools::is_plausible_binomial()) -- deliberately
+    # rejected: that function's binomial regex requires a literal space
+    # right after the genus token, which a real hyphenated genus (e.g.
+    # Pseudo-nitzschia, already a real fixture case elsewhere in this
+    # ecosystem's own test suite) fails, which would have wrongly demoted
+    # every hyphenated-genus species row. Tracking the actual collapse
+    # event through the pipeline avoids this false-positive class entirely.
+    # -------------------------------------------------------------------
+    if ("taxon_name_rank" %in% names(match_df)) {
+      genus_pos <- match("genus", rank_system)
+      if (!is.na(genus_pos)) {
+        case_a_mask <- found_mask & !used_fallback
+        case_b_mask <- used_fallback
+        case_c_mask <- !found_mask
+
+        mnc <- attr(verified$matched_name_clean, "collapsed_to_genus")
+        matched_name_collapsed <- rep(FALSE, nrow(match_df))
+        if (!is.null(mnc)) {
+          idx_ok <- !is.na(lookup_idx)
+          matched_name_collapsed[idx_ok] <- mnc[lookup_idx[idx_ok]]
+        }
+
+        fallback_collapsed <- attr(taxon_col_clean_fallback, "collapsed_to_genus")
+        if (is.null(fallback_collapsed)) fallback_collapsed <- rep(FALSE, nrow(match_df))
+
+        final_collapsed <- rep(FALSE, nrow(match_df))
+        final_collapsed[case_a_mask] <- rank_vals_collapsed[case_a_mask]
+        final_collapsed[case_b_mask] <- matched_name_collapsed[case_b_mask]
+        final_collapsed[case_c_mask] <- fallback_collapsed[case_c_mask]
+
+        # taxon_name_rank AS IT STANDS NOW (i.e. after the matched_rank
+        # correction above may already have run) -- so a row that block
+        # already correctly demoted is left alone here.
+        current_rank_pos <- match(match_df$taxon_name_rank, rank_system)
+        demote_mask <- has_name & !is.na(current_rank_pos) &
+                        current_rank_pos > genus_pos & final_collapsed
+
+        if (any(demote_mask)) {
+          match_df$taxon_name_rank[demote_mask] <- "genus"
+          for (j in seq_along(rank_system)) {
+            rk <- rank_system[j]
+            if (!rk %in% rank_cols_present) next
+            clear_mask <- demote_mask & (j > genus_pos)
+            if (any(clear_mask)) match_df[[rk]][clear_mask] <- NA_character_
+          }
         }
       }
     }

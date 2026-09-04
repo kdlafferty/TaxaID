@@ -162,6 +162,19 @@ plausibility flag for this row is a likely database-coverage artifact,
 not a genuine surprise. \code{FALSE} otherwise, including when
 \code{domestic_taxa} is \code{NULL} (the feature is disabled). See
 @section Domestic/synanthropic species caveat above.}
+\item{\code{domestic_caveat_type}}{Character. \code{NA} unless
+\code{domestic_prior_caveat} is \code{TRUE}, then one of:
+\code{"no_local_records"} (\code{primary_plausibility} was
+\code{"unprecedented"} -- the species has never been reported locally,
+so the classic food/domestic-contamination reading is the leading
+hypothesis) or \code{"local_records"} (\code{primary_plausibility} was
+\code{"unexpected"} -- the species HAS real local occurrence records,
+just at an implausibly low modelled rate, typically because those
+records sit in a different habitat than the survey's. For that case a
+genuine allochthonous detection -- DNA transported across habitats,
+e.g. terrestrial pigs or coyotes reaching beach eDNA samples via
+runoff and tides -- is at least as plausible as food contamination,
+and a reviewer should not read the row as a plain food label.)}
 }
 }
 \description{

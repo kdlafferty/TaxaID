@@ -70,7 +70,13 @@ is resolved elsewhere.
 The irreducibility check operates on the full set of unique candidate
 combinations present in \code{consensus_df}. Candidate sets are sorted and
 deduplicated before comparison, so order differences in \code{plausible_taxa}
-across rows do not affect the result.
+across rows do not affect the result. This matters because candidate order
+is POSTERIOR order (it is what \code{primary_taxon} reads), so one biological
+unit legitimately arrives in different orders on different observations.
+Irreducibility is a property of the SET, not of the ranking within it.
+Enforced and regression-tested since 2026-09-04; before that the signature
+was built from the unsorted vector, so two orderings of one set each marked
+the other reducible and every row of the unit went \code{FALSE}.
 }
 \note{
 \strong{Invalid species names upstream:} Non-binomial entries such as
@@ -90,7 +96,8 @@ posterior_df <- data.frame(
   hypothesis_type = "specific_candidate",
   genus           = c("Homo", "Homo", "Bos"),
   family          = c("Hominidae", "Hominidae", "Bovidae"),
-  posterior_mean  = c(0.55, 0.45, 1.0)
+  posterior_mean  = c(0.55, 0.45, 1.0),
+  posterior_point_est = c(0.55, 0.45, 1.0)
 )
 consensus <- posterior_consensus(posterior_df, min_posterior = 0)
 consensus <- add_slash_taxon(consensus)

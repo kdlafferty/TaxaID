@@ -320,6 +320,18 @@ rewrite_habitat_formula <- function(formula, indicators) {
 #' @importFrom dplyr filter group_by summarise mutate pull left_join select distinct rename n_distinct all_of
 #' @importFrom rlang sym :=
 #' @importFrom stats sd setNames as.formula
+#' @section Deprecated (kernel-priors redesign, 2026-08-31):
+#' This function is part of the grid/GLMM prior-fitting path, which is
+#' deprecated in favor of site-centered kernel estimation -- see
+#' \code{\link{estimate_kernel_priors}} and
+#' \code{\link{calibrate_kernel_bandwidth}}. Leave-one-block-out
+#' validation on real data found single-cell prediction scored worse than
+#' ignoring space entirely, while the kernel estimator improved both
+#' composition prediction and downstream assignment precision. The GLMM
+#' path remains fully functional (existing workflows still run it) and
+#' emits a once-per-session notice; it will be archived once remaining
+#' workflows migrate.
+#'
 #' @export
 
 train_biodiversity_model <- function(data,
@@ -331,6 +343,8 @@ train_biodiversity_model <- function(data,
                                      effort_threshold  = 10L,
                                      min_positive_rows = 50L,
                                      full_data         = NULL) {
+
+  .glmm_deprecation_notice("train_biodiversity_model")
 
   response   <- match.arg(response)
   no_habitat <- is.null(habitat_col)

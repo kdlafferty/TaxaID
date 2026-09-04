@@ -8,15 +8,14 @@
 
 #' Update Priors from Consensus Assignments and Recompute Posteriors
 #'
-#' A one-pass empirical Bayes refinement step. Takes the output of
-#' [posterior_consensus()] and uses species-level consensus assignments
-#' (where `is_resolved = TRUE`) as evidence of true presence at the site.
-#' For each confirmed species, the `confirmation_quantile`-th quantile of
-#' `consensus_posterior` across all confirming ("donor") observations is
-#' computed; if that value clears `min_confirmation_confidence`, it
-#' *substitutes* for `prior_mean` (never lowering it) in all *unresolved*
-#' observations, and [compute_posterior()] is re-run for those observations
-#' only.
+#' A one-pass empirical Bayes refinement step. Every observation's posterior
+#' support for a species is treated as fractional evidence of site-level
+#' presence (soft assignment -- no confirmation threshold), aggregated with a
+#' leave-one-out, power-prior-discounted mass, and used to move unresolved
+#' observations' priors smoothly toward a support-weighted confirmation
+#' quantile (never lowering them); [compute_posterior()] is then re-run for
+#' those observations only. See the \emph{Soft confirmation} section for the
+#' design and its literature grounding.
 #'
 #' **Why only unresolved observations?** Resolved observations already have a clear
 #' winner; updating their priors and re-running would not change the conclusion
@@ -41,7 +40,42 @@
 #' observations in a single-observation spatial group are always returned
 #' unchanged, exactly like already-resolved observations.
 #'
-#' @section Confirmation-quantile design (Session 149):
+#' @section Soft confirmation (2026-08-28 redesign, replaces the hard gate):
+#' The previous design counted an observation as a "donor" only when it
+#' resolved a species with `consensus_posterior >=` a threshold (0.8) -- hard
+#' assignment in the sense of classification EM (Celeux & Govaert 1992,
+#' \emph{Computational Statistics & Data Analysis} 14:315-332). That made the
+#' dataset-level output discontinuous in per-observation inputs: one marginal
+#' competitor holding every observation of a species just below the bar meant
+#' zero donors anywhere (a real case: 78 yellow-perch observations at ~0.69
+#' each -- no confirmation, dataset-wide). Now every observation's best
+#' posterior for a species contributes fractionally (soft assignment, the
+#' one-iteration analog of a multi-scale occupancy update -- Dorazio &
+#' Erickson 2018, \emph{Molecular Ecology Resources} 18:368-380):
+#' \enumerate{
+#'   \item Per species, support mass = the sum over observations of that
+#'     observation's best posterior for it; per target row, the target
+#'     observation's own support is subtracted (leave-one-out -- no
+#'     self-confirmation).
+#'   \item The mass is discounted by `confirmation_discount` (a0): same-site
+#'     observations share water, DNA pool, and reference biases, so they are
+#'     not independent confirmations. Raising auxiliary evidence to a power
+#'     a0 in \[0, 1\] is the standard power-prior discount (Ibrahim & Chen
+#'     2000, \emph{Statistical Science} 15:46-60); multiplying the
+#'     pseudo-observation mass by a0 is its counting equivalent. The default
+#'     0.25 treats ~4 correlated observations as worth 1 independent one.
+#'   \item The discounted mass enters a smooth saturation `m/(1+m)` that
+#'     scales the never-demote move toward the support-weighted
+#'     `confirmation_quantile` of per-observation support (occurrence-scale
+#'     rescale unchanged, see below). No thresholds anywhere: the update is
+#'     continuous in every input.
+#'   \item Presence-mixture rows (`prior_mix_w` etc.) are updated in w
+#'     itself -- cross-observation support IS evidence about presence -- via
+#'     a pseudo-observation update weighted by `prior_mix_p_conc`, with the
+#'     Beta summary re-moment-matched. Never demoted.
+#' }
+#'
+#' @section Historical: confirmation-quantile design (Session 149, superseded):
 #' The previous design (a fixed `presence_multiplier`, e.g. x5) applied the
 #' same boost regardless of how many observations confirmed a species or how
 #' confident those confirmations were -- flagged as High priority in
@@ -146,11 +180,12 @@
 #'   observations' `consensus_posterior` used as the candidate new
 #'   `prior_mean` for a confirmed species. Default 0.9. `1` is equivalent to
 #'   taking the maximum.
-#' @param min_confirmation_confidence Numeric in \[0, 1\]. Minimum value the
-#'   `confirmation_quantile` must clear for a species to be treated as
-#'   confirmed at all. Default 0.8. Set to `0` to disable this gate entirely
-#'   (every confirmed species is used, however weakly confirmed -- restores
-#'   the previous design's lack of a confidence floor).
+#' @param confirmation_discount Numeric in \[0, 1\]. Power-prior discount a0
+#'   applied to the cross-observation support mass (0.25 default: ~4
+#'   correlated observations carry the weight of 1 independent one; 0
+#'   disables the update entirely; 1 treats every observation as fully
+#'   independent -- almost certainly too strong for same-site eDNA). See the
+#'   \emph{Soft confirmation} section.
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty — match the value used in the original run.
@@ -183,8 +218,8 @@
 #' \dontrun{
 #' result_updated <- update_prior_from_consensus(
 #'   result, consensus,
-#'   confirmation_quantile        = 0.9,
-#'   min_confirmation_confidence  = 0.8
+#'   confirmation_quantile  = 0.9,
+#'   confirmation_discount  = 0.25
 #' )
 #' }
 #'
@@ -197,7 +232,7 @@
 update_prior_from_consensus <- function(result,
                                          consensus,
                                          confirmation_quantile       = 0.9,
-                                         min_confirmation_confidence = 0.8,
+                                         confirmation_discount       = 0.25,
                                          n_sims              = 0,
                                          spatial_group_map    = NULL) {
 
@@ -218,10 +253,10 @@ update_prior_from_consensus <- function(result,
       is.na(confirmation_quantile) || confirmation_quantile <= 0 || confirmation_quantile > 1)
     cli::cli_abort("{.arg confirmation_quantile} must be a single number in (0, 1].")
 
-  if (!is.numeric(min_confirmation_confidence) || length(min_confirmation_confidence) != 1L ||
-      is.na(min_confirmation_confidence) ||
-      min_confirmation_confidence < 0 || min_confirmation_confidence > 1)
-    cli::cli_abort("{.arg min_confirmation_confidence} must be a single number in [0, 1].")
+  if (!is.numeric(confirmation_discount) || length(confirmation_discount) != 1L ||
+      is.na(confirmation_discount) ||
+      confirmation_discount < 0 || confirmation_discount > 1)
+    cli::cli_abort("{.arg confirmation_discount} must be a single number in [0, 1].")
 
   # --- Resolve multi-member spatial groups from spatial_group_map, if supplied ----
   # Only observations that share a spatial_group_id with >=1 other observation
@@ -247,64 +282,64 @@ update_prior_from_consensus <- function(result,
     )
   }
 
-  # --- Extract confirmed species (resolved across any OTHER observation sharing a spatial group) ---
-  # For each species named by >= 1 resolved ("donor") observation, take the
-  # confirmation_quantile-th quantile of those donors' consensus_posterior --
-  # not just the raw set of names -- so the eventual boost reflects how
-  # strong (and how numerous) the confirming evidence actually was, not a
-  # flat constant regardless of confirmation count/confidence (see @section
-  # Confirmation-quantile design above).
-  confirmation_pool <- consensus
+  # --- Soft confirmation evidence (2026-08-28 redesign, D7) -------------------
+  # Replaces the hard donor gate (a species counted as confirmed only when some
+  # observation resolved it with consensus_posterior >= a threshold). Hard
+  # assignment is classification EM (Celeux & Govaert 1992, Computational
+  # Statistics & Data Analysis 14:315-332) and produced real cliffs: one
+  # marginal competitor holding every observation just under the bar meant
+  # ZERO donors dataset-wide (the GreatLakes2023 yellow-perch case -- 78
+  # observations at ~0.69 each, no confirmation anywhere). The soft version
+  # aggregates EVERY observation's posterior support for a species as
+  # fractional evidence of site-level presence -- the one-iteration analog of
+  # a multi-scale occupancy update (Dorazio & Erickson 2018, Molecular Ecology
+  # Resources 18:368-380) -- discounted by `confirmation_discount` (a0):
+  # observations from one site share water, DNA pool, and reference biases, so
+  # they are not independent confirmations; raising auxiliary evidence to a
+  # power a0 in [0,1] is the standard power-prior discount (Ibrahim & Chen
+  # 2000, Statistical Science 15:46-60), and multiplying the pseudo-
+  # observation mass by a0 is its counting equivalent here. The default
+  # a0 = 0.25 treats ~4 correlated observations as worth 1 independent one.
+  post_col <- if ("posterior_point_est" %in% names(result)) "posterior_point_est" else "posterior_mean"
+  support_pool <- result[!is.na(result$taxon_name) & !is.na(result[[post_col]]), , drop = FALSE]
   if (!is.null(grouped_ids)) {
-    confirmation_pool <- consensus[consensus$observation_id %in% grouped_ids, , drop = FALSE]
+    support_pool <- support_pool[support_pool$observation_id %in% grouped_ids, , drop = FALSE]
   }
-  donor_rows <- confirmation_pool[
-    !is.na(confirmation_pool$consensus_taxon) &
-      confirmation_pool$is_resolved &
-      !is.na(confirmation_pool$consensus_posterior),
-    ,
-    drop = FALSE
-  ]
-
-  if (nrow(donor_rows) == 0L) {
-    cli::cli_inform("No resolved species found in consensus; returning result unchanged.")
+  if (nrow(support_pool) == 0L) {
+    cli::cli_inform("No named posterior support anywhere; returning result unchanged.")
     return(result)
   }
 
-  species_quantile <- tapply(
-    donor_rows$consensus_posterior, donor_rows$consensus_taxon,
-    function(x) stats::quantile(x, probs = confirmation_quantile, na.rm = TRUE, names = FALSE)
-  )
-  n_species_seen <- length(species_quantile)
+  # Per (observation, species) support: the best posterior that observation
+  # gives the species (multi-site/duplicate candidate rows collapse to one).
+  sup_key     <- paste(support_pool$observation_id, support_pool$taxon_name, sep = "\r")
+  obs_support <- tapply(support_pool[[post_col]], sup_key, max)
+  key_split   <- strsplit(names(obs_support), "\r", fixed = TRUE)
+  sup_taxon   <- vapply(key_split, function(k) k[[2L]], character(1))
+  sup_p       <- as.numeric(obs_support)
 
-  if (min_confirmation_confidence > 0) {
-    species_quantile <- species_quantile[species_quantile >= min_confirmation_confidence]
+  species_mass <- tapply(sup_p, sup_taxon, sum)
+
+  # Support-weighted confirmation-quantile of per-observation support: the
+  # target level the substitution moves toward. Weighting by the support
+  # itself keeps a handful of genuine detections from being drowned by a sea
+  # of near-zero candidacies of the same species.
+  .weighted_quantile <- function(x, w, prob) {
+    o <- order(x); x <- x[o]; w <- w[o]
+    cw <- cumsum(w) / sum(w)
+    x[which(cw >= prob)[1L]]
   }
-
-  confirmed_species <- names(species_quantile)
-
-  if (length(confirmed_species) == 0L) {
-    cli::cli_inform(
-      "{n_species_seen} confirmed species found, but none reached the \\
-      confirmation_quantile = {confirmation_quantile} threshold of \\
-      min_confirmation_confidence = {min_confirmation_confidence}; \\
-      returning result unchanged."
-    )
-    return(result)
-  }
+  species_target <- vapply(split(seq_along(sup_p), sup_taxon), function(idx) {
+    .weighted_quantile(sup_p[idx], sup_p[idx], confirmation_quantile)
+  }, numeric(1))
 
   # --- Identify unresolved observations ----------------------------------------
   unresolved_ids <- consensus$observation_id[
     is.na(consensus$consensus_taxon) | !consensus$is_resolved
   ]
-
   if (!is.null(grouped_ids)) {
-    # Unresolved observations in a single-observation spatial group are left
-    # unchanged, same as resolved ones -- they are not eligible for this
-    # refinement (see @details).
     unresolved_ids <- intersect(unresolved_ids, grouped_ids)
   }
-
   if (length(unresolved_ids) == 0L) {
     cli::cli_inform(
       if (!is.null(grouped_ids))
@@ -316,119 +351,139 @@ update_prior_from_consensus <- function(result,
   }
 
   cli::cli_inform(c(
-    "Confirmed species from resolved observations: {length(confirmed_species)} \\
-    (of {n_species_seen} seen, gated at min_confirmation_confidence = {min_confirmation_confidence})",
+    "Soft confirmation: {length(species_mass)} species carry posterior support \\
+    across the dataset (power-prior discount a0 = {confirmation_discount}).",
     "Unresolved observations to update: {length(unresolved_ids)}",
-    "Confirmation quantile: {confirmation_quantile}"
+    "Confirmation quantile (support-weighted): {confirmation_quantile}"
   ))
 
   # --- Split result -----------------------------------------------------------
   resolved_rows   <- result[!result$observation_id %in% unresolved_ids, ]
   unresolved_rows <- result[ result$observation_id %in% unresolved_ids, ]
 
-  # Tag rows so posterior_consensus() can propagate these to its output.
-  # v1 columns carry the pass-1 assignment for every row; posterior_consensus()
-  # uses them to populate consensus_taxon_v1, consensus_rank_v1, and taxon_changed.
   v1 <- consensus[, c("observation_id", "consensus_taxon", "consensus_rank")]
   names(v1)[2:3] <- c("consensus_taxon_v1", "consensus_rank_v1")
-
   resolved_rows   <- merge(resolved_rows,   v1, by = "observation_id", all.x = TRUE)
   unresolved_rows <- merge(unresolved_rows, v1, by = "observation_id", all.x = TRUE)
+  # rep() guards the all-unresolved case: a scalar assignment onto a 0-row
+  # base data frame errors ("replacement has 1 row, data has 0")
+  resolved_rows$prior_updated   <- rep(FALSE, nrow(resolved_rows))
+  unresolved_rows$prior_updated <- rep(TRUE,  nrow(unresolved_rows))
+  resolved_rows$confirmed_without_occurrence_record   <- rep(FALSE, nrow(resolved_rows))
+  unresolved_rows$confirmed_without_occurrence_record <- rep(FALSE, nrow(unresolved_rows))
 
-  resolved_rows$prior_updated   <- FALSE
-  unresolved_rows$prior_updated <- TRUE
-  resolved_rows$confirmed_without_occurrence_record   <- FALSE
-  unresolved_rows$confirmed_without_occurrence_record <- FALSE
+  # --- Leave-one-out, discounted, saturating evidence per row ------------------
+  boost_mask <- unresolved_rows$taxon_name %in% names(species_mass)
+  row_key    <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
+  own_p      <- as.numeric(obs_support[row_key])
+  own_p[is.na(own_p)] <- 0
+  mass_row   <- unname(species_mass[unresolved_rows$taxon_name]) - own_p
+  mass_row[is.na(mass_row) | mass_row < 0] <- 0
+  m_disc     <- confirmation_discount * mass_row
+  s_sat      <- m_disc / (1 + m_disc)   # smooth saturation in [0, 1): no cliffs
 
-  # --- Apply confirmation-quantile substitution (never-demote) ----------------
-  boost_mask <- unresolved_rows$taxon_name %in% confirmed_species
-  n_boosted  <- sum(boost_mask)
-
-  if (n_boosted == 0L) {
+  if (!any(boost_mask & m_disc > 0)) {
     cli::cli_inform(
-      "None of the {length(confirmed_species)} confirmed species appear as \\
-      hypotheses in the {length(unresolved_ids)} unresolved observation(s); \\
-      returning result unchanged."
+      "No unresolved hypothesis has any cross-observation support after the \\
+      leave-one-out discount; returning result unchanged."
     )
     return(result)
   }
 
-  # Rescale the quantile substitution onto the occurrence scale when result
-  # carries theta_mean (occurrence-model-sourced priors) -- see @section
-  # Rescaling onto the occurrence scale. q (the confirmation-quantile value,
-  # a probability over hypotheses) is never itself used as an occurrence
-  # share; it scales the dataset's own observed occurrence-share ceiling.
+  # Occurrence-scale rescale (see @section Rescaling onto the occurrence scale)
   has_theta <- "theta_mean" %in% names(result)
   theta_ceiling <- if (has_theta) max(result$theta_mean, na.rm = TRUE) else NA_real_
   if (has_theta && (!is.finite(theta_ceiling) || theta_ceiling <= 0)) {
-    has_theta <- FALSE  # no usable occurrence-scale ceiling in this dataset
+    has_theta <- FALSE
+  }
+  q_target <- unname(species_target[unresolved_rows$taxon_name])
+  candidate_prior <- if (has_theta) q_target * theta_ceiling else q_target
+
+  mix_cols_all <- c("prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent")
+  is_mix_row <- if (all(mix_cols_all %in% names(unresolved_rows))) {
+    !is.na(unresolved_rows$prior_mix_w) &
+      !is.na(unresolved_rows$prior_mix_theta_present) &
+      !is.na(unresolved_rows$prior_mix_theta_absent)
+  } else {
+    rep(FALSE, nrow(unresolved_rows))
   }
 
-  q_boosted <- unname(species_quantile[unresolved_rows$taxon_name[boost_mask]])
-  candidate_prior <- if (has_theta) q_boosted * theta_ceiling else q_boosted
-  old_prior        <- unresolved_rows$prior_mean[boost_mask]
-  raise_mask       <- candidate_prior > old_prior   # never-demote: only raise
-  n_raised         <- sum(raise_mask)
+  # --- Non-mixture rows: soft, never-demote substitution -----------------------
+  old_prior <- unresolved_rows$prior_mean
+  soft_gain <- pmax(candidate_prior - old_prior, 0) * s_sat
+  soft_gain[!boost_mask | is_mix_row | is.na(soft_gain)] <- 0
+  raise_mask <- soft_gain > 0
+  new_prior  <- old_prior + soft_gain
 
   cli::cli_inform(c(
-    "{n_boosted} hypothesis row(s) across \\
-    {dplyr::n_distinct(unresolved_rows$observation_id[boost_mask])} observation(s) \\
-    matched a confirmed species; {n_raised} actually raised above their existing prior \\
-    (others already met or exceeded the confirmation quantile).",
+    "{sum(boost_mask)} hypothesis row(s) carry cross-observation support; \\
+    {sum(raise_mask)} raised above their existing prior (smoothly, by the \\
+    saturating discounted mass -- others already met their support-weighted target).",
     if (has_theta)
       "Substitution rescaled onto the occurrence scale (ceiling = {signif(theta_ceiling, 3)})."
     else
-      "No theta_mean column on result -- using the confirmation quantile directly (pre-2026-07-30 behavior)."
+      "No theta_mean column on result -- using the support-weighted quantile directly."
   ))
 
-  new_prior <- old_prior
-  new_prior[raise_mask] <- candidate_prior[raise_mask]
-
-  # Flag rows raised despite the taxon having no occurrence record at all
-  # (theta_mean NA for this candidate) -- track, don't suppress. See
-  # @section Confirmed without an occurrence record.
-  if (has_theta) {
-    theta_boosted <- unresolved_rows$theta_mean[boost_mask]
-    no_record_raised <- raise_mask & is.na(theta_boosted)
+  if (has_theta && any(raise_mask)) {
+    no_record_raised <- raise_mask & is.na(unresolved_rows$theta_mean)
     if (any(no_record_raised)) {
-      idx <- which(boost_mask)[no_record_raised]
-      unresolved_rows$confirmed_without_occurrence_record[idx] <- TRUE
+      unresolved_rows$confirmed_without_occurrence_record[no_record_raised] <- TRUE
       cli::cli_inform(
-        "{sum(no_record_raised)} of those raised row(s) have NO occurrence record at all \\
-        (theta_mean NA) -- flagged via confirmed_without_occurrence_record, not suppressed. \\
-        This may reflect a genuinely undetected taxon, or an upstream occurrence-prior gap \\
-        (see [[project_urolophus_synonym_join_bug]])."
+        "{sum(no_record_raised)} raised row(s) have NO occurrence record at all \\
+        (theta_mean NA) -- flagged via confirmed_without_occurrence_record, not suppressed."
       )
     }
   }
 
-  # Keep prior_alpha/prior_beta consistent with the boosted prior_mean, when
-  # present, by preserving the original concentration (alpha + beta) and
-  # recentering it at the new mean -- otherwise compute_posterior()'s Monte
-  # Carlo path (if n_sims > 0) would sample from a stale Beta shape while the
-  # point estimate uses the new mean (a latent inconsistency in the previous
-  # design, flagged during the Session 149 soundness-review walk-through).
-  has_beta_cols <- all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))
-  if (has_beta_cols) {
-    old_alpha <- unresolved_rows$prior_alpha[boost_mask]
-    old_beta  <- unresolved_rows$prior_beta[boost_mask]
-    phi       <- old_alpha + old_beta
-    new_alpha <- old_alpha
-    new_beta  <- old_beta
-    # Clamp away from the [0,1] boundary before deriving alpha/beta -- a
-    # confirmation quantile of exactly 1.0 (common: posterior_consensus()
-    # legitimately returns consensus_posterior = 1.0 for any unambiguously
-    # resolved single-candidate donor observation) would otherwise produce
-    # new_beta = 0, which compute_posterior() rejects. Mirrors join_priors.R's
-    # .make_ab() clamp for the same boundary case.
-    clamped_prior <- pmin(pmax(new_prior[raise_mask], 1e-9), 1 - 1e-9)
-    new_alpha[raise_mask] <- clamped_prior * phi[raise_mask]
-    new_beta[raise_mask]  <- (1 - clamped_prior) * phi[raise_mask]
-    unresolved_rows$prior_alpha[boost_mask] <- new_alpha
-    unresolved_rows$prior_beta[boost_mask]  <- new_beta
+  if (any(raise_mask)) {
+    unresolved_rows$prior_mean[raise_mask] <- new_prior[raise_mask]
+    if (all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))) {
+      # keep alpha/beta consistent with the new mean, preserving concentration;
+      # clamp away from [0,1] so compute_posterior() never sees beta = 0
+      phi     <- unresolved_rows$prior_alpha[raise_mask] + unresolved_rows$prior_beta[raise_mask]
+      clamped <- pmin(pmax(new_prior[raise_mask], 1e-9), 1 - 1e-9)
+      unresolved_rows$prior_alpha[raise_mask] <- clamped * phi
+      unresolved_rows$prior_beta[raise_mask]  <- (1 - clamped) * phi
+    }
   }
 
-  unresolved_rows$prior_mean[boost_mask] <- new_prior
+  # --- Mixture rows: cross-observation support updates prior_mix_w -------------
+  # For a presence mixture, confirmation IS evidence about presence: the
+  # discounted support mass enters w's own pseudo-observation update
+  # (successes at the support mass itself), p_conc grows by the same mass, and
+  # the Beta summary is re-moment-matched to the updated two-point mixture.
+  # This replaces the interim hard rule that cleared the mixture outright on a
+  # thresholded confirmation.
+  mixable <- boost_mask & is_mix_row & m_disc > 0
+  if (any(mixable)) {
+    pc  <- unresolved_rows$prior_mix_p_conc[mixable]
+    pc[is.na(pc)] <- 1
+    w0  <- unresolved_rows$prior_mix_w[mixable]
+    md  <- m_disc[mixable]
+    w1  <- (pc * w0 + md) / (pc + md)
+    thp <- unresolved_rows$prior_mix_theta_present[mixable]
+    tha <- unresolved_rows$prior_mix_theta_absent[mixable]
+    th1 <- tha + (thp - tha) * w1
+    unresolved_rows$prior_mix_w[mixable]      <- w1
+    unresolved_rows$prior_mix_p_conc[mixable] <- pc + md
+    unresolved_rows$prior_mean[mixable]       <- th1
+    if (all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))) {
+      v_mix <- w1 * (1 - w1) * (thp - tha)^2
+      ok    <- is.finite(v_mix) & v_mix > 0
+      if (any(ok)) {
+        ne  <- pmax(th1[ok] * (1 - th1[ok]) / v_mix[ok] - 1, 1e-3)
+        idx <- which(mixable)[ok]
+        unresolved_rows$prior_alpha[idx] <- th1[ok] * ne
+        unresolved_rows$prior_beta[idx]  <- (1 - th1[ok]) * ne
+      }
+    }
+    cli::cli_inform(
+      "{sum(mixable)} presence-mixture row(s) had prior_mix_w updated by the \\
+      discounted cross-observation support (presence evidence, never demoted)."
+    )
+  }
+
 
   # --- Recompute posteriors for unresolved observations ------------------------
   # Drop existing posterior columns so compute_posterior() produces fresh values
@@ -461,7 +516,7 @@ update_prior_from_consensus <- function(result,
     if (is.null(prior_params)) list() else prior_params,
     list(
       confirmation_quantile       = confirmation_quantile,
-      min_confirmation_confidence = min_confirmation_confidence,
+      confirmation_discount       = confirmation_discount,
       n_sims                      = n_sims
     )
   )

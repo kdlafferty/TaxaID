@@ -30,13 +30,25 @@ utils::globalVariables("taxonKey")
 #'   (default) retains all records for every key. When \code{taxonKey} is
 #'   absent from the download, the cap is applied to the total row count
 #'   instead, with a warning.
+#' @param on_cap Character. What to do when `limit` actually truncates a
+#'   taxon key. `"warn"` (default) raises a warning naming the affected keys
+#'   and records them in `attr(result, "capped_keys")`; `"error"` stops.
+#'   Truncation keeps GBIF's return order -- a non-random prefix -- so both
+#'   abundance and spatial pattern become unreliable for capped taxa; prefer
+#'   `limit = NULL`, which costs nothing since the records are already
+#'   downloaded.
 #' @param cache_dir Character or \code{NULL}. Directory for the downloaded
 #'   zip file and a small metadata file. Defaults to a persistent user-level
 #'   cache directory. Re-running with the same arguments reuses the cached
 #'   zip and skips the GBIF download entirely. Set to \code{NULL} to
 #'   disable caching.
 #' @param overwrite Logical. If \code{FALSE} (default), an existing cached
-#'   zip is reused. Set to \code{TRUE} to force a fresh download from GBIF.
+#'   zip is reused. Set to \code{TRUE} to force a fresh download from GBIF --
+#'   in an interactive session this asks for confirmation first (showing the
+#'   cached zip's date and size) before deleting it; a non-interactive session
+#'   proceeds straight to a fresh download. Either way, the old cached zip is
+#'   removed once the new one is saved -- it is never silently orphaned on
+#'   disk.
 #' @param status_ping Numeric. Seconds between download-status polls while
 #'   waiting for GBIF to prepare the file. Default 15. Minimum enforced by
 #'   rgbif is 3.
@@ -189,6 +201,7 @@ download_gbif_occurrences <- function(
     geometry,
     year_range     = .gbif_default_year_range(),
     limit          = NULL,
+    on_cap         = c("warn", "error"),
     cache_dir      = tools::R_user_dir("TaxaFetch", "cache"),
     overwrite      = FALSE,
     status_ping    = 15,
@@ -219,6 +232,8 @@ download_gbif_occurrences <- function(
     gbif_pwd    = Sys.getenv("GBIF_PWD"),
     gbif_email  = Sys.getenv("GBIF_EMAIL"),
     beep        = FALSE) {
+
+  on_cap <- match.arg(on_cap)
 
   # --- Dependency check -------------------------------------------------------
   if (!requireNamespace("rgbif", quietly = TRUE)) {
@@ -278,28 +293,59 @@ download_gbif_occurrences <- function(
   }
   meta_path <- .gbif_dl_meta_path(cache_dir, keys, geometry, year_range,
                                   basis_keep, exclude_absent)
-  dl_key    <- NULL
-  zip_path  <- NULL
+  dl_key       <- NULL
+  zip_path     <- NULL
+  old_zip_path <- NULL
 
-  if (!is.null(meta_path) && file.exists(meta_path) && !overwrite) {
-    meta     <- readRDS(meta_path)
-    dl_key   <- meta$dl_key
-    zip_path <- meta$zip_path
-    if (!file.exists(zip_path)) {
-      message(sprintf(
-        "download_gbif_occurrences: cached zip missing (%s); re-downloading.",
-        zip_path
-      ))
-      dl_key   <- NULL
-      zip_path <- NULL
-    } else {
-      message(sprintf(
-        paste0(
-          "download_gbif_occurrences: reusing cached zip from %s (key %s).\n",
-          "  Set overwrite = TRUE to force a fresh download."
-        ),
-        format(meta$timestamp, "%Y-%m-%d"), dl_key
-      ))
+  if (!is.null(meta_path) && file.exists(meta_path)) {
+    meta <- readRDS(meta_path)
+    cached_zip_exists <- file.exists(meta$zip_path)
+
+    if (!overwrite) {
+      if (cached_zip_exists) {
+        dl_key   <- meta$dl_key
+        zip_path <- meta$zip_path
+        message(sprintf(
+          paste0(
+            "download_gbif_occurrences: reusing cached zip from %s (key %s).\n",
+            "  Set overwrite = TRUE to force a fresh download."
+          ),
+          format(meta$timestamp, "%Y-%m-%d"), dl_key
+        ))
+      } else {
+        message(sprintf(
+          "download_gbif_occurrences: cached zip missing (%s); re-downloading.",
+          meta$zip_path
+        ))
+      }
+    } else if (cached_zip_exists) {
+      # overwrite = TRUE and there's a real cached zip that would otherwise be
+      # silently orphaned (repointed away from with no cleanup). Interactively
+      # confirm the replacement when possible; a non-interactive session
+      # proceeds straight to a fresh download, matching the pre-existing
+      # behavior, but the stale zip is still removed once the new one lands
+      # (see the cleanup block below) instead of being left as an orphan.
+      keep_existing <- FALSE
+      if (interactive()) {
+        old_size_mb <- round(file.info(meta$zip_path)$size / 1024^2, 1)
+        message(sprintf(
+          "download_gbif_occurrences: a cached zip already exists for this query (key %s, downloaded %s, %.1f MB).",
+          meta$dl_key, format(meta$timestamp, "%Y-%m-%d"), old_size_mb
+        ))
+        choice <- utils::menu(
+          c("Overwrite (delete the cached zip, fetch fresh from GBIF)",
+            "Keep the cached zip instead (skip the fresh download)"),
+          title = "Replace the cached download?"
+        )
+        keep_existing <- identical(choice, 2L)
+      }
+      if (keep_existing) {
+        dl_key   <- meta$dl_key
+        zip_path <- meta$zip_path
+        message("download_gbif_occurrences: keeping the existing cached zip.")
+      } else {
+        old_zip_path <- meta$zip_path
+      }
     }
   }
 
@@ -375,6 +421,11 @@ download_gbif_occurrences <- function(
         "  (Re-running with the same parameters will skip the GBIF wait.)"
       )
     }
+
+    if (!is.null(old_zip_path) && file.exists(old_zip_path)) {
+      file.remove(old_zip_path)
+      message(sprintf("  Removed previous cached zip: %s", old_zip_path))
+    }
   }
 
   # --- Import -----------------------------------------------------------------
@@ -417,15 +468,33 @@ download_gbif_occurrences <- function(
 
   # --- Apply per-key limit ----------------------------------------------------
   t_limit <- proc.time()["elapsed"]
+  capped_keys <- integer(0)
   if (!is.null(limit)) {
     if ("taxonKey" %in% names(raw)) {
       counts  <- tapply(seq_len(nrow(raw)), raw$taxonKey, length)
       n_over  <- sum(counts > limit)
+      # Truncation is applied HERE, after import -- and what survives is
+      # GBIF's own return order, a non-random prefix, NOT a sample. Reported
+      # as a warning (not a message) because a silent cap destroys exactly
+      # the quantity an occurrence-composition prior is built from: measured
+      # 2026-09-02, a limit of 10,000 truncated 45 of Mugu's 231 taxa (95% of
+      # the pool) and 110 of PtConception's 666, leaving every capped species
+      # with an IDENTICAL spatial distribution because the prefixes came from
+      # the same few large survey datasets. `limit = NULL` avoids this
+      # entirely and costs nothing -- the records are already downloaded.
       if (n_over > 0L) {
-        message(sprintf(
-          "  %d taxon key(s) had more than %d records and were truncated.",
-          n_over, limit
-        ))
+        .cap_msg <- sprintf(
+          paste0(
+            "download_gbif_occurrences: %d of %d taxon key(s) exceeded limit = %s and were TRUNCATED (%.0f%% of rows). ",
+            "Kept records are GBIF's return order, not a random sample, so abundance AND spatial pattern are ",
+            "unreliable for those taxa. Pass limit = NULL to keep every record -- they are already downloaded."
+          ),
+          n_over, length(counts), format(limit),
+          100 * sum(counts[counts > limit]) / nrow(raw)
+        )
+        if (identical(on_cap, "error")) stop(.cap_msg, call. = FALSE)
+        warning(.cap_msg, call. = FALSE)
+        capped_keys <- as.integer(names(counts)[counts > limit])
       }
       raw <- raw |>
         dplyr::group_by(taxonKey) |>
@@ -467,6 +536,7 @@ download_gbif_occurrences <- function(
 
   # --- Attributes -------------------------------------------------------------
   attr(raw, "download_key") <- dl_key %||% NA_character_
+  attr(raw, "capped_keys") <- capped_keys
   attr(raw, "report_params") <- list(
     source     = "GBIF (async download)",
     n_keys     = length(keys),
@@ -475,6 +545,29 @@ download_gbif_occurrences <- function(
     geometry   = geometry,
     year_range = year_range
   )
+
+  # --- Cache summary / offer to clear ------------------------------------------
+  if (!is.null(cache_dir)) {
+    inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
+    if (nrow(inv) > 0L) {
+      total_mb <- sum(inv$size_mb)
+      message(sprintf(
+        "download_gbif_occurrences: TaxaFetch cache: %d file(s), %.1f MB in %s.",
+        nrow(inv), total_mb, normalizePath(cache_dir, mustWork = FALSE)
+      ))
+      cache_prompt_threshold_mb <- 1024
+      if (total_mb > cache_prompt_threshold_mb) {
+        if (interactive()) {
+          choice <- utils::menu(c("Clear it now", "Leave it"), title = "Clear the TaxaFetch cache?")
+          if (identical(choice, 1L)) {
+            taxafetch_clear_cache(cache_dir = cache_dir, dry_run = FALSE)
+          }
+        } else {
+          message("  Run taxafetch_clear_cache() to remove it.")
+        }
+      }
+    }
+  }
 
   # --- Completion sound -------------------------------------------------------
   if (beep) {

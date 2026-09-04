@@ -384,3 +384,92 @@ test_that("truncated-normal sampling avoids the spurious all-zero-likelihood war
   expect_true(all(is.finite(result$posterior_mean)))
   expect_true(all(result$posterior_mean >= 0))
 })
+
+# ---------------------------------------------------------------------------
+# Presence-mixture priors (2026-08-26 mixture redesign, D8)
+# ---------------------------------------------------------------------------
+# Rows with prior_mix_w/theta_present/theta_absent draw presence explicitly in
+# simulation (z ~ Bernoulli(w)) instead of sampling their J-shaped Beta summary
+# (which the prior_alpha <= 1 guard would pin at the mean). The point path is
+# unchanged: prior_mean is the mixture's exact expectation.
+
+.make_mix_df <- function(w = 0.5) {
+  th_p <- 0.02; th_f <- 1e-4
+  m <- th_f + (th_p - th_f) * w
+  dplyr::tibble(
+    observation_id        = "Mix_A",
+    taxon_name            = c("Perca flavescens", "Sander lucioperca"),
+    hypothesis_type       = "specific_candidate",
+    score_likelihood      = c(1.0, 0.4),
+    score_likelihood_mean = c(1.0, 0.4),
+    score_likelihood_sd   = c(0, 0),
+    # competitor alpha <= 1 so the J-guard pins it at prior_mean -- makes the
+    # mixture row's expected shares exactly computable (no Beta-draw coupling
+    # through the per-simulation normalization)
+    prior_mean            = c(0.04, m),
+    prior_alpha           = c(0.5, m * 2),
+    prior_beta            = c(12, (1 - m) * 2),
+    prior_mix_w             = c(NA_real_, w),
+    prior_mix_theta_present = c(NA_real_, th_p),
+    prior_mix_theta_absent  = c(NA_real_, th_f)
+  )
+}
+
+test_that("mixture row's posterior_mean integrates over presence states (below the J-guard point value)", {
+  set.seed(42)
+  out <- suppressMessages(compute_posterior(.make_mix_df(w = 0.5), n_sims = 4000))
+  mix_row <- out[out$taxon_name == "Sander lucioperca", ]
+  # Exact integration over z (likelihoods deterministic here):
+  #   z = 1 (w): share = th_p*0.4 / (0.04*1 + th_p*0.4)   ~= 0.1667
+  #   z = 0    : share = th_f*0.4 / (0.04*1 + th_f*0.4)   ~= 0.000999
+  exp_share_present <- (0.02 * 0.4 / 1.4) / (0.04 * 1 / 1.4 + 0.02 * 0.4 / 1.4)
+  exp_share_absent  <- (1e-4 * 0.4 / 1.4) / (0.04 * 1 / 1.4 + 1e-4 * 0.4 / 1.4)
+  expected <- 0.5 * exp_share_present + 0.5 * exp_share_absent
+  expect_equal(mix_row$posterior_mean, expected, tolerance = 0.03)
+  # The J-guard point value (what the old MC path returned) is share at the
+  # blended mean -- materially different from the presence integral:
+  point_val <- mix_row$posterior_point_est
+  expect_false(isTRUE(all.equal(mix_row$posterior_mean, point_val, tolerance = 1e-3)))
+})
+
+test_that("mixture confidence_score reads as fraction of presence states won", {
+  set.seed(7)
+  # Make the mixture candidate WIN whenever present: strong likelihood edge.
+  df <- .make_mix_df(w = 0.3)
+  df$score_likelihood      <- c(0.2, 1.0)
+  df$score_likelihood_mean <- c(0.2, 1.0)
+  out <- suppressMessages(compute_posterior(df, n_sims = 4000))
+  mix_row <- out[out$taxon_name == "Sander lucioperca", ]
+  # Present (p=0.3): 0.02*1 vs 0.04*0.2 -> mixture wins; absent: loses.
+  expect_equal(mix_row$confidence_score, 0.3, tolerance = 0.03)
+})
+
+test_that("w = 0 and w = 1 mixtures behave as fixed floor/ceiling priors", {
+  set.seed(11)
+  out0 <- suppressMessages(compute_posterior(.make_mix_df(w = 0), n_sims = 500))
+  out1 <- suppressMessages(compute_posterior(.make_mix_df(w = 1), n_sims = 500))
+  r0 <- out0[out0$taxon_name == "Sander lucioperca", ]
+  r1 <- out1[out1$taxon_name == "Sander lucioperca", ]
+  expect_equal(r0$posterior_mean, r0$posterior_point_est, tolerance = 1e-8)
+  expect_equal(r1$posterior_mean, r1$posterior_point_est, tolerance = 1e-8)
+})
+
+test_that("non-mixture rows are unaffected by the presence of mixture columns", {
+  set.seed(5)
+  df <- .make_mix_df(w = 0.5)
+  base <- df |> dplyr::select(-prior_mix_w, -prior_mix_theta_present, -prior_mix_theta_absent)
+  set.seed(99); out_with  <- suppressMessages(compute_posterior(df, n_sims = 300))
+  set.seed(99); out_bare  <- suppressMessages(compute_posterior(base, n_sims = 300))
+  # The NON-mixture row's point estimate is identical either way
+  expect_equal(
+    out_with$posterior_point_est[out_with$taxon_name == "Perca flavescens"],
+    out_bare$posterior_point_est[out_bare$taxon_name == "Perca flavescens"],
+    tolerance = 1e-10
+  )
+})
+
+test_that("prior_mix_w outside [0,1] errors", {
+  df <- .make_mix_df(w = 0.5)
+  df$prior_mix_w[2] <- 1.5
+  expect_error(suppressMessages(compute_posterior(df, n_sims = 10)), "prior_mix_w")
+})

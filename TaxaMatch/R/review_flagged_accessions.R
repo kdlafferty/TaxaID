@@ -39,6 +39,18 @@
   "frac_independent_below_min_congruent_rank"
 )
 
+#' Local-corroboration columns (2026-09-03) that also shape the prompt
+#'
+#' Kept OUT of `.ACCESSION_REVIEW_RELEVANT_COLS` and folded into the
+#' fingerprint only where NON-NA, so an existing review cache built before
+#' these columns existed keeps its fingerprints for every row that has no
+#' local evidence -- adding them unconditionally would have re-reviewed every
+#' cached accession once for a column reading "NA".
+#' @noRd
+.ACCESSION_REVIEW_LOCAL_COLS <- c(
+  "local_n_independent_conspecific", "local_best_independent_pident"
+)
+
 #' Build a Per-Row Content Fingerprint for Cache Invalidation
 #'
 #' A plain concatenated string, not a cryptographic hash -- this cache never
@@ -54,7 +66,12 @@
   cols <- intersect(.ACCESSION_REVIEW_RELEVANT_COLS, names(df))
   if (length(cols) == 0L) return(rep(NA_character_, nrow(df)))
   parts <- lapply(cols, function(cn) paste0(cn, "=", as.character(df[[cn]])))
-  do.call(paste, c(parts, sep = "|"))
+  fp <- do.call(paste, c(parts, sep = "|"))
+  for (cn in intersect(.ACCESSION_REVIEW_LOCAL_COLS, names(df))) {
+    has <- !is.na(df[[cn]])
+    fp[has] <- paste0(fp[has], "|", cn, "=", as.character(df[[cn]][has]))
+  }
+  fp
 }
 
 #' Load the Persistent Accession-Review Cache
@@ -182,6 +199,14 @@
 #'   evaluation guide documents separately (see its own "listed_taxon_is_
 #'   species = FALSE" section). Silently ignored if `listed_taxon_is_species`
 #'   is absent from `evaluated_df`.
+#' @param local_min_overlap Numeric in (0, 1] or `NULL` (default). The
+#'   `min_overlap` [corroborate_references_locally()] was run with, quoted in
+#'   the prompt's local-corroboration line ("best identity X% over >= 80% of
+#'   the amplicon"). `NULL` reads it from
+#'   `attr(evaluated_df, "local_corroboration_params")` when
+#'   [score_reference_labels()] left one there, and otherwise words the line
+#'   without a number. Only matters when `evaluated_df` carries
+#'   `local_n_independent_conspecific`/`local_best_independent_pident`.
 #' @param cache_dir Character or `NULL`. Default
 #'   `tools::R_user_dir("TaxaMatch", "cache")` (same default/convention as
 #'   [evaluate_reference_accessions()] and `investigate_flagged_accession()`).
@@ -265,10 +290,19 @@ review_flagged_accessions <- function(evaluated_df,
                                       max_tokens = NULL,
                                       max_retries = 2L,
                                       pause_seconds = 1,
-                                      verbose = TRUE) {
+                                      verbose = TRUE,
+                                      local_min_overlap = NULL) {
 
   if (!is.data.frame(evaluated_df))
     stop("'evaluated_df' must be a data frame.", call. = FALSE)
+  if (is.null(local_min_overlap)) {
+    lp <- attr(evaluated_df, "local_corroboration_params")
+    if (is.list(lp) && is.numeric(lp$min_overlap)) local_min_overlap <- lp$min_overlap
+  }
+  if (!is.null(local_min_overlap) &&
+      (!is.numeric(local_min_overlap) || length(local_min_overlap) != 1L ||
+       is.na(local_min_overlap) || local_min_overlap <= 0 || local_min_overlap > 1))
+    stop("local_min_overlap must be NULL or a single number in (0, 1].", call. = FALSE)
 
   required_cols <- c("accession", "listed_taxon", "hierarchy_flag")
   missing_req <- setdiff(required_cols, names(evaluated_df))
@@ -369,7 +403,8 @@ review_flagged_accessions <- function(evaluated_df,
 
       batch_out <- .review_accession_batch_with_retry(
         acc_batch, llm_fn, max_tokens, verbose, pause_seconds,
-        batch_label = as.character(b), max_retries = max_retries, prompt_log = prompt_log
+        batch_label = as.character(b), max_retries = max_retries, prompt_log = prompt_log,
+        local_min_overlap = local_min_overlap
       )
       batch_out$accession_review_cache_hit <- FALSE
       batch_results[[b]] <- batch_out
@@ -438,7 +473,7 @@ review_flagged_accessions <- function(evaluated_df,
 #' uses, not re-derived from scratch. Keep in sync with that guide if it's
 #' updated.
 #' @noRd
-.build_accession_review_prompt <- function(acc_batch) {
+.build_accession_review_prompt <- function(acc_batch, local_min_overlap = NULL) {
 
   guide_block <- paste0(
     "You are an expert molecular systematist doing a second-look review of ",
@@ -506,7 +541,27 @@ review_flagged_accessions <- function(evaluated_df,
       add_if("frac_independent_below_min_congruent_rank",
              "frac_independent_below_min_congruent_rank=%.2f")
     )
-    sprintf("- accession=%s: %s", row$accession, paste(unlist(parts), collapse = ", "))
+    # Local corroboration (2026-09-03): one additive line when the columns
+    # are present and populated -- the caller's own reference set is
+    # evidence the BLAST diagnostics above cannot see (the 2026-09-03
+    # primer-inclusive blind spot).
+    local_line <- NULL
+    if (all(.ACCESSION_REVIEW_LOCAL_COLS %in% names(row)) &&
+        !is.na(row$local_n_independent_conspecific) &&
+        !is.na(row$local_best_independent_pident)) {
+      overlap_txt <- if (!is.null(local_min_overlap) && is.finite(local_min_overlap)) {
+        sprintf("over >= %d%% of the amplicon", as.integer(round(100 * local_min_overlap)))
+      } else {
+        "over the required amplicon overlap"
+      }
+      local_line <- sprintf(
+        "local reference set: %d independent conspecific(s), best identity %.1f%% %s",
+        as.integer(row$local_n_independent_conspecific),
+        row$local_best_independent_pident, overlap_txt
+      )
+    }
+    sprintf("- accession=%s: %s", row$accession,
+            paste(c(unlist(parts), local_line), collapse = ", "))
   }, character(1))
 
   paste0(
@@ -550,9 +605,10 @@ review_flagged_accessions <- function(evaluated_df,
 #' @noRd
 .review_accession_batch_with_retry <- function(acc_batch, llm_fn, max_tokens, verbose,
                                                pause_seconds, batch_label, max_retries,
-                                               depth = 0L, prompt_log = NULL) {
+                                               depth = 0L, prompt_log = NULL,
+                                               local_min_overlap = NULL) {
 
-  prompt <- .build_accession_review_prompt(acc_batch)
+  prompt <- .build_accession_review_prompt(acc_batch, local_min_overlap = local_min_overlap)
   if (!is.null(prompt_log)) assign(batch_label, prompt, envir = prompt_log)
 
   call_error <- NULL
@@ -590,12 +646,14 @@ review_flagged_accessions <- function(evaluated_df,
 
     left_result <- .review_accession_batch_with_retry(
       left, llm_fn, max_tokens, verbose, pause_seconds,
-      paste0(batch_label, "a"), max_retries, depth + 1L, prompt_log
+      paste0(batch_label, "a"), max_retries, depth + 1L, prompt_log,
+      local_min_overlap = local_min_overlap
     )
     Sys.sleep(pause_seconds)
     right_result <- .review_accession_batch_with_retry(
       right, llm_fn, max_tokens, verbose, pause_seconds,
-      paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log
+      paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log,
+      local_min_overlap = local_min_overlap
     )
     return(rbind(left_result, right_result))
   }
@@ -784,4 +842,95 @@ review_flagged_accessions <- function(evaluated_df,
   }
 
   NULL
+}
+
+#' Derive Removal Overrides from an LLM Second-Look Review
+#'
+#' Bridges [review_flagged_accessions()]'s LLM-based second-look verdicts to
+#' [remove_incongruent_references()]'s `override_accessions` argument,
+#' automating a "remove everything flagged by default, but let a specific
+#' reviewed explanation override that default for the one accession it
+#' actually applies to" pipeline -- rather than choosing between removing
+#' every flagged accession (including real, correctly-labeled records the
+#' raw BLAST verdict can't distinguish from a genuine mislabel) or removing
+#' nothing until every flag has been manually reviewed.
+#'
+#' @section Real motivating case (2026-08-19):
+#' A real GreatLakes match-candidate screen flagged `Stereolepis
+#' doederleini` (`LC649807`) `hierarchy_flag = "incongruent"`. A separate,
+#' earlier investigation into this exact accession found it is very likely
+#' a correctly-labeled record with genuinely poor marker resolution at this
+#' rank, not a real mislabel -- exactly the ambiguity
+#' [remove_incongruent_references()]'s own `@section Use
+#' flag_incongruent_references() first` documents. This function is the
+#' automated version of applying that finding: run
+#' [review_flagged_accessions()] once, and any accession the LLM
+#' categorizes as something other than a genuine mislabel is kept, without
+#' needing a human to individually re-decide each one every time the
+#' pipeline re-runs.
+#'
+#' @param review_result Data frame. Output of [review_flagged_accessions()]
+#'   (must have `accession`, `accession_likely_explanation`,
+#'   `accession_review_confidence` columns).
+#' @param keep_explanations Character vector (default
+#'   `c("poor_marker_resolution", "sister_family_thin_coverage",
+#'   "hybrid_or_specimen_code_artifact")`) -- the
+#'   `accession_likely_explanation` values that should override an automatic
+#'   removal. Deliberately excludes `"uncertain"` from the default: an LLM
+#'   verdict that is ITSELF uncertain should not automatically override a
+#'   hard BLAST-based `"incongruent"` flag -- pass `"uncertain"` explicitly
+#'   if you want to trust it too. `"genuine_mislabel"` is never included
+#'   (that verdict CONFIRMS removal, it never overrides it).
+#' @param min_confidence Character vector (default `c("high", "moderate")`).
+#'   Only a `accession_review_confidence` value in this set is trusted as an
+#'   override -- a `"low"`-confidence review falls through to removal
+#'   (the same conservative-default behavior as an unreviewed accession),
+#'   even if its `accession_likely_explanation` is in `keep_explanations`.
+#'
+#' @return Character vector of accessions to pass directly as
+#'   `remove_incongruent_references(override_accessions = ...)`.
+#'
+#' @seealso [review_flagged_accessions()], [remove_incongruent_references()]
+#'
+#' @examples
+#' \dontrun{
+#' evaluation <- evaluate_reference_accessions(accessions_to_screen)
+#' review <- review_flagged_accessions(evaluation, llm_fn = my_llm_fn)
+#' overrides <- resolve_review_overrides(review)
+#' match_df_clean <- remove_incongruent_references(match_df, evaluation,
+#'   override_accessions = overrides)
+#' }
+#'
+#' @export
+resolve_review_overrides <- function(review_result,
+                                     keep_explanations = c("poor_marker_resolution",
+                                                           "sister_family_thin_coverage",
+                                                           "hybrid_or_specimen_code_artifact"),
+                                     min_confidence = c("high", "moderate")) {
+  if (!is.data.frame(review_result))
+    stop("review_result must be a data frame.", call. = FALSE)
+  needed <- c("accession", "accession_likely_explanation", "accession_review_confidence")
+  missing_cols <- setdiff(needed, names(review_result))
+  if (length(missing_cols) > 0L)
+    stop(sprintf(
+      "review_result is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
+  if (!is.character(keep_explanations) || length(keep_explanations) == 0L)
+    stop("keep_explanations must be a non-empty character vector.", call. = FALSE)
+  if (!is.character(min_confidence) || length(min_confidence) == 0L)
+    stop("min_confidence must be a non-empty character vector.", call. = FALSE)
+  if ("genuine_mislabel" %in% keep_explanations)
+    stop(
+      "keep_explanations cannot include \"genuine_mislabel\" -- that verdict ",
+      "confirms removal, it never overrides it.",
+      call. = FALSE
+    )
+
+  keep_mask <- !is.na(review_result$accession_likely_explanation) &
+    review_result$accession_likely_explanation %in% keep_explanations &
+    !is.na(review_result$accession_review_confidence) &
+    review_result$accession_review_confidence %in% min_confidence
+
+  unique(review_result$accession[keep_mask])
 }

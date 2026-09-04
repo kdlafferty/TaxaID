@@ -21,6 +21,11 @@ NULL
 #'   a character string containing the raw LLM response (plain text or JSON).
 #'   \code{messages} is a list of \code{list(role, content)} objects;
 #'   \code{system_prompt} is a single character string.
+#' @param timeout Numeric. Request timeout in seconds for the built-in
+#'   Anthropic HTTP path, passed to \code{httr2::req_timeout()}. Default
+#'   \code{120}. Ignored when \code{llm_fn} is supplied (the custom function
+#'   controls its own timeout). Raise this for a long parameterize-phase
+#'   response that legitimately takes longer than two minutes.
 #'
 #' @return Parsed list from the LLM's JSON response.
 #' @noRd
@@ -29,7 +34,8 @@ NULL
                       model      = "claude-sonnet-4-6",
                       api_key    = NULL,
                       max_tokens = 16384L,
-                      llm_fn     = NULL) {
+                      llm_fn     = NULL,
+                      timeout    = 120) {
 
   # --- Auto-detect TaxaTools provider when no explicit llm_fn or api_key ---
   # If TaxaID.provider is set (by TaxaTools or TaxaWizard's .onAttach) and the
@@ -110,7 +116,7 @@ NULL
       ) |>
       httr2::req_body_json(body, auto_unbox = TRUE) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_timeout(120) |>
+      httr2::req_timeout(timeout) |>
       httr2::req_perform(),
     error = function(e) {
       stop("API request failed: ", conditionMessage(e), call. = FALSE)

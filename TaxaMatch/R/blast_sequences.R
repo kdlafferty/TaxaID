@@ -104,6 +104,26 @@ NULL
 #' @param batch_size Integer. For remote BLAST, number of sequences per
 #'   submission (default \code{20L}). Larger batches reduce API overhead but
 #'   risk timeout on NCBI's server. NCBI handles multi-FASTA queries.
+#' @param max_batch_bp Numeric. Remote BLAST only. Default \code{100000L}.
+#'   Cumulative-length (bp) cap per submission batch, applied ALONGSIDE
+#'   \code{batch_size} -- a batch closes when EITHER the count or the bp
+#'   limit is reached, whichever comes first. Added 2026-09-01: a long
+#'   query (e.g. one of several full mitogenomes sharing a batch with mostly
+#'   short amplicons) consumes vastly more server CPU than its count-based
+#'   "1 of \code{batch_size}" share suggests -- one expensive query can doom
+#'   an otherwise-cheap batch to a CPU-budget rejection
+#'   (\code{.blast_server_rejected()}), and losing that whole batch to
+#'   \code{max_consecutive_batch_failures}'s circuit breaker costs every
+#'   query it was sharing with, not just the expensive one. A single query
+#'   at or above half of \code{max_batch_bp} rides ALONE in its own batch
+#'   (closing whatever batch was already accumulating first, if any) --
+#'   isolating it this way guarantees a doomed batch only ever costs that
+#'   ONE query's own progress. \code{Inf} disables the bp cap entirely,
+#'   fully restoring the old count-only \code{batch_size} behavior. See
+#'   \code{.split_batches_by_length()} for the implementation. Most calls at
+#'   the default \code{batch_size}/typical amplicon lengths never approach
+#'   \code{100000L} bp per batch, so this is a no-op for ordinary data --
+#'   it only ever triggers for real long-sequence batches.
 #' @param email Character. Email address sent to NCBI (required by their usage
 #'   policy for remote BLAST). Defaults to the \code{NCBI_EMAIL} environment
 #'   variable (unset by default); a \code{warning()} is issued for remote
@@ -355,6 +375,7 @@ blast_sequences <- function(seq_df,
                             max_subject_length = NULL,
                             max_target_seqs = 100L,
                             batch_size = 20L,
+                            max_batch_bp = 100000L,
                             email = Sys.getenv("NCBI_EMAIL", unset = ""),
                             ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                             resolve_taxonomy = TRUE,
@@ -417,6 +438,9 @@ blast_sequences <- function(seq_df,
   if (!is.numeric(batch_size) || length(batch_size) != 1L ||
       is.na(batch_size) || batch_size < 1L)
     stop("batch_size must be a positive integer")
+  if (!is.numeric(max_batch_bp) || length(max_batch_bp) != 1L ||
+      is.na(max_batch_bp) || max_batch_bp < 1)
+    stop("max_batch_bp must be a positive number (Inf to disable)")
   if (!is.numeric(max_consecutive_batch_failures) ||
       length(max_consecutive_batch_failures) != 1L ||
       is.na(max_consecutive_batch_failures) || max_consecutive_batch_failures < 1L)
@@ -463,7 +487,8 @@ blast_sequences <- function(seq_df,
     raw_hits <- .blast_remote(
       seq_df, database, program, megablast, max_target_seqs, batch_size,
       email, ncbi_api_key, verbose, max_wait = poll_max_wait,
-      max_consecutive_batch_failures = max_consecutive_batch_failures
+      max_consecutive_batch_failures = max_consecutive_batch_failures,
+      max_batch_bp = max_batch_bp
     )
   } else {
     raw_hits <- .blast_local(
@@ -658,16 +683,86 @@ blast_sequences <- function(seq_df,
   Sys.sleep(seconds)
 }
 
+#' Split query indices into BLAST submission batches, respecting both a
+#' sequence-COUNT cap and a cumulative sequence-LENGTH (bp) cap
+#'
+#' Extends the pre-existing count-only \code{split(seq_len(n),
+#' ceiling(seq_len(n) / batch_size))} convention (still used verbatim here
+#' when \code{max_batch_bp} is \code{Inf}) with a cumulative-length cap -- a
+#' batch closes when EITHER limit is reached. A single query at or above
+#' half of \code{max_batch_bp} rides alone in its own batch (closing
+#' whatever batch was already accumulating first, if any) -- see
+#' \code{blast_sequences(max_batch_bp=)}'s own documentation for the real
+#' motivation. Order-preserving: query \code{i} always lands in a
+#' later-or-equal batch than query \code{i-1}, matching \code{split()}'s own
+#' behavior, so every existing \code{batches[[i]]}-style caller (the
+#' circuit-breaker bookkeeping, the halved-batch-size retry pass) keeps
+#' working unchanged.
+#'
+#' @param seq_lens Numeric vector, one nucleotide length per query, in
+#'   submission order. \code{NA} is treated as length 0 (never triggers the
+#'   solo-ride rule, never overflows the bp cap on its own).
+#' @param batch_size Integer. Same count cap \code{blast_sequences()}
+#'   already exposes.
+#' @param max_batch_bp Numeric. Cumulative length cap per batch. \code{Inf}
+#'   disables it entirely, restoring the pre-existing count-only behavior.
+#' @return A list of integer index vectors into \code{seq_lens}, in
+#'   original order -- the same shape \code{split()} already produced (just
+#'   unnamed, since every caller already accesses batches positionally).
+#' @noRd
+.split_batches_by_length <- function(seq_lens, batch_size, max_batch_bp) {
+  n <- length(seq_lens)
+  if (n == 0L) return(list())
+  if (!is.finite(max_batch_bp))
+    return(unname(split(seq_len(n), ceiling(seq_len(n) / batch_size))))
+
+  solo_threshold <- max_batch_bp / 2
+  batches <- list()
+  cur     <- integer(0L)
+  cur_bp  <- 0
+
+  flush <- function() {
+    if (length(cur) > 0L) {
+      batches[[length(batches) + 1L]] <<- cur
+      cur    <<- integer(0L)
+      cur_bp <<- 0
+    }
+  }
+
+  for (i in seq_len(n)) {
+    len_i <- seq_lens[i]
+    if (is.na(len_i)) len_i <- 0
+
+    if (len_i >= solo_threshold) {
+      flush()
+      batches[[length(batches) + 1L]] <- i
+      next
+    }
+
+    if (length(cur) > 0L &&
+        (length(cur) >= batch_size || (cur_bp + len_i) > max_batch_bp)) {
+      flush()
+    }
+    cur    <- c(cur, i)
+    cur_bp <- cur_bp + len_i
+  }
+  flush()
+  batches
+}
+
 .blast_remote <- function(seq_df, database, program, megablast, max_target_seqs,
                           batch_size, email, ncbi_api_key, verbose, entrez_query = NULL,
-                          max_wait = 1800, max_consecutive_batch_failures = 3L) {
+                          max_wait = 1800, max_consecutive_batch_failures = 3L,
+                          max_batch_bp = 100000L) {
   .check_pkg("httr2")
 
   base_url <- "https://blast.ncbi.nlm.nih.gov/blast/Blast.cgi"
 
-  # Split sequences into batches
+  # Split sequences into batches, respecting both batch_size (count) and
+  # max_batch_bp (cumulative length) -- see .split_batches_by_length()'s own
+  # documentation.
   n <- nrow(seq_df)
-  batches <- split(seq_len(n), ceiling(seq_len(n) / batch_size))
+  batches <- .split_batches_by_length(nchar(seq_df$sequence), batch_size, max_batch_bp)
 
   all_hits <- vector("list", length(batches))
   failed_batches <- integer(0)
@@ -801,9 +896,8 @@ blast_sequences <- function(seq_df,
 
     for (fi in failed_batches) {
       retry_rows <- seq_df[batches[[fi]], ]
-      retry_batches <- split(
-        seq_len(nrow(retry_rows)),
-        ceiling(seq_len(nrow(retry_rows)) / retry_batch_size)
+      retry_batches <- .split_batches_by_length(
+        nchar(retry_rows$sequence), retry_batch_size, max_batch_bp
       )
 
       for (ri in seq_along(retry_batches)) {

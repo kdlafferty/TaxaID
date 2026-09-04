@@ -109,6 +109,18 @@
 #' print(bp$model)
 #' }
 #'
+#' @section Deprecated (kernel-priors redesign, 2026-08-31):
+#' This function is part of the grid/GLMM prior-fitting path, which is
+#' deprecated in favor of site-centered kernel estimation -- see
+#' \code{\link{estimate_kernel_priors}} and
+#' \code{\link{calibrate_kernel_bandwidth}}. Leave-one-block-out
+#' validation on real data found single-cell prediction scored worse than
+#' ignoring space entirely, while the kernel estimator improved both
+#' composition prediction and downstream assignment precision. The GLMM
+#' path remains fully functional (existing workflows still run it) and
+#' emits a once-per-session notice; it will be archived once remaining
+#' workflows migrate.
+#'
 #' @export
 build_priors <- function(
     taxa,
@@ -134,6 +146,8 @@ build_priors <- function(
     checkpoint_dir          = NULL,
     verbose                 = TRUE
 ) {
+
+  .glmm_deprecation_notice("build_priors")
 
   # --- Check dependencies ---
   if (!requireNamespace("TaxaFetch", quietly = TRUE)) {

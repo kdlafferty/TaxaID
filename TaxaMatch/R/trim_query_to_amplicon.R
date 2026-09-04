@@ -27,13 +27,26 @@
 #' @param rev_pattern_rc Character scalar, reverse-complement of the reverse
 #'   primer (i.e. the pattern to search for on the same strand as `fwd_pattern`).
 #' @param fwd_max_mm,rev_max_mm Integer. Max mismatches allowed for each primer.
-#' @param min_len,max_len Integer. Plausible amplicon length range; a match
-#'   implying a span outside this range is rejected.
+#' @param min_len,max_len Integer. Plausible amplicon length range for the
+#'   primer-INCLUSIVE span (forward-primer start to reverse-primer end); a
+#'   match implying a span outside this range is rejected. The plausibility
+#'   test is always made on the inclusive span, whatever `strip_primers`
+#'   says, so the two settings accept exactly the same primer matches.
+#' @param strip_primers Logical (default `FALSE`). `TRUE` returns the
+#'   region BETWEEN the two primer sites (`fwd_end + 1` to `rev_start - 1`)
+#'   instead of the primer-inclusive span. Added 2026-09-03 for
+#'   `evaluate_reference_accessions(query_span = "amplicon")`: an
+#'   amplicon-only GenBank deposit is ~169 bp for MiFish-U and carries no
+#'   primer sequence, so a 217 bp primer-inclusive query out-scores it with
+#'   every full-length relative at >= 93% identity and it never reaches the
+#'   BLAST hit list (see that function's own `@section Why the query is the
+#'   primer-stripped amplicon`).
 #' @return List with `sequence` (character or `NA`), `trimmed` (logical),
 #'   `note` (character).
 #' @noRd
 .extract_amplicon_one_tm <- function(seq_char, fwd_pattern, rev_pattern_rc,
-                                     fwd_max_mm, rev_max_mm, min_len, max_len) {
+                                     fwd_max_mm, rev_max_mm, min_len, max_len,
+                                     strip_primers = FALSE) {
 
   if (is.na(seq_char) || !nzchar(seq_char))
     return(list(sequence = NA_character_, trimmed = FALSE, note = "missing_sequence"))
@@ -71,10 +84,43 @@
     rev_starts <- Biostrings::start(rev_hits)
     downstream <- rev_starts[rev_starts > fwd_end]
     if (length(downstream) == 0L) next
-    rev_end <- Biostrings::end(rev_hits)[which(rev_starts == min(downstream))[1L]]
+    rev_start <- min(downstream)
+    rev_end <- Biostrings::end(rev_hits)[which(rev_starts == rev_start)[1L]]
+
+    # Defensive bounds guard before subseq(): fwd_start/rev_end are ordinarily
+    # guaranteed within [1, length(subj)] by construction (both come from
+    # matchPattern() hits on subj itself), but a malformed/edge-case match
+    # (e.g. a primer hit degenerate enough to make matchPattern's own
+    # start/end bookkeeping inconsistent) can still slip through -- found via
+    # a real production crash where one bad accession's amplicon_width passed
+    # the plausibility check above but Biostrings::subseq() then threw
+    # "Invalid sequence coordinates", killing the entire in-flight BLAST
+    # chunk (200 accessions) instead of just skipping the one bad sequence.
+    # Treat an out-of-bounds/inverted span the same as "not found" rather
+    # than letting subseq() error -- this strand's match is unusable either
+    # way.
+    seq_len <- length(subj)
+    if (fwd_start < 1L || rev_end > seq_len || fwd_start > rev_end) next
 
     amplicon_width <- rev_end - fwd_start + 1L
     if (amplicon_width < min_len || amplicon_width > max_len) next
+
+    # strip_primers: the region BETWEEN the primer sites. The plausibility
+    # test above was made on the inclusive span, so the same primer matches
+    # are accepted either way; only the returned coordinates differ. A
+    # degenerate interior (primer sites touching or overlapping) is treated
+    # as "not found" rather than handed to subseq() as an inverted span.
+    if (isTRUE(strip_primers)) {
+      in_start <- fwd_end + 1L
+      in_end   <- rev_start - 1L
+      if (in_start > in_end) next
+      amplicon <- Biostrings::subseq(subj, start = in_start, end = in_end)
+      return(list(
+        sequence = as.character(amplicon),
+        trimmed  = TRUE,
+        note     = paste0("extracted_via_primer_match_", strand, "_strand_stripped")
+      ))
+    }
 
     amplicon <- Biostrings::subseq(subj, start = fwd_start, end = rev_end)
     return(list(
@@ -101,12 +147,21 @@
 #' @param barcode_term Character. Passed to `TaxaTools::resolve_barcode_primers()`
 #'   and `TaxaTools::resolve_barcode_lengths()`.
 #' @param max_mismatch_rate Numeric in `[0, 1)`, default `0.15`.
+#' @param strip_primers Logical (default `TRUE`, 2026-09-03). `TRUE` returns
+#'   the primer-STRIPPED amplicon (the region between the two primer sites,
+#'   ~169 bp for MiFish-U); `FALSE` the primer-INCLUSIVE span (~217 bp), the
+#'   only behaviour before 2026-09-03. See `.extract_amplicon_one_tm()`'s
+#'   own `@param strip_primers` for why the stripped form is what
+#'   `evaluate_reference_accessions()` now submits by default. A sequence
+#'   with no primer sites (an amplicon-only deposit is already primer-free)
+#'   is returned unchanged under either setting.
 #' @param verbose Logical, default `TRUE`.
 #' @return Character vector, same length as `sequences` -- trimmed where
 #'   possible, unchanged otherwise.
 #' @noRd
 .trim_queries_to_amplicon <- function(sequences, barcode_term,
-                                      max_mismatch_rate = 0.15, verbose = TRUE) {
+                                      max_mismatch_rate = 0.15,
+                                      strip_primers = TRUE, verbose = TRUE) {
   if (!requireNamespace("Biostrings", quietly = TRUE))
     stop("Package 'Biostrings' is required for barcode_term trimming. ",
         "Install it with: BiocManager::install('Biostrings')", call. = FALSE)
@@ -125,7 +180,13 @@
       paste(barcode_term, collapse = "/"), sum(needs_trim), length(sequences), max_len
     ))
 
-  if (!any(needs_trim)) return(sequences)
+  if (!any(needs_trim)) {
+    # Nothing was over-length, so nothing was trimmed. The attribute is set
+    # on every return path so a caller can read it unconditionally.
+    out <- sequences
+    attr(out, "trimmed") <- rep(FALSE, length(sequences))
+    return(out)
+  }
 
   rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(primer_info$rev)))
   fwd_max_mm <- floor(nchar(primer_info$fwd) * max_mismatch_rate)
@@ -149,7 +210,11 @@
   if (!is.null(primer_info$amplicon_range)) {
     primer_total_len <- nchar(primer_info$fwd) + nchar(primer_info$rev)
     span_min <- primer_info$amplicon_range[1] + primer_total_len
-    span_max <- primer_info$amplicon_range[2] + primer_total_len
+    # Upper bound via .resolve_trimmed_span_max() (below), the shared
+    # definition the feature-table-fallback caller also reads -- same value
+    # this line computed inline before, now stated in one place so the two
+    # sites cannot drift apart again.
+    span_max <- .resolve_trimmed_span_max(barcode_term)
   } else {
     span_min <- min_len
     span_max <- max_len
@@ -158,22 +223,49 @@
   out <- sequences
   n_trimmed <- 0L
   fail_notes <- character(0L)
+  trimmed_flag <- rep(FALSE, length(sequences))
   for (i in which(needs_trim)) {
-    result <- .extract_amplicon_one_tm(
-      seq_char = sequences[i], fwd_pattern = primer_info$fwd, rev_pattern_rc = rev_rc,
-      fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = span_min, max_len = span_max
+    # tryCatch, not just the bounds guard inside .extract_amplicon_one_tm()
+    # itself: a real production run crashed an entire 200-accession BLAST
+    # chunk on one accession's coordinate math (IRanges "Invalid sequence
+    # coordinates" from Biostrings::subseq()), with no per-accession
+    # isolation -- this restores the guarantee this function's own roxygen
+    # already documents ("this function only ever shortens a query, never
+    # discards or errors on one it can't trim"): any unforeseen extraction
+    # failure degrades to leaving that one sequence untrimmed, exactly like
+    # a normal "primers not found" result, instead of aborting the caller.
+    result <- tryCatch(
+      .extract_amplicon_one_tm(
+        seq_char = sequences[i], fwd_pattern = primer_info$fwd, rev_pattern_rc = rev_rc,
+        fwd_max_mm = fwd_max_mm, rev_max_mm = rev_max_mm, min_len = span_min, max_len = span_max,
+        strip_primers = strip_primers
+      ),
+      error = function(e) {
+        list(sequence = NA_character_, trimmed = FALSE,
+             note = paste0("extraction_error: ", conditionMessage(e)))
+      }
     )
     if (result$trimmed) {
       out[i] <- result$sequence
+      trimmed_flag[i] <- TRUE
       n_trimmed <- n_trimmed + 1L
     } else {
       fail_notes <- c(fail_notes, result$note)
     }
   }
 
+  # Which sequences the primer match actually shortened, carried out per
+  # element rather than only tallied (2026-09-04). The counts below were
+  # already computed from this and then discarded -- the same
+  # "already known, silently dropped" pattern .extract_feature_table_
+  # fallback()'s own decline_reason closed. evaluate_reference_accessions()
+  # reads it to record query_trim_path per accession.
+  attr(out, "trimmed") <- trimmed_flag
+
   if (verbose) {
     message(sprintf(
-      "evaluate_reference_accessions(): extracted the amplicon from %d of %d over-length query sequence(s); the rest are BLASTed at full length (primer site(s) not found).",
+      "evaluate_reference_accessions(): extracted the %s amplicon from %d of %d over-length query sequence(s); the rest are checked against the record's own annotated feature table next (barcode_term auto-trim), or BLASTed at full length otherwise.",
+      if (isTRUE(strip_primers)) "primer-stripped" else "primer-inclusive",
       n_trimmed, sum(needs_trim)
     ))
     # Surfaces WHY extraction failed for the rest -- "primers_not_found_or_
@@ -193,5 +285,284 @@
     }
   }
 
+  out
+}
+
+#' Bridge TaxaTools' marker-family barcode_term keys onto
+#' check_marker_mismatch()'s own marker vocabulary
+#'
+#' `check_marker_mismatch()`'s `.resolve_marker_pattern()` (`R/
+#' check_marker_mismatch.R`) already resolves a marker string like `"12S"`,
+#' `"18S_2"`, or `"COI-Leray"` directly, via its own exact-match-then-
+#' substring-match fallback against `.MARKER_ANNOTATION_PATTERNS`. A
+#' MiFish/Teleo-style `barcode_term` (the primer SET name, e.g.
+#' `"MiFishU"`) never contains the literal substring `"12S"` even though it
+#' targets that exact marker, so it would otherwise fall through to that
+#' function's own last-resort literal-string fallback and never match real
+#' `"12S ribosomal RNA"` annotation text. This is a small, additive bridge
+#' between two vocabularies that already exist elsewhere in this package
+#' (`TaxaTools::barcode_length_defaults`'s own marker-family keys on one
+#' side, `.MARKER_ANNOTATION_PATTERNS` on the other) -- it does NOT add a
+#' new qualifier-matching regex of its own; every barcode_term not covered
+#' here still reaches `.resolve_marker_pattern()`'s own existing fallback
+#' unchanged.
+#' @noRd
+.MIFISH_STYLE_TO_MARKER <- c(mifish = "12S", teleo = "12S")
+
+#' @noRd
+.resolve_expected_marker <- function(barcode_term) {
+  bt  <- barcode_term[1L]
+  key <- tolower(trimws(bt))
+  for (nm in names(.MIFISH_STYLE_TO_MARKER)) {
+    if (startsWith(key, nm) || grepl(nm, key, fixed = TRUE))
+      return(.MIFISH_STYLE_TO_MARKER[[nm]])
+  }
+  bt
+}
+
+#' Longest plausible length for a CORRECTLY primer-trimmed query
+#'
+#' `.trim_queries_to_amplicon()` returns a span that INCLUDES both primers
+#' (forward-primer-start to reverse-primer-end), but
+#' `TaxaTools::resolve_barcode_lengths()` reports the variable region
+#' EXCLUDING them. For MiFish-U those are 211-233 bp and 130-210 bp
+#' respectively -- disjoint windows. Testing a trimmed query against
+#' `max_bp` therefore calls EVERY correctly-trimmed query over-length, 100%
+#' of the time.
+#'
+#' That exact miscalibration was already found and fixed once, inside
+#' `.trim_queries_to_amplicon()` itself (2026-08-10; see its own comment --
+#' it caused a real 92/92 extraction failure), and then reintroduced at a
+#' second site by the 2026-09-01 feature-table-fallback caller in
+#' `evaluate_reference_accessions()`, which had no way to know the two
+#' length conventions differed. This helper exists so there is ONE
+#' definition both sites read, rather than two places that must independently
+#' remember to add the primer lengths back on.
+#'
+#' 2026-09-03: `strip_primers` selects the matching bound for the
+#' primer-STRIPPED span `.trim_queries_to_amplicon(strip_primers = TRUE)`
+#' now returns -- the inclusive bound minus the two primer lengths. Still one
+#' definition: both the trimmer and `evaluate_reference_accessions()`'s
+#' feature-table-fallback caller read the bound for whichever `query_span`
+#' was chosen, so the two conventions cannot be crossed a third time. When
+#' the registered primer set has no `amplicon_range` the fallback is the
+#' marker's own `max_bp`, which already EXCLUDES primers, so it is returned
+#' unchanged for both settings rather than having primer lengths subtracted
+#' from a number that never contained them.
+#'
+#' @param barcode_term Character. As passed to
+#'   [evaluate_reference_accessions()].
+#' @param strip_primers Logical (default `FALSE`). `TRUE` returns the bound
+#'   for the primer-stripped span.
+#' @return Numeric: the maximum plausible trimmed length for the chosen
+#'   span, or `NA_real_` if `barcode_term` resolves to neither a primer pair
+#'   with an `amplicon_range` nor a registered length window (in which case
+#'   a caller should skip the over-length test rather than guess).
+#' @noRd
+.resolve_trimmed_span_max <- function(barcode_term, strip_primers = FALSE) {
+  primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
+                          error = function(e) NULL)
+  if (!is.null(primer_info) && !is.null(primer_info$amplicon_range)) {
+    primer_total_len <- nchar(primer_info$fwd) + nchar(primer_info$rev)
+    inclusive <- as.numeric(primer_info$amplicon_range[2]) + primer_total_len
+    return(if (isTRUE(strip_primers)) inclusive - primer_total_len else inclusive)
+  }
+  # No amplicon_range: fall back to the marker's own length window, the same
+  # fallback .trim_queries_to_amplicon() uses for its plausibility check.
+  bt <- tryCatch(TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]],
+                 error = function(e) NA_real_)
+  as.numeric(bt)
+}
+
+#' Feature-table-guided extraction fallback for a query still over-length after primer trimming
+#'
+#' The second-line rescue for a query `.trim_queries_to_amplicon()` could
+#' not shorten (no primer match, or an implausible matched span): before
+#' submitting it to BLAST at full length, check the accession's OWN
+#' annotated GBSeq feature table for a feature whose `/gene` or `/product`
+#' qualifier matches the marker `barcode_term` implies, and extract that
+#' feature's coordinate span (plus `margin` bp of context on each side, so
+#' primer-adjacent flanking sequence -- useful for a later primer-based
+#' re-trim attempt -- survives) instead of the whole record.
+#'
+#' Reuses `check_marker_mismatch()`'s own fetch/matching internals
+#' (`.fetch_marker_annotation()`, `.resolve_marker_pattern()`,
+#' `.MARKER_ANNOTATION_PATTERNS`) directly, per this feature's own design
+#' doc -- no second fetcher, no new qualifier vocabulary. `.
+#' fetch_marker_annotation()` batches its own `rentrez::entrez_fetch()`
+#' call across every accession passed to it in one round trip (2026-08-08),
+#' so calling it once per chunk here (never per-accession) keeps this
+#' mechanism's real NCBI cost to one cheap `efetch`, nothing like BLAST.
+#'
+#' Extraction uses plain `substr()` on the already-fetched full nucleotide
+#' string (GenBank feature coordinates are 1-based and inclusive, and index
+#' directly into `GBSeq_sequence`) -- no `Biostrings` needed for this step.
+#' Deliberately does NOT reverse-complement a feature on the minus strand:
+#' `blast_sequences()` never sets an explicit strand (see that function's
+#' own `megablast` documentation), so remote/local `blastn` already searches
+#' both strands regardless of which orientation the extracted subsequence
+#' happens to be in -- orientation therefore does not affect correctness
+#' here, only, in principle, which strand a hit's alignment coordinates are
+#' reported against (not consumed by anything in this package).
+#'
+#' Per-accession `tryCatch()` isolation, matching the same pattern
+#' `.trim_queries_to_amplicon()`'s own loop already established
+#' (2026-08-30) -- one accession's malformed interval data must never abort
+#' the whole fallback pass.
+#'
+#' @param accessions Character vector of accessions still over-length after
+#'   primer trimming, in the same order as `sequences`.
+#' @param sequences Character vector, same length/order as `accessions` --
+#'   each accession's own (still full-length or primer-trim-unchanged)
+#'   sequence.
+#' @param barcode_term Character. Resolved to a marker via
+#'   `.resolve_expected_marker()` above, then to a matching regex via
+#'   `.resolve_marker_pattern()`.
+#' @param margin Integer (default `100L`). Extra bp kept on each side of the
+#'   matched feature's own coordinate span.
+#' @param ncbi_api_key,verbose As in `evaluate_reference_accessions()`.
+#' @return Character vector, same length/order as `sequences` -- the
+#'   extracted feature region (plus margin) where a matching, coordinate-
+#'   bearing annotation was found; unchanged (same value as `sequences`)
+#'   otherwise. Never discards or errors -- an accession this fallback can't
+#'   rescue is left exactly as it was handed in, for the caller's next stage
+#'   (the `max_query_len` hard cap) to decide.
+#'
+#'   Carries `attr(out, "decline_reason")`, a character vector of the same
+#'   length recording WHY each unrescued accession was declined -- `NA` where
+#'   the rescue succeeded, else one of:
+#'   \itemize{
+#'     \item `"no_annotation"` -- the GBSeq fetch failed, or the record has no
+#'       coordinate-bearing features at all. We do not know what this record
+#'       contains.
+#'     \item `"marker_absent"` -- the record HAS annotated features and none of
+#'       them is the marker `barcode_term` implies. This is the informative
+#'       one: it is positive evidence that the accession carries a DIFFERENT
+#'       marker, not that it is merely too long. `evaluate_reference_
+#'       accessions()` reads exactly this value to emit
+#'       `"not_evaluated_wrong_marker"` rather than `"not_evaluated_oversized"`.
+#'     \item `"span_unusable"` -- a matching feature exists but its coordinates
+#'       do not fit the sequence in hand (see the `span_hi > seq_len` guard
+#'       below) or are degenerate.
+#'     \item `"no_sequence"` / `"extraction_error"` -- nothing to work with, or
+#'       the per-accession attempt threw.
+#'   }
+#'   The reason is a property of the ANNOTATION, deliberately not of the
+#'   verdict: this function still never decides anything, it only stops
+#'   throwing away what it already learned while deciding not to rescue.
+#' @noRd
+.extract_feature_table_fallback <- function(accessions, sequences, barcode_term,
+                                            margin = 100L, ncbi_api_key = NULL,
+                                            verbose = TRUE) {
+  out <- sequences
+  decline <- rep(NA_character_, length(sequences))
+  if (length(accessions) == 0L) {
+    attr(out, "decline_reason") <- decline
+    return(out)
+  }
+
+  marker  <- .resolve_expected_marker(barcode_term)
+  pattern <- .resolve_marker_pattern(marker)
+
+  ann <- tryCatch(
+    .fetch_marker_annotation(accessions, ncbi_api_key = ncbi_api_key, verbose = verbose),
+    error = function(e) NULL
+  )
+
+  n_rescued <- 0L
+  if (is.null(ann) || nrow(ann) == 0L) {
+    # The fetch failed or returned nothing usable for ANY accession -- we
+    # learned nothing about what these records contain, which is a different
+    # claim from "this record's features do not include the marker".
+    decline[] <- "no_annotation"
+  } else {
+    for (i in seq_along(accessions)) {
+      acc   <- accessions[i]
+      seq_i <- sequences[i]
+      if (is.na(seq_i) || !nzchar(seq_i)) {
+        decline[i] <- "no_sequence"
+        next
+      }
+
+      # extract_one() wraps the actual logic in its OWN function so that
+      # return(NULL) below returns from extract_one() alone -- return()
+      # inside a bare tryCatch({...}) block (no enclosing function of its
+      # own) would otherwise return from .extract_feature_table_fallback()
+      # ITSELF, silently abandoning every remaining accession still to be
+      # processed in this loop. A real bug caught by this file's own tests
+      # (a "no match" or "out-of-bounds span" outcome for accession i was
+      # returning NULL for the WHOLE function instead of just leaving
+      # sequence i unrescued) before this fix.
+      extract_one <- function() {
+        sub_ann <- ann[!is.na(ann$accession) & ann$accession == acc &
+                       !is.na(ann$feature_from) & !is.na(ann$feature_to), , drop = FALSE]
+        if (nrow(sub_ann) == 0L)
+          return(list(sequence = NULL, reason = "no_annotation"))
+
+        is_match <- (!is.na(sub_ann$gene) & grepl(pattern, sub_ann$gene, ignore.case = TRUE)) |
+          (!is.na(sub_ann$product) & grepl(pattern, sub_ann$product, ignore.case = TRUE))
+        sub_ann <- sub_ann[is_match, , drop = FALSE]
+        # The record HAS coordinate-bearing features and none of them matches
+        # the marker this screen was scoped to. That is a positive finding
+        # about the record, not a failure to look it up -- the caller turns it
+        # into "wrong marker for this barcode_term" instead of "too long".
+        if (nrow(sub_ann) == 0L)
+          return(list(sequence = NULL, reason = "marker_absent"))
+
+        seq_len <- nchar(seq_i)
+        span_lo <- min(sub_ann$feature_from, sub_ann$feature_to)
+        span_hi <- max(sub_ann$feature_from, sub_ann$feature_to)
+
+        # The feature coordinates describe the FULL deposited record. If they
+        # do not fit inside the sequence actually in hand, this is not the
+        # sequence they belong to -- typically an already-primer-trimmed
+        # query that should never have reached this fallback at all. Without
+        # this guard the clamp below silently degrades to
+        # substr(seq_i, 1, seq_len), i.e. returns the input unchanged while
+        # still counting itself a "rescue": the mechanism reported rescuing
+        # 40 of 40 queries it had not touched (found 2026-09-02 in a real run
+        # log). Refusing here keeps the count honest.
+        if (span_hi > seq_len)
+          return(list(sequence = NULL, reason = "span_unusable"))
+        # Bounds guard before substr(), same convention as
+        # .extract_amplicon_one_tm()'s own 2026-08-30 fix: an inverted or
+        # out-of-range span degrades to "not rescued" rather than producing
+        # a nonsensical (or, for substr(), silently empty/truncated) result.
+        from <- max(1L, span_lo - margin)
+        to   <- min(seq_len, span_hi + margin)
+        if (!is.finite(from) || !is.finite(to) || from >= to)
+          return(list(sequence = NULL, reason = "span_unusable"))
+
+        list(sequence = substr(seq_i, from, to), reason = NA_character_)
+      }
+      rescued <- tryCatch(
+        extract_one(),
+        error = function(e) list(sequence = NULL, reason = "extraction_error")
+      )
+
+      if (!is.null(rescued$sequence) && nzchar(rescued$sequence)) {
+        out[i] <- rescued$sequence
+        n_rescued <- n_rescued + 1L
+      } else {
+        decline[i] <- if (is.na(rescued$reason)) "span_unusable" else rescued$reason
+      }
+    }
+  }
+
+  n_wrong_marker <- sum(decline %in% "marker_absent")
+  if (verbose) {
+    message(sprintf(
+      "evaluate_reference_accessions(): feature-table fallback rescued %d of %d still-over-length query sequence(s) via the record's own GBSeq annotation (marker '%s'); the rest are BLASTed at full length, subject to max_query_len.",
+      n_rescued, length(accessions), marker
+    ))
+    if (n_wrong_marker > 0L)
+      message(sprintf(
+        "evaluate_reference_accessions(): %d of those carry annotated features but NO '%s' feature -- a wrong-marker record for this barcode_term, not a size problem: %s",
+        n_wrong_marker, marker,
+        paste(accessions[decline %in% "marker_absent"], collapse = ", ")
+      ))
+  }
+
+  attr(out, "decline_reason") <- decline
   out
 }

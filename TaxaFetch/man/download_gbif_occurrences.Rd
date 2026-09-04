@@ -9,6 +9,7 @@ download_gbif_occurrences(
   geometry,
   year_range = .gbif_default_year_range(),
   limit = NULL,
+  on_cap = c("warn", "error"),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
   status_ping = 15,
@@ -50,6 +51,14 @@ order; a message reports how many keys were truncated. \code{NULL}
 absent from the download, the cap is applied to the total row count
 instead, with a warning.}
 
+\item{on_cap}{Character. What to do when \code{limit} actually truncates a
+taxon key. \code{"warn"} (default) raises a warning naming the affected keys
+and records them in \code{attr(result, "capped_keys")}; \code{"error"} stops.
+Truncation keeps GBIF's return order -- a non-random prefix -- so both
+abundance and spatial pattern become unreliable for capped taxa; prefer
+\code{limit = NULL}, which costs nothing since the records are already
+downloaded.}
+
 \item{cache_dir}{Character or \code{NULL}. Directory for the downloaded
 zip file and a small metadata file. Defaults to a persistent user-level
 cache directory. Re-running with the same arguments reuses the cached
@@ -57,7 +66,12 @@ zip and skips the GBIF download entirely. Set to \code{NULL} to
 disable caching.}
 
 \item{overwrite}{Logical. If \code{FALSE} (default), an existing cached
-zip is reused. Set to \code{TRUE} to force a fresh download from GBIF.}
+zip is reused. Set to \code{TRUE} to force a fresh download from GBIF --
+in an interactive session this asks for confirmation first (showing the
+cached zip's date and size) before deleting it; a non-interactive session
+proceeds straight to a fresh download. Either way, the old cached zip is
+removed once the new one is saved -- it is never silently orphaned on
+disk.}
 
 \item{status_ping}{Numeric. Seconds between download-status polls while
 waiting for GBIF to prepare the file. Default 15. Minimum enforced by

@@ -78,7 +78,13 @@
 #' The irreducibility check operates on the full set of unique candidate
 #' combinations present in `consensus_df`. Candidate sets are sorted and
 #' deduplicated before comparison, so order differences in `plausible_taxa`
-#' across rows do not affect the result.
+#' across rows do not affect the result. This matters because candidate order
+#' is POSTERIOR order (it is what `primary_taxon` reads), so one biological
+#' unit legitimately arrives in different orders on different observations.
+#' Irreducibility is a property of the SET, not of the ranking within it.
+#' Enforced and regression-tested since 2026-09-04; before that the signature
+#' was built from the unsorted vector, so two orderings of one set each marked
+#' the other reducible and every row of the unit went `FALSE`.
 #'
 #' @param consensus_df Dataframe. Output of [posterior_consensus()]. Must
 #'   contain a list column of character vectors giving the plausible candidate
@@ -127,7 +133,8 @@
 #'   hypothesis_type = "specific_candidate",
 #'   genus           = c("Homo", "Homo", "Bos"),
 #'   family          = c("Hominidae", "Hominidae", "Bovidae"),
-#'   posterior_mean  = c(0.55, 0.45, 1.0)
+#'   posterior_mean  = c(0.55, 0.45, 1.0),
+#'   posterior_point_est = c(0.55, 0.45, 1.0)
 #' )
 #' consensus <- posterior_consensus(posterior_df, min_posterior = 0)
 #' consensus <- add_slash_taxon(consensus)
@@ -236,7 +243,22 @@ add_slash_taxon <- function(consensus_df,
   SEP <- rawToChar(as.raw(1L))
 
   nonempty_sets  <- taxa_sets[!is_empty]
-  nonempty_sigs  <- vapply(nonempty_sets, paste, character(1L), collapse = SEP)
+  # SORT before hashing. Candidate sets arrive ordered by POSTERIOR (the
+  # ecosystem's deliberate convention -- it is what primary_taxon reads), so
+  # one biological unit can arrive as {A,B} on one observation and {B,A} on
+  # another. Hashing the unsorted vector made those two DISTINCT signatures of
+  # equal size sharing a taxon, so each marked the other reducible and every
+  # row of the unit went FALSE -- with no surviving irreducible instance, the
+  # unit's label became an orphan that review_assignments() never scores and
+  # the workflows' export filters then drop as NA. That is how a 7,453-read
+  # Ctenopharyngodon idella detection (independently confirmed by Lamar in 8
+  # 2023 samples) vanished from the GreatLakes output. Irreducibility is a
+  # property of the SET, not of the ranking within it; sorting here asks the
+  # set question and leaves the posterior order untouched everywhere else.
+  # This is monotone: merging spurious duplicate signatures can only move rows
+  # FALSE -> TRUE, never the reverse, so it cannot retract an existing call.
+  nonempty_sigs  <- vapply(lapply(nonempty_sets, sort), paste,
+                           character(1L), collapse = SEP)
 
   unique_sigs <- unique(nonempty_sigs)
   unique_sets <- strsplit(unique_sigs, SEP, fixed = TRUE)

@@ -14,6 +14,7 @@
 .parse_taxonomy_xml <- function(...) get(".parse_taxonomy_xml", envir = asNamespace("TaxaMatch"))(...)
 .parse_lat_lon      <- function(...) get(".parse_lat_lon",      envir = asNamespace("TaxaMatch"))(...)
 .resolve_locations_by_acc <- function(...) get(".resolve_locations_by_acc", envir = asNamespace("TaxaMatch"))(...)
+.split_batches_by_length  <- function(...) get(".split_batches_by_length",  envir = asNamespace("TaxaMatch"))(...)
 
 # --- Helpers ------------------------------------------------------------------
 
@@ -793,6 +794,92 @@ test_that("blast_sequences() validates max_consecutive_batch_failures", {
               "max_consecutive_batch_failures")
   expect_error(blast_sequences(seq_df, max_consecutive_batch_failures = "3"),
               "max_consecutive_batch_failures")
+})
+
+# ==============================================================================
+# .split_batches_by_length() -- length-aware BLAST submission batching
+# (max_batch_bp, 2026-09-01)
+# ==============================================================================
+
+test_that("blast_sequences() validates max_batch_bp", {
+  seq_df <- data.frame(asv_id = "A1", sequence = "ACGT", stringsAsFactors = FALSE)
+  expect_error(blast_sequences(seq_df, max_batch_bp = 0), "max_batch_bp")
+  expect_error(blast_sequences(seq_df, max_batch_bp = NA), "max_batch_bp")
+  expect_error(blast_sequences(seq_df, max_batch_bp = "1e5"), "max_batch_bp")
+})
+
+test_that(".split_batches_by_length(max_batch_bp = Inf) matches the pre-existing count-only split() exactly", {
+  lens <- rep(50, 25)
+  out <- .split_batches_by_length(lens, batch_size = 20L, max_batch_bp = Inf)
+  expected <- unname(split(seq_len(25), ceiling(seq_len(25) / 20)))
+  expect_equal(out, expected)
+})
+
+test_that(".split_batches_by_length() isolates a single very long query into its own batch", {
+  # solo_threshold = max_batch_bp / 2 = 5000; the 6th query (40000bp) rides
+  # alone, closing whatever batch was accumulating first.
+  lens <- c(rep(100, 5), 40000, rep(100, 5))
+  out <- .split_batches_by_length(lens, batch_size = 20L, max_batch_bp = 10000L)
+
+  solo_batch <- Filter(function(b) 6L %in% b, out)
+  expect_equal(length(solo_batch), 1L)
+  expect_equal(solo_batch[[1L]], 6L)
+  # Every query still appears exactly once, across all batches.
+  expect_setequal(unlist(out), seq_along(lens))
+  expect_equal(sum(vapply(out, length, integer(1L))), length(lens))
+})
+
+test_that(".split_batches_by_length() closes a batch on the cumulative bp cap before the count cap is reached", {
+  lens <- rep(4000, 10)  # well under batch_size = 20, but 3 x 4000bp > 10000
+  out <- .split_batches_by_length(lens, batch_size = 20L, max_batch_bp = 10000L)
+  expect_equal(length(out), 5L)
+  expect_true(all(vapply(out, length, integer(1L)) == 2L))
+  expect_equal(unlist(out), seq_along(lens))
+})
+
+test_that(".split_batches_by_length() falls back to the count cap alone when bp never approaches max_batch_bp", {
+  lens <- rep(50, 45)  # typical short-amplicon case: bp budget never binds
+  out <- .split_batches_by_length(lens, batch_size = 20L, max_batch_bp = 100000L)
+  expected <- unname(split(seq_len(45), ceiling(seq_len(45) / 20)))
+  expect_equal(out, expected)
+})
+
+test_that(".split_batches_by_length() handles NA lengths as zero (never solo, never overflows the bp cap alone)", {
+  lens <- c(100, NA, 100)
+  out <- .split_batches_by_length(lens, batch_size = 20L, max_batch_bp = 10000L)
+  expect_equal(length(out), 1L)
+  expect_equal(out[[1L]], 1:3)
+})
+
+test_that("blast_sequences(max_batch_bp=) submits a long-query-isolating batch plan to .blast_remote()", {
+  seen_batches <- list()
+  local_mocked_bindings(
+    .blast_submit = function(base_url, query, ...) {
+      # One FASTA record per '>' marks how many sequences this batch held.
+      seen_batches[[length(seen_batches) + 1L]] <<- lengths(regmatches(query, gregexpr(">", query)))
+      "RID_FAKE"
+    },
+    .blast_poll = function(...) "<BlastOutput></BlastOutput>",
+    .parse_blast_xml = function(...) NULL,
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+  seq_df <- data.frame(
+    asv_id = c("Q1", "Q2", "Q3"),
+    sequence = c(strrep("A", 100L), strrep("A", 40000L), strrep("A", 100L)),
+    stringsAsFactors = FALSE
+  )
+  suppressWarnings(blast_sequences(
+    seq_df, method = "remote", batch_size = 20L, max_batch_bp = 10000L,
+    email = "test@example.com", verbose = FALSE
+  ))
+  # Q2 (40000bp) rides alone -- 3 batches total: [Q1], [Q2], [Q3] (Q1/Q3
+  # never share a batch with Q2, and Q1 alone doesn't reach batch_size=20
+  # to merge with Q3 across the isolated Q2 in between). Every batch
+  # succeeds (mocked), so the halved-batch-size retry pass never runs --
+  # this test is purely about the initial batch PLAN.
+  expect_equal(length(seen_batches), 3L)
+  expect_equal(unlist(seen_batches), c(1L, 1L, 1L))
 })
 
 

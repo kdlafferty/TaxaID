@@ -145,6 +145,24 @@ If no site-level Tier 3 rows exist, a global average across all
 Tier 3 rows is used. This ensures that every hypothesis has a
 non-zero prior, reflecting the possibility that unobserved species
 could be present.
+}
+
+\subsection{Habitat-agnostic named-species prior fallback}{
+
+A named prior row can legitimately have no habitat concept at all --
+\code{TaxaExpect::generate_domestic_food_priors()}'s output is the real example
+(a food/domestic species' plausibility is governed by human food supply,
+not local habitat suitability, so \code{main_habitat = NA} there is intentional,
+not a missing value to fill in). The primary composite-key join above
+requires an exact \code{main_habitat} match, so such a row could never match a
+real observation's specific habitat on its own -- this function re-matches
+any row whose primary join failed on \verb{(taxon_name, taxon_name_rank, grid_id)} alone against habitat-agnostic (\code{main_habitat = NA})
+\code{taxaexpect_priors} rows, ranked below a real per-habitat match but above
+the dark-diversity/global-floor fallback below. Confirmed a real,
+previously-shipping gap on real data: a domestic-food prior row never
+matched a real observation under habitat-scoped priors, silently falling
+back to the generic floor instead of the tailored prior
+\code{generate_domestic_food_priors()} computed for it.
 
 \strong{Domestic/synanthropic species caveat (Session 149):} this fallback
 assumes unmodelled species are exchangeable draws from one detection
@@ -174,6 +192,26 @@ rows sharing the same genus. Finally,
 superseded by finer-rank rows in the same lineage.
 }
 }
+\section{Modelled-species floor (scoped by cause)}{
+
+A modelled species whose prior at the focal habitat falls below the
+singleton-mirror mean is promoted up to that mean -- but only when the low
+value is habitat EXTRAPOLATION (\code{observed_in_habitat} is \code{FALSE}: the
+species was never recorded in this habitat during training, so the
+habitat-conditional estimate is model extrapolation rather than data).
+A genuinely low in-habitat estimate is real rarity signal and is left
+alone. Named evidence-derived rows (\code{undetected_type == "evidence_blend"},
+\code{model_tier} \code{"tier_undetected_evidence"}/\code{"tier_domestic_food"}) are
+never promoted under any condition: their sub-singleton theta is the
+deliberate output of a graded evidence blend
+(\code{TaxaExpect::apply_undetected_evidence()}) or ESS-based domestic
+scale, and promotion would silently erase that gradation (the central
+finding of the 2026-08-26 upranking review -- see
+\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}).
+When \code{taxaexpect_priors} carries no \code{observed_in_habitat} column, the
+pre-2026-08-26 blanket promotion is retained for modelled rows.
+}
+
 \section{Coarse-rank expansion}{
 
 When a likelihood row has \code{taxon_name_rank} coarser than species (e.g.

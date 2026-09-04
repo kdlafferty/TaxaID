@@ -358,11 +358,19 @@ message(sprintf("  %d proxy prior row(s) (singleton mirrors + global floor).",
                 nrow(priors_undetected)))
 
 # ---- Derive focal SITE_GRID_ID dynamically (NEVER hardcode -- grid_id format
-# depends on grid_opt$best_grid, which varies run to run).
+# depends on grid_opt$best_grid, which varies run to run). Derived from the
+# STUDY COORDINATES (nearest focal-habitat data centroid), never from data
+# representation: a "most-represented grid" pick has no relationship to the
+# sampling site and, on tied counts, silently returns the alphabetically
+# first grid id (real 292-km-off-site bug found 2026-08-30).
 SITE_GRID_ID <- sites |>
   dplyr::filter(main_habitat == SITE_HABITAT) |>
-  dplyr::count(grid_id) |>
-  dplyr::slice_max(n, n = 1, with_ties = FALSE) |>
+  dplyr::group_by(grid_id) |>
+  dplyr::summarise(.lat = mean(decimalLatitude), .lon = mean(decimalLongitude),
+                   .groups = "drop") |>
+  dplyr::mutate(.dist2 = (.lat - SITE_LAT)^2 +
+                         ((.lon - SITE_LNG) * cos(SITE_LAT * pi / 180))^2) |>
+  dplyr::slice_min(.dist2, n = 1, with_ties = FALSE) |>
   dplyr::pull(grid_id)
 
 if (length(SITE_GRID_ID) == 0) {

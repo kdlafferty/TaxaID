@@ -168,6 +168,49 @@ second \code{TaxaTools::create_taxon_names()} call, a real step some
 production workflows already run "to re-derive taxon_name after backbone
 conversion") would otherwise see \code{species} still populated, apply
 "most specific non-NA rank wins", and silently undo the correction.
+}
+
+\section{Rank correction on a genus-collapsing name, any source (2026-08-21)}{
+
+The \code{matched_rank}-driven correction above only fires when the target
+backbone's own reported rank disagrees with the row's claimed rank. A
+second, independent mechanism corrects \code{taxon_name_rank} whenever the
+value that actually ended up in \code{taxon_name} was produced by
+\code{\link[TaxaTools:clean_taxon_names]{TaxaTools::clean_taxon_names()}} COLLAPSING a real second token to
+genus-only -- regardless of which of the three possible sources produced
+it (a not-found row's fallback cleaning; a found row's \code{matched_name_clean}
+fallback when its own rank had no target value; or a found row's own
+\verb{target_<rank>} value at its claimed rank). This closes two real,
+independently-discovered cases from GreatLakes2023 production data:
+(1) an open-nomenclature, specimen-voucher-tagged reference label (e.g.
+\code{"Ictalurus cf. pricei USON-01120-1"}) that never resolves in the target
+backbone at all (\code{found_mask = FALSE}); and (2), found only after
+verifying (1)'s original fix against a real re-run and still finding
+stale rows: NCBI's own taxonomy DB genuinely contains leaf-level nodes
+for informally-named specimens (e.g. a real node literally named
+\code{"Ictalurus sp. UM 105-1789"}, ranked \code{"species"} by NCBI itself) -- here
+\code{found_mask = TRUE} and \code{matched_rank} genuinely IS \code{"species"}
+(backbone-consistent, so the \code{matched_rank}-driven correction correctly
+does nothing), but the classification path's own species-rank VALUE is
+that same informal label, which collapses to genus-only when cleaned.
+No rank-MISMATCH-based correction can ever catch case (2) -- the
+backbone's own rank claim is genuinely self-consistent; only the collapse
+signal itself reveals the problem. Before this fix, \code{taxon_name_rank}
+stayed stale at whatever rank the row claimed before conversion,
+mislabeling a bare genus as if it were still species-level.
+
+Deliberately tracks the actual collapse event through the pipeline (via
+\code{collapsed_to_genus}) rather than re-deriving the signal from the final
+value's shape (e.g. via \code{\link[TaxaTools:is_plausible_binomial]{TaxaTools::is_plausible_binomial()}}) -- that
+function's binomial regex requires a literal space immediately after the
+genus token, which a real hyphenated genus (e.g. \emph{Pseudo-nitzschia},
+already a real fixture elsewhere in this ecosystem's own test suite)
+fails, which would have wrongly demoted every hyphenated-genus species
+row. Requires \code{"genus"} to be present in \code{rank_system}; a no-op
+otherwise. Gracefully absent (no-op) for a \code{clean_taxon_names()}-alike
+that predates the \code{collapsed_to_genus} attribute. Rank columns finer than
+the demoted rank are cleared, same as the \code{matched_rank}-driven
+correction above.
 
 An R attribute \code{backbone_cols} is set on the returned data frame recording
 which rank columns were subject to backbone conversion. A summary message

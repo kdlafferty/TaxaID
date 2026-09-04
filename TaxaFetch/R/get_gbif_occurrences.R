@@ -66,6 +66,13 @@
 #' @param exclude_absent,basis_keep,status_ping,gbif_user,gbif_pwd,gbif_email
 #'   Forwarded to \code{\link{download_gbif_occurrences}} when that path
 #'   fires; see its own documentation. Ignored on the fetch path.
+#' @param on_cap Character. What to do when any taxon key returns exactly the
+#'   per-key `limit` -- i.e. was TRUNCATED. Truncated records are GBIF's own
+#'   return order, a non-random prefix, so abundance and spatial pattern both
+#'   become unreliable for those taxa. `"warn"` (default) warns and records
+#'   the keys in `attr(result, "capped_keys")`; `"escalate"` re-fetches the
+#'   affected keys through the download API with `limit = NULL` (needs GBIF
+#'   credentials; falls back to a warning); `"error"` stops.
 #' @param chunk_size,pause_seconds,pause_between_keys,max_retries Forwarded
 #'   to \code{\link{fetch_gbif_occurrences}} when that path fires; see its
 #'   own documentation. Ignored on the download path.
@@ -185,7 +192,10 @@ get_gbif_occurrences <- function(
     pause_seconds       = 2,
     pause_between_keys  = 0.5,
     max_retries         = 4L,
+    on_cap              = c("warn", "escalate", "error"),
     beep                = FALSE) {
+
+  on_cap <- match.arg(on_cap)
 
   # --- Input checks -------------------------------------------------------
   keys <- unique(as.integer(keys))
@@ -283,6 +293,72 @@ get_gbif_occurrences <- function(
     return(dplyr::as_tibble(raw))
   }
 
+  # --- Per-key truncation ("cap") detection --------------------------------
+  # A key returning exactly `limit` records was almost certainly TRUNCATED,
+  # and what is kept is GBIF's return order -- a non-random prefix, not a
+  # sample. Left unreported this silently destroys the quantity an
+  # occurrence-composition prior is built from. Measured on real data
+  # (2026-09-02): 45 of Mugu's 231 taxa sat at a 10,000-record cap holding
+  # 95% of the pool, and all 45 came out with an IDENTICAL spatial
+  # distribution (per-species median distance 104 km, IQR 104-104) because
+  # the prefixes came from the same few large survey datasets -- so their
+  # priors were near-identical and near-uninformative. The download backend
+  # applies `limit` AFTER import, so there a cap is caller-inflicted and
+  # `limit = NULL` removes it outright.
+  eff_limit <- if (use_download) limit else
+    (if (is.null(limit)) 10000L else limit)
+  capped_keys <- integer(0)
+  if (!is.null(eff_limit) && is.finite(eff_limit) &&
+      "taxonKey" %in% names(raw) && nrow(raw) > 0L) {
+    .cnt <- table(raw$taxonKey)
+    capped_keys <- as.integer(names(.cnt)[.cnt >= eff_limit])
+  }
+  if (length(capped_keys) > 0L) {
+    .msg <- sprintf(
+      paste0(
+        "get_gbif_occurrences: %d of %d taxon key(s) returned exactly the ",
+        "per-key limit (%s) and were TRUNCATED, holding %.0f%% of all rows. ",
+        "Truncated records are GBIF's return order, not a random sample, so ",
+        "abundance AND spatial pattern are unreliable for these taxa. %s"
+      ),
+      length(capped_keys), length(unique(raw$taxonKey)), format(eff_limit),
+      100 * sum(raw$taxonKey %in% capped_keys) / nrow(raw),
+      if (use_download)
+        "This backend caps after import -- pass limit = NULL to keep every record."
+      else
+        "The direct API caps here; on_cap = 'escalate' re-fetches these keys via the download API."
+    )
+    if (identical(on_cap, "error")) stop(.msg, call. = FALSE)
+    if (identical(on_cap, "escalate")) {
+      message(.msg)
+      message(sprintf(
+        "get_gbif_occurrences: escalating %d capped key(s) to the download API (limit = NULL)...",
+        length(capped_keys)))
+      .esc <- try(download_gbif_occurrences(
+        keys = capped_keys, geometry = geometry, year_range = year_range,
+        limit = NULL, cache_dir = cache_dir, overwrite = overwrite,
+        status_ping = status_ping, exclude_absent = exclude_absent,
+        basis_keep = basis_keep, select_cols = select_cols_dl,
+        gbif_user = gbif_user, gbif_pwd = gbif_pwd, gbif_email = gbif_email,
+        beep = beep), silent = TRUE)
+      if (inherits(.esc, "try-error") || !is.data.frame(.esc) || nrow(.esc) == 0L) {
+        warning(sprintf(
+          "get_gbif_occurrences: escalation failed (%s) -- returning TRUNCATED data. Set GBIF_USER/GBIF_PWD/GBIF_EMAIL, or re-run with limit = NULL.",
+          if (inherits(.esc, "try-error"))
+            trimws(conditionMessage(attr(.esc, "condition"))) else "no records"),
+          call. = FALSE)
+      } else {
+        raw <- dplyr::bind_rows(raw[!raw$taxonKey %in% capped_keys, , drop = FALSE], .esc)
+        message(sprintf(
+          "get_gbif_occurrences: escalation replaced %d key(s); pool is now %d records.",
+          length(capped_keys), nrow(raw)))
+        capped_keys <- integer(0)
+      }
+    } else {
+      warning(.msg, call. = FALSE)
+    }
+  }
+
   # --- Standardize columns (fixed schema regardless of backend) -----------
   if (!is.null(want_cols)) {
     missing_cols <- setdiff(want_cols, names(raw))
@@ -304,7 +380,9 @@ get_gbif_occurrences <- function(
     }
   }
 
-  dplyr::as_tibble(raw)
+  out <- dplyr::as_tibble(raw)
+  attr(out, "capped_keys") <- capped_keys
+  out
 }
 
 # ==============================================================================

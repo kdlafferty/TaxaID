@@ -416,3 +416,55 @@ resolve_barcode_primers <- function(barcode_term) {
     barcode_term, paste0("'", reg_keys, "'", collapse = ", ")
   ), call. = FALSE)
 }
+
+
+#' Resolve a Primer-Variant Barcode Term to the Marker It Amplifies
+#'
+#' A registered primer-variant name (see [barcode_primer_defaults]) --
+#' `"COI-Folmer"`, `"16S-Palumbi"`, `"rbcLa"` -- is the correct term for
+#' resolving primers and amplicon lengths, but it is **not** a term any
+#' sequence database indexes: no GenBank record is tagged "Folmer". A search
+#' query built from the variant name matches nothing, and because "nothing
+#' found" is a legitimate outcome of a search, that failure is silent --
+#' it looks like the taxon has no barcode rather than like a bad query.
+#'
+#' This maps such a term to the marker it amplifies, so a search can be built
+#' from the marker while primer/length resolution keeps using the variant.
+#' Any term that is not a recognised variant is returned unchanged, so a
+#' custom or unregistered term still searches as itself.
+#'
+#' MiFish terms are deliberately **not** remapped: unlike the others, real
+#' records are annotated with the MiFish primer name, so the variant is
+#' genuinely searchable and callers already OR it together with `12S`.
+#'
+#' @param barcode_term Character vector of barcode/marker/primer-variant names.
+#' @return Character vector the same length as `barcode_term`: the base marker
+#'   name for a recognised primer variant, otherwise the input unchanged.
+#' @examples
+#' resolve_barcode_marker("COI-Folmer")   # "COI"
+#' resolve_barcode_marker("16S-Palumbi")  # "16S"
+#' resolve_barcode_marker("12S")          # "12S" (unchanged)
+#' resolve_barcode_marker("MiFishU")      # "MiFishU" (deliberately unchanged)
+#' @export
+resolve_barcode_marker <- function(barcode_term) {
+  if (is.null(barcode_term)) return(barcode_term)
+  if (!is.character(barcode_term))
+    stop("resolve_barcode_marker: barcode_term must be a character vector.",
+         call. = FALSE)
+
+  variant_to_marker <- c(
+    "coi-folmer"    = "COI",
+    "coi-leray"     = "COI",
+    "16s-palumbi"   = "16S",
+    "cytb-kocher"   = "cytb",
+    "rbcla"         = "rbcL",
+    "matk-kim"      = "matK",
+    "trnl-taberlet" = "trnL"
+  )
+
+  vapply(barcode_term, function(bt) {
+    if (is.na(bt)) return(NA_character_)
+    hit <- variant_to_marker[tolower(trimws(bt))]
+    if (is.na(hit)) bt else unname(hit)
+  }, character(1L), USE.NAMES = FALSE)
+}

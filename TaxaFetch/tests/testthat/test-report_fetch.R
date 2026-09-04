@@ -104,3 +104,13 @@ test_that("report_fetch reads report_params attribute", {
   sec <- report_fetch(occ)
   expect_equal(sec$params$custom_param, "value")
 })
+
+test_that("report_fetch accepts standardized frames carrying taxon_name (2026-09-01)", {
+  df <- data.frame(
+    taxon_name = c("Sp A", "Sp B", "Sp A", NA),
+    decimalLatitude = c(1, 2, 3, 4), decimalLongitude = c(1, 2, 3, 4),
+    stringsAsFactors = FALSE
+  )
+  expect_no_warning(sec <- report_fetch(df))
+  expect_equal(sec$statistics$n_taxa, 2L)
+})

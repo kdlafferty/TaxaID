@@ -1,6 +1,188 @@
+# CLAUDE.md -- TaxaAssign
+# Last updated: 2026-09-04 (Opus 5, branch kernel-priors -- add_slash_taxon()
+# irreducibility is now ORDER-INVARIANT). The signature used for dedup/comparison
+# was built with paste() over the UNSORTED candidate vector. Candidate order is
+# POSTERIOR order -- the ecosystem's deliberate convention, and what primary_taxon
+# reads -- so one biological unit legitimately arrives as {A,B} on one observation
+# and {B,A} on another. Those hashed to two "distinct" signatures of equal size
+# sharing a taxon, so each marked the OTHER reducible and every row of the unit
+# went irreducible_consensus = FALSE, leaving no irreducible instance anywhere.
+# Downstream that made the unit's label an orphan: review_assignments(
+# irreducible_only = TRUE) never scored it, its plausibility columns stayed NA, and
+# the workflows' export filters dropped NA rows silently. Net effect on GreatLakes
+# 2026-09-04: a grass carp detection (5 ASVs, 7,453 reads) that Lamar independently
+# confirmed in 8 samples from the same site and year vanished from the output,
+# along with the Moxostoma and Oncorhynchus slash taxa.
+# FIX: sort inside the signature ONLY. Irreducibility is a property of the SET, not
+# of the ranking within it. plausible_taxa, consensus_OTU, slash_taxon_name and
+# primary_taxon are all untouched -- posterior order survives everywhere it is
+# displayed or read. The docstring had promised order-invariance since the function
+# was written; it is now true and regression-tested (3 tests).
+# MONOTONE: merging spurious duplicate signatures can only move rows FALSE -> TRUE,
+# never the reverse, so this cannot retract an existing call. Verified on the real
+# run: 538 -> 577 irreducible, 39 recovered, 0 lost. devtools::test() 714/0.
+#
+# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- suggest_unreferenced_species() builds
+# its NCBI query from TaxaTools::resolve_barcode_marker(barcode_term) rather than the raw term.
+#
+# A registered primer-variant name ("COI-Folmer", "16S-Palumbi", "rbcLa", ...) is correct for
+# primer/length resolution but is not indexed by NCBI, so a query built from it matched nothing --
+# silently, since an empty search result is legitimate here, making every species look
+# unreferenced. Lengths still resolve from the caller's own tighter term. See TaxaTools/CLAUDE.md
+# for the full record and the live before/after hit counts.
+#
+# devtools::test() 707/0, devtools::check() 0/0/0, reinstalled.
 # CLAUDE.md — TaxaAssign
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-07 (Sonnet 5 -- second full code + domain review response, against a
+# Previous update: 2026-08-31, later same day (Fable 5, branch kernel-priors -- POSTHOC
+# AXIS-1 RECALIBRATION for kernel prior tables: posterior_consensus()'s
+# winner_has_occurrence_record and the plausible-competitor mask now read
+# prior_branch when that column is present (has-record = "resident_observed";
+# plausible competitor = any non-NA branch), keeping the legacy
+# !is.na(model_tier) logic byte-for-byte for GLMM tables. The legacy reading
+# was fully INVERTED on kernel output (resident rows have no model_tier; the
+# undetected/domestic adapters' legacy columns made zero-local-record evidence
+# species read TRUE) -- real B8 run said 873/885 "unprecedented". Transport
+# winners read FALSE by design; domestic_prior_caveat carries their
+# interpretation. consensus_has_occurrence_record unchanged (group_priors
+# lookup already branch-agnostic). Validated on the real GL fastpath:
+# plausibility 2/10/873 -> 860/12/13 (GLMM baseline 864/15/6), the 13
+# unprecedented exactly the evidence-elevated zero-local-record winners,
+# consensus_taxon/consensus_rank byte-identical to B8. 5 regression tests
+# (kernel inversion in miniature, transport FALSE, competitor mask, legacy
+# fallback); devtools::test() 700/0, check() 0/0/0, reinstalled.)
+# Previous update: 2026-08-31 (Fable 5, branch kernel-priors -- join_priors() made
+# prior_branch-aware for the kernel-priors redesign (see the ecosystem CLAUDE.md
+# top note + ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md):
+# (1) the habitat-mismatch singleton-parity promotion is now gated so that, when
+# a prior_branch column is present, ONLY "resident_observed" rows are eligible --
+# a transport/evidence/undetected row's magnitude is its design, never a habitat-
+# extrapolation artifact (subsumes the model_tier value exemptions once that
+# column retires; legacy tables without prior_branch behave exactly as before,
+# regression-tested both directions in test-join_priors.R); (2) prior_branch +
+# effective_records carried through coarse-rank expansion override_cols and the
+# habitat-agnostic fallback's provenance coalesce. Validated end to end in the
+# GreatLakes kernel B8 run (Lamar precision 0.748 -> 0.868). devtools::check()
+# 0/0/0.)
+# Previous update, 2026-08-28 (Fable 5, branch undetected-evidence-mixture -- D7 soft
+# confirmation update: update_prior_from_consensus() rewritten around soft,
+# leave-one-out, power-prior-discounted support aggregation (new
+# confirmation_discount = 0.25 param; min_confirmation_confidence REMOVED,
+# breaking, propagated through run_bayesian_pipeline/run_llm_pipeline/
+# consensus_refinement/generate_report methods text/inst workflows/vignette);
+# mixture rows update prior_mix_w (replaces the interim clearing rule); update is
+# provably continuous (regression test sweeps the old 0.8 gate). Verified
+# citations in roxygen: Ibrahim & Chen 2000 (power prior), Celeux & Govaert 1992
+# (soft vs classification EM), Dorazio & Erickson 2018 (occupancy analog).
+# Held-out Lamar on identical production inputs: soft beats hard on every axis
+# (co-det 236->238, ours_only 120->97, uniq sp 17->23, in-Lamar 12->18, precision
+# 0.66->0.71). Also: posterior_consensus() default posterior_col aligned to
+# "posterior_point_est" (D8 drift fix; fixtures/examples updated);
+# adjust_inat_range_priors() gains require_name_match = TRUE (fuzzy-misresolution
+# gate) and a superseded-for-mixture note. Real bug found by testing: 0-row
+# scalar assignment crash in the all-unresolved split (rep() fix + regression
+# test). devtools::test() 691/0, check() 0/0/0, reinstalled. See the ecosystem
+# CLAUDE.md 2026-08-28 note + the reentry doc ledger for the full seven-item record.
+# Previous update, 2026-08-26, continued (Fable 5, branch undetected-evidence-mixture --
+# Chunk B of the mixture redesign: compute_posterior() gains a PRESENCE-DRAW sampler
+# for mixture rows (D8). Rows carrying non-NA prior_mix_w/prior_mix_theta_present/
+# prior_mix_theta_absent (from TaxaExpect::apply_undetected_evidence()) draw
+# z ~ Bernoulli(w), theta = z*theta_present + (1-z)*theta_absent in simulation,
+# bypassing the alpha <= 1 J-guard that would otherwise pin their J-shaped Beta
+# summary at its mean and erase the bimodality; point path unchanged (prior_mean is
+# the mixture's exact expectation). join_priors() passes the prior_mix_* columns
+# through coarse-rank expansion; update_prior_from_consensus() clears the mixture on
+# confirmation-raised rows (presence established -- interim rule until Phase 3's soft
+# update operates on prior_mix_w directly). Three-way operative-column experiment run
+# on real GreatLakes2023 checkpoints (identical inputs/seed): point_est 103 species
+# obs (12 unique, 9 Lamar-corroborated) vs J-guarded posterior_mean 95 (10, 7) vs
+# mixture-aware posterior_mean 93 (10, 8) -- the column choice is SECOND-ORDER
+# relative to w calibration (a w=0.6 blocker draws full singleton parity in 60% of
+# presence states, E[share] ~ 7%, still above the 0.05 retention floor); MC arms
+# resolve slightly fewer because integrating likelihood uncertainty flattens shares.
+# Recommendation (user verdict pending): keep posterior_point_est operative, align
+# posterior_consensus()'s default to it, revisit post-Phase-2 w calibration. 6 new
+# tests (test-compute_posterior.R mixture block: exact presence-integral check,
+# confidence_score = fraction-of-presence-states-won, w=0/1 degenerate,
+# non-mixture-rows-unaffected, prior_mix_w validation; test-update_prior.R mixture
+# clearing). devtools::test() 682/0, devtools::check() 0/0/0, reinstalled.
+# Previous update, 2026-08-26 (Fable 5, branch undetected-evidence-mixture -- join_priors()'s
+# Session-117 modelled-species floor promotion SCOPED BY CAUSE, Phase 1 of the
+# undetected-evidence mixture redesign (design spec:
+# ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md; motivating
+# evidence: the 2026-08-26 GreatLakes upranking review, REVIEW_fable_conservative_
+# upranking.md in the GreatLakes data dir). The old blanket condition (`has_model <-
+# !is.na(alpha)` + below-singleton-mean) promoted EVERY joined prior row below the
+# singleton-mirror mean to exact singleton parity -- including every
+# TaxaExpect::apply_undetected_evidence() evidence_blend row and every
+# generate_domestic_food_priors() row, whose sub-singleton theta is the DESIGN, not an
+# artifact. Verified consequence on real GreatLakes2023 data before fixing: posteriors
+# reduced to pure normalized likelihood ratios (Ictaluridae example reproduced to 3
+# decimals from likelihoods alone), consensus output byte-identical across a 4x d_half
+# sweep (the decay parameters were dead code in effect), 3,326 candidate rows promoted.
+# New condition: (a) evidence-derived rows (undetected_type == "evidence_blend",
+# model_tier tier_undetected_evidence/tier_domestic_food) are NEVER promoted; (b)
+# modelled rows are promoted only on a genuine habitat mismatch (observed_in_habitat
+# explicitly FALSE -- the rule's actual Session-117 motivating case: habitat-conditional
+# extrapolation collapsing theta toward 0), never for a genuinely low in-habitat
+# estimate (real rarity signal); (c) priors carrying no observed_in_habitat column at
+# all keep the old blanket behavior (backward compatible -- all pre-existing tests pass
+# unchanged). Supporting changes: the habitat-agnostic fallback tier now also carries
+# model_tier/undetected_type provenance onto rescued rows (so a rescued domestic row is
+# recognizable at promotion time), and coarse-rank expansion's override_cols gains
+# model_tier/observed_in_habitat (so expanded rows carry their own species' provenance,
+# not the template's NAs). New roxygen @section "Modelled-species floor (scoped by
+# cause)". 5 new tests in test-join_priors.R (evidence row never promoted; rescued
+# domestic row not promoted; habitat-mismatch row promoted; in-habitat low-theta row
+# NOT promoted; no-column blanket fallback retained). devtools::test() 670 passed/0
+# failed (up from 664), devtools::check() 0/0/0, reinstalled and live-verified against
+# the real GreatLakes2023 checkpoints via the review's ablation harness: promotion count
+# 3,326 -> 112 rows; species-resolved observations 33 -> 103 (6 -> 12 unique species,
+# 9/12 corroborated by the independent Lamar pipeline); the d_half sweep now changes
+# real output (121 observations differ at d_half=75), confirming the graded evidence
+# design finally reaches the posterior. NOT yet done (Phase 2+, see the reentry doc):
+# w-as-P(present) semantics, moment-matched n_eff, mixture-aware compute_posterior()
+# sampling, invasive w recalibration (w=0.6 still blocks yellow perch/round goby --
+# expected at this phase), adjust_inat_range_priors() conversion to an evidence
+# generator, soft confirmation update.
+# Previous update, 2026-08-20 (Sonnet 5 -- join_priors() gains a new habitat-agnostic
+# named-species prior fallback tier, closing a real production gap confirmed on real
+# GreatLakes2023 data: TaxaExpect::generate_domestic_food_priors() rows carry
+# main_habitat = NA by design (a food/domestic species has no single correct habitat --
+# its plausibility is governed by human food supply, not local habitat suitability, and one
+# grid_id can span several real habitats) but the primary composite-key join
+# (taxon_name, taxon_name_rank, grid_id, main_habitat) requires an EXACT match, so such a
+# row could never join against a real observation's own (non-NA) habitat -- silently falling
+# back to the generic dark-diversity floor instead of the tailored prior computed for it.
+# Confirmed with real numbers before fixing, not assumed: a real Gadus morhua domestic-food
+# row (alpha=5, beta=8775, theta ~= 0.00057) never matched; the affected observation's
+# applied prior came out theta ~= 0.000167 instead (~3.4x lower). New fallback tier
+# (right after the primary join, before coarse-rank expansion) re-matches any row whose
+# primary join failed on (taxon_name, taxon_name_rank, grid_id) alone against
+# main_habitat = NA taxaexpect_priors rows -- ranked below a real per-habitat match (which
+# always wins when one exists) and above the dark-diversity/global-floor fallback. When more
+# than one habitat-agnostic row exists for the same key (e.g. two independent evidence
+# sources naming the same species), the strongest (highest theta_mean) is used, matching
+# this function's own final-dedup convention, rather than an ambiguous many-to-many join.
+# Paired fix: TaxaExpect::generate_domestic_food_priors() also had taxon_name_rank unset
+# entirely (a second, independent reason the same rows never matched) -- see
+# TaxaExpect/CLAUDE.md's own top session note. Found while cross-session-collaborating on a
+# parallel prior-mechanism design (regional-proximity/invasive-watch-list evidence,
+# ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md) that needed the identical
+# habitat-agnostic-row pattern; tracing why the cited precedent (generate_domestic_food_
+# priors()) "already handled this" surfaced that it didn't. General primitive, not a
+# food-specific patch -- reusable by any future habitat-agnostic evidence source (the
+# regional-proximity/invasive-watch mechanism itself was judged to legitimately want to STAY
+# habitat-AWARE, unlike food -- a freshwater species found nearby is only plausible in a
+# freshwater habitat locally, a real physical constraint food doesn't have -- so this tier is
+# available to it, not automatically used by it). 5 new tests in test-join_priors.R (rescue
+# on primary-join failure; a real per-habitat match still wins; multiple habitat-agnostic
+# rows for one taxon collapse to the strongest; a habitat-agnostic row at a DIFFERENT
+# grid_id is never applied; the applied-count message). New `.ha_theta_mean` global-variable
+# declaration (internal grouping column). devtools::test() 664/664 (up from 655),
+# devtools::check() 0 errors/0 warnings/0 notes. Reinstalled via ecosystem_docs/install_all.R,
+# verified against the installed copy directly (not just the reinstall exit status).
+# Previous update, 2026-08-07 (Sonnet 5 -- second full code + domain review response, against a
 # fresh inst/taxaassign_review.Rmd (20 files, dozens of line-specific comments; distinct from
 # and later than the 2026-08-04 review below). Findings and fixes recorded in the new
 # inst/taxaassign_review_response.md. Two real bugs found and fixed, both via direct empirical
@@ -634,7 +816,7 @@ or be user-supplied from outside the ecosystem.
 | `update_prior_from_consensus()` | Boost priors for confirmed species in unresolved samples; re-run `compute_posterior()`. **Session 134:** optional `spatial_group_map` param (`observation_id`/`spatial_group_id`) restricts both the confirmation source and the update target to observations sharing a `spatial_group_id` with >= 1 other observation (a multi-member spatial group) -- observations in a single-observation spatial group (whether a genuine single observation or one that fell outside a drawn group, per `TaxaMatch::group_observations_by_bbox()` -- there's no separate naming for these, just a singleton group) are always returned unchanged, since another unrelated observation's confirmed presence says nothing about them. **Session 149:** the fixed `presence_multiplier` (removed) replaced by `confirmation_quantile`/`min_confirmation_confidence` -- for each confirmed species, the confirmation_quantile-th quantile (default 0.9) of confirming donors' `consensus_posterior` substitutes for `prior_mean` (never lowering it) only when it clears `min_confirmation_confidence` (default 0.8, set to 0 to disable). `prior_alpha`/`prior_beta` are now recomputed consistently with a boosted `prior_mean` (preserving the original concentration), fixing a latent inconsistency with `compute_posterior()`'s Monte Carlo path. | Complete | R/update_prior_from_consensus.R |
 | `build_context()` | Auto-populate `ctx` (ecoregion, main_habitat, date) from taxon names via TaxaHabitat + LLM synthesis | Complete | R/build_context.R |
 | `generate_report()` | Publication-ready Methods + Results text; hybrid template (Methods) + LLM (Results) with template fallback. **2026-08-07:** gains optional `workflow = "bayesian"\|"llm"` param overriding the column-presence-based workflow auto-detection (default `NULL` preserves old behavior). | Complete | R/generate_report.R |
-| `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). **Session 138:** the final `distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)` dedup now also keys on `grid_id`/`main_habitat`, fixing a real bug where a genuine multi-site observation (the same `observation_id` detected at more than one site) had each candidate collapse to only its own highest-`prior_mean` site — discarding the site it was actually detected at. Output is now site-preserving (one row per candidate per site); pass it through the new `combine_multisite_priors()` before `compute_posterior()` to recombine. The first `left_join()` (likelihoods → event_meta) now declares `relationship = "many-to-many"` since a multi-candidate, multi-site observation legitimately fans out on both sides. **Session 143:** new required `backbone_id` param (no default, errors if omitted), replacing a previously hardcoded, un-overridable `backbone_id = 4L` inside the taxonomy-fallback fill -- the correct backbone depends on which backbone the caller's input taxonomy was verified against. **2026-08-07:** `site = list(main_habitat = ...)` alone (no `lat`/`lon`/`grid_id`) now auto-fills coordinates from `attr(taxaexpect_priors, "search_center")` when present, instead of hard-erroring; `main_habitat` itself is still never guessed. | Complete | R/join_priors.R |
+| `join_priors()` | Bridge likelihoods to priors: join TaxaExpect priors with dark diversity fallback, fill taxonomy, filter redundant hypotheses. `site` requires `main_habitat` — accepts `list(lat, lon, main_habitat)` or `list(grid_id, main_habitat)` or multi-site data frame. Modelled species with habitat-mismatch priors promoted to dark diversity floor. **Session 108:** unmodelled species (never detected) now fall back to the `global_floor` row (Beta(1, N_total-1)) rather than the site-level dark mean. **Session 109:** `expansion_taxonomy`, `expansion_min_prior` (default 0.05), `expansion_cumulative_prior` (default 0.90) params added. When a likelihood row has `taxon_name_rank` coarser than species (e.g. family-rank identification), and `expansion_taxonomy` is supplied (a `fill_higher_ranks()` result mapping priors species to genus/family), the coarse-rank row is replaced by species-level hypothesis rows filtered by the same cumulative-threshold logic as `posterior_consensus()`. Rows without matching species in priors fall back to dark floor. `hypothesis_type = "rank_expanded"` marks expanded rows. When `expansion_taxonomy` is NULL and coarse-rank rows are present, a warning with instructions is emitted. **Session 117:** `singleton_taxonomy` param added (optional data frame with `taxon_name` + taxonomy columns, e.g. `occurrences_std`). When supplied, unmodelled (unreferenced) candidates receive hierarchical mass-conserving group priors via `.compute_dark_diversity_groups()` (phylum→class→order→family→genus recursive descent) rather than a flat global floor. Candidates with unknown phylum (`no_phylum` group) fall back to the global floor individually. Adds three diagnostic columns to output: `dark_diversity_group` (character — taxonomy label of group), `n_singletons_group` (integer — singletons in the group), `n_undetected_group` (integer — unmodelled candidates in the group). Requires TaxaExpect >= Session 117 (`source_taxon_name` in `generate_full_priors()` output and `taxonomy` param in `generate_undetected_diversity()`). **Session 138:** the final `distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)` dedup now also keys on `grid_id`/`main_habitat`, fixing a real bug where a genuine multi-site observation (the same `observation_id` detected at more than one site) had each candidate collapse to only its own highest-`prior_mean` site — discarding the site it was actually detected at. Output is now site-preserving (one row per candidate per site); pass it through the new `combine_multisite_priors()` before `compute_posterior()` to recombine. The first `left_join()` (likelihoods → event_meta) now declares `relationship = "many-to-many"` since a multi-candidate, multi-site observation legitimately fans out on both sides. **Session 143:** new required `backbone_id` param (no default, errors if omitted), replacing a previously hardcoded, un-overridable `backbone_id = 4L` inside the taxonomy-fallback fill -- the correct backbone depends on which backbone the caller's input taxonomy was verified against. **2026-08-07:** `site = list(main_habitat = ...)` alone (no `lat`/`lon`/`grid_id`) now auto-fills coordinates from `attr(taxaexpect_priors, "search_center")` when present, instead of hard-erroring; `main_habitat` itself is still never guessed. **2026-08-20:** gains a habitat-agnostic named-species prior fallback tier -- a `taxaexpect_priors` row with a real `taxon_name` but `main_habitat = NA` (by design, e.g. `TaxaExpect::generate_domestic_food_priors()` output) now matches any observation's habitat at that `grid_id` via a dedicated fallback, instead of silently never matching the primary composite-key join at all. Fixes a real, previously-shipping gap confirmed on real GreatLakes2023 data -- see this file's own top session note. | Complete | R/join_priors.R |
 | `run_bayesian_pipeline()` | High-level wrapper: TaxaLikely likelihoods + TaxaExpect priors → full Bayesian workflow (~10 calls → 1). Auto-filters errors from model_params, auto-resolves site habitat. Stage 1b: three-tier H2 phantom suppression via GBIF genus census (suppress complete, rename singleton-missing, keep incomplete). GBIF species list fed to `audit_barcode_coverage(species_list=)`. | Complete | R/run_bayesian_pipeline.R |
 | `run_llm_pipeline()` | High-level wrapper: LLM-shortcut workflow (~7 calls → 1); optional auto-context + unreferenced detection + report. Optional `reference_errors` param. | Complete | R/run_llm_pipeline.R |
 | `report_assign()` | Generate `report_section` summarizing taxonomic assignment (workflow type, resolution rate, posterior/score stats). For `assemble_report()`. **2026-08-07:** gains the same optional `workflow` override as `generate_report()`. | Complete | R/report_assign.R |

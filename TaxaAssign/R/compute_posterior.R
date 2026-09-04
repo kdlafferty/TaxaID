@@ -105,6 +105,24 @@
 #' where \eqn{L} is the likelihood (from TaxaLikely or score-based proxy) and
 #' \eqn{\pi} is the prior (from TaxaExpect or LLM-based estimation).
 #'
+#' \strong{Presence-mixture priors (2026-08-26 mixture redesign):}
+#' rows carrying non-NA \code{prior_mix_w}/\code{prior_mix_theta_present}/
+#' \code{prior_mix_theta_absent} (emitted by
+#' \code{TaxaExpect::apply_undetected_evidence()} for evidence-elevated
+#' species) are presence mixtures: with probability \code{prior_mix_w} the
+#' species is locally present (theta at the ceiling-anchor state), otherwise
+#' absent (theta at the floor). In simulation these rows draw presence
+#' explicitly (\code{z ~ Bernoulli(w)}; \code{theta = z*theta_present +
+#' (1-z)*theta_absent}) instead of sampling their Beta summary -- which is
+#' J-shaped by construction and would otherwise be pinned at its mean by the
+#' \code{prior_alpha <= 1} guard, erasing exactly the bimodality the mixture
+#' expresses. \code{posterior_mean} therefore integrates over presence
+#' states, and \code{confidence_score} reads as the fraction of presence
+#' states in which the hypothesis wins. The point-estimate path is unchanged:
+#' \code{prior_mean} equals the mixture's exact expectation by construction.
+#' Non-mixture rows are completely unaffected. See
+#' \code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}.
+#'
 #' \strong{Prior uncertainty (Beta distribution):}
 #' When \code{prior_alpha} and \code{prior_beta} columns are present, the prior
 #' for each hypothesis is modelled as \eqn{Beta(\alpha, \beta)} rather than a
@@ -194,9 +212,40 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
     likelihood_w_prior$score_likelihood_sd[is.na(likelihood_w_prior$score_likelihood_sd)] <- 0
   }
 
+  # --- Detect presence-mixture rows (2026-08-26 mixture redesign, D8) --------
+  # Rows carrying prior_mix_w / prior_mix_theta_present / prior_mix_theta_absent
+  # (from TaxaExpect::apply_undetected_evidence()) are presence MIXTURES: with
+  # probability w the species is locally present (theta at the ceiling-anchor
+  # state), otherwise absent (theta at the floor). Their Beta alpha/beta summary
+  # is J-shaped by construction (alpha << 1), which is exactly the shape the
+  # guard below pins at the mean -- Beta shape is a bad carrier for bimodality.
+  # In simulation these rows instead draw presence explicitly:
+  #   z ~ Bernoulli(w);  theta = z * theta_present + (1 - z) * theta_absent
+  # so posterior_mean integrates over presence states and confidence_score
+  # reads as "fraction of presence states in which this hypothesis wins."
+  # The point-estimate path needs no change: prior_mean equals the mixture's
+  # exact expectation by construction.
+  mix_cols <- c("prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent")
+  has_mix_cols <- all(mix_cols %in% names(likelihood_w_prior))
+  if (has_mix_cols) {
+    is_mix_row <- !is.na(likelihood_w_prior$prior_mix_w) &
+      !is.na(likelihood_w_prior$prior_mix_theta_present) &
+      !is.na(likelihood_w_prior$prior_mix_theta_absent)
+    bad_mix <- is_mix_row &
+      (likelihood_w_prior$prior_mix_w < 0 | likelihood_w_prior$prior_mix_w > 1)
+    if (any(bad_mix)) {
+      cli::cli_abort(
+        "{sum(bad_mix)} row(s) have {.field prior_mix_w} outside [0, 1]."
+      )
+    }
+  } else {
+    is_mix_row <- rep(FALSE, nrow(likelihood_w_prior))
+  }
+  any_mix <- any(is_mix_row)
+
   # Decide whether MC simulation will add any information
   any_lik_uncertainty   <- any(likelihood_w_prior$score_likelihood_sd > 0)
-  any_prior_uncertainty <- use_beta_prior
+  any_prior_uncertainty <- use_beta_prior || any_mix
   run_sims <- n_sims > 0 && (any_lik_uncertainty || any_prior_uncertainty)
 
   if (n_sims > 0 && !run_sims) {
@@ -298,6 +347,26 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
             rep(chunk$prior_mean, n_sims),
             nrow = n_rows
           )
+        }
+
+        # Presence-mixture rows (2026-08-26, D8): explicit Bernoulli presence
+        # draw overrides the Beta/J-guard handling above for exactly these
+        # rows -- their alpha/beta summary is J-shaped by construction, so the
+        # guard would otherwise pin them at the mean and erase the bimodality
+        # the mixture exists to express. Vector-over-matrix recycling below is
+        # column-major, matching the n_mix-row layout.
+        if (has_mix_cols) {
+          chunk_mix <- !is.na(chunk$prior_mix_w) &
+            !is.na(chunk$prior_mix_theta_present) &
+            !is.na(chunk$prior_mix_theta_absent)
+          if (any(chunk_mix)) {
+            n_mix <- sum(chunk_mix)
+            z <- matrix(stats::runif(n_mix * n_sims), nrow = n_mix) <
+              chunk$prior_mix_w[chunk_mix]
+            sim_prior[chunk_mix, ] <- chunk$prior_mix_theta_absent[chunk_mix] +
+              z * (chunk$prior_mix_theta_present[chunk_mix] -
+                     chunk$prior_mix_theta_absent[chunk_mix])
+          }
         }
 
         # Normalize likelihoods within each simulation (column = one simulation).

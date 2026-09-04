@@ -86,3 +86,16 @@ test_that("report_habitat errors on empty data", {
   expect_error(report_habitat(data.frame()))
   expect_error(report_habitat(NULL))
 })
+
+test_that("dominant pct survives an all-NA habitat column (2026-09-01 real crash)", {
+  df <- data.frame(
+    scientificName = c("Sp A", "Sp B"),
+    Marine = c(0.9, 1.0),
+    Freshwater = c(NA_real_, NA_real_),
+    stringsAsFactors = FALSE
+  )
+  sec <- report_habitat(df)
+  expect_equal(sec$statistics$dominant_habitat, "Marine")
+  expect_equal(sec$statistics$dominant_pct, 95)
+  expect_true(grepl("mean weight 95%", sec$results, fixed = TRUE))
+})

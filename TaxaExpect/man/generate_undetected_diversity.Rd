@@ -12,8 +12,11 @@ generate_undetected_diversity(
 )
 }
 \arguments{
-\item{model_obj}{A biofreq_model object. Output of
-train_biodiversity_model().}
+\item{model_obj}{A biofreq_model object (output of
+\code{train_biodiversity_model()}) or a taxaexpect_kernel_priors object
+(output of \code{estimate_kernel_priors()} -- kernel-priors redesign): the
+same rules then run on kernel ingredients (N = Kish effective sample size,
+singletons = neighborhood singletons stamped with the site id).}
 
 \item{jeffreys_threshold}{Integer. If N_total is below this value, use a
 Jeffreys prior Beta(0.5, 0.5) for the global floor instead of
@@ -50,7 +53,11 @@ trained with \code{habitat_col = NULL}.}
 \item{theta_sd}{Derived: SD of Beta(alpha, beta).}
 \item{n_obs}{Total community count N at the source cell, or N_total
 for the global floor.}
-\item{model_tier}{Always "tier3_undetected".}
+\item{model_tier}{Always "tier3_undetected". Deprecated
+vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
+output replaces \code{model_tier} with \code{prior_branch} +
+\code{effective_records}; this column is retained only while
+the GLMM path remains in use.}
 \item{undetected_type}{Character: "singleton_mirror" or
 "global_floor".}
 \item{source_taxon_name}{Taxon name of the singleton source, or NA for

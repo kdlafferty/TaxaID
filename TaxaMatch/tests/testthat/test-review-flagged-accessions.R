@@ -230,6 +230,55 @@ test_that("review_flagged_accessions() prompt includes the guide's 4-category fr
   expect_true(grepl("NOT to override hierarchy_flag", captured_prompt, fixed = TRUE))
 })
 
+test_that("review_flagged_accessions() adds the local-corroboration line only where the columns are populated (2026-09-03)", {
+  df <- .base_evaluated_df()
+  df$local_n_independent_conspecific <- c(NA, 1L, NA, NA)
+  df$local_best_independent_pident   <- c(NA, 100, NA, NA)
+  captured_prompt <- NULL
+  stub <- function(prompt, ...) {
+    captured_prompt <<- prompt
+    .canned_json(data.frame(
+      accession = c("ACC002", "ACC003", "ACC004"),
+      accession_likely_explanation = "uncertain",
+      accession_review_confidence = "low",
+      accession_review_comment = "stub"
+    ))
+  }
+  review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE,
+                            local_min_overlap = 0.8)
+  expect_true(grepl(
+    "accession=ACC002:.*local reference set: 1 independent conspecific\\(s\\), best identity 100.0% over >= 80% of the amplicon",
+    captured_prompt))
+  # ACC003 has no local evidence: no line for it.
+  acc3_line <- regmatches(captured_prompt, regexpr("- accession=ACC003:[^\n]*", captured_prompt))
+  expect_false(grepl("local reference set", acc3_line, fixed = TRUE))
+
+  # Without a min_overlap the line is worded without a number; with the
+  # attribute score_reference_labels() leaves, it is read from there.
+  review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE)
+  expect_true(grepl("over the required amplicon overlap", captured_prompt, fixed = TRUE))
+  attr(df, "local_corroboration_params") <- list(min_overlap = 0.9)
+  review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE)
+  expect_true(grepl("over >= 90% of the amplicon", captured_prompt, fixed = TRUE))
+  expect_error(review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE,
+                                         local_min_overlap = 2), "local_min_overlap")
+})
+
+test_that("the review fingerprint ignores absent/NA local columns but changes when they are populated", {
+  base <- .base_evaluated_df()
+  fp0 <- .accession_review_fingerprint(base)
+  with_na <- base
+  with_na$local_n_independent_conspecific <- NA_integer_
+  with_na$local_best_independent_pident   <- NA_real_
+  expect_equal(.accession_review_fingerprint(with_na), fp0)
+  with_val <- with_na
+  with_val$local_n_independent_conspecific[2] <- 1L
+  with_val$local_best_independent_pident[2]   <- 100
+  fp1 <- .accession_review_fingerprint(with_val)
+  expect_equal(fp1[-2], fp0[-2])
+  expect_false(fp1[2] == fp0[2])
+})
+
 # ------------------------------------------------------------------------------
 # Caching (2026-08-14)
 # ------------------------------------------------------------------------------
@@ -347,4 +396,81 @@ test_that("review_flagged_accessions() gracefully discards an old-schema review 
   )
   expect_false(out$accession_review_cache_hit[out$accession == "ACC002"])
   expect_equal(out$accession_review_comment[out$accession == "ACC002"], "Fresh review for ACC002")
+})
+
+# ---- resolve_review_overrides() ---------------------------------------------
+
+.review_result_fixture <- function() {
+  data.frame(
+    accession = c("A1", "A2", "A3", "A4", "A5", "A6"),
+    accession_likely_explanation = c(
+      "genuine_mislabel", "poor_marker_resolution", "sister_family_thin_coverage",
+      "hybrid_or_specimen_code_artifact", "uncertain", "poor_marker_resolution"
+    ),
+    accession_review_confidence = c(
+      "high", "high", "moderate", "high", "high", "low"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("resolve_review_overrides() keeps only non-mislabel explanations at sufficient confidence", {
+  out <- resolve_review_overrides(.review_result_fixture())
+  expect_setequal(out, c("A2", "A3", "A4"))
+  expect_false("A1" %in% out)  # genuine_mislabel -- confirms removal, never overrides
+})
+
+test_that("resolve_review_overrides() excludes 'uncertain' by default", {
+  out <- resolve_review_overrides(.review_result_fixture())
+  expect_false("A5" %in% out)
+})
+
+test_that("resolve_review_overrides() excludes low-confidence reviews even with a keep-worthy explanation", {
+  out <- resolve_review_overrides(.review_result_fixture())
+  expect_false("A6" %in% out)  # poor_marker_resolution but confidence = "low"
+})
+
+test_that("resolve_review_overrides() can be widened to trust 'uncertain' explicitly", {
+  out <- resolve_review_overrides(
+    .review_result_fixture(),
+    keep_explanations = c("poor_marker_resolution", "sister_family_thin_coverage",
+                          "hybrid_or_specimen_code_artifact", "uncertain")
+  )
+  expect_true("A5" %in% out)
+})
+
+test_that("resolve_review_overrides() output feeds directly into remove_incongruent_references()", {
+  review <- .review_result_fixture()
+  overrides <- resolve_review_overrides(review)
+  match_df <- data.frame(
+    observation_id = c("O1", "O2", "O3", "O4"),
+    accession = c("A1", "A2", "A3", "A4"),
+    stringsAsFactors = FALSE
+  )
+  evaluation <- data.frame(
+    accession = c("A1", "A2", "A3", "A4"),
+    hierarchy_flag = "incongruent",
+    stringsAsFactors = FALSE
+  )
+  out <- remove_incongruent_references(match_df, evaluation, override_accessions = overrides,
+                                      gate = "flag")
+  # A1 (genuine_mislabel) removed; A2/A3/A4 (overridden) retained
+  expect_equal(out$accession, c("A2", "A3", "A4"))
+})
+
+test_that("resolve_review_overrides() rejects 'genuine_mislabel' in keep_explanations", {
+  expect_error(
+    resolve_review_overrides(.review_result_fixture(),
+                             keep_explanations = c("genuine_mislabel", "uncertain")),
+    "cannot include"
+  )
+})
+
+test_that("resolve_review_overrides() validates inputs", {
+  expect_error(resolve_review_overrides("not_a_df"), "must be a data frame")
+  expect_error(resolve_review_overrides(data.frame(x = 1)), "missing required columns")
+  expect_error(resolve_review_overrides(.review_result_fixture(), keep_explanations = character(0)),
+              "keep_explanations must be")
+  expect_error(resolve_review_overrides(.review_result_fixture(), min_confidence = character(0)),
+              "min_confidence must be")
 })

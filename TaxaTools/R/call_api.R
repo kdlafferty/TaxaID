@@ -182,7 +182,7 @@
 #' @noRd
 .build_anthropic_request <- function(endpoint, model, prompt_str,
                                      max_tokens, api_key, prov_reg,
-                                     images = NULL) {
+                                     images = NULL, timeout = 120) {
   # Multi-modal: text block + one image block per base64 PNG string.
   # Text-only: content is just the prompt string (saves a JSON nesting level).
   if (!is.null(images) && length(images) > 0L) {
@@ -211,7 +211,7 @@
       max_tokens = as.integer(max_tokens),
       messages   = list(list(role = "user", content = content))
     )) |>
-    httr2::req_timeout(120) |>
+    httr2::req_timeout(timeout) |>
     httr2::req_error(is_error = function(resp) FALSE)
 }
 
@@ -219,7 +219,7 @@
 #' @noRd
 .build_gemini_request <- function(endpoint, model, prompt_str,
                                   max_tokens, api_key, prov_reg,
-                                  images = NULL) {
+                                  images = NULL, timeout = 120) {
   # Multi-modal: text part + one inlineData part per base64 PNG string.
   if (!is.null(images) && length(images) > 0L) {
     parts <- c(
@@ -240,7 +240,7 @@
       contents         = list(list(parts = parts)),
       generationConfig = list(maxOutputTokens = as.integer(max_tokens))
     )) |>
-    httr2::req_timeout(120) |>
+    httr2::req_timeout(timeout) |>
     httr2::req_error(is_error = function(resp) FALSE)
 }
 
@@ -248,7 +248,7 @@
 #' @noRd
 .build_openai_compat_request <- function(endpoint, model, prompt_str,
                                          max_tokens, api_key, prov_reg,
-                                         images = NULL) {
+                                         images = NULL, timeout = 120) {
   # Body max_tokens field name varies by provider:
   #   - Most providers:  "max_tokens"
   #   - Azure o-series:  "max_completion_tokens" (set in registry)
@@ -280,7 +280,7 @@
 
   req <- httr2::request(endpoint) |>
     httr2::req_body_json(body) |>
-    httr2::req_timeout(120) |>
+    httr2::req_timeout(timeout) |>
     httr2::req_error(is_error = function(resp) FALSE)
 
   # Apply auth header based on provider's auth_type
@@ -474,6 +474,10 @@
 #'   informative error before making the HTTP request if the estimate exceeds
 #'   the limit. Use this as a pre-flight guard against accidentally sending very
 #'   large prompts. Default \code{NULL} (no check performed).
+#' @param timeout Numeric. Request timeout in seconds, passed to
+#'   \code{httr2::req_timeout()}. Default \code{120}. Raise this for a slow
+#'   provider/model (e.g. a large local Ollama model) or a large multi-image
+#'   PDF-vision call that can legitimately take longer than two minutes.
 #'
 #' @return A length-1 character string containing the model's response text.
 #'   The following attributes are attached:
@@ -529,8 +533,7 @@
 #'   \code{\link{call_openai_api}}, \code{\link{call_azure_openai_api}},
 #'   \code{\link{call_ollama_api}}
 #'
-#' @importFrom httr2 request req_headers req_body_json req_url_query req_error
-#'   req_perform req_timeout resp_status resp_body_json
+#' @importFrom httr2 request req_headers req_body_json req_url_query req_error req_perform req_timeout resp_status resp_body_json
 #' @export
 #'
 #' @examples
@@ -561,7 +564,8 @@ call_api <- function(prompt_str,
                      base_url         = NULL,
                      images           = NULL,
                      show_tokens      = FALSE,
-                     max_input_tokens = NULL) {
+                     max_input_tokens = NULL,
+                     timeout          = 120) {
 
   tier <- match.arg(tier)
 
@@ -613,9 +617,9 @@ call_api <- function(prompt_str,
 
   # Build the provider-appropriate HTTP request
   req <- switch(as.character(family),
-    anthropic     = .build_anthropic_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
-    gemini        = .build_gemini_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
-    openai_compat = .build_openai_compat_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images),
+    anthropic     = .build_anthropic_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout),
+    gemini        = .build_gemini_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout),
+    openai_compat = .build_openai_compat_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout),
     stop(sprintf(
       "call_api: unknown handler_family '%s' for provider '%s'. Check inst/model_tiers.json.",
       family, provider

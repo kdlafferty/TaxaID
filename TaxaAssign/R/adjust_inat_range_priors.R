@@ -11,6 +11,14 @@ utils::globalVariables(c(
 #' current group prior up to the Tier 2 singleton-mirror floor.
 #'
 #' @details
+#' \strong{Superseded for the mixture pathway (2026-08-28):} workflows using
+#' \code{TaxaExpect::apply_undetected_evidence()} should feed iNat evidence
+#' through \code{TaxaExpect::generate_inat_range_evidence()} instead, so it
+#' shares the anchors, moment-matched concentration, and multi-source
+#' combination of the other evidence channels rather than this function's
+#' post-join binary elevation. This function remains for workflows not yet on
+#' the shared applier.
+#'
 #' Evidence from the iNaturalist range polygon is asymmetric: \code{in_range =
 #' TRUE} is positive corroboration and warrants a prior boost; \code{in_range =
 #' FALSE} is weak evidence (false negatives are common for aquatic taxa with low
@@ -38,6 +46,11 @@ utils::globalVariables(c(
 #' @param inat_range Data frame. Output of
 #'   \code{TaxaFetch::check_inat_range()}. Must contain \code{taxon_name},
 #'   \code{in_range}, \code{n_observations}.
+#' @param require_name_match Logical, default \code{TRUE}. Exclude rows whose
+#'   resolved iNat name (\code{name_match} column, \code{check_inat_range()}
+#'   2026-08-28+) differs from the query or cannot be verified -- iNat's
+#'   fuzzy text search can silently resolve a query to a different species,
+#'   and an elevation must never ride on a misresolved name.
 #' @param n_obs_threshold Integer. Minimum iNaturalist observation count
 #'   required for the range polygon to be considered reliable. Default 500.
 #'   Set higher for less-observed taxonomic groups. Taxa below this threshold
@@ -72,6 +85,7 @@ adjust_inat_range_priors <- function(
     likelihoods_ready,
     inat_range,
     n_obs_threshold = 500L,
+    require_name_match = TRUE,
     verbose         = FALSE
 ) {
   # --- Input validation -------------------------------------------------------
@@ -120,10 +134,33 @@ adjust_inat_range_priors <- function(
   }
 
   # --- Qualifying taxa: in_range = TRUE, n_observations >= threshold ----------
-  qualifying_names <- inat_range$taxon_name[
-    !is.na(inat_range$in_range)     & inat_range$in_range == TRUE &
-    !is.na(inat_range$n_observations) & inat_range$n_observations >= n_obs_threshold
-  ]
+  qualifies <- !is.na(inat_range$in_range)       & inat_range$in_range == TRUE &
+               !is.na(inat_range$n_observations) & inat_range$n_observations >= n_obs_threshold
+
+  # Fuzzy-match gate (2026-08-28): check_inat_range() resolves a query by best
+  # TEXT match, so in_range = TRUE can describe a DIFFERENT species (real case:
+  # Gasterosteus gymnurus -> G. aculeatus). An elevation must never ride on a
+  # misresolved name; rows without a verified name_match are excluded by
+  # default. Older inat_range tables lacking the column are wholly unverifiable
+  # -- excluded with guidance to re-run the check.
+  if (isTRUE(require_name_match)) {
+    if (!"name_match" %in% names(inat_range)) {
+      cli::cli_inform(c(
+        "adjust_inat_range_priors: {.arg inat_range} has no {.field name_match} column (pre-2026-08-28 output) -- nothing elevated.",
+        "i" = "Re-run {.fn TaxaFetch::check_inat_range} to get the column, or pass require_name_match = FALSE with a reviewed name mapping."
+      ))
+      qualifies <- qualifies & FALSE
+    } else {
+      n_dropped <- sum(qualifies & !(inat_range$name_match %in% TRUE))
+      if (n_dropped > 0L) {
+        cli::cli_inform(
+          "adjust_inat_range_priors: {n_dropped} in-range taxon/taxa excluded -- resolved iNat name differs from the query (fuzzy-match risk)."
+        )
+      }
+      qualifies <- qualifies & (inat_range$name_match %in% TRUE)
+    }
+  }
+  qualifying_names <- inat_range$taxon_name[qualifies]
 
   if (length(qualifying_names) == 0L) {
     cli::cli_inform(

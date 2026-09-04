@@ -1,6 +1,155 @@
 # CLAUDE.md -- TaxaFetch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-08 (Sonnet 5 -- first human-authored code + domain review response.
+# Last updated: 2026-09-04 (Sonnet 5, branch cache-management -- the user reported
+# ~/Library/Caches/org.R-project.R/R/TaxaFetch at 23GB (89 files) and asked for an
+# investigation before deciding on a fix. Root cause: download_gbif_occurrences()'s
+# GBIF-download zip cache has no expiration and, on `overwrite = TRUE`, silently
+# ORPHANED the previous zip -- it repointed the query's metadata file at the fresh
+# download without ever deleting the stale one, so every re-run of the same query
+# with overwrite=TRUE left a dead multi-GB zip behind. Fixed: `overwrite = TRUE`
+# now shows the cached zip's date/size and asks (via `utils::menu()`) whether to
+# overwrite or keep it in an interactive session; a non-interactive session
+# proceeds straight to a fresh download as before, but either way the stale zip is
+# now deleted once the new one lands -- never left as an orphan. Live-verified via
+# a real GBIF download in `inst/test_overwrite_cache_manual.R` (a throwaway manual
+# test script, not part of the automated suite): confirmed the old zip is removed
+# on "Overwrite" and untouched on "Keep."
+#
+# NEW `taxafetch_clear_cache(cache_dir=, older_than_days=, orphans_only=, dry_run=)`
+# reports/clears the cache -- `orphans_only = TRUE` targets ONLY zips no longer
+# referenced by any current `download_gbif_occurrences()` metadata file (i.e. the
+# exact pre-fix leftovers), leaving the current zip for every distinct query
+# untouched. `download_gbif_occurrences()` also now prints a cache-size summary
+# after every run and offers to clear it once the cache passes 1GB. Live dry-run on
+# the user's real 23GB cache found 13 orphaned zips / 6.3GB; user confirmed and
+# cleared them, bringing the cache to 17GB (76 files) -- the remainder is genuinely
+# distinct per-query downloads, not further orphans.
+#
+# A full ecosystem audit (all 9 packages) for the SAME cache-accumulation pattern
+# found one more real instance (TaxaLikely's `fetch_ncbi_reference_sequences()`/
+# `audit_barcode_coverage()` cache -- see TaxaLikely/CLAUDE.md's own note) and
+# confirmed TaxaMatch's reference-evaluation caches are a DIFFERENTLY-SHAPED,
+# CUMULATIVE cache (one consolidated file, row-level TTL, "congruent" verdicts
+# cached forever by design) that must NOT get this same file-deletion treatment --
+# deliberately left untouched, see TaxaMatch's own cache design (asymmetric TTL +
+# `migrate_reference_cache()`), already correct.
+#
+# `taxafetch_clear_cache()` itself was then refactored (still this session) onto a
+# new shared engine in TaxaTools (`list_cache_files()`/`report_and_clear_cache()`,
+# see TaxaTools/CLAUDE.md's own note) -- also used by TaxaLikely's new
+# `taxalikely_clear_cache()`. Only the orphan-detection logic (reading each zip's
+# meta.rds to tell "current" from "superseded") stayed local, since it has no
+# TaxaLikely analog. `.taxafetch_cache_patterns` also gained `openalex_cache_*.rds`
+# (found during the audit: `search_literature()`'s OpenAlex cache is the same file
+# shape but wasn't previously recognized by this function's pattern list -- dormant
+# on this machine, cache_dir defaults to NULL/disabled, but would silently survive
+# a clear if ever pointed at a shared cache_dir).
+#
+# README gained a "Cache" section. `devtools::test()` 676/676 (0 failures; 2
+# pre-existing unrelated CoordinateCleaner/terra environment failures untouched),
+# `devtools::check()` 0/0/0, reinstalled and verified at `~/Library/R/4.0/library`.
+# Previous update, 2026-08-28 (Fable 5, branch undetected-evidence-mixture --
+# check_inat_range() output gains a `name_match` column (mixture redesign D6
+# prerequisite; closes [[project_inat_range_backbone_mismatch_todo]]): iNat's
+# taxon search takes the single best TEXT match, so a query can silently resolve
+# to a DIFFERENT species (real case: Gasterosteus gymnurus -> G. aculeatus with
+# in_range = TRUE for the wrong organism). name_match is DERIVED AT ASSEMBLY TIME
+# from taxon_name/matched_name -- never cached -- so previously cached rows get
+# it too; consumers that elevate priors on an in_range verdict now gate on it
+# (TaxaExpect::generate_inat_range_evidence(), TaxaAssign::
+# adjust_inat_range_priors(require_name_match = TRUE)). 1 new offline test + the
+# nine-columns schema test updated to ten. devtools::test() 620 passed / 2
+# pre-existing unrelated CoordinateCleaner/terra environment failures, check()
+# 0/0/0, reinstalled.
+# Previous update, 2026-08-20, continued (Sonnet 5 -- fetch_nas_occurrences()/lookup_huc8()
+# REMOVED, same day they were added (see the entry directly below for the original build).
+# The user corrected the architecture directly: TaxaID is meant to stay a generic, taxon-
+# and geography-agnostic toolkit, and baking a narrow (aquatic-only, US-only) external
+# database plus freshwater-specific watershed-connectivity math into a package function ties
+# the whole ecosystem to one client's one study system. The distinguishing principle from
+# what's already shipped: iNat/GBIF calls (e.g. TaxaFetch::fetch_inat_occurrences(), already
+# used by TaxaExpect::generate_domestic_food_priors()) are fine because they're broad, generic
+# infrastructure used across many studies; a single-country single-taxon-group database, and
+# HUC8 watershed math, are not. Both functions deleted entirely (source, tests, man/ pages,
+# NAMESPACE exports) -- no deprecation shim, since neither had any real caller yet (added and
+# removed same session). devtools::test() 619/619 (down from 671, exactly the 52 tests removed
+# with the two files; same 2 pre-existing, unrelated filter_gbif_quality()/CoordinateCleaner
+# environment failures as before), devtools::check() 0/0/0. Reinstalled.
+#
+# The replacement design (TaxaExpect::apply_undetected_evidence(), built the same day) moves
+# region-scoping and list-curation entirely to the caller's own workflow -- e.g. hand-pull a
+# species list from NAS yourself, restricted to your own study region, and pass it in as a
+# plain character vector. See TaxaExpect/CLAUDE.md's matching session note for the full
+# redesign, including a cross-session design negotiation with a concurrent chat building a
+# companion regional-proximity mechanism (ecosystem_docs/REENTRY_PROMPT_
+# regional_proximity_prior_check.md) that converged on a shared "evidence generator + one
+# shared applier" architecture both mechanisms now use.
+# Previous update, 2026-08-20 (Sonnet 5 -- initiates ecosystem_docs/REENTRY_PROMPT_
+# invasive_species_watch_list_priors.md: TaxaFetch gains fetch_nas_occurrences() (new,
+# R/fetch_nas_occurrences.R) and lookup_huc8() (new, R/lookup_huc8.R), the acquisition side
+# of an invasive/nonindigenous-species watch-list prior mechanism (consumer:
+# TaxaExpect::generate_invasive_watch_priors(), see that package's own CLAUDE.md).
+# fetch_nas_occurrences() queries the USGS Nonindigenous Aquatic Species (NAS) database's
+# real, live v2 API (nas.er.usgs.gov/api/v2) -- confirmed this session, not assumed from the
+# reentry doc's own design question 1 ("check whether NAS has a queryable API before
+# committing to a design"): a real JSON API exists, needs no API key for the
+# /species (full 1,515-species catalog) and /occurrence/search?species_id= endpoints used
+# here, and a plain httr::GET() with R's default user-agent works fine (only a bare curl
+# request without a browser-spoofed UA hit Cloudflare's bot-check page -- httr's own UA
+# apparently doesn't trip it). Critically, NAS's per-occurrence-record `status` field
+# (established/stocked/collected/failed/unknown) gives a real, ready-made tiering signal the
+# reentry doc's own design question 2 asked for, and huc8/huc10/huc12 codes come free on
+# every record, answering design question 3 (regional scoping) without needing a separate
+# Watershed Boundary Dataset join for the NAS side. lookup_huc8() resolves a study's own
+# lat/lon to its HUC8 via a second live, no-key USGS service (hydro.nationalmap.gov's WBD
+# ArcGIS MapServer, layer 4 = 8-digit HU/Subbasin -- confirmed via that service's own layer
+# list, not guessed) -- so a caller never has to hand-look-up a HUC8 code.
+#
+# A real, load-bearing finding from checking the API before building anything (per the
+# reentry doc's own explicit instruction): NAS is United States-only, and does NOT contain
+# the Alburnus alburnus/Nova Scotia record that originally motivated this whole design --
+# confirmed by pulling NAS's full species catalog and finding zero Alburnus entries at all.
+# Cross-checked via a live GLOBAL (non-bbox-restricted) GBIF query: the Nova Scotia
+# detections DO exist (133 real 2019-2021 Canadian records), but every one is a
+# MATERIAL_SAMPLE eDNA metabarcoding record, not a vouchered specimen, with no
+# established-population signal of any kind. Presented this finding to the user directly
+# before proceeding (AskUserQuestion) rather than silently building around it or silently
+# extending scope to cover it -- user chose "NAS only, for now," explicitly accepting the
+# Alburnus-style foreign-detection gap as a known, documented limitation rather than solving
+# it this session (a global-GBIF-fallback channel was offered and declined). Both
+# fetch_nas_occurrences()'s own roxygen (`@section Scope`) and
+# TaxaExpect::generate_invasive_watch_priors()'s roxygen state this limitation explicitly,
+# with the real Alburnus case as the concrete example.
+#
+# Live-verified end to end before considering this done (not just devtools::test()/check()):
+# lookup_huc8(41.6, -87.15) (a real BurnsHarbor-area Lake Michigan point) correctly resolves
+# to "04040001"/"Little Calumet-Galien"; fetch_nas_occurrences() against three real species
+# (Ictalurus furcatus, Alburnus alburnus, Gymnocephalus cernua) correctly returns "ok" with
+# 5,092+ real occurrence rows for the two NAS-tracked species and "not_in_nas" for Alburnus;
+# and a full generate_invasive_watch_priors() run against that real HUC8 correctly reports
+# Gymnocephalus cernua (Ruffe, a real, famous Great Lakes invader) as
+# "nonindigenous_watch" rather than "nonindigenous_established" -- NAS's own establishment
+# records for Ruffe are concentrated in the Lake Superior/Duluth-Superior basin, a DIFFERENT
+# HUC8 than this southern-Lake-Michigan test point, so the tiering mechanism correctly
+# distinguishes "established somewhere in the US" from "established in THIS region" rather
+# than over-crediting a real invader for the wrong watershed -- a genuine, non-trivial
+# correctness demonstration, not a coincidence of the test data.
+#
+# devtools::test() 671/671 (up from 646 -- 25 new tests across
+# test-fetch_nas_occurrences.R/test-lookup_huc8.R; 2 pre-existing, unrelated failures in
+# test-filter_gbif_quality.R, the documented CoordinateCleaner/terra/sf environment-version
+# issue from the 2026-08-08 note below, confirmed unrelated -- neither new file touches
+# CoordinateCleaner or filter_gbif_quality.R). devtools::check() 0 errors/0 warnings/1 note
+# (pre-existing "unable to verify current time" clock artifact). Reinstalled to
+# ~/Library/R/4.0/library. No new package dependency -- httr/dplyr/tibble were already
+# Imports. See TaxaExpect/CLAUDE.md's matching note for the consumer side, and the reentry
+# doc itself for the full design record, including the two still-open design questions this
+# session's own findings partially answer (tiering ESS magnitudes are a first-pass heuristic,
+# not yet empirically calibrated; whether this mechanism should share machinery with the
+# companion REENTRY_PROMPT_regional_proximity_prior_check.md doc remains undecided, per that
+# doc's own "prototype one first" guidance -- this session prototyped the invasive-watch
+# side only).
+# Previous update, 2026-08-08 (Sonnet 5 -- first human-authored code + domain review response.
 # The user replaced the old Claude-authored inst/taxafetch_review.Rmd (Session 148) with a
 # fresh human-authored review by Micah Wright, covering the same 24-file structure. Full
 # record in inst/taxafetch_review_response.md. Real bugs found and fixed, all confirmed via
@@ -396,7 +545,8 @@ non-interactive-vs-interactive comparison.
 | `make_bbox_wkt()` | Build WKT POLYGON bounding box (scripted, non-interactive) | Complete | R/make_bbox_wkt.R |
 | `get_keys_from_context()` | Resolve hierarchy dataframe to GBIF usage keys. **Session 148:** its `HIGHERRANK`-recovery path (`.recover_higherrank()`) now narrows `rgbif::name_lookup()` hits to the row's own kingdom (when available) before majority-voting a `nubKey`, closing a homonym-misresolution gap; the resulting `matchType = "LOOKUP_RECOVERED"` is now documented and included in the "review these rows" advice. | Complete | R/get_keys_from_context.R |
 | `fetch_gbif_occurrences()` | Download occurrence records for GBIF taxon keys via GBIF occurrence API. `max_retries` (default 4) applies exponential backoff on HTTP 429 (30/60/120/240s) and HTTP 503 (5/10/20/40s). Any exhausted retry aborts immediately (no silent skipping). `cache_dir` (default: user cache dir) saves per-chunk checkpoints; re-running with same args resumes automatically. **Use for ≤~50 keys; no GBIF account required.** See `download_gbif_occurrences()` for large key sets. **2026-07-20:** `geometry` now accepts `NULL` for an unrestricted global search (previously required a WKT string); the checkpoint-signature helper's `nchar(NULL)` bug (returned `integer(0)`, would have broken `sprintf`) fixed alongside it. Added for `check_geographic_outliers()`, below. **2026-07-20, continued:** real, pre-existing checkpoint bug fixed, found via a real GBIF timeout mid-run -- `global_pos` was previously advanced by a chunk's FULL size even when that chunk aborted partway through, so the saved checkpoint's `remaining_keys` silently excluded the key that actually failed (and any others queued after it in the same chunk), meaning it would never be retried on resume. Also caused a misleading "Enable cache_dir for resumable fetches" message on a real run where `cache_dir` genuinely was enabled and a checkpoint genuinely had been saved. Fixed: abort check now runs before `global_pos` advances past the aborting chunk; the checkpoint re-includes the WHOLE aborting chunk (not just the failed key onward) so resume can't produce duplicate rows from a partial in-chunk success. | Complete | R/fetch_gbif_occurrences.R |
-| `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility — implemented and verified working (Session 131; a Session 129 note here previously claimed otherwise, incorrectly); (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` should reference SIMPLE_CSV's native `issue` (singular) name if customized — the function renames the output column to `issues` regardless. | Complete | R/download_gbif_occurrences.R |
+| `download_gbif_occurrences()` | Async bulk download via GBIF download API — use for large key sets (100s–1000s) to avoid HTTP 429 rate limits. Submits `occ_download()` job; polls until complete; downloads zip to `cache_dir`. **Requires GBIF account** (`GBIF_USER`/`GBIF_PWD`/`GBIF_EMAIL` in `~/.Renviron`). Key design notes: (1) uses rank-specific OR predicate (`familyKey`/`genusKey`/`speciesKey`/`taxonKey`) because download API `taxonKey` is exact-match only, not hierarchical; (2) `limit` is per-key (group_by taxonKey + slice_head); (3) signature-based cache — re-runs with same params skip GBIF wait and load from cached zip; (4) `select_cols` trims SIMPLE_CSV to needed columns at fread time (~10× size reduction); (5) SIMPLE_CSV `issue` column renamed to `issues` for `filter_gbif_quality()` compatibility — implemented and verified working (Session 131; a Session 129 note here previously claimed otherwise, incorrectly); (6) `basis_keep` applied server-side. `bibliographicCitation` = GBIF download portal URL (avoids `occ_download_meta()` hang). Called directly, `select_cols` should reference SIMPLE_CSV's native `issue` (singular) name if customized — the function renames the output column to `issues` regardless. **2026-09-04:** `overwrite = TRUE` no longer orphans the superseded zip -- in an interactive session it shows the cached zip's date/size and asks whether to overwrite or keep it (`utils::menu()`); a non-interactive session proceeds straight to a fresh download as before, but either way the stale zip is deleted once the new one lands. Also now prints a cache-size summary after every run and offers `taxafetch_clear_cache()` once the cache passes 1GB. | Complete | R/download_gbif_occurrences.R |
+| `taxafetch_clear_cache()` | **2026-09-04, new.** Reports/clears TaxaFetch's on-disk cache (GBIF zips + metadata, GBIF checkpoints, iNat range GeoJSON, and -- if ever enabled -- `search_literature()`'s OpenAlex cache). `cache_dir`/`older_than_days`/`dry_run` -- same interface as `TaxaLikely::taxalikely_clear_cache()`. `orphans_only = TRUE` targets only zips no longer referenced by any current `download_gbif_occurrences()` metadata file (i.e. leftovers from a pre-fix `overwrite = TRUE` run) -- the "keep the most recent cache per query, remove only stale leftovers" mode; every current zip, every metadata file, every checkpoint, and every iNat range file are left untouched. Built on `TaxaTools::list_cache_files()`/`report_and_clear_cache()` (shared engine, also used by `taxalikely_clear_cache()`) -- orphan detection is the only genuinely TaxaFetch-specific piece, layered in front as a pre-filter. | Complete | R/taxafetch_clear_cache.R |
 | `get_gbif_occurrences()` | **Session 129 — recommended entry point**, not a replacement for the two functions above (neither is modified). Picks `fetch_gbif_occurrences()` vs `download_gbif_occurrences()` by `key_threshold` (default 50, matching both functions' own documented guidance and the manual dispatch pattern the Layer-1 tutorial already used) and standardizes both paths to one column contract. `rank_filter = "species"` (default) is a post-fetch filter only — neither GBIF API exposes a taxonomic-rank predicate to filter server-side. `columns = "standard"` (default) / `"all"` / custom vector. `familyKey`/`genusKey` are `NA` on the download path — SIMPLE_CSV doesn't carry them at all, not fixable by this wrapper. Translates the wrapper's canonical `issues` column name back to SIMPLE_CSV's native `issue` when building `select_cols` for the download path (needed because `select_cols` matches at import time, before `download_gbif_occurrences()`'s own rename runs) — this is the only issue/issues handling the wrapper does; see `download_gbif_occurrences()`'s entry above for the Session 131 correction to a false "cross-path bug" claimed here previously. | Complete | R/get_gbif_occurrences.R |
 | `fetch_occurrences_by_taxon()` | **Session 140 — taxon-centric batched fetch.** Groups a fetch scope (one row per (site, candidate taxon) pair: `taxon_key` + `geometry` WKT) by taxon key instead of by observation/site: unions each taxon key's own geometry via `sf::st_union()` (dissolving the duplicate-record risk when two site boxes for the same taxon overlap), then combines different taxon keys that end up with an identical unioned geometry into one multi-key `get_gbif_occurrences()` call (`combine_shared_geometry = TRUE`, default). Neither `get_gbif_occurrences()` nor its own backends are modified — this is a pure call-grouping layer above it. Does not expose `rgbif`'s `geom_big`/`geom_size`/`geom_n` WKT-complexity escape valve and does not characterize GBIF's real WKT-size ceiling (documented as a known limitation, not silently masked). See `ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md` for the full design discussion this implements. | Complete | R/fetch_occurrences_by_taxon.R |
 | `filter_gbif_quality()` | Filter GBIF records by quality criteria; default `max_coord_uncertainty = 500` m; NA retained. `exclude_absent = TRUE` removes records where `occurrenceStatus = "ABSENT"` (explicit non-detections from systematic surveys — must not be used as presence data). `require_species = FALSE` (set TRUE when querying by family/genus key — GBIF returns all ranks within the taxon including genus-only records that lack a species value). Filter order: coordinates → absent occurrences → basis of record → issue codes → coordinate uncertainty → decimal-place precision → eDNA → species-level requirement → CoordinateCleaner checks. **Session 148:** the eDNA-exclusion pattern narrowed to `edna`/`environmental dna`/`metabarcod` -- dropped the generic `bulk sample`/`water sample` phrases, which risked over-excluding legitimate non-eDNA presence data. **2026-07-20 (behavioral default change):** new filter step 9 calls `CoordinateCleaner::cc_equ()`/`cc_zero()`/`cc_gbif()` (identical lat/lon, near-(0,0), near GBIF's Copenhagen HQ) via new `exclude_equal_coords`/`exclude_near_zero`/`exclude_near_gbif_hq` params, each default `TRUE`. Uses that package's own internal buffer defaults rather than hand-copied constants -- see the function's own roxygen `@details` for why. Skips with a message (not an error) if `CoordinateCleaner` is not installed, matching every other optional-column/optional-package filter in this function. Every real in-repo caller (`TaxaExpect::build_priors()`, `TaxaExpect/inst/workflows/generate_priors_workflow.R`, `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`, `TaxaWizard/inst/graph/snippets/taxa_to_occ.R`) calls with no override, so all now pick up the new checks automatically wherever `CoordinateCleaner` happens to be installed. **2026-07-23:** the three checks originally deferred (Tier 2, needing bundled reference data rather than being fully self-contained) are now also in: `exclude_country_centroid`/`exclude_capital`/`exclude_institution` call `CoordinateCleaner::cc_cen()`/`cc_cap()`/`cc_inst()`, each default `TRUE`, same skip-with-message-if-absent convention, same "use the package's own defaults, don't hand-copy them" principle. All three resolve their `ref = NULL` default to bundled `countryref`/`institutions` data automatically (confirmed via source inspection -- no network call). Unlike `cc_outl()` (used by `check_geographic_outliers()`), none of these three branch on record count or species, so they don't share that function's batching risk; benchmarked at 1.37s for 122k rows (Mugu's real scale) -- cost doesn't grow with row count since the reference data is cropped to the query's own bbox first. Filter order is now nine steps deep: filter step 9 covers all six `CoordinateCleaner` checks together. Every real in-repo caller above picks these three up automatically too, same as the first three. **2026-07-23, continued:** every removed row across all nine filter steps is now preserved, not just counted -- `attr(result, "removed_records")` is always present (never `NULL`, possibly zero rows), one row per removed record with every original column plus `filter_reason` (per-filter tag; GBIF issue-code and CoordinateCleaner removals get the SPECIFIC matched code/check(s), e.g. `"flagged_issue_code:COORDINATE_OUT_OF_RANGE"` or `"equal_coordinates;near_zero"` for a double-hit). Return value itself is unchanged (still just the cleaned data frame) -- fully backward compatible, purely additive via `attr()`. Prompted by the user wanting to (a) audit/repair mistakenly-excluded records, (b) surface real GBIF data-quality problems worth reporting back to GBIF (every removed row keeps `gbifID`/`datasetKey` for exactly that), (c) make two users' differing filter arguments produce comparable, inspectable results rather than silently different ones. Internals fully rewritten to explicit keep-masks (no more `dplyr::filter()`), which incidentally fixed a real pre-existing message-accuracy bug (steps 7/8 never refreshed a stale count variable). **2026-07-23, continued yet further (behavioral default change, signature change):** `exclude_institution` renamed `flag_institution` (default `TRUE` unchanged) and split out of the other five `CoordinateCleaner` checks -- it now **flags, never removes**. Retained rows near a biodiversity institution get four new columns (`institution_flag`, `institution_name`, `institution_type`, `institution_dist_m`, via new internal `.nearest_institution()`) instead of moving to `removed_records`; `"institution"` can no longer appear as a `filter_reason` value. The other five checks (now their own step 9, run before institution flagging as step 10) are unaffected -- a record failing both a removal check and the institution check is removed and never reaches the flagging step. Consumed by `TaxaHabitat::flag_institution_candidates()`. **2026-07-23, continued yet further:** `.nearest_institution()` gained two more columns, `institution_lon`/`institution_lat` -- the matched institution's OWN coordinates (distinct from the record's own), needed so `TaxaHabitat::review_institution_flags()` can plot the flagged record and its matched institution together on one map without re-querying `CoordinateCleaner::institutions` itself. Six institution columns total now. | Complete | R/filter_gbif_quality.R |
@@ -601,6 +751,8 @@ screen_pdf_structure(pdf_content, llm_fn = my_fn)
 | test-dataone_occurrence_search.R | `.parse_coordinates_field()`, `.parse_pasta_response()`, `.bbox_overlaps()` | **2026-08-08, new file** -- this file (`search_dataone()`, `fetch_dataone_eml()`) had zero test coverage before the human review found real coordinate-parsing bugs. Fully offline; covers the confirmed-real Solr `ENVELOPE(...)` format (degenerate and non-degenerate boxes, case-insensitivity), the legacy `N:`/`S:`/`E:`/`W:` format, the corrected numeric-fallback field order, `.parse_pasta_response()`'s `spatialCoverage/coordinates` XML path with a synthetic fixture matching the real SBC LTER structure it was found against |
 | test-pdf_text.R | `.match_header()` | **2026-08-08, new file** -- `pdf_text.R` had zero test coverage before this session. Scoped to the specific bug fixed (numbered two-column-layout headers), not a full file test suite |
 | test-pdf_extract.R | `.axis_or_default()`, `.build_axis_instructions()`, `build_pdf_extract_prompt()` | **2026-08-08, new file** -- `pdf_extract.R` had zero test coverage before this session. Scoped to the specific bug fixed (NA-vs-NULL axis defaulting), not a full CSV-parsing/DwC-mapping test suite |
+| test-download_gbif_occurrences.R | `download_gbif_occurrences()`, `.gbif_dl_meta_path()` | **2026-09-04**: added orphan-cleanup coverage -- a non-interactive `overwrite = TRUE` re-run (mocked `rgbif::occ_download`/`occ_download_wait`/`occ_download_get`) confirms the old cached zip is removed once the new one lands, plus a cache-size-summary message assertion. The interactive confirmation prompt itself is NOT covered by an automated test -- `interactive()` is a `.Primitive`, confirmed unmockable via `testthat::local_mocked_bindings()`; verify by hand (see `inst/test_overwrite_cache_manual.R`) |
+| test-taxafetch_clear_cache.R | `taxafetch_clear_cache()`, `.taxafetch_referenced_zips()` | **2026-09-04, new file**. Fully offline. Covers argument validation, dry-run vs. real deletion, `older_than_days` filtering, `.taxafetch_cache_patterns` matching every real cache file shape (including the `openalex_cache_*.rds` addition), and `orphans_only`'s core behavior (removes only a zip no current `meta.rds` points to; never touches checkpoints/geojson; reports cleanly when nothing is orphaned) |
 
 ---
 

@@ -38,11 +38,13 @@ library(testthat)
 # Minimal inat_range row
 .make_ir <- function(taxon_name     = "Foo bar",
                      in_range       = TRUE,
-                     n_observations = 1000L) {
+                     n_observations = 1000L,
+                     name_match     = TRUE) {
   data.frame(
     taxon_name      = taxon_name,
     in_range        = in_range,
     n_observations  = n_observations,
+    name_match      = name_match,
     range_status    = if (isTRUE(in_range)) "in_range" else "out_of_range",
     stringsAsFactors = FALSE
   )
@@ -220,4 +222,24 @@ test_that("prior_mean is re-derived from elevated alpha/beta, not stale", {
   out <- adjust_inat_range_priors(lr, .make_ir())
   expected_mean <- 3.0 / (3.0 + 97.0)
   expect_equal(out$prior_mean[out$inat_range_elevated], expected_mean)
+})
+
+
+# ---- Fuzzy-match gate (2026-08-28) ------------------------------------------
+
+test_that("a fuzzy-misresolved name (name_match FALSE) is never elevated", {
+  out <- suppressMessages(adjust_inat_range_priors(.make_lr(), .make_ir(name_match = FALSE)))
+  expect_false(any(out$inat_range_elevated))
+})
+
+test_that("a pre-name_match inat_range table elevates nothing by default, with guidance", {
+  ir <- .make_ir(); ir$name_match <- NULL
+  expect_message(out <- adjust_inat_range_priors(.make_lr(), ir), "name_match")
+  expect_false(any(out$inat_range_elevated))
+})
+
+test_that("require_name_match = FALSE restores the old behavior", {
+  ir <- .make_ir(); ir$name_match <- NULL
+  out <- suppressMessages(adjust_inat_range_priors(.make_lr(), ir, require_name_match = FALSE))
+  expect_true(any(out$inat_range_elevated))
 })

@@ -7,7 +7,9 @@
 remove_incongruent_references(
   match_df,
   evaluation,
-  remove_insufficient_evidence = FALSE
+  remove_insufficient_evidence = FALSE,
+  override_accessions = NULL,
+  gate = c("action", "flag")
 )
 }
 \arguments{
@@ -17,7 +19,35 @@ remove_incongruent_references(
 \item{evaluation}{Data frame. Output of \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}.}
 
 \item{remove_insufficient_evidence}{Logical (default \code{FALSE}). If \code{TRUE},
-also removes accessions flagged \code{"insufficient_independent_evidence"}.}
+also removes accessions flagged \code{"insufficient_independent_evidence"}.
+Applies under both \code{gate} settings -- \code{reference_action} can never be
+\code{"remove"} for that flag on its own (see \code{\link[=score_reference_labels]{score_reference_labels()}}'s
+\verb{@section Why "remove" also requires no corroboration anywhere}), so this
+argument stays the only way to drop them.}
+
+\item{override_accessions}{Character vector of accession IDs (default
+\code{NULL}), or \code{NULL} to disable. Accessions listed here are NEVER removed,
+regardless of \code{hierarchy_flag} -- the automated counterpart to the
+\verb{@section Use flag_incongruent_references() first} caution above.
+\code{hierarchy_flag = "incongruent"} alone cannot distinguish a genuine
+mislabel from a correctly-labeled record with poor marker resolution or
+thin corroborating coverage (a real confirmed case in this ecosystem:
+\verb{Stereolepis doederleini} was flagged \code{"incongruent"} by a broad screen,
+then separately investigated and found to be exactly this -- not a real
+mislabel). \code{\link[=resolve_review_overrides]{resolve_review_overrides()}} derives this argument
+automatically from \code{\link[=review_flagged_accessions]{review_flagged_accessions()}}'s LLM second-look
+verdicts, so a caller can safely default to removing every flagged
+accession while still letting a specific, reviewed explanation override
+that default for the one accession it actually applies to -- rather
+than choosing between "remove everything, including real correctly-
+labeled records" and "remove nothing, unreviewed." Only ever rescues,
+never removes an accession \code{hierarchy_flag} would otherwise have kept.}
+
+\item{gate}{Character, \code{"action"} (default) or \code{"flag"}. \code{"action"} removes
+accessions whose \code{reference_action} is \code{"remove"}; \code{"flag"} removes every
+accession whose \code{hierarchy_flag} is \code{"incongruent"}, the pre-2026-09-02
+behaviour. Under \code{"action"}, \code{reference_action} is computed on the fly
+via \code{\link[=score_reference_labels]{score_reference_labels()}} if \code{evaluation} does not already carry it.}
 }
 \value{
 The input \code{match_df} with flagged rows removed. Unchanged if no
@@ -43,18 +73,38 @@ identity diagnostics (\code{best_agreeing_pident}/\code{best_disagreeing_pident}
 \code{congruent_evidence_exists_anywhere}), not as an unreviewed default step.
 }
 
-\section{Full-signal weighting is separate, later work}{
+\section{The evidence gate is now the default (2026-09-02)}{
 
-This function only ever consumes \code{hierarchy_flag}'s binary blacklist
-decision. The full per-accession quality signal (\verb{frac_independent_ below_min_congruent_rank}, etc.) needs to survive through to
-\code{TaxaLikely::evaluate_likelihoods()} so it can inflate/discount
-likelihood the same way \code{score_likelihood_cov} already does for
-alignment coverage -- that TaxaLikely-side consumption is real, agreed-on
-future work, not designed or implemented here. Do not let this function's
-use become the only place the full \code{evaluation} object's signal is
-consulted.
+\code{gate = "action"} (the default) removes an accession only when
+\code{\link[=score_reference_labels]{score_reference_labels()}} resolved it to \code{reference_action == "remove"}
+-- flagged \code{"incongruent"} AND uncorroborated anywhere AND below the
+confidence threshold -- rather than on \code{hierarchy_flag == "incongruent"}
+alone. \code{hierarchy_flag} is a majority vote over the top-N neighbours in
+which percent identity never appears, so in a thinly-covered clade it
+fires on correct references by construction. Measured on the real
+995-accession PtConception screen: the old \code{gate = "flag"} behaviour would
+have removed 12 accessions behind 1,688 observations -- including cabezon
+(\code{OK172573}, 1,120 observations, agreeing hit at 100\%) -- to catch the 4
+(16 observations) that genuinely had no corroboration anywhere.
+\code{gate = "action"} removes exactly those 4. Pass \code{gate = "flag"} to get the
+pre-2026-09-02 behaviour back.
+}
+
+\section{This is a blacklist decision, not the whole signal}{
+
+Even under \code{gate = "action"} this function consumes only a yes/no removal
+decision. The continuous signal (\code{\link[=score_reference_labels]{score_reference_labels()}}'s
+\code{label_confidence}) travels separately, via
+\code{\link[=flag_incongruent_references]{flag_incongruent_references()}}, and is meant for review. A likelihood-model
+covariate driven by it was prototyped on 2026-09-02 and removed the same
+day -- see
+\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}
+for what was measured, before proposing it again. Do not let this
+function's use become the only place the full \code{evaluation} object's signal
+is consulted.
 }
 
 \seealso{
-\code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}}
+\code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
+\code{\link[=resolve_review_overrides]{resolve_review_overrides()}}
 }

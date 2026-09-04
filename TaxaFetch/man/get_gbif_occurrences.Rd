@@ -24,6 +24,7 @@ get_gbif_occurrences(
   pause_seconds = 2,
   pause_between_keys = 0.5,
   max_retries = 4L,
+  on_cap = c("warn", "escalate", "error"),
   beep = FALSE
 )
 }
@@ -90,6 +91,14 @@ fires; see its own documentation. Ignored on the fetch path.}
 \item{chunk_size, pause_seconds, pause_between_keys, max_retries}{Forwarded
 to \code{\link{fetch_gbif_occurrences}} when that path fires; see its
 own documentation. Ignored on the download path.}
+
+\item{on_cap}{Character. What to do when any taxon key returns exactly the
+per-key \code{limit} -- i.e. was TRUNCATED. Truncated records are GBIF's own
+return order, a non-random prefix, so abundance and spatial pattern both
+become unreliable for those taxa. \code{"warn"} (default) warns and records
+the keys in \code{attr(result, "capped_keys")}; \code{"escalate"} re-fetches the
+affected keys through the download API with \code{limit = NULL} (needs GBIF
+credentials; falls back to a warning); \code{"error"} stops.}
 
 \item{beep}{Logical. Forwarded to whichever backend fires. Default \code{FALSE}.}
 }

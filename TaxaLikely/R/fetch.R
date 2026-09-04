@@ -74,8 +74,33 @@ utils::globalVariables(c(
     "16s" = c('"16S ribosomal RNA"', '"16S rRNA"', '"large subunit ribosomal RNA"')
   )
 
+  # A registered PRIMER-VARIANT name (TaxaTools::barcode_primer_defaults) is the
+  # right term for resolving primers and amplicon lengths, but it is NOT a term
+  # NCBI indexes -- no GenBank record is tagged "Folmer" or "Palumbi". Without
+  # this map every variant except the MiFish pair (covered by primer_to_locus
+  # below) fell through to a bare "<variant>[All Fields]" search and returned
+  # ZERO hits for every taxon, silently: the fetch reports "No sequences found.
+  # Check taxon names and barcode_term." and hands back an empty reference_df,
+  # which then fails downstream in clean_taxon_names() on a NULL species column.
+  # Found live when a workflow's COI term was changed "COI" -> "COI-Folmer" to
+  # resolve a genuine resolve_barcode_primers() ambiguity: 23/23 genera, 0 hits.
+  # Resolve the variant to the marker it amplifies, then search as that marker.
+  # The map lives in TaxaTools (resolve_barcode_marker) because the identical
+  # silent failure reaches three packages -- here, audit_barcode_coverage(),
+  # and TaxaAssign::suggest_unreferenced_species() -- and TaxaTools already
+  # owns the primer/length registries these terms come from.
   bc_parts <- vapply(barcode_term, function(bt) {
     key <- tolower(trimws(bt))
+    resolved <- TaxaTools::resolve_barcode_marker(bt)
+    base_key <- if (!identical(tolower(trimws(resolved)), key))
+      tolower(trimws(resolved)) else NA_character_
+    if (!is.na(base_key)) {
+      # Search as the base marker in every clause, so a remapped term produces
+      # exactly the query the bare marker name would have produced -- never a
+      # dead "<variant>[All Fields]" clause.
+      key <- base_key
+      bt  <- toupper(base_key)
+    }
     gene <- gene_map[key]
     if (!is.na(gene)) {
       # Known gene name: use [GENE] field directly
@@ -395,6 +420,32 @@ utils::globalVariables(c(
 }
 
 
+#' A correctly-shaped empty reference_df
+#'
+#' Every early return from `fetch_ncbi_reference_sequences()` must carry the
+#' SAME columns as a successful one, or a caller's ordinary next step
+#' (`clean_taxon_names(reference_df$species)`, joins on a rank column) fails
+#' with an opaque error -- `NULL` is not a character vector -- that names
+#' neither the empty result nor the reason for it. Found live when a 0-hit
+#' fetch reported its own cause correctly ("No sequences found. Check taxon
+#' names and barcode_term.") and the workflow then died three lines later on
+#' the shape instead, burying the real message.
+#' @noRd
+.empty_reference_df <- function(rank_system, include_location = FALSE) {
+  out <- data.frame(
+    composite_id = character(0L), sequence = character(0L),
+    stringsAsFactors = FALSE
+  )
+  for (rc in tolower(rank_system)) out[[rc]] <- character(0L)
+  if (isTRUE(include_location)) {
+    out$lat     <- numeric(0L)
+    out$lon     <- numeric(0L)
+    out$country <- character(0L)
+  }
+  out
+}
+
+
 #' Parse FASTA text into a data frame of composite_id + sequence
 #' @noRd
 .parse_fasta_text <- function(fasta_text) {
@@ -592,8 +643,7 @@ utils::globalVariables(c(
 #' head(ref)
 #' }
 #'
-#' @importFrom dplyr filter mutate group_by slice_sample ungroup n select
-#'   all_of left_join distinct
+#' @importFrom dplyr filter mutate group_by slice_sample ungroup n select all_of left_join distinct
 #' @export
 fetch_ncbi_reference_sequences <- function(taxa,
                                       barcode_term,
@@ -684,10 +734,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   if (total == 0L) {
     message("No sequences found. Check taxon names and barcode_term.")
-    return(data.frame(
-      composite_id = character(0L), sequence = character(0L),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_reference_df(rank_system, include_location))
   }
 
   # --- Priority species + proportional subsampling when over budget --------
@@ -1135,10 +1182,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   if (is.null(combined_meta) || nrow(combined_meta) == 0L) {
     message("No sequences passed all filters across all taxa.")
-    return(data.frame(
-      composite_id = character(0L), sequence = character(0L),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_reference_df(rank_system, include_location))
   }
 
   # Deduplicate by accession (priority sequences take precedence)
@@ -1151,10 +1195,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   if (nrow(fasta_df) == 0L) {
     warning("FASTA download returned no sequences")
-    return(data.frame(
-      composite_id = character(0L), sequence = character(0L),
-      stringsAsFactors = FALSE
-    ))
+    return(.empty_reference_df(rank_system, include_location))
   }
 
   # Strip version suffix from accessions in metadata for joining

@@ -207,7 +207,7 @@ consensus <- posterior_consensus(
 posteriors_updated <- update_prior_from_consensus(
   posteriors, consensus,
   confirmation_quantile       = 0.9,
-  min_confirmation_confidence = 0.8,
+  confirmation_discount = 0.25,
   n_sims                      = 1000
 )
 

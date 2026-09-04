@@ -101,7 +101,7 @@ test_that("stops when lng is NA", {
 # Output structure
 # =============================================================================
 
-test_that("returns a tibble with the correct nine columns", {
+test_that("returns a tibble with the correct ten columns", {
   local_mocked_bindings(
     .inat_taxon_id = function(...) .not_found,
     .package = "TaxaFetch"
@@ -110,7 +110,7 @@ test_that("returns a tibble with the correct nine columns", {
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("taxon_name", "taxon_id", "matched_name", "rank",
                       "iconic_taxon_name", "inat_kingdom", "n_observations",
-                      "in_range", "range_status"))
+                      "in_range", "range_status", "name_match"))
 })
 
 test_that("returns one row per input taxon name", {
@@ -430,4 +430,25 @@ test_that("inat_kingdom reflects iconic_taxon_name for found taxa", {
   )
   out <- check_inat_range("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_equal(out$inat_kingdom, "Animalia")
+})
+
+# ---- name_match column (2026-08-28) -----------------------------------------
+
+test_that("name_match is TRUE for an exact resolution, FALSE for a fuzzy misresolution, NA for not-found", {
+  local_mocked_bindings(
+    .inat_taxon_id = function(name, ...) {
+      if (name == "Calidris mauri") .found
+      else if (name == "Gasterosteus gymnurus") {
+        list(taxon_id = 999L, matched_name = "Gasterosteus aculeatus",
+             rank = "species", iconic_taxon_name = "Actinopterygii",
+             n_observations = 10135L)
+      } else .not_found
+    },
+    .inat_range_polygon = function(...) NULL
+  )
+  out <- check_inat_range(
+    c("Calidris mauri", "Gasterosteus gymnurus", "No such thing"),
+    lat = 34.1, lng = -119.1, api_token = "tok"
+  )
+  expect_equal(out$name_match, c(TRUE, FALSE, NA))
 })

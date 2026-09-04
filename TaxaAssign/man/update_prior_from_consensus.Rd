@@ -8,7 +8,7 @@ update_prior_from_consensus(
   result,
   consensus,
   confirmation_quantile = 0.9,
-  min_confirmation_confidence = 0.8,
+  confirmation_discount = 0.25,
   n_sims = 0,
   spatial_group_map = NULL
 )
@@ -33,11 +33,12 @@ observations' \code{consensus_posterior} used as the candidate new
 \code{prior_mean} for a confirmed species. Default 0.9. \code{1} is equivalent to
 taking the maximum.}
 
-\item{min_confirmation_confidence}{Numeric in [0, 1]. Minimum value the
-\code{confirmation_quantile} must clear for a species to be treated as
-confirmed at all. Default 0.8. Set to \code{0} to disable this gate entirely
-(every confirmed species is used, however weakly confirmed -- restores
-the previous design's lack of a confidence floor).}
+\item{confirmation_discount}{Numeric in [0, 1]. Power-prior discount a0
+applied to the cross-observation support mass (0.25 default: ~4
+correlated observations carry the weight of 1 independent one; 0
+disables the update entirely; 1 treats every observation as fully
+independent -- almost certainly too strong for same-site eDNA). See the
+\emph{Soft confirmation} section.}
 
 \item{n_sims}{Integer. Passed to \code{\link[=compute_posterior]{compute_posterior()}} for the re-run.
 Default 0 (point estimates only, fast). Set to 1000 to propagate
@@ -68,15 +69,14 @@ resolved ones. Sorted by \code{observation_id} then descending
 \code{posterior_point_est}.
 }
 \description{
-A one-pass empirical Bayes refinement step. Takes the output of
-\code{\link[=posterior_consensus]{posterior_consensus()}} and uses species-level consensus assignments
-(where \code{is_resolved = TRUE}) as evidence of true presence at the site.
-For each confirmed species, the \code{confirmation_quantile}-th quantile of
-\code{consensus_posterior} across all confirming ("donor") observations is
-computed; if that value clears \code{min_confirmation_confidence}, it
-\emph{substitutes} for \code{prior_mean} (never lowering it) in all \emph{unresolved}
-observations, and \code{\link[=compute_posterior]{compute_posterior()}} is re-run for those observations
-only.
+A one-pass empirical Bayes refinement step. Every observation's posterior
+support for a species is treated as fractional evidence of site-level
+presence (soft assignment -- no confirmation threshold), aggregated with a
+leave-one-out, power-prior-discounted mass, and used to move unresolved
+observations' priors smoothly toward a support-weighted confirmation
+quantile (never lowering them); \code{\link[=compute_posterior]{compute_posterior()}} is then re-run for
+those observations only. See the \emph{Soft confirmation} section for the
+design and its literature grounding.
 }
 \details{
 \strong{Why only unresolved observations?} Resolved observations already have a clear
@@ -102,8 +102,45 @@ observation are used as evidence sources or receive a prior update;
 observations in a single-observation spatial group are always returned
 unchanged, exactly like already-resolved observations.
 }
-\section{Confirmation-quantile design (Session 149)}{
+\section{Soft confirmation (2026-08-28 redesign, replaces the hard gate)}{
 
+The previous design counted an observation as a "donor" only when it
+resolved a species with \verb{consensus_posterior >=} a threshold (0.8) -- hard
+assignment in the sense of classification EM (Celeux & Govaert 1992,
+\emph{Computational Statistics & Data Analysis} 14:315-332). That made the
+dataset-level output discontinuous in per-observation inputs: one marginal
+competitor holding every observation of a species just below the bar meant
+zero donors anywhere (a real case: 78 yellow-perch observations at ~0.69
+each -- no confirmation, dataset-wide). Now every observation's best
+posterior for a species contributes fractionally (soft assignment, the
+one-iteration analog of a multi-scale occupancy update -- Dorazio &
+Erickson 2018, \emph{Molecular Ecology Resources} 18:368-380):
+\enumerate{
+\item Per species, support mass = the sum over observations of that
+observation's best posterior for it; per target row, the target
+observation's own support is subtracted (leave-one-out -- no
+self-confirmation).
+\item The mass is discounted by \code{confirmation_discount} (a0): same-site
+observations share water, DNA pool, and reference biases, so they are
+not independent confirmations. Raising auxiliary evidence to a power
+a0 in [0, 1] is the standard power-prior discount (Ibrahim & Chen
+2000, \emph{Statistical Science} 15:46-60); multiplying the
+pseudo-observation mass by a0 is its counting equivalent. The default
+0.25 treats ~4 correlated observations as worth 1 independent one.
+\item The discounted mass enters a smooth saturation \code{m/(1+m)} that
+scales the never-demote move toward the support-weighted
+\code{confirmation_quantile} of per-observation support (occurrence-scale
+rescale unchanged, see below). No thresholds anywhere: the update is
+continuous in every input.
+\item Presence-mixture rows (\code{prior_mix_w} etc.) are updated in w
+itself -- cross-observation support IS evidence about presence -- via
+a pseudo-observation update weighted by \code{prior_mix_p_conc}, with the
+Beta summary re-moment-matched. Never demoted.
+}
+}
+
+\section{Historical}{
+ confirmation-quantile design (Session 149, superseded):
 The previous design (a fixed \code{presence_multiplier}, e.g. x5) applied the
 same boost regardless of how many observations confirmed a species or how
 confident those confirmations were -- flagged as High priority in
@@ -201,8 +238,8 @@ is fixed.
 \dontrun{
 result_updated <- update_prior_from_consensus(
   result, consensus,
-  confirmation_quantile        = 0.9,
-  min_confirmation_confidence  = 0.8
+  confirmation_quantile  = 0.9,
+  confirmation_discount  = 0.25
 )
 }
 

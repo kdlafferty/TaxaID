@@ -9,7 +9,7 @@ posterior_consensus(
   rank_system = NULL,
   cumulative_threshold = 0.9,
   min_posterior = 0.05,
-  posterior_col = "posterior_mean",
+  posterior_col = "posterior_point_est",
   lookup_missing_taxonomy = FALSE,
   backbone_id = NULL,
   species_reference = NULL,
@@ -46,7 +46,17 @@ hold at least 5\% posterior probability to influence the consensus taxon.
 Default 0.05. Set to 0 to disable.}
 
 \item{posterior_col}{Character. Name of the posterior column to rank
-hypotheses by. Default \code{"posterior_mean"}.}
+hypotheses by. Default \code{"posterior_point_est"} -- aligned (2026-08-28)
+with \code{run_bayesian_pipeline()} and every production workflow, which had
+always passed the point-estimate column explicitly while this function
+alone defaulted to \code{"posterior_mean"} (undocumented drift; the
+three-way operative-column experiment in
+\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}
+(D8) found the choice second-order and settled on point estimates: best
+external corroboration, deterministic, and exactly auditable as
+prior x likelihood products). Pass \code{"posterior_mean"} to rank by the
+Monte Carlo mean instead -- with presence-mixture priors that column
+integrates over presence states (see \code{compute_posterior()}).}
 
 \item{lookup_missing_taxonomy}{Logical. If \code{TRUE}, calls
 \code{TaxaTools::verify_taxon_names()} to fill in taxonomy columns for
@@ -242,19 +252,32 @@ already answered by \code{winner_prior}. A count of \code{0} therefore means
 The \code{primary_} version counts rival taxa; the \code{consensus_} version
 counts distinct plausible groups at \code{consensus_rank} (rival genera
 when the LCA landed at genus, rival families at family), reducing to
-the \code{primary_} count at species rank. Both are \code{NA} when
-\code{posterior_df} carries no \code{model_tier} column.}
+the \code{primary_} count at species rank. "Plausible" means "joined to
+a NAMED prior row": non-\code{NA} \code{prior_branch} when that column is
+present (kernel-priors schema, 2026-08-31 -- any branch counts,
+resident, undetected-evidence, or transport), else non-\code{NA}
+\code{model_tier} (legacy GLMM tables). Both are \code{NA} when
+\code{posterior_df} carries neither column.}
 \item{\code{winner_has_occurrence_record}, \code{consensus_prior},
 \code{consensus_has_occurrence_record}}{Support for the
 prior/occurrence-plausibility axis, answering what \code{winner_prior}'s
 VALUE cannot: has this taxon ever been reported here at all? A
 never-reported taxon and a genuine singleton can carry the SAME
 numeric prior (both land on the dark-diversity floor) while meaning
-opposite things, so presence is read off \code{model_tier} rather than
-inferred from a low prior.
+opposite things, so presence is read off the prior row's provenance
+rather than inferred from a low prior.
 \code{winner_has_occurrence_record} is \code{TRUE} when the winning
-hypothesis carries a real occurrence record, \code{NA} when
-\code{posterior_df} has no \code{model_tier} column.
+hypothesis carries a real occurrence record. When \code{posterior_df}
+has a \code{prior_branch} column (kernel-priors schema, 2026-08-31) this
+means \code{prior_branch == "resident_observed"} -- a kernel estimate
+from real in-habitat local evidence; \code{resident_undetected}
+(evidence-elevated species with zero local records) and
+\code{transport} (domestic/food) winners read \code{FALSE}, with a transport
+winner's interpretation carried separately by
+\code{TaxaFlag::add_posthoc_assessment()}'s \code{domestic_prior_caveat}.
+Legacy GLMM tables (no \code{prior_branch}) keep the original
+non-\code{NA}-\code{model_tier} reading; \code{NA} when \code{posterior_df} has
+neither column.
 \code{consensus_prior} is a \code{theta_mean}-based group share
 (2026-07-30; previously \code{prior_mean} -- changed because
 \code{prior_mean} can be inflated by the confirmation boost above,
@@ -351,7 +374,8 @@ posterior_df <- data.frame(
   hypothesis_type  = "specific_candidate",
   genus            = "Gadus",
   family           = "Gadidae",
-  posterior_mean   = c(0.75, 0.20, 0.05)
+  posterior_mean   = c(0.75, 0.20, 0.05),
+  posterior_point_est = c(0.75, 0.20, 0.05)
 )
 consensus <- posterior_consensus(
   posterior_df,

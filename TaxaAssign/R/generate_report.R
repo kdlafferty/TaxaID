@@ -189,7 +189,8 @@ generate_report <- function(result,
                                       !is.null(unref_stats) &&
                                         unref_stats$has_family_expansion,
                                       stats$has_empirical_bayes,
-                                      llm_model_name)
+                                      llm_model_name,
+                                      kernel_priors = "prior_branch" %in% names(result))
 
   # --- Build Results ----------------------------------------------------------
   if (!is.null(llm_fn)) {
@@ -478,7 +479,8 @@ generate_report <- function(result,
                                  context_source,
                                  has_unreferenced, has_family_expansion,
                                  has_empirical_bayes,
-                                 llm_model_name = NULL) {
+                                 llm_model_name = NULL,
+                                 kernel_priors = FALSE) {
   sections <- character(0)
 
   # --- Data type preamble ---
@@ -662,6 +664,36 @@ generate_report <- function(result,
         1 - absent_prob
       ) else ""
     )
+  } else if (kernel_priors) {
+    # Kernel-priors + curve-pricing architecture (2026-08-31 redesign),
+    # detected from the result table's prior_branch column.
+    prior_text <- paste0(
+      "Prior probabilities were estimated from public occurrence records by ",
+      "site-centered kernel estimation (TaxaExpect package). Records were ",
+      "stratified to the study site's habitat and weighted by an exponential ",
+      "distance kernel (a product kernel when an environmental covariate such ",
+      "as depth was available), with bandwidths selected by leave-one-block-out ",
+      "composition prediction. Each locally recorded species' prior is its ",
+      "kernel-weighted share of records, shrunk toward the regional composition ",
+      "by a pseudo-record back-off; uncertainty was parameterized as a Beta ",
+      "distribution whose concentration equals the kernel-effective sample ",
+      "size (Kish's n_eff). Species detected in the sequence data but lacking ",
+      "local occurrence records were treated as presence mixtures: the ",
+      "probability of local presence was read from a checklist-calibrated ",
+      "presence-distance curve evaluated at each species' distance to its ",
+      "nearest occurrence record (capped beyond the search radius, where the ",
+      "far tail is dominated by distance-insensitive human-vectored ",
+      "transport), with the decay length stretched for watch-listed invasive ",
+      "species and independent range evidence (e.g. verified iNaturalist ",
+      "coverage) admitted on its own scale; the share a species would hold if ",
+      "present was set to the Good-Turing unseen mass divided by the Chao ",
+      "estimate of the number of locally present but unrecorded species. The ",
+      "summed presence expectation across these species was audited against ",
+      "the Chao estimate rather than enforced, since probability constraints ",
+      "bind at per-observation renormalization. Domestic and food species ",
+      "were priced on a separate transport branch reflecting non-resident ",
+      "sources of DNA."
+    )
   } else {
     prior_text <- paste0(
       "Prior probabilities were generated from species occurrence records and ",
@@ -744,11 +776,11 @@ generate_report <- function(result,
   cum_thresh <- if (!is.null(params$cumulative_threshold)) params$cumulative_threshold else 0.9
   min_post   <- if (!is.null(params$min_posterior)) params$min_posterior else 0.05
 
-  confirm_q     <- params$confirmation_quantile
-  min_confirm_p <- params$min_confirmation_confidence
+  confirm_q  <- params$confirmation_quantile
+  confirm_a0 <- params$confirmation_discount
   has_eb <- !is.null(confirm_q) || has_empirical_bayes
-  if (is.null(confirm_q))     confirm_q     <- 0.9  # default
-  if (is.null(min_confirm_p)) min_confirm_p <- 0.8  # default
+  if (is.null(confirm_q))  confirm_q  <- 0.9   # default
+  if (is.null(confirm_a0)) confirm_a0 <- 0.25  # default
 
   cons_text <- sprintf(
     paste0(
@@ -770,17 +802,20 @@ generate_report <- function(result,
     eb_text <- sprintf(
       paste0(
         "Following the initial consensus, a single-pass empirical Bayes ",
-        "refinement was applied: for each species confidently identified in at least ",
-        "one observation, the %s%% quantile of the confirming observations' consensus ",
-        "posterior probability was computed; where this exceeded both %s and the ",
-        "species' existing prior in a given unresolved observation, the prior was ",
-        "raised to that value in all remaining unresolved observations, reflecting the ",
-        "confirmed evidence of presence at the site. Posteriors were then recomputed and ",
-        "the consensus algorithm was re-run for the affected observations. This step ",
-        "used only cross-observation evidence (an observation's own posterior was never ",
-        "used to update its own prior)."
+        "refinement was applied: each observation's posterior support for a species ",
+        "was treated as fractional evidence of site-level presence (soft assignment; ",
+        "cf. classification vs. standard EM, Celeux & Govaert 1992). Per species, ",
+        "this support was summed across observations, the target observation's own ",
+        "support excluded, and the total discounted by a power-prior factor of %s ",
+        "to account for non-independence among same-site observations (Ibrahim & ",
+        "Chen 2000). The discounted mass entered a saturating weight that moved each ",
+        "unresolved observation's prior smoothly toward the support-weighted %s%% ",
+        "quantile of per-observation support (never lowering an existing prior), ",
+        "after which posteriors were recomputed and the consensus algorithm re-run ",
+        "for the affected observations. This update is continuous in all inputs ",
+        "(no confirmation threshold) and used only cross-observation evidence."
       ),
-      round(confirm_q * 100, 1), min_confirm_p
+      confirm_a0, round(confirm_q * 100, 1)
     )
     sections <- c(sections, eb_text)
   }

@@ -1,6 +1,819 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-14, continued (Sonnet 5 -- review_flagged_accessions() gains a
+# Last updated: 2026-09-04, fifth pass (Opus 5, branch kernel-priors -- verify_removal_
+# candidates()'s FIRST REAL USE found a false rescue, and the function now shows its work.
+#
+# THE CASE: GreatLakes KJ135626 (Pseudorasbora parva) came back spared = TRUE at
+# max_hits = 100 -- rescued by exactly ONE partner agreeing at species rank. That partner is
+# MZ605481, which diagnostics/reference_accession_ground_truth.csv records as a
+# candidate_mislabel whose real identity is Cyprinus carpio (20 independent carp accessions
+# at 100%, coverage-enforced). KJ135626's own best DISAGREEING hit is also Cyprinus carpio at
+# 100%. Both accessions are almost certainly the same error twice, carp sequence carrying the
+# P. parva name, corroborating each other. review_flagged_accessions() had independently
+# called KJ135626 "genuine_mislabel" at high confidence and was RIGHT; the statistical rule
+# was wrong. KJ135626 was NOT added to any override.
+#
+# THE GENERAL FINDING: congruent_evidence_exists_anywhere counts a corroborator without any
+# notion of whether that corroborator's own label is trustworthy. refine_reference_verdicts()
+# cannot close it -- that mechanism discounts a partner by the partner's OWN verdict, and a
+# corroborator which is merely a BLAST hit, not itself in the screened population, has no
+# verdict to discount. Widening max_hits makes the exposure LARGER, since it admits more
+# potential bad corroborators. A real limit on "audit before removing", not a reason to drop
+# it.
+#
+# THE FIX: verify_removal_candidates() now returns n_corroborators, best_corroborator_rank
+# and corroborators (the strongest few, named, from the audit's own pair sidecar;
+# min_congruent_rank is read out of params_key field 2 so it cannot drift from the run being
+# summarised), and prints a CHECK THESE BY HAND warning naming any row spared on 1-2
+# partners. Re-running the GL audit now names MZ605481 unprompted. New @section "Read the
+# corroborators, not just spared" carries the case.
+#
+# A CORRECTION TO THE PTCONCEPTION RESULT in the third-pass note: OQ846263 was called
+# "corroborated". Precisely, its evidence is 7 INDEPENDENT Bathymasteridae records at 97.6%
+# agreeing at FAMILY rank -- not a conspecific match. Legitimate under the rule's own
+# definition, and 7 independent partners is not a single-source rescue, so the spare stands;
+# but it is weaker than the earlier wording implied, and the contrast with KJ135626 is
+# exactly what the new columns exist to show. The workflow comment was corrected too.
+#
+# ALSO CORRECTED: GreatLakes HAD already been live-run on the v5 path (2026-09-04 09:38) --
+# the reentry doc's "not yet live-run" was stale. GL needs NO workflow change from this
+# audit: NC_028197 is already in the LLM overrides and separately caught by
+# listed_taxon_is_species = FALSE, and KJ135626 should stay removed.
+#
+# `devtools::test()` 1317/1317 (0 failures; 1 pre-existing unrelated warning),
+# `devtools::check()` 0/0/0. NOT reinstalled -- see the session-end apply block.
+#
+# Last updated: 2026-09-04, fourth pass (Opus 5, branch kernel-priors -- the screen's audit
+# trail, and the loader change that made it affordable. Read the second and third passes
+# below first.
+#
+# THE BLOCKER, found before writing any of it: `.load_reference_accession_cache()` discarded
+# an ENTIRE cache file whose columns did not match this version's schema. That is right for a
+# column a verdict depends on, but it meant every additive DIAGNOSTIC column also cost a full
+# re-BLAST of every cached row (~3,239 real rows across four caches) -- the identical price
+# this package had just refused to pay for raising max_hits. In effect a diagnostic column
+# could not be added at all.
+#
+# THE FIX: new `.ADDITIVE_CACHE_COLUMNS`, an explicit allowlist. A missing column ON the list
+# is NA-filled (typed, via new `.na_like()`, so a later rbind cannot coerce); a missing column
+# OFF the list still discards the whole file exactly as before. The criterion is strict and is
+# the whole point: a column qualifies only if NA is a SAFE reading for a row computed before it
+# existed. Most fail -- `congruent_evidence_exists_anywhere` would be catastrophic
+# (`!(NA %in% TRUE)` is TRUE, so an NA-filled row becomes MORE removable), and
+# `n_independent_top_matches` now drives the zero-partner rule. A test asserts that every
+# column on the list genuinely does not move label_confidence or reference_action, so the
+# claim cannot rot. Verified on all four real caches: 1065/1180/280/714 rows in, same out,
+# nothing discarded, with four new columns present and NA.
+#
+# THE AUDIT TRAIL ITSELF, four additive columns:
+#   query_len_submitted  -- bp actually sent to BLAST (NA when never submitted).
+#   query_trim_path      -- "as_deposited" / "primer_match" / "feature_table": WHICH rescue
+#                           produced the submitted query. `.trim_queries_to_amplicon()` now
+#                           carries `attr(out, "trimmed")` per sequence; it was already
+#                           computing that and tallying it into a log line, the same
+#                           "already known, silently discarded" pattern as decline_reason.
+#   n_excluded_same_batch / n_excluded_not_species_resolved -- WHY a hit did not become a
+#                           voting partner. These PARTITION the excluded hits (the
+#                           species-resolution count is conditional on having passed
+#                           independence), so available - both == survivors, and a test pins
+#                           that identity.
+#
+# WHY THE EXCLUSION COUNTS ARE PER-ACCESSION AND NOT EXTRA PAIR-CACHE ROWS: the pair sidecar
+# is what `refine_reference_verdicts()` votes over, and adding disqualified partners to it
+# would risk them being counted as voters -- a real regression for a diagnostic's sake. The
+# question these answer ("what took this accession's partners") is per-accession anyway.
+#
+# THE QUESTION THIS EXISTS TO ANSWER, so it is not re-derived by hand a fourth time: a
+# zero-partner accession previously read `n_independent_top_matches == 0` and nothing else, so
+# "BLAST found nothing" and "BLAST returned a full slate and every hit was the accession's own
+# submission batch" were indistinguishable in the cache. That distinction changes what to do,
+# and it is live: GreatLakes Plate1's zero-partner population is 24 of 27 insufficient rows,
+# dominated by Phoxinus and Etheostoma -- a completely different shape from PtConception's
+# (batch-submitted marine mammals), and the PtCon truncation finding should NOT be assumed to
+# transfer there. These columns will say which filter is responsible on the next GL run.
+#
+# NOTE the columns are NA on every existing cached row by construction -- they populate as
+# accessions are re-evaluated. Nothing was re-BLASTed to add them, which was the point.
+#
+# `devtools::document()` clean, `devtools::test()` 1310/1310 (0 failures; 1 pre-existing
+# unrelated warning in test-convert_taxonomy_backbone.R:931), `devtools::check()` 0/0/0.
+# NOT reinstalled -- see the session-end apply block.
+#
+# Last updated: 2026-09-04, third pass (Opus 5, branch kernel-priors -- three user verdicts
+# taken on the reference-screen thread, all implemented. Read the second-pass note below
+# first; this builds directly on its two findings.
+#
+# (1) ZERO PARTNERS IS NOT A COIN FLIP. `label_confidence` is now NA, and
+# `reference_action` "untested", when `n_independent_top_matches == 0`. Previously such a row
+# scored EXACTLY 0.500 -- `frac` falling back to its 0.5 default with no data behind it, the
+# identity margin NA -- which lands in the "caution" band, so the screen was asserting concern
+# earned by an absence against a base rate of 931 congruent of 989 evaluated. The rule keys on
+# the partner COUNT, deliberately NOT on hierarchy_flag: a 1-2 partner row also reads
+# "insufficient_independent_evidence" but does have evidence, and keying on the verdict would
+# wrongly blank it. Derived post-hoc column, so NO cache invalidation.
+#
+# THE MEASUREMENT BEHIND IT, across four independent real caches (PtCon + three GreatLakes,
+# 153 insufficient rows), where the split is total with ZERO exceptions: all 98 zero-partner
+# rows scored 0.500 and read "caution"; all 55 rows with >= 1 partner had corroborating
+# evidence (congruent_evidence_exists_anywhere TRUE, PtCon median 98.2% identity) and read
+# "keep". Real effect of the change: 98 rows move caution -> untested (PtCon 17, GL goal2 7,
+# GL Plate1 24, GL pilot 50), and PtCon's "caution" band drops 21 -> 4, so it finally means
+# mixed evidence rather than no evidence.
+#
+# (2) NEW EXPORTED `verify_removal_candidates()` -- the pre-removal audit, and the answer to
+# the max_hits question that does NOT invalidate a cache. Re-evaluates ONLY the accessions
+# actioned "remove", at a wider max_hits (default 100), and reports which stop being
+# removable. Zero NCBI calls when nothing would be removed. It compares its own params_key
+# against the production evaluation's and WARNS, naming the differing fields, if anything
+# other than max_hits differs -- a caller who forgets to forward barcode_term gets a
+# meaningless comparison otherwise, and that is the failure this guard exists for.
+# max_hits STAYS AT 20 by user decision: it is in params_key, so raising it would re-BLAST
+# ~3,000 rows across four caches for a screen that has been NCBI-throttled before, and the
+# insufficient-evidence probe showed truncation explains only ~35% of that population anyway.
+#
+# (3) OQ846263 (Rathbunella hypoplecta) SPARED IN PRODUCTION. It was one of only two
+# accessions PtConceptionWorkflow_12S_single_site.R actions as "remove", and at max_hits = 100
+# it is corroborated and drops to "inspect". Added by hand to that workflow's
+# override_accessions as `VETO_AUDIT_SPARED`, with the verify_removal_candidates() call that
+# supersedes the hardcoded vector written out in the comment above it. KM057967 (Jordania
+# zonope) still removes at 100 hits and stays removed -- correctly, it is a genuine singleton
+# (see the 2026-09-03 note on its 5.6%-overlap false corroborator).
+#
+# WHAT IS STILL OPEN, deliberately: 13 of 34 PtCon insufficient rows are saturated at 100
+# hits too, so 100 is not the end of the truncation question -- verify_removal_candidates()
+# reports `still_saturated` per row so a "still removable" verdict from a saturated row is
+# read as the weaker claim it is. The 21 of 34 that gained NO hits when the window quintupled
+# are genuinely thin and no widening will help them.
+#
+# `devtools::document()` clean, `devtools::test()` 1277/1277 (0 failures; 1 pre-existing
+# unrelated warning in test-convert_taxonomy_backbone.R:931, file untouched),
+# `devtools::check()` 0 errors / 0 warnings / 0 notes. NOT reinstalled -- see the session-end
+# apply block.
+#
+# Last updated: 2026-09-04, second pass (Opus 5, branch kernel-priors -- two items from
+# REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md's own suggested direction.
+#
+# (1) NEW hierarchy_flag VALUE "not_evaluated_wrong_marker" (additive; NO cache-version
+# bump, nothing invalidated). `.extract_feature_table_fallback()` already knew WHY it
+# declined to rescue an over-length query and threw that away. It now carries it out as
+# `attr(out, "decline_reason")` -- NA when rescued, else "no_annotation" / "marker_absent" /
+# "span_unusable" / "no_sequence" / "extraction_error" -- and `evaluate_reference_accessions()`
+# reads "marker_absent" to emit "not_evaluated_wrong_marker" instead of
+# "not_evaluated_oversized".
+#
+# The distinction is the point, and it is a cause-vs-symptom one: "oversized" implies a size
+# problem a caller could fix by raising max_query_len, and for a record carrying a DIFFERENT
+# marker no length ever helps -- the accession should not be in the candidate set. The
+# separation is deliberately narrow: only "the record HAS annotated features and none is this
+# marker" earns the new flag. A FAILED annotation fetch stays "oversized", because "we could
+# not look it up" and "it carries a different marker" are different claims and only the second
+# is actionable. Real case: HM561627 (Lasiurus intermedius), 2,657 bp, one feature -- 16S rRNA
+# at 1061-2657 -- in a 12S screen; 1 of 1 oversized accessions on the real 995-accession PtCon
+# run, i.e. 100% of that population.
+#
+# Downstream handling was GREPPED, not assumed, following the "locally_corroborated"
+# precedent: TTL ladder (explicit, 180 days with the other not-evaluated flags -- the
+# wrong-marker claim is relative to THIS call's barcode_term, and an annotation can be
+# corrected upstream, so retryable is the safe direction); `score_reference_labels()` ->
+# "untested" (NOT "inspect" -- that value means "the label evidence is ambiguous", a different
+# question; the cause lives in hierarchy_flag); `.partner_trust_weight()` -> weight 1 (an
+# under-evaluated partner is not evidence the partner is wrong); `remove_incongruent_
+# references()` both gates, `flag_incongruent_references()`, `verify_flagged_references()`,
+# `migrate_reference_cache()` all inert by construction. Each has a test.
+#
+# (2) THE REMOVAL VETO IS TRUNCATION-BLIND -- measured, not suspected.
+# `congruent_evidence_exists_anywhere` is the hard veto that spares an accession from
+# `reference_action == "remove"`, and it is documented as walking the pool "not limited to
+# top_n". It is still limited by `max_hits` (default 20), and on the real PtCon 12S screen
+# 899 of 989 accessions (91%) come back AT that cap -- so "anywhere" has always meant
+# "anywhere in the top 20". NEW diagnostics/veto_truncation_probe.R re-evaluates the
+# veto-critical accessions at max_hits = 100 (own cache dir; max_hits is in params_key so it
+# cannot collide with production). Live result, 15 accessions:
+#   - 'anywhere' flipped FALSE -> TRUE for 8 of 15; reference_action changed for 8.
+#   - OQ846263 (Rathbunella hypoplecta), ONE OF THE ONLY TWO PtCon "remove" accessions,
+#     is no longer removable -- it drops to "inspect". The removal set halves again, 2 -> 1.
+#   - KM057967 (Jordania zonope) still reads "remove" at 100 hits, consistent with this
+#     file's own 2026-09-03 finding that it is a genuine singleton -- so the probe is not
+#     simply flipping everything, which is what makes the OQ846263 result credible.
+#   - 7 of the 8 zero-partner "insufficient" accessions resolved to "congruent" (Stenella
+#     attenuata x5, Homo sapiens x2). So max_hits, NOT the submission-batch independence
+#     filter, was starving them. MH177754 (Gorilla beringei) still reads 0 partners at 99
+#     hits -- that one is genuinely filtered, not truncated.
+#   - Both congruent controls unchanged, as they must be (widening cannot withdraw
+#     corroboration); a control that moved would have meant the probe was unsound.
+#   - CAVEAT, and it matters: all 15 come back at 99-100 hits. 100 is ALSO a truncated
+#     window. This measures that the veto is truncation-sensitive; it does not establish
+#     where the sensitivity ends.
+# NOT ACTED ON: max_hits is in params_key, so raising the default would invalidate every
+# cached row across PtCon and the three GreatLakes caches (~3,000 rows). That is a user
+# decision, not a defensible unilateral one. This entry is the evidence for it.
+#
+# NOT the closed widen-BLAST thread ([[project_widen_blast_unsupported_candidates_closed]]):
+# that measured 0/22 flagged ASVs hitting the cap in the MATCH path, so its evidence says
+# nothing about this function, where saturation is near-universal.
+#
+# `devtools::document()` clean, `devtools::test()` 1256/1256 (0 failures; 1 pre-existing
+# unrelated warning in test-convert_taxonomy_backbone.R:931, file untouched this session),
+# `devtools::check()` 0 errors / 0 warnings / 0 notes. NOT reinstalled -- see the session-end
+# apply block.
+#
+# Last updated: 2026-09-03 (Fable 5.1, branch local-corroboration -- implements
+# ecosystem_docs/REENTRY_PROMPT_local_corroboration_and_primer_stripped_screen.md end to end.
+# Delegated; offline only; live NCBI validation reserved for the user's next window.
+#
+# THE DEFECT: `evaluate_reference_accessions()` BLASTed the primer-INCLUSIVE trimmed span
+# (217 bp for MiFish-U). Under blastn scoring (+2/-3) a 169 bp PERFECT amplicon-only
+# conspecific deposit scores 338 raw against that query, while every full-length relative at
+# >= 93.1% over 217 bp scores >= 359 -- so NCBI's 100-hit list fills with mitogenome relatives
+# and the short perfect match never arrives; `min_query_coverage = 80` would have dropped it
+# anyway (169/217 = 77.9%). Real case: KM057996 (Zaniolepis frenata) actioned "remove" ("no
+# conspecific evidence anywhere in nt") while OQ846041, a 169 bp Z. frenata deposit from 2023,
+# sat in the user's OWN reference_df at 100% over 97% overlap. Live probe
+# (diagnostics/blast_coverage_blindspot_probe.R, user-run 2026-09-03): 217 bp query -> OQ846041
+# absent from 100 hits; the same query primer-stripped (169 bp) -> OQ846041 at rank 2, score 100,
+# coverage 100. Amplicon-only deposits are 33% of PtCon's and 25% of GreatLakes' references, so
+# the whole class was invisible as corroborators.
+#
+# (1) PRIMER-STRIPPED QUERY. `.trim_queries_to_amplicon(strip_primers = TRUE)` (new default)
+# returns subseq(fwd_end + 1, rev_start - 1); the plausibility test stays on the inclusive
+# span so both settings accept the same primer matches. `.resolve_trimmed_span_max(barcode_term,
+# strip_primers=)` is STILL the one length bound -- inclusive minus nchar(fwd)+nchar(rev) --
+# and both the trimmer and the feature-table-fallback caller read the bound for the chosen
+# `query_span`. (Third time this primer-length convention could have been crossed; it is now a
+# parameter of the one definition rather than a second site.) Verified on the real 718 bp
+# KM057996 record: 217 inclusive / 169 stripped; a 169 bp input passes through unchanged; a
+# 217 bp inclusive input re-trims to the same 169. `evaluate_reference_accessions(query_span =
+# c("amplicon", "primer_inclusive"))`, default "amplicon".
+#
+# THIS IS VERDICT-AFFECTING, so per this file's own rule: `.EVAL_REF_ACC_VERSION` ->
+# "v5_amplicon_query" (now file-scope, with its bump history in roxygen) and `query_span` is
+# in `params_key`, which is now built by ONE internal `.build_params_key()` (the function and
+# the migration helper call the same code; `.default_params_key()` reads the defaults off the
+# formals). EVERY existing cached row is therefore invalid, and that is the point of the new
+# exported `migrate_reference_cache(cache_dir, to_key = NULL, from_key = NULL)`: backs the file
+# up as `reference_accession_cache.rds.bak_pre_v5_amplicon_query` (never overwrites an existing
+# backup), rewrites `params_key` ONLY on `hierarchy_flag == "congruent"` rows and stamps
+# `migrated_from`, leaves incongruent/insufficient/oversized under the old key to re-BLAST
+# (PtCon 76 rows, GreatLakes ~123 -- the cheap part, where every actionable verdict lives), and
+# migrates the pair-cache sidecar for the same accessions. Rationale in its roxygen: "congruent"
+# asserts corroborating evidence WAS found; stripping primers only ADDS short-deposit hits and
+# cannot withdraw a match already observed. New `.align_to_cache_columns()` NA-fills the extra
+# `migrated_from` column onto freshly computed rows so the per-chunk rbind does not error on a
+# migrated file (a real footgun the migration test caught).
+#
+# (2) `corroborate_references_locally(seq_matrix, reference_meta, min_overlap = 0.8,
+# min_pident = 0.99, submission_window = 5)` (new file R/local_corroboration.R, exported):
+# free evidence from the workflow's own seq_matrix. Conspecific pairs only, id_x != id_y,
+# **coverage >= min_overlap** (NA coverage FAILS -- stricter than the screen's BLAST-hit rule on
+# purpose: KM057967 Jordania zonope looked corroborated by LC126244 at "100%" over a 5.6%
+# overlap, ~40 bp of a different 12S region; it is a true singleton and its removal stands),
+# independence via the SAME `.build_submission_batch_lookup()`/`.same_submission_batch()` the
+# screen uses (so "independent" means one thing), pairs symmetrised so a triangular or full
+# matrix gives the same answer, version suffixes stripped on both sides. One row per accession:
+# n_conspecific, n_independent_conspecific, best_independent_pident, best_independent_partner
+# (ties broken by id), local_tier in {singleton, same_batch_only, disagree, corroborated}.
+# THRESHOLD: the motivating true mislabel MN883227 (Fundulus luciae, actually a Pacific
+# Fundulus) is corroborated by five independent OR3801xx conspecifics at 0.9814 plus a
+# SAME-DAY sibling MN883226 at 1.0 that must not count -- 98% between "conspecifics" is what a
+# sister-species swap looks like, so 0.99 keeps it screened and 0.98 would skip it. A test
+# pins both readings.
+#
+# (3) `match_driving_accessions(match_df, ...)` (exported): the accessions that are the
+# max-scoring accession of their species for at least one observation (ties kept), minus
+# RESTORED_* provenance rows. A cost filter for the SCREEN, not a change to the match object
+# -- 709 of 995 on PtCon.
+#
+# (4) THE SKIP: `evaluate_reference_accessions(local_corroboration=, skip_locally_corroborated
+# = TRUE)`. A needs-eval accession with local_tier "corroborated" is never fetched or BLASTed;
+# it gets a cache row `hierarchy_flag = "locally_corroborated"` (n_independent_top_matches =
+# n_independent_conspecific, best_agreeing_pident = 100 * best_independent_pident,
+# congruent_evidence_exists_anywhere = TRUE, finest_common_rank = "species", the rest NA),
+# TTL Inf (it asserts evidence WAS found), message "N skipped: independently corroborated in
+# the local reference set". `skip_locally_corroborated = FALSE` BLASTs them AND re-evaluates
+# rows previously cached as skipped (the flag records a decision not to evaluate, not an
+# evaluation); neither param is in params_key. The new flag value is ADDITIVE and NEVER a flag
+# downstream -- grepped, not guessed: TTL ladder (explicit), `remove_incongruent_references()`
+# (both gates, incl. remove_insufficient_evidence = TRUE), `flag_incongruent_references()`
+# (carries the new columns as optional), `verify_flagged_references()` (keep_flags now includes
+# it), `score_reference_labels()` (-> "keep", label_confidence NA: nothing BLAST-side to grade),
+# `.partner_trust_weight()` (weight 1), `review_flagged_accessions()` (not in the default review
+# scope), inst/reference_accession_evaluation_guide.md (documented). Each has a test.
+#
+# (5) VETO + PROVENANCE in `score_reference_labels(local_corroboration=)`, forwarded by
+# `refine_reference_verdicts()`. Four ALWAYS-PRESENT new columns (NA/"none"-filled without a
+# table, so downstream code can rely on them): `corroboration_source` in {blast, local, both,
+# none} (blast = congruent_evidence_exists_anywhere and not a skipped row; local = tier
+# corroborated or the row IS a skipped row), `local_best_independent_pident` (percent),
+# `local_n_independent_conspecific`, `action_reason`. A row resolving to "remove" whose local
+# tier is "corroborated" becomes "inspect", action_reason = "vetoed_by_local_corroboration"
+# (one helper, `.apply_local_veto()`, used by both the plain and the trust-weighted action).
+# `label_confidence` is deliberately LEFT BLAST-ONLY -- the two are kept separable so a reviewer
+# can see them disagree; that disagreement is exactly what found the defect. On the REAL PtCon
+# cache the veto flips exactly one row: KM057996 remove -> inspect; the other three removals
+# (incl. Jordania) stand. `review_flagged_accessions()` adds one additive prompt line per row
+# where the local columns are populated ("local reference set: N independent conspecific(s),
+# best identity X% over >= 80% of the amplicon"; the 80 comes from new param `local_min_overlap`
+# or the `local_corroboration_params` attribute score_reference_labels() leaves), and the
+# review-cache fingerprint folds the local columns in ONLY where non-NA so existing review caches
+# are not invalidated wholesale.
+#
+# DIAGNOSTIC REPRODUCTION: diagnostics/local_corroboration_tiers_ptcon.R now computes its tiers
+# THROUGH the two new functions (devtools::load_all() on the branch) and reproduces the
+# hand-rolled analysis EXACTLY at overlap 0.8 / identity 0.99: never-drives 286 / singleton 554 /
+# same-batch-only 23 / disagree 26 / corroborated 106, driving 709 of 995; BLAST population
+# would fall from 995 to 603. (NC_-prefixed accessions get NA prefix/number under the screen's
+# `^[A-Za-z]+[0-9]+$` heuristic where the old script's regex parsed them -- no tier moved.)
+#
+# ONE PRE-EXISTING INCONSISTENCY FIXED IN PASSING: the purely-cache-served early return in
+# `evaluate_reference_accessions()` skipped BOTH post-hoc derivations, so a fully-cached call
+# returned no `listed_taxon_is_species`, `label_confidence` or `reference_action` (and no
+# run_summary). Removed; the general path handles an empty needs_eval and is the only path that
+# could carry the skipped rows anyway. A test asserts the columns are present on a cache-served
+# call.
+#
+# NOT DONE HERE, by design: `devtools::install()` (user's checklist); live NCBI; wiring the
+# workflow call sites (outside this repo -- the pattern and the ORDERING CONSTRAINT, seq_matrix
+# must exist before the screen, are in the reentry doc); raising max_hits (not needed, Run C
+# ranks the conspecific 2nd of 100); deriving 0.99 from the trained H1 within-species
+# distribution (recorded, not built); any likelihood-side use of these columns (closed twice).
+#
+# `devtools::document()` clean, `devtools::test()` 1228/1228 (0 failures, 0 warnings) (baseline 1046), `devtools::check()`
+# 0 errors / 0 warnings / 0 notes. New test file tests/testthat/test-local-corroboration.R (the three real cases as
+# fixtures, the real 718 bp KM057996 record verbatim, the migration round-trip); two trim tests
+# and one review test updated for the stripped default.
+#
+# SAME DAY, LIVE-VERIFIED (Sonnet 5): installed from the kernel-priors main checkout,
+# `migrate_reference_cache()` run once on all four real cache dirs (PtCon
+# `ptcon_ref_eval_cache` 919 congruent carried/76 left; GreatLakes goal2_screen 1048/12,
+# Plate1 249/31, pilot 610/80 -- all backed up as `.bak_pre_v5_amplicon_query`), then
+# `PtConceptionWorkflow_12S_single_site.R` step 7a.10 run LIVE against real NCBI. Result
+# on the 709-row driving-accession subset: `hierarchy_flag` congruent 651/incongruent
+# 5/insufficient 34/locally_corroborated 18/oversized 1; KM057996 (the motivating
+# Zaniolepis frenata case) confirmed no longer removed -- caught by the skip BEFORE any
+# BLAST call, not merely vetoed. The two "expected" counts from the reentry doc
+# (~106 skipped, ~76 re-BLASTed) both reconcile exactly once you account for the
+# `match_driving_accessions()` population filter (995 -> 709, so only 70 of the 76
+# leftover rows were in scope) and for `corroboration_source`: 88 rows read `"both"`
+# (already had a valid BLAST-congruent cache row carried forward by the migration, so
+# they never reach the skip branch at all) + 18 read `"local"` (freshly skipped this
+# call) = 106, the diagnostic's own count. **Read this split before concluding a future
+# run "skipped too few" -- `hierarchy_flag == "locally_corroborated"` alone undercounts
+# total corroborated evidence; add `corroboration_source %in% c("local","both")`.**
+# GreatLakes (7a.6) and Mugu are migrated but NOT YET live-run -- full detail, including
+# what to check first on that run (driving-accession population, the same
+# corroboration_source split, which of the three GL cache dirs is in play, Mugu's
+# first-ever cache-free run) is in the reentry doc's own updated Status section.
+# `devtools::test()` re-run after install: 1228/1228, 0 failures/warnings.
+#
+# Previous update, 2026-09-02, third pass (Opus 5, branch kernel-priors -- the reference-quality
+# LIKELIHOOD COVARIATE was built, validated, and then REMOVED at the user's direction. Read
+# this before proposing it again.
+#
+# WHAT WAS BUILT AND DELETED: `TaxaLikely::evaluate_likelihoods(reference_quality_col=)` (a
+# per-candidate sigma widening driven by reference quality, emitted as
+# `score_likelihood_refq`) plus a `label_quality` column here to feed it. `TaxaLikely/R/
+# evaluate.R` is now byte-identical to its pre-session state; `label_quality` and
+# `.label_confidence_ceiling()` are gone from this package. NOTHING in either package
+# consumes reference quality as a likelihood input any more.
+#
+# WHY, so nobody rebuilds it: (1) a 2026-08-08 Opus consult had ALREADY closed this idea
+# ([[project_mislabel_probability_weighting_closed]]), predicting a ~1% effect and
+# sigma-widening "structurally blocked by a mechanism already shipped" -- the crossover
+# gate. The 2026-09-02 measurement confirmed that prediction on independent machinery.
+# (2) The effect is structurally sparse: dubious references are ~1-8% of accessions;
+# `remove_incongruent_references()` DELETES the worst of them, cannibalising exactly the
+# target population; the gate only fires on tail matches, and a query matching a dubious
+# reference WELL is near the mean by definition. (3) The validation's help side was real
+# but small (20 observations) and the safety side essentially untested -- only 5
+# ground-truth observations could possibly have been hurt.
+#
+# ONE FINDING WORTH KEEPING from that work: `label_confidence` is a probability and CANNOT
+# REACH 1 (Jeffreys floors the disagreement fraction at 0.5/(n+1), the identity margin is
+# capped), so a perfectly corroborated 5-partner reference scores 0.99939. That is correct
+# for a human-facing probability, but any FUTURE consumer that reads the value as a ratio
+# where 1 means "no adjustment" must normalise by the per-row achievable ceiling first --
+# otherwise it silently adjusts every candidate in the dataset. That is what went wrong the
+# first time, and the fix is recorded in the reentry doc rather than carried as code.
+#
+# WHAT REMAINS SHIPPED HERE (unaffected): `score_reference_labels()`'s `label_confidence`,
+# `label_identity_margin` and `reference_action`; `remove_incongruent_references(gate=)`;
+# `refine_reference_verdicts()` and the pair-table sidecar cache; `incongruent_ttl_days`.
+#
+# `devtools::test()` and `devtools::check()` re-run clean after the removal.
+#
+# Previous update, 2026-09-02, later the same day (Opus 5, branch kernel-priors -- two fixes
+# that both came out of RUNNING diagnostics/partner_trust_small_test.R against live NCBI.
+#
+# (A) `"incongruent"` NOW HAS A TTL -- new `incongruent_ttl_days` (default 30). It was
+# cached indefinitely on the reasoning that an accession's own sequence and label don't
+# change once deposited. True, and irrelevant: the verdict is not a property of the
+# accession, it is a property of what BLAST returned about the accession's NEIGHBOURHOOD,
+# and that changes. Measured, not hypothesised: `OP056918` (Cryptacanthodes maculatus)
+# read `"incongruent"` with no corroboration anywhere on 2026-09-01 and `"congruent"` with
+# four conspecific hits at 100% on 2026-09-02, under an IDENTICAL params_key. Under the old
+# policy that first, wrong verdict would have been served from cache forever -- and it is
+# the one verdict `remove_incongruent_references()` acts on DESTRUCTIVELY.
+#
+# The TTL is now per-flag, and the asymmetry follows what each verdict CLAIMS, which is the
+# part worth remembering: `"congruent"` asserts corroborating evidence WAS FOUND and is
+# still cached forever (nothing a later BLAST returns can withdraw a match already
+# observed); `"incongruent"` asserts it was NOT found -- a statement about ABSENCE, and
+# absence is exactly what later evidence overturns; `insufficient_*`/`not_evaluated_*` mean
+# "we don't know yet" (180 days, unchanged). 30 << 180 deliberately, and the number is
+# load-bearing rather than arbitrary -- see (C) below: what goes stale underneath the verdict
+# is NCBI's `nt` SNAPSHOT, rebuilt on the order of days to weeks, so a TTL much longer than
+# the rebuild interval would defeat the purpose. `"incongruent"` is also ~1% of a real
+# population (12 of 995 on PtCon), so it is simultaneously the most valuable and the cheapest
+# recheck available. `incongruent_ttl_days = Inf` restores the old policy. TTLs stay OUT of
+# params_key -- changing one must never invalidate a cache.
+#
+# (C) WHAT ACTUALLY GOES STALE -- settled the same day by
+# diagnostics/blast_verdict_repeatability_probe.R (new), so nobody re-derives it. Three
+# back-to-back replicates of all 12 PtCon "incongruent" accessions, each into a fresh cache:
+# IDENTICAL verdicts, identical diagnostics, and identical hit sets -- Jaccard 1.000, not one
+# partner accession differed anywhere (14-20 partners each). So BLAST is EXACTLY REPRODUCIBLE
+# at a fixed params_key; within-run nondeterminism and CPU-pressure degradation are both
+# dead as explanations. The corroborating records' GenBank create- AND update-dates are both
+# months earlier (Jan/Apr 2026), so they were not newly released either.
+#
+# The surviving explanation: NCBI's `nt` is a periodically-rebuilt SNAPSHOT, not the live
+# nuccore database. A record public in Entrez since January need not be in the `nt` volume
+# BLAST searches until a rebuild includes it. Not retrospectively provable (there is no way
+# to ask what `nt` held on 09-01), but it fits every observation.
+#
+# THIS REFRAMES THE WHOLE FINDING: there is NO correctness bug in this pipeline. Both
+# verdicts were correct given the database each was computed against; the 09-02 run is the
+# screen getting BETTER. That makes the TTL the right fix rather than a mitigation -- what
+# goes stale is precisely the snapshot the verdict was computed against. One caveat worth
+# the DEFAULT: `nt` rebuilds run days-to-weeks, so the TTL is 30 days, not 90 and certainly
+# not the 180 of the "we don't know yet" flags -- a TTL far longer than the rebuild interval
+# would keep serving a stale "incongruent" long after the overturning evidence became
+# searchable, the exact failure the TTL exists to prevent. A test pins the default so a
+# future change to it is a deliberate one.
+#
+# (B) THE `still_over` MISCALIBRATION -- the 2026-09-01 feature-table-fallback caller tested
+# an already-primer-trimmed query against `resolve_barcode_lengths()$max_bp`.
+# `.trim_queries_to_amplicon()` returns a primer-INCLUSIVE span (211-233 bp for MiFish-U);
+# `max_bp` reports the variable region EXCLUDING primers (130-210 bp). THOSE WINDOWS ARE
+# DISJOINT, so every correctly-trimmed query was called "still over-length" -- 100% of them,
+# by construction. That is what produced the impossible log line pair "extracted the
+# amplicon from 40 of 40 over-length" followed by "feature-table fallback rescued 40 of 40
+# still-over-length". Measured on the real 15-accession set: 13 of 15 misclassified before,
+# 1 of 15 after (the one genuine primer-extraction failure the fallback exists for).
+#
+# THIS IS THE SAME BUG TWICE. `.trim_queries_to_amplicon()` was itself fixed for this exact
+# primer-length miscalibration on 2026-08-10 (its own comment: using min_len/max_len
+# directly "rejected every real, correctly-found MiFish-U hit as implausible (221 > 210) --
+# a systematic ~11bp miscalibration ... the root cause of a real 92/92 extraction failure").
+# The 2026-09-01 caller had no way to know the two length conventions differed and
+# reintroduced it. The remedy is therefore structural, not a patched comparison: new
+# `.resolve_trimmed_span_max()` is the ONE definition of "how long may a correctly trimmed
+# query be", and BOTH sites now read it.
+#
+# Second, smaller fix in the same area: `.extract_feature_table_fallback()` now returns NULL
+# when the annotated span does not FIT the sequence in hand (`span_hi > seq_len`). Feature
+# coordinates describe the full deposited record; handed an already-trimmed 217bp query the
+# clamp silently degraded to `substr(seq, 1, 217)` -- returning the input UNCHANGED while
+# still counting itself a rescue. That is why the log claimed 40 rescues it had not
+# performed.
+#
+# IMPORTANT SCOPE LIMIT: fix (B) does NOT change what is submitted to BLAST. Verified
+# directly -- the fallback was returning the trimmed sequence unchanged, so the correct
+# ~217bp amplicon always went out. It removes a wasted NCBI annotation round-trip per chunk
+# (in a mechanism whose entire purpose is conserving NCBI budget) and makes the log honest.
+# IT DOES NOT EXPLAIN THE VERDICT INSTABILITY. That remains open -- see
+# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md.
+#
+# `devtools::test()` 1044/1044 (0 failures, 0 warnings), `devtools::check()` 0/0/0.
+#
+# Previous update, 2026-09-02 (Opus 5, branch kernel-priors -- implements Threads 1 and 2 of
+# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md; Thread 3
+# lands in TaxaLikely, see its own CLAUDE.md. New file `R/reference_label_verdict.R`.
+#
+# THE PROBLEM, restated: `hierarchy_flag` is a MAJORITY VOTE over the top-N independent
+# neighbours in which percent identity never appears. In a thinly-covered clade the top
+# neighbours are cross-family by construction, so a correct reference whose own conspecific
+# matches at 100% still reads `"incongruent"` -- the documented Stereolepis false-positive
+# mode. Measured on the real 995-accession PtConception screen: 12 `"incongruent"`
+# accessions touching 1,688 observations, of which only 4 (16 observations) had no
+# corroborating evidence anywhere; the rest included cabezon (`OK172573`, 1,120
+# observations, agreeing hit at 100%). The identity diagnostics that separate the two
+# groups have existed since 2026-08-07 and NOTHING consulted them.
+#
+# (1) `score_reference_labels()` (new, exported) -- adds `label_confidence` (numeric,
+# HIGH = the label is more likely CORRECT; named for its direction rather than following
+# the `*_risk` convention, deliberately), `label_identity_margin`, and `reference_action`
+# (`"keep"`/`"caution"`/`"inspect"`/`"remove"`/`"untested"`). Evidence and action are
+# separate columns, this ecosystem's own precedent (TaxaFlag's `observation_validity`
+# numeric + `validity_flag` categorical). The formula is a log-odds sum of the existing
+# Jeffreys vote and the identity margin: `logit(lc) = logit(1 - frac) + d/margin_scale`,
+# where `d` = best agreeing pident (falling back to the anywhere-pool's) minus best
+# disagreeing, capped at +/-5. `margin_scale` (default 1: one percent-identity point per
+# log-odds unit) is the ONE free parameter and is a stated convention, not a fit --
+# registered as such. `"remove"` carries TWO HARD VETOES: only `"incongruent"` is
+# removable at all, and corroborating evidence anywhere spares the accession however low
+# its number. On the real PtCon cache this yields exactly the user-approved 4-remove /
+# 8-spare split, all 919 congruent at `"keep"`.
+#
+# CACHE-SAFE BY CONSTRUCTION: all three columns are a PURE FUNCTION of columns already in
+# the persistent cache, derived post-hoc at the end of `evaluate_reference_accessions()`
+# (the same trick `listed_taxon_is_species` already uses). No `.EVAL_REF_ACC_VERSION` bump,
+# no re-BLAST, and the existing PtCon/GreatLakes caches gain them instantly. Changing
+# `margin_scale` costs nothing.
+#
+# (2) `remove_incongruent_references(gate = c("action", "flag"))` -- the DEFAULT is now the
+# evidence gate. This supersedes the hand-rolled `.ev_spared` block added to both workflow
+# call sites earlier the same day; that block is DELETED from both, so there is one
+# definition of the rule. `gate = "flag"` restores the pre-2026-09-02 behaviour and is what
+# the 9 pre-existing tests that build minimal `accession`/`hierarchy_flag` fixtures now
+# pass explicitly. `gate = "action"` on an evaluation lacking `reference_action` derives it
+# via `score_reference_labels()`; an evaluation lacking even the diagnostics errors loudly
+# naming `gate = "flag"` -- never a silent fallback, which would remove ~3x more than asked.
+# `flag_incongruent_references()` carries the new columns when present (optional, not
+# required -- a pre-2026-09-02 cache read off disk still joins fine).
+#
+# (3) THE PAIR TABLE (Thread 1's prerequisite, and the finding the reentry doc missed):
+# the individual votes behind `frac_independent_below_min_congruent_rank` were built,
+# summarised, and DISCARDED -- so no verdict could ever be recomputed without a fresh
+# BLAST. `.compute_hierarchy_congruence()` now carries them out via `attr(out,
+# "pair_table")` and `evaluate_reference_accessions()` persists them to a SIDECAR
+# `reference_pair_cache.rds` (a separate file, not folded into the strictly-one-row-per-
+# accession main cache), written on the same per-chunk schedule. `pair_finest_common_rank`
+# is stored rather than the derived `below_min_congruent` boolean, so a stored pair table
+# stays reusable at a different `min_congruent_rank`.
+#
+# (4) `refine_reference_verdicts()` (new, exported) -- the trust-weighted fixpoint. Each
+# partner's vote is scaled by its own `label_confidence`; iterates to a fixpoint with an
+# iteration cap. DETERMINISTIC by construction: a Jacobi sweep (every accession updated
+# simultaneously from the previous iteration's state, never Gauss-Seidel) plus an id_y
+# tie-break in the top_n slice. CASCADE GUARD, in `.partner_trust_weight()`: only a
+# confident removal is silenced (weight 0); an `"incongruent"` partner is discounted only
+# in proportion to its own confidence; `"insufficient_independent_evidence"` /
+# `"not_evaluated_oversized"` / never-evaluated partners are NEVER discounted -- "we have
+# not gathered enough evidence about this partner" is not evidence the partner is wrong.
+# A `"congruent"` partner is not discounted either, and that is deliberate: the weighted
+# partner count is compared against `min_independent_partners`, so shaving every ordinary
+# partner to 0.999 would flip an accession with exactly three of them to
+# `"insufficient_independent_evidence"` on rounding alone. Verdicts arrive as parallel
+# `*_trust` columns; nothing is overwritten.
+#
+# HONEST RESULT ON THE MOTIVATING CASE: `Askoldia variegata` (`MT627596`) is the
+# disagreeing partner in 4 of the 12 PtCon `"incongruent"` verdicts, and the user's
+# framing was that an unvetted reference is voting local species toward deletion. Its own
+# row reads `"insufficient_independent_evidence"` with a 100% agreeing hit and nothing
+# disagreeing -- `label_confidence` 0.999. So the cascade guard correctly does NOT discount
+# it: it is an under-evaluated partner, not a likely error, and the disagreement it
+# registers is a real family-level distinction in a thin clade. The mechanism is right; this
+# particular accession was not the culprit it looked like.
+#
+# TESTING: new `tests/testthat/test-reference-label-verdict.R` (30 tests) covers the formula
+# against the REAL PtCon numbers (the fixture IS the 12 incongruent rows' actual values),
+# both vetoes, threshold robustness, order-independence, the cascade guard, the pair-table
+# attribute, and pair-cache round-trip/schema rejection. `devtools::test()` 1027/1027,
+# 0 failures. `diagnostics/partner_trust_small_test.R` (new) is the small-subset live-NCBI
+# exercise the user asked for in place of a full re-BLAST: two BLAST stages (the 12 flagged
+# accessions, then the partners that actually voted against them -- previously unknowable,
+# only the disagreeing taxon's NAME was ever stored), then the fixpoint over the union.
+#
+# STILL OPEN: no existing cache has pair rows, so `refine_reference_verdicts()` is a
+# documented no-op on PtCon/GreatLakes until those accessions are re-evaluated. The full
+# re-BLAST is postponed by the user's own decision.
+#
+# Previous update, 2026-09-01 (Sonnet 5, branch ncbi-screen-robustness -- implements
+# ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md end to
+# end: the four mechanisms the reentry doc specced to stop long/unrescuable query
+# sequences from eating `evaluate_reference_accessions()`'s NCBI CPU budget and stalling
+# real PtConception runs. Delegated by the user; live NCBI validation deliberately
+# reserved for their next window -- everything below is offline-verified only.
+#
+# (1) Feature-table-guided extraction fallback (the main fix) -- new
+# `.extract_feature_table_fallback()` (`R/trim_query_to_amplicon.R`): when
+# `.trim_queries_to_amplicon()` leaves a query over-length (primer sites not found),
+# this checks the accession's OWN annotated GBSeq feature table for a `/gene`/`/product`
+# qualifier matching the marker `barcode_term` implies, and extracts that feature's
+# coordinate span (+/- a 100bp margin) instead of submitting the full record. Reuses
+# `check_marker_mismatch()`'s existing fetch/matching internals directly -- no second
+# fetcher, no new qualifier vocabulary, per the reentry doc's explicit instruction.
+# `.fetch_marker_annotation()` (`R/check_marker_mismatch.R`) gained two new columns,
+# `feature_from`/`feature_to` (parsed from `GBFeature_intervals/GBInterval`, min/max
+# across intervals) -- additive; `check_marker_mismatch()` itself never reads them, so
+# its own behavior and tests are byte-unchanged. A small new bridge,
+# `.resolve_expected_marker()`/`.MIFISH_STYLE_TO_MARKER`, maps MiFish/Teleo-style
+# `barcode_term` primer-SET names (which never literally contain "12S") onto
+# `.resolve_marker_pattern()`'s own existing marker vocabulary -- every other
+# `barcode_term` value (`"18S_2"`, `"COI-Leray"`, etc.) already resolves via that
+# function's own substring fallback, unchanged. Extraction uses plain `substr()` (GenBank
+# feature coordinates index directly into `GBSeq_sequence`, 1-based inclusive) -- no
+# `Biostrings` call needed for this step, and deliberately does NOT reverse-complement a
+# minus-strand feature, since `blast_sequences()` never sets an explicit strand and
+# already searches both regardless (documented explicitly in the new function's own
+# roxygen, not silently assumed).
+#
+# Found and fixed a real bug while writing this function's own tests (not caught by
+# manual review): `return(NULL)` inside a bare `tryCatch({...})` block with no wrapping
+# function of its own returns from the ENCLOSING FUNCTION in R, not just supplies the
+# tryCatch expression's value -- the first draft's "no match" and "out-of-bounds span"
+# early-outs were each returning `NULL` from `.extract_feature_table_fallback()` ITSELF,
+# silently abandoning every remaining accession still to be processed in that call's
+# loop the moment the first non-rescuable one was hit. Fixed by wrapping the per-
+# accession extraction logic in its own local `extract_one()` closure inside the
+# `tryCatch()`, so `return(NULL)` only ever exits that one accession's own attempt. 3
+# tests caught this immediately (each expecting an unchanged sequence back got `NULL`
+# for the whole function instead) -- flagging this pattern in case it recurs elsewhere
+# in this codebase's other bare-`tryCatch({...break-out-of-loop...})` call sites.
+#
+# (2) Hard submission cap -- new `max_query_len` param (default `NULL`, resolving to
+# `10x` the marker's own `amplicon_range` upper bound when `barcode_term` is supplied,
+# else a flat `5000`; `Inf` disables). After BOTH rescue strategies, a query still over
+# `max_query_len` is NEVER submitted to BLAST -- gets a real cached row instead, new
+# `hierarchy_flag` value `"not_evaluated_oversized"`, every diagnostic column `NA`. This
+# is the contract revision the reentry doc called for: the pre-existing "never discards
+# or errors, only shortens or leaves unchanged" contract is honored EXPLICITLY (a
+# labeled, TTL-retryable non-result -- same asymmetric TTL treatment as
+# `"insufficient_independent_evidence"`, so a later annotation/primer fix or a raised
+# `max_query_len` can rescue it), not silently (never just BLASTed at full length
+# unconditionally, the prior behavior). Verified downstream: `flag_incongruent_
+# references()`/`remove_incongruent_references()` never pattern-match this new value as
+# a flag (`remove_insufficient_evidence = TRUE` only ever adds
+# `"insufficient_independent_evidence"` to what's removed, never the new verdict --
+# confirmed by a dedicated test, not just read). `verify_flagged_references()`'s
+# whitelist-based `keep_flags` also naturally excludes it by default, identical to how
+# `"insufficient_independent_evidence"` is already excluded unless
+# `trust_insufficient_evidence = TRUE` -- no code change needed there, verified by
+# inspection.
+#
+# (3) Length-aware BLAST batching -- `blast_sequences()`/`.blast_remote()` gain
+# `max_batch_bp` (default `100000L`). New internal `.split_batches_by_length()`
+# (`R/blast_sequences.R`) replaces the old count-only `split(seq_len(n),
+# ceiling(seq_len(n)/batch_size))` in both the initial batch plan and the halved-batch-
+# size retry pass: a batch closes on EITHER the count cap or a cumulative-bp cap,
+# whichever comes first, and any single query at or above half of `max_batch_bp` rides
+# ALONE (closing whatever batch was accumulating first). `Inf` restores the exact old
+# count-only behavior (confirmed byte-identical to the old `split()` call via a dedicated
+# test). Existing circuit-breaker/failed-batch bookkeeping is completely untouched --
+# `.split_batches_by_length()` only changes what goes INTO each batch index, not how
+# batch failures are counted or retried.
+#
+# (4) Retry-priority ordering + retry switch -- `evaluate_reference_accessions()` gains
+# `prioritize_uncached` (default `TRUE` -- reorders `needs_eval` so never-before-cached
+# accessions are evaluated before expired `"insufficient_independent_evidence"`/
+# `"not_evaluated_oversized"` retries; the ONE new default that changes existing
+# behavior, deliberately, since it's a pure processing-order change that never alters
+# which accessions end up evaluated) and `retry_insufficient` (default `TRUE`; `FALSE`
+# serves an expired capped row from cache AS-IS instead of retrying it this call --
+# directly answers the fastpath header's documented complaint that a call meant to be
+# purely cache-served still "RETRIES insufficient accessions every call, so even a
+# cache-served run grinds against the throttle").
+#
+# Cache-version discipline (binding constraint, re-verified before shipping): NONE of
+# the four new `evaluate_reference_accessions()` params (`max_query_len`, `max_batch_bp`,
+# `prioritize_uncached`, `retry_insufficient`) were added to `params_key`, and
+# `.EVAL_REF_ACC_VERSION` was NOT bumped -- worked through explicitly, not just asserted:
+# `params_key` is one global string applied uniformly to every cached row (the same
+# 2026-08-11/13 precedent this file already documents), so adding a new token to it would
+# have changed EVERY row's own key regardless of whether the new param's actual value
+# differed, forcing a full re-BLAST of the real ~1,163-row GreatLakes/PtConception cache
+# on the very next call -- exactly the outcome this whole feature exists to prevent. All
+# four instead behave like the pre-existing `chunk_size`/`max_consecutive_batch_failures`
+# precedent: call mechanics/scheduling policy, not verdict-affecting inputs, so changing
+# them between calls never invalidates an already-`"congruent"`/`"incongruent"`-cached
+# row (confirmed by a dedicated regression test). `"not_evaluated_oversized"`'s own TTL-
+# based retryability does the real work of letting a later `max_query_len` change
+# eventually reach an already-cached oversized row, without needing a global key bump.
+#
+# 64 new offline tests (950 total, up from 886): `.split_batches_by_length()` (count-cap
+# parity with the old `split()`, bp-cap-closes-before-count-cap, solo-ride isolation, NA-
+# length handling, `blast_sequences()` end-to-end batch-plan verification via a mocked
+# `.blast_submit()`), `.extract_feature_table_fallback()`/`.resolve_expected_marker()`
+# (match/no-match/no-annotation/degenerate-span/fetch-failure cases, plus the full
+# `evaluate_reference_accessions(barcode_term=)` integration path), `max_query_len`
+# (oversized defer + never-BLASTed, `Inf` disables, cache round-trip with TTL retry,
+# downstream flag-safety), `prioritize_uncached`/`retry_insufficient` (evaluation-order
+# proof via a call-order-recording mock, `FALSE` preserves caller order, zero-new-NCBI-
+# call proof for a purely cache-served run, a genuinely-new accession still evaluates
+# normally), and the params_key-exclusion regression test above. `devtools::document()`
+# clean, `devtools::test()` 950/950 (0 failures, 0 warnings), `devtools::check()`
+# 0 errors/0 warnings/0 notes. NOT reinstalled -- per the reentry doc's own constraint
+# (`devtools::install()` explicitly out of scope for the implementing agent) and this
+# ecosystem's restart/install/un-cache/library checklist convention, installation is left
+# to the user's own next session; exact re-run instructions (including that the
+# persistent accession cache needs NO clearing) are appended to the reentry doc's own
+# Status section.
+# Previous update, 2026-08-30 (Sonnet 5 -- real production crash fixed in
+# .trim_queries_to_amplicon()/.extract_amplicon_one_tm() (R/trim_query_to_amplicon.R),
+# found live: `evaluate_reference_accessions(barcode_term = "MiFishU")` on a real
+# PtConception 995-accession screen crashed chunk 1/5 (200 accessions) with a bare
+# IRanges "Invalid sequence coordinates" error from `Biostrings::subseq()`, killing the
+# whole chunk on one bad accession -- 101 accessions from earlier calls stayed safely
+# cached, but the in-flight chunk's progress was lost entirely, with no way to identify
+# or skip just the offending accession. Root cause not fully pinned to a single
+# reproducible trigger (the coordinate math in `.extract_amplicon_one_tm()` is
+# structurally supposed to keep `fwd_start`/`rev_end` within the subject sequence's own
+# bounds, since both come from `Biostrings::matchPattern()` hits on that same subject --
+# but real production data hit an inconsistent state regardless). Fixed at both layers,
+# per this function's own already-documented "never discards or errors, only shortens or
+# leaves unchanged" contract: (1) an explicit bounds/ordering guard
+# (`fwd_start < 1L || rev_end > seq_len || fwd_start > rev_end`) before the `subseq()`
+# call, converting an invalid span into the same "primers not found" outcome an ordinary
+# no-match already gets; (2) a `tryCatch()` around each per-accession call inside
+# `.trim_queries_to_amplicon()`'s loop, so ANY unforeseen extraction error (not just the
+# specific coordinate case the guard targets) degrades to leaving that one sequence
+# untrimmed rather than aborting the whole batch -- restoring genuine per-accession
+# isolation, matching the same pattern already used elsewhere in this file for fetch
+# failures. New regression test
+# (`test-trim-query-to-amplicon.R`, ".trim_queries_to_amplicon() isolates a per-accession
+# extraction error instead of crashing the whole batch") mocks `.extract_amplicon_one_tm()`
+# to throw on the first of two sequences, confirming the first is left untrimmed and the
+# second is still processed normally. No cache-version bump needed -- the only behavior
+# change is that a previously-crashing (never-cached) accession now succeeds; every
+# already-cached row is unaffected. `devtools::test()` 886/886 (0 failures, 0 warnings, up
+# from 883), `devtools::check()` 0/0/0, reinstalled and verified at
+# `~/Library/R/4.0/library` (`Built` timestamp 2026-08-31 01:52:40 UTC). The user's blocked
+# PtConception `evaluate_reference_accessions()` run (995 unique accessions, 101 already
+# cached) can now be safely re-run from where it left off -- the persistent cache means
+# the 101 cached accessions won't be re-BLASTed.
+# Previous update, 2026-08-21, continued (Sonnet 5 -- convert_taxonomy_backbone()'s rank-
+# collapse fix (this file's own entry directly below) was verified against a REAL re-run of
+# the GreatLakes2023 production workflow and still found 33 stale `taxon_name = "Ictalurus"`/
+# `taxon_name_rank = "species"` rows -- the first fix was real but INCOMPLETE, not a stale-
+# cache artifact as first suspected. Root-caused a SECOND, structurally different failure
+# mode by reading the real query's own `taxonomy_collision` column directly
+# (`"backbone_4[species]"` -- i.e. FOUND in NCBI, species column flagged CHANGED) rather than
+# guessing: NCBI's own taxonomy database genuinely contains real leaf-level nodes for
+# informally-named specimens (e.g. `"Ictalurus sp. UM 105-1789"`), RANKED "species" BY NCBI
+# ITSELF -- `found_mask = TRUE`, `matched_rank` genuinely IS `"species"` (fully backbone-
+# consistent, so the existing `matched_rank`-driven correction correctly does nothing at
+# all), but the classification path's own species-rank VALUE is that same informal label,
+# which `clean_taxon_names()` correctly collapses to `"Ictalurus"` when building
+# `target_species`. No rank-MISMATCH-based correction (the original mechanism, or the
+# not-found-only fix below) can ever see this -- the backbone's own rank claim is genuinely
+# self-consistent; only the collapse signal itself reveals the problem.
+#
+# Generalized the not-found-only fix into ONE unified mechanism (replacing it, not adding a
+# third parallel block) covering all three sources that can populate `taxon_name`: (A) a
+# found row using its own rank's `target_<rank>` value directly (the newly-discovered case --
+# `target_collapsed_mat`, threaded through the same `target_<rk>` construction loop that
+# already builds `target_<rk>` itself, tracks `collapsed_to_genus` per rank/row); (B) a found
+# row falling back to `matched_name_clean` (its own `collapsed_to_genus` now consulted too,
+# though not yet observed triggering on real data); (C) the original not-found fallback case.
+# Whichever source actually produced the final value is the one consulted -- never mixed
+# across cases. Considered and explicitly REJECTED a shape-based re-derivation instead (e.g.
+# `TaxaTools::is_plausible_binomial()` on the final value) -- that function's binomial regex
+# requires a literal space immediately after the genus token, which a real hyphenated genus
+# (*Pseudo-nitzschia*, already a real fixture elsewhere in this ecosystem's test suite) fails,
+# which would have wrongly demoted every hyphenated-genus species row; a dedicated regression
+# test (`Pseudo-nitzschia australis`, found=TRUE, nothing collapsed) confirms the shipped
+# collapse-tracking approach does NOT make this mistake.
+#
+# Live end-to-end re-verified against the INSTALLED package for BOTH real cases side by side:
+# the not-found open-nomenclature case (unchanged from the first fix) and this new found-but-
+# placeholder-species-node case both correctly resolve to `taxon_name = "Ictalurus"`,
+# `taxon_name_rank = "genus"`, `species = NA`. 2 new tests added to the 6 from the first fix
+# (8 total this session): the real found-case placeholder-node demotion, and the
+# *Pseudo-nitzschia* false-positive regression guard. `devtools::test()` 883/883 (0 failures,
+# up from 876), `devtools::check()` 0 errors/0 warnings/0 notes, reinstalled and verified at
+# `~/Library/R/4.0/library`.
+# Previous update, 2026-08-21 (Sonnet 5 -- convert_taxonomy_backbone() gains a SECOND,
+# genuinely separate rank-correction mechanism for NOT-found rows, closing what was AT THE
+# TIME believed to be the full root cause of a real "Ictalurus" bug found live-debugging real
+# GreatLakes2023 production data -- see the entry directly above for the second, structurally
+# different case found when this fix was verified against a real re-run and only partially
+# held (see TaxaTools/CLAUDE.md's matching 2026-08-21 note for the full chain-of-functions
+# investigation this session did before writing any fix, per the user's explicit "does not
+# require repeated post-hoc fixes" instruction). Real bug: 33 real `match_obj_restored` rows
+# had `taxon_name = "Ictalurus"` (a bare genus) but `taxon_name_rank = "species"` -- a bare
+# genus silently treated downstream as if it were a real species (e.g.
+# `TaxaExpect::generate_regional_proximity_evidence()`'s GBIF species-rank lookup would
+# have resolved the GENUS's own key, a separate bug already fixed 2026-08-21 elsewhere in
+# TaxaExpect as a downstream safeguard, not the root cause).
+#
+# The EXISTING rank-correction mechanism (2026-07-25, "Inu Inu" fix, still unchanged) only
+# ever fires for a row the target backbone actually FOUND, just at a coarser rank than
+# claimed (driven by `verify_taxon_names()`'s `matched_rank`). "Ictalurus cf. pricei
+# USON-01120-1" -- a real, restored candidate's raw reference-row species value, a specimen-
+# voucher-tagged open-nomenclature label -- fails an exact-name backbone lookup entirely
+# (`found_mask = FALSE`), a genuinely different code path with no prior coverage. This
+# function's OWN not-found fallback already correctly collapses `taxon_name` to
+# "Ictalurus" via `TaxaTools::clean_taxon_names()` (a pre-existing 2026-07-24 fix), but had
+# no way to know a collapse had happened, so `taxon_name_rank` stayed stale.
+#
+# Fix (superseded/generalized by the entry above the same day): uses `TaxaTools::
+# clean_taxon_names()`'s new `collapsed_to_genus` attribute (same-day companion fix, see
+# TaxaTools/CLAUDE.md) on the not-found fallback value.
+#
+# Grepped the whole monorepo for other `clean_taxon_names()` call sites that build a
+# `taxon_name`/`taxon_name_rank` pair the same vulnerable way (assigning a cleaned name
+# without ever touching the rank column) -- several exist (`TaxaAssign_llm_workflow.R`,
+# `inst/TaxaID_Workflow_Template_TEST.R`, several TaxaWizard snippets), but none of them sit
+# between a restored/derived candidate row and `TaxaAssign::join_priors()` the way this
+# function does for the real production pipeline this bug was found on -- `TaxaExpect::
+# generate_domestic_food_priors()`/`generate_invasive_watch_evidence()`'s own
+# `clean_taxon_names()` calls are for list-matching normalization, not rank-labeled row
+# construction (and already hardcode `taxon_name_rank = "species"` per the 2026-08-20 fix).
+# Not touched this session -- flagged, not a silent gap, since this fix's real reach is
+# `convert_taxonomy_backbone()` itself (called on every real production match object before
+# `join_priors()`), not every individual `clean_taxon_names()` call site ecosystem-wide.
+# Previous update, 2026-08-14, continued (Sonnet 5 -- review_flagged_accessions() gains a
 # persistent, accession-keyed LLM-review cache, same session, prompted directly by the
 # user after confirming the new evaluate_reference_accessions() rate-limit resilience
 # against a real live run (see the note directly below): they pointed out
@@ -1196,9 +2009,15 @@ likelihood output downstream — it is NOT part of the match object.
 | `investigate_flagged_accession()` | R/investigate_flagged_accession.R | Written, tested (offline), 2026-08-08 | Deep-dive verification for ONE `evaluate_reference_accessions()`-flagged accession: self-consistency (vs. other real accessions of its own listed species) and cross-taxon consistency (vs. other real accessions of its top independent disagreeing BLAST hit's species), both independence-filtered the same way `evaluate_reference_accessions()` is. **2026-08-08**: both comparisons now run via `.blast_against_comparison_set()` (internal, reuses `blast_sequences()` itself) instead of a hand-rolled `pwalign::pairwiseAlignment()` loop -- see this file's top session note (Option A of `ecosystem_docs/REENTRY_PROMPT_investigate_flagged_accession_prefilter_group_posthoc.md`). Gains a persistent, accession-keyed cache (`cache_dir`, asymmetric TTL: `"inconclusive_length_mismatch"` verdicts expire after `inconclusive_ttl_days`, default 30; any other verdict cached indefinitely). |
 | `investigate_flagged_accessions()` | R/investigate_flagged_accession.R | Written, tested (offline), new 2026-08-08 | Batch wrapper -- shares one in-memory NCBI-species-search cache across a whole flagged-accession list (a `listed_species`/`disagreeing_taxon` repeated across several accessions is only fetched from NCBI once per batch) and shares `investigate_flagged_accession()`'s own persistent cache. Does NOT do cross-accession pattern detection (see this file's top session note for why that's deliberately separate, not-yet-designed future work). |
 | `check_marker_mismatch()` | R/check_marker_mismatch.R | Written, tested (offline), new 2026-08-08 | Cheap pre-filter (Question 2, item 4 of the reentry prompt above): a single GBSeq XML fetch checks a flagged accession's own annotated `/gene`/`/product` feature-table qualifier against the marker an evaluation was scoped to (e.g. does a "12S"-scoped audit's flagged record actually say `/product="16S ribosomal RNA"`?) -- no BLAST, no alignment, meant to route a flagged accession to a much simpler resolution path (correct the marker label) before ever reaching `investigate_flagged_accession()`'s deep dive. Directly grounded in a real confirmed case (`AY850362`, a genuine 16S-vs-12S marker mislabel) -- see this file's top session note for why the earlier "coarse rank of disagreement signals marker mislabel" hypothesis was tested and refuted first. |
-| `evaluate_reference_accessions()` | R/evaluate_reference_accessions.R | Written, tested (offline) | Implements `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md`. For each accession, BLASTs its own sequence against a broad, unrestricted database (`method`/`database`/`score_range`/`min_score`/`max_hits` passed through to `blast_sequences()`), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed `hierarchy_flag` (`"congruent"`/`"incongruent"`/`"insufficient_independent_evidence"`) -- the same congruence math `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()` used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now fed from real, broad BLAST hits instead. `finest_common_rank` walks the FULL `kingdom`->`species` ladder (2026-08-07), not just `family`/`genus`/`species`. **2026-08-07, continued**: gains 5 identity/coverage-anywhere diagnostic columns (`best_hit_pident`/`best_agreeing_pident`/`best_disagreeing_pident`/`congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) -- see this file's own top session note and `evaluate_reference_accessions()`'s own `@section Identity diagnostics` for why: `hierarchy_flag` alone cannot distinguish a genuine mislabel from "correct label, thin coverage/poor marker resolving power at this rank," and these columns give a reviewer the real percent-identity numbers to judge that with. **2026-08-13**: internal `.compute_hierarchy_congruence()` gains `require_species_resolved_partner = TRUE` -- excludes a comparison partner whose own listed species isn't resolved to species level from the vote entirely (real motivating case: `Stereolepis doederleini`'s one real independent hit was `NC_028197`, a family-name-plus-specimen-code reference, not a real binomial). See this file's own top session note and `evaluate_reference_accessions()`'s `@section Species-resolved comparison partners`. **2026-08-13, continued**: gains `best_disagreeing_taxon` -- the listed species of the same highest-identity independent hit `best_disagreeing_pident` is already computed from (same row, so the two stay consistent by construction); needed by `review_flagged_accessions()` (below) so an LLM second-look reviewer can recognize a known hybrid-cross partner or informal specimen code by name, not just by percent identity. `NA` when nothing disagrees. Persistent, accession-keyed cross-run cache (`cache_dir`, default `tools::R_user_dir("TaxaMatch", "cache")`), asymmetric TTL (`insufficient_evidence_ttl_days`, default 180 -- only `"insufficient_independent_evidence"` expires; `"congruent"`/`"incongruent"` cached indefinitely). See this file's own top session note for the full design record and the real bugs found/fixed before shipping. **Full output-column interpretation guide**: `inst/reference_accession_evaluation_guide.md` (new 2026-08-13) -- written for both a human reviewer and `review_flagged_accessions()` (below). **2026-08-14**: gains `chunk_size` (default `200L`) and `max_consecutive_batch_failures` (default `3L`, forwarded to `blast_sequences()`) -- `needs_eval` is now processed `chunk_size` accessions at a time, with the persistent cache written after EACH chunk (not once at the very end), so an interruption only loses whatever chunk was still in flight. When a chunk's own `blast_sequences()` call reports `circuit_breaker_tripped`, the remaining chunks are never attempted this call (their accessions fold into `missing_acc`, same treatment as any other not-yet-evaluated accession). New `attr(result, "run_summary")` and an actionable `message()` on a circuit-breaker trip -- see this file's own top session note. |
+| `evaluate_reference_accessions()` | R/evaluate_reference_accessions.R | Written, tested (offline) | Implements `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md`. For each accession, BLASTs its own sequence against a broad, unrestricted database (`method`/`database`/`score_range`/`min_score`/`max_hits` passed through to `blast_sequences()`), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed `hierarchy_flag` (`"congruent"`/`"incongruent"`/`"insufficient_independent_evidence"`) -- the same congruence math `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()` used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now fed from real, broad BLAST hits instead. `finest_common_rank` walks the FULL `kingdom`->`species` ladder (2026-08-07), not just `family`/`genus`/`species`. **2026-08-07, continued**: gains 5 identity/coverage-anywhere diagnostic columns (`best_hit_pident`/`best_agreeing_pident`/`best_disagreeing_pident`/`congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) -- see this file's own top session note and `evaluate_reference_accessions()`'s own `@section Identity diagnostics` for why: `hierarchy_flag` alone cannot distinguish a genuine mislabel from "correct label, thin coverage/poor marker resolving power at this rank," and these columns give a reviewer the real percent-identity numbers to judge that with. **2026-08-13**: internal `.compute_hierarchy_congruence()` gains `require_species_resolved_partner = TRUE` -- excludes a comparison partner whose own listed species isn't resolved to species level from the vote entirely (real motivating case: `Stereolepis doederleini`'s one real independent hit was `NC_028197`, a family-name-plus-specimen-code reference, not a real binomial). See this file's own top session note and `evaluate_reference_accessions()`'s `@section Species-resolved comparison partners`. **2026-08-13, continued**: gains `best_disagreeing_taxon` -- the listed species of the same highest-identity independent hit `best_disagreeing_pident` is already computed from (same row, so the two stay consistent by construction); needed by `review_flagged_accessions()` (below) so an LLM second-look reviewer can recognize a known hybrid-cross partner or informal specimen code by name, not just by percent identity. `NA` when nothing disagrees. Persistent, accession-keyed cross-run cache (`cache_dir`, default `tools::R_user_dir("TaxaMatch", "cache")`), asymmetric TTL (`insufficient_evidence_ttl_days`, default 180 -- only `"insufficient_independent_evidence"` expires; `"congruent"`/`"incongruent"` cached indefinitely). See this file's own top session note for the full design record and the real bugs found/fixed before shipping. **Full output-column interpretation guide**: `inst/reference_accession_evaluation_guide.md` (new 2026-08-13) -- written for both a human reviewer and `review_flagged_accessions()` (below). **2026-08-14**: gains `chunk_size` (default `200L`) and `max_consecutive_batch_failures` (default `3L`, forwarded to `blast_sequences()`) -- `needs_eval` is now processed `chunk_size` accessions at a time, with the persistent cache written after EACH chunk (not once at the very end), so an interruption only loses whatever chunk was still in flight. When a chunk's own `blast_sequences()` call reports `circuit_breaker_tripped`, the remaining chunks are never attempted this call (their accessions fold into `missing_acc`, same treatment as any other not-yet-evaluated accession). New `attr(result, "run_summary")` and an actionable `message()` on a circuit-breaker trip -- see this file's own top session note. **2026-09-03**: submits the primer-STRIPPED amplicon by default (`query_span`, in `params_key`; cache version `"v5_amplicon_query"` -- migrate with `migrate_reference_cache()`); `local_corroboration`/`skip_locally_corroborated` skip locally-corroborated accessions as `hierarchy_flag = "locally_corroborated"` (TTL Inf, never a flag downstream). |
+| `corroborate_references_locally()` | R/local_corroboration.R | Written, tested (offline), new 2026-09-03 | Free, zero-NCBI reference corroboration from the workflow's own `seq_matrix`: one row per accession with `n_conspecific`, `n_independent_conspecific`, `best_independent_pident`, `best_independent_partner`, `local_tier` in {`singleton`, `same_batch_only`, `disagree`, `corroborated`}. Conspecific pairs only, `coverage >= min_overlap` (0.8; NA fails -- the Jordania 5.6%-overlap false corroborator), independence via the screen's own `.same_submission_batch()`, `min_pident` 0.99 (must sit inside the marker's intraspecific range: the true mislabel MN883227 is corroborated at 0.9814). Feeds `evaluate_reference_accessions(local_corroboration=)` (skip) and `score_reference_labels(local_corroboration=)` (veto + provenance). |
+| `match_driving_accessions()` | R/local_corroboration.R | Written, tested (offline), new 2026-09-03 | The accessions that are the max-scoring accession of their species for at least one observation (ties kept; `RESTORED_*` dropped). Everything else never drives a likelihood, so no verdict on it can change an assignment -- a cost filter for the BLAST screen (709 of 995 on PtCon), not a change to the match object. |
+| `migrate_reference_cache()` | R/migrate_reference_cache.R | Written, tested (offline), new 2026-09-03 | Carries an existing `evaluate_reference_accessions()` cache across a `params_key`/cache-version bump: backs up (`.bak_pre_<version>`), rewrites the key ONLY on `"congruent"` rows (+ `migrated_from`), leaves everything else to re-BLAST, migrates the pair-cache sidecar. Shipped with the 2026-09-03 `"v5_amplicon_query"` bump so ~3,000 real rows are not all re-BLASTed. Default `to_key` = the key the current defaults produce (`.default_params_key()`). |
+| `score_reference_labels()` | R/reference_label_verdict.R | Written, tested (offline), 2026-09-02 | Derives `label_confidence` (numeric, high = the label is more likely correct), `label_identity_margin`, and `reference_action` (`"keep"`/`"caution"`/`"inspect"`/`"remove"`/`"untested"`) from `evaluate_reference_accessions()`'s existing diagnostic columns. A pure function of cached columns, so it retro-applies to any existing cache with no version bump and no re-BLAST; `evaluate_reference_accessions()` calls it on its own output. `"remove"` requires `"incongruent"` AND no corroboration anywhere AND sub-threshold confidence -- see this file's own top session note and `inst/reference_accession_evaluation_guide.md`. **2026-09-03**: `local_corroboration=` adds always-present `corroboration_source`/`local_best_independent_pident`/`local_n_independent_conspecific`/`action_reason` and VETOES a `"remove"` the local set corroborates down to `"inspect"`; `label_confidence` stays BLAST-only on purpose. |
+| `refine_reference_verdicts()` | R/reference_label_verdict.R | Written, tested (offline), 2026-09-02 | Re-runs the congruence vote with each comparison partner weighted by its own `label_confidence`, iterating to a deterministic (Jacobi) fixpoint -- Thread 1 of `REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`. Reads the per-partner votes from the sidecar `reference_pair_cache.rds` that `evaluate_reference_accessions()` began persisting the same day; a documented no-op for any accession evaluated before then. Cascade guard: never discounts an under-evaluated partner. Returns parallel `*_trust` columns, overwrites nothing. |
 | `flag_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), 2026-08-07 continued | **The RECOMMENDED default consumer.** Left-joins `evaluate_reference_accessions()`'s full output (hierarchy_flag + all diagnostics) onto a match object by accession (version-suffix-stripped), never removes a row. Added after a real live case (`Abylopsis eschscholtzii`) showed why an unreviewed hard drop is the wrong default -- see this file's own top session note. |
 | `remove_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline) | The harder, deliberate opt-in -- mirrors `TaxaLikely::remove_flagged_references()`'s exact pattern. Drops only rows whose accession was flagged `"incongruent"` by `evaluate_reference_accessions()` (version-suffix-stripped match); `"insufficient_independent_evidence"` is retained by default (`remove_insufficient_evidence = FALSE`). **No longer the recommended default pipeline step as of 2026-08-07 continued** -- its own roxygen now says to reach for `flag_incongruent_references()` first and only use this deliberately, after reviewing the identity diagnostics. Deliberately consumes only the binary blacklist decision, not the full quality signal -- see this file's top session note for the TaxaLikely-side graded-weighting work this does NOT yet do. |
+| `verify_flagged_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), new 2026-08-18 | Bridges `TaxaLikely::flag_reference_errors()`'s free/offline (but known over-flagging) mislabel screen to this function -- **without** BLASTing an entire training reference database. Takes `flag_reference_errors()`'s output (or a plain accession vector), screens only the `"likely_mislabeled"` subset (`error_types` param) via `evaluate_reference_accessions()`, and returns `verified_clean` (accessions NOT confirmed `"incongruent"` -- pass straight to `TaxaLikely::flag_reference_errors(verified_clean=)`/`train_likelihood_model(verified_clean=)`). Built after discovering `train_likelihood_model()` calls `flag_reference_errors()` unconditionally on every training run and silently drops flagged accessions -- a real pilot on GreatLakes 12S data found 0 of 40 randomly-sampled `"likely_mislabeled"` accessions confirmed as genuine mislabels (85% false positives). Screening only the flagged subset (not the whole ~2,650-accession reference set, which is LARGER than a typical match-candidate screening population on real data) keeps NCBI cost bounded -- see `TaxaID/CLAUDE.md`'s top session note for the full cost analysis and pilot numbers. |
 | `review_flagged_accessions()` | R/review_flagged_accessions.R | Written, tested (offline), new 2026-08-13 | Implements Question 2 of `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md` -- an LLM second-look reviewer for `evaluate_reference_accessions()`'s flagged/borderline rows, mirroring `TaxaFlag::review_assignments()`'s architecture (batching + retry-by-halving-on-truncation + JSON parsing) without a cross-package dependency on TaxaFlag. Default scope: `hierarchy_flag %in% c("incongruent", "insufficient_independent_evidence")` (`hierarchy_flags` param) plus `listed_taxon_is_species == FALSE` (`include_non_species_resolved`, default `TRUE`, orthogonal axis). Prompt content is lifted directly from `inst/reference_accession_evaluation_guide.md`'s own 5-category decision framework and worked examples. Output: `accession_likely_explanation` (`"genuine_mislabel"`/`"poor_marker_resolution"`/`"sister_family_thin_coverage"`/`"hybrid_or_specimen_code_artifact"`/`"uncertain"`), `accession_review_confidence` (`"high"`/`"moderate"`/`"low"`), `accession_review_comment` (free text) -- never a re-decided `hierarchy_flag`. See this file's own top session note for the full design-question-by-design-question record. **2026-08-14, continued**: gains `cache_dir` (default `tools::R_user_dir("TaxaMatch", "cache")`, same convention as `evaluate_reference_accessions()`) -- a persistent cache keyed on accession + a content fingerprint of the review-relevant input columns (`.accession_review_fingerprint()`), not a TTL, so a re-evaluated accession whose `hierarchy_flag`/diagnostics genuinely changed gets a fresh review automatically while an unchanged one is served from cache indefinitely. New `accession_review_cache_hit` output column. Written incrementally, once per LLM batch. A failed/NA review is never cached (retried next call, not treated as a permanent verdict). See this file's own top session note. |
 
 ### Standardization (original)
@@ -1208,7 +2027,7 @@ likelihood output downstream — it is NOT part of the match object.
 | `standardize_match_data()` | R/standardize_match_data.R | Written | Rename columns, derive `taxon_name`, validate structure |
 | `filter_redundant_hypotheses()` | R/standardize_match_data.R | Written | Drop higher-rank rows superseded by finer-rank rows within the same lineage and sample |
 | `add_lowest_consistent_rank()` | R/taxonomy_consistency.R | Written | Per-observation: find finest rank with a single unambiguous value across all candidate rows. `majority_threshold` param (numeric in (0,1]) switches to majority mode — consistent when top value reaches threshold. Majority mode adds `rank_majority_value`, `rank_majority_fraction`, `is_rank_outlier` columns. `na_as_inconsistent` controls NA handling. Auto-detects `rank_system` from `TaxaTools::extended_ranks`. |
-| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Vectorized: `match()`-based index into verified table — ~100× faster than row-by-row loop for large data frames. Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. **2026-07-24:** the not-found fallback value is now also cleaned via `TaxaTools::clean_taxon_names()` (previously only the target-backbone-matched path was) — fixes a real case where an exotic compound hybrid-formula name from a raw NCBI accession label passed through completely uncleaned when GBIF had no match for it. Does not change which rows count as "found." **2026-07-25:** `taxon_name_rank` is now corrected (not just `taxon_name`) when a row's own claimed rank has no matching target value and falls back to a coarser resolved name — uses `verify_taxon_names()`'s new `matched_rank` column when present, silently skipped otherwise (backward compatible). Closes the "Inu Inu" fabricated-pseudo-binomial bug. **2026-07-25, later same day:** rank columns FINER than the corrected rank are now also cleared to `NA` on the same rows (e.g. `species` when demoted to genus) — closes a real regression found by testing against production (`Mugu_Match_from_BLAST.R`'s own second `create_taxon_names()` call was silently reverting the rank fix by reading the still-populated, now-stale `species` column). See this file's top session note. NOTE: generic utility — move to TaxaTools after manuscript review. |
+| `convert_taxonomy_backbone()` | R/convert_taxonomy_backbone.R | Written | Remap rank columns (order/family/genus/species) from source backbone to target backbone (e.g. NCBI→GBIF). Vectorized: `match()`-based index into verified table — ~100× faster than row-by-row loop for large data frames. Per-column fallback: ranks the target omits are kept unchanged. Adds `taxonomy_backbone` and `taxonomy_collision` diagnostic columns; sets `backbone_cols` R attribute. **2026-07-24:** the not-found fallback value is now also cleaned via `TaxaTools::clean_taxon_names()` (previously only the target-backbone-matched path was) — fixes a real case where an exotic compound hybrid-formula name from a raw NCBI accession label passed through completely uncleaned when GBIF had no match for it. Does not change which rows count as "found." **2026-07-25:** `taxon_name_rank` is now corrected (not just `taxon_name`) when a row's own claimed rank has no matching target value and falls back to a coarser resolved name — uses `verify_taxon_names()`'s new `matched_rank` column when present, silently skipped otherwise (backward compatible). Closes the "Inu Inu" fabricated-pseudo-binomial bug. **2026-07-25, later same day:** rank columns FINER than the corrected rank are now also cleared to `NA` on the same rows (e.g. `species` when demoted to genus) — closes a real regression found by testing against production (`Mugu_Match_from_BLAST.R`'s own second `create_taxon_names()` call was silently reverting the rank fix by reading the still-populated, now-stale `species` column). **2026-08-21:** a SECOND, independent rank-correction mechanism added, covering any row whose final `taxon_name` value was produced by `TaxaTools::clean_taxon_names()` collapsing a real second token to genus-only -- regardless of source (a not-found row's fallback cleaning; a found row's `matched_name_clean` fallback; or, discovered when the first version of this fix was verified against a real re-run and still found stale rows, a found row whose OWN claimed rank genuinely matches the backbone's answer but whose rank VALUE itself is an informal placeholder name, e.g. a real NCBI taxonomy node literally named `"Ictalurus sp. UM 105-1789"`, ranked "species" by NCBI itself -- no rank-mismatch-based correction can ever see this case). Uses `collapsed_to_genus` (the same-day `TaxaTools::clean_taxon_names()` companion fix) tracked through the pipeline, not a shape-based re-derivation (rejected -- would misfire on real hyphenated genera like *Pseudo-nitzschia*). See this file's top session notes for the full two-round "Ictalurus" bug this closes. NOTE: generic utility — move to TaxaTools after manuscript review. |
 
 ### Internal helpers
 

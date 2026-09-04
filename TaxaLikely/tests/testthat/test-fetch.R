@@ -350,3 +350,70 @@ test_that(".fetch_locations_batched returns empty typed data frame for no access
   expect_equal(nrow(out), 0L)
   expect_equal(names(out), c("composite_id", "lat", "lon", "country"))
 })
+
+# ---- registered primer-variant terms resolve to their base marker -------------
+
+test_that(".build_search_term resolves a primer-variant name to the marker it amplifies", {
+  # A registered TaxaTools::barcode_primer_defaults variant name is correct for
+  # primer/length resolution but is NOT indexed by NCBI -- no GenBank record is
+  # tagged "Folmer". Before this fix every variant except the MiFish pair fell
+  # through to a dead "<variant>[All Fields]" clause and returned zero hits for
+  # every taxon (confirmed live: Leptocottus 0 vs 23, Paralabrax 0 vs 46).
+  bst <- TaxaLikely:::.build_search_term
+
+  # Each variant must produce EXACTLY the query its base marker produces.
+  expect_identical(bst("Gadus", "COI-Folmer"),    bst("Gadus", "COI"))
+  expect_identical(bst("Gadus", "COI-Leray"),     bst("Gadus", "COI"))
+  expect_identical(bst("Gadus", "16S-Palumbi"),   bst("Gadus", "16S"))
+  expect_identical(bst("Gadus", "cytb-Kocher"),   bst("Gadus", "cytb"))
+  expect_identical(bst("Quercus", "rbcla"),       bst("Quercus", "rbcL"))
+  expect_identical(bst("Quercus", "matk-kim"),    bst("Quercus", "matK"))
+  expect_identical(bst("Quercus", "trnl-taberlet"), bst("Quercus", "trnL"))
+
+  # And no variant name may survive into the query as a search clause.
+  for (v in c("COI-Folmer", "COI-Leray", "16S-Palumbi", "cytb-Kocher",
+              "rbcla", "matk-kim", "trnl-taberlet")) {
+    expect_false(grepl(v, bst("Gadus", v), fixed = TRUE),
+                 info = paste("variant leaked into query:", v))
+  }
+})
+
+test_that(".build_search_term leaves MiFish primer names as searchable clauses", {
+  # MiFish is the one family of primer names NCBI records genuinely do carry,
+  # handled by the pre-existing primer_to_locus map -- the variant remap must
+  # not swallow it.
+  bst <- TaxaLikely:::.build_search_term
+  out <- bst("Gadus", "MiFishU")
+  expect_true(grepl("MiFishU[All Fields]", out, fixed = TRUE))
+  expect_true(grepl("12S[All Fields]", out, fixed = TRUE))
+})
+
+# ---- empty reference_df keeps the successful return's shape -------------------
+
+test_that(".empty_reference_df carries the rank columns a caller will index", {
+  # A caller's ordinary next step is clean_taxon_names(reference_df$species);
+  # returning a bare 2-column frame made that fail with "`name_vec` must be a
+  # character vector", burying the real (already-correct) message about why the
+  # fetch was empty.
+  erd <- TaxaLikely:::.empty_reference_df
+
+  out <- erd(c("family", "genus", "species"))
+  expect_s3_class(out, "data.frame")
+  expect_equal(nrow(out), 0L)
+  expect_equal(names(out), c("composite_id", "sequence", "family", "genus", "species"))
+  expect_type(out$species, "character")
+
+  # The column a caller indexes must be a zero-length vector, never NULL.
+  expect_false(is.null(out$species))
+  expect_length(out$species, 0L)
+
+  # Location columns appear only when the caller asked for them.
+  loc <- erd(c("family", "genus", "species"), include_location = TRUE)
+  expect_equal(names(loc), c("composite_id", "sequence", "family", "genus",
+                             "species", "lat", "lon", "country"))
+  expect_type(loc$lat, "double")
+
+  # Rank names are lowercased to match the successful return's own columns.
+  expect_equal(names(erd(c("Family", "Genus", "Species")))[3:5],
+               c("family", "genus", "species"))
+})

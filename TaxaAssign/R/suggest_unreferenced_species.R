@@ -740,11 +740,16 @@ suggest_unreferenced_species <- function(match_df,
       if (!is.null(ncbi_api_key))
         rentrez::set_entrez_key(ncbi_api_key)
       len_range <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
-      barcode_clause <- if (length(barcode_term) == 1L) {
-        sprintf("%s[All Fields]", barcode_term)
+      # Search on the marker, not on a primer-variant name: no GenBank record
+      # is tagged "Folmer", so a variant-named query silently matches nothing
+      # and every species looks unreferenced. Lengths still resolve from the
+      # caller's own (tighter) term.
+      search_term <- TaxaTools::resolve_barcode_marker(barcode_term)
+      barcode_clause <- if (length(search_term) == 1L) {
+        sprintf("%s[All Fields]", search_term)
       } else {
         sprintf("(%s)",
-                paste(sprintf("%s[All Fields]", barcode_term), collapse = " OR "))
+                paste(sprintf("%s[All Fields]", search_term), collapse = " OR "))
       }
       date_clause <- if (!is.null(max_date)) {
         sprintf(" AND (1985[PDAT] : %s[PDAT])", trimws(max_date))

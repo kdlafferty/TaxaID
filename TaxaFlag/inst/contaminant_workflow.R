@@ -42,7 +42,7 @@ lab_flags <- flag_contaminant(
   contaminant_type = "lab_contaminant"
 )
 
-lab_flags |> filter(lab_contaminant_risk != "low")
+lab_flags |> filter(validity_flag != "valid")
 
 # --- 4. Flag PCR contaminants (PCR blanks) -----------------------------------
 
@@ -55,7 +55,7 @@ pcr_flags <- flag_contaminant(
   contaminant_type = "lab_contaminant"
 )
 
-pcr_flags |> filter(lab_contaminant_risk != "low")
+pcr_flags |> filter(validity_flag != "valid")
 
 # --- 5. Flag positive control leakage ---------------------------------------
 
@@ -68,24 +68,31 @@ pos_flags <- flag_contaminant(
   contaminant_type = "positive_control"
 )
 
-pos_flags |> filter(positive_control_risk != "low")
+pos_flags |> filter(validity_flag != "valid")
 
 # --- 6. Combine results -----------------------------------------------------
-# Join all flag sets by taxon_name for a complete picture
+# Join all flag sets by taxon_name for a complete picture. Each call shares
+# the unified observation_validity/validity_flag/validity_reason schema
+# (contaminant_type only changes the qualifier embedded in validity_flag's
+# value, e.g. "invalid_lab_contaminant" -- not the column names), so each
+# set's columns are renamed with a per-check prefix before joining.
 
 all_flags <- lab_flags |>
-  select(taxon_name, lab_contaminant_risk, lab_contaminant_score) |>
+  select(taxon_name,
+         lab_validity       = observation_validity,
+         lab_validity_flag  = validity_flag) |>
   full_join(
-    pcr_flags |> select(taxon_name, pcr_risk = lab_contaminant_risk,
-                        pcr_score = lab_contaminant_score),
+    pcr_flags |> select(taxon_name,
+                        pcr_validity      = observation_validity,
+                        pcr_validity_flag = validity_flag),
     by = "taxon_name"
   ) |>
   full_join(
-    pos_flags |> select(taxon_name, positive_control_risk,
-                        positive_control_score),
+    pos_flags |> select(taxon_name,
+                        pos_validity      = observation_validity,
+                        pos_validity_flag = validity_flag),
     by = "taxon_name"
   ) |>
-  arrange(pmin(lab_contaminant_score, pcr_score,
-               positive_control_score, na.rm = TRUE))
+  arrange(pmin(lab_validity, pcr_validity, pos_validity, na.rm = TRUE))
 
 all_flags

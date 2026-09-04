@@ -22,7 +22,7 @@ run_bayesian_pipeline(
   backbone_id,
   lookup_missing_taxonomy = TRUE,
   confirmation_quantile = 0.9,
-  min_confirmation_confidence = 0.8,
+  confirmation_discount = 0.25,
   species_reference = NULL,
   generate_report = FALSE,
   report_params = list(),
@@ -114,9 +114,10 @@ observations' \code{consensus_posterior} used for the empirical Bayes
 prior boost of confirmed species. Default 0.9. See
 \code{\link{update_prior_from_consensus}}.}
 
-\item{min_confirmation_confidence}{Numeric in [0, 1]. Minimum confirmation
-quantile required before a species counts as confirmed at all. Default
-0.8; set to 0 to disable. See \code{\link{update_prior_from_consensus}}.}
+\item{confirmation_discount}{Numeric in [0, 1]. Power-prior discount on
+the cross-observation support mass in the soft confirmation update.
+Default 0.25; 0 disables the update. See
+\code{\link{update_prior_from_consensus}}.}
 
 \item{species_reference}{Optional. Passed to \code{\link{posterior_consensus}}
 for downranking. Accepts an \code{unreferenced_species_result} or data

@@ -11,7 +11,8 @@ compute_local_occurrence_distance(
   occurrence_data,
   taxon_col = "taxon_name",
   lat_col = "decimalLatitude",
-  lon_col = "decimalLongitude"
+  lon_col = "decimalLongitude",
+  date_col = NULL
 )
 }
 \arguments{
@@ -30,6 +31,16 @@ from -- typically the study site's own centroid.}
 \item{taxon_col, lat_col, lon_col}{Character scalars. Column names in
 \code{occurrence_data}. Defaults match \code{TaxaFetch}'s DarwinCore-aligned
 convention.}
+
+\item{date_col}{Character or \code{NULL}. Optional column in \code{occurrence_data}
+giving the nearest record's collection date/year (e.g. GBIF's own
+\code{"year"} standard column). When supplied and present, the matched
+nearest record's raw value is surfaced as \code{nearest_date} -- lets a
+caller weigh a fresh vs. a decades-old nearest record differently
+without a second lookup. Default \code{NULL} (no age column requested,
+fully backward compatible -- \code{nearest_date} is simply absent from the
+output). No parsing/normalization is done on the raw value; a \code{"year"}
+column comes back as whatever numeric/character type it already was.}
 }
 \value{
 A data frame, one row per unique entry in \code{taxon_names}:
@@ -44,6 +55,10 @@ query point to the nearest such record. \code{NA} when
 \code{n_local_records == 0}.}
 \item{nearest_lat, nearest_lon}{Coordinates of that nearest record.
 \code{NA} when \code{n_local_records == 0}.}
+\item{nearest_date}{The nearest record's raw \code{date_col} value. Only
+present when \code{date_col} is supplied and found in \code{occurrence_data}.
+\code{NA} when \code{n_local_records == 0} or the nearest record's own
+\code{date_col} value is missing.}
 }
 }
 \description{
@@ -72,12 +87,14 @@ tool for that wider question.
 occ <- data.frame(
   taxon_name        = c("Neogobius melanostomus", "Neogobius melanostomus"),
   decimalLatitude   = c(41.60, 42.10),
-  decimalLongitude  = c(-87.10, -87.80)
+  decimalLongitude  = c(-87.10, -87.80),
+  year              = c(2019, 2003)
 )
 compute_local_occurrence_distance(
   taxon_names     = c("Neogobius melanostomus", "Salmo salar"),
   query_lat       = 41.67, query_lon = -87.15,
-  occurrence_data = occ
+  occurrence_data = occ,
+  date_col        = "year"
 )
 
 }

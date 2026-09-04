@@ -46,21 +46,47 @@ utils::globalVariables(c(
 #' @param theta_epsilon Numeric. Floor/ceiling applied to back-transformed
 #'   theta before alpha/beta conversion, to avoid boundary values. Applied to
 #'   \strong{Tier 1} predictions as supplied (default \code{1e-6}), preserving
-#'   real differentiation among low-but-genuine probabilities.
+#'   real differentiation among low-but-genuine probabilities -- a Tier 1
+#'   species is free to have a genuinely low, well-differentiated theta
+#'   without being flattened to some artificially higher floor.
 #'
-#'   For \strong{Tier 2} only, a separate, higher floor is derived
-#'   automatically when \code{undetected} is supplied and contains
-#'   \code{"singleton_mirror"} rows: the floor is raised to the mean
-#'   singleton-mirror detection rate if that exceeds \code{theta_epsilon}.
-#'   This ensures Tier 2 species (sparse but detected) always receive priors
-#'   above the dark-diversity floor computed in \code{TaxaAssign::join_priors()},
-#'   preventing conflation with species that have never been detected in the
-#'   system. \strong{This raised floor is Tier-2-only} -- a real bug found
-#'   2026-07-03 applied it globally, silently flattening every Tier 1 species
-#'   whose real predicted probability fell below the floor to the same
-#'   identical value (invisible with a handful of well-separated candidates,
-#'   but visibly wrong with a broader, more realistic candidate pool where
-#'   many species legitimately have low individual probabilities).
+#'   Two SEPARATE, automatically-derived raises are layered on top of this
+#'   base value when \code{undetected} is supplied -- deliberately different
+#'   in both scale and scope, so neither can be confused for the other:
+#'
+#'   \itemize{
+#'     \item \strong{Tier 2 only}, raised to the mean \code{"singleton_mirror"}
+#'       detection rate (a real, if sparse, DETECTION rate -- the ceiling
+#'       reserved for species observed at least once). Ensures Tier 2 species
+#'       always receive priors above the dark-diversity floor computed in
+#'       \code{TaxaAssign::join_priors()}, preventing conflation with species
+#'       never detected in the system at all. A real bug found 2026-07-03
+#'       applied this globally instead of Tier-2-only, silently flattening
+#'       every Tier 1 species whose real predicted probability fell below the
+#'       floor to the same identical value -- invisible with a handful of
+#'       well-separated candidates, but visibly wrong with a broader, more
+#'       realistic candidate pool where many species legitimately have low
+#'       individual probabilities. Fixed by scoping the raise to Tier 2 only.
+#'     \item \strong{Tier 1 only}, raised to the \code{"global_floor"} row's
+#'       own theta (the "we have zero occurrence evidence for this taxon at
+#'       all" baseline -- much smaller than the singleton-mirror ceiling
+#'       above, and the two are never conflated). A genuinely fitted Tier 1
+#'       estimate for a real, in-habitat species can still legitimately sit
+#'       anywhere below the singleton-mirror ceiling, including quite low --
+#'       but it should never be treated as LESS plausible than a taxon with
+#'       literally no occurrence evidence anywhere, which is exactly what
+#'       happens if its fitted theta falls below that taxon's own
+#'       \code{global_floor} value. Real motivating case (GreatLakes2023,
+#'       2026-08-27): \emph{Salmo trutta} (Brown Trout) -- 18 real occurrence
+#'       records, \code{observed_in_habitat = TRUE} -- had a genuinely fitted
+#'       Tier 1 theta of 4.18e-6, below that dataset's own global_floor of
+#'       ~9.59e-5; with no protection, several Old World \emph{Salmo}
+#'       relatives carrying only the generic (and, for them, genuinely
+#'       appropriate) global_floor prior could outscore the real,
+#'       locally-documented species on posterior mass. Confirmed not an
+#'       isolated case: 5 of 76 real Tier 1 species in that dataset had a
+#'       real, in-habitat theta below their own study's global_floor.
+#'   }
 #'
 #' @return A tibble with one row per taxon_name x site x habitat combination
 #'   (plus undetected rows if provided), containing:
@@ -75,7 +101,11 @@ utils::globalVariables(c(
 #'     \item{theta_sd}{Derived: SD of Beta(alpha, beta). Reflects model
 #'       uncertainty at this site, not sampling effort.}
 #'     \item{n_obs}{n_total_at_site from new_sites if present, otherwise NA.}
-#'     \item{model_tier}{"tier1", "tier2", or "tier3_undetected".}
+#'     \item{model_tier}{"tier1", "tier2", or "tier3_undetected". Deprecated
+#'       vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
+#'       output replaces \code{model_tier} with \code{prior_branch} +
+#'       \code{effective_records}; this column is retained only while
+#'       the GLMM path remains in use.}
 #'     \item{effort_flag}{Logical: was N below the training effort threshold?
 #'       NA if n_total_at_site was not supplied in new_sites.}
 #'     \item{observed_in_habitat}{Logical: was this taxon_name ever
@@ -178,6 +208,18 @@ utils::globalVariables(c(
 #' @importFrom dplyr left_join mutate filter select bind_rows distinct rename all_of if_else
 #' @importFrom tidyr crossing replace_na
 #' @importFrom rlang sym :=
+#' @section Deprecated (kernel-priors redesign, 2026-08-31):
+#' This function is part of the grid/GLMM prior-fitting path, which is
+#' deprecated in favor of site-centered kernel estimation -- see
+#' \code{\link{estimate_kernel_priors}} and
+#' \code{\link{calibrate_kernel_bandwidth}}. Leave-one-block-out
+#' validation on real data found single-cell prediction scored worse than
+#' ignoring space entirely, while the kernel estimator improved both
+#' composition prediction and downstream assignment precision. The GLMM
+#' path remains fully functional (existing workflows still run it) and
+#' emits a once-per-session notice; it will be archived once remaining
+#' workflows migrate.
+#'
 #' @export
 
 generate_full_priors <- function(model_obj,
@@ -185,6 +227,8 @@ generate_full_priors <- function(model_obj,
                                  undetected    = NULL,
                                  min_phi       = 2,
                                  theta_epsilon = 1e-6) {
+
+  .glmm_deprecation_notice("generate_full_priors")
 
   # ---------------------------------------------------------------------------
   # Input checks
@@ -252,6 +296,52 @@ generate_full_priors <- function(model_obj,
           theta_epsilon_floor, singleton_floor, nrow(sm_rows)
         ))
         theta_epsilon_floor <- singleton_floor
+      }
+    }
+  }
+
+  # ---------------------------------------------------------------------------
+  # Derive a Tier-1-only theta_epsilon floor from the dark-diversity global
+  # floor, when the undetected pool is available. This is a DIFFERENT,
+  # smaller correction than the Tier-2/singleton-mirror raise above -- it
+  # never lifts a Tier 1 prediction as high as a real detection rate, only
+  # as high as the "we have zero occurrence evidence for this taxon at all"
+  # baseline. Real, evidenced Tier 1 species are meant to fall anywhere
+  # below the singleton-mirror ceiling (including below it), but a genuinely
+  # fitted, in-habitat Tier 1 estimate should never be treated as LESS
+  # plausible than a taxon with no occurrence evidence anywhere -- that
+  # inverts what "we know nothing about this taxon" is supposed to mean.
+  #
+  # Real motivating case (GreatLakes2023, 2026-08-27): Salmo trutta (Brown
+  # Trout) -- 18 real occurrence records, observed_in_habitat = TRUE, a
+  # genuinely fitted Tier 1 theta_mean of 4.18e-6 -- sat BELOW that dataset's
+  # dark-diversity global_floor (~9.59e-5, from generate_undetected_
+  # diversity()'s Beta(1, N_total-1)). With no Tier 1 floor at all
+  # (theta_epsilon's own default of 1e-6 was already below both values),
+  # nothing stopped several Old World Salmo relatives -- genuinely zero
+  # plausibility for a Great Lakes site, carrying only the generic
+  # global_floor prior -- from outscoring the real, locally-documented Brown
+  # Trout on posterior mass. Confirmed this was not an isolated case: 5 of
+  # 76 real Tier 1 species in that dataset had a real, in-habitat theta_mean
+  # below their own study's global_floor value.
+  # ---------------------------------------------------------------------------
+  theta_epsilon_t1 <- theta_epsilon
+  if (!is.null(undetected) && nrow(undetected) > 0 &&
+      "undetected_type" %in% names(undetected)) {
+    gf_rows <- undetected[
+      !is.na(undetected$undetected_type) &
+        undetected$undetected_type == "global_floor" &
+        !is.na(undetected$alpha) &
+        !is.na(undetected$beta), , drop = FALSE
+    ]
+    if (nrow(gf_rows) > 0) {
+      global_floor_val <- mean(gf_rows$alpha / (gf_rows$alpha + gf_rows$beta))
+      if (global_floor_val > theta_epsilon_t1) {
+        message(sprintf(
+          "theta_epsilon (Tier 1) raised from %.2e to %.2e (dark-diversity global floor). A real, evidenced Tier 1 species will never be treated as less plausible than a taxon with zero occurrence evidence.",
+          theta_epsilon_t1, global_floor_val
+        ))
+        theta_epsilon_t1 <- global_floor_val
       }
     }
   }
@@ -645,7 +735,7 @@ generate_full_priors <- function(model_obj,
   # species don't collapse toward the dark-diversity floor. See the comment
   # above theta_epsilon_floor's derivation for why these must differ.
   result_t1 <- predict_tier(model_obj$models$tier1, taxa_tier1, "tier1",
-                            epsilon = theta_epsilon)
+                            epsilon = theta_epsilon_t1)
   result_t2 <- predict_tier(model_obj$models$tier2, taxa_tier2, "tier2",
                             epsilon = theta_epsilon_floor)
 

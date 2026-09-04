@@ -116,7 +116,7 @@ test_that("domestic_animal_taxa gets a row even with zero local iNat evidence", 
     known_cultivar_taxa   = character(0)
   )
   expect_equal(nrow(out), 1L)
-  expect_equal(out$taxon_name, "Felis catus")
+  expect_equal(out$taxon_name, "Felis catus", ignore_attr = "collapsed_to_genus")
   expect_equal(out$prior_source_type, "domestic_animal")
   expect_true(is.na(out$cultivar_evidence_source))
   expect_equal(out$model_tier, "tier_domestic_food")
@@ -309,7 +309,7 @@ test_that("match_list_taxa restricts fixed-list candidates to the intersection",
     match_list_taxa       = "Felis catus"  # Canis lupus never detected this run
   )
   expect_equal(nrow(out), 1L)
-  expect_equal(out$taxon_name, "Felis catus")
+  expect_equal(out$taxon_name, "Felis catus", ignore_attr = "collapsed_to_genus")
 })
 
 test_that("match_list_taxa with no taxonomy skips the open-discovery step with a message, not a warning", {
@@ -641,7 +641,7 @@ test_that("a subspecies trinomial candidate is normalized to a binomial before j
     domestic_animal_taxa = "Sus scrofa domesticus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
-  expect_equal(out$taxon_name, "Sus scrofa")
+  expect_equal(out$taxon_name, "Sus scrofa", ignore_attr = "collapsed_to_genus")
 })
 
 test_that("a hybrid-formula candidate name is normalized the same way clean_taxon_names() normalizes it elsewhere", {
@@ -667,4 +667,50 @@ test_that("a candidate name that cannot be cleaned is dropped with a warning, no
     regexp = "could not be cleaned"
   )
   expect_equal(nrow(out), 0L)
+})
+
+# =============================================================================
+# taxon_name_rank -- required for TaxaAssign::join_priors()'s composite-key
+# join to ever match these rows at all (real gap found + fixed this session:
+# this column was previously unset, so it defaulted to NA via bind_rows() and
+# silently defeated join_priors()'s primary join for every real caller using
+# habitat-scoped priors).
+# =============================================================================
+
+test_that("every emitted row carries taxon_name_rank = 'species'", {
+  mod <- .make_mock_model_obj(N_total = 200L)
+  local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
+  out <- generate_domestic_food_priors(
+    mod, lat = 34.1, lng = -119.1,
+    domestic_animal_taxa = c("Felis catus", "Gadus morhua"),
+    food_species_taxa    = "Solanum lycopersicum",
+    known_cultivar_taxa  = character(0)
+  )
+  expect_equal(nrow(out), 3L)
+  expect_true(all(out$taxon_name_rank == "species"))
+})
+
+test_that("the empty-channel result still has a taxon_name_rank column (zero rows)", {
+  mod <- .make_mock_model_obj()
+  out <- generate_domestic_food_priors(
+    mod, lat = 34.1, lng = -119.1,
+    domestic_animal_taxa = character(0),
+    food_species_taxa    = character(0),
+    known_cultivar_taxa   = character(0),
+    candidate_plant_taxa  = NULL
+  )
+  expect_true("taxon_name_rank" %in% names(out))
+  expect_equal(nrow(out), 0L)
+})
+
+test_that("main_habitat stays NA (habitat-agnostic by design), only taxon_name_rank is newly set", {
+  mod <- .make_mock_model_obj(N_total = 200L, habitat_col = "main_habitat")
+  local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
+  out <- generate_domestic_food_priors(
+    mod, lat = 34.1, lng = -119.1,
+    domestic_animal_taxa = "Gadus morhua", food_species_taxa = character(0),
+    known_cultivar_taxa = character(0)
+  )
+  expect_true(is.na(out$main_habitat))
+  expect_equal(out$taxon_name_rank, "species")
 })

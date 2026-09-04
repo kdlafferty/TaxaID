@@ -98,6 +98,54 @@ test_that("haversine distance is symmetric and zero at the same point", {
   expect_lt(d1, 600)
 })
 
+# =============================================================================
+# date_col -- 2026-08-21, added for TaxaExpect::generate_regional_proximity_evidence()
+# =============================================================================
+
+test_that("date_col = NULL (default) never adds a nearest_date column", {
+  occ <- .make_occ()
+  occ$year <- c(2019, 2003, 2020, 2015, NA)
+  out <- compute_local_occurrence_distance(
+    taxon_names = "Neogobius melanostomus",
+    query_lat = 41.67, query_lon = -87.15,
+    occurrence_data = occ
+  )
+  expect_false("nearest_date" %in% names(out))
+})
+
+test_that("date_col surfaces the nearest record's own date value, not any record's", {
+  occ <- .make_occ()
+  # (41.68, -87.14) is the nearest of the three real Neogobius rows -- year 2019.
+  occ$year <- c(2019, 2003, 2020, 2015, NA)
+  out <- compute_local_occurrence_distance(
+    taxon_names = "Neogobius melanostomus",
+    query_lat = 41.67, query_lon = -87.15,
+    occurrence_data = occ, date_col = "year"
+  )
+  expect_equal(out$nearest_date, 2019)
+})
+
+test_that("date_col is NA for a genuinely absent taxon, not an error", {
+  occ <- .make_occ()
+  occ$year <- c(2019, 2003, 2020, 2015, NA)
+  out <- compute_local_occurrence_distance(
+    taxon_names = "Truly Unprecedented sp.",
+    query_lat = 41.67, query_lon = -87.15,
+    occurrence_data = occ, date_col = "year"
+  )
+  expect_true(is.na(out$nearest_date))
+})
+
+test_that("date_col naming a column absent from occurrence_data is silently ignored, not an error", {
+  occ <- .make_occ()
+  out <- compute_local_occurrence_distance(
+    taxon_names = "Salmo salar",
+    query_lat = 41.67, query_lon = -87.15,
+    occurrence_data = occ, date_col = "eventDate"
+  )
+  expect_false("nearest_date" %in% names(out))
+})
+
 test_that("input validation catches malformed arguments", {
   occ <- .make_occ()
   expect_error(compute_local_occurrence_distance(character(0), 41, -87, occ), "non-empty")

@@ -1278,8 +1278,7 @@ utils::globalVariables(c(
 #' }
 #'
 #' @importFrom cli cli_progress_bar cli_progress_update cli_progress_done
-#' @importFrom dplyr any_of arrange bind_rows desc filter group_by group_split
-#'   mutate n_distinct n_groups select summarise ungroup across first
+#' @importFrom dplyr any_of arrange bind_rows desc filter group_by group_split mutate n_distinct n_groups select summarise ungroup across first
 #' @importFrom mvtnorm dmvnorm
 #' @importFrom stats dnorm mahalanobis pchisq rnorm sd
 #' @export

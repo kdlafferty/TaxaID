@@ -334,3 +334,307 @@ test_that("expansion falls back to dark floor when family absent from priors", {
   expect_equal(out$taxon_name_rank, "family")
   expect_true(!is.na(out$prior_mean))
 })
+
+# ---- Habitat-agnostic named-species prior fallback --------------------------
+# Real bug found and fixed this session: TaxaExpect::generate_domestic_food_priors()
+# emits rows with main_habitat = NA on purpose (a food/domestic species has no
+# single correct habitat value) and, until this session, also with
+# taxon_name_rank unset -- both meant the primary composite-key join could
+# never match these rows against a real observation. Confirmed on real
+# GreatLakes2023 data (a real Gadus morhua domestic-food row never matched;
+# the affected observation fell back to the generic floor instead).
+
+.make_ha_lik <- function(taxon_name = "Gadus morhua", observation_id = "ESV_100") {
+  tibble(
+    observation_id        = observation_id,
+    taxon_name             = taxon_name,
+    taxon_name_rank        = "species",
+    hypothesis_type        = "specific_candidate",
+    score_likelihood       = 0.9,
+    score_likelihood_mean  = 0.9,
+    score_likelihood_sd    = 0.02,
+    genus                  = "Gadus",
+    family                 = "Gadidae",
+    species                = taxon_name
+  )
+}
+
+test_that("a habitat-agnostic named-species prior (main_habitat = NA) rescues an otherwise-unmatched taxon", {
+  lik <- .make_ha_lik()
+  pri <- tibble(
+    taxon_name      = c("Gadus morhua", "undetected_placeholder"),
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = c(NA_character_, "Lentic"),
+    alpha           = c(5, 0.5),
+    beta            = c(8775, 9.5),
+    undetected_type = c(NA, "global_floor")
+  )
+  site <- list(grid_id = "Grid_41p4_m86p7", main_habitat = "Lentic")
+
+  out <- suppressMessages(join_priors(lik, pri, site = site, backbone_id = 11L))
+
+  expect_equal(out$prior_alpha, 5)
+  expect_equal(out$prior_beta, 8775)
+})
+
+test_that("a real per-habitat match still wins over a habitat-agnostic fallback row for the same taxon", {
+  lik <- .make_ha_lik()
+  pri <- tibble(
+    taxon_name      = c("Gadus morhua", "Gadus morhua", "undetected_placeholder"),
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = c(NA_character_, "Lentic", "Lentic"),
+    alpha           = c(5, 50, 0.5),
+    beta            = c(8775, 50, 9.5),
+    undetected_type = c(NA, NA, "global_floor")
+  )
+  site <- list(grid_id = "Grid_41p4_m86p7", main_habitat = "Lentic")
+
+  out <- suppressMessages(join_priors(lik, pri, site = site, backbone_id = 11L))
+
+  expect_equal(out$prior_alpha, 50)
+  expect_equal(out$prior_beta, 50)
+})
+
+test_that("multiple habitat-agnostic rows for the same taxon/site collapse to the strongest, not an ambiguous many-to-many join", {
+  lik <- .make_ha_lik()
+  pri <- tibble(
+    taxon_name      = c("Gadus morhua", "Gadus morhua", "undetected_placeholder"),
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = c(NA_character_, NA_character_, "Lentic"),
+    alpha           = c(5, 20, 0.5),   # theta_mean 5/8780 vs 20/8795 -- second stronger
+    beta            = c(8775, 8775, 9.5),
+    undetected_type = c(NA, NA, "global_floor")
+  )
+  site <- list(grid_id = "Grid_41p4_m86p7", main_habitat = "Lentic")
+
+  out <- suppressMessages(join_priors(lik, pri, site = site, backbone_id = 11L))
+
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$prior_alpha, 20)
+})
+
+test_that("a habitat-agnostic row at a DIFFERENT grid_id is never applied", {
+  lik <- .make_ha_lik()
+  pri <- tibble(
+    taxon_name      = c("Gadus morhua", "undetected_placeholder"),
+    taxon_name_rank = "species",
+    grid_id         = c("Grid_99p9_m99p9", "Grid_41p4_m86p7"),
+    main_habitat    = c(NA_character_, "Lentic"),
+    alpha           = c(5, 0.5),
+    beta            = c(8775, 9.5),
+    undetected_type = c(NA, "global_floor")
+  )
+  site <- list(grid_id = "Grid_41p4_m86p7", main_habitat = "Lentic")
+
+  out <- suppressMessages(join_priors(lik, pri, site = site, backbone_id = 11L))
+
+  # Must NOT pick up the other grid's habitat-agnostic row -- falls back to
+  # the generic global floor instead.
+  expect_equal(out$prior_alpha, 0.5)
+  expect_equal(out$prior_beta, 9.5)
+})
+
+test_that("join_priors reports how many habitat-agnostic fallback rows were applied", {
+  lik <- .make_ha_lik()
+  pri <- tibble(
+    taxon_name      = c("Gadus morhua", "undetected_placeholder"),
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = c(NA_character_, "Lentic"),
+    alpha           = c(5, 0.5),
+    beta            = c(8775, 9.5),
+    undetected_type = c(NA, "global_floor")
+  )
+  site <- list(grid_id = "Grid_41p4_m86p7", main_habitat = "Lentic")
+
+  msgs <- capture_messages(
+    join_priors(lik, pri, site = site, backbone_id = 11L)
+  )
+  expect_true(any(grepl("habitat-agnostic named-species prior", msgs)))
+})
+
+# ---- Modelled-species floor promotion: scoped by cause (2026-08-26) ---------
+# The Session-117 promotion previously fired on ANY joined prior below the
+# singleton-mirror mean. The 2026-08-26 GreatLakes upranking review showed this
+# silently clamped every evidence_blend/domestic row to exact singleton parity,
+# erasing the graded weight design (byte-identical consensus across a 4x d_half
+# sweep). Now: evidence-derived rows are never promoted; modelled rows are
+# promoted only on a genuine habitat mismatch (observed_in_habitat FALSE);
+# priors lacking observed_in_habitat entirely keep the old blanket behavior.
+# See ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md.
+
+.make_promo_lik <- function(taxa) {
+  tibble(
+    observation_id        = "ESV_200",
+    taxon_name            = taxa,
+    taxon_name_rank       = "species",
+    hypothesis_type       = "specific_candidate",
+    score_likelihood      = 0.9,
+    score_likelihood_mean = 0.9,
+    score_likelihood_sd   = 0.02,
+    genus                 = "Perca",
+    family                = "Percidae",
+    species               = taxa
+  )
+}
+
+# Priors with a real singleton mirror (mean 0.02) so the promotion floor exists,
+# plus a global floor row so unmodelled-species fallback machinery is satisfied.
+.make_promo_priors <- function(extra) {
+  base <- tibble(
+    taxon_name      = c(NA_character_, NA_character_),
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = "Lentic",
+    alpha           = c(0.04, 1),
+    beta            = c(1.96, 999),
+    undetected_type = c("singleton_mirror", "global_floor")
+  )
+  dplyr::bind_rows(base, extra)
+}
+
+.promo_site <- list(grid_id = "Grid_41p4_m86p7", main_habitat = "Lentic")
+
+test_that("an evidence_blend row below the singleton mean is NEVER promoted", {
+  pri <- .make_promo_priors(tibble(
+    taxon_name      = "Sander lucioperca",
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = "Lentic",
+    alpha           = 0.01,   # theta = 0.005, below the 0.02 singleton mean
+    beta            = 1.99,
+    undetected_type = "evidence_blend",
+    model_tier      = "tier_undetected_evidence"
+  ))
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Sander lucioperca"), pri,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row <- out[out$taxon_name == "Sander lucioperca", ]
+  expect_equal(row$prior_mean[1], 0.005, tolerance = 1e-8)
+  expect_equal(row$prior_alpha[1], 0.01, tolerance = 1e-8)
+})
+
+test_that("a habitat-agnostic tier_domestic_food row rescued by the fallback is not promoted either", {
+  pri <- .make_promo_priors(tibble(
+    taxon_name      = "Gadus morhua",
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = NA_character_,   # habitat-agnostic by design
+    alpha           = 5,
+    beta            = 8775,            # theta ~= 0.00057, far below 0.02
+    undetected_type = NA_character_,
+    model_tier      = "tier_domestic_food"
+  ))
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Gadus morhua"), pri,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row <- out[out$taxon_name == "Gadus morhua", ]
+  expect_equal(row$prior_mean[1], 5 / 8780, tolerance = 1e-8)
+})
+
+test_that("a modelled row below the singleton mean IS promoted when observed_in_habitat is FALSE", {
+  pri <- .make_promo_priors(tibble(
+    taxon_name          = "Perca flavescens",
+    taxon_name_rank     = "species",
+    grid_id             = "Grid_41p4_m86p7",
+    main_habitat        = "Lentic",
+    alpha               = 0.01,  # theta = 0.001 -- habitat-extrapolated collapse
+    beta                = 9.99,
+    undetected_type     = NA_character_,
+    model_tier          = "tier1",
+    observed_in_habitat = FALSE
+  ))
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Perca flavescens"), pri,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row <- out[out$taxon_name == "Perca flavescens", ]
+  expect_equal(row$prior_mean[1], 0.02, tolerance = 1e-8)  # singleton mean
+})
+
+test_that("a modelled row below the singleton mean is NOT promoted when observed_in_habitat is TRUE", {
+  pri <- .make_promo_priors(tibble(
+    taxon_name          = "Perca flavescens",
+    taxon_name_rank     = "species",
+    grid_id             = "Grid_41p4_m86p7",
+    main_habitat        = "Lentic",
+    alpha               = 0.01,  # theta = 0.001 -- genuine in-habitat rarity
+    beta                = 9.99,
+    undetected_type     = NA_character_,
+    model_tier          = "tier1",
+    observed_in_habitat = TRUE
+  ))
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Perca flavescens"), pri,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row <- out[out$taxon_name == "Perca flavescens", ]
+  expect_equal(row$prior_mean[1], 0.001, tolerance = 1e-8)
+})
+
+test_that("priors with no observed_in_habitat column keep the pre-redesign blanket promotion", {
+  pri <- .make_promo_priors(tibble(
+    taxon_name      = "Perca flavescens",
+    taxon_name_rank = "species",
+    grid_id         = "Grid_41p4_m86p7",
+    main_habitat    = "Lentic",
+    alpha           = 0.01,
+    beta            = 9.99,
+    undetected_type = NA_character_
+  ))
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Perca flavescens"), pri,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row <- out[out$taxon_name == "Perca flavescens", ]
+  expect_equal(row$prior_mean[1], 0.02, tolerance = 1e-8)  # old behavior retained
+})
+
+test_that("prior_branch gates promotion: only resident_observed rows are eligible (kernel schema, 2026-08-31)", {
+  # A transport-branch row below the singleton mean must NOT be promoted even
+  # with a habitat mismatch -- its magnitude is the design (the measured
+  # transport rate), not a habitat-extrapolation artifact.
+  pri <- .make_promo_priors(tibble(
+    taxon_name          = "Sus scrofa",
+    taxon_name_rank     = "species",
+    grid_id             = "Grid_41p4_m86p7",
+    main_habitat        = "Lentic",
+    alpha               = 0.01,
+    beta                = 9.99,
+    undetected_type     = NA_character_,
+    model_tier          = "tier1",           # legacy label alone would allow promotion
+    observed_in_habitat = FALSE,
+    prior_branch        = "transport"
+  ))
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Sus scrofa"), pri,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row <- out[out$taxon_name == "Sus scrofa", ]
+  expect_equal(row$prior_mean[1], 0.001, tolerance = 1e-8)   # NOT promoted
+
+  # A resident_observed row with a genuine habitat mismatch stays promotable.
+  pri2 <- .make_promo_priors(tibble(
+    taxon_name          = "Sus scrofa",
+    taxon_name_rank     = "species",
+    grid_id             = "Grid_41p4_m86p7",
+    main_habitat        = "Lentic",
+    alpha               = 0.01,
+    beta                = 9.99,
+    undetected_type     = NA_character_,
+    model_tier          = "tier1",
+    observed_in_habitat = FALSE,
+    prior_branch        = "resident_observed"
+  ))
+  out2 <- suppressMessages(suppressWarnings(join_priors(
+    .make_promo_lik("Sus scrofa"), pri2,
+    site = .promo_site, backbone_id = 11L
+  )))
+  row2 <- out2[out2$taxon_name == "Sus scrofa", ]
+  expect_equal(row2$prior_mean[1], 0.02, tolerance = 1e-8)   # promoted
+})

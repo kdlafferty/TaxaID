@@ -428,3 +428,151 @@ test_that("output row order matches input", {
   expect_equal(result$consensus_taxon, mock_consensus$consensus_taxon)
   expect_equal(result$observation_id, mock_consensus$observation_id)
 })
+
+# ---------------------------------------------------------------------------
+# Echoed-annotation recovery (2026-09-04). The prompt decorates an unresolved
+# candidate set as "<label> (unresolved candidates; consensus rank: <rank>)"
+# and the model frequently echoes the decorated string back as taxon_name.
+# Singletons carry no annotation, so they always matched while every
+# multi-candidate row silently returned NA and was then dropped by the
+# workflows' export filters. GreatLakes 2026-09-04: 113 of 885 rows.
+# ---------------------------------------------------------------------------
+
+test_that("a model that echoes the annotated label still joins back to its rows", {
+  df <- data.frame(
+    observation_id  = c("o1", "o2", "o3"),
+    consensus_taxon = c("Lepomis", "Lepomis", "Perca flavescens"),
+    consensus_rank  = c("genus", "genus", "species"),
+    consensus_OTU   = c("Lepomis macrochirus/gibbosus",
+                        "Lepomis gibbosus/macrochirus",   # reversed display order
+                        "Perca flavescens"),
+    plausible_taxa  = I(list(c("Lepomis macrochirus", "Lepomis gibbosus"),
+                             c("Lepomis gibbosus", "Lepomis macrochirus"),
+                             "Perca flavescens")),
+    stringsAsFactors = FALSE
+  )
+  # Model echoes the decorated label for the unresolved set, plain for the singleton
+  fake_llm <- function(prompt, ...) {
+    labs <- regmatches(prompt, gregexpr("(?m)^- .*$", prompt, perl = TRUE))[[1]]
+    labs <- sub("^- ", "", labs)
+    # only the taxon lines, not the instruction bullets
+    labs <- grep("\\((unresolved candidates|rank: )", labs, value = TRUE)
+    # echo the DECORATED string verbatim for unresolved sets (the real failure
+    # mode); strip the plain "(rank: x)" annotation for singletons, as the
+    # model does in practice
+    labs <- ifelse(grepl("unresolved candidates", labs), labs,
+                   sub("\\s*\\(rank: [^()]*\\)$", "", labs))
+    paste0("[", paste(sprintf(
+      '{"taxon_name":"%s","habitat_plausibility":"likely","geographic_plausibility":"likely",
+        "scope_plausibility":"likely","contamination_risk":"low","review_alternatives":null,
+        "review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
+      labs), collapse = ","), "]")
+  }
+  out <- review_assignments(df, taxon_col = "consensus_taxon",
+                            taxon_rank_col = "consensus_rank",
+                            context = list(geography = "Lake Michigan",
+                                           habitat   = "harbor"),
+                            plausible_taxa_col = "plausible_taxa",
+                            irreducible_only = FALSE, taxa_per_call = 10L,
+                            llm_fn = fake_llm, verbose = FALSE)
+  # every row scored -- no silent NA on the multi-candidate rows
+  expect_false(any(is.na(out$habitat_plausibility)))
+  expect_equal(unique(out$habitat_plausibility), "likely")
+})
+
+# ---------------------------------------------------------------------------
+# review cache (2026-09-04). The review is a JUDGEMENT and an uncached one is
+# not reproducible: two GreatLakes runs 50 minutes apart on identical input
+# disagreed about Pimephales vigilax ("possible" then "unlikely"), so it was in
+# one species list and not the other.
+# ---------------------------------------------------------------------------
+
+.cache_fixture <- function() {
+  data.frame(
+    observation_id  = c("o1", "o2", "o3"),
+    consensus_taxon = c("Lepomis", "Lepomis", "Perca flavescens"),
+    consensus_rank  = c("genus", "genus", "species"),
+    consensus_OTU   = c("Lepomis macrochirus/gibbosus",
+                        "Lepomis gibbosus/macrochirus", "Perca flavescens"),
+    plausible_taxa  = I(list(c("Lepomis macrochirus", "Lepomis gibbosus"),
+                             c("Lepomis gibbosus", "Lepomis macrochirus"),
+                             "Perca flavescens")),
+    stringsAsFactors = FALSE)
+}
+
+.counting_llm <- function(counter) {
+  function(prompt, ...) {
+    assign("n", get("n", counter) + 1L, counter)
+    labs <- sub("^- ", "", regmatches(prompt, gregexpr("(?m)^- .*$", prompt, perl = TRUE))[[1]])
+    labs <- grep("\\((unresolved candidates|rank: )", labs, value = TRUE)
+    labs <- ifelse(grepl("unresolved candidates", labs), labs,
+                   sub("\\s*\\(rank: [^()]*\\)$", "", labs))
+    paste0("[", paste(sprintf(
+      '{"taxon_name":"%s","habitat_plausibility":"likely","geographic_plausibility":"likely","scope_plausibility":"likely","contamination_risk":"low","review_alternatives":null,"review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
+      labs), collapse = ","), "]")
+  }
+}
+
+test_that("a cached review is reproducible and makes no second LLM call", {
+  cd <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  ctr <- new.env(); assign("n", 0L, ctr)
+  args <- list(.cache_fixture(), taxon_col = "consensus_taxon",
+               taxon_rank_col = "consensus_rank",
+               context = list(geography = "Lake Michigan", habitat = "harbor"),
+               plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
+               taxa_per_call = 10L, llm_fn = .counting_llm(ctr),
+               cache_dir = cd, verbose = FALSE)
+  a <- do.call(review_assignments, args)
+  first <- get("n", ctr)
+  expect_gt(first, 0L)
+  b <- do.call(review_assignments, args)
+  expect_equal(get("n", ctr), first)                       # no further calls
+  expect_equal(a$habitat_plausibility, b$habitat_plausibility)
+  expect_false(any(is.na(b$habitat_plausibility)))
+})
+
+test_that("changing the review context is a cache MISS, not a stale hit", {
+  cd <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  ctr <- new.env(); assign("n", 0L, ctr)
+  base <- list(.cache_fixture(), taxon_col = "consensus_taxon",
+               taxon_rank_col = "consensus_rank",
+               context = list(geography = "Lake Michigan", habitat = "harbor"),
+               plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
+               taxa_per_call = 10L, llm_fn = .counting_llm(ctr),
+               cache_dir = cd, verbose = FALSE)
+  invisible(do.call(review_assignments, base))
+  n1 <- get("n", ctr)
+  moved <- base; moved$context <- list(geography = "Chesapeake Bay", habitat = "harbor")
+  invisible(do.call(review_assignments, moved))
+  expect_gt(get("n", ctr), n1)
+})
+
+test_that("cache files are the file-per-key shape taxaflag_clear_cache() manages", {
+  cd <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  ctr <- new.env(); assign("n", 0L, ctr)
+  invisible(review_assignments(.cache_fixture(), taxon_col = "consensus_taxon",
+    taxon_rank_col = "consensus_rank",
+    context = list(geography = "Lake Michigan", habitat = "harbor"),
+    plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
+    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), cache_dir = cd, verbose = FALSE))
+  inv <- taxaflag_clear_cache(cache_dir = cd, dry_run = TRUE)
+  expect_gt(nrow(inv), 0L)
+  expect_true(all(grepl("_review\\.rds$", basename(inv$path))))
+  expect_true(all(file.exists(inv$path)))                  # dry_run kept them
+  taxaflag_clear_cache(cache_dir = cd)
+  expect_equal(nrow(TaxaTools::list_cache_files(cd, .taxaflag_cache_patterns)), 0L)
+})
+
+test_that("a hash collision is a miss, never another taxon's verdict", {
+  cd <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  dir.create(cd, recursive = TRUE)
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  f <- file.path(cd, "collide_review.rds")
+  saveRDS(list(key = "SOME OTHER KEY",
+               row = data.frame(taxon_name = "Wrong taxon", stringsAsFactors = FALSE)), f)
+  expect_null(TaxaFlag:::.review_cache_read(f, "the key we actually want"))
+  expect_null(TaxaFlag:::.review_cache_read(file.path(cd, "absent.rds"), "k"))
+})

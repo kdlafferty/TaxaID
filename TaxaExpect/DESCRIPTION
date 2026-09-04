@@ -15,22 +15,28 @@ Imports:
     dplyr,
     rlang,
     glmmTMB,
+    grDevices,
+    graphics,
     stats,
     utils,
     stringr,
     tibble,
-    tidyr
+    tidyr,
+    TaxaTools
 Suggests:
+    htmltools,
+    htmlwidgets,
     knitr,
     leaflet,
     miniUI,
     rentrez,
     rmarkdown,
     rgbif,
+    sf,
     shiny,
     TaxaFetch,
+    TaxaFlag,
     TaxaHabitat,
-    TaxaTools,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr

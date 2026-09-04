@@ -257,6 +257,19 @@
 #'     not a genuine surprise. \code{FALSE} otherwise, including when
 #'     \code{domestic_taxa} is \code{NULL} (the feature is disabled). See
 #'     @section Domestic/synanthropic species caveat above.}
+#'   \item{\code{domestic_caveat_type}}{Character. \code{NA} unless
+#'     \code{domestic_prior_caveat} is \code{TRUE}, then one of:
+#'     \code{"no_local_records"} (\code{primary_plausibility} was
+#'     \code{"unprecedented"} -- the species has never been reported locally,
+#'     so the classic food/domestic-contamination reading is the leading
+#'     hypothesis) or \code{"local_records"} (\code{primary_plausibility} was
+#'     \code{"unexpected"} -- the species HAS real local occurrence records,
+#'     just at an implausibly low modelled rate, typically because those
+#'     records sit in a different habitat than the survey's. For that case a
+#'     genuine allochthonous detection -- DNA transported across habitats,
+#'     e.g. terrestrial pigs or coyotes reaching beach eDNA samples via
+#'     runoff and tides -- is at least as plausible as food contamination,
+#'     and a reviewer should not read the row as a plain food label.)}
 #' }
 #'
 #' @examples
@@ -470,11 +483,25 @@ add_posthoc_assessment <- function(
   # instead of the retired tier lookup -- same underlying occurrence-gap
   # signal, sourced from the more principled theta_mean-based mechanism.
   domestic_prior_caveat <- rep(FALSE, n)
+  domestic_caveat_type  <- rep(NA_character_, n)
   if (!is.null(domestic_taxa) && domestic_prior_source == "wild") {
     lik_ok <- !is.na(lik) & lik >= likelihood_threshold
     low_plausibility <- !is.na(primary_plausibility) &
       primary_plausibility %in% c("unexpected", "unprecedented")
     domestic_prior_caveat <- lik_ok & low_plausibility & taxon %in% domestic_taxa
+    # Split the caveat by whether the winner has ANY real local occurrence
+    # record -- already encoded in primary_plausibility ("unprecedented" =
+    # no record at all; "unexpected" = real records, implausibly low modelled
+    # rate). The two values name different leading hypotheses (2026-08-29,
+    # the Sus scrofa collision): no records -> the classic food/domestic
+    # contamination reading; records present -> the detection may be REAL
+    # allochthonous DNA transported across habitats (pigs/coyotes on the
+    # beach reaching marine samples via runoff and tides), and the plain
+    # food-contamination label would be misleading.
+    domestic_caveat_type[domestic_prior_caveat] <- ifelse(
+      primary_plausibility[domestic_prior_caveat] == "unprecedented",
+      "no_local_records", "local_records"
+    )
   }
 
   consensus_df$primary_plausibility     <- primary_plausibility
@@ -482,5 +509,6 @@ add_posthoc_assessment <- function(
   consensus_df$primary_discrimination   <- primary_discrimination
   consensus_df$consensus_discrimination <- consensus_discrimination
   consensus_df$domestic_prior_caveat    <- domestic_prior_caveat
+  consensus_df$domestic_caveat_type     <- domestic_caveat_type
   consensus_df
 }

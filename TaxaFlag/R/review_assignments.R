@@ -20,6 +20,32 @@
 #' @param input_df Data frame with at minimum a column of taxon names.
 #' @param taxon_col Character. Column name for consensus taxon. Default
 #'   \code{"consensus_taxon"}.
+#' @section Candidate-set join key:
+#' On the candidate-aware path, review results are joined back to input rows by
+#' the SORTED candidate set, not by the display label. The label
+#' (\code{consensus_OTU}) is ordered by posterior so the most-supported taxon
+#' reads first, which means one biological unit can carry "A/B" on one
+#' observation and "B/A" on another; joining on the label left one of them
+#' unmatched and therefore unscored. Sets are also deduplicated canonically, so
+#' a unit that previously appeared under two orderings is now reviewed once
+#' rather than twice. Display labels are unchanged. (2026-09-04.)
+#'
+#' @param cache_dir Character or \code{NULL} (default). Directory for the
+#'   per-taxon review cache. \code{NULL} disables caching entirely, which is
+#'   the historical behaviour. Supplying a directory makes a re-run
+#'   REPRODUCIBLE and stops it re-paying for verdicts already obtained: the
+#'   review is a judgement, and two GreatLakes runs 50 minutes apart on
+#'   identical input disagreed about \emph{Pimephales vigilax}
+#'   (\code{"possible"} then \code{"unlikely"}), putting it in one species
+#'   list and not the other. One small \code{.rds} per reviewed taxon, keyed
+#'   on everything that can move a verdict -- the taxon label and rank, its
+#'   attached pipeline/weight/spatial notes, \code{context},
+#'   \code{target_group}, \code{marker}, \code{data_type} and the
+#'   candidate-set path -- so changing any of them is correctly a miss. Manage
+#'   it with [taxaflag_clear_cache()], which uses the same
+#'   [TaxaTools::list_cache_files()] engine as the other packages' cache
+#'   helpers, so it does not accumulate unmanaged.
+#'
 #' @param taxon_rank_col Character or \code{NULL}. Column name for consensus
 #'   rank (e.g., "species", "genus"). When supplied, the rank is included in
 #'   the prompt for context. Default \code{NULL}.
@@ -297,6 +323,7 @@ review_assignments <- function(input_df,
                                max_tokens         = NULL,
                                max_retries        = 2L,
                                pause_seconds      = 1,
+                               cache_dir          = NULL,
                                verbose            = TRUE) {
 
   # --- Input validation ---
@@ -349,6 +376,10 @@ review_assignments <- function(input_df,
   # --- Build taxa_info: candidate-set path or consensus-taxon path ---
   use_candidates <- !is.null(plausible_taxa_col)
 
+  # Maps each reviewed row's DISPLAY label back to its canonical (sorted-set)
+  # join key; NULL on the non-candidate path, where the taxon name is the key.
+  label_canon_map <- NULL
+
   if (use_candidates) {
 
     raw_sets  <- input_df[[plausible_taxa_col]]
@@ -398,8 +429,15 @@ review_assignments <- function(input_df,
     # Exclude unresolved rows
     include_rows <- include_rows & n_cands > 0L
 
-    # Store join key on input_df (label is the key — canonical because sets are sorted)
-    input_df$.join_key <- cand_labels
+    # Join on the SORTED candidate set, never on the display label. taxa_sets
+    # is already sorted above; cand_labels is not -- it comes from
+    # consensus_OTU, which is ordered by posterior so the most-supported taxon
+    # reads first. Two observations of one unit can therefore carry "A/B" and
+    # "B/A", which as join keys never match, leaving one of them unreviewed and
+    # NA. The label is left exactly as it is: still posterior-ordered, still
+    # what the LLM is shown and what the caller sees.
+    canon_key <- vapply(taxa_sets, paste, character(1L), collapse = "\u0001")
+    input_df$.join_key <- canon_key
 
     # Build taxa_info from unique labels in included rows
     inc_labels <- cand_labels[include_rows]
@@ -412,9 +450,16 @@ review_assignments <- function(input_df,
     taxa_info <- data.frame(
       taxon_name = inc_labels,
       taxon_rank = inc_ranks,
+      .canon     = canon_key[include_rows],
       stringsAsFactors = FALSE
     )
-    taxa_info <- taxa_info[!duplicated(taxa_info$taxon_name), , drop = FALSE]
+    # Dedup on the canonical set, not the label: one review per biological
+    # unit. Where a unit previously appeared under two orderings it was
+    # reviewed twice, so this also removes a redundant LLM call rather than
+    # adding one.
+    taxa_info <- taxa_info[!duplicated(taxa_info$.canon), , drop = FALSE]
+    label_canon_map <- stats::setNames(taxa_info$.canon, taxa_info$taxon_name)
+    taxa_info$.canon <- NULL
 
     if (nrow(taxa_info) == 0L)
       stop("No candidate sets to review after filtering. ",
@@ -492,10 +537,74 @@ review_assignments <- function(input_df,
                     nrow(taxa_info),
                     if (use_candidates) "candidate sets" else "taxa"))
 
+  # --- Cache lookup ------------------------------------------------------
+  # The review is a JUDGEMENT, and an uncached one is not reproducible: two
+  # GreatLakes runs 50 minutes apart on identical input disagreed about
+  # Pimephales vigilax ("possible" then "unlikely"), so it appeared in one
+  # species list and not the other. Caching makes a re-run reproducible and
+  # stops it re-paying for verdicts already obtained.
+  #
+  # Shape: one small file per reviewed taxon, named by a hash of its full key
+  # -- the file-per-key shape TaxaTools::list_cache_files() /
+  # report_and_clear_cache() are built for, so taxaflag_clear_cache() can
+  # report and prune it like every other cache in the ecosystem. The FULL key
+  # is stored inside each file and verified on read, so a hash collision is a
+  # miss (re-asked) rather than a wrong verdict silently returned for the
+  # wrong taxon.
+  #
+  # The key covers everything that can move a verdict: the taxon label and
+  # rank, every per-taxon note already attached to taxa_info (pipeline
+  # posterior, candidate weights, spatial context), the shared review context,
+  # target_group, marker, data_type, and whether this is the candidate-set
+  # path. Change any of them and the entry is correctly a miss.
+  cache_hits <- NULL
+  cache_paths <- NULL
+  cache_keys <- NULL
+  call_rows  <- seq_len(nrow(taxa_info))
+  if (!is.null(cache_dir)) {
+    if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))
+      stop("'cache_dir' must be a single non-NA character string, or NULL.",
+           call. = FALSE)
+    if (!dir.exists(cache_dir))
+      dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+    .shared <- paste(c(
+      "v1", target_group %||% "", marker %||% "", data_type,
+      as.character(use_candidates),
+      paste(names(ctx), vapply(ctx, function(z) paste(as.character(z), collapse = "~"),
+                               character(1)), sep = "=", collapse = "|")
+    ), collapse = "\u0001")
+
+    cache_keys <- vapply(seq_len(nrow(taxa_info)), function(i) {
+      paste(c(.shared, vapply(taxa_info, function(col)
+        paste(as.character(col[i]), collapse = "~"), character(1))),
+        collapse = "\u0001")
+    }, character(1))
+    cache_paths <- file.path(
+      cache_dir, paste0(vapply(cache_keys, .review_cache_hash, character(1)),
+                        "_review.rds"))
+
+    hit_rows <- integer(0); hit_list <- list()
+    for (i in seq_along(cache_paths)) {
+      ent <- .review_cache_read(cache_paths[i], cache_keys[i])
+      if (!is.null(ent)) { hit_rows <- c(hit_rows, i); hit_list[[length(hit_list) + 1L]] <- ent }
+    }
+    if (length(hit_rows) > 0L) {
+      cache_hits <- do.call(rbind, hit_list)
+      call_rows  <- setdiff(call_rows, hit_rows)
+    }
+    if (verbose)
+      message(sprintf("  cache: %d of %d taxa already reviewed; %d to call.",
+                      length(hit_rows), nrow(taxa_info), length(call_rows)))
+  }
+
+  taxa_to_call <- taxa_info[call_rows, , drop = FALSE]
+
   # --- Batch and call LLM ---
-  n_taxa    <- nrow(taxa_info)
-  tpc       <- min(taxa_per_call, n_taxa)
-  batch_idx <- split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc))
+  n_taxa    <- nrow(taxa_to_call)
+  tpc       <- if (n_taxa > 0L) min(taxa_per_call, n_taxa) else 1L
+  batch_idx <- if (n_taxa > 0L)
+    split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc)) else list()
   n_batches <- length(batch_idx)
 
   if (verbose)
@@ -506,7 +615,7 @@ review_assignments <- function(input_df,
   prompt_log    <- new.env(parent = emptyenv())
 
   for (b in seq_along(batch_idx)) {
-    taxa_batch <- taxa_info[batch_idx[[b]], , drop = FALSE]
+    taxa_batch <- taxa_to_call[batch_idx[[b]], , drop = FALSE]
 
     if (verbose)
       message(sprintf("  Calling LLM (batch %d/%d, %d %s)...",
@@ -524,6 +633,17 @@ review_assignments <- function(input_df,
   }
 
   review_df <- do.call(rbind, batch_results)
+
+  # Persist the freshly obtained verdicts, then fold the cached ones back in.
+  if (!is.null(cache_dir) && !is.null(review_df) && nrow(review_df) > 0L) {
+    pos <- match(review_df$taxon_name, taxa_info$taxon_name)
+    for (k in which(!is.na(pos)))
+      .review_cache_write(cache_paths[pos[k]], cache_keys[pos[k]],
+                          review_df[k, , drop = FALSE])
+  }
+  if (!is.null(cache_hits))
+    review_df <- if (is.null(review_df) || nrow(review_df) == 0L) cache_hits
+                 else rbind(review_df, cache_hits[, names(review_df), drop = FALSE])
   rownames(review_df) <- NULL
 
   if (verbose)
@@ -533,7 +653,8 @@ review_assignments <- function(input_df,
 
   # --- Join back to input by .join_key ---
   merge_key <- data.frame(
-    .join_key               = review_df$taxon_name,
+    .join_key               = if (is.null(label_canon_map)) review_df$taxon_name
+                              else unname(label_canon_map[review_df$taxon_name]),
     habitat_plausibility    = review_df$habitat_plausibility,
     geographic_plausibility = review_df$geographic_plausibility,
     scope_plausibility      = review_df$scope_plausibility,
@@ -1205,13 +1326,13 @@ review_assignments <- function(input_df,
   # the package or ecosystem (checked), so kept inline rather than factored
   # into a shared utility, but taking `df` as an argument makes the
   # dependency visible at each call site instead of implicit.
-  .safe_col <- function(df, col_name) {
-    if (col_name %in% names(df)) {
-      vals <- as.character(df[[col_name]])
+  .safe_col <- function(input_df, col_name) {
+    if (col_name %in% names(input_df)) {
+      vals <- as.character(input_df[[col_name]])
       vals[vals %in% c("null", "NULL", "NA")] <- NA_character_
       vals
     } else {
-      rep(NA_character_, nrow(df))
+      rep(NA_character_, nrow(input_df))
     }
   }
 
@@ -1251,8 +1372,20 @@ review_assignments <- function(input_df,
   # punctuation-only normalisation couldn't recover -- every taxon in the
   # batch was wrongly treated as omitted and filled with NA, regardless of how
   # easy the taxon itself was to assess.
+  # 2026-09-04: widened to the "(unresolved candidates; consensus rank: X)"
+  # form as well. .build_taxa_block() renders an UNRESOLVED candidate set as
+  # "- <label> (unresolved candidates; consensus rank: <rank>)", and the model
+  # echoes that whole decorated string back just as it does for "(rank: ...)".
+  # The old pattern required the parenthetical to begin with "rank:", so the
+  # unresolved form never normalised, every slash taxon was treated as omitted
+  # and filled with NA, and the workflows' export filters then dropped those
+  # rows without a word -- 113 of 885 on GreatLakes 2026-09-04, every one of
+  # them a multi-candidate set. Singletons were unaffected because their
+  # "(rank: ...)" annotation WAS handled, which is exactly why the loss looked
+  # like "coarse ranks are excluded on purpose".
   .norm <- function(x) {
-    x <- sub("(?i)\\s*\\(\\s*rank\\s*:.*\\)\\s*$", "", trimws(x), perl = TRUE)
+    x <- sub("(?i)\\s*\\(\\s*(?:unresolved candidates|rank\\s*:)[^)]*\\)\\s*$",
+             "", trimws(x), perl = TRUE)
     tolower(trimws(gsub("[.,;:]+$", "", trimws(x))))
   }
   expected_norm <- .norm(expected_taxa)

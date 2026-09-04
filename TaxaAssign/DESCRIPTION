@@ -20,8 +20,7 @@ Suggests:
     testthat (>= 3.0.0),
     TaxaHabitat,
     TaxaLikely,
-    TaxaMatch,
-    TaxaTools
+    TaxaMatch
 Config/testthat/edition: 3
 Imports:
     cli,
@@ -29,6 +28,7 @@ Imports:
     jsonlite,
     rentrez,
     rlang,
-    stats
+    stats,
+    TaxaTools
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.0.0
