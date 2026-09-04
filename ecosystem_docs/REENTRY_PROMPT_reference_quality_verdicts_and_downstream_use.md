@@ -693,3 +693,103 @@ measured 0/22 flagged ASVs ever hitting `max_hits = 20` and closed the idea.
 That was the MATCH path (`blast_sequences()` on ASVs); this is the reference
 SCREEN, where saturation is 91% rather than 0%. The closure's evidence does
 not transfer, in either direction.
+
+## 2026-09-04: what "insufficient_independent_evidence" is actually made of
+
+It is the largest non-congruent population in every real screen and nothing had
+ever looked at it -- every prior thread went after `"incongruent"`, which is
+~0.5% of a population and merely the only verdict acted on destructively.
+
+**The offline decomposition splits it exactly in two, with no overlap, in four
+independent caches:**
+
+| cache | insufficient | zero-partner | 1-2 partners |
+|---|---:|---:|---:|
+| PtCon (live v5 key) | 34 | 17 | 17 |
+| GreatLakes goal2 | 13 | 7 | 6 |
+| GreatLakes Plate1 | 27 | 24 | 3 |
+| GreatLakes pilot | 79 | 50 | 29 |
+| **total** | **153** | **98** | **55** |
+
+Two invariants hold across all 153 rows with **zero exceptions**:
+
+1. **Every row with at least one valid partner has corroborating evidence**
+   (55/55 `congruent_evidence_exists_anywhere == TRUE`, PtCon median best
+   agreeing identity 98.2%). It reads `"insufficient"` only because the VOTE
+   wants `min_independent_partners` (3). `reference_action` already reads
+   `"keep"` for every one of them, so the harm is confined to the flag's own
+   name -- it says "insufficient evidence" about accessions that have evidence.
+2. **Every zero-partner row has none** (0/98), scores `label_confidence`
+   EXACTLY 0.500, and reads `reference_action = "caution"`.
+
+That 0.500 is not a measurement. With no valid partners,
+`frac_independent_below_min_congruent_rank` falls back to its 0.5 default and
+the identity margin is `NA`, so `plogis(qlogis(0.5) + 0) = 0.5` -- a prior with
+zero data, landing squarely in the `"caution"` band (0.25-0.75). The screen is
+therefore reporting concern earned by an absence, against a base rate of
+931/989 congruent. This is the same defect recorded on 2026-09-02 under
+"zero-partner rows must be a no-op, not 0.5" -- that note was written about the
+(since deleted) likelihood covariate and was never applied to
+`label_confidence`/`reference_action` themselves, where it is still live.
+
+## The truncation test, and what it does NOT explain
+
+`diagnostics/insufficient_evidence_probe.R` re-evaluated all 34 PtCon
+insufficient accessions at `max_hits = 100` (sharing the veto probe's cache, so
+8 were free). Result:
+
+- **12 of 34 (35%) are no longer `"insufficient"`** -- they read `"congruent"`.
+- Zero-partner arm: **7 of 17 resolved**, and all 7 moved `caution -> keep`.
+  Those seven are the five *Stenella attenuata* (`KX8572xx`/`KX8573xx`, one
+  sequential submission batch) plus two *Homo sapiens*. So for a
+  batch-dominated clade, the independence filter was correct AND the
+  independent partners existed -- just past rank 20.
+- 1-2 partner arm: 5 of 17 resolved.
+- **But 21 of 34 gained NO hits at all when the window quintupled.** Their
+  thinness is real and no widening will fix it: *Chilara taylori*,
+  *Hypsoblennius gilberti*, *Leiocottus hirundo*, *Neoclinus blanchardi*,
+  *Rhinogobiops nicholsii*, *Ruscarius creaseri*, *Typhlogobius
+  californiensis*, *Gorilla beringei* and two more *Homo sapiens* are genuine
+  singletons in `nt` at this marker.
+- 13 of 34 are still saturated at 100 hits, so 100 is not the end of it either.
+
+**Reading:** truncation is a real but MINORITY cause -- about a third. This is
+the second independent line of evidence that `max_hits = 20` is too tight for
+this screen (the first being the removal veto, same day), and the two together
+are the case for revisiting that default. But it is NOT the whole story, and a
+`max_hits` change alone would leave ~65% of the population exactly where it is.
+
+## What this means for the flag's meaning
+
+The invariants above survive the widening (after it, every partnered row still
+reads `keep` and every zero-partner row still reads `caution`), so the split is
+structural rather than incidental to one dataset. Three candidate changes, in
+increasing order of how much they touch:
+
+1. **`label_confidence = NA` when `n_independent_top_matches == 0`**, which
+   flows through the existing `is.na(label_confidence) -> "untested"` rule and
+   makes those rows read `"untested"` instead of `"caution"`. This is the
+   change the evidence most directly supports: it stops the screen reporting
+   concern it has not earned, it reuses machinery already present, it keys on
+   `n == 0` rather than on `hierarchy_flag` (as the 2026-09-02 note insisted),
+   and it is a derived post-hoc column, so no cache is invalidated. Cost: it
+   changes a shipped column's values -- PtCon 17 rows, GreatLakes 81 --
+   and `"untested"` currently means "never submitted to BLAST", which these
+   accessions WERE. That second meaning would have to widen to "no usable
+   evidence was obtained", which is defensible but is a real redefinition.
+2. **Split the flag** into a genuinely-thin case and a corroborated-but-
+   under-partnered case, so the name stops contradicting the diagnostics for
+   the 55 partnered rows. Cost: a new `hierarchy_flag` value is additive, but
+   this one would REPLACE `"insufficient_independent_evidence"` on real rows
+   rather than sitting beside it, which is the kind of change
+   `.EVAL_REF_ACC_VERSION` exists to gate.
+3. **Leave it.** Defensible on the grounds that `reference_action` -- the
+   column consumers are told to read -- is already correct for all 55
+   partnered rows, and that the flag is accurate about the vote it names.
+   The cost is that the 98 zero-partner rows keep reading `"caution"`.
+
+RECOMMENDATION: (1) alone. It fixes the only case where the current output
+actively misleads (concern from an absence), costs nothing in cache terms, and
+leaves the flag's own definition untouched. (2) is a rename in search of a
+problem now that `reference_action` is the documented consumer surface. NOT
+BUILT -- this is a decision, and it is the user's.
