@@ -793,3 +793,51 @@ actively misleads (concern from an absence), costs nothing in cache terms, and
 leaves the flag's own definition untouched. (2) is a rename in search of a
 problem now that `reference_action` is the documented consumer surface. NOT
 BUILT -- this is a decision, and it is the user's.
+
+## 2026-09-04: three verdicts taken, all implemented
+
+The user was asked for three decisions and took the recommended option on each.
+
+**1. Zero-partner rows -> `"untested"`.** `label_confidence` is now `NA` when
+`n_independent_top_matches == 0`, which flows through the existing
+`is.na() -> "untested"` rule. Keyed on the partner COUNT, not on
+`hierarchy_flag`, exactly as the 2026-09-02 note insisted. Derived post-hoc
+column, so no cache was invalidated. Real effect: 98 rows move
+`caution -> untested` (PtCon 17, GL goal2 7, GL Plate1 24, GL pilot 50), and
+PtCon's `"caution"` band drops 21 -> 4 -- it now means mixed evidence rather
+than no evidence. `"untested"` correspondingly widens from "never submitted to
+BLAST" to "no usable evidence obtained"; both routes are documented in
+`score_reference_labels()`'s new `@section No partners is not a coin flip`.
+
+**2. `max_hits` stays at 20; audit instead.** New exported
+`TaxaMatch::verify_removal_candidates()` re-evaluates ONLY the accessions
+actioned `"remove"` at a wider window (default 100) and reports which stop
+being removable. Zero NCBI calls when nothing would be removed. It compares its
+own `params_key` against the production evaluation's and warns, naming the
+fields, if anything but `max_hits` differs -- a caller who forgets to forward
+`barcode_term` otherwise gets a comparison that means nothing, which is the
+specific failure this guard exists for. It also returns `still_saturated` per
+row, so a "still removable" verdict from a row that was itself at the audit cap
+is read as the weaker claim it is.
+
+Raising the default was declined on cost: `max_hits` is in `params_key`, so it
+would re-BLAST ~3,000 rows across four caches for a screen that has been
+NCBI-throttled before -- and the insufficient-evidence probe showed truncation
+explains only ~35% of that population, so it would not have been a fix anyway.
+
+**3. `OQ846263` spared in production.** Added to
+`PtConceptionWorkflow_12S_single_site.R`'s `override_accessions` as
+`VETO_AUDIT_SPARED`, with the `verify_removal_candidates()` call that
+supersedes the hardcoded vector written out in the comment above it. The PtCon
+removal set is now 1: `KM057967` (*Jordania zonope*), which still removes at
+100 hits and should -- it is the genuine singleton whose apparent corroborator
+matched over 5.6% overlap.
+
+**What is still open on this thread.** 13 of 34 PtCon insufficient rows are
+saturated at 100 hits too, so 100 is not where the truncation question ends;
+the 21 of 34 that gained no hits at all when the window quintupled are
+genuinely thin and no widening helps them. GreatLakes and Mugu have still never
+been live-run on the v5 amplicon path, so none of the four probes' numbers have
+a GreatLakes counterpart yet -- and GL Plate1's zero-partner population (24 of
+27 insufficient, dominated by *Phoxinus* and *Etheostoma*) has a different
+shape from PtCon's, so it should not be assumed to behave the same way.

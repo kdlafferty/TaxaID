@@ -213,7 +213,28 @@ corroborating and nothing contradicting gives the full positive cap.
 | `"caution"` | `0.25 <= label_confidence < 0.75` | Usable, but the evidence is mixed. Worth knowing about; not worth acting on alone. |
 | `"inspect"` | `0.05 <= label_confidence < 0.25` | Look at this one. Often thin coverage rather than a mislabel. |
 | `"remove"` | `label_confidence < 0.05` **AND** `hierarchy_flag == "incongruent"` **AND** `congruent_evidence_exists_anywhere == FALSE` | Nothing anywhere corroborates the label and something contradicts it. |
-| `"untested"` | `hierarchy_flag` is `"not_evaluated_oversized"`, `"not_evaluated_wrong_marker"` or `NA` | No verdict was computed at all. For `"not_evaluated_wrong_marker"` the actionable finding is in `hierarchy_flag`, not here: drop the accession from the candidate set. |
+| `"untested"` | `hierarchy_flag` is `"not_evaluated_oversized"` / `"not_evaluated_wrong_marker"` / `NA`, **or** `n_independent_top_matches == 0` (2026-09-04) | No usable evidence was obtained. Two routes here: the query was never submitted to BLAST, or it was submitted and came back with zero valid comparison partners. For `"not_evaluated_wrong_marker"` the actionable finding is in `hierarchy_flag`: drop the accession from the candidate set. |
+
+**Zero partners is not a coin flip (2026-09-04).** Before this, an accession with no valid
+comparison partners scored `label_confidence` of *exactly* 0.500 -- `frac` falling back to its
+0.5 default with no data behind it -- which lands in the `"caution"` band and had the screen
+asserting concern earned by an absence, against a base rate of 931 congruent out of 989
+evaluated. Measured across four independent real caches the split was total, with no
+exceptions: all 98 zero-partner rows scored 0.500 and read `"caution"`, while all 55 rows with
+at least one partner had corroborating evidence and read `"keep"`. Those 98 now read
+`"untested"`. The rule keys on the partner COUNT, not on `hierarchy_flag` -- a 1-2 partner row
+also reads `"insufficient_independent_evidence"` but does have real evidence, and keying on the
+verdict would wrongly blank it. Some of these rows are a `max_hits` truncation artifact rather
+than a property of the accession (see below), but `"untested"` is the honest reading either way.
+
+**Auditing a removal before you act on it.** `congruent_evidence_exists_anywhere` is the hard
+veto that spares an accession from `"remove"`, and despite its name it is capped by `max_hits`
+(default 20) -- 899 of 989 real PtConception accessions came back AT that cap. At
+`max_hits = 100` the veto flipped for 8 of 15 veto-critical accessions and one of two real
+removals (`OQ846263`) turned out to be corroborated. `verify_removal_candidates()` re-evaluates
+ONLY the accessions actioned `"remove"` at a wider window and reports which stop being
+removable; it makes no NCBI call when nothing would be removed, and it warns if your audit
+differs from the production run in anything other than `max_hits`.
 
 **The local-corroboration veto (2026-09-03).** When `score_reference_labels()` is given the
 `corroborate_references_locally()` table, a row that resolves to `"remove"` while the caller's

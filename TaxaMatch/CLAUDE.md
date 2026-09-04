@@ -1,5 +1,56 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-04, third pass (Opus 5, branch kernel-priors -- three user verdicts
+# taken on the reference-screen thread, all implemented. Read the second-pass note below
+# first; this builds directly on its two findings.
+#
+# (1) ZERO PARTNERS IS NOT A COIN FLIP. `label_confidence` is now NA, and
+# `reference_action` "untested", when `n_independent_top_matches == 0`. Previously such a row
+# scored EXACTLY 0.500 -- `frac` falling back to its 0.5 default with no data behind it, the
+# identity margin NA -- which lands in the "caution" band, so the screen was asserting concern
+# earned by an absence against a base rate of 931 congruent of 989 evaluated. The rule keys on
+# the partner COUNT, deliberately NOT on hierarchy_flag: a 1-2 partner row also reads
+# "insufficient_independent_evidence" but does have evidence, and keying on the verdict would
+# wrongly blank it. Derived post-hoc column, so NO cache invalidation.
+#
+# THE MEASUREMENT BEHIND IT, across four independent real caches (PtCon + three GreatLakes,
+# 153 insufficient rows), where the split is total with ZERO exceptions: all 98 zero-partner
+# rows scored 0.500 and read "caution"; all 55 rows with >= 1 partner had corroborating
+# evidence (congruent_evidence_exists_anywhere TRUE, PtCon median 98.2% identity) and read
+# "keep". Real effect of the change: 98 rows move caution -> untested (PtCon 17, GL goal2 7,
+# GL Plate1 24, GL pilot 50), and PtCon's "caution" band drops 21 -> 4, so it finally means
+# mixed evidence rather than no evidence.
+#
+# (2) NEW EXPORTED `verify_removal_candidates()` -- the pre-removal audit, and the answer to
+# the max_hits question that does NOT invalidate a cache. Re-evaluates ONLY the accessions
+# actioned "remove", at a wider max_hits (default 100), and reports which stop being
+# removable. Zero NCBI calls when nothing would be removed. It compares its own params_key
+# against the production evaluation's and WARNS, naming the differing fields, if anything
+# other than max_hits differs -- a caller who forgets to forward barcode_term gets a
+# meaningless comparison otherwise, and that is the failure this guard exists for.
+# max_hits STAYS AT 20 by user decision: it is in params_key, so raising it would re-BLAST
+# ~3,000 rows across four caches for a screen that has been NCBI-throttled before, and the
+# insufficient-evidence probe showed truncation explains only ~35% of that population anyway.
+#
+# (3) OQ846263 (Rathbunella hypoplecta) SPARED IN PRODUCTION. It was one of only two
+# accessions PtConceptionWorkflow_12S_single_site.R actions as "remove", and at max_hits = 100
+# it is corroborated and drops to "inspect". Added by hand to that workflow's
+# override_accessions as `VETO_AUDIT_SPARED`, with the verify_removal_candidates() call that
+# supersedes the hardcoded vector written out in the comment above it. KM057967 (Jordania
+# zonope) still removes at 100 hits and stays removed -- correctly, it is a genuine singleton
+# (see the 2026-09-03 note on its 5.6%-overlap false corroborator).
+#
+# WHAT IS STILL OPEN, deliberately: 13 of 34 PtCon insufficient rows are saturated at 100
+# hits too, so 100 is not the end of the truncation question -- verify_removal_candidates()
+# reports `still_saturated` per row so a "still removable" verdict from a saturated row is
+# read as the weaker claim it is. The 21 of 34 that gained NO hits when the window quintupled
+# are genuinely thin and no widening will help them.
+#
+# `devtools::document()` clean, `devtools::test()` 1277/1277 (0 failures; 1 pre-existing
+# unrelated warning in test-convert_taxonomy_backbone.R:931, file untouched),
+# `devtools::check()` 0 errors / 0 warnings / 0 notes. NOT reinstalled -- see the session-end
+# apply block.
+#
 # Last updated: 2026-09-04, second pass (Opus 5, branch kernel-priors -- two items from
 # REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md's own suggested direction.
 #

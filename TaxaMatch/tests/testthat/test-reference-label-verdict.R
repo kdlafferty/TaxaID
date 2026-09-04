@@ -380,3 +380,186 @@ test_that("a cache_dir with no pair file is not an error", {
   expect_equal(nrow(TaxaMatch:::.load_reference_pair_cache(dir)), 0L)
   expect_equal(nrow(TaxaMatch:::.load_reference_pair_cache(NULL)), 0L)
 })
+
+# ------------------------------------------------------------------------------
+# No partners is not a coin flip (2026-09-04). Zero valid partners means no
+# usable evidence, not balanced evidence -- see score_reference_labels()'s own
+# @section of that name for the four-cache measurement behind it.
+# ------------------------------------------------------------------------------
+
+test_that("score_reference_labels() gives a zero-partner row NA confidence and 'untested', not 0.5/'caution'", {
+  ev <- data.frame(
+    accession = c("ZERO", "ONE"),
+    hierarchy_flag = "insufficient_independent_evidence",
+    # Exactly the shape evaluate_reference_accessions() produces: frac falls
+    # back to its 0.5 default when no partners exist.
+    frac_independent_below_min_congruent_rank = c(0.5, 0.25),
+    n_independent_top_matches = c(0L, 1L),
+    best_agreeing_pident = c(NA_real_, 99.4),
+    best_disagreeing_pident = NA_real_,
+    congruent_evidence_exists_anywhere = c(FALSE, TRUE),
+    congruent_evidence_best_pident = c(NA_real_, 99.4),
+    stringsAsFactors = FALSE
+  )
+  s <- score_reference_labels(ev)
+
+  expect_true(is.na(s$label_confidence[s$accession == "ZERO"]))
+  expect_equal(s$reference_action[s$accession == "ZERO"], "untested")
+
+  # The one-partner row shares the same hierarchy_flag and must be untouched --
+  # this is what keying on the partner count rather than the verdict buys.
+  expect_false(is.na(s$label_confidence[s$accession == "ONE"]))
+  expect_equal(s$reference_action[s$accession == "ONE"], "keep")
+})
+
+test_that(".label_confidence_from_evidence() would return exactly 0.5 for a zero-partner row without the rule", {
+  # Pins the mechanism the rule exists to intercept, so a future change to
+  # the formula cannot silently reintroduce a 0.5 that reads as 'caution'.
+  args <- list(frac = 0.5, best_agree = NA_real_, best_disagree = NA_real_,
+               anywhere = FALSE, anywhere_pident = NA_real_)
+  without <- do.call(TaxaMatch:::.label_confidence_from_evidence, args)
+  expect_equal(without$confidence, 0.5)
+
+  with_rule <- do.call(TaxaMatch:::.label_confidence_from_evidence,
+                       c(args, list(n_partners = 0L)))
+  expect_true(is.na(with_rule$confidence))
+})
+
+test_that("the zero-partner rule is skipped when the evaluation has no partner-count column", {
+  # A caller whose evaluation predates the column must not have every row
+  # silently blanked; the rule is skipped, not guessed at.
+  ev <- data.frame(
+    accession = "A1",
+    hierarchy_flag = "insufficient_independent_evidence",
+    frac_independent_below_min_congruent_rank = 0.5,
+    best_agreeing_pident = NA_real_, best_disagreeing_pident = NA_real_,
+    congruent_evidence_exists_anywhere = FALSE,
+    congruent_evidence_best_pident = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  s <- score_reference_labels(ev)
+  expect_equal(s$label_confidence, 0.5)
+  expect_equal(s$reference_action, "caution")
+})
+
+test_that("a zero-partner row is never removable, before or after the rule", {
+  # The two hard vetoes already made this true; assert it explicitly, since
+  # NA confidence flows into a comparison (`label_confidence < threshold`)
+  # that must not evaluate to TRUE.
+  ev <- data.frame(
+    accession = "A1",
+    hierarchy_flag = "incongruent",
+    frac_independent_below_min_congruent_rank = 0.5,
+    n_independent_top_matches = 0L,
+    best_agreeing_pident = NA_real_, best_disagreeing_pident = NA_real_,
+    congruent_evidence_exists_anywhere = FALSE,
+    congruent_evidence_best_pident = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  s <- score_reference_labels(ev)
+  expect_equal(s$reference_action, "untested")
+  kept <- suppressMessages(
+    remove_incongruent_references(data.frame(accession = "A1"), s)
+  )
+  expect_equal(nrow(kept), 1L)
+})
+
+# ------------------------------------------------------------------------------
+# verify_removal_candidates() -- the pre-removal audit (2026-09-04).
+# ------------------------------------------------------------------------------
+
+.audit_eval_fixture <- function(actions = c("remove", "remove", "keep")) {
+  data.frame(
+    accession = c("SPARED", "STILL", "FINE")[seq_along(actions)],
+    listed_taxon = c("Rathbunella sp.", "Jordania sp.", "Sebastes sp.")[seq_along(actions)],
+    reference_action = actions,
+    congruent_evidence_exists_anywhere = FALSE,
+    n_independent_top_matches = 5L,
+    params_key = "5|family|5|0.5|3|8|70|20|remote|nt|amplicon|v5_amplicon_query",
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("verify_removal_candidates() makes no NCBI call and returns zero rows when nothing would be removed", {
+  called <- FALSE
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(...) { called <<- TRUE; stop("must not be reached") },
+    .package = "TaxaMatch"
+  )
+  out <- suppressMessages(
+    verify_removal_candidates(.audit_eval_fixture(actions = c("keep", "caution")))
+  )
+  expect_false(called)
+  expect_equal(nrow(out), 0L)
+  expect_true(all(c("accession", "spared", "still_saturated") %in% names(out)))
+})
+
+test_that("verify_removal_candidates() audits only the removal candidates and reports which are spared", {
+  seen <- NULL
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      seen <<- list(accessions = accessions, max_hits = max_hits)
+      data.frame(
+        accession = accessions,
+        reference_action = c("inspect", "remove"),
+        congruent_evidence_exists_anywhere = c(TRUE, FALSE),
+        n_independent_top_matches = c(5L, 5L),
+        n_top_matches_available = c(40L, 99L),
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
+  out <- suppressMessages(verify_removal_candidates(.audit_eval_fixture()))
+
+  # Only the two "remove" rows are sent -- "FINE" never reaches NCBI.
+  expect_equal(seen$accessions, c("SPARED", "STILL"))
+  expect_equal(seen$max_hits, 100L)
+  expect_equal(nrow(out), 2L)
+  expect_equal(out$spared, c(TRUE, FALSE))
+  expect_equal(out$anywhere_audit, c(TRUE, FALSE))
+  # The still-removable one came back at the audit cap, so its own window is
+  # truncated too -- the caller is told, because that weakens the verdict.
+  expect_equal(out$still_saturated, c(FALSE, TRUE))
+})
+
+test_that("verify_removal_candidates() warns when the audit differs from production in more than max_hits", {
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      data.frame(
+        accession = accessions,
+        reference_action = "remove",
+        congruent_evidence_exists_anywhere = FALSE,
+        n_independent_top_matches = 5L, n_top_matches_available = 40L,
+        # min_congruent_rank differs (field 2) as well as max_hits (field 8) --
+        # e.g. a caller who forgot to forward the production arguments.
+        params_key = "5|order|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
+  expect_warning(
+    suppressMessages(verify_removal_candidates(.audit_eval_fixture(actions = "remove"))),
+    "more than max_hits"
+  )
+})
+
+test_that("verify_removal_candidates() does not warn when only max_hits differs", {
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      data.frame(
+        accession = accessions, reference_action = "remove",
+        congruent_evidence_exists_anywhere = FALSE,
+        n_independent_top_matches = 5L, n_top_matches_available = 40L,
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
+  expect_no_warning(
+    suppressMessages(verify_removal_candidates(.audit_eval_fixture(actions = "remove")))
+  )
+})

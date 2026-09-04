@@ -59,13 +59,19 @@ utils::globalVariables(c(
 #'
 #' @param frac,best_agree,best_disagree,anywhere,anywhere_pident The
 #'   correspondingly-named `evaluate_reference_accessions()` columns.
+#' @param n_partners Integer vector or `NULL` (default). The row's own
+#'   `n_independent_top_matches`. Where this is `0`, `confidence` is forced to
+#'   `NA` -- see the "no partners is not a coin flip" note in the body.
+#'   `NULL` skips the rule entirely, for a caller whose evaluation does not
+#'   carry the column.
 #' @param margin_scale,margin_cap See [score_reference_labels()].
 #' @return List with `confidence` (numeric, in (0, 1), `NA` where `frac` is
-#'   `NA`) and `margin` (the capped `d`, `NA` where no identity information
-#'   of any kind exists).
+#'   `NA` or `n_partners` is `0`) and `margin` (the capped `d`, `NA` where no
+#'   identity information of any kind exists).
 #' @noRd
 .label_confidence_from_evidence <- function(frac, best_agree, best_disagree,
                                             anywhere, anywhere_pident,
+                                            n_partners = NULL,
                                             margin_scale = 1, margin_cap = 5) {
 
   n <- length(frac)
@@ -103,6 +109,30 @@ utils::globalVariables(c(
   conf   <- stats::plogis(stats::qlogis(p_vote) + shift)
   conf[is.na(frac)] <- NA_real_
 
+  # NO PARTNERS IS NOT A COIN FLIP (2026-09-04, user-approved).
+  # With zero valid partners `frac` falls back to its 0.5 default and `d` is
+  # NA, so this arithmetic returns EXACTLY 0.5 -- which lands in the
+  # "caution" band and makes the screen assert concern earned by an absence.
+  # It is a prior with no data, not a measurement, and the base rate it is
+  # implicitly claiming to be near is wrong by a mile: 931 of 989 evaluated
+  # PtConception accessions came back "congruent". Measured across four real
+  # caches, the split is total and has no exceptions -- all 98 zero-partner
+  # rows scored exactly 0.500 and read "caution", while all 55 rows with at
+  # least one partner had corroborating evidence and read "keep".
+  #
+  # The rule keys on n == 0, NOT on hierarchy_flag: an accession with 1-2
+  # partners also reads "insufficient_independent_evidence" but does have
+  # real evidence, and (measured, 55/55) is corroborated. Flagging on the
+  # verdict rather than the partner count would wrongly blank those too.
+  #
+  # NA here flows through .reference_action_from_confidence()'s existing
+  # is.na() rule to reference_action = "untested", which is the honest
+  # reading: the accession was submitted, but no usable evidence came back.
+  if (!is.null(n_partners)) {
+    no_partners <- !is.na(n_partners) & n_partners == 0L
+    conf[no_partners] <- NA_real_
+  }
+
   list(confidence = conf, margin = d)
 }
 
@@ -126,6 +156,40 @@ utils::globalVariables(c(
 #' name states the direction. It is on the same scale and polarity as
 #' `score_likelihood` and `TaxaFlag::observation_validity`, which is what a
 #' consumer that multiplies it into a weight actually needs.
+#'
+#' @section No partners is not a coin flip:
+#' An accession with ZERO valid comparison partners
+#' (`n_independent_top_matches == 0`) has `label_confidence = NA` and
+#' `reference_action = "untested"`, rather than the 0.500 the arithmetic
+#' would otherwise produce.
+#'
+#' Why it would otherwise be 0.500: with no partners,
+#' `frac_independent_below_min_congruent_rank` falls back to its 0.5 default
+#' and the identity margin is `NA`, so the formula reduces to
+#' `plogis(qlogis(0.5) + 0)`. That is a prior with no data, not a
+#' measurement, and it lands squarely in the `"caution"` band -- i.e. the
+#' screen asserting concern earned by an absence, against a base rate of 931
+#' congruent out of 989 evaluated PtConception accessions.
+#'
+#' Measured across four independent real caches (PtConception plus three
+#' GreatLakes), the split is total and has no exceptions: all 98 zero-partner
+#' rows scored exactly 0.500 and read `"caution"`, while all 55 rows with at
+#' least one partner had corroborating evidence
+#' (`congruent_evidence_exists_anywhere == TRUE`) and read `"keep"`.
+#'
+#' The rule keys on the partner COUNT, deliberately not on `hierarchy_flag`.
+#' An accession with 1-2 partners also reads
+#' `"insufficient_independent_evidence"`, but it does have real evidence and
+#' (55 of 55, measured) that evidence corroborates it; keying on the verdict
+#' would wrongly blank those too.
+#'
+#' Some of these rows are a `max_hits` truncation artifact rather than a
+#' property of the accession -- re-running PtConception's 34 at
+#' `max_hits = 100` resolved 12, including 7 zero-partner rows that moved
+#' `"caution"` to `"keep"` (`diagnostics/insufficient_evidence_probe.R`). But
+#' 21 of 34 gained no hits at all when the window quintupled, so most of the
+#' population is genuinely thin. `"untested"` is the honest reading either
+#' way: we do not know.
 #'
 #' @section Where the numbers come from:
 #' `label_confidence` is a pure function of columns
@@ -237,7 +301,13 @@ utils::globalVariables(c(
 #'       percent-identity points. `NA` when the row carries no identity
 #'       information of any kind.}
 #'     \item{`reference_action`}{`"keep"`, `"caution"`, `"inspect"`,
-#'       `"remove"`, or `"untested"`.}
+#'       `"remove"`, or `"untested"`. `"untested"` means NO USABLE EVIDENCE
+#'       WAS OBTAINED, which covers two different routes there: the query was
+#'       never submitted to BLAST (`"not_evaluated_oversized"`,
+#'       `"not_evaluated_wrong_marker"`), or it was submitted and came back
+#'       with zero valid comparison partners
+#'       (`n_independent_top_matches == 0`; widened to include this case
+#'       2026-09-04 -- see `@section No partners is not a coin flip`).}
 #'     \item{`action_reason`}{`"vetoed_by_local_corroboration"` where a
 #'       `"remove"` was downgraded to `"inspect"` by the local set,
 #'       `"locally_corroborated_not_blasted"` for a skipped row, `NA`
@@ -337,6 +407,9 @@ score_reference_labels <- function(evaluation,
     best_disagree   = evaluation$best_disagreeing_pident,
     anywhere        = evaluation$congruent_evidence_exists_anywhere,
     anywhere_pident = evaluation$congruent_evidence_best_pident,
+    # NULL when the caller's evaluation predates/omits the column -- the
+    # zero-partner rule is then skipped rather than guessed at.
+    n_partners      = evaluation[["n_independent_top_matches"]],
     margin_scale    = margin_scale,
     margin_cap      = margin_cap
   )
@@ -777,9 +850,15 @@ refine_reference_verdicts <- function(evaluation,
       n_eff < min_independent_partners, "insufficient_independent_evidence",
       ifelse(frac >= hierarchy_incongruent_threshold, "incongruent", "congruent")
     )
+    # n_eff == 0 covers both "no partners at all" and "every partner was
+    # disqualified by the cascade guard" -- both mean no usable evidence
+    # survived, which is what the zero-partner rule is about. Largely
+    # defensive here: an accession with no pair rows is never refined in the
+    # first place, so it cannot reach this branch.
     lc_new <- .label_confidence_from_evidence(
       frac = frac, best_agree = best_agree, best_disagree = best_disag,
       anywhere = any_agree, anywhere_pident = best_any,
+      n_partners = ifelse(n_eff == 0, 0L, 1L),
       margin_scale = lp$margin_scale, margin_cap = lp$margin_cap
     )
     action_new <- .reference_action_from_confidence(
@@ -821,4 +900,164 @@ refine_reference_verdicts <- function(evaluation,
   attr(evaluation, "trust_iterations") <- iter
   attr(evaluation, "trust_converged")  <- converged
   evaluation
+}
+
+#' Verify Removal Candidates Against a Wider Evidence Window
+#'
+#' Re-evaluates ONLY the accessions an evaluation would actually remove, at a
+#' larger `max_hits`, and reports which of them stop being removable. Nothing
+#' is removed, nothing is written back to the production cache, and no
+#' verdict is overwritten -- this is the pre-removal audit step, not a
+#' replacement for the screen.
+#'
+#' @section Why this exists:
+#' `congruent_evidence_exists_anywhere` is the hard veto that spares an
+#' accession from `reference_action == "remove"` however low its
+#' `label_confidence`. It is documented as walking the pool "not limited to
+#' `top_n`" -- and it is, but the pool is itself capped by `max_hits`
+#' (default 20). On the real PtConception 12S screen, 899 of 989 accessions
+#' (91%) came back AT that cap, so in practice "anywhere" has meant "anywhere
+#' in the top 20".
+#'
+#' That was measured, not suspected
+#' (`diagnostics/veto_truncation_probe.R`, 2026-09-04): at `max_hits = 100`,
+#' `congruent_evidence_exists_anywhere` flipped `FALSE` to `TRUE` for 8 of 15
+#' veto-critical accessions, and `OQ846263` (*Rathbunella hypoplecta*) --
+#' one of only two accessions that PtConception run would have removed --
+#' turned out to be corroborated and dropped to `"inspect"`. `KM057967`
+#' (*Jordania zonope*) still removed at 100 hits, correctly: it is a genuine
+#' singleton. Both congruent controls were unchanged, as they must be, since
+#' widening a window cannot withdraw corroboration already observed.
+#'
+#' Raising the `max_hits` DEFAULT was considered and deliberately not done:
+#' `max_hits` is part of `params_key`, so a change would invalidate every
+#' cached row across every project cache (~3,000 real rows) for a screen that
+#' has been NCBI-throttled before. Auditing only the removal candidates is
+#' the cheap targeted alternative -- a real population is 1-4 accessions, and
+#' removal is the one decision this package makes destructively.
+#'
+#' @section Comparability, and why the params_key is checked:
+#' The audit is only meaningful if the re-evaluation differs from the
+#' production run in `max_hits` ALONE. Pass through `...` exactly the same
+#' verdict-affecting arguments the production screen used -- `barcode_term`
+#' above all, since an untrimmed query is a different query. This function
+#' compares the `params_key` its own call will produce against the one
+#' carried on `evaluation` and warns, naming the fields, if anything other
+#' than `max_hits` differs. Heed that warning: a mismatch does not make the
+#' call fail, it makes the result mean nothing.
+#'
+#' @param evaluation An [evaluate_reference_accessions()] result. Needs
+#'   `accession` plus either `reference_action` or the diagnostic columns
+#'   [score_reference_labels()] derives it from.
+#' @param ... Forwarded to [evaluate_reference_accessions()]. Must carry the
+#'   production run's own verdict-affecting arguments (see above).
+#' @param audit_max_hits Integer (default `100L`). The wider window. Note
+#'   that on real data 13 of 34 accessions were still saturated at 100, so a
+#'   clean result here bounds the problem rather than closing it.
+#' @param cache_dir Directory for the audit's own cache, or `NULL` (default)
+#'   for no caching. Because `max_hits` is in `params_key` an audit can never
+#'   overwrite a production row, but a separate directory keeps the
+#'   production cache free of rows no production call will ever read.
+#' @param verbose Logical (default `TRUE`).
+#' @return A data frame with one row per removal candidate: `accession`,
+#'   `listed_taxon`, `action_production`/`action_audit`,
+#'   `anywhere_production`/`anywhere_audit`,
+#'   `n_partners_production`/`n_partners_audit`,
+#'   `n_hits_audit`, `still_saturated` (the audit itself hit
+#'   `audit_max_hits`, so its own window is also truncated), and `spared`
+#'   (the accession is no longer actioned `"remove"`). Zero rows, and zero
+#'   NCBI calls, when nothing would be removed.
+#' @seealso [remove_incongruent_references()], [score_reference_labels()]
+#' @export
+verify_removal_candidates <- function(evaluation, ...,
+                                      audit_max_hits = 100L,
+                                      cache_dir = NULL,
+                                      verbose = TRUE) {
+
+  if (!is.data.frame(evaluation) || !"accession" %in% names(evaluation))
+    stop("evaluation must be a data frame with an 'accession' column.", call. = FALSE)
+  if (!is.numeric(audit_max_hits) || length(audit_max_hits) != 1L ||
+      is.na(audit_max_hits) || audit_max_hits < 1)
+    stop("audit_max_hits must be a single positive number.", call. = FALSE)
+
+  if (!"reference_action" %in% names(evaluation))
+    evaluation <- score_reference_labels(evaluation)
+
+  cand <- evaluation[evaluation$reference_action %in% "remove", , drop = FALSE]
+
+  empty <- data.frame(
+    accession = character(0L), listed_taxon = character(0L),
+    action_production = character(0L), action_audit = character(0L),
+    anywhere_production = logical(0L), anywhere_audit = logical(0L),
+    n_partners_production = integer(0L), n_partners_audit = integer(0L),
+    n_hits_audit = integer(0L), still_saturated = logical(0L),
+    spared = logical(0L), stringsAsFactors = FALSE
+  )
+  if (nrow(cand) == 0L) {
+    if (verbose)
+      message("verify_removal_candidates(): nothing is actioned 'remove' -- no NCBI call made.")
+    return(empty)
+  }
+
+  audit <- evaluate_reference_accessions(
+    cand$accession, ..., max_hits = as.integer(audit_max_hits),
+    cache_dir = cache_dir, verbose = verbose
+  )
+
+  # Comparability check. Only meaningful when the production evaluation
+  # actually carries a key (a hand-built fixture may not).
+  if ("params_key" %in% names(evaluation) && "params_key" %in% names(audit)) {
+    prod_key  <- unique(stats::na.omit(cand$params_key))
+    audit_key <- unique(stats::na.omit(audit$params_key))
+    if (length(prod_key) == 1L && length(audit_key) == 1L && prod_key != audit_key) {
+      pf <- strsplit(prod_key, "|", fixed = TRUE)[[1L]]
+      af <- strsplit(audit_key, "|", fixed = TRUE)[[1L]]
+      # Field 8 IS max_hits and is expected to differ; see .build_params_key().
+      if (length(pf) == length(af)) {
+        differing <- setdiff(which(pf != af), 8L)
+        if (length(differing) > 0L)
+          warning(sprintf(
+            "verify_removal_candidates(): the audit differs from the production run in more than max_hits (params_key field(s) %s: '%s' vs '%s'). The comparison is not meaningful -- pass the production run's own arguments (barcode_term above all) through `...`.",
+            paste(differing, collapse = ", "),
+            paste(pf[differing], collapse = ","), paste(af[differing], collapse = ",")
+          ), call. = FALSE)
+      }
+    }
+  }
+
+  i <- match(cand$accession, audit$accession)
+  out <- data.frame(
+    accession    = cand$accession,
+    listed_taxon = cand$listed_taxon %||% NA_character_,
+    action_production = cand$reference_action,
+    action_audit      = audit$reference_action[i],
+    anywhere_production = cand$congruent_evidence_exists_anywhere,
+    anywhere_audit      = audit$congruent_evidence_exists_anywhere[i],
+    n_partners_production = cand$n_independent_top_matches,
+    n_partners_audit      = audit$n_independent_top_matches[i],
+    n_hits_audit          = audit$n_top_matches_available[i],
+    stringsAsFactors = FALSE
+  )
+  # An audit row that itself came back at the cap tells you the wider window
+  # is ALSO truncated -- a "still removable" verdict from such a row is a
+  # weaker claim than one from a row with room to spare.
+  out$still_saturated <- !is.na(out$n_hits_audit) &
+    out$n_hits_audit >= as.integer(audit_max_hits) - 1L
+  out$spared <- !(out$action_audit %in% "remove")
+
+  if (verbose) {
+    message(sprintf(
+      "verify_removal_candidates(): %d of %d removal candidate(s) are no longer removable at max_hits = %d%s.",
+      sum(out$spared, na.rm = TRUE), nrow(out), as.integer(audit_max_hits),
+      if (any(out$spared, na.rm = TRUE))
+        paste0(": ", paste(out$accession[out$spared %in% TRUE], collapse = ", ")) else ""
+    ))
+    n_sat <- sum(out$still_saturated & !(out$spared %in% TRUE), na.rm = TRUE)
+    if (n_sat > 0L)
+      message(sprintf(
+        "  %d still-removable candidate(s) came back AT the audit window too, so that window is also truncated: %s",
+        n_sat, paste(out$accession[out$still_saturated & !(out$spared %in% TRUE)], collapse = ", ")
+      ))
+  }
+  out
 }

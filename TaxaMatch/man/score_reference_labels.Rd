@@ -52,7 +52,13 @@ computed congruence at all (\code{"not_evaluated_oversized"},
 percent-identity points. \code{NA} when the row carries no identity
 information of any kind.}
 \item{\code{reference_action}}{\code{"keep"}, \code{"caution"}, \code{"inspect"},
-\code{"remove"}, or \code{"untested"}.}
+\code{"remove"}, or \code{"untested"}. \code{"untested"} means NO USABLE EVIDENCE
+WAS OBTAINED, which covers two different routes there: the query was
+never submitted to BLAST (\code{"not_evaluated_oversized"},
+\code{"not_evaluated_wrong_marker"}), or it was submitted and came back
+with zero valid comparison partners
+(\code{n_independent_top_matches == 0}; widened to include this case
+2026-09-04 -- see \verb{@section No partners is not a coin flip}).}
 \item{\code{action_reason}}{\code{"vetoed_by_local_corroboration"} where a
 \code{"remove"} was downgraded to \code{"inspect"} by the local set,
 \code{"locally_corroborated_not_blasted"} for a skipped row, \code{NA}
@@ -86,6 +92,42 @@ is why the column is named \code{label_confidence} and not \code{label_risk} -- 
 name states the direction. It is on the same scale and polarity as
 \code{score_likelihood} and \code{TaxaFlag::observation_validity}, which is what a
 consumer that multiplies it into a weight actually needs.
+}
+
+\section{No partners is not a coin flip}{
+
+An accession with ZERO valid comparison partners
+(\code{n_independent_top_matches == 0}) has \code{label_confidence = NA} and
+\code{reference_action = "untested"}, rather than the 0.500 the arithmetic
+would otherwise produce.
+
+Why it would otherwise be 0.500: with no partners,
+\code{frac_independent_below_min_congruent_rank} falls back to its 0.5 default
+and the identity margin is \code{NA}, so the formula reduces to
+\code{plogis(qlogis(0.5) + 0)}. That is a prior with no data, not a
+measurement, and it lands squarely in the \code{"caution"} band -- i.e. the
+screen asserting concern earned by an absence, against a base rate of 931
+congruent out of 989 evaluated PtConception accessions.
+
+Measured across four independent real caches (PtConception plus three
+GreatLakes), the split is total and has no exceptions: all 98 zero-partner
+rows scored exactly 0.500 and read \code{"caution"}, while all 55 rows with at
+least one partner had corroborating evidence
+(\code{congruent_evidence_exists_anywhere == TRUE}) and read \code{"keep"}.
+
+The rule keys on the partner COUNT, deliberately not on \code{hierarchy_flag}.
+An accession with 1-2 partners also reads
+\code{"insufficient_independent_evidence"}, but it does have real evidence and
+(55 of 55, measured) that evidence corroborates it; keying on the verdict
+would wrongly blank those too.
+
+Some of these rows are a \code{max_hits} truncation artifact rather than a
+property of the accession -- re-running PtConception's 34 at
+\code{max_hits = 100} resolved 12, including 7 zero-partner rows that moved
+\code{"caution"} to \code{"keep"} (\code{diagnostics/insufficient_evidence_probe.R}). But
+21 of 34 gained no hits at all when the window quintupled, so most of the
+population is genuinely thin. \code{"untested"} is the honest reading either
+way: we do not know.
 }
 
 \section{Where the numbers come from}{
