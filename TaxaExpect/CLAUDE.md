@@ -1,4 +1,29 @@
 # CLAUDE.md -- TaxaExpect
+# Last updated: 2026-09-04 (Opus 5, branch kernel-priors -- plot_theta_surface()
+# renders the CONDITIONS it is drawn under, and refuses a grouped fit).
+# The surface is habitat-stratified and optionally covariate-conditioned. Both are
+# analyst choices, neither is recoverable from the picture, and neither reached the
+# rendered output: the static title was the taxon name, the leaflet legend was
+# "theta" + taxon, and the covariate condition existed ONLY as a construction-time
+# console message -- gone the moment the object is re-printed or the map is
+# screenshotted into a talk. This was live: GreatLakes passes
+# covariate_at = SITE_DEPTH, so that map was an unlabelled constant-depth
+# cross-section, indistinguishable from an unconditioned field.
+# .theta_surface_condition_label() now writes habitat + covariate state onto the
+# static plot (mtext), the leaflet map (addControl, bottomleft) and print(). The
+# three covariate states are deliberately DISTINCT: a fit that HAS a covariate but
+# is drawn without it says "OMITTED (not a <col>-conditioned field)" affirmatively,
+# because rendering that case as silence reads as "this model has no covariate" --
+# a different, and false, claim.
+# lambda_km/m are deliberately kept OFF the label (user call, 2026-09-04): they set
+# how smooth the surface is, not what it is a surface OF, and no reader retunes them
+# from a map. They stay in print(); a regression test asserts they stay off.
+# ALSO: a kernel_fit built with sampling_group_col is now REFUSED -- that argument
+# computes n_eff and the regional back-off within each group, which this function
+# does not reproduce, so it would draw the pooled ungrouped field while claiming the
+# fit's identity. Map one group at a time (the 18S workflow's shape).
+# devtools::test() 970/0. Caption confirmed rendering on the live GreatLakes map.
+#
 # Last updated: 2026-09-03, later the same day (Opus 5, branch kernel-priors -- BUDGET
 # TRANSPARENCY: NEW kernel_budget_sensitivity(), and f1/f2 now printed next to every budget
 # figure. Open decision #4 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md

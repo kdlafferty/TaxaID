@@ -1,4 +1,27 @@
 # CLAUDE.md -- TaxaAssign
+# Last updated: 2026-09-04 (Opus 5, branch kernel-priors -- add_slash_taxon()
+# irreducibility is now ORDER-INVARIANT). The signature used for dedup/comparison
+# was built with paste() over the UNSORTED candidate vector. Candidate order is
+# POSTERIOR order -- the ecosystem's deliberate convention, and what primary_taxon
+# reads -- so one biological unit legitimately arrives as {A,B} on one observation
+# and {B,A} on another. Those hashed to two "distinct" signatures of equal size
+# sharing a taxon, so each marked the OTHER reducible and every row of the unit
+# went irreducible_consensus = FALSE, leaving no irreducible instance anywhere.
+# Downstream that made the unit's label an orphan: review_assignments(
+# irreducible_only = TRUE) never scored it, its plausibility columns stayed NA, and
+# the workflows' export filters dropped NA rows silently. Net effect on GreatLakes
+# 2026-09-04: a grass carp detection (5 ASVs, 7,453 reads) that Lamar independently
+# confirmed in 8 samples from the same site and year vanished from the output,
+# along with the Moxostoma and Oncorhynchus slash taxa.
+# FIX: sort inside the signature ONLY. Irreducibility is a property of the SET, not
+# of the ranking within it. plausible_taxa, consensus_OTU, slash_taxon_name and
+# primary_taxon are all untouched -- posterior order survives everywhere it is
+# displayed or read. The docstring had promised order-invariance since the function
+# was written; it is now true and regression-tested (3 tests).
+# MONOTONE: merging spurious duplicate signatures can only move rows FALSE -> TRUE,
+# never the reverse, so this cannot retract an existing call. Verified on the real
+# run: 538 -> 577 irreducible, 39 recovered, 0 lost. devtools::test() 714/0.
+#
 # Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- suggest_unreferenced_species() builds
 # its NCBI query from TaxaTools::resolve_barcode_marker(barcode_term) rather than the raw term.
 #

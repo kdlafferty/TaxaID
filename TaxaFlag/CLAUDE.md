@@ -1,5 +1,41 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-04 (Opus 5, branch kernel-priors -- TWO defects that
+# together deleted a Lamar-confirmed grass carp detection from GreatLakes, plus a
+# review cache).
+# (1) review_assignments() joined review results back to input rows by the DISPLAY
+# label. That label (consensus_OTU) is ordered by POSTERIOR -- the ecosystem's
+# convention, and what primary_taxon reads -- so one biological unit can carry
+# "A/B" on one observation and "B/A" on another; as join keys those never match,
+# leaving one unreviewed and NA. Now joins on the SORTED candidate set (taxa_sets
+# is already sorted) and deduplicates canonically, so a unit that used to be
+# reviewed twice under two labels is reviewed once -- one FEWER LLM call. Display
+# labels are unchanged. The old comment at :400 asserted "canonical because sets
+# are sorted"; it was not.
+# (2) .build_taxa_block() renders an unresolved set as
+# "- <label> (unresolved candidates; consensus rank: <rank>)" and the model echoes
+# that WHOLE decorated string back as taxon_name. The batch reconciliation's
+# .norm() -- added 2026-07-14 for exactly this, when a batch returned
+# "Cottus (rank: Cottus aleuticus)" -- required the parenthetical to start with
+# "rank:", so the unresolved form never normalised: every multi-candidate set was
+# logged "LLM omitted N taxa", filled with NA, and then dropped in silence by the
+# workflows' export filters. Singletons were unaffected (their "(rank: ...)" WAS
+# handled), which is precisely why the loss masqueraded as "coarse ranks are
+# excluded on purpose". 113 of 885 GreatLakes rows, every one a slash taxon.
+# WATCH FOR: "LLM omitted N taxa. Filling with NA defaults" in a run log -- that
+# message is the signal, and it was there all along.
+# (3) NEW review_assignments(cache_dir=) + taxaflag_clear_cache(). The review is a
+# JUDGEMENT and an uncached one is not reproducible: two GreatLakes runs 50 min
+# apart disagreed about Pimephales vigilax ("possible" then "unlikely"), so it was
+# in one species list and not the other. One .rds per taxon, keyed on everything
+# that can move a verdict; the FULL key is stored in the file and verified on read
+# so a hash collision is a miss, never another taxon's verdict. Deliberately the
+# file-per-key shape TaxaTools::list_cache_files()/report_and_clear_cache() are
+# built for, so it prunes like taxafetch_clear_cache()/taxalikely_clear_cache()
+# and does not accumulate. All five workflows pass a project-local cache_dir.
+# devtools::test() 456/0, reinstalled. Verified on the real GreatLakes run:
+# 72/72 cache hits, 0 LLM calls, verdicts byte-identical.
+#
 # Last updated: 2026-08-29 (Fable 5, branch undetected-evidence-mixture --
 # add_posthoc_assessment() gains domestic_caveat_type (additive character column,
 # NA unless domestic_prior_caveat fired): "no_local_records" (primary_plausibility
