@@ -338,8 +338,25 @@ the before/after `table(hierarchy_flag)` and `table(reference_action)`.
     lands in "disagree" locally and is not vetoed -- see loose end (1) below.
   - `devtools::test()` re-run after install: 1228/1228 pass, 0 failures/
     warnings.
-- **NOT YET LIVE-RUN: GreatLakes (`GreatLakes2023_ConsensusWorkflow.R`
-  7a.6) and Mugu.** Caches are migrated (see counts above) but nobody has
+- **CORRECTED 2026-09-04: GreatLakes HAS now been live-run** (2026-09-04
+  09:38). `GreatLakes2023BurnsHarbor_match_eval.rds` holds 1,073 driving
+  accessions: 1,058 congruent, 3 incongruent, 4 insufficient, 8
+  locally_corroborated; 1,064 keep / 7 caution / 2 remove. The two removals are
+  `KJ135626` (*Pseudorasbora parva*) and `NC_028197` ("Serranidae sp.
+  JL-2015"), both already on record, and BOTH came back at the `max_hits` cap
+  (20 and 19 of 20) -- i.e. both are exposed to the veto-truncation problem
+  found on PtConception the same day. `PREP_greatlakes_screen_recheck.R` (GL
+  data dir) audits them for 2 BLAST calls. Mugu is still not run.
+  Two things this correction supersedes: (a) a workflow re-run now costs ZERO
+  NCBI calls (all 1,073 driving accessions are cache-fresh under the current
+  key), so it buys only the post-hoc columns -- the new audit columns
+  (`query_trim_path` etc.) are computed during EVALUATION and stay `NA` until
+  rows genuinely re-evaluate; (b) the Plate1 cache's Phoxinus/Etheostoma
+  zero-partner block is a TRAINING-reference population reached only by
+  `VerifyAllFlaggedTrainingReferences.R`, never by the workflow, so the
+  workflow cannot speak to it.
+- **Original note, now stale: NOT YET LIVE-RUN: GreatLakes
+  (`GreatLakes2023_ConsensusWorkflow.R` 7a.6) and Mugu.** Caches are migrated (see counts above) but nobody has
   executed the screen against the new `query_span = "amplicon"` code path
   on those workflows. What to check when that run happens, for debugging:
   - Confirm `table(match_eval$hierarchy_flag)` sums to the *driving*
