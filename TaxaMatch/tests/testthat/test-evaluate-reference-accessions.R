@@ -1780,3 +1780,171 @@ test_that("remove_incongruent_references(override_accessions=) never removes an 
   expect_equal(nrow(out), 2L)
   expect_false(any(out$accession %in% c("ACC002", "ACC002.1")))
 })
+
+# ------------------------------------------------------------------------------
+# not_evaluated_wrong_marker (2026-09-04) -- an oversized accession whose own
+# GBSeq feature table says it carries a DIFFERENT marker. Grounded in the real
+# HM561627 case (Lasiurus intermedius, 2,657 bp, one feature: 16S rRNA at
+# 1061-2657, sitting in a 12S/MiFishU screen -- 1 of 1 oversized accessions on
+# the real 995-accession PtConception run).
+# ------------------------------------------------------------------------------
+
+# A long, primer-free query: MiFish-U primers are absent, so amplicon trimming
+# leaves it unchanged and the feature-table fallback is reached.
+.wrong_marker_seq <- strrep("N", 800L)
+
+.mock_fetch_one_long <- function(acc = "ACC_16S", organism = "Lasiurus similis") {
+  function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
+    data.frame(accession = acc, organism = organism,
+               create_date = "2020/01/01", sequence = .wrong_marker_seq,
+               stringsAsFactors = FALSE)
+  }
+}
+
+test_that("evaluate_reference_accessions() flags an oversized query whose annotation is a DIFFERENT marker as not_evaluated_wrong_marker, never BLASTed", {
+  blast_called <- FALSE
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_one_long(),
+    blast_sequences = function(seq_df, ...) { blast_called <<- TRUE; stop("must never be reached") },
+    .fetch_marker_annotation = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = "ACC_16S", feature_key = "rRNA",
+                 gene = "16S", product = "16S ribosomal RNA",
+                 feature_from = 1061, feature_to = 2657,
+                 stringsAsFactors = FALSE)
+    },
+    .package = "TaxaMatch"
+  )
+
+  out <- suppressMessages(evaluate_reference_accessions(
+    "ACC_16S", cache_dir = NULL, verbose = FALSE,
+    barcode_term = "MiFishU", max_query_len = 50L
+  ))
+
+  expect_false(blast_called)
+  expect_equal(out$hierarchy_flag, "not_evaluated_wrong_marker")
+  expect_equal(out$listed_taxon, "Lasiurus similis")
+  expect_true(is.na(out$best_hit_pident))
+  # The action vocabulary is unchanged -- no label evidence was gathered, so
+  # this reads "untested"; the CAUSE lives in hierarchy_flag.
+  expect_equal(out$reference_action, "untested")
+  expect_true(is.na(out$label_confidence))
+})
+
+test_that("evaluate_reference_accessions() keeps not_evaluated_oversized when the annotation is missing rather than wrong-marker", {
+  # Same oversized query, but nothing is known about its contents. "We could
+  # not look it up" must NOT be reported as "it carries a different marker".
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_one_long(acc = "ACC_UNKNOWN"),
+    blast_sequences = function(seq_df, ...) stop("must never be reached"),
+    .fetch_marker_annotation = function(...) stop("simulated NCBI failure"),
+    .package = "TaxaMatch"
+  )
+
+  out <- suppressMessages(evaluate_reference_accessions(
+    "ACC_UNKNOWN", cache_dir = NULL, verbose = FALSE,
+    barcode_term = "MiFishU", max_query_len = 50L
+  ))
+  expect_equal(out$hierarchy_flag, "not_evaluated_oversized")
+  expect_equal(out$reference_action, "untested")
+})
+
+test_that("evaluate_reference_accessions() a not_evaluated_wrong_marker row is TTL-retryable like the other not-evaluated flags", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  fetch_calls <- 0L
+  local_mocked_bindings(
+    .fetch_reference_accession_records = function(accessions, want_sequence = TRUE,
+                                                  ncbi_api_key = NULL, verbose = TRUE) {
+      fetch_calls <<- fetch_calls + 1L
+      data.frame(accession = "ACC_16S", organism = "Lasiurus similis",
+                 create_date = "2020/01/01", sequence = .wrong_marker_seq,
+                 stringsAsFactors = FALSE)
+    },
+    .fetch_marker_annotation = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = "ACC_16S", feature_key = "rRNA",
+                 gene = "16S", product = "16S ribosomal RNA",
+                 feature_from = 1061, feature_to = 2657,
+                 stringsAsFactors = FALSE)
+    },
+    .package = "TaxaMatch"
+  )
+
+  out1 <- suppressMessages(evaluate_reference_accessions(
+    "ACC_16S", cache_dir = cache_dir, verbose = FALSE,
+    barcode_term = "MiFishU", max_query_len = 50L
+  ))
+  expect_equal(out1$hierarchy_flag, "not_evaluated_wrong_marker")
+  calls_after_first <- fetch_calls
+
+  out2 <- evaluate_reference_accessions(
+    "ACC_16S", cache_dir = cache_dir, verbose = FALSE,
+    barcode_term = "MiFishU", max_query_len = 50L
+  )
+  expect_true(out2$cache_hit)
+  expect_equal(fetch_calls, calls_after_first)
+
+  cache_path <- file.path(cache_dir, "reference_accession_cache.rds")
+  cached <- readRDS(cache_path)
+  cached$evaluated_at <- cached$evaluated_at - 1000
+  saveRDS(cached, cache_path)
+
+  suppressMessages(evaluate_reference_accessions(
+    "ACC_16S", cache_dir = cache_dir, verbose = FALSE,
+    barcode_term = "MiFishU", max_query_len = 50L,
+    insufficient_evidence_ttl_days = 0.001
+  ))
+  expect_true(fetch_calls > calls_after_first)
+})
+
+test_that("flag_incongruent_references()/remove_incongruent_references() never treat not_evaluated_wrong_marker as a flag", {
+  match_df <- data.frame(accession = c("A1", "A2"), stringsAsFactors = FALSE)
+  full_eval <- data.frame(
+    accession = c("A1", "A2"),
+    hierarchy_flag = c("not_evaluated_wrong_marker", "congruent"),
+    finest_common_rank = NA_character_,
+    frac_independent_below_min_congruent_rank = NA_real_,
+    n_independent_top_matches = NA_integer_,
+    n_top_matches_available = NA_integer_,
+    best_hit_pident = NA_real_, best_agreeing_pident = NA_real_,
+    best_disagreeing_pident = NA_real_, best_disagreeing_taxon = NA_character_,
+    congruent_evidence_exists_anywhere = NA,
+    congruent_evidence_best_pident = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  kept <- suppressMessages(
+    remove_incongruent_references(match_df, full_eval, gate = "flag")
+  )
+  expect_equal(nrow(kept), 2L)
+  # Also unremovable under the default action gate.
+  kept_action <- suppressMessages(
+    remove_incongruent_references(match_df, score_reference_labels(full_eval))
+  )
+  expect_equal(nrow(kept_action), 2L)
+
+  flagged <- suppressMessages(flag_incongruent_references(match_df, full_eval))
+  expect_equal(flagged$hierarchy_flag, c("not_evaluated_wrong_marker", "congruent"))
+})
+
+test_that("score_reference_labels() maps not_evaluated_wrong_marker to untested and never discounts it as a partner", {
+  ev <- data.frame(
+    accession = "A1",
+    hierarchy_flag = "not_evaluated_wrong_marker",
+    frac_independent_below_min_congruent_rank = NA_real_,
+    best_agreeing_pident = NA_real_, best_disagreeing_pident = NA_real_,
+    congruent_evidence_exists_anywhere = NA,
+    congruent_evidence_best_pident = NA_real_,
+    n_independent_top_matches = NA_integer_,
+    stringsAsFactors = FALSE
+  )
+  scored <- score_reference_labels(ev)
+  expect_equal(scored$reference_action, "untested")
+  expect_true(is.na(scored$label_confidence))
+
+  # The cascade guard: an under-evaluated partner is not evidence that the
+  # partner is wrong, so it keeps full voting weight.
+  w <- TaxaMatch:::.partner_trust_weight(
+    flag = "not_evaluated_wrong_marker", action = "untested",
+    label_confidence = NA_real_
+  )
+  expect_equal(w, 1)
+})

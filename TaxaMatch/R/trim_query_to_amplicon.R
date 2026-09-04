@@ -411,12 +411,39 @@
 #'   otherwise. Never discards or errors -- an accession this fallback can't
 #'   rescue is left exactly as it was handed in, for the caller's next stage
 #'   (the `max_query_len` hard cap) to decide.
+#'
+#'   Carries `attr(out, "decline_reason")`, a character vector of the same
+#'   length recording WHY each unrescued accession was declined -- `NA` where
+#'   the rescue succeeded, else one of:
+#'   \itemize{
+#'     \item `"no_annotation"` -- the GBSeq fetch failed, or the record has no
+#'       coordinate-bearing features at all. We do not know what this record
+#'       contains.
+#'     \item `"marker_absent"` -- the record HAS annotated features and none of
+#'       them is the marker `barcode_term` implies. This is the informative
+#'       one: it is positive evidence that the accession carries a DIFFERENT
+#'       marker, not that it is merely too long. `evaluate_reference_
+#'       accessions()` reads exactly this value to emit
+#'       `"not_evaluated_wrong_marker"` rather than `"not_evaluated_oversized"`.
+#'     \item `"span_unusable"` -- a matching feature exists but its coordinates
+#'       do not fit the sequence in hand (see the `span_hi > seq_len` guard
+#'       below) or are degenerate.
+#'     \item `"no_sequence"` / `"extraction_error"` -- nothing to work with, or
+#'       the per-accession attempt threw.
+#'   }
+#'   The reason is a property of the ANNOTATION, deliberately not of the
+#'   verdict: this function still never decides anything, it only stops
+#'   throwing away what it already learned while deciding not to rescue.
 #' @noRd
 .extract_feature_table_fallback <- function(accessions, sequences, barcode_term,
                                             margin = 100L, ncbi_api_key = NULL,
                                             verbose = TRUE) {
   out <- sequences
-  if (length(accessions) == 0L) return(out)
+  decline <- rep(NA_character_, length(sequences))
+  if (length(accessions) == 0L) {
+    attr(out, "decline_reason") <- decline
+    return(out)
+  }
 
   marker  <- .resolve_expected_marker(barcode_term)
   pattern <- .resolve_marker_pattern(marker)
@@ -427,11 +454,19 @@
   )
 
   n_rescued <- 0L
-  if (!is.null(ann) && nrow(ann) > 0L) {
+  if (is.null(ann) || nrow(ann) == 0L) {
+    # The fetch failed or returned nothing usable for ANY accession -- we
+    # learned nothing about what these records contain, which is a different
+    # claim from "this record's features do not include the marker".
+    decline[] <- "no_annotation"
+  } else {
     for (i in seq_along(accessions)) {
       acc   <- accessions[i]
       seq_i <- sequences[i]
-      if (is.na(seq_i) || !nzchar(seq_i)) next
+      if (is.na(seq_i) || !nzchar(seq_i)) {
+        decline[i] <- "no_sequence"
+        next
+      }
 
       # extract_one() wraps the actual logic in its OWN function so that
       # return(NULL) below returns from extract_one() alone -- return()
@@ -445,12 +480,18 @@
       extract_one <- function() {
         sub_ann <- ann[!is.na(ann$accession) & ann$accession == acc &
                        !is.na(ann$feature_from) & !is.na(ann$feature_to), , drop = FALSE]
-        if (nrow(sub_ann) == 0L) return(NULL)
+        if (nrow(sub_ann) == 0L)
+          return(list(sequence = NULL, reason = "no_annotation"))
 
         is_match <- (!is.na(sub_ann$gene) & grepl(pattern, sub_ann$gene, ignore.case = TRUE)) |
           (!is.na(sub_ann$product) & grepl(pattern, sub_ann$product, ignore.case = TRUE))
         sub_ann <- sub_ann[is_match, , drop = FALSE]
-        if (nrow(sub_ann) == 0L) return(NULL)
+        # The record HAS coordinate-bearing features and none of them matches
+        # the marker this screen was scoped to. That is a positive finding
+        # about the record, not a failure to look it up -- the caller turns it
+        # into "wrong marker for this barcode_term" instead of "too long".
+        if (nrow(sub_ann) == 0L)
+          return(list(sequence = NULL, reason = "marker_absent"))
 
         seq_len <- nchar(seq_i)
         span_lo <- min(sub_ann$feature_from, sub_ann$feature_to)
@@ -465,31 +506,47 @@
         # still counting itself a "rescue": the mechanism reported rescuing
         # 40 of 40 queries it had not touched (found 2026-09-02 in a real run
         # log). Refusing here keeps the count honest.
-        if (span_hi > seq_len) return(NULL)
+        if (span_hi > seq_len)
+          return(list(sequence = NULL, reason = "span_unusable"))
         # Bounds guard before substr(), same convention as
         # .extract_amplicon_one_tm()'s own 2026-08-30 fix: an inverted or
         # out-of-range span degrades to "not rescued" rather than producing
         # a nonsensical (or, for substr(), silently empty/truncated) result.
         from <- max(1L, span_lo - margin)
         to   <- min(seq_len, span_hi + margin)
-        if (!is.finite(from) || !is.finite(to) || from >= to) return(NULL)
+        if (!is.finite(from) || !is.finite(to) || from >= to)
+          return(list(sequence = NULL, reason = "span_unusable"))
 
-        substr(seq_i, from, to)
+        list(sequence = substr(seq_i, from, to), reason = NA_character_)
       }
-      rescued <- tryCatch(extract_one(), error = function(e) NULL)
+      rescued <- tryCatch(
+        extract_one(),
+        error = function(e) list(sequence = NULL, reason = "extraction_error")
+      )
 
-      if (!is.null(rescued) && nzchar(rescued)) {
-        out[i] <- rescued
+      if (!is.null(rescued$sequence) && nzchar(rescued$sequence)) {
+        out[i] <- rescued$sequence
         n_rescued <- n_rescued + 1L
+      } else {
+        decline[i] <- if (is.na(rescued$reason)) "span_unusable" else rescued$reason
       }
     }
   }
 
-  if (verbose)
+  n_wrong_marker <- sum(decline %in% "marker_absent")
+  if (verbose) {
     message(sprintf(
       "evaluate_reference_accessions(): feature-table fallback rescued %d of %d still-over-length query sequence(s) via the record's own GBSeq annotation (marker '%s'); the rest are BLASTed at full length, subject to max_query_len.",
       n_rescued, length(accessions), marker
     ))
+    if (n_wrong_marker > 0L)
+      message(sprintf(
+        "evaluate_reference_accessions(): %d of those carry annotated features but NO '%s' feature -- a wrong-marker record for this barcode_term, not a size problem: %s",
+        n_wrong_marker, marker,
+        paste(accessions[decline %in% "marker_absent"], collapse = ", ")
+      ))
+  }
 
+  attr(out, "decline_reason") <- decline
   out
 }

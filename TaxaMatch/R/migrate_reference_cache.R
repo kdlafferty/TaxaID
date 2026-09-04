@@ -20,7 +20,8 @@
 #' hit list can contain; it cannot withdraw a match that was already
 #' observed, so a `"congruent"` verdict under the old query is still
 #' `"congruent"` under the new one. Every other flag (`"incongruent"`,
-#' `"insufficient_independent_evidence"`, `"not_evaluated_oversized"`) is a
+#' `"insufficient_independent_evidence"`, `"not_evaluated_oversized"`,
+#' `"not_evaluated_wrong_marker"`) is a
 #' statement about absence or about not knowing -- exactly what the new query
 #' can overturn -- so those rows are left under the old key and re-evaluate on
 #' the next call. That is the cheap part (PtConception: 76 rows; GreatLakes:

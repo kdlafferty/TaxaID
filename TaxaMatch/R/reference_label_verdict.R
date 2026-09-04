@@ -178,8 +178,9 @@ utils::globalVariables(c(
 #' `"remove"` is furthermore unreachable for any flag other than
 #' `"incongruent"`. `"insufficient_independent_evidence"` is retryable, not
 #' removable (it may simply mean a sparsely-referenced region of the
-#' database), `"not_evaluated_oversized"` was never submitted to BLAST at
-#' all, and `"locally_corroborated"` (2026-09-03) was deliberately not
+#' database), `"not_evaluated_oversized"` and
+#' `"not_evaluated_wrong_marker"` (2026-09-04) were never submitted to BLAST
+#' at all, and `"locally_corroborated"` (2026-09-03) was deliberately not
 #' submitted because the caller's own reference set already corroborates it
 #' -- it reads `"keep"` with `label_confidence = NA` (there is no BLAST
 #' evidence to grade).
@@ -230,8 +231,8 @@ utils::globalVariables(c(
 #' @return `evaluation` with seven columns added:
 #'   \describe{
 #'     \item{`label_confidence`}{Numeric in (0, 1). `NA` for a row with no
-#'       computed congruence at all (`"not_evaluated_oversized"`, or a fetch
-#'       failure).}
+#'       computed congruence at all (`"not_evaluated_oversized"`,
+#'       `"not_evaluated_wrong_marker"`, or a fetch failure).}
 #'     \item{`label_identity_margin`}{Numeric, the capped `d` in
 #'       percent-identity points. `NA` when the row carries no identity
 #'       information of any kind.}
@@ -484,9 +485,17 @@ score_reference_labels <- function(evaluation,
     !is.na(label_confidence) & label_confidence < action_remove_below
   action[removable] <- "remove"
 
+  # "not_evaluated_wrong_marker" (2026-09-04) reads "untested" alongside
+  # "not_evaluated_oversized": no label evidence was gathered either way, and
+  # the action vocabulary answers "what should happen to this LABEL", which is
+  # a different question from "does this accession belong in this screen".
+  # The reason lives in hierarchy_flag, which is where a reviewer can act on
+  # it -- deliberately NOT folded into "inspect", whose established meaning is
+  # "the label evidence is ambiguous, look at it".
   action[is.na(label_confidence) |
            is.na(hierarchy_flag) |
-           hierarchy_flag %in% "not_evaluated_oversized"] <- "untested"
+           hierarchy_flag %in% c("not_evaluated_oversized",
+                                 "not_evaluated_wrong_marker")] <- "untested"
   # "locally_corroborated" (2026-09-03): never BLASTed, so label_confidence
   # is NA -- but it is a positive verdict (an independent conspecific in the
   # caller's own reference set), not an untested one. Keep.
@@ -505,7 +514,8 @@ score_reference_labels <- function(evaluation,
 #' verdict is a confident removal is discounted hard; an `"incongruent"`
 #' partner is discounted only in proportion to its own `label_confidence`;
 #' and `"insufficient_independent_evidence"` /
-#' `"not_evaluated_oversized"` / never-evaluated partners are NOT discounted
+#' `"not_evaluated_oversized"` / `"not_evaluated_wrong_marker"` /
+#' never-evaluated partners are NOT discounted
 #' at all. That last rule is the one that stops the cascade: "we have not
 #' gathered enough evidence about this partner" is not evidence that the
 #' partner is wrong, and treating it as such lets two mutually-uncertain

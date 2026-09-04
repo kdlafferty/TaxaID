@@ -259,7 +259,13 @@ such anywhere-agreeing hit. \code{NA} when
 \code{"not_evaluated_oversized"} (added 2026-09-01 -- see \verb{@section Long-sequence robustness} below; the query was never submitted to
 BLAST at all, so this is NOT evidence of anything, and downstream
 consumers (\code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
-\code{\link[=remove_incongruent_references]{remove_incongruent_references()}}) never treat it as a flag), or
+\code{\link[=remove_incongruent_references]{remove_incongruent_references()}}) never treat it as a flag),
+\code{"not_evaluated_wrong_marker"} (added 2026-09-04 -- also never
+submitted, and also never a flag, but it names a CAUSE rather than a
+symptom: the record's own GBSeq feature table carries annotated
+features and none of them is the marker \code{barcode_term} implies, so
+the accession does not belong in this screen's candidate set and no
+\code{max_query_len} can rescue it), or
 \code{"locally_corroborated"} (added 2026-09-03 -- skipped because an
 independent conspecific in the caller's own reference set already
 corroborates it; see \verb{@section Local corroboration}. Treated like
@@ -414,12 +420,15 @@ match already observed; new deposits can only add more.}
 asserts corroborating evidence was NOT found, which is a statement
 about ABSENCE, and absence is exactly what later evidence overturns.
 See \verb{@section Why "incongruent" gained a TTL} below.}
-\item{\code{"insufficient_independent_evidence"} (original) and
-\code{"not_evaluated_oversized"} (2026-09-01) -- expire after
-\code{insufficient_evidence_ttl_days} (default 180). Both explicitly mean
-"we do not know yet": new NCBI deposits (for the former) or a later
-annotation/primer fix or a raised \code{max_query_len} (for the latter)
-could genuinely change the answer.}
+\item{\code{"insufficient_independent_evidence"} (original),
+\code{"not_evaluated_oversized"} (2026-09-01) and
+\code{"not_evaluated_wrong_marker"} (2026-09-04) -- expire after
+\code{insufficient_evidence_ttl_days} (default 180). All three explicitly
+mean "we do not know yet": new NCBI deposits (for the first), a later
+annotation/primer fix or a raised \code{max_query_len} (for the second), or
+a corrected upstream annotation -- or simply a different
+\code{barcode_term}, since the wrong-marker claim is relative to the marker
+THIS call asked for (for the third).}
 \item{\code{"locally_corroborated"} (2026-09-03) -- cached indefinitely,
 like \code{"congruent"}: it asserts corroborating evidence WAS found, in
 the caller's own reference set. The one way it is re-evaluated is a
@@ -592,6 +601,20 @@ a real cached row, \code{hierarchy_flag = "not_evaluated_oversized"},
 every diagnostic column \code{NA} -- an explicit, labeled non-result, not
 a silent drop. TTL-retryable like \code{"insufficient_independent_ evidence"} (see \verb{@section Caching} above), so a later annotation fix,
 primer update, or a raised \code{max_query_len} can rescue it.}
+\item{Wrong marker, separated from wrong size (2026-09-04): when the
+feature-table fallback declined because the record HAS annotated
+features and none is this marker, the deferred row reads
+\code{"not_evaluated_wrong_marker"} instead. The distinction is
+actionable, which is the whole point: \code{"oversized"} implies a size
+problem a caller could fix by raising \code{max_query_len}, and for this
+class no length ever helps -- the accession should not be in the
+candidate set. Real case: \code{HM561627} (\emph{Lasiurus intermedius}), 2,657
+bp, whose feature table contains exactly one feature, 16S ribosomal
+RNA at 1061-2657, sitting in a 12S (MiFishU) screen. It was 1 of 1
+oversized accessions on the real 995-accession PtConception run --
+i.e. 100\% of that population was this case, not a length problem.
+Before building more rescue machinery, check what fraction of your own
+oversized rows are really this.}
 \item{Length-aware BLAST batching -- \code{max_batch_bp}, forwarded to
 \code{blast_sequences()}: closes a submission batch on a cumulative bp cap
 as well as the existing count cap, and rides one very long query

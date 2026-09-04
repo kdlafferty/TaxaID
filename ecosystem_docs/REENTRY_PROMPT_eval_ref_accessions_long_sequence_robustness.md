@@ -72,7 +72,19 @@ length-rescue machinery will ever help it: **it is a 16S record sitting in a
 12S screen.** The `"not_evaluated_oversized"` flag is telling the truth about
 the symptom and lying about the cause.
 
-**Suggested direction** (not built, deliberately left to you): route this case
+**BUILT 2026-09-04.** New `hierarchy_flag` value
+`"not_evaluated_wrong_marker"`, additive -- no cache-version bump, nothing
+invalidated. `.extract_feature_table_fallback()` already KNEW why it declined
+(it had just matched the marker pattern against the record's own features) and
+discarded it; it now carries the reason out as `attr(out, "decline_reason")`
+and the caller reads `"marker_absent"` to emit the new flag. The separation is
+deliberately narrow: a FAILED annotation fetch stays `"oversized"`, because
+"we could not look it up" and "it carries a different marker" are different
+claims and only the second is actionable. `reference_action` reads
+`"untested"`, not `"inspect"` -- `"inspect"` means "the label evidence is
+ambiguous", a different question; the cause belongs in `hierarchy_flag`.
+
+**Superseded suggested direction**, for the record: route this case
 through the package's existing marker-mismatch concept
 (`R/check_marker_mismatch.R`) so it reads "wrong marker for this barcode_term"
 rather than "too long". That is actionable -- it tells a reviewer the accession

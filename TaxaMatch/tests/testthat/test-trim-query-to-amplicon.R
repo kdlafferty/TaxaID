@@ -247,7 +247,9 @@ test_that(".extract_feature_table_fallback() extracts the matching feature's spa
   )
   # from = max(1, 301-100) = 201; to = min(800, 500+100) = 600 -> 400bp.
   expect_equal(nchar(out), 400L)
-  expect_equal(out, substr(full_seq, 201L, 600L))
+  expect_equal(as.character(out), substr(full_seq, 201L, 600L))
+  # A rescued accession declines for no reason (2026-09-04).
+  expect_true(is.na(attr(out, "decline_reason")))
 })
 
 test_that(".extract_feature_table_fallback() leaves a sequence unchanged when no annotated feature matches the marker", {
@@ -259,7 +261,10 @@ test_that(".extract_feature_table_fallback() leaves a sequence unchanged when no
   out <- .extract_feature_table_fallback(
     accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU", verbose = FALSE
   )
-  expect_equal(out, full_seq)
+  expect_equal(as.character(out), full_seq)
+  # The record HAS features and none is 12S -- positive evidence of a wrong
+  # marker, distinct from "we could not look it up" (2026-09-04).
+  expect_equal(attr(out, "decline_reason"), "marker_absent")
 })
 
 test_that(".extract_feature_table_fallback() leaves a sequence unchanged when the record has no annotation at all", {
@@ -276,7 +281,8 @@ test_that(".extract_feature_table_fallback() leaves a sequence unchanged when th
   out <- .extract_feature_table_fallback(
     accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU", verbose = FALSE
   )
-  expect_equal(out, full_seq)
+  expect_equal(as.character(out), full_seq)
+  expect_equal(attr(out, "decline_reason"), "no_annotation")
 })
 
 test_that(".extract_feature_table_fallback() leaves a sequence unchanged on a degenerate zero-width feature span (bounds guard)", {
@@ -294,7 +300,8 @@ test_that(".extract_feature_table_fallback() leaves a sequence unchanged on a de
     accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU",
     margin = 0L, verbose = FALSE
   )
-  expect_equal(out, full_seq)
+  expect_equal(as.character(out), full_seq)
+  expect_equal(attr(out, "decline_reason"), "span_unusable")
 })
 
 test_that(".extract_feature_table_fallback() never errors when .fetch_marker_annotation() itself fails", {
@@ -309,7 +316,11 @@ test_that(".extract_feature_table_fallback() never errors when .fetch_marker_ann
       accessions = "ACC001", sequences = full_seq, barcode_term = "MiFishU", verbose = FALSE
     )
   )
-  expect_equal(out, full_seq)
+  expect_equal(as.character(out), full_seq)
+  # A failed fetch is "we do not know what this record contains", NOT
+  # "this record carries a different marker" -- the two must not collapse,
+  # since only the latter is actionable.
+  expect_equal(attr(out, "decline_reason"), "no_annotation")
 })
 
 test_that("evaluate_reference_accessions(barcode_term=) feature-table fallback rescues a query with no primer hits but a matching annotated feature", {
@@ -410,7 +421,10 @@ test_that(".extract_feature_table_fallback() refuses a span that does not fit th
     accessions = "ACC001", sequences = short_seq, barcode_term = "MiFishU",
     margin = 100L, verbose = FALSE
   )
-  expect_equal(out, short_seq)   # unchanged...
+  expect_equal(as.character(out), short_seq)   # unchanged...
+  # The span exists and MATCHES the marker -- it simply does not fit the
+  # sequence in hand, which is not a wrong-marker record (2026-09-04).
+  expect_equal(attr(out, "decline_reason"), "span_unusable")
   expect_message(
     .extract_feature_table_fallback(
       accessions = "ACC001", sequences = short_seq, barcode_term = "MiFishU",

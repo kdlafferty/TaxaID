@@ -733,6 +733,12 @@ utils::globalVariables(c(
       length(missing_acc), paste(missing_acc, collapse = ", ")
     ), call. = FALSE)
 
+  # Why a query was NOT rescued by the feature-table fallback, one value per
+  # row (NA where the fallback was never attempted or succeeded). Initialised
+  # up front so mechanism 2 can read it unconditionally, including on the
+  # barcode_term = NULL path where no fallback runs at all.
+  query_meta$fallback_decline <- rep(NA_character_, nrow(query_meta))
+
   if (!is.null(barcode_term) && nrow(query_meta) > 0L) {
     query_meta$sequence <- .trim_queries_to_amplicon(
       query_meta$sequence, barcode_term = barcode_term,
@@ -763,11 +769,17 @@ utils::globalVariables(c(
     if (!is.na(bt_max_len)) {
       still_over <- !is.na(query_meta$sequence) & nchar(query_meta$sequence) > bt_max_len
       if (any(still_over)) {
-        query_meta$sequence[still_over] <- .extract_feature_table_fallback(
+        rescued <- .extract_feature_table_fallback(
           accessions = query_meta$accession[still_over],
           sequences  = query_meta$sequence[still_over],
           barcode_term = barcode_term, ncbi_api_key = ncbi_api_key, verbose = verbose
         )
+        # Capture the decline reason BEFORE the assignment below -- writing a
+        # character vector into a data-frame column drops its attributes, and
+        # this is the only place the annotation evidence exists. Mechanism 2
+        # reads it to tell a wrong-marker record apart from a merely long one.
+        query_meta$fallback_decline[still_over] <- attr(rescued, "decline_reason")
+        query_meta$sequence[still_over] <- as.character(rescued)
       }
     }
   }
@@ -791,6 +803,18 @@ utils::globalVariables(c(
     is_oversized <- !is.na(seq_lens) & seq_lens > max_query_len
     if (any(is_oversized)) {
       oversized_meta <- query_meta[is_oversized, , drop = FALSE]
+      # ---- Wrong marker, not wrong size (2026-09-04). An accession the
+      # feature-table fallback declined with "marker_absent" HAS annotated
+      # features and none of them is the marker `barcode_term` implies. Its
+      # length is a symptom; the cause is that it does not belong in this
+      # screen's candidate set at all, which is the actionable thing to tell a
+      # reviewer -- "oversized" implies a size problem the caller could fix by
+      # raising max_query_len, and for this class no length ever helps.
+      # Real case: HM561627 (Lasiurus intermedius), 2,657 bp, whose GBSeq
+      # feature table contains exactly one feature -- 16S ribosomal RNA,
+      # spanning 1061-2657 -- in a 12S (MiFishU) screen. It was 1 of 1
+      # oversized accessions on the real 995-accession PtConception run.
+      is_wrong_marker <- oversized_meta$fallback_decline %in% "marker_absent"
       oversized_rows <- data.frame(
         accession = oversized_meta$accession,
         listed_taxon = oversized_meta$organism,
@@ -802,19 +826,29 @@ utils::globalVariables(c(
         best_disagreeing_pident = NA_real_, best_disagreeing_taxon = NA_character_,
         congruent_evidence_exists_anywhere = NA,
         congruent_evidence_best_pident = NA_real_,
-        hierarchy_flag = "not_evaluated_oversized",
+        hierarchy_flag = ifelse(is_wrong_marker,
+                                "not_evaluated_wrong_marker",
+                                "not_evaluated_oversized"),
         evaluated_at = now,
         cache_hit = FALSE,
         params_key = params_key,
         taxonomy_resolution_source = NA_character_,
         stringsAsFactors = FALSE
       )
-      if (verbose)
-        message(sprintf(
-          "evaluate_reference_accessions(): %d accession(s) still exceed max_query_len (%d bp) after trimming/feature-table extraction -- deferred as 'not_evaluated_oversized', never submitted to BLAST:\n  %s",
-          nrow(oversized_meta), as.integer(max_query_len),
-          paste(oversized_meta$accession, collapse = ", ")
-        ))
+      if (verbose) {
+        if (any(!is_wrong_marker))
+          message(sprintf(
+            "evaluate_reference_accessions(): %d accession(s) still exceed max_query_len (%d bp) after trimming/feature-table extraction -- deferred as 'not_evaluated_oversized', never submitted to BLAST:\n  %s",
+            sum(!is_wrong_marker), as.integer(max_query_len),
+            paste(oversized_meta$accession[!is_wrong_marker], collapse = ", ")
+          ))
+        if (any(is_wrong_marker))
+          message(sprintf(
+            "evaluate_reference_accessions(): %d accession(s) carry annotated features but none for the marker '%s' implies -- deferred as 'not_evaluated_wrong_marker' (they do not belong in this screen's candidate set; raising max_query_len cannot help):\n  %s",
+            sum(is_wrong_marker), barcode_term,
+            paste(oversized_meta$accession[is_wrong_marker], collapse = ", ")
+          ))
+      }
       query_meta <- query_meta[!is_oversized, , drop = FALSE]
     }
   }
@@ -1210,12 +1244,15 @@ utils::globalVariables(c(
 #'     asserts corroborating evidence was NOT found, which is a statement
 #'     about ABSENCE, and absence is exactly what later evidence overturns.
 #'     See `@section Why "incongruent" gained a TTL` below.}
-#'   \item{`"insufficient_independent_evidence"` (original) and
-#'     `"not_evaluated_oversized"` (2026-09-01) -- expire after
-#'     `insufficient_evidence_ttl_days` (default 180). Both explicitly mean
-#'     "we do not know yet": new NCBI deposits (for the former) or a later
-#'     annotation/primer fix or a raised `max_query_len` (for the latter)
-#'     could genuinely change the answer.}
+#'   \item{`"insufficient_independent_evidence"` (original),
+#'     `"not_evaluated_oversized"` (2026-09-01) and
+#'     `"not_evaluated_wrong_marker"` (2026-09-04) -- expire after
+#'     `insufficient_evidence_ttl_days` (default 180). All three explicitly
+#'     mean "we do not know yet": new NCBI deposits (for the first), a later
+#'     annotation/primer fix or a raised `max_query_len` (for the second), or
+#'     a corrected upstream annotation -- or simply a different
+#'     `barcode_term`, since the wrong-marker claim is relative to the marker
+#'     THIS call asked for (for the third).}
 #'   \item{`"locally_corroborated"` (2026-09-03) -- cached indefinitely,
 #'     like `"congruent"`: it asserts corroborating evidence WAS found, in
 #'     the caller's own reference set. The one way it is re-evaluated is a
@@ -1446,7 +1483,13 @@ utils::globalVariables(c(
 #'       Long-sequence robustness` below; the query was never submitted to
 #'       BLAST at all, so this is NOT evidence of anything, and downstream
 #'       consumers ([flag_incongruent_references()],
-#'       [remove_incongruent_references()]) never treat it as a flag), or
+#'       [remove_incongruent_references()]) never treat it as a flag),
+#'       `"not_evaluated_wrong_marker"` (added 2026-09-04 -- also never
+#'       submitted, and also never a flag, but it names a CAUSE rather than a
+#'       symptom: the record's own GBSeq feature table carries annotated
+#'       features and none of them is the marker `barcode_term` implies, so
+#'       the accession does not belong in this screen's candidate set and no
+#'       `max_query_len` can rescue it), or
 #'       `"locally_corroborated"` (added 2026-09-03 -- skipped because an
 #'       independent conspecific in the caller's own reference set already
 #'       corroborates it; see `@section Local corroboration`. Treated like
@@ -1630,6 +1673,20 @@ utils::globalVariables(c(
 #'     a silent drop. TTL-retryable like `"insufficient_independent_
 #'     evidence"` (see `@section Caching` above), so a later annotation fix,
 #'     primer update, or a raised `max_query_len` can rescue it.}
+#'   \item{Wrong marker, separated from wrong size (2026-09-04): when the
+#'     feature-table fallback declined because the record HAS annotated
+#'     features and none is this marker, the deferred row reads
+#'     `"not_evaluated_wrong_marker"` instead. The distinction is
+#'     actionable, which is the whole point: `"oversized"` implies a size
+#'     problem a caller could fix by raising `max_query_len`, and for this
+#'     class no length ever helps -- the accession should not be in the
+#'     candidate set. Real case: `HM561627` (*Lasiurus intermedius*), 2,657
+#'     bp, whose feature table contains exactly one feature, 16S ribosomal
+#'     RNA at 1061-2657, sitting in a 12S (MiFishU) screen. It was 1 of 1
+#'     oversized accessions on the real 995-accession PtConception run --
+#'     i.e. 100% of that population was this case, not a length problem.
+#'     Before building more rescue machinery, check what fraction of your own
+#'     oversized rows are really this.}
 #'   \item{Length-aware BLAST batching -- `max_batch_bp`, forwarded to
 #'     `blast_sequences()`: closes a submission batch on a cumulative bp cap
 #'     as well as the existing count cap, and rides one very long query
@@ -1880,9 +1937,16 @@ evaluate_reference_accessions <- function(accessions,
   # same reason: it asserts corroborating evidence WAS found (in the
   # caller's own reference set rather than in nt). Enumerated explicitly so
   # the next new flag value has to be placed here deliberately.
+  # "not_evaluated_wrong_marker" (2026-09-04) sits with the "we don't know
+  # yet" flags at 180 days rather than with the permanent ones, and that is a
+  # deliberate reading of what it claims: the accession's own annotation says
+  # it carries a different marker, which is stable, but the CLAIM is relative
+  # to this call's barcode_term -- and an annotation can also be corrected
+  # upstream at NCBI. Retryable is the safe direction; nothing acts on it.
   ttl_days_for_flag <- function(flag) {
     ifelse(
-      flag %in% c("insufficient_independent_evidence", "not_evaluated_oversized"),
+      flag %in% c("insufficient_independent_evidence", "not_evaluated_oversized",
+                  "not_evaluated_wrong_marker"),
       insufficient_evidence_ttl_days,
       ifelse(flag %in% "incongruent", incongruent_ttl_days,
              ifelse(flag %in% c("congruent", "locally_corroborated"), Inf, Inf))

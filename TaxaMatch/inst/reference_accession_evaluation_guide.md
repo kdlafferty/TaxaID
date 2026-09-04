@@ -38,7 +38,7 @@ those two cases apart.
 |---|---|---|
 | `accession` | character | Exactly as you supplied it. |
 | `listed_taxon` | character | The accession's own GenBank-labeled organism. |
-| `hierarchy_flag` | character | `"congruent"` / `"incongruent"` / `"insufficient_independent_evidence"` / `"not_evaluated_oversized"` / `"locally_corroborated"` (2026-09-03, see below) / `NA` (fetch failed, not cached, retried next call). The headline verdict -- see below for what each value actually means and doesn't. |
+| `hierarchy_flag` | character | `"congruent"` / `"incongruent"` / `"insufficient_independent_evidence"` / `"not_evaluated_oversized"` / `"not_evaluated_wrong_marker"` (2026-09-04, see below) / `"locally_corroborated"` (2026-09-03, see below) / `NA` (fetch failed, not cached, retried next call). The headline verdict -- see below for what each value actually means and doesn't. |
 | `finest_common_rank` | character | Finest rank at which the single best independent hit agrees with `listed_taxon`, walking the *full* `kingdom→species` ladder (not just down to `min_congruent_rank`). `NA` if nothing agrees at all. |
 | `n_independent_top_matches` | integer | How many independent, species-resolved hits were actually used for the verdict (`<= top_n`, default 5). Low values (0-2) mean the verdict rests on thin evidence -- see `insufficient_independent_evidence` below. |
 | `n_top_matches_available` | integer | All BLAST hits before the independence filter -- diagnostic only, not part of the verdict. A big gap between this and `n_independent_top_matches` usually means most hits were same-submission-batch duplicates. |
@@ -49,7 +49,7 @@ those two cases apart.
 | `congruent_evidence_exists_anywhere` | logical | Unlike `hierarchy_flag` (computed only from the top-N closest hits), this asks: does ANY independent hit *anywhere* in the full BLAST result (up to `max_hits`) agree at or above `min_congruent_rank`? `FALSE` is a much stronger statement than `"incongruent"` alone -- it means the listed rank has zero representation anywhere in this accession's independent evidence, not just none close enough to make the top-N cut. |
 | `congruent_evidence_best_pident` | numeric (0-100) or `NA` | Percent identity of that best anywhere-agreeing hit. `NA` when `congruent_evidence_exists_anywhere` is `FALSE`. |
 | `taxonomy_resolution_source` | character | `"direct"` (normal case), `"hybrid_maternal_proxy"` (hybrid-labeled accession, coarser ranks resolved from the maternal parent species -- see below), `"hybrid_unresolved"` (detected as hybrid but couldn't extract a usable parent name), or `NA` (fetch failure). |
-| `label_confidence` | numeric (0-1) or `NA` | **(2026-09-02)** How confident we are that `listed_taxon` is CORRECT -- high = good, low = concerning. A log-odds sum of the vote (`frac_independent_below_min_congruent_rank`) and the percent-identity margin the vote itself ignores. This is the column downstream models consume; see "The numeric verdict" below. `NA` for `"not_evaluated_oversized"` and fetch failures. |
+| `label_confidence` | numeric (0-1) or `NA` | **(2026-09-02)** How confident we are that `listed_taxon` is CORRECT -- high = good, low = concerning. A log-odds sum of the vote (`frac_independent_below_min_congruent_rank`) and the percent-identity margin the vote itself ignores. This is the column downstream models consume; see "The numeric verdict" below. `NA` for `"not_evaluated_oversized"`, `"not_evaluated_wrong_marker"` and fetch failures. |
 | `label_identity_margin` | numeric or `NA` | The percent-identity margin behind `label_confidence`: best agreeing identity minus best disagreeing identity, capped at ±5. Positive means the label's own clade matches better than whatever contradicts it. `NA` when there is no identity information at all. |
 | `reference_action` | character | **(2026-09-02)** What to DO: `"keep"` / `"caution"` / `"inspect"` / `"remove"` / `"untested"`. Derived from `label_confidence` by documented thresholds, plus two hard vetoes on `"remove"`. This is what `remove_incongruent_references()` reads by default. |
 | `action_reason` | character or `NA` | **(2026-09-03)** `"vetoed_by_local_corroboration"` where a BLAST `"remove"` was downgraded to `"inspect"` because the caller's own reference set corroborates the label; `"locally_corroborated_not_blasted"` for a skipped row; `NA` otherwise. |
@@ -80,8 +80,22 @@ those two cases apart.
   deciding anything.
 
 - **`"not_evaluated_oversized"`** -- never submitted to BLAST (still over `max_query_len`
-  after primer trimming and the feature-table fallback). Not evidence of anything;
-  retried after the TTL.
+  after primer trimming and the feature-table fallback), and we do not know why: either the
+  record's annotation could not be fetched, or it has no coordinate-bearing features at all.
+  Not evidence of anything; retried after the TTL. Raising `max_query_len` may help.
+
+- **`"not_evaluated_wrong_marker"`** (2026-09-04) -- also never submitted, but here we DO
+  know why: the record's own GBSeq feature table carries annotated features and none of them
+  is the marker `barcode_term` implies. This names a cause rather than a symptom, and it is
+  actionable in a way `"oversized"` is not -- **the accession should not be in this screen's
+  candidate set at all**, and no `max_query_len` can ever rescue it. Real case: `HM561627`
+  (*Lasiurus intermedius*), 2,657 bp, whose feature table contains exactly one feature --
+  16S ribosomal RNA at 1061-2657 -- sitting in a 12S (MiFishU) screen. On the real
+  995-accession PtConception run it was 1 of 1 oversized accessions, i.e. **100% of that
+  population was this case**, not a length problem. If you have a non-trivial oversized
+  population, check what fraction of it is really this before building more length-rescue
+  machinery. `reference_action` reads `"untested"` (no label evidence was gathered either
+  way -- the cause lives in `hierarchy_flag`, which is where you can act on it).
 
 - **`"locally_corroborated"`** (2026-09-03) -- never submitted to BLAST either, but for the
   opposite reason: an INDEPENDENT conspecific in the caller's own reference set (a different
@@ -199,7 +213,7 @@ corroborating and nothing contradicting gives the full positive cap.
 | `"caution"` | `0.25 <= label_confidence < 0.75` | Usable, but the evidence is mixed. Worth knowing about; not worth acting on alone. |
 | `"inspect"` | `0.05 <= label_confidence < 0.25` | Look at this one. Often thin coverage rather than a mislabel. |
 | `"remove"` | `label_confidence < 0.05` **AND** `hierarchy_flag == "incongruent"` **AND** `congruent_evidence_exists_anywhere == FALSE` | Nothing anywhere corroborates the label and something contradicts it. |
-| `"untested"` | `hierarchy_flag` is `"not_evaluated_oversized"` or `NA` | No verdict was computed at all. |
+| `"untested"` | `hierarchy_flag` is `"not_evaluated_oversized"`, `"not_evaluated_wrong_marker"` or `NA` | No verdict was computed at all. For `"not_evaluated_wrong_marker"` the actionable finding is in `hierarchy_flag`, not here: drop the accession from the candidate set. |
 
 **The local-corroboration veto (2026-09-03).** When `score_reference_labels()` is given the
 `corroborate_references_locally()` table, a row that resolves to `"remove"` while the caller's

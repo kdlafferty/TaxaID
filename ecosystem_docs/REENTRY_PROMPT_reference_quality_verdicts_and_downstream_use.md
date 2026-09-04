@@ -626,3 +626,70 @@ The findings worth keeping, none of which require the code:
    mislabeled accessions ever exists, it is fittable.
 5. Whether a candidate taxon whose references are COLLECTIVELY dubious wants
    its own treatment, distinct from the per-accession median.
+
+## 2026-09-04: the removal veto is TRUNCATION-BLIND (measured)
+
+This document's entire removal argument rests on
+`congruent_evidence_exists_anywhere` -- the hard veto that spares an accession
+however low its `label_confidence`. That column is documented as walking the
+full independence-filtered pool, "not limited to top_n". It is still limited by
+`max_hits` (default 20), and on the real PtCon 12S screen **899 of 989
+accessions (91%) come back AT that cap**. So "anywhere" has always meant
+"anywhere in the top 20", and the doc-vs-code gap was never noticed because the
+column's own name and roxygen both say otherwise.
+
+This matters more now than it would have on 2026-09-02: the primer-stripped v5
+re-run cut `reference_action == "remove"` from 4 accessions to 2, so the veto
+carries nearly the whole destructive decision.
+
+`diagnostics/veto_truncation_probe.R` (new) re-evaluates the veto-critical
+accessions at `max_hits = 100`, into its own cache dir. `max_hits` is in
+`params_key`, so this cannot collide with production. Live result, 15
+accessions (5 incongruent + 8 zero-partner insufficient + 2 congruent
+controls):
+
+| finding | count |
+|---|---:|
+| `congruent_evidence_exists_anywhere` flipped FALSE -> TRUE | **8 of 15** |
+| `reference_action` changed | 8 |
+| no longer removable | 1 (`OQ846263`) |
+| controls unchanged | 2 of 2 (probe sound) |
+
+- **`OQ846263` (*Rathbunella hypoplecta*) is one of the only two PtCon
+  `"remove"` accessions, and at 100 hits it is no longer removable** -- it
+  drops to `"inspect"`. The removal set halves again, 2 -> 1.
+- **`KM057967` (*Jordania zonope*) still reads `"remove"` at 100 hits.** That
+  is the right answer -- 2026-09-03 established it as a genuine singleton whose
+  apparent corroborator matched over 5.6% overlap -- and it is what makes the
+  `OQ846263` result credible: the probe discriminates, it does not simply flip
+  everything it widens.
+- **7 of the 8 zero-partner `"insufficient"` accessions resolved to
+  `"congruent"`** (*Stenella attenuata* x5, *Homo sapiens* x2). So `max_hits`,
+  not the submission-batch independence filter, is what was starving them --
+  which also partly answers the separate "what should `insufficient` mean"
+  question. `MH177754` (*Gorilla beringei*) still reads 0 partners at 99 hits;
+  that one is genuinely filtered, not truncated.
+
+**Caveat, and it is not a small one: all 15 come back at 99-100 hits.** 100 is
+also a truncated window. This establishes that the veto is truncation-
+SENSITIVE; it does not establish where the sensitivity ends, and a run at 500
+could move more.
+
+**Deliberately NOT acted on.** Raising the `max_hits` default would change
+`params_key` and invalidate every cached row across PtCon and the three
+GreatLakes caches (~3,000 rows, the expensive kind). That is a user decision.
+The options, in rough cost order: (a) leave the default and pass
+`max_hits = 100` only for a deliberate pre-removal audit of the handful of
+accessions that would actually be removed; (b) decouple the "anywhere" walk
+from the verdict's own hit budget, so the veto sees a wider pool than the vote
+without changing what the vote is computed from -- this is the principled fix,
+since the two questions genuinely want different windows, but it is a real
+design change and `params_key` would have to reflect it; (c) raise the default
+and pay the full re-BLAST.
+
+**Do not confuse this with
+`[[project_widen_blast_unsupported_candidates_closed]]`** (2026-08-26), which
+measured 0/22 flagged ASVs ever hitting `max_hits = 20` and closed the idea.
+That was the MATCH path (`blast_sequences()` on ASVs); this is the reference
+SCREEN, where saturation is 91% rather than 0%. The closure's evidence does
+not transfer, in either direction.

@@ -1,5 +1,72 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-04, second pass (Opus 5, branch kernel-priors -- two items from
+# REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md's own suggested direction.
+#
+# (1) NEW hierarchy_flag VALUE "not_evaluated_wrong_marker" (additive; NO cache-version
+# bump, nothing invalidated). `.extract_feature_table_fallback()` already knew WHY it
+# declined to rescue an over-length query and threw that away. It now carries it out as
+# `attr(out, "decline_reason")` -- NA when rescued, else "no_annotation" / "marker_absent" /
+# "span_unusable" / "no_sequence" / "extraction_error" -- and `evaluate_reference_accessions()`
+# reads "marker_absent" to emit "not_evaluated_wrong_marker" instead of
+# "not_evaluated_oversized".
+#
+# The distinction is the point, and it is a cause-vs-symptom one: "oversized" implies a size
+# problem a caller could fix by raising max_query_len, and for a record carrying a DIFFERENT
+# marker no length ever helps -- the accession should not be in the candidate set. The
+# separation is deliberately narrow: only "the record HAS annotated features and none is this
+# marker" earns the new flag. A FAILED annotation fetch stays "oversized", because "we could
+# not look it up" and "it carries a different marker" are different claims and only the second
+# is actionable. Real case: HM561627 (Lasiurus intermedius), 2,657 bp, one feature -- 16S rRNA
+# at 1061-2657 -- in a 12S screen; 1 of 1 oversized accessions on the real 995-accession PtCon
+# run, i.e. 100% of that population.
+#
+# Downstream handling was GREPPED, not assumed, following the "locally_corroborated"
+# precedent: TTL ladder (explicit, 180 days with the other not-evaluated flags -- the
+# wrong-marker claim is relative to THIS call's barcode_term, and an annotation can be
+# corrected upstream, so retryable is the safe direction); `score_reference_labels()` ->
+# "untested" (NOT "inspect" -- that value means "the label evidence is ambiguous", a different
+# question; the cause lives in hierarchy_flag); `.partner_trust_weight()` -> weight 1 (an
+# under-evaluated partner is not evidence the partner is wrong); `remove_incongruent_
+# references()` both gates, `flag_incongruent_references()`, `verify_flagged_references()`,
+# `migrate_reference_cache()` all inert by construction. Each has a test.
+#
+# (2) THE REMOVAL VETO IS TRUNCATION-BLIND -- measured, not suspected.
+# `congruent_evidence_exists_anywhere` is the hard veto that spares an accession from
+# `reference_action == "remove"`, and it is documented as walking the pool "not limited to
+# top_n". It is still limited by `max_hits` (default 20), and on the real PtCon 12S screen
+# 899 of 989 accessions (91%) come back AT that cap -- so "anywhere" has always meant
+# "anywhere in the top 20". NEW diagnostics/veto_truncation_probe.R re-evaluates the
+# veto-critical accessions at max_hits = 100 (own cache dir; max_hits is in params_key so it
+# cannot collide with production). Live result, 15 accessions:
+#   - 'anywhere' flipped FALSE -> TRUE for 8 of 15; reference_action changed for 8.
+#   - OQ846263 (Rathbunella hypoplecta), ONE OF THE ONLY TWO PtCon "remove" accessions,
+#     is no longer removable -- it drops to "inspect". The removal set halves again, 2 -> 1.
+#   - KM057967 (Jordania zonope) still reads "remove" at 100 hits, consistent with this
+#     file's own 2026-09-03 finding that it is a genuine singleton -- so the probe is not
+#     simply flipping everything, which is what makes the OQ846263 result credible.
+#   - 7 of the 8 zero-partner "insufficient" accessions resolved to "congruent" (Stenella
+#     attenuata x5, Homo sapiens x2). So max_hits, NOT the submission-batch independence
+#     filter, was starving them. MH177754 (Gorilla beringei) still reads 0 partners at 99
+#     hits -- that one is genuinely filtered, not truncated.
+#   - Both congruent controls unchanged, as they must be (widening cannot withdraw
+#     corroboration); a control that moved would have meant the probe was unsound.
+#   - CAVEAT, and it matters: all 15 come back at 99-100 hits. 100 is ALSO a truncated
+#     window. This measures that the veto is truncation-sensitive; it does not establish
+#     where the sensitivity ends.
+# NOT ACTED ON: max_hits is in params_key, so raising the default would invalidate every
+# cached row across PtCon and the three GreatLakes caches (~3,000 rows). That is a user
+# decision, not a defensible unilateral one. This entry is the evidence for it.
+#
+# NOT the closed widen-BLAST thread ([[project_widen_blast_unsupported_candidates_closed]]):
+# that measured 0/22 flagged ASVs hitting the cap in the MATCH path, so its evidence says
+# nothing about this function, where saturation is near-universal.
+#
+# `devtools::document()` clean, `devtools::test()` 1256/1256 (0 failures; 1 pre-existing
+# unrelated warning in test-convert_taxonomy_backbone.R:931, file untouched this session),
+# `devtools::check()` 0 errors / 0 warnings / 0 notes. NOT reinstalled -- see the session-end
+# apply block.
+#
 # Last updated: 2026-09-03 (Fable 5.1, branch local-corroboration -- implements
 # ecosystem_docs/REENTRY_PROMPT_local_corroboration_and_primer_stripped_screen.md end to end.
 # Delegated; offline only; live NCBI validation reserved for the user's next window.

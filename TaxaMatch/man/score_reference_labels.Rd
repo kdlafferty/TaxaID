@@ -46,8 +46,8 @@ accession. See \verb{@section Local corroboration}.}
 \code{evaluation} with seven columns added:
 \describe{
 \item{\code{label_confidence}}{Numeric in (0, 1). \code{NA} for a row with no
-computed congruence at all (\code{"not_evaluated_oversized"}, or a fetch
-failure).}
+computed congruence at all (\code{"not_evaluated_oversized"},
+\code{"not_evaluated_wrong_marker"}, or a fetch failure).}
 \item{\code{label_identity_margin}}{Numeric, the capped \code{d} in
 percent-identity points. \code{NA} when the row carries no identity
 information of any kind.}
@@ -141,8 +141,9 @@ deleted.
 \code{"remove"} is furthermore unreachable for any flag other than
 \code{"incongruent"}. \code{"insufficient_independent_evidence"} is retryable, not
 removable (it may simply mean a sparsely-referenced region of the
-database), \code{"not_evaluated_oversized"} was never submitted to BLAST at
-all, and \code{"locally_corroborated"} (2026-09-03) was deliberately not
+database), \code{"not_evaluated_oversized"} and
+\code{"not_evaluated_wrong_marker"} (2026-09-04) were never submitted to BLAST
+at all, and \code{"locally_corroborated"} (2026-09-03) was deliberately not
 submitted because the caller's own reference set already corroborates it
 -- it reads \code{"keep"} with \code{label_confidence = NA} (there is no BLAST
 evidence to grade).

@@ -48,7 +48,8 @@ primers from the query only ADDS short amplicon-only deposits to what the
 hit list can contain; it cannot withdraw a match that was already
 observed, so a \code{"congruent"} verdict under the old query is still
 \code{"congruent"} under the new one. Every other flag (\code{"incongruent"},
-\code{"insufficient_independent_evidence"}, \code{"not_evaluated_oversized"}) is a
+\code{"insufficient_independent_evidence"}, \code{"not_evaluated_oversized"},
+\code{"not_evaluated_wrong_marker"}) is a
 statement about absence or about not knowing -- exactly what the new query
 can overturn -- so those rows are left under the old key and re-evaluate on
 the next call. That is the cheap part (PtConception: 76 rows; GreatLakes:
