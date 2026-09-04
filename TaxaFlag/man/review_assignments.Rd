@@ -29,6 +29,7 @@ review_assignments(
   max_tokens = NULL,
   max_retries = 2L,
   pause_seconds = 1,
+  cache_dir = NULL,
   verbose = TRUE
 )
 }
@@ -199,6 +200,22 @@ without retrying. Default \code{2L}.}
 
 \item{pause_seconds}{Numeric. Seconds to pause between LLM calls.
 Default \code{1}.}
+
+\item{cache_dir}{Character or \code{NULL} (default). Directory for the
+per-taxon review cache. \code{NULL} disables caching entirely, which is
+the historical behaviour. Supplying a directory makes a re-run
+REPRODUCIBLE and stops it re-paying for verdicts already obtained: the
+review is a judgement, and two GreatLakes runs 50 minutes apart on
+identical input disagreed about \emph{Pimephales vigilax}
+(\code{"possible"} then \code{"unlikely"}), putting it in one species
+list and not the other. One small \code{.rds} per reviewed taxon, keyed
+on everything that can move a verdict -- the taxon label and rank, its
+attached pipeline/weight/spatial notes, \code{context},
+\code{target_group}, \code{marker}, \code{data_type} and the
+candidate-set path -- so changing any of them is correctly a miss. Manage
+it with \code{\link[=taxaflag_clear_cache]{taxaflag_clear_cache()}}, which uses the same
+\code{\link[TaxaTools:list_cache_files]{TaxaTools::list_cache_files()}} engine as the other packages' cache
+helpers, so it does not accumulate unmanaged.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }

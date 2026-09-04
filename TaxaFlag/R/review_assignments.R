@@ -30,6 +30,22 @@
 #' a unit that previously appeared under two orderings is now reviewed once
 #' rather than twice. Display labels are unchanged. (2026-09-04.)
 #'
+#' @param cache_dir Character or \code{NULL} (default). Directory for the
+#'   per-taxon review cache. \code{NULL} disables caching entirely, which is
+#'   the historical behaviour. Supplying a directory makes a re-run
+#'   REPRODUCIBLE and stops it re-paying for verdicts already obtained: the
+#'   review is a judgement, and two GreatLakes runs 50 minutes apart on
+#'   identical input disagreed about \emph{Pimephales vigilax}
+#'   (\code{"possible"} then \code{"unlikely"}), putting it in one species
+#'   list and not the other. One small \code{.rds} per reviewed taxon, keyed
+#'   on everything that can move a verdict -- the taxon label and rank, its
+#'   attached pipeline/weight/spatial notes, \code{context},
+#'   \code{target_group}, \code{marker}, \code{data_type} and the
+#'   candidate-set path -- so changing any of them is correctly a miss. Manage
+#'   it with [taxaflag_clear_cache()], which uses the same
+#'   [TaxaTools::list_cache_files()] engine as the other packages' cache
+#'   helpers, so it does not accumulate unmanaged.
+#'
 #' @param taxon_rank_col Character or \code{NULL}. Column name for consensus
 #'   rank (e.g., "species", "genus"). When supplied, the rank is included in
 #'   the prompt for context. Default \code{NULL}.
@@ -307,6 +323,7 @@ review_assignments <- function(input_df,
                                max_tokens         = NULL,
                                max_retries        = 2L,
                                pause_seconds      = 1,
+                               cache_dir          = NULL,
                                verbose            = TRUE) {
 
   # --- Input validation ---
@@ -520,10 +537,74 @@ review_assignments <- function(input_df,
                     nrow(taxa_info),
                     if (use_candidates) "candidate sets" else "taxa"))
 
+  # --- Cache lookup ------------------------------------------------------
+  # The review is a JUDGEMENT, and an uncached one is not reproducible: two
+  # GreatLakes runs 50 minutes apart on identical input disagreed about
+  # Pimephales vigilax ("possible" then "unlikely"), so it appeared in one
+  # species list and not the other. Caching makes a re-run reproducible and
+  # stops it re-paying for verdicts already obtained.
+  #
+  # Shape: one small file per reviewed taxon, named by a hash of its full key
+  # -- the file-per-key shape TaxaTools::list_cache_files() /
+  # report_and_clear_cache() are built for, so taxaflag_clear_cache() can
+  # report and prune it like every other cache in the ecosystem. The FULL key
+  # is stored inside each file and verified on read, so a hash collision is a
+  # miss (re-asked) rather than a wrong verdict silently returned for the
+  # wrong taxon.
+  #
+  # The key covers everything that can move a verdict: the taxon label and
+  # rank, every per-taxon note already attached to taxa_info (pipeline
+  # posterior, candidate weights, spatial context), the shared review context,
+  # target_group, marker, data_type, and whether this is the candidate-set
+  # path. Change any of them and the entry is correctly a miss.
+  cache_hits <- NULL
+  cache_paths <- NULL
+  cache_keys <- NULL
+  call_rows  <- seq_len(nrow(taxa_info))
+  if (!is.null(cache_dir)) {
+    if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))
+      stop("'cache_dir' must be a single non-NA character string, or NULL.",
+           call. = FALSE)
+    if (!dir.exists(cache_dir))
+      dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+    .shared <- paste(c(
+      "v1", target_group %||% "", marker %||% "", data_type,
+      as.character(use_candidates),
+      paste(names(ctx), vapply(ctx, function(z) paste(as.character(z), collapse = "~"),
+                               character(1)), sep = "=", collapse = "|")
+    ), collapse = "\u0001")
+
+    cache_keys <- vapply(seq_len(nrow(taxa_info)), function(i) {
+      paste(c(.shared, vapply(taxa_info, function(col)
+        paste(as.character(col[i]), collapse = "~"), character(1))),
+        collapse = "\u0001")
+    }, character(1))
+    cache_paths <- file.path(
+      cache_dir, paste0(vapply(cache_keys, .review_cache_hash, character(1)),
+                        "_review.rds"))
+
+    hit_rows <- integer(0); hit_list <- list()
+    for (i in seq_along(cache_paths)) {
+      ent <- .review_cache_read(cache_paths[i], cache_keys[i])
+      if (!is.null(ent)) { hit_rows <- c(hit_rows, i); hit_list[[length(hit_list) + 1L]] <- ent }
+    }
+    if (length(hit_rows) > 0L) {
+      cache_hits <- do.call(rbind, hit_list)
+      call_rows  <- setdiff(call_rows, hit_rows)
+    }
+    if (verbose)
+      message(sprintf("  cache: %d of %d taxa already reviewed; %d to call.",
+                      length(hit_rows), nrow(taxa_info), length(call_rows)))
+  }
+
+  taxa_to_call <- taxa_info[call_rows, , drop = FALSE]
+
   # --- Batch and call LLM ---
-  n_taxa    <- nrow(taxa_info)
-  tpc       <- min(taxa_per_call, n_taxa)
-  batch_idx <- split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc))
+  n_taxa    <- nrow(taxa_to_call)
+  tpc       <- if (n_taxa > 0L) min(taxa_per_call, n_taxa) else 1L
+  batch_idx <- if (n_taxa > 0L)
+    split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc)) else list()
   n_batches <- length(batch_idx)
 
   if (verbose)
@@ -534,7 +615,7 @@ review_assignments <- function(input_df,
   prompt_log    <- new.env(parent = emptyenv())
 
   for (b in seq_along(batch_idx)) {
-    taxa_batch <- taxa_info[batch_idx[[b]], , drop = FALSE]
+    taxa_batch <- taxa_to_call[batch_idx[[b]], , drop = FALSE]
 
     if (verbose)
       message(sprintf("  Calling LLM (batch %d/%d, %d %s)...",
@@ -552,6 +633,17 @@ review_assignments <- function(input_df,
   }
 
   review_df <- do.call(rbind, batch_results)
+
+  # Persist the freshly obtained verdicts, then fold the cached ones back in.
+  if (!is.null(cache_dir) && !is.null(review_df) && nrow(review_df) > 0L) {
+    pos <- match(review_df$taxon_name, taxa_info$taxon_name)
+    for (k in which(!is.na(pos)))
+      .review_cache_write(cache_paths[pos[k]], cache_keys[pos[k]],
+                          review_df[k, , drop = FALSE])
+  }
+  if (!is.null(cache_hits))
+    review_df <- if (is.null(review_df) || nrow(review_df) == 0L) cache_hits
+                 else rbind(review_df, cache_hits[, names(review_df), drop = FALSE])
   rownames(review_df) <- NULL
 
   if (verbose)
