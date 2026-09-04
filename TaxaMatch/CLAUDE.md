@@ -1,5 +1,48 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-04, fifth pass (Opus 5, branch kernel-priors -- verify_removal_
+# candidates()'s FIRST REAL USE found a false rescue, and the function now shows its work.
+#
+# THE CASE: GreatLakes KJ135626 (Pseudorasbora parva) came back spared = TRUE at
+# max_hits = 100 -- rescued by exactly ONE partner agreeing at species rank. That partner is
+# MZ605481, which diagnostics/reference_accession_ground_truth.csv records as a
+# candidate_mislabel whose real identity is Cyprinus carpio (20 independent carp accessions
+# at 100%, coverage-enforced). KJ135626's own best DISAGREEING hit is also Cyprinus carpio at
+# 100%. Both accessions are almost certainly the same error twice, carp sequence carrying the
+# P. parva name, corroborating each other. review_flagged_accessions() had independently
+# called KJ135626 "genuine_mislabel" at high confidence and was RIGHT; the statistical rule
+# was wrong. KJ135626 was NOT added to any override.
+#
+# THE GENERAL FINDING: congruent_evidence_exists_anywhere counts a corroborator without any
+# notion of whether that corroborator's own label is trustworthy. refine_reference_verdicts()
+# cannot close it -- that mechanism discounts a partner by the partner's OWN verdict, and a
+# corroborator which is merely a BLAST hit, not itself in the screened population, has no
+# verdict to discount. Widening max_hits makes the exposure LARGER, since it admits more
+# potential bad corroborators. A real limit on "audit before removing", not a reason to drop
+# it.
+#
+# THE FIX: verify_removal_candidates() now returns n_corroborators, best_corroborator_rank
+# and corroborators (the strongest few, named, from the audit's own pair sidecar;
+# min_congruent_rank is read out of params_key field 2 so it cannot drift from the run being
+# summarised), and prints a CHECK THESE BY HAND warning naming any row spared on 1-2
+# partners. Re-running the GL audit now names MZ605481 unprompted. New @section "Read the
+# corroborators, not just spared" carries the case.
+#
+# A CORRECTION TO THE PTCONCEPTION RESULT in the third-pass note: OQ846263 was called
+# "corroborated". Precisely, its evidence is 7 INDEPENDENT Bathymasteridae records at 97.6%
+# agreeing at FAMILY rank -- not a conspecific match. Legitimate under the rule's own
+# definition, and 7 independent partners is not a single-source rescue, so the spare stands;
+# but it is weaker than the earlier wording implied, and the contrast with KJ135626 is
+# exactly what the new columns exist to show. The workflow comment was corrected too.
+#
+# ALSO CORRECTED: GreatLakes HAD already been live-run on the v5 path (2026-09-04 09:38) --
+# the reentry doc's "not yet live-run" was stale. GL needs NO workflow change from this
+# audit: NC_028197 is already in the LLM overrides and separately caught by
+# listed_taxon_is_species = FALSE, and KJ135626 should stay removed.
+#
+# `devtools::test()` 1317/1317 (0 failures; 1 pre-existing unrelated warning),
+# `devtools::check()` 0/0/0. NOT reinstalled -- see the session-end apply block.
+#
 # Last updated: 2026-09-04, fourth pass (Opus 5, branch kernel-priors -- the screen's audit
 # trail, and the loader change that made it affordable. Read the second and third passes
 # below first.

@@ -902,6 +902,51 @@ refine_reference_verdicts <- function(evaluation,
   evaluation
 }
 
+#' Who corroborated each audited accession, from the audit's own pair sidecar
+#'
+#' Returns one row per requested accession with the number of partners that
+#' agreed at `min_congruent_rank` or finer, the finest rank any of them
+#' reached, and a short human-readable list of the strongest few. All `NA`
+#' when no pair cache is available (`cache_dir = NULL`), which is why
+#' `verify_removal_candidates()` recommends passing one.
+#'
+#' `min_congruent_rank` is read out of the audit's own `params_key` (field 2)
+#' rather than taken as an argument, so it cannot drift from the run being
+#' summarised.
+#' @noRd
+.summarise_corroborators <- function(accessions, cache_dir, audit) {
+  out <- data.frame(accession = accessions, n = NA_integer_,
+                    best_rank = NA_character_, who = NA_character_,
+                    stringsAsFactors = FALSE)
+  if (is.null(cache_dir)) return(out)
+  pairs <- tryCatch(.load_reference_pair_cache(cache_dir), error = function(e) NULL)
+  if (is.null(pairs) || nrow(pairs) == 0L) return(out)
+
+  key <- unique(stats::na.omit(audit[["params_key"]]))
+  mcr <- if (length(key) == 1L) strsplit(key, "|", fixed = TRUE)[[1L]][[2L]] else "family"
+  ladder <- tolower(TaxaTools::standard_ranks)
+  idx_min <- match(tolower(mcr), ladder)
+  if (is.na(idx_min)) return(out)
+
+  for (k in seq_along(accessions)) {
+    pk <- pairs[pairs$id_x %in% accessions[[k]], , drop = FALSE]
+    if (nrow(pk) == 0L) next
+    rk <- match(tolower(pk$pair_finest_common_rank), ladder)
+    agree <- !is.na(rk) & rk >= idx_min
+    out$n[k] <- sum(agree)
+    if (!any(agree)) { out$who[k] <- ""; next }
+    ag <- pk[agree, , drop = FALSE]
+    ag <- ag[order(-match(tolower(ag$pair_finest_common_rank), ladder), -ag$p_match), , drop = FALSE]
+    out$best_rank[k] <- ag$pair_finest_common_rank[[1L]]
+    top <- utils::head(ag, 3L)
+    out$who[k] <- paste(sprintf("%s %s @%.1f%% (%s)", top$id_y,
+                                ifelse(is.na(top$species_y), "?", top$species_y),
+                                100 * top$p_match, top$pair_finest_common_rank),
+                        collapse = "; ")
+  }
+  out
+}
+
 #' Verify Removal Candidates Against a Wider Evidence Window
 #'
 #' Re-evaluates ONLY the accessions an evaluation would actually remove, at a
@@ -964,9 +1009,34 @@ refine_reference_verdicts <- function(evaluation,
 #'   `anywhere_production`/`anywhere_audit`,
 #'   `n_partners_production`/`n_partners_audit`,
 #'   `n_hits_audit`, `still_saturated` (the audit itself hit
-#'   `audit_max_hits`, so its own window is also truncated), and `spared`
-#'   (the accession is no longer actioned `"remove"`). Zero rows, and zero
-#'   NCBI calls, when nothing would be removed.
+#'   `audit_max_hits`, so its own window is also truncated), `spared`
+#'   (the accession is no longer actioned `"remove"`), and -- when
+#'   `cache_dir` is supplied -- `n_corroborators`, `best_corroborator_rank`
+#'   and `corroborators`, a short list of the strongest partners that agreed.
+#'   Zero rows, and zero NCBI calls, when nothing would be removed.
+#'
+#' @section Read the corroborators, not just `spared`:
+#' `congruent_evidence_exists_anywhere` counts a corroborating partner
+#' without any notion of whether that partner's own label is trustworthy, so
+#' a mislabeled reference can be rescued by another instance of the SAME
+#' mislabel. This is not hypothetical -- it happened on this function's first
+#' real use. GreatLakes `KJ135626` (*Pseudorasbora parva*) came back
+#' `spared = TRUE`, rescued by exactly one partner agreeing at species rank:
+#' `MZ605481`, which this project's own
+#' `diagnostics/reference_accession_ground_truth.csv` records as a
+#' `candidate_mislabel` whose real identity is *Cyprinus carpio*.
+#' `KJ135626`'s own best disagreeing hit is *Cyprinus carpio* at 100%. Two
+#' copies of one error agreeing with each other is not corroboration, and the
+#' LLM reviewer's independent `"genuine_mislabel"` call on that accession was
+#' the better answer.
+#'
+#' `refine_reference_verdicts()` cannot close this: it discounts a partner by
+#' that partner's OWN verdict, and a corroborator which is merely a BLAST hit
+#' -- not itself in the screened population -- has no verdict to discount.
+#' Widening the window makes the exposure larger, not smaller, since it
+#' admits more potential bad corroborators. So treat `spared` as a prompt to
+#' look, not a conclusion: a row rescued by one or two partners gets an
+#' explicit warning naming them.
 #' @seealso [remove_incongruent_references()], [score_reference_labels()]
 #' @export
 verify_removal_candidates <- function(evaluation, ...,
@@ -1025,6 +1095,24 @@ verify_removal_candidates <- function(evaluation, ...,
     }
   }
 
+  # WHAT corroborated, not just THAT something did (2026-09-04). Added
+  # immediately after this function's first real use found a FALSE RESCUE:
+  # GreatLakes KJ135626 (Pseudorasbora parva) was reported spared because one
+  # partner agreed at species rank -- and that partner was MZ605481, this
+  # project's own documented candidate_mislabel, whose real identity is
+  # Cyprinus carpio. KJ135626's own best disagreeing hit is Cyprinus carpio at
+  # 100%. The two accessions are the same error twice, corroborating each
+  # other, and "spared" was exactly the wrong conclusion.
+  #
+  # `congruent_evidence_exists_anywhere` has no notion of whether a
+  # corroborator's OWN label is trustworthy, and `refine_reference_verdicts()`
+  # cannot cover this: it discounts partners by their own verdict, and a
+  # corroborator that is merely a BLAST hit (not itself in the screened
+  # population) has no verdict to discount. Widening the window makes this
+  # MORE likely, not less, because it admits more potential bad corroborators.
+  # So the audit must show its work rather than hand back a boolean.
+  corr <- .summarise_corroborators(cand$accession, cache_dir, audit)
+
   i <- match(cand$accession, audit$accession)
   out <- data.frame(
     accession    = cand$accession,
@@ -1044,8 +1132,17 @@ verify_removal_candidates <- function(evaluation, ...,
   out$still_saturated <- !is.na(out$n_hits_audit) &
     out$n_hits_audit >= as.integer(audit_max_hits) - 1L
   out$spared <- !(out$action_audit %in% "remove")
+  out$n_corroborators <- corr$n[match(out$accession, corr$accession)]
+  out$best_corroborator_rank <- corr$best_rank[match(out$accession, corr$accession)]
+  out$corroborators <- corr$who[match(out$accession, corr$accession)]
 
   if (verbose) {
+    thin <- out$spared %in% TRUE & !is.na(out$n_corroborators) & out$n_corroborators <= 2L
+    if (any(thin))
+      message(sprintf(
+        "  CHECK THESE BY HAND: %s spared on 1-2 corroborator(s) only. Look at whose label is doing the work -- a corroborator that is itself mislabeled reads exactly like real corroboration here (real case: GreatLakes KJ135626, rescued by MZ605481, a documented mislabel of the same species).",
+        paste(sprintf("%s (%s)", out$accession[thin], out$corroborators[thin]), collapse = "; ")
+      ))
     message(sprintf(
       "verify_removal_candidates(): %d of %d removal candidate(s) are no longer removable at max_hits = %d%s.",
       sum(out$spared, na.rm = TRUE), nrow(out), as.integer(audit_max_hits),

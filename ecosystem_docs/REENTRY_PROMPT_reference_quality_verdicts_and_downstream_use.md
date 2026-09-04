@@ -841,3 +841,55 @@ been live-run on the v5 amplicon path, so none of the four probes' numbers have
 a GreatLakes counterpart yet -- and GL Plate1's zero-partner population (24 of
 27 insufficient, dominated by *Phoxinus* and *Etheostoma*) has a different
 shape from PtCon's, so it should not be assumed to behave the same way.
+
+## 2026-09-04: the GreatLakes audit found a FALSE RESCUE -- read this before trusting `spared`
+
+`verify_removal_candidates()` was run on GreatLakes' two removal candidates
+(2 BLAST calls). Result, and it cuts both ways:
+
+| accession | taxon | at 20 hits | at 100 hits | corroborators |
+|---|---|---|---|---|
+| `KJ135626` | *Pseudorasbora parva* | remove | **inspect (spared)** | **1**, at species rank |
+| `NC_028197` | "Serranidae sp. JL-2015" | remove | remove (still saturated) | 0 |
+
+**The `KJ135626` rescue is spurious, and the LLM reviewer was right.** Its sole
+corroborator is `MZ605481` -- which this project's own
+`diagnostics/reference_accession_ground_truth.csv` records as a
+`candidate_mislabel` whose real identity is *Cyprinus carpio* (20 independent
+carp accessions at 100%, coverage-enforced). `KJ135626`'s own best DISAGREEING
+hit is also *Cyprinus carpio* at 100%. The two accessions are almost certainly
+the same error twice -- carp sequence carrying the *P. parva* name --
+corroborating each other. `review_flagged_accessions()` independently called
+`KJ135626` `"genuine_mislabel"` at high confidence, and that is the better
+answer. **Do NOT add it to `override_accessions`.**
+
+`NC_028197` is already in the LLM overrides
+(`"hybrid_or_specimen_code_artifact"`, high confidence) so it is not actually
+removed in production, and it is separately caught by
+`listed_taxon_is_species = FALSE`. GreatLakes therefore needs no workflow
+change at all from this audit.
+
+**The mechanism finding, which generalises.**
+`congruent_evidence_exists_anywhere` counts a corroborating partner with no
+notion of whether that partner's own label is trustworthy, so one mislabel can
+rescue another. `refine_reference_verdicts()` cannot close this: it discounts a
+partner by that partner's OWN verdict, and a corroborator that is merely a
+BLAST hit -- not itself in the screened population -- has no verdict to
+discount. Widening `max_hits` makes the exposure LARGER, not smaller, because
+it admits more potential bad corroborators. This is a real limit on the
+"audit before removing" strategy, not a reason to abandon it.
+
+`verify_removal_candidates()` now returns `n_corroborators`,
+`best_corroborator_rank` and `corroborators` (the strongest few, named), and
+prints an explicit CHECK THESE BY HAND warning for any row spared on 1-2
+partners. On re-running the GL audit it names `MZ605481` unprompted -- the
+thing that had to be dug out by hand.
+
+**A correction to the PtConception result recorded above.** `OQ846263` was
+described as "corroborated"; be precise about what that means. Its evidence is
+7 INDEPENDENT Bathymasteridae records at 97.6% agreeing at FAMILY rank, not a
+conspecific match. That is legitimate under the rule's own definition
+(agreement at `min_congruent_rank` or finer) and 7 independent partners is not
+a single-source rescue, so the spare stands -- but it is weaker evidence than
+the earlier wording implied, and the difference between it and `KJ135626` is
+exactly what the new columns exist to show.

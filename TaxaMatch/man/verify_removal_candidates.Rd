@@ -37,9 +37,11 @@ A data frame with one row per removal candidate: \code{accession},
 \code{anywhere_production}/\code{anywhere_audit},
 \code{n_partners_production}/\code{n_partners_audit},
 \code{n_hits_audit}, \code{still_saturated} (the audit itself hit
-\code{audit_max_hits}, so its own window is also truncated), and \code{spared}
-(the accession is no longer actioned \code{"remove"}). Zero rows, and zero
-NCBI calls, when nothing would be removed.
+\code{audit_max_hits}, so its own window is also truncated), \code{spared}
+(the accession is no longer actioned \code{"remove"}), and -- when
+\code{cache_dir} is supplied -- \code{n_corroborators}, \code{best_corroborator_rank}
+and \code{corroborators}, a short list of the strongest partners that agreed.
+Zero rows, and zero NCBI calls, when nothing would be removed.
 }
 \description{
 Re-evaluates ONLY the accessions an evaluation would actually remove, at a
@@ -86,6 +88,31 @@ compares the \code{params_key} its own call will produce against the one
 carried on \code{evaluation} and warns, naming the fields, if anything other
 than \code{max_hits} differs. Heed that warning: a mismatch does not make the
 call fail, it makes the result mean nothing.
+}
+
+\section{Read the corroborators, not just \code{spared}}{
+
+\code{congruent_evidence_exists_anywhere} counts a corroborating partner
+without any notion of whether that partner's own label is trustworthy, so
+a mislabeled reference can be rescued by another instance of the SAME
+mislabel. This is not hypothetical -- it happened on this function's first
+real use. GreatLakes \code{KJ135626} (\emph{Pseudorasbora parva}) came back
+\code{spared = TRUE}, rescued by exactly one partner agreeing at species rank:
+\code{MZ605481}, which this project's own
+\code{diagnostics/reference_accession_ground_truth.csv} records as a
+\code{candidate_mislabel} whose real identity is \emph{Cyprinus carpio}.
+\code{KJ135626}'s own best disagreeing hit is \emph{Cyprinus carpio} at 100\%. Two
+copies of one error agreeing with each other is not corroboration, and the
+LLM reviewer's independent \code{"genuine_mislabel"} call on that accession was
+the better answer.
+
+\code{refine_reference_verdicts()} cannot close this: it discounts a partner by
+that partner's OWN verdict, and a corroborator which is merely a BLAST hit
+-- not itself in the screened population -- has no verdict to discount.
+Widening the window makes the exposure larger, not smaller, since it
+admits more potential bad corroborators. So treat \code{spared} as a prompt to
+look, not a conclusion: a row rescued by one or two partners gets an
+explicit warning naming them.
 }
 
 \seealso{

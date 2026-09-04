@@ -563,3 +563,68 @@ test_that("verify_removal_candidates() does not warn when only max_hits differs"
     suppressMessages(verify_removal_candidates(.audit_eval_fixture(actions = "remove")))
   )
 })
+
+test_that("verify_removal_candidates() names the corroborators and warns when a rescue rests on one or two", {
+  # The GreatLakes KJ135626 shape: rescued by a single partner. That partner
+  # was itself a documented mislabel of the same species, which "spared = TRUE"
+  # alone could never have revealed.
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  saveRDS(
+    data.frame(
+      id_x = c("SPARED", "SPARED", "STILL"),
+      id_y = c("BADREF", "FARAWAY", "OTHER"),
+      p_match = c(1, 0.80, 0.99),
+      pair_finest_common_rank = c("species", "class", "class"),
+      species_y = c("Pseudorasbora parva", "Something else", "Another"),
+      params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+      evaluated_at = Sys.time(), stringsAsFactors = FALSE
+    ),
+    file.path(cache_dir, "reference_pair_cache.rds")
+  )
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      data.frame(
+        accession = accessions,
+        reference_action = c("inspect", "remove"),
+        congruent_evidence_exists_anywhere = c(TRUE, FALSE),
+        n_independent_top_matches = 5L, n_top_matches_available = 99L,
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
+
+  expect_message(
+    verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir),
+    "CHECK THESE BY HAND"
+  )
+  out <- suppressMessages(
+    verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir)
+  )
+  # Only the species-rank partner counts as corroboration at min_congruent_rank
+  # = family; the class-rank one does not.
+  expect_equal(out$n_corroborators, c(1L, 0L))
+  expect_equal(out$best_corroborator_rank[1L], "species")
+  expect_match(out$corroborators[1L], "BADREF")
+  expect_match(out$corroborators[1L], "Pseudorasbora parva")
+})
+
+test_that("verify_removal_candidates() returns NA corroborator columns when no pair cache exists", {
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      data.frame(accession = accessions, reference_action = "remove",
+                 congruent_evidence_exists_anywhere = FALSE,
+                 n_independent_top_matches = 5L, n_top_matches_available = 40L,
+                 params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+                 stringsAsFactors = FALSE)
+    },
+    .package = "TaxaMatch"
+  )
+  out <- suppressMessages(
+    verify_removal_candidates(.audit_eval_fixture(actions = "remove"), cache_dir = NULL)
+  )
+  expect_true(is.na(out$n_corroborators))
+  expect_true(is.na(out$corroborators))
+})
