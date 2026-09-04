@@ -125,6 +125,29 @@
 # fixtures, the real 718 bp KM057996 record verbatim, the migration round-trip); two trim tests
 # and one review test updated for the stripped default.
 #
+# SAME DAY, LIVE-VERIFIED (Sonnet 5): installed from the kernel-priors main checkout,
+# `migrate_reference_cache()` run once on all four real cache dirs (PtCon
+# `ptcon_ref_eval_cache` 919 congruent carried/76 left; GreatLakes goal2_screen 1048/12,
+# Plate1 249/31, pilot 610/80 -- all backed up as `.bak_pre_v5_amplicon_query`), then
+# `PtConceptionWorkflow_12S_single_site.R` step 7a.10 run LIVE against real NCBI. Result
+# on the 709-row driving-accession subset: `hierarchy_flag` congruent 651/incongruent
+# 5/insufficient 34/locally_corroborated 18/oversized 1; KM057996 (the motivating
+# Zaniolepis frenata case) confirmed no longer removed -- caught by the skip BEFORE any
+# BLAST call, not merely vetoed. The two "expected" counts from the reentry doc
+# (~106 skipped, ~76 re-BLASTed) both reconcile exactly once you account for the
+# `match_driving_accessions()` population filter (995 -> 709, so only 70 of the 76
+# leftover rows were in scope) and for `corroboration_source`: 88 rows read `"both"`
+# (already had a valid BLAST-congruent cache row carried forward by the migration, so
+# they never reach the skip branch at all) + 18 read `"local"` (freshly skipped this
+# call) = 106, the diagnostic's own count. **Read this split before concluding a future
+# run "skipped too few" -- `hierarchy_flag == "locally_corroborated"` alone undercounts
+# total corroborated evidence; add `corroboration_source %in% c("local","both")`.**
+# GreatLakes (7a.6) and Mugu are migrated but NOT YET live-run -- full detail, including
+# what to check first on that run (driving-accession population, the same
+# corroboration_source split, which of the three GL cache dirs is in play, Mugu's
+# first-ever cache-free run) is in the reentry doc's own updated Status section.
+# `devtools::test()` re-run after install: 1228/1228, 0 failures/warnings.
+#
 # Previous update, 2026-09-02, third pass (Opus 5, branch kernel-priors -- the reference-quality
 # LIKELIHOOD COVARIATE was built, validated, and then REMOVED at the user's direction. Read
 # this before proposing it again.

@@ -285,14 +285,97 @@ the before/after `table(hierarchy_flag)` and `table(reference_action)`.
   (PtCon 12S 7a.10, GreatLakes 7a.6 -- a stale hard-coded `match_eval <-
   readRDS()` reload removed there -- and Mugu); backups
   `*.bak_pre_local_corroboration`.
-- NOT YET DONE: `devtools::install()` from the main checkout;
-  `migrate_reference_cache()` on the four real cache dirs (PtCon + three
-  GreatLakes); the first live re-run. Expected on PtCon: ~106 skipped, ~76
-  re-BLASTed, KM057996 no longer removed.
-- Two loose ends for the next session: (1) MN883227 (Fundulus luciae, the
-  "confirmed mislabel") read insufficient/keep with ONE independent partner,
-  NC_083019, a F. luciae mitogenome at 100% -- re-examine that premise;
-  (2) 743 of 995 PtCon match candidates are absent from reference_df, so
-  local corroboration reaches only ~25% of candidates there; a reference
-  fetch that also pulls the match candidates' conspecific short deposits
-  would widen it (not designed).
+- 2026-09-03: INSTALLED + MIGRATED + LIVE-VERIFIED on PtCon only. Reinstalled
+  TaxaMatch from the `kernel-priors` main checkout (both the user's live
+  session and, separately, Claude's Bash-tool `Rscript` invocation -- the
+  latter explicitly targeted `~/Library/R/4.0/library` per
+  `feedback_rscript_install_library_mismatch`; `packageDescription()$Built`
+  and `"query_span" %in% names(formals(evaluate_reference_accessions))`
+  verified true after a real restart). Ran `migrate_reference_cache()` once
+  on all four real cache dirs; all backed up
+  (`reference_accession_cache.rds.bak_pre_v5_amplicon_query`):
+  PtCon 919 congruent carried / 76 left to re-evaluate (incongruent 12,
+  insufficient 63, oversized 1); GreatLakes goal2_screen 1048/12; Plate1
+  249/31; pilot 610/80. GreatLakes and Mugu were migrated but NOT yet run
+  live (see below).
+  PtCon 12S 7a.10 run LIVE (`PtConMifishSchulte_match_review.rds`, 709-row
+  driving-accession subset, `evaluated_at` up to 2026-09-03 21:29:36):
+  `hierarchy_flag` congruent 651 / incongruent 5 / insufficient 34 /
+  locally_corroborated 18 / oversized 1; run_summary 639 from cache, 52
+  evaluated this call, 18 skipped locally corroborated. All three
+  predictions confirmed, with the exact reconciliation for anyone comparing
+  to the "~106 skipped" / "~76 re-BLASTed" figures above:
+  - KM057996 no longer removed -- better than predicted: caught by the skip
+    BEFORE any BLAST call (`hierarchy_flag = "locally_corroborated"`,
+    `action_reason = "locally_corroborated_not_blasted"`), not merely
+    vetoed from remove to inspect.
+  - The "~76 re-BLASTed" figure was over the full 995-accession cache; the
+    screen only ever sees the 709 driving accessions
+    (`match_driving_accessions()` runs first), so only 70 of the 76
+    leftover rows were in scope this run (52 BLASTed + 18 skipped). The
+    other 6 belong to non-driving accessions and correctly never entered
+    the call.
+  - The "~106 skipped" figure was "how many accessions are locally
+    corroborated," not "how many get skipped on a given run": split
+    `corroboration_source`, 88 rows are `"both"` (already had a valid
+    BLAST-congruent cache row carried forward by the migration, so they
+    hit cache before ever reaching the skip branch) and 18 are `"local"`
+    (freshly corroborated this call, actually skipped). 88 + 18 = 106,
+    exactly the diagnostic count. **This split is the thing to check first
+    on any future run that looks like it "skipped too few": count
+    `corroboration_source %in% c("local","both")`, not just
+    `hierarchy_flag == "locally_corroborated"`.**
+  - 2 removals remain (down from 4): Jordania zonope KM057967 (pinned by
+    the fixture as a true singleton -- the LC126244 "100%" match is a
+    5.6%-overlap artifact) and Rathbunella hypoplecta OQ846263 (also
+    `corroboration_source = "none"`, no independent evidence anywhere).
+    Neither was a blind-spot victim.
+  - 1 untested (HM561627, the oversized 16S bat contaminant), unaffected as
+    expected.
+  - MN883227 (Fundulus luciae) reproduced unchanged: `insufficient_
+    independent_evidence` / keep, `local_n_independent_conspecific = 5` at
+    `local_best_independent_pident = 98.14`, below the 0.99 threshold so it
+    lands in "disagree" locally and is not vetoed -- see loose end (1) below.
+  - `devtools::test()` re-run after install: 1228/1228 pass, 0 failures/
+    warnings.
+- **NOT YET LIVE-RUN: GreatLakes (`GreatLakes2023_ConsensusWorkflow.R`
+  7a.6) and Mugu.** Caches are migrated (see counts above) but nobody has
+  executed the screen against the new `query_span = "amplicon"` code path
+  on those workflows. What to check when that run happens, for debugging:
+  - Confirm `table(match_eval$hierarchy_flag)` sums to the *driving*
+    accession count for that workflow (not the raw cache row count) --
+    PtCon's population dropped from 995 candidates to 709 drivers via
+    `match_driving_accessions()`; GreatLakes/Mugu will have their own,
+    different reduction. If the workflow script wasn't actually rewired to
+    call `match_driving_accessions()` before the screen (verify against the
+    `*.bak_pre_local_corroboration` diff at that call site), the row count
+    will instead match the full migrated-cache population and every number
+    below will look inflated.
+  - Expect the same `corroboration_source` reconciliation pattern as PtCon:
+    `"local"` (freshly skipped this call) will undercount total corroborated
+    evidence; add `"both"` (already cache-hit congruent from the migration)
+    to get the true corroborated count. Don't read a low
+    `n_skipped_locally_corroborated` in `run_summary` as the fix
+    underperforming without checking this split first.
+  - GreatLakes' three cache dirs have different left-to-reevaluate profiles
+    (goal2_screen 12, Plate1 31, pilot 80) -- run each workflow's relevant
+    dir and match the printed cache path to the dir you expect, since three
+    dirs exist and it is easy to point at the wrong one.
+  - No fixture accession is pinned for GreatLakes the way KM057996/Jordania/
+    Fundulus are for PtCon; the closest analog on record is the two real GL
+    removals from the pre-migration screen audit, NC_068731 and KJ135626
+    (both PtCon-era "true singletons" per
+    `project_reference_screen_overview_assessment_2026_09_03`) -- worth
+    checking by name that neither flips.
+  - Mugu has no cache at all (`RUN_ACCESSION_SCREEN` gated off historically);
+    its first live run will show 0 cache hits and is the first real test of
+    `match_driving_accessions()` wiring there (rewired per the merge note
+    above, restoring a `grep` that had done the same job by hand).
+- Two loose ends for a later session (not today, not GreatLakes/Mugu-blocking):
+  (1) MN883227 (Fundulus luciae, the "confirmed mislabel") reads insufficient/
+  keep with ONE independent BLAST partner, NC_083019, a F. luciae mitogenome
+  at 100%, and locally at 5 partners / 98.14% (below veto threshold) --
+  re-examine that premise; (2) 743 of 995 PtCon match candidates are absent
+  from reference_df, so local corroboration reaches only ~25% of candidates
+  there; a reference fetch that also pulls the match candidates' conspecific
+  short deposits would widen it (not designed).
