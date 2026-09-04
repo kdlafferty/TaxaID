@@ -885,3 +885,71 @@ test_that("all-NA taxon_col returns df unchanged with a warning", {
   # Returned df should be identical to input
   expect_equal(result$family, df_all_na$family)
 })
+
+# ---------------------------------------------------------------------------
+# Second-pass verification of cleaned hybrid-formula names (2026-09-04).
+#
+# NCBI carries taxon records for hybrid crosses, so a label like
+# "Ctenopharyngodon idellus x Elopichthys bambusa" VERIFIES (score 1) and is
+# only reduced to its maternal parent afterwards, at matched_name_clean. That
+# parent binomial had never been looked up, so it kept the submitting author's
+# spelling -- emitting "Ctenopharyngodon idellus" alongside the accepted
+# "Ctenopharyngodon idella" from direct references, splitting one species into
+# two competing candidates. Regression: GreatLakes 2026-09-04 lost a
+# Lamar-confirmed grass carp detection down that path.
+# ---------------------------------------------------------------------------
+
+.mock_verify_hybrid <- function(name_list, backbone_id) {
+  cls  <- "Metazoa|Chordata|Actinopteri|Cypriniformes|Xenocyprididae|Ctenopharyngodon|Ctenopharyngodon idella"
+  rnk  <- "kingdom|phylum|class|order|family|genus|species"
+  hyb  <- "Metazoa|Chordata|Actinopteri|Cypriniformes|Xenocyprididae|Ctenopharyngodon|Ctenopharyngodon idellus x Elopichthys bambusa"
+  known <- list(
+    "Ctenopharyngodon idellus x Elopichthys bambusa" =
+      .make_verified_row("Ctenopharyngodon idellus x Elopichthys bambusa",
+                         "Ctenopharyngodon idellus x Elopichthys bambusa", hyb, rnk),
+    "Ctenopharyngodon idella" =
+      .make_verified_row("Ctenopharyngodon idella", "Ctenopharyngodon idella", cls, rnk),
+    # the synonym resolves to the accepted name -- this is the second pass
+    "Ctenopharyngodon idellus" =
+      .make_verified_row("Ctenopharyngodon idellus", "Ctenopharyngodon idella", cls, rnk)
+  )
+  out <- lapply(name_list, function(n) {
+    if (!is.null(known[[n]])) known[[n]]
+    else .make_verified_row(n, NA_character_, NA_character_, NA_character_, verified = FALSE)
+  })
+  do.call(rbind, out)
+}
+
+test_that("a cleaned hybrid parent name is re-verified to the accepted spelling", {
+  df <- data.frame(
+    observation_id = c("A", "B"),
+    family = "Xenocyprididae", genus = "Ctenopharyngodon",
+    species    = c("Ctenopharyngodon idellus x Elopichthys bambusa", "Ctenopharyngodon idella"),
+    taxon_name = c("Ctenopharyngodon idellus x Elopichthys bambusa", "Ctenopharyngodon idella"),
+    stringsAsFactors = FALSE
+  )
+  out <- convert_taxonomy_backbone(df, target_backbone_id = 4,
+                                   rank_system = c("family", "genus", "species"),
+                                   verify_fn = .mock_verify_hybrid, verbose = FALSE)
+  # one species, not two competing candidates
+  expect_equal(unique(out$taxon_name), "Ctenopharyngodon idella")
+  # taxon_name and species must not disagree about the spelling
+  expect_equal(out$taxon_name, out$species)
+  # provenance is preserved
+  expect_equal(out$taxon_name_original[1], "Ctenopharyngodon idellus x Elopichthys bambusa")
+})
+
+test_that("the second pass makes no extra call when no cleaning changed a name", {
+  calls <- 0L
+  counting <- function(name_list, backbone_id) {
+    calls <<- calls + 1L
+    .mock_verify_hybrid(name_list, backbone_id)
+  }
+  df <- data.frame(observation_id = "A", family = "Xenocyprididae",
+                   genus = "Ctenopharyngodon", species = "Ctenopharyngodon idella",
+                   taxon_name = "Ctenopharyngodon idella", stringsAsFactors = FALSE)
+  convert_taxonomy_backbone(df, target_backbone_id = 4,
+                            rank_system = c("family", "genus", "species"),
+                            verify_fn = counting, verbose = FALSE)
+  expect_equal(calls, 1L)   # first pass only; no hybrid label present
+})

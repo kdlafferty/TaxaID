@@ -421,6 +421,77 @@ convert_taxonomy_backbone <- function(
   rank_clean_fallback <- lapply(original_ranks, TaxaTools::clean_taxon_names)
 
   # ---------------------------------------------------------------------------
+  # Second-pass verification of names that CLEANING CHANGED (2026-09-04).
+  #
+  # clean_taxon_names() reduces a GenBank hybrid-formula label to its maternal
+  # parent. That parent binomial has never itself been looked up, so it keeps
+  # whatever spelling the submitting author used -- and NCBI carries taxon
+  # records for the hybrids themselves, so this is NOT confined to the
+  # unresolved path: "Ctenopharyngodon idellus x Elopichthys bambusa" verifies
+  # with score 1, and only afterwards becomes "Ctenopharyngodon idellus" at
+  # matched_name_clean. That is how NC_025590 emitted the variant spelling into
+  # GreatLakes while three direct references emitted the accepted
+  # "Ctenopharyngodon idella": one species split into two competing candidates
+  # (posterior 0.5005 / 0.4945), forcing a genus back-off that ultimately
+  # dropped a Lamar-confirmed grass carp detection. Its two sibling hybrids came
+  # out right only because their labels already used the accepted spelling.
+  #
+  # Both sources of a cleaned name are covered: (a) matched_name_clean on a
+  # RESOLVED row, and (b) the not-found fallback just above. Only names the
+  # cleaning actually changed, and that were not already in the first pass, are
+  # re-queried -- one small batched call when hybrid labels are present, and
+  # nothing at all when they are not. The result is applied to the rank columns
+  # as well, so taxon_name and species cannot disagree about which spelling of
+  # one taxon is in use.
+  # ---------------------------------------------------------------------------
+  .clean_changed <- c(
+    verified$matched_name_clean[
+      !is.na(verified$matched_name) & !is.na(verified$matched_name_clean) &
+        verified$matched_name_clean != verified$matched_name],
+    taxon_col_clean_fallback[
+      !found_mask & !is.na(taxon_col_clean_fallback) &
+        !is.na(match_df[[taxon_col]]) &
+        taxon_col_clean_fallback != match_df[[taxon_col]]]
+  )
+  .second <- setdiff(unique(.clean_changed), unique_names)
+  .second <- .second[!is.na(.second) & nzchar(.second)]
+  if (length(.second) > 0L) {
+    v2 <- tryCatch(verify_fn(.second, backbone_id = target_backbone_id),
+                   error = function(e) NULL)
+    if (!is.null(v2) && is.data.frame(v2) && nrow(v2) > 0L &&
+        all(c("user_supplied_name", "matched_name") %in% names(v2))) {
+      # Only rows we actually asked about, and compare against the CLEANED
+      # match: a backbone may return an authority-bearing name
+      # ("Girella nigricans (Ayres, 1860)"), which is not a rename and must
+      # not be written back over an already-clean value.
+      v2 <- v2[!is.na(v2$user_supplied_name) & v2$user_supplied_name %in% .second, ,
+               drop = FALSE]
+      v2_clean <- if (nrow(v2)) TaxaTools::clean_taxon_names(v2$matched_name) else character(0)
+      ok <- nrow(v2) > 0L & !is.na(v2$matched_name) & !is.na(v2_clean) &
+        nzchar(v2_clean) & v2_clean != v2$user_supplied_name
+      if (any(ok)) {
+        nm_map <- stats::setNames(v2_clean[ok], v2$user_supplied_name[ok])
+        .remap <- function(x) {
+          hit <- !is.na(x) & x %in% names(nm_map)
+          x[hit] <- unname(nm_map[x[hit]])
+          x
+        }
+        verified$matched_name_clean <- .remap(verified$matched_name_clean)
+        taxon_col_clean_fallback    <- .remap(taxon_col_clean_fallback)
+        rank_clean_fallback         <- lapply(rank_clean_fallback, .remap)
+        for (.tc in grep("^target_", names(verified), value = TRUE))
+          verified[[.tc]] <- .remap(verified[[.tc]])
+        if (isTRUE(verbose))
+          message(sprintf(
+            "  %d cleaned name(s) re-resolved on a second pass: %s",
+            sum(ok),
+            paste(sprintf("'%s' -> '%s'", v2$user_supplied_name[ok],
+                          v2_clean[ok]), collapse = ", ")))
+      }
+    }
+  }
+
+  # ---------------------------------------------------------------------------
   # Vectorised collision detection
   # changed_matrix[i, j] = TRUE when rank j was different in the target backbone
   # (target not NA, original not NA, and values differ)
