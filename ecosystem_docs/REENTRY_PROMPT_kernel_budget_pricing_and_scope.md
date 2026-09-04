@@ -7,13 +7,14 @@ numeric below was computed in-session from real checkpoints, not recalled.
 Read this before touching `theta_present`, `chao_missing`, the budget audit,
 or `sampling_group_col` in `estimate_kernel_priors()`.
 
-> **UPDATE 2026-09-03, later the same day (Opus 5).** Read the closing section
-> **"2026-09-03 UPDATE: the PtConception 18S diagnostic"** FIRST -- it supersedes
-> this document's "Next step, recommended" (done), its cost estimate for that
-> step (no GBIF fetch was needed -- an 18S checkpoint already existed), part of
-> Finding 2 (mass/Chao is NOT always below the singleton mean), and open decision
-> #4 (implemented). Open decision #2 is now evidenced, not blocked; #1 and #3
-> remain open and untouched.
+> **UPDATE 2026-09-03/04 (Opus 5).** Read the two closing sections
+> **"2026-09-03 UPDATE: the PtConception 18S diagnostic"** and
+> **"2026-09-04 UPDATE: per-group curve pricing BUILT"** FIRST -- together they
+> supersede this document's "Next step, recommended" (done), its cost estimate
+> for that step (no GBIF fetch was needed -- an 18S checkpoint already existed),
+> part of Finding 2 (mass/Chao is NOT always below the singleton mean), and open
+> decisions **#2 (BUILT)** and **#4 (BUILT)**. Only #1 (switch the price to
+> `mass/f1`) and #3 (singleton theta distribution) remain open, both untouched.
 
 ## The three quantities, and which job each does
 
@@ -364,3 +365,110 @@ repetition must not be DRY-ed up.
    guards it needs are enumerated. Not built: `apply_undetected_evidence()`
    still refuses a multi-group fit with its actionable message.
 3. **Singleton theta DISTRIBUTION instead of a scalar.** Unchanged.
+
+---
+
+# 2026-09-04 UPDATE: per-group curve pricing BUILT
+
+Open decision #2, closed. `apply_undetected_evidence(pricing = "curve")` now
+accepts a multi-group kernel fit and prices each evidence taxon at its OWN
+sampling group's Good-Turing budget, instead of refusing the call.
+
+## Assigning a taxon to a group is never guessed
+
+New `sampling_group` argument: a single group name (the common case -- an
+all-fish watch list), a named `taxon -> group` vector, or a
+`taxon_name`/`sampling_group` data frame. A `sampling_group` column on
+`evidence` takes precedence. An unassigned taxon is an ERROR with actionable
+guidance, never a taxonomic guess: the classification that produced the
+occurrence pool's own groups lives in the caller's workflow (an 11-way
+`case_when()` at PtConception), and a wrong group mis-prices silently rather
+than failing.
+
+## The guards, and what each one does on real 18S data
+
+`diagnostics/per_group_curve_pricing_18S_check.R` exercises all of them against
+the real 10-group fit. Every guard fires; none is hypothetical.
+
+| group | n_eff | f1 | f2 | own price | price used | basis |
+|---|---|---|---|---|---|---|
+| birds_mammals | 608 | 4 | 1 | 1.14e-03 | 1.14e-03 | own_group |
+| fishes | 54,441 | 22 | 6 | 1.15e-05 | 1.15e-05 | own_group |
+| macroalgae | 6,680 | 23 | 9 | 1.20e-04 | 1.20e-04 | own_group |
+| macroinvertebrates | 38,869 | 108 | 44 | 2.89e-05 | 2.89e-05 | own_group |
+| zooplankton | 643 | 3 | 7 | 5.08e-03 | **1.09e-03** | **own_group_capped** |
+| other_vascular_plants | 27 | 13 | 4 | 2.14e-02 | **9.61e-06** | pooled_qualifying |
+| terrestrial_arthropods | 24 | 9 | 3 | 1.74e-02 | **9.61e-06** | pooled_qualifying |
+| meiofauna / parasites / sea_grasses | 1-137 | 0 | 0 | none | 9.61e-06 | pooled_qualifying |
+
+* **Support** (`min_group_n_eff = 100`, `min_group_f1 = 1`): a group needs real
+  data before its own budget is trusted. This is what stops
+  `other_vascular_plants` (27 effective records) pricing an unseen plant at 2.1%
+  of its own community, and `terrestrial_arthropods` at 1.7% -- at lambda = 10
+  the latter reaches **0.755**, i.e. one unseen species worth 75% of the group.
+* **Singleton cap** (`cap_at_singleton = TRUE`): a group's price cannot exceed
+  its own singleton mean `missing_mass/f1`. Binds exactly when `Chao < f1`, i.e.
+  `f1 < 2*f2` -- real zooplankton (f1 = 3, f2 = 7, Chao = 0.64) is priced 4.7x
+  ABOVE a species actually seen once, contradicting the estimator's own premise.
+  **This is NOT open decision #1**: the cap binds only in that one direction and
+  leaves `mass/Chao < mass/f1` alone, which is every other qualifying group.
+* **Fallback** (`group_fallback = "pooled_qualifying"`, or `"error"`/`"skip"`):
+  a failing group borrows the qualifying groups' combined budget, combined
+  GROUP-WISE and never by re-pooling records (unseen counts ADD across disjoint
+  groups; missing masses are shares of different denominators and so combine as
+  an `n_eff`-weighted average -- together, the budget of the union). At
+  PtConception that fallback is 9.61e-06, a reassuring 1.05x the naive pooled
+  price: excluding the thin groups barely moves it, which is exactly why the
+  naive pooled price is a bad price for the THICK groups rather than a
+  numerically wrong one.
+* If NOT ONE group clears the guards the call errors -- there is no trustworthy
+  price anywhere in that fit.
+
+Every row records `sampling_group` and `pricing_basis` (`own_group`,
+`own_group_capped`, `pooled_qualifying`), and the call prints the whole
+per-group budget with the price adopted for each. A borrowed price is never
+silent.
+
+## Single-group fits are byte-identical
+
+The guards police BORROWING BETWEEN GROUPS, which only exists once there is more
+than one group. A single-group fit is the caller asserting the whole stratum is
+one detection process, and that assertion is not second-guessed. Verified on the
+real GreatLakes checkpoint, old code vs new, same inputs: `theta_present`, `f1`,
+`f2`, `n_eff`, the budget table, the undetected rows and every elevated
+evidence row are IDENTICAL, max |delta| = 0 on alpha, beta and theta_mean. The
+Lamar-validated GL result does not move.
+
+## A second real bug, found by building this
+
+`generate_undetected_diversity()`'s kernel adapter computed each singleton
+mirror's `theta_obs` as `effective_records / kp$n_eff`. On a multi-group fit
+`kp$n_eff` is the SUM across groups, while `effective_records` is a count within
+one group -- so every group's mirrors were understated in proportion to how much
+of the stratum the OTHER groups occupy. Measured at PtConception 18S: **1.86x**
+for fishes, 15x macroalgae, 158x zooplankton, 167x birds/mammals, **4295x** for
+terrestrial arthropods. Now scaled by each singleton's own group's `n_eff`.
+Single-group fits are unaffected (the sum IS the group's own n_eff).
+
+## Wired into the 18S workflow
+
+`PtConceptionWorkflow_18S_2_single_site.R` now builds `kernel_grouped_fit`
+alongside the pooled one and prices the invasive-watch list through it with an
+explicit `WATCH_SAMPLING_GROUP <- "fishes"` (the NAS candidate pool is marine
+fish). Domestic/food priors deliberately stay on the pooled fit: that is the
+transport branch, explicitly NOT an occurrence-plausibility evidence source, and
+has no detection process of its own. Effect on the watch list: 1.26x the pooled
+price. NOT yet run end to end (the workflow's later steps are still
+NCBI-bound); the prior-side path is verified by the check script above.
+
+Ordering bound re-verified on real data: the strongest elevated watch species
+sits at 0.208x the weakest observed singleton mirror -- still below, as required.
+
+TaxaExpect 1018 tests / 0 failures; `devtools::check()` 0/0/0.
+
+## Still open after this
+
+1. **Switch the price to `mass/f1`?** Untouched. GreatLakes' 0/880-flip evidence
+   still stands. The singleton cap above is deliberately not this decision.
+3. **Singleton theta DISTRIBUTION instead of a scalar.** Untouched. Note it
+   would compose with per-group pricing (draw within group), not replace it.

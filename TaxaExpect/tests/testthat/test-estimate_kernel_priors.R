@@ -400,17 +400,33 @@ test_that("a multi-group fit reports NA pooled scalars rather than a wrong numbe
   expect_false(any(is.na(g$budget$theta_present)))
 })
 
-test_that("curve pricing refuses a multi-group fit with an actionable message", {
+test_that("curve pricing on a multi-group fit prices by group, not by a pooled scalar", {
+  # Superseded 2026-09-04: this call used to be REFUSED outright ("per-group
+  # curve pricing is not wired up yet"). It is now the supported path -- the
+  # pooled scalars stay NA by design, and the per-group budget is what prices
+  # each taxon. See apply_undetected_evidence()'s own test file for the guards.
   occ <- .mixed_pool()
   g <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
                                                lambda_km = 25, m = 1,
                                                sampling_group_col = "sampling_group"))
-  ev <- data.frame(taxon_name = "Fish_01", w = 0.5, p_conc = 1,
+  expect_true(is.na(g$theta_present))
+  ev <- data.frame(taxon_name = "Newcomer sp", weight = 0.5, p_conc = 1,
                    source = "test", stringsAsFactors = FALSE)
+  out <- suppressMessages(apply_undetected_evidence(
+    taxaexpect_priors = g$priors, evidence = ev, model_obj = g,
+    grid_id = "x", main_habitat = "Coastal", pricing = "curve",
+    sampling_group = "fish", min_group_n_eff = 0))
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$sampling_group, "fish")
+  expect_equal(out$prior_mix_theta_present,
+               g$budget$theta_present[g$budget$sampling_group == "fish"])
+  # a group that does not exist in the fit is still refused
   expect_error(
-    apply_undetected_evidence(taxaexpect_priors = g$priors, evidence = ev,
-                              model_obj = g, grid_id = "x", pricing = "curve"),
-    "no single theta_present|sampling_group_col")
+    suppressMessages(apply_undetected_evidence(
+      taxaexpect_priors = g$priors, evidence = ev, model_obj = g,
+      grid_id = "x", main_habitat = "Coastal", pricing = "curve",
+      sampling_group = "nope", min_group_n_eff = 0)),
+    "not present in the fit's own budget")
 })
 
 test_that("sampling_group_col validates its input", {

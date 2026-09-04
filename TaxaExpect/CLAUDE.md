@@ -1,5 +1,51 @@
 # CLAUDE.md -- TaxaExpect
-# Last updated: 2026-09-04 (Opus 5, branch kernel-priors -- plot_theta_surface()
+# Last updated: 2026-09-04, later (Opus 5 -- PER-GROUP CURVE PRICING BUILT, closing open
+# decision #2 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md (read its
+# "2026-09-04 UPDATE" section).
+#
+# apply_undetected_evidence(pricing = "curve") no longer REFUSES a multi-group kernel fit --
+# it prices each evidence taxon at its OWN sampling group's Good-Turing budget. New args:
+# `sampling_group` (a group name, a named taxon->group vector, or a taxon_name/sampling_group
+# data frame; an `evidence$sampling_group` column wins; an unassigned taxon is an ERROR, never
+# a taxonomic guess -- the classification that built the pool's groups lives in the workflow,
+# and a wrong group mis-prices silently), `group_fallback` (pooled_qualifying/error/skip),
+# `min_group_n_eff` (100), `min_group_f1` (1), `cap_at_singleton` (TRUE). Two new output
+# columns, `sampling_group` and `pricing_basis` (own_group / own_group_capped /
+# pooled_qualifying), and the call prints the whole per-group budget with the price adopted
+# for each -- a borrowed price is never silent.
+#
+# THE GUARDS, all of which fire on the real 10-group PtConception 18S fit (see NEW
+# diagnostics/per_group_curve_pricing_18S_check.R): SUPPORT stops a 27-effective-record group
+# pricing an unseen plant at 2.1% of its own community (at lambda 10 terrestrial_arthropods
+# reaches 0.755, i.e. 75%); the SINGLETON CAP bounds a group whose mass/Chao exceeds its own
+# mass/f1, which happens exactly when f1 < 2*f2 (real zooplankton: f1=3, f2=7, Chao=0.64,
+# priced 4.7x ABOVE a species seen once) -- deliberately NOT open decision #1, since it binds
+# only in that one direction; the FALLBACK combines qualifying groups GROUP-WISE (unseen counts
+# add across disjoint groups, missing masses combine as an n_eff-weighted average -- the budget
+# of the union), never by re-pooling records, which would reintroduce the f1 inflation the
+# whole mechanism removes. If NOT ONE group clears the guards, the call errors.
+#
+# SINGLE-GROUP FITS ARE BYTE-IDENTICAL -- the guards police borrowing BETWEEN groups, which
+# only exists once there is more than one. Verified old-vs-new on the real GreatLakes
+# checkpoint: theta_present/f1/f2/n_eff, the budget table, the undetected rows and every
+# elevated evidence row identical, max |delta| = 0 on alpha/beta/theta_mean. The
+# Lamar-validated GL result does not move.
+#
+# SECOND REAL BUG, found by building this: generate_undetected_diversity()'s kernel adapter
+# scaled every singleton mirror by kp$n_eff, which on a multi-group fit is the SUM across
+# groups while effective_records is a count WITHIN one group -- understating each group's
+# mirrors in proportion to how much of the stratum the others occupy (measured: 1.86x fishes,
+# 15x macroalgae, 158x zooplankton, 167x birds/mammals, 4295x terrestrial arthropods). Now
+# scaled by each singleton's own group's n_eff; single-group fits unaffected.
+#
+# PtConceptionWorkflow_18S_2_single_site.R wired: builds kernel_grouped_fit and prices the
+# invasive-watch list through it with an explicit WATCH_SAMPLING_GROUP <- "fishes" (1.26x the
+# pooled price). Domestic/food stays on the POOLED fit -- transport branch, explicitly not an
+# occurrence-plausibility evidence source. Its plot_theta_surface() call also stays on the
+# pooled fit, which is what the entry directly below now requires. NOT run end to end (later
+# steps still NCBI-bound). devtools::test() 1018/0; devtools::check() 0/0/0.
+#
+# Previous update, 2026-09-04 (Opus 5, branch kernel-priors -- plot_theta_surface()
 # renders the CONDITIONS it is drawn under, and refuses a grouped fit).
 # The surface is habitat-stratified and optionally covariate-conditioned. Both are
 # analyst choices, neither is recoverable from the picture, and neither reached the
@@ -24,7 +70,7 @@
 # fit's identity. Map one group at a time (the 18S workflow's shape).
 # devtools::test() 970/0. Caption confirmed rendering on the live GreatLakes map.
 #
-# Last updated: 2026-09-03, later the same day (Opus 5, branch kernel-priors -- BUDGET
+# Previous update, 2026-09-03, later the same day (Opus 5, branch kernel-priors -- BUDGET
 # TRANSPARENCY: NEW kernel_budget_sensitivity(), and f1/f2 now printed next to every budget
 # figure. Open decision #4 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md
 # ("report f1, f2 and the radius sensitivity next to any budget figure so a reader can see

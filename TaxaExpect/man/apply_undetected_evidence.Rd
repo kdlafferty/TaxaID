@@ -11,7 +11,12 @@ apply_undetected_evidence(
   grid_id,
   main_habitat = NULL,
   taxonomy = NULL,
-  pricing = c("blend", "curve")
+  pricing = c("blend", "curve"),
+  sampling_group = NULL,
+  group_fallback = c("pooled_qualifying", "error", "skip"),
+  min_group_n_eff = 100,
+  min_group_f1 = 1L,
+  cap_at_singleton = TRUE
 )
 }
 \arguments{
@@ -73,7 +78,41 @@ exactly in count units (branch evidence total = \code{theta_present *
 sum(w)}, coherent iff \code{sum(w) = chao_missing}) and removes the
 floor term that dominated every blended row. Requires a
 \code{taxaexpect_kernel_priors} \code{model_obj} with a finite
-\code{theta_present} (at least one neighborhood singleton).}
+\code{theta_present} (at least one neighborhood singleton), or -- since
+2026-09-04 -- a multi-group fit, in which case each taxon is priced by its
+OWN sampling group's budget (see \verb{Per-group curve pricing}).}
+
+\item{sampling_group}{Which sampling group each evidence taxon belongs to.
+Required (and only meaningful) when \code{model_obj} was fitted with
+\code{sampling_group_col} and \code{pricing = "curve"}. Accepts a single
+group name (the whole evidence list shares one detection process -- the
+common case, e.g. an all-fish invasive-watch list), a named character
+vector (\code{taxon -> group}), or a data frame with \code{taxon_name}
+and \code{sampling_group} columns. A \code{sampling_group} column on
+\code{evidence} itself takes precedence. Deliberately NEVER inferred from
+taxonomy: the classification that produced the occurrence pool's groups
+lives in the caller's workflow, and a wrong group mis-prices silently
+rather than failing.}
+
+\item{group_fallback}{What to do with an evidence taxon whose group fails
+the pricing guards. \code{"pooled_qualifying"} (default) prices it at the
+qualifying groups' combined budget and says so, per row, in
+\code{pricing_basis}; \code{"error"} refuses; \code{"skip"} drops those
+taxa with a message. Ignored for single-group fits.}
+
+\item{min_group_n_eff, min_group_f1}{Support a sampling group must have
+before its own budget is trusted: at least this many effective records
+(default \code{100}) and this many neighborhood singletons (default
+\code{1}). Ignored for single-group fits.}
+
+\item{cap_at_singleton}{Logical, default \code{TRUE}. Cap a group's price at
+its own singleton mean (\code{missing_mass / f1}). This is NOT the
+\code{mass/f1} pricing switch (that decision is open and untouched): the
+cap binds only in the direction where \code{mass/Chao} EXCEEDS the
+singleton mean, which happens exactly when \code{Chao < f1}, i.e. when
+\code{f1 < 2*f2} -- contradicting the estimator's own premise that an
+unseen species is rarer than a once-seen one. Ignored for single-group
+fits.}
 }
 \value{
 A tibble with one row per eligible taxon named in \code{evidence}:
@@ -102,6 +141,11 @@ The presence mixture itself, consumed by
 not affect the static prior's marginal moments.}
 \item{evidence_sources}{Semicolon-joined distinct \code{source}
 values that contributed to this row (audit column).}
+\item{sampling_group, pricing_basis}{Curve pricing only: the detection
+process this row was priced by, and whether that price was the group's
+own (\code{"own_group"}), capped at its singleton mean
+(\code{"own_group_capped"}), or borrowed from the qualifying groups
+(\code{"pooled_qualifying"}).}
 }
 plus taxonomy rank columns when \code{taxonomy} is supplied. Empty
 tibble (correct schema, zero rows) when no evidence taxon is eligible.
@@ -209,6 +253,54 @@ scale, and nothing upstream constrains it (the bandwidth is calibrated on
 composition prediction, which has no stake in singleton/doubleton counts).
 Quantify it with \code{\link{kernel_budget_sensitivity}()} before acting
 on a budget figure.
+}
+
+\section{Per-group curve pricing}{
+
+A \code{model_obj} fitted with \code{sampling_group_col} carries one
+Good-Turing budget PER GROUP, and those budgets are not interchangeable. On
+real PtConception 18S data (\code{diagnostics/kernel_budget_18S_sampling_groups.R})
+they span \strong{1859x} across the ten groups present -- 441x restricting
+to groups the assay can actually amplify, or to groups with at least 100
+effective records -- and the single pooled price sits BELOW all seven priced
+groups, so it is not even a compromise between them. Under
+\code{pricing = "curve"} each taxon is therefore priced at its own group's
+\code{theta_present}, resolved from \code{sampling_group}.
+
+\strong{The guards.} Per-group budgets fail in ways a pooled one does not,
+and every failure below was measured on that real data, not imagined:
+\itemize{
+\item \emph{No anchor.} 3 of 10 groups had \code{f1 = 0} -- no budget at
+all. A group can also have real unseen mass and still no price
+(\code{f1 = 1, f2 = 0} lands in Chao's \code{f1(f1-1)/2} branch, which
+returns 0).
+\item \emph{Too thin to trust.} A group with 24 effective records priced a
+single unseen species at \code{0.755} -- 75\\% of its own community.
+\code{min_group_n_eff}/\code{min_group_f1} exclude these.
+\item \emph{Chao below one species.} Real 18S zooplankton:
+\code{f1 = 3, f2 = 7} gives \code{Chao = 0.64}, so \code{mass/Chao}
+INFLATES the price to 4.7x the group's own singleton mean.
+\code{cap_at_singleton} bounds this.
+}
+A group failing the guards is priced by \code{group_fallback}. The
+\code{"pooled_qualifying"} price combines the qualifying groups GROUP-WISE
+and never by re-pooling records (which would reintroduce the very \code{f1}
+inflation per-group pricing exists to remove): unseen-species counts add
+across disjoint groups, while missing masses are shares of different
+denominators and so combine as an \code{n_eff}-weighted average -- together,
+the budget of the union of qualifying groups.
+
+Every row records \code{sampling_group} and \code{pricing_basis}
+(\code{"own_group"}, \code{"own_group_capped"}, or
+\code{"pooled_qualifying"}), and the call prints the whole per-group budget
+with the price adopted for each. A borrowed price is never silent.
+
+\strong{Single-group fits are untouched.} The guards police borrowing
+BETWEEN groups, which only exists once there is more than one group. With
+one group the caller has asserted the whole stratum is a single detection
+process; that assertion is not second-guessed here (its \code{f1}/\code{f2}
+are printed, and \code{\link{kernel_budget_sensitivity}()} is the tool for
+interrogating it).
 }
 
 \section{Combining multiple sources for one taxon}{

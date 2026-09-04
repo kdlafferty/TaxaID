@@ -181,10 +181,30 @@ generate_undetected_diversity <- function(model_obj,
     N_total <- as.integer(kp$params$n_records_stratum)
     habitat_col <- "main_habitat"
     sing <- kp$singletons
+    # theta_obs is a SHARE, so its denominator must be the denominator that
+    # share is of. On a multi-group fit `kp$n_eff` is the SUM across groups,
+    # while a singleton's effective_records is a count within its OWN group --
+    # dividing by the sum understates every group's mirrors in proportion to
+    # how much of the stratum the other groups occupy (at real PtConception
+    # 18S that is a 1.8x understatement for fishes and 46x for zooplankton).
+    # Each singleton is scaled by its own group's n_eff instead. Single-group
+    # fits are unaffected: the sum IS the group's own n_eff.
+    n_eff_for <- rep(kp$n_eff, nrow(sing))
+    if ("sampling_group" %in% names(sing) && !is.null(kp$budget) &&
+        nrow(kp$budget) > 1L) {
+      n_eff_for <- kp$budget$n_eff[match(as.character(sing$sampling_group),
+                                         kp$budget$sampling_group)]
+      if (anyNA(n_eff_for))
+        stop("generate_undetected_diversity: a singleton's sampling group is ",
+             "absent from the fit's own budget -- the fit is inconsistent.")
+      message(sprintf(
+        "generate_undetected_diversity: multi-group kernel fit (%d groups) -- each singleton mirror scaled by its OWN group's n_eff, not the pooled sum.",
+        nrow(kp$budget)))
+    }
     singletons <- tibble::tibble(
       taxon_name      = sing$taxon_name,
       grid_id         = kp$params$site_id,
-      theta_obs       = sing$effective_records / kp$n_eff,
+      theta_obs       = sing$effective_records / n_eff_for,
       n_total_at_site = N_total,
       main_habitat    = kp$params$site_habitat
     )

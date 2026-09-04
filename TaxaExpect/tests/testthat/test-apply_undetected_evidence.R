@@ -446,3 +446,276 @@ test_that("blend pricing is byte-identical with the pricing param defaulted", {
                                   main_habitat = "Lentic", pricing = "blend")
   expect_identical(o1, o2)
 })
+
+# ==============================================================================
+# Per-group curve pricing (2026-09-04). Open decision #2 of the kernel
+# budget/pricing re-entry doc, unblocked by the real PtConception 18S
+# diagnostic. The guards are exercised against the same failure shapes that
+# diagnostic found on real data, not invented ones.
+# ==============================================================================
+
+.make_grouped_kernel_fit <- function() {
+  set.seed(11)
+  # fish: well supported, several singletons and doubletons -> qualifies.
+  fish_common <- do.call(rbind, lapply(1:8, function(i) data.frame(
+    taxon_name = sprintf("Fish_%02d", i),
+    decimalLatitude = 34 + rnorm(40, 0, 0.02),
+    decimalLongitude = -119 + rnorm(40, 0, 0.02),
+    main_habitat = "Marine", sampling_group = "fishes",
+    stringsAsFactors = FALSE)))
+  fish_rare <- do.call(rbind, lapply(1:12, function(i) data.frame(
+    taxon_name = sprintf("FishRare_%02d", i),
+    decimalLatitude = 34 + rnorm(1, 0, 0.02),
+    decimalLongitude = -119 + rnorm(1, 0, 0.02),
+    main_habitat = "Marine", sampling_group = "fishes",
+    stringsAsFactors = FALSE)))
+  fish_double <- do.call(rbind, lapply(1:3, function(i) data.frame(
+    taxon_name = sprintf("FishDbl_%02d", i),
+    decimalLatitude = 34 + rnorm(2, 0, 0.02),
+    decimalLongitude = -119 + rnorm(2, 0, 0.02),
+    main_habitat = "Marine", sampling_group = "fishes",
+    stringsAsFactors = FALSE)))
+  # plants: the real "downwash" shape -- a handful of records, mostly
+  # singletons. Far too thin to price itself.
+  plants <- do.call(rbind, lapply(1:5, function(i) data.frame(
+    taxon_name = sprintf("Plant_%02d", i),
+    decimalLatitude = 34 + rnorm(1, 0, 0.02),
+    decimalLongitude = -119 + rnorm(1, 0, 0.02),
+    main_habitat = "Marine", sampling_group = "plants",
+    stringsAsFactors = FALSE)))
+  # inverts: also well supported, but a different singleton structure, so it
+  # qualifies with a genuinely DIFFERENT price -- the whole point of the
+  # mechanism is that two qualifying groups do not share one.
+  inv_common <- do.call(rbind, lapply(1:15, function(i) data.frame(
+    taxon_name = sprintf("Inv_%02d", i),
+    decimalLatitude = 34 + rnorm(30, 0, 0.02),
+    decimalLongitude = -119 + rnorm(30, 0, 0.02),
+    main_habitat = "Marine", sampling_group = "inverts",
+    stringsAsFactors = FALSE)))
+  inv_rare <- do.call(rbind, lapply(1:4, function(i) data.frame(
+    taxon_name = sprintf("InvRare_%02d", i),
+    decimalLatitude = 34 + rnorm(1, 0, 0.02),
+    decimalLongitude = -119 + rnorm(1, 0, 0.02),
+    main_habitat = "Marine", sampling_group = "inverts",
+    stringsAsFactors = FALSE)))
+  occ <- rbind(fish_common, fish_rare, fish_double, inv_common, inv_rare, plants)
+  suppressWarnings(estimate_kernel_priors(
+    occ, 34, -119, "Marine", lambda_km = 25, m = 1,
+    sampling_group_col = "sampling_group"))
+}
+
+.grouped_priors_and_evidence <- function(kp) {
+  priors <- dplyr::bind_rows(kp$priors,
+                             .make_priors(grid = "budget", hab = "Marine"))
+  ev <- data.frame(
+    taxon_name = c("Watchfish alpha", "Watchfish beta"),
+    weight = c(0.05, 0.2), source = "invasive_watch",
+    stringsAsFactors = FALSE)
+  list(priors = priors, evidence = ev)
+}
+
+test_that("a single-group curve fit is completely unaffected by the group machinery", {
+  kp <- .make_kernel_fit_for_curve()
+  priors <- dplyr::bind_rows(kp$priors,
+                             .make_priors(grid = "budget", hab = "Lentic"))
+  ev <- data.frame(taxon_name = c("Esox niger", "Ameiurus melas"),
+                   weight = c(0.05, 0.5), source = "regional_proximity",
+                   stringsAsFactors = FALSE)
+  out <- apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
+                                   main_habitat = "Lentic", pricing = "curve")
+  # the pre-2026-09-04 expectations, unchanged
+  expect_equal(out$theta_mean, ev$weight * kp$theta_present, tolerance = 1e-6)
+  expect_equal(out$prior_mix_theta_present, rep(kp$theta_present, 2))
+  expect_equal(sum(out$theta_mean), kp$theta_present * sum(ev$weight),
+               tolerance = 1e-9)
+  # the guards do not fire, and would not even if this thin fit failed them
+  expect_equal(out$pricing_basis, rep("own_group", 2))
+  # ... which is the point: n_eff here is ~5, far below min_group_n_eff = 100
+  expect_lt(kp$n_eff, 100)
+})
+
+test_that("each taxon is priced by its own sampling group's budget", {
+  kp <- .make_grouped_kernel_fit()
+  fx <- .grouped_priors_and_evidence(kp)
+  out <- suppressMessages(apply_undetected_evidence(
+    fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"))
+  fish_price <- kp$budget$theta_present[kp$budget$sampling_group == "fishes"]
+  expect_equal(out$sampling_group, rep("fishes", 2))
+  expect_equal(out$prior_mix_theta_present, rep(fish_price, 2))
+  expect_equal(out$theta_mean, fx$evidence$weight * fish_price, tolerance = 1e-9)
+  # the group's own budget, NOT the pooled scalar (which is NA by design)
+  expect_true(is.na(kp$theta_present))
+})
+
+test_that("two qualifying groups in one call get two different prices", {
+  kp <- .make_grouped_kernel_fit()
+  fx <- .grouped_priors_and_evidence(kp)
+  ev <- fx$evidence
+  ev$sampling_group <- c("fishes", "inverts")
+  out <- suppressMessages(apply_undetected_evidence(
+    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve"))
+  expect_setequal(out$sampling_group, c("fishes", "inverts"))
+  expect_equal(out$pricing_basis, rep("own_group", 2))
+  expect_equal(length(unique(out$prior_mix_theta_present)), 2L)
+  for (g in c("fishes", "inverts"))
+    expect_equal(out$prior_mix_theta_present[out$sampling_group == g],
+                 kp$budget$theta_present[kp$budget$sampling_group == g])
+  # the evidence column wins over the argument
+  out2 <- suppressMessages(apply_undetected_evidence(
+    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"))
+  expect_equal(out2$sampling_group, out$sampling_group)
+})
+
+test_that("with only one qualifying group the borrowed price IS that group's", {
+  # Not a coincidence to paper over -- it is what the group-wise combination
+  # reduces to when the qualifying set has one member, and worth pinning.
+  b <- data.frame(
+    sampling_group = c("only", "thin"), n_taxa = c(20L, 2L), n_eff = c(500, 4),
+    f1 = c(10L, 2L), f2 = c(2L, 0L), missing_mass = c(0.02, 0.5),
+    chao_missing = c(25, 1), stringsAsFactors = FALSE)
+  b$theta_present <- b$missing_mass / b$chao_missing
+  kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
+  r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, TRUE, "pooled_qualifying")
+  expect_equal(r$n_qualifying, 1L)
+  expect_equal(r$fallback_price, unname(r$price["only"]))
+  expect_equal(unname(r$price["thin"]), unname(r$price["only"]))
+  expect_equal(unname(r$basis["thin"]), "pooled_qualifying")
+})
+
+test_that("a group too thin to price itself borrows, and says so per row", {
+  kp <- .make_grouped_kernel_fit()
+  fx <- .grouped_priors_and_evidence(kp)
+  ev <- fx$evidence
+  ev$sampling_group <- c("fishes", "plants")
+  msgs <- capture_messages(out <- apply_undetected_evidence(
+    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve"))
+  plant_row <- out[out$sampling_group == "plants", ]
+  expect_equal(plant_row$pricing_basis, "pooled_qualifying")
+  expect_equal(out$pricing_basis[out$sampling_group == "fishes"], "own_group")
+  expect_true(any(grepl("BORROWED price", msgs)))
+  # the borrowed price is a real number, not the group's own untrusted one
+  plants_own <- kp$budget$theta_present[kp$budget$sampling_group == "plants"]
+  expect_false(isTRUE(all.equal(plant_row$prior_mix_theta_present, plants_own)))
+})
+
+test_that("group_fallback = 'error' and 'skip' behave as documented", {
+  kp <- .make_grouped_kernel_fit()
+  fx <- .grouped_priors_and_evidence(kp)
+  ev <- fx$evidence
+  ev$sampling_group <- c("fishes", "plants")
+  expect_error(
+    suppressMessages(apply_undetected_evidence(
+      fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
+      pricing = "curve", group_fallback = "error")),
+    "failed the pricing guards")
+  out <- suppressMessages(apply_undetected_evidence(
+    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", group_fallback = "skip"))
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$sampling_group, "fishes")
+})
+
+test_that("an unassigned taxon errors with actionable guidance, never a guess", {
+  kp <- .make_grouped_kernel_fit()
+  fx <- .grouped_priors_and_evidence(kp)
+  expect_error(
+    suppressMessages(apply_undetected_evidence(
+      fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
+      pricing = "curve")),
+    "every evidence taxon needs one")
+  expect_error(
+    suppressMessages(apply_undetected_evidence(
+      fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
+      pricing = "curve", sampling_group = "not_a_real_group")),
+    "not present in the fit's own budget")
+})
+
+test_that("the singleton cap binds exactly when f1 < 2*f2, and not otherwise", {
+  # Constructed to the real PtConception 18S zooplankton shape: Chao < f1, so
+  # mass/Chao prices an unseen species ABOVE a once-seen one.
+  b <- data.frame(
+    sampling_group = c("normal", "inverted"),
+    n_taxa = c(10L, 10L), n_eff = c(500, 500),
+    f1 = c(10L, 3L), f2 = c(2L, 7L),
+    missing_mass = c(0.02, 0.02),
+    chao_missing = c(25, 9 / 14),
+    stringsAsFactors = FALSE)
+  b$theta_present <- b$missing_mass / b$chao_missing
+  kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
+
+  capped <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, TRUE, "pooled_qualifying")
+  expect_equal(unname(capped$basis["normal"]), "own_group")
+  expect_equal(unname(capped$basis["inverted"]), "own_group_capped")
+  expect_equal(unname(capped$price["inverted"]), 0.02 / 3)   # mass/f1
+  expect_equal(unname(capped$price["normal"]), 0.02 / 25)    # untouched
+
+  uncapped <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, FALSE, "pooled_qualifying")
+  expect_equal(unname(uncapped$price["inverted"]), 0.02 / (9 / 14))
+  expect_gt(uncapped$price["inverted"], uncapped$price["inverted"] * 0 +
+              b$missing_mass[2] / b$f1[2])  # genuinely above the singleton mean
+})
+
+test_that("the pooled-qualifying fallback combines group-wise, not by re-pooling", {
+  b <- data.frame(
+    sampling_group = c("big", "small", "thin"),
+    n_taxa = c(50L, 20L, 2L), n_eff = c(900, 100, 5),
+    f1 = c(30L, 5L, 2L), f2 = c(10L, 2L, 0L),
+    missing_mass = c(0.01, 0.05, 0.4),
+    chao_missing = c(45, 6.25, 1),
+    stringsAsFactors = FALSE)
+  b$theta_present <- b$missing_mass / b$chao_missing
+  kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
+  r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, TRUE, "pooled_qualifying")
+  # "thin" fails min_group_n_eff and must not contribute to the fallback
+  expect_equal(unname(r$basis["thin"]), "pooled_qualifying")
+  expect_equal(r$n_qualifying, 2L)
+  n_q <- 900 + 100
+  expect_equal(r$fallback_price,
+               ((900 / n_q) * 0.01 + (100 / n_q) * 0.05) / (45 + 6.25))
+  # and the borrowed price is nowhere near the thin group's own absurd one
+  expect_lt(r$fallback_price, b$theta_present[b$sampling_group == "thin"] / 100)
+})
+
+test_that("a fit where no group clears the guards refuses to price anything", {
+  b <- data.frame(
+    sampling_group = c("a", "b"), n_taxa = c(2L, 2L), n_eff = c(5, 9),
+    f1 = c(1L, 2L), f2 = c(0L, 0L), missing_mass = c(0.3, 0.4),
+    chao_missing = c(0, 1), stringsAsFactors = FALSE)
+  b$theta_present <- ifelse(b$chao_missing > 0, b$missing_mass / b$chao_missing,
+                            NA_real_)
+  kp <- structure(
+    list(budget = b, theta_present = NA_real_, f1 = NA_integer_,
+         f2 = NA_integer_, missing_mass = NA_real_,
+         params = list(n_sampling_groups = 2L,
+                       sampling_group_col = "sampling_group")),
+    class = "taxaexpect_kernel_priors")
+  ev <- data.frame(taxon_name = "X y", weight = 0.1, source = "s",
+                   sampling_group = "a", stringsAsFactors = FALSE)
+  expect_error(
+    apply_undetected_evidence(.make_priors(), kp, ev, grid_id = "Grid_A",
+                              main_habitat = "Lentic", pricing = "curve"),
+    "not one of this fit's 2 sampling groups clears the pricing guards")
+})
+
+test_that("the per-group budget table is printed with the price adopted for each", {
+  kp <- .make_grouped_kernel_fit()
+  fx <- .grouped_priors_and_evidence(kp)
+  msgs <- capture_messages(apply_undetected_evidence(
+    fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"))
+  expect_true(any(grepl("PER-GROUP curve pricing", msgs)))
+  expect_true(any(grepl("price_used", msgs)))
+  expect_true(any(grepl("basis", msgs)))
+})
+
+test_that("blend mode gains no group columns", {
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+                                   .make_evidence(), grid_id = "Grid_A",
+                                   main_habitat = "Lentic")
+  expect_false("sampling_group" %in% names(out))
+  expect_false("pricing_basis" %in% names(out))
+})

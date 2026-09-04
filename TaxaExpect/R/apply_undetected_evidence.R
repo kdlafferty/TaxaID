@@ -96,6 +96,52 @@
 #' Quantify it with \code{\link{kernel_budget_sensitivity}()} before acting
 #' on a budget figure.
 #'
+#' @section Per-group curve pricing:
+#' A \code{model_obj} fitted with \code{sampling_group_col} carries one
+#' Good-Turing budget PER GROUP, and those budgets are not interchangeable. On
+#' real PtConception 18S data (\code{diagnostics/kernel_budget_18S_sampling_groups.R})
+#' they span \strong{1859x} across the ten groups present -- 441x restricting
+#' to groups the assay can actually amplify, or to groups with at least 100
+#' effective records -- and the single pooled price sits BELOW all seven priced
+#' groups, so it is not even a compromise between them. Under
+#' \code{pricing = "curve"} each taxon is therefore priced at its own group's
+#' \code{theta_present}, resolved from \code{sampling_group}.
+#'
+#' \strong{The guards.} Per-group budgets fail in ways a pooled one does not,
+#' and every failure below was measured on that real data, not imagined:
+#' \itemize{
+#'   \item \emph{No anchor.} 3 of 10 groups had \code{f1 = 0} -- no budget at
+#'     all. A group can also have real unseen mass and still no price
+#'     (\code{f1 = 1, f2 = 0} lands in Chao's \code{f1(f1-1)/2} branch, which
+#'     returns 0).
+#'   \item \emph{Too thin to trust.} A group with 24 effective records priced a
+#'     single unseen species at \code{0.755} -- 75\% of its own community.
+#'     \code{min_group_n_eff}/\code{min_group_f1} exclude these.
+#'   \item \emph{Chao below one species.} Real 18S zooplankton:
+#'     \code{f1 = 3, f2 = 7} gives \code{Chao = 0.64}, so \code{mass/Chao}
+#'     INFLATES the price to 4.7x the group's own singleton mean.
+#'     \code{cap_at_singleton} bounds this.
+#' }
+#' A group failing the guards is priced by \code{group_fallback}. The
+#' \code{"pooled_qualifying"} price combines the qualifying groups GROUP-WISE
+#' and never by re-pooling records (which would reintroduce the very \code{f1}
+#' inflation per-group pricing exists to remove): unseen-species counts add
+#' across disjoint groups, while missing masses are shares of different
+#' denominators and so combine as an \code{n_eff}-weighted average -- together,
+#' the budget of the union of qualifying groups.
+#'
+#' Every row records \code{sampling_group} and \code{pricing_basis}
+#' (\code{"own_group"}, \code{"own_group_capped"}, or
+#' \code{"pooled_qualifying"}), and the call prints the whole per-group budget
+#' with the price adopted for each. A borrowed price is never silent.
+#'
+#' \strong{Single-group fits are untouched.} The guards police borrowing
+#' BETWEEN groups, which only exists once there is more than one group. With
+#' one group the caller has asserted the whole stratum is a single detection
+#' process; that assertion is not second-guessed here (its \code{f1}/\code{f2}
+#' are printed, and \code{\link{kernel_budget_sensitivity}()} is the tool for
+#' interrogating it).
+#'
 #' @section Combining multiple sources for one taxon:
 #' When more than one evidence row names the same taxon (e.g. a regional-
 #' proximity signal and an invasive-watch-list signal both fire for one
@@ -195,7 +241,37 @@
 #'   sum(w)}, coherent iff \code{sum(w) = chao_missing}) and removes the
 #'   floor term that dominated every blended row. Requires a
 #'   \code{taxaexpect_kernel_priors} \code{model_obj} with a finite
-#'   \code{theta_present} (at least one neighborhood singleton).
+#'   \code{theta_present} (at least one neighborhood singleton), or -- since
+#'   2026-09-04 -- a multi-group fit, in which case each taxon is priced by its
+#'   OWN sampling group's budget (see \verb{Per-group curve pricing}).
+#' @param sampling_group Which sampling group each evidence taxon belongs to.
+#'   Required (and only meaningful) when \code{model_obj} was fitted with
+#'   \code{sampling_group_col} and \code{pricing = "curve"}. Accepts a single
+#'   group name (the whole evidence list shares one detection process -- the
+#'   common case, e.g. an all-fish invasive-watch list), a named character
+#'   vector (\code{taxon -> group}), or a data frame with \code{taxon_name}
+#'   and \code{sampling_group} columns. A \code{sampling_group} column on
+#'   \code{evidence} itself takes precedence. Deliberately NEVER inferred from
+#'   taxonomy: the classification that produced the occurrence pool's groups
+#'   lives in the caller's workflow, and a wrong group mis-prices silently
+#'   rather than failing.
+#' @param group_fallback What to do with an evidence taxon whose group fails
+#'   the pricing guards. \code{"pooled_qualifying"} (default) prices it at the
+#'   qualifying groups' combined budget and says so, per row, in
+#'   \code{pricing_basis}; \code{"error"} refuses; \code{"skip"} drops those
+#'   taxa with a message. Ignored for single-group fits.
+#' @param min_group_n_eff,min_group_f1 Support a sampling group must have
+#'   before its own budget is trusted: at least this many effective records
+#'   (default \code{100}) and this many neighborhood singletons (default
+#'   \code{1}). Ignored for single-group fits.
+#' @param cap_at_singleton Logical, default \code{TRUE}. Cap a group's price at
+#'   its own singleton mean (\code{missing_mass / f1}). This is NOT the
+#'   \code{mass/f1} pricing switch (that decision is open and untouched): the
+#'   cap binds only in the direction where \code{mass/Chao} EXCEEDS the
+#'   singleton mean, which happens exactly when \code{Chao < f1}, i.e. when
+#'   \code{f1 < 2*f2} -- contradicting the estimator's own premise that an
+#'   unseen species is rarer than a once-seen one. Ignored for single-group
+#'   fits.
 #'
 #' @return A tibble with one row per eligible taxon named in \code{evidence}:
 #'   \describe{
@@ -223,6 +299,11 @@
 #'       not affect the static prior's marginal moments.}
 #'     \item{evidence_sources}{Semicolon-joined distinct \code{source}
 #'       values that contributed to this row (audit column).}
+#'     \item{sampling_group, pricing_basis}{Curve pricing only: the detection
+#'       process this row was priced by, and whether that price was the group's
+#'       own (\code{"own_group"}), capped at its singleton mean
+#'       (\code{"own_group_capped"}), or borrowed from the qualifying groups
+#'       (\code{"pooled_qualifying"}).}
 #'   }
 #'   plus taxonomy rank columns when \code{taxonomy} is supplied. Empty
 #'   tibble (correct schema, zero rows) when no evidence taxon is eligible.
@@ -254,11 +335,25 @@ apply_undetected_evidence <- function(
     model_obj,
     evidence,
     grid_id,
-    main_habitat = NULL,
-    taxonomy     = NULL,
-    pricing      = c("blend", "curve")
+    main_habitat    = NULL,
+    taxonomy        = NULL,
+    pricing         = c("blend", "curve"),
+    sampling_group  = NULL,
+    group_fallback  = c("pooled_qualifying", "error", "skip"),
+    min_group_n_eff = 100,
+    min_group_f1    = 1L,
+    cap_at_singleton = TRUE
 ) {
   pricing <- match.arg(pricing)
+  group_fallback <- match.arg(group_fallback)
+  for (.nm in c("min_group_n_eff", "min_group_f1")) {
+    .v <- get(.nm)
+    if (!is.numeric(.v) || length(.v) != 1L || is.na(.v) || .v < 0)
+      stop("apply_undetected_evidence: `", .nm, "` must be a single non-negative number.")
+  }
+  if (!is.logical(cap_at_singleton) || length(cap_at_singleton) != 1L ||
+      is.na(cap_at_singleton))
+    stop("apply_undetected_evidence: `cap_at_singleton` must be TRUE or FALSE.")
   # Curve pricing (unobserved-taxa redesign, 2026-08-31): theta = w *
   # theta_present, with theta_present = missing_mass / chao_missing from the
   # kernel fit (the Good-Turing budget's per-spot value) and theta_absent = 0
@@ -272,7 +367,19 @@ apply_undetected_evidence <- function(
   # has to be taken before that point.
   kernel_f1 <- NA_integer_
   kernel_f2 <- NA_integer_
+  # Per-group curve pricing state. NULL = single-group (or blend) pricing, i.e.
+  # the pre-2026-09-04 path, byte-for-byte. The guards below police BORROWING
+  # BETWEEN GROUPS, which only exists once there is more than one group -- a
+  # single-group fit is the caller asserting the whole stratum is one detection
+  # process, and nothing about that assertion is second-guessed here (its f1/f2
+  # are printed, and kernel_budget_sensitivity() is the tool for it).
+  curve_groups <- NULL
+  model_obj_group_label <- NA_character_
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
+    # A one-group fit still has a group NAME when sampling_group_col was
+    # supplied; recorded so the output says which process it priced.
+    if (!is.null(model_obj$budget) && nrow(model_obj$budget) == 1L)
+      model_obj_group_label <- as.character(model_obj$budget$sampling_group[1L])
     kernel_theta_present <- model_obj$theta_present %||% NA_real_
     f1_k <- model_obj$f1 %||% 0L
     kernel_f1 <- model_obj$f1 %||% NA_integer_
@@ -282,25 +389,22 @@ apply_undetected_evidence <- function(
     # documented is.logical(NA) footgun).
     if (is.numeric(f1_k) && length(f1_k) == 1L && !is.na(f1_k) && f1_k > 0)
       kernel_theta_singleton <- (model_obj$missing_mass %||% NA_real_) / f1_k
+    if (pricing == "curve" && (model_obj$params$n_sampling_groups %||% 1L) > 1L) {
+      curve_groups <- .resolve_group_prices(
+        model_obj, min_group_n_eff, min_group_f1, cap_at_singleton,
+        group_fallback)
+      if (curve_groups$n_qualifying == 0L)
+        stop("apply_undetected_evidence: not one of this fit's ",
+             nrow(curve_groups$budget), " sampling groups clears the pricing ",
+             "guards (n_eff >= ", min_group_n_eff, ", f1 >= ", min_group_f1,
+             ", and a defined theta_present), so there is no trustworthy price ",
+             "anywhere in it. Inspect model_fit$budget, lower min_group_n_eff ",
+             "if you mean to, or use pricing = \"blend\".")
+    }
   }
-  if (pricing == "curve" &&
+  if (pricing == "curve" && is.null(curve_groups) &&
       (!is.numeric(kernel_theta_present) || !is.finite(kernel_theta_present) ||
        kernel_theta_present <= 0)) {
-    # Distinguish the two ways theta_present can be unusable, because the fix
-    # differs. Multi-group fits set it NA deliberately: there is no single
-    # price when groups have different detection processes, and silently
-    # picking one group's would misprice every other group.
-    if (inherits(model_obj, "taxaexpect_kernel_priors") &&
-        (model_obj$params$n_sampling_groups %||% 1L) > 1L) {
-      stop("apply_undetected_evidence: this model_obj was fitted with ",
-           "sampling_group_col = '", model_obj$params$sampling_group_col,
-           "' (", model_obj$params$n_sampling_groups, " groups), so there is ",
-           "no single theta_present -- each group has its own budget (see ",
-           "model_fit$budget). Per-group curve pricing is not wired up yet: ",
-           "either fit one group at a time (subset the occurrence data to the ",
-           "assay's own taxonomic scope) and price each separately, or use ",
-           "pricing = \"blend\".")
-    }
     stop("apply_undetected_evidence: pricing = \"curve\" requires a ",
          "taxaexpect_kernel_priors model_obj whose theta_present is a finite ",
          "positive value (missing_mass / chao_missing -- needs at least one ",
@@ -354,7 +458,7 @@ apply_undetected_evidence <- function(
   }
   if (nrow(evidence) == 0L) {
     message("apply_undetected_evidence: `evidence` has zero rows -- nothing to apply.")
-    return(.empty_undetected_evidence_result(habitat_col))
+    return(.empty_undetected_evidence_result(habitat_col, pricing))
   }
   if (any(evidence$weight < 0 | evidence$weight > 1, na.rm = TRUE) || anyNA(evidence$weight)) {
     stop("apply_undetected_evidence: every `evidence$weight` must be a non-NA value in [0, 1].")
@@ -496,7 +600,42 @@ apply_undetected_evidence <- function(
   # review" ends and "vetoes the resolution of genuinely observed natives"
   # begins. (The GreatLakes2023 case: the bound ~0.05; the pre-calibration
   # w = 0.6 sat far above it and suppressed yellow perch in 78 observations.)
-  if (pricing == "curve") {
+  if (pricing == "curve" && !is.null(curve_groups)) {
+    # Multi-group: there is no single price, so print the whole per-group
+    # budget with the price actually adopted for each and where it came from.
+    b <- curve_groups$budget
+    m_ret <- 0.05
+    tab <- data.frame(
+      sampling_group = b$sampling_group,
+      n_eff = round(b$n_eff, 1),
+      f1 = b$f1, f2 = b$f2,
+      chao = round(b$chao_missing, 1),
+      theta_present = signif(b$theta_present, 3),
+      price_used = signif(b$price, 3),
+      basis = ifelse(is.na(b$pricing_basis), "UNPRICED", b$pricing_basis),
+      w_veto = round(((1 - m_ret) / m_ret) * b$singleton_price / b$price, 1),
+      stringsAsFactors = FALSE)
+    message(sprintf(
+      "apply_undetected_evidence: PER-GROUP curve pricing across %d sampling groups ('%s'); %d clear the guards (n_eff >= %g, f1 >= %g).",
+      nrow(b), model_obj$params$sampling_group_col %||% "sampling_group",
+      curve_groups$n_qualifying, min_group_n_eff, min_group_f1))
+    message(paste(utils::capture.output(print(tab, row.names = FALSE)),
+                  collapse = "\n"))
+    if (any(tab$basis == "own_group_capped"))
+      message(sprintf(
+        "apply_undetected_evidence: %d group(s) capped at their own singleton mean -- mass/Chao exceeded mass/f1 there (Chao < f1, i.e. f1 < 2*f2), which contradicts an unseen species being rarer than a once-seen one.",
+        sum(tab$basis == "own_group_capped")))
+    if (any(tab$basis == "pooled_qualifying"))
+      message(sprintf(
+        "apply_undetected_evidence: %d group(s) failed the guards and are priced at the pooled-qualifying fallback (%.3g) -- a BORROWED price, not their own. Groups: %s.",
+        sum(tab$basis == "pooled_qualifying"), curve_groups$fallback_price,
+        paste(tab$sampling_group[tab$basis == "pooled_qualifying"], collapse = ", ")))
+    .thin <- b$f2[b$f1 > 0 & !is.na(b$f2)]
+    if (length(.thin) && min(.thin) < 10)
+      message(sprintf(
+        "apply_undetected_evidence: the thinnest of these prices rests on %d doubleton(s) -- chao_missing = f1^2/(2 f2) is hypersensitive there. Run kernel_budget_sensitivity() before quoting any of them.",
+        min(.thin)))
+  } else if (pricing == "curve") {
     # Curve-mode veto bound: an unobserved species VETOES (pushes a
     # singleton-level native below min_posterior at likelihood parity) when
     # theta_e = w * theta_present > ((1-m)/m) * theta_singleton, i.e.
@@ -566,7 +705,7 @@ apply_undetected_evidence <- function(
   if (nrow(evidence) == 0L) {
     message("apply_undetected_evidence: every taxon in `evidence` is already ",
             "observed (has a row in taxaexpect_priors) -- nothing to elevate.")
-    return(.empty_undetected_evidence_result(habitat_col))
+    return(.empty_undetected_evidence_result(habitat_col, pricing))
   }
 
   # ---- Combine multiple evidence rows per taxon ------------------------------
@@ -590,6 +729,47 @@ apply_undetected_evidence <- function(
   p_conc_new     <- vapply(combined, function(x) x$p_combined, numeric(1), USE.NAMES = FALSE)
   sources_vec    <- vapply(combined, function(x) x$sources, character(1), USE.NAMES = FALSE)
 
+  # ---- Per-group price assignment -------------------------------------------
+  grp_vec <- rep(NA_character_, length(taxa))
+  basis_vec <- rep(NA_character_, length(taxa))
+  price_vec <- rep(NA_real_, length(taxa))
+  if (!is.null(curve_groups)) {
+    grp_vec <- unname(.resolve_evidence_groups(
+      taxa, evidence, sampling_group, curve_groups$budget$sampling_group))
+    price_vec <- unname(curve_groups$price[grp_vec])
+    basis_vec <- unname(curve_groups$basis[grp_vec])
+    unpriced <- !is.finite(price_vec) | price_vec <= 0
+    if (any(unpriced)) {
+      if (identical(group_fallback, "error"))
+        stop("apply_undetected_evidence: ", sum(unpriced), " evidence taxon/taxa ",
+             "belong to sampling group(s) that failed the pricing guards (",
+             paste(unique(grp_vec[unpriced]), collapse = ", "), ") and ",
+             "group_fallback = \"error\". Use \"pooled_qualifying\" to borrow the ",
+             "qualifying groups' combined price, \"skip\" to drop these taxa, or ",
+             "lower min_group_n_eff / min_group_f1 if you mean to trust the ",
+             "group's own thin budget. See model_fit$budget.")
+      # group_fallback = "skip": drop them, loudly. Never silently, and never
+      # by pricing them at zero -- an unpriced taxon is one this fit cannot
+      # speak to, which is a different statement from "implausible".
+      message(sprintf(
+        "apply_undetected_evidence: dropping %d taxon/taxa in unpriced sampling group(s) %s (group_fallback = \"skip\") -- this fit has no trustworthy price for them, which is NOT the same as judging them implausible.",
+        sum(unpriced), paste(unique(grp_vec[unpriced]), collapse = ", ")))
+      keep <- !unpriced
+      taxa <- taxa[keep]; w_combined_vec <- w_combined_vec[keep]
+      p_conc_new <- p_conc_new[keep]; sources_vec <- sources_vec[keep]
+      grp_vec <- grp_vec[keep]; price_vec <- price_vec[keep]
+      basis_vec <- basis_vec[keep]
+      if (length(taxa) == 0L) {
+        message("apply_undetected_evidence: no evidence taxon survives group pricing -- nothing to elevate.")
+        return(.empty_undetected_evidence_result(habitat_col, pricing))
+      }
+    }
+  } else if (pricing == "curve") {
+    grp_vec <- rep(model_obj_group_label, length(taxa))
+    basis_vec <- rep("own_group", length(taxa))
+    price_vec <- rep(kernel_theta_present, length(taxa))
+  }
+
   # ---- Presence-mixture prior (2026-08-26 mixture redesign, D3/D8) ----------
   # The elevated prior IS a presence mixture: with probability w the species is
   # locally present (theta ~ the ceiling-anchor state), with probability 1 - w
@@ -608,8 +788,10 @@ apply_undetected_evidence <- function(
   # the point-path/back-compat summary.
   if (pricing == "curve") {
     # Two-point mixture at {0, theta_present}: theta = w * theta_present
-    # exactly; marginal variance is pure presence uncertainty.
-    mix_present <- kernel_theta_present
+    # exactly; marginal variance is pure presence uncertainty. `price_vec` is
+    # per-taxon (its own sampling group's price) for a multi-group fit, and a
+    # recycled scalar for a single-group one -- identical arithmetic either way.
+    mix_present <- price_vec
     mix_absent  <- 0
     theta_new   <- w_combined_vec * mix_present
     v_mix       <- w_combined_vec * (1 - w_combined_vec) * mix_present^2
@@ -648,6 +830,12 @@ apply_undetected_evidence <- function(
     prior_mix_theta_absent  = mix_absent,
     prior_mix_p_conc        = p_conc_new
   )
+  if (pricing == "curve") {
+    # Curve-only provenance: which detection process priced this row, and
+    # whether that price was the group's own, capped, or borrowed.
+    result$sampling_group <- grp_vec
+    result$pricing_basis  <- basis_vec
+  }
   if (!is.null(habitat_col)) {
     result[[habitat_col]] <- main_habitat
   }
@@ -683,7 +871,7 @@ apply_undetected_evidence <- function(
 
 #' Empty-schema result for apply_undetected_evidence(), matching its documented @return
 #' @noRd
-.empty_undetected_evidence_result <- function(habitat_col) {
+.empty_undetected_evidence_result <- function(habitat_col, pricing = "blend") {
   result <- tibble::tibble(
     taxon_name       = character(0),
     taxon_name_rank  = character(0),
@@ -701,6 +889,149 @@ apply_undetected_evidence <- function(
     prior_mix_theta_absent  = numeric(0),
     prior_mix_p_conc        = numeric(0)
   )
+  if (identical(pricing, "curve")) {
+    result$sampling_group <- character(0)
+    result$pricing_basis  <- character(0)
+  }
   if (!is.null(habitat_col)) result[[habitat_col]] <- character(0)
   result
+}
+
+# ==============================================================================
+# Per-group curve pricing (2026-09-04). Open decision #2 of
+# ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md, unblocked by
+# the PtConception 18S diagnostic: per-group Good-Turing budgets span 1859x
+# (441x among groups the assay can actually amplify), and the single pooled
+# price sits BELOW all seven priced groups -- it is not even a compromise
+# between them. The guards below are not hypothetical caution; every one of them
+# fires on that real data (diagnostics/kernel_budget_18S_sampling_groups.R
+# section 5).
+# ==============================================================================
+
+#' Resolve a per-group price from a multi-group kernel fit's budget
+#'
+#' Returns a list with `price`/`basis` (named by sampling group), the annotated
+#' `budget` table, and the pooled-qualifying fallback price.
+#' @noRd
+.resolve_group_prices <- function(kp, min_group_n_eff, min_group_f1,
+                                  cap_at_singleton, group_fallback) {
+  b <- kp$budget
+  # The group's own singleton mean -- missing_mass/f1, exactly the mean theta of
+  # the observed singletons (verified on real Mugu data). Used as a CAP, not as
+  # the price: see `cap_at_singleton` in the roxygen for why this is not the
+  # mass/f1 pricing switch (open decision #1), which remains open.
+  b$singleton_price <- ifelse(b$f1 > 0, b$missing_mass / b$f1, NA_real_)
+  b$has_price <- is.finite(b$theta_present) & b$theta_present > 0
+  b$qualifies <- b$has_price & b$n_eff >= min_group_n_eff & b$f1 >= min_group_f1
+
+  # A group that fails the guards has NO trusted price -- start it at NA rather
+  # than at its own untrusted theta_present, or `group_fallback` other than
+  # "pooled_qualifying" would silently keep exactly the number the guards just
+  # rejected (found by the group_fallback = "error"/"skip" tests, not by review).
+  price <- ifelse(b$qualifies, b$theta_present, NA_real_)
+  basis <- rep(NA_character_, nrow(b))
+  basis[b$qualifies] <- "own_group"
+  if (isTRUE(cap_at_singleton)) {
+    capped <- b$qualifies & is.finite(b$singleton_price) &
+      b$theta_present > b$singleton_price
+    price[capped] <- b$singleton_price[capped]
+    basis[capped] <- "own_group_capped"
+  }
+
+  # Pooled-qualifying fallback. Combined GROUP-WISE, never by re-pooling the
+  # records (that would reintroduce exactly the f1 inflation this whole
+  # mechanism exists to remove): unseen-species counts ADD across disjoint
+  # groups, while missing masses are shares of different denominators and so
+  # combine as an n_eff-weighted average -- i.e. the missing mass of the UNION,
+  # expressed as a share of a union record.
+  q <- which(b$qualifies)
+  fallback_price <- NA_real_
+  if (length(q) > 0L) {
+    n_q <- sum(b$n_eff[q])
+    mass_q <- sum((b$n_eff[q] / n_q) * b$missing_mass[q])
+    chao_q <- sum(b$chao_missing[q])
+    if (is.finite(mass_q) && is.finite(chao_q) && chao_q > 0)
+      fallback_price <- mass_q / chao_q
+  }
+  if (identical(group_fallback, "pooled_qualifying") && is.finite(fallback_price)) {
+    price[!b$qualifies] <- fallback_price
+    basis[!b$qualifies] <- "pooled_qualifying"
+  }
+  b$price <- price
+  b$pricing_basis <- basis
+
+  list(price = stats::setNames(price, b$sampling_group),
+       basis = stats::setNames(basis, b$sampling_group),
+       budget = b,
+       fallback_price = fallback_price,
+       n_qualifying = length(q))
+}
+
+#' Resolve each evidence taxon's sampling group
+#'
+#' Precedence: an explicit `sampling_group` column on `evidence`, then the
+#' `sampling_group` argument (scalar = all taxa, or a named vector / two-column
+#' lookup). Never guessed from taxonomy -- the classification that produced the
+#' occurrence pool's own groups lives in the caller's workflow, not here, and a
+#' wrong group silently mis-prices rather than failing.
+#' @noRd
+.resolve_evidence_groups <- function(taxa, evidence, sampling_group, valid_groups) {
+  out <- rep(NA_character_, length(taxa))
+  names(out) <- taxa
+
+  if ("sampling_group" %in% names(evidence)) {
+    for (i in seq_along(taxa)) {
+      v <- unique(stats::na.omit(as.character(
+        evidence$sampling_group[evidence$taxon_name == taxa[i]])))
+      if (length(v) > 1L)
+        stop("apply_undetected_evidence: taxon '", taxa[i], "' is assigned to ",
+             "more than one sampling group in `evidence` (",
+             paste(v, collapse = ", "), "). One taxon has one detection ",
+             "process; reconcile the evidence rows before combining them.")
+      if (length(v) == 1L) out[i] <- v
+    }
+  }
+
+  if (!is.null(sampling_group)) {
+    if (is.data.frame(sampling_group)) {
+      if (!all(c("taxon_name", "sampling_group") %in% names(sampling_group)))
+        stop("apply_undetected_evidence: a data-frame `sampling_group` must have ",
+             "columns 'taxon_name' and 'sampling_group'.")
+      map <- stats::setNames(as.character(sampling_group$sampling_group),
+                             as.character(sampling_group$taxon_name))
+    } else if (is.character(sampling_group) && length(sampling_group) == 1L &&
+               is.null(names(sampling_group))) {
+      map <- stats::setNames(rep(sampling_group, length(taxa)), taxa)
+    } else if (is.character(sampling_group) && !is.null(names(sampling_group))) {
+      map <- sampling_group
+    } else {
+      stop("apply_undetected_evidence: `sampling_group` must be a single group ",
+           "name, a named character vector (taxon -> group), or a data frame ",
+           "with taxon_name/sampling_group columns.")
+    }
+    fill <- is.na(out) & taxa %in% names(map)
+    out[fill] <- unname(map[taxa[fill]])
+  }
+
+  bad <- !is.na(out) & !out %in% valid_groups
+  if (any(bad))
+    stop("apply_undetected_evidence: sampling group(s) ",
+         paste(unique(out[bad]), collapse = ", "), " are not present in the ",
+         "fit's own budget. Groups available: ",
+         paste(valid_groups, collapse = ", "), ".")
+
+  if (anyNA(out))
+    stop("apply_undetected_evidence: this model_obj has ", length(valid_groups),
+         " sampling groups, so every evidence taxon needs one -- ",
+         sum(is.na(out)), " have none (",
+         paste(utils::head(taxa[is.na(out)], 5L), collapse = ", "),
+         if (sum(is.na(out)) > 5L) ", ..." else "",
+         "). Supply `sampling_group` (a single group name if the whole ",
+         "evidence list shares one detection process, e.g. an all-fish watch ",
+         "list; or a named vector / taxon_name+sampling_group data frame), or ",
+         "add a `sampling_group` column to `evidence`. This is deliberately ",
+         "never guessed from taxonomy: the classification that built the ",
+         "occurrence pool's groups lives in your workflow, and a wrong group ",
+         "mis-prices silently.")
+  out
 }
