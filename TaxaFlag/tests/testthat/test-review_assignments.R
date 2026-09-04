@@ -428,3 +428,54 @@ test_that("output row order matches input", {
   expect_equal(result$consensus_taxon, mock_consensus$consensus_taxon)
   expect_equal(result$observation_id, mock_consensus$observation_id)
 })
+
+# ---------------------------------------------------------------------------
+# Echoed-annotation recovery (2026-09-04). The prompt decorates an unresolved
+# candidate set as "<label> (unresolved candidates; consensus rank: <rank>)"
+# and the model frequently echoes the decorated string back as taxon_name.
+# Singletons carry no annotation, so they always matched while every
+# multi-candidate row silently returned NA and was then dropped by the
+# workflows' export filters. GreatLakes 2026-09-04: 113 of 885 rows.
+# ---------------------------------------------------------------------------
+
+test_that("a model that echoes the annotated label still joins back to its rows", {
+  df <- data.frame(
+    observation_id  = c("o1", "o2", "o3"),
+    consensus_taxon = c("Lepomis", "Lepomis", "Perca flavescens"),
+    consensus_rank  = c("genus", "genus", "species"),
+    consensus_OTU   = c("Lepomis macrochirus/gibbosus",
+                        "Lepomis gibbosus/macrochirus",   # reversed display order
+                        "Perca flavescens"),
+    plausible_taxa  = I(list(c("Lepomis macrochirus", "Lepomis gibbosus"),
+                             c("Lepomis gibbosus", "Lepomis macrochirus"),
+                             "Perca flavescens")),
+    stringsAsFactors = FALSE
+  )
+  # Model echoes the decorated label for the unresolved set, plain for the singleton
+  fake_llm <- function(prompt, ...) {
+    labs <- regmatches(prompt, gregexpr("(?m)^- .*$", prompt, perl = TRUE))[[1]]
+    labs <- sub("^- ", "", labs)
+    # only the taxon lines, not the instruction bullets
+    labs <- grep("\\((unresolved candidates|rank: )", labs, value = TRUE)
+    # echo the DECORATED string verbatim for unresolved sets (the real failure
+    # mode); strip the plain "(rank: x)" annotation for singletons, as the
+    # model does in practice
+    labs <- ifelse(grepl("unresolved candidates", labs), labs,
+                   sub("\\s*\\(rank: [^()]*\\)$", "", labs))
+    paste0("[", paste(sprintf(
+      '{"taxon_name":"%s","habitat_plausibility":"likely","geographic_plausibility":"likely",
+        "scope_plausibility":"likely","contamination_risk":"low","review_alternatives":null,
+        "review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
+      labs), collapse = ","), "]")
+  }
+  out <- review_assignments(df, taxon_col = "consensus_taxon",
+                            taxon_rank_col = "consensus_rank",
+                            context = list(geography = "Lake Michigan",
+                                           habitat   = "harbor"),
+                            plausible_taxa_col = "plausible_taxa",
+                            irreducible_only = FALSE, taxa_per_call = 10L,
+                            llm_fn = fake_llm, verbose = FALSE)
+  # every row scored -- no silent NA on the multi-candidate rows
+  expect_false(any(is.na(out$habitat_plausibility)))
+  expect_equal(unique(out$habitat_plausibility), "likely")
+})

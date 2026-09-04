@@ -1280,8 +1280,20 @@ review_assignments <- function(input_df,
   # punctuation-only normalisation couldn't recover -- every taxon in the
   # batch was wrongly treated as omitted and filled with NA, regardless of how
   # easy the taxon itself was to assess.
+  # 2026-09-04: widened to the "(unresolved candidates; consensus rank: X)"
+  # form as well. .build_taxa_block() renders an UNRESOLVED candidate set as
+  # "- <label> (unresolved candidates; consensus rank: <rank>)", and the model
+  # echoes that whole decorated string back just as it does for "(rank: ...)".
+  # The old pattern required the parenthetical to begin with "rank:", so the
+  # unresolved form never normalised, every slash taxon was treated as omitted
+  # and filled with NA, and the workflows' export filters then dropped those
+  # rows without a word -- 113 of 885 on GreatLakes 2026-09-04, every one of
+  # them a multi-candidate set. Singletons were unaffected because their
+  # "(rank: ...)" annotation WAS handled, which is exactly why the loss looked
+  # like "coarse ranks are excluded on purpose".
   .norm <- function(x) {
-    x <- sub("(?i)\\s*\\(\\s*rank\\s*:.*\\)\\s*$", "", trimws(x), perl = TRUE)
+    x <- sub("(?i)\\s*\\(\\s*(?:unresolved candidates|rank\\s*:)[^)]*\\)\\s*$",
+             "", trimws(x), perl = TRUE)
     tolower(trimws(gsub("[.,;:]+$", "", trimws(x))))
   }
   expected_norm <- .norm(expected_taxa)
