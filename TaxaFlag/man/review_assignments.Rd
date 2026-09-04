@@ -243,6 +243,18 @@ Works with any data frame containing a taxon column -- not restricted to
 TaxaAssign output. Context (geography, habitat) can be supplied as a
 \code{build_context()} object from TaxaAssign, or as a simple named list.
 }
+\section{Candidate-set join key}{
+
+On the candidate-aware path, review results are joined back to input rows by
+the SORTED candidate set, not by the display label. The label
+(\code{consensus_OTU}) is ordered by posterior so the most-supported taxon
+reads first, which means one biological unit can carry "A/B" on one
+observation and "B/A" on another; joining on the label left one of them
+unmatched and therefore unscored. Sets are also deduplicated canonically, so
+a unit that previously appeared under two orderings is now reviewed once
+rather than twice. Display labels are unchanged. (2026-09-04.)
+}
+
 \section{Pipeline context}{
 
 When \code{consensus_posterior_col}/\code{winner_prior_col}/

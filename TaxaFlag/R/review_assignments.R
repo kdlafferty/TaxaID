@@ -20,6 +20,16 @@
 #' @param input_df Data frame with at minimum a column of taxon names.
 #' @param taxon_col Character. Column name for consensus taxon. Default
 #'   \code{"consensus_taxon"}.
+#' @section Candidate-set join key:
+#' On the candidate-aware path, review results are joined back to input rows by
+#' the SORTED candidate set, not by the display label. The label
+#' (\code{consensus_OTU}) is ordered by posterior so the most-supported taxon
+#' reads first, which means one biological unit can carry "A/B" on one
+#' observation and "B/A" on another; joining on the label left one of them
+#' unmatched and therefore unscored. Sets are also deduplicated canonically, so
+#' a unit that previously appeared under two orderings is now reviewed once
+#' rather than twice. Display labels are unchanged. (2026-09-04.)
+#'
 #' @param taxon_rank_col Character or \code{NULL}. Column name for consensus
 #'   rank (e.g., "species", "genus"). When supplied, the rank is included in
 #'   the prompt for context. Default \code{NULL}.
@@ -349,6 +359,10 @@ review_assignments <- function(input_df,
   # --- Build taxa_info: candidate-set path or consensus-taxon path ---
   use_candidates <- !is.null(plausible_taxa_col)
 
+  # Maps each reviewed row's DISPLAY label back to its canonical (sorted-set)
+  # join key; NULL on the non-candidate path, where the taxon name is the key.
+  label_canon_map <- NULL
+
   if (use_candidates) {
 
     raw_sets  <- input_df[[plausible_taxa_col]]
@@ -398,8 +412,15 @@ review_assignments <- function(input_df,
     # Exclude unresolved rows
     include_rows <- include_rows & n_cands > 0L
 
-    # Store join key on input_df (label is the key — canonical because sets are sorted)
-    input_df$.join_key <- cand_labels
+    # Join on the SORTED candidate set, never on the display label. taxa_sets
+    # is already sorted above; cand_labels is not -- it comes from
+    # consensus_OTU, which is ordered by posterior so the most-supported taxon
+    # reads first. Two observations of one unit can therefore carry "A/B" and
+    # "B/A", which as join keys never match, leaving one of them unreviewed and
+    # NA. The label is left exactly as it is: still posterior-ordered, still
+    # what the LLM is shown and what the caller sees.
+    canon_key <- vapply(taxa_sets, paste, character(1L), collapse = "\u0001")
+    input_df$.join_key <- canon_key
 
     # Build taxa_info from unique labels in included rows
     inc_labels <- cand_labels[include_rows]
@@ -412,9 +433,16 @@ review_assignments <- function(input_df,
     taxa_info <- data.frame(
       taxon_name = inc_labels,
       taxon_rank = inc_ranks,
+      .canon     = canon_key[include_rows],
       stringsAsFactors = FALSE
     )
-    taxa_info <- taxa_info[!duplicated(taxa_info$taxon_name), , drop = FALSE]
+    # Dedup on the canonical set, not the label: one review per biological
+    # unit. Where a unit previously appeared under two orderings it was
+    # reviewed twice, so this also removes a redundant LLM call rather than
+    # adding one.
+    taxa_info <- taxa_info[!duplicated(taxa_info$.canon), , drop = FALSE]
+    label_canon_map <- stats::setNames(taxa_info$.canon, taxa_info$taxon_name)
+    taxa_info$.canon <- NULL
 
     if (nrow(taxa_info) == 0L)
       stop("No candidate sets to review after filtering. ",
@@ -533,7 +561,8 @@ review_assignments <- function(input_df,
 
   # --- Join back to input by .join_key ---
   merge_key <- data.frame(
-    .join_key               = review_df$taxon_name,
+    .join_key               = if (is.null(label_canon_map)) review_df$taxon_name
+                              else unname(label_canon_map[review_df$taxon_name]),
     habitat_plausibility    = review_df$habitat_plausibility,
     geographic_plausibility = review_df$geographic_plausibility,
     scope_plausibility      = review_df$scope_plausibility,
