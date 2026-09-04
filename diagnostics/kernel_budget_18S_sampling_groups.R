@@ -58,7 +58,9 @@
 #      evidence); the two are deliberately kept untangled so neither borrows the
 #      other's justification.
 #
-# Run:  Rscript diagnostics/kernel_budget_18S_sampling_groups.R
+# Run:  Rscript diagnostics/kernel_budget_18S_sampling_groups.R  (from anywhere;
+#       every path is absolute, rooted at PROJECT_ROOT below), or source() it
+#       interactively.
 # Cost: no network. ~2 s per kernel fit at 2.2M records; the sweeps dominate.
 # ==============================================================================
 
@@ -67,9 +69,18 @@ suppressMessages({
   library(TaxaExpect)
 })
 
-OCC_RDS <- file.path("/Users/lafferty/My Drive/Rscripts/projects/TaxaID",
-                     "PtCon18SSchulte_occurrences_clean.rds")
-OUT_RDS <- file.path("diagnostics", "kernel_budget_18S_sampling_groups_result.rds")
+# Absolute paths on BOTH sides, deliberately. A relative OUT_RDS resolves only
+# when the working directory happens to be the TaxaID project root, so running
+# this interactively (RStudio, or any other wd) read the occurrences fine and
+# then failed on the very last line with "cannot open the connection" -- after
+# every expensive computation had already been done.
+PROJECT_ROOT <- "/Users/lafferty/My Drive/Rscripts/projects/TaxaID"
+OCC_RDS <- file.path(PROJECT_ROOT, "PtCon18SSchulte_occurrences_clean.rds")
+OUT_RDS <- file.path(PROJECT_ROOT, "diagnostics",
+                     "kernel_budget_18S_sampling_groups_result.rds")
+if (!dir.exists(dirname(OUT_RDS)))
+  stop("Output directory not found: ", dirname(OUT_RDS),
+       " -- edit PROJECT_ROOT at the top of this script.")
 
 # Site + stratum: the 18S workflow's own values (PtConceptionWorkflow_18S_2_
 # single_site.R Section 0). Not re-derived here -- this diagnostic must price
