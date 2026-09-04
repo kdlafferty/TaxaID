@@ -174,6 +174,18 @@ mirroring \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}'s own 
 says so -- the returned object and plot never imply the map shows a
 depth-conditioned field when it does not.
 
+Whichever of the three states applies -- the fit has no covariate, it has
+one that this map OMITS, or it has one held at a stated value -- is written
+onto the rendered map itself (a subtitle on the static plot, a caption on
+the interactive one) alongside the habitat stratum, and printed by
+\code{print()}. The conditions therefore travel with a screenshot. They are
+shown as three visually distinct states on purpose: a fit that has a
+covariate but is drawn without it says so affirmatively, because rendering
+that case as silence would read as \"this model has no covariate\", which
+is a different and false claim. To see a different habitat or a different
+covariate value, re-fit: both are choices made in
+\code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}, not view settings on an existing fit.
+
 The optional latitude factor
 \verb{exp(-111 * ||lat_r| - |lat_x|| / lambda_latitude)} is folded into the
 SAME lattice kernel using signed \code{lat_x - lat_r} (translation-invariant,
@@ -195,6 +207,13 @@ hemisphere-mirrored convolution pass that this function does not
 perform). A message is emitted when this condition is detected. It never
 affects the site-identity invariant for a site that (like every current
 deployment) sits comfortably outside the equatorial band.
+
+A \code{kernel_fit} built with \code{sampling_group_col} is REFUSED with an error.
+That argument makes \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} compute \code{n_eff} and the
+regional back-off separately within each sampling group; this function has
+no equivalent split and would silently draw the pooled, ungrouped field.
+Map one group at a time by fitting it on its own record subset (the shape
+the 18S workflow already uses) rather than passing a grouped fit here.
 }
 
 \section{Relationship to plot_theta_map_interactive()}{

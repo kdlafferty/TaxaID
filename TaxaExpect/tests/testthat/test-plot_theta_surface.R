@@ -396,3 +396,76 @@ test_that("the no-sf WKT fallback refuses a polygon with a hole", {
                   "(4 4, 6 4, 6 6, 4 6, 4 4))")
   expect_error(w2p(donut), "rings")
 })
+
+# ------------------------------------------------------------------------------
+# Rendered CONDITIONS: habitat stratum + covariate state on the plot itself
+# (2026-09-03). A console message at construction is gone the moment the object
+# is re-printed or the map is screenshotted, so the conditions must travel with
+# the picture. The three covariate states must be visually DISTINCT -- silence
+# for "omitted" would read as "this model has no covariate", a false claim.
+# ------------------------------------------------------------------------------
+
+.lab <- function(params) TaxaExpect:::.theta_surface_condition_label(params)
+
+test_that("condition label names the habitat stratum and its column", {
+  expect_equal(.lab(list(habitat_col = "main_habitat", site_habitat = "Marine")),
+               "main_habitat: Marine")
+  # habitat_col absent (an older surface object) still labels the stratum
+  expect_equal(.lab(list(site_habitat = "Freshwater")), "habitat: Freshwater")
+})
+
+test_that("a covariate the map OMITS is stated affirmatively, never by silence", {
+  lab <- .lab(list(habitat_col = "main_habitat", site_habitat = "Marine",
+                   covariate_col = "depth_m", covariate_at = NULL))
+  expect_match(lab, "depth_m", fixed = TRUE)
+  expect_match(lab, "OMITTED", fixed = TRUE)
+  # and it is distinguishable from a fit that simply has no covariate
+  expect_false(identical(
+    lab, .lab(list(habitat_col = "main_habitat", site_habitat = "Marine"))))
+})
+
+test_that("a held covariate reports its value and that it is constant", {
+  lab <- .lab(list(habitat_col = "main_habitat", site_habitat = "Marine",
+                   covariate_col = "depth_m", covariate_at = 50))
+  expect_match(lab, "depth_m = 50", fixed = TRUE)
+  expect_match(lab, "held constant", fixed = TRUE)
+  expect_false(grepl("OMITTED", lab, fixed = TRUE))
+})
+
+test_that("lambda and m are kept OFF the plot label (they stay in print())", {
+  lab <- .lab(list(habitat_col = "main_habitat", site_habitat = "Marine",
+                   lambda_km = 25, m = 1))
+  expect_false(grepl("lambda", lab, fixed = TRUE))
+  expect_false(grepl("25", lab, fixed = TRUE))
+})
+
+test_that("print() reports the conditions alongside the tuning values", {
+  occ <- .mk_occ(rep(c("A", "B"), each = 3), lat = rep(c(34.0, 34.1, 34.2), 2),
+                 lon = rep(c(-120.0, -119.9, -120.1), 2))
+  kp <- estimate_kernel_priors(occ, 34.1, -120, "Marine", lambda_km = 50)
+  out <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L)
+  txt <- paste(utils::capture.output(print(out)), collapse = "\n")
+  expect_match(txt, "main_habitat: Marine", fixed = TRUE)
+})
+
+test_that("the interactive map carries the conditions as an on-map caption", {
+  skip_if_not_installed("leaflet")
+  occ <- .mk_occ(rep(c("A", "B"), each = 3), lat = rep(c(34.0, 34.1, 34.2), 2),
+                 lon = rep(c(-120.0, -119.9, -120.1), 2))
+  kp <- estimate_kernel_priors(occ, 34.1, -120, "Marine", lambda_km = 50)
+  m <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L, interactive = TRUE)$plot
+  calls <- vapply(m$x$calls, function(cl) cl$method, character(1))
+  expect_true("addControl" %in% calls)
+  ctrl <- m$x$calls[[which(calls == "addControl")[1]]]
+  expect_true(any(grepl("main_habitat: Marine", unlist(ctrl$args), fixed = TRUE)))
+})
+
+test_that("a fit built with sampling_group_col is refused, not silently pooled", {
+  occ <- .mk_occ(rep(c("A", "B"), each = 3), lat = rep(c(34.0, 34.1, 34.2), 2),
+                 lon = rep(c(-120.0, -119.9, -120.1), 2))
+  occ$sampling_group <- rep(c("fishes", "inverts"), each = 3)
+  kp <- estimate_kernel_priors(occ, 34.1, -120, "Marine", lambda_km = 50,
+                               sampling_group_col = "sampling_group")
+  expect_error(plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L),
+               "sampling_group_col")
+})

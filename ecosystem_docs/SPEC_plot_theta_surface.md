@@ -274,3 +274,87 @@ a depth-conditioned field when it does not.
   (SITE_DEPTH) -- the other sites have no depth covariate yet. `mask` is
   left unset everywhere: the right outline is per-site and the user asked
   for it not to be hard-wired.
+
+## Rendered conditions: habitat + covariate on the plot (2026-09-03)
+
+**The problem.** The surface is a habitat-stratified, optionally
+covariate-conditioned field. Both are analyst choices, neither is recoverable
+from the picture, and until now neither reached the rendered output: the
+static title was the taxon name, the leaflet legend was `theta` + the taxon,
+and `print()` reported lattice/extent/lambda/m. The covariate condition
+existed only as a construction-time console message. That message is gone the
+moment the object is re-printed or the map is screenshotted into a talk --
+the same lesson as the stale-map trap already fixed in
+`print.taxaexpect_theta_surface()`.
+
+This was live, not hypothetical: `GreatLakes2023_ConsensusWorkflow.R:849`
+passes `covariate_at = SITE_DEPTH`, so a constant-depth cross-section was
+being rendered with nothing on it saying so -- visually indistinguishable
+from an unconditioned field.
+
+**The fix.** `.theta_surface_condition_label()` builds one line, rendered as
+a static-plot subtitle (`mtext`), an interactive `addControl` caption at
+bottomleft (clear of the layers control at topright and the legend at
+bottomright), and a `print()` line.
+
+The three covariate states are deliberately DISTINCT, because the middle one
+is the trap:
+
+| fit state | label |
+|---|---|
+| no `covariate_col` | `main_habitat: Marine` |
+| has one, map omits it | `... | depth_m: OMITTED (not a depth_m-conditioned field)` |
+| has one, held at a value | `... | depth_m = 50 (held constant)` |
+
+Rendering "omitted" as silence would read as *this model has no covariate* --
+a different, and false, claim. That is why the omitted case is stated
+affirmatively rather than left blank.
+
+**`lambda_km` and `m` are deliberately excluded** from the label. They set how
+smooth the surface is, not what it is a surface OF, and no reader retunes them
+from the map -- on the plot they would be clutter competing with the two
+values that change what the map means. They stay in `print()`, which already
+reported them. There is a regression test asserting they stay off the label.
+
+**Not built: covariate/habitat selectors.** The considered alternative was an
+interactive control (slider for depth, dropdown for habitat) that re-plots.
+Rejected for now, in this order:
+
+1. *Depth is the defensible half.* Constant-depth slices need no bathymetry
+   raster, no datum reconciliation, and no collection-depth-vs-seafloor-depth
+   conflation -- the reader chooses the slice instead of a raster guessing it.
+   But each surface is 6,400 `addRectangles` cells (`max_dim = 80L`), so
+   today's 5-taxon map is already ~32,000 rectangles; crossing that with 8
+   depth levels is ~256,000, which will not pan. The real version needs a
+   substrate change (one base64 PNG per slice via `addImageOverlay`, plus a JS
+   `mousemove` handler to rebuild the per-cell hover that the 2026-09-01
+   click-through specifically asked for). Defer until the map earns it.
+2. *Habitat is NOT symmetric with depth and should not be a toggle.* It
+   selects the record stratum itself: different records, different regional
+   composition `p_i`, a different species list (most taxon x habitat cells
+   would be taxa with zero records in the new stratum, collapsing theta to the
+   `m * p_i` back-off while still looking like a field). Worse, `lambda_km` is
+   calibrated ON the site's stratum -- `calibrate_kernel_bandwidth(occurrences
+   _clean, SITE_HABITAT, ...)` in every workflow -- so a habitat toggle would
+   render a marine-calibrated bandwidth over freshwater records, breaking the
+   guarantee that every tuning value comes off `kernel_fit` and cannot drift
+   from the priors it depicts. `m`, `theta_present` and `missing_mass` are
+   stratum quantities too.
+
+   A different habitat or covariate therefore means **a re-fit**, not a view
+   setting. For habitat comparison, loop `calibrate_kernel_bandwidth()` +
+   `estimate_kernel_priors()` per habitat and show the results side by side.
+
+**Also added: `sampling_group_col` is refused.** `estimate_kernel_priors()`
+gained that argument on 2026-09-03; it computes `n_eff` and the regional
+back-off within each group, which this function does not reproduce -- it would
+draw the pooled ungrouped field while claiming the fit's identity, silently
+failing the site-identity invariant. Now an error naming the supported shape
+(fit per group on that group's records, as `PtConceptionWorkflow_18S_2_single
+_site.R:823` already does). No workflow passes it today, so nothing breaks.
+
+**Not addressed** (unchanged, both minor, both documented rather than coded):
+the pale far-field still relaxes to the regional back-off, which
+`alpha_by_n_eff` already reveals; and cells near the fetch-polygon edge are
+truncated by search extent rather than by distance -- the estimator's 6-lambda
+warning fires on the site, which sits mid-fetch, not on the map edges.
