@@ -43,7 +43,12 @@ utils::globalVariables("taxonKey")
 #'   zip and skips the GBIF download entirely. Set to \code{NULL} to
 #'   disable caching.
 #' @param overwrite Logical. If \code{FALSE} (default), an existing cached
-#'   zip is reused. Set to \code{TRUE} to force a fresh download from GBIF.
+#'   zip is reused. Set to \code{TRUE} to force a fresh download from GBIF --
+#'   in an interactive session this asks for confirmation first (showing the
+#'   cached zip's date and size) before deleting it; a non-interactive session
+#'   proceeds straight to a fresh download. Either way, the old cached zip is
+#'   removed once the new one is saved -- it is never silently orphaned on
+#'   disk.
 #' @param status_ping Numeric. Seconds between download-status polls while
 #'   waiting for GBIF to prepare the file. Default 15. Minimum enforced by
 #'   rgbif is 3.
@@ -288,28 +293,59 @@ download_gbif_occurrences <- function(
   }
   meta_path <- .gbif_dl_meta_path(cache_dir, keys, geometry, year_range,
                                   basis_keep, exclude_absent)
-  dl_key    <- NULL
-  zip_path  <- NULL
+  dl_key       <- NULL
+  zip_path     <- NULL
+  old_zip_path <- NULL
 
-  if (!is.null(meta_path) && file.exists(meta_path) && !overwrite) {
-    meta     <- readRDS(meta_path)
-    dl_key   <- meta$dl_key
-    zip_path <- meta$zip_path
-    if (!file.exists(zip_path)) {
-      message(sprintf(
-        "download_gbif_occurrences: cached zip missing (%s); re-downloading.",
-        zip_path
-      ))
-      dl_key   <- NULL
-      zip_path <- NULL
-    } else {
-      message(sprintf(
-        paste0(
-          "download_gbif_occurrences: reusing cached zip from %s (key %s).\n",
-          "  Set overwrite = TRUE to force a fresh download."
-        ),
-        format(meta$timestamp, "%Y-%m-%d"), dl_key
-      ))
+  if (!is.null(meta_path) && file.exists(meta_path)) {
+    meta <- readRDS(meta_path)
+    cached_zip_exists <- file.exists(meta$zip_path)
+
+    if (!overwrite) {
+      if (cached_zip_exists) {
+        dl_key   <- meta$dl_key
+        zip_path <- meta$zip_path
+        message(sprintf(
+          paste0(
+            "download_gbif_occurrences: reusing cached zip from %s (key %s).\n",
+            "  Set overwrite = TRUE to force a fresh download."
+          ),
+          format(meta$timestamp, "%Y-%m-%d"), dl_key
+        ))
+      } else {
+        message(sprintf(
+          "download_gbif_occurrences: cached zip missing (%s); re-downloading.",
+          meta$zip_path
+        ))
+      }
+    } else if (cached_zip_exists) {
+      # overwrite = TRUE and there's a real cached zip that would otherwise be
+      # silently orphaned (repointed away from with no cleanup). Interactively
+      # confirm the replacement when possible; a non-interactive session
+      # proceeds straight to a fresh download, matching the pre-existing
+      # behavior, but the stale zip is still removed once the new one lands
+      # (see the cleanup block below) instead of being left as an orphan.
+      keep_existing <- FALSE
+      if (interactive()) {
+        old_size_mb <- round(file.info(meta$zip_path)$size / 1024^2, 1)
+        message(sprintf(
+          "download_gbif_occurrences: a cached zip already exists for this query (key %s, downloaded %s, %.1f MB).",
+          meta$dl_key, format(meta$timestamp, "%Y-%m-%d"), old_size_mb
+        ))
+        choice <- utils::menu(
+          c("Overwrite (delete the cached zip, fetch fresh from GBIF)",
+            "Keep the cached zip instead (skip the fresh download)"),
+          title = "Replace the cached download?"
+        )
+        keep_existing <- identical(choice, 2L)
+      }
+      if (keep_existing) {
+        dl_key   <- meta$dl_key
+        zip_path <- meta$zip_path
+        message("download_gbif_occurrences: keeping the existing cached zip.")
+      } else {
+        old_zip_path <- meta$zip_path
+      }
     }
   }
 
@@ -384,6 +420,11 @@ download_gbif_occurrences <- function(
         "  Zip cached. Starting import now -- please wait for the R prompt to return.\n",
         "  (Re-running with the same parameters will skip the GBIF wait.)"
       )
+    }
+
+    if (!is.null(old_zip_path) && file.exists(old_zip_path)) {
+      file.remove(old_zip_path)
+      message(sprintf("  Removed previous cached zip: %s", old_zip_path))
     }
   }
 
@@ -504,6 +545,29 @@ download_gbif_occurrences <- function(
     geometry   = geometry,
     year_range = year_range
   )
+
+  # --- Cache summary / offer to clear ------------------------------------------
+  if (!is.null(cache_dir)) {
+    inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
+    if (nrow(inv) > 0L) {
+      total_mb <- sum(inv$size_mb)
+      message(sprintf(
+        "download_gbif_occurrences: TaxaFetch cache: %d file(s), %.1f MB in %s.",
+        nrow(inv), total_mb, normalizePath(cache_dir, mustWork = FALSE)
+      ))
+      cache_prompt_threshold_mb <- 1024
+      if (total_mb > cache_prompt_threshold_mb) {
+        if (interactive()) {
+          choice <- utils::menu(c("Clear it now", "Leave it"), title = "Clear the TaxaFetch cache?")
+          if (identical(choice, 1L)) {
+            taxafetch_clear_cache(cache_dir = cache_dir, dry_run = FALSE)
+          }
+        } else {
+          message("  Run taxafetch_clear_cache() to remove it.")
+        }
+      }
+    }
+  }
 
   # --- Completion sound -------------------------------------------------------
   if (beep) {

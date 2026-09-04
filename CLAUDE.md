@@ -1,7 +1,57 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- PRIOR-SIDE 18S BUDGET
+# Last updated: 2026-09-04 (Sonnet 5, branch cache-management -- persistent on-disk
+# cache audit + fixes across TaxaFetch/TaxaLikely/TaxaTools, prompted by the user
+# reporting ~/Library/Caches/org.R-project.R/R/TaxaFetch at 23GB. Real bug found and
+# fixed: download_gbif_occurrences()'s GBIF-zip cache silently ORPHANED the
+# previous cached zip on overwrite = TRUE (repointed the query's metadata at the
+# fresh download without deleting the stale one) -- fixed with an interactive
+# confirmation prompt plus unconditional cleanup of the superseded zip either way.
+# New taxafetch_clear_cache(orphans_only=, older_than_days=, dry_run=) reports/
+# clears the cache; live dry-run on the user's real cache found 13 orphaned
+# zips/6.3GB, confirmed and cleared, bringing it to 17GB (genuinely distinct
+# per-query downloads, not further orphans).
+#
+# A full 9-package audit for the same accumulation pattern (requested by the user
+# before extending the fix anywhere else) found exactly one more real instance --
+# TaxaLikely's fetch_ncbi_reference_sequences()/audit_barcode_coverage() cache,
+# same unbounded-file-per-query shape, currently small (2,538 files/2.3MB) but no
+# eviction and no clear-cache tool -- new TaxaLikely::taxalikely_clear_cache()
+# added preemptively. TaxaHabitat/TaxaExpect/TaxaAssign/TaxaWizard have no
+# persistent cache at all; TaxaTools' own model_registry.json is a single small
+# file, not a concern.
+#
+# TaxaMatch's reference-evaluation caches (evaluate_reference_accessions()/
+# investigate_flagged_accession()/review_flagged_accessions()) were checked
+# closely and deliberately EXCLUDED from this fix, at the user's explicit
+# prompt to look carefully before reusing the same logic: they are a
+# structurally different, CUMULATIVE cache (one consolidated file per cache_dir,
+# read-modify-write merge, row-level asymmetric TTL) where "congruent"/
+# "locally_corroborated" verdicts are cached with infinite TTL BY DELIBERATE
+# DESIGN ("nothing a later BLAST returns can withdraw a match that was already
+# observed" -- the package's own comment). A directory-scan-and-delete tool
+# would destroy exactly the permanently-valid, NCBI-budget-expensive verdicts
+# that design is protecting. That package's own TTL system + migrate_
+# reference_cache() (which backs up before ever touching the file) is already
+# correct and was left untouched.
+#
+# Given two packages needed the identical ~40-line validate/report/delete
+# engine, it now lives once in TaxaTools (both TaxaFetch/TaxaLikely already
+# import it, same precedent as %||%): new list_cache_files()/
+# report_and_clear_cache(), exported. Each package keeps its own separately-
+# named, separately-exported wrapper (never one shared bare function name --
+# two loaded packages both exporting clear_cache() would mask each other).
+# TaxaFetch's orphan-detection stayed local (no TaxaLikely analog).
+#
+# devtools::test()/check() clean on all three touched packages (TaxaTools
+# 893/0, TaxaFetch 676/0 [2 pre-existing unrelated CoordinateCleaner/terra
+# environment failures], TaxaLikely 1034/0; check 0/0/0 all three),
+# reinstalled and verified at ~/Library/R/4.0/library. See each package's own
+# CLAUDE.md top note for the full record. Not yet merged into kernel-priors or
+# main -- this work is unrelated to that branch's topic, done on its own
+# cache-management branch per this project's own feature-branch convention.
+# Previous update, 2026-09-03 (Opus 5, branch kernel-priors -- PRIOR-SIDE 18S BUDGET
 # DIAGNOSTIC + open decision #4. Full record in ecosystem_docs/REENTRY_PROMPT_kernel_
 # budget_pricing_and_scope.md (READ ITS CLOSING "2026-09-03 UPDATE" SECTION FIRST --
 # it supersedes that doc's own next-step, cost estimate, and part of its Finding 2).

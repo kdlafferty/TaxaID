@@ -66,7 +66,12 @@ zip and skips the GBIF download entirely. Set to \code{NULL} to
 disable caching.}
 
 \item{overwrite}{Logical. If \code{FALSE} (default), an existing cached
-zip is reused. Set to \code{TRUE} to force a fresh download from GBIF.}
+zip is reused. Set to \code{TRUE} to force a fresh download from GBIF --
+in an interactive session this asks for confirmation first (showing the
+cached zip's date and size) before deleting it; a non-interactive session
+proceeds straight to a fresh download. Either way, the old cached zip is
+removed once the new one is saved -- it is never silently orphaned on
+disk.}
 
 \item{status_ping}{Numeric. Seconds between download-status polls while
 waiting for GBIF to prepare the file. Default 15. Minimum enforced by

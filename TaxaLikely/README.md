@@ -760,6 +760,18 @@ posteriors <- TaxaAssign::compute_posterior(likelihoods, priors_df = my_priors)
 
 See `inst/workflows/6_no_score_pathway_workflow.R` for a full example.
 
+## Cache
+
+`fetch_ncbi_reference_sequences()` and `audit_barcode_coverage()` cache
+to a persistent, per-user directory
+(`tools::R_user_dir("TaxaLikely", "cache")`) so re-running the same
+taxon/marker/params combination skips the NCBI fetch. Neither expires
+automatically.
+
+Run `taxalikely_clear_cache(dry_run = TRUE)` to see how much space the
+cache is using before clearing it, or `taxalikely_clear_cache()` to
+clear it directly.
+
 ## Vignettes
 
 -   [Score to Likelihood](vignettes/score-to-likelihood.Rmd) -- full

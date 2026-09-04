@@ -1,5 +1,34 @@
 # CLAUDE.md -- TaxaTools
-# Last updated: 2026-09-03 (Opus 5, branch kernel-priors -- NEW resolve_barcode_marker().
+# Last updated: 2026-09-04 (Sonnet 5, branch cache-management -- NEW cache_utils.R:
+# list_cache_files()/report_and_clear_cache(), a shared engine for a downstream
+# package's own <pkg>_clear_cache() helper.
+#
+# Grew out of fixing a real TaxaFetch bug (a 23GB GBIF-zip cache with an orphan-
+# accumulation bug -- see TaxaFetch/CLAUDE.md) and finding TaxaLikely had the same
+# unbounded-cache shape (fetch_ncbi_reference_sequences()/audit_barcode_coverage(),
+# one small file per query, no eviction). Both packages already import TaxaTools
+# (same precedent as %||%), so rather than duplicate the ~40-line validate/report/
+# delete logic in each package's own <pkg>_clear_cache() wrapper, it now lives once
+# here: list_cache_files(cache_dir, patterns) (directory scan by regex, returns
+# path/size_mb/mtime) + report_and_clear_cache(inv, label, cache_dir,
+# older_than_days=, dry_run=) (age filter + report + delete). Each downstream
+# package keeps its own separately-NAMED, separately-exported wrapper
+# (TaxaFetch::taxafetch_clear_cache(), TaxaLikely::taxalikely_clear_cache()) --
+# never one shared function name, since two loaded packages both exporting a bare
+# clear_cache() would mask each other. TaxaFetch's own orphan-detection logic
+# (reading a zip's meta.rds to tell "current" from "superseded" -- no TaxaLikely
+# analog) stays local to that package, pre-filtering its own inventory before
+# handing off to the shared engine.
+#
+# Deliberately fits ONLY the "directory of many small, deterministically-keyed
+# files" cache shape -- checked directly before building this and confirmed
+# TaxaMatch's reference-evaluation caches are a different, CUMULATIVE shape (one
+# consolidated file, row-level TTL, "congruent" verdicts cached forever by
+# design) that a directory-scan-and-delete engine would be actively wrong for;
+# left untouched.
+#
+# devtools::test() 893/0, devtools::check() 0/0/0, reinstalled.
+# Previous update, 2026-09-03 (Opus 5, branch kernel-priors -- NEW resolve_barcode_marker().
 #
 # A registered primer-variant term ("COI-Folmer", "16S-Palumbi", "rbcLa", "cytb-Kocher",
 # "matK-Kim", "trnL-Taberlet") is the right term for resolving primers and amplicon lengths, but
@@ -225,6 +254,13 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `validate_dwc()` | Read-only QC after formatting | Planned | — |
 | `dwc_map()` | Compare input column names against full DarwinCore term list; propose `col_map` via fuzzy matching or LLM API | Planned | — |
 
+### Cache utilities (2026-09-04)
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `list_cache_files()` | Scan `cache_dir` and return every file whose basename matches any of `patterns` (regex, OR'd), with `path`/`size_mb`/`mtime` -- the generic building block behind a downstream package's own `<pkg>_clear_cache()` helper. Zero rows if `cache_dir` has no matching files or doesn't exist. | Complete | R/cache_utils.R |
+| `report_and_clear_cache()` | Shared "apply an age filter, print a summary, delete or dry-run report" engine, given an already-built `inv` (typically from `list_cache_files()`, with any package-specific pre-filtering already applied -- e.g. TaxaFetch's own orphan detection). `label` names the calling function in every message. Used by `TaxaFetch::taxafetch_clear_cache()` and `TaxaLikely::taxalikely_clear_cache()`; deliberately fits only the "directory of many small, deterministically-keyed files" cache shape, not TaxaMatch's cumulative row-level-TTL reference-evaluation cache (checked directly, left untouched). | Complete | R/cache_utils.R |
+
 ### Rank and barcode utilities (Sessions 56-57)
 
 | Function | Purpose | Status | Source file |
@@ -314,6 +350,7 @@ rename_cols()           # align column names to DarwinCore
 
 | File | Functions covered | Notes |
 |---|---|---|
+| test-cache_utils.R | `list_cache_files()`, `report_and_clear_cache()` | **2026-09-04, new file**. Fully offline. Covers pattern matching, empty/nonexistent directories, argument validation, dry-run vs. real deletion, `older_than_days` filtering, and that `label` appears in every message |
 | test-verify_taxon_names.R | `verify_taxon_names()` | Offline validation + online API tests (skipped offline) |
 | test-create_taxon_names.R | `create_taxon_names()` | Fully offline |
 | test-clean_taxon_names.R | `clean_taxon_names()` | Fully offline |

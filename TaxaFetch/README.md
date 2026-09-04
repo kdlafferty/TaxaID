@@ -90,6 +90,23 @@ TaxaFetch uses GBIF credentials for occurrence downloads and OpenAlex
 for literature search. See the TaxaTools [API Setup
 vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
+## Cache
+
+`download_gbif_occurrences()`, `fetch_gbif_occurrences()`, and
+`check_geographic_outliers()` all cache to a persistent, per-user
+directory (`tools::R_user_dir("TaxaFetch", "cache")`) so re-running the
+same query skips the GBIF wait. GBIF download zips in particular can be
+multi-gigabyte and are cached **permanently, with no automatic
+expiration** -- re-running a query with `overwrite = TRUE` replaces the
+cached zip (asking for confirmation first in an interactive session) but
+otherwise nothing is ever cleared for you.
+
+Run `taxafetch_clear_cache(dry_run = TRUE)` to see how much space the
+cache is using before clearing it, or `taxafetch_clear_cache()` to
+clear it directly. `download_gbif_occurrences()` also reports the
+cache's total size after every run and offers to clear it once it
+passes 1 GB.
+
 ## Vignettes
 
 -   [Data Acquisition](vignettes/data-acquisition.Rmd) -- end-to-end
