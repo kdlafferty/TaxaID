@@ -1,5 +1,61 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-04, fourth pass (Opus 5, branch kernel-priors -- the screen's audit
+# trail, and the loader change that made it affordable. Read the second and third passes
+# below first.
+#
+# THE BLOCKER, found before writing any of it: `.load_reference_accession_cache()` discarded
+# an ENTIRE cache file whose columns did not match this version's schema. That is right for a
+# column a verdict depends on, but it meant every additive DIAGNOSTIC column also cost a full
+# re-BLAST of every cached row (~3,239 real rows across four caches) -- the identical price
+# this package had just refused to pay for raising max_hits. In effect a diagnostic column
+# could not be added at all.
+#
+# THE FIX: new `.ADDITIVE_CACHE_COLUMNS`, an explicit allowlist. A missing column ON the list
+# is NA-filled (typed, via new `.na_like()`, so a later rbind cannot coerce); a missing column
+# OFF the list still discards the whole file exactly as before. The criterion is strict and is
+# the whole point: a column qualifies only if NA is a SAFE reading for a row computed before it
+# existed. Most fail -- `congruent_evidence_exists_anywhere` would be catastrophic
+# (`!(NA %in% TRUE)` is TRUE, so an NA-filled row becomes MORE removable), and
+# `n_independent_top_matches` now drives the zero-partner rule. A test asserts that every
+# column on the list genuinely does not move label_confidence or reference_action, so the
+# claim cannot rot. Verified on all four real caches: 1065/1180/280/714 rows in, same out,
+# nothing discarded, with four new columns present and NA.
+#
+# THE AUDIT TRAIL ITSELF, four additive columns:
+#   query_len_submitted  -- bp actually sent to BLAST (NA when never submitted).
+#   query_trim_path      -- "as_deposited" / "primer_match" / "feature_table": WHICH rescue
+#                           produced the submitted query. `.trim_queries_to_amplicon()` now
+#                           carries `attr(out, "trimmed")` per sequence; it was already
+#                           computing that and tallying it into a log line, the same
+#                           "already known, silently discarded" pattern as decline_reason.
+#   n_excluded_same_batch / n_excluded_not_species_resolved -- WHY a hit did not become a
+#                           voting partner. These PARTITION the excluded hits (the
+#                           species-resolution count is conditional on having passed
+#                           independence), so available - both == survivors, and a test pins
+#                           that identity.
+#
+# WHY THE EXCLUSION COUNTS ARE PER-ACCESSION AND NOT EXTRA PAIR-CACHE ROWS: the pair sidecar
+# is what `refine_reference_verdicts()` votes over, and adding disqualified partners to it
+# would risk them being counted as voters -- a real regression for a diagnostic's sake. The
+# question these answer ("what took this accession's partners") is per-accession anyway.
+#
+# THE QUESTION THIS EXISTS TO ANSWER, so it is not re-derived by hand a fourth time: a
+# zero-partner accession previously read `n_independent_top_matches == 0` and nothing else, so
+# "BLAST found nothing" and "BLAST returned a full slate and every hit was the accession's own
+# submission batch" were indistinguishable in the cache. That distinction changes what to do,
+# and it is live: GreatLakes Plate1's zero-partner population is 24 of 27 insufficient rows,
+# dominated by Phoxinus and Etheostoma -- a completely different shape from PtConception's
+# (batch-submitted marine mammals), and the PtCon truncation finding should NOT be assumed to
+# transfer there. These columns will say which filter is responsible on the next GL run.
+#
+# NOTE the columns are NA on every existing cached row by construction -- they populate as
+# accessions are re-evaluated. Nothing was re-BLASTed to add them, which was the point.
+#
+# `devtools::document()` clean, `devtools::test()` 1310/1310 (0 failures; 1 pre-existing
+# unrelated warning in test-convert_taxonomy_backbone.R:931), `devtools::check()` 0/0/0.
+# NOT reinstalled -- see the session-end apply block.
+#
 # Last updated: 2026-09-04, third pass (Opus 5, branch kernel-priors -- three user verdicts
 # taken on the reference-screen thread, all implemented. Read the second-pass note below
 # first; this builds directly on its two findings.

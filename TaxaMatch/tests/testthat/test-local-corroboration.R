@@ -571,8 +571,10 @@ test_that("a 169 bp primer-free input passes through unchanged; a 217 bp inclusi
   inclusive <- .trim_queries_to_amplicon(.km057996, "MiFishU", strip_primers = FALSE,
                                          verbose = FALSE)
   stripped  <- .trim_queries_to_amplicon(.km057996, "MiFishU", verbose = FALSE)
-  expect_equal(.trim_queries_to_amplicon(stripped, "MiFishU", verbose = FALSE), stripped)
-  expect_equal(.trim_queries_to_amplicon(inclusive, "MiFishU", verbose = FALSE), stripped)
+  expect_equal(as.character(.trim_queries_to_amplicon(stripped, "MiFishU", verbose = FALSE)),
+               as.character(stripped))
+  expect_equal(as.character(.trim_queries_to_amplicon(inclusive, "MiFishU", verbose = FALSE)),
+               as.character(stripped))
 })
 
 test_that(".resolve_trimmed_span_max(strip_primers = TRUE) is the inclusive bound minus both primer lengths", {

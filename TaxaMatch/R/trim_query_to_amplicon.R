@@ -180,7 +180,13 @@
       paste(barcode_term, collapse = "/"), sum(needs_trim), length(sequences), max_len
     ))
 
-  if (!any(needs_trim)) return(sequences)
+  if (!any(needs_trim)) {
+    # Nothing was over-length, so nothing was trimmed. The attribute is set
+    # on every return path so a caller can read it unconditionally.
+    out <- sequences
+    attr(out, "trimmed") <- rep(FALSE, length(sequences))
+    return(out)
+  }
 
   rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(primer_info$rev)))
   fwd_max_mm <- floor(nchar(primer_info$fwd) * max_mismatch_rate)
@@ -217,6 +223,7 @@
   out <- sequences
   n_trimmed <- 0L
   fail_notes <- character(0L)
+  trimmed_flag <- rep(FALSE, length(sequences))
   for (i in which(needs_trim)) {
     # tryCatch, not just the bounds guard inside .extract_amplicon_one_tm()
     # itself: a real production run crashed an entire 200-accession BLAST
@@ -240,11 +247,20 @@
     )
     if (result$trimmed) {
       out[i] <- result$sequence
+      trimmed_flag[i] <- TRUE
       n_trimmed <- n_trimmed + 1L
     } else {
       fail_notes <- c(fail_notes, result$note)
     }
   }
+
+  # Which sequences the primer match actually shortened, carried out per
+  # element rather than only tallied (2026-09-04). The counts below were
+  # already computed from this and then discarded -- the same
+  # "already known, silently dropped" pattern .extract_feature_table_
+  # fallback()'s own decline_reason closed. evaluate_reference_accessions()
+  # reads it to record query_trim_path per accession.
+  attr(out, "trimmed") <- trimmed_flag
 
   if (verbose) {
     message(sprintf(

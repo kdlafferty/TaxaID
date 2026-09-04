@@ -1948,3 +1948,159 @@ test_that("score_reference_labels() maps not_evaluated_wrong_marker to untested 
   )
   expect_equal(w, 1)
 })
+
+# ------------------------------------------------------------------------------
+# Additive cache columns (2026-09-04): a purely diagnostic column must not cost
+# a full re-BLAST of every cached row, but a decision-bearing one must still
+# discard the file. .ADDITIVE_CACHE_COLUMNS is the declared boundary.
+# ------------------------------------------------------------------------------
+
+test_that(".load_reference_accession_cache() NA-fills a missing ADDITIVE column instead of discarding the file", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  full <- TaxaMatch:::.load_reference_accession_cache(NULL)
+  row <- full[NA_integer_, , drop = FALSE]
+  row$accession <- "A1"; row$hierarchy_flag <- "congruent"
+  row$evaluated_at <- Sys.time(); row$params_key <- "k"
+  # A cache written before the audit columns existed.
+  old_row <- row[, setdiff(names(row), c("query_len_submitted", "query_trim_path")), drop = FALSE]
+  saveRDS(old_row, file.path(cache_dir, "reference_accession_cache.rds"))
+
+  expect_message(
+    TaxaMatch:::.load_reference_accession_cache(cache_dir),
+    "additive diagnostic column"
+  )
+  loaded <- suppressMessages(TaxaMatch:::.load_reference_accession_cache(cache_dir))
+  expect_equal(nrow(loaded), 1L)              # NOT discarded
+  expect_equal(loaded$hierarchy_flag, "congruent")
+  expect_true(is.na(loaded$query_len_submitted))
+  # Typed NA, not a logical one -- rbind against fresh rows must not coerce.
+  expect_true(is.integer(loaded$query_len_submitted))
+  expect_true(is.character(loaded$query_trim_path))
+})
+
+test_that(".load_reference_accession_cache() still discards a file missing a DECISION-BEARING column", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  full <- TaxaMatch:::.load_reference_accession_cache(NULL)
+  row <- full[NA_integer_, , drop = FALSE]
+  row$accession <- "A1"; row$hierarchy_flag <- "incongruent"
+  # congruent_evidence_exists_anywhere is the removal veto: NA-filling it
+  # would make the row MORE removable (!(NA %in% TRUE) is TRUE), so a cache
+  # missing it must be discarded, exactly as before.
+  bad <- row[, setdiff(names(row), "congruent_evidence_exists_anywhere"), drop = FALSE]
+  saveRDS(bad, file.path(cache_dir, "reference_accession_cache.rds"))
+
+  expect_warning(
+    TaxaMatch:::.load_reference_accession_cache(cache_dir),
+    "predates this package version"
+  )
+  loaded <- suppressWarnings(TaxaMatch:::.load_reference_accession_cache(cache_dir))
+  expect_equal(nrow(loaded), 0L)
+})
+
+test_that("every declared-additive column really is absent from the verdict path", {
+  # Guards the claim .ADDITIVE_CACHE_COLUMNS makes. If a future change starts
+  # consulting one of these in score_reference_labels(), this fails and the
+  # column has to be taken off the list.
+  ev <- data.frame(
+    accession = "A1", hierarchy_flag = "congruent",
+    frac_independent_below_min_congruent_rank = 0.1,
+    n_independent_top_matches = 5L,
+    best_agreeing_pident = 99, best_disagreeing_pident = 90,
+    congruent_evidence_exists_anywhere = TRUE,
+    congruent_evidence_best_pident = 99,
+    stringsAsFactors = FALSE
+  )
+  base <- score_reference_labels(ev)
+  for (nm in TaxaMatch:::.ADDITIVE_CACHE_COLUMNS) {
+    with_col <- ev
+    with_col[[nm]] <- NA
+    got <- score_reference_labels(with_col)
+    expect_equal(got$label_confidence, base$label_confidence, info = nm)
+    expect_equal(got$reference_action, base$reference_action, info = nm)
+  }
+})
+
+test_that("evaluate_reference_accessions() records the submitted length and which rescue produced it", {
+  submitted <- NULL
+  local_mocked_bindings(
+    .fetch_reference_accession_records = function(accessions, want_sequence = TRUE,
+                                                  ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = "ACC1", organism = "Testus testus",
+                 create_date = "2020/01/01", sequence = strrep("ACGT", 30L),
+                 stringsAsFactors = FALSE)
+    },
+    blast_sequences = function(seq_df, ...) {
+      submitted <<- seq_df$sequence
+      data.frame(observation_id = character(0), accession = character(0),
+                 score = numeric(0), stringsAsFactors = FALSE)
+    },
+    .resolve_taxonomy_by_acc = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = character(0), stringsAsFactors = FALSE)
+    },
+    .package = "TaxaMatch"
+  )
+  out <- evaluate_reference_accessions("ACC1", cache_dir = NULL, verbose = FALSE)
+  expect_equal(out$query_len_submitted, as.integer(nchar(submitted)))
+  # No barcode_term, so nothing shortened it.
+  expect_equal(out$query_trim_path, "as_deposited")
+})
+
+test_that(".compute_hierarchy_congruence() partitions excluded hits by the filter that removed them", {
+  ranks <- c("family", "genus", "species")
+  # Three hits for one query: one from its own submission batch, one
+  # independent but not resolved to species, one genuinely valid.
+  sm <- data.frame(
+    id_x = rep("Q1", 3L), id_y = c("BATCH1", "FUZZY1", "GOOD1"),
+    p_match = c(0.99, 0.98, 0.97),
+    family.x = "Fam", genus.x = "Gen", species.x = "Gen sp1",
+    family.y = "Fam", genus.y = "Gen",
+    species.y = c("Gen sp2", "Fam sp. XYZ-1", "Gen sp3"),
+    stringsAsFactors = FALSE
+  )
+  # Same prefix/number neighbourhood and date -> same submission batch.
+  ref <- data.frame(
+    composite_id = c("Q1", "BATCH1", "FUZZY1", "GOOD1"),
+    create_date = c("2020/01/01", "2020/01/01", "2015/06/01", "2011/03/01"),
+    stringsAsFactors = FALSE
+  )
+  ref$composite_id <- c("AB000100", "AB000101", "CD000500", "EF000900")
+  sm$id_x <- "AB000100"; sm$id_y <- c("AB000101", "CD000500", "EF000900")
+
+  out <- TaxaMatch:::.compute_hierarchy_congruence(sm, ref, rank_system = ranks)
+
+  expect_equal(out$n_top_matches_available, 3L)
+  expect_equal(out$n_excluded_same_batch, 1L)          # AB000101
+  expect_equal(out$n_excluded_not_species_resolved, 1L) # CD000500
+  expect_equal(out$n_independent_top_matches, 1L)       # EF000900 survives
+  # The partition holds: available - both exclusions == survivors.
+  expect_equal(
+    out$n_top_matches_available - out$n_excluded_same_batch -
+      out$n_excluded_not_species_resolved,
+    out$n_independent_top_matches
+  )
+})
+
+test_that("a zero-partner accession records WHICH filter took its hits", {
+  # The real question these columns exist for: "BLAST found nothing" and
+  # "BLAST found a full slate and every hit was the accession's own batch"
+  # both previously read n_independent_top_matches == 0 and nothing else.
+  ranks <- c("family", "genus", "species")
+  sm <- data.frame(
+    id_x = rep("AB000100", 2L), id_y = c("AB000101", "AB000102"),
+    p_match = c(0.99, 0.98),
+    family.x = "Fam", genus.x = "Gen", species.x = "Gen sp1",
+    family.y = "Fam", genus.y = "Gen", species.y = c("Gen sp2", "Gen sp3"),
+    stringsAsFactors = FALSE
+  )
+  ref <- data.frame(
+    composite_id = c("AB000100", "AB000101", "AB000102"),
+    create_date = rep("2020/01/01", 3L), stringsAsFactors = FALSE
+  )
+  out <- TaxaMatch:::.compute_hierarchy_congruence(sm, ref, rank_system = ranks)
+  expect_equal(out$n_independent_top_matches, 0L)
+  expect_equal(out$n_top_matches_available, 2L)
+  expect_equal(out$n_excluded_same_batch, 2L)
+  expect_equal(out$n_excluded_not_species_resolved, 0L)
+})

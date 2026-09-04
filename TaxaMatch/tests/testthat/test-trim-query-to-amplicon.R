@@ -79,14 +79,18 @@ test_that(".trim_queries_to_amplicon() trims only over-length sequences, leaves 
   interior <- substr(g$amplicon, nchar(.mf_fwd) + 1L, nchar(g$amplicon) - nchar(.mf_rev))
   out_default <- .trim_queries_to_amplicon(c(g$genome, short_seq, interior),
                                            barcode_term = "MiFishU", verbose = FALSE)
-  expect_equal(out_default, c(interior, interior, interior))
+  expect_equal(as.character(out_default), c(interior, interior, interior))
+  # Per-sequence trim record (2026-09-04): the genome and the inclusive input
+  # were both shortened; the already-interior one was not.
+  expect_equal(attr(out_default, "trimmed"), c(TRUE, TRUE, FALSE))
 })
 
 test_that(".trim_queries_to_amplicon() leaves an over-length sequence unchanged when primers can't be found", {
   skip_if_not_installed("Biostrings")
   no_primer_genome <- strrep("N", 500L)
   out <- .trim_queries_to_amplicon(no_primer_genome, barcode_term = "MiFishU", verbose = FALSE)
-  expect_equal(out, no_primer_genome)  # unchanged, not dropped or NA'd
+  expect_equal(as.character(out), no_primer_genome)  # unchanged, not dropped or NA'd
+  expect_false(attr(out, "trimmed"))
 })
 
 test_that("evaluate_reference_accessions(barcode_term =) trims an over-length query before BLASTing it", {

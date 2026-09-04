@@ -2,6 +2,7 @@
 # R CMD CHECK "no visible binding" note.
 utils::globalVariables(c(
   "id_x", "id_y", "p_match", "is_independent", "is_sufficient_coverage",
+  "is_species_resolved_y",
   "is_valid_partner", "below_min_congruent", "n_independent_top_matches",
   "n_top_matches_available", "frac_independent_below_min_congruent_rank",
   "finest_common_rank", "k_disagree",
@@ -107,6 +108,43 @@ utils::globalVariables(c(
 #' `rbind(cache, new_rows[, names(cache)])` would error on the absent column.
 #' `NA`-fills, then orders to the cache's own columns.
 #' @noRd
+#' Cache columns that may be NA-filled rather than forcing a full discard
+#'
+#' `.load_reference_accession_cache()` discards an entire cache file whose
+#' columns do not match this version's schema, because serving a row that is
+#' missing a column some consumer reads is worse than re-BLASTing it. That is
+#' the right default and stays the default -- but it makes EVERY additive
+#' column cost a full re-evaluation of every cached row (~3,000 across the
+#' real PtConception and GreatLakes caches), which is the same price this
+#' package refuses to pay for a `params_key` change. The effect was that a
+#' purely diagnostic column could not be added at all.
+#'
+#' A column may be listed here ONLY if `NA` is a safe reading of it for a row
+#' computed before it existed -- meaning nothing anywhere turns that `NA`
+#' into a different DECISION than the row would otherwise get. That is a
+#' strict test, and most columns fail it: `congruent_evidence_exists_anywhere`
+#' would be catastrophic (`!(NA %in% TRUE)` is `TRUE`, so an NA-filled row
+#' becomes MORE removable), and `n_independent_top_matches` now drives the
+#' zero-partner rule in `score_reference_labels()`. Provenance and pure
+#' diagnostics pass; anything a verdict, an action, a veto or a TTL consults
+#' does not.
+#'
+#' Adding a column here is therefore a deliberate claim, in the same spirit as
+#' deciding whether a new parameter belongs in `params_key`.
+#' @noRd
+.ADDITIVE_CACHE_COLUMNS <- c(
+  "taxonomy_resolution_source",  # provenance of the query-side lineage
+  "migrated_from",               # provenance of a migrated row
+  "query_len_submitted",         # diagnostic: bp actually sent to BLAST
+  "query_trim_path",             # diagnostic: which rescue produced it
+  "n_excluded_same_batch",       # diagnostic: hits lost to the independence filter
+  "n_excluded_not_species_resolved"  # diagnostic: hits lost to the species-resolution filter
+)
+
+#' Typed NA vector matching a prototype column
+#' @noRd
+.na_like <- function(proto, n) proto[rep(NA_integer_, n)]
+
 .align_to_cache_columns <- function(rows, cache) {
   for (nm in setdiff(names(cache), names(rows))) rows[[nm]] <- rep(NA, nrow(rows))
   rows[, names(cache), drop = FALSE]
@@ -319,6 +357,29 @@ utils::globalVariables(c(
   n_available <- sm |>
     dplyr::count(id_x, name = "n_top_matches_available")
 
+  # WHY a hit did not become a voting partner (2026-09-04). Every one of
+  # these numbers was already implicit in `sm` and then discarded, so a
+  # zero-partner accession gave no way to tell "BLAST found nothing" from
+  # "BLAST found twenty hits and every one was the accession's own
+  # submission batch" -- a distinction that has to be re-derived by hand
+  # every time the question comes up, and that changes what to do about it.
+  # Real motivating case: GreatLakes Plate1's zero-partner population is 24
+  # of 27 insufficient rows and is dominated by Phoxinus and Etheostoma, a
+  # shape completely unlike PtConception's, and nothing in the cached output
+  # said which filter was responsible.
+  #
+  # The two counts PARTITION the excluded hits rather than overlapping: the
+  # species-resolution count is conditional on having passed independence,
+  # so `available - same_batch - not_species_resolved` is the number that
+  # survived both (before the coverage filter, which is off by default).
+  n_excluded <- sm |>
+    dplyr::group_by(id_x) |>
+    dplyr::summarise(
+      n_excluded_same_batch = sum(!is_independent),
+      n_excluded_not_species_resolved = sum(is_independent & !is_species_resolved_y),
+      .groups = "drop"
+    )
+
   # Rank-agreement walk over the FULL independence/coverage-filtered pool,
   # BEFORE truncating to top_n -- deliberately, not the same step as before.
   # This is what makes `congruent_evidence_exists_anywhere` a genuinely
@@ -398,6 +459,7 @@ utils::globalVariables(c(
   out <- data.frame(id_x = all_ids, stringsAsFactors = FALSE) |>
     dplyr::left_join(agg, by = "id_x") |>
     dplyr::left_join(n_available, by = "id_x") |>
+    dplyr::left_join(n_excluded, by = "id_x") |>
     dplyr::left_join(anywhere, by = "id_x")
 
   out$n_independent_top_matches <- ifelse(
@@ -405,6 +467,12 @@ utils::globalVariables(c(
   )
   out$n_top_matches_available <- ifelse(
     is.na(out$n_top_matches_available), 0L, out$n_top_matches_available
+  )
+  out$n_excluded_same_batch <- ifelse(
+    is.na(out$n_excluded_same_batch), 0L, out$n_excluded_same_batch
+  )
+  out$n_excluded_not_species_resolved <- ifelse(
+    is.na(out$n_excluded_not_species_resolved), 0L, out$n_excluded_not_species_resolved
   )
   out$frac_independent_below_min_congruent_rank <- ifelse(
     is.na(out$frac_independent_below_min_congruent_rank),
@@ -576,6 +644,9 @@ utils::globalVariables(c(
     hierarchy_flag = character(0L),
     evaluated_at = as.POSIXct(character(0L)), params_key = character(0L),
     taxonomy_resolution_source = character(0L),
+    query_len_submitted = integer(0L), query_trim_path = character(0L),
+    n_excluded_same_batch = integer(0L),
+    n_excluded_not_species_resolved = integer(0L),
     stringsAsFactors = FALSE
   )
   if (is.null(cache_dir)) return(empty)
@@ -595,13 +666,31 @@ utils::globalVariables(c(
   # starting fresh is the correct, safe response to a schema mismatch --
   # symmetric with how a params_key mismatch already discards individual
   # rows -- not a partial/patched read.
+  #
+  # UPDATED 2026-09-04: a column listed in .ADDITIVE_CACHE_COLUMNS is
+  # NA-filled instead, because for those columns NA is the honest reading of
+  # "this row was computed before we recorded that" and nothing turns it into
+  # a different decision. Discarding for those was costing a full re-BLAST of
+  # every cached row to add a diagnostic -- the same price this package
+  # refuses to pay for a params_key change. Any OTHER missing column still
+  # discards the whole file, unchanged: that is the case where serving the
+  # row could silently change a verdict.
   missing_cols <- setdiff(names(empty), names(cached))
-  if (length(missing_cols) > 0L) {
+  hard_missing <- setdiff(missing_cols, .ADDITIVE_CACHE_COLUMNS)
+  if (length(hard_missing) > 0L) {
     warning(sprintf(
       "evaluate_reference_accessions(): cache at %s predates this package version (missing column(s): %s) -- starting a fresh cache. Every previously-cached verdict will be recomputed once.",
-      path, paste(missing_cols, collapse = ", ")
+      path, paste(hard_missing, collapse = ", ")
     ), call. = FALSE)
     return(empty)
+  }
+  soft_missing <- intersect(missing_cols, .ADDITIVE_CACHE_COLUMNS)
+  if (length(soft_missing) > 0L) {
+    for (nm in soft_missing) cached[[nm]] <- .na_like(empty[[nm]], nrow(cached))
+    message(sprintf(
+      "evaluate_reference_accessions(): cache at %s predates %d additive diagnostic column(s) (%s) -- filled with NA. No verdict is affected and nothing is re-BLASTed; the column(s) populate as accessions are re-evaluated.",
+      path, length(soft_missing), paste(soft_missing, collapse = ", ")
+    ))
   }
   cached
 }
@@ -738,12 +827,19 @@ utils::globalVariables(c(
   # up front so mechanism 2 can read it unconditionally, including on the
   # barcode_term = NULL path where no fallback runs at all.
   query_meta$fallback_decline <- rep(NA_character_, nrow(query_meta))
+  # Which rescue, if any, produced the sequence that will be submitted.
+  # "as_deposited" until something shortens it.
+  query_meta$trim_path <- rep("as_deposited", nrow(query_meta))
 
   if (!is.null(barcode_term) && nrow(query_meta) > 0L) {
-    query_meta$sequence <- .trim_queries_to_amplicon(
+    trimmed <- .trim_queries_to_amplicon(
       query_meta$sequence, barcode_term = barcode_term,
       strip_primers = strip_primers, verbose = verbose
     )
+    was_trimmed <- attr(trimmed, "trimmed")
+    if (!is.null(was_trimmed))
+      query_meta$trim_path[was_trimmed %in% TRUE] <- "primer_match"
+    query_meta$sequence <- as.character(trimmed)
 
     # ---- Mechanism 1: feature-table-guided extraction fallback for a query
     # STILL over the marker's own length window after primer trimming
@@ -778,7 +874,10 @@ utils::globalVariables(c(
         # character vector into a data-frame column drops its attributes, and
         # this is the only place the annotation evidence exists. Mechanism 2
         # reads it to tell a wrong-marker record apart from a merely long one.
-        query_meta$fallback_decline[still_over] <- attr(rescued, "decline_reason")
+        decline <- attr(rescued, "decline_reason")
+        query_meta$fallback_decline[still_over] <- decline
+        # A rescued row is one the fallback recorded no decline reason for.
+        query_meta$trim_path[which(still_over)[is.na(decline)]] <- "feature_table"
         query_meta$sequence[still_over] <- as.character(rescued)
       }
     }
@@ -833,6 +932,10 @@ utils::globalVariables(c(
         cache_hit = FALSE,
         params_key = params_key,
         taxonomy_resolution_source = NA_character_,
+        query_len_submitted = NA_integer_,   # never submitted
+        query_trim_path = oversized_meta$trim_path,
+        n_excluded_same_batch = NA_integer_,
+        n_excluded_not_species_resolved = NA_integer_,
         stringsAsFactors = FALSE
       )
       if (verbose) {
@@ -1045,6 +1148,7 @@ utils::globalVariables(c(
       congruence <- data.frame(
         id_x = character(0L), finest_common_rank = character(0L),
         n_independent_top_matches = integer(0L), n_top_matches_available = integer(0L),
+        n_excluded_same_batch = integer(0L), n_excluded_not_species_resolved = integer(0L),
         frac_independent_below_min_congruent_rank = numeric(0L),
         best_hit_pident = numeric(0L), best_agreeing_pident = numeric(0L),
         best_disagreeing_pident = numeric(0L), best_disagreeing_taxon = character(0L),
@@ -1116,6 +1220,16 @@ utils::globalVariables(c(
         params_key = params_key,
         taxonomy_resolution_source =
           query_meta$taxonomy_resolution_source[match(congruence$id_x, query_meta$accession)],
+        # Audit trail (2026-09-04): what was actually submitted, and which
+        # rescue produced it. Both are additive diagnostics -- see
+        # .ADDITIVE_CACHE_COLUMNS.
+        query_len_submitted =
+          as.integer(nchar(query_meta$sequence[match(congruence$id_x, query_meta$accession)])),
+        query_trim_path =
+          query_meta$trim_path[match(congruence$id_x, query_meta$accession)],
+        n_excluded_same_batch = as.integer(congruence$n_excluded_same_batch),
+        n_excluded_not_species_resolved =
+          as.integer(congruence$n_excluded_not_species_resolved),
         stringsAsFactors = FALSE
       )
     }
@@ -2034,6 +2148,10 @@ evaluate_reference_accessions <- function(accessions,
         cache_hit = FALSE,
         params_key = params_key,
         taxonomy_resolution_source = NA_character_,
+        query_len_submitted = NA_integer_,
+        query_trim_path = NA_character_,   # never fetched, so never trimmed
+        n_excluded_same_batch = NA_integer_,
+        n_excluded_not_species_resolved = NA_integer_,
         stringsAsFactors = FALSE
       )
       needs_eval <- needs_eval[!is_skip]
@@ -2062,7 +2180,8 @@ evaluate_reference_accessions <- function(accessions,
                "best_disagreeing_pident", "best_disagreeing_taxon",
                "congruent_evidence_exists_anywhere",
                "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
-               "taxonomy_resolution_source")
+               "taxonomy_resolution_source", "query_len_submitted", "query_trim_path",
+               "n_excluded_same_batch", "n_excluded_not_species_resolved")
 
   # No early return for a purely cache-served call (removed 2026-09-03): the
   # general path below handles an empty needs_eval (the chunk loop simply
@@ -2185,6 +2304,8 @@ evaluate_reference_accessions <- function(accessions,
       hierarchy_flag = NA_character_,
       evaluated_at = as.POSIXct(NA), cache_hit = FALSE,
       taxonomy_resolution_source = NA_character_,
+      query_len_submitted = NA_integer_, query_trim_path = NA_character_,
+      n_excluded_same_batch = NA_integer_, n_excluded_not_species_resolved = NA_integer_,
       stringsAsFactors = FALSE
     )
   } else {
