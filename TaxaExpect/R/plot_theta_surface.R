@@ -60,6 +60,18 @@
 #' says so -- the returned object and plot never imply the map shows a
 #' depth-conditioned field when it does not.
 #'
+#' Whichever of the three states applies -- the fit has no covariate, it has
+#' one that this map OMITS, or it has one held at a stated value -- is written
+#' onto the rendered map itself (a subtitle on the static plot, a caption on
+#' the interactive one) alongside the habitat stratum, and printed by
+#' `print()`. The conditions therefore travel with a screenshot. They are
+#' shown as three visually distinct states on purpose: a fit that has a
+#' covariate but is drawn without it says so affirmatively, because rendering
+#' that case as silence would read as \"this model has no covariate\", which
+#' is a different and false claim. To see a different habitat or a different
+#' covariate value, re-fit: both are choices made in
+#' [estimate_kernel_priors()], not view settings on an existing fit.
+#'
 #' The optional latitude factor
 #' `exp(-111 * ||lat_r| - |lat_x|| / lambda_latitude)` is folded into the
 #' SAME lattice kernel using signed `lat_x - lat_r` (translation-invariant,
@@ -80,6 +92,13 @@
 #' perform). A message is emitted when this condition is detected. It never
 #' affects the site-identity invariant for a site that (like every current
 #' deployment) sits comfortably outside the equatorial band.
+#'
+#' A `kernel_fit` built with `sampling_group_col` is REFUSED with an error.
+#' That argument makes [estimate_kernel_priors()] compute `n_eff` and the
+#' regional back-off separately within each sampling group; this function has
+#' no equivalent split and would silently draw the pooled, ungrouped field.
+#' Map one group at a time by fitting it on its own record subset (the shape
+#' the 18S workflow already uses) rather than passing a grouped fit here.
 #'
 #' @section Relationship to plot_theta_map_interactive():
 #' [plot_theta_map_interactive()] parses `Grid_<lat>_<lon>` identifiers out
@@ -216,6 +235,20 @@ plot_theta_surface <- function(kernel_fit,
   n_grid <- as.integer(round(n_grid))
 
   p <- kernel_fit$params
+  # estimate_kernel_priors() gained sampling_group_col on 2026-09-03: it splits
+  # the stratum and computes n_eff and the regional back-off WITHIN each group.
+  # This function has no such split -- it would pool every group and draw the
+  # ungrouped field while still claiming, via the fit it was handed, to depict
+  # that fit. That is a silent failure of the site-identity invariant, so it is
+  # refused rather than approximated. The 18S workflow shows the supported
+  # shape: fit each group on its own record subset, then map that fit.
+  if (!is.null(p$sampling_group_col))
+    stop("plot_theta_surface: 'kernel_fit' was built with sampling_group_col = '",
+         p$sampling_group_col, "', whose per-group n_eff and regional composition ",
+         "this function does not reproduce -- the surface would show the POOLED ",
+         "ungrouped field. Map one group at a time instead, by re-fitting on that ",
+         "group's records: estimate_kernel_priors(subset(occurrence_data, ",
+         p$sampling_group_col, " == g), ...).")
   m_use <- if (is.null(m)) p$m else m
   if (!is.numeric(m_use) || length(m_use) != 1L || is.na(m_use) || m_use < 0)
     stop("plot_theta_surface: 'm' must be a single non-NA numeric >= 0.")
@@ -265,6 +298,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     length(s$lat_grid), length(s$lon_grid), paste(taxa, collapse = ", "),
     min(s$lat_grid), max(s$lat_grid), min(s$lon_grid), max(s$lon_grid),
     s$params$lambda_km, s$params$m))
+  cat(sprintf("  %s\n", .theta_surface_condition_label(s$params)))
   # Show the map. A function named plot_*() that prints only a text summary
   # is a trap: at the console the summary looks like success while nothing is
   # drawn, so a STALE object from an earlier call keeps displaying (exactly
@@ -382,6 +416,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     theta = theta_list, n_eff = n_eff_mat, W = W_mat,
     regional_composition = p_i,
     params = list(site_lat = site_lat, site_lon = site_lon, site_habitat = site_habitat,
+                  habitat_col = habitat_col,
                   lambda_km = lambda_km, m = m, covariate_col = covariate_col,
                   covariate_at = covariate_at, lambda_covariate = lambda_covariate,
                   lambda_latitude = lambda_latitude, taxon = taxon, n_grid = n_grid,
@@ -499,6 +534,40 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 # Plotting
 # ==============================================================================
 
+#' One-line statement of the CONDITIONS the surface is drawn under
+#'
+#' The map is a habitat-stratified, optionally covariate-conditioned field.
+#' Both are analyst choices rather than properties of the geography, and
+#' neither is recoverable from the picture -- so both are rendered onto the
+#' plot itself, not merely messaged at construction. A console message is gone
+#' the moment the object is re-printed or the map is screenshotted into a talk;
+#' that is the same lesson as the stale-map trap fixed in
+#' print.taxaexpect_theta_surface() (2026-09-01 click-through).
+#'
+#' The three states are deliberately DISTINCT, because the middle one is the
+#' trap: a fit that HAS a covariate but is drawn without it must say so
+#' affirmatively. Rendering that case as absence would read exactly like "this
+#' model has no covariate" -- a different, and false, claim.
+#'
+#' lambda_km and m are deliberately EXCLUDED. They set how smooth the surface
+#' is, not what it is a surface OF, and no reader retunes them from the map;
+#' they stay in print.taxaexpect_theta_surface() where there is room for them.
+#' @noRd
+.theta_surface_condition_label <- function(params) {
+  hab_col <- if (is.null(params$habitat_col)) "habitat" else params$habitat_col
+  parts <- sprintf("%s: %s", hab_col, params$site_habitat)
+  if (!is.null(params$covariate_col)) {
+    parts <- c(parts, if (is.null(params$covariate_at)) {
+      sprintf("%s: OMITTED (not a %s-conditioned field)",
+              params$covariate_col, params$covariate_col)
+    } else {
+      sprintf("%s = %s (held constant)", params$covariate_col,
+              format(params$covariate_at, trim = TRUE))
+    })
+  }
+  paste(parts, collapse = "   |   ")
+}
+
 #' Static base-graphics rendering
 #' @noRd
 .theta_surface_plot_static <- function(surf, site_lat, site_lon, alpha_by_n_eff, n_eff_floor, ...) {
@@ -519,6 +588,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     graphics::points(site_lon, site_lat, pch = 4, lwd = 2, col = "black")
     graphics::axis(1); graphics::axis(2); graphics::box()
     graphics::title(main = if (is.list(surf$theta)) nm else "theta", xlab = "lon", ylab = "lat", ...)
+    graphics::mtext(.theta_surface_condition_label(surf$params), side = 3,
+                    line = 0.25, cex = 0.7, col = "grey25")
   }
   invisible(NULL)
 }
@@ -649,6 +720,17 @@ print.taxaexpect_theta_surface <- function(x, ...) {
       map <- htmlwidgets::onRender(map, js)
     }
   }
+
+  # The layers control names the TAXON; nothing else on the widget says which
+  # habitat stratum or covariate slice is being shown, and a screenshot of the
+  # map carries no console message with it. bottomleft keeps clear of the
+  # layers control (topright) and the legend (bottomright).
+  map <- leaflet::addControl(
+    map,
+    html = sprintf(
+      "<div style='background:rgba(255,255,255,0.85);padding:3px 6px;border-radius:3px;font:11px/1.4 sans-serif;color:#333'>%s</div>",
+      htmltools::htmlEscape(.theta_surface_condition_label(surf$params))),
+    position = "bottomleft")
   map
 }
 
