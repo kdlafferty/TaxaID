@@ -214,3 +214,97 @@ test_that("output preserves row count and adds exactly the documented columns", 
   expect_equal(nrow(out), nrow(local))
   expect_true(all(c("local_n", "global_n_unique", "outlier_status") %in% names(out)))
 })
+
+# ==============================================================================
+# candidate scoping + verdict caching (2026-09-05). A family-derived occurrence
+# pool is ~20x wider than its species-level candidates; checking all of it earned
+# a GBIF rate-limit block at ~360 keys on real PtConception 18S data.
+# ==============================================================================
+
+.cgo_local <- function() {
+  # 3 locally-rare species (1 record each) + 1 common one (6 records)
+  data.frame(
+    gbifID = as.character(1:9),
+    species = c("Cand alpha", "Cong beta", "Other gamma", rep("Common sp", 6)),
+    speciesKey = c(101L, 102L, 103L, rep(104L, 6)),
+    decimalLatitude = 34 + seq_len(9) / 100,
+    decimalLongitude = -120 + seq_len(9) / 100,
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("candidate_scope='species' checks only exact candidates", {
+  seen <- new.env(); seen$keys <- NULL
+  local_mocked_bindings(
+    get_gbif_occurrences = function(keys, ...) { seen$keys <- keys
+      data.frame(gbifID = character(0), species = character(0),
+                 decimalLatitude = numeric(0), decimalLongitude = numeric(0),
+                 stringsAsFactors = FALSE) })
+  suppressMessages(check_geographic_outliers(
+    .cgo_local(), min_local_n = 5L, cache_dir = NULL,
+    candidate_taxa = "Cand alpha", candidate_scope = "species"))
+  expect_equal(seen$keys, 101L)          # Cong/Other excluded
+})
+
+test_that("candidate_scope='genus' also keeps congeners of a candidate", {
+  seen <- new.env(); seen$keys <- NULL
+  local_mocked_bindings(
+    get_gbif_occurrences = function(keys, ...) { seen$keys <- keys
+      data.frame(gbifID = character(0), species = character(0),
+                 decimalLatitude = numeric(0), decimalLongitude = numeric(0),
+                 stringsAsFactors = FALSE) })
+  suppressMessages(check_geographic_outliers(
+    .cgo_local(), min_local_n = 5L, cache_dir = NULL,
+    candidate_taxa = c("Cand alpha", "Cong delta"), candidate_scope = "genus"))
+  expect_setequal(seen$keys, c(101L, 102L))   # Cong beta joins via its genus
+})
+
+test_that("candidate_taxa = NULL preserves the original full sweep", {
+  seen <- new.env(); seen$keys <- NULL
+  local_mocked_bindings(
+    get_gbif_occurrences = function(keys, ...) { seen$keys <- keys
+      data.frame(gbifID = character(0), species = character(0),
+                 decimalLatitude = numeric(0), decimalLongitude = numeric(0),
+                 stringsAsFactors = FALSE) })
+  suppressMessages(check_geographic_outliers(
+    .cgo_local(), min_local_n = 5L, cache_dir = NULL))
+  expect_setequal(seen$keys, c(101L, 102L, 103L))
+})
+
+test_that("no assignable rare species short-circuits without any GBIF call", {
+  called <- new.env(); called$fetched <- FALSE
+  local_mocked_bindings(
+    get_gbif_occurrences = function(...) { called$fetched <- TRUE
+      data.frame(gbifID = character(0)) })
+  out <- suppressMessages(check_geographic_outliers(
+    .cgo_local(), min_local_n = 5L, cache_dir = NULL,
+    candidate_taxa = "Nothing here", candidate_scope = "species"))
+  expect_false(called$fetched)
+  expect_equal(nrow(out), 9L)
+})
+
+test_that("verdicts are cached, and the second call makes no GBIF request", {
+  cd <- file.path(tempdir(), paste0("cgo_", as.integer(runif(1, 1, 1e9))))
+  dir.create(cd, recursive = TRUE)
+  glob <- data.frame(
+    gbifID = as.character(1:3),
+    species = c("Cand alpha", "Cand alpha", "Cand alpha"),
+    decimalLatitude = c(34.01, 34.02, 60.0),
+    decimalLongitude = c(-120.01, -120.02, 10.0),
+    stringsAsFactors = FALSE)
+  n_calls <- new.env(); n_calls$n <- 0L
+  local_mocked_bindings(
+    get_gbif_occurrences = function(...) { n_calls$n <- n_calls$n + 1L; glob })
+  args <- list(.cgo_local(), min_local_n = 5L, cache_dir = cd,
+               candidate_taxa = "Cand alpha", candidate_scope = "species",
+               min_occs = 1L)
+  suppressMessages(do.call(check_geographic_outliers, args))
+  expect_equal(n_calls$n, 1L)
+  v <- list.files(cd, pattern = "outlier_verdicts", full.names = TRUE)
+  expect_length(v, 1L)
+  # the durable artifact is tiny and holds only the two needed values
+  expect_setequal(names(readRDS(v)), c("gbifID", "global_n_unique", "cc_pass"))
+  expect_lt(file.info(v)$size, 5000)
+  suppressMessages(do.call(check_geographic_outliers, args))
+  expect_equal(n_calls$n, 1L)            # served from the verdict cache
+})

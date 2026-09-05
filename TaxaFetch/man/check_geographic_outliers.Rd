@@ -13,6 +13,9 @@ check_geographic_outliers(
   mltpl = 5,
   year_range = .gbif_default_year_range(),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
+  candidate_taxa = NULL,
+  candidate_scope = c("genus", "species", "all"),
+  verdict_cache = TRUE,
   verbose = FALSE
 )
 }
@@ -62,6 +65,37 @@ a species' real range.}
 \item{cache_dir}{Character or \code{NULL}. Forwarded to
 \code{\link{fetch_gbif_occurrences}} for checkpointing the global
 fetch. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.}
+
+\item{candidate_taxa}{Optional character vector of taxa that can actually be
+ASSIGNED -- typically the species-level match candidates (e.g.
+\code{unique(match_obj$taxon_name)}). \code{NULL} (default) preserves the
+pre-2026-09-05 behaviour of checking every locally-rare species in the
+pool. Supplying it is strongly recommended for a family-derived occurrence
+pool: at real PtConception 18S only 387 of 7,392 pool species (5.2\%) were
+match candidates, so 95\% of the per-species GBIF requests protected against
+a harm those species cannot cause. A species with 1-4 local records has a
+theta far below \code{TaxaAssign::join_priors()}'s
+\code{expansion_min_prior}, so it can never be expanded into a hypothesis;
+its only residual effect is +1 to the Good-Turing \code{f1}. A locally-rare
+MATCH CANDIDATE is the opposite: its prior multiplies its likelihood
+directly, which is the misidentified-record failure this check exists for.}
+
+\item{candidate_scope}{How \code{candidate_taxa} restricts the check.
+\code{"genus"} (default) keeps any locally-rare species sharing a genus
+with a candidate -- congeners matter because
+\code{TaxaLikely::restore_suppressed_candidates()} and
+\code{expand_unreferenced_hypotheses()} can promote one into a named
+hypothesis. \code{"species"} keeps only exact candidates (tightest).
+\code{"all"} ignores \code{candidate_taxa} entirely. Family scoping is
+deliberately not offered: an occurrence pool fetched from family keys
+already contains only candidate families, so it would restrict nothing.}
+
+\item{verdict_cache}{Logical, default \code{TRUE}. Cache the per-record
+VERDICTS rather than the global occurrence cloud. The cloud is reduced to
+one integer per species and one logical per local record and then
+discarded, so caching it stores millions of records to preserve a few
+thousand numbers. The verdict file is keyed on the species set and the
+\code{cc_outl()} parameters, so changing either recomputes.}
 
 \item{verbose}{Logical. Forwarded to \code{cc_outl()}. Default
 \code{FALSE}.}

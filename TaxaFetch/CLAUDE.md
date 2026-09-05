@@ -1,4 +1,59 @@
 # CLAUDE.md -- TaxaFetch
+# Last updated: 2026-09-05 (Opus 5 -- GBIF fetch: integrity, non-blocking communication,
+# candidate scoping, and zip retention. Four separate real failures from one overnight
+# PtConception 18S run, in the order they bit:
+#
+# (1) TRUNCATED DOWNLOAD CACHED AS COMPLETE. 127,733,417 of GBIF's declared 130,577,434
+# bytes; a zip's central directory is at the END, so the file still passed file.exists()
+# and even `file`'s magic-byte check, then failed in unzip() on EVERY re-run -- a
+# self-perpetuating poisoned cache with no hint the cache was at fault. NEW
+# .gbif_zip_intact()/.gbif_declared_size(): verify-before-cache with one retry, metadata
+# written ONLY after verification, verify-on-cache-hit with a self-healing re-fetch of the
+# same prepared key. .read_gbif_zip() also promotes unzip's extraction WARNING to an error
+# (a corrupt payload otherwise yields a silently SHORT occurrence table). The cache-size
+# report is wrapped: a cosmetic step must never discard 1.7M imported rows, which it did.
+#
+# (2) menu() ATE THE ENTIRE WORKFLOW. utils::menu() reads stdin, and RStudio queues the
+# rest of a sourced script as console input -- so the prompt consumed ~600 script lines as
+# answers, re-prompting on each and SILENTLY SWALLOWING them so they never ran. The GBIF
+# download had succeeded; everything after it just did not happen. interactive() is TRUE
+# whether a human is typing or the editor is pumping lines, so it cannot gate this. NEW
+# allow_prompts = FALSE (default): nothing blocks; every decision is REPORTED with the
+# command to act on it. This package already documented the same hazard for readline() in
+# TaxaMatch::group_observations_by_bbox(), whose advice ("run this call on its own") is
+# unavailable to a function called mid-workflow. NEVER add a blocking prompt here.
+#
+# (3) OUTLIER CHECK SWEPT A FAMILY-DERIVED POOL. check_geographic_outliers() fetched global
+# GBIF data for EVERY locally-rare species, one HTTP request per key, and earned an outright
+# rate-limit block at ~360/829 ("Too many requests! ... please use occ_download()"). Only
+# 387 of 7,392 pool species (5.2%) are match candidates and only 613 of 3,133 genera contain
+# one -- 95% of the requests protected against a harm those species cannot cause, since a
+# species with 1-4 local records sits far below join_priors()'s expansion_min_prior and can
+# never become a hypothesis. NEW candidate_taxa/candidate_scope ("genus" default keeps
+# congeners, which restore_suppressed_candidates()/expand_unreferenced_hypotheses() CAN
+# promote; "all" restores the old sweep). Real reduction: 2,683 -> 591. Also routed through
+# get_gbif_occurrences() for the backend switch, and NEW verdict caching -- the global cloud
+# collapses to one integer per species plus one logical per local record, so caching the raw
+# cloud stored millions of records to preserve a few thousand numbers. NOTE rank_filter is
+# passed as NULL, NOT the wrapper's "species" default: that would have changed which records
+# qualify while only the BACKEND was meant to change (caught by pre-existing tests).
+#
+# (4) THE ZIPS ARE THE CACHE. 38 zips = 17.0 GB; every .rds checkpoint together = 52 MB. A
+# zip is pure redundancy once imported. NEW keep_zip (delete after a SUCCESSFUL import,
+# metadata KEPT so the download key stays re-fetchable with no new request) and NEW
+# taxafetch_clear_cache(zips_only = TRUE) for existing accumulation -- unlike orphans_only
+# (which finds zero here) it includes zips current metadata still points at, which are
+# exactly the 2 GB ones. Defaults unchanged: keep_zip = TRUE.
+#
+# DELIBERATELY NOT BUILT: a GBIF density-tile pre-screen. The tiles are alpha-channel
+# presence/absence only ("not a decoded density value"), cc_outl() needs real coordinates,
+# and a pre-screen's job is to SKIP the real test -- an unvalidated skip risks false
+# negatives on exactly the misidentifications this check exists to catch. Candidate scoping
+# already removed the bottleneck.
+#
+# devtools::test() 737 pass / 2 fail (both pre-existing filter_gbif_quality/
+# CoordinateCleaner environment failures, unrelated).
+#
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
 # Last updated: 2026-09-04 (Sonnet 5, branch cache-management -- the user reported
 # ~/Library/Caches/org.R-project.R/R/TaxaFetch at 23GB (89 files) and asked for an

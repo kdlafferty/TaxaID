@@ -181,3 +181,30 @@ test_that("orphans_only reports nothing to remove when every zip is current", {
   expect_equal(nrow(out), 0L)
   expect_true(file.exists(z))
 })
+
+test_that("zips_only targets the zips and leaves metadata and checkpoints alone", {
+  cd <- file.path(tempdir(), paste0("zonly_", as.integer(runif(1, 1, 1e9))))
+  dir.create(cd, recursive = TRUE)
+  z1 <- file.path(cd, "0000001-000000000000000.zip"); writeBin(raw(2048), z1)
+  z2 <- file.path(cd, "0000002-000000000000000.zip"); writeBin(raw(2048), z2)
+  m1 <- file.path(cd, "gbif_dl_1k_s1_g7_20002024_meta.rds")
+  saveRDS(list(dl_key = "0000001-000000000000000", zip_path = z1,
+               timestamp = Sys.time()), m1)
+  ck <- file.path(cd, "gbif_fetch_1k_s1_g7_20002024_l10000.rds")
+  saveRDS(data.frame(a = 1), ck)
+
+  res <- taxafetch_clear_cache(cache_dir = cd, zips_only = TRUE, dry_run = TRUE)
+  expect_true(all(grepl("\\.zip$", basename(res$path))))
+  expect_equal(nrow(res), 2L)         # BOTH zips, incl. the referenced one
+
+  taxafetch_clear_cache(cache_dir = cd, zips_only = TRUE)
+  expect_false(file.exists(z1)); expect_false(file.exists(z2))
+  expect_true(file.exists(m1))        # key stays recoverable
+  expect_true(file.exists(ck))        # checkpoints untouched
+})
+
+test_that("zips_only and orphans_only cannot be combined", {
+  expect_error(
+    taxafetch_clear_cache(cache_dir = tempdir(), zips_only = TRUE, orphans_only = TRUE),
+    "not both")
+})

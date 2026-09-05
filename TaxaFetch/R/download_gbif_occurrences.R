@@ -49,6 +49,59 @@ utils::globalVariables("taxonKey")
 #'   proceeds straight to a fresh download. Either way, the old cached zip is
 #'   removed once the new one is saved -- it is never silently orphaned on
 #'   disk.
+#' @param prompt_mb Numeric. In an INTERACTIVE session, a prepared download at
+#'   least this many MB triggers a summary (size, record count, whether a zip
+#'   for this exact query is already cached, what the cache holds now and will
+#'   hold afterwards) and a choice: use the cache, download and replace it, or
+#'   abort to narrow the query first. Smaller downloads proceed silently, and a
+#'   NON-interactive session never blocks -- it reports the same facts and
+#'   continues. Default \code{50}; \code{Inf} disables the prompt entirely.
+#'   The summary is placed before any bytes are transferred, because GBIF
+#'   reports a prepared download's size and record count at that point, which
+#'   is the only moment the information can still change the decision.
+#' @param cache_prompt_mb Numeric. After a run, if the cache directory exceeds
+#'   this many MB, an interactive session is offered a choice to free space
+#'   (leave it; remove OTHER downloads but keep this query's zip; remove
+#'   everything). A non-interactive session only reports. Default \code{5120}
+#'   (5 GB); \code{Inf} disables the prompt while keeping the size report.
+#' @param keep_zip Logical, default \code{TRUE}. Whether to retain the
+#'   downloaded zip in \code{cache_dir} after a successful import. The zip is
+#'   pure redundancy once imported -- its only value is avoiding a re-download
+#'   -- and it is by far the largest thing this package writes: on one real
+#'   machine 38 zips accounted for 17 GB of a 17.05 GB cache, while every
+#'   \code{.rds} checkpoint together came to 52 MB. With \code{FALSE} the zip
+#'   is deleted after import and the small metadata file is KEPT, so a later
+#'   identical call re-fetches the SAME prepared GBIF key -- no new request, no
+#'   queue wait, just the transfer. Set \code{FALSE} when the caller persists
+#'   the imported data itself (every workflow in this ecosystem saves a
+#'   \code{_raw_gbif.rds} checkpoint, which makes the zip doubly redundant).
+#'
+#' @section Why nothing here blocks by default:
+#' On 2026-09-05 a \code{utils::menu()} in this function consumed the ENTIRE
+#' remainder of a sourced workflow script as its answers -- roughly 600 lines,
+#' each rejected as an invalid selection, each therefore never executed. The
+#' GBIF download itself had succeeded; everything after it silently did not
+#' run. RStudio queues the rest of a script as pending console input, and
+#' \code{menu()}/\code{readline()} read exactly that queue, so
+#' \code{interactive()} being \code{TRUE} says nothing about whether a human is
+#' waiting to type. This package already documented the same hazard for
+#' \code{readline()} in \code{TaxaMatch::group_observations_by_bbox()}, whose
+#' advice ("run this call on its own") is unavailable to a function called
+#' mid-workflow. Every decision here is therefore REPORTED, with the command to
+#' act on it, unless \code{allow_prompts = TRUE} is passed deliberately.
+#'
+#' @param allow_prompts Logical, default \code{FALSE}. Whether this function may
+#'   BLOCK on an interactive \code{utils::menu()}. Off by default because a
+#'   blocking prompt inside a function that is called from a script is unsafe:
+#'   when RStudio runs or sources a script it queues the remaining lines as
+#'   console input, and \code{menu()} consumes those lines as answers --
+#'   re-prompting on each one, and, far worse, SILENTLY SWALLOWING them so they
+#'   never execute. This package already documents the same hazard for
+#'   \code{readline()} in \code{TaxaMatch::group_observations_by_bbox()}; there
+#'   the advice is "run this call on its own", which is not available to a
+#'   function called mid-workflow. With \code{FALSE} every decision is REPORTED
+#'   with the exact command to act on it, and nothing blocks. Set \code{TRUE}
+#'   only when calling this function by hand at the console.
 #' @param status_ping Numeric. Seconds between download-status polls while
 #'   waiting for GBIF to prepare the file. Default 15. Minimum enforced by
 #'   rgbif is 3.
@@ -204,6 +257,10 @@ download_gbif_occurrences <- function(
     on_cap         = c("warn", "error"),
     cache_dir      = tools::R_user_dir("TaxaFetch", "cache"),
     overwrite      = FALSE,
+    prompt_mb      = 50,
+    cache_prompt_mb = 5120,
+    allow_prompts  = FALSE,
+    keep_zip       = TRUE,
     status_ping    = 15,
     exclude_absent = TRUE,
     basis_keep     = NULL,
@@ -293,9 +350,10 @@ download_gbif_occurrences <- function(
   }
   meta_path <- .gbif_dl_meta_path(cache_dir, keys, geometry, year_range,
                                   basis_keep, exclude_absent)
-  dl_key       <- NULL
-  zip_path     <- NULL
-  old_zip_path <- NULL
+  dl_key         <- NULL
+  zip_path       <- NULL
+  old_zip_path   <- NULL
+  redownload_key <- NULL   # a prepared GBIF key whose local zip was unusable
 
   if (!is.null(meta_path) && file.exists(meta_path)) {
     meta <- readRDS(meta_path)
@@ -303,19 +361,42 @@ download_gbif_occurrences <- function(
 
     if (!overwrite) {
       if (cached_zip_exists) {
-        dl_key   <- meta$dl_key
-        zip_path <- meta$zip_path
-        message(sprintf(
-          paste0(
-            "download_gbif_occurrences: reusing cached zip from %s (key %s).\n",
-            "  Set overwrite = TRUE to force a fresh download."
-          ),
-          format(meta$timestamp, "%Y-%m-%d"), dl_key
-        ))
+        # Verify before trusting it. A truncated cached zip used to be reused
+        # forever, failing at import on every single run with no hint that the
+        # CACHE was the problem (2026-09-04, PtConception 18S).
+        .chk <- .gbif_zip_intact(meta$zip_path)
+        if (isTRUE(.chk$ok)) {
+          dl_key   <- meta$dl_key
+          zip_path <- meta$zip_path
+          message(sprintf(
+            paste0(
+              "download_gbif_occurrences: reusing cached zip from %s (key %s).\n",
+              "  Set overwrite = TRUE to force a fresh download."
+            ),
+            format(meta$timestamp, "%Y-%m-%d"), dl_key
+          ))
+        } else {
+          message(sprintf(
+            paste0(
+              "download_gbif_occurrences: the cached zip is UNUSABLE (%s).\n",
+              "  Discarding it and re-fetching download key %s from GBIF -- the key is\n",
+              "  already prepared server-side, so this costs no new queue wait."
+            ),
+            .chk$reason, meta$dl_key
+          ))
+          file.remove(meta$zip_path)
+          redownload_key <- meta$dl_key   # re-fetch THIS key, don't re-request
+        }
       } else {
+        # The metadata survives a deleted zip on purpose (keep_zip = FALSE, or
+        # a manual cache clear), and it carries the download key -- so re-fetch
+        # THAT prepared file instead of paying for a fresh request and queue
+        # wait. GBIF retains a prepared download for months; if the key has
+        # expired the fetch below falls back to a new request.
+        redownload_key <- meta$dl_key
         message(sprintf(
-          "download_gbif_occurrences: cached zip missing (%s); re-downloading.",
-          meta$zip_path
+          "download_gbif_occurrences: cached zip is gone (%s); re-fetching prepared key %s -- no new request.",
+          basename(meta$zip_path), meta$dl_key
         ))
       }
     } else if (cached_zip_exists) {
@@ -326,18 +407,43 @@ download_gbif_occurrences <- function(
       # behavior, but the stale zip is still removed once the new one lands
       # (see the cleanup block below) instead of being left as an orphan.
       keep_existing <- FALSE
-      if (interactive()) {
-        old_size_mb <- round(file.info(meta$zip_path)$size / 1024^2, 1)
+      # Only ASK when there is a real trade-off. A cached zip that fails the
+      # integrity check has nothing to weigh -- replacing it is the only sane
+      # move -- so say so and proceed rather than offering "keep the broken
+      # file" as a choice.
+      old_size_mb <- round(file.info(meta$zip_path)$size / 1024^2, 1)
+      .cached_chk <- .gbif_zip_intact(meta$zip_path,
+                                      expected_size = .gbif_declared_size(meta$dl_key))
+      if (!isTRUE(.cached_chk$ok)) {
         message(sprintf(
-          "download_gbif_occurrences: a cached zip already exists for this query (key %s, downloaded %s, %.1f MB).",
-          meta$dl_key, format(meta$timestamp, "%Y-%m-%d"), old_size_mb
-        ))
+          "download_gbif_occurrences: the cached zip is unusable (%s) -- replacing it, no choice to make.",
+          .cached_chk$reason))
+      } else if (isTRUE(allow_prompts) && interactive()) {
+        # The decision needs four facts the old message left out: that the
+        # cache is for THIS EXACT query (a hit means every cache-key component
+        # matched -- keys, geometry, years, basis, presence-only), that the
+        # file is verified complete, what re-downloading actually costs, and
+        # which option is normally right. Written after the author of this
+        # package hit the old prompt mid-run and could not tell which to pick.
+        message(sprintf(paste0(
+          "download_gbif_occurrences: a cached zip for THIS EXACT query already exists.\n",
+          "  key      : %s\n",
+          "  file     : %.1f MB, verified complete (matches GBIF's declared size)\n",
+          "  fetched  : %s"),
+          meta$dl_key, old_size_mb, format(meta$timestamp, "%Y-%m-%d %H:%M")))
         choice <- utils::menu(
-          c("Overwrite (delete the cached zip, fetch fresh from GBIF)",
-            "Keep the cached zip instead (skip the fresh download)"),
-          title = "Replace the cached download?"
+          c(paste0("Re-download -- discard it and fetch again from GBIF ",
+                   "(new request + queue wait + ", sprintf("%.1f", old_size_mb),
+                   " MB; identical result unless GBIF's data changed since)"),
+            "Use the cache -- skip the download and import now  [normally what you want]"),
+          title = "This zip is already downloaded and verified. Re-download it?"
         )
         keep_existing <- identical(choice, 2L)
+      } else {
+        message(sprintf(paste0(
+          "download_gbif_occurrences: a verified cached zip for this exact query exists (%.1f MB),\n",
+          "  but overwrite = TRUE, so it will be re-downloaded and replaced. To use it instead,\n",
+          "  drop overwrite = TRUE (the default reuses it)."), old_size_mb))
       }
       if (keep_existing) {
         dl_key   <- meta$dl_key
@@ -351,6 +457,14 @@ download_gbif_occurrences <- function(
 
   # --- Submit download if needed ----------------------------------------------
   if (is.null(zip_path)) {
+   if (!is.null(redownload_key)) {
+    # The query is unchanged and GBIF already prepared this key -- re-fetch the
+    # SAME file rather than paying for a fresh request and queue wait.
+    dl_key <- redownload_key
+    message(sprintf(
+      "download_gbif_occurrences: re-fetching prepared download key %s (no new request).",
+      dl_key))
+   } else {
     message(sprintf(
       "download_gbif_occurrences: submitting GBIF download request for %d key(s)...",
       length(keys)
@@ -391,6 +505,7 @@ download_gbif_occurrences <- function(
     ))
 
     rgbif::occ_download_wait(dl_req, status_ping = max(status_ping, 3L))
+   }
 
     # Download zip to cache_dir (or tempdir if caching disabled)
     dest_dir <- if (!is.null(cache_dir)) {
@@ -399,18 +514,67 @@ download_gbif_occurrences <- function(
     } else {
       tempdir()
     }
-    rgbif::occ_download_get(dl_key, path = dest_dir, overwrite = TRUE)
     zip_path <- file.path(dest_dir, paste0(dl_key, ".zip"))
 
-    if (!file.exists(zip_path)) {
-      stop(sprintf(
-        "download_gbif_occurrences: expected zip not found at %s after download.",
-        zip_path
+    # Consent + cost communication, placed BEFORE any bytes move (GBIF reports
+    # size and record count as soon as the download is prepared).
+    .prior_zip <- if (!is.null(meta_path) && file.exists(meta_path)) {
+      .m <- tryCatch(readRDS(meta_path), error = function(e) NULL)
+      if (!is.null(.m) && file.exists(.m$zip_path) &&
+          isTRUE(.gbif_zip_intact(.m$zip_path)$ok)) .m$zip_path else NULL
+    } else NULL
+    .decision <- .gbif_download_consent(dl_key, cache_dir, .prior_zip,
+                                        prompt_mb = prompt_mb, keys = keys,
+                                        allow_prompts = allow_prompts)
+    if (identical(.decision, "abort")) {
+      stop("download_gbif_occurrences: aborted before downloading, at your request. ",
+           "Narrow the query and re-run -- `geometry` (a smaller polygon), `keys` ",
+           "(fewer taxa), `year_range`, or `basis_keep` all shrink it. The prepared ",
+           "download stays available on GBIF as key ", dl_key,
+           " if you change your mind.", call. = FALSE)
+    }
+    if (identical(.decision, "use_cache") && !is.null(.prior_zip)) {
+      message("download_gbif_occurrences: using the cached zip; no download made.")
+      zip_path <- .prior_zip
+      old_zip_path <- NULL          # nothing superseded, so nothing to clean up
+    } else {
+    # Verify EVERY download before it is cached, and retry once. A truncated
+    # transfer is precisely the transient failure a retry fixes, and caching an
+    # unverified zip is what turned one bad night into a permanent failure
+    # (2026-09-04). GBIF's declared size makes the check exact when reachable;
+    # the structural test stands alone when it is not.
+    .expected <- .gbif_declared_size(dl_key)
+    .chk <- list(ok = FALSE, reason = "not attempted")
+    for (.attempt in seq_len(2L)) {
+      rgbif::occ_download_get(dl_key, path = dest_dir, overwrite = TRUE)
+      if (!file.exists(zip_path)) {
+        .chk <- list(ok = FALSE, reason = "no file written")
+      } else {
+        .chk <- .gbif_zip_intact(zip_path, expected_size = .expected)
+      }
+      if (isTRUE(.chk$ok)) break
+      message(sprintf("  Download attempt %d produced an unusable zip (%s).",
+                      .attempt, .chk$reason))
+      if (file.exists(zip_path)) file.remove(zip_path)
+      if (.attempt < 2L) message("  Retrying the same prepared key once...")
+    }
+    if (!isTRUE(.chk$ok)) {
+      stop(sprintf(paste0(
+        "download_gbif_occurrences: the GBIF zip for key %s could not be downloaded ",
+        "intact after 2 attempts (%s). Nothing was cached, so simply re-running is ",
+        "safe -- the key stays prepared server-side. If it keeps failing, check free ",
+        "disk space and network stability, or fetch it by hand from\n  %s"),
+        dl_key, .chk$reason,
+        sprintf("https://api.gbif.org/v1/occurrence/download/request/%s.zip", dl_key)
       ))
     }
-    message(sprintf("  Zip saved to: %s", zip_path))
+    message(sprintf("  Zip saved to: %s (verified%s)", zip_path,
+                    if (is.null(.expected)) " structurally"
+                    else sprintf(", %s bytes as GBIF declares",
+                                 format(.expected, big.mark = ","))))
+    }
 
-    # Save metadata
+    # Save metadata -- only ever AFTER verification passes.
     if (!is.null(meta_path)) {
       saveRDS(
         list(dl_key = dl_key, zip_path = zip_path, timestamp = Sys.time()),
@@ -438,6 +602,20 @@ download_gbif_occurrences <- function(
   raw <- .read_gbif_zip(zip_path, select_cols = select_cols)
   message(sprintf("  Imported %d rows in %.0f s.", nrow(raw),
                   proc.time()["elapsed"] - t_import))
+
+  # ---- Zip retention -------------------------------------------------------
+  # Deleted only AFTER a successful import, so a failed import never loses the
+  # bytes. The metadata file stays, so the download key remains recoverable and
+  # a later identical call re-fetches the same prepared file rather than
+  # queueing a new request.
+  if (!isTRUE(keep_zip) && !is.null(cache_dir) && file.exists(zip_path)) {
+    .zip_mb <- file.info(zip_path)$size / 1024^2
+    if (isTRUE(file.remove(zip_path)))
+      message(sprintf(
+        paste0("  keep_zip = FALSE: removed the %.1f MB zip after import. The download key\n",
+               "  (%s) is kept, so an identical re-run re-fetches it without a new request."),
+        .zip_mb, dl_key %||% "unknown"))
+  }
 
   # Normalise SIMPLE_CSV column names to match occ_data() conventions so that
   # filter_gbif_quality() and other downstream functions work without changes.
@@ -547,27 +725,79 @@ download_gbif_occurrences <- function(
   )
 
   # --- Cache summary / offer to clear ------------------------------------------
+  # Wrapped: this block is PURELY COSMETIC -- a size report and an optional
+  # housekeeping prompt -- and it runs AFTER the download, the import and the
+  # attribute assembly are all complete. Anything that throws in here would
+  # discard the entire result, and on 2026-09-05 something did: a package
+  # reinstall underneath a running session made a lazy-load read of
+  # .taxafetch_cache_patterns fail ("lazy-load database ... is corrupt"), which
+  # threw away 1,717,250 successfully imported rows at the last step. A
+  # reporting convenience must never be able to lose the data.
+  .cache_report <- function() {
   if (!is.null(cache_dir)) {
     inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
     if (nrow(inv) > 0L) {
       total_mb <- sum(inv$size_mb)
+      # GB once past a gigabyte: "17123.7 MB" is a number people have to stop
+      # and convert before it means anything.
+      .gb <- function(mb) if (mb >= 1024) sprintf("%.1f GB", mb / 1024)
+                          else sprintf("%.1f MB", mb)
       message(sprintf(
-        "download_gbif_occurrences: TaxaFetch cache: %d file(s), %.1f MB in %s.",
-        nrow(inv), total_mb, normalizePath(cache_dir, mustWork = FALSE)
+        "download_gbif_occurrences: TaxaFetch cache: %d file(s), %s in %s.",
+        nrow(inv), .gb(total_mb), normalizePath(cache_dir, mustWork = FALSE)
       ))
-      cache_prompt_threshold_mb <- 1024
-      if (total_mb > cache_prompt_threshold_mb) {
-        if (interactive()) {
-          choice <- utils::menu(c("Clear it now", "Leave it"), title = "Clear the TaxaFetch cache?")
-          if (identical(choice, 1L)) {
+      # This query's own zip is called out separately and offered as a KEEP,
+      # because the blanket clear used to include it -- i.e. the prompt that
+      # fires right after a download offered to delete the file just
+      # downloaded, making an identical re-run pay for it again. Naming its
+      # size is also the honest way to show what caching buys.
+      this_zip <- if (!is.null(zip_path) && file.exists(zip_path))
+        normalizePath(zip_path, mustWork = FALSE) else NA_character_
+      this_mb <- if (!is.na(this_zip)) file.info(this_zip)$size / 1024^2 else 0
+      other_mb <- max(total_mb - this_mb, 0)
+      if (!is.na(this_zip)) {
+        message(sprintf(
+          "  This query's own zip is %s -- keeping it makes an identical re-run free.",
+          .gb(this_mb)))
+      }
+      if (total_mb > cache_prompt_mb) {
+        if (isTRUE(allow_prompts) && interactive()) {
+          choice <- utils::menu(
+            c("Leave it as it is",
+              sprintf("Remove OTHER cached downloads (%s), keep this query's zip", .gb(other_mb)),
+              sprintf("Remove everything including this query's zip (%s)", .gb(total_mb))),
+            title = sprintf("The TaxaFetch cache is %s. Free some space?", .gb(total_mb)))
+          if (identical(choice, 2L)) {
+            keep <- if (!is.na(this_zip)) this_zip else character(0)
+            gone <- inv$path[normalizePath(inv$path, mustWork = FALSE) != keep]
+            removed <- sum(file.remove(gone))
+            message(sprintf("  Removed %d file(s); this query's zip kept.", removed))
+          } else if (identical(choice, 3L)) {
             taxafetch_clear_cache(cache_dir = cache_dir, dry_run = FALSE)
           }
         } else {
-          message("  Run taxafetch_clear_cache() to remove it.")
+          # Report the same choices as COMMANDS. Never block: a menu here
+          # consumes the rest of a sourced script as its answers.
+          message(sprintf(paste0(
+            "  Over the %s reporting threshold. To free space (nothing is removed automatically):\n",
+            "    TaxaFetch::taxafetch_clear_cache(dry_run = TRUE)        # see what is there\n",
+            "    TaxaFetch::taxafetch_clear_cache(orphans_only = TRUE)   # superseded files only\n",
+            "    TaxaFetch::taxafetch_clear_cache(older_than_days = 30)  # keep recent downloads%s"),
+            .gb(cache_prompt_mb),
+            if (!is.na(this_zip)) sprintf(
+              "\n  This query's zip is %s -- keep it unless you are done with this query.",
+              .gb(this_mb)) else ""))
         }
       }
     }
   }
+  }
+  tryCatch(.cache_report(), error = function(e) {
+    warning(sprintf(paste0(
+      "download_gbif_occurrences: the cache-size report failed (%s). The ",
+      "downloaded data is unaffected and is being returned normally."),
+      conditionMessage(e)), call. = FALSE)
+  })
 
   # --- Completion sound -------------------------------------------------------
   if (beep) {
@@ -619,6 +849,148 @@ download_gbif_occurrences <- function(
 #' file. Uses \code{data.table::fread} when available (much faster for large
 #' files); falls back to \code{utils::read.table}.
 #'
+#' Tell the user what a pending GBIF download will cost, and let them choose
+#'
+#' Placed where the facts exist: GBIF reports a prepared download's size and
+#' record count BEFORE any bytes are transferred, so the decision belongs
+#' there rather than after the file has already landed. Communicates, in one
+#' place: how big the download is, whether a cached zip for this exact query
+#' already exists (and that downloading REPLACES it), what the cache directory
+#' currently holds and what it will hold afterwards, and -- when the answer is
+#' "that is too much" -- that the real remedy is narrowing the query, naming
+#' the arguments that do it.
+#'
+#' Silent for small downloads (`prompt_mb`) and in any non-interactive session,
+#' which must never block: there it reports and proceeds.
+#'
+#' @return One of "download", "use_cache", "abort".
+#' @noRd
+.gbif_download_consent <- function(dl_key, cache_dir, cached_zip_path = NULL,
+                                   prompt_mb = 50, keys = NULL,
+                                   allow_prompts = FALSE) {
+  m  <- tryCatch(rgbif::occ_download_meta(dl_key), error = function(e) NULL)
+  sz <- suppressWarnings(as.numeric(m$size))
+  n_rec <- suppressWarnings(as.numeric(m$totalRecords))
+  sz_mb <- if (length(sz) == 1L && isTRUE(is.finite(sz))) sz / 1024^2 else NA_real_
+
+  cache_mb <- NA_real_
+  if (!is.null(cache_dir) && dir.exists(cache_dir)) {
+    f <- list.files(cache_dir, full.names = TRUE, recursive = TRUE)
+    if (length(f)) cache_mb <- sum(file.info(f)$size, na.rm = TRUE) / 1024^2
+  }
+  .gb <- function(mb) if (!isTRUE(is.finite(mb))) "unknown" else
+    if (mb >= 1024) sprintf("%.1f GB", mb / 1024) else sprintf("%.1f MB", mb)
+
+  have_cache <- !is.null(cached_zip_path) && file.exists(cached_zip_path)
+  cached_mb  <- if (have_cache) file.info(cached_zip_path)$size / 1024^2 else NA_real_
+
+  lines <- c(
+    "download_gbif_occurrences: GBIF has prepared this download.",
+    sprintf("  records    : %s", if (isTRUE(is.finite(n_rec)))
+              format(n_rec, big.mark = ",") else "unknown"),
+    sprintf("  size       : %s%s", .gb(sz_mb),
+            if (!is.null(keys)) sprintf("   (%d taxon key(s))", length(keys)) else ""),
+    if (!is.null(cache_dir)) sprintf("  cache dir  : %s", cache_dir),
+    if (!is.null(cache_dir)) sprintf("  cache now  : %s%s", .gb(cache_mb),
+            if (isTRUE(is.finite(cache_mb)) && isTRUE(is.finite(sz_mb)))
+              sprintf("  ->  %s after this download",
+                      .gb(cache_mb + sz_mb - if (have_cache) cached_mb else 0)) else "")
+  )
+  if (have_cache) {
+    lines <- c(lines,
+      sprintf("  cached zip : a zip for THIS EXACT query already exists (%s).", .gb(cached_mb)),
+      "               Downloading again REPLACES it; the result is identical",
+      "               unless GBIF's data has changed since.")
+  } else if (!is.null(cache_dir)) {
+    lines <- c(lines,
+      "  cached zip : none for this query -- the file is kept so an identical",
+      "               re-run costs no download.")
+  }
+  message(paste(lines[!vapply(lines, is.null, logical(1))], collapse = "\n"))
+
+  # Reaching this point at all means the caller already asked for a download --
+  # with overwrite = FALSE a good cached zip is served earlier and never gets
+  # here, so a cache present HERE means overwrite = TRUE, an explicit request.
+  # Never quietly override that: a non-interactive session (and any download
+  # below the prompt threshold) proceeds, and "use the cache" is offered only
+  # as an INTERACTIVE second thought. Caught by the pre-existing
+  # overwrite = TRUE regression test, not by review.
+  too_small <- !isTRUE(is.finite(sz_mb)) || sz_mb < prompt_mb
+  if (too_small || !isTRUE(allow_prompts) || !interactive()) {
+    if (!too_small && !isTRUE(allow_prompts))
+      message(paste0(
+        "  Proceeding with the download. To narrow it instead, interrupt and adjust\n",
+        "  `geometry` (a smaller polygon), `keys` (fewer taxa), `year_range` or\n",
+        "  `basis_keep`. Pass allow_prompts = TRUE to be asked interactively."))
+    return("download")
+  }
+
+  narrow <- paste0(
+    "Abort, to narrow the query first -- geometry (a smaller polygon), ",
+    "keys (fewer taxa), year_range, basis_keep")
+  opts <- if (have_cache) {
+    c(sprintf("Use the cached zip -- no download, import now  [recommended]"),
+      sprintf("Download %s and replace the cached zip", .gb(sz_mb)),
+      narrow)
+  } else {
+    c(sprintf("Download %s now  [recommended]", .gb(sz_mb)), narrow)
+  }
+  choice <- utils::menu(opts, title = "How do you want to proceed?")
+  if (have_cache) {
+    switch(as.character(choice), "1" = "use_cache", "2" = "download", "abort")
+  } else {
+    switch(as.character(choice), "1" = "download", "abort")
+  }
+}
+
+#' Is a downloaded GBIF zip actually complete?
+#'
+#' A zip's central directory lives at the END of the file, so a download that
+#' is cut short leaves a file that still starts with a valid local header (and
+#' that `file`/magic-byte checks still call "Zip archive data") but cannot be
+#' opened by any reader. Checking only `file.exists()` therefore accepts a
+#' truncated download, caches it, and fails on every subsequent import --
+#' a self-perpetuating poisoned cache. Found for real on 2026-09-04: a
+#' PtConception 18S download landed 127,733,417 of GBIF's declared
+#' 130,577,434 bytes, and every re-run printed "Zip cached. Starting import
+#' now" and then died in `utils::unzip()`.
+#'
+#' @param zip_path Character. Path to check.
+#' @param expected_size Optional numeric. GBIF's own declared byte size for
+#'   this download, when it could be retrieved; `NULL` skips the size test and
+#'   relies on the structural one alone (which needs no network).
+#' @return List with `ok` (logical) and `reason` (character, `NA` when ok).
+#' @noRd
+.gbif_zip_intact <- function(zip_path, expected_size = NULL) {
+  .bad <- function(r) list(ok = FALSE, reason = r)
+  if (is.null(zip_path) || !file.exists(zip_path))
+    return(.bad("file does not exist"))
+  sz <- file.info(zip_path)$size
+  if (!isTRUE(is.finite(sz)) || sz <= 0) return(.bad("file is empty"))
+  if (!is.null(expected_size) && isTRUE(is.finite(expected_size)) &&
+      expected_size > 0 && !isTRUE(sz == expected_size)) {
+    return(.bad(sprintf(
+      "size mismatch: %s bytes on disk, GBIF declares %s (short by %s)",
+      format(sz, big.mark = ","), format(expected_size, big.mark = ","),
+      format(expected_size - sz, big.mark = ","))))
+  }
+  # Structural test: reading the central directory is exactly what the import
+  # step needs to succeed, and it needs no network.
+  lst <- tryCatch(utils::unzip(zip_path, list = TRUE),
+                  error = function(e) e, warning = function(w) w)
+  if (inherits(lst, c("error", "condition")) || !is.data.frame(lst) || nrow(lst) < 1L)
+    return(.bad("central directory unreadable -- the file is truncated or corrupt"))
+  list(ok = TRUE, reason = NA_character_)
+}
+
+#' GBIF's own declared byte size for a download key, or NULL
+#' @noRd
+.gbif_declared_size <- function(dl_key) {
+  m <- tryCatch(rgbif::occ_download_meta(dl_key), error = function(e) NULL)
+  sz <- suppressWarnings(as.numeric(m$size))
+  if (length(sz) == 1L && isTRUE(is.finite(sz)) && sz > 0) sz else NULL
+}
+
 #' @param zip_path Character. Path to the downloaded GBIF zip file.
 #' @return A data frame of occurrence records.
 #' @noRd
@@ -644,7 +1016,25 @@ download_gbif_occurrences <- function(
     )
   }
 
-  utils::unzip(zip_path, exdir = tmp)
+  # utils::unzip() signals a FAILED extraction (e.g. a CRC mismatch from
+  # corruption inside the compressed payload) as a mere WARNING -- "error -3 in
+  # extracting from zip file" -- and carries on, which can leave a partially
+  # written CSV that then reads as a silently SHORT occurrence table. Since
+  # .gbif_zip_intact() deliberately checks only the central directory (cheap, no
+  # decompression), this extraction is the step that validates the payload, so
+  # its warning is promoted to an error rather than left to a caller who may not
+  # be watching. 2026-09-04: added after a truncated download made the failure
+  # mode concrete.
+  withCallingHandlers(
+    utils::unzip(zip_path, exdir = tmp),
+    warning = function(w) {
+      stop(sprintf(paste0(
+        "download_gbif_occurrences: extracting '%s' failed (%s). The archive is ",
+        "corrupt, not merely truncated. Delete it and re-run -- the download will ",
+        "be re-fetched and verified."), zip_path, conditionMessage(w)),
+        call. = FALSE)
+    }
+  )
   all_files <- list.files(tmp, full.names = TRUE, recursive = TRUE)
 
   # SIMPLE_CSV zip typically contains: occurrence.csv, citations.txt,

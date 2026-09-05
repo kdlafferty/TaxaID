@@ -12,6 +12,10 @@ download_gbif_occurrences(
   on_cap = c("warn", "error"),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
+  prompt_mb = 50,
+  cache_prompt_mb = 5120,
+  allow_prompts = FALSE,
+  keep_zip = TRUE,
   status_ping = 15,
   exclude_absent = TRUE,
   basis_keep = NULL,
@@ -72,6 +76,48 @@ cached zip's date and size) before deleting it; a non-interactive session
 proceeds straight to a fresh download. Either way, the old cached zip is
 removed once the new one is saved -- it is never silently orphaned on
 disk.}
+
+\item{prompt_mb}{Numeric. In an INTERACTIVE session, a prepared download at
+least this many MB triggers a summary (size, record count, whether a zip
+for this exact query is already cached, what the cache holds now and will
+hold afterwards) and a choice: use the cache, download and replace it, or
+abort to narrow the query first. Smaller downloads proceed silently, and a
+NON-interactive session never blocks -- it reports the same facts and
+continues. Default \code{50}; \code{Inf} disables the prompt entirely.
+The summary is placed before any bytes are transferred, because GBIF
+reports a prepared download's size and record count at that point, which
+is the only moment the information can still change the decision.}
+
+\item{cache_prompt_mb}{Numeric. After a run, if the cache directory exceeds
+this many MB, an interactive session is offered a choice to free space
+(leave it; remove OTHER downloads but keep this query's zip; remove
+everything). A non-interactive session only reports. Default \code{5120}
+(5 GB); \code{Inf} disables the prompt while keeping the size report.}
+
+\item{allow_prompts}{Logical, default \code{FALSE}. Whether this function may
+BLOCK on an interactive \code{utils::menu()}. Off by default because a
+blocking prompt inside a function that is called from a script is unsafe:
+when RStudio runs or sources a script it queues the remaining lines as
+console input, and \code{menu()} consumes those lines as answers --
+re-prompting on each one, and, far worse, SILENTLY SWALLOWING them so they
+never execute. This package already documents the same hazard for
+\code{readline()} in \code{TaxaMatch::group_observations_by_bbox()}; there
+the advice is "run this call on its own", which is not available to a
+function called mid-workflow. With \code{FALSE} every decision is REPORTED
+with the exact command to act on it, and nothing blocks. Set \code{TRUE}
+only when calling this function by hand at the console.}
+
+\item{keep_zip}{Logical, default \code{TRUE}. Whether to retain the
+downloaded zip in \code{cache_dir} after a successful import. The zip is
+pure redundancy once imported -- its only value is avoiding a re-download
+-- and it is by far the largest thing this package writes: on one real
+machine 38 zips accounted for 17 GB of a 17.05 GB cache, while every
+\code{.rds} checkpoint together came to 52 MB. With \code{FALSE} the zip
+is deleted after import and the small metadata file is KEPT, so a later
+identical call re-fetches the SAME prepared GBIF key -- no new request, no
+queue wait, just the transfer. Set \code{FALSE} when the caller persists
+the imported data itself (every workflow in this ecosystem saves a
+\code{_raw_gbif.rds} checkpoint, which makes the zip doubly redundant).}
 
 \item{status_ping}{Numeric. Seconds between download-status polls while
 waiting for GBIF to prepare the file. Default 15. Minimum enforced by
@@ -195,6 +241,22 @@ concurrent downloads (fewer for accounts with many prior downloads). If
 a request is rejected, cancel in-progress downloads at
 \url{https://www.gbif.org/user/download} and retry.
 }
+\section{Why nothing here blocks by default}{
+
+On 2026-09-05 a \code{utils::menu()} in this function consumed the ENTIRE
+remainder of a sourced workflow script as its answers -- roughly 600 lines,
+each rejected as an invalid selection, each therefore never executed. The
+GBIF download itself had succeeded; everything after it silently did not
+run. RStudio queues the rest of a script as pending console input, and
+\code{menu()}/\code{readline()} read exactly that queue, so
+\code{interactive()} being \code{TRUE} says nothing about whether a human is
+waiting to type. This package already documented the same hazard for
+\code{readline()} in \code{TaxaMatch::group_observations_by_bbox()}, whose
+advice ("run this call on its own") is unavailable to a function called
+mid-workflow. Every decision here is therefore REPORTED, with the command to
+act on it, unless \code{allow_prompts = TRUE} is passed deliberately.
+}
+
 \examples{
 \dontrun{
 # --- One-time setup -------------------------------------------------------

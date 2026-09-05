@@ -7,16 +7,21 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
+<!--
+  Every chunk carries `eval = FALSE, purl = FALSE` in its OWN header, and that
+  repetition is load-bearing -- do not DRY it into the setup chunk. R CMD check
+  tangles the vignette with knitr::purl(), which does NOT execute the setup
+  chunk, so an opts_chunk$set(purl = FALSE) written there has no effect at
+  tangle time: every chunk still lands in the tangled .R and is sourced. This
+  vignette is documentation-only (live GBIF calls), so a tangled chunk is a
+  guaranteed check ERROR. It was one until 2026-09-05.
+-->
+
+```{r setup, include = FALSE, purl = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   eval = FALSE,
-  # purl = FALSE is load-bearing, not redundant with eval = FALSE.
-  # R CMD check's "running R code from vignettes" step TANGLES the vignette
-  # (knitr::purl()) and sources the result -- purl() honours purl=, not eval=,
-  # so without this a documentation-only vignette still executes during check
-  # and errors on objects its prose never defines.
   purl = FALSE
 )
 ```
@@ -30,7 +35,7 @@ construction).
 
 ## Quick Start: GBIF
 
-```{r quickstart}
+```{r quickstart, eval = FALSE, purl = FALSE}
 library(TaxaFetch)
 
 keys <- get_keys_from_context(data.frame(taxon_name = c("Fundulidae", "Gobiidae")))
@@ -44,7 +49,7 @@ occurrences <- filter_gbif_quality(gbif_raw)
 
 ### GBIF occurrences
 
-```{r gbif}
+```{r gbif, eval = FALSE, purl = FALSE}
 # Step 1: Get GBIF taxon keys
 keys <- get_keys_from_context(
   data.frame(taxon_name = c("Fundulidae", "Atherinopsidae"))
@@ -60,7 +65,7 @@ occurrences <- filter_gbif_quality(gbif_raw, max_coord_uncertainty = 1000)
 
 ### Combining multiple sources
 
-```{r stack}
+```{r stack, eval = FALSE, purl = FALSE}
 # Stack GBIF with local survey data
 combined <- stack_occurrences(gbif_occurrences, local_survey_data)
 
@@ -74,7 +79,7 @@ combined <- dedupe_occurrences(combined)
 
 ### DataONE
 
-```{r dataone}
+```{r dataone, eval = FALSE, purl = FALSE}
 catalog <- harvest_dataone_catalog(query = "kelp forest fish abundance")
 previewed <- preview_dataone_occurrences(catalog[1, ])
 occurrences <- fetch_dataone_occurrences(catalog[1, ])
@@ -82,7 +87,7 @@ occurrences <- fetch_dataone_occurrences(catalog[1, ])
 
 ### Literature search
 
-```{r literature}
+```{r literature, eval = FALSE, purl = FALSE}
 results <- search_literature(
   taxa    = c("Fundulus parvipinnis", "Atherinops affinis"),
   region  = "Southern California"

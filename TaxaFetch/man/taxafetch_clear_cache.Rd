@@ -8,6 +8,7 @@ taxafetch_clear_cache(
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   older_than_days = NULL,
   orphans_only = FALSE,
+  zips_only = FALSE,
   dry_run = FALSE
 )
 }
@@ -33,6 +34,17 @@ and every iNaturalist range file are left untouched -- this is the
 "keep the most recent cache per query, remove only stale leftovers"
 mode. Default \code{FALSE} (target everything recognized, the same as
 before this parameter existed).}
+
+\item{zips_only}{Logical. If \code{TRUE}, targets only the downloaded GBIF
+\code{.zip} files, leaving every metadata file and \code{.rds} checkpoint
+in place. This is usually the setting you want for reclaiming space: the
+zips are the cache in practice (38 of them held 17 GB on one real machine,
+against 52 MB for every \code{.rds} combined), they are pure redundancy
+once imported, and keeping their metadata means a later identical call
+re-fetches the same prepared GBIF key with no new request or queue wait.
+Unlike \code{orphans_only} this includes zips still referenced by current
+metadata -- those are exactly the large ones. Cannot be combined with
+\code{orphans_only}.}
 
 \item{dry_run}{Logical. If \code{TRUE}, reports what would be removed
 without removing anything. Default \code{FALSE}.}

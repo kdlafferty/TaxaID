@@ -60,6 +60,34 @@ utils::globalVariables(c(
 #' @param cache_dir Character or \code{NULL}. Forwarded to
 #'   \code{\link{fetch_gbif_occurrences}} for checkpointing the global
 #'   fetch. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.
+#' @param candidate_taxa Optional character vector of taxa that can actually be
+#'   ASSIGNED -- typically the species-level match candidates (e.g.
+#'   \code{unique(match_obj$taxon_name)}). \code{NULL} (default) preserves the
+#'   pre-2026-09-05 behaviour of checking every locally-rare species in the
+#'   pool. Supplying it is strongly recommended for a family-derived occurrence
+#'   pool: at real PtConception 18S only 387 of 7,392 pool species (5.2%) were
+#'   match candidates, so 95% of the per-species GBIF requests protected against
+#'   a harm those species cannot cause. A species with 1-4 local records has a
+#'   theta far below \code{TaxaAssign::join_priors()}'s
+#'   \code{expansion_min_prior}, so it can never be expanded into a hypothesis;
+#'   its only residual effect is +1 to the Good-Turing \code{f1}. A locally-rare
+#'   MATCH CANDIDATE is the opposite: its prior multiplies its likelihood
+#'   directly, which is the misidentified-record failure this check exists for.
+#' @param candidate_scope How \code{candidate_taxa} restricts the check.
+#'   \code{"genus"} (default) keeps any locally-rare species sharing a genus
+#'   with a candidate -- congeners matter because
+#'   \code{TaxaLikely::restore_suppressed_candidates()} and
+#'   \code{expand_unreferenced_hypotheses()} can promote one into a named
+#'   hypothesis. \code{"species"} keeps only exact candidates (tightest).
+#'   \code{"all"} ignores \code{candidate_taxa} entirely. Family scoping is
+#'   deliberately not offered: an occurrence pool fetched from family keys
+#'   already contains only candidate families, so it would restrict nothing.
+#' @param verdict_cache Logical, default \code{TRUE}. Cache the per-record
+#'   VERDICTS rather than the global occurrence cloud. The cloud is reduced to
+#'   one integer per species and one logical per local record and then
+#'   discarded, so caching it stores millions of records to preserve a few
+#'   thousand numbers. The verdict file is keyed on the species set and the
+#'   \code{cc_outl()} parameters, so changing either recomputes.
 #' @param verbose Logical. Forwarded to \code{cc_outl()}. Default
 #'   \code{FALSE}.
 #'
@@ -129,15 +157,19 @@ utils::globalVariables(c(
 #' }
 check_geographic_outliers <- function(
     local_occurrences,
-    min_local_n = 5L,
-    min_occs    = 7L,
-    method      = "distance",
-    tdi         = 1000,
-    mltpl       = 5,
-    year_range  = .gbif_default_year_range(),
-    cache_dir   = tools::R_user_dir("TaxaFetch", "cache"),
-    verbose     = FALSE
+    min_local_n     = 5L,
+    min_occs        = 7L,
+    method          = "distance",
+    tdi             = 1000,
+    mltpl           = 5,
+    year_range      = .gbif_default_year_range(),
+    cache_dir       = tools::R_user_dir("TaxaFetch", "cache"),
+    candidate_taxa  = NULL,
+    candidate_scope = c("genus", "species", "all"),
+    verdict_cache   = TRUE,
+    verbose         = FALSE
 ) {
+  candidate_scope <- match.arg(candidate_scope)
 
   # --- Dependency check ---------------------------------------------------
   if (!requireNamespace("CoordinateCleaner", quietly = TRUE)) {
@@ -176,6 +208,45 @@ check_geographic_outliers <- function(
 
   is_rare_row <- local_occurrences$species %in% rare_species
 
+  # ---- Restrict to taxa that can actually reach a hypothesis ---------------
+  # A bbox occurrence pool built from FAMILY-level keys is enormously wider
+  # than the species-level candidates it exists to support: at PtConception 18S
+  # only 387 of 7,392 pool species (5.2%) are match candidates, and only 613 of
+  # 3,133 genera contain one. Checking the other 95% costs one GBIF request per
+  # species (829 of them, ~14 s each once GBIF starts rate-limiting) to protect
+  # against a harm they cannot cause: a species with 1-4 local records has a
+  # theta orders of magnitude below join_priors()'s expansion_min_prior, so it
+  # can never be expanded into a hypothesis. Its only residual effect is +1 to
+  # f1. A locally-rare MATCH CANDIDATE is the opposite case -- its prior
+  # multiplies its likelihood directly, which is the misidentified-record
+  # failure this whole check was built for.
+  #
+  # "genus" (default when candidate_taxa is supplied) also keeps congeners,
+  # because restore_suppressed_candidates()/expand_unreferenced_hypotheses()
+  # can promote a congener of a match candidate into a named hypothesis --
+  # the same harm one step removed. "all" restores the pre-2026-09-05 sweep.
+  if (!is.null(candidate_taxa) && !identical(candidate_scope, "all")) {
+    candidate_taxa <- unique(stats::na.omit(as.character(candidate_taxa)))
+    keep_sp <- if (identical(candidate_scope, "species")) {
+      rare_species %in% candidate_taxa
+    } else {
+      cand_genera <- unique(sub(" .*$", "", candidate_taxa))
+      sub(" .*$", "", rare_species) %in% cand_genera
+    }
+    n_before <- length(rare_species)
+    rare_species <- rare_species[keep_sp]
+    message(sprintf(
+      paste0("check_geographic_outliers: %d of %d locally-rare species are ",
+             "assignable (candidate_scope = \"%s\"); the other %d cannot reach ",
+             "a hypothesis and are not checked."),
+      length(rare_species), n_before, candidate_scope, n_before - length(rare_species)))
+    if (length(rare_species) == 0L) {
+      message("check_geographic_outliers: no assignable rare species -- nothing to check.")
+      return(local_occurrences)
+    }
+    is_rare_row <- local_occurrences$species %in% rare_species
+  }
+
   rare_keys <- unique(local_occurrences$speciesKey[is_rare_row])
   rare_keys <- rare_keys[!is.na(rare_keys)]
 
@@ -196,10 +267,52 @@ check_geographic_outliers <- function(
     length(rare_species), length(unique(local_occurrences$species)), min_local_n
   ))
 
-  global_occ <- fetch_gbif_occurrences(
+  # ---- Verdict cache -------------------------------------------------------
+  # The global cloud is reduced to TWO durable values -- one integer per
+  # species (global_n_unique) and one logical per local record (cc_pass) --
+  # and then discarded. Caching the raw cloud therefore stores millions of
+  # records to preserve a few thousand numbers. Cache the verdicts instead,
+  # keyed by the species set actually checked.
+  .verdict_path <- if (isTRUE(verdict_cache) && !is.null(cache_dir)) {
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    file.path(cache_dir, sprintf(
+      "gbif_outlier_verdicts_%dsp_s%d_%s_%s.rds",
+      length(rare_keys), as.integer(sum(as.numeric(rare_keys)) %% 1e9),
+      gsub("[^0-9]", "", year_range),
+      paste0(method, "_", min_occs, "_", tdi, "_", mltpl)))
+  } else NULL
+
+  cached_verdicts <- NULL
+  if (!is.null(.verdict_path) && file.exists(.verdict_path)) {
+    cached_verdicts <- tryCatch(readRDS(.verdict_path), error = function(e) NULL)
+    if (!is.null(cached_verdicts))
+      message(sprintf(
+        "check_geographic_outliers: reusing cached verdicts for %d species (%s). Delete to recompute.",
+        length(rare_keys), basename(.verdict_path)))
+  }
+
+  if (is.null(cached_verdicts)) {
+  # Routed through get_gbif_occurrences() (2026-09-05) so this inherits the
+  # backend switch: above key_threshold it uses the async download API (one
+  # request, one zip) instead of one HTTP request per key. The per-key path
+  # earned a GBIF rate-limit block at ~360 keys -- "Too many requests! To
+  # download GBIF occurrence data in bulk, please use occ_download()" -- which
+  # is GBIF telling us directly to do this. limit = NULL because the default
+  # 10,000-per-key cap truncates by RETURN ORDER, and this cloud is the
+  # reference the outlier test measures "normal range" against: a
+  # dataset-clustered prefix biases the very thing being estimated.
+  global_occ <- get_gbif_occurrences(
     keys       = rare_keys,
     geometry   = NULL,
     year_range = year_range,
+    limit      = NULL,
+    # rank_filter = NULL, NOT the wrapper's "species" default: the previous
+    # direct fetch_gbif_occurrences() call applied no rank filter, and this
+    # change is a BACKEND switch, not a change to which records qualify.
+    # (Genus-only records are excluded from the verdict anyway -- cc_outl() is
+    # run per `species`, so a blank species never forms a cloud.) Revisit
+    # deliberately if you want them dropped earlier.
+    rank_filter = NULL,
     cache_dir  = cache_dir
   )
 
@@ -252,10 +365,29 @@ check_geographic_outliers <- function(
   }
   global_occ$.cc_pass <- cc_pass
 
-  match_pos <- match(local_occurrences$gbifID[is_rare_row], global_occ$gbifID)
+  # Reduce to the durable artifact and drop the cloud: one row per global
+  # record that a LOCAL rare record can join to, carrying only the two values
+  # the verdict needs.
+  cached_verdicts <- data.frame(
+    gbifID          = global_occ$gbifID,
+    global_n_unique = global_occ$.global_n_unique,
+    cc_pass         = global_occ$.cc_pass,
+    stringsAsFactors = FALSE
+  )
+  cached_verdicts <- cached_verdicts[
+    cached_verdicts$gbifID %in% local_occurrences$gbifID[is_rare_row], , drop = FALSE]
+  if (!is.null(.verdict_path)) {
+    saveRDS(cached_verdicts, .verdict_path)
+    message(sprintf(
+      "check_geographic_outliers: cached %d verdict row(s) (%.2f MB) -- the global cloud itself is not retained.",
+      nrow(cached_verdicts), file.info(.verdict_path)$size / 1024^2))
+  }
+  }  # end recompute block
 
-  matched_n_unique <- global_occ$.global_n_unique[match_pos]
-  matched_cc_pass   <- global_occ$.cc_pass[match_pos]
+  match_pos <- match(local_occurrences$gbifID[is_rare_row], cached_verdicts$gbifID)
+
+  matched_n_unique <- cached_verdicts$global_n_unique[match_pos]
+  matched_cc_pass   <- cached_verdicts$cc_pass[match_pos]
 
   status <- ifelse(
     is.na(matched_n_unique) | matched_n_unique < min_occs,

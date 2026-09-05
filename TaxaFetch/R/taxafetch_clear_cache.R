@@ -54,6 +54,16 @@
 #'   "keep the most recent cache per query, remove only stale leftovers"
 #'   mode. Default \code{FALSE} (target everything recognized, the same as
 #'   before this parameter existed).
+#' @param zips_only Logical. If \code{TRUE}, targets only the downloaded GBIF
+#'   \code{.zip} files, leaving every metadata file and \code{.rds} checkpoint
+#'   in place. This is usually the setting you want for reclaiming space: the
+#'   zips are the cache in practice (38 of them held 17 GB on one real machine,
+#'   against 52 MB for every \code{.rds} combined), they are pure redundancy
+#'   once imported, and keeping their metadata means a later identical call
+#'   re-fetches the same prepared GBIF key with no new request or queue wait.
+#'   Unlike \code{orphans_only} this includes zips still referenced by current
+#'   metadata -- those are exactly the large ones. Cannot be combined with
+#'   \code{orphans_only}.
 #' @param dry_run Logical. If \code{TRUE}, reports what would be removed
 #'   without removing anything. Default \code{FALSE}.
 #' @return Invisibly, a data frame of the targeted files (\code{path},
@@ -70,12 +80,38 @@
 taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
                                    older_than_days = NULL,
                                    orphans_only = FALSE,
+                                   zips_only = FALSE,
                                    dry_run = FALSE) {
   if (!is.logical(orphans_only) || length(orphans_only) != 1L || is.na(orphans_only)) {
     stop("taxafetch_clear_cache: 'orphans_only' must be TRUE or FALSE.")
   }
+  if (!is.logical(zips_only) || length(zips_only) != 1L || is.na(zips_only)) {
+    stop("taxafetch_clear_cache: 'zips_only' must be TRUE or FALSE.")
+  }
+  if (isTRUE(orphans_only) && isTRUE(zips_only)) {
+    stop("taxafetch_clear_cache: use either 'orphans_only' or 'zips_only', not both -- ",
+         "orphans_only already targets a subset of the zips.")
+  }
 
   inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
+
+  if (isTRUE(zips_only)) {
+    # The zips ARE the cache, in practice: on one real machine 38 of them held
+    # 17 GB while every .rds checkpoint together came to 52 MB. A zip is pure
+    # redundancy once imported -- its only value is avoiding a re-download --
+    # and the small metadata files are deliberately LEFT BEHIND, so each
+    # query's download key survives and a later identical call re-fetches that
+    # same prepared file rather than queueing a new request.
+    is_zip <- grepl("\\.zip$", basename(inv$path))
+    inv <- inv[is_zip, , drop = FALSE]
+    if (nrow(inv) == 0L) {
+      message("taxafetch_clear_cache: no cached zips found.")
+      return(invisible(inv))
+    }
+    message(sprintf(
+      "taxafetch_clear_cache: targeting %d zip(s); metadata kept so the download keys stay re-fetchable.",
+      nrow(inv)))
+  }
 
   if (isTRUE(orphans_only)) {
     referenced <- basename(.taxafetch_referenced_zips(cache_dir))
