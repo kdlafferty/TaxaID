@@ -36,11 +36,17 @@ download_gbif_occurrences(
 output of \code{\link{get_keys_from_context}} or
 \code{rgbif::name_backbone()}. Duplicates are removed before processing.}
 
-\item{geometry}{Character. A WKT polygon string defining the geographic
-search area. Use \code{\link{make_bbox_wkt}} to generate from a centre
-lat/lon and radius. \strong{Note:} GBIF requires counter-clockwise
+\item{geometry}{Character or \code{NULL}. A WKT polygon string defining the
+geographic search area. Use \code{\link{make_bbox_wkt}} to generate from a
+centre lat/lon and radius. \strong{Note:} GBIF requires counter-clockwise
 winding order; \code{make_bbox_wkt} produces the correct winding order
-automatically.}
+automatically. \code{NULL} issues an UNRESTRICTED global download --
+the \code{pred_within} predicate is omitted and the cache signs as
+\code{g0} -- matching \code{\link{fetch_gbif_occurrences}}'s contract, so
+\code{\link{get_gbif_occurrences}} can route a global query (e.g.
+\code{\link{check_geographic_outliers}}'s) to whichever backend its key
+count calls for. A global query can be very large; the pre-download summary
+reports its size and record count before any bytes are transferred.}
 
 \item{year_range}{Character. Year range formatted as \code{"YYYY,YYYY"},
 e.g. \code{"2000,2024"}. Passed to GBIF as year >= and year <=

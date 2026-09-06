@@ -570,3 +570,33 @@ test_that("a missing zip re-fetches the SAME prepared key, not a new request", {
   expect_equal(nrow(out), 2L)
   expect_true(any(grepl("no new request", paste(msgs, collapse = ""))))
 })
+
+test_that("geometry = NULL is a global download: no pred_within, cache signs g0", {
+  # Regression for 2026-09-05: fetch_gbif_occurrences() has supported
+  # geometry = NULL since 2026-07 (check_geographic_outliers() needs a species'
+  # whole global range), but this backend rejected it -- so routing that call
+  # through get_gbif_occurrences() died at the 50-key threshold with
+  # "'geometry' must be a single non-empty WKT string".
+  seen <- new.env(); seen$preds <- NULL
+  local_mocked_bindings(
+    pred_within = function(...) stop("pred_within must NOT be built for a global query"),
+    occ_download = function(...) { seen$preds <- list(...); stop("STOP_AFTER_PREDICATES") },
+    .package = "rgbif")
+  expect_error(
+    suppressMessages(download_gbif_occurrences(
+      keys = c(1L, 2L), geometry = NULL, year_range = "2000,2024",
+      cache_dir = NULL, gbif_user = "u", gbif_pwd = "p", gbif_email = "e@x.org")),
+    "STOP_AFTER_PREDICATES")
+
+  # the cache signature must not choke on NULL (nchar(NULL) is integer(0))
+  pth <- TaxaFetch:::.gbif_dl_meta_path(tempdir(), keys = c(1L, 2L),
+                                        geometry = NULL, year_range = "2000,2024")
+  expect_match(basename(pth), "_g0_")
+
+  # and a real WKT still restricts
+  expect_error(
+    suppressMessages(download_gbif_occurrences(
+      keys = 1L, geometry = "POLYGON((0 0,1 0,1 1,0 0))", year_range = "2000,2024",
+      cache_dir = NULL, gbif_user = "u", gbif_pwd = "p", gbif_email = "e@x.org")),
+    "pred_within must NOT be built")
+})

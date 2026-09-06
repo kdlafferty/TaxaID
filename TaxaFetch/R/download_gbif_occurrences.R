@@ -14,11 +14,17 @@ utils::globalVariables("taxonKey")
 #' @param keys Integer or numeric vector. GBIF taxon usage keys. Typically the
 #'   output of \code{\link{get_keys_from_context}} or
 #'   \code{rgbif::name_backbone()}. Duplicates are removed before processing.
-#' @param geometry Character. A WKT polygon string defining the geographic
-#'   search area. Use \code{\link{make_bbox_wkt}} to generate from a centre
-#'   lat/lon and radius. \strong{Note:} GBIF requires counter-clockwise
+#' @param geometry Character or \code{NULL}. A WKT polygon string defining the
+#'   geographic search area. Use \code{\link{make_bbox_wkt}} to generate from a
+#'   centre lat/lon and radius. \strong{Note:} GBIF requires counter-clockwise
 #'   winding order; \code{make_bbox_wkt} produces the correct winding order
-#'   automatically.
+#'   automatically. \code{NULL} issues an UNRESTRICTED global download --
+#'   the \code{pred_within} predicate is omitted and the cache signs as
+#'   \code{g0} -- matching \code{\link{fetch_gbif_occurrences}}'s contract, so
+#'   \code{\link{get_gbif_occurrences}} can route a global query (e.g.
+#'   \code{\link{check_geographic_outliers}}'s) to whichever backend its key
+#'   count calls for. A global query can be very large; the pre-download summary
+#'   reports its size and record count before any bytes are transferred.
 #' @param year_range Character. Year range formatted as \code{"YYYY,YYYY"},
 #'   e.g. \code{"2000,2024"}. Passed to GBIF as year >= and year <=
 #'   predicates. Default \code{"2000"} through the current year, computed
@@ -325,8 +331,18 @@ download_gbif_occurrences <- function(
   if (length(keys) == 0L) {
     stop("download_gbif_occurrences: 'keys' is empty after removing NAs.")
   }
-  if (!is.character(geometry) || length(geometry) != 1L || !nzchar(geometry)) {
-    stop("download_gbif_occurrences: 'geometry' must be a single non-empty WKT string.")
+  # geometry = NULL is an UNRESTRICTED (global) search, matching
+  # fetch_gbif_occurrences()'s own contract. That capability was added there in
+  # 2026-07 for check_geographic_outliers(), which needs a species' whole global
+  # range to judge whether a local record is isolated -- and was never mirrored
+  # here, so routing that call through get_gbif_occurrences() hit the download
+  # backend and died on this check (2026-09-05). A global query is exactly the
+  # case the bulk API is best at: one prepared download instead of hundreds of
+  # per-key requests.
+  if (!is.null(geometry) &&
+      (!is.character(geometry) || length(geometry) != 1L || !nzchar(geometry))) {
+    stop("download_gbif_occurrences: 'geometry' must be a single non-empty WKT ",
+         "string, or NULL for an unrestricted global search.")
   }
   if (!is.null(limit)) {
     if (!is.numeric(limit) || length(limit) != 1L || is.na(limit) || limit < 1L) {
@@ -480,11 +496,14 @@ download_gbif_occurrences <- function(
         rgbif::pred_in("genusKey",   keys),
         rgbif::pred_in("speciesKey", keys)
       ),
-      rgbif::pred_within(geometry),
       rgbif::pred_gte("year",      yr_parts[1L]),
       rgbif::pred_lte("year",      yr_parts[2L]),
       rgbif::pred("hasCoordinate", TRUE)
     )
+    # Spatial restriction only when one was asked for; NULL = global.
+    if (!is.null(geometry)) {
+      preds <- c(preds, list(rgbif::pred_within(geometry)))
+    }
     if (isTRUE(exclude_absent)) {
       preds <- c(preds, list(rgbif::pred("occurrenceStatus", "PRESENT")))
     }
@@ -834,7 +853,7 @@ download_gbif_occurrences <- function(
     "%dk_s%d_g%d_%s%s%s",
     length(keys),
     as.integer(sum(as.numeric(keys)) %% 1e9),
-    nchar(geometry),
+    if (is.null(geometry)) 0L else nchar(geometry),
     gsub("[^0-9]", "", year_range),
     basis_tag,
     absent_tag
