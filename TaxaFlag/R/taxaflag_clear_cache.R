@@ -38,15 +38,16 @@
 #' @export
 #' @examples
 #' \dontrun{
-#' taxaflag_clear_cache(dry_run = TRUE)                     # report only
-#' taxaflag_clear_cache(older_than_days = 90)               # prune old entries
+#' taxaflag_clear_cache(dry_run = TRUE) # report only
+#' taxaflag_clear_cache(older_than_days = 90) # prune old entries
 #' }
 taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cache"),
                                  older_than_days = NULL,
                                  dry_run = FALSE) {
   inv <- TaxaTools::list_cache_files(cache_dir, .taxaflag_cache_patterns)
   TaxaTools::report_and_clear_cache(
-    inv, label = "taxaflag_clear_cache", cache_dir = cache_dir,
+    inv,
+    label = "taxaflag_clear_cache", cache_dir = cache_dir,
     older_than_days = older_than_days, dry_run = dry_run
   )
 }
@@ -65,22 +66,31 @@ taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cach
 .review_cache_hash <- function(x) {
   ints <- utf8ToInt(x)
   n <- length(ints)
-  if (n == 0L) return("empty-0-0")
+  if (n == 0L) {
+    return("empty-0-0")
+  }
   v <- as.numeric(ints)
-  a <- sum(v * seq_len(n))       %% 2147483647
-  b <- sum(v * rev(seq_len(n)))  %% 1000000007
+  a <- sum(v * seq_len(n)) %% 2147483647
+  b <- sum(v * rev(seq_len(n))) %% 1000000007
   sprintf("%010.0f-%010.0f-%06d", a, b, n)
 }
 
 #' Read one cached review row, verifying its full key
 #' @noRd
 .review_cache_read <- function(path, key) {
-  if (!file.exists(path)) return(NULL)
-  ent <- tryCatch(readRDS(path), error = function(e) NULL)
-  if (is.null(ent) || !is.list(ent) || is.null(ent$key) || is.null(ent$row))
+  if (!file.exists(path)) {
     return(NULL)
-  if (!identical(ent$key, key)) return(NULL)   # collision or stale layout
-  if (!is.data.frame(ent$row) || nrow(ent$row) != 1L) return(NULL)
+  }
+  ent <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (is.null(ent) || !is.list(ent) || is.null(ent$key) || is.null(ent$row)) {
+    return(NULL)
+  }
+  if (!identical(ent$key, key)) {
+    return(NULL)
+  } # collision or stale layout
+  if (!is.data.frame(ent$row) || nrow(ent$row) != 1L) {
+    return(NULL)
+  }
   ent$row
 }
 
@@ -88,6 +98,7 @@ taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cach
 #' @noRd
 .review_cache_write <- function(path, key, row) {
   tryCatch(saveRDS(list(key = key, row = row), path),
-           error = function(e) invisible(NULL))
+    error = function(e) invisible(NULL)
+  )
   invisible(NULL)
 }

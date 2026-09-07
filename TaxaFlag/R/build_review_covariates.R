@@ -1,5 +1,7 @@
-utils::globalVariables(c("n_reads", "seq_length", "min_reads", "max_reads", "quantile_reads",
-                         "total_reads", "n_samples_detected"))
+utils::globalVariables(c(
+  "n_reads", "seq_length", "min_reads", "max_reads", "quantile_reads",
+  "total_reads", "n_samples_detected"
+))
 
 #' Build per-observation covariates for modelling a review classification
 #'
@@ -165,46 +167,60 @@ utils::globalVariables(c("n_reads", "seq_length", "min_reads", "max_reads", "qua
 #' @importFrom dplyr filter group_by summarise ungroup n_distinct left_join
 #' @export
 build_review_covariates <- function(reads_df,
-                                     classification_df,
-                                     taxon_col                = "ESVId",
-                                     classification_taxon_col = "observation_id",
-                                     classification_col       = "primary_plausibility",
-                                     event_col                 = "event_id",
-                                     reads_col                 = "n_reads",
-                                     sequence_col               = "sequence",
-                                     control_samples            = NULL,
-                                     contaminant_df              = NULL,
-                                     contaminant_taxon_col       = taxon_col,
-                                     contaminant_cols            = "control_rate",
-                                     extra_covariate_cols        = NULL,
-                                     read_quantile                = 0.9) {
-
+                                    classification_df,
+                                    taxon_col = "ESVId",
+                                    classification_taxon_col = "observation_id",
+                                    classification_col = "primary_plausibility",
+                                    event_col = "event_id",
+                                    reads_col = "n_reads",
+                                    sequence_col = "sequence",
+                                    control_samples = NULL,
+                                    contaminant_df = NULL,
+                                    contaminant_taxon_col = taxon_col,
+                                    contaminant_cols = "control_rate",
+                                    extra_covariate_cols = NULL,
+                                    read_quantile = 0.9) {
   # ---- validate -----------------------------------------------------------
-  if (!is.data.frame(reads_df))
+  if (!is.data.frame(reads_df)) {
     stop("build_review_covariates: 'reads_df' must be a data frame.", call. = FALSE)
+  }
   if (!is.numeric(read_quantile) || length(read_quantile) != 1L ||
-      is.na(read_quantile) || read_quantile <= 0 || read_quantile > 1)
+    is.na(read_quantile) || read_quantile <= 0 || read_quantile > 1) {
     stop("build_review_covariates: 'read_quantile' must be a single number in (0, 1].", call. = FALSE)
-  if (!is.data.frame(classification_df))
+  }
+  if (!is.data.frame(classification_df)) {
     stop("build_review_covariates: 'classification_df' must be a data frame.", call. = FALSE)
-  for (col in c(taxon_col, event_col, reads_col))
-    if (!col %in% names(reads_df))
+  }
+  for (col in c(taxon_col, event_col, reads_col)) {
+    if (!col %in% names(reads_df)) {
       stop(sprintf("build_review_covariates: column '%s' not found in reads_df.", col),
-           call. = FALSE)
-  for (col in c(classification_taxon_col, classification_col, extra_covariate_cols))
-    if (!col %in% names(classification_df))
+        call. = FALSE
+      )
+    }
+  }
+  for (col in c(classification_taxon_col, classification_col, extra_covariate_cols)) {
+    if (!col %in% names(classification_df)) {
       stop(sprintf("build_review_covariates: column '%s' not found in classification_df.", col),
-           call. = FALSE)
-  if (!is.null(sequence_col) && !sequence_col %in% names(reads_df))
+        call. = FALSE
+      )
+    }
+  }
+  if (!is.null(sequence_col) && !sequence_col %in% names(reads_df)) {
     stop(sprintf("build_review_covariates: column '%s' not found in reads_df.", sequence_col),
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (!is.null(contaminant_df)) {
-    if (!is.data.frame(contaminant_df))
+    if (!is.data.frame(contaminant_df)) {
       stop("build_review_covariates: 'contaminant_df' must be a data frame or NULL.", call. = FALSE)
-    for (col in c(contaminant_taxon_col, contaminant_cols))
-      if (!col %in% names(contaminant_df))
+    }
+    for (col in c(contaminant_taxon_col, contaminant_cols)) {
+      if (!col %in% names(contaminant_df)) {
         stop(sprintf("build_review_covariates: column '%s' not found in contaminant_df.", col),
-             call. = FALSE)
+          call. = FALSE
+        )
+      }
+    }
   }
 
   # ---- split field vs. control rows ----------------------------------------
@@ -217,11 +233,11 @@ build_review_covariates <- function(reads_df,
   field_agg <- field_df |>
     dplyr::group_by(.data[[taxon_col]]) |>
     dplyr::summarise(
-      min_reads           = min(.data[[reads_col]]),
-      max_reads           = max(.data[[reads_col]]),
-      quantile_reads      = stats::quantile(.data[[reads_col]], read_quantile, type = 7, names = FALSE),
-      total_reads         = sum(.data[[reads_col]]),
-      n_samples_detected  = dplyr::n_distinct(.data[[event_col]]),
+      min_reads = min(.data[[reads_col]]),
+      max_reads = max(.data[[reads_col]]),
+      quantile_reads = stats::quantile(.data[[reads_col]], read_quantile, type = 7, names = FALSE),
+      total_reads = sum(.data[[reads_col]]),
+      n_samples_detected = dplyr::n_distinct(.data[[event_col]]),
       .groups = "drop"
     )
   field_agg$prop_samples_detected <-
@@ -232,33 +248,38 @@ build_review_covariates <- function(reads_df,
     seq_agg <- reads_df |>
       dplyr::group_by(.data[[taxon_col]]) |>
       dplyr::summarise(
-        seq_length   = nchar(.data[[sequence_col]][1]),
+        seq_length = nchar(.data[[sequence_col]][1]),
         n_seq_lengths = dplyr::n_distinct(nchar(.data[[sequence_col]])),
         .groups = "drop"
       )
     inconsistent <- seq_agg[[taxon_col]][seq_agg$n_seq_lengths > 1L]
-    if (length(inconsistent) > 0L)
+    if (length(inconsistent) > 0L) {
       warning(sprintf(
         "build_review_covariates: %d taxon/taxa have more than one distinct sequence length; using the first occurrence: %s",
         length(inconsistent), paste(utils::head(inconsistent, 5L), collapse = ", ")
       ), call. = FALSE)
+    }
     seq_agg$n_seq_lengths <- NULL
   }
 
   # ---- assemble result: one row per classification_df row -----------------
   result <- data.frame(
     observation_id = classification_df[[classification_taxon_col]],
-    classification  = classification_df[[classification_col]],
+    classification = classification_df[[classification_col]],
     stringsAsFactors = FALSE
   )
-  for (col in extra_covariate_cols)
+  for (col in extra_covariate_cols) {
     result[[col]] <- classification_df[[col]]
+  }
 
   result <- dplyr::left_join(result, field_agg,
-                              by = c("observation_id" = taxon_col))
-  if (!is.null(sequence_col))
+    by = c("observation_id" = taxon_col)
+  )
+  if (!is.null(sequence_col)) {
     result <- dplyr::left_join(result, seq_agg,
-                                by = c("observation_id" = taxon_col))
+      by = c("observation_id" = taxon_col)
+    )
+  }
 
   # "No field detections" (n_samples_detected NA after the left_join) is a
   # legitimate, common, NON-alarming outcome -- e.g. a taxon present only in
@@ -269,11 +290,12 @@ build_review_covariates <- function(reads_df,
   # explicitly rather than warning on every zero-detection row.
   all_taxa_in_reads <- unique(as.character(reads_df[[taxon_col]]))
   truly_absent <- !result$observation_id %in% all_taxa_in_reads
-  if (any(truly_absent))
+  if (any(truly_absent)) {
     warning(sprintf(
       "build_review_covariates: %d observation(s) in classification_df had no matching rows in reads_df at all: %s",
       sum(truly_absent), paste(utils::head(result$observation_id[truly_absent], 5L), collapse = ", ")
     ), call. = FALSE)
+  }
 
   # Zero-fill detection counts/proportions for every row with no field
   # detections (both the truly-absent and the control-only cases) -- a real
@@ -290,14 +312,16 @@ build_review_covariates <- function(reads_df,
     join_cols <- unique(c(contaminant_taxon_col, contaminant_cols))
     contaminant_sub <- contaminant_df[, join_cols, drop = FALSE]
     result <- dplyr::left_join(result, contaminant_sub,
-                                by = c("observation_id" = contaminant_taxon_col))
+      by = c("observation_id" = contaminant_taxon_col)
+    )
 
     missing_contam <- is.na(result[[contaminant_cols[1]]])
-    if (any(missing_contam))
+    if (any(missing_contam)) {
       warning(sprintf(
         "build_review_covariates: %d observation(s) had no matching rows in contaminant_df: %s",
         sum(missing_contam), paste(utils::head(result$observation_id[missing_contam], 5L), collapse = ", ")
       ), call. = FALSE)
+    }
   }
 
   result

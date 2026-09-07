@@ -1,4 +1,3 @@
-
 #' Flag Detections Near Start or End of a Sampling Period
 #'
 #' Identifies detections that occur within a user-specified time interval
@@ -101,10 +100,12 @@
 #'
 #' @examples
 #' camera_detections <- data.frame(
-#'   datetime   = as.POSIXct(c("2026-01-01 08:00:00", "2026-01-01 08:15:00",
-#'                             "2026-01-01 09:00:00", "2026-01-01 09:45:00")),
+#'   datetime = as.POSIXct(c(
+#'     "2026-01-01 08:00:00", "2026-01-01 08:15:00",
+#'     "2026-01-01 09:00:00", "2026-01-01 09:45:00"
+#'   )),
 #'   taxon_name = c("Homo sapiens", "Homo sapiens", "Lynx rufus", "Homo sapiens"),
-#'   station    = "A"
+#'   station = "A"
 #' )
 #' flag_handler(
 #'   input_df         = camera_detections,
@@ -117,65 +118,79 @@
 #' # Anchored on real per-station deploy/retrieve timestamps instead of the
 #' # detection data's own min/max (see "Edge anchoring" above)
 #' flagged <- flag_handler(
-#'   input_df               = camera_detections,
-#'   datetime_col     = "datetime",
-#'   group_col        = "station",
+#'   input_df = camera_detections,
+#'   datetime_col = "datetime",
+#'   group_col = "station",
 #'   interval_minutes = 30,
-#'   handler_taxa     = "Homo sapiens",
-#'   station_metadata = station_deploy_log  # columns: station, deploy_time, retrieve_time
+#'   handler_taxa = "Homo sapiens",
+#'   station_metadata = station_deploy_log # columns: station, deploy_time, retrieve_time
 #' )
 #' }
 #'
 #' @export
 flag_handler <- function(input_df,
-                         datetime_col     = "datetime",
-                         taxon_col        = "taxon_name",
-                         group_col        = NULL,
+                         datetime_col = "datetime",
+                         taxon_col = "taxon_name",
+                         group_col = NULL,
                          interval_minutes = 30,
-                         handler_taxa     = NULL,
+                         handler_taxa = NULL,
                          station_metadata = NULL,
-                         deploy_col       = "deploy_time",
-                         retrieve_col     = "retrieve_time",
-                         verbose          = TRUE) {
-
+                         deploy_col = "deploy_time",
+                         retrieve_col = "retrieve_time",
+                         verbose = TRUE) {
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
   for (col in c(datetime_col, taxon_col)) {
-    if (!col %in% names(input_df))
+    if (!col %in% names(input_df)) {
       stop(sprintf("Column '%s' not found in input_df.", col), call. = FALSE)
+    }
   }
 
-  if (!is.null(group_col) && !group_col %in% names(input_df))
+  if (!is.null(group_col) && !group_col %in% names(input_df)) {
     stop(sprintf("Column '%s' not found in input_df.", group_col), call. = FALSE)
+  }
 
   if (!is.numeric(interval_minutes) || length(interval_minutes) != 1L ||
-      interval_minutes <= 0)
+    interval_minutes <= 0) {
     stop("'interval_minutes' must be a single positive number.", call. = FALSE)
+  }
 
   if (!is.null(station_metadata)) {
-    if (is.null(group_col))
+    if (is.null(group_col)) {
       stop("'station_metadata' requires 'group_col' (a single implicit ",
-           "group has no per-station metadata to key on).", call. = FALSE)
-    if (!is.data.frame(station_metadata))
+        "group has no per-station metadata to key on).",
+        call. = FALSE
+      )
+    }
+    if (!is.data.frame(station_metadata)) {
       stop("'station_metadata' must be a data frame.", call. = FALSE)
+    }
     for (col in c(group_col, deploy_col, retrieve_col)) {
-      if (!col %in% names(station_metadata))
+      if (!col %in% names(station_metadata)) {
         stop(sprintf("Column '%s' not found in station_metadata.", col),
-             call. = FALSE)
+          call. = FALSE
+        )
+      }
     }
   }
 
   # --- Parse datetimes ---
   parsed <- .parse_datetimes(input_df[[datetime_col]])
-  if (all(is.na(parsed)))
-    stop(sprintf("Could not parse any values in column '%s' as datetimes.",
-                 datetime_col), call. = FALSE)
+  if (all(is.na(parsed))) {
+    stop(sprintf(
+      "Could not parse any values in column '%s' as datetimes.",
+      datetime_col
+    ), call. = FALSE)
+  }
 
   n_failed <- sum(is.na(parsed) & !is.na(input_df[[datetime_col]]))
-  if (n_failed > 0L && verbose)
-    message(sprintf("flag_handler: %d of %d datetime values could not be parsed.",
-                    n_failed, nrow(input_df)))
+  if (n_failed > 0L && verbose) {
+    message(sprintf(
+      "flag_handler: %d of %d datetime values could not be parsed.",
+      n_failed, nrow(input_df)
+    ))
+  }
 
   input_df$datetime_parsed <- parsed
 
@@ -201,7 +216,7 @@ flag_handler <- function(input_df,
   # --- Override with real station_metadata deploy/retrieve times where available ---
   if (!is.null(station_metadata)) {
     meta <- data.frame(
-      .tmp_group  = as.character(station_metadata[[group_col]]),
+      .tmp_group = as.character(station_metadata[[group_col]]),
       station_min = .parse_datetimes(station_metadata[[deploy_col]]),
       station_max = .parse_datetimes(station_metadata[[retrieve_col]]),
       stringsAsFactors = FALSE
@@ -209,12 +224,13 @@ flag_handler <- function(input_df,
     meta <- meta[!is.na(meta$station_min) & !is.na(meta$station_max), , drop = FALSE]
 
     missing_groups <- setdiff(unique(input_df$.tmp_group), meta$.tmp_group)
-    if (length(missing_groups) > 0L)
+    if (length(missing_groups) > 0L) {
       warning(sprintf(
         "flag_handler: %d group(s) have no usable station_metadata entry (missing row, or unparseable deploy_time/retrieve_time) and fall back to data-derived edges: %s",
         length(missing_groups),
         paste(utils::head(missing_groups, 10L), collapse = ", ")
       ), call. = FALSE)
+    }
 
     group_edges <- merge(group_edges, meta, by = ".tmp_group", all.x = TRUE)
     has_meta <- !is.na(group_edges$station_min) & !is.na(group_edges$station_max)
@@ -227,15 +243,17 @@ flag_handler <- function(input_df,
       origin = "1970-01-01"
     )
     group_edges$edge_anchor_source <- ifelse(has_meta, "station_metadata",
-                                             "detection_data_fallback")
+      "detection_data_fallback"
+    )
     group_edges$station_min <- NULL
     group_edges$station_max <- NULL
 
-    if (verbose)
+    if (verbose) {
       message(sprintf(
         "flag_handler: %d of %d group(s) anchored on real station_metadata deploy/retrieve times; %d fell back to data-derived edges.",
         sum(has_meta), nrow(group_edges), sum(!has_meta)
       ))
+    }
   }
 
   # merge() does not preserve row order (default sort = TRUE re-sorts by the
@@ -251,12 +269,12 @@ flag_handler <- function(input_df,
   rownames(input_df) <- NULL
 
   # --- Compute scores ---
-  interval_secs <- interval_minutes * 60
-
   mins_to_start <- as.numeric(difftime(input_df$datetime_parsed, input_df$group_min,
-                                       units = "secs"))
-  mins_to_end   <- as.numeric(difftime(input_df$group_max, input_df$datetime_parsed,
-                                       units = "secs"))
+    units = "secs"
+  ))
+  mins_to_end <- as.numeric(difftime(input_df$group_max, input_df$datetime_parsed,
+    units = "secs"
+  ))
   input_df$minutes_to_edge <- pmin(mins_to_start, mins_to_end) / 60
 
   # Score: 1.0 if outside interval, decreasing linearly to 0 at the edge
@@ -277,10 +295,10 @@ flag_handler <- function(input_df,
   # Fixed column name + type-qualified values (2026-07-24) -- see
   # @section Unified validity schema.
   input_df$validity_flag <- dplyr::case_when(
-    is.na(input_df$handler_score)  ~ NA_character_,
-    input_df$handler_score >= 1.0  ~ "valid",
-    input_df$handler_score >= 0.5  ~ "questionable_handling",
-    TRUE                     ~ "invalid_handling"
+    is.na(input_df$handler_score) ~ NA_character_,
+    input_df$handler_score >= 1.0 ~ "valid",
+    input_df$handler_score >= 0.5 ~ "questionable_handling",
+    TRUE ~ "invalid_handling"
   )
 
   input_df$observation_validity <- input_df$handler_score
@@ -289,28 +307,35 @@ flag_handler <- function(input_df,
   input_df$validity_reason <- ifelse(
     is.na(input_df$handler_score), NA_character_,
     ifelse(input_df$handler_score >= 1.0,
-           sprintf("%.1f min from nearest edge; outside %d-min interval",
-                   input_df$minutes_to_edge, as.integer(interval_minutes)),
-           sprintf("%.1f min from nearest edge; within %d-min interval, score %.3f",
-                   input_df$minutes_to_edge, as.integer(interval_minutes),
-                   input_df$handler_score))
+      sprintf(
+        "%.1f min from nearest edge; outside %d-min interval",
+        input_df$minutes_to_edge, as.integer(interval_minutes)
+      ),
+      sprintf(
+        "%.1f min from nearest edge; within %d-min interval, score %.3f",
+        input_df$minutes_to_edge, as.integer(interval_minutes),
+        input_df$handler_score
+      )
+    )
   )
 
   # --- Clean up temporary columns ---
-  input_df$datetime_parsed  <- NULL
-  input_df$.tmp_group       <- NULL
-  input_df$group_min        <- NULL
-  input_df$group_max        <- NULL
-  input_df$minutes_to_edge  <- NULL
-  input_df$handler_score    <- NULL
+  input_df$datetime_parsed <- NULL
+  input_df$.tmp_group <- NULL
+  input_df$group_min <- NULL
+  input_df$group_max <- NULL
+  input_df$minutes_to_edge <- NULL
+  input_df$handler_score <- NULL
 
   if (verbose) {
-    n_invalid      <- sum(input_df$validity_flag == "invalid_handling", na.rm = TRUE)
+    n_invalid <- sum(input_df$validity_flag == "invalid_handling", na.rm = TRUE)
     n_questionable <- sum(input_df$validity_flag == "questionable_handling", na.rm = TRUE)
-    n_valid        <- sum(input_df$validity_flag == "valid", na.rm = TRUE)
-    n_na           <- sum(is.na(input_df$validity_flag))
-    message(sprintf("flag_handler: %d rows flagged: %d invalid, %d questionable, %d valid, %d NA.",
-                    nrow(input_df), n_invalid, n_questionable, n_valid, n_na))
+    n_valid <- sum(input_df$validity_flag == "valid", na.rm = TRUE)
+    n_na <- sum(is.na(input_df$validity_flag))
+    message(sprintf(
+      "flag_handler: %d rows flagged: %d invalid, %d questionable, %d valid, %d NA.",
+      nrow(input_df), n_invalid, n_questionable, n_valid, n_na
+    ))
   }
 
   input_df
@@ -326,8 +351,12 @@ flag_handler <- function(input_df,
 #' @return POSIXct vector (NA for unparseable values).
 #' @noRd
 .parse_datetimes <- function(x) {
-  if (inherits(x, "POSIXct")) return(x)
-  if (inherits(x, "Date")) return(as.POSIXct(x))
+  if (inherits(x, "POSIXct")) {
+    return(x)
+  }
+  if (inherits(x, "Date")) {
+    return(as.POSIXct(x))
+  }
 
   x <- as.character(x)
 
@@ -345,10 +374,13 @@ flag_handler <- function(input_df,
 
   for (fmt in formats) {
     parsed <- as.POSIXct(x, format = fmt)
-    if (sum(!is.na(parsed)) > sum(!is.na(x)) * 0.5) return(parsed)
+    if (sum(!is.na(parsed)) > sum(!is.na(x)) * 0.5) {
+      return(parsed)
+    }
   }
 
   # Last resort: let R guess
   tryCatch(suppressWarnings(as.POSIXct(x)),
-           error = function(e) rep(as.POSIXct(NA), length(x)))
+    error = function(e) rep(as.POSIXct(NA), length(x))
+  )
 }

@@ -1,0 +1,36 @@
+linters: linters_with_defaults(
+    line_length_linter(120L),
+    # Disabled package-wide, not per-file: near-100% false positives here.
+    # - indentation_linter: a hanging-indent house style choice.
+    # - commented_code_linter: this ecosystem's "# function_name()"
+    #   section-header convention and deliberate commented-out usage
+    #   examples in workflow/demo scripts -- not dead code.
+    # - object_name_linter / object_length_linter: SCREAMING_SNAKE_CASE
+    #   config constants in workflow/demo scripts and long, deliberately
+    #   descriptive exported/internal names -- established conventions.
+    indentation_linter = NULL,
+    commented_code_linter = NULL,
+    object_name_linter = NULL,
+    object_length_linter = NULL
+  )
+encoding: "UTF-8"
+exclusions: list(
+    # Remaining line-length hits: long cli/sprintf diagnostic strings and
+    # test-assertion strings spread thinly across several files -- zero
+    # security- or correctness-relevant value; the real findings in this
+    # package (2 genuinely dead computations -- flag_handler()'s unused
+    # interval_secs, a superseded regex line in a demo stub) were fixed
+    # directly instead of suppressed.
+    "R/review_assignments.R" = list(line_length_linter = Inf),
+    "R/check_gbif_tile_range.R" = list(line_length_linter = Inf),
+    "R/flag_handler.R" = list(line_length_linter = Inf),
+    "R/review_spatial_context.R" = list(line_length_linter = Inf),
+    "R/flag_watch_candidates.R" = list(line_length_linter = Inf),
+    "R/flag_contaminant.R" = list(line_length_linter = Inf),
+    "R/build_review_covariates.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-review_assignments.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-check_gbif_tile_range.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-flag_contaminant.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-add_posthoc_assessment.R" = list(line_length_linter = Inf),
+    "inst/workflows/flag_detections_workflow.R" = list(line_length_linter = c(146L))
+  )

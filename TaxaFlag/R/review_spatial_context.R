@@ -193,43 +193,44 @@
 #' @examples
 #' \dontrun{
 #' review_spatial_context(
-#'   input_df               = consensus_final,
-#'   query_lat        = STUDY_LAT, query_lon = STUDY_LON,
-#'   occurrence_data  = occurrences_clean,
-#'   inat_range       = inat_range,
-#'   context          = list(geography = "Lake Michigan, Burns/Indiana Harbor",
-#'                           habitat   = "harbor, standing water"),
-#'   target_group     = "fish",
-#'   marker           = "12S eDNA"
+#'   input_df = consensus_final,
+#'   query_lat = STUDY_LAT, query_lon = STUDY_LON,
+#'   occurrence_data = occurrences_clean,
+#'   inat_range = inat_range,
+#'   context = list(
+#'     geography = "Lake Michigan, Burns/Indiana Harbor",
+#'     habitat = "harbor, standing water"
+#'   ),
+#'   target_group = "fish",
+#'   marker = "12S eDNA"
 #' )
 #' }
 #'
 #' @importFrom TaxaTools %||%
 #' @export
 review_spatial_context <- function(input_df,
-                                    query_lat,
-                                    query_lon,
-                                    taxon_col             = "primary_taxon",
-                                    plausibility_col      = "primary_plausibility",
-                                    occurrence_data       = NULL,
-                                    excluded_occurrence_data = NULL,
-                                    occurrence_taxon_col  = "taxon_name",
-                                    occurrence_lat_col    = "decimalLatitude",
-                                    occurrence_lon_col    = "decimalLongitude",
-                                    inat_range            = NULL,
-                                    inat_taxon_col        = "taxon_name",
-                                    live_inat_check       = TRUE,
-                                    inat_cache_dir        = NULL,
-                                    inat_radius_km        = 500,
-                                    context               = NULL,
-                                    target_group          = NULL,
-                                    marker                = NULL,
-                                    llm_fn                = getOption("TaxaID.llm_fn", TaxaTools::call_api),
-                                    tile                  = "CartoDB.Positron",
-                                    gbif_style            = "classic.point",
-                                    gbif_bin_size         = 256L,
-                                    gbif_year_range       = NULL) {
-
+                                   query_lat,
+                                   query_lon,
+                                   taxon_col = "primary_taxon",
+                                   plausibility_col = "primary_plausibility",
+                                   occurrence_data = NULL,
+                                   excluded_occurrence_data = NULL,
+                                   occurrence_taxon_col = "taxon_name",
+                                   occurrence_lat_col = "decimalLatitude",
+                                   occurrence_lon_col = "decimalLongitude",
+                                   inat_range = NULL,
+                                   inat_taxon_col = "taxon_name",
+                                   live_inat_check = TRUE,
+                                   inat_cache_dir = NULL,
+                                   inat_radius_km = 500,
+                                   context = NULL,
+                                   target_group = NULL,
+                                   marker = NULL,
+                                   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+                                   tile = "CartoDB.Positron",
+                                   gbif_style = "classic.point",
+                                   gbif_bin_size = 256L,
+                                   gbif_year_range = NULL) {
   for (pkg in c("shiny", "miniUI", "leaflet", "httr2", "png")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop(sprintf(
@@ -243,14 +244,18 @@ review_spatial_context <- function(input_df,
   }
 
   if (!is.data.frame(input_df)) stop("review_spatial_context: 'input_df' must be a data frame.")
-  if (!taxon_col %in% names(input_df))
+  if (!taxon_col %in% names(input_df)) {
     stop(sprintf("review_spatial_context: column '%s' not found in input_df.", taxon_col))
-  if (!is.null(plausibility_col) && !plausibility_col %in% names(input_df))
+  }
+  if (!is.null(plausibility_col) && !plausibility_col %in% names(input_df)) {
     stop(sprintf("review_spatial_context: column '%s' not found in input_df.", plausibility_col))
-  if (!is.numeric(query_lat) || length(query_lat) != 1L || is.na(query_lat))
+  }
+  if (!is.numeric(query_lat) || length(query_lat) != 1L || is.na(query_lat)) {
     stop("review_spatial_context: query_lat must be a single non-NA numeric value.")
-  if (!is.numeric(query_lon) || length(query_lon) != 1L || is.na(query_lon))
+  }
+  if (!is.numeric(query_lon) || length(query_lon) != 1L || is.na(query_lon)) {
     stop("review_spatial_context: query_lon must be a single non-NA numeric value.")
+  }
 
   .review_spatial_context_impl(
     input_df = input_df, query_lat = query_lat, query_lon = query_lon, taxon_col = taxon_col,
@@ -280,10 +285,10 @@ review_spatial_context <- function(input_df,
                                          live_inat_check, inat_cache_dir, inat_radius_km,
                                          context, target_group, marker, llm_fn, tile,
                                          gbif_style, gbif_bin_size, gbif_year_range) {
-
   all_taxa <- sort(unique(input_df[[taxon_col]][!is.na(input_df[[taxon_col]])]))
-  if (length(all_taxa) == 0L)
+  if (length(all_taxa) == 0L) {
     stop("review_spatial_context: no non-NA taxa found in input_df[[taxon_col]].")
+  }
 
   plaus_choices <- if (is.null(plausibility_col)) {
     NULL
@@ -303,37 +308,43 @@ review_spatial_context <- function(input_df,
       padding = 0,
       shiny::div(
         style = "display:flex;width:100%;height:100%;",
-
         shiny::div(
           style = "flex:1;min-width:0;position:relative;",
           leaflet::leafletOutput("map", width = "100%", height = "100%")
         ),
-
         shiny::div(
           style = paste0(
             "width:340px;flex-shrink:0;padding:12px;border-left:1px solid #ddd;",
             "background:#fafafa;overflow-y:auto;"
           ),
-
-          if (!is.null(plaus_choices)) shiny::tagList(
-            shiny::h4("Plausibility", style = "margin:6px 0 4px;font-size:13px;"),
-            shiny::selectInput("plaus", label = NULL, choices = plaus_choices,
-                               selected = "All", width = "100%")
-          ) else NULL,
-
+          if (!is.null(plaus_choices)) {
+            shiny::tagList(
+              shiny::h4("Plausibility", style = "margin:6px 0 4px;font-size:13px;"),
+              shiny::selectInput("plaus",
+                label = NULL, choices = plaus_choices,
+                selected = "All", width = "100%"
+              )
+            )
+          } else {
+            NULL
+          },
           shiny::h4("Taxon", style = "margin:6px 0 4px;font-size:13px;"),
           shiny::selectInput("taxon", label = NULL, choices = all_taxa, width = "100%"),
-
           shiny::hr(style = "margin:8px 0;"),
           shiny::uiOutput("stats_panel"),
-
-          if (!is.null(context)) shiny::tagList(
-            shiny::hr(style = "margin:8px 0;"),
-            shiny::actionButton("run_ai", "Run AI Review", width = "100%"),
-            shiny::div(style = "font-size:10px;color:#999;margin-top:2px;",
-                      "Makes a real, billed LLM call."),
-            shiny::uiOutput("ai_panel")
-          ) else NULL
+          if (!is.null(context)) {
+            shiny::tagList(
+              shiny::hr(style = "margin:8px 0;"),
+              shiny::actionButton("run_ai", "Run AI Review", width = "100%"),
+              shiny::div(
+                style = "font-size:10px;color:#999;margin-top:2px;",
+                "Makes a real, billed LLM call."
+              ),
+              shiny::uiOutput("ai_panel")
+            )
+          } else {
+            NULL
+          }
         )
       )
     )
@@ -378,16 +389,18 @@ review_spatial_context <- function(input_df,
                                           context, target_group, marker, llm_fn, tile,
                                           gbif_style, gbif_bin_size, gbif_year_range) {
   function(input, output, session) {
-
-    shiny::observeEvent(input$plaus, {
-      shiny::req(!is.null(plaus_choices))
-      taxa <- if (input$plaus == "All") {
-        all_taxa
-      } else {
-        sort(unique(input_df[[taxon_col]][input_df[[plausibility_col]] %in% input$plaus & !is.na(input_df[[taxon_col]])]))
-      }
-      shiny::updateSelectInput(session, "taxon", choices = taxa)
-    }, ignoreNULL = TRUE)
+    shiny::observeEvent(input$plaus,
+      {
+        shiny::req(!is.null(plaus_choices))
+        taxa <- if (input$plaus == "All") {
+          all_taxa
+        } else {
+          sort(unique(input_df[[taxon_col]][input_df[[plausibility_col]] %in% input$plaus & !is.na(input_df[[taxon_col]])]))
+        }
+        shiny::updateSelectInput(session, "taxon", choices = taxa)
+      },
+      ignoreNULL = TRUE
+    )
 
     taxon_key <- shiny::reactive({
       shiny::req(input$taxon)
@@ -404,7 +417,9 @@ review_spatial_context <- function(input_df,
       # instead lets stats_panel's own "could not resolve" branch (which
       # checks taxon_key() directly) handle this case without losing the
       # rest of the panel.
-      if (is.na(key)) return(NULL)
+      if (is.na(key)) {
+        return(NULL)
+      }
       tryCatch(
         check_gbif_tile_range(taxon_key = key, query_lat = query_lat, query_lon = query_lon),
         error = function(e) NULL
@@ -413,7 +428,9 @@ review_spatial_context <- function(input_df,
 
     local_res <- shiny::reactive({
       shiny::req(input$taxon)
-      if (is.null(occurrence_data)) return(NULL)
+      if (is.null(occurrence_data)) {
+        return(NULL)
+      }
       tryCatch(
         compute_local_occurrence_distance(
           taxon_names = input$taxon, query_lat = query_lat, query_lon = query_lon,
@@ -435,7 +452,9 @@ review_spatial_context <- function(input_df,
 
       if (!is.null(inat_range) && inat_taxon_col %in% names(inat_range)) {
         hit <- inat_range[inat_range[[inat_taxon_col]] %in% input$taxon, , drop = FALSE]
-        if (nrow(hit) > 0L) return(hit[1L, , drop = FALSE])
+        if (nrow(hit) > 0L) {
+          return(hit[1L, , drop = FALSE])
+        }
       }
 
       if (isTRUE(live_inat_check) && requireNamespace("TaxaFetch", quietly = TRUE)) {
@@ -451,7 +470,9 @@ review_spatial_context <- function(input_df,
         # like "taxon_not_found"/"no_polygon") -- returned as-is rather than
         # treated as absent, so the sidebar can show that real status instead
         # of a generic "no data" indistinguishable from "never checked."
-        if (!is.null(live) && nrow(live) > 0L) return(live[1L, , drop = FALSE])
+        if (!is.null(live) && nrow(live) > 0L) {
+          return(live[1L, , drop = FALSE])
+        }
       }
 
       NULL
@@ -459,8 +480,8 @@ review_spatial_context <- function(input_df,
 
     output$stats_panel <- shiny::renderUI({
       shiny::req(input$taxon)
-      l  <- local_res()
-      g  <- gbif_res()
+      l <- local_res()
+      g <- gbif_res()
       ir <- inat_row()
 
       blocks <- list()
@@ -469,8 +490,10 @@ review_spatial_context <- function(input_df,
         txt <- if (l$n_local_records == 0L) {
           "Local (free): 0 records in this study's own occurrence data"
         } else {
-          sprintf("Local (free): %d record(s), nearest %.1f km away",
-                  l$n_local_records, l$dist_nearest_km)
+          sprintf(
+            "Local (free): %d record(s), nearest %.1f km away",
+            l$n_local_records, l$dist_nearest_km
+          )
         }
         blocks <- c(blocks, list(shiny::p(txt, style = "font-size:12px;margin:4px 0;")))
       }
@@ -490,8 +513,10 @@ review_spatial_context <- function(input_df,
       } else {
         esc <- if (isTRUE(g$escalated)) sprintf(" (escalated to zoom %d)", g$zoom_used) else ""
         blocks <- c(blocks, list(shiny::p(
-          sprintf("GBIF: nearest occurrence ~%.0f km away, patch ~%.1f km across%s",
-                  g$dist_nearest_occupied_km, g$patch_diameter_km, esc),
+          sprintf(
+            "GBIF: nearest occurrence ~%.0f km away, patch ~%.1f km across%s",
+            g$dist_nearest_occupied_km, g$patch_diameter_km, esc
+          ),
           style = "font-size:12px;margin:4px 0;"
         )))
       }
@@ -521,10 +546,12 @@ review_spatial_context <- function(input_df,
             tolower(trimws(ir$matched_name)) != tolower(trimws(input$taxon))
           parts <- character(0)
           if (mismatch) parts <- c(parts, sprintf("matched to '%s' (differs from query!)", ir$matched_name))
-          if (!is.null(ir$in_range) && !is.na(ir$in_range))
+          if (!is.null(ir$in_range) && !is.na(ir$in_range)) {
             parts <- c(parts, if (isTRUE(ir$in_range)) "in range" else "outside range")
-          if (!is.null(ir$n_observations) && !is.na(ir$n_observations))
+          }
+          if (!is.null(ir$n_observations) && !is.na(ir$n_observations)) {
             parts <- c(parts, sprintf("%s obs", format(ir$n_observations, big.mark = ",")))
+          }
           txt <- if (length(parts) == 0L) {
             # Checked (static or live) but nothing usable came back --
             # surface the real range_status (e.g. "taxon_not_found"/
@@ -537,8 +564,10 @@ review_spatial_context <- function(input_df,
           }
           blocks <- c(blocks, list(shiny::p(
             txt,
-            style = sprintf("font-size:12px;margin:4px 0;%s",
-                            if (mismatch) "font-weight:600;color:#b45309;" else "")
+            style = sprintf(
+              "font-size:12px;margin:4px 0;%s",
+              if (mismatch) "font-weight:600;color:#b45309;" else ""
+            )
           )))
           # The map's iNat observation-tile layer needs taxon_id specifically
           # (not just in_range/n_observations) -- flag explicitly when it's
@@ -572,21 +601,25 @@ review_spatial_context <- function(input_df,
     .gbif_legend_gradient <- .gbif_swatch$gradient
     .gbif_legend_label <- .gbif_swatch$label
 
-    .marker_icon_uri <- tryCatch({
-      # Embeds leaflet's OWN bundled default marker icon (the exact PNG
-      # leaflet::addMarkers() draws with no custom icon= -- confirmed by
-      # inspecting the installed leaflet package's htmlwidgets assets) as a
-      # data URI, so the legend swatch is pixel-identical to the real map
-      # marker rather than an emoji/CSS approximation of it -- generated at
-      # runtime so it can never drift from whatever leaflet version is
-      # actually installed.
-      icon_path <- system.file(
-        "htmlwidgets/lib/leaflet/images/marker-icon.png", package = "leaflet"
-      )
-      if (!nzchar(icon_path)) stop("marker-icon.png not found")
-      raw <- readBin(icon_path, "raw", file.info(icon_path)$size)
-      sprintf("data:image/png;base64,%s", jsonlite::base64_enc(raw))
-    }, error = function(e) NULL)
+    .marker_icon_uri <- tryCatch(
+      {
+        # Embeds leaflet's OWN bundled default marker icon (the exact PNG
+        # leaflet::addMarkers() draws with no custom icon= -- confirmed by
+        # inspecting the installed leaflet package's htmlwidgets assets) as a
+        # data URI, so the legend swatch is pixel-identical to the real map
+        # marker rather than an emoji/CSS approximation of it -- generated at
+        # runtime so it can never drift from whatever leaflet version is
+        # actually installed.
+        icon_path <- system.file(
+          "htmlwidgets/lib/leaflet/images/marker-icon.png",
+          package = "leaflet"
+        )
+        if (!nzchar(icon_path)) stop("marker-icon.png not found")
+        raw <- readBin(icon_path, "raw", file.info(icon_path)$size)
+        sprintf("data:image/png;base64,%s", jsonlite::base64_enc(raw))
+      },
+      error = function(e) NULL
+    )
 
     .legend_html <- paste0(
       "<div style='background:white;padding:6px 9px;border-radius:4px;",
@@ -690,7 +723,8 @@ review_spatial_context <- function(input_df,
         # encodes density; a second opacity multiplier on top of it fights
         # that signal rather than clarifying it.
         proxy <- leaflet::addTiles(
-          proxy, urlTemplate = url, group = "gbif_tiles",
+          proxy,
+          urlTemplate = url, group = "gbif_tiles",
           options = leaflet::tileOptions(tileSize = 512, zoomOffset = -1)
         )
       }
@@ -720,13 +754,15 @@ review_spatial_context <- function(input_df,
       if (!is.null(ir) && !is.null(ir$taxon_id) && !is.na(ir$taxon_id)) {
         inat_pts <- tryCatch(
           .fetch_inat_points(
-            ir$taxon_id, lat = query_lat, lng = query_lon, radius_km = inat_radius_km
+            ir$taxon_id,
+            lat = query_lat, lng = query_lon, radius_km = inat_radius_km
           ),
           error = function(e) NULL
         )
         if (!is.null(inat_pts) && nrow(inat_pts) > 0L) {
           proxy <- leaflet::addCircleMarkers(
-            proxy, lng = inat_pts$lon, lat = inat_pts$lat,
+            proxy,
+            lng = inat_pts$lon, lat = inat_pts$lat,
             radius = 2, color = "#16a34a", fillOpacity = 0.7, opacity = 0, weight = 0,
             group = "inat_points"
           )
@@ -736,7 +772,8 @@ review_spatial_context <- function(input_df,
         # without this, a taxon with no visible points nearby reads as "no
         # iNat data at all" when it may just mean "none within this radius."
         proxy <- leaflet::addCircles(
-          proxy, lng = query_lon, lat = query_lat, radius = inat_radius_km * 1000,
+          proxy,
+          lng = query_lon, lat = query_lat, radius = inat_radius_km * 1000,
           color = "#16a34a", weight = 1.5, opacity = 0.6, fill = FALSE,
           dashArray = "6", group = "inat_points"
         )
@@ -746,8 +783,8 @@ review_spatial_context <- function(input_df,
         pts <- occurrence_data[
           occurrence_data[[occurrence_taxon_col]] %in% input$taxon &
             !is.na(occurrence_data[[occurrence_lat_col]]) &
-            !is.na(occurrence_data[[occurrence_lon_col]]),
-          , drop = FALSE
+            !is.na(occurrence_data[[occurrence_lon_col]]), ,
+          drop = FALSE
         ]
         if (nrow(pts) > 0L) {
           # Deliberately tiny: GBIF's own density pixels are fine-grained,
@@ -756,7 +793,8 @@ review_spatial_context <- function(input_df,
           # as oversized next to them. weight=0 (no outline) keeps it a
           # plain dot rather than a bordered disc.
           proxy <- leaflet::addCircleMarkers(
-            proxy, lng = pts[[occurrence_lon_col]], lat = pts[[occurrence_lat_col]],
+            proxy,
+            lng = pts[[occurrence_lon_col]], lat = pts[[occurrence_lat_col]],
             radius = 2, color = "#1d4ed8", fillOpacity = 0.7, opacity = 0, weight = 0,
             group = "occ_points"
           )
@@ -767,8 +805,8 @@ review_spatial_context <- function(input_df,
         ex <- excluded_occurrence_data[
           excluded_occurrence_data[[occurrence_taxon_col]] %in% input$taxon &
             !is.na(excluded_occurrence_data[[occurrence_lat_col]]) &
-            !is.na(excluded_occurrence_data[[occurrence_lon_col]]),
-          , drop = FALSE
+            !is.na(excluded_occurrence_data[[occurrence_lon_col]]), ,
+          drop = FALSE
         ]
         if (nrow(ex) > 0L) {
           # Hollow red rings, deliberately distinct from the solid blue
@@ -777,7 +815,8 @@ review_spatial_context <- function(input_df,
           # for provenance, not as evidence the taxon is present. Sized down
           # to match the (also shrunk) kept-points overlay.
           proxy <- leaflet::addCircleMarkers(
-            proxy, lng = ex[[occurrence_lon_col]], lat = ex[[occurrence_lat_col]],
+            proxy,
+            lng = ex[[occurrence_lon_col]], lat = ex[[occurrence_lat_col]],
             radius = 3, color = "#dc2626", fillOpacity = 0, opacity = 0.85, weight = 1.5,
             group = "excluded_points"
           )
@@ -785,7 +824,8 @@ review_spatial_context <- function(input_df,
       }
 
       proxy <- leaflet::addMarkers(
-        proxy, lng = query_lon, lat = query_lat,
+        proxy,
+        lng = query_lon, lat = query_lat,
         popup = "Study site", group = "site"
       )
 
@@ -812,17 +852,17 @@ review_spatial_context <- function(input_df,
       ai_result(list(pending = TRUE))
 
       row <- data.frame(.taxon = input$taxon, stringsAsFactors = FALSE)
-      g  <- gbif_res()
+      g <- gbif_res()
       ir <- inat_row()
       if (!is.null(g)) {
         row$dist_nearest_occupied_km <- g$dist_nearest_occupied_km
-        row$patch_diameter_km        <- g$patch_diameter_km
-        row$beyond_buffer            <- g$beyond_buffer
+        row$patch_diameter_km <- g$patch_diameter_km
+        row$beyond_buffer <- g$beyond_buffer
       }
       if (!is.null(ir)) {
-        row$in_range        <- ir$in_range
-        row$n_observations  <- ir$n_observations
-        row$matched_name    <- ir$matched_name
+        row$in_range <- ir$in_range
+        row$n_observations <- ir$n_observations
+        row$matched_name <- ir$matched_name
       }
 
       res <- tryCatch(
@@ -841,21 +881,30 @@ review_spatial_context <- function(input_df,
 
     output$ai_panel <- shiny::renderUI({
       r <- ai_result()
-      if (is.null(r)) return(NULL)
-      if (isTRUE(r$pending)) return(shiny::p("Calling LLM...", style = "font-size:12px;color:#999;"))
-      if (!is.null(r$error))
+      if (is.null(r)) {
+        return(NULL)
+      }
+      if (isTRUE(r$pending)) {
+        return(shiny::p("Calling LLM...", style = "font-size:12px;color:#999;"))
+      }
+      if (!is.null(r$error)) {
         return(shiny::p(paste("Error:", r$error), style = "font-size:12px;color:#b91c1c;"))
+      }
 
       shiny::tagList(
         shiny::h4("AI Review", style = "margin:6px 0 4px;font-size:13px;"),
         shiny::p(
-          sprintf("Geographic: %s | Contamination: %s",
-                  r$llm_geographic_plausibility %||% "NA", r$llm_contamination_risk %||% "NA"),
+          sprintf(
+            "Geographic: %s | Contamination: %s",
+            r$llm_geographic_plausibility %||% "NA", r$llm_contamination_risk %||% "NA"
+          ),
           style = "font-size:12px;margin:2px 0;"
         ),
-        if (!is.null(r$review_comment) && !is.na(r$review_comment))
+        if (!is.null(r$review_comment) && !is.na(r$review_comment)) {
           shiny::p(r$review_comment, style = "font-size:12px;margin:4px 0;font-style:italic;")
-        else NULL
+        } else {
+          NULL
+        }
       )
     })
 
@@ -986,7 +1035,8 @@ review_spatial_context <- function(input_df,
 .resolve_gbif_taxon_key <- function(name) {
   resp <- httr2::req_perform(
     httr2::req_url_query(
-      httr2::request("https://api.gbif.org/v1/species/match"), name = name
+      httr2::request("https://api.gbif.org/v1/species/match"),
+      name = name
     )
   )
   key <- httr2::resp_body_json(resp)$usageKey

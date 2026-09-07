@@ -81,14 +81,14 @@
 #'
 #' @export
 flag_watch_candidates <- function(
-    consensus_df,
-    match_df,
-    watch_taxa,
-    observation_col = "observation_id",
-    taxon_col       = "taxon_name",
-    score_col       = "score_original",
-    winner_col      = "primary_taxon",
-    score_margin    = 0
+  consensus_df,
+  match_df,
+  watch_taxa,
+  observation_col = "observation_id",
+  taxon_col = "taxon_name",
+  score_col = "score_original",
+  winner_col = "primary_taxon",
+  score_margin = 0
 ) {
   if (!is.data.frame(consensus_df)) {
     stop("flag_watch_candidates: `consensus_df` must be a data frame.")
@@ -100,7 +100,7 @@ flag_watch_candidates <- function(
     stop("flag_watch_candidates: `watch_taxa` must be a non-empty character vector.")
   }
   if (!is.numeric(score_margin) || length(score_margin) != 1L ||
-      is.na(score_margin) || score_margin < 0) {
+    is.na(score_margin) || score_margin < 0) {
     stop("flag_watch_candidates: `score_margin` must be a single non-negative number.")
   }
   for (col in c(observation_col, winner_col)) {
@@ -114,19 +114,19 @@ flag_watch_candidates <- function(
     }
   }
 
-  obs_ids  <- consensus_df[[observation_col]]
-  winners  <- consensus_df[[winner_col]]
-  m_obs    <- match_df[[observation_col]]
-  m_taxon  <- match_df[[taxon_col]]
-  m_score  <- match_df[[score_col]]
+  obs_ids <- consensus_df[[observation_col]]
+  winners <- consensus_df[[winner_col]]
+  m_obs <- match_df[[observation_col]]
+  m_taxon <- match_df[[taxon_col]]
+  m_score <- match_df[[score_col]]
   is_watch <- m_taxon %in% watch_taxa
 
   match_split <- split(seq_len(nrow(match_df)), m_obs)
 
   n <- nrow(consensus_df)
-  watch_flag      <- rep(FALSE, n)
-  watch_taxon     <- rep(NA_character_, n)
-  watch_score     <- rep(NA_real_, n)
+  watch_flag <- rep(FALSE, n)
+  watch_taxon <- rep(NA_character_, n)
+  watch_score <- rep(NA_real_, n)
   reference_score <- rep(NA_real_, n)
 
   for (i in seq_len(n)) {
@@ -162,9 +162,9 @@ flag_watch_candidates <- function(
     watch_flag[i] <- watch_score[i] >= reference_score[i] - score_margin
   }
 
-  consensus_df$watch_flag            <- watch_flag
-  consensus_df$watch_taxon           <- watch_taxon
-  consensus_df$watch_score           <- watch_score
+  consensus_df$watch_flag <- watch_flag
+  consensus_df$watch_taxon <- watch_taxon
+  consensus_df$watch_score <- watch_score
   consensus_df$watch_reference_score <- reference_score
 
   n_flagged <- sum(watch_flag)

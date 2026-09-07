@@ -28,18 +28,18 @@ library(testthat)
 skip_if_not_installed("shiny")
 
 .make_server <- function(input_df = data.frame(
-                            primary_taxon = c("Lepomis peltastes", "Gasterosteus gymnurus", "Barbatula barbatula"),
-                            primary_plausibility = c("unprecedented", "unprecedented", "unprecedented"),
-                            stringsAsFactors = FALSE
-                          ),
-                          occurrence_data = NULL,
-                          excluded_occurrence_data = NULL,
-                          inat_range = NULL,
-                          live_inat_check = FALSE,
-                          inat_cache_dir = NULL,
-                          inat_radius_km = 500,
-                          gbif_bin_size = 64L,
-                          context = NULL) {
+                           primary_taxon = c("Lepomis peltastes", "Gasterosteus gymnurus", "Barbatula barbatula"),
+                           primary_plausibility = c("unprecedented", "unprecedented", "unprecedented"),
+                           stringsAsFactors = FALSE
+                         ),
+                         occurrence_data = NULL,
+                         excluded_occurrence_data = NULL,
+                         inat_range = NULL,
+                         live_inat_check = FALSE,
+                         inat_cache_dir = NULL,
+                         inat_radius_km = 500,
+                         gbif_bin_size = 64L,
+                         context = NULL) {
   TaxaFlag:::.build_spatial_context_server(
     input_df = input_df, query_lat = 41.67, query_lon = -87.15,
     taxon_col = "primary_taxon", plausibility_col = "primary_plausibility",
@@ -63,10 +63,12 @@ test_that("selecting a taxon shows GBIF distance/patch in stats_panel", {
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   shiny::testServer(.make_server(), {
@@ -80,10 +82,12 @@ test_that("beyond_buffer = TRUE shows the 'no occurrence found' message, not a d
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = NA_real_, patch_diameter_km = NA_real_,
-      beyond_buffer = TRUE, escalated = TRUE, zoom_used = NA_integer_
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = NA_real_, patch_diameter_km = NA_real_,
+        beyond_buffer = TRUE, escalated = TRUE, zoom_used = NA_integer_
+      )
+    },
     .package = "TaxaFlag"
   )
   shiny::testServer(.make_server(), {
@@ -108,10 +112,12 @@ test_that("an iNat name mismatch is flagged in stats_panel; an exact match is no
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 6517.0, patch_diameter_km = 7.3,
-      beyond_buffer = FALSE, escalated = TRUE, zoom_used = 3L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 6517.0, patch_diameter_km = 7.3,
+        beyond_buffer = FALSE, escalated = TRUE, zoom_used = 3L
+      )
+    },
     .package = "TaxaFlag"
   )
   inat <- data.frame(
@@ -136,19 +142,23 @@ test_that("occurrence_data supplied shows the free/local line with correct count
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 0.9, patch_diameter_km = 6.6,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 0.9, patch_diameter_km = 6.6,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   occ <- data.frame(
     taxon_name = c("Neogobius melanostomus", "Neogobius melanostomus"),
-    decimalLatitude  = c(41.68, 41.60), decimalLongitude = c(-87.14, -87.30),
+    decimalLatitude = c(41.68, 41.60), decimalLongitude = c(-87.14, -87.30),
     stringsAsFactors = FALSE
   )
-  input_df <- data.frame(primary_taxon = "Neogobius melanostomus",
-                   primary_plausibility = "expected", stringsAsFactors = FALSE)
+  input_df <- data.frame(
+    primary_taxon = "Neogobius melanostomus",
+    primary_plausibility = "expected", stringsAsFactors = FALSE
+  )
 
   shiny::testServer(.make_server(input_df = input_df, occurrence_data = occ), {
     session$setInputs(taxon = "Neogobius melanostomus")
@@ -161,10 +171,12 @@ test_that("occurrence_data omitted: no 'Local (free)' line at all", {
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   shiny::testServer(.make_server(), {
@@ -178,10 +190,12 @@ test_that("inat_range supplied but taxon has no matching row: explicit 'no data'
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   inat_missing_this_taxon <- data.frame(
@@ -199,10 +213,12 @@ test_that("live_inat_check fires when the taxon is absent from the static inat_r
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   inat_missing_this_taxon <- data.frame(
@@ -211,11 +227,13 @@ test_that("live_inat_check fires when the taxon is absent from the static inat_r
   )
   skip_if_not_installed("TaxaFetch")
   testthat::local_mocked_bindings(
-    check_inat_range = function(taxon_names, lat, lng, ...) data.frame(
-      taxon_name = taxon_names, taxon_id = 99L, matched_name = taxon_names,
-      in_range = TRUE, n_observations = 250, range_status = "ok",
-      stringsAsFactors = FALSE
-    ),
+    check_inat_range = function(taxon_names, lat, lng, ...) {
+      data.frame(
+        taxon_name = taxon_names, taxon_id = 99L, matched_name = taxon_names,
+        in_range = TRUE, n_observations = 250, range_status = "ok",
+        stringsAsFactors = FALSE
+      )
+    },
     .package = "TaxaFetch"
   )
   shiny::testServer(
@@ -233,10 +251,12 @@ test_that("live_inat_check = FALSE never calls the live fallback, even when inat
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   inat_missing_this_taxon <- data.frame(
@@ -267,10 +287,12 @@ test_that("inat_range = NULL (not supplied at all): no iNat line, not even a 'no
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   shiny::testServer(.make_server(inat_range = NULL), {
@@ -284,10 +306,12 @@ test_that("excluded_occurrence_data supplied: map updates without error", {
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   excluded <- data.frame(
@@ -307,10 +331,12 @@ test_that("inat_range with a real taxon_id column adds the iNat tile layer witho
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   # Real check_inat_range() output shape includes taxon_id -- the earlier
@@ -335,10 +361,12 @@ test_that("map output renders without error", {
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   shiny::testServer(.make_server(), {
@@ -352,10 +380,12 @@ test_that("Run AI Review calls review_assignments() and populates ai_panel", {
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   ctx <- list(geography = "Lake Michigan", habitat = "harbor")
@@ -407,10 +437,12 @@ test_that("Run AI Review degrades gracefully (NA fields, no crash) when llm_fn i
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.4, patch_diameter_km = 0.9,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   ctx <- list(geography = "Lake Michigan", habitat = "harbor")
@@ -585,10 +617,12 @@ test_that("an inat_range without a matched_name column still renders the panel",
     .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
   )
   testthat::local_mocked_bindings(
-    check_gbif_tile_range = function(...) data.frame(
-      dist_nearest_occupied_km = 41.0, patch_diameter_km = 2.1,
-      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
-    ),
+    check_gbif_tile_range = function(...) {
+      data.frame(
+        dist_nearest_occupied_km = 41.0, patch_diameter_km = 2.1,
+        beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+      )
+    },
     .package = "TaxaFlag"
   )
   inat_no_matched_name <- data.frame(

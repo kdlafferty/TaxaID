@@ -83,7 +83,7 @@
 # between review sessions.
 # ==============================================================================
 
-#devtools::load_all()   # or: library(TaxaFlag)
+# devtools::load_all()   # or: library(TaxaFlag)
 library(TaxaFlag)
 
 
@@ -121,8 +121,8 @@ loc_burns_harbor
 # increasing zoom and increasing |latitude|), matching this function's own
 # existing test-check_gbif_tile_range.R assertions.
 TaxaFlag:::.mercator_resolution_km(lat = 41.67, zoom = 6L, tile_size = 512L)
-TaxaFlag:::.mercator_resolution_km(lat = 60,    zoom = 6L, tile_size = 512L)  # smaller: higher latitude
-TaxaFlag:::.mercator_resolution_km(lat = 41.67, zoom = 8L, tile_size = 512L)  # smaller: finer zoom
+TaxaFlag:::.mercator_resolution_km(lat = 60, zoom = 6L, tile_size = 512L) # smaller: higher latitude
+TaxaFlag:::.mercator_resolution_km(lat = 41.67, zoom = 8L, tile_size = 512L) # smaller: finer zoom
 
 
 # ==============================================================================
@@ -167,8 +167,8 @@ TaxaFlag:::.grow_patch_size(presence, seed_row = 5L, seed_col = 5L)
 # fetch as its centre tile) and reads back its alpha channel. Confirms the
 # query pixel itself has non-zero alpha (round goby IS near-occupied here).
 alpha <- TaxaFlag:::.fetch_gbif_tile_alpha(
-  base_url  = "https://api.gbif.org/v2/map/occurrence/density",
-  zoom      = 6L, x = loc_burns_harbor$xtile, y = loc_burns_harbor$ytile,
+  base_url = "https://api.gbif.org/v2/map/occurrence/density",
+  zoom = 6L, x = loc_burns_harbor$xtile, y = loc_burns_harbor$ytile,
   taxon_key = 2379089L, tile_size = 512L
 )
 dim(alpha)
@@ -182,7 +182,7 @@ range(alpha)
 at_zoom <- TaxaFlag:::.check_gbif_tile_range_at_zoom(
   taxon_key = 2379089L, query_lat = 41.67, query_lon = -87.15,
   zoom = 6L, buffer_px = 512L,
-  base_url  = "https://api.gbif.org/v2/map/occurrence/density",
+  base_url = "https://api.gbif.org/v2/map/occurrence/density",
   tile_size = 512L
 )
 at_zoom[c("found", "n_tiles_fetched", "point_occupied", "resolution_km_per_px")]
@@ -191,7 +191,7 @@ at_zoom[c("found", "n_tiles_fetched", "point_occupied", "resolution_km_per_px")]
 # Reused verbatim from this function's own roxygen @examples -- the exact
 # real species/point pair used throughout this section.
 range_result <- check_gbif_tile_range(
-  taxon_key = 2379089L,  # Neogobius melanostomus (round goby)
+  taxon_key = 2379089L, # Neogobius melanostomus (round goby)
   query_lat = 41.67, query_lon = -87.15
 )
 range_result[, c("point_occupied", "dist_nearest_occupied_km", "patch_diameter_km", "beyond_buffer")]
@@ -213,8 +213,8 @@ occ <- data.frame(
   decimalLongitude  = c(-87.10, -87.80)
 )
 compute_local_occurrence_distance(
-  taxon_names     = c("Neogobius melanostomus", "Salmo salar"),
-  query_lat       = 41.67, query_lon = -87.15,
+  taxon_names = c("Neogobius melanostomus", "Salmo salar"),
+  query_lat = 41.67, query_lon = -87.15,
   occurrence_data = occ
 )
 
@@ -242,7 +242,7 @@ TaxaFlag:::.gbif_tile_url(taxon_key = 2379089L, style = "purpleHeat.point", bin_
 # verification record) -- "classic" and an unverified style both shown, so
 # the fallback-to-gray path is visible too, not just the happy path.
 TaxaFlag:::.gbif_legend_swatch("classic.point")
-TaxaFlag:::.gbif_legend_swatch("outline.poly")  # not in the verified set -> gray fallback
+TaxaFlag:::.gbif_legend_swatch("outline.poly") # not in the verified set -> gray fallback
 
 ## ---- .summarise_spatial_context() ---- OFFLINE --------------------------------
 # Small hand-built fixture (new, no existing test/roxygen source covers this
@@ -255,23 +255,23 @@ TaxaFlag:::.gbif_legend_swatch("outline.poly")  # not in the verified set -> gra
 # path; the third (Barbatula barbatula) is a real beyond_buffer/no-iNat-data
 # case.
 sc_df <- data.frame(
-  taxon                     = c("Neogobius melanostomus", "Neogobius melanostomus", "Barbatula barbatula"),
-  dist_nearest_occupied_km  = c(0.9, 0.9, NA_real_),
-  patch_diameter_km         = c(6.6, 6.6, NA_real_),
-  beyond_buffer              = c(FALSE, FALSE, TRUE),
-  in_range                   = c(TRUE, TRUE, NA),
-  n_observations             = c(1275, 1275, NA_real_),
-  matched_name                = c("Neogobius melanostomus", "Neogobius melanostomus", NA_character_),
+  taxon = c("Neogobius melanostomus", "Neogobius melanostomus", "Barbatula barbatula"),
+  dist_nearest_occupied_km = c(0.9, 0.9, NA_real_),
+  patch_diameter_km = c(6.6, 6.6, NA_real_),
+  beyond_buffer = c(FALSE, FALSE, TRUE),
+  in_range = c(TRUE, TRUE, NA),
+  n_observations = c(1275, 1275, NA_real_),
+  matched_name = c("Neogobius melanostomus", "Neogobius melanostomus", NA_character_),
   stringsAsFactors = FALSE
 )
 TaxaFlag:::.summarise_spatial_context(
   label_vec = sc_df$taxon, input_df = sc_df,
   dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
-  patch_diameter_km_col        = "patch_diameter_km",
-  beyond_buffer_col            = "beyond_buffer",
-  inat_in_range_col            = "in_range",
-  inat_n_observations_col      = "n_observations",
-  inat_matched_name_col        = "matched_name"
+  patch_diameter_km_col = "patch_diameter_km",
+  beyond_buffer_col = "beyond_buffer",
+  inat_in_range_col = "in_range",
+  inat_n_observations_col = "n_observations",
+  inat_matched_name_col = "matched_name"
 )
 
 

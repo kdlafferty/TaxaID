@@ -43,10 +43,11 @@
 #' @export
 report_flags <- function(flagged_data,
                          verbose = FALSE) {
-
-  if (!is.data.frame(flagged_data) || nrow(flagged_data) == 0L)
+  if (!is.data.frame(flagged_data) || nrow(flagged_data) == 0L) {
     stop("report_flags: 'flagged_data' must be a non-empty data frame.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # --- Auto-detect flag columns -----------------------------------------------
   all_cols <- names(flagged_data)
@@ -61,7 +62,8 @@ report_flags <- function(flagged_data,
   contaminant_cols_old <- grep("^flag_(lab|field|positive|control)", all_cols, value = TRUE)
   contaminant_cols_new <- grep(
     "^(lab|field|positive|control)_contaminant_risk$|^contamination_risk$|^llm_contamination_risk$",
-    all_cols, value = TRUE
+    all_cols,
+    value = TRUE
   )
   contaminant_cols <- unique(c(contaminant_cols_old, contaminant_cols_new))
 
@@ -95,12 +97,14 @@ report_flags <- function(flagged_data,
   validity_types <- unique(sub("^(questionable|invalid)_", "", validity_bad_values))
 
   flag_types <- character(0L)
-  if (length(contaminant_cols) > 0L || any(grepl("contaminant", validity_types)))
+  if (length(contaminant_cols) > 0L || any(grepl("contaminant", validity_types))) {
     flag_types <- c(flag_types, "contamination")
-  if (length(handler_cols) > 0L || any(grepl("handling", validity_types)))
+  }
+  if (length(handler_cols) > 0L || any(grepl("handling", validity_types))) {
     flag_types <- c(flag_types, "handler artifacts")
+  }
   if (length(plausibility_cols) > 0L) flag_types <- c(flag_types, "plausibility review")
-  if (length(review_cols) > 0L)       flag_types <- c(flag_types, "expert review")
+  if (length(review_cols) > 0L) flag_types <- c(flag_types, "expert review")
   # Any validity_type not already covered above (e.g. a future flag_*()
   # mechanism this function doesn't have specific wording for yet) still
   # counts toward "flagging was applied", generically.
@@ -119,8 +123,8 @@ report_flags <- function(flagged_data,
   #   Post-Session 101 plausibility: "possible" / "unlikely" = flagged
   .is_flagged <- function(col) {
     vals <- flagged_data[[col]]
-    (vals %in% c("unlikely", "possible")) |          # pre-101 risk + post-101 plausibility
-      (vals %in% c("moderate", "high"))              # post-101 risk
+    (vals %in% c("unlikely", "possible")) | # pre-101 risk + post-101 plausibility
+      (vals %in% c("moderate", "high")) # post-101 risk
   }
 
   flag_counts <- list()
@@ -172,7 +176,7 @@ report_flags <- function(flagged_data,
 
   # --- Statistics -------------------------------------------------------------
   statistics <- list(
-    n_total   = n_total,
+    n_total = n_total,
     n_flagged = total_flagged,
     flag_types_detected = length(flag_types)
   )
@@ -187,7 +191,8 @@ report_flags <- function(flagged_data,
   if (length(flag_types) > 0L) {
     methods_text <- sprintf(
       "Assignments were screened for %s.",
-      paste(flag_types, collapse = ", "))
+      paste(flag_types, collapse = ", ")
+    )
   } else {
     methods_text <- "No quality flags were detected in the data."
   }
@@ -199,7 +204,8 @@ report_flags <- function(flagged_data,
     results_parts <- c(results_parts, sprintf(
       "Of %s assignments, %d (%.1f%%) were flagged as potentially problematic.",
       format(n_total, big.mark = ","), total_flagged,
-      100 * total_flagged / n_total))
+      100 * total_flagged / n_total
+    ))
 
     # Per-flag breakdown
     if (length(flag_counts) > 0L) {
@@ -207,11 +213,13 @@ report_flags <- function(flagged_data,
         sprintf("%s: %d", sub("^flag_", "", nm), flag_counts[[nm]])
       }, character(1L))
       results_parts <- c(results_parts, sprintf(
-        "Breakdown: %s.", paste(breakdown_strs, collapse = ", ")))
+        "Breakdown: %s.", paste(breakdown_strs, collapse = ", ")
+      ))
     }
   } else {
     results_parts <- c(results_parts, sprintf(
-      "Of %s assignments, none were flagged.", format(n_total, big.mark = ",")))
+      "Of %s assignments, none were flagged.", format(n_total, big.mark = ",")
+    ))
   }
 
   results_text <- paste(results_parts, collapse = " ")

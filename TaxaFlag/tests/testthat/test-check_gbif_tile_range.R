@@ -21,9 +21,9 @@ skip_if_not_installed("png")
 # can place presence pixels at known offsets from the query point.
 .query_lat <- 41.67
 .query_lon <- -87.15
-.zoom      <- 6L
+.zoom <- 6L
 .tile_size <- 512L
-.loc       <- .lonlat_to_tile_pixel(.query_lat, .query_lon, .zoom, .tile_size)
+.loc <- .lonlat_to_tile_pixel(.query_lat, .query_lon, .zoom, .tile_size)
 
 # All mocks below ignore taxon_key/base_url (irrelevant to the logic under
 # test) and key behavior purely on which tile (zoom, x, y) is requested.
@@ -50,7 +50,8 @@ test_that("point_occupied = TRUE and dist = 0 when the query pixel itself is occ
 })
 
 test_that("distance to a nearby-but-not-coincident occupied cell is computed correctly, no escalation", {
-  d_row <- 5L; d_col <- 3L
+  d_row <- 5L
+  d_col <- 3L
   mock_fetch <- function(base_url, zoom, x, y, taxon_key, tile_size) {
     m <- matrix(0, tile_size, tile_size)
     if (zoom == .zoom && x == .loc$xtile && y == .loc$ytile) {
@@ -115,12 +116,14 @@ test_that("escalate = FALSE restores single-zoom behaviour: no widening, zoom_us
   mock_fetch <- function(base_url, zoom, x, y, taxon_key, tile_size) matrix(0, tile_size, tile_size)
   testthat::local_mocked_bindings(.fetch_gbif_tile_alpha = mock_fetch)
 
-  out <- check_gbif_tile_range(taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
-                                zoom = .zoom, escalate = FALSE)
+  out <- check_gbif_tile_range(
+    taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
+    zoom = .zoom, escalate = FALSE
+  )
   expect_true(out$beyond_buffer)
   expect_equal(out$zoom_used, .zoom)
   expect_false(out$escalated)
-  expect_equal(out$n_tiles_fetched, 9L)  # only ever tries the one requested zoom
+  expect_equal(out$n_tiles_fetched, 9L) # only ever tries the one requested zoom
 })
 
 test_that("HTTP 204 (GBIF's empty-tile response) is treated as zero occurrences, not an error", {
@@ -128,36 +131,42 @@ test_that("HTTP 204 (GBIF's empty-tile response) is treated as zero occurrences,
     req_perform = function(req) httr2::response(status_code = 204L),
     .package    = "httr2"
   )
-  out <- check_gbif_tile_range(taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
-                                zoom = .zoom, escalate = FALSE)
+  out <- check_gbif_tile_range(
+    taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
+    zoom = .zoom, escalate = FALSE
+  )
   expect_true(out$beyond_buffer)
 })
 
 test_that("a patch large enough to hit the growth cap is reported as capped, size is a lower bound", {
   mock_fetch <- function(base_url, zoom, x, y, taxon_key, tile_size) {
-    matrix(1, tile_size, tile_size)  # every cell in every tile occupied
+    matrix(1, tile_size, tile_size) # every cell in every tile occupied
   }
   testthat::local_mocked_bindings(.fetch_gbif_tile_alpha = mock_fetch)
 
   out <- check_gbif_tile_range(taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon, zoom = .zoom)
   expect_true(out$point_occupied)
   expect_true(out$patch_size_capped)
-  expect_gt(out$patch_size_px, 1L)  # a lower bound, but growth did proceed beyond the seed
-  expect_gt(out$patch_area_km2, out$resolution_km_per_px^2)  # km conversion still tracks the (capped) pixel count
-  expect_false(out$escalated)  # found immediately at the requested zoom, no need to widen
+  expect_gt(out$patch_size_px, 1L) # a lower bound, but growth did proceed beyond the seed
+  expect_gt(out$patch_area_km2, out$resolution_km_per_px^2) # km conversion still tracks the (capped) pixel count
+  expect_false(out$escalated) # found immediately at the requested zoom, no need to widen
 })
 
 test_that("buffer_px is rounded up to whole tiles and n_tiles_fetched reflects it (single zoom)", {
   mock_fetch <- function(base_url, zoom, x, y, taxon_key, tile_size) matrix(0, tile_size, tile_size)
   testthat::local_mocked_bindings(.fetch_gbif_tile_alpha = mock_fetch)
 
-  out_default <- check_gbif_tile_range(taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
-                                        zoom = .zoom, buffer_px = 512L, escalate = FALSE)
-  expect_equal(out_default$n_tiles_fetched, 9L)  # 3x3 block, tile_radius = 1
+  out_default <- check_gbif_tile_range(
+    taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
+    zoom = .zoom, buffer_px = 512L, escalate = FALSE
+  )
+  expect_equal(out_default$n_tiles_fetched, 9L) # 3x3 block, tile_radius = 1
 
-  out_small <- check_gbif_tile_range(taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
-                                      zoom = .zoom, buffer_px = 100L, escalate = FALSE)
-  expect_equal(out_small$n_tiles_fetched, 9L)  # rounds up to a full tile radius of 1
+  out_small <- check_gbif_tile_range(
+    taxon_key = 1, query_lat = .query_lat, query_lon = .query_lon,
+    zoom = .zoom, buffer_px = 100L, escalate = FALSE
+  )
+  expect_equal(out_small$n_tiles_fetched, 9L) # rounds up to a full tile radius of 1
 })
 
 test_that("resolution_km_per_px decreases with latitude (Mercator distortion) and with zoom", {

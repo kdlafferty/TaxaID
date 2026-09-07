@@ -274,61 +274,68 @@
 #'
 #' @examples
 #' cons <- data.frame(
-#'   observation_id    = c("obs1", "obs2", "obs3", "obs4", "obs5", "obs6"),
-#'   consensus_taxon   = c("Oncorhynchus mykiss", "Homo sapiens",
-#'                         "Salmo salar", "Sardina pilchardus",
-#'                         "Rare sp.", "Cottus sp."),
-#'   consensus_rank    = c("species", "species", "species",
-#'                         "species", "species", "genus"),
+#'   observation_id = c("obs1", "obs2", "obs3", "obs4", "obs5", "obs6"),
+#'   consensus_taxon = c(
+#'     "Oncorhynchus mykiss", "Homo sapiens",
+#'     "Salmo salar", "Sardina pilchardus",
+#'     "Rare sp.", "Cottus sp."
+#'   ),
+#'   consensus_rank = c(
+#'     "species", "species", "species",
+#'     "species", "species", "genus"
+#'   ),
 #'   winner_likelihood = c(0.95, 0.03, 0.15, 0.80, 0.70, 0.90),
 #'   winner_theta_mean = c(0.010, 0.020, 0.009, 0.0005, NA, 0.003),
 #'   winner_has_occurrence_record = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
-#'   stringsAsFactors  = FALSE
+#'   stringsAsFactors = FALSE
 #' )
 #' # expected_theta_threshold has no default -- a named vector, one entry
 #' # per rank ("species" required). Typically the median theta at that rank
 #' # (species: median(taxaexpect_priors$theta_mean); genus/family: median of
 #' # TaxaAssign::compute_group_priors()'s theta_sum at that rank).
 #' add_posthoc_assessment(cons,
-#'                        expected_theta_threshold = c(species = 0.008, genus = 0.02))
+#'   expected_theta_threshold = c(species = 0.008, genus = 0.02)
+#' )
 #'
 #' # Domestic-species caveat: a cat with a strong ID but a database-driven
 #' # low occurrence plausibility gets a distinct flag rather than looking
 #' # like a genuinely surprising detection.
 #' cons2 <- data.frame(
-#'   observation_id    = c("obs7", "obs8"),
-#'   consensus_taxon   = c("Felis catus", "Made-up sp."),
-#'   consensus_rank    = c("species", "species"),
+#'   observation_id = c("obs7", "obs8"),
+#'   consensus_taxon = c("Felis catus", "Made-up sp."),
+#'   consensus_rank = c("species", "species"),
 #'   winner_likelihood = c(0.90, 0.90),
 #'   winner_theta_mean = c(0.0002, 0.0002),
 #'   winner_has_occurrence_record = c(TRUE, TRUE),
-#'   stringsAsFactors  = FALSE
+#'   stringsAsFactors = FALSE
 #' )
-#' add_posthoc_assessment(cons2, domestic_taxa = "Felis catus",
-#'                        expected_theta_threshold = c(species = 0.008))
+#' add_posthoc_assessment(cons2,
+#'   domestic_taxa = "Felis catus",
+#'   expected_theta_threshold = c(species = 0.008)
+#' )
 #'
 #' @seealso \code{\link{flag_contaminant}}, \code{\link{flag_handler}},
 #'   \code{\link{review_assignments}}
 #' @export
 add_posthoc_assessment <- function(
-    consensus_df,
-    winner_likelihood_col = "winner_likelihood",
-    consensus_taxon_col   = "consensus_taxon",
-    consensus_rank_col    = "consensus_rank",
-    likelihood_threshold  = 0.5,
-    domestic_taxa         = NULL,
-    domestic_prior_source = c("wild", "augmented"),
-    primary_confusion_risk_col    = "winner_own_rank_confusion_risk",
-    consensus_confusion_risk_col  = "consensus_confusion_risk",
-    discriminating_threshold      = 0.05,
-    indistinguishable_threshold   = 0.5,
-    winner_theta_col              = "winner_theta_mean",
-    winner_record_col             = "winner_has_occurrence_record",
-    consensus_prior_col           = "consensus_prior",
-    consensus_record_col          = "consensus_has_occurrence_record",
-    expected_theta_threshold) {
-
-  if (missing(expected_theta_threshold))
+  consensus_df,
+  winner_likelihood_col = "winner_likelihood",
+  consensus_taxon_col = "consensus_taxon",
+  consensus_rank_col = "consensus_rank",
+  likelihood_threshold = 0.5,
+  domestic_taxa = NULL,
+  domestic_prior_source = c("wild", "augmented"),
+  primary_confusion_risk_col = "winner_own_rank_confusion_risk",
+  consensus_confusion_risk_col = "consensus_confusion_risk",
+  discriminating_threshold = 0.05,
+  indistinguishable_threshold = 0.5,
+  winner_theta_col = "winner_theta_mean",
+  winner_record_col = "winner_has_occurrence_record",
+  consensus_prior_col = "consensus_prior",
+  consensus_record_col = "consensus_has_occurrence_record",
+  expected_theta_threshold
+) {
+  if (missing(expected_theta_threshold)) {
     stop(
       "add_posthoc_assessment: 'expected_theta_threshold' has no default -- it depends on ",
       "the taxon assemblage being scored. Supply a named vector, e.g. ",
@@ -337,67 +344,91 @@ add_posthoc_assessment <- function(
       "family = median(group_priors$theta_sum[group_priors$rank == \"family\"])).",
       call. = FALSE
     )
+  }
 
   domestic_prior_source <- match.arg(domestic_prior_source)
 
   # ---- validate ----------------------------------------------------------------
-  if (!is.data.frame(consensus_df))
+  if (!is.data.frame(consensus_df)) {
     stop("add_posthoc_assessment: 'consensus_df' must be a data frame.", call. = FALSE)
+  }
   for (col in c(winner_likelihood_col, consensus_taxon_col, consensus_rank_col)) {
-    if (!col %in% names(consensus_df))
+    if (!col %in% names(consensus_df)) {
       stop(sprintf("add_posthoc_assessment: column '%s' not found in consensus_df.", col),
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
   }
   if (!is.numeric(likelihood_threshold) || length(likelihood_threshold) != 1L ||
-      is.na(likelihood_threshold) || likelihood_threshold <= 0 ||
-      likelihood_threshold >= 1)
+    is.na(likelihood_threshold) || likelihood_threshold <= 0 ||
+    likelihood_threshold >= 1) {
     stop("add_posthoc_assessment: 'likelihood_threshold' must be a single number in (0, 1).",
-         call. = FALSE)
-  if (!is.null(domestic_taxa) && !is.character(domestic_taxa))
+      call. = FALSE
+    )
+  }
+  if (!is.null(domestic_taxa) && !is.character(domestic_taxa)) {
     stop("add_posthoc_assessment: 'domestic_taxa' must be a character vector or NULL.",
-         call. = FALSE)
-  if (!is.character(primary_confusion_risk_col) || length(primary_confusion_risk_col) != 1L)
+      call. = FALSE
+    )
+  }
+  if (!is.character(primary_confusion_risk_col) || length(primary_confusion_risk_col) != 1L) {
     stop("add_posthoc_assessment: 'primary_confusion_risk_col' must be a single character string.",
-         call. = FALSE)
-  if (!is.character(consensus_confusion_risk_col) || length(consensus_confusion_risk_col) != 1L)
+      call. = FALSE
+    )
+  }
+  if (!is.character(consensus_confusion_risk_col) || length(consensus_confusion_risk_col) != 1L) {
     stop("add_posthoc_assessment: 'consensus_confusion_risk_col' must be a single character string.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (!is.numeric(discriminating_threshold) || length(discriminating_threshold) != 1L ||
-      is.na(discriminating_threshold) || discriminating_threshold < 0 ||
-      discriminating_threshold > 1)
+    is.na(discriminating_threshold) || discriminating_threshold < 0 ||
+    discriminating_threshold > 1) {
     stop("add_posthoc_assessment: 'discriminating_threshold' must be a single number in [0, 1].",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (!is.numeric(indistinguishable_threshold) || length(indistinguishable_threshold) != 1L ||
-      is.na(indistinguishable_threshold) || indistinguishable_threshold < 0 ||
-      indistinguishable_threshold > 1)
+    is.na(indistinguishable_threshold) || indistinguishable_threshold < 0 ||
+    indistinguishable_threshold > 1) {
     stop("add_posthoc_assessment: 'indistinguishable_threshold' must be a single number in [0, 1].",
-         call. = FALSE)
-  if (discriminating_threshold > indistinguishable_threshold)
+      call. = FALSE
+    )
+  }
+  if (discriminating_threshold > indistinguishable_threshold) {
     stop("add_posthoc_assessment: 'discriminating_threshold' must be <= 'indistinguishable_threshold'.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (!is.numeric(expected_theta_threshold) || length(expected_theta_threshold) == 0L ||
-      is.null(names(expected_theta_threshold)) || any(!nzchar(names(expected_theta_threshold))) ||
-      any(is.na(expected_theta_threshold)) ||
-      any(expected_theta_threshold < 0) || any(expected_theta_threshold > 1))
+    is.null(names(expected_theta_threshold)) || any(!nzchar(names(expected_theta_threshold))) ||
+    any(is.na(expected_theta_threshold)) ||
+    any(expected_theta_threshold < 0) || any(expected_theta_threshold > 1)) {
     stop("add_posthoc_assessment: 'expected_theta_threshold' must be a named numeric vector ",
-         "(rank -> threshold) with values in [0, 1], e.g. c(species = 0.003, genus = 0.003, ",
-         "family = 0.017).", call. = FALSE)
-  if (!"species" %in% names(expected_theta_threshold))
+      "(rank -> threshold) with values in [0, 1], e.g. c(species = 0.003, genus = 0.003, ",
+      "family = 0.017).",
+      call. = FALSE
+    )
+  }
+  if (!"species" %in% names(expected_theta_threshold)) {
     stop("add_posthoc_assessment: 'expected_theta_threshold' must include a 'species' entry -- ",
-         "primary_plausibility always compares against it.", call. = FALSE)
+      "primary_plausibility always compares against it.",
+      call. = FALSE
+    )
+  }
 
   # ---- extract vectors ---------------------------------------------------------
-  n     <- nrow(consensus_df)
-  lik   <- consensus_df[[winner_likelihood_col]]
+  n <- nrow(consensus_df)
+  lik <- consensus_df[[winner_likelihood_col]]
   taxon <- as.character(consensus_df[[consensus_taxon_col]])
-  rank  <- as.character(consensus_df[[consensus_rank_col]])
+  rank <- as.character(consensus_df[[consensus_rank_col]])
 
   # ---- Axis 2: discrimination (2026-07-30) ------------------------------------
   # `primary_discrimination` / `consensus_discrimination`. See @section
   # Discrimination (Axis 2) for the full design rationale.
   .discrimination <- function(risk) {
     out <- rep("not_modeled", length(risk))
-    ok  <- !is.na(risk)
+    ok <- !is.na(risk)
     out[ok & risk < discriminating_threshold] <- "discriminating"
     out[ok & risk >= discriminating_threshold & risk < indistinguishable_threshold] <- "weak"
     out[ok & risk >= indistinguishable_threshold] <- "indistinguishable"
@@ -435,7 +466,7 @@ add_posthoc_assessment <- function(
     thr <- unname(expected_theta_threshold[rank_vec])
     ok <- known & has_record & !is.na(theta) & !is.na(thr)
     out[ok & theta >= thr] <- "expected"
-    out[ok & theta <  thr] <- "unexpected"
+    out[ok & theta < thr] <- "unexpected"
     out
   }
 
@@ -447,7 +478,7 @@ add_posthoc_assessment <- function(
   # per-row value from, so this is a documented assumption, not a lookup.
   primary_plausibility <- rep(NA_character_, n)
   if (winner_theta_col %in% names(consensus_df) &&
-      winner_record_col %in% names(consensus_df)) {
+    winner_record_col %in% names(consensus_df)) {
     primary_plausibility <- .plausibility(
       as.numeric(consensus_df[[winner_theta_col]]),
       as.logical(consensus_df[[winner_record_col]]),
@@ -470,7 +501,7 @@ add_posthoc_assessment <- function(
   # resolves to `"not_modeled"`, never `"unprecedented"`.
   consensus_plausibility <- rep(NA_character_, n)
   if (consensus_prior_col %in% names(consensus_df) &&
-      consensus_record_col %in% names(consensus_df)) {
+    consensus_record_col %in% names(consensus_df)) {
     consensus_plausibility <- .plausibility(
       as.numeric(consensus_df[[consensus_prior_col]]),
       as.logical(consensus_df[[consensus_record_col]]),
@@ -483,7 +514,7 @@ add_posthoc_assessment <- function(
   # instead of the retired tier lookup -- same underlying occurrence-gap
   # signal, sourced from the more principled theta_mean-based mechanism.
   domestic_prior_caveat <- rep(FALSE, n)
-  domestic_caveat_type  <- rep(NA_character_, n)
+  domestic_caveat_type <- rep(NA_character_, n)
   if (!is.null(domestic_taxa) && domestic_prior_source == "wild") {
     lik_ok <- !is.na(lik) & lik >= likelihood_threshold
     low_plausibility <- !is.na(primary_plausibility) &
@@ -504,11 +535,11 @@ add_posthoc_assessment <- function(
     )
   }
 
-  consensus_df$primary_plausibility     <- primary_plausibility
-  consensus_df$consensus_plausibility   <- consensus_plausibility
-  consensus_df$primary_discrimination   <- primary_discrimination
+  consensus_df$primary_plausibility <- primary_plausibility
+  consensus_df$consensus_plausibility <- consensus_plausibility
+  consensus_df$primary_discrimination <- primary_discrimination
   consensus_df$consensus_discrimination <- consensus_discrimination
-  consensus_df$domestic_prior_caveat    <- domestic_prior_caveat
-  consensus_df$domestic_caveat_type     <- domestic_caveat_type
+  consensus_df$domestic_prior_caveat <- domestic_prior_caveat
+  consensus_df$domestic_caveat_type <- domestic_caveat_type
   consensus_df
 }

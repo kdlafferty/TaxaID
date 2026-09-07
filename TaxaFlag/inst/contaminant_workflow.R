@@ -27,7 +27,7 @@ reads_long <- raw |>
     values_to = "n_reads"
   ) |>
   mutate(
-    event_id  = sub(".*Palmyra(\\d+)\\..*", "Palmyra\\1", event_id),
+    event_id = sub(".*Palmyra(\\d+)\\..*", "Palmyra\\1", event_id),
     taxon_name = coalesce(Species, Genus, Family, Order, Class)
   )
 
@@ -35,10 +35,12 @@ reads_long <- raw |>
 
 lab_flags <- flag_contaminant(
   reads_long,
-  taxon_col        = "taxon_name",
-  control_samples  = c("Palmyra30", "Palmyra62"),
-  exclude_samples  = c("Palmyra31", "Palmyra63",                # PCR blanks
-                        "Palmyra32", "Palmyra64", "Palmyra70"),  # positive controls
+  taxon_col = "taxon_name",
+  control_samples = c("Palmyra30", "Palmyra62"),
+  exclude_samples = c(
+    "Palmyra31", "Palmyra63", # PCR blanks
+    "Palmyra32", "Palmyra64", "Palmyra70"
+  ), # positive controls
   contaminant_type = "lab_contaminant"
 )
 
@@ -48,10 +50,12 @@ lab_flags |> filter(validity_flag != "valid")
 
 pcr_flags <- flag_contaminant(
   reads_long,
-  taxon_col        = "taxon_name",
-  control_samples  = c("Palmyra31", "Palmyra63"),
-  exclude_samples  = c("Palmyra30", "Palmyra62",                # extraction blanks
-                        "Palmyra32", "Palmyra64", "Palmyra70"),  # positive controls
+  taxon_col = "taxon_name",
+  control_samples = c("Palmyra31", "Palmyra63"),
+  exclude_samples = c(
+    "Palmyra30", "Palmyra62", # extraction blanks
+    "Palmyra32", "Palmyra64", "Palmyra70"
+  ), # positive controls
   contaminant_type = "lab_contaminant"
 )
 
@@ -61,10 +65,12 @@ pcr_flags |> filter(validity_flag != "valid")
 
 pos_flags <- flag_contaminant(
   reads_long,
-  taxon_col        = "taxon_name",
-  control_samples  = c("Palmyra32", "Palmyra64", "Palmyra70"),
-  exclude_samples  = c("Palmyra30", "Palmyra62",   # extraction blanks
-                        "Palmyra31", "Palmyra63"),   # PCR blanks
+  taxon_col = "taxon_name",
+  control_samples = c("Palmyra32", "Palmyra64", "Palmyra70"),
+  exclude_samples = c(
+    "Palmyra30", "Palmyra62", # extraction blanks
+    "Palmyra31", "Palmyra63"
+  ), # PCR blanks
   contaminant_type = "positive_control"
 )
 
@@ -79,18 +85,21 @@ pos_flags |> filter(validity_flag != "valid")
 
 all_flags <- lab_flags |>
   select(taxon_name,
-         lab_validity       = observation_validity,
-         lab_validity_flag  = validity_flag) |>
+    lab_validity       = observation_validity,
+    lab_validity_flag  = validity_flag
+  ) |>
   full_join(
     pcr_flags |> select(taxon_name,
-                        pcr_validity      = observation_validity,
-                        pcr_validity_flag = validity_flag),
+      pcr_validity      = observation_validity,
+      pcr_validity_flag = validity_flag
+    ),
     by = "taxon_name"
   ) |>
   full_join(
     pos_flags |> select(taxon_name,
-                        pos_validity      = observation_validity,
-                        pos_validity_flag = validity_flag),
+      pos_validity      = observation_validity,
+      pos_validity_flag = validity_flag
+    ),
     by = "taxon_name"
   ) |>
   arrange(pmin(lab_validity, pcr_validity, pos_validity, na.rm = TRUE))

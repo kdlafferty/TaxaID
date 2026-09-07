@@ -1,4 +1,3 @@
-
 #' LLM Expert Review of Taxonomic Assignments
 #'
 #' Sends unique taxa from a consensus table to an LLM for structured expert
@@ -365,65 +364,69 @@
 #' \dontrun{
 #' # Standard review (consensus taxon only)
 #' reviewed <- review_assignments(
-#'   input_df           = consensus_df,
-#'   context      = list(geography = "Palmyra Atoll, central Pacific",
-#'                       habitat   = "coral reef"),
+#'   input_df = consensus_df,
+#'   context = list(
+#'     geography = "Palmyra Atoll, central Pacific",
+#'     habitat = "coral reef"
+#'   ),
 #'   target_group = "fish",
-#'   marker       = "12S MiFish"
+#'   marker = "12S MiFish"
 #' )
 #'
 #' # Candidate-aware review (recommended for upranked assignments)
 #' consensus_df <- TaxaAssign::add_slash_taxon(consensus_df)
 #' reviewed <- review_assignments(
-#'   input_df                 = consensus_df,
+#'   input_df = consensus_df,
 #'   plausible_taxa_col = "plausible_taxa",
-#'   irreducible_only   = TRUE,
-#'   context            = ctx,
-#'   target_group       = "fish"
+#'   irreducible_only = TRUE,
+#'   context = ctx,
+#'   target_group = "fish"
 #' )
 #' }
 #'
 #' @export
 review_assignments <- function(input_df,
-                               taxon_col          = "consensus_taxon",
-                               taxon_rank_col     = NULL,
+                               taxon_col = "consensus_taxon",
+                               taxon_rank_col = NULL,
                                plausible_taxa_col = NULL,
-                               irreducible_only   = TRUE,
-                               consensus_posterior_col  = "consensus_posterior",
-                               winner_prior_col         = "winner_prior",
+                               irreducible_only = TRUE,
+                               consensus_posterior_col = "consensus_posterior",
+                               winner_prior_col = "winner_prior",
                                winner_rank_expanded_col = "winner_rank_expanded",
                                plausible_posteriors_col = "plausible_posteriors",
-                               consensus_plausibility_col   = "consensus_plausibility",
+                               consensus_plausibility_col = "consensus_plausibility",
                                consensus_discrimination_col = "consensus_discrimination",
                                dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
-                               patch_diameter_km_col        = "patch_diameter_km",
-                               beyond_buffer_col            = "beyond_buffer",
-                               inat_in_range_col            = "in_range",
-                               inat_n_observations_col      = "n_observations",
-                               inat_matched_name_col        = "matched_name",
+                               patch_diameter_km_col = "patch_diameter_km",
+                               beyond_buffer_col = "beyond_buffer",
+                               inat_in_range_col = "in_range",
+                               inat_n_observations_col = "n_observations",
+                               inat_matched_name_col = "matched_name",
                                context,
-                               target_group       = NULL,
-                               marker             = NULL,
-                               data_type          = "eDNA",
-                               llm_fn             = getOption("TaxaID.llm_fn", TaxaTools::call_api),
-                               taxa_per_call      = 15L,
-                               max_tokens         = NULL,
-                               max_retries        = 2L,
-                               pause_seconds      = 1,
-                               cache_dir          = NULL,
-                               verbose            = TRUE) {
-
+                               target_group = NULL,
+                               marker = NULL,
+                               data_type = "eDNA",
+                               llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+                               taxa_per_call = 15L,
+                               max_tokens = NULL,
+                               max_retries = 2L,
+                               pause_seconds = 1,
+                               cache_dir = NULL,
+                               verbose = TRUE) {
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
-  if (!taxon_col %in% names(input_df))
+  if (!taxon_col %in% names(input_df)) {
     stop(sprintf("Column '%s' not found in input_df.", taxon_col), call. = FALSE)
+  }
 
-  if (!is.null(taxon_rank_col) && !taxon_rank_col %in% names(input_df))
+  if (!is.null(taxon_rank_col) && !taxon_rank_col %in% names(input_df)) {
     stop(sprintf("Column '%s' not found in input_df.", taxon_rank_col), call. = FALSE)
+  }
 
-  if (!is.null(plausible_taxa_col) && !plausible_taxa_col %in% names(input_df))
+  if (!is.null(plausible_taxa_col) && !plausible_taxa_col %in% names(input_df)) {
     stop(sprintf("Column '%s' not found in input_df.", plausible_taxa_col), call. = FALSE)
+  }
 
   # Pipeline-context column-name params are deliberately NOT validated for
   # presence in input_df -- unlike taxon_rank_col/plausible_taxa_col above, these
@@ -431,13 +434,15 @@ review_assignments <- function(input_df,
   # output names, so an explicit-presence check would break every existing
   # caller whose input_df predates these columns. Silently skipped instead (see
   # .summarise_pipeline_context()); only the parameter TYPE is checked here.
-  for (col_param in list(consensus_posterior_col, winner_prior_col,
-                         winner_rank_expanded_col, plausible_posteriors_col,
-                         dist_nearest_occupied_km_col, patch_diameter_km_col,
-                         beyond_buffer_col, inat_in_range_col,
-                         inat_n_observations_col, inat_matched_name_col,
-                         consensus_plausibility_col, consensus_discrimination_col)) {
-    if (!is.null(col_param) && (!is.character(col_param) || length(col_param) != 1L))
+  for (col_param in list(
+    consensus_posterior_col, winner_prior_col,
+    winner_rank_expanded_col, plausible_posteriors_col,
+    dist_nearest_occupied_km_col, patch_diameter_km_col,
+    beyond_buffer_col, inat_in_range_col,
+    inat_n_observations_col, inat_matched_name_col,
+    consensus_plausibility_col, consensus_discrimination_col
+  )) {
+    if (!is.null(col_param) && (!is.character(col_param) || length(col_param) != 1L)) {
       stop(paste(
         "'consensus_posterior_col', 'winner_prior_col',",
         "'winner_rank_expanded_col', 'plausible_posteriors_col',",
@@ -447,17 +452,22 @@ review_assignments <- function(input_df,
         "'consensus_plausibility_col', and 'consensus_discrimination_col' must",
         "each be a single character string or NULL."
       ), call. = FALSE)
+    }
   }
 
-  if (missing(context) || is.null(context))
+  if (missing(context) || is.null(context)) {
     stop("'context' is required. Supply a named list or build_context() output.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   valid_types <- c("eDNA", "acoustic", "image")
   if (!is.character(data_type) || length(data_type) != 1L ||
-      !data_type %in% valid_types)
+    !data_type %in% valid_types) {
     stop(sprintf("'data_type' must be one of: %s", paste(valid_types, collapse = ", ")),
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # --- Normalise context ---
   ctx <- .normalise_context(context)
@@ -470,10 +480,9 @@ review_assignments <- function(input_df,
   label_canon_map <- NULL
 
   if (use_candidates) {
-
-    raw_sets  <- input_df[[plausible_taxa_col]]
+    raw_sets <- input_df[[plausible_taxa_col]]
     taxa_sets <- lapply(raw_sets, function(x) sort(unique(x[!is.na(x) & nzchar(x)])))
-    n_cands   <- lengths(taxa_sets)
+    n_cands <- lengths(taxa_sets)
 
     # Build display labels (slash notation). Prefer a pre-computed label from
     # TaxaAssign::add_slash_taxon() when present -- its slash-name logic
@@ -487,8 +496,12 @@ review_assignments <- function(input_df,
       input_df[["consensus_OTU"]]
     } else {
       vapply(seq_along(taxa_sets), function(i) {
-        if (n_cands[i] == 0L) return(NA_character_)
-        if (n_cands[i] == 1L) return(taxa_sets[[i]])
+        if (n_cands[i] == 0L) {
+          return(NA_character_)
+        }
+        if (n_cands[i] == 1L) {
+          return(taxa_sets[[i]])
+        }
         .build_candidate_label(taxa_sets[[i]])
       }, character(1L))
     }
@@ -497,18 +510,20 @@ review_assignments <- function(input_df,
     if (irreducible_only) {
       if ("irreducible_consensus" %in% names(input_df)) {
         include_rows <- input_df[["irreducible_consensus"]] %in% TRUE
-        if (verbose)
+        if (verbose) {
           message(sprintf(
             "  irreducible_only = TRUE: %d of %d rows selected for review.",
             sum(include_rows & n_cands > 0L), nrow(input_df)
           ))
+        }
       } else {
-        if (verbose)
+        if (verbose) {
           message(paste0(
             "  irreducible_only = TRUE but 'irreducible_consensus' column not found. ",
             "Run TaxaAssign::add_slash_taxon() to enable filtering. ",
             "Reviewing all non-empty candidate sets."
           ))
+        }
         include_rows <- rep(TRUE, nrow(input_df))
       }
     } else {
@@ -530,7 +545,7 @@ review_assignments <- function(input_df,
 
     # Build taxa_info from unique labels in included rows
     inc_labels <- cand_labels[include_rows]
-    inc_ranks  <- if (!is.null(taxon_rank_col)) {
+    inc_ranks <- if (!is.null(taxon_rank_col)) {
       input_df[[taxon_rank_col]][include_rows]
     } else {
       rep(NA_character_, sum(include_rows))
@@ -539,7 +554,7 @@ review_assignments <- function(input_df,
     taxa_info <- data.frame(
       taxon_name = inc_labels,
       taxon_rank = inc_ranks,
-      .canon     = canon_key[include_rows],
+      .canon = canon_key[include_rows],
       stringsAsFactors = FALSE
     )
     # Dedup on the canonical set, not the label: one review per biological
@@ -563,30 +578,34 @@ review_assignments <- function(input_df,
     taxa_info <- taxa_info[!duplicated(taxa_info$taxon_name), , drop = FALSE]
     taxa_info$.canon <- NULL
 
-    if (nrow(taxa_info) == 0L)
+    if (nrow(taxa_info) == 0L) {
       stop("No candidate sets to review after filtering. ",
-           "Check 'irreducible_only' and 'plausible_taxa_col'.", call. = FALSE)
-
+        "Check 'irreducible_only' and 'plausible_taxa_col'.",
+        call. = FALSE
+      )
+    }
   } else {
-
     # --- Current path: dedup on consensus_taxon ---
     input_df$.join_key <- input_df[[taxon_col]]
 
     taxa <- unique(input_df[[taxon_col]])
     taxa <- taxa[!is.na(taxa) & nchar(trimws(taxa)) > 0]
 
-    if (length(taxa) == 0L)
+    if (length(taxa) == 0L) {
       stop(sprintf("No non-NA taxa found in column '%s'.", taxon_col), call. = FALSE)
+    }
 
     if (!is.null(taxon_rank_col)) {
       taxa_info <- unique(input_df[, c(taxon_col, taxon_rank_col), drop = FALSE])
       names(taxa_info) <- c("taxon_name", "taxon_rank")
       taxa_info <- taxa_info[!is.na(taxa_info$taxon_name) &
-                               nchar(trimws(taxa_info$taxon_name)) > 0, , drop = FALSE]
+        nchar(trimws(taxa_info$taxon_name)) > 0, , drop = FALSE]
       taxa_info <- taxa_info[!duplicated(taxa_info$taxon_name), , drop = FALSE]
     } else {
-      taxa_info <- data.frame(taxon_name = taxa, taxon_rank = NA_character_,
-                              stringsAsFactors = FALSE)
+      taxa_info <- data.frame(
+        taxon_name = taxa, taxon_rank = NA_character_,
+        stringsAsFactors = FALSE
+      )
     }
   }
 
@@ -603,7 +622,7 @@ review_assignments <- function(input_df,
     winner_rank_expanded_col, consensus_plausibility_col, consensus_discrimination_col
   )
   weight_ctx <- if (use_candidates && !is.null(plausible_posteriors_col) &&
-                    plausible_posteriors_col %in% names(input_df)) {
+    plausible_posteriors_col %in% names(input_df)) {
     .summarise_candidate_weights(label_vec_full, input_df[[plausible_posteriors_col]])
   } else {
     NULL
@@ -615,22 +634,28 @@ review_assignments <- function(input_df,
   )
 
   if (!is.null(pipeline_ctx) || !is.null(weight_ctx) || !is.null(spatial_ctx)) {
-    pn <- if (!is.null(pipeline_ctx))
+    pn <- if (!is.null(pipeline_ctx)) {
       pipeline_ctx$pipeline_note[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]
-    else rep(NA_character_, nrow(taxa_info))
-    wn <- if (!is.null(weight_ctx))
+    } else {
+      rep(NA_character_, nrow(taxa_info))
+    }
+    wn <- if (!is.null(weight_ctx)) {
       weight_ctx$weight_note[match(taxa_info$taxon_name, weight_ctx$taxon_name)]
-    else rep(NA_character_, nrow(taxa_info))
+    } else {
+      rep(NA_character_, nrow(taxa_info))
+    }
     wn <- ifelse(is.na(wn), NA_character_, paste0("candidate weights: ", wn))
-    sn <- if (!is.null(spatial_ctx))
+    sn <- if (!is.null(spatial_ctx)) {
       spatial_ctx$spatial_note[match(taxa_info$taxon_name, spatial_ctx$taxon_name)]
-    else rep(NA_character_, nrow(taxa_info))
+    } else {
+      rep(NA_character_, nrow(taxa_info))
+    }
     # spatial_note is kept as its own column (not just folded into
     # pipeline_note) so .build_review_prompt() can tell, per batch, whether
     # to include the GBIF/iNat interpretation caveats -- see "Spatial
     # context" in this function's own roxygen for why those caveats live in
     # fixed GUIDELINES text rather than being pre-judged per taxon here.
-    taxa_info$spatial_note  <- sn
+    taxa_info$spatial_note <- sn
     taxa_info$pipeline_note <- .combine_notes(.combine_notes(pn, wn), sn)
   }
 
@@ -645,19 +670,26 @@ review_assignments <- function(input_df,
   # actually wrote in review_comment. Also folds into the cache key for free,
   # via the same "vapply(taxa_info, ...)" loop every other taxa_info column
   # already participates in.
-  taxa_info$has_unprecedented <- if (!is.null(pipeline_ctx))
+  taxa_info$has_unprecedented <- if (!is.null(pipeline_ctx)) {
     pipeline_ctx$has_unprecedented[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]
-  else rep(FALSE, nrow(taxa_info))
-  taxa_info$has_indistinguishable <- if (!is.null(pipeline_ctx))
+  } else {
+    rep(FALSE, nrow(taxa_info))
+  }
+  taxa_info$has_indistinguishable <- if (!is.null(pipeline_ctx)) {
     pipeline_ctx$has_indistinguishable[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]
-  else rep(FALSE, nrow(taxa_info))
+  } else {
+    rep(FALSE, nrow(taxa_info))
+  }
   taxa_info$has_unprecedented[is.na(taxa_info$has_unprecedented)] <- FALSE
   taxa_info$has_indistinguishable[is.na(taxa_info$has_indistinguishable)] <- FALSE
 
-  if (verbose)
-    message(sprintf("review_assignments: %d unique %s to review.",
-                    nrow(taxa_info),
-                    if (use_candidates) "candidate sets" else "taxa"))
+  if (verbose) {
+    message(sprintf(
+      "review_assignments: %d unique %s to review.",
+      nrow(taxa_info),
+      if (use_candidates) "candidate sets" else "taxa"
+    ))
+  }
 
   # --- Cache lookup ------------------------------------------------------
   # The review is a JUDGEMENT, and an uncached one is not reproducible: two
@@ -682,67 +714,94 @@ review_assignments <- function(input_df,
   cache_hits <- NULL
   cache_paths <- NULL
   cache_keys <- NULL
-  call_rows  <- seq_len(nrow(taxa_info))
+  call_rows <- seq_len(nrow(taxa_info))
   if (!is.null(cache_dir)) {
-    if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))
+    if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
       stop("'cache_dir' must be a single non-NA character string, or NULL.",
-           call. = FALSE)
-    if (!dir.exists(cache_dir))
+        call. = FALSE
+      )
+    }
+    if (!dir.exists(cache_dir)) {
       dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
 
     .shared <- paste(c(
       "v1", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates),
-      paste(names(ctx), vapply(ctx, function(z) paste(as.character(z), collapse = "~"),
-                               character(1)), sep = "=", collapse = "|")
+      paste(names(ctx), vapply(
+        ctx, function(z) paste(as.character(z), collapse = "~"),
+        character(1)
+      ), sep = "=", collapse = "|")
     ), collapse = "\u0001")
 
     cache_keys <- vapply(seq_len(nrow(taxa_info)), function(i) {
-      paste(c(.shared, vapply(taxa_info, function(col)
-        paste(as.character(col[i]), collapse = "~"), character(1))),
-        collapse = "\u0001")
+      paste(
+        c(.shared, vapply(taxa_info, function(col) {
+          paste(as.character(col[i]), collapse = "~")
+        }, character(1))),
+        collapse = "\u0001"
+      )
     }, character(1))
     cache_paths <- file.path(
-      cache_dir, paste0(vapply(cache_keys, .review_cache_hash, character(1)),
-                        "_review.rds"))
+      cache_dir, paste0(
+        vapply(cache_keys, .review_cache_hash, character(1)),
+        "_review.rds"
+      )
+    )
 
-    hit_rows <- integer(0); hit_list <- list()
+    hit_rows <- integer(0)
+    hit_list <- list()
     for (i in seq_along(cache_paths)) {
       ent <- .review_cache_read(cache_paths[i], cache_keys[i])
-      if (!is.null(ent)) { hit_rows <- c(hit_rows, i); hit_list[[length(hit_list) + 1L]] <- ent }
+      if (!is.null(ent)) {
+        hit_rows <- c(hit_rows, i)
+        hit_list[[length(hit_list) + 1L]] <- ent
+      }
     }
     if (length(hit_rows) > 0L) {
       cache_hits <- do.call(rbind, hit_list)
-      call_rows  <- setdiff(call_rows, hit_rows)
+      call_rows <- setdiff(call_rows, hit_rows)
     }
-    if (verbose)
-      message(sprintf("  cache: %d of %d taxa already reviewed; %d to call.",
-                      length(hit_rows), nrow(taxa_info), length(call_rows)))
+    if (verbose) {
+      message(sprintf(
+        "  cache: %d of %d taxa already reviewed; %d to call.",
+        length(hit_rows), nrow(taxa_info), length(call_rows)
+      ))
+    }
   }
 
   taxa_to_call <- taxa_info[call_rows, , drop = FALSE]
 
   # --- Batch and call LLM ---
-  n_taxa    <- nrow(taxa_to_call)
-  tpc       <- if (n_taxa > 0L) min(taxa_per_call, n_taxa) else 1L
-  batch_idx <- if (n_taxa > 0L)
-    split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc)) else list()
+  n_taxa <- nrow(taxa_to_call)
+  tpc <- if (n_taxa > 0L) min(taxa_per_call, n_taxa) else 1L
+  batch_idx <- if (n_taxa > 0L) {
+    split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc))
+  } else {
+    list()
+  }
   n_batches <- length(batch_idx)
 
-  if (verbose)
-    message(sprintf("  %d LLM call(s) needed (taxa_per_call = %d).",
-                    n_batches, taxa_per_call))
+  if (verbose) {
+    message(sprintf(
+      "  %d LLM call(s) needed (taxa_per_call = %d).",
+      n_batches, taxa_per_call
+    ))
+  }
 
   batch_results <- vector("list", n_batches)
-  prompt_log    <- new.env(parent = emptyenv())
+  prompt_log <- new.env(parent = emptyenv())
 
   for (b in seq_along(batch_idx)) {
     taxa_batch <- taxa_to_call[batch_idx[[b]], , drop = FALSE]
 
-    if (verbose)
-      message(sprintf("  Calling LLM (batch %d/%d, %d %s)...",
-                      b, n_batches, nrow(taxa_batch),
-                      if (use_candidates) "candidate sets" else "taxa"))
+    if (verbose) {
+      message(sprintf(
+        "  Calling LLM (batch %d/%d, %d %s)...",
+        b, n_batches, nrow(taxa_batch),
+        if (use_candidates) "candidate sets" else "taxa"
+      ))
+    }
 
     batch_results[[b]] <- .review_batch_with_retry(
       taxa_batch, ctx, target_group, marker, data_type, use_candidates,
@@ -759,19 +818,29 @@ review_assignments <- function(input_df,
   # Persist the freshly obtained verdicts, then fold the cached ones back in.
   if (!is.null(cache_dir) && !is.null(review_df) && nrow(review_df) > 0L) {
     pos <- match(review_df$taxon_name, taxa_info$taxon_name)
-    for (k in which(!is.na(pos)))
-      .review_cache_write(cache_paths[pos[k]], cache_keys[pos[k]],
-                          review_df[k, , drop = FALSE])
+    for (k in which(!is.na(pos))) {
+      .review_cache_write(
+        cache_paths[pos[k]], cache_keys[pos[k]],
+        review_df[k, , drop = FALSE]
+      )
+    }
   }
-  if (!is.null(cache_hits))
-    review_df <- if (is.null(review_df) || nrow(review_df) == 0L) cache_hits
-                 else rbind(review_df, cache_hits[, names(review_df), drop = FALSE])
+  if (!is.null(cache_hits)) {
+    review_df <- if (is.null(review_df) || nrow(review_df) == 0L) {
+      cache_hits
+    } else {
+      rbind(review_df, cache_hits[, names(review_df), drop = FALSE])
+    }
+  }
   rownames(review_df) <- NULL
 
-  if (verbose)
-    message(sprintf("  Review complete. %d %s reviewed.",
-                    nrow(review_df),
-                    if (use_candidates) "candidate sets" else "taxa"))
+  if (verbose) {
+    message(sprintf(
+      "  Review complete. %d %s reviewed.",
+      nrow(review_df),
+      if (use_candidates) "candidate sets" else "taxa"
+    ))
+  }
 
   # --- Join back to input by .join_key ---
   # 2026-09-06: the four purely-LLM-sourced columns are named with an
@@ -799,28 +868,28 @@ review_assignments <- function(input_df,
   } else {
     keys <- label_canon_map[review_df$taxon_name]
     review_df <- review_df[rep(seq_len(nrow(review_df)), lengths(keys)), , drop = FALSE]
-    as.character(unlist(keys, use.names = FALSE))  # NULL -> character(0), keeps the column
+    as.character(unlist(keys, use.names = FALSE)) # NULL -> character(0), keeps the column
   }
 
   merge_key <- data.frame(
-    .join_key                   = join_keys,
-    llm_habitat_plausibility    = review_df$habitat_plausibility,
+    .join_key = join_keys,
+    llm_habitat_plausibility = review_df$habitat_plausibility,
     llm_geographic_plausibility = review_df$geographic_plausibility,
-    llm_scope_plausibility      = review_df$scope_plausibility,
-    llm_contamination_risk      = review_df$contamination_risk,
-    review_alternatives         = review_df$review_alternatives,
-    review_lower_hypotheses     = review_df$review_lower_hypotheses,
-    review_confidence           = review_df$review_confidence,
-    review_comment               = review_df$review_comment,
-    .has_unprecedented           = review_df$has_unprecedented,
-    .has_indistinguishable       = review_df$has_indistinguishable,
+    llm_scope_plausibility = review_df$scope_plausibility,
+    llm_contamination_risk = review_df$contamination_risk,
+    review_alternatives = review_df$review_alternatives,
+    review_lower_hypotheses = review_df$review_lower_hypotheses,
+    review_confidence = review_df$review_confidence,
+    review_comment = review_df$review_comment,
+    .has_unprecedented = review_df$has_unprecedented,
+    .has_indistinguishable = review_df$has_indistinguishable,
     stringsAsFactors = FALSE
   )
 
   input_df$.row_id <- seq_len(nrow(input_df))
   result <- merge(input_df, merge_key, by = ".join_key", all.x = TRUE, sort = FALSE)
   result <- result[order(result$.row_id), , drop = FALSE]
-  result$.row_id  <- NULL
+  result$.row_id <- NULL
   result$.join_key <- NULL
   rownames(result) <- NULL
 
@@ -835,17 +904,19 @@ review_assignments <- function(input_df,
   # value names WHICH pipeline signal(s) the LLM's "likely"/"possible" rating
   # disagrees with, so a reviewer sees why at a glance rather than having to
   # cross-reference other columns.
-  hu <- result$.has_unprecedented;     hu[is.na(hu)] <- FALSE
-  hi <- result$.has_indistinguishable; hi[is.na(hi)] <- FALSE
+  hu <- result$.has_unprecedented
+  hu[is.na(hu)] <- FALSE
+  hi <- result$.has_indistinguishable
+  hi[is.na(hi)] <- FALSE
   llm_geo <- result$llm_geographic_plausibility
   disagrees <- !is.na(llm_geo) & llm_geo %in% c("likely", "possible")
 
   basis <- rep(NA_character_, nrow(result))
-  basis[disagrees & hu  & hi]  <- "unprecedented+indistinguishable"
-  basis[disagrees & hu  & !hi] <- "unprecedented"
-  basis[disagrees & !hu & hi]  <- "indistinguishable"
+  basis[disagrees & hu & hi] <- "unprecedented+indistinguishable"
+  basis[disagrees & hu & !hi] <- "unprecedented"
+  basis[disagrees & !hu & hi] <- "indistinguishable"
   result$geographic_disagreement_basis <- basis
-  result$.has_unprecedented     <- NULL
+  result$.has_unprecedented <- NULL
   result$.has_indistinguishable <- NULL
 
   # Named by batch label (including any "a"/"b" retry sub-batch splits) --
@@ -871,11 +942,12 @@ review_assignments <- function(input_df,
 #' @noRd
 .build_candidate_label <- function(taxa_vec) {
   first_space <- regexpr(" ", taxa_vec, fixed = TRUE)
-  has_space   <- first_space > 0L
-  genera   <- ifelse(has_space, substr(taxa_vec, 1L, first_space - 1L), taxa_vec)
+  has_space <- first_space > 0L
+  genera <- ifelse(has_space, substr(taxa_vec, 1L, first_space - 1L), taxa_vec)
   epithets <- ifelse(has_space,
-                     substr(taxa_vec, first_space + 1L, nchar(taxa_vec)),
-                     taxa_vec)
+    substr(taxa_vec, first_space + 1L, nchar(taxa_vec)),
+    taxa_vec
+  )
   unique_genera <- unique(genera)
   if (length(unique_genera) == 1L) {
     paste0(unique_genera, " ", paste(epithets, collapse = "/"))
@@ -902,8 +974,12 @@ review_assignments <- function(input_df,
 #' oddly, e.g. "0.00e+00").
 #' @noRd
 .fmt_pipeline_value <- function(v) {
-  if (is.na(v)) return(NA_character_)
-  if (v == 0) return("0")
+  if (is.na(v)) {
+    return(NA_character_)
+  }
+  if (v == 0) {
+    return("0")
+  }
   if (abs(v) < 0.01) sprintf("%.2e", v) else sprintf("%.2f", v)
 }
 
@@ -943,15 +1019,19 @@ review_assignments <- function(input_df,
                                         winner_prior_col, winner_rank_expanded_col,
                                         consensus_plausibility_col = NULL,
                                         consensus_discrimination_col = NULL) {
-  has_post  <- !is.null(consensus_posterior_col)  && consensus_posterior_col  %in% names(input_df)
-  has_prior <- !is.null(winner_prior_col)         && winner_prior_col         %in% names(input_df)
-  has_rexp  <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(input_df)
-  has_plaus <- !is.null(consensus_plausibility_col)   && consensus_plausibility_col   %in% names(input_df)
-  has_disc  <- !is.null(consensus_discrimination_col) && consensus_discrimination_col %in% names(input_df)
-  if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc) return(NULL)
+  has_post <- !is.null(consensus_posterior_col) && consensus_posterior_col %in% names(input_df)
+  has_prior <- !is.null(winner_prior_col) && winner_prior_col %in% names(input_df)
+  has_rexp <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(input_df)
+  has_plaus <- !is.null(consensus_plausibility_col) && consensus_plausibility_col %in% names(input_df)
+  has_disc <- !is.null(consensus_discrimination_col) && consensus_discrimination_col %in% names(input_df)
+  if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc) {
+    return(NULL)
+  }
 
   keep <- !is.na(label_vec)
-  if (!any(keep)) return(NULL)
+  if (!any(keep)) {
+    return(NULL)
+  }
 
   groups <- split(which(keep), label_vec[keep])
 
@@ -974,7 +1054,7 @@ review_assignments <- function(input_df,
       ))
     }
     is_unprec <- has_plaus && isTRUE(any(input_df[[consensus_plausibility_col]][rows] == "unprecedented", na.rm = TRUE))
-    is_indist <- has_disc  && isTRUE(any(input_df[[consensus_discrimination_col]][rows] == "indistinguishable", na.rm = TRUE))
+    is_indist <- has_disc && isTRUE(any(input_df[[consensus_discrimination_col]][rows] == "indistinguishable", na.rm = TRUE))
     if (is_unprec) parts <- c(parts, "pipeline flags UNPRECEDENTED: no local occurrence record at all")
     if (is_indist) parts <- c(parts, "pipeline flags INDISTINGUISHABLE: a confusable relative could score equally well")
     rows_list[[gi]] <<- c(unprecedented = is_unprec, indistinguishable = is_indist)
@@ -982,10 +1062,12 @@ review_assignments <- function(input_df,
   }, character(1L))
 
   flags <- do.call(rbind, rows_list)
-  data.frame(taxon_name = names(groups), pipeline_note = unname(notes),
-             has_unprecedented   = unname(flags[, "unprecedented"]),
-             has_indistinguishable = unname(flags[, "indistinguishable"]),
-             stringsAsFactors = FALSE)
+  data.frame(
+    taxon_name = names(groups), pipeline_note = unname(notes),
+    has_unprecedented = unname(flags[, "unprecedented"]),
+    has_indistinguishable = unname(flags[, "indistinguishable"]),
+    stringsAsFactors = FALSE
+  )
 }
 
 
@@ -1002,21 +1084,27 @@ review_assignments <- function(input_df,
 #' @noRd
 .summarise_candidate_weights <- function(label_vec, post_list) {
   is_multi <- !is.na(label_vec) & grepl("[/+]", label_vec)
-  if (!any(is_multi)) return(NULL)
+  if (!any(is_multi)) {
+    return(NULL)
+  }
 
   groups <- split(which(is_multi), label_vec[is_multi])
 
   notes <- vapply(groups, function(rows) {
     vecs <- post_list[rows]
     vecs <- vecs[lengths(vecs) > 0L]
-    if (length(vecs) == 0L) return(NA_character_)
+    if (length(vecs) == 0L) {
+      return(NA_character_)
+    }
     all_vals <- unlist(vecs, use.names = TRUE)
     agg <- sort(tapply(all_vals, names(all_vals), mean, na.rm = TRUE), decreasing = TRUE)
     paste(sprintf("%s %.0f%%", names(agg), agg * 100), collapse = ", ")
   }, character(1L))
 
-  data.frame(taxon_name = names(groups), weight_note = unname(notes),
-             stringsAsFactors = FALSE)
+  data.frame(
+    taxon_name = names(groups), weight_note = unname(notes),
+    stringsAsFactors = FALSE
+  )
 }
 
 
@@ -1050,16 +1138,20 @@ review_assignments <- function(input_df,
                                        inat_in_range_col,
                                        inat_n_observations_col,
                                        inat_matched_name_col) {
-  has_dist    <- !is.null(dist_nearest_occupied_km_col) && dist_nearest_occupied_km_col %in% names(input_df)
-  has_patch   <- !is.null(patch_diameter_km_col)         && patch_diameter_km_col         %in% names(input_df)
-  has_beyond  <- !is.null(beyond_buffer_col)              && beyond_buffer_col              %in% names(input_df)
-  has_inrange <- !is.null(inat_in_range_col)              && inat_in_range_col              %in% names(input_df)
-  has_nobs    <- !is.null(inat_n_observations_col)        && inat_n_observations_col        %in% names(input_df)
-  has_match   <- !is.null(inat_matched_name_col)          && inat_matched_name_col          %in% names(input_df)
-  if (!has_dist && !has_beyond && !has_inrange && !has_nobs && !has_match) return(NULL)
+  has_dist <- !is.null(dist_nearest_occupied_km_col) && dist_nearest_occupied_km_col %in% names(input_df)
+  has_patch <- !is.null(patch_diameter_km_col) && patch_diameter_km_col %in% names(input_df)
+  has_beyond <- !is.null(beyond_buffer_col) && beyond_buffer_col %in% names(input_df)
+  has_inrange <- !is.null(inat_in_range_col) && inat_in_range_col %in% names(input_df)
+  has_nobs <- !is.null(inat_n_observations_col) && inat_n_observations_col %in% names(input_df)
+  has_match <- !is.null(inat_matched_name_col) && inat_matched_name_col %in% names(input_df)
+  if (!has_dist && !has_beyond && !has_inrange && !has_nobs && !has_match) {
+    return(NULL)
+  }
 
   keep <- !is.na(label_vec)
-  if (!any(keep)) return(NULL)
+  if (!any(keep)) {
+    return(NULL)
+  }
 
   groups <- split(which(keep), label_vec[keep])
 
@@ -1086,26 +1178,33 @@ review_assignments <- function(input_df,
       in_range <- if (has_inrange) {
         v <- input_df[[inat_in_range_col]][rows]
         if (all(is.na(v))) NA else any(v %in% TRUE)
-      } else NA
-      nobs <- if (has_nobs)
+      } else {
+        NA
+      }
+      nobs <- if (has_nobs) {
         suppressWarnings(stats::median(input_df[[inat_n_observations_col]][rows], na.rm = TRUE))
-      else NA_real_
+      } else {
+        NA_real_
+      }
       matched <- if (has_match) {
         m <- input_df[[inat_matched_name_col]][rows]
         m <- m[!is.na(m)]
         if (length(m) > 0L) m[[1L]] else NA_character_
-      } else NA_character_
+      } else {
+        NA_character_
+      }
 
       if (!is.na(in_range) || is.finite(nobs) || !is.na(matched)) {
         inat_parts <- character(0)
         if (!is.na(matched) && !is.na(lbl) &&
-            tolower(trimws(matched)) != tolower(trimws(lbl))) {
+          tolower(trimws(matched)) != tolower(trimws(lbl))) {
           inat_parts <- c(inat_parts, sprintf("matched to '%s' (name differs from query)", matched))
         }
         if (!is.na(in_range)) inat_parts <- c(inat_parts, if (in_range) "in range" else "outside range")
-        if (is.finite(nobs))  inat_parts <- c(inat_parts, sprintf("%.0f obs", nobs))
-        if (length(inat_parts) > 0L)
+        if (is.finite(nobs)) inat_parts <- c(inat_parts, sprintf("%.0f obs", nobs))
+        if (length(inat_parts) > 0L) {
           parts <- c(parts, paste0("iNat: ", paste(inat_parts, collapse = ", ")))
+        }
       }
     }
 
@@ -1120,8 +1219,10 @@ review_assignments <- function(input_df,
 #' @noRd
 .combine_notes <- function(a, b) {
   ifelse(is.na(a) & is.na(b), NA_character_,
-  ifelse(is.na(a), b,
-  ifelse(is.na(b), a, paste0(a, "; ", b))))
+    ifelse(is.na(a), b,
+      ifelse(is.na(b), a, paste0(a, "; ", b))
+    )
+  )
 }
 
 
@@ -1136,11 +1237,12 @@ review_assignments <- function(input_df,
 #' @noRd
 .normalise_context <- function(context) {
   if (is.data.frame(context)) {
-    if (nrow(context) > 1L)
+    if (nrow(context) > 1L) {
       warning(sprintf(
         "review_assignments: 'context' has %d rows; only the first is used (context describes one study, not one row per observation).",
         nrow(context)
       ), call. = FALSE)
+    }
     ctx <- as.list(context[1, , drop = TRUE])
   } else if (is.list(context)) {
     ctx <- context
@@ -1148,17 +1250,23 @@ review_assignments <- function(input_df,
     stop("'context' must be a named list or data frame.", call. = FALSE)
   }
 
-  if (is.null(ctx$geography) && !is.null(ctx$ecoregion))
+  if (is.null(ctx$geography) && !is.null(ctx$ecoregion)) {
     ctx$geography <- ctx$ecoregion
-  if (is.null(ctx$habitat) && !is.null(ctx$main_habitat))
+  }
+  if (is.null(ctx$habitat) && !is.null(ctx$main_habitat)) {
     ctx$habitat <- ctx$main_habitat
+  }
 
-  if (is.null(ctx$geography) || is.na(ctx$geography))
+  if (is.null(ctx$geography) || is.na(ctx$geography)) {
     warning("'context$geography' is missing. LLM review will lack geographic context.",
-            call. = FALSE)
-  if (is.null(ctx$habitat) || is.na(ctx$habitat))
+      call. = FALSE
+    )
+  }
+  if (is.null(ctx$habitat) || is.na(ctx$habitat)) {
     warning("'context$habitat' is missing. LLM review will lack habitat context.",
-            call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   ctx
 }
@@ -1168,19 +1276,23 @@ review_assignments <- function(input_df,
 #' @noRd
 .build_review_prompt <- function(taxa_batch, ctx, target_group, marker,
                                  data_type = "eDNA", use_candidates = FALSE) {
-
   # --- Context block ---
   context_lines <- character(0)
-  if (!is.null(ctx$geography) && !is.na(ctx$geography))
+  if (!is.null(ctx$geography) && !is.na(ctx$geography)) {
     context_lines <- c(context_lines, sprintf("GEOGRAPHY: %s", ctx$geography))
-  if (!is.null(ctx$habitat) && !is.na(ctx$habitat))
+  }
+  if (!is.null(ctx$habitat) && !is.na(ctx$habitat)) {
     context_lines <- c(context_lines, sprintf("HABITAT: %s", ctx$habitat))
-  if (!is.null(ctx$date) && !is.na(ctx$date))
+  }
+  if (!is.null(ctx$date) && !is.na(ctx$date)) {
     context_lines <- c(context_lines, sprintf("DATE: %s", ctx$date))
-  if (!is.null(target_group))
+  }
+  if (!is.null(target_group)) {
     context_lines <- c(context_lines, sprintf("TARGET GROUP: %s", target_group))
-  if (!is.null(marker))
+  }
+  if (!is.null(marker)) {
     context_lines <- c(context_lines, sprintf("MARKER / METHOD: %s", marker))
+  }
 
   context_block <- paste(context_lines, collapse = "\n")
 
@@ -1259,7 +1371,7 @@ review_assignments <- function(input_df,
 
   # --- Contaminant guidance ---
   contaminant_guideline <- switch(data_type,
-    eDNA     = paste0(
+    eDNA = paste0(
       "For contaminant assessment, consider: Homo sapiens and domestic animals are common ",
       "contaminants in molecular studies. Common lab contaminants include Bos taurus, ",
       "Sus scrofa, Gallus gallus, and other food-source species."
@@ -1269,7 +1381,7 @@ review_assignments <- function(input_df,
       "recording equipment are common false positives. Domestic animals (dogs, livestock) ",
       "and vehicles can produce false species matches."
     ),
-    image    = paste0(
+    image = paste0(
       "For contaminant assessment, consider: handler presence during camera setup/teardown ",
       "events and domestic animals are common false positives in camera trap data."
     ),
@@ -1292,39 +1404,47 @@ review_assignments <- function(input_df,
   # has_unprecedented/has_indistinguishable, built by
   # .summarise_pipeline_context()) -- most batches won't.
   has_skepticism_note <- ("has_unprecedented" %in% names(taxa_batch) &&
-                           any(taxa_batch$has_unprecedented, na.rm = TRUE)) ||
+    any(taxa_batch$has_unprecedented, na.rm = TRUE)) ||
     ("has_indistinguishable" %in% names(taxa_batch) &&
-     any(taxa_batch$has_indistinguishable, na.rm = TRUE))
-  skepticism_guideline <- if (has_skepticism_note) paste0(
-    '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
-    "local occurrence record at all) and/or \"pipeline flags ",
-    'INDISTINGUISHABLE" (a confusable relative could score equally well), do ',
-    'NOT rate geographic_plausibility "likely" or "possible" unless you can ',
-    "cite SPECIFIC evidence for a real population at or near THIS site (a ",
-    "documented occurrence, a verified range extension, a specific source) -- ",
-    "a general species-level range description (e.g. \"found broadly in the ",
-    'Pacific/Atlantic/tropics\") is NOT sufficient justification on its own. ',
-    "If you do rate it likely/possible anyway, review_comment MUST state the ",
-    "specific evidence; otherwise rate it \"unlikely\" and say so.\n"
-  ) else NULL
+      any(taxa_batch$has_indistinguishable, na.rm = TRUE))
+  skepticism_guideline <- if (has_skepticism_note) {
+    paste0(
+      '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
+      "local occurrence record at all) and/or \"pipeline flags ",
+      'INDISTINGUISHABLE" (a confusable relative could score equally well), do ',
+      'NOT rate geographic_plausibility "likely" or "possible" unless you can ',
+      "cite SPECIFIC evidence for a real population at or near THIS site (a ",
+      "documented occurrence, a verified range extension, a specific source) -- ",
+      "a general species-level range description (e.g. \"found broadly in the ",
+      'Pacific/Atlantic/tropics\") is NOT sufficient justification on its own. ',
+      "If you do rate it likely/possible anyway, review_comment MUST state the ",
+      "specific evidence; otherwise rate it \"unlikely\" and say so.\n"
+    )
+  } else {
+    NULL
+  }
 
   # --- Spatial-context guidance (only when this batch actually has a note) ---
   has_spatial_note <- "spatial_note" %in% names(taxa_batch) &&
     any(!is.na(taxa_batch$spatial_note))
-  spatial_guideline <- if (has_spatial_note) paste0(
-    '- When a taxon line ends with a "GBIF:"/"iNat:" note, that is real ',
-    "occurrence-database evidence -- two caveats on how to weigh it: (1) ",
-    "GBIF's density map is RAW, unfiltered global data. An occurrence found ",
-    "far away, especially in a small (1-2 cell) patch, may itself be a ",
-    "single bad or mis-georeferenced record rather than a real population -- ",
-    "weight a small isolated patch as weaker evidence than a large one. (2) ",
-    "If iNat's matched name differs from the taxon under review, its range ",
-    "verdict may describe a DIFFERENT (often more common) species due to a ",
-    "fuzzy name match, not the taxon actually being assessed -- treat that ",
-    "verdict with real suspicion rather than as confirmation. Use both to ",
-    "inform geographic_plausibility, and note any inconsistency you notice ",
-    "in review_comment.\n"
-  ) else NULL
+  spatial_guideline <- if (has_spatial_note) {
+    paste0(
+      '- When a taxon line ends with a "GBIF:"/"iNat:" note, that is real ',
+      "occurrence-database evidence -- two caveats on how to weigh it: (1) ",
+      "GBIF's density map is RAW, unfiltered global data. An occurrence found ",
+      "far away, especially in a small (1-2 cell) patch, may itself be a ",
+      "single bad or mis-georeferenced record rather than a real population -- ",
+      "weight a small isolated patch as weaker evidence than a large one. (2) ",
+      "If iNat's matched name differs from the taxon under review, its range ",
+      "verdict may describe a DIFFERENT (often more common) species due to a ",
+      "fuzzy name match, not the taxon actually being assessed -- treat that ",
+      "verdict with real suspicion rather than as confirmation. Use both to ",
+      "inform geographic_plausibility, and note any inconsistency you notice ",
+      "in review_comment.\n"
+    )
+  } else {
+    NULL
+  }
 
   example_comment <- switch(data_type,
     eDNA     = "Common lab contaminant in eDNA studies",
@@ -1335,47 +1455,48 @@ review_assignments <- function(input_df,
 
   # --- Assemble prompt ---
   header_sections <- c(
-    'You are an expert wildlife biologist, biogeographer, and taxonomist.\n',
-    'STUDY CONTEXT:\n', context_block, '\n'
+    "You are an expert wildlife biologist, biogeographer, and taxonomist.\n",
+    "STUDY CONTEXT:\n", context_block, "\n"
   )
-  if (!is.null(notation_block))
-    header_sections <- c(header_sections, '\n', notation_block, '\n')
+  if (!is.null(notation_block)) {
+    header_sections <- c(header_sections, "\n", notation_block, "\n")
+  }
 
   prompt <- paste0(
-    paste(header_sections, collapse = ""), '\n',
-    'TASK: Review each taxon below and assess whether it is a plausible detection ',
-    'given the study context. Return your assessment as a valid JSON array with one ',
-    'object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation ',
-    'before or after.\n\n',
-    'Each object must have these fields:\n',
+    paste(header_sections, collapse = ""), "\n",
+    "TASK: Review each taxon below and assess whether it is a plausible detection ",
+    "given the study context. Return your assessment as a valid JSON array with one ",
+    "object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation ",
+    "before or after.\n\n",
+    "Each object must have these fields:\n",
     '  "taxon_name": the exact taxon name as provided,\n',
     '  "habitat_plausibility": one of "likely", "possible", "unlikely",\n',
     '  "geographic_plausibility": one of "likely", "possible", "unlikely",\n',
-    scope_instruction, '\n',
+    scope_instruction, "\n",
     '  "contamination_risk": one of "low", "moderate", "high",\n',
     '  "review_alternatives": comma-separated string of plausible alternative taxa ',
-    'that better fit the geography and habitat, or null if the taxon is plausible,\n',
-    lower_instruction, '\n',
+    "that better fit the geography and habitat, or null if the taxon is plausible,\n",
+    lower_instruction, "\n",
     '  "review_confidence": one of "high", "moderate", "low",\n',
     '  "review_comment": a brief free-text note, or null\n\n',
-    'GUIDELINES:\n',
+    "GUIDELINES:\n",
     '- "review_alternatives" means "you might have the wrong taxon" -- suggest ',
-    'relatives that better fit the context.\n',
-    '- ', contaminant_guideline, '\n',
+    "relatives that better fit the context.\n",
+    "- ", contaminant_guideline, "\n",
     '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
     '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
-    if (!is.null(skepticism_guideline)) skepticism_guideline else '',
-    if (!is.null(spatial_guideline)) spatial_guideline else '',
+    if (!is.null(skepticism_guideline)) skepticism_guideline else "",
+    if (!is.null(spatial_guideline)) spatial_guideline else "",
     '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
-    'pipeline\'s OWN confidence for this call (posterior/occurrence prior/candidate ',
-    'weights), not your input. Use it to flag disagreement between the pipeline\'s ',
-    'confidence and your own ecological judgment in review_comment -- e.g. a low ',
+    "pipeline's OWN confidence for this call (posterior/occurrence prior/candidate ",
+    "weights), not your input. Use it to flag disagreement between the pipeline's ",
+    "confidence and your own ecological judgment in review_comment -- e.g. a low ",
     'pipeline posterior alongside your own "likely" rating is worth a note -- but do ',
-    'not let it override your independent plausibility assessment itself, EXCEPT for ',
-    'the UNPRECEDENTED/INDISTINGUISHABLE bar above, which is a hard requirement, ',
-    'not a soft consideration.\n\n',
-    'EXAMPLE OUTPUT FORMAT:\n',
-    '[\n',
+    "not let it override your independent plausibility assessment itself, EXCEPT for ",
+    "the UNPRECEDENTED/INDISTINGUISHABLE bar above, which is a hard requirement, ",
+    "not a soft consideration.\n\n",
+    "EXAMPLE OUTPUT FORMAT:\n",
+    "[\n",
     '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
     '"geographic_plausibility": "likely", "scope_plausibility": "likely", ',
     '"contamination_risk": "low", "review_alternatives": null, ',
@@ -1386,8 +1507,8 @@ review_assignments <- function(input_df,
     '"contamination_risk": "high", "review_alternatives": null, ',
     '"review_lower_hypotheses": null, "review_confidence": "high", ',
     '"review_comment": "', example_comment, '"}\n',
-    ']\n\n',
-    'TAXA TO REVIEW:\n',
+    "]\n\n",
+    "TAXA TO REVIEW:\n",
     taxa_block
   )
 
@@ -1412,9 +1533,10 @@ review_assignments <- function(input_df,
                                      max_tokens, taxon_rank_col, verbose,
                                      pause_seconds, batch_label, max_retries,
                                      depth = 0L, prompt_log = NULL) {
-
-  prompt <- .build_review_prompt(taxa_batch, ctx, target_group, marker,
-                                 data_type, use_candidates)
+  prompt <- .build_review_prompt(
+    taxa_batch, ctx, target_group, marker,
+    data_type, use_candidates
+  )
 
   # Recorded by reference (an environment, not a data-frame attribute) so it
   # survives every rbind()/retry-recursion untouched -- lets a caller inspect
@@ -1432,33 +1554,40 @@ review_assignments <- function(input_df,
   )
 
   if (!is.null(call_error)) {
-    warning(sprintf("LLM call failed for batch %s: %s. Using NA defaults.",
-                    batch_label, call_error), call. = FALSE)
-    result <- .parse_review_response(NULL, taxa_batch, target_group,
-                                     taxon_rank_col, use_candidates)
-    attr(result, "status")           <- NULL
+    warning(sprintf(
+      "LLM call failed for batch %s: %s. Using NA defaults.",
+      batch_label, call_error
+    ), call. = FALSE)
+    result <- .parse_review_response(
+      NULL, taxa_batch, target_group,
+      taxon_rank_col, use_candidates
+    )
+    attr(result, "status") <- NULL
     attr(result, "pending_warnings") <- NULL
     return(result)
   }
 
-  parsed  <- .parse_review_response(raw, taxa_batch, target_group,
-                                    taxon_rank_col, use_candidates)
-  status  <- attr(parsed, "status")
+  parsed <- .parse_review_response(
+    raw, taxa_batch, target_group,
+    taxon_rank_col, use_candidates
+  )
+  status <- attr(parsed, "status")
   pending <- attr(parsed, "pending_warnings")
 
   can_retry <- status %in% c("truncated", "failed") &&
     depth < max_retries && nrow(taxa_batch) > 1L
 
   if (can_retry) {
-    if (verbose)
+    if (verbose) {
       message(sprintf(
         "  Batch %s %s (%d taxa) -- retrying as smaller sub-batches...",
         batch_label,
         if (status == "failed") "returned no usable content" else "was truncated",
         nrow(taxa_batch)
       ))
-    mid   <- ceiling(nrow(taxa_batch) / 2)
-    left  <- taxa_batch[seq_len(mid), , drop = FALSE]
+    }
+    mid <- ceiling(nrow(taxa_batch) / 2)
+    left <- taxa_batch[seq_len(mid), , drop = FALSE]
     right <- taxa_batch[(mid + 1L):nrow(taxa_batch), , drop = FALSE]
 
     left_result <- .review_batch_with_retry(
@@ -1476,7 +1605,7 @@ review_assignments <- function(input_df,
   }
 
   for (w in pending) warning(w, call. = FALSE)
-  attr(parsed, "status")           <- NULL
+  attr(parsed, "status") <- NULL
   attr(parsed, "pending_warnings") <- NULL
   parsed
 }
@@ -1492,35 +1621,36 @@ review_assignments <- function(input_df,
 #' @noRd
 .parse_review_response <- function(response, taxa_batch, target_group,
                                    taxon_rank_col, use_candidates = FALSE) {
-
   expected_taxa <- taxa_batch$taxon_name
   # names = expected_taxa by default (the whole-batch NA-fill case); also
   # reused below for the narrower "LLM omitted these specific taxa" case, so
   # both NA-filled shapes are built from one place.
   make_default <- function(names = expected_taxa) {
     data.frame(
-      taxon_name              = names,
-      habitat_plausibility    = NA_character_,
+      taxon_name = names,
+      habitat_plausibility = NA_character_,
       geographic_plausibility = NA_character_,
-      scope_plausibility      = NA_character_,
-      contamination_risk      = NA_character_,
-      review_alternatives     = NA_character_,
+      scope_plausibility = NA_character_,
+      contamination_risk = NA_character_,
+      review_alternatives = NA_character_,
       review_lower_hypotheses = NA_character_,
-      review_confidence       = NA_character_,
-      review_comment          = NA_character_,
+      review_confidence = NA_character_,
+      review_comment = NA_character_,
       stringsAsFactors = FALSE
     )
   }
 
   .with_status <- function(result, status, pending_warnings = character(0)) {
-    attr(result, "status")           <- status
+    attr(result, "status") <- status
     attr(result, "pending_warnings") <- pending_warnings
     result
   }
 
   if (is.null(response) || !nzchar(trimws(response))) {
-    return(.with_status(make_default(), "failed",
-                        "Empty LLM response. Returning NA defaults."))
+    return(.with_status(
+      make_default(), "failed",
+      "Empty LLM response. Returning NA defaults."
+    ))
   }
 
   cleaned <- trimws(response)
@@ -1543,13 +1673,16 @@ review_assignments <- function(input_df,
     # arr_str is whatever the model actually said whenever no JSON array was
     # found -- hence .parse_json_text()'s guard matters here too.
     arr_str <- sub("(?s).*?(\\[\\s*\\{[\\s\\S]*\\}\\s*\\]).*", "\\1",
-                   cleaned, perl = TRUE)
+      cleaned,
+      perl = TRUE
+    )
     parsed <- .parse_json_text(arr_str)
   }
 
   # Strategy 4: Truncated JSON recovery
-  if (is.null(parsed) || !is.data.frame(parsed))
+  if (is.null(parsed) || !is.data.frame(parsed)) {
     parsed <- .recover_truncated_json(fenced)
+  }
 
   if (is.null(parsed) || !is.data.frame(parsed) || nrow(parsed) == 0L) {
     n <- nchar(trimws(response))
@@ -1561,12 +1694,12 @@ review_assignments <- function(input_df,
   }
 
   pending <- character(0)
-  status  <- "complete"
+  status <- "complete"
 
   n_recovered <- nrow(parsed)
-  n_expected  <- length(expected_taxa)
+  n_expected <- length(expected_taxa)
   if (n_recovered < n_expected) {
-    status  <- "truncated"
+    status <- "truncated"
     pending <- c(pending, sprintf(
       "LLM response was truncated. Recovered %d of %d taxa from partial JSON.",
       n_recovered, n_expected
@@ -1574,8 +1707,10 @@ review_assignments <- function(input_df,
   }
 
   if (!"taxon_name" %in% names(parsed)) {
-    return(.with_status(make_default(), "failed",
-                        "LLM response missing 'taxon_name' field. Returning NA defaults."))
+    return(.with_status(
+      make_default(), "failed",
+      "LLM response missing 'taxon_name' field. Returning NA defaults."
+    ))
   }
 
   # Reads col_name out of `df` explicitly (not `parsed` via lexical scope) --
@@ -1594,24 +1729,26 @@ review_assignments <- function(input_df,
   }
 
   result <- data.frame(
-    taxon_name              = as.character(parsed$taxon_name),
-    habitat_plausibility    = .safe_col(parsed, "habitat_plausibility"),
+    taxon_name = as.character(parsed$taxon_name),
+    habitat_plausibility = .safe_col(parsed, "habitat_plausibility"),
     geographic_plausibility = .safe_col(parsed, "geographic_plausibility"),
-    scope_plausibility      = .safe_col(parsed, "scope_plausibility"),
-    contamination_risk      = .safe_col(parsed, "contamination_risk"),
-    review_alternatives     = .safe_col(parsed, "review_alternatives"),
+    scope_plausibility = .safe_col(parsed, "scope_plausibility"),
+    contamination_risk = .safe_col(parsed, "contamination_risk"),
+    review_alternatives = .safe_col(parsed, "review_alternatives"),
     review_lower_hypotheses = .safe_col(parsed, "review_lower_hypotheses"),
-    review_confidence       = .safe_col(parsed, "review_confidence"),
-    review_comment          = .safe_col(parsed, "review_comment"),
+    review_confidence = .safe_col(parsed, "review_confidence"),
+    review_comment = .safe_col(parsed, "review_comment"),
     stringsAsFactors = FALSE
   )
 
-  if (is.null(target_group))
+  if (is.null(target_group)) {
     result$scope_plausibility <- NA_character_
+  }
 
   # Suppress lower hypotheses when candidates were supplied (already known)
-  if (use_candidates || is.null(taxon_rank_col))
+  if (use_candidates || is.null(taxon_rank_col)) {
     result$review_lower_hypotheses <- NA_character_
+  }
 
   # Normalize taxon names: strip trailing punctuation + case-fold for matching.
   # LLMs sometimes append periods, commas, or authority strings to names they
@@ -1642,7 +1779,9 @@ review_assignments <- function(input_df,
   # like "coarse ranks are excluded on purpose".
   .norm <- function(x) {
     x <- sub("(?i)\\s*\\(\\s*(?:unresolved candidates|rank\\s*:)[^)]*\\)\\s*$",
-             "", trimws(x), perl = TRUE)
+      "", trimws(x),
+      perl = TRUE
+    )
     tolower(trimws(gsub("[.,;:]+$", "", trimws(x))))
   }
   expected_norm <- .norm(expected_taxa)
@@ -1654,24 +1793,29 @@ review_assignments <- function(input_df,
     for (i in unmatched_idx) {
       hit <- which(expected_norm == result_norm[i])
       if (length(hit) == 1L) {
-        remapped <- c(remapped,
-                      sprintf("'%s' -> '%s'", result$taxon_name[i], expected_taxa[hit]))
+        remapped <- c(
+          remapped,
+          sprintf("'%s' -> '%s'", result$taxon_name[i], expected_taxa[hit])
+        )
         result$taxon_name[i] <- expected_taxa[hit]
       }
     }
-    if (length(remapped) > 0L)
+    if (length(remapped) > 0L) {
       pending <- c(pending, sprintf(
         "LLM returned %d name(s) that required normalised matching: %s",
         length(remapped), paste(remapped, collapse = "; ")
       ))
+    }
   }
 
   # Fill any remaining missing taxa (truly absent from LLM response) with NAs
   missing_taxa <- setdiff(expected_taxa, result$taxon_name)
   if (length(missing_taxa) > 0L) {
-    pending <- c(pending, sprintf("LLM omitted %d taxa. Filling with NA defaults: %s",
-                    length(missing_taxa),
-                    paste(missing_taxa, collapse = ", ")))
+    pending <- c(pending, sprintf(
+      "LLM omitted %d taxa. Filling with NA defaults: %s",
+      length(missing_taxa),
+      paste(missing_taxa, collapse = ", ")
+    ))
     result <- rbind(result, make_default(missing_taxa))
   }
 
@@ -1696,29 +1840,42 @@ review_assignments <- function(input_df,
 #' \code{\{}, and anything else already failed to parse before.
 #' @noRd
 .parse_json_text <- function(text) {
-  if (!is.character(text) || length(text) != 1L || is.na(text)) return(NULL)
-  if (!grepl("^\\s*[\\[{]", text, perl = TRUE)) return(NULL)
+  if (!is.character(text) || length(text) != 1L || is.na(text)) {
+    return(NULL)
+  }
+  if (!grepl("^\\s*[\\[{]", text, perl = TRUE)) {
+    return(NULL)
+  }
   tryCatch(jsonlite::fromJSON(text, simplifyDataFrame = TRUE),
-           error = function(e) NULL)
+    error = function(e) NULL
+  )
 }
 
 
 #' Recover Parseable Objects from Truncated JSON Array
 #' @noRd
 .recover_truncated_json <- function(text) {
-  if (is.null(text) || !nzchar(trimws(text))) return(NULL)
+  if (is.null(text) || !nzchar(trimws(text))) {
+    return(NULL)
+  }
 
   arr_start <- regexpr("\\[", text)
-  if (arr_start < 0L) return(NULL)
+  if (arr_start < 0L) {
+    return(NULL)
+  }
 
-  text_from_arr    <- substring(text, arr_start)
-  brace_positions  <- gregexpr("\\}", text_from_arr)[[1]]
-  if (brace_positions[1] < 0L) return(NULL)
+  text_from_arr <- substring(text, arr_start)
+  brace_positions <- gregexpr("\\}", text_from_arr)[[1]]
+  if (brace_positions[1] < 0L) {
+    return(NULL)
+  }
 
   for (i in rev(seq_along(brace_positions))) {
     candidate <- paste0(substring(text_from_arr, 1L, brace_positions[i]), "\n]")
     parsed <- .parse_json_text(candidate)
-    if (is.data.frame(parsed) && nrow(parsed) > 0L) return(parsed)
+    if (is.data.frame(parsed) && nrow(parsed) > 0L) {
+      return(parsed)
+    }
   }
 
   NULL

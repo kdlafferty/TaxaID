@@ -8,10 +8,10 @@ library(testthat)
 
 .make_reads <- function() {
   data.frame(
-    ESVId    = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2", "ESV_3"),
+    ESVId = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2", "ESV_3"),
     sequence = c("ACGTACGT", "ACGTACGT", "ACGTACGT", "ACGT", "ACGT", "ACGTACGTAC"),
     event_id = c("s1", "s2", "blank1", "s1", "s2", "blank1"),
-    n_reads  = c(100, 50, 2, 5, 0, 30),
+    n_reads = c(100, 50, 2, 5, 0, 30),
     stringsAsFactors = FALSE
   )
 }
@@ -26,7 +26,8 @@ library(testthat)
 
 test_that("basic field-side aggregates and zero-fill are correct", {
   out <- suppressWarnings(build_review_covariates(
-    .make_reads(), .make_cls(), control_samples = "blank1"
+    .make_reads(), .make_cls(),
+    control_samples = "blank1"
   ))
 
   expect_equal(nrow(out), 4L)
@@ -49,7 +50,8 @@ test_that("basic field-side aggregates and zero-fill are correct", {
 
 test_that("a taxon detected only in a control sample gets zero-filled field counts, NA min/max, real seq_length", {
   out <- suppressWarnings(build_review_covariates(
-    .make_reads(), .make_cls(), control_samples = "blank1"
+    .make_reads(), .make_cls(),
+    control_samples = "blank1"
   ))
   esv3 <- out[out$observation_id == "ESV_3", ]
 
@@ -78,15 +80,18 @@ test_that("a classification_df row entirely absent from reads_df warns and is ze
 test_that("no warning when control_samples is NULL and every taxon has some field data", {
   reads <- .make_reads()
   reads <- reads[reads$event_id != "blank1", ]
-  cls <- data.frame(observation_id = c("ESV_1", "ESV_2"),
-                     primary_plausibility = c("expected", "unexpected"),
-                     stringsAsFactors = FALSE)
+  cls <- data.frame(
+    observation_id = c("ESV_1", "ESV_2"),
+    primary_plausibility = c("expected", "unexpected"),
+    stringsAsFactors = FALSE
+  )
   expect_no_warning(build_review_covariates(reads, cls))
 })
 
 test_that("sequence_col = NULL omits seq_length entirely", {
   out <- suppressWarnings(build_review_covariates(
-    .make_reads(), .make_cls(), control_samples = "blank1", sequence_col = NULL
+    .make_reads(), .make_cls(),
+    control_samples = "blank1", sequence_col = NULL
   ))
   expect_false("seq_length" %in% names(out))
 })
@@ -97,14 +102,16 @@ test_that("inconsistent sequence lengths within a taxon warn and use the first o
     event_id = c("s1", "s2"), n_reads = c(100, 50),
     stringsAsFactors = FALSE
   )
-  cls <- data.frame(observation_id = "ESV_1", primary_plausibility = "expected",
-                     stringsAsFactors = FALSE)
+  cls <- data.frame(
+    observation_id = "ESV_1", primary_plausibility = "expected",
+    stringsAsFactors = FALSE
+  )
   expect_warning(
     out <- build_review_covariates(reads, cls),
     "more than one distinct sequence length.*ESV_1"
   )
   esv1 <- out[out$observation_id == "ESV_1", ]
-  expect_equal(esv1$seq_length, 8L)  # first occurrence's length, not the second
+  expect_equal(esv1$seq_length, 8L) # first occurrence's length, not the second
 })
 
 test_that("contaminant_df joins in requested columns and warns on unmatched rows", {
@@ -113,9 +120,11 @@ test_that("contaminant_df joins in requested columns and warns on unmatched rows
     event_id = c("s1", "s2", "s1"), n_reads = c(100, 50, 5),
     stringsAsFactors = FALSE
   )
-  cls <- data.frame(observation_id = c("ESV_1", "ESV_2"),
-                     primary_plausibility = c("expected", "unexpected"),
-                     stringsAsFactors = FALSE)
+  cls <- data.frame(
+    observation_id = c("ESV_1", "ESV_2"),
+    primary_plausibility = c("expected", "unexpected"),
+    stringsAsFactors = FALSE
+  )
   contam <- data.frame(ESVId = "ESV_1", control_rate = 0.01, stringsAsFactors = FALSE)
 
   expect_warning(
@@ -149,8 +158,10 @@ test_that("read_quantile = 1 reproduces max_reads", {
     event_id = c("s1", "s2", "s3", "s4"), n_reads = c(10, 40, 20, 90),
     stringsAsFactors = FALSE
   )
-  cls <- data.frame(observation_id = "ESV_1", primary_plausibility = "expected",
-                     stringsAsFactors = FALSE)
+  cls <- data.frame(
+    observation_id = "ESV_1", primary_plausibility = "expected",
+    stringsAsFactors = FALSE
+  )
   out <- build_review_covariates(reads, cls, read_quantile = 1)
   expect_equal(out$quantile_reads, out$max_reads)
   expect_equal(out$max_reads, 90)
@@ -162,8 +173,10 @@ test_that("rows with n_reads = 0 are excluded before aggregation", {
     event_id = c("s1", "s2"), n_reads = c(0, 25),
     stringsAsFactors = FALSE
   )
-  cls <- data.frame(observation_id = "ESV_1", primary_plausibility = "expected",
-                     stringsAsFactors = FALSE)
+  cls <- data.frame(
+    observation_id = "ESV_1", primary_plausibility = "expected",
+    stringsAsFactors = FALSE
+  )
   out <- build_review_covariates(reads, cls)
   expect_equal(out$n_samples_detected, 1L)
   expect_equal(out$total_reads, 25)
@@ -199,7 +212,8 @@ test_that("errors when a required reads_df column is missing", {
 test_that("errors when classification_col is missing from classification_df", {
   expect_error(
     build_review_covariates(.make_reads(), .make_cls(),
-                             classification_col = "nonexistent_col"),
+      classification_col = "nonexistent_col"
+    ),
     "'nonexistent_col' not found in classification_df"
   )
 })

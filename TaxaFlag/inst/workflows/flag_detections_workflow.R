@@ -70,7 +70,6 @@ TAXA_PER_CALL <- 15L
 LIKELIHOOD_THRESHOLD <- 0.5
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: continue from TaxaAssign's Gadus checkpoint --------
   # These are the exact readRDS() lines documented in
   # compute_posteriors_workflow.R's Output block (taxaassign_consensus) and
@@ -82,28 +81,36 @@ if (DEBUG_MODE) {
   # would have nothing genuine to say about habitat/geography/contamination
   # plausibility.
   .consensus_checkpoint <- file.path(tempdir(), "tutorial_gadus_taxaassign_consensus.rds")
-  .priors_checkpoint    <- file.path(tempdir(), "tutorial_gadus_taxaexpect_priors.rds")
+  .priors_checkpoint <- file.path(tempdir(), "tutorial_gadus_taxaexpect_priors.rds")
 
   if (!file.exists(.consensus_checkpoint)) {
-    stop("DEBUG_MODE = TRUE but TaxaAssign's checkpoint was not found at ",
-         .consensus_checkpoint, ". Run TaxaAssign's compute_posteriors_workflow.R ",
-         "first -- this script has nothing meaningful to flag without real ",
-         "taxaassign_consensus output.")
+    stop(
+      "DEBUG_MODE = TRUE but TaxaAssign's checkpoint was not found at ",
+      .consensus_checkpoint, ". Run TaxaAssign's compute_posteriors_workflow.R ",
+      "first -- this script has nothing meaningful to flag without real ",
+      "taxaassign_consensus output."
+    )
   }
   if (!file.exists(.priors_checkpoint)) {
-    stop("DEBUG_MODE = TRUE but TaxaExpect's checkpoint was not found at ",
-         .priors_checkpoint, ". Run TaxaExpect's generate_priors_workflow.R ",
-         "first -- Step 2 below derives expected_theta_threshold from the real ",
-         "taxaexpect_priors object (theta_mean).")
+    stop(
+      "DEBUG_MODE = TRUE but TaxaExpect's checkpoint was not found at ",
+      .priors_checkpoint, ". Run TaxaExpect's generate_priors_workflow.R ",
+      "first -- Step 2 below derives expected_theta_threshold from the real ",
+      "taxaexpect_priors object (theta_mean)."
+    )
   }
 
   taxaassign_consensus <- readRDS(.consensus_checkpoint)
-  message("DEBUG_MODE = TRUE -- loaded TaxaAssign's checkpoint: ", .consensus_checkpoint,
-          " (", nrow(taxaassign_consensus), " consensus row(s)).")
+  message(
+    "DEBUG_MODE = TRUE -- loaded TaxaAssign's checkpoint: ", .consensus_checkpoint,
+    " (", nrow(taxaassign_consensus), " consensus row(s))."
+  )
 
   taxaexpect_priors <- readRDS(.priors_checkpoint)
-  message("DEBUG_MODE = TRUE -- loaded TaxaExpect's checkpoint: ", .priors_checkpoint,
-          " (", nrow(taxaexpect_priors), " prior row(s)).")
+  message(
+    "DEBUG_MODE = TRUE -- loaded TaxaExpect's checkpoint: ", .priors_checkpoint,
+    " (", nrow(taxaexpect_priors), " prior row(s))."
+  )
 
   # ---- Derive SITE_HABITAT FROM taxaexpect_priors ----------------------------
   # taxaexpect_priors is already filtered to one focal grid_id/habitat by
@@ -113,13 +120,17 @@ if (DEBUG_MODE) {
   SITE_HABITAT <- unique(stats::na.omit(taxaexpect_priors$main_habitat))
 
   if (length(SITE_HABITAT) != 1L) {
-    stop("Expected exactly one main_habitat in taxaexpect_priors (single-site ",
-         "by construction from generate_priors_workflow.R), but found ",
-         length(SITE_HABITAT), ": ", paste(SITE_HABITAT, collapse = ", "),
-         ". Check the upstream TaxaExpect checkpoint.")
+    stop(
+      "Expected exactly one main_habitat in taxaexpect_priors (single-site ",
+      "by construction from generate_priors_workflow.R), but found ",
+      length(SITE_HABITAT), ": ", paste(SITE_HABITAT, collapse = ", "),
+      ". Check the upstream TaxaExpect checkpoint."
+    )
   }
-  message(sprintf("  SITE_HABITAT = \"%s\" (derived from taxaexpect_priors).",
-                  SITE_HABITAT))
+  message(sprintf(
+    "  SITE_HABITAT = \"%s\" (derived from taxaexpect_priors).",
+    SITE_HABITAT
+  ))
 
   # ---- Build `context` for review_assignments() -- simple named list --------
   # habitat: the real SITE_HABITAT value derived above, never hardcoded.
@@ -135,12 +146,12 @@ if (DEBUG_MODE) {
     geography = "approximate -- not re-derived from real geocoding in this tutorial chain; replace with the actual sampling region name or search bbox/polygon",
     habitat   = SITE_HABITAT
   )
-  message("  context$habitat = real SITE_HABITAT; context$geography is an ",
-          "HONEST PLACEHOLDER (see comment above) -- this tutorial never ",
-          "geocoded its GBIF search box to a named place.")
-
+  message(
+    "  context$habitat = real SITE_HABITAT; context$geography is an ",
+    "HONEST PLACEHOLDER (see comment above) -- this tutorial never ",
+    "geocoded its GBIF search box to a named place."
+  )
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -169,13 +180,15 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real taxaassign_consensus/taxaexpect_priors ",
-       "objects have been supplied. Edit the 'SWAP IN YOUR OWN DATA' block in ",
-       "this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real taxaassign_consensus/taxaexpect_priors ",
+    "objects have been supplied. Edit the 'SWAP IN YOUR OWN DATA' block in ",
+    "this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_gadus"
 
 # ==============================================================================
@@ -211,11 +224,15 @@ OUT_PREFIX <- "tutorial_gadus"
 
 message("\n--- Step 1: Reviewing assignments (LLM expert review) ---")
 message("  Requires ANTHROPIC_API_KEY (or getOption(\"TaxaID.llm_fn\")) to actually run.")
-message(sprintf("  Reviewing %d consensus row(s) from taxaassign_consensus (Bayesian pathway).",
-                nrow(taxaassign_consensus)))
-message("  NOTE: the same call applies equally to taxaassign_consensus_llm (the LLM ",
-        "pathway's consensus object) -- only one pathway is demonstrated here since one ",
-        "live run is enough for a tutorial; both share the identical column shape.")
+message(sprintf(
+  "  Reviewing %d consensus row(s) from taxaassign_consensus (Bayesian pathway).",
+  nrow(taxaassign_consensus)
+))
+message(
+  "  NOTE: the same call applies equally to taxaassign_consensus_llm (the LLM ",
+  "pathway's consensus object) -- only one pathway is demonstrated here since one ",
+  "live run is enough for a tutorial; both share the identical column shape."
+)
 
 # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: irreducible_only = TRUE hard-
 # filters to rows where irreducible_consensus is TRUE and errors outright
@@ -231,30 +248,34 @@ message("  NOTE: the same call applies equally to taxaassign_consensus_llm (the 
 .use_irreducible_only <- .n_irreducible > 0L
 
 if (!.use_irreducible_only) {
-  message(sprintf(
-    "  0 of %d rows have irreducible_consensus == TRUE -- with this tutorial's ",
-    nrow(taxaassign_consensus)
-  ), "small synthetic species pool (~4 species across 3 observations), ",
-  "candidate sets routinely overlap across observations, so this is expected, ",
-  "not a bug. Falling back to irreducible_only = FALSE (review every row's ",
-  "consensus_taxon/plausible_taxa regardless of irreducibility).")
+  message(
+    sprintf(
+      "  0 of %d rows have irreducible_consensus == TRUE -- with this tutorial's ",
+      nrow(taxaassign_consensus)
+    ), "small synthetic species pool (~4 species across 3 observations), ",
+    "candidate sets routinely overlap across observations, so this is expected, ",
+    "not a bug. Falling back to irreducible_only = FALSE (review every row's ",
+    "consensus_taxon/plausible_taxa regardless of irreducibility)."
+  )
 }
 
 taxaassign_consensus_reviewed <- TaxaFlag::review_assignments(
-  input_df                 = taxaassign_consensus,
-  taxon_col          = "consensus_taxon",
+  input_df = taxaassign_consensus,
+  taxon_col = "consensus_taxon",
   plausible_taxa_col = "plausible_taxa",
-  irreducible_only   = .use_irreducible_only,
-  context            = context,
-  target_group       = NULL,
-  data_type          = "eDNA",
-  llm_fn             = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api),
-  taxa_per_call      = TAXA_PER_CALL
+  irreducible_only = .use_irreducible_only,
+  context = context,
+  target_group = NULL,
+  data_type = "eDNA",
+  llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api),
+  taxa_per_call = TAXA_PER_CALL
 )
 
-message(sprintf("  %d row(s) reviewed; %d flagged with llm_contamination_risk == \"high\".",
-                nrow(taxaassign_consensus_reviewed),
-                sum(taxaassign_consensus_reviewed$llm_contamination_risk == "high", na.rm = TRUE)))
+message(sprintf(
+  "  %d row(s) reviewed; %d flagged with llm_contamination_risk == \"high\".",
+  nrow(taxaassign_consensus_reviewed),
+  sum(taxaassign_consensus_reviewed$llm_contamination_risk == "high", na.rm = TRUE)
+))
 
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 # Save now so a future session can skip Step 1 by pasting the readRDS() line
@@ -262,8 +283,10 @@ message(sprintf("  %d row(s) reviewed; %d flagged with llm_contamination_risk ==
 taxaassign_consensus_reviewed_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxaassign_consensus_reviewed.rds"))
 saveRDS(taxaassign_consensus_reviewed, taxaassign_consensus_reviewed_path)
 message(sprintf("  Saved: %s", taxaassign_consensus_reviewed_path))
-message(sprintf("  To reuse without re-querying the LLM, paste:\n    taxaassign_consensus_reviewed <- readRDS(\"%s\")",
-                taxaassign_consensus_reviewed_path))
+message(sprintf(
+  "  To reuse without re-querying the LLM, paste:\n    taxaassign_consensus_reviewed <- readRDS(\"%s\")",
+  taxaassign_consensus_reviewed_path
+))
 
 # ==============================================================================
 # 2.  ADD POST-HOC ASSESSMENT -- OCCURRENCE PLAUSIBILITY x DISCRIMINATION (LIVE, OFFLINE)
@@ -310,8 +333,10 @@ print(table(taxaassign_consensus_flagged$primary_discrimination, useNA = "ifany"
 taxaassign_consensus_flagged_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxaassign_consensus_flagged.rds"))
 saveRDS(taxaassign_consensus_flagged, taxaassign_consensus_flagged_path)
 message(sprintf("  Saved: %s", taxaassign_consensus_flagged_path))
-message(sprintf("  To reuse without re-running this workflow, paste:\n    taxaassign_consensus_flagged <- readRDS(\"%s\")",
-                taxaassign_consensus_flagged_path))
+message(sprintf(
+  "  To reuse without re-running this workflow, paste:\n    taxaassign_consensus_flagged <- readRDS(\"%s\")",
+  taxaassign_consensus_flagged_path
+))
 
 # ==============================================================================
 # 3.  FLAG CONTAMINANT (DOCUMENTED, NOT RUN)
@@ -416,16 +441,20 @@ message(sprintf("  To reuse without re-running this workflow, paste:\n    taxaas
 # Not run in this script -- see explanation above.
 
 message("\n--- Step 3: flag_contaminant() -- DOCUMENTED ONLY, NOT RUN (see comment block above) ---")
-message("  Requires lab read-count data (long-format: event_id x taxon_name x n_reads, ",
-        "with control/blank samples identified) that this GBIF-occurrence-based tutorial ",
-        "chain does not produce. See Section 3's comment block for the full signature, ",
-        "algorithm, and Flag Column Convention.")
+message(
+  "  Requires lab read-count data (long-format: event_id x taxon_name x n_reads, ",
+  "with control/blank samples identified) that this GBIF-occurrence-based tutorial ",
+  "chain does not produce. See Section 3's comment block for the full signature, ",
+  "algorithm, and Flag Column Convention."
+)
 
 message("\nWorkflow complete.")
-message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutorial chain ",
-        "(TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag). ",
-        "Filter on llm_contamination_risk / llm_habitat_plausibility / llm_geographic_plausibility / ",
-        "primary_plausibility / primary_discrimination for a human-reviewed final call list.")
+message(
+  "taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutorial chain ",
+  "(TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag). ",
+  "Filter on llm_contamination_risk / llm_habitat_plausibility / llm_geographic_plausibility / ",
+  "primary_plausibility / primary_discrimination for a human-reviewed final call list."
+)
 
 # ==============================================================================
 # Output

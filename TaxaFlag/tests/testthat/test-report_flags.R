@@ -14,7 +14,7 @@ test_that("report_flags detects contaminant flags", {
   expect_equal(sec$section, "flags")
   expect_true("contamination" %in% sec$params$flag_types)
   expect_equal(sec$statistics$n_total, 5L)
-  expect_equal(sec$statistics$n_flagged, 2L)  # "unlikely" + "possible"
+  expect_equal(sec$statistics$n_flagged, 2L) # "unlikely" + "possible"
 })
 
 test_that("report_flags detects handler flags", {
@@ -106,28 +106,32 @@ test_that("report_flags percentage is correct", {
 
 test_that("report_flags detects the unified validity schema (contaminant)", {
   df <- data.frame(
-    observation_id       = paste0("S", 1:5),
+    observation_id = paste0("S", 1:5),
     observation_validity = c(0.9, 0.9, 0.1, 0.6, 0.9),
-    validity_flag         = c("valid", "valid", "invalid_lab_contaminant",
-                              "questionable_lab_contaminant", "valid"),
-    stringsAsFactors      = FALSE
+    validity_flag = c(
+      "valid", "valid", "invalid_lab_contaminant",
+      "questionable_lab_contaminant", "valid"
+    ),
+    stringsAsFactors = FALSE
   )
 
   sec <- report_flags(df)
   expect_true("contamination" %in% sec$params$flag_types)
   expect_equal(sec$statistics$n_total, 5L)
-  expect_equal(sec$statistics$n_flagged, 2L)  # invalid + questionable
+  expect_equal(sec$statistics$n_flagged, 2L) # invalid + questionable
   expect_equal(sec$statistics$flag_counts[["invalid_lab_contaminant"]], 1L)
   expect_equal(sec$statistics$flag_counts[["questionable_lab_contaminant"]], 1L)
 })
 
 test_that("report_flags detects the unified validity schema (handler)", {
   df <- data.frame(
-    observation_id       = paste0("S", 1:4),
+    observation_id = paste0("S", 1:4),
     observation_validity = c(1.0, 0.0, 1.0, 0.6),
-    validity_flag         = c("valid", "invalid_handling", "valid",
-                              "questionable_handling"),
-    stringsAsFactors      = FALSE
+    validity_flag = c(
+      "valid", "invalid_handling", "valid",
+      "questionable_handling"
+    ),
+    stringsAsFactors = FALSE
   )
 
   sec <- report_flags(df)
@@ -137,10 +141,10 @@ test_that("report_flags detects the unified validity schema (handler)", {
 
 test_that("report_flags: unified validity schema with all-valid rows reports zero flags", {
   df <- data.frame(
-    observation_id       = paste0("S", 1:3),
+    observation_id = paste0("S", 1:3),
     observation_validity = rep(1.0, 3),
-    validity_flag         = rep("valid", 3),
-    stringsAsFactors      = FALSE
+    validity_flag = rep("valid", 3),
+    stringsAsFactors = FALSE
   )
 
   sec <- report_flags(df)
@@ -153,15 +157,15 @@ test_that("report_flags: unified validity schema still works alongside an old-er
   # a data frame could plausibly carry both if built from different-vintage
   # checkpoints.
   df <- data.frame(
-    observation_id       = paste0("S", 1:4),
-    flag_lab              = c("likely", "unlikely", "likely", "likely"),
+    observation_id = paste0("S", 1:4),
+    flag_lab = c("likely", "unlikely", "likely", "likely"),
     observation_validity = c(1.0, 1.0, 0.0, 1.0),
-    validity_flag         = c("valid", "valid", "invalid_handling", "valid"),
-    stringsAsFactors      = FALSE
+    validity_flag = c("valid", "valid", "invalid_handling", "valid"),
+    stringsAsFactors = FALSE
   )
 
   sec <- report_flags(df)
   expect_true("contamination" %in% sec$params$flag_types)
   expect_true("handler artifacts" %in% sec$params$flag_types)
-  expect_equal(sec$statistics$n_flagged, 2L)  # row 2 (old-era) + row 3 (new-era)
+  expect_equal(sec$statistics$n_flagged, 2L) # row 2 (old-era) + row 3 (new-era)
 })

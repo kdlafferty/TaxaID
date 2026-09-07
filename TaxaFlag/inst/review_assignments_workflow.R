@@ -15,19 +15,21 @@ library(TaxaFlag)
 
 # Example: Palmyra Atoll eDNA study
 consensus_df <- data.frame(
-  observation_id       = c("S1", "S1", "S1", "S2", "S2", "S2", "S3", "S3"),
+  observation_id = c("S1", "S1", "S1", "S2", "S2", "S2", "S3", "S3"),
   consensus_taxon = c(
-    "Carcharhinus melanopterus",  # blacktip reef shark — expected
-    "Homo sapiens",               # human — contaminant
-    "Gobiidae",                   # goby family — expected but coarse
-    "Salmo salar",                # Atlantic salmon — wrong ocean
-    "Lutjanus bohar",             # red snapper — expected
-    "Bos taurus",                 # cattle — food contaminant
-    "Acanthurus triostegus",      # convict tang — expected
-    "Eucyclogobius newberryi"     # tidewater goby — California endemic
+    "Carcharhinus melanopterus", # blacktip reef shark — expected
+    "Homo sapiens", # human — contaminant
+    "Gobiidae", # goby family — expected but coarse
+    "Salmo salar", # Atlantic salmon — wrong ocean
+    "Lutjanus bohar", # red snapper — expected
+    "Bos taurus", # cattle — food contaminant
+    "Acanthurus triostegus", # convict tang — expected
+    "Eucyclogobius newberryi" # tidewater goby — California endemic
   ),
-  consensus_rank = c("species", "species", "family", "species",
-                     "species", "species", "species", "species"),
+  consensus_rank = c(
+    "species", "species", "family", "species",
+    "species", "species", "species", "species"
+  ),
   stringsAsFactors = FALSE
 )
 
@@ -49,12 +51,12 @@ context <- list(
 # It returns the input data frame with 8 review columns appended.
 
 reviewed <- review_assignments(
-  input_df             = consensus_df,
-  taxon_col      = "consensus_taxon",
-  taxon_rank_col = "consensus_rank",   # enables review_lower_hypotheses
-  context        = context,
-  target_group   = "fish",             # enables llm_scope_plausibility
-  marker         = "12S MiFish"        # contaminant context
+  input_df = consensus_df,
+  taxon_col = "consensus_taxon",
+  taxon_rank_col = "consensus_rank", # enables review_lower_hypotheses
+  context = context,
+  target_group = "fish", # enables llm_scope_plausibility
+  marker = "12S MiFish" # contaminant context
 )
 
 # --- 4. Inspect results ------------------------------------------------------
@@ -62,24 +64,34 @@ reviewed <- review_assignments(
 # LLM judgments, never derived from the pipeline's own values.
 
 # Overview
-reviewed[, c("consensus_taxon", "llm_habitat_plausibility", "llm_geographic_plausibility",
-             "llm_contamination_risk", "review_confidence")]
+reviewed[, c(
+  "consensus_taxon", "llm_habitat_plausibility", "llm_geographic_plausibility",
+  "llm_contamination_risk", "review_confidence"
+)]
 
 # Likely contaminants (high or moderate contamination risk)
-reviewed[reviewed$llm_contamination_risk %in% c("high", "moderate"),
-         c("consensus_taxon", "llm_contamination_risk", "review_comment")]
+reviewed[
+  reviewed$llm_contamination_risk %in% c("high", "moderate"),
+  c("consensus_taxon", "llm_contamination_risk", "review_comment")
+]
 
 # Out-of-scope taxa
-reviewed[reviewed$llm_scope_plausibility == "unlikely",
-         c("consensus_taxon", "llm_scope_plausibility", "review_comment")]
+reviewed[
+  reviewed$llm_scope_plausibility == "unlikely",
+  c("consensus_taxon", "llm_scope_plausibility", "review_comment")
+]
 
 # Geographically implausible + suggested alternatives
-reviewed[reviewed$llm_geographic_plausibility == "unlikely",
-         c("consensus_taxon", "llm_geographic_plausibility", "review_alternatives")]
+reviewed[
+  reviewed$llm_geographic_plausibility == "unlikely",
+  c("consensus_taxon", "llm_geographic_plausibility", "review_alternatives")
+]
 
 # Lower-rank hypotheses for coarse assignments
-reviewed[!is.na(reviewed$review_lower_hypotheses),
-         c("consensus_taxon", "consensus_rank", "review_lower_hypotheses")]
+reviewed[
+  !is.na(reviewed$review_lower_hypotheses),
+  c("consensus_taxon", "consensus_rank", "review_lower_hypotheses")
+]
 
 # --- 5. Combine with data-driven flags (optional) ----------------------------
 # If you also ran flag_contaminant(), you can compare the two approaches

@@ -29,12 +29,14 @@ cat("Installed at:", dirname(find.package("TaxaFlag")), "\n\n")
 cat("--- 1. flag_contaminant() ---\n")
 
 reads_long <- data.frame(
-  event_id   = c("s1", "s1", "s2", "s2", "blank1", "blank1", "s3", "s3"),
-  taxon_name = c("Oncorhynchus mykiss", "Homo sapiens",
-                 "Oncorhynchus mykiss", "Homo sapiens",
-                 "Homo sapiens", "Oncorhynchus mykiss",
-                 "Oncorhynchus mykiss", "Homo sapiens"),
-  n_reads    = c(50000, 20, 42000, 15, 8000, 5, 61000, 30),
+  event_id = c("s1", "s1", "s2", "s2", "blank1", "blank1", "s3", "s3"),
+  taxon_name = c(
+    "Oncorhynchus mykiss", "Homo sapiens",
+    "Oncorhynchus mykiss", "Homo sapiens",
+    "Homo sapiens", "Oncorhynchus mykiss",
+    "Oncorhynchus mykiss", "Homo sapiens"
+  ),
+  n_reads = c(50000, 20, 42000, 15, 8000, 5, 61000, 30),
   stringsAsFactors = FALSE
 )
 
@@ -45,7 +47,7 @@ contaminant_flags <- flag_contaminant(
 )
 print(contaminant_flags)
 stopifnot(all(c("observation_validity", "validity_flag", "validity_reason") %in%
-                names(contaminant_flags)))
+  names(contaminant_flags)))
 
 # ------------------------------------------------------------------------
 # 2. flag_handler() -- temporal proximity to sampling-period edges
@@ -53,15 +55,17 @@ stopifnot(all(c("observation_validity", "validity_flag", "validity_reason") %in%
 cat("\n--- 2. flag_handler() ---\n")
 
 camera_detections <- data.frame(
-  station    = c("A", "A", "A", "A", "B", "B", "B"),
-  datetime   = as.POSIXct(c(
+  station = c("A", "A", "A", "A", "B", "B", "B"),
+  datetime = as.POSIXct(c(
     "2025-06-15 08:00:00", "2025-06-15 08:20:00", "2025-06-15 10:30:00",
     "2025-06-15 11:00:00",
     "2025-06-16 09:00:00", "2025-06-16 09:15:00", "2025-06-16 09:45:00"
   )),
-  taxon_name = c("Homo sapiens", "Odocoileus virginianus", "Lynx rufus",
-                 "Homo sapiens", "Odocoileus virginianus", "Procyon lotor",
-                 "Odocoileus virginianus"),
+  taxon_name = c(
+    "Homo sapiens", "Odocoileus virginianus", "Lynx rufus",
+    "Homo sapiens", "Odocoileus virginianus", "Procyon lotor",
+    "Odocoileus virginianus"
+  ),
   stringsAsFactors = FALSE
 )
 
@@ -72,7 +76,7 @@ handler_flags <- flag_handler(
   handler_taxa     = "Homo sapiens"
 )
 print(handler_flags)
-stopifnot(identical(handler_flags$station, camera_detections$station))  # row order preserved
+stopifnot(identical(handler_flags$station, camera_detections$station)) # row order preserved
 
 # ------------------------------------------------------------------------
 # 3. add_posthoc_assessment() -- occurrence plausibility + discrimination
@@ -80,13 +84,13 @@ stopifnot(identical(handler_flags$station, camera_detections$station))  # row or
 cat("\n--- 3. add_posthoc_assessment() ---\n")
 
 consensus_df <- data.frame(
-  observation_id    = c("obs1", "obs2", "obs3"),
-  consensus_taxon   = c("Oncorhynchus mykiss", "Felis catus", "Rare sp."),
-  consensus_rank    = c("species", "species", "species"),
+  observation_id = c("obs1", "obs2", "obs3"),
+  consensus_taxon = c("Oncorhynchus mykiss", "Felis catus", "Rare sp."),
+  consensus_rank = c("species", "species", "species"),
   winner_likelihood = c(0.95, 0.90, 0.60),
   winner_theta_mean = c(0.02, 0.0002, NA),
   winner_has_occurrence_record = c(TRUE, TRUE, FALSE),
-  stringsAsFactors  = FALSE
+  stringsAsFactors = FALSE
 )
 
 assessed <- add_posthoc_assessment(
@@ -103,15 +107,15 @@ stopifnot("primary_plausibility" %in% names(assessed))
 cat("\n--- 4. build_review_covariates() ---\n")
 
 reads_for_covariates <- data.frame(
-  ESVId    = c("obs1", "obs1", "obs2", "obs2", "obs3"),
+  ESVId = c("obs1", "obs1", "obs2", "obs2", "obs3"),
   sequence = c("ACGTACGT", "ACGTACGT", "ACGT", "ACGT", "ACGTACGTAC"),
   event_id = c("s1", "s2", "s1", "s2", "s3"),
-  n_reads  = c(50000, 42000, 20, 15, 200),
+  n_reads = c(50000, 42000, 20, 15, 200),
   stringsAsFactors = FALSE
 )
 cls_for_covariates <- data.frame(
-  observation_id        = assessed$observation_id,
-  primary_plausibility   = assessed$primary_plausibility,
+  observation_id = assessed$observation_id,
+  primary_plausibility = assessed$primary_plausibility,
   stringsAsFactors = FALSE
 )
 
@@ -143,8 +147,8 @@ occurrences_clean <- data.frame(
 )
 
 local_dist <- compute_local_occurrence_distance(
-  taxon_names     = c("Oncorhynchus mykiss", "Rare sp."),
-  query_lat       = 41.67, query_lon = -87.15,
+  taxon_names = c("Oncorhynchus mykiss", "Rare sp."),
+  query_lat = 41.67, query_lon = -87.15,
   occurrence_data = occurrences_clean
 )
 print(local_dist)
@@ -157,7 +161,7 @@ cat("\n--- 7. check_gbif_tile_range() ---\n")
 
 gbif_tile_result <- tryCatch(
   check_gbif_tile_range(
-    taxon_key = 5204019,  # Oncorhynchus mykiss, GBIF backbone usageKey (verified live via /v1/species/match)
+    taxon_key = 5204019, # Oncorhynchus mykiss, GBIF backbone usageKey (verified live via /v1/species/match)
     query_lat = 41.67, query_lon = -87.15
   ),
   error = function(e) {
@@ -176,8 +180,7 @@ cat("\n--- 8. review_assignments() ---\n")
 # To exercise a REAL LLM call instead, replace this with:
 #   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api)
 .stub_llm_fn <- function(prompt, ...) {
-  taxa_in_prompt <- regmatches(prompt, gregexpr("(?<=^- )[A-Za-z. ]+(?= \\()", prompt, perl = TRUE))[[1]]
-  # Fallback: pull taxon names straight out of the TAXA TO REVIEW block
+  # Pull taxon names straight out of the TAXA TO REVIEW block
   lines <- strsplit(prompt, "\n")[[1]]
   taxa_lines <- grep("^- ", lines, value = TRUE)
   taxa <- sub("^- ([^()]+?)\\s*(\\(.*\\))?$", "\\1", taxa_lines)
@@ -213,20 +216,22 @@ cat("\n--- 9. review_spatial_context() ---\n")
 if (interactive()) {
   cat("  Launching interactive gadget (close its window to continue)...\n")
   review_spatial_context(
-    input_df         = consensus_df,
-    query_lat        = 41.67, query_lon = -87.15,
-    taxon_col        = "consensus_taxon",
+    input_df = consensus_df,
+    query_lat = 41.67, query_lon = -87.15,
+    taxon_col = "consensus_taxon",
     plausibility_col = NULL,
-    occurrence_data  = occurrences_clean,
-    live_inat_check  = FALSE
+    occurrence_data = occurrences_clean,
+    live_inat_check = FALSE
   )
 } else {
   # Non-interactive fallback: drives the SAME reactive server logic the
   # gadget uses via shiny::testServer() (this package's own test strategy
   # for this file -- see tests/testthat/test-review_spatial_context.R),
   # confirming the gadget's internals work without needing a live browser.
-  cat("  Non-interactive session: exercising the gadget's server logic via",
-      "shiny::testServer() instead of launching the UI.\n")
+  cat(
+    "  Non-interactive session: exercising the gadget's server logic via",
+    "shiny::testServer() instead of launching the UI.\n"
+  )
   server <- TaxaFlag:::.build_spatial_context_server(
     input_df = consensus_df, query_lat = 41.67, query_lon = -87.15,
     taxon_col = "consensus_taxon", plausibility_col = NULL,

@@ -10,7 +10,7 @@ library(testthat)
       "Neogobius melanostomus", "Neogobius melanostomus", "Neogobius melanostomus",
       "Salmo salar", "Missing Coords sp."
     ),
-    decimalLatitude  = c(41.68, 41.60, 41.90, 41.50, NA),
+    decimalLatitude = c(41.68, 41.60, 41.90, 41.50, NA),
     decimalLongitude = c(-87.14, -87.30, -86.80, -87.60, NA),
     stringsAsFactors = FALSE
   )
@@ -29,7 +29,7 @@ test_that("finds the nearest of several records for a present taxon", {
   expect_equal(out$nearest_lat, 41.68)
   expect_equal(out$nearest_lon, -87.14)
   expect_gt(out$dist_nearest_km, 0)
-  expect_lt(out$dist_nearest_km, 5)  # sanity: sub-5km for a ~0.01 deg offset
+  expect_lt(out$dist_nearest_km, 5) # sanity: sub-5km for a ~0.01 deg offset
 })
 
 test_that("a genuinely absent taxon returns zero records and NA distance", {
@@ -94,7 +94,7 @@ test_that("haversine distance is symmetric and zero at the same point", {
   d1 <- .haversine_km(41.67, -87.15, 40.00, -83.00)
   d2 <- .haversine_km(40.00, -83.00, 41.67, -87.15)
   expect_equal(d1, d2)
-  expect_gt(d1, 300)  # Burns Harbor to central Ohio is genuinely several hundred km
+  expect_gt(d1, 300) # Burns Harbor to central Ohio is genuinely several hundred km
   expect_lt(d1, 600)
 })
 

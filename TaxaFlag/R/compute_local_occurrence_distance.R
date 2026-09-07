@@ -70,29 +70,28 @@
 #'   year              = c(2019, 2003)
 #' )
 #' compute_local_occurrence_distance(
-#'   taxon_names     = c("Neogobius melanostomus", "Salmo salar"),
-#'   query_lat       = 41.67, query_lon = -87.15,
+#'   taxon_names = c("Neogobius melanostomus", "Salmo salar"),
+#'   query_lat = 41.67, query_lon = -87.15,
 #'   occurrence_data = occ,
-#'   date_col        = "year"
+#'   date_col = "year"
 #' )
 #'
 #' @importFrom dplyr filter transmute count group_by slice_min ungroup select left_join mutate coalesce
 #' @importFrom rlang .data
 #' @export
 compute_local_occurrence_distance <- function(taxon_names,
-                                               query_lat,
-                                               query_lon,
-                                               occurrence_data,
-                                               taxon_col = "taxon_name",
-                                               lat_col   = "decimalLatitude",
-                                               lon_col   = "decimalLongitude",
-                                               date_col  = NULL) {
-
+                                              query_lat,
+                                              query_lon,
+                                              occurrence_data,
+                                              taxon_col = "taxon_name",
+                                              lat_col = "decimalLatitude",
+                                              lon_col = "decimalLongitude",
+                                              date_col = NULL) {
   if (!is.character(taxon_names) || length(taxon_names) == 0L) {
     stop("compute_local_occurrence_distance: taxon_names must be a non-empty character vector.")
   }
   if (!is.numeric(query_lat) || length(query_lat) != 1L || is.na(query_lat) ||
-      !is.numeric(query_lon) || length(query_lon) != 1L || is.na(query_lon)) {
+    !is.numeric(query_lon) || length(query_lon) != 1L || is.na(query_lon)) {
     stop("compute_local_occurrence_distance: query_lat/query_lon must be single non-NA numeric values.")
   }
   if (!is.data.frame(occurrence_data)) {
@@ -100,8 +99,10 @@ compute_local_occurrence_distance <- function(taxon_names,
   }
   missing_cols <- setdiff(c(taxon_col, lat_col, lon_col), names(occurrence_data))
   if (length(missing_cols) > 0L) {
-    stop("compute_local_occurrence_distance: occurrence_data is missing columns: ",
-         paste(missing_cols, collapse = ", "))
+    stop(
+      "compute_local_occurrence_distance: occurrence_data is missing columns: ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
   use_date <- !is.null(date_col) && date_col %in% names(occurrence_data)
 
@@ -147,7 +148,7 @@ compute_local_occurrence_distance <- function(taxon_names,
 #' Great-circle distance between two points (km)
 #' @noRd
 .haversine_km <- function(lat1, lon1, lat2, lon2) {
-  r <- 6371  # mean Earth radius, km
+  r <- 6371 # mean Earth radius, km
   to_rad <- pi / 180
   dlat <- (lat2 - lat1) * to_rad
   dlon <- (lon2 - lon1) * to_rad

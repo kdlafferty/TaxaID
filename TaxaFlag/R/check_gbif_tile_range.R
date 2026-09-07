@@ -145,26 +145,25 @@
 #' @examples
 #' \dontrun{
 #' check_gbif_tile_range(
-#'   taxon_key = 2379089,  # Neogobius melanostomus
+#'   taxon_key = 2379089, # Neogobius melanostomus
 #'   query_lat = 41.67, query_lon = -87.15
 #' )
 #' }
 #'
 #' @export
 check_gbif_tile_range <- function(taxon_key,
-                                   query_lat,
-                                   query_lon,
-                                   zoom = 6L,
-                                   buffer_px = 512L,
-                                   escalate = TRUE,
-                                   min_zoom = 0L,
-                                   base_url = "https://api.gbif.org/v2/map/occurrence/density") {
-
+                                  query_lat,
+                                  query_lon,
+                                  zoom = 6L,
+                                  buffer_px = 512L,
+                                  escalate = TRUE,
+                                  min_zoom = 0L,
+                                  base_url = "https://api.gbif.org/v2/map/occurrence/density") {
   if (!is.numeric(taxon_key) || length(taxon_key) != 1L || is.na(taxon_key)) {
     stop("check_gbif_tile_range: taxon_key must be a single non-NA numeric GBIF usageKey.")
   }
   if (!is.numeric(query_lat) || length(query_lat) != 1L || is.na(query_lat) ||
-      query_lat < -85.05 || query_lat > 85.05) {
+    query_lat < -85.05 || query_lat > 85.05) {
     stop("check_gbif_tile_range: query_lat must be a single numeric value within Web Mercator's valid range (-85.05 to 85.05).")
   }
   if (!is.numeric(query_lon) || length(query_lon) != 1L || is.na(query_lon)) {
@@ -180,7 +179,7 @@ check_gbif_tile_range <- function(taxon_key,
     stop("check_gbif_tile_range: escalate must be a single non-NA logical value.")
   }
   if (!is.numeric(min_zoom) || length(min_zoom) != 1L || is.na(min_zoom) ||
-      min_zoom < 0 || min_zoom > zoom || min_zoom != round(min_zoom)) {
+    min_zoom < 0 || min_zoom > zoom || min_zoom != round(min_zoom)) {
     stop("check_gbif_tile_range: min_zoom must be a single integer in [0, zoom].")
   }
   for (pkg in c("httr2", "png")) {
@@ -192,16 +191,16 @@ check_gbif_tile_range <- function(taxon_key,
     }
   }
 
-  zoom      <- as.integer(zoom)
-  min_zoom  <- as.integer(min_zoom)
-  tile_size <- 512L  # GBIF's @1x.png tile size -- confirmed empirically, NOT the 256px slippy-map convention
+  zoom <- as.integer(zoom)
+  min_zoom <- as.integer(min_zoom)
+  tile_size <- 512L # GBIF's @1x.png tile size -- confirmed empirically, NOT the 256px slippy-map convention
 
   zoom_seq <- if (escalate) seq.int(zoom, min_zoom, by = -1L) else zoom
 
   n_tiles_fetched_total <- 0L
   first_attempt <- NULL
   found_attempt <- NULL
-  zoom_used     <- NA_integer_
+  zoom_used <- NA_integer_
 
   for (z in zoom_seq) {
     attempt <- .check_gbif_tile_range_at_zoom(taxon_key, query_lat, query_lon, z, buffer_px, base_url, tile_size)
@@ -214,15 +213,17 @@ check_gbif_tile_range <- function(taxon_key,
     }
   }
 
-  escalated     <- escalate && !is.na(zoom_used) && zoom_used != zoom
+  escalated <- escalate && !is.na(zoom_used) && zoom_used != zoom
   beyond_buffer <- is.null(found_attempt)
 
   if (beyond_buffer) {
-    reference    <- first_attempt
-    zoom_used_out <- if (escalate) NA_integer_ else zoom  # nothing was ever "used" successfully; NA under escalation, the single attempted zoom otherwise
+    reference <- first_attempt
+    zoom_used_out <- if (escalate) NA_integer_ else zoom # nothing was ever "used" successfully; NA under escalation, the single attempted zoom otherwise
     dist_km <- NA_real_
-    patch_size_px <- NA_integer_; patch_size_capped <- NA
-    patch_area_km2 <- NA_real_; patch_diameter_km <- NA_real_
+    patch_size_px <- NA_integer_
+    patch_size_capped <- NA
+    patch_area_km2 <- NA_real_
+    patch_diameter_km <- NA_real_
   } else {
     reference <- found_attempt
     zoom_used_out <- zoom_used
@@ -234,22 +235,22 @@ check_gbif_tile_range <- function(taxon_key,
   }
 
   data.frame(
-    taxon_key                = taxon_key,
-    query_lat                = query_lat,
-    query_lon                = query_lon,
-    zoom_requested            = zoom,
-    zoom_used                 = zoom_used_out,
-    escalated                 = escalated,
-    tile_size                = tile_size,
-    n_tiles_fetched          = n_tiles_fetched_total,
-    resolution_km_per_px     = reference$resolution_km_per_px,
-    point_occupied            = reference$point_occupied,
+    taxon_key = taxon_key,
+    query_lat = query_lat,
+    query_lon = query_lon,
+    zoom_requested = zoom,
+    zoom_used = zoom_used_out,
+    escalated = escalated,
+    tile_size = tile_size,
+    n_tiles_fetched = n_tiles_fetched_total,
+    resolution_km_per_px = reference$resolution_km_per_px,
+    point_occupied = reference$point_occupied,
     dist_nearest_occupied_km = dist_km,
-    patch_size_px            = patch_size_px,
-    patch_size_capped        = patch_size_capped,
-    patch_area_km2            = patch_area_km2,
-    patch_diameter_km         = patch_diameter_km,
-    beyond_buffer             = beyond_buffer,
+    patch_size_px = patch_size_px,
+    patch_size_capped = patch_size_capped,
+    patch_area_km2 = patch_area_km2,
+    patch_diameter_km = patch_diameter_km,
+    beyond_buffer = beyond_buffer,
     stringsAsFactors = FALSE
   )
 }
@@ -262,17 +263,17 @@ check_gbif_tile_range <- function(taxon_key,
 .check_gbif_tile_range_at_zoom <- function(taxon_key, query_lat, query_lon, zoom, buffer_px, base_url, tile_size) {
   loc <- .lonlat_to_tile_pixel(query_lat, query_lon, zoom, tile_size)
 
-  n_tiles     <- 2L^zoom
+  n_tiles <- 2L^zoom
   tile_radius <- as.integer(ceiling(buffer_px / tile_size))
-  x_range     <- seq.int(loc$xtile - tile_radius, loc$xtile + tile_radius)
-  y_range     <- seq.int(loc$ytile - tile_radius, loc$ytile + tile_radius)
-  y_range     <- y_range[y_range >= 0L & y_range < n_tiles]  # tiles outside Mercator's y-range don't exist (poles)
+  x_range <- seq.int(loc$xtile - tile_radius, loc$xtile + tile_radius)
+  y_range <- seq.int(loc$ytile - tile_radius, loc$ytile + tile_radius)
+  y_range <- y_range[y_range >= 0L & y_range < n_tiles] # tiles outside Mercator's y-range don't exist (poles)
 
   mosaic <- matrix(0, nrow = length(y_range) * tile_size, ncol = length(x_range) * tile_size)
   n_tiles_fetched <- 0L
   for (yi in seq_along(y_range)) {
     for (xi in seq_along(x_range)) {
-      xw <- ((x_range[xi] %% n_tiles) + n_tiles) %% n_tiles  # wrap the antimeridian
+      xw <- ((x_range[xi] %% n_tiles) + n_tiles) %% n_tiles # wrap the antimeridian
       alpha <- .fetch_gbif_tile_alpha(base_url, zoom, xw, y_range[yi], taxon_key, tile_size)
       n_tiles_fetched <- n_tiles_fetched + 1L
       row_off <- (yi - 1L) * tile_size
@@ -295,7 +296,7 @@ check_gbif_tile_range <- function(taxon_key,
 
   presence <- mosaic > 0
   point_occupied <- presence[pt_row, pt_col]
-  res_km_per_px  <- .mercator_resolution_km(query_lat, zoom, tile_size)
+  res_km_per_px <- .mercator_resolution_km(query_lat, zoom, tile_size)
 
   occ_idx <- which(presence, arr.ind = TRUE)
   if (nrow(occ_idx) == 0L) {
@@ -308,7 +309,7 @@ check_gbif_tile_range <- function(taxon_key,
   d2 <- (occ_idx[, 1] - pt_row)^2 + (occ_idx[, 2] - pt_col)^2
   nearest_i <- which.min(d2)
   dist_km <- sqrt(d2[nearest_i]) * res_km_per_px
-  patch   <- .grow_patch_size(presence, occ_idx[nearest_i, 1], occ_idx[nearest_i, 2])
+  patch <- .grow_patch_size(presence, occ_idx[nearest_i, 1], occ_idx[nearest_i, 2])
 
   list(
     found = TRUE, n_tiles_fetched = n_tiles_fetched,
@@ -388,7 +389,8 @@ check_gbif_tile_range <- function(taxon_key,
 #' TRUE), not a no-op -- correct region-growing behaviour.
 #' @noRd
 .dilate8 <- function(m) {
-  nr <- nrow(m); nc <- ncol(m)
+  nr <- nrow(m)
+  nc <- ncol(m)
   padded <- matrix(FALSE, nr + 2L, nc + 2L)
   padded[2:(nr + 1L), 2:(nc + 1L)] <- m
   out <- matrix(FALSE, nr, nc)

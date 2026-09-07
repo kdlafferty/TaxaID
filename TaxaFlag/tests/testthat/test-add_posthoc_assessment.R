@@ -11,20 +11,25 @@
 .add_posthoc <- function(consensus_df, ...,
                          expected_theta_threshold = c(species = 0.05, genus = 0.05, family = 0.05)) {
   add_posthoc_assessment(consensus_df, ...,
-                         expected_theta_threshold = expected_theta_threshold)
+    expected_theta_threshold = expected_theta_threshold
+  )
 }
 
 .make_cons <- function() {
   data.frame(
-    observation_id    = paste0("obs", 1:7),
-    consensus_taxon   = c("Oncorhynchus mykiss", "Salmo salar",
-                          "Homo sapiens",        "Sardina pilchardus",
-                          "Rare sp.",            "Cottus sp.",
-                          "Ghost fish"),
-    consensus_rank    = c("species", "species", "species", "species",
-                          "species", "genus", "species"),
+    observation_id = paste0("obs", 1:7),
+    consensus_taxon = c(
+      "Oncorhynchus mykiss", "Salmo salar",
+      "Homo sapiens", "Sardina pilchardus",
+      "Rare sp.", "Cottus sp.",
+      "Ghost fish"
+    ),
+    consensus_rank = c(
+      "species", "species", "species", "species",
+      "species", "genus", "species"
+    ),
     winner_likelihood = c(0.95, 0.15, 0.80, 0.03, 0.70, 0.90, NA),
-    stringsAsFactors  = FALSE
+    stringsAsFactors = FALSE
   )
 }
 
@@ -42,9 +47,11 @@ test_that("posthoc_assessment column is NOT produced (retired)", {
 
 test_that("all five expected output columns are present", {
   out <- .add_posthoc(.make_cons())
-  expect_true(all(c("primary_plausibility", "consensus_plausibility",
-                    "primary_discrimination", "consensus_discrimination",
-                    "domestic_prior_caveat") %in% names(out)))
+  expect_true(all(c(
+    "primary_plausibility", "consensus_plausibility",
+    "primary_discrimination", "consensus_discrimination",
+    "domestic_prior_caveat"
+  ) %in% names(out)))
 })
 
 # ---- validation errors ---------------------------------------------------------
@@ -54,17 +61,20 @@ test_that("stops on non-data-frame consensus_df", {
 })
 
 test_that("stops when winner_likelihood_col missing", {
-  cons <- .make_cons(); cons$winner_likelihood <- NULL
+  cons <- .make_cons()
+  cons$winner_likelihood <- NULL
   expect_error(.add_posthoc(cons), "not found")
 })
 
 test_that("stops when consensus_taxon_col missing", {
-  cons <- .make_cons(); cons$consensus_taxon <- NULL
+  cons <- .make_cons()
+  cons$consensus_taxon <- NULL
   expect_error(.add_posthoc(cons), "not found")
 })
 
 test_that("stops when consensus_rank_col missing", {
-  cons <- .make_cons(); cons$consensus_rank <- NULL
+  cons <- .make_cons()
+  cons$consensus_rank <- NULL
   expect_error(.add_posthoc(cons), "not found")
 })
 
@@ -78,12 +88,13 @@ test_that("stops on invalid likelihood_threshold", {
 test_that("custom column names accepted", {
   cons <- .make_cons()
   names(cons)[names(cons) == "winner_likelihood"] <- "lik_col"
-  names(cons)[names(cons) == "consensus_taxon"]   <- "taxon_col"
-  names(cons)[names(cons) == "consensus_rank"]    <- "rank_col"
+  names(cons)[names(cons) == "consensus_taxon"] <- "taxon_col"
+  names(cons)[names(cons) == "consensus_rank"] <- "rank_col"
   out <- .add_posthoc(cons,
-                      winner_likelihood_col = "lik_col",
-                      consensus_taxon_col   = "taxon_col",
-                      consensus_rank_col    = "rank_col")
+    winner_likelihood_col = "lik_col",
+    consensus_taxon_col   = "taxon_col",
+    consensus_rank_col    = "rank_col"
+  )
   expect_equal(nrow(out), nrow(cons))
 })
 
@@ -95,11 +106,11 @@ test_that("custom column names accepted", {
 
 .make_domestic_cons <- function(theta = 0.001, record = TRUE, lik = 0.9) {
   data.frame(
-    observation_id               = "obs1",
-    consensus_taxon              = "Felis catus",
-    consensus_rank                = "species",
-    winner_likelihood            = lik,
-    winner_theta_mean             = theta,
+    observation_id = "obs1",
+    consensus_taxon = "Felis catus",
+    consensus_rank = "species",
+    winner_likelihood = lik,
+    winner_theta_mean = theta,
     winner_has_occurrence_record = record,
     stringsAsFactors = FALSE
   )
@@ -136,8 +147,10 @@ test_that("domestic_prior_caveat does NOT fire for a non-domestic taxon", {
 })
 
 test_that("domestic_prior_source = 'augmented' disables the flag", {
-  out <- .add_posthoc(.make_domestic_cons(), domestic_taxa = "Felis catus",
-                      domestic_prior_source = "augmented")
+  out <- .add_posthoc(.make_domestic_cons(),
+    domestic_taxa = "Felis catus",
+    domestic_prior_source = "augmented"
+  )
   expect_false(out$domestic_prior_caveat)
 })
 
@@ -147,7 +160,8 @@ test_that("domestic_caveat_type = 'local_records' when the winner has real recor
   # record = TRUE + tiny theta -> primary_plausibility "unexpected" (the real
   # Sus scrofa shape: terrestrial records, Marine-collapsed rate)
   out <- .add_posthoc(.make_domestic_cons(theta = 0.001, record = TRUE),
-                      domestic_taxa = "Felis catus")
+    domestic_taxa = "Felis catus"
+  )
   expect_true(out$domestic_prior_caveat)
   expect_equal(out$primary_plausibility, "unexpected")
   expect_equal(out$domestic_caveat_type, "local_records")
@@ -155,7 +169,8 @@ test_that("domestic_caveat_type = 'local_records' when the winner has real recor
 
 test_that("domestic_caveat_type = 'no_local_records' when the winner has none", {
   out <- .add_posthoc(.make_domestic_cons(record = FALSE),
-                      domestic_taxa = "Felis catus")
+    domestic_taxa = "Felis catus"
+  )
   expect_true(out$domestic_prior_caveat)
   expect_equal(out$primary_plausibility, "unprecedented")
   expect_equal(out$domestic_caveat_type, "no_local_records")
@@ -167,7 +182,8 @@ test_that("domestic_caveat_type is NA whenever the caveat did not fire", {
   expect_true(is.na(out$domestic_caveat_type))
   # fired = FALSE (expected-tier winner)
   out2 <- .add_posthoc(.make_domestic_cons(theta = 0.9),
-                       domestic_taxa = "Felis catus")
+    domestic_taxa = "Felis catus"
+  )
   expect_false(out2$domestic_prior_caveat)
   expect_true(is.na(out2$domestic_caveat_type))
 })
@@ -198,18 +214,18 @@ test_that("primary_discrimination tiers at the two thresholds", {
   cons <- .make_cons()
   cons$winner_own_rank_confusion_risk <- c(0.01, 0.05, 0.3, 0.5, 0.9, 0.02, NA)
   out <- .add_posthoc(cons)
-  expect_equal(out$primary_discrimination[out$observation_id == "obs1"], "discriminating")   # 0.01 < 0.05
-  expect_equal(out$primary_discrimination[out$observation_id == "obs2"], "weak")             # 0.05 (>= low)
-  expect_equal(out$primary_discrimination[out$observation_id == "obs3"], "weak")             # 0.3
+  expect_equal(out$primary_discrimination[out$observation_id == "obs1"], "discriminating") # 0.01 < 0.05
+  expect_equal(out$primary_discrimination[out$observation_id == "obs2"], "weak") # 0.05 (>= low)
+  expect_equal(out$primary_discrimination[out$observation_id == "obs3"], "weak") # 0.3
   expect_equal(out$primary_discrimination[out$observation_id == "obs4"], "indistinguishable") # 0.5 (>= high)
   expect_equal(out$primary_discrimination[out$observation_id == "obs5"], "indistinguishable") # 0.9
-  expect_equal(out$primary_discrimination[out$observation_id == "obs7"], "not_modeled")       # NA
+  expect_equal(out$primary_discrimination[out$observation_id == "obs7"], "not_modeled") # NA
 })
 
 test_that("consensus_discrimination reads consensus_confusion_risk independently", {
   cons <- .make_cons()
   cons$winner_own_rank_confusion_risk <- 0.9
-  cons$consensus_confusion_risk       <- 0.01
+  cons$consensus_confusion_risk <- 0.01
   out <- .add_posthoc(cons)
   expect_true(all(out$primary_discrimination == "indistinguishable"))
   expect_true(all(out$consensus_discrimination == "discriminating"))
@@ -221,10 +237,12 @@ test_that("custom column names and thresholds respected", {
   out <- .add_posthoc(cons, primary_confusion_risk_col = "my_risk")
   expect_true(all(out$primary_discrimination == "indistinguishable"))
 
-  cons2 <- .make_cons(); cons2$winner_own_rank_confusion_risk <- 0.2
+  cons2 <- .make_cons()
+  cons2$winner_own_rank_confusion_risk <- 0.2
   strict <- .add_posthoc(cons2,
-                         discriminating_threshold = 0.25,
-                         indistinguishable_threshold = 0.6)
+    discriminating_threshold = 0.25,
+    indistinguishable_threshold = 0.6
+  )
   expect_true(all(strict$primary_discrimination == "discriminating"))
 })
 
@@ -265,17 +283,17 @@ test_that("stops on invalid primary_confusion_risk_col", {
 # which prior_mean is not.
 
 .make_plaus_cons <- function(theta = c(0.9, 0.01, 9.17e-06),
-                              record = c(TRUE, TRUE, FALSE),
-                              cons_theta = c(0.9, 0.01, NA_real_),
-                              cons_record = c(TRUE, TRUE, NA)) {
+                             record = c(TRUE, TRUE, FALSE),
+                             cons_theta = c(0.9, 0.01, NA_real_),
+                             cons_record = c(TRUE, TRUE, NA)) {
   data.frame(
-    observation_id               = c("obs1", "obs2", "obs3"),
-    consensus_taxon              = c("Aa one", "Bb one", "Cc one"),
-    consensus_rank               = rep("species", 3),
-    winner_likelihood            = rep(0.9, 3),
-    winner_theta_mean             = theta,
+    observation_id = c("obs1", "obs2", "obs3"),
+    consensus_taxon = c("Aa one", "Bb one", "Cc one"),
+    consensus_rank = rep("species", 3),
+    winner_likelihood = rep(0.9, 3),
+    winner_theta_mean = theta,
     winner_has_occurrence_record = record,
-    consensus_prior              = cons_theta,
+    consensus_prior = cons_theta,
     consensus_has_occurrence_record = cons_record,
     stringsAsFactors = FALSE
   )
@@ -295,17 +313,19 @@ test_that("both plausibility columns are always appended", {
 
 test_that("plausibility splits expected/unexpected at the theta threshold", {
   out <- .add_posthoc(.make_plaus_cons())
-  expect_equal(out$primary_plausibility[out$observation_id == "obs1"], "expected")    # 0.9
-  expect_equal(out$primary_plausibility[out$observation_id == "obs2"], "unexpected")  # 0.01
+  expect_equal(out$primary_plausibility[out$observation_id == "obs1"], "expected") # 0.9
+  expect_equal(out$primary_plausibility[out$observation_id == "obs2"], "unexpected") # 0.01
 })
 
 test_that("a taxon with NO occurrence record is unprecedented regardless of its theta", {
   # The real-data case this exists for: no record, but a dark-diversity group
   # of only a few members gives it a HIGH boosted value. Value-thresholding
   # alone would call this "expected"; record presence must win.
-  cons <- .make_plaus_cons(theta = c(0.9, 0.01, 0.975),
-                           record = c(TRUE, TRUE, FALSE),
-                           cons_theta = c(0.9, 0.01, NA_real_))
+  cons <- .make_plaus_cons(
+    theta = c(0.9, 0.01, 0.975),
+    record = c(TRUE, TRUE, FALSE),
+    cons_theta = c(0.9, 0.01, NA_real_)
+  )
   out <- .add_posthoc(cons)
   expect_equal(out$primary_plausibility[out$observation_id == "obs3"], "unprecedented")
 })
@@ -313,9 +333,11 @@ test_that("a taxon with NO occurrence record is unprecedented regardless of its 
 test_that("a singleton at the floor is NOT unprecedented -- it has a record", {
   # Same numeric value as obs3 above, opposite meaning. This is the whole
   # reason record presence is a separate signal.
-  cons <- .make_plaus_cons(theta = c(0.9, 9.17e-06, 9.17e-06),
-                           record = c(TRUE, TRUE, FALSE),
-                           cons_theta = c(0.9, 9.17e-06, NA_real_))
+  cons <- .make_plaus_cons(
+    theta = c(0.9, 9.17e-06, 9.17e-06),
+    record = c(TRUE, TRUE, FALSE),
+    cons_theta = c(0.9, 9.17e-06, NA_real_)
+  )
   out <- .add_posthoc(cons)
   expect_equal(out$primary_plausibility[out$observation_id == "obs2"], "unexpected")
   expect_equal(out$primary_plausibility[out$observation_id == "obs3"], "unprecedented")
@@ -351,10 +373,12 @@ test_that("consensus_plausibility is never unprecedented when consensus_prior is
 test_that("the two scopes can disagree", {
   # Winner itself has no record, but a recorded member of the consensus taxon
   # does -- primary unprecedented, consensus unexpected.
-  cons <- .make_plaus_cons(theta = c(0.9, 0.01, 9.17e-06),
-                           record = c(TRUE, TRUE, FALSE),
-                           cons_theta = c(0.9, 0.01, 0.02),
-                           cons_record = c(TRUE, TRUE, TRUE))
+  cons <- .make_plaus_cons(
+    theta = c(0.9, 0.01, 9.17e-06),
+    record = c(TRUE, TRUE, FALSE),
+    cons_theta = c(0.9, 0.01, 0.02),
+    cons_record = c(TRUE, TRUE, TRUE)
+  )
   out <- .add_posthoc(cons)
   expect_equal(out$primary_plausibility[out$observation_id == "obs3"], "unprecedented")
   expect_equal(out$consensus_plausibility[out$observation_id == "obs3"], "unexpected")
@@ -364,7 +388,7 @@ test_that("expected_theta_threshold is user-tunable", {
   cons <- .make_plaus_cons(theta = c(0.9, 0.01, 9.17e-06))
   strict <- .add_posthoc(cons, expected_theta_threshold = c(species = 0.95))
   expect_equal(strict$primary_plausibility[strict$observation_id == "obs1"], "unexpected")
-  loose  <- .add_posthoc(cons, expected_theta_threshold = c(species = 0.005))
+  loose <- .add_posthoc(cons, expected_theta_threshold = c(species = 0.005))
   expect_equal(loose$primary_plausibility[loose$observation_id == "obs2"], "expected")
 })
 
@@ -393,7 +417,7 @@ test_that("primary_plausibility is unaffected by a boosted winner_prior (only wi
   # any more -- confirm a wildly boosted prior_mean/winner_prior value present
   # on consensus_df has no effect on primary_plausibility.
   cons <- .make_plaus_cons(theta = c(0.01, 0.01, 0.01), record = c(TRUE, TRUE, TRUE))
-  cons$winner_prior <- c(0.9999, 0.9999, 0.9999)  # boosted, should be ignored
+  cons$winner_prior <- c(0.9999, 0.9999, 0.9999) # boosted, should be ignored
   out <- .add_posthoc(cons, expected_theta_threshold = c(species = 0.05))
   expect_true(all(out$primary_plausibility == "unexpected"))
 })
@@ -407,13 +431,13 @@ test_that("primary_plausibility is unaffected by a boosted winner_prior (only wi
 
 .make_rank_cons <- function() {
   data.frame(
-    observation_id               = c("obs1", "obs2", "obs3"),
-    consensus_taxon              = c("Aa one", "Bb", "Cc"),
-    consensus_rank                = c("species", "genus", "family"),
-    winner_likelihood            = rep(0.9, 3),
-    winner_theta_mean             = c(0.003, 0.01, 0.05),
+    observation_id = c("obs1", "obs2", "obs3"),
+    consensus_taxon = c("Aa one", "Bb", "Cc"),
+    consensus_rank = c("species", "genus", "family"),
+    winner_likelihood = rep(0.9, 3),
+    winner_theta_mean = c(0.003, 0.01, 0.05),
     winner_has_occurrence_record = c(TRUE, TRUE, TRUE),
-    consensus_prior              = c(0.003, 0.01, 0.05),
+    consensus_prior = c(0.003, 0.01, 0.05),
     consensus_has_occurrence_record = c(TRUE, TRUE, TRUE),
     stringsAsFactors = FALSE
   )
@@ -449,7 +473,7 @@ test_that("using the species threshold at every rank would give the wrong answer
 test_that("consensus_plausibility is not_modeled when consensus_rank has no matching threshold entry", {
   out <- add_posthoc_assessment(
     .make_rank_cons(),
-    expected_theta_threshold = c(species = 0.005, genus = 0.008)   # no family entry
+    expected_theta_threshold = c(species = 0.005, genus = 0.008) # no family entry
   )
   expect_equal(out$consensus_plausibility[out$observation_id == "obs3"], "not_modeled")
   # species/genus rows are unaffected by the missing family entry.
@@ -461,7 +485,7 @@ test_that("primary_plausibility always uses the species entry regardless of cons
   # obs2/obs3 have consensus_rank genus/family, but primary_plausibility
   # (the WINNER's own share) must still compare against "species".
   cons <- .make_rank_cons()
-  cons$winner_theta_mean <- c(0.003, 0.003, 0.003)   # same value for all three
+  cons$winner_theta_mean <- c(0.003, 0.003, 0.003) # same value for all three
   out <- add_posthoc_assessment(
     cons,
     expected_theta_threshold = c(species = 0.005, genus = 0.001, family = 0.001)
@@ -474,7 +498,8 @@ test_that("primary_plausibility always uses the species entry regardless of cons
 test_that("stops when expected_theta_threshold has no species entry", {
   expect_error(
     add_posthoc_assessment(.make_rank_cons(),
-                           expected_theta_threshold = c(genus = 0.01, family = 0.02)),
+      expected_theta_threshold = c(genus = 0.01, family = 0.02)
+    ),
     "species"
   )
 })

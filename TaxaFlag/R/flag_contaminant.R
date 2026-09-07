@@ -1,7 +1,9 @@
-utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
-                         "is_control", "n_controls_present", "n_controls_total",
-                         "mean_prop_field", "mean_prop_control",
-                         "n_reads_total", "contaminant_score"))
+utils::globalVariables(c(
+  "n_reads", "total_reads", "prop", "mean_prop",
+  "is_control", "n_controls_present", "n_controls_total",
+  "mean_prop_field", "mean_prop_control",
+  "n_reads_total", "contaminant_score"
+))
 
 #' Flag Potential Contaminants by Comparison to Control Samples
 #'
@@ -140,12 +142,16 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #'
 #' @examples
 #' reads_long <- data.frame(
-#'   event_id   = c("Palmyra01", "Palmyra01", "Palmyra02", "Palmyra02",
-#'                  "Palmyra30", "Palmyra30"),
-#'   taxon_name = c("Kyphosus vaigiensis", "Homo sapiens",
-#'                  "Kyphosus vaigiensis", "Homo sapiens",
-#'                  "Kyphosus vaigiensis", "Homo sapiens"),
-#'   n_reads    = c(48000, 12, 51000, 8, 5, 4200)
+#'   event_id = c(
+#'     "Palmyra01", "Palmyra01", "Palmyra02", "Palmyra02",
+#'     "Palmyra30", "Palmyra30"
+#'   ),
+#'   taxon_name = c(
+#'     "Kyphosus vaigiensis", "Homo sapiens",
+#'     "Kyphosus vaigiensis", "Homo sapiens",
+#'     "Kyphosus vaigiensis", "Homo sapiens"
+#'   ),
+#'   n_reads = c(48000, 12, 51000, 8, 5, 4200)
 #' )
 #'
 #' # Identify extraction control columns, flag contaminants
@@ -158,69 +164,78 @@ utils::globalVariables(c("n_reads", "total_reads", "prop", "mean_prop",
 #' \dontrun{
 #' # Using sample_type column instead
 #' flagged <- flag_contaminant(
-#'   input_df              = reads_long,
+#'   input_df = reads_long,
 #'   sample_type_col = "sample_type",
-#'   control_types     = c("extraction_blank", "pcr_blank"),
+#'   control_types = c("extraction_blank", "pcr_blank"),
 #'   contaminant_type = "lab_contaminant"
 #' )
 #'
 #' # Flag positive control leakage
 #' flagged <- flag_contaminant(
-#'   input_df               = reads_long,
-#'   control_samples    = c("Palmyra32", "Palmyra64"),
-#'   exclude_samples  = c("Palmyra30", "Palmyra31", "Palmyra62", "Palmyra63"),
+#'   input_df = reads_long,
+#'   control_samples = c("Palmyra32", "Palmyra64"),
+#'   exclude_samples = c("Palmyra30", "Palmyra31", "Palmyra62", "Palmyra63"),
 #'   contaminant_type = "positive_control"
 #' )
 #' }
 #'
 #' @export
 flag_contaminant <- function(input_df,
-                             event_col       = "event_id",
-                             taxon_col        = "taxon_name",
-                             reads_col        = "n_reads",
-                             control_samples    = NULL,
-                             sample_type_col  = NULL,
-                             control_types      = NULL,
-                             exclude_samples  = NULL,
+                             event_col = "event_id",
+                             taxon_col = "taxon_name",
+                             reads_col = "n_reads",
+                             control_samples = NULL,
+                             sample_type_col = NULL,
+                             control_types = NULL,
+                             exclude_samples = NULL,
                              contaminant_type = "lab_contaminant",
                              score_thresholds = c(0.5, 0.9),
-                             prior_weight     = 20,
-                             verbose          = TRUE) {
-
+                             prior_weight = 20,
+                             verbose = TRUE) {
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
   for (col in c(event_col, taxon_col, reads_col)) {
-    if (!col %in% names(input_df))
+    if (!col %in% names(input_df)) {
       stop(sprintf("Column '%s' not found in input_df.", col), call. = FALSE)
+    }
   }
 
-  if (!is.numeric(input_df[[reads_col]]))
+  if (!is.numeric(input_df[[reads_col]])) {
     stop(sprintf("Column '%s' must be numeric.", reads_col), call. = FALSE)
+  }
 
   if (!is.numeric(prior_weight) || length(prior_weight) != 1L ||
-      is.na(prior_weight) || prior_weight < 0)
+    is.na(prior_weight) || prior_weight < 0) {
     stop("'prior_weight' must be a single non-negative numeric value.", call. = FALSE)
-
-  if (is.null(control_samples) && is.null(sample_type_col))
-    stop("Supply either 'control_samples' or 'sample_type_col' to identify controls.",
-         call. = FALSE)
-
-  if (!is.null(control_samples) && !is.null(sample_type_col))
-    stop("Supply 'control_samples' OR 'sample_type_col', not both.", call. = FALSE)
-
-  if (!is.null(sample_type_col)) {
-    if (!sample_type_col %in% names(input_df))
-      stop(sprintf("Column '%s' not found in input_df.", sample_type_col), call. = FALSE)
-    if (is.null(control_types) || length(control_types) == 0L)
-      stop("'control_types' required when using 'sample_type_col'.", call. = FALSE)
   }
 
-  if (!is.numeric(score_thresholds) || length(score_thresholds) != 2L)
-    stop("'score_thresholds' must be a numeric vector of length 2.", call. = FALSE)
+  if (is.null(control_samples) && is.null(sample_type_col)) {
+    stop("Supply either 'control_samples' or 'sample_type_col' to identify controls.",
+      call. = FALSE
+    )
+  }
 
-  if (!is.character(contaminant_type) || length(contaminant_type) != 1L)
+  if (!is.null(control_samples) && !is.null(sample_type_col)) {
+    stop("Supply 'control_samples' OR 'sample_type_col', not both.", call. = FALSE)
+  }
+
+  if (!is.null(sample_type_col)) {
+    if (!sample_type_col %in% names(input_df)) {
+      stop(sprintf("Column '%s' not found in input_df.", sample_type_col), call. = FALSE)
+    }
+    if (is.null(control_types) || length(control_types) == 0L) {
+      stop("'control_types' required when using 'sample_type_col'.", call. = FALSE)
+    }
+  }
+
+  if (!is.numeric(score_thresholds) || length(score_thresholds) != 2L) {
+    stop("'score_thresholds' must be a numeric vector of length 2.", call. = FALSE)
+  }
+
+  if (!is.character(contaminant_type) || length(contaminant_type) != 1L) {
     stop("'contaminant_type' must be a single character string.", call. = FALSE)
+  }
 
   # --- Resolve control vs field samples ---
   all_samples <- unique(input_df[[event_col]])
@@ -235,35 +250,45 @@ flag_contaminant <- function(input_df,
   # Identify controls
   if (!is.null(control_samples)) {
     control_ids <- intersect(control_samples, all_samples)
-    if (length(control_ids) == 0L)
+    if (length(control_ids) == 0L) {
       stop("None of 'control_samples' found in input_df after exclusions.", call. = FALSE)
+    }
   } else {
     control_ids <- unique(input_df[[event_col]][input_df[[sample_type_col]] %in% control_types])
-    if (length(control_ids) == 0L)
-      stop(sprintf("No samples match control_types '%s' in column '%s'.",
-                    paste(control_types, collapse = "', '"), sample_type_col),
-           call. = FALSE)
+    if (length(control_ids) == 0L) {
+      stop(
+        sprintf(
+          "No samples match control_types '%s' in column '%s'.",
+          paste(control_types, collapse = "', '"), sample_type_col
+        ),
+        call. = FALSE
+      )
+    }
   }
 
   field_ids <- setdiff(all_samples, control_ids)
-  if (length(field_ids) == 0L)
+  if (length(field_ids) == 0L) {
     stop("No field samples remaining after identifying controls and exclusions.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   if (verbose) {
-    message(sprintf("flag_contaminant (%s): %d control(s), %d field sample(s), %d excluded.",
-                    contaminant_type, length(control_ids), length(field_ids),
-                    length(if (is.null(exclude_samples)) character(0) else exclude_samples)))
+    message(sprintf(
+      "flag_contaminant (%s): %d control(s), %d field sample(s), %d excluded.",
+      contaminant_type, length(control_ids), length(field_ids),
+      length(if (is.null(exclude_samples)) character(0) else exclude_samples)
+    ))
   }
 
   # --- Compute scores ---
   scores <- .compute_contaminant_scores(
-    input_df         = input_df,
+    input_df = input_df,
     event_col = event_col,
-    taxon_col  = taxon_col,
-    reads_col  = reads_col,
-    control_ids  = control_ids,
-    field_ids  = field_ids,
+    taxon_col = taxon_col,
+    reads_col = reads_col,
+    control_ids = control_ids,
+    field_ids = field_ids,
     prior_weight = prior_weight
   )
 
@@ -272,7 +297,7 @@ flag_contaminant <- function(input_df,
   # low score = probable contaminant = "invalid_{contaminant_type}". Type
   # qualifier embedded in the VALUE (2026-07-24), not the column name -- see
   # @section Unified validity schema.
-  invalid_label      <- paste0("invalid_", contaminant_type)
+  invalid_label <- paste0("invalid_", contaminant_type)
   questionable_label <- paste0("questionable_", contaminant_type)
   scores$flag <- dplyr::case_when(
     scores$contaminant_score <= score_thresholds[1] ~ invalid_label,
@@ -300,30 +325,36 @@ flag_contaminant <- function(input_df,
   # arguments here (taxon_col/score_col/etc. are runtime strings, not syntactic
   # names), so a select-then-rename via names<- is the direct way to do this in
   # base R -- stats::setNames() would be equivalent, not simpler.
-  result <- scores[, c("taxon", "contaminant_score", "flag", "reason",
-                       "mean_prop_field", "mean_prop_control",
-                       "field_rate", "control_rate",
-                       "n_field_present", "n_controls_present", "n_controls_total",
-                       "n_reads_total"), drop = FALSE]
-  flag_col   <- "validity_flag"
-  score_col  <- "observation_validity"
+  result <- scores[, c(
+    "taxon", "contaminant_score", "flag", "reason",
+    "mean_prop_field", "mean_prop_control",
+    "field_rate", "control_rate",
+    "n_field_present", "n_controls_present", "n_controls_total",
+    "n_reads_total"
+  ), drop = FALSE]
+  flag_col <- "validity_flag"
+  score_col <- "observation_validity"
   reason_col <- "validity_reason"
-  names(result) <- c(taxon_col, score_col, flag_col, reason_col,
-                     "mean_prop_field", "mean_prop_control",
-                     "field_rate", "control_rate",
-                     "n_field_present", "n_controls_present", "n_controls_total",
-                     "n_reads_total")
+  names(result) <- c(
+    taxon_col, score_col, flag_col, reason_col,
+    "mean_prop_field", "mean_prop_control",
+    "field_rate", "control_rate",
+    "n_field_present", "n_controls_present", "n_controls_total",
+    "n_reads_total"
+  )
 
   # Sort by score (most likely contaminants first)
   result <- result[order(result[[score_col]]), , drop = FALSE]
   rownames(result) <- NULL
 
   if (verbose) {
-    n_invalid      <- sum(result[[flag_col]] == invalid_label)
+    n_invalid <- sum(result[[flag_col]] == invalid_label)
     n_questionable <- sum(result[[flag_col]] == questionable_label)
-    n_valid        <- sum(result[[flag_col]] == "valid")
-    message(sprintf("  %d taxa scored: %d invalid (%s), %d questionable, %d valid.",
-                    nrow(result), n_invalid, contaminant_type, n_questionable, n_valid))
+    n_valid <- sum(result[[flag_col]] == "valid")
+    message(sprintf(
+      "  %d taxa scored: %d invalid (%s), %d questionable, %d valid.",
+      nrow(result), n_invalid, contaminant_type, n_questionable, n_valid
+    ))
   }
 
   result
@@ -431,12 +462,11 @@ flag_contaminant <- function(input_df,
 .compute_contaminant_scores <- function(input_df, event_col, taxon_col, reads_col,
                                         control_ids, field_ids,
                                         prior_weight = 20) {
-
   # Standardise column names for internal use
   work <- data.frame(
-    sample   = input_df[[event_col]],
-    taxon    = input_df[[taxon_col]],
-    n_reads  = input_df[[reads_col]],
+    sample = input_df[[event_col]],
+    taxon = input_df[[taxon_col]],
+    n_reads = input_df[[reads_col]],
     stringsAsFactors = FALSE
   )
 
@@ -457,7 +487,7 @@ flag_contaminant <- function(input_df,
   # Group-level sequencing depth (sum of each sample's own total reads,
   # across ALL taxa) -- the denominator for depth-weighted rates. Computed
   # once, not per taxon: constant across taxa within one call.
-  field_depth   <- sum(sample_totals$total_reads[sample_totals$sample %in% field_ids])
+  field_depth <- sum(sample_totals$total_reads[sample_totals$sample %in% field_ids])
   control_depth <- sum(sample_totals$total_reads[sample_totals$sample %in% control_ids])
 
   # Get all unique taxa
@@ -474,7 +504,7 @@ flag_contaminant <- function(input_df,
     mean_prop_field <- if (nrow(field_rows) > 0L) mean(field_rows$prop) else 0
     mean_prop_control <- if (nrow(control_rows) > 0L) mean(control_rows$prop) else 0
 
-    n_field_present    <- length(unique(field_rows$sample))
+    n_field_present <- length(unique(field_rows$sample))
     n_controls_present <- length(unique(control_rows$sample))
 
     # Depth-weighted rate per group: taxon reads / total sequencing depth
@@ -483,15 +513,15 @@ flag_contaminant <- function(input_df,
     # shared pool) keeps the comparison scale-free even when field and
     # control pools have very different total sequencing depth (the common
     # real case: many field samples, few small blanks).
-    taxon_field_reads   <- sum(field_rows$n_reads)
+    taxon_field_reads <- sum(field_rows$n_reads)
     taxon_control_reads <- sum(control_rows$n_reads)
-    field_rate   <- if (field_depth   > 0) taxon_field_reads   / field_depth   else 0
+    field_rate <- if (field_depth > 0) taxon_field_reads / field_depth else 0
     control_rate <- if (control_depth > 0) taxon_control_reads / control_depth else 0
 
     # Raw (un-shrunk) ratio, same structural form as the pre-Session-151
     # formula, just with depth-weighted rates in place of unweighted
     # per-sample-proportion means.
-    rate_sum  <- field_rate + control_rate
+    rate_sum <- field_rate + control_rate
     raw_score <- if (rate_sum > 0) field_rate / rate_sum else 0.5
 
     # Empirical Bayes shrinkage of the FINAL ratio toward 0.5 (maximally
@@ -516,16 +546,16 @@ flag_contaminant <- function(input_df,
     score <- w * raw_score + (1 - w) * 0.5
 
     data.frame(
-      taxon              = tx,
-      mean_prop_field    = mean_prop_field,
-      mean_prop_control  = mean_prop_control,
-      field_rate         = field_rate,
-      control_rate       = control_rate,
-      n_field_present    = n_field_present,
+      taxon = tx,
+      mean_prop_field = mean_prop_field,
+      mean_prop_control = mean_prop_control,
+      field_rate = field_rate,
+      control_rate = control_rate,
+      n_field_present = n_field_present,
       n_controls_present = n_controls_present,
-      n_controls_total   = n_controls_total,
-      n_reads_total      = n_reads_total,
-      contaminant_score  = score,
+      n_controls_total = n_controls_total,
+      n_reads_total = n_reads_total,
+      contaminant_score = score,
       stringsAsFactors = FALSE
     )
   })
