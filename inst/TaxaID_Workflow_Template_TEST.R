@@ -3,6 +3,24 @@
 # Pipeline: TaxaMatch -> TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect ->
 #           TaxaLikely -> TaxaAssign -> TaxaFlag
 #
+# ROLE (2026-09-07, structural audit --
+# ecosystem_docs/REENTRY_PROMPT_workflow_structure_audit.md): this is a
+# self-contained TEACHING example, bundling its own tiny 3-ASV fixture
+# (ASV_TABLE_test/Reads_Table below) so it runs end to end with no external
+# data files. This is a genuinely different role from
+# eDNA/PtConception/TaxaID_eDNA_Workflow_Template.R (the CANONICAL template
+# real production workflows are actually built from -- see that file if
+# you're starting a new real site workflow, not this one). Kept, not
+# retired: the audit found no functional dependents anywhere in the
+# monorepo (only historical CLAUDE.md session notes reference it by name),
+# so nothing breaks either way, but a runnable, dependency-free worked
+# example has standalone teaching value this template's own real-data
+# sibling can't provide. Brought up to date this same pass on the two
+# structural gaps the audit found universal across both templates (review
+# caching, geographic-outlier/institution review; see each one's own inline
+# comment below) -- NOT otherwise renumbered or restructured, per the
+# audit's own explicit "don't touch section numbering without separate
+# agreement" scope limit.
 # =============================================================================
 # 0.  CONFIGURATION  (edit this section only)
 # =============================================================================
@@ -243,7 +261,7 @@ contaminant_flags <- TaxaFlag::flag_contaminant(
   control_samples  = blank_ids, #unquoted
   contaminant_type = "lab_contaminant"
 )
-contaminant_ids <- contaminant_flags%>%filter(lab_contaminant_risk=="high") |>
+contaminant_ids <- contaminant_flags%>%filter(validity_flag=="invalid_lab_contaminant") |>
   pull(names(contaminant_flags)[1])
 
 decontaminated_table <-
@@ -594,6 +612,65 @@ gbif_occurrences <- dplyr::bind_rows(occ_rounds) |>
   dplyr::filter(is.na(coordinateUncertaintyInMeters) | coordinateUncertaintyInMeters <= 3000)|>
  # decimal places (counts digits after the decimal point)
   dplyr::filter(nchar(sub(".*\\.", "", as.character(decimalLatitude))) >= 2)
+
+# filter_gbif_quality() + check_geographic_outliers() + institution review
+# (backported 2026-09-07, structural audit --
+# ecosystem_docs/REENTRY_PROMPT_workflow_structure_audit.md -- this template
+# had none of the three at all, a bigger gap than the audit's original two
+# named items, found while wiring those in: every real production workflow
+# runs all three at this point in the pipeline, right after the raw GBIF
+# fetch). filter_gbif_quality() applies CoordinateCleaner's checks (equal/
+# near-zero/near-GBIF-HQ/centroid/capital coordinates, auto-removed; near-
+# institution, flagged only) and is also the source of the institution_flag
+# column the institution-review step below needs -- without it that step
+# would have nothing to act on.
+gbif_occurrences <- gbif_occurrences |>
+  TaxaFetch::filter_gbif_quality(max_coord_decimal_places = 2, max_coord_uncertainty = 3000)
+
+if (nrow(gbif_occurrences) == 0)
+  stop("No GBIF records remain after filter_gbif_quality(). Try increasing STUDY_RADIUS or relaxing YEAR_RANGE.")
+
+# Geographic-outlier check: for species with few records inside this
+# study's bbox, fetch their global GBIF distribution and flag a local
+# record that's isolated from it (e.g. a misidentified/mislabeled citizen-
+# science record far outside the species' real range). candidate_taxa
+# draws on decontaminated_table's own taxon_name (already resolved via
+# BLAST/backbone matching earlier in this template) -- the earliest
+# equivalent candidate-name list available at this point in the pipeline.
+gbif_occurrences <- TaxaFetch::check_geographic_outliers(
+  gbif_occurrences,
+  cache_dir       = file.path(OUT_DIR, "cache_gbif_global"),
+  candidate_taxa  = unique(stats::na.omit(decontaminated_table$taxon_name)),
+  candidate_scope = "genus"
+)
+n_geo_outliers <- sum(gbif_occurrences$outlier_status == "outlier")
+if (n_geo_outliers > 0) {
+  message(sprintf(
+    "  Removing %d record(s) flagged as geographic outliers (see outlier_status).",
+    n_geo_outliers
+  ))
+  gbif_occurrences <- gbif_occurrences[gbif_occurrences$outlier_status != "outlier", ]
+}
+if (nrow(gbif_occurrences) == 0)
+  stop("No GBIF records remain after the geographic-outlier check.")
+
+# Institution-proximity review: filter_gbif_quality() flags (does not
+# remove) records near a biodiversity institution. Classify by suspicion
+# tier, then review on a map -- every record starts as "keep"; nothing is
+# discarded just by running this section. This is an interactive Shiny
+# gadget (matches this template's existing precedent of calling
+# review_spatial_flags()/plot_theta_map_interactive() the same way).
+if (any(gbif_occurrences$institution_flag %in% TRUE)) {
+  gbif_occurrences <- TaxaHabitat::flag_institution_candidates(gbif_occurrences)
+  system("afplay /System/Library/Sounds/Ping.aiff", wait = FALSE)
+  gbif_occurrences <- TaxaHabitat::review_institution_flags(gbif_occurrences)
+  gbif_occurrences <- dplyr::filter(
+    gbif_occurrences,
+    is.na(institution_decision) | institution_decision != "remove"
+  )
+} else {
+  message("  No institution-flagged records -- skipping institution review.")
+}
 
 .save(gbif_occurrences, "gbif_occurrences")
 # Explicit checkpoint (not automatic) -- no file.exists()-gated auto-reload;
@@ -1287,6 +1364,11 @@ reviewed_assignments <- TaxaFlag::review_assignments(
   taxon_rank_col   = "consensus_rank",
   irreducible_only = TRUE,
   context          = REVIEW_CONTEXT,
+  # Persistent, keyed-on-everything-that-can-move-a-verdict cache (2026-09-04,
+  # TaxaID/CLAUDE.md), backported here 2026-09-07 (structural audit) -- every
+  # real production workflow has this; without it a review is not
+  # reproducible across re-runs on identical input.
+  cache_dir        = file.path(OUT_DIR, paste0(OUT_PREFIX, "_review_assignments_cache")),
   llm_fn           = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api)
 )
 .save(reviewed_assignments, "reviewed_assignments")
