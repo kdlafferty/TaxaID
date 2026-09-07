@@ -28,9 +28,11 @@ is already guaranteed prior-free by
 Each weight is reported against the dilution threshold: with the curve
 pricing's \code{theta_present} at the singleton scale, a weight above
 \code{~0.11} starts materially diluting a singleton-level observed
-native's posterior share at likelihood parity (the outright veto bound is
-unreachable for any \code{w <= 1} -- \code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}} prints
-the dataset-specific value).
+native's posterior share at likelihood parity. The outright veto bound is
+unreachable for any \code{w <= 1} under curve pricing -- which is why
+\code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}} stopped printing one for that mode
+(2026-09-05); it still prints a real, dataset-specific bound under
+\code{pricing = "blend"}.
 }
 \seealso{
 \code{\link[=generate_presence_curve_evidence]{generate_presence_curve_evidence()}},

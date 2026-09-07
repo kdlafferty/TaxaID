@@ -399,7 +399,30 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   W_mat <- k_conv[[1L]]
   W_mat[W_mat < 0] <- 0     # guard against FFT round-off noise at ~0
   S2_mat[S2_mat < 0] <- 0
-  n_eff_mat <- ifelse(W_mat > .Machine$double.eps, W_mat^2 / S2_mat, 0)
+  # FFT round-off noise scales with the LARGEST value in the transform, not with
+  # .Machine$double.eps, so a lattice point whose true kernel weight underflows
+  # to zero (far from every record) comes back as a small POSITIVE number the
+  # negative clamps above cannot catch -- and W and S2 carry INDEPENDENT noise,
+  # so n_eff = W^2/S2 there is an arbitrary ratio rather than a small number.
+  # Real consequence, measured on a two-cluster lattice: 2,817 of 16,384 points
+  # returned n_eff = Inf (and theta = NaN), and because that Inf becomes
+  # max(n_eff), alpha_by_n_eff faded the ENTIRE surface to fully transparent --
+  # a blank map. Points below a relative tolerance (1e-12 of the peak weight,
+  # i.e. ~28 bandwidths out, where a record carries no meaningful weight
+  # anyway) are therefore treated as genuinely unsupported: n_eff = 0, and
+  # theta falls back to the regional composition p_i, the correct limit for a
+  # point with no records near it. The test is applied to W and S2 separately
+  # because S2 decays TWICE as fast (exp(-2d/lambda)) and so reaches its own
+  # noise floor first: the band where W is still real but S2 is not produced
+  # finite-but-impossible n_eff values in the same test (5,565 from 800
+  # records, where Kish's n_eff is bounded above by the record count). Those
+  # points sit ~18+ bandwidths out, where the true n_eff is ~1 and theta is the
+  # back-off p_i to many decimal places either way.
+  no_support <- !(W_mat > max(W_mat) * 1e-12) |
+    !(S2_mat > max(S2_mat) * 1e-12)
+  W_mat[no_support] <- 0
+  S2_mat[no_support] <- 0
+  n_eff_mat <- ifelse(no_support, 0, W_mat^2 / S2_mat)
 
   theta_list <- stats::setNames(vector("list", length(taxon)), taxon)
   for (ti in seq_along(taxon)) {
@@ -447,7 +470,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   c(lat_min = lat_min, lat_max = lat_max, lon_min = lon_min, lon_max = lon_max)
 }
 
-#' A regular axis of n points spanning at least [min_v, max_v], anchored so
+#' A regular axis of n points spanning at least min_v to max_v, anchored so
 #' that `anchor` (the site coordinate) lands EXACTLY on one lattice node --
 #' this is what makes the site-identity invariant hold to near machine
 #' precision, independent of n_grid.
@@ -750,19 +773,6 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   mat[ds$i_keep, ds$j_keep, drop = FALSE]
 }
 
-#' Point-in-polygon mask for a theta surface
-#'
-#' `mask` is deliberately a PARAMETER, not built-in geometry: the right mask
-#' (a lake outline, a bay, a survey boundary) is application-specific, and a
-#' package-level default would be wrong for most deployments. Cells whose
-#' centres fall outside the mask become `NA` in every surface matrix, so they
-#' render transparent and drop out of summaries alike.
-#'
-#' Accepts an `sf`/`sfc` polygon (when `sf` is installed) or a plain
-#' two-column lon/lat matrix/data frame -- or a list of such matrices, in
-#' which case a cell is kept if it falls inside ANY of them (islands,
-#' multi-basin masks).
-#' @noRd
 #' Convert a WKT POLYGON/MULTIPOLYGON string to lon/lat polygon matrices
 #'
 #' Uses `sf` when available, which handles interior rings (holes) and
@@ -807,7 +817,19 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   list(m)
 }
 
-
+#' Point-in-polygon mask for a theta surface
+#'
+#' `mask` is deliberately a PARAMETER, not built-in geometry: the right mask
+#' (a lake outline, a bay, a survey boundary) is application-specific, and a
+#' package-level default would be wrong for most deployments. Cells whose
+#' centres fall outside the mask become `NA` in every surface matrix, so they
+#' render transparent and drop out of summaries alike.
+#'
+#' Accepts a WKT `POLYGON`/`MULTIPOLYGON` string, an `sf`/`sfc` polygon (when
+#' `sf` is installed), or a plain two-column lon/lat matrix/data frame -- or a
+#' list of such matrices, in which case a cell is kept if it falls inside ANY
+#' of them (islands, multi-basin masks).
+#' @noRd
 .theta_surface_apply_mask <- function(surf, mask) {
   lat_v <- rep(surf$lat_grid, times = length(surf$lon_grid))
   lon_v <- rep(surf$lon_grid, each = length(surf$lat_grid))

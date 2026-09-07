@@ -69,8 +69,12 @@ budget's dependence on that boundary from every other modelling choice.
 \code{chao_missing} is \verb{f1^2 / (2 f2)}, so it is quadratic in \code{f1} and inverse in
 \code{f2}. With \code{f2} in single digits -- the usual case for anything but the
 largest group -- one doubleton entering or leaving the neighborhood moves
-the estimate by tens of percent, and \code{theta_present = missing_mass / chao_missing} inherits all of it. The \code{f2_min} column of \verb{$summary} is the
-number to look at first.
+the estimate by tens of percent. The \code{f2_min} column of \verb{$summary} is the
+number to look at first for that figure. \code{theta_present} is priced from
+\code{missing_mass / f1} (2026-09-05, open decision #1 of the kernel budget/
+pricing re-entry doc, resolved), so it no longer inherits \code{f2}'s
+instability -- but it still moves with the counting radius through \code{f1} and
+\code{missing_mass} themselves, which is what \code{theta_present_spread} reports.
 
 The sweep calls \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} itself rather than recomputing
 the statistics from the fit, so the numbers reported here cannot drift from

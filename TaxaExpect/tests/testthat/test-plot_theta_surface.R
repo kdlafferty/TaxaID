@@ -215,6 +215,38 @@ test_that("a bbox with no nearby records returns gracefully (W = 0, no error)", 
               tolerance = 1e-9, ignore_attr = TRUE)
 })
 
+test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-07)", {
+  # Two tight clusters far apart with a small lambda leaves most of the lattice
+  # far outside every record's support, where the true kernel weight underflows
+  # to zero and the FFT returns independent round-off noise for W and S2.
+  # Before the guard, W^2/S2 there returned Inf (theta NaN) at 2,817 of 16,384
+  # points -- and because that Inf became max(n_eff), alpha_by_n_eff faded the
+  # WHOLE map to transparent. Also asserts Kish's own upper bound: n_eff can
+  # never exceed the number of records.
+  set.seed(2)
+  n <- 400
+  occ <- .mk_occ(rep(c("A", "B"), each = n),
+                 lat = c(34 + stats::rnorm(n, 0, 0.05), 38 + stats::rnorm(n, 0, 0.05)),
+                 lon = c(-119 + stats::rnorm(n, 0, 0.05), -123 + stats::rnorm(n, 0, 0.05)))
+  surf <- .eng(occ, 34, -119, lambda_km = 5, m = 1, taxon = "A", n_grid = 128L)
+
+  expect_true(all(is.finite(surf$n_eff)))
+  expect_true(all(is.finite(surf$theta)))
+  expect_lte(max(surf$n_eff), nrow(occ))
+  # An unsupported point backs off entirely to the regional composition.
+  expect_equal(surf$theta[1L, 1L], unname(surf$regional_composition["A"]),
+               tolerance = 1e-9)
+  # ... and the raster is not uniformly transparent (the visible symptom).
+  ras <- TaxaExpect:::.theta_surface_raster(surf$theta, surf$n_eff, TRUE, NULL)
+  expect_true(any(substr(as.character(ras), 8L, 9L) != "00"))
+
+  # The site itself is untouched by the guard.
+  kp <- estimate_kernel_priors(occ, 34, -119, "Marine", lambda_km = 5, m = 1)
+  i0 <- .nearest_idx(surf$lat_grid, 34); j0 <- .nearest_idx(surf$lon_grid, -119)
+  expect_equal(surf$theta[i0, j0],
+               kp$priors$theta_mean[kp$priors$taxon_name == "A"], tolerance = 1e-2)
+})
+
 # ------------------------------------------------------------------------------
 # Public wrapper: validation, class, plot object
 # ------------------------------------------------------------------------------

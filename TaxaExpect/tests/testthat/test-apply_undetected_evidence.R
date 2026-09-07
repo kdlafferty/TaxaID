@@ -513,7 +513,7 @@ test_that("blend pricing is byte-identical with the pricing param defaulted", {
 # diagnostic found on real data, not invented ones.
 # ==============================================================================
 
-.make_grouped_kernel_fit <- function() {
+.make_grouped_kernel_fit_data <- function() {
   set.seed(11)
   # fish: well supported, several singletons and doubletons -> qualifies.
   fish_common <- do.call(rbind, lapply(1:8, function(i) data.frame(
@@ -557,9 +557,12 @@ test_that("blend pricing is byte-identical with the pricing param defaulted", {
     decimalLongitude = -119 + rnorm(1, 0, 0.02),
     main_habitat = "Marine", sampling_group = "inverts",
     stringsAsFactors = FALSE)))
-  occ <- rbind(fish_common, fish_rare, fish_double, inv_common, inv_rare, plants)
+  rbind(fish_common, fish_rare, fish_double, inv_common, inv_rare, plants)
+}
+
+.make_grouped_kernel_fit <- function() {
   suppressWarnings(estimate_kernel_priors(
-    occ, 34, -119, "Marine", lambda_km = 25, m = 1,
+    .make_grouped_kernel_fit_data(), 34, -119, "Marine", lambda_km = 25, m = 1,
     sampling_group_col = "sampling_group"))
 }
 
@@ -751,6 +754,23 @@ test_that("the per-group budget table is printed with the price adopted for each
   expect_true(any(grepl("PER-GROUP curve pricing", msgs)))
   expect_true(any(grepl("price_used", msgs)))
   expect_true(any(grepl("basis", msgs)))
+})
+
+test_that("the per-group printout names the fit's OWN grouping column (2026-09-07)", {
+  # The column name has to be captured BEFORE model_obj is replaced by the
+  # GLMM-compat stub -- reading it at the printout got the stub's NULL, so
+  # every grouped fit printed the literal default "sampling_group" regardless
+  # of what its own column was called.
+  occ <- .make_grouped_kernel_fit_data()
+  names(occ)[names(occ) == "sampling_group"] <- "detection_process"
+  kp <- suppressWarnings(estimate_kernel_priors(
+    occ, 34, -119, "Marine", lambda_km = 25, m = 1,
+    sampling_group_col = "detection_process"))
+  fx <- .grouped_priors_and_evidence(kp)
+  msgs <- capture_messages(apply_undetected_evidence(
+    fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"))
+  expect_true(any(grepl("'detection_process'", msgs, fixed = TRUE)))
 })
 
 test_that("blend mode gains no group columns", {

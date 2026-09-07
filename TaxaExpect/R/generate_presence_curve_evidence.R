@@ -135,9 +135,11 @@ generate_presence_curve_evidence <- function(taxon_names,
 #' Each weight is reported against the dilution threshold: with the curve
 #' pricing's \code{theta_present} at the singleton scale, a weight above
 #' \code{~0.11} starts materially diluting a singleton-level observed
-#' native's posterior share at likelihood parity (the outright veto bound is
-#' unreachable for any \code{w <= 1} -- [apply_undetected_evidence()] prints
-#' the dataset-specific value).
+#' native's posterior share at likelihood parity. The outright veto bound is
+#' unreachable for any \code{w <= 1} under curve pricing -- which is why
+#' [apply_undetected_evidence()] stopped printing one for that mode
+#' (2026-09-05); it still prints a real, dataset-specific bound under
+#' \code{pricing = "blend"}.
 #'
 #' @param taxon_weights Named numeric vector: names are species, values are
 #'   presence probabilities in (0, 1].
@@ -164,7 +166,8 @@ generate_user_specified_evidence <- function(taxon_weights, p_conc = 1) {
   # Dilution threshold: at likelihood parity a native singleton keeps >= 90%
   # of the two-way posterior share while theta_e <= theta_s/9; with
   # theta_present ~ the singleton scale that is w <= 1/9. (The outright veto
-  # bound, w > ~19-23, is unreachable -- the applier prints the exact value.)
+  # bound, w > ~19, is unreachable for any admissible weight, which is why the
+  # applier no longer prints one under curve pricing -- see its own roxygen.)
   dilution <- 1 / 9
   high <- taxon_weights[taxon_weights > dilution]
   if (length(high) > 0L) {

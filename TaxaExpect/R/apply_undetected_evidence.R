@@ -392,6 +392,11 @@ apply_undetected_evidence <- function(
   # has to be taken before that point.
   kernel_f1 <- NA_integer_
   kernel_f2 <- NA_integer_
+  # Same reason: the per-group printout below names the column the fit's groups
+  # came from, and reading it off `model_obj` at that point silently gets the
+  # stub's NULL (so every grouped fit printed the literal default
+  # "sampling_group", whatever its own column was actually called).
+  kernel_group_col <- NA_character_
   # Per-group curve pricing state. NULL = single-group (or blend) pricing, i.e.
   # the pre-2026-09-04 path, byte-for-byte. The guards below police BORROWING
   # BETWEEN GROUPS, which only exists once there is more than one group -- a
@@ -408,6 +413,7 @@ apply_undetected_evidence <- function(
     kernel_theta_present <- model_obj$theta_present %||% NA_real_
     kernel_f1 <- model_obj$f1 %||% NA_integer_
     kernel_f2 <- model_obj$f2 %||% NA_integer_
+    kernel_group_col <- model_obj$params$sampling_group_col %||% NA_character_
     if (pricing == "curve" && (model_obj$params$n_sampling_groups %||% 1L) > 1L) {
       curve_groups <- .resolve_group_prices(
         model_obj, min_group_n_eff, min_group_f1, group_fallback)
@@ -664,7 +670,7 @@ apply_undetected_evidence <- function(
       stringsAsFactors = FALSE)
     message(sprintf(
       "apply_undetected_evidence: PER-GROUP curve pricing across %d sampling groups ('%s'); %d clear the guards (n_eff >= %g, f1 >= %g).",
-      nrow(b), model_obj$params$sampling_group_col %||% "sampling_group",
+      nrow(b), if (is.na(kernel_group_col)) "sampling_group" else kernel_group_col,
       curve_groups$n_qualifying, min_group_n_eff, min_group_f1))
     message(paste(utils::capture.output(print(tab, row.names = FALSE)),
                   collapse = "\n"))

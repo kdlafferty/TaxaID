@@ -36,9 +36,12 @@
 #' `chao_missing` is `f1^2 / (2 f2)`, so it is quadratic in `f1` and inverse in
 #' `f2`. With `f2` in single digits -- the usual case for anything but the
 #' largest group -- one doubleton entering or leaving the neighborhood moves
-#' the estimate by tens of percent, and `theta_present = missing_mass /
-#' chao_missing` inherits all of it. The `f2_min` column of `$summary` is the
-#' number to look at first.
+#' the estimate by tens of percent. The `f2_min` column of `$summary` is the
+#' number to look at first for that figure. `theta_present` is priced from
+#' `missing_mass / f1` (2026-09-05, open decision #1 of the kernel budget/
+#' pricing re-entry doc, resolved), so it no longer inherits `f2`'s
+#' instability -- but it still moves with the counting radius through `f1` and
+#' `missing_mass` themselves, which is what `theta_present_spread` reports.
 #'
 #' The sweep calls [estimate_kernel_priors()] itself rather than recomputing
 #' the statistics from the fit, so the numbers reported here cannot drift from
@@ -229,6 +232,6 @@ print.taxaexpect_kernel_budget_sensitivity <- function(x, ...) {
       paste(utils::head(ifelse(is.na(thin$sampling_group), "(pooled)",
                                thin$sampling_group), 4L), collapse = ", ")))
   if (any(s$n_unpriced > 0L))
-    cat("  NOTE: some settings leave a group with no defined theta_present (f1 = 0,\n        or f1 = 1 with f2 = 0, where Chao's fallback returns 0).\n")
+    cat("  NOTE: some settings leave a group with no defined theta_present (f1 = 0 --\n        no singleton anchor at that counting radius).\n")
   invisible(x)
 }
