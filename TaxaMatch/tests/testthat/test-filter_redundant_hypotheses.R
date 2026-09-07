@@ -181,3 +181,46 @@ test_that("stops if rank_system is empty", {
   expect_error(filter_redundant_hypotheses(df, rank_system = character(0)),
                "non-empty character vector")
 })
+
+# ---------------------------------------------------------------------------
+# Missing-column warning: only a load-bearing (non-finest) gap should warn
+# (2026-09-07 -- found via TaxaAssign::join_priors()'s own call, whose
+# `likelihoods` input never carries a literal "species" column even when
+# "species" is the finest entry in rank_system)
+# ---------------------------------------------------------------------------
+
+test_that("no warning when only rank_system's own finest entry lacks a column", {
+  # "species" is the finest entry in .ro but has no column here -- provably
+  # inert (nothing is ever finer than species, so no row can be superseded
+  # by it, and no coarser row's own comparison ever needs it).
+  df <- data.frame(
+    observation_id       = c("S1", "S1"),
+    kingdom         = "Eukaryota",
+    family          = c("Gobiidae", "Gobiidae"),
+    genus           = c("Gobius", "Acanthogobius"),
+    taxon_name_rank = c("genus", "genus"),
+    score           = c(95, 88),
+    stringsAsFactors = FALSE
+  )
+  expect_no_warning(out <- filter_redundant_hypotheses(df, rank_system = .ro))
+  expect_equal(nrow(out), 2L)
+})
+
+test_that("still warns when a genuinely load-bearing (non-finest) column is missing", {
+  # "family" is missing here, and family IS needed as a coarser-or-equal
+  # comparison column for any genus-rank redundancy check -- a real gap,
+  # not the finest-rank false positive the fix above closes.
+  df <- data.frame(
+    observation_id       = c("S1", "S1"),
+    kingdom         = "Eukaryota",
+    genus           = c("Gobius", "Gobius"),
+    species         = c("Gobius paganellus", NA),
+    taxon_name_rank = c("species", "genus"),
+    score           = c(99, 95),
+    stringsAsFactors = FALSE
+  )
+  expect_warning(
+    filter_redundant_hypotheses(df, rank_system = .ro),
+    "family"
+  )
+})

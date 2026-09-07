@@ -1,6 +1,40 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-05, seventh pass (Sonnet 5, branch kernel-priors -- E1's screening-
+# Last updated: 2026-09-07 (Sonnet 5 -- real, ecosystem-wide false-positive warning found
+# and fixed in `filter_redundant_hypotheses()`, while investigating a warning surfaced by
+# the newly-unblocked PtConception 18S fast smoke test (diagnostics/fast_workflows/
+# run_ptcon18s_fast_smoketest.R). `TaxaAssign::join_priors()`'s internal call to this
+# function warned `"rank_system name(s) not found as a column in match_df: species"`
+# whenever `rank_system` included "species" but the input (TaxaLikely::
+# evaluate_likelihoods()'s output, which by documented design only ever carries
+# taxon_name/taxon_name_rank forward) had no literal `species` column -- true of every real
+# single-marker production workflow's own `join_priors()` call, so this fired on every real
+# run, previously unnoticed (nobody had looked closely at a warning that didn't visibly
+# break anything).
+#
+# Traced the exact redundancy-comparison loop rather than assuming the warning was
+# meaningful: `rank_system`'s own FINEST entry (here, "species") is providably never
+# consulted as a comparison column anywhere in the algorithm -- a row AT the finest rank is
+# always skipped before its own column would matter (nothing is finer, so it can never be
+# superseded by anything), and no coarser row's own `cols_to_check` can reach it either,
+# since its position in `rank_system` is always last. A missing column for it is therefore
+# 100% inert to the function's actual output -- a genuine false positive, not a symptom of
+# a real functional gap. Fixed by excluding `rank_system`'s own last element from the
+# "must have a matching column" check in `filter_redundant_hypotheses()`
+# (R/standardize_match_data.R) -- a genuinely load-bearing missing COARSER column (e.g.
+# "family" absent while "genus"/"species" are both present) still warns correctly,
+# confirmed by a new regression test alongside the false-positive-suppression one.
+#
+# 2 new tests in test-filter_redundant_hypotheses.R (both the newly-quiet finest-rank case
+# and the still-genuinely-load-bearing coarser-rank case). `devtools::test()` 1370/0 (up
+# from 1368; 1 pre-existing unrelated warning in test-convert_taxonomy_backbone.R:931,
+# untouched), `devtools::check()` 0/0/0, reinstalled and live-verified: re-ran the real
+# 18S fast smoke test post-reinstall, confirmed the warning is gone and output is otherwise
+# byte-identical (813 rows joined, `irreducible_consensus` 82/112 unchanged) -- a pure
+# warning-suppression fix, zero behavioral change, exactly as the trace predicted. See
+# `diagnostics/fast_workflows/README.md`'s own updated finding for the full record.
+#
+# Previous update, 2026-09-05, seventh pass (Sonnet 5, branch kernel-priors -- E1's screening-
 # scope doctrine (fable_ecosystem_review_2026-09-05.md) promoted from an informal practice
 # to documented default: new `@section Scoping a large marker's screen (2026-09-05)` on
 # `evaluate_reference_accessions()`'s own roxygen, naming `match_driving_accessions()` +

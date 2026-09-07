@@ -321,11 +321,28 @@ filter_redundant_hypotheses <- function(
       "lowercases column names to match the default rank_system), or ",
       "rank_system contains a typo."
     )
-  } else if (length(rank_cols_present) < length(rank_system)) {
-    warning(sprintf(
-      "filter_redundant_hypotheses: rank_system name(s) not found as a column in match_df (check for typos): %s",
-      paste(setdiff(rank_system, rank_cols_present), collapse = ", ")
-    ))
+  } else {
+    # `rank_system`'s own FINEST (last) entry is never consulted as a
+    # "coarser-or-equal" comparison column for any row's redundancy check: a
+    # row AT that rank is always skipped before its own column would be
+    # needed (nothing is finer, so it can never be superseded), and no
+    # coarser row's own comparison columns can include it either, since its
+    # position in `rank_system` is always last. A missing column for it is
+    # therefore provably inert -- confirmed 2026-09-07 tracing the exact
+    # comparison loop below, after this warning fired on every real
+    # TaxaAssign::join_priors() call whose `likelihoods` input was
+    # TaxaLikely::evaluate_likelihoods() output (which carries only
+    # taxon_name/taxon_name_rank forward by documented design, never a
+    # literal "species" column, even though "species" is routinely the
+    # finest entry callers pass). Only a genuinely load-bearing (non-finest)
+    # missing column is worth warning about.
+    load_bearing_missing <- setdiff(rank_system[-length(rank_system)], rank_cols_present)
+    if (length(load_bearing_missing) > 0L) {
+      warning(sprintf(
+        "filter_redundant_hypotheses: rank_system name(s) not found as a column in match_df (check for typos): %s",
+        paste(load_bearing_missing, collapse = ", ")
+      ))
+    }
   }
 
   # --- assign numeric rank scores ---------------------------------------------
