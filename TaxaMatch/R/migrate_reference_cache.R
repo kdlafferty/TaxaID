@@ -66,22 +66,29 @@
 migrate_reference_cache <- function(cache_dir, to_key = NULL, from_key = NULL,
                                     verbose = TRUE) {
   if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir) ||
-      !dir.exists(cache_dir))
+    !dir.exists(cache_dir)) {
     stop("cache_dir must be an existing directory.", call. = FALSE)
+  }
   if (is.null(to_key)) to_key <- .default_params_key()
-  if (!is.character(to_key) || length(to_key) != 1L || is.na(to_key) || !nzchar(to_key))
+  if (!is.character(to_key) || length(to_key) != 1L || is.na(to_key) || !nzchar(to_key)) {
     stop("to_key must be NULL or a single non-empty string.", call. = FALSE)
-  if (!is.null(from_key) && (!is.character(from_key) || length(from_key) == 0L))
+  }
+  if (!is.null(from_key) && (!is.character(from_key) || length(from_key) == 0L)) {
     stop("from_key must be NULL or a character vector of params_key values.", call. = FALSE)
+  }
 
   path <- file.path(cache_dir, "reference_accession_cache.rds")
-  if (!file.exists(path))
+  if (!file.exists(path)) {
     stop(sprintf("No reference_accession_cache.rds in %s -- nothing to migrate.", cache_dir),
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   cache <- readRDS(path)
-  if (!is.data.frame(cache) || !all(c("accession", "hierarchy_flag", "params_key") %in% names(cache)))
+  if (!is.data.frame(cache) || !all(c("accession", "hierarchy_flag", "params_key") %in% names(cache))) {
     stop("The cache file is not an evaluate_reference_accessions() cache (needs accession, hierarchy_flag, params_key).",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   to_version <- sub("^.*[|]", "", to_key)
   backup_suffix <- paste0(".bak_pre_", to_version)
@@ -89,8 +96,10 @@ migrate_reference_cache <- function(cache_dir, to_key = NULL, from_key = NULL,
   if (!file.exists(backup_path)) {
     file.copy(path, backup_path, overwrite = FALSE)
   } else if (verbose) {
-    message(sprintf("migrate_reference_cache(): backup %s already exists -- not overwritten.",
-                    basename(backup_path)))
+    message(sprintf(
+      "migrate_reference_cache(): backup %s already exists -- not overwritten.",
+      basename(backup_path)
+    ))
   }
 
   is_from <- if (is.null(from_key)) {
@@ -133,8 +142,13 @@ migrate_reference_cache <- function(cache_dir, to_key = NULL, from_key = NULL,
     message(sprintf(
       "migrate_reference_cache(): %s\n  to_key: %s\n  %d 'congruent' row(s) carried forward to the new key (migrated_from stamped)\n  %d row(s) left under the old key to re-evaluate on the next call%s\n  %d row(s) were already current; %d pair-cache row(s) carried forward\n  backup: %s",
       path, to_key, sum(carry), sum(left),
-      if (any(left)) paste0(" (", paste(sprintf("%s=%d", names(left_by_flag), as.integer(left_by_flag)),
-                                        collapse = ", "), ")") else "",
+      if (any(left)) {
+        paste0(" (", paste(sprintf("%s=%d", names(left_by_flag), as.integer(left_by_flag)),
+          collapse = ", "
+        ), ")")
+      } else {
+        ""
+      },
       n_current, n_pairs_carried, backup_path
     ))
   }

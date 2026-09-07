@@ -165,7 +165,7 @@
 #' # Long-format Animl output (one row per image x candidate)
 #' tmp <- tempfile(fileext = ".csv")
 #' write.csv(data.frame(
-#'   FileName   = c("img001.jpg", "img001.jpg", "img002.jpg"),
+#'   FileName = c("img001.jpg", "img001.jpg", "img002.jpg"),
 #'   prediction = c("Odocoileus virginianus", "Cervus canadensis", "empty"),
 #'   confidence = c(0.93, 0.05, 0.99),
 #'   stringsAsFactors = FALSE
@@ -175,15 +175,14 @@
 #' head(result)
 #' unlink(tmp)
 read_animl_output <- function(files,
-                               file_col        = "FileName",
-                               species_col     = "prediction",
-                               score_col       = "confidence",
-                               common_name_col = NULL,
-                               n_candidates    = NULL,
-                               min_confidence  = 0,
-                               top_n           = NULL,
-                               bbox_cols       = NULL) {
-
+                              file_col = "FileName",
+                              species_col = "prediction",
+                              score_col = "confidence",
+                              common_name_col = NULL,
+                              n_candidates = NULL,
+                              min_confidence = 0,
+                              top_n = NULL,
+                              bbox_cols = NULL) {
   # ---- validate inputs -------------------------------------------------------
   if (!is.character(files) || length(files) == 0L) {
     stop(
@@ -191,38 +190,47 @@ read_animl_output <- function(files,
       "file paths or a single directory path."
     )
   }
-  if (!is.character(file_col) || length(file_col) != 1L)
+  if (!is.character(file_col) || length(file_col) != 1L) {
     stop("read_animl_output: 'file_col' must be a length-1 character string.")
-  if (!is.character(species_col) || length(species_col) != 1L)
+  }
+  if (!is.character(species_col) || length(species_col) != 1L) {
     stop("read_animl_output: 'species_col' must be a length-1 character string.")
-  if (!is.character(score_col) || length(score_col) != 1L)
+  }
+  if (!is.character(score_col) || length(score_col) != 1L) {
     stop("read_animl_output: 'score_col' must be a length-1 character string.")
+  }
   if (!is.null(common_name_col) &&
-      (!is.character(common_name_col) || length(common_name_col) != 1L))
+    (!is.character(common_name_col) || length(common_name_col) != 1L)) {
     stop("read_animl_output: 'common_name_col' must be a length-1 character string or NULL.")
+  }
   if (!is.null(n_candidates)) {
     n_candidates <- as.integer(n_candidates)
-    if (is.na(n_candidates) || n_candidates < 1L)
+    if (is.na(n_candidates) || n_candidates < 1L) {
       stop("read_animl_output: 'n_candidates' must be a positive integer or NULL.")
+    }
   }
   top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_animl_output")
   if (!is.null(bbox_cols)) {
-    if (!is.character(bbox_cols) || length(bbox_cols) != 2L)
+    if (!is.character(bbox_cols) || length(bbox_cols) != 2L) {
       stop("read_animl_output: 'bbox_cols' must be a length-2 character vector, e.g. c(w = 'bbox_w', h = 'bbox_h').")
+    }
   }
 
   # ---- resolve directory vs file list ----------------------------------------
   if (length(files) == 1L && dir.exists(files)) {
-    files <- list.files(files, pattern = "\\.csv$",
-                        full.names = TRUE, recursive = FALSE,
-                        ignore.case = TRUE)
+    files <- list.files(files,
+      pattern = "\\.csv$",
+      full.names = TRUE, recursive = FALSE,
+      ignore.case = TRUE
+    )
     if (length(files) == 0L) {
       stop("read_animl_output: no *.csv files found in directory.")
     }
   } else {
     missing_files <- files[!file.exists(files)]
-    if (length(missing_files) > 0L)
+    if (length(missing_files) > 0L) {
       .stop_missing_files(missing_files, "read_animl_output")
+    }
   }
 
   # ---- read each file --------------------------------------------------------
@@ -260,14 +268,15 @@ read_animl_output <- function(files,
 #' @return Data frame with canonical match columns.
 #' @noRd
 .parse_animl_file <- function(f, file_col, species_col, score_col,
-                               common_name_col, n_candidates,
-                               bbox_cols = NULL) {
-
+                              common_name_col, n_candidates,
+                              bbox_cols = NULL) {
   animl_df <- tryCatch(
     utils::read.csv(f, check.names = FALSE, stringsAsFactors = FALSE),
     error = function(e) {
-      stop(sprintf("read_animl_output: could not read '%s': %s",
-                   basename(f), conditionMessage(e)))
+      stop(sprintf(
+        "read_animl_output: could not read '%s': %s",
+        basename(f), conditionMessage(e)
+      ))
     }
   )
 
@@ -284,13 +293,15 @@ read_animl_output <- function(files,
 
   # ---- wide vs long ----------------------------------------------------------
   if (!is.null(n_candidates)) {
-    animl_df <- .pivot_wide_animl(animl_df, f, file_col, species_col, score_col,
-                             common_name_col, n_candidates)
+    animl_df <- .pivot_wide_animl(
+      animl_df, f, file_col, species_col, score_col,
+      common_name_col, n_candidates
+    )
     # After pivot, columns are named "file_col", "species_col", "score_col",
     # "common_name_col" with the actual column values renamed to standard names
     # below.
-    species_actual     <- ".animl_species"
-    score_actual       <- ".animl_score"
+    species_actual <- ".animl_species"
+    score_actual <- ".animl_score"
     common_name_actual <- ".animl_common_name"
   } else {
     # Long format: columns must exist directly
@@ -308,11 +319,14 @@ read_animl_output <- function(files,
         basename(f), paste(missing_cols, collapse = ", ")
       ))
     }
-    species_actual     <- species_col
-    score_actual       <- score_col
+    species_actual <- species_col
+    score_actual <- score_col
     common_name_actual <- if (!is.null(common_name_col) &&
-                               common_name_col %in% names(animl_df))
-      common_name_col else NULL
+      common_name_col %in% names(animl_df)) {
+      common_name_col
+    } else {
+      NULL
+    }
   }
 
   if (nrow(animl_df) == 0L) {
@@ -325,13 +339,16 @@ read_animl_output <- function(files,
   # ---- build observation_id from image filename stem -------------------------
   img_paths <- trimws(as.character(animl_df[[file_col]]))
   # Strip all extensions (handles .jpg, .JPG, .tif, .tiff, etc.)
-  img_stem  <- tools::file_path_sans_ext(basename(img_paths))
+  img_stem <- tools::file_path_sans_ext(basename(img_paths))
   .warn_duplicate_basenames(img_paths, "read_animl_output")
 
   species_vals <- trimws(as.character(animl_df[[species_actual]]))
-  score_vals   <- suppressWarnings(as.numeric(animl_df[[score_actual]]))
-  common_vals  <- if (!is.null(common_name_actual))
-    trimws(as.character(animl_df[[common_name_actual]])) else rep(NA_character_, nrow(animl_df))
+  score_vals <- suppressWarnings(as.numeric(animl_df[[score_actual]]))
+  common_vals <- if (!is.null(common_name_actual)) {
+    trimws(as.character(animl_df[[common_name_actual]]))
+  } else {
+    rep(NA_character_, nrow(animl_df))
+  }
 
   genus_vals <- .extract_genus(species_vals)
 
@@ -340,10 +357,16 @@ read_animl_output <- function(files,
   # detection crop (0-1).  A small fraction = distant/partial animal = weaker
   # classification evidence.  Analogous to BLAST qcovs for DNA sequences.
   coverage_vals <- if (!is.null(bbox_cols)) {
-    w_col <- if (!is.null(names(bbox_cols)) && "w" %in% names(bbox_cols))
-      bbox_cols[["w"]] else bbox_cols[[1L]]
-    h_col <- if (!is.null(names(bbox_cols)) && "h" %in% names(bbox_cols))
-      bbox_cols[["h"]] else bbox_cols[[2L]]
+    w_col <- if (!is.null(names(bbox_cols)) && "w" %in% names(bbox_cols)) {
+      bbox_cols[["w"]]
+    } else {
+      bbox_cols[[1L]]
+    }
+    h_col <- if (!is.null(names(bbox_cols)) && "h" %in% names(bbox_cols)) {
+      bbox_cols[["h"]]
+    } else {
+      bbox_cols[[2L]]
+    }
     if (!w_col %in% names(animl_df) || !h_col %in% names(animl_df)) {
       warning(sprintf(
         "read_animl_output: bbox_cols '%s'/'%s' not found in '%s'; coverage set to NA.",
@@ -359,11 +382,11 @@ read_animl_output <- function(files,
 
   out_df <- data.frame(
     observation_id = img_stem,
-    score          = score_vals,
-    species        = species_vals,
-    genus          = genus_vals,
-    common_name    = common_vals,
-    source_file    = basename(f),
+    score = score_vals,
+    species = species_vals,
+    genus = genus_vals,
+    common_name = common_vals,
+    source_file = basename(f),
     stringsAsFactors = FALSE
   )
   if (!is.null(coverage_vals)) out_df$coverage <- coverage_vals
@@ -378,13 +401,12 @@ read_animl_output <- function(files,
 #' Pivot wide Animl format (pred1/score1 ... predN/scoreN) to long format
 #' @noRd
 .pivot_wide_animl <- function(animl_df, f, file_col, species_prefix, score_prefix,
-                               common_name_col, n_candidates) {
-
+                              common_name_col, n_candidates) {
   # Build expected column names
-  pred_cols  <- paste0(species_prefix, seq_len(n_candidates))
-  score_cols <- paste0(score_prefix,   seq_len(n_candidates))
+  pred_cols <- paste0(species_prefix, seq_len(n_candidates))
+  score_cols <- paste0(score_prefix, seq_len(n_candidates))
 
-  missing_pred  <- setdiff(pred_cols,  names(animl_df))
+  missing_pred <- setdiff(pred_cols, names(animl_df))
   missing_score <- setdiff(score_cols, names(animl_df))
   if (length(missing_pred) > 0L || length(missing_score) > 0L) {
     stop(sprintf(
@@ -400,7 +422,7 @@ read_animl_output <- function(files,
   }
 
   # Pivot: replicate each row n_candidates times
-  n_rows  <- nrow(animl_df)
+  n_rows <- nrow(animl_df)
   indices <- rep(seq_len(n_rows), times = n_candidates)
 
   long <- animl_df[indices, , drop = FALSE]
@@ -536,29 +558,33 @@ read_animl_output <- function(files,
 #' head(result)
 #' unlink(tmp)
 read_inaturalist_cv_output <- function(files,
-                                        score_type     = c("combined_score", "score"),
-                                        min_confidence = 0,
-                                        top_n          = NULL) {
-
+                                       score_type = c("combined_score", "score"),
+                                       min_confidence = 0,
+                                       top_n = NULL) {
   .check_pkg("jsonlite")
 
   score_type <- match.arg(score_type)
 
-  if (!is.character(files) || length(files) == 0L)
+  if (!is.character(files) || length(files) == 0L) {
     stop("read_inaturalist_cv_output: 'files' must be a non-empty character vector or directory path.")
+  }
   top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_inaturalist_cv_output")
 
   # ---- resolve directory vs file list ----------------------------------------
   if (length(files) == 1L && dir.exists(files)) {
-    files <- list.files(files, pattern = "\\.json$",
-                        full.names = TRUE, recursive = FALSE,
-                        ignore.case = TRUE)
-    if (length(files) == 0L)
+    files <- list.files(files,
+      pattern = "\\.json$",
+      full.names = TRUE, recursive = FALSE,
+      ignore.case = TRUE
+    )
+    if (length(files) == 0L) {
       stop("read_inaturalist_cv_output: no *.json files found in directory.")
+    }
   } else {
     missing_files <- files[!file.exists(files)]
-    if (length(missing_files) > 0L)
+    if (length(missing_files) > 0L) {
       .stop_missing_files(missing_files, "read_inaturalist_cv_output")
+    }
   }
 
   # ---- parse each file -------------------------------------------------------
@@ -588,8 +614,10 @@ read_inaturalist_cv_output <- function(files,
   parsed <- tryCatch(
     jsonlite::fromJSON(f, simplifyVector = FALSE),
     error = function(e) {
-      stop(sprintf("read_inaturalist_cv_output: could not parse '%s': %s",
-                   basename(f), conditionMessage(e)))
+      stop(sprintf(
+        "read_inaturalist_cv_output: could not parse '%s': %s",
+        basename(f), conditionMessage(e)
+      ))
     }
   )
 
@@ -606,18 +634,18 @@ read_inaturalist_cv_output <- function(files,
   rows <- lapply(results, function(r) {
     sc <- if (!is.null(r[[score_type]])) as.numeric(r[[score_type]]) else NA_real_
     tx <- r[["taxon"]]
-    nm   <- if (!is.null(tx[["name"]])) as.character(tx[["name"]]) else NA_character_
+    nm <- if (!is.null(tx[["name"]])) as.character(tx[["name"]]) else NA_character_
     rank <- if (!is.null(tx[["rank"]])) tolower(as.character(tx[["rank"]])) else NA_character_
-    cn   <- if (!is.null(tx[["preferred_common_name"]])) as.character(tx[["preferred_common_name"]]) else NA_character_
+    cn <- if (!is.null(tx[["preferred_common_name"]])) as.character(tx[["preferred_common_name"]]) else NA_character_
     genus_val <- .extract_genus(nm)
     data.frame(
       observation_id = obs_id,
-      score          = sc,
-      species        = nm,
-      genus          = genus_val,
-      common_name    = cn,
-      taxon_rank     = rank,
-      source_file    = basename(f),
+      score = sc,
+      species = nm,
+      genus = genus_val,
+      common_name = cn,
+      taxon_rank = rank,
+      source_file = basename(f),
       stringsAsFactors = FALSE
     )
   })
@@ -799,32 +827,38 @@ read_inaturalist_cv_output <- function(files,
 #' head(result)
 #' unlink(tmp)
 read_speciesnet_output <- function(files,
-                                    min_confidence      = 0,
-                                    top_n               = NULL,
-                                    include_coverage    = FALSE,
-                                    min_detection_conf  = 0) {
-
+                                   min_confidence = 0,
+                                   top_n = NULL,
+                                   include_coverage = FALSE,
+                                   min_detection_conf = 0) {
   .check_pkg("jsonlite")
 
-  if (!is.character(files) || length(files) == 0L)
+  if (!is.character(files) || length(files) == 0L) {
     stop("read_speciesnet_output: 'files' must be a non-empty character vector or directory path.")
+  }
   top_n <- .validate_min_conf_top_n(min_confidence, top_n, "read_speciesnet_output")
-  if (!is.logical(include_coverage) || length(include_coverage) != 1L || is.na(include_coverage))
+  if (!is.logical(include_coverage) || length(include_coverage) != 1L || is.na(include_coverage)) {
     stop("read_speciesnet_output: 'include_coverage' must be a single logical value.")
-  if (!is.numeric(min_detection_conf) || length(min_detection_conf) != 1L || is.na(min_detection_conf))
+  }
+  if (!is.numeric(min_detection_conf) || length(min_detection_conf) != 1L || is.na(min_detection_conf)) {
     stop("read_speciesnet_output: 'min_detection_conf' must be a single numeric value.")
+  }
 
   # ---- resolve directory vs file list ----------------------------------------
   if (length(files) == 1L && dir.exists(files)) {
-    files <- list.files(files, pattern = "\\.json$",
-                        full.names = TRUE, recursive = FALSE,
-                        ignore.case = TRUE)
-    if (length(files) == 0L)
+    files <- list.files(files,
+      pattern = "\\.json$",
+      full.names = TRUE, recursive = FALSE,
+      ignore.case = TRUE
+    )
+    if (length(files) == 0L) {
       stop("read_speciesnet_output: no *.json files found in directory.")
+    }
   } else {
     missing_files <- files[!file.exists(files)]
-    if (length(missing_files) > 0L)
+    if (length(missing_files) > 0L) {
       .stop_missing_files(missing_files, "read_speciesnet_output")
+    }
   }
 
   # ---- parse each file --------------------------------------------------------
@@ -861,8 +895,10 @@ read_speciesnet_output <- function(files,
   parsed <- tryCatch(
     jsonlite::fromJSON(f, simplifyVector = FALSE),
     error = function(e) {
-      stop(sprintf("read_speciesnet_output: could not parse '%s': %s",
-                   basename(f), conditionMessage(e)))
+      stop(sprintf(
+        "read_speciesnet_output: could not parse '%s': %s",
+        basename(f), conditionMessage(e)
+      ))
     }
   )
 
@@ -876,18 +912,22 @@ read_speciesnet_output <- function(files,
 
   rows <- lapply(preds, function(p) {
     filepath <- p[["filepath"]]
-    if (is.null(filepath) || !nzchar(trimws(as.character(filepath)))) return(NULL)
+    if (is.null(filepath) || !nzchar(trimws(as.character(filepath)))) {
+      return(NULL)
+    }
     obs_id <- tools::file_path_sans_ext(basename(as.character(filepath)))
 
     classes <- p[["classifications"]][["classes"]]
-    scores  <- p[["classifications"]][["scores"]]
-    if (is.null(classes) || length(classes) == 0L) return(NULL)
+    scores <- p[["classifications"]][["scores"]]
+    if (is.null(classes) || length(classes) == 0L) {
+      return(NULL)
+    }
 
-    labels     <- vapply(classes, as.character, character(1L))
+    labels <- vapply(classes, as.character, character(1L))
     score_vals <- vapply(scores, function(s) suppressWarnings(as.numeric(s)), numeric(1L))
     tax <- .parse_speciesnet_label(labels)
 
-    ens_label  <- p[["prediction"]]
+    ens_label <- p[["prediction"]]
     ens_common <- if (!is.null(ens_label)) {
       .parse_speciesnet_label(as.character(ens_label))$common_name
     } else {
@@ -902,29 +942,29 @@ read_speciesnet_output <- function(files,
     country_val <- if (is.null(country_val)) NA_character_ else as.character(country_val)
 
     df <- data.frame(
-      .filepath      = as.character(filepath),
+      .filepath = as.character(filepath),
       observation_id = obs_id,
-      score          = score_vals,
-      species        = tax$species,
-      genus          = tax$genus,
-      family         = tax$family,
-      order          = tax$order,
-      class          = tax$class,
-      common_name    = tax$common_name,
-      taxon_rank     = tax$taxon_rank,
-      ensemble_prediction        = ens_common,
-      ensemble_prediction_score  = if (is.null(p[["prediction_score"]])) NA_real_ else as.numeric(p[["prediction_score"]]),
+      score = score_vals,
+      species = tax$species,
+      genus = tax$genus,
+      family = tax$family,
+      order = tax$order,
+      class = tax$class,
+      common_name = tax$common_name,
+      taxon_rank = tax$taxon_rank,
+      ensemble_prediction = ens_common,
+      ensemble_prediction_score = if (is.null(p[["prediction_score"]])) NA_real_ else as.numeric(p[["prediction_score"]]),
       ensemble_prediction_source = if (is.null(p[["prediction_source"]])) NA_character_ else as.character(p[["prediction_source"]]),
-      lat            = lat_val,
-      lon            = lon_val,
-      country        = country_val,
-      source_file    = basename(f),
+      lat = lat_val,
+      lon = lon_val,
+      country = country_val,
+      source_file = basename(f),
       stringsAsFactors = FALSE
     )
 
     if (isTRUE(include_coverage)) {
       cov <- .speciesnet_detection_coverage(p[["detections"]], min_detection_conf)
-      df$coverage       <- cov$coverage
+      df$coverage <- cov$coverage
       df$detection_conf <- cov$detection_conf
     }
 
@@ -932,7 +972,9 @@ read_speciesnet_output <- function(files,
   })
 
   rows <- rows[!vapply(rows, is.null, logical(1L))]
-  if (length(rows) == 0L) return(NULL)
+  if (length(rows) == 0L) {
+    return(NULL)
+  }
   do.call(rbind, rows)
 }
 
@@ -984,12 +1026,12 @@ read_speciesnet_output <- function(files,
 
   if (any(ok)) {
     m <- do.call(rbind, parts[ok])
-    class_v[ok]   <- clean(m[, 2])
-    order_v[ok]   <- clean(m[, 3])
-    family_v[ok]  <- clean(m[, 4])
-    genus_v[ok]   <- clean(m[, 5])
+    class_v[ok] <- clean(m[, 2])
+    order_v[ok] <- clean(m[, 3])
+    family_v[ok] <- clean(m[, 4])
+    genus_v[ok] <- clean(m[, 5])
     epithet_v[ok] <- clean(m[, 6])
-    common_v[ok]  <- clean(m[, 7])
+    common_v[ok] <- clean(m[, 7])
   }
 
   genus_cap <- ifelse(
@@ -1006,7 +1048,12 @@ read_speciesnet_output <- function(files,
       !is.na(genus_cap), "genus", ifelse(
         !is.na(family_v), "family", ifelse(
           !is.na(order_v), "order", ifelse(
-            !is.na(class_v), "class", NA_character_)))))
+            !is.na(class_v), "class", NA_character_
+          )
+        )
+      )
+    )
+  )
 
   data.frame(
     class = class_v, order = order_v, family = family_v,

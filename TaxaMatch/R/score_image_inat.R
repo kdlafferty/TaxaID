@@ -126,15 +126,14 @@
 #' }
 #' @export
 score_image_inat <- function(
-    image_path,
-    lat         = NULL,
-    lng         = NULL,
-    observed_on = NULL,
-    top_n       = 10L,
-    recursive   = FALSE,
-    api_token   = Sys.getenv("INAT_API_TOKEN")
+  image_path,
+  lat = NULL,
+  lng = NULL,
+  observed_on = NULL,
+  top_n = 10L,
+  recursive = FALSE,
+  api_token = Sys.getenv("INAT_API_TOKEN")
 ) {
-
   # ---- validate token --------------------------------------------------------
   if (!nzchar(api_token)) {
     stop(
@@ -152,31 +151,37 @@ score_image_inat <- function(
   }
   has_coords <- has_lat && has_lng
   if (has_coords) {
-    if (!is.numeric(lat) || length(lat) != 1L || is.na(lat))
+    if (!is.numeric(lat) || length(lat) != 1L || is.na(lat)) {
       stop("`lat` must be a single non-NA numeric value.")
-    if (!is.numeric(lng) || length(lng) != 1L || is.na(lng))
+    }
+    if (!is.numeric(lng) || length(lng) != 1L || is.na(lng)) {
       stop("`lng` must be a single non-NA numeric value.")
+    }
   }
 
   # ---- validate observed_on --------------------------------------------------
   if (!is.null(observed_on)) {
-    if (!is.character(observed_on) || length(observed_on) != 1L)
+    if (!is.character(observed_on) || length(observed_on) != 1L) {
       stop("`observed_on` must be a single character string in 'YYYY-MM-DD' format.")
-    if (!grepl("^\\d{4}-\\d{2}-\\d{2}$", observed_on))
+    }
+    if (!grepl("^\\d{4}-\\d{2}-\\d{2}$", observed_on)) {
       stop("`observed_on` must be in 'YYYY-MM-DD' format.")
+    }
   }
 
   # ---- validate top_n --------------------------------------------------------
-  if (!is.numeric(top_n) || length(top_n) != 1L || is.na(top_n))
+  if (!is.numeric(top_n) || length(top_n) != 1L || is.na(top_n)) {
     stop("`top_n` must be a single numeric value.")
+  }
   top_n <- as.integer(top_n)
-  if (top_n < 1L)
+  if (top_n < 1L) {
     stop("`top_n` must be a positive integer.")
+  }
 
   # ---- resolve image files ---------------------------------------------------
-  resolved   <- .resolve_image_files(image_path, recursive = recursive)
-  files      <- resolved$files
-  base_dir   <- resolved$base_dir
+  resolved <- .resolve_image_files(image_path, recursive = recursive)
+  files <- resolved$files
+  base_dir <- resolved$base_dir
 
   if (length(files) == 0L) stop("No JPEG or PNG image files found.")
 
@@ -199,27 +204,27 @@ score_image_inat <- function(
   all_rows <- vector("list", length(files))
 
   for (i in seq_along(files)) {
-    f      <- files[[i]]
+    f <- files[[i]]
     obs_id <- tools::file_path_sans_ext(basename(f))
 
     # Resolve per-image lat/lng/date: user arg > EXIF > NULL
     exif_info <- if (need_exif) .extract_exif_info(f) else NULL
-    img_lat  <- if (has_coords)            lat         else exif_info$lat
-    img_lng  <- if (has_coords)            lng         else exif_info$lng
+    img_lat <- if (has_coords) lat else exif_info$lat
+    img_lng <- if (has_coords) lng else exif_info$lng
     img_date <- if (!is.null(observed_on)) observed_on else exif_info$observed_on
 
     # Build multipart body: always include image; add optional fields
     body <- list(image = httr::upload_file(f))
-    if (!is.na(img_lat)  && !is.null(img_lat))  body$lat         <- img_lat
-    if (!is.na(img_lng)  && !is.null(img_lng))  body$lng         <- img_lng
+    if (!is.na(img_lat) && !is.null(img_lat)) body$lat <- img_lat
+    if (!is.na(img_lng) && !is.null(img_lng)) body$lng <- img_lng
     if (!is.null(img_date) && !is.na(img_date)) body$observed_on <- img_date
 
     resp <- tryCatch(
       httr::POST(
-        url     = "https://api.inaturalist.org/v1/computervision/score_image",
+        url = "https://api.inaturalist.org/v1/computervision/score_image",
         httr::add_headers(Authorization = paste("Bearer", api_token)),
-        body    = body,
-        encode  = "multipart"
+        body = body,
+        encode = "multipart"
       ),
       error = function(e) {
         warning(sprintf(
@@ -279,9 +284,9 @@ score_image_inat <- function(
 
     # Attach observation-level metadata
     rows$observation_id <- obs_id
-    rows$lat            <- img_lat
-    rows$lng            <- img_lng
-    rows$observed_on    <- img_date
+    rows$lat <- img_lat
+    rows$lng <- img_lng
+    rows$observed_on <- img_date
 
     # Attach folder columns
     if (ncol(folder_df) > 0L) {
@@ -299,27 +304,33 @@ score_image_inat <- function(
     message("score_image_inat: no results returned for any image.")
     empty <- .parse_inat_cv_response(list(results = list()), top_n = 0L)
     empty$observation_id <- character(0)
-    empty$lat            <- numeric(0)
-    empty$lng            <- numeric(0)
-    empty$observed_on    <- character(0)
+    empty$lat <- numeric(0)
+    empty$lng <- numeric(0)
+    empty$observed_on <- character(0)
     return(empty)
   }
 
   out <- dplyr::bind_rows(non_null)
 
   # Canonical column ordering: match object core → taxonomy → scores → metadata
-  core_cols   <- c("observation_id", "taxon_name", "taxon_name_rank",
-                   "score_original")
-  taxon_cols  <- c("genus", "common_name", "iconic_taxon_name", "taxon_id",
-                   "n_observations")
-  score_cols  <- c("vision_score", "combined_score", "freq_score",
-                   "geo_prior_weight")
-  meta_cols   <- c("lat", "lng", "observed_on")
+  core_cols <- c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    "score_original"
+  )
+  taxon_cols <- c(
+    "genus", "common_name", "iconic_taxon_name", "taxon_id",
+    "n_observations"
+  )
+  score_cols <- c(
+    "vision_score", "combined_score", "freq_score",
+    "geo_prior_weight"
+  )
+  meta_cols <- c("lat", "lng", "observed_on")
   folder_cols <- grep("^folder_\\d+$", names(out), value = TRUE)
 
   present <- c(core_cols, taxon_cols, score_cols, meta_cols, folder_cols)
   present <- present[present %in% names(out)]
-  extra   <- setdiff(names(out), present)
+  extra <- setdiff(names(out), present)
 
   out[, c(present, extra), drop = FALSE]
 }
@@ -336,55 +347,64 @@ score_image_inat <- function(
 #' (the common root directory used for folder column derivation).
 #' @noRd
 .resolve_image_files <- function(image_path, recursive = FALSE) {
-  if (!is.character(image_path) || length(image_path) == 0L)
+  if (!is.character(image_path) || length(image_path) == 0L) {
     stop("`image_path` must be a non-empty character vector.")
+  }
 
   img_pattern <- "\\.(jpg|jpeg|png)$"
 
   if (length(image_path) == 1L && dir.exists(image_path)) {
     # Directory: list image files (recursive if requested)
     base_dir <- normalizePath(image_path, mustWork = TRUE)
-    files    <- list.files(base_dir, pattern = img_pattern,
-                           full.names = TRUE, recursive = recursive,
-                           ignore.case = TRUE)
-    if (length(files) == 0L)
+    files <- list.files(base_dir,
+      pattern = img_pattern,
+      full.names = TRUE, recursive = recursive,
+      ignore.case = TRUE
+    )
+    if (length(files) == 0L) {
       stop(sprintf(
         "score_image_inat: no JPEG or PNG files found in directory '%s'%s.",
         image_path,
         if (recursive) " (recursive)" else " (set recursive = TRUE to scan subdirectories)"
       ))
+    }
     return(list(files = files, base_dir = base_dir))
   }
 
   # Single file or vector of files
   missing_files <- image_path[!file.exists(image_path)]
-  if (length(missing_files) > 0L)
+  if (length(missing_files) > 0L) {
     .stop_missing_files(missing_files, "score_image_inat")
+  }
 
   not_image <- image_path[!grepl(img_pattern, image_path, ignore.case = TRUE)]
-  if (length(not_image) > 0L)
+  if (length(not_image) > 0L) {
     stop(sprintf(
       "score_image_inat: only JPEG and PNG files are supported. Not supported:\n  %s",
       paste(not_image, collapse = "\n  ")
     ))
+  }
 
   abs_paths <- normalizePath(image_path, mustWork = TRUE)
 
   # Base dir: longest common ancestor of all file directories
-  dirs      <- unique(dirname(abs_paths))
-  base_dir  <- if (length(dirs) == 1L) {
+  dirs <- unique(dirname(abs_paths))
+  base_dir <- if (length(dirs) == 1L) {
     dirs[[1L]]
   } else {
     # Find longest common path prefix
-    parts   <- strsplit(dirs, .Platform$file.sep, fixed = TRUE)
+    parts <- strsplit(dirs, .Platform$file.sep, fixed = TRUE)
     min_len <- min(vapply(parts, length, integer(1L)))
-    common  <- character(0L)
+    common <- character(0L)
     for (k in seq_len(min_len)) {
       vals <- vapply(parts, `[[`, character(1L), k)
       if (length(unique(vals)) == 1L) common <- c(common, vals[[1L]]) else break
     }
-    if (length(common) == 0L) dirname(abs_paths[[1L]]) else
+    if (length(common) == 0L) {
+      dirname(abs_paths[[1L]])
+    } else {
       paste(common, collapse = .Platform$file.sep)
+    }
   }
 
   list(files = abs_paths, base_dir = base_dir)
@@ -418,11 +438,15 @@ score_image_inat <- function(
   parts_list <- strsplit(rel_dirs, .Platform$file.sep, fixed = TRUE)
   parts_list <- lapply(parts_list, function(p) p[nzchar(p)])
 
-  max_depth <- if (length(parts_list) > 0L)
+  max_depth <- if (length(parts_list) > 0L) {
     max(vapply(parts_list, length, integer(1L)))
-  else 0L
+  } else {
+    0L
+  }
 
-  if (max_depth == 0L) return(data.frame())
+  if (max_depth == 0L) {
+    return(data.frame())
+  }
 
   mat <- matrix(NA_character_, nrow = length(files), ncol = max_depth)
   for (i in seq_along(parts_list)) {
@@ -451,17 +475,23 @@ score_image_inat <- function(
 .extract_exif_info <- function(path) {
   empty <- list(lat = NA_real_, lng = NA_real_, observed_on = NA_character_)
 
-  if (!requireNamespace("exifr", quietly = TRUE)) return(empty)
+  if (!requireNamespace("exifr", quietly = TRUE)) {
+    return(empty)
+  }
 
   exif <- tryCatch(
     exifr::read_exif(
       path,
-      tags = c("GPSLatitude", "GPSLongitude",
-               "DateTimeOriginal", "CreateDate")
+      tags = c(
+        "GPSLatitude", "GPSLongitude",
+        "DateTimeOriginal", "CreateDate"
+      )
     ),
     error = function(e) NULL
   )
-  if (is.null(exif) || nrow(exif) == 0L) return(empty)
+  if (is.null(exif) || nrow(exif) == 0L) {
+    return(empty)
+  }
 
   # exifr::read_exif() already returns GPSLatitude/GPSLongitude as SIGNED
   # decimal degrees (negative for S/W) -- confirmed directly against a real
@@ -475,22 +505,25 @@ score_image_inat <- function(
   # Date: canonical EXIF "YYYY:MM:DD HH:MM:SS" -> "YYYY-MM-DD"; also accepts
   # an already-ISO "YYYY-MM-DD..." string, in case a non-standard writer
   # produced one. Any other format returns NA rather than guessing.
-  date_str <- tryCatch({
-    raw <- if (!is.null(exif$DateTimeOriginal) && !is.na(exif$DateTimeOriginal[[1L]])) {
-      exif$DateTimeOriginal[[1L]]
-    } else if (!is.null(exif$CreateDate) && !is.na(exif$CreateDate[[1L]])) {
-      exif$CreateDate[[1L]]
-    } else {
-      NA_character_
-    }
-    if (!is.na(raw) && grepl("^\\d{4}:\\d{2}:\\d{2}", raw)) {
-      sub("^(\\d{4}):(\\d{2}):(\\d{2}).*", "\\1-\\2-\\3", raw)
-    } else if (!is.na(raw) && grepl("^\\d{4}-\\d{2}-\\d{2}", raw)) {
-      substr(raw, 1L, 10L)
-    } else {
-      NA_character_
-    }
-  }, error = function(e) NA_character_)
+  date_str <- tryCatch(
+    {
+      raw <- if (!is.null(exif$DateTimeOriginal) && !is.na(exif$DateTimeOriginal[[1L]])) {
+        exif$DateTimeOriginal[[1L]]
+      } else if (!is.null(exif$CreateDate) && !is.na(exif$CreateDate[[1L]])) {
+        exif$CreateDate[[1L]]
+      } else {
+        NA_character_
+      }
+      if (!is.na(raw) && grepl("^\\d{4}:\\d{2}:\\d{2}", raw)) {
+        sub("^(\\d{4}):(\\d{2}):(\\d{2}).*", "\\1-\\2-\\3", raw)
+      } else if (!is.na(raw) && grepl("^\\d{4}-\\d{2}-\\d{2}", raw)) {
+        substr(raw, 1L, 10L)
+      } else {
+        NA_character_
+      }
+    },
+    error = function(e) NA_character_
+  )
 
   list(lat = lat_val, lng = lng_val, observed_on = date_str)
 }
@@ -510,17 +543,17 @@ score_image_inat <- function(
   results <- parsed[["results"]]
   if (is.null(results) || length(results) == 0L) {
     return(tibble::tibble(
-      taxon_name      = character(0),
+      taxon_name = character(0),
       taxon_name_rank = character(0),
-      score_original  = numeric(0),
-      genus           = character(0),
-      common_name     = character(0),
+      score_original = numeric(0),
+      genus = character(0),
+      common_name = character(0),
       iconic_taxon_name = character(0),
-      taxon_id        = integer(0),
-      n_observations  = integer(0),
-      vision_score    = numeric(0),
-      combined_score  = numeric(0),
-      freq_score      = numeric(0),
+      taxon_id = integer(0),
+      n_observations = integer(0),
+      vision_score = numeric(0),
+      combined_score = numeric(0),
+      freq_score = numeric(0),
       geo_prior_weight = numeric(0)
     ))
   }
@@ -529,19 +562,19 @@ score_image_inat <- function(
 
   rows <- vector("list", n_return)
   for (i in seq_len(n_return)) {
-    r  <- results[[i]]
+    r <- results[[i]]
     tx <- r[["taxon"]]
 
-    vs  <- if (!is.null(r[["vision_score"]]))    as.numeric(r[["vision_score"]])    else NA_real_
-    cs  <- if (!is.null(r[["combined_score"]]))  as.numeric(r[["combined_score"]]) else NA_real_
-    fs  <- if (!is.null(r[["frequency_score"]])) as.numeric(r[["frequency_score"]]) else NA_real_
+    vs <- if (!is.null(r[["vision_score"]])) as.numeric(r[["vision_score"]]) else NA_real_
+    cs <- if (!is.null(r[["combined_score"]])) as.numeric(r[["combined_score"]]) else NA_real_
+    fs <- if (!is.null(r[["frequency_score"]])) as.numeric(r[["frequency_score"]]) else NA_real_
     gpw <- if (!is.na(vs) && !is.na(cs) && vs > 0) cs / vs else NA_real_
 
-    nm   <- if (!is.null(tx[["name"]])) as.character(tx[["name"]]) else NA_character_
+    nm <- if (!is.null(tx[["name"]])) as.character(tx[["name"]]) else NA_character_
     rank <- if (!is.null(tx[["rank"]])) tolower(as.character(tx[["rank"]])) else NA_character_
-    cn   <- if (!is.null(tx[["preferred_common_name"]])) as.character(tx[["preferred_common_name"]]) else NA_character_
+    cn <- if (!is.null(tx[["preferred_common_name"]])) as.character(tx[["preferred_common_name"]]) else NA_character_
     icon <- if (!is.null(tx[["iconic_taxon_name"]])) as.character(tx[["iconic_taxon_name"]]) else NA_character_
-    tid  <- if (!is.null(tx[["id"]])) as.integer(tx[["id"]]) else NA_integer_
+    tid <- if (!is.null(tx[["id"]])) as.integer(tx[["id"]]) else NA_integer_
     nobs <- if (!is.null(tx[["observations_count"]])) as.integer(tx[["observations_count"]]) else NA_integer_
 
     # Derive genus from name:

@@ -24,7 +24,9 @@
 .next_spatial_group_number <- function(existing_ids) {
   nums <- suppressWarnings(as.integer(sub("^spatial_group_", "", existing_ids)))
   nums <- nums[!is.na(nums)]
-  if (length(nums) == 0L) return(1L)
+  if (length(nums) == 0L) {
+    return(1L)
+  }
   max(nums) + 1L
 }
 
@@ -57,11 +59,14 @@
 # and no such failure mode.
 #' @noRd
 .default_exact_match_group_id <- function(lat, lon) {
-  key       <- paste(lat, lon, sep = "|")
+  key <- paste(lat, lon, sep = "|")
   uniq_keys <- unique(key)
-  labels    <- sprintf("spatial_group_%d",
-                       seq(.next_spatial_group_number(character(0)),
-                           length.out = length(uniq_keys)))
+  labels <- sprintf(
+    "spatial_group_%d",
+    seq(.next_spatial_group_number(character(0)),
+      length.out = length(uniq_keys)
+    )
+  )
   labels[match(key, uniq_keys)]
 }
 
@@ -183,72 +188,83 @@
 #'
 #' @export
 build_site_table <- function(match_df, site_df = NULL, id_col = "observation_id") {
-
-  if (!is.data.frame(match_df) || nrow(match_df) == 0L)
+  if (!is.data.frame(match_df) || nrow(match_df) == 0L) {
     stop("build_site_table: 'match_df' must be a non-empty data frame.", call. = FALSE)
-  if (!id_col %in% names(match_df))
+  }
+  if (!id_col %in% names(match_df)) {
     stop(sprintf("build_site_table: 'match_df' missing id column '%s'.", id_col), call. = FALSE)
+  }
 
   has_embedded <- all(c("lat", "lng") %in% names(match_df))
 
   if (has_embedded) {
-    if (!is.null(site_df))
+    if (!is.null(site_df)) {
       warning(
         "build_site_table: 'match_df' already carries embedded lat/lng; ",
         "ignoring supplied 'site_df'.",
         call. = FALSE
       )
+    }
 
-    keep <- c(id_col, "lat", "lng",
-             if ("observed_on" %in% names(match_df)) "observed_on")
-    out  <- unique(match_df[, keep, drop = FALSE])
+    keep <- c(
+      id_col, "lat", "lng",
+      if ("observed_on" %in% names(match_df)) "observed_on"
+    )
+    out <- unique(match_df[, keep, drop = FALSE])
     names(out)[names(out) == "lng"] <- "lon"
     if (!"observed_on" %in% names(out)) out$observed_on <- NA_character_
-    out$spatial_group_id  <- .default_exact_match_group_id(out$lat, out$lon)
+    out$spatial_group_id <- .default_exact_match_group_id(out$lat, out$lon)
     tab <- table(out$spatial_group_id)
-    out$spatial_group_N   <- as.integer(tab[out$spatial_group_id])
-    out$is_default_group  <- TRUE
+    out$spatial_group_N <- as.integer(tab[out$spatial_group_id])
+    out$is_default_group <- TRUE
 
     return(tibble::as_tibble(
-      out[, c(id_col, "lat", "lon", "observed_on", "spatial_group_id",
-              "spatial_group_N", "is_default_group"), drop = FALSE]
+      out[, c(
+        id_col, "lat", "lon", "observed_on", "spatial_group_id",
+        "spatial_group_N", "is_default_group"
+      ), drop = FALSE]
     ))
   }
 
-  if (is.null(site_df))
+  if (is.null(site_df)) {
     stop(
       "build_site_table: this match object has no embedded site info. ",
       "Supply 'site_df' with '", id_col, "', 'lat', and 'lon' columns ",
       "(one or more rows per observation).",
       call. = FALSE
     )
+  }
 
   required <- c(id_col, "lat", "lon")
-  missing  <- setdiff(required, names(site_df))
-  if (length(missing) > 0L)
+  missing <- setdiff(required, names(site_df))
+  if (length(missing) > 0L) {
     stop(sprintf(
       "build_site_table: 'site_df' missing required column(s): %s",
       paste(missing, collapse = ", ")
     ), call. = FALSE)
+  }
 
-  ids       <- unique(match_df[[id_col]])
+  ids <- unique(match_df[[id_col]])
   unmatched <- setdiff(ids, unique(site_df[[id_col]]))
-  if (length(unmatched) > 0L)
+  if (length(unmatched) > 0L) {
     warning(sprintf(
       "build_site_table: %d observation(s) in 'match_df' have no matching row in 'site_df': %s",
       length(unmatched),
       paste(utils::head(unmatched, 5L), collapse = ", ")
     ), call. = FALSE)
+  }
 
   out <- site_df[site_df[[id_col]] %in% ids, , drop = FALSE]
   if (!"observed_on" %in% names(out)) out$observed_on <- NA_character_
   out$spatial_group_id <- .default_exact_match_group_id(out$lat, out$lon)
   tab <- table(out$spatial_group_id)
-  out$spatial_group_N  <- as.integer(tab[out$spatial_group_id])
+  out$spatial_group_N <- as.integer(tab[out$spatial_group_id])
   out$is_default_group <- TRUE
 
   tibble::as_tibble(
-    out[, c(id_col, "lat", "lon", "observed_on", "spatial_group_id",
-            "spatial_group_N", "is_default_group"), drop = FALSE]
+    out[, c(
+      id_col, "lat", "lon", "observed_on", "spatial_group_id",
+      "spatial_group_N", "is_default_group"
+    ), drop = FALSE]
   )
 }

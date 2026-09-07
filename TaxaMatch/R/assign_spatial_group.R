@@ -66,37 +66,41 @@
 #' @export
 assign_spatial_group <- function(sites, observation_ids, spatial_group_id,
                                  id_col = "observation_id") {
-
-  if (!is.data.frame(sites) || nrow(sites) == 0L)
+  if (!is.data.frame(sites) || nrow(sites) == 0L) {
     stop("assign_spatial_group: 'sites' must be a non-empty data frame.", call. = FALSE)
+  }
 
   required <- c(id_col, "spatial_group_id", "spatial_group_N")
-  missing  <- setdiff(required, names(sites))
-  if (length(missing) > 0L)
+  missing <- setdiff(required, names(sites))
+  if (length(missing) > 0L) {
     stop(sprintf(
       "assign_spatial_group: 'sites' missing required column(s): %s. Run build_site_table() first.",
       paste(missing, collapse = ", ")
     ), call. = FALSE)
+  }
 
-  if (length(observation_ids) == 0L || anyNA(observation_ids))
+  if (length(observation_ids) == 0L || anyNA(observation_ids)) {
     stop("assign_spatial_group: 'observation_ids' must be a non-empty vector with no NAs.", call. = FALSE)
+  }
 
   if (!is.character(spatial_group_id) || length(spatial_group_id) != 1L ||
-      is.na(spatial_group_id) || !nzchar(spatial_group_id))
+    is.na(spatial_group_id) || !nzchar(spatial_group_id)) {
     stop("assign_spatial_group: 'spatial_group_id' must be a single non-NA, non-empty string.", call. = FALSE)
+  }
 
   observation_ids <- unique(as.character(observation_ids))
   missing_ids <- setdiff(observation_ids, sites[[id_col]])
-  if (length(missing_ids) > 0L)
+  if (length(missing_ids) > 0L) {
     stop(sprintf(
       "assign_spatial_group: observation_id(s) not found in 'sites': %s",
       paste(missing_ids, collapse = ", ")
     ), call. = FALSE)
+  }
 
   target_rows <- sites[[id_col]] %in% observation_ids
 
   colliding <- sites[[id_col]][!target_rows & sites$spatial_group_id == spatial_group_id]
-  if (length(colliding) > 0L)
+  if (length(colliding) > 0L) {
     stop(sprintf(
       paste0(
         "assign_spatial_group: spatial_group_id '%s' is already used by observation(s) not ",
@@ -105,12 +109,14 @@ assign_spatial_group <- function(sites, observation_ids, spatial_group_id,
       ),
       spatial_group_id, paste(colliding, collapse = ", ")
     ), call. = FALSE)
+  }
 
   sites$spatial_group_id[target_rows] <- spatial_group_id
   sites$spatial_group_N[sites$spatial_group_id == spatial_group_id] <-
     sum(sites$spatial_group_id == spatial_group_id)
-  if ("is_default_group" %in% names(sites))
+  if ("is_default_group" %in% names(sites)) {
     sites$is_default_group[target_rows] <- FALSE
+  }
 
   sites
 }

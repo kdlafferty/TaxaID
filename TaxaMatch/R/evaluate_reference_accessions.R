@@ -71,9 +71,11 @@ utils::globalVariables(c(
                               score_range, min_score, max_hits, method, database,
                               query_span) {
   paste(top_n, min_congruent_rank, submission_window,
-        hierarchy_incongruent_threshold, min_independent_partners,
-        score_range, min_score, max_hits, method, database,
-        query_span, .EVAL_REF_ACC_VERSION, sep = "|")
+    hierarchy_incongruent_threshold, min_independent_partners,
+    score_range, min_score, max_hits, method, database,
+    query_span, .EVAL_REF_ACC_VERSION,
+    sep = "|"
+  )
 }
 
 #' The params_key evaluate_reference_accessions()'s own defaults produce
@@ -85,7 +87,10 @@ utils::globalVariables(c(
 #' @noRd
 .default_params_key <- function() {
   f <- formals(evaluate_reference_accessions)
-  first_of <- function(x) { v <- eval(x); v[[1L]] }
+  first_of <- function(x) {
+    v <- eval(x)
+    v[[1L]]
+  }
   .build_params_key(
     top_n = eval(f$top_n), min_congruent_rank = eval(f$min_congruent_rank),
     submission_window = eval(f$submission_window),
@@ -126,13 +131,13 @@ utils::globalVariables(c(
 #' deciding whether a new parameter belongs in `params_key`.
 #' @noRd
 .ADDITIVE_CACHE_COLUMNS <- c(
-  "taxonomy_resolution_source",  # provenance of the query-side lineage
-  "migrated_from",               # provenance of a migrated row
-  "query_len_submitted",         # diagnostic: bp actually sent to BLAST
-  "query_trim_path",             # diagnostic: which rescue produced it
-  "n_excluded_same_batch",       # diagnostic: hits lost to the independence filter
-  "n_excluded_not_species_resolved",  # diagnostic: hits lost to the species-resolution filter
-  "local_corroborator_accession"  # provenance: which accession vouches for a locally_corroborated row
+  "taxonomy_resolution_source", # provenance of the query-side lineage
+  "migrated_from", # provenance of a migrated row
+  "query_len_submitted", # diagnostic: bp actually sent to BLAST
+  "query_trim_path", # diagnostic: which rescue produced it
+  "n_excluded_same_batch", # diagnostic: hits lost to the independence filter
+  "n_excluded_not_species_resolved", # diagnostic: hits lost to the species-resolution filter
+  "local_corroborator_accession" # provenance: which accession vouches for a locally_corroborated row
 )
 
 #' Typed NA vector matching a prototype column
@@ -149,8 +154,9 @@ utils::globalVariables(c(
 #' columns.
 #' @noRd
 .align_to_cache_columns <- function(rows, cache) {
-  for (nm in setdiff(names(cache), names(rows)))
+  for (nm in setdiff(names(cache), names(rows))) {
     rows[[nm]] <- .na_like(cache[[nm]], nrow(rows))
+  }
   rows[, names(cache), drop = FALSE]
 }
 
@@ -177,7 +183,7 @@ utils::globalVariables(c(
 #'   doesn't match the simple `<letters><digits>` shape).
 #' @noRd
 .build_submission_batch_lookup <- function(reference_df) {
-  ref_ids  <- reference_df$composite_id
+  ref_ids <- reference_df$composite_id
   has_date <- "create_date" %in% names(reference_df)
   parsed_date <- if (has_date) {
     suppressWarnings(as.Date(reference_df$create_date, format = "%Y/%m/%d"))
@@ -186,13 +192,14 @@ utils::globalVariables(c(
   }
   is_simple_acc <- grepl("^[A-Za-z]+[0-9]+$", ref_ids)
   acc_prefix <- ifelse(is_simple_acc, sub("^([A-Za-z]+)[0-9]+$", "\\1", ref_ids),
-                       NA_character_)
+    NA_character_
+  )
   # suppressWarnings(): as.numeric() runs (and warns) on the whole vector
   # before ifelse() selects from it, including the non-matching accessions
   # whose sub() left them unchanged (a non-numeric string) -- the NA those
   # produce is exactly what's wanted and always discarded by is_simple_acc
   # anyway; only the "NAs introduced by coercion" warning is spurious noise.
-  acc_num    <- suppressWarnings(ifelse(
+  acc_num <- suppressWarnings(ifelse(
     is_simple_acc, as.numeric(sub("^[A-Za-z]+([0-9]+)$", "\\1", ref_ids)), NA_real_
   ))
 
@@ -289,19 +296,19 @@ utils::globalVariables(c(
 .compute_hierarchy_congruence <- function(seq_matrix,
                                           reference_df,
                                           rank_system,
-                                          top_n              = 5L,
+                                          top_n = 5L,
                                           min_congruent_rank = "family",
-                                          submission_window  = 5L,
-                                          min_coverage        = NULL,
+                                          submission_window = 5L,
+                                          min_coverage = NULL,
                                           require_species_resolved_partner = TRUE) {
-
   rank_system <- tolower(rank_system)
   min_congruent_rank <- tolower(min_congruent_rank)
-  if (!min_congruent_rank %in% rank_system)
+  if (!min_congruent_rank %in% rank_system) {
     stop(sprintf(
       "min_congruent_rank ('%s') must be one of rank_system's own ranks: %s",
       min_congruent_rank, paste(rank_system, collapse = ", ")
     ), call. = FALSE)
+  }
   min_rank_idx <- which(rank_system == min_congruent_rank)
 
   lookup <- .build_submission_batch_lookup(reference_df)
@@ -403,8 +410,9 @@ utils::globalVariables(c(
     agree <- !is.na(xcol) & !is.na(ycol) & xcol == ycol
     finest_idx[agree] <- j
   }
-  valid$finest_common_rank  <- ifelse(is.na(finest_idx), NA_character_,
-                                      rank_system[finest_idx])
+  valid$finest_common_rank <- ifelse(is.na(finest_idx), NA_character_,
+    rank_system[finest_idx]
+  )
   valid$below_min_congruent <- is.na(finest_idx) | finest_idx < min_rank_idx
 
   # .safe_max(): max() on a possibly-empty or all-NA vector errors/warns
@@ -444,13 +452,13 @@ utils::globalVariables(c(
   agg <- sliced |>
     dplyr::group_by(id_x) |>
     dplyr::summarise(
-      finest_common_rank        = dplyr::first(finest_common_rank),
+      finest_common_rank = dplyr::first(finest_common_rank),
       n_independent_top_matches = dplyr::n(),
-      k_disagree                = sum(below_min_congruent),
-      best_hit_pident            = dplyr::first(p_match) * 100,
-      best_agreeing_pident        = .safe_max(p_match[!below_min_congruent]) * 100,
-      best_disagreeing_pident     = .safe_max(p_match[below_min_congruent]) * 100,
-      best_disagreeing_taxon      = .safe_first_valid(species.y, below_min_congruent),
+      k_disagree = sum(below_min_congruent),
+      best_hit_pident = dplyr::first(p_match) * 100,
+      best_agreeing_pident = .safe_max(p_match[!below_min_congruent]) * 100,
+      best_disagreeing_pident = .safe_max(p_match[below_min_congruent]) * 100,
+      best_disagreeing_taxon = .safe_first_valid(species.y, below_min_congruent),
       .groups = "drop"
     ) |>
     dplyr::mutate(
@@ -545,77 +553,97 @@ utils::globalVariables(c(
                                                want_sequence = TRUE,
                                                ncbi_api_key = NULL,
                                                verbose = TRUE) {
-  empty <- data.frame(accession = character(0L), sequence = character(0L),
-                      organism = character(0L), create_date = character(0L),
-                      stringsAsFactors = FALSE)
+  empty <- data.frame(
+    accession = character(0L), sequence = character(0L),
+    organism = character(0L), create_date = character(0L),
+    stringsAsFactors = FALSE
+  )
 
   .check_pkg("rentrez")
   .check_pkg("xml2")
 
-  if (!is.null(ncbi_api_key) && nzchar(ncbi_api_key))
+  if (!is.null(ncbi_api_key) && nzchar(ncbi_api_key)) {
     rentrez::set_entrez_key(ncbi_api_key)
+  }
 
   accessions <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
-  if (length(accessions) == 0L) return(empty)
+  if (length(accessions) == 0L) {
+    return(empty)
+  }
 
   batch_size <- 100L
-  batches    <- split(accessions, ceiling(seq_along(accessions) / batch_size))
-  res        <- vector("list", length(batches))
+  batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
+  res <- vector("list", length(batches))
 
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
-    if (verbose)
-      message(sprintf("Fetching NCBI records: batch %d/%d (%d accessions)...",
-                      i, length(batches), length(batch)))
+    if (verbose) {
+      message(sprintf(
+        "Fetching NCBI records: batch %d/%d (%d accessions)...",
+        i, length(batches), length(batch)
+      ))
+    }
     for (attempt in 1:3) {
-      fetched <- tryCatch({
-        xml_raw <- rentrez::entrez_fetch(
-          db = "nuccore", id = batch, rettype = "gb", retmode = "xml"
-        )
-        xml_doc <- xml2::read_xml(xml_raw)
-        nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
-
-        parsed <- do.call(rbind, lapply(nodes, function(node) {
-          acc <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
-          org <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_organism"))
-          cd_raw <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_create-date"))
-          cd_parsed <- suppressWarnings(as.Date(cd_raw, format = "%d-%b-%Y"))
-          seq_val <- if (want_sequence) {
-            gsub("[[:space:]]", "", tolower(
-              xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_sequence"))
-            ))
-          } else {
-            NA_character_
-          }
-          data.frame(
-            .primary_accession = acc,
-            sequence = seq_val,
-            organism = if (nzchar(org)) org else NA_character_,
-            create_date = if (!is.na(cd_parsed)) format(cd_parsed, "%Y/%m/%d") else NA_character_,
-            stringsAsFactors = FALSE
+      fetched <- tryCatch(
+        {
+          xml_raw <- rentrez::entrez_fetch(
+            db = "nuccore", id = batch, rettype = "gb", retmode = "xml"
           )
-        }))
-        parsed
-      }, error = function(e) {
-        if (attempt < 3L) {
-          Sys.sleep(attempt * 2)
-          NULL
-        } else {
-          if (verbose) warning(sprintf(
-            "NCBI record fetch failed for batch %d: %s", i, conditionMessage(e)
-          ), call. = FALSE)
-          data.frame(.primary_accession = character(0L), sequence = character(0L),
-                    organism = character(0L), create_date = character(0L),
-                    stringsAsFactors = FALSE)
+          xml_doc <- xml2::read_xml(xml_raw)
+          nodes <- xml2::xml_find_all(xml_doc, "//GBSeq")
+
+          parsed <- do.call(rbind, lapply(nodes, function(node) {
+            acc <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
+            org <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_organism"))
+            cd_raw <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_create-date"))
+            cd_parsed <- suppressWarnings(as.Date(cd_raw, format = "%d-%b-%Y"))
+            seq_val <- if (want_sequence) {
+              gsub("[[:space:]]", "", tolower(
+                xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_sequence"))
+              ))
+            } else {
+              NA_character_
+            }
+            data.frame(
+              .primary_accession = acc,
+              sequence = seq_val,
+              organism = if (nzchar(org)) org else NA_character_,
+              create_date = if (!is.na(cd_parsed)) format(cd_parsed, "%Y/%m/%d") else NA_character_,
+              stringsAsFactors = FALSE
+            )
+          }))
+          parsed
+        },
+        error = function(e) {
+          if (attempt < 3L) {
+            Sys.sleep(attempt * 2)
+            NULL
+          } else {
+            if (verbose) {
+              warning(sprintf(
+                "NCBI record fetch failed for batch %d: %s", i, conditionMessage(e)
+              ), call. = FALSE)
+            }
+            data.frame(
+              .primary_accession = character(0L), sequence = character(0L),
+              organism = character(0L), create_date = character(0L),
+              stringsAsFactors = FALSE
+            )
+          }
         }
-      })
-      if (!is.null(fetched)) { res[[i]] <- fetched; break }
+      )
+      if (!is.null(fetched)) {
+        res[[i]] <- fetched
+        break
+      }
     }
     if (i < length(batches)) Sys.sleep(0.4)
   }
 
   parsed_all <- do.call(rbind, Filter(Negate(is.null), res))
-  if (is.null(parsed_all) || nrow(parsed_all) == 0L) return(empty)
+  if (is.null(parsed_all) || nrow(parsed_all) == 0L) {
+    return(empty)
+  }
 
   # Version-suffix-stripped join back to the caller's own requested strings --
   # GBSeq_primary-accession is version-free; the caller's accessions may or
@@ -623,12 +651,15 @@ utils::globalVariables(c(
   # most one parsed record under this stripping (both sides deduped/unique
   # per batch), so this is a safe 1:1 attach, not a fan-out join.
   strip_v <- function(x) sub("\\.[0-9]+$", "", x)
-  req_df  <- data.frame(accession = accessions, .join = strip_v(accessions),
-                        stringsAsFactors = FALSE)
+  req_df <- data.frame(
+    accession = accessions, .join = strip_v(accessions),
+    stringsAsFactors = FALSE
+  )
   parsed_all$.join <- strip_v(parsed_all$.primary_accession)
 
   out <- merge(req_df, parsed_all[, c(".join", "sequence", "organism", "create_date")],
-              by = ".join", all.x = FALSE, all.y = FALSE, sort = FALSE)
+    by = ".join", all.x = FALSE, all.y = FALSE, sort = FALSE
+  )
   out$.join <- NULL
   out[!duplicated(out$accession), , drop = FALSE]
 }
@@ -654,11 +685,17 @@ utils::globalVariables(c(
     local_corroborator_accession = character(0L),
     stringsAsFactors = FALSE
   )
-  if (is.null(cache_dir)) return(empty)
+  if (is.null(cache_dir)) {
+    return(empty)
+  }
   path <- file.path(cache_dir, "reference_accession_cache.rds")
-  if (!file.exists(path)) return(empty)
+  if (!file.exists(path)) {
+    return(empty)
+  }
   cached <- tryCatch(readRDS(path), error = function(e) NULL)
-  if (is.null(cached) || !is.data.frame(cached)) return(empty)
+  if (is.null(cached) || !is.data.frame(cached)) {
+    return(empty)
+  }
 
   # A cache file written by an OLDER package version can be missing columns
   # this version expects (found live: a real cache from before the
@@ -684,7 +721,11 @@ utils::globalVariables(c(
   hard_missing <- setdiff(missing_cols, .ADDITIVE_CACHE_COLUMNS)
   if (length(hard_missing) > 0L) {
     warning(sprintf(
-      "evaluate_reference_accessions(): cache at %s predates this package version (missing column(s): %s) -- starting a fresh cache. Every previously-cached verdict will be recomputed once.",
+      paste0(
+        "evaluate_reference_accessions(): cache at %s predates this package version ",
+        "(missing column(s): %s) -- starting a fresh cache. Every previously-cached ",
+        "verdict will be recomputed once."
+      ),
       path, paste(hard_missing, collapse = ", ")
     ), call. = FALSE)
     return(empty)
@@ -693,7 +734,11 @@ utils::globalVariables(c(
   if (length(soft_missing) > 0L) {
     for (nm in soft_missing) cached[[nm]] <- .na_like(empty[[nm]], nrow(cached))
     message(sprintf(
-      "evaluate_reference_accessions(): cache at %s predates %d additive diagnostic column(s) (%s) -- filled with NA. No verdict is affected and nothing is re-BLASTed; the column(s) populate as accessions are re-evaluated.",
+      paste0(
+        "evaluate_reference_accessions(): cache at %s predates %d additive diagnostic ",
+        "column(s) (%s) -- filled with NA. No verdict is affected and nothing is ",
+        "re-BLASTed; the column(s) populate as accessions are re-evaluated."
+      ),
       path, length(soft_missing), paste(soft_missing, collapse = ", ")
     ))
   }
@@ -703,7 +748,9 @@ utils::globalVariables(c(
 #' Persist the per-accession evaluation cache
 #' @noRd
 .save_reference_accession_cache <- function(cache_dir, cache_df) {
-  if (is.null(cache_dir)) return(invisible(NULL))
+  if (is.null(cache_dir)) {
+    return(invisible(NULL))
+  }
   if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   path <- file.path(cache_dir, "reference_accession_cache.rds")
   saveRDS(cache_df, path)
@@ -745,16 +792,21 @@ utils::globalVariables(c(
 #' @noRd
 .load_reference_pair_cache <- function(cache_dir) {
   empty <- .empty_reference_pair_cache()
-  if (is.null(cache_dir)) return(empty)
+  if (is.null(cache_dir)) {
+    return(empty)
+  }
   path <- file.path(cache_dir, "reference_pair_cache.rds")
-  if (!file.exists(path)) return(empty)
+  if (!file.exists(path)) {
+    return(empty)
+  }
   cached <- tryCatch(readRDS(path), error = function(e) NULL)
   if (!is.data.frame(cached) || !all(names(empty) %in% names(cached))) {
-    if (!is.null(cached))
+    if (!is.null(cached)) {
       warning(sprintf(
         "Discarding pair cache at %s -- unexpected schema. It will be rebuilt as accessions are re-evaluated.",
         path
       ), call. = FALSE)
+    }
     return(empty)
   }
   cached[, names(empty), drop = FALSE]
@@ -762,7 +814,9 @@ utils::globalVariables(c(
 
 #' @noRd
 .save_reference_pair_cache <- function(cache_dir, pair_df) {
-  if (is.null(cache_dir)) return(invisible(NULL))
+  if (is.null(cache_dir)) {
+    return(invisible(NULL))
+  }
   if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   saveRDS(pair_df, file.path(cache_dir, "reference_pair_cache.rds"))
   invisible(NULL)
@@ -810,22 +864,28 @@ utils::globalVariables(c(
   # ---- Fetch the accessions being evaluated: sequence + listed taxon +
   # create_date, all from one GBSeq XML round trip -----------------------------
   query_meta_raw <- .fetch_reference_accession_records(
-    chunk_acc, want_sequence = TRUE, ncbi_api_key = ncbi_api_key, verbose = verbose
+    chunk_acc,
+    want_sequence = TRUE, ncbi_api_key = ncbi_api_key, verbose = verbose
   )
   not_found_acc <- setdiff(chunk_acc, query_meta_raw$accession)
   query_meta <- query_meta_raw[!is.na(query_meta_raw$sequence) &
-                               nzchar(query_meta_raw$sequence), , drop = FALSE]
+    nzchar(query_meta_raw$sequence), , drop = FALSE]
   # An accession NCBI has a record for but with no usable sequence content
   # (e.g. GBSeq_sequence omitted for an extremely large record) is a
   # distinct failure mode from "not found at all" -- both are folded into
   # one missing_acc set so neither silently vanishes from the output.
   no_sequence_acc <- setdiff(query_meta_raw$accession, query_meta$accession)
   missing_acc <- union(not_found_acc, no_sequence_acc)
-  if (length(missing_acc) > 0L)
+  if (length(missing_acc) > 0L) {
     warning(sprintf(
-      "evaluate_reference_accessions(): %d accession(s) could not be evaluated this call (not found, or no usable sequence content) -- will retry next call, not cached:\n  %s",
+      paste0(
+        "evaluate_reference_accessions(): %d accession(s) could not be evaluated this ",
+        "call (not found, or no usable sequence content) -- will retry next call, ",
+        "not cached:\n  %s"
+      ),
       length(missing_acc), paste(missing_acc, collapse = ", ")
     ), call. = FALSE)
+  }
 
   # Why a query was NOT rescued by the feature-table fallback, one value per
   # row (NA where the fallback was never attempted or succeeded). Initialised
@@ -838,12 +898,14 @@ utils::globalVariables(c(
 
   if (!is.null(barcode_term) && nrow(query_meta) > 0L) {
     trimmed <- .trim_queries_to_amplicon(
-      query_meta$sequence, barcode_term = barcode_term,
+      query_meta$sequence,
+      barcode_term = barcode_term,
       strip_primers = strip_primers, verbose = verbose
     )
     was_trimmed <- attr(trimmed, "trimmed")
-    if (!is.null(was_trimmed))
+    if (!is.null(was_trimmed)) {
       query_meta$trim_path[was_trimmed %in% TRUE] <- "primer_match"
+    }
     query_meta$sequence <- as.character(trimmed)
 
     # ---- Mechanism 1: feature-table-guided extraction fallback for a query
@@ -872,7 +934,7 @@ utils::globalVariables(c(
       if (any(still_over)) {
         rescued <- .extract_feature_table_fallback(
           accessions = query_meta$accession[still_over],
-          sequences  = query_meta$sequence[still_over],
+          sequences = query_meta$sequence[still_over],
           barcode_term = barcode_term, ncbi_api_key = ncbi_api_key, verbose = verbose
         )
         # Capture the decline reason BEFORE the assignment below -- writing a
@@ -931,13 +993,14 @@ utils::globalVariables(c(
         congruent_evidence_exists_anywhere = NA,
         congruent_evidence_best_pident = NA_real_,
         hierarchy_flag = ifelse(is_wrong_marker,
-                                "not_evaluated_wrong_marker",
-                                "not_evaluated_oversized"),
+          "not_evaluated_wrong_marker",
+          "not_evaluated_oversized"
+        ),
         evaluated_at = now,
         cache_hit = FALSE,
         params_key = params_key,
         taxonomy_resolution_source = NA_character_,
-        query_len_submitted = NA_integer_,   # never submitted
+        query_len_submitted = NA_integer_, # never submitted
         query_trim_path = oversized_meta$trim_path,
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
@@ -945,25 +1008,36 @@ utils::globalVariables(c(
         stringsAsFactors = FALSE
       )
       if (verbose) {
-        if (any(!is_wrong_marker))
+        if (any(!is_wrong_marker)) {
           message(sprintf(
-            "evaluate_reference_accessions(): %d accession(s) still exceed max_query_len (%d bp) after trimming/feature-table extraction -- deferred as 'not_evaluated_oversized', never submitted to BLAST:\n  %s",
+            paste0(
+              "evaluate_reference_accessions(): %d accession(s) still exceed max_query_len ",
+              "(%d bp) after trimming/feature-table extraction -- deferred as ",
+              "'not_evaluated_oversized', never submitted to BLAST:\n  %s"
+            ),
             sum(!is_wrong_marker), as.integer(max_query_len),
             paste(oversized_meta$accession[!is_wrong_marker], collapse = ", ")
           ))
-        if (any(is_wrong_marker))
+        }
+        if (any(is_wrong_marker)) {
           message(sprintf(
-            "evaluate_reference_accessions(): %d accession(s) carry annotated features but none for the marker '%s' implies -- deferred as 'not_evaluated_wrong_marker' (they do not belong in this screen's candidate set; raising max_query_len cannot help):\n  %s",
+            paste0(
+              "evaluate_reference_accessions(): %d accession(s) carry annotated features ",
+              "but none for the marker '%s' implies -- deferred as ",
+              "'not_evaluated_wrong_marker' (they do not belong in this screen's ",
+              "candidate set; raising max_query_len cannot help):\n  %s"
+            ),
             sum(is_wrong_marker), barcode_term,
             paste(oversized_meta$accession[is_wrong_marker], collapse = ", ")
           ))
+        }
       }
       query_meta <- query_meta[!is_oversized, , drop = FALSE]
     }
   }
 
   computed_rows <- NULL
-  pair_table    <- NULL
+  pair_table <- NULL
   circuit_breaker_tripped <- FALSE
 
   if (nrow(query_meta) > 0L) {
@@ -1046,20 +1120,27 @@ utils::globalVariables(c(
         }
         query_meta$taxonomy_resolution_source[needs_proxy & !has_proxy] <- "hybrid_unresolved"
 
-        if (verbose && any(has_proxy))
+        if (verbose && any(has_proxy)) {
           message(sprintf(
-            "evaluate_reference_accessions(): %d hybrid-labeled accession(s) resolved via maternal parent species proxy.",
+            paste0(
+              "evaluate_reference_accessions(): %d hybrid-labeled accession(s) resolved ",
+              "via maternal parent species proxy."
+            ),
             sum(has_proxy)
           ))
+        }
       }
     }
 
     # ---- BLAST every chunk_acc accession's own sequence against the
     # broad, unrestricted database in one batched call ------------------------
-    seq_df <- data.frame(asv_id = query_meta$accession, sequence = query_meta$sequence,
-                         stringsAsFactors = FALSE)
+    seq_df <- data.frame(
+      asv_id = query_meta$accession, sequence = query_meta$sequence,
+      stringsAsFactors = FALSE
+    )
     hits <- blast_sequences(
-      seq_df, method = method, database = database, score_range = score_range,
+      seq_df,
+      method = method, database = database, score_range = score_range,
       min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
       ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
       max_consecutive_batch_failures = max_consecutive_batch_failures,
@@ -1102,7 +1183,8 @@ utils::globalVariables(c(
       # independence filter -----------------------------------------------------
       hit_acc <- unique(hits$accession)
       hit_meta <- .fetch_reference_accession_records(
-        hit_acc, want_sequence = FALSE, ncbi_api_key = ncbi_api_key, verbose = verbose
+        hit_acc,
+        want_sequence = FALSE, ncbi_api_key = ncbi_api_key, verbose = verbose
       )
 
       # ---- Adapt BLAST hit shape into the id_x/id_y/{rank}.x/{rank}.y pair
@@ -1129,15 +1211,20 @@ utils::globalVariables(c(
       }
 
       ref_lookup <- unique(rbind(
-        data.frame(composite_id = query_meta$accession, create_date = query_meta$create_date,
-                  stringsAsFactors = FALSE),
-        data.frame(composite_id = hit_meta$accession, create_date = hit_meta$create_date,
-                  stringsAsFactors = FALSE)
+        data.frame(
+          composite_id = query_meta$accession, create_date = query_meta$create_date,
+          stringsAsFactors = FALSE
+        ),
+        data.frame(
+          composite_id = hit_meta$accession, create_date = hit_meta$create_date,
+          stringsAsFactors = FALSE
+        )
       ))
       ref_lookup <- ref_lookup[!duplicated(ref_lookup$composite_id), , drop = FALSE]
 
       congruence <- .compute_hierarchy_congruence(
-        sm, ref_lookup, rank_system = rank_system, top_n = top_n,
+        sm, ref_lookup,
+        rank_system = rank_system, top_n = top_n,
         min_congruent_rank = min_congruent_rank, submission_window = submission_window,
         min_coverage = NULL, require_species_resolved_partner = TRUE
       )
@@ -1171,7 +1258,8 @@ utils::globalVariables(c(
     # filled in here rather than silently dropped.
     congruence <- merge(
       data.frame(id_x = query_meta$accession, stringsAsFactors = FALSE),
-      congruence, by = "id_x", all.x = TRUE, sort = FALSE
+      congruence,
+      by = "id_x", all.x = TRUE, sort = FALSE
     )
     congruence$n_independent_top_matches[is.na(congruence$n_independent_top_matches)] <- 0L
     congruence$n_top_matches_available[is.na(congruence$n_top_matches_available)] <- 0L
@@ -1236,7 +1324,7 @@ utils::globalVariables(c(
         n_excluded_same_batch = as.integer(congruence$n_excluded_same_batch),
         n_excluded_not_species_resolved =
           as.integer(congruence$n_excluded_not_species_resolved),
-        local_corroborator_accession = NA_character_,  # this row went through BLAST, not the local-corroboration skip
+        local_corroborator_accession = NA_character_, # this row went through BLAST, not the local-corroboration skip
         stringsAsFactors = FALSE
       )
     }
@@ -1253,9 +1341,11 @@ utils::globalVariables(c(
     }
   }
 
-  list(computed_rows = computed_rows, missing_acc = missing_acc,
-       pair_table = pair_table,
-       circuit_breaker_tripped = circuit_breaker_tripped)
+  list(
+    computed_rows = computed_rows, missing_acc = missing_acc,
+    pair_table = pair_table,
+    circuit_breaker_tripped = circuit_breaker_tripped
+  )
 }
 
 #' Evaluate Reference-Accession Quality via Unrestricted BLAST Comparison
@@ -1951,48 +2041,62 @@ evaluate_reference_accessions <- function(accessions,
                                           local_corroboration = NULL,
                                           skip_locally_corroborated = TRUE,
                                           verbose = TRUE) {
-
-  if (!is.character(accessions) || length(accessions) == 0L)
+  if (!is.character(accessions) || length(accessions) == 0L) {
     stop("accessions must be a non-empty character vector.", call. = FALSE)
+  }
   method <- match.arg(method)
   query_span <- match.arg(query_span)
   if (!is.logical(skip_locally_corroborated) || length(skip_locally_corroborated) != 1L ||
-      is.na(skip_locally_corroborated))
+    is.na(skip_locally_corroborated)) {
     stop("skip_locally_corroborated must be TRUE or FALSE.", call. = FALSE)
+  }
   if (!is.null(local_corroboration)) {
-    lc_needed <- c("accession", "local_tier", "n_independent_conspecific",
-                   "best_independent_pident")
-    if (!is.data.frame(local_corroboration))
+    lc_needed <- c(
+      "accession", "local_tier", "n_independent_conspecific",
+      "best_independent_pident"
+    )
+    if (!is.data.frame(local_corroboration)) {
       stop("local_corroboration must be NULL or a data frame from corroborate_references_locally().",
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
     lc_missing <- setdiff(lc_needed, names(local_corroboration))
-    if (length(lc_missing) > 0L)
+    if (length(lc_missing) > 0L) {
       stop(sprintf(
         "local_corroboration is missing required column(s): %s (expected corroborate_references_locally() output).",
         paste(lc_missing, collapse = ", ")
       ), call. = FALSE)
+    }
   }
   if (!is.numeric(chunk_size) || length(chunk_size) != 1L || is.na(chunk_size) ||
-      chunk_size < 1L)
+    chunk_size < 1L) {
     stop("chunk_size must be a positive integer (Inf for a single unchunked call).",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (!is.null(max_query_len) &&
-      (!is.numeric(max_query_len) || length(max_query_len) != 1L ||
-       is.na(max_query_len) || max_query_len < 1))
+    (!is.numeric(max_query_len) || length(max_query_len) != 1L ||
+      is.na(max_query_len) || max_query_len < 1)) {
     stop("max_query_len must be NULL, a positive number, or Inf to disable.", call. = FALSE)
+  }
   if (!is.numeric(max_batch_bp) || length(max_batch_bp) != 1L ||
-      is.na(max_batch_bp) || max_batch_bp < 1)
+    is.na(max_batch_bp) || max_batch_bp < 1) {
     stop("max_batch_bp must be a positive number (Inf to disable).", call. = FALSE)
+  }
   if (!is.logical(prioritize_uncached) || length(prioritize_uncached) != 1L ||
-      is.na(prioritize_uncached))
+    is.na(prioritize_uncached)) {
     stop("prioritize_uncached must be TRUE or FALSE.", call. = FALSE)
+  }
   if (!is.logical(retry_insufficient) || length(retry_insufficient) != 1L ||
-      is.na(retry_insufficient))
+    is.na(retry_insufficient)) {
     stop("retry_insufficient must be TRUE or FALSE.", call. = FALSE)
+  }
   if (!is.numeric(incongruent_ttl_days) || length(incongruent_ttl_days) != 1L ||
-      is.na(incongruent_ttl_days) || incongruent_ttl_days <= 0)
+    is.na(incongruent_ttl_days) || incongruent_ttl_days <= 0) {
     stop("incongruent_ttl_days must be a positive number (Inf to never expire an \"incongruent\" verdict).",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # max_query_len's default depends on barcode_term (a marker-aware bound
   # when one is supplied, a flat absolute fallback otherwise) -- resolved
@@ -2007,7 +2111,8 @@ evaluate_reference_accessions <- function(accessions,
   if (is.null(max_query_len)) {
     max_query_len <- if (!is.null(barcode_term)) {
       primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
-                              error = function(e) NULL)
+        error = function(e) NULL
+      )
       if (!is.null(primer_info) && !is.null(primer_info$amplicon_range)) {
         as.numeric(primer_info$amplicon_range[2L]) * 10
       } else {
@@ -2019,8 +2124,9 @@ evaluate_reference_accessions <- function(accessions,
   }
 
   unique_acc <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
-  if (length(unique_acc) == 0L)
+  if (length(unique_acc) == 0L) {
     stop("No valid (non-NA, non-blank) accessions supplied.", call. = FALSE)
+  }
 
   # Full kingdom->species ladder, not just family/genus/species -- see
   # this function's own @section Coarse-rank diagnostic below. min_congruent_
@@ -2051,9 +2157,11 @@ evaluate_reference_accessions <- function(accessions,
 
   now <- Sys.time()
 
-  in_cache <- cache[cache$accession %in% unique_acc &
-                    !is.na(cache$params_key) & cache$params_key == params_key, ,
-                    drop = FALSE]
+  in_cache <- cache[
+    cache$accession %in% unique_acc &
+      !is.na(cache$params_key) & cache$params_key == params_key, ,
+    drop = FALSE
+  ]
 
   # Per-flag TTL. The asymmetry between the three expiring flags and
   # "congruent" is not caution, it is what each verdict actually claims:
@@ -2112,11 +2220,14 @@ evaluate_reference_accessions <- function(accessions,
   # upstream at NCBI. Retryable is the safe direction; nothing acts on it.
   ttl_days_for_flag <- function(flag) {
     ifelse(
-      flag %in% c("insufficient_independent_evidence", "not_evaluated_oversized",
-                  "not_evaluated_wrong_marker"),
+      flag %in% c(
+        "insufficient_independent_evidence", "not_evaluated_oversized",
+        "not_evaluated_wrong_marker"
+      ),
       insufficient_evidence_ttl_days,
       ifelse(flag %in% "incongruent", incongruent_ttl_days,
-             ifelse(flag %in% c("congruent", "locally_corroborated"), Inf, Inf))
+        ifelse(flag %in% c("congruent", "locally_corroborated"), Inf, Inf)
+      )
     )
   }
   row_ttl_secs <- ttl_days_for_flag(in_cache$hierarchy_flag) * 86400
@@ -2134,8 +2245,9 @@ evaluate_reference_accessions <- function(accessions,
   # still wants the skip. skip_locally_corroborated = FALSE says "BLAST these
   # after all", so such a row goes back into needs_eval regardless of TTL --
   # the flag records a decision not to evaluate, not an evaluation.
-  if (!isTRUE(skip_locally_corroborated))
+  if (!isTRUE(skip_locally_corroborated)) {
     fresh_enough <- fresh_enough & !(in_cache$hierarchy_flag %in% "locally_corroborated")
+  }
   cache_hit_rows <- in_cache[fresh_enough, , drop = FALSE]
   # A scalar assigned onto a NEW column of a possibly-zero-row data frame
   # does not recycle the way it would on an existing column -- base R
@@ -2173,7 +2285,7 @@ evaluate_reference_accessions <- function(accessions,
   # already has a BLAST verdict keeps it.
   skipped_rows <- NULL
   if (!is.null(local_corroboration) && isTRUE(skip_locally_corroborated) &&
-      length(needs_eval) > 0L) {
+    length(needs_eval) > 0L) {
     lc_acc <- .strip_acc_version(local_corroboration$accession)
     corroborated_acc <- lc_acc[local_corroboration$local_tier %in% "corroborated"]
     is_skip <- .strip_acc_version(needs_eval) %in% corroborated_acc
@@ -2202,7 +2314,7 @@ evaluate_reference_accessions <- function(accessions,
         params_key = params_key,
         taxonomy_resolution_source = NA_character_,
         query_len_submitted = NA_integer_,
-        query_trim_path = NA_character_,   # never fetched, so never trimmed
+        query_trim_path = NA_character_, # never fetched, so never trimmed
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
         # Provenance (2026-09-05 critical-fix-review finding B5): WHICH
@@ -2216,38 +2328,47 @@ evaluate_reference_accessions <- function(accessions,
         # look this accession up too, rather than the corroboration resting
         # on an unnamed, unverifiable partner forever.
         local_corroborator_accession = .strip_acc_version(
-          as.character(local_corroboration$best_independent_partner[idx])),
+          as.character(local_corroboration$best_independent_partner[idx])
+        ),
         stringsAsFactors = FALSE
       )
       needs_eval <- needs_eval[!is_skip]
       cache <- cache[!(cache$accession %in% skipped_rows$accession &
-                       cache$params_key == params_key), , drop = FALSE]
+        cache$params_key == params_key), , drop = FALSE]
       cache <- rbind(cache, .align_to_cache_columns(skipped_rows, cache))
       .save_reference_accession_cache(cache_dir, cache)
-      if (verbose)
+      if (verbose) {
         message(sprintf(
-          "evaluate_reference_accessions(): %d skipped: independently corroborated in the local reference set (hierarchy_flag = 'locally_corroborated', never submitted to BLAST).",
+          paste0(
+            "evaluate_reference_accessions(): %d skipped: independently corroborated in ",
+            "the local reference set (hierarchy_flag = 'locally_corroborated', never ",
+            "submitted to BLAST)."
+          ),
           nrow(skipped_rows)
         ))
+      }
     }
   }
   n_skipped_local <- if (is.null(skipped_rows)) 0L else nrow(skipped_rows)
 
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "evaluate_reference_accessions(): %d unique accession(s), %d from cache, %d to evaluate.",
       length(unique_acc), nrow(cache_hit_rows), length(needs_eval)
     ))
+  }
 
-  out_cols <- c("accession", "listed_taxon", "n_independent_top_matches",
-               "n_top_matches_available", "frac_independent_below_min_congruent_rank",
-               "finest_common_rank", "best_hit_pident", "best_agreeing_pident",
-               "best_disagreeing_pident", "best_disagreeing_taxon",
-               "congruent_evidence_exists_anywhere",
-               "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
-               "taxonomy_resolution_source", "query_len_submitted", "query_trim_path",
-               "n_excluded_same_batch", "n_excluded_not_species_resolved",
-               "local_corroborator_accession")
+  out_cols <- c(
+    "accession", "listed_taxon", "n_independent_top_matches",
+    "n_top_matches_available", "frac_independent_below_min_congruent_rank",
+    "finest_common_rank", "best_hit_pident", "best_agreeing_pident",
+    "best_disagreeing_pident", "best_disagreeing_taxon",
+    "congruent_evidence_exists_anywhere",
+    "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
+    "taxonomy_resolution_source", "query_len_submitted", "query_trim_path",
+    "n_excluded_same_batch", "n_excluded_not_species_resolved",
+    "local_corroborator_accession"
+  )
 
   # No early return for a purely cache-served call (removed 2026-09-03): the
   # general path below handles an empty needs_eval (the chunk loop simply
@@ -2281,14 +2402,16 @@ evaluate_reference_accessions <- function(accessions,
 
   for (ci in seq_along(chunks)) {
     chunk_acc <- chunks[[ci]]
-    if (verbose && length(chunks) > 1L)
+    if (verbose && length(chunks) > 1L) {
       message(sprintf(
         "evaluate_reference_accessions(): chunk %d/%d (%d accession(s))...",
         ci, length(chunks), length(chunk_acc)
       ))
+    }
 
     chunk_result <- .evaluate_reference_accessions_chunk(
-      chunk_acc, rank_system = rank_system, method = method, database = database,
+      chunk_acc,
+      rank_system = rank_system, method = method, database = database,
       score_range = score_range, min_score = min_score, max_hits = max_hits,
       ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
       barcode_term = barcode_term,
@@ -2309,7 +2432,7 @@ evaluate_reference_accessions <- function(accessions,
       # ---- Incremental cache write: persist THIS chunk's results now,
       # rather than waiting for every remaining chunk to also finish. ----
       cache <- cache[!(cache$accession %in% chunk_result$computed_rows$accession &
-                       cache$params_key == params_key), , drop = FALSE]
+        cache$params_key == params_key), , drop = FALSE]
       cache <- rbind(cache, .align_to_cache_columns(chunk_result$computed_rows, cache))
       .save_reference_accession_cache(cache_dir, cache)
 
@@ -2320,10 +2443,10 @@ evaluate_reference_accessions <- function(accessions,
       # accumulating a second, stale copy alongside them.
       if (!is.null(chunk_result$pair_table) && nrow(chunk_result$pair_table) > 0L) {
         new_pairs <- chunk_result$pair_table
-        new_pairs$params_key   <- params_key
+        new_pairs$params_key <- params_key
         new_pairs$evaluated_at <- now
         pair_cache <- pair_cache[!(pair_cache$id_x %in% new_pairs$id_x &
-                                     pair_cache$params_key == params_key), , drop = FALSE]
+          pair_cache$params_key == params_key), , drop = FALSE]
         pair_cache <- rbind(pair_cache, new_pairs[, names(pair_cache), drop = FALSE])
         .save_reference_pair_cache(cache_dir, pair_cache)
       }
@@ -2331,9 +2454,9 @@ evaluate_reference_accessions <- function(accessions,
 
     if (isTRUE(chunk_result$circuit_breaker_tripped)) {
       circuit_breaker_tripped <- TRUE
-      break  # stop processing further chunks -- see the chunk loop's own
-             # header comment; nothing past this point is worth submitting
-             # to a confirmed-throttled NCBI connection right now.
+      break # stop processing further chunks -- see the chunk loop's own
+      # header comment; nothing past this point is worth submitting
+      # to a confirmed-throttled NCBI connection right now.
     }
   }
 
@@ -2526,34 +2649,40 @@ evaluate_reference_accessions <- function(accessions,
 #'
 #' @export
 flag_incongruent_references <- function(match_df, evaluation) {
-
-  if (!is.data.frame(match_df))
+  if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame.", call. = FALSE)
-  if (!is.data.frame(evaluation))
+  }
+  if (!is.data.frame(evaluation)) {
     stop("evaluation must be a data frame.", call. = FALSE)
+  }
 
-  join_cols <- c("hierarchy_flag", "finest_common_rank",
-                 "frac_independent_below_min_congruent_rank",
-                 "n_independent_top_matches", "n_top_matches_available",
-                 "best_hit_pident", "best_agreeing_pident", "best_disagreeing_pident",
-                 "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident")
+  join_cols <- c(
+    "hierarchy_flag", "finest_common_rank",
+    "frac_independent_below_min_congruent_rank",
+    "n_independent_top_matches", "n_top_matches_available",
+    "best_hit_pident", "best_agreeing_pident", "best_disagreeing_pident",
+    "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident"
+  )
   missing_cols <- setdiff(c("accession", join_cols), names(evaluation))
   # Carried when present, not required: an `evaluation` read straight off a
   # pre-2026-09-02 cache file has the diagnostics but not the derived
   # verdict columns, and joining what exists beats erroring on what doesn't.
   optional_cols <- intersect(
-    c("label_confidence", "label_identity_margin", "reference_action",
+    c(
+      "label_confidence", "label_identity_margin", "reference_action",
       "listed_taxon_is_species",
       "corroboration_source", "local_best_independent_pident",
-      "local_n_independent_conspecific", "action_reason"),
+      "local_n_independent_conspecific", "action_reason"
+    ),
     names(evaluation)
   )
   join_cols <- c(join_cols, optional_cols)
-  if (length(missing_cols) > 0L)
+  if (length(missing_cols) > 0L) {
     stop(sprintf(
       "evaluation is missing required columns: %s",
       paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
+  }
 
   if (!"accession" %in% names(match_df)) {
     warning(
@@ -2565,13 +2694,14 @@ flag_incongruent_references <- function(match_df, evaluation) {
   }
 
   collide <- intersect(join_cols, names(match_df))
-  if (length(collide) > 0L)
+  if (length(collide) > 0L) {
     stop(sprintf(
       "match_df already has column(s) also produced by flag_incongruent_references(): %s -- rename or drop them first to avoid ambiguity.",
       paste(collide, collapse = ", ")
     ), call. = FALSE)
+  }
 
-  match_df$.join_acc   <- sub("\\.[0-9]+$", "", match_df$accession)
+  match_df$.join_acc <- sub("\\.[0-9]+$", "", match_df$accession)
   match_df$.orig_order <- seq_len(nrow(match_df))
   eval_join <- evaluation[!duplicated(evaluation$accession), c("accession", join_cols)]
   eval_join$.join_acc <- sub("\\.[0-9]+$", "", eval_join$accession)
@@ -2679,22 +2809,25 @@ remove_incongruent_references <- function(match_df,
                                           remove_insufficient_evidence = FALSE,
                                           override_accessions = NULL,
                                           gate = c("action", "flag")) {
-
-  if (!is.data.frame(match_df))
+  if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame.", call. = FALSE)
-  if (!is.data.frame(evaluation))
+  }
+  if (!is.data.frame(evaluation)) {
     stop("evaluation must be a data frame.", call. = FALSE)
-  if (!is.null(override_accessions) && !is.character(override_accessions))
+  }
+  if (!is.null(override_accessions) && !is.character(override_accessions)) {
     stop("override_accessions must be NULL or a character vector of accessions.", call. = FALSE)
+  }
   gate <- match.arg(gate)
 
   needed <- c("accession", "hierarchy_flag")
   missing_cols <- setdiff(needed, names(evaluation))
-  if (length(missing_cols) > 0L)
+  if (length(missing_cols) > 0L) {
     stop(sprintf(
       "evaluation is missing required columns: %s",
       paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
+  }
 
   if (gate == "action" && !"reference_action" %in% names(evaluation)) {
     # An `evaluation` from a pre-2026-09-02 cache read straight off disk has
@@ -2705,13 +2838,17 @@ remove_incongruent_references <- function(match_df,
     # explicit escape hatch instead of a bare column-not-found error.
     evaluation <- tryCatch(
       score_reference_labels(evaluation),
-      error = function(e) stop(sprintf(
-        paste0("gate = \"action\" needs `reference_action`, or the diagnostic columns ",
-               "score_reference_labels() derives it from, and evaluation has neither ",
-               "(%s).\n  Re-run evaluate_reference_accessions(), or pass gate = \"flag\" ",
-               "for the pre-2026-09-02 hierarchy_flag-only behaviour."),
-        conditionMessage(e)
-      ), call. = FALSE)
+      error = function(e) {
+        stop(sprintf(
+          paste0(
+            "gate = \"action\" needs `reference_action`, or the diagnostic columns ",
+            "score_reference_labels() derives it from, and evaluation has neither ",
+            "(%s).\n  Re-run evaluate_reference_accessions(), or pass gate = \"flag\" ",
+            "for the pre-2026-09-02 hierarchy_flag-only behaviour."
+          ),
+          conditionMessage(e)
+        ), call. = FALSE)
+      }
     )
   }
 
@@ -2725,24 +2862,27 @@ remove_incongruent_references <- function(match_df,
   }
 
   flags_to_remove <- if (gate == "flag") "incongruent" else character(0L)
-  if (isTRUE(remove_insufficient_evidence))
+  if (isTRUE(remove_insufficient_evidence)) {
     flags_to_remove <- c(flags_to_remove, "insufficient_independent_evidence")
+  }
 
   bad_ids <- evaluation$accession[evaluation$hierarchy_flag %in% flags_to_remove]
-  if (gate == "action")
+  if (gate == "action") {
     bad_ids <- unique(c(
       bad_ids, evaluation$accession[evaluation$reference_action %in% "remove"]
     ))
+  }
 
   override_clean <- sub("\\.[0-9]+$", "", override_accessions)
   bad_ids_clean_check <- sub("\\.[0-9]+$", "", bad_ids)
   n_overridden <- length(intersect(bad_ids_clean_check, override_clean))
   bad_ids <- bad_ids[!bad_ids_clean_check %in% override_clean]
-  if (n_overridden > 0L)
+  if (n_overridden > 0L) {
     message(sprintf(
       "%d flagged accession(s) kept despite hierarchy_flag, per override_accessions.",
       n_overridden
     ))
+  }
 
   if (length(bad_ids) == 0L) {
     message("No incongruent references to remove.")
@@ -2754,7 +2894,7 @@ remove_incongruent_references <- function(match_df,
   flagged_mask <- acc_clean %in% bad_clean
 
   n_rows_removed <- sum(flagged_mask)
-  n_accessions   <- length(unique(acc_clean[flagged_mask]))
+  n_accessions <- length(unique(acc_clean[flagged_mask]))
 
   if (n_rows_removed == 0L) {
     message("No incongruent accessions found in match_df.")
@@ -2850,32 +2990,35 @@ remove_incongruent_references <- function(match_df,
 #' @examples
 #' \dontrun{
 #' seq_matrix <- TaxaLikely::build_sequence_matrix(reference_df,
-#'   rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' errors <- TaxaLikely::flag_reference_errors(seq_matrix)
 #' result <- verify_flagged_references(errors,
-#'   cache_dir = "~/my_project_ref_eval_cache")
+#'   cache_dir = "~/my_project_ref_eval_cache"
+#' )
 #' lik_model <- TaxaLikely::train_likelihood_model(seq_matrix,
 #'   rank_system = c("family", "genus", "species"),
-#'   verified_clean = result$verified_clean)
+#'   verified_clean = result$verified_clean
+#' )
 #' }
 #'
 #' @export
 verify_flagged_references <- function(flagged,
-                                       error_types = "likely_mislabeled",
-                                       trust_insufficient_evidence = FALSE,
-                                       cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
-                                       ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
-                                       barcode_term = NULL,
-                                       ...) {
-
+                                      error_types = "likely_mislabeled",
+                                      trust_insufficient_evidence = FALSE,
+                                      cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
+                                      ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
+                                      barcode_term = NULL,
+                                      ...) {
   if (is.data.frame(flagged)) {
     needed <- c("id_x", "error_type")
     missing_cols <- setdiff(needed, names(flagged))
-    if (length(missing_cols) > 0L)
+    if (length(missing_cols) > 0L) {
       stop(sprintf(
         "flagged is missing required columns: %s",
         paste(missing_cols, collapse = ", ")
       ), call. = FALSE)
+    }
     accessions <- unique(flagged$id_x[flagged$error_type %in% error_types])
   } else if (is.character(flagged)) {
     accessions <- unique(flagged)
@@ -2911,7 +3054,7 @@ verify_flagged_references <- function(flagged,
     c("congruent", "locally_corroborated")
   }
   verified_clean <- unique(qc$accession[qc$hierarchy_flag %in% keep_flags])
-  n_incongruent  <- sum(qc$hierarchy_flag == "incongruent", na.rm = TRUE)
+  n_incongruent <- sum(qc$hierarchy_flag == "incongruent", na.rm = TRUE)
 
   message(sprintf(
     "%d of %d flagged accession(s) verified NOT incongruent (safe to keep in training); %d confirmed incongruent.",

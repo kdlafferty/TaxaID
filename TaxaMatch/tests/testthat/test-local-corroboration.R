@@ -12,31 +12,43 @@
 .local_seq_matrix_fixture <- function() {
   data.frame(
     id_x = c("KM057996", "KM057967", rep("MN883227", 6L), "KM057996"),
-    id_y = c("OQ846041", "LC126244",
-             "MN883226", "OR380114", "OR380115", "OR380116", "OR380117", "OR380118",
-             "OQ846089"),
-    p_match  = c(1.0, 1.0, 1.0, 0.9814, 0.9814, 0.9814, 0.9814, 0.9814, 1.0),
+    id_y = c(
+      "OQ846041", "LC126244",
+      "MN883226", "OR380114", "OR380115", "OR380116", "OR380117", "OR380118",
+      "OQ846089"
+    ),
+    p_match = c(1.0, 1.0, 1.0, 0.9814, 0.9814, 0.9814, 0.9814, 0.9814, 1.0),
     coverage = c(0.97, 0.056, 1.0, 0.958, 0.958, 0.958, 0.958, 0.958, 1.0),
-    species.x = c("Zaniolepis frenata", "Jordania zonope", rep("Fundulus luciae", 6L),
-                  "Zaniolepis frenata"),
-    species.y = c("Zaniolepis frenata", "Jordania zonope", rep("Fundulus luciae", 6L),
-                  "Zaniolepis latipinnis"),   # congener, never counts
+    species.x = c(
+      "Zaniolepis frenata", "Jordania zonope", rep("Fundulus luciae", 6L),
+      "Zaniolepis frenata"
+    ),
+    species.y = c(
+      "Zaniolepis frenata", "Jordania zonope", rep("Fundulus luciae", 6L),
+      "Zaniolepis latipinnis"
+    ), # congener, never counts
     stringsAsFactors = FALSE
   )
 }
 
 .local_reference_meta_fixture <- function() {
   data.frame(
-    composite_id = c("KM057996", "OQ846041", "KM057967", "LC126244",
-                     "MN883227", "MN883226",
-                     "OR380114", "OR380115", "OR380116", "OR380117", "OR380118",
-                     "OQ846089"),
-    species = c("Zaniolepis frenata", "Zaniolepis frenata", "Jordania zonope", "Jordania zonope",
-                "Fundulus luciae", "Fundulus luciae",
-                rep("Fundulus luciae", 5L), "Zaniolepis latipinnis"),
-    create_date = c("2014/08/04", "2023/04/24", "2014/08/04", "2019/02/14",
-                    "2020/01/04", "2020/01/04",
-                    rep("2023/08/15", 5L), "2023/04/24"),
+    composite_id = c(
+      "KM057996", "OQ846041", "KM057967", "LC126244",
+      "MN883227", "MN883226",
+      "OR380114", "OR380115", "OR380116", "OR380117", "OR380118",
+      "OQ846089"
+    ),
+    species = c(
+      "Zaniolepis frenata", "Zaniolepis frenata", "Jordania zonope", "Jordania zonope",
+      "Fundulus luciae", "Fundulus luciae",
+      rep("Fundulus luciae", 5L), "Zaniolepis latipinnis"
+    ),
+    create_date = c(
+      "2014/08/04", "2023/04/24", "2014/08/04", "2019/02/14",
+      "2020/01/04", "2020/01/04",
+      rep("2023/08/15", 5L), "2023/04/24"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -48,8 +60,10 @@
 # ------------------------------------------------------------------------------
 
 test_that("Zaniolepis: KM057996 is corroborated by the independent 2023 deposit OQ846041", {
-  out <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                        .local_reference_meta_fixture())
+  out <- corroborate_references_locally(
+    .local_seq_matrix_fixture(),
+    .local_reference_meta_fixture()
+  )
   expect_equal(.tier_of(out, "KM057996"), "corroborated")
   row <- out[out$accession == "KM057996", ]
   expect_equal(row$n_conspecific, 1L)
@@ -63,8 +77,10 @@ test_that("Zaniolepis: KM057996 is corroborated by the independent 2023 deposit 
 })
 
 test_that("Jordania: a 100% match over 5.6% overlap is excluded by min_overlap, so KM057967 is a singleton", {
-  out <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                        .local_reference_meta_fixture())
+  out <- corroborate_references_locally(
+    .local_seq_matrix_fixture(),
+    .local_reference_meta_fixture()
+  )
   expect_equal(.tier_of(out, "KM057967"), "singleton")
   row <- out[out$accession == "KM057967", ]
   expect_equal(row$n_conspecific, 0L)
@@ -72,31 +88,37 @@ test_that("Jordania: a 100% match over 5.6% overlap is excluded by min_overlap, 
   # Lower the overlap floor below 5.6% and the pair counts -- pinning that
   # the filter, not something else, is what excludes it.
   loose <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                          .local_reference_meta_fixture(),
-                                          min_overlap = 0.05)
+    .local_reference_meta_fixture(),
+    min_overlap = 0.05
+  )
   expect_equal(.tier_of(loose, "KM057967"), "corroborated")
 })
 
 test_that("Fundulus: the same-day sibling at 1.0 must not count; five independent 0.9814 partners read 'disagree' at 0.99 and 'corroborated' at 0.98", {
-  strict <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                           .local_reference_meta_fixture())
+  strict <- corroborate_references_locally(
+    .local_seq_matrix_fixture(),
+    .local_reference_meta_fixture()
+  )
   row <- strict[strict$accession == "MN883227", ]
   expect_equal(row$n_conspecific, 6L)
-  expect_equal(row$n_independent_conspecific, 5L)  # MN883226 is same batch
+  expect_equal(row$n_independent_conspecific, 5L) # MN883226 is same batch
   expect_equal(row$best_independent_pident, 0.9814)
   expect_match(row$best_independent_partner, "^OR3801")
   expect_equal(row$local_tier, "disagree")
 
   loose <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                          .local_reference_meta_fixture(),
-                                          min_pident = 0.98)
+    .local_reference_meta_fixture(),
+    min_pident = 0.98
+  )
   expect_equal(.tier_of(loose, "MN883227"), "corroborated")
 })
 
 test_that("same_batch_only: a conspecific from the same batch is counted but never corroborates", {
-  sm <- data.frame(id_x = "MN883227", id_y = "MN883226", p_match = 1, coverage = 1,
-                   species.x = "Fundulus luciae", species.y = "Fundulus luciae",
-                   stringsAsFactors = FALSE)
+  sm <- data.frame(
+    id_x = "MN883227", id_y = "MN883226", p_match = 1, coverage = 1,
+    species.x = "Fundulus luciae", species.y = "Fundulus luciae",
+    stringsAsFactors = FALSE
+  )
   out <- corroborate_references_locally(sm, .local_reference_meta_fixture())
   row <- out[out$accession == "MN883227", ]
   expect_equal(row$n_conspecific, 1L)
@@ -125,9 +147,11 @@ test_that("version suffixes are stripped on both sides and the output is one row
   expect_equal(sum(out$accession == "KM057996"), 1L)
   expect_equal(.tier_of(out, "KM057996"), "corroborated")
   expect_equal(nrow(out), length(unique(out$accession)))
-  expect_true(all(c("accession", "species", "n_conspecific", "n_independent_conspecific",
-                    "best_independent_pident", "best_independent_partner", "local_tier")
-                  %in% names(out)))
+  expect_true(all(c(
+    "accession", "species", "n_conspecific", "n_independent_conspecific",
+    "best_independent_pident", "best_independent_partner", "local_tier"
+  )
+  %in% names(out)))
   expect_equal(attr(out, "local_corroboration_params")$min_pident, 0.99)
 })
 
@@ -136,7 +160,7 @@ test_that("corroborate_references_locally() accepts an accession column and ISO 
   names(meta)[names(meta) == "composite_id"] <- "accession"
   meta$create_date <- gsub("/", "-", meta$create_date)
   out <- corroborate_references_locally(.local_seq_matrix_fixture(), meta)
-  expect_equal(.tier_of(out, "MN883227"), "disagree")   # dates still parsed: MN883226 same day
+  expect_equal(.tier_of(out, "MN883227"), "disagree") # dates still parsed: MN883226 same day
   expect_equal(.tier_of(out, "KM057996"), "corroborated")
 })
 
@@ -144,16 +168,20 @@ test_that("corroborate_references_locally() validates inputs", {
   sm <- .local_seq_matrix_fixture()
   meta <- .local_reference_meta_fixture()
   expect_error(corroborate_references_locally(sm[, -4], meta), "coverage")
-  expect_error(corroborate_references_locally(sm, meta[, "species", drop = FALSE]),
-               "composite_id or accession")
+  expect_error(
+    corroborate_references_locally(sm, meta[, "species", drop = FALSE]),
+    "composite_id or accession"
+  )
   expect_error(corroborate_references_locally(sm, meta, min_overlap = 1.5), "min_overlap")
   expect_error(corroborate_references_locally(sm, meta, min_pident = 0), "min_pident")
   expect_error(corroborate_references_locally(list(), meta), "data frame")
 })
 
 test_that("corroborate_references_locally() on a matrix with no conspecific pairs returns all singletons", {
-  sm <- data.frame(id_x = "A1", id_y = "B1", p_match = 1, coverage = 1,
-                   species.x = "Genus a", species.y = "Genus b", stringsAsFactors = FALSE)
+  sm <- data.frame(
+    id_x = "A1", id_y = "B1", p_match = 1, coverage = 1,
+    species.x = "Genus a", species.y = "Genus b", stringsAsFactors = FALSE
+  )
   meta <- data.frame(composite_id = c("A1", "B1"), stringsAsFactors = FALSE)
   out <- corroborate_references_locally(sm, meta)
   expect_equal(out$local_tier, c("singleton", "singleton"))
@@ -167,8 +195,8 @@ test_that("corroborate_references_locally() on a matrix with no conspecific pair
 .driving_match_fixture <- function() {
   data.frame(
     observation_id = c("O1", "O1", "O1", "O2", "O2", "O3", "O3"),
-    species        = c("Sp a", "Sp a", "Sp b", "Sp a", "Sp a", "Sp c", "Sp c"),
-    accession      = c("A1", "A2", "B1", "A2", "A3", "RESTORED_C1", "C2"),
+    species = c("Sp a", "Sp a", "Sp b", "Sp a", "Sp a", "Sp c", "Sp c"),
+    accession = c("A1", "A2", "B1", "A2", "A3", "RESTORED_C1", "C2"),
     score_original = c(99, 98, 97, 95, 99, 100, 90),
     stringsAsFactors = FALSE
   )
@@ -178,10 +206,10 @@ test_that("match_driving_accessions() keeps the per-(observation, species) best 
   out <- match_driving_accessions(.driving_match_fixture())
   # A1 best for O1/Sp a; B1 for O1/Sp b; A3 for O2/Sp a; C2 for O3/Sp c.
   expect_setequal(out, c("A1", "B1", "A3", "C2"))
-  expect_false("A2" %in% out)   # second-best everywhere: never drives a likelihood
+  expect_false("A2" %in% out) # second-best everywhere: never drives a likelihood
 
   tied <- .driving_match_fixture()
-  tied$score_original[2] <- 99  # A2 ties A1 for O1/Sp a
+  tied$score_original[2] <- 99 # A2 ties A1 for O1/Sp a
   expect_true(all(c("A1", "A2") %in% match_driving_accessions(tied)))
 })
 
@@ -204,8 +232,10 @@ test_that("match_driving_accessions() returns accessions exactly as they appear 
 test_that("match_driving_accessions() honours renamed columns and validates", {
   m <- .driving_match_fixture()
   names(m) <- c("obs", "sp", "acc", "sc")
-  out <- match_driving_accessions(m, score_col = "sc", obs_col = "obs",
-                                  species_col = "sp", accession_col = "acc")
+  out <- match_driving_accessions(m,
+    score_col = "sc", obs_col = "obs",
+    species_col = "sp", accession_col = "acc"
+  )
   expect_setequal(out, c("A1", "B1", "A3", "C2"))
   expect_error(match_driving_accessions(m), "missing required column")
   expect_error(match_driving_accessions(list()), "data frame")
@@ -218,26 +248,32 @@ test_that("match_driving_accessions() honours renamed columns and validates", {
 .veto_eval_fixture <- function() {
   data.frame(
     accession = c("KM057996", "KM057967", "OK172573", "SKIP1", "OVER1"),
-    listed_taxon = c("Zaniolepis frenata", "Jordania zonope", "Scorpaenichthys marmoratus",
-                     "Skippus localis", "Oversized specius"),
+    listed_taxon = c(
+      "Zaniolepis frenata", "Jordania zonope", "Scorpaenichthys marmoratus",
+      "Skippus localis", "Oversized specius"
+    ),
     # KM057996 / KM057967: the real "remove" shape -- incongruent, nothing
     # corroborating anywhere in nt, something contradicting.
     frac_independent_below_min_congruent_rank = c(0.875, 0.875, 0.75, NA, NA),
     n_independent_top_matches = c(3L, 3L, 5L, 1L, NA_integer_),
-    best_agreeing_pident        = c(NA, NA, 100, 100, NA),
-    best_disagreeing_pident     = c(98.6, 98.6, 96.79, NA, NA),
+    best_agreeing_pident = c(NA, NA, 100, 100, NA),
+    best_disagreeing_pident = c(98.6, 98.6, 96.79, NA, NA),
     congruent_evidence_exists_anywhere = c(FALSE, FALSE, TRUE, TRUE, FALSE),
     congruent_evidence_best_pident = c(NA, NA, 100, NA, NA),
-    hierarchy_flag = c("incongruent", "incongruent", "incongruent",
-                       "locally_corroborated", "not_evaluated_oversized"),
+    hierarchy_flag = c(
+      "incongruent", "incongruent", "incongruent",
+      "locally_corroborated", "not_evaluated_oversized"
+    ),
     stringsAsFactors = FALSE
   )
 }
 
 test_that("the local-corroboration columns are always present, NA/'none'-filled without a table", {
   out <- score_reference_labels(.veto_eval_fixture())
-  expect_true(all(c("corroboration_source", "local_best_independent_pident",
-                    "local_n_independent_conspecific", "action_reason") %in% names(out)))
+  expect_true(all(c(
+    "corroboration_source", "local_best_independent_pident",
+    "local_n_independent_conspecific", "action_reason"
+  ) %in% names(out)))
   src <- setNames(out$corroboration_source, out$accession)
   expect_equal(unname(src["KM057996"]), "none")
   expect_equal(unname(src["OK172573"]), "blast")
@@ -250,8 +286,10 @@ test_that("the local-corroboration columns are always present, NA/'none'-filled 
 })
 
 test_that("Zaniolepis: a BLAST 'remove' that the local set corroborates is vetoed to 'inspect'; Jordania's 'remove' stands", {
-  local <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                          .local_reference_meta_fixture())
+  local <- corroborate_references_locally(
+    .local_seq_matrix_fixture(),
+    .local_reference_meta_fixture()
+  )
   out <- score_reference_labels(.veto_eval_fixture(), local_corroboration = local)
   z <- out[out$accession == "KM057996", ]
   expect_equal(z$reference_action, "inspect")
@@ -267,19 +305,23 @@ test_that("Zaniolepis: a BLAST 'remove' that the local set corroborates is vetoe
 })
 
 test_that("label_confidence stays BLAST-only: the veto changes reference_action, not the probability", {
-  local <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                          .local_reference_meta_fixture())
+  local <- corroborate_references_locally(
+    .local_seq_matrix_fixture(),
+    .local_reference_meta_fixture()
+  )
   without <- score_reference_labels(.veto_eval_fixture())
-  with    <- score_reference_labels(.veto_eval_fixture(), local_corroboration = local)
+  with <- score_reference_labels(.veto_eval_fixture(), local_corroboration = local)
   expect_equal(with$label_confidence, without$label_confidence)
   expect_equal(with$label_identity_margin, without$label_identity_margin)
   expect_equal(with$hierarchy_flag, without$hierarchy_flag)
 })
 
 test_that("corroboration_source reads 'both' when BLAST and the local set agree", {
-  local <- data.frame(accession = "OK172573", local_tier = "corroborated",
-                      n_independent_conspecific = 2L, best_independent_pident = 0.995,
-                      stringsAsFactors = FALSE)
+  local <- data.frame(
+    accession = "OK172573", local_tier = "corroborated",
+    n_independent_conspecific = 2L, best_independent_pident = 0.995,
+    stringsAsFactors = FALSE
+  )
   out <- score_reference_labels(.veto_eval_fixture(), local_corroboration = local)
   expect_equal(out$corroboration_source[out$accession == "OK172573"], "both")
   expect_equal(out$local_best_independent_pident[out$accession == "OK172573"], 99.5)
@@ -303,14 +345,18 @@ test_that("score_reference_labels(overwrite=) covers the new columns too", {
   expect_error(score_reference_labels(out), "overwrite = TRUE")
   out2 <- score_reference_labels(out, overwrite = TRUE)
   expect_equal(out2$reference_action, out$reference_action)
-  expect_error(score_reference_labels(.veto_eval_fixture(), local_corroboration = list()),
-               "local_corroboration")
+  expect_error(
+    score_reference_labels(.veto_eval_fixture(), local_corroboration = list()),
+    "local_corroboration"
+  )
 })
 
 test_that("refine_reference_verdicts() forwards local_corroboration and applies the veto to the trust action", {
   ev <- .veto_eval_fixture()
-  local <- corroborate_references_locally(.local_seq_matrix_fixture(),
-                                          .local_reference_meta_fixture())
+  local <- corroborate_references_locally(
+    .local_seq_matrix_fixture(),
+    .local_reference_meta_fixture()
+  )
   # Pair votes for the two removable rows: three disagreeing partners each.
   pairs <- data.frame(
     id_x = rep(c("KM057996", "KM057967"), each = 3L),
@@ -318,8 +364,10 @@ test_that("refine_reference_verdicts() forwards local_corroboration and applies 
     p_match = 0.986, pair_finest_common_rank = "order",
     stringsAsFactors = FALSE
   )
-  out <- refine_reference_verdicts(ev, pair_table = pairs, verbose = FALSE,
-                                   local_corroboration = local)
+  out <- refine_reference_verdicts(ev,
+    pair_table = pairs, verbose = FALSE,
+    local_corroboration = local
+  )
   expect_equal(out$reference_action[out$accession == "KM057996"], "inspect")
   expect_equal(out$reference_action_trust[out$accession == "KM057996"], "inspect")
   expect_equal(out$reference_action_trust[out$accession == "KM057967"], "remove")
@@ -341,8 +389,10 @@ test_that("refine_reference_verdicts() forwards local_corroboration and applies 
   )
 }
 .skip_mock_blast <- function(seq_df, ...) {
-  data.frame(observation_id = character(0), accession = character(0), score = numeric(0),
-             stringsAsFactors = FALSE)
+  data.frame(
+    observation_id = character(0), accession = character(0), score = numeric(0),
+    stringsAsFactors = FALSE
+  )
 }
 .skip_mock_tax <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
   data.frame(accession = character(0), stringsAsFactors = FALSE)
@@ -371,7 +421,8 @@ test_that("a locally corroborated accession is never fetched or BLASTed; it gets
   )
   expect_message(
     out <- suppressWarnings(evaluate_reference_accessions(
-      c("KM057996", "KM057967"), cache_dir = NULL, verbose = TRUE,
+      c("KM057996", "KM057967"),
+      cache_dir = NULL, verbose = TRUE,
       local_corroboration = .skip_local_table()
     )),
     "1 skipped: independently corroborated in the local reference set"
@@ -419,7 +470,8 @@ test_that("the skipped row is cached with TTL Inf, and skip_locally_corroborated
     .package = "TaxaMatch"
   )
   suppressWarnings(evaluate_reference_accessions(
-    "KM057996", cache_dir = cache_dir, verbose = FALSE,
+    "KM057996",
+    cache_dir = cache_dir, verbose = FALSE,
     local_corroboration = .skip_local_table()
   ))
   cached <- readRDS(file.path(cache_dir, "reference_accession_cache.rds"))
@@ -429,18 +481,20 @@ test_that("the skipped row is cached with TTL Inf, and skip_locally_corroborated
   cached$evaluated_at <- cached$evaluated_at - 10000 * 86400
   saveRDS(cached, file.path(cache_dir, "reference_accession_cache.rds"))
   out2 <- suppressWarnings(evaluate_reference_accessions(
-    "KM057996", cache_dir = cache_dir, verbose = FALSE
+    "KM057996",
+    cache_dir = cache_dir, verbose = FALSE
   ))
   expect_true(out2$cache_hit)
   expect_equal(out2$hierarchy_flag, "locally_corroborated")
   expect_equal(length(fetched), 0L)
   # A purely cache-served call still carries the post-hoc columns.
   expect_true(all(c("reference_action", "listed_taxon_is_species", "corroboration_source")
-                  %in% names(out2)))
+  %in% names(out2)))
 
   # Opting out of the skip re-evaluates the cached skip row.
   out3 <- suppressWarnings(evaluate_reference_accessions(
-    "KM057996", cache_dir = cache_dir, verbose = FALSE,
+    "KM057996",
+    cache_dir = cache_dir, verbose = FALSE,
     local_corroboration = .skip_local_table(), skip_locally_corroborated = FALSE
   ))
   expect_equal(fetched, "KM057996")
@@ -456,12 +510,14 @@ test_that("an accession that already has a BLAST verdict keeps it; the skip only
     .package = "TaxaMatch"
   )
   first <- suppressWarnings(evaluate_reference_accessions(
-    "KM057996", cache_dir = cache_dir, verbose = FALSE
+    "KM057996",
+    cache_dir = cache_dir, verbose = FALSE
   ))
   expect_equal(first$hierarchy_flag, "insufficient_independent_evidence")
   # insufficient has a 180-day TTL; inside it, the BLAST verdict is served.
   second <- suppressWarnings(evaluate_reference_accessions(
-    "KM057996", cache_dir = cache_dir, verbose = FALSE,
+    "KM057996",
+    cache_dir = cache_dir, verbose = FALSE,
     local_corroboration = .skip_local_table()
   ))
   expect_equal(second$hierarchy_flag, "insufficient_independent_evidence")
@@ -469,14 +525,24 @@ test_that("an accession that already has a BLAST verdict keeps it; the skip only
 })
 
 test_that("evaluate_reference_accessions() validates the new arguments", {
-  expect_error(evaluate_reference_accessions("A1", cache_dir = NULL,
-                                             skip_locally_corroborated = NA),
-               "skip_locally_corroborated")
-  expect_error(evaluate_reference_accessions("A1", cache_dir = NULL,
-                                             local_corroboration = data.frame(x = 1)),
-               "local_corroboration is missing")
-  expect_error(evaluate_reference_accessions("A1", cache_dir = NULL, query_span = "bogus"),
-               "arg")
+  expect_error(
+    evaluate_reference_accessions("A1",
+      cache_dir = NULL,
+      skip_locally_corroborated = NA
+    ),
+    "skip_locally_corroborated"
+  )
+  expect_error(
+    evaluate_reference_accessions("A1",
+      cache_dir = NULL,
+      local_corroboration = data.frame(x = 1)
+    ),
+    "local_corroboration is missing"
+  )
+  expect_error(
+    evaluate_reference_accessions("A1", cache_dir = NULL, query_span = "bogus"),
+    "arg"
+  )
 })
 
 # ------------------------------------------------------------------------------
@@ -506,7 +572,9 @@ test_that("remove_incongruent_references() never removes a locally_corroborated 
   out_flag <- suppressMessages(remove_incongruent_references(match_df, ev, gate = "flag"))
   expect_setequal(out_flag$accession, c("A1", "A3"))
   out_broad <- suppressMessages(remove_incongruent_references(
-    match_df, ev, gate = "flag", remove_insufficient_evidence = TRUE))
+    match_df, ev,
+    gate = "flag", remove_insufficient_evidence = TRUE
+  ))
   expect_true("A1" %in% out_broad$accession)
 })
 
@@ -521,9 +589,11 @@ test_that("flag_incongruent_references() carries the new columns when present", 
 })
 
 test_that("verify_flagged_references() counts locally_corroborated as verified clean", {
-  mock_qc <- data.frame(accession = c("A1", "A2"),
-                        hierarchy_flag = c("locally_corroborated", "incongruent"),
-                        stringsAsFactors = FALSE)
+  mock_qc <- data.frame(
+    accession = c("A1", "A2"),
+    hierarchy_flag = c("locally_corroborated", "incongruent"),
+    stringsAsFactors = FALSE
+  )
   local_mocked_bindings(
     evaluate_reference_accessions = function(accessions, ...) mock_qc,
     .package = "TaxaMatch"
@@ -533,9 +603,11 @@ test_that("verify_flagged_references() counts locally_corroborated as verified c
 })
 
 test_that("a locally_corroborated partner is never discounted by the trust weight", {
-  w <- .partner_trust_weight(flag = c("locally_corroborated", "incongruent", "congruent"),
-                             action = c("keep", "remove", "keep"),
-                             label_confidence = c(NA, 0.01, 0.99))
+  w <- .partner_trust_weight(
+    flag = c("locally_corroborated", "incongruent", "congruent"),
+    action = c("keep", "remove", "keep"),
+    label_confidence = c(NA, 0.01, 0.99)
+  )
   expect_equal(w, c(1, 0, 1))
 })
 
@@ -559,10 +631,14 @@ test_that("a locally_corroborated partner is never discounted by the trust weigh
 test_that("the real KM057996 record trims to 217 bp primer-inclusive and 169 bp primer-stripped", {
   skip_if_not_installed("Biostrings")
   expect_equal(nchar(.km057996), 718L)
-  inclusive <- .trim_queries_to_amplicon(.km057996, "MiFishU", strip_primers = FALSE,
-                                         verbose = FALSE)
-  stripped  <- .trim_queries_to_amplicon(.km057996, "MiFishU", strip_primers = TRUE,
-                                         verbose = FALSE)
+  inclusive <- .trim_queries_to_amplicon(.km057996, "MiFishU",
+    strip_primers = FALSE,
+    verbose = FALSE
+  )
+  stripped <- .trim_queries_to_amplicon(.km057996, "MiFishU",
+    strip_primers = TRUE,
+    verbose = FALSE
+  )
   expect_equal(nchar(inclusive), 217L)
   expect_equal(nchar(stripped), 169L)
   # The stripped span is the interior of the inclusive one: MiFish-U F is
@@ -574,22 +650,32 @@ test_that("the real KM057996 record trims to 217 bp primer-inclusive and 169 bp 
 
 test_that("a 169 bp primer-free input passes through unchanged; a 217 bp inclusive input is stripped", {
   skip_if_not_installed("Biostrings")
-  inclusive <- .trim_queries_to_amplicon(.km057996, "MiFishU", strip_primers = FALSE,
-                                         verbose = FALSE)
-  stripped  <- .trim_queries_to_amplicon(.km057996, "MiFishU", verbose = FALSE)
-  expect_equal(as.character(.trim_queries_to_amplicon(stripped, "MiFishU", verbose = FALSE)),
-               as.character(stripped))
-  expect_equal(as.character(.trim_queries_to_amplicon(inclusive, "MiFishU", verbose = FALSE)),
-               as.character(stripped))
+  inclusive <- .trim_queries_to_amplicon(.km057996, "MiFishU",
+    strip_primers = FALSE,
+    verbose = FALSE
+  )
+  stripped <- .trim_queries_to_amplicon(.km057996, "MiFishU", verbose = FALSE)
+  expect_equal(
+    as.character(.trim_queries_to_amplicon(stripped, "MiFishU", verbose = FALSE)),
+    as.character(stripped)
+  )
+  expect_equal(
+    as.character(.trim_queries_to_amplicon(inclusive, "MiFishU", verbose = FALSE)),
+    as.character(stripped)
+  )
 })
 
 test_that(".resolve_trimmed_span_max(strip_primers = TRUE) is the inclusive bound minus both primer lengths", {
   skip_if_not_installed("TaxaTools")
   pi <- TaxaTools::resolve_barcode_primers("MiFishU")
-  expect_equal(.resolve_trimmed_span_max("MiFishU", strip_primers = TRUE),
-               .resolve_trimmed_span_max("MiFishU") - nchar(pi$fwd) - nchar(pi$rev))
-  expect_equal(.resolve_trimmed_span_max("MiFishU", strip_primers = TRUE),
-               as.numeric(pi$amplicon_range[2]))
+  expect_equal(
+    .resolve_trimmed_span_max("MiFishU", strip_primers = TRUE),
+    .resolve_trimmed_span_max("MiFishU") - nchar(pi$fwd) - nchar(pi$rev)
+  )
+  expect_equal(
+    .resolve_trimmed_span_max("MiFishU", strip_primers = TRUE),
+    as.numeric(pi$amplicon_range[2])
+  )
   # A correctly stripped real query is not "still over-length" under the
   # stripped bound.
   stripped <- .trim_queries_to_amplicon(.km057996, "MiFishU", verbose = FALSE)
@@ -600,8 +686,10 @@ test_that("evaluate_reference_accessions(query_span=) submits the stripped ampli
   skip_if_not_installed("Biostrings")
   seen <- NULL
   mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
-    data.frame(accession = "KM057996", organism = "Zaniolepis frenata",
-               create_date = "2014/08/04", sequence = .km057996, stringsAsFactors = FALSE)
+    data.frame(
+      accession = "KM057996", organism = "Zaniolepis frenata",
+      create_date = "2014/08/04", sequence = .km057996, stringsAsFactors = FALSE
+    )
   }
   mock_blast <- function(seq_df, ...) {
     seen <<- seq_df$sequence
@@ -612,11 +700,13 @@ test_that("evaluate_reference_accessions(query_span=) submits the stripped ampli
     .resolve_taxonomy_by_acc = .skip_mock_tax, .package = "TaxaMatch"
   )
   suppressWarnings(evaluate_reference_accessions(
-    "KM057996", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
+    "KM057996",
+    cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
   ))
   expect_equal(nchar(seen), 169L)
   suppressWarnings(evaluate_reference_accessions(
-    "KM057996", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE,
+    "KM057996",
+    cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE,
     query_span = "primer_inclusive"
   ))
   expect_equal(nchar(seen), 217L)
@@ -630,8 +720,10 @@ test_that(".EVAL_REF_ACC_VERSION is v5_amplicon_query and query_span is in param
   expect_equal(.EVAL_REF_ACC_VERSION, "v5_amplicon_query")
   key <- .default_params_key()
   expect_match(key, "\\|amplicon\\|v5_amplicon_query$")
-  key_inc <- .build_params_key(5L, "family", 5L, 0.5, 3L, 8, 70, 20L, "remote", "nt",
-                               "primer_inclusive")
+  key_inc <- .build_params_key(
+    5L, "family", 5L, 0.5, 3L, 8, 70, 20L, "remote", "nt",
+    "primer_inclusive"
+  )
   expect_false(identical(key, key_inc))
   expect_match(key_inc, "\\|primer_inclusive\\|v5_amplicon_query$")
 })
@@ -640,7 +732,10 @@ test_that("changing query_span invalidates a cached row (it is verdict-affecting
   skip_if_not_installed("withr")
   cache_dir <- withr::local_tempdir()
   fetch_calls <- 0L
-  counting_fetch <- function(...) { fetch_calls <<- fetch_calls + 1L; .skip_mock_fetch(...) }
+  counting_fetch <- function(...) {
+    fetch_calls <<- fetch_calls + 1L
+    .skip_mock_fetch(...)
+  }
   local_mocked_bindings(
     .fetch_reference_accession_records = counting_fetch,
     blast_sequences = .skip_mock_blast, .resolve_taxonomy_by_acc = .skip_mock_tax,
@@ -648,14 +743,18 @@ test_that("changing query_span invalidates a cached row (it is verdict-affecting
   )
   suppressWarnings(evaluate_reference_accessions("A1", cache_dir = cache_dir, verbose = FALSE))
   after_first <- fetch_calls
-  suppressWarnings(evaluate_reference_accessions("A1", cache_dir = cache_dir, verbose = FALSE,
-                                                 query_span = "primer_inclusive"))
+  suppressWarnings(evaluate_reference_accessions("A1",
+    cache_dir = cache_dir, verbose = FALSE,
+    query_span = "primer_inclusive"
+  ))
   expect_gt(fetch_calls, after_first)
   # ...while skip_locally_corroborated is NOT in the key.
   after_second <- fetch_calls
-  suppressWarnings(evaluate_reference_accessions("A1", cache_dir = cache_dir, verbose = FALSE,
-                                                 query_span = "primer_inclusive",
-                                                 skip_locally_corroborated = FALSE))
+  suppressWarnings(evaluate_reference_accessions("A1",
+    cache_dir = cache_dir, verbose = FALSE,
+    query_span = "primer_inclusive",
+    skip_locally_corroborated = FALSE
+  ))
   expect_equal(fetch_calls, after_second)
 })
 
@@ -672,8 +771,10 @@ test_that("changing query_span invalidates a cached row (it is verdict-affecting
     best_disagreeing_pident = c(NA, NA, 98, NA, NA), best_disagreeing_taxon = NA_character_,
     congruent_evidence_exists_anywhere = c(TRUE, TRUE, FALSE, TRUE, NA),
     congruent_evidence_best_pident = c(99, 99, NA, 99, NA),
-    hierarchy_flag = c("congruent", "congruent", "incongruent",
-                       "insufficient_independent_evidence", "not_evaluated_oversized"),
+    hierarchy_flag = c(
+      "congruent", "congruent", "incongruent",
+      "insufficient_independent_evidence", "not_evaluated_oversized"
+    ),
     evaluated_at = Sys.time(), params_key = old_key,
     taxonomy_resolution_source = "direct",
     stringsAsFactors = FALSE
@@ -733,7 +834,8 @@ test_that("after migration the carried-forward rows are served from cache and th
     .package = "TaxaMatch"
   )
   out <- suppressWarnings(evaluate_reference_accessions(
-    c("C1", "C2", "I1", "S1", "O1", "NEW1"), cache_dir = cache_dir, verbose = FALSE
+    c("C1", "C2", "I1", "S1", "O1", "NEW1"),
+    cache_dir = cache_dir, verbose = FALSE
   ))
   expect_setequal(fetched, c("I1", "S1", "O1", "NEW1"))
   expect_true(all(out$cache_hit[out$accession %in% c("C1", "C2")]))
@@ -756,7 +858,9 @@ test_that("migrate_reference_cache(from_key=, to_key=) restricts the rewrite, an
   cache$params_key[1] <- "some|other|key"
   saveRDS(cache, file.path(cache_dir, "reference_accession_cache.rds"))
   res <- suppressMessages(migrate_reference_cache(
-    cache_dir, to_key = "target|key|v9", from_key = "some|other|key"))
+    cache_dir,
+    to_key = "target|key|v9", from_key = "some|other|key"
+  ))
   expect_equal(res$n_carried_forward, 1L)
   migrated <- readRDS(file.path(cache_dir, "reference_accession_cache.rds"))
   expect_equal(migrated$params_key[1], "target|key|v9")

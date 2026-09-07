@@ -58,7 +58,7 @@
 #' @examples
 #' detections <- data.frame(
 #'   observation_id = c("ASV1", "ASV1", "ASV2"),
-#'   event_id        = c("site_A", "site_B", "site_A")
+#'   event_id = c("site_A", "site_B", "site_A")
 #' )
 #' site_metadata <- data.frame(
 #'   event_id    = c("site_A", "site_B"),
@@ -72,54 +72,62 @@
 #' @importFrom dplyr left_join select any_of
 #' @export
 join_event_site_metadata <- function(detections,
-                                      site_metadata,
-                                      event_col       = "event_id",
-                                      id_col          = "observation_id",
-                                      lat_col         = "lat",
-                                      lon_col         = "lon",
-                                      observed_on_col = "observed_on",
-                                      control_samples = NULL) {
-
-  if (!is.data.frame(detections) || nrow(detections) == 0L)
+                                     site_metadata,
+                                     event_col = "event_id",
+                                     id_col = "observation_id",
+                                     lat_col = "lat",
+                                     lon_col = "lon",
+                                     observed_on_col = "observed_on",
+                                     control_samples = NULL) {
+  if (!is.data.frame(detections) || nrow(detections) == 0L) {
     stop("join_event_site_metadata: 'detections' must be a non-empty data frame.", call. = FALSE)
-  if (!is.data.frame(site_metadata) || nrow(site_metadata) == 0L)
+  }
+  if (!is.data.frame(site_metadata) || nrow(site_metadata) == 0L) {
     stop("join_event_site_metadata: 'site_metadata' must be a non-empty data frame.", call. = FALSE)
+  }
 
   missing_det <- setdiff(c(id_col, event_col), names(detections))
-  if (length(missing_det) > 0L)
+  if (length(missing_det) > 0L) {
     stop(sprintf(
       "join_event_site_metadata: 'detections' missing column(s): %s",
       paste(missing_det, collapse = ", ")
     ), call. = FALSE)
+  }
 
   required_meta <- c(event_col, lat_col, lon_col)
-  missing_meta  <- setdiff(required_meta, names(site_metadata))
-  if (length(missing_meta) > 0L)
+  missing_meta <- setdiff(required_meta, names(site_metadata))
+  if (length(missing_meta) > 0L) {
     stop(sprintf(
       "join_event_site_metadata: 'site_metadata' missing column(s): %s",
       paste(missing_meta, collapse = ", ")
     ), call. = FALSE)
+  }
 
-  if (!is.null(observed_on_col) && !observed_on_col %in% names(site_metadata))
+  if (!is.null(observed_on_col) && !observed_on_col %in% names(site_metadata)) {
     stop(sprintf(
       "join_event_site_metadata: 'site_metadata' missing observed_on_col '%s' (pass observed_on_col = NULL if not available).",
       observed_on_col
     ), call. = FALSE)
+  }
 
   if (!is.null(control_samples)) {
-    n_before   <- nrow(detections)
+    n_before <- nrow(detections)
     detections <- detections[!detections[[event_col]] %in% control_samples, , drop = FALSE]
     n_excluded <- n_before - nrow(detections)
-    if (n_excluded > 0L)
+    if (n_excluded > 0L) {
       message(sprintf(
         "join_event_site_metadata: excluded %d control/blank detection row(s).", n_excluded
       ))
-    if (nrow(detections) == 0L)
+    }
+    if (nrow(detections) == 0L) {
       stop("join_event_site_metadata: all rows excluded as control_samples; nothing left to join.", call. = FALSE)
+    }
   }
 
-  meta <- site_metadata[, unique(c(event_col, lat_col, lon_col,
-                                    if (!is.null(observed_on_col)) observed_on_col)), drop = FALSE]
+  meta <- site_metadata[, unique(c(
+    event_col, lat_col, lon_col,
+    if (!is.null(observed_on_col)) observed_on_col
+  )), drop = FALSE]
   names(meta)[names(meta) == lat_col] <- "lat"
   names(meta)[names(meta) == lon_col] <- "lon"
   if (!is.null(observed_on_col)) {
@@ -131,11 +139,12 @@ join_event_site_metadata <- function(detections,
   out <- dplyr::left_join(detections, meta, by = event_col)
 
   unmatched <- unique(out[[event_col]][is.na(out$lat) | is.na(out$lon)])
-  if (length(unmatched) > 0L)
+  if (length(unmatched) > 0L) {
     warning(sprintf(
       "join_event_site_metadata: %d event(s) have no matching row in 'site_metadata' (NA lat/lon): %s",
       length(unmatched), paste(utils::head(unmatched, 5L), collapse = ", ")
     ), call. = FALSE)
+  }
 
   tibble::as_tibble(
     out[, unique(c(id_col, "lat", "lon", "observed_on", event_col)), drop = FALSE]

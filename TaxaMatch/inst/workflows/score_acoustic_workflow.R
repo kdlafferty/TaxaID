@@ -63,7 +63,6 @@ DEBUG_MODE <- TRUE
 MIN_CONFIDENCE <- 0.1
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: real BirdNET output for 3 confusable Calidris ------
   # Same licensing/privacy reasoning as score_image_workflow.R: this points to
   # an absolute path in the user's own project folder rather than
@@ -75,23 +74,25 @@ if (DEBUG_MODE) {
   .manifest_path <- file.path(.csv_dir, "manifest.csv")
 
   if (!dir.exists(.csv_dir) || !file.exists(.manifest_path)) {
-    stop("DEBUG_MODE = TRUE but the tutorial BirdNET CSV directory/manifest ",
-         "was not found at:\n  ", .csv_dir, "\n",
-         "Run sources/birdnet_csv_export.py first (requires ",
-         "pip install birdnetlib requests and an XC_API_KEY -- see that ",
-         "script's header for details), or point DEBUG_MODE <- FALSE at ",
-         "your own BirdNET-Analyzer CSV output.")
+    stop(
+      "DEBUG_MODE = TRUE but the tutorial BirdNET CSV directory/manifest ",
+      "was not found at:\n  ", .csv_dir, "\n",
+      "Run sources/birdnet_csv_export.py first (requires ",
+      "pip install birdnetlib requests and an XC_API_KEY -- see that ",
+      "script's header for details), or point DEBUG_MODE <- FALSE at ",
+      "your own BirdNET-Analyzer CSV output."
+    )
   }
 
   # manifest.csv (written by birdnet_csv_export.py) maps each CSV filename to
   # the recording's KNOWN true species -- needed only for THIS TUTORIAL's own
   # honesty check below, not part of the canonical match object contract.
   .manifest <- utils::read.csv(.manifest_path, stringsAsFactors = FALSE)
-  message(sprintf("DEBUG_MODE = TRUE -- found %d real BirdNET CSV(s) in %s.",
-                  nrow(.manifest), .csv_dir))
-
+  message(sprintf(
+    "DEBUG_MODE = TRUE -- found %d real BirdNET CSV(s) in %s.",
+    nrow(.manifest), .csv_dir
+  ))
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -109,12 +110,14 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real BirdNET CSV directory has been ",
-       "supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real BirdNET CSV directory has been ",
+    "supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_sandpiper"
 
 # ==============================================================================
@@ -187,8 +190,10 @@ taxamatch_acoustic_match_obj <- dplyr::left_join(
   by = c("source_file" = "csv_file")
 )
 
-message(sprintf("  family resolved for %d/%d unique taxon_name value(s).",
-                sum(!is.na(.higher$family)), nrow(.higher)))
+message(sprintf(
+  "  family resolved for %d/%d unique taxon_name value(s).",
+  sum(!is.na(.higher$family)), nrow(.higher)
+))
 
 # ==============================================================================
 # NOT DONE HERE: site table / spatial grouping (Phase 4 of
@@ -224,11 +229,15 @@ message(sprintf("  family resolved for %d/%d unique taxon_name value(s).",
 taxamatch_acoustic_match_obj_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxamatch_acoustic_match_obj.rds"))
 saveRDS(taxamatch_acoustic_match_obj, taxamatch_acoustic_match_obj_path)
 message(sprintf("\n  Saved: %s", taxamatch_acoustic_match_obj_path))
-message(sprintf("  To reuse without re-reading the CSVs, paste:\n    taxamatch_acoustic_match_obj <- readRDS(\"%s\")",
-                taxamatch_acoustic_match_obj_path))
+message(sprintf(
+  "  To reuse without re-reading the CSVs, paste:\n    taxamatch_acoustic_match_obj <- readRDS(\"%s\")",
+  taxamatch_acoustic_match_obj_path
+))
 
-message("\nWorkflow complete. Continue with TaxaLikely's ",
-        "image_acoustic_likelihood_workflow.R (ACOUSTIC section).")
+message(
+  "\nWorkflow complete. Continue with TaxaLikely's ",
+  "image_acoustic_likelihood_workflow.R (ACOUSTIC section)."
+)
 
 # ==============================================================================
 # Output

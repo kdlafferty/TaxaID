@@ -18,7 +18,7 @@ test_that("embedded lat/lng is extracted and lng renamed to lon", {
   out <- build_site_table(img)
   expect_true(all(c("observation_id", "lat", "lon", "observed_on") %in% names(out)))
   expect_false("lng" %in% names(out))
-  expect_equal(nrow(out), 2L)  # one row per observation, not per candidate row
+  expect_equal(nrow(out), 2L) # one row per observation, not per candidate row
 })
 
 test_that("observed_on defaults to NA when absent from an embedded match_df", {
@@ -80,7 +80,7 @@ test_that("warns (but does not error) when some observations have no site_df mat
 
 test_that("site_df missing required columns errors", {
   asv <- data.frame(observation_id = "ASV1")
-  bad_site_df <- data.frame(observation_id = "ASV1", lat = 34.41)  # no lon
+  bad_site_df <- data.frame(observation_id = "ASV1", lat = 34.41) # no lon
   expect_error(build_site_table(asv, site_df = bad_site_df), "missing required column")
 })
 
@@ -97,8 +97,10 @@ test_that("site_df missing required columns errors", {
 # until a grouping step reassigns it.
 
 test_that("embedded pathway: differently-located observations get different default groups", {
-  img <- data.frame(observation_id = c("IMG_001", "IMG_002"),
-                    lat = c(34.41, 40.71), lng = c(-119.86, -74.00))
+  img <- data.frame(
+    observation_id = c("IMG_001", "IMG_002"),
+    lat = c(34.41, 40.71), lng = c(-119.86, -74.00)
+  )
   out <- build_site_table(img)
   expect_true(all(grepl("^spatial_group_", out$spatial_group_id)))
   expect_equal(length(unique(out$spatial_group_id)), 2L)
@@ -107,16 +109,20 @@ test_that("embedded pathway: differently-located observations get different defa
 })
 
 test_that("embedded pathway: co-located observations (different observation_id, exact same coordinate) share a default group", {
-  img <- data.frame(observation_id = c("IMG_001", "IMG_002"),
-                    lat = c(34.41, 34.41), lng = c(-119.86, -119.86))
+  img <- data.frame(
+    observation_id = c("IMG_001", "IMG_002"),
+    lat = c(34.41, 34.41), lng = c(-119.86, -119.86)
+  )
   out <- build_site_table(img)
   expect_equal(length(unique(out$spatial_group_id)), 1L)
   expect_equal(out$spatial_group_N, c(2L, 2L))
 })
 
 test_that("embedded pathway: nearby but non-identical coordinates do NOT share a default group", {
-  img <- data.frame(observation_id = c("IMG_001", "IMG_002"),
-                    lat = c(34.410, 34.411), lng = c(-119.860, -119.860))
+  img <- data.frame(
+    observation_id = c("IMG_001", "IMG_002"),
+    lat = c(34.410, 34.411), lng = c(-119.860, -119.860)
+  )
   out <- build_site_table(img)
   expect_equal(length(unique(out$spatial_group_id)), 2L)
 })
@@ -176,8 +182,10 @@ test_that(".next_spatial_group_number() continues past the highest existing numb
 # =============================================================================
 
 test_that("errors on empty match_df", {
-  expect_error(build_site_table(data.frame(observation_id = character(0))),
-               "non-empty data frame")
+  expect_error(
+    build_site_table(data.frame(observation_id = character(0))),
+    "non-empty data frame"
+  )
 })
 
 test_that("errors when match_df lacks the id column", {

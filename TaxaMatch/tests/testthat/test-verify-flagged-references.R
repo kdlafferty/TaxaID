@@ -46,7 +46,8 @@ test_that("verify_flagged_references: error_types restricts which rows are scree
   expect_equal(captured, "A1")
 
   verify_flagged_references(errors,
-    error_types = c("likely_mislabeled", "unverified_singleton_high_match"))
+    error_types = c("likely_mislabeled", "unverified_singleton_high_match")
+  )
   expect_setequal(captured, c("A1", "A2"))
 })
 
@@ -70,19 +71,23 @@ test_that("verify_flagged_references: trust_insufficient_evidence controls wheth
   expect_equal(result_default$verified_clean, "A1")
 
   result_trusting <- verify_flagged_references(c("A1", "A2"),
-    trust_insufficient_evidence = TRUE)
+    trust_insufficient_evidence = TRUE
+  )
   expect_setequal(result_trusting$verified_clean, c("A1", "A2"))
 })
 
 test_that("verify_flagged_references: incongruent accessions are never verified_clean", {
-  mock_qc <- .mock_qc(c("A1", "A2", "A3"),
-    c("congruent", "incongruent", "insufficient_independent_evidence"))
+  mock_qc <- .mock_qc(
+    c("A1", "A2", "A3"),
+    c("congruent", "incongruent", "insufficient_independent_evidence")
+  )
   local_mocked_bindings(
     evaluate_reference_accessions = function(accessions, ...) mock_qc,
     .package = "TaxaMatch"
   )
   result <- verify_flagged_references(c("A1", "A2", "A3"),
-    trust_insufficient_evidence = TRUE)
+    trust_insufficient_evidence = TRUE
+  )
   expect_false("A2" %in% result$verified_clean)
 })
 
@@ -99,7 +104,7 @@ test_that("verify_flagged_references: no matching accessions makes no NCBI call"
     },
     .package = "TaxaMatch"
   )
-  result <- verify_flagged_references(errors)  # default error_types = "likely_mislabeled"
+  result <- verify_flagged_references(errors) # default error_types = "likely_mislabeled"
   expect_false(called)
   expect_equal(result$verified_clean, character(0L))
   expect_null(result$evaluation)

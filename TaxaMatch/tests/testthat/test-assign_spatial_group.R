@@ -14,10 +14,14 @@ sites <- data.frame(
 
 test_that("assigns spatial_group_id to the named observations", {
   out <- assign_spatial_group(sites, c("obs1", "obs2"), "spatial_group_1")
-  expect_equal(out$spatial_group_id[out$observation_id %in% c("obs1", "obs2")],
-               rep("spatial_group_1", 2))
-  expect_equal(out$spatial_group_id[out$observation_id %in% c("obs3", "obs4")],
-               c("obs3", "obs4"))
+  expect_equal(
+    out$spatial_group_id[out$observation_id %in% c("obs1", "obs2")],
+    rep("spatial_group_1", 2)
+  )
+  expect_equal(
+    out$spatial_group_id[out$observation_id %in% c("obs3", "obs4")],
+    c("obs3", "obs4")
+  )
 })
 
 test_that("recomputes spatial_group_N to stay in sync", {
@@ -28,7 +32,7 @@ test_that("recomputes spatial_group_N to stay in sync", {
 
 test_that("can add a member to an already-formed group by including its existing members", {
   grouped <- assign_spatial_group(sites, c("obs1", "obs2"), "spatial_group_1")
-  merged  <- assign_spatial_group(grouped, c("obs1", "obs2", "obs3"), "spatial_group_1")
+  merged <- assign_spatial_group(grouped, c("obs1", "obs2", "obs3"), "spatial_group_1")
   expect_equal(merged$spatial_group_N[merged$observation_id == "obs1"], 3L)
   expect_equal(merged$spatial_group_id[merged$observation_id == "obs3"], "spatial_group_1")
 })
@@ -42,14 +46,18 @@ test_that("errors when the target spatial_group_id is already used by an unnamed
 })
 
 test_that("errors on unknown observation_ids", {
-  expect_error(assign_spatial_group(sites, "obs_nonexistent", "spatial_group_1"),
-               "not found in 'sites'")
+  expect_error(
+    assign_spatial_group(sites, "obs_nonexistent", "spatial_group_1"),
+    "not found in 'sites'"
+  )
 })
 
 test_that("errors on missing spatial_group_id/spatial_group_N columns", {
   bad <- sites[, c("observation_id", "lat", "lon")]
-  expect_error(assign_spatial_group(bad, "obs1", "spatial_group_1"),
-               "Run build_site_table")
+  expect_error(
+    assign_spatial_group(bad, "obs1", "spatial_group_1"),
+    "Run build_site_table"
+  )
 })
 
 test_that("errors on empty or NA observation_ids", {

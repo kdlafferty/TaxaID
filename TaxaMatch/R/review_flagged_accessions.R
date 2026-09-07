@@ -64,7 +64,9 @@
 #' @noRd
 .accession_review_fingerprint <- function(df) {
   cols <- intersect(.ACCESSION_REVIEW_RELEVANT_COLS, names(df))
-  if (length(cols) == 0L) return(rep(NA_character_, nrow(df)))
+  if (length(cols) == 0L) {
+    return(rep(NA_character_, nrow(df)))
+  }
   parts <- lapply(cols, function(cn) paste0(cn, "=", as.character(df[[cn]])))
   fp <- do.call(paste, c(parts, sep = "|"))
   for (cn in intersect(.ACCESSION_REVIEW_LOCAL_COLS, names(df))) {
@@ -89,11 +91,17 @@
     reviewed_at = as.POSIXct(character(0L)),
     stringsAsFactors = FALSE
   )
-  if (is.null(cache_dir)) return(empty)
+  if (is.null(cache_dir)) {
+    return(empty)
+  }
   path <- file.path(cache_dir, "accession_review_cache.rds")
-  if (!file.exists(path)) return(empty)
+  if (!file.exists(path)) {
+    return(empty)
+  }
   cached <- tryCatch(readRDS(path), error = function(e) NULL)
-  if (is.null(cached) || !is.data.frame(cached)) return(empty)
+  if (is.null(cached) || !is.data.frame(cached)) {
+    return(empty)
+  }
   missing_cols <- setdiff(names(empty), names(cached))
   if (length(missing_cols) > 0L) {
     warning(sprintf(
@@ -108,7 +116,9 @@
 #' Persist the Accession-Review Cache
 #' @noRd
 .save_accession_review_cache <- function(cache_dir, cache_df) {
-  if (is.null(cache_dir)) return(invisible(NULL))
+  if (is.null(cache_dir)) {
+    return(invisible(NULL))
+  }
   if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   path <- file.path(cache_dir, "accession_review_cache.rds")
   saveRDS(cache_df, path)
@@ -292,28 +302,33 @@ review_flagged_accessions <- function(evaluated_df,
                                       pause_seconds = 1,
                                       verbose = TRUE,
                                       local_min_overlap = NULL) {
-
-  if (!is.data.frame(evaluated_df))
+  if (!is.data.frame(evaluated_df)) {
     stop("'evaluated_df' must be a data frame.", call. = FALSE)
+  }
   if (is.null(local_min_overlap)) {
     lp <- attr(evaluated_df, "local_corroboration_params")
     if (is.list(lp) && is.numeric(lp$min_overlap)) local_min_overlap <- lp$min_overlap
   }
   if (!is.null(local_min_overlap) &&
-      (!is.numeric(local_min_overlap) || length(local_min_overlap) != 1L ||
-       is.na(local_min_overlap) || local_min_overlap <= 0 || local_min_overlap > 1))
+    (!is.numeric(local_min_overlap) || length(local_min_overlap) != 1L ||
+      is.na(local_min_overlap) || local_min_overlap <= 0 || local_min_overlap > 1)) {
     stop("local_min_overlap must be NULL or a single number in (0, 1].", call. = FALSE)
+  }
 
   required_cols <- c("accession", "listed_taxon", "hierarchy_flag")
   missing_req <- setdiff(required_cols, names(evaluated_df))
-  if (length(missing_req) > 0L)
-    stop(sprintf("'evaluated_df' is missing required column(s): %s",
-                paste(missing_req, collapse = ", ")), call. = FALSE)
+  if (length(missing_req) > 0L) {
+    stop(sprintf(
+      "'evaluated_df' is missing required column(s): %s",
+      paste(missing_req, collapse = ", ")
+    ), call. = FALSE)
+  }
 
-  if (!is.character(hierarchy_flags) || length(hierarchy_flags) == 0L)
+  if (!is.character(hierarchy_flags) || length(hierarchy_flags) == 0L) {
     stop("'hierarchy_flags' must be a non-empty character vector.", call. = FALSE)
+  }
 
-  if (anyDuplicated(evaluated_df$accession) != 0L)
+  if (anyDuplicated(evaluated_df$accession) != 0L) {
     warning(paste0(
       "review_flagged_accessions(): 'accession' has duplicate values in ",
       "'evaluated_df' -- expected one row per accession (evaluate_reference_",
@@ -323,22 +338,25 @@ review_flagged_accessions <- function(evaluated_df,
       "function -- review output is only written to the FIRST row per accession ",
       "otherwise."
     ), call. = FALSE)
+  }
 
   in_scope <- evaluated_df$hierarchy_flag %in% hierarchy_flags
-  if (isTRUE(include_non_species_resolved) && "listed_taxon_is_species" %in% names(evaluated_df))
+  if (isTRUE(include_non_species_resolved) && "listed_taxon_is_species" %in% names(evaluated_df)) {
     in_scope <- in_scope | evaluated_df$listed_taxon_is_species %in% FALSE
+  }
 
   n_scope <- sum(in_scope)
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "review_flagged_accessions(): %d of %d row(s) in scope for LLM review.",
       n_scope, nrow(evaluated_df)
     ))
+  }
 
   evaluated_df$accession_likely_explanation <- NA_character_
-  evaluated_df$accession_review_confidence  <- NA_character_
-  evaluated_df$accession_review_comment     <- NA_character_
-  evaluated_df$accession_review_cache_hit   <- NA
+  evaluated_df$accession_review_confidence <- NA_character_
+  evaluated_df$accession_review_comment <- NA_character_
+  evaluated_df$accession_review_cache_hit <- NA
 
   if (n_scope == 0L) {
     attr(evaluated_df, "llm_prompts") <- list()
@@ -363,9 +381,9 @@ review_flagged_accessions <- function(evaluated_df,
     data.frame(
       accession = review_batch$accession[is_cache_hit],
       accession_likely_explanation = ch$accession_likely_explanation,
-      accession_review_confidence  = ch$accession_review_confidence,
-      accession_review_comment     = ch$accession_review_comment,
-      accession_review_cache_hit   = TRUE,
+      accession_review_confidence = ch$accession_review_confidence,
+      accession_review_comment = ch$accession_review_comment,
+      accession_review_cache_hit = TRUE,
       stringsAsFactors = FALSE
     )
   } else {
@@ -374,32 +392,37 @@ review_flagged_accessions <- function(evaluated_df,
 
   needs_review <- review_batch[!is_cache_hit, , drop = FALSE]
 
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "  %d of %d in-scope accession(s) from cache, %d to review.",
       sum(is_cache_hit), nrow(review_batch), nrow(needs_review)
     ))
+  }
 
   prompt_log <- new.env(parent = emptyenv())
-  fresh_out  <- NULL
+  fresh_out <- NULL
 
   if (nrow(needs_review) > 0L) {
-    n_acc     <- nrow(needs_review)
-    tpc       <- min(taxa_per_call, n_acc)
+    n_acc <- nrow(needs_review)
+    tpc <- min(taxa_per_call, n_acc)
     batch_idx <- split(seq_len(n_acc), ceiling(seq_len(n_acc) / tpc))
     n_batches <- length(batch_idx)
 
-    if (verbose)
+    if (verbose) {
       message(sprintf("  %d LLM call(s) needed (taxa_per_call = %d).", n_batches, taxa_per_call))
+    }
 
     batch_results <- vector("list", n_batches)
 
     for (b in seq_along(batch_idx)) {
       acc_batch <- needs_review[batch_idx[[b]], , drop = FALSE]
 
-      if (verbose)
-        message(sprintf("  Calling LLM (batch %d/%d, %d accession(s))...",
-                        b, n_batches, nrow(acc_batch)))
+      if (verbose) {
+        message(sprintf(
+          "  Calling LLM (batch %d/%d, %d accession(s))...",
+          b, n_batches, nrow(acc_batch)
+        ))
+      }
 
       batch_out <- .review_accession_batch_with_retry(
         acc_batch, llm_fn, max_tokens, verbose, pause_seconds,
@@ -422,13 +445,14 @@ review_flagged_accessions <- function(evaluated_df,
       new_cache_rows <- data.frame(
         accession = batch_out$accession, input_fingerprint = fp_for_batch,
         accession_likely_explanation = batch_out$accession_likely_explanation,
-        accession_review_confidence  = batch_out$accession_review_confidence,
-        accession_review_comment     = batch_out$accession_review_comment,
+        accession_review_confidence = batch_out$accession_review_confidence,
+        accession_review_comment = batch_out$accession_review_comment,
         reviewed_at = Sys.time(),
         stringsAsFactors = FALSE
       )
       new_cache_rows <- new_cache_rows[!is.na(new_cache_rows$accession_likely_explanation), ,
-                                       drop = FALSE]
+        drop = FALSE
+      ]
       if (nrow(new_cache_rows) > 0L) {
         cache <- cache[!(cache$accession %in% new_cache_rows$accession), , drop = FALSE]
         cache <- rbind(cache, new_cache_rows)
@@ -444,17 +468,20 @@ review_flagged_accessions <- function(evaluated_df,
   review_out <- do.call(rbind, Filter(Negate(is.null), list(cached_out, fresh_out)))
   rownames(review_out) <- NULL
 
-  if (verbose)
-    message(sprintf("  Review complete. %d accession(s) reviewed (%d from cache, %d fresh).",
-                    nrow(review_out), sum(is_cache_hit), nrow(needs_review)))
+  if (verbose) {
+    message(sprintf(
+      "  Review complete. %d accession(s) reviewed (%d from cache, %d fresh).",
+      nrow(review_out), sum(is_cache_hit), nrow(needs_review)
+    ))
+  }
 
   # A plain match()-based single-row update -- safe because 'accession' in
   # evaluated_df is required to be unique (checked above, warned otherwise).
   idx <- match(review_out$accession, evaluated_df$accession)
   evaluated_df$accession_likely_explanation[idx] <- review_out$accession_likely_explanation
-  evaluated_df$accession_review_confidence[idx]  <- review_out$accession_review_confidence
-  evaluated_df$accession_review_comment[idx]     <- review_out$accession_review_comment
-  evaluated_df$accession_review_cache_hit[idx]   <- review_out$accession_review_cache_hit
+  evaluated_df$accession_review_confidence[idx] <- review_out$accession_review_confidence
+  evaluated_df$accession_review_comment[idx] <- review_out$accession_review_comment
+  evaluated_df$accession_review_cache_hit[idx] <- review_out$accession_review_cache_hit
 
   attr(evaluated_df, "llm_prompts") <- as.list(prompt_log)
   evaluated_df
@@ -474,7 +501,6 @@ review_flagged_accessions <- function(evaluated_df,
 #' updated.
 #' @noRd
 .build_accession_review_prompt <- function(acc_batch, local_min_overlap = NULL) {
-
   guide_block <- paste0(
     "You are an expert molecular systematist doing a second-look review of ",
     "flagged NCBI reference accessions for a DNA barcode reference-database ",
@@ -538,8 +564,10 @@ review_flagged_accessions <- function(evaluated_df,
       add_if("listed_taxon_is_species", "listed_taxon_is_species=%s"),
       add_if("n_independent_top_matches", "n_independent_top_matches=%d"),
       add_if("n_top_matches_available", "n_top_matches_available=%d"),
-      add_if("frac_independent_below_min_congruent_rank",
-             "frac_independent_below_min_congruent_rank=%.2f")
+      add_if(
+        "frac_independent_below_min_congruent_rank",
+        "frac_independent_below_min_congruent_rank=%.2f"
+      )
     )
     # Local corroboration (2026-09-03): one additive line when the columns
     # are present and populated -- the caller's own reference set is
@@ -547,8 +575,8 @@ review_flagged_accessions <- function(evaluated_df,
     # primer-inclusive blind spot).
     local_line <- NULL
     if (all(.ACCESSION_REVIEW_LOCAL_COLS %in% names(row)) &&
-        !is.na(row$local_n_independent_conspecific) &&
-        !is.na(row$local_best_independent_pident)) {
+      !is.na(row$local_n_independent_conspecific) &&
+      !is.na(row$local_best_independent_pident)) {
       overlap_txt <- if (!is.null(local_min_overlap) && is.finite(local_min_overlap)) {
         sprintf("over >= %d%% of the amplicon", as.integer(round(100 * local_min_overlap)))
       } else {
@@ -560,8 +588,10 @@ review_flagged_accessions <- function(evaluated_df,
         row$local_best_independent_pident, overlap_txt
       )
     }
-    sprintf("- accession=%s: %s", row$accession,
-            paste(c(unlist(parts), local_line), collapse = ", "))
+    sprintf(
+      "- accession=%s: %s", row$accession,
+      paste(c(unlist(parts), local_line), collapse = ", ")
+    )
   }, character(1))
 
   paste0(
@@ -607,41 +637,46 @@ review_flagged_accessions <- function(evaluated_df,
                                                pause_seconds, batch_label, max_retries,
                                                depth = 0L, prompt_log = NULL,
                                                local_min_overlap = NULL) {
-
   prompt <- .build_accession_review_prompt(acc_batch, local_min_overlap = local_min_overlap)
   if (!is.null(prompt_log)) assign(batch_label, prompt, envir = prompt_log)
 
   call_error <- NULL
   raw <- tryCatch(
     if (is.null(max_tokens)) llm_fn(prompt) else llm_fn(prompt, max_tokens = max_tokens),
-    error = function(e) { call_error <<- conditionMessage(e); NULL }
+    error = function(e) {
+      call_error <<- conditionMessage(e)
+      NULL
+    }
   )
 
   if (!is.null(call_error)) {
-    warning(sprintf("LLM call failed for accession-review batch %s: %s. Using NA defaults.",
-                    batch_label, call_error), call. = FALSE)
+    warning(sprintf(
+      "LLM call failed for accession-review batch %s: %s. Using NA defaults.",
+      batch_label, call_error
+    ), call. = FALSE)
     result <- .parse_accession_review_response(NULL, acc_batch)
-    attr(result, "status")           <- NULL
+    attr(result, "status") <- NULL
     attr(result, "pending_warnings") <- NULL
     return(result)
   }
 
-  parsed  <- .parse_accession_review_response(raw, acc_batch)
-  status  <- attr(parsed, "status")
+  parsed <- .parse_accession_review_response(raw, acc_batch)
+  status <- attr(parsed, "status")
   pending <- attr(parsed, "pending_warnings")
 
   can_retry <- status %in% c("truncated", "failed") &&
     depth < max_retries && nrow(acc_batch) > 1L
 
   if (can_retry) {
-    if (verbose)
+    if (verbose) {
       message(sprintf(
         "  Accession-review batch %s %s (%d accession(s)) -- retrying as smaller sub-batches...",
         batch_label, if (status == "failed") "returned no usable content" else "was truncated",
         nrow(acc_batch)
       ))
-    mid   <- ceiling(nrow(acc_batch) / 2)
-    left  <- acc_batch[seq_len(mid), , drop = FALSE]
+    }
+    mid <- ceiling(nrow(acc_batch) / 2)
+    left <- acc_batch[seq_len(mid), , drop = FALSE]
     right <- acc_batch[(mid + 1L):nrow(acc_batch), , drop = FALSE]
 
     left_result <- .review_accession_batch_with_retry(
@@ -659,7 +694,7 @@ review_flagged_accessions <- function(evaluated_df,
   }
 
   for (w in pending) warning(w, call. = FALSE)
-  attr(parsed, "status")           <- NULL
+  attr(parsed, "status") <- NULL
   attr(parsed, "pending_warnings") <- NULL
   parsed
 }
@@ -674,28 +709,29 @@ review_flagged_accessions <- function(evaluated_df,
 #' `TaxaFlag::review_assignments()`'s `.parse_review_response()`.
 #' @noRd
 .parse_accession_review_response <- function(response, acc_batch) {
-
   expected_acc <- acc_batch$accession
 
   make_default <- function(accessions = expected_acc) {
     data.frame(
-      accession                    = accessions,
+      accession = accessions,
       accession_likely_explanation = NA_character_,
-      accession_review_confidence  = NA_character_,
-      accession_review_comment     = NA_character_,
+      accession_review_confidence = NA_character_,
+      accession_review_comment = NA_character_,
       stringsAsFactors = FALSE
     )
   }
 
   .with_status <- function(result, status, pending_warnings = character(0)) {
-    attr(result, "status")           <- status
+    attr(result, "status") <- status
     attr(result, "pending_warnings") <- pending_warnings
     result
   }
 
   if (is.null(response) || !nzchar(trimws(response))) {
-    return(.with_status(make_default(), "failed",
-                        "Empty LLM response. Returning NA defaults."))
+    return(.with_status(
+      make_default(), "failed",
+      "Empty LLM response. Returning NA defaults."
+    ))
   }
 
   cleaned <- trimws(response)
@@ -721,8 +757,9 @@ review_flagged_accessions <- function(evaluated_df,
     )
   }
 
-  if (is.null(parsed) || !is.data.frame(parsed))
+  if (is.null(parsed) || !is.data.frame(parsed)) {
     parsed <- .recover_truncated_accession_json(fenced)
+  }
 
   if (is.null(parsed) || !is.data.frame(parsed) || nrow(parsed) == 0L) {
     n <- nchar(trimws(response))
@@ -734,12 +771,12 @@ review_flagged_accessions <- function(evaluated_df,
   }
 
   pending <- character(0)
-  status  <- "complete"
+  status <- "complete"
 
   n_recovered <- nrow(parsed)
-  n_expected  <- length(expected_acc)
+  n_expected <- length(expected_acc)
   if (n_recovered < n_expected) {
-    status  <- "truncated"
+    status <- "truncated"
     pending <- c(pending, sprintf(
       "LLM accession-review response was truncated. Recovered %d of %d accessions from partial JSON.",
       n_recovered, n_expected
@@ -747,8 +784,10 @@ review_flagged_accessions <- function(evaluated_df,
   }
 
   if (!"accession" %in% names(parsed)) {
-    return(.with_status(make_default(), "failed",
-                        "LLM accession-review response missing 'accession' field. Returning NA defaults."))
+    return(.with_status(
+      make_default(), "failed",
+      "LLM accession-review response missing 'accession' field. Returning NA defaults."
+    ))
   }
 
   .safe_col <- function(df, col_name) {
@@ -761,15 +800,17 @@ review_flagged_accessions <- function(evaluated_df,
     }
   }
 
-  valid_explanations <- c("genuine_mislabel", "poor_marker_resolution",
-                          "sister_family_thin_coverage",
-                          "hybrid_or_specimen_code_artifact", "uncertain")
+  valid_explanations <- c(
+    "genuine_mislabel", "poor_marker_resolution",
+    "sister_family_thin_coverage",
+    "hybrid_or_specimen_code_artifact", "uncertain"
+  )
 
   result <- data.frame(
-    accession                    = as.character(parsed$accession),
+    accession = as.character(parsed$accession),
     accession_likely_explanation = .safe_col(parsed, "accession_likely_explanation"),
-    accession_review_confidence  = .safe_col(parsed, "accession_review_confidence"),
-    accession_review_comment     = .safe_col(parsed, "accession_review_comment"),
+    accession_review_confidence = .safe_col(parsed, "accession_review_confidence"),
+    accession_review_comment = .safe_col(parsed, "accession_review_comment"),
     stringsAsFactors = FALSE
   )
 
@@ -779,8 +820,9 @@ review_flagged_accessions <- function(evaluated_df,
   # table/filter.
   bad_explanation <- !is.na(result$accession_likely_explanation) &
     !result$accession_likely_explanation %in% valid_explanations
-  if (any(bad_explanation))
+  if (any(bad_explanation)) {
     result$accession_likely_explanation[bad_explanation] <- "uncertain"
+  }
 
   # Normalise trailing punctuation/whitespace before exact-matching back to
   # the requested accessions -- mirrors review_assignments()'s own
@@ -799,17 +841,20 @@ review_flagged_accessions <- function(evaluated_df,
         result$accession[i] <- expected_acc[hit]
       }
     }
-    if (length(remapped) > 0L)
+    if (length(remapped) > 0L) {
       pending <- c(pending, sprintf(
         "LLM returned %d accession(s) that required normalised matching: %s",
         length(remapped), paste(remapped, collapse = "; ")
       ))
+    }
   }
 
   missing_acc <- setdiff(expected_acc, result$accession)
   if (length(missing_acc) > 0L) {
-    pending <- c(pending, sprintf("LLM omitted %d accession(s). Filling with NA defaults: %s",
-                    length(missing_acc), paste(missing_acc, collapse = ", ")))
+    pending <- c(pending, sprintf(
+      "LLM omitted %d accession(s). Filling with NA defaults: %s",
+      length(missing_acc), paste(missing_acc, collapse = ", ")
+    ))
     result <- rbind(result, make_default(missing_acc))
   }
 
@@ -823,14 +868,20 @@ review_flagged_accessions <- function(evaluated_df,
 #' Recover Parseable Objects from Truncated Accession-Review JSON Array
 #' @noRd
 .recover_truncated_accession_json <- function(text) {
-  if (is.null(text) || !nzchar(trimws(text))) return(NULL)
+  if (is.null(text) || !nzchar(trimws(text))) {
+    return(NULL)
+  }
 
   arr_start <- regexpr("\\[", text)
-  if (arr_start < 0L) return(NULL)
+  if (arr_start < 0L) {
+    return(NULL)
+  }
 
-  text_from_arr   <- substring(text, arr_start)
+  text_from_arr <- substring(text, arr_start)
   brace_positions <- gregexpr("\\}", text_from_arr)[[1]]
-  if (brace_positions[1] < 0L) return(NULL)
+  if (brace_positions[1] < 0L) {
+    return(NULL)
+  }
 
   for (i in rev(seq_along(brace_positions))) {
     candidate <- paste0(substring(text_from_arr, 1L, brace_positions[i]), "\n]")
@@ -838,7 +889,9 @@ review_flagged_accessions <- function(evaluated_df,
       jsonlite::fromJSON(candidate, simplifyDataFrame = TRUE),
       error = function(e) NULL
     )
-    if (is.data.frame(parsed) && nrow(parsed) > 0L) return(parsed)
+    if (is.data.frame(parsed) && nrow(parsed) > 0L) {
+      return(parsed)
+    }
   }
 
   NULL
@@ -898,34 +951,42 @@ review_flagged_accessions <- function(evaluated_df,
 #' review <- review_flagged_accessions(evaluation, llm_fn = my_llm_fn)
 #' overrides <- resolve_review_overrides(review)
 #' match_df_clean <- remove_incongruent_references(match_df, evaluation,
-#'   override_accessions = overrides)
+#'   override_accessions = overrides
+#' )
 #' }
 #'
 #' @export
 resolve_review_overrides <- function(review_result,
-                                     keep_explanations = c("poor_marker_resolution",
-                                                           "sister_family_thin_coverage",
-                                                           "hybrid_or_specimen_code_artifact"),
+                                     keep_explanations = c(
+                                       "poor_marker_resolution",
+                                       "sister_family_thin_coverage",
+                                       "hybrid_or_specimen_code_artifact"
+                                     ),
                                      min_confidence = c("high", "moderate")) {
-  if (!is.data.frame(review_result))
+  if (!is.data.frame(review_result)) {
     stop("review_result must be a data frame.", call. = FALSE)
+  }
   needed <- c("accession", "accession_likely_explanation", "accession_review_confidence")
   missing_cols <- setdiff(needed, names(review_result))
-  if (length(missing_cols) > 0L)
+  if (length(missing_cols) > 0L) {
     stop(sprintf(
       "review_result is missing required columns: %s",
       paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
-  if (!is.character(keep_explanations) || length(keep_explanations) == 0L)
+  }
+  if (!is.character(keep_explanations) || length(keep_explanations) == 0L) {
     stop("keep_explanations must be a non-empty character vector.", call. = FALSE)
-  if (!is.character(min_confidence) || length(min_confidence) == 0L)
+  }
+  if (!is.character(min_confidence) || length(min_confidence) == 0L) {
     stop("min_confidence must be a non-empty character vector.", call. = FALSE)
-  if ("genuine_mislabel" %in% keep_explanations)
+  }
+  if ("genuine_mislabel" %in% keep_explanations) {
     stop(
       "keep_explanations cannot include \"genuine_mislabel\" -- that verdict ",
       "confirms removal, it never overrides it.",
       call. = FALSE
     )
+  }
 
   keep_mask <- !is.na(review_result$accession_likely_explanation) &
     review_result$accession_likely_explanation %in% keep_explanations &

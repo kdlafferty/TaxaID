@@ -127,28 +127,32 @@
 #'
 #' @export
 group_observations_by_bbox <- function(sites,
-                                       id_col  = "observation_id",
+                                       id_col = "observation_id",
                                        lat_col = "lat",
                                        lon_col = "lon",
-                                       tile    = "Esri.OceanBasemap") {
-
-  if (!is.data.frame(sites) || nrow(sites) == 0L)
+                                       tile = "Esri.OceanBasemap") {
+  if (!is.data.frame(sites) || nrow(sites) == 0L) {
     stop("group_observations_by_bbox: 'sites' must be a non-empty data frame.", call. = FALSE)
+  }
 
   required <- c(id_col, lat_col, lon_col)
-  missing  <- setdiff(required, names(sites))
-  if (length(missing) > 0L)
+  missing <- setdiff(required, names(sites))
+  if (length(missing) > 0L) {
     stop(sprintf(
       "group_observations_by_bbox: 'sites' missing required column(s): %s",
       paste(missing, collapse = ", ")
     ), call. = FALSE)
+  }
 
-  if (anyNA(sites[[lat_col]]) || anyNA(sites[[lon_col]]))
+  if (anyNA(sites[[lat_col]]) || anyNA(sites[[lon_col]])) {
     stop("group_observations_by_bbox: 'sites' has NA coordinates; resolve site info before grouping.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
-  if (!interactive())
+  if (!interactive()) {
     stop("group_observations_by_bbox: must be run in an interactive R session.", call. = FALSE)
+  }
 
   if (!"spatial_group_id" %in% names(sites) || !"spatial_group_N" %in% names(sites)) {
     message(
@@ -157,7 +161,7 @@ group_observations_by_bbox <- function(sites,
       "get grid-based defaults automatically)."
     )
     sites$spatial_group_id <- as.character(sites[[id_col]])
-    sites$spatial_group_N  <- 1L
+    sites$spatial_group_N <- 1L
     sites$is_default_group <- TRUE
   } else if (!"is_default_group" %in% names(sites)) {
     # Migration path for a site table built before Session 139 (grid-based
@@ -171,7 +175,7 @@ group_observations_by_bbox <- function(sites,
       "TaxaMatch::build_site_table() to get this column directly."
     )
     sites$is_default_group <- sites$spatial_group_id == as.character(sites[[id_col]]) &
-                              sites$spatial_group_N == 1L
+      sites$spatial_group_N == 1L
   }
 
   still_default <- sites$is_default_group
@@ -186,29 +190,29 @@ group_observations_by_bbox <- function(sites,
     view <- .bbox_center_radius(remaining[[lat_col]], remaining[[lon_col]])
 
     wkt <- TaxaTools::define_search_polygon(
-      lat        = view$lat,
-      lon        = view$lon,
+      lat = view$lat,
+      lon = view$lon,
       radius_deg = view$radius_deg,
-      tile       = tile,
-      points     = data.frame(lat = remaining[[lat_col]], lng = remaining[[lon_col]]),
-      title      = sprintf(
+      tile = tile,
+      points = data.frame(lat = remaining[[lat_col]], lng = remaining[[lon_col]]),
+      title = sprintf(
         "Draw Spatial Group %d (%d observation(s) still ungrouped)",
         length(polygons) + 1L, nrow(remaining)
       ),
-      done_label   = "Group These Points",
+      done_label = "Group These Points",
       cancel_label = "No More Groups"
     )
 
     if (is.null(wkt)) {
       message("group_observations_by_bbox: gadget closed without Done (Cancel/X) -- stopped drawing boxes.")
-      break  # user is done drawing groups
+      break # user is done drawing groups
     }
 
     polygons <- c(polygons, wkt)
 
     poly_sf <- sf::st_as_sfc(wkt, crs = 4326L)
-    pts_sf  <- sf::st_as_sf(remaining, coords = c(lon_col, lat_col), crs = 4326L)
-    inside  <- as.logical(sf::st_within(pts_sf, poly_sf, sparse = FALSE)[, 1])
+    pts_sf <- sf::st_as_sf(remaining, coords = c(lon_col, lat_col), crs = 4326L)
+    inside <- as.logical(sf::st_within(pts_sf, poly_sf, sparse = FALSE)[, 1])
 
     matched_ids <- remaining[[id_col]][inside]
     assigned[sites[[id_col]] %in% matched_ids] <- TRUE
@@ -234,8 +238,10 @@ group_observations_by_bbox <- function(sites,
     length(polygons)
   ))
 
-  .assign_spatial_groups_from_polygons(sites, polygons, id_col = id_col,
-                                       lat_col = lat_col, lon_col = lon_col)
+  .assign_spatial_groups_from_polygons(sites, polygons,
+    id_col = id_col,
+    lat_col = lat_col, lon_col = lon_col
+  )
 }
 
 
@@ -293,16 +299,16 @@ group_observations_by_bbox <- function(sites,
 #' @noRd
 .assign_spatial_groups_from_polygons <- function(sites, polygons, id_col = "observation_id",
                                                  lat_col = "lat", lon_col = "lon") {
-
   target_idx <- which(sites$is_default_group)
 
   if (length(target_idx) == 0L) {
-    if (length(polygons) > 0L)
+    if (length(polygons) > 0L) {
       message("group_observations_by_bbox: every observation is already part of a spatial group; nothing left to assign.")
+    }
     return(sites)
   }
 
-  new_group   <- rep(NA_character_, length(target_idx))
+  new_group <- rep(NA_character_, length(target_idx))
   match_count <- rep(0L, length(target_idx))
 
   if (length(polygons) > 0L) {
@@ -319,7 +325,7 @@ group_observations_by_bbox <- function(sites,
 
       inside <- as.logical(sf::st_within(pts_sf, poly_sf, sparse = FALSE)[, 1])
       match_count[inside] <- match_count[inside] + 1L
-      new_group[inside]   <- sprintf("spatial_group_%d", group_start + i - 1L)  # overwritten by later i: last-drawn-wins
+      new_group[inside] <- sprintf("spatial_group_%d", group_start + i - 1L) # overwritten by later i: last-drawn-wins
     }
 
     ambiguous <- which(match_count > 1L)
@@ -337,8 +343,8 @@ group_observations_by_bbox <- function(sites,
 
   grouped_local <- !is.na(new_group)
   if (any(grouped_local)) {
-    sites$spatial_group_id[target_idx[grouped_local]]  <- new_group[grouped_local]
-    sites$is_default_group[target_idx[grouped_local]]  <- FALSE
+    sites$spatial_group_id[target_idx[grouped_local]] <- new_group[grouped_local]
+    sites$is_default_group[target_idx[grouped_local]] <- FALSE
   }
 
   n_leftover <- sum(!grouped_local)
@@ -395,14 +401,18 @@ group_observations_by_bbox <- function(sites,
 #' @return Character vector of WKT POLYGON strings, possibly edited/shortened.
 #' @noRd
 .review_drawn_groups <- function(polygons, candidate_sites, id_col, lat_col, lon_col, tile) {
-  if (length(polygons) == 0L || !interactive()) return(polygons)
+  if (length(polygons) == 0L || !interactive()) {
+    return(polygons)
+  }
 
   pts_sf_all <- sf::st_as_sf(candidate_sites, coords = c(lon_col, lat_col), crs = 4326L)
 
   repeat {
     counts <- vapply(seq_along(polygons), function(i) {
       poly_sf <- tryCatch(sf::st_as_sfc(polygons[[i]], crs = 4326L), error = function(e) NULL)
-      if (is.null(poly_sf)) return(0L)
+      if (is.null(poly_sf)) {
+        return(0L)
+      }
       sum(as.logical(sf::st_within(pts_sf_all, poly_sf, sparse = FALSE)[, 1]))
     }, integer(1L))
 

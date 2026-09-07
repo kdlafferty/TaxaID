@@ -18,8 +18,10 @@
 #' @noRd
 .check_col_exists <- function(data, col, arg_name) {
   if (!col %in% names(data)) {
-    stop(sprintf("`%s` '%s' not found in data.\n  Available columns: %s",
-                 arg_name, col, paste(names(data), collapse = ", ")))
+    stop(sprintf(
+      "`%s` '%s' not found in data.\n  Available columns: %s",
+      arg_name, col, paste(names(data), collapse = ", ")
+    ))
   }
   invisible(TRUE)
 }
@@ -127,19 +129,20 @@
 #' @importFrom TaxaTools rename_cols create_taxon_names
 #'
 #' @export
-standardize_match_data <- function(data             = NULL,
+standardize_match_data <- function(data = NULL,
                                    observation_id_col,
                                    score_col,
-                                   rank_system   = NULL,
-                                   coverage_col     = NULL,
-                                   col_map          = NULL,
-                                   lowercase_names  = TRUE) {
-
+                                   rank_system = NULL,
+                                   coverage_col = NULL,
+                                   col_map = NULL,
+                                   lowercase_names = TRUE) {
   # --- 1. Load data -----------------------------------------------------------
   if (is.null(data)) {
     if (!interactive()) {
-      stop("`data = NULL` requires an interactive session (opens file.choose()). ",
-           "Pass a data frame or file path in non-interactive contexts (Rmd/Quarto, batch scripts, CI).")
+      stop(
+        "`data = NULL` requires an interactive session (opens file.choose()). ",
+        "Pass a data frame or file path in non-interactive contexts (Rmd/Quarto, batch scripts, CI)."
+      )
     }
     path <- file.choose()
     data <- .read_match_file(path)
@@ -186,8 +189,9 @@ standardize_match_data <- function(data             = NULL,
 
   # --- 5. Rename coverage column (optional) -----------------------------------
   if (!is.null(coverage_col)) {
-    if (!is.character(coverage_col) || length(coverage_col) != 1L || !nzchar(coverage_col))
+    if (!is.character(coverage_col) || length(coverage_col) != 1L || !nzchar(coverage_col)) {
       stop("`coverage_col` must be a single non-empty character string or NULL.")
+    }
     .check_col_exists(data, coverage_col, "coverage_col")
     .check_rename_safe(data, coverage_col, "coverage")
     if (coverage_col != "coverage") {
@@ -205,8 +209,10 @@ standardize_match_data <- function(data             = NULL,
         "  rank_system = c(\"Kingdom\", \"Family\", \"Genus\", \"Species\")"
       )
     }
-    message(sprintf("standardize_match_data: detected rank columns: %s",
-                    paste(rank_system, collapse = ", ")))
+    message(sprintf(
+      "standardize_match_data: detected rank columns: %s",
+      paste(rank_system, collapse = ", ")
+    ))
   } else {
     .validate_rank_system(rank_system)
   }
@@ -269,17 +275,17 @@ standardize_match_data <- function(data             = NULL,
 #'
 #' @examples
 #' df <- data.frame(
-#'   observation_id       = "S1",
-#'   kingdom         = "Eukaryota",
-#'   phylum          = "Chordata",
-#'   class           = "Actinopteri",
-#'   order           = "Gobiiformes",
-#'   family          = "Gobiidae",
-#'   genus           = c("Gobius", "Gobius", "Acanthogobius"),
-#'   species         = c("Gobius paganellus", NA, NA),
-#'   taxon_name      = c("Gobius paganellus", "Gobius", "Acanthogobius"),
+#'   observation_id = "S1",
+#'   kingdom = "Eukaryota",
+#'   phylum = "Chordata",
+#'   class = "Actinopteri",
+#'   order = "Gobiiformes",
+#'   family = "Gobiidae",
+#'   genus = c("Gobius", "Gobius", "Acanthogobius"),
+#'   species = c("Gobius paganellus", NA, NA),
+#'   taxon_name = c("Gobius paganellus", "Gobius", "Acanthogobius"),
 #'   taxon_name_rank = c("species", "genus", "genus"),
-#'   score_original  = c(99, 95, 88),
+#'   score_original = c(99, 95, 88),
 #'   stringsAsFactors = FALSE
 #' )
 #' filter_redundant_hypotheses(df)
@@ -287,8 +293,8 @@ standardize_match_data <- function(data             = NULL,
 #'
 #' @export
 filter_redundant_hypotheses <- function(
-    match_df,
-    rank_system = c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  match_df,
+  rank_system = c("kingdom", "phylum", "class", "order", "family", "genus", "species")
 ) {
   # --- validate inputs --------------------------------------------------------
   if (!is.data.frame(match_df)) stop("`match_df` must be a data frame.")
@@ -296,8 +302,10 @@ filter_redundant_hypotheses <- function(
   required_cols <- c("observation_id", "taxon_name_rank")
   missing_req <- setdiff(required_cols, names(match_df))
   if (length(missing_req) > 0L) {
-    stop(sprintf("`match_df` is missing required column(s): %s",
-                 paste(missing_req, collapse = ", ")))
+    stop(sprintf(
+      "`match_df` is missing required column(s): %s",
+      paste(missing_req, collapse = ", ")
+    ))
   }
 
   # --- warn about ranks present in data but absent from rank_system ------------
@@ -346,7 +354,7 @@ filter_redundant_hypotheses <- function(
   }
 
   # --- assign numeric rank scores ---------------------------------------------
-  rank_score <- match(match_df$taxon_name_rank, rank_system)  # NA for unknown ranks
+  rank_score <- match(match_df$taxon_name_rank, rank_system) # NA for unknown ranks
 
   # --- identify redundant rows ------------------------------------------------
   # Invariant: row i is redundant if and only if there exists a row j in the
@@ -361,8 +369,10 @@ filter_redundant_hypotheses <- function(
   n_na_sid <- sum(is.na(match_df$observation_id))
   if (n_na_sid > 0L) {
     warning(sprintf(
-      paste0("filter_redundant_hypotheses: %d row(s) have NA observation_id. ",
-             "These rows cannot be grouped and will be retained as-is."),
+      paste0(
+        "filter_redundant_hypotheses: %d row(s) have NA observation_id. ",
+        "These rows cannot be grouped and will be retained as-is."
+      ),
       n_na_sid
     ))
   }
@@ -377,7 +387,7 @@ filter_redundant_hypotheses <- function(
 
     for (i in rows_in_sample) {
       ri <- rank_score[i]
-      if (is.na(ri)) next  # unknown rank — keep
+      if (is.na(ri)) next # unknown rank — keep
 
       # Candidate superseding rows: same sample, finer rank
       finer_idx <- rows_in_sample[!is.na(scores_in_sample) & scores_in_sample > ri]
@@ -452,8 +462,10 @@ filter_redundant_hypotheses <- function(
 #' @noRd
 .detect_rank_cols <- function(df) {
   standard_match_ranks <- TaxaTools::extended_ranks
-  df_lower    <- tolower(names(df))
-  found_lower <- intersect(standard_match_ranks, df_lower)  # preserves rank order
-  if (length(found_lower) == 0L) return(character(0))
-  names(df)[match(found_lower, df_lower)]  # original (possibly mixed-case) names
+  df_lower <- tolower(names(df))
+  found_lower <- intersect(standard_match_ranks, df_lower) # preserves rank order
+  if (length(found_lower) == 0L) {
+    return(character(0))
+  }
+  names(df)[match(found_lower, df_lower)] # original (possibly mixed-case) names
 }

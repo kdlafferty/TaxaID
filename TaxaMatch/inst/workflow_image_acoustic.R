@@ -45,17 +45,19 @@ image_dir <- "~/My Drive/Documents2/Lafferty Manuscripts/2 Active/BayesianID_per
 
 match_raw <- score_image_inat(
   image_path  = image_dir,
-  lat         = 34.10,        # Mugu Lagoon, CA (decimal degrees)
+  lat         = 34.10, # Mugu Lagoon, CA (decimal degrees)
   lng         = -119.07,
-  observed_on = "2024-09-01",   # approximate; YYYY-MM or YYYY-MM-DD
+  observed_on = "2024-09-01", # approximate; YYYY-MM or YYYY-MM-DD
   top_n       = 10L,
   recursive   = FALSE
 )
 
 cat("Rows returned:", nrow(match_raw), "\n")
 cat("Images processed:", length(unique(match_raw$observation_id)), "\n")
-print(head(match_raw[, c("observation_id", "taxon_name", "taxon_name_rank",
-                          "score_original", "geo_prior_weight", "n_observations")]))
+print(head(match_raw[, c(
+  "observation_id", "taxon_name", "taxon_name_rank",
+  "score_original", "geo_prior_weight", "n_observations"
+)]))
 
 # ---- A2. Inspect score columns ----------------------------------------------
 # Scores are in iNat's 0-100 softmax convention (sum ≈ 100 per image).
@@ -64,8 +66,10 @@ print(head(match_raw[, c("observation_id", "taxon_name", "taxon_name_rank",
 # geo_prior_weight = combined / vision  (>1 → boosted by location; <1 → suppressed)
 
 cat("\nScore range:\n")
-print(summary(match_raw[, c("vision_score", "combined_score", "freq_score",
-                              "geo_prior_weight")]))
+print(summary(match_raw[, c(
+  "vision_score", "combined_score", "freq_score",
+  "geo_prior_weight"
+)]))
 
 # ---- A3. Check folder metadata columns --------------------------------------
 # Nested folder levels between image_dir and each image are captured as
@@ -107,9 +111,9 @@ if (length(folder_cols) > 0) {
 # ---- B1. CLI format — one CSV per recording (standard) ----------------------
 # Each file is named  <recording>.BirdNET.results.csv
 
-BirdNetTable<-read.csv(file.choose())
-head(BirdNetTable)
-birdnet_cli <- read_birdnet_output(BirdNetTable, min_confidence = 0.1)
+birdnet_table <- read.csv(file.choose())
+head(birdnet_table)
+birdnet_cli <- read_birdnet_output(birdnet_table, min_confidence = 0.1)
 cat("\nCLI format — rows:", nrow(birdnet_cli), "\n")
 print(birdnet_cli[, c("observation_id", "score", "species", "source_file")])
 
@@ -121,14 +125,18 @@ print(birdnet_cli[, c("observation_id", "score", "species", "source_file")])
 
 tmp_combined <- tempfile(fileext = ".csv")
 write.csv(data.frame(
-  "File"            = c("/data/recording1.mp3", "/data/recording1.mp3",
-                         "/data/recording2.wav"),
-  "Start (s)"       = c(0.0, 0.0, 0.0),
-  "End (s)"         = c(3.0, 3.0, 3.0),
-  "Scientific name" = c("Turdus migratorius", "Setophaga petechia",
-                         "Corvus brachyrhynchos"),
-  "Common name"     = c("American Robin", "Yellow Warbler", "American Crow"),
-  "Confidence"      = c(0.91, 0.55, 0.83),
+  "File" = c(
+    "/data/recording1.mp3", "/data/recording1.mp3",
+    "/data/recording2.wav"
+  ),
+  "Start (s)" = c(0.0, 0.0, 0.0),
+  "End (s)" = c(3.0, 3.0, 3.0),
+  "Scientific name" = c(
+    "Turdus migratorius", "Setophaga petechia",
+    "Corvus brachyrhynchos"
+  ),
+  "Common name" = c("American Robin", "Yellow Warbler", "American Crow"),
+  "Confidence" = c(0.91, 0.55, 0.83),
   check.names = FALSE, stringsAsFactors = FALSE
 ), tmp_combined, row.names = FALSE)
 
@@ -166,18 +174,18 @@ cat("OK — observation_ids derived from audio filenames in File column\n")
 
 # Test with a small list of shorebird species plausible at Mugu Lagoon
 prior_species_shorebird <- c(
-  "Calidris mauri",           # Western Sandpiper      — well-observed
-  "Calidris minutilla",       # Least Sandpiper        — well-observed
-  "Limosa fedoa",             # Marbled Godwit         — moderate
-  "Phalaropus tricolor",      # Wilson's Phalarope     — moderate
-  "Calidris canutus"          # Red Knot               — less common
+  "Calidris mauri", # Western Sandpiper      — well-observed
+  "Calidris minutilla", # Least Sandpiper        — well-observed
+  "Limosa fedoa", # Marbled Godwit         — moderate
+  "Phalaropus tricolor", # Wilson's Phalarope     — moderate
+  "Calidris canutus" # Red Knot               — less common
 )
 
 cat("\n--- audit_inat_coverage() ---\n")
 inat_cov <- audit_inat_coverage(
   species_list  = prior_species_shorebird,
-  match_df      = NULL,       # optional: pass match_raw here to annotate in_match_data
-  cv_threshold  = 100L,       # iNat CV model estimated to require ~100 research-grade obs
+  match_df      = NULL, # optional: pass match_raw here to annotate in_match_data
+  cv_threshold  = 100L, # iNat CV model estimated to require ~100 research-grade obs
   verbose       = TRUE
 )
 
@@ -223,14 +231,14 @@ birdnet_known_species <- c(
   "Setophaga petechia",
   "Corvus brachyrhynchos",
   "Melospiza melodia",
-  "Calidris mauri"       # Western Sandpiper — is it in BirdNET?
+  "Calidris mauri" # Western Sandpiper — is it in BirdNET?
 )
 
 # Species expected at Mugu Lagoon (prior list)
 prior_species_birds <- c(
   "Turdus migratorius",
   "Setophaga petechia",
-  "Limosa fedoa",         # Marbled Godwit — not in our mock BirdNET list
+  "Limosa fedoa", # Marbled Godwit — not in our mock BirdNET list
   "Selasphorus calliope", # Calliope Hummingbird — not in mock list
   "Calidris mauri"
 )
@@ -239,7 +247,7 @@ cat("\n--- audit_acoustic_coverage() without Xeno-canto ---\n")
 acoustic_cov <- audit_acoustic_coverage(
   plausible_species = prior_species_birds,
   reference_species = birdnet_known_species,
-  match_df          = birdnet_cli   # annotate which species appeared in our BirdNET run
+  match_df          = birdnet_cli # annotate which species appeared in our BirdNET run
 )
 
 cat("\nAcoustic coverage census:\n")
@@ -282,13 +290,17 @@ print(acoustic_cov_xc$census)
 
 cat("\n==============================\n")
 cat("Workflow checks:\n")
-cat(" A. score_image_inat()         — ", nrow(match_raw), "rows from",
-    length(unique(match_raw$observation_id)), "images\n")
+cat(
+  " A. score_image_inat()         — ", nrow(match_raw), "rows from",
+  length(unique(match_raw$observation_id)), "images\n"
+)
 cat(" B1. read_birdnet_output() CLI — ", nrow(birdnet_cli), "rows\n")
 cat(" B2. read_birdnet_output() combined (File col) —", nrow(birdnet_combined), "rows\n")
 cat(" C. audit_inat_coverage()      — census with", nrow(inat_cov$census), "species\n")
-cat(" D. audit_acoustic_coverage()  — census with", nrow(acoustic_cov_xc$census),
-    "species;", ncol(acoustic_cov_xc$census), "columns\n")
+cat(
+  " D. audit_acoustic_coverage()  — census with", nrow(acoustic_cov_xc$census),
+  "species;", ncol(acoustic_cov_xc$census), "columns\n"
+)
 stopifnot("n_recordings" %in% names(acoustic_cov_xc$census))
 cat("    n_recordings column present: OK\n")
 cat("==============================\n")

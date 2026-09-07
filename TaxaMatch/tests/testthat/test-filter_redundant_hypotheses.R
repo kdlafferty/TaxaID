@@ -9,13 +9,13 @@
 .make_df <- function(...) {
   rows <- list(...)
   data.frame(
-    observation_id       = vapply(rows, `[[`, character(1), "sid"),
-    kingdom         = vapply(rows, `[[`, character(1), "kingdom"),
-    family          = vapply(rows, `[[`, character(1), "family"),
-    genus           = vapply(rows, `[[`, character(1), "genus"),
-    species         = vapply(rows, `[[`, character(1), "species"),
+    observation_id = vapply(rows, `[[`, character(1), "sid"),
+    kingdom = vapply(rows, `[[`, character(1), "kingdom"),
+    family = vapply(rows, `[[`, character(1), "family"),
+    genus = vapply(rows, `[[`, character(1), "genus"),
+    species = vapply(rows, `[[`, character(1), "species"),
     taxon_name_rank = vapply(rows, `[[`, character(1), "rank"),
-    score_original  = vapply(rows, `[[`, numeric(1),   "score"),
+    score_original = vapply(rows, `[[`, numeric(1), "score"),
     stringsAsFactors = FALSE
   )
 }
@@ -28,13 +28,13 @@
 
 test_that("genus row superseded by species in same lineage is dropped", {
   df <- data.frame(
-    observation_id       = "S1",
-    kingdom         = "Eukaryota",
-    family          = "Gobiidae",
-    genus           = c("Gobius", "Gobius"),
-    species         = c("Gobius paganellus", NA_character_),
+    observation_id = "S1",
+    kingdom = "Eukaryota",
+    family = "Gobiidae",
+    genus = c("Gobius", "Gobius"),
+    species = c("Gobius paganellus", NA_character_),
     taxon_name_rank = c("species", "genus"),
-    score           = c(99, 95),
+    score = c(99, 95),
     stringsAsFactors = FALSE
   )
   out <- filter_redundant_hypotheses(df, rank_system = .ro)
@@ -44,13 +44,13 @@ test_that("genus row superseded by species in same lineage is dropped", {
 
 test_that("genus row for DIFFERENT lineage is retained even when another species exists", {
   df <- data.frame(
-    observation_id       = "S1",
-    kingdom         = "Eukaryota",
-    family          = c("Gobiidae", "Gobiidae", "Gobiidae"),
-    genus           = c("Gobius", "Gobius", "Acanthogobius"),
-    species         = c("Gobius paganellus", NA, NA),
+    observation_id = "S1",
+    kingdom = "Eukaryota",
+    family = c("Gobiidae", "Gobiidae", "Gobiidae"),
+    genus = c("Gobius", "Gobius", "Acanthogobius"),
+    species = c("Gobius paganellus", NA, NA),
     taxon_name_rank = c("species", "genus", "genus"),
-    score           = c(99, 95, 88),
+    score = c(99, 95, 88),
     stringsAsFactors = FALSE
   )
   out <- filter_redundant_hypotheses(df, rank_system = .ro)
@@ -62,13 +62,13 @@ test_that("genus row for DIFFERENT lineage is retained even when another species
 
 test_that("family row dropped when both genus and species exist in same lineage", {
   df <- data.frame(
-    observation_id       = "S1",
-    kingdom         = "Eukaryota",
-    family          = "Gobiidae",
-    genus           = c("Gobius", "Gobius", "Gobius"),
-    species         = c("Gobius paganellus", NA, NA),
+    observation_id = "S1",
+    kingdom = "Eukaryota",
+    family = "Gobiidae",
+    genus = c("Gobius", "Gobius", "Gobius"),
+    species = c("Gobius paganellus", NA, NA),
     taxon_name_rank = c("species", "genus", "family"),
-    score           = c(99, 95, 80),
+    score = c(99, 95, 80),
     stringsAsFactors = FALSE
   )
   out <- filter_redundant_hypotheses(df, rank_system = .ro)
@@ -78,13 +78,13 @@ test_that("family row dropped when both genus and species exist in same lineage"
 
 test_that("genus row retained when it has no species-level match in same sample", {
   df <- data.frame(
-    observation_id       = c("S1", "S1"),
-    kingdom         = "Eukaryota",
-    family          = c("Gobiidae", "Leuciscidae"),
-    genus           = c("Gobius", "Hybognathus"),
-    species         = c(NA, NA),
+    observation_id = c("S1", "S1"),
+    kingdom = "Eukaryota",
+    family = c("Gobiidae", "Leuciscidae"),
+    genus = c("Gobius", "Hybognathus"),
+    species = c(NA, NA),
     taxon_name_rank = c("genus", "genus"),
-    score           = c(90, 85),
+    score = c(90, 85),
     stringsAsFactors = FALSE
   )
   out <- filter_redundant_hypotheses(df, rank_system = .ro)
@@ -97,13 +97,13 @@ test_that("genus row retained when it has no species-level match in same sample"
 
 test_that("genus row is dropped in S1 but kept in S2 where species absent", {
   df <- data.frame(
-    observation_id       = c("S1", "S1", "S2"),
-    kingdom         = "Eukaryota",
-    family          = "Gobiidae",
-    genus           = "Gobius",
-    species         = c("Gobius paganellus", NA, NA),
+    observation_id = c("S1", "S1", "S2"),
+    kingdom = "Eukaryota",
+    family = "Gobiidae",
+    genus = "Gobius",
+    species = c("Gobius paganellus", NA, NA),
     taxon_name_rank = c("species", "genus", "genus"),
-    score           = c(99, 95, 88),
+    score = c(99, 95, 88),
     stringsAsFactors = FALSE
   )
   out <- filter_redundant_hypotheses(df, rank_system = .ro)
@@ -131,32 +131,32 @@ test_that("single-row data frame is returned unchanged", {
 
 test_that("rows with unknown taxon_name_rank are retained with a warning", {
   df <- data.frame(
-    observation_id       = "S1",
-    kingdom         = "Eukaryota",
-    family          = "Gobiidae",
-    genus           = c("Gobius", "Gobius"),
-    species         = c("Gobius paganellus", NA),
-    taxon_name_rank = c("species", "subspecies"),  # subspecies not in .ro
-    score           = c(99, 95),
+    observation_id = "S1",
+    kingdom = "Eukaryota",
+    family = "Gobiidae",
+    genus = c("Gobius", "Gobius"),
+    species = c("Gobius paganellus", NA),
+    taxon_name_rank = c("species", "subspecies"), # subspecies not in .ro
+    score = c(99, 95),
     stringsAsFactors = FALSE
   )
   expect_warning(
     out <- filter_redundant_hypotheses(df, rank_system = .ro),
     "taxon_name_rank not in rank_system"
   )
-  expect_equal(nrow(out), 2L)  # subspecies row retained, species row retained
+  expect_equal(nrow(out), 2L) # subspecies row retained, species row retained
 })
 
 test_that("all columns are preserved in output", {
   df <- data.frame(
-    observation_id       = "S1",
-    kingdom         = "Eukaryota",
-    family          = "Gobiidae",
-    genus           = c("Gobius", "Gobius"),
-    species         = c("Gobius paganellus", NA),
+    observation_id = "S1",
+    kingdom = "Eukaryota",
+    family = "Gobiidae",
+    genus = c("Gobius", "Gobius"),
+    species = c("Gobius paganellus", NA),
     taxon_name_rank = c("species", "genus"),
-    score           = c(99, 95),
-    extra_col       = c("a", "b"),
+    score = c(99, 95),
+    extra_col = c("a", "b"),
     stringsAsFactors = FALSE
   )
   out <- filter_redundant_hypotheses(df, rank_system = .ro)
@@ -178,8 +178,10 @@ test_that("stops if required columns are missing", {
 
 test_that("stops if rank_system is empty", {
   df <- data.frame(observation_id = "S1", taxon_name_rank = "genus", genus = "Gobius")
-  expect_error(filter_redundant_hypotheses(df, rank_system = character(0)),
-               "non-empty character vector")
+  expect_error(
+    filter_redundant_hypotheses(df, rank_system = character(0)),
+    "non-empty character vector"
+  )
 })
 
 # ---------------------------------------------------------------------------
@@ -194,12 +196,12 @@ test_that("no warning when only rank_system's own finest entry lacks a column", 
   # inert (nothing is ever finer than species, so no row can be superseded
   # by it, and no coarser row's own comparison ever needs it).
   df <- data.frame(
-    observation_id       = c("S1", "S1"),
-    kingdom         = "Eukaryota",
-    family          = c("Gobiidae", "Gobiidae"),
-    genus           = c("Gobius", "Acanthogobius"),
+    observation_id = c("S1", "S1"),
+    kingdom = "Eukaryota",
+    family = c("Gobiidae", "Gobiidae"),
+    genus = c("Gobius", "Acanthogobius"),
     taxon_name_rank = c("genus", "genus"),
-    score           = c(95, 88),
+    score = c(95, 88),
     stringsAsFactors = FALSE
   )
   expect_no_warning(out <- filter_redundant_hypotheses(df, rank_system = .ro))
@@ -211,12 +213,12 @@ test_that("still warns when a genuinely load-bearing (non-finest) column is miss
   # comparison column for any genus-rank redundancy check -- a real gap,
   # not the finest-rank false positive the fix above closes.
   df <- data.frame(
-    observation_id       = c("S1", "S1"),
-    kingdom         = "Eukaryota",
-    genus           = c("Gobius", "Gobius"),
-    species         = c("Gobius paganellus", NA),
+    observation_id = c("S1", "S1"),
+    kingdom = "Eukaryota",
+    genus = c("Gobius", "Gobius"),
+    species = c("Gobius paganellus", NA),
     taxon_name_rank = c("species", "genus"),
-    score           = c(99, 95),
+    score = c(99, 95),
     stringsAsFactors = FALSE
   )
   expect_warning(

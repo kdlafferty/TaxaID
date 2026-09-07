@@ -26,12 +26,15 @@
 #     set()'s own roxygen `@section A real, live-found correction`.
 # ==============================================================================
 
-.blast_against_comparison_set_int <- function(...)
+.blast_against_comparison_set_int <- function(...) {
   get(".blast_against_comparison_set", envir = asNamespace("TaxaMatch"))(...)
-.investigate_verdict_int <- function(...)
+}
+.investigate_verdict_int <- function(...) {
   get(".investigate_verdict", envir = asNamespace("TaxaMatch"))(...)
-.filter_and_cap_accessions_int <- function(...)
+}
+.filter_and_cap_accessions_int <- function(...) {
   get(".filter_and_cap_accessions", envir = asNamespace("TaxaMatch"))(...)
+}
 
 # ------------------------------------------------------------------------------
 # .filter_and_cap_accessions() -- the length-ratio pre-filter (Option B),
@@ -54,7 +57,8 @@ test_that(".filter_and_cap_accessions() discards whole-genome-assembly-scale can
   lens <- c(173, 76718285, 69816937, 643)
 
   out <- .filter_and_cap_accessions_int(
-    accs, lens, exclude = character(0L), max_records = 30L,
+    accs, lens,
+    exclude = character(0L), max_records = 30L,
     reference_length = 173, max_length_ratio = 3
   )
   # 173*3 = 519 -- PV841430 (643bp) is just OUTSIDE the ratio window at this
@@ -67,10 +71,11 @@ test_that(".filter_and_cap_accessions() discards whole-genome-assembly-scale can
 
 test_that(".filter_and_cap_accessions() keeps a length-comparable candidate and applies the ratio symmetrically", {
   accs <- c("SHORT_OK", "TOO_LONG", "TOO_SHORT", "HUGE_GENOME")
-  lens <- c(200, 700, 40, 76718285)  # reference_length = 173, ratio = 3 -> window [57.7, 519]
+  lens <- c(200, 700, 40, 76718285) # reference_length = 173, ratio = 3 -> window [57.7, 519]
 
   out <- .filter_and_cap_accessions_int(
-    accs, lens, exclude = character(0L), max_records = 30L,
+    accs, lens,
+    exclude = character(0L), max_records = 30L,
     reference_length = 173, max_length_ratio = 3
   )
   expect_true("SHORT_OK" %in% out)
@@ -84,13 +89,15 @@ test_that(".filter_and_cap_accessions() skips the length filter entirely when re
   lens <- c(173, 200, 76718285)
 
   out_null <- .filter_and_cap_accessions_int(
-    accs, lens, exclude = character(0L), max_records = 30L,
+    accs, lens,
+    exclude = character(0L), max_records = 30L,
     reference_length = NULL, max_length_ratio = 3
   )
   expect_setequal(out_null, c("A", "B", "HUGE"))
 
   out_na <- .filter_and_cap_accessions_int(
-    accs, lens, exclude = character(0L), max_records = 30L,
+    accs, lens,
+    exclude = character(0L), max_records = 30L,
     reference_length = NA_real_, max_length_ratio = 3
   )
   expect_setequal(out_na, c("A", "B", "HUGE"))
@@ -101,7 +108,8 @@ test_that(".filter_and_cap_accessions() excludes NA accessions, applies exclude 
   lens <- c(100, 100, 100, 100)
 
   out <- .filter_and_cap_accessions_int(
-    accs, lens, exclude = "B", max_records = 1L,
+    accs, lens,
+    exclude = "B", max_records = 1L,
     reference_length = NULL, max_length_ratio = 3
   )
   expect_equal(length(out), 1L)
@@ -115,7 +123,8 @@ test_that(".filter_and_cap_accessions() excludes a candidate with unknown (NA) l
   lens <- c(180, NA_real_)
 
   out <- .filter_and_cap_accessions_int(
-    accs, lens, exclude = character(0L), max_records = 30L,
+    accs, lens,
+    exclude = character(0L), max_records = 30L,
     reference_length = 173, max_length_ratio = 3
   )
   expect_equal(out, "KNOWN_OK")
@@ -148,7 +157,8 @@ test_that(".blast_against_comparison_set() (remote) filters to the comparison se
     stringsAsFactors = FALSE
   )
   out <- .blast_against_comparison_set_int(
-    "QUERYSEQ", comparison_meta, min_coverage = 0.5, verbose = FALSE
+    "QUERYSEQ", comparison_meta,
+    min_coverage = 0.5, verbose = FALSE
   )
 
   expect_setequal(out$accession, c("KEEP_A", "KEEP_B"))
@@ -162,8 +172,10 @@ test_that(".blast_against_comparison_set() (remote) filters to the comparison se
 test_that(".blast_against_comparison_set() returns an empty frame for an empty comparison set", {
   out <- .blast_against_comparison_set_int(
     "QUERYSEQ",
-    data.frame(accession = character(0L), sequence = character(0L),
-              create_date = character(0L), stringsAsFactors = FALSE),
+    data.frame(
+      accession = character(0L), sequence = character(0L),
+      create_date = character(0L), stringsAsFactors = FALSE
+    ),
     verbose = FALSE
   )
   expect_equal(nrow(out), 0L)
@@ -193,8 +205,10 @@ test_that(".blast_against_comparison_set() (remote) restricts the BLAST search s
   mock_remote <- function(seq_df, database, program, megablast, max_target_seqs,
                           batch_size, email, ncbi_api_key, verbose, entrez_query = NULL) {
     captured_query <<- entrez_query
-    data.frame(sacc = character(0L), pident = numeric(0L), qcovs = numeric(0L),
-              stringsAsFactors = FALSE)
+    data.frame(
+      sacc = character(0L), pident = numeric(0L), qcovs = numeric(0L),
+      stringsAsFactors = FALSE
+    )
   }
   local_mocked_bindings(.blast_remote = mock_remote, .package = "TaxaMatch")
 
@@ -229,7 +243,8 @@ test_that(".blast_against_comparison_set() (local) falls back to post-hoc filter
     stringsAsFactors = FALSE
   )
   out <- .blast_against_comparison_set_int(
-    "QUERYSEQ", comparison_meta, method = "local", verbose = FALSE
+    "QUERYSEQ", comparison_meta,
+    method = "local", verbose = FALSE
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$accession, "KEEP_A")
@@ -262,20 +277,28 @@ test_that(".investigate_verdict() classifies inconclusive-vs-evaluated correctly
 
 .records_fixture_iv <- function() {
   data.frame(
-    accession = c("ACC_FLAG", "ACC_FLAG2", "PPARVA_A", "PPARVA_B",
-                 "CARPIO_A", "CARPIO_B", "HIT_CARPIO1", "HIT_SAMEBATCH"),
+    accession = c(
+      "ACC_FLAG", "ACC_FLAG2", "PPARVA_A", "PPARVA_B",
+      "CARPIO_A", "CARPIO_B", "HIT_CARPIO1", "HIT_SAMEBATCH"
+    ),
     # ACC_FLAG2's own sequence is deliberately the SAME LENGTH as ACC_FLAG's
     # (8 chars) -- the batch-sharing cache is keyed on (species,
     # reference_length) since 2026-08-08 (see .get_species_comparison_
     # meta()'s own @section Cache key includes reference_length), so two
     # flagged accessions only share one NCBI fetch when their sequence
     # lengths ALSO match, not just their listed species.
-    sequence = c("QUERYSEQ", "QUERYSEZ", "PPARVA_A_SEQ", "PPARVA_B_SEQ",
-                "CARPIO_A_SEQ", "CARPIO_B_SEQ", "HIT_CARPIO1_SEQ", "HIT_SAMEBATCH_SEQ"),
-    organism = c("Pseudorasbora parva", "Pseudorasbora parva",
-                NA, NA, NA, NA, NA, NA),
-    create_date = c("2020/01/01", "2020/03/01", "2019/05/01", "2018/03/01",
-                    "2021/07/01", "2021/08/01", "2021/07/15", "2020/01/02"),
+    sequence = c(
+      "QUERYSEQ", "QUERYSEZ", "PPARVA_A_SEQ", "PPARVA_B_SEQ",
+      "CARPIO_A_SEQ", "CARPIO_B_SEQ", "HIT_CARPIO1_SEQ", "HIT_SAMEBATCH_SEQ"
+    ),
+    organism = c(
+      "Pseudorasbora parva", "Pseudorasbora parva",
+      NA, NA, NA, NA, NA, NA
+    ),
+    create_date = c(
+      "2020/01/01", "2020/03/01", "2019/05/01", "2018/03/01",
+      "2021/07/01", "2021/08/01", "2021/07/15", "2020/01/02"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -401,7 +424,7 @@ test_that("investigate_flagged_accession() caches results across calls", {
   expect_gt(calls_after_first, 0L)
 
   out2 <- investigate_flagged_accession("ACC_FLAG", cache_dir = cache_dir, verbose = FALSE)
-  expect_equal(fetch_calls, calls_after_first)  # no new fetches -- pure cache hit
+  expect_equal(fetch_calls, calls_after_first) # no new fetches -- pure cache hit
   expect_equal(out2, out1)
 })
 
@@ -432,7 +455,7 @@ test_that("investigate_flagged_accession() gracefully discards an old-schema cac
   data.frame(
     sacc = c("PPARVA_A", "PPARVA_B", "CARPIO_A", "CARPIO_B"),
     pident = c(97, 99, 100, 100),
-    qcovs = c(4, 4, 4, 4),  # every hit below the 50% default coverage floor
+    qcovs = c(4, 4, 4, 4), # every hit below the 50% default coverage floor
     stringsAsFactors = FALSE
   )
 }
@@ -454,7 +477,8 @@ test_that("investigate_flagged_accession() caches an inconclusive verdict with a
   )
 
   out1 <- investigate_flagged_accession(
-    "ACC_FLAG", cache_dir = cache_dir, inconclusive_ttl_days = 10, verbose = FALSE
+    "ACC_FLAG",
+    cache_dir = cache_dir, inconclusive_ttl_days = 10, verbose = FALSE
   )
   expect_equal(.investigate_verdict_int(out1), "inconclusive_length_mismatch")
   calls_after_first <- search_calls
@@ -462,7 +486,8 @@ test_that("investigate_flagged_accession() caches an inconclusive verdict with a
 
   # Immediately re-calling stays a cache hit (well within the 10-day TTL).
   investigate_flagged_accession(
-    "ACC_FLAG", cache_dir = cache_dir, inconclusive_ttl_days = 10, verbose = FALSE
+    "ACC_FLAG",
+    cache_dir = cache_dir, inconclusive_ttl_days = 10, verbose = FALSE
   )
   expect_equal(search_calls, calls_after_first)
 
@@ -473,7 +498,8 @@ test_that("investigate_flagged_accession() caches an inconclusive verdict with a
   saveRDS(cached, cache_path)
 
   investigate_flagged_accession(
-    "ACC_FLAG", cache_dir = cache_dir, inconclusive_ttl_days = 10, verbose = FALSE
+    "ACC_FLAG",
+    cache_dir = cache_dir, inconclusive_ttl_days = 10, verbose = FALSE
   )
   expect_gt(search_calls, calls_after_first)
 })
@@ -501,7 +527,8 @@ test_that("investigate_flagged_accessions() shares NCBI species searches across 
   )
 
   out <- investigate_flagged_accessions(
-    c("ACC_FLAG", "ACC_FLAG2"), cache_dir = NULL, verbose = FALSE
+    c("ACC_FLAG", "ACC_FLAG2"),
+    cache_dir = NULL, verbose = FALSE
   )
 
   expect_equal(length(out), 2L)
@@ -542,16 +569,18 @@ test_that("investigate_flagged_accessions() reuses investigate_flagged_accession
   # should reuse the cached ACC_FLAG result -- fetch_calls should only grow
   # by whatever ACC_FLAG2 alone requires, not by ACC_FLAG's own work again.
   out <- investigate_flagged_accessions(
-    c("ACC_FLAG", "ACC_FLAG2"), cache_dir = cache_dir, verbose = FALSE
+    c("ACC_FLAG", "ACC_FLAG2"),
+    cache_dir = cache_dir, verbose = FALSE
   )
   expect_equal(out$ACC_FLAG$disagreeing_taxon, "Cyprinus carpio")
-  expect_gt(fetch_calls, calls_after_single)  # ACC_FLAG2 still needed real work
+  expect_gt(fetch_calls, calls_after_single) # ACC_FLAG2 still needed real work
 
   fetch_calls <- 0L
   out2 <- investigate_flagged_accessions(
-    c("ACC_FLAG", "ACC_FLAG2"), cache_dir = cache_dir, verbose = FALSE
+    c("ACC_FLAG", "ACC_FLAG2"),
+    cache_dir = cache_dir, verbose = FALSE
   )
-  expect_equal(fetch_calls, 0L)  # both now pure cache hits
+  expect_equal(fetch_calls, 0L) # both now pure cache hits
   expect_equal(out2$ACC_FLAG, out$ACC_FLAG)
   expect_equal(out2$ACC_FLAG2, out$ACC_FLAG2)
 })

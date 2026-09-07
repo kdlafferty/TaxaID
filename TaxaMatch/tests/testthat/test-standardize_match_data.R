@@ -8,15 +8,15 @@
 
 # Mimics a MiFish eDNA output (subset of real columns)
 .mifish <- data.frame(
-  TestId   = "MiFishU",
-  ESVId    = c("ESV_001", "ESV_001", "ESV_002"),
-  Kingdom  = "Eukaryota",
-  Phylum   = "Chordata",
-  Class    = "Actinopteri",
-  Order    = c("Gobiiformes", "Gobiiformes", "Cypriniformes"),
-  Family   = c("Gobiidae", "Gobiidae", "Leuciscidae"),
-  Genus    = c("Eucyclogobius", "Eucyclogobius", "Hybognathus"),
-  Species  = c("Eucyclogobius newberryi", "Eucyclogobius newberryi", NA_character_),
+  TestId = "MiFishU",
+  ESVId = c("ESV_001", "ESV_001", "ESV_002"),
+  Kingdom = "Eukaryota",
+  Phylum = "Chordata",
+  Class = "Actinopteri",
+  Order = c("Gobiiformes", "Gobiiformes", "Cypriniformes"),
+  Family = c("Gobiidae", "Gobiidae", "Leuciscidae"),
+  Genus = c("Eucyclogobius", "Eucyclogobius", "Hybognathus"),
+  Species = c("Eucyclogobius newberryi", "Eucyclogobius newberryi", NA_character_),
   Accession = c("NC_028288", "MF038886", "NC_031567"),
   PercMatch = c(98.8, 98.2, 92.0),
   stringsAsFactors = FALSE
@@ -25,9 +25,9 @@
 # Minimal data: only Genus + Species ranks
 .minimal <- data.frame(
   SampleID = c("S1", "S2"),
-  genus    = c("Rana", "Bufo"),
-  species  = c("Rana catesbeiana", NA_character_),
-  pct      = c(97.5, 85.0),
+  genus = c("Rana", "Bufo"),
+  species = c("Rana catesbeiana", NA_character_),
+  pct = c(97.5, 85.0),
   stringsAsFactors = FALSE
 )
 
@@ -35,8 +35,8 @@
 .already_named <- data.frame(
   observation_id = "S1",
   score_original = 95.0,
-  genus          = "Homo",
-  species        = "Homo sapiens",
+  genus = "Homo",
+  species = "Homo sapiens",
   stringsAsFactors = FALSE
 )
 
@@ -93,9 +93,10 @@ test_that("conflict with existing score_original column raises an error", {
 test_that("empty rank_system vector raises an error", {
   expect_error(
     standardize_match_data(.mifish,
-                           observation_id_col  = "ESVId",
-                           score_col      = "PercMatch",
-                           rank_system = character(0)),
+      observation_id_col = "ESVId",
+      score_col = "PercMatch",
+      rank_system = character(0)
+    ),
     regexp = "non-empty character vector"
   )
 })
@@ -107,8 +108,8 @@ test_that("empty rank_system vector raises an error", {
 test_that("output has required canonical columns", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
   expect_true(all(c("observation_id", "score_original", "taxon_name", "taxon_name_rank") %in% names(result)))
@@ -117,21 +118,21 @@ test_that("output has required canonical columns", {
 test_that("ESVId is renamed to observation_id and PercMatch to score_original", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
-  expect_true("observation_id"  %in% names(result))
-  expect_true("score_original"  %in% names(result))
-  expect_false("ESVId"          %in% names(result))
-  expect_false("PercMatch"      %in% names(result))
+  expect_true("observation_id" %in% names(result))
+  expect_true("score_original" %in% names(result))
+  expect_false("ESVId" %in% names(result))
+  expect_false("PercMatch" %in% names(result))
 })
 
 test_that("score values are preserved correctly in score_original", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
   expect_equal(result$score_original, .mifish$PercMatch)
@@ -140,8 +141,8 @@ test_that("score values are preserved correctly in score_original", {
 test_that("row count is unchanged", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
   expect_equal(nrow(result), nrow(.mifish))
@@ -150,11 +151,11 @@ test_that("row count is unchanged", {
 test_that("non-renamed columns (TestId, Accession) are retained (lowercased by default)", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
-  expect_true("testid"    %in% names(result))
+  expect_true("testid" %in% names(result))
   expect_true("accession" %in% names(result))
 })
 
@@ -165,8 +166,8 @@ test_that("non-renamed columns (TestId, Accession) are retained (lowercased by d
 test_that("taxon_name uses Species when non-NA", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
   # Row 1: Species = "Eucyclogobius newberryi"
@@ -177,8 +178,8 @@ test_that("taxon_name uses Species when non-NA", {
 test_that("taxon_name falls back to Genus when Species is NA", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
   # Row 3: Species = NA, Genus = "Hybognathus"
@@ -195,7 +196,7 @@ test_that("auto-detection finds standard rank columns (MiFish)", {
     result <- standardize_match_data(
       .mifish,
       observation_id_col = "ESVId",
-      score_col     = "PercMatch"
+      score_col = "PercMatch"
     ),
     regexp = "detected rank columns"
   )
@@ -206,7 +207,7 @@ test_that("auto-detection works with lowercase rank column names", {
   result <- suppressMessages(standardize_match_data(
     .minimal,
     observation_id_col = "SampleID",
-    score_col     = "pct"
+    score_col = "pct"
   ))
   expect_equal(result$taxon_name[1], "Rana catesbeiana")
   expect_equal(result$taxon_name[2], "Bufo")
@@ -227,8 +228,8 @@ test_that("auto-detection raises an error when no rank columns present", {
 test_that("already-canonical names (observation_id, score_original) work without error", {
   result <- standardize_match_data(
     .already_named,
-    observation_id_col  = "observation_id",
-    score_col      = "score_original",
+    observation_id_col = "observation_id",
+    score_col = "score_original",
     rank_system = c("genus", "species")
   )
   expect_equal(result$observation_id, "S1")
@@ -242,11 +243,11 @@ test_that("already-canonical names (observation_id, score_original) work without
 
 test_that("col_map renames non-standard columns before core processing", {
   df <- .minimal
-  names(df)[names(df) == "pct"] <- "PERC_ID"  # non-standard score name
+  names(df)[names(df) == "pct"] <- "PERC_ID" # non-standard score name
   result <- standardize_match_data(
     df,
-    observation_id_col  = "SampleID",
-    score_col      = "PERC_ID",
+    observation_id_col = "SampleID",
+    score_col = "PERC_ID",
     rank_system = c("genus", "species")
   )
   expect_true("score_original" %in% names(result))
@@ -260,8 +261,8 @@ test_that("col_map renames non-standard columns before core processing", {
 test_that("lowercase_names = TRUE (default) lowercases all column names", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
   expect_true(all(names(result) == tolower(names(result))))
@@ -270,20 +271,22 @@ test_that("lowercase_names = TRUE (default) lowercases all column names", {
 test_that("lowercase_names = FALSE preserves original column casing", {
   result <- standardize_match_data(
     .mifish,
-    observation_id_col   = "ESVId",
-    score_col       = "PercMatch",
-    rank_system  = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
+    rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
     lowercase_names = FALSE
   )
   # Mixed-case columns from the source should still be present
   expect_true("Kingdom" %in% names(result))
-  expect_true("TestId"  %in% names(result))
+  expect_true("TestId" %in% names(result))
 })
 
 test_that("invalid lowercase_names raises an error", {
   expect_error(
-    standardize_match_data(.mifish, observation_id_col = "ESVId", score_col = "PercMatch",
-                           lowercase_names = NA),
+    standardize_match_data(.mifish,
+      observation_id_col = "ESVId", score_col = "PercMatch",
+      lowercase_names = NA
+    ),
     regexp = "TRUE or FALSE"
   )
 })
@@ -299,8 +302,8 @@ test_that("file path (CSV) is accepted and parsed correctly", {
 
   result <- standardize_match_data(
     tmp,
-    observation_id_col  = "ESVId",
-    score_col      = "PercMatch",
+    observation_id_col = "ESVId",
+    score_col = "PercMatch",
     rank_system = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
   )
   expect_equal(nrow(result), nrow(.mifish))
@@ -312,7 +315,7 @@ test_that("non-existent file path raises an error", {
     standardize_match_data(
       "/no/such/file.csv",
       observation_id_col = "ESVId",
-      score_col     = "PercMatch"
+      score_col = "PercMatch"
     ),
     regexp = "File not found"
   )

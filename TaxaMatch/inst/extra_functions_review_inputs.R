@@ -109,9 +109,9 @@
 # but worth knowing if a re-run someday shows a different value.
 # ==============================================================================
 
-#devtools::load_all()   # or: library(TaxaMatch)
+# devtools::load_all()   # or: library(TaxaMatch)
 library(TaxaMatch)
-library(testthat)   # local_mocked_bindings() -- OFFLINE(mock) sections only
+library(testthat) # local_mocked_bindings() -- OFFLINE(mock) sections only
 
 
 # ==============================================================================
@@ -141,7 +141,7 @@ TaxaMatch:::.validate_min_conf_top_n(min_confidence = 0.5, top_n = 5, fn_name = 
 ## ---- .apply_top_n() ---- OFFLINE -----------------------------------------------
 top_n_df <- data.frame(
   observation_id = c("S1", "S1", "S1", "S2"),
-  score           = c(95, 80, 60, 70),
+  score = c(95, 80, 60, 70),
   stringsAsFactors = FALSE
 )
 TaxaMatch:::.apply_top_n(top_n_df, "observation_id", "score", top_n = 2L)
@@ -165,7 +165,7 @@ dup_paths <- c("siteA/recording.wav", "siteB/recording.wav", "siteA/other.wav")
 TaxaMatch:::.warn_duplicate_basenames(dup_paths, "read_birdnet_output")
 
 ## ---- .warn_na_coercion() ---- OFFLINE ------------------------------------------
-raw_vals     <- c("0.9", "not_a_number", "0.5")
+raw_vals <- c("0.9", "not_a_number", "0.5")
 coerced_vals <- suppressWarnings(as.numeric(raw_vals))
 TaxaMatch:::.warn_na_coercion(raw_vals, coerced_vals, "Confidence", "demo_source.csv")
 
@@ -242,7 +242,8 @@ writeLines(
   speciesnet_json
 )
 str(TaxaMatch:::.parse_speciesnet_predictions(
-  speciesnet_json, include_coverage = TRUE, min_detection_conf = 0
+  speciesnet_json,
+  include_coverage = TRUE, min_detection_conf = 0
 ))
 
 ## ---- read_speciesnet_output() ---- OFFLINE --------------------------------------
@@ -260,9 +261,9 @@ unlink(speciesnet_json)
 # ==============================================================================
 
 ## ---- .valid_reference_length() ---- OFFLINE -------------------------------------
-TaxaMatch:::.valid_reference_length(173)        # TRUE
-TaxaMatch:::.valid_reference_length(NA_real_)   # FALSE
-TaxaMatch:::.valid_reference_length(NULL)       # FALSE
+TaxaMatch:::.valid_reference_length(173) # TRUE
+TaxaMatch:::.valid_reference_length(NA_real_) # FALSE
+TaxaMatch:::.valid_reference_length(NULL) # FALSE
 
 ## ---- .filter_and_cap_accessions() ---- OFFLINE ----------------------------------
 # Reused verbatim from tests/testthat/test-investigate-flagged-accession.R --
@@ -279,7 +280,7 @@ TaxaMatch:::.filter_and_cap_accessions(
 ## ---- .build_submission_batch_lookup() ---- OFFLINE ------------------------------
 batch_ref_df <- data.frame(
   composite_id = c("MH538728", "MH538729", "XYZ_weird"),
-  create_date  = c("2020/01/10", "2020/01/12", NA),
+  create_date = c("2020/01/10", "2020/01/12", NA),
   stringsAsFactors = FALSE
 )
 TaxaMatch:::.build_submission_batch_lookup(batch_ref_df)
@@ -300,17 +301,18 @@ congruence_sm <- data.frame(
   p_match = c(0.99, 0.98, 0.85),
   family.x = "Atherinopsidae", genus.x = "Menidia", species.x = "Menidia beryllina",
   family.y = c("Atherinopsidae", "Atherinopsidae", "Sparidae"),
-  genus.y  = c("Menidia", "Menidia", "Sparus"),
+  genus.y = c("Menidia", "Menidia", "Sparus"),
   species.y = c("Menidia beryllina", "Menidia beryllina", "Sparus aurata"),
   stringsAsFactors = FALSE
 )
 congruence_ref_df <- data.frame(
   composite_id = c("ACC001", "HIT_B", "HIT_C", "HIT_D"),
-  create_date  = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
+  create_date = c("2020/01/10", "2021/06/01", "2019/03/15", "2018/11/20"),
   stringsAsFactors = FALSE
 )
 congruence_out <- TaxaMatch:::.compute_hierarchy_congruence(
-  congruence_sm, congruence_ref_df, rank_system = c("family", "genus", "species"),
+  congruence_sm, congruence_ref_df,
+  rank_system = c("family", "genus", "species"),
   top_n = 5L, min_congruent_rank = "family", submission_window = 5L
 )
 congruence_out
@@ -329,37 +331,38 @@ real_rejection_msg <- paste0(
   "<Iteration_message>[blastsrv4.REAL]: Error: CPU usage limit was ",
   "exceeded, resulting in SIGXCPU (24).</Iteration_message>"
 )
-TaxaMatch:::.blast_server_rejected(real_rejection_msg)                     # TRUE
-TaxaMatch:::.blast_server_rejected("<Iteration_hits></Iteration_hits>")    # FALSE
+TaxaMatch:::.blast_server_rejected(real_rejection_msg) # TRUE
+TaxaMatch:::.blast_server_rejected("<Iteration_hits></Iteration_hits>") # FALSE
 
 ## ---- .resolve_marker_pattern() ---- OFFLINE --------------------------------------
 marker_pattern <- TaxaMatch:::.resolve_marker_pattern("12S")
-grepl(marker_pattern, "16S ribosomal RNA", ignore.case = TRUE)  # FALSE
-grepl(marker_pattern, "12S ribosomal RNA", ignore.case = TRUE)  # TRUE
+grepl(marker_pattern, "16S ribosomal RNA", ignore.case = TRUE) # FALSE
+grepl(marker_pattern, "12S ribosomal RNA", ignore.case = TRUE) # TRUE
 
 ## ---- .extract_amplicon_one_tm() ---- OFFLINE+BIOC ---------------------------------
 # Real, verified MiFish-U primer pair wrapped around a synthetic interior,
 # sized to match the real, empirically-measured 221bp full primer-inclusive
 # span (see tests/testthat/test-trim-query-to-amplicon.R's own header note).
-mf_fwd      <- "GTCGGTAAAACTCGTGCCAGC"
-mf_rev      <- "CATAGTGGGGTATCTAATCCCAGTTTG"
-mf_rev_rc   <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(mf_rev)))
+mf_fwd <- "GTCGGTAAAACTCGTGCCAGC"
+mf_rev <- "CATAGTGGGGTATCTAATCCCAGTTTG"
+mf_rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(mf_rev)))
 mf_interior <- paste0(strrep("AAACCCGGGTTT", 14L), "AAAAA")
 mf_amplicon <- paste0(mf_fwd, mf_interior, mf_rev_rc)
-mf_genome   <- paste0(strrep("N", 300L), mf_amplicon, strrep("A", 300L))
+mf_genome <- paste0(strrep("N", 300L), mf_amplicon, strrep("A", 300L))
 
 amplicon_result <- TaxaMatch:::.extract_amplicon_one_tm(
   seq_char = mf_genome, fwd_pattern = mf_fwd, rev_pattern_rc = mf_rev_rc,
   fwd_max_mm = 3L, rev_max_mm = 4L, min_len = 100L, max_len = 250L
 )
-amplicon_result$trimmed                             # TRUE
-identical(amplicon_result$sequence, mf_amplicon)     # TRUE
+amplicon_result$trimmed # TRUE
+identical(amplicon_result$sequence, mf_amplicon) # TRUE
 
 ## ---- .trim_queries_to_amplicon() ---- OFFLINE+BIOC --------------------------------
 # Chained off the same real primer pair -- over-length genome gets trimmed,
 # an already-short (already-barcode-length) sequence is left untouched.
 trimmed_seqs <- TaxaMatch:::.trim_queries_to_amplicon(
-  c(mf_genome, mf_amplicon), barcode_term = "MiFishU", verbose = FALSE
+  c(mf_genome, mf_amplicon),
+  barcode_term = "MiFishU", verbose = FALSE
 )
 nchar(trimmed_seqs)
 
@@ -369,14 +372,16 @@ nchar(trimmed_seqs)
 # inst/workflows/blast_sequences_workflow.R -- reused here rather than
 # inventing a new query.
 acc_record <- TaxaMatch:::.fetch_reference_accession_records(
-  "OQ846539", want_sequence = TRUE, verbose = FALSE
+  "OQ846539",
+  want_sequence = TRUE, verbose = FALSE
 )
 acc_record[, c("accession", "organism", "create_date")]
 nchar(acc_record$sequence)
 
 ## ---- .search_species_accessions() ---- NETWORK ------------------------------------
 TaxaMatch:::.search_species_accessions(
-  acc_record$organism, max_records = 3L, verbose = FALSE
+  acc_record$organism,
+  max_records = 3L, verbose = FALSE
 )
 
 ## ---- .attach_taxonomy() ---- NETWORK -----------------------------------------------
@@ -403,15 +408,23 @@ check_marker_mismatch("AY850362", expected_marker = "12S", verbose = FALSE)
 # not silently vanish -- the real regression this fixture guards).
 .erc_records_fixture <- function() {
   data.frame(
-    accession = c("ACC001", "ACC002", "ACC003",
-                 "HIT_A", "HIT_B", "HIT_C", "HIT_D", "HIT_E", "HIT_F", "HIT_G"),
-    sequence = c("ACGTACGTACGTACGT", "TTTTGGGGCCCCAAAA", "GATTACAGATTACAGA",
-                rep("NNNNNNNNNNNNNNNN", 7)),
-    organism = c("Menidia beryllina", "Cottus asper", "Novataxon unicum",
-                rep(NA_character_, 7)),
-    create_date = c("2020/01/10", "2020/02/01", "2020/03/01",
-                    "2020/01/12", "2021/06/01", "2019/03/15", "2018/11/20",
-                    "2021/06/01", "2019/03/15", "2018/11/20"),
+    accession = c(
+      "ACC001", "ACC002", "ACC003",
+      "HIT_A", "HIT_B", "HIT_C", "HIT_D", "HIT_E", "HIT_F", "HIT_G"
+    ),
+    sequence = c(
+      "ACGTACGTACGTACGT", "TTTTGGGGCCCCAAAA", "GATTACAGATTACAGA",
+      rep("NNNNNNNNNNNNNNNN", 7)
+    ),
+    organism = c(
+      "Menidia beryllina", "Cottus asper", "Novataxon unicum",
+      rep(NA_character_, 7)
+    ),
+    create_date = c(
+      "2020/01/10", "2020/02/01", "2020/03/01",
+      "2020/01/12", "2021/06/01", "2019/03/15", "2018/11/20",
+      "2021/06/01", "2019/03/15", "2018/11/20"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -426,21 +439,31 @@ check_marker_mismatch("AY850362", expected_marker = "12S", verbose = FALSE)
 .erc_hits_fixture <- function() {
   data.frame(
     observation_id = c(rep("ACC001", 5), rep("ACC002", 3)),
-    accession       = c("ACC001", "HIT_A", "HIT_B", "HIT_C", "HIT_D",
-                       "HIT_E", "HIT_F", "HIT_G"),
-    score           = c(100, 99.9, 99, 98, 85, 95, 93, 90),
-    query_coverage  = 95,
+    accession = c(
+      "ACC001", "HIT_A", "HIT_B", "HIT_C", "HIT_D",
+      "HIT_E", "HIT_F", "HIT_G"
+    ),
+    score = c(100, 99.9, 99, 98, 85, 95, 93, 90),
+    query_coverage = 95,
     kingdom = "Animalia", phylum = "Chordata", class = "Actinopteri",
-    order   = c("Atheriniformes", "Atheriniformes", "Atheriniformes",
-               "Atheriniformes", "Beloniformes",
-               "Scorpaeniformes", "Scorpaeniformes", "Scorpaeniformes"),
-    family  = c("Atherinopsidae", "Atherinopsidae", "Atherinopsidae",
-               "Atherinopsidae", "Sparidae", "Salmonidae", "Salmonidae", "Salmonidae"),
-    genus   = c("Menidia", "Menidia", "Menidia", "Menidia", "Sparus",
-               "Salmo", "Salmo", "Salmo"),
-    species = c("Menidia beryllina", "Menidia beryllina", "Menidia beryllina",
-               "Menidia beryllina", "Sparus aurata",
-               "Salmo salar", "Salmo salar", "Salmo salar"),
+    order = c(
+      "Atheriniformes", "Atheriniformes", "Atheriniformes",
+      "Atheriniformes", "Beloniformes",
+      "Scorpaeniformes", "Scorpaeniformes", "Scorpaeniformes"
+    ),
+    family = c(
+      "Atherinopsidae", "Atherinopsidae", "Atherinopsidae",
+      "Atherinopsidae", "Sparidae", "Salmonidae", "Salmonidae", "Salmonidae"
+    ),
+    genus = c(
+      "Menidia", "Menidia", "Menidia", "Menidia", "Sparus",
+      "Salmo", "Salmo", "Salmo"
+    ),
+    species = c(
+      "Menidia beryllina", "Menidia beryllina", "Menidia beryllina",
+      "Menidia beryllina", "Sparus aurata",
+      "Salmo salar", "Salmo salar", "Salmo salar"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -452,9 +475,9 @@ check_marker_mismatch("AY850362", expected_marker = "12S", verbose = FALSE)
   data.frame(
     accession = c("ACC001", "ACC002", "ACC003"),
     kingdom = "Animalia", phylum = "Chordata", class = "Actinopteri",
-    order   = c("Atheriniformes", "Scorpaeniformes", "Testiformes"),
-    family  = c("Atherinopsidae", "Cottidae", "Testifamilia"),
-    genus   = c("Menidia", "Cottus", "Novataxon"),
+    order = c("Atheriniformes", "Scorpaeniformes", "Testiformes"),
+    family = c("Atherinopsidae", "Cottidae", "Testifamilia"),
+    genus = c("Menidia", "Cottus", "Novataxon"),
     species = c("Menidia beryllina", "Cottus asper", "Novataxon unicum"),
     stringsAsFactors = FALSE
   )
@@ -478,7 +501,8 @@ run_erc_mocks <- function(expr) {
 
 eval_result <- run_erc_mocks({
   evaluate_reference_accessions(
-    c("ACC001", "ACC002", "ACC003"), cache_dir = NULL, verbose = FALSE
+    c("ACC001", "ACC002", "ACC003"),
+    cache_dir = NULL, verbose = FALSE
   )
 })
 eval_result[, c("accession", "listed_taxon", "hierarchy_flag", "finest_common_rank")]
@@ -486,8 +510,8 @@ eval_result[, c("accession", "listed_taxon", "hierarchy_flag", "finest_common_ra
 ## ---- flag_incongruent_references() ---- OFFLINE, chained off eval_result ----------
 match_df_demo <- data.frame(
   observation_id = c("obs1", "obs2", "obs3"),
-  accession       = c("ACC001.1", "ACC002.1", "ACC003.1"),
-  taxon_name      = c("Menidia beryllina", "Cottus asper", "Novataxon unicum"),
+  accession = c("ACC001.1", "ACC002.1", "ACC003.1"),
+  taxon_name = c("Menidia beryllina", "Cottus asper", "Novataxon unicum"),
   stringsAsFactors = FALSE
 )
 flagged_demo <- flag_incongruent_references(match_df_demo, eval_result)
@@ -501,8 +525,8 @@ remove_incongruent_references(match_df_demo, eval_result)
 # eval_result carries cache_hit/listed_taxon_is_species (per-call diagnostic
 # columns) where the on-disk cache instead carries params_key (the
 # staleness-detection key); swap the two.
-erc_cache_dir   <- tempfile("erc_cache")
-empty_erc_cache <- TaxaMatch:::.load_reference_accession_cache(erc_cache_dir)  # dir doesn't exist yet
+erc_cache_dir <- tempfile("erc_cache")
+empty_erc_cache <- TaxaMatch:::.load_reference_accession_cache(erc_cache_dir) # dir doesn't exist yet
 nrow(empty_erc_cache)
 
 erc_cache_row <- eval_result[1L, setdiff(names(eval_result), c("cache_hit", "listed_taxon_is_species"))]
@@ -525,13 +549,19 @@ erc_cache_reloaded[, c("accession", "hierarchy_flag", "params_key")]
 
 .iv_records_fixture <- function() {
   data.frame(
-    accession = c("ACC_FLAG", "PPARVA_A", "PPARVA_B", "CARPIO_A", "CARPIO_B",
-                 "HIT_CARPIO1", "HIT_SAMEBATCH"),
-    sequence = c("QUERYSEQ", "PPARVA_A_SEQ", "PPARVA_B_SEQ",
-                "CARPIO_A_SEQ", "CARPIO_B_SEQ", "HIT_CARPIO1_SEQ", "HIT_SAMEBATCH_SEQ"),
+    accession = c(
+      "ACC_FLAG", "PPARVA_A", "PPARVA_B", "CARPIO_A", "CARPIO_B",
+      "HIT_CARPIO1", "HIT_SAMEBATCH"
+    ),
+    sequence = c(
+      "QUERYSEQ", "PPARVA_A_SEQ", "PPARVA_B_SEQ",
+      "CARPIO_A_SEQ", "CARPIO_B_SEQ", "HIT_CARPIO1_SEQ", "HIT_SAMEBATCH_SEQ"
+    ),
     organism = c("Pseudorasbora parva", NA, NA, NA, NA, NA, NA),
-    create_date = c("2020/01/01", "2019/05/01", "2018/03/01",
-                    "2021/07/01", "2021/08/01", "2021/07/15", "2020/01/02"),
+    create_date = c(
+      "2020/01/01", "2019/05/01", "2018/03/01",
+      "2021/07/01", "2021/08/01", "2021/07/15", "2020/01/02"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -551,7 +581,9 @@ erc_cache_reloaded[, c("accession", "hierarchy_flag", "params_key")]
     c("PPARVA_A", "PPARVA_B")
   } else if (identical(species, "Cyprinus carpio")) {
     c("CARPIO_A", "CARPIO_B")
-  } else character(0L)
+  } else {
+    character(0L)
+  }
   ids <- ids[!strip_v(ids) %in% strip_v(exclude)]
   utils::head(ids, max_records)
 }
@@ -613,9 +645,11 @@ investigate_batch[["ACC_FLAG"]]$listed_species
 run_iv_mocks({
   TaxaMatch:::.blast_against_comparison_set(
     "QUERYSEQ",
-    data.frame(accession = c("PPARVA_A", "PPARVA_B"),
-              sequence = c("X", "Y"), create_date = c("2019/05/01", "2018/03/01"),
-              stringsAsFactors = FALSE),
+    data.frame(
+      accession = c("PPARVA_A", "PPARVA_B"),
+      sequence = c("X", "Y"), create_date = c("2019/05/01", "2018/03/01"),
+      stringsAsFactors = FALSE
+    ),
     min_coverage = 0.5, verbose = FALSE
   )
 })
@@ -623,7 +657,8 @@ run_iv_mocks({
 ## ---- .get_species_comparison_meta() ---- OFFLINE(mock) ----------------------------
 run_iv_mocks({
   TaxaMatch:::.get_species_comparison_meta(
-    "Pseudorasbora parva", exclude_accession = "ACC_FLAG", max_related = 30L,
+    "Pseudorasbora parva",
+    exclude_accession = "ACC_FLAG", max_related = 30L,
     reference_length = 8, ncbi_api_key = NULL, verbose = FALSE
   )
 })
@@ -631,7 +666,8 @@ run_iv_mocks({
 ## ---- .investigate_flagged_accession_core() ---- OFFLINE(mock) ---------------------
 core_result <- run_iv_mocks({
   TaxaMatch:::.investigate_flagged_accession_core(
-    "ACC_FLAG", species = NULL, max_related = 30L, method = "remote", database = "nt",
+    "ACC_FLAG",
+    species = NULL, max_related = 30L, method = "remote", database = "nt",
     score_range = 8, min_score = 70, max_hits = 20L, submission_window = 5L,
     min_coverage = 0.5, ncbi_api_key = NULL, verbose = FALSE
   )
@@ -653,15 +689,16 @@ iv_params_key <- TaxaMatch:::.investigate_params_key(
 iv_params_key
 
 ## ---- .load_investigate_cache() / .save_investigate_cache() ---- OFFLINE -----------
-iv_cache_dir    <- tempfile("iv_cache")
-empty_iv_cache  <- TaxaMatch:::.load_investigate_cache(iv_cache_dir)  # dir doesn't exist yet
+iv_cache_dir <- tempfile("iv_cache")
+empty_iv_cache <- TaxaMatch:::.load_investigate_cache(iv_cache_dir) # dir doesn't exist yet
 nrow(empty_iv_cache)
 TaxaMatch:::.save_investigate_cache(iv_cache_dir, empty_iv_cache)
 list.files(iv_cache_dir)
 
 ## ---- .store_investigate_result() / .lookup_investigate_cache() ---- OFFLINE, chained ----
 iv_cache1 <- TaxaMatch:::.store_investigate_result(
-  iv_cache_dir, empty_iv_cache, accession = "ACC_FLAG",
+  iv_cache_dir, empty_iv_cache,
+  accession = "ACC_FLAG",
   species_key = "Pseudorasbora parva", params_key = iv_params_key,
   result = investigate_result
 )
@@ -693,15 +730,21 @@ TaxaMatch:::.lookup_investigate_cache(
 .review_evaluated_df_fixture <- function() {
   data.frame(
     accession = c("ACC001", "ACC002", "ACC003", "ACC004"),
-    listed_taxon = c("Menidia beryllina", "Stereolepis doederleini",
-                     "Serranidae sp. JL-2015", "Cottus asper"),
-    hierarchy_flag = c("congruent", "incongruent",
-                       "incongruent", "insufficient_independent_evidence"),
+    listed_taxon = c(
+      "Menidia beryllina", "Stereolepis doederleini",
+      "Serranidae sp. JL-2015", "Cottus asper"
+    ),
+    hierarchy_flag = c(
+      "congruent", "incongruent",
+      "incongruent", "insufficient_independent_evidence"
+    ),
     finest_common_rank = c("species", "order", "class", NA_character_),
     best_agreeing_pident = c(99.5, NA_real_, NA_real_, NA_real_),
     best_disagreeing_pident = c(NA_real_, 95.2, 87.3, NA_real_),
-    best_disagreeing_taxon = c(NA_character_, "Sinipercidae sp.",
-                               "Serranidae sp. JL-2015", NA_character_),
+    best_disagreeing_taxon = c(
+      NA_character_, "Sinipercidae sp.",
+      "Serranidae sp. JL-2015", NA_character_
+    ),
     congruent_evidence_exists_anywhere = c(TRUE, FALSE, FALSE, FALSE),
     congruent_evidence_best_pident = c(99.5, NA_real_, NA_real_, NA_real_),
     taxonomy_resolution_source = c("direct", "direct", "direct", "direct"),
@@ -746,7 +789,7 @@ parsed_review <- TaxaMatch:::.parse_accession_review_response(
   raw_response, .review_evaluated_df_fixture()
 )
 parsed_review[, c("accession", "accession_likely_explanation", "accession_review_comment")]
-attr(parsed_review, "status")  # "complete" -- all 4 accessions recovered
+attr(parsed_review, "status") # "complete" -- all 4 accessions recovered
 
 ## ---- .recover_truncated_accession_json() ---- OFFLINE, truncated-response recovery --
 # A response cut off mid-object (e.g. hit a real max_tokens ceiling) --
@@ -754,11 +797,12 @@ attr(parsed_review, "status")  # "complete" -- all 4 accessions recovered
 # review_assignments()'s own .recover_truncated_json() uses.
 truncated_json <- '[{"accession":"ACC002","accession_likely_explanation":"poor_marker_resolution","accession_review_confidence":"high","accession_review_comment":"Real diverse disagreement across families."},{"accession":"ACC003","accession_likely_e'
 recovered <- TaxaMatch:::.recover_truncated_accession_json(truncated_json)
-recovered$accession  # "ACC002" only -- the second (cut-off) object is correctly dropped
+recovered$accession # "ACC002" only -- the second (cut-off) object is correctly dropped
 
 ## ---- .review_accession_batch_with_retry() ---- OFFLINE, stub llm_fn ----------------
 retry_result <- TaxaMatch:::.review_accession_batch_with_retry(
-  .review_evaluated_df_fixture()[2:4, ], llm_fn = .review_stub_llm_fn,
+  .review_evaluated_df_fixture()[2:4, ],
+  llm_fn = .review_stub_llm_fn,
   max_tokens = NULL, verbose = FALSE, pause_seconds = 0,
   batch_label = "1", max_retries = 2L
 )
@@ -771,10 +815,13 @@ retry_result[, c("accession", "accession_likely_explanation", "accession_review_
 # "congruent" (include_non_species_resolved = TRUE default), demonstrating
 # the two scope axes are independent.
 reviewed_df <- review_flagged_accessions(
-  .review_evaluated_df_fixture(), llm_fn = .review_stub_llm_fn, verbose = FALSE
+  .review_evaluated_df_fixture(),
+  llm_fn = .review_stub_llm_fn, verbose = FALSE
 )
-reviewed_df[, c("accession", "hierarchy_flag", "accession_likely_explanation",
-                "accession_review_confidence", "accession_review_comment")]
+reviewed_df[, c(
+  "accession", "hierarchy_flag", "accession_likely_explanation",
+  "accession_review_confidence", "accession_review_comment"
+)]
 
 # Real, exact prompt(s) sent, named by batch (with "a"/"b" retry-sub-batch
 # suffixes when a batch was split) -- inspect before trusting an unexpected

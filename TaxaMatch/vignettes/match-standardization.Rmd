@@ -53,7 +53,8 @@ seqs <- read_sequence_table("sequences.fasta")
 
 # Option C: With pre-computed taxonomy
 seqs <- read_sequence_table("seqtab_nochim.rds",
-                             taxonomy = "tax_table.rds")
+  taxonomy = "tax_table.rds"
+)
 ```
 
 ### Step 2: Filter sequences
@@ -61,8 +62,8 @@ seqs <- read_sequence_table("seqtab_nochim.rds",
 ```{r filter}
 filtered <- filter_sequences(
   seqs,
-  barcode_term  = "12S",       # auto-detects length range
-  min_abundance = 2            # drop singletons
+  barcode_term  = "12S", # auto-detects length range
+  min_abundance = 2 # drop singletons
 )
 ```
 
@@ -74,7 +75,7 @@ blasted <- blast_sequences(
   filtered,
   db           = "nt",
   barcode_term = "12S",
-  score_range  = 5              # keep hits within 5% of top score
+  score_range  = 5 # keep hits within 5% of top score
 )
 
 # Local BLAST (requires rBLAST + local database)
@@ -87,7 +88,7 @@ blasted <- blast_sequences(
 match_df <- standardize_match_data(
   blasted,
   observation_id_col = "ESVId",
-  score_col     = "PercMatch"
+  score_col = "PercMatch"
 )
 
 # Remove redundant higher-rank hypotheses

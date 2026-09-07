@@ -86,10 +86,12 @@
                                        max_length_ratio = 3, ncbi_api_key = NULL,
                                        verbose = TRUE) {
   .check_pkg("rentrez")
-  if (is.null(species) || is.na(species) || !nzchar(trimws(species)))
+  if (is.null(species) || is.na(species) || !nzchar(trimws(species))) {
     return(character(0L))
-  if (!is.null(ncbi_api_key) && nzchar(ncbi_api_key))
+  }
+  if (!is.null(ncbi_api_key) && nzchar(ncbi_api_key)) {
     rentrez::set_entrez_key(ncbi_api_key)
+  }
 
   # Length restriction happens SERVER-SIDE via NCBI's own `[SLEN]` Entrez
   # query field, not by fetching a wide net and filtering client-side.
@@ -111,16 +113,25 @@
     term <- sprintf("%s AND %d:%d[SLEN]", term, lo, hi)
   }
 
-  found <- tryCatch({
-    rentrez::entrez_search(
-      db = "nuccore", term = term, retmax = max_records + length(exclude) + 5L
-    )
-  }, error = function(e) {
-    if (verbose) warning(sprintf("Species search failed for '%s': %s", species,
-                                 conditionMessage(e)), call. = FALSE)
-    NULL
-  })
-  if (is.null(found) || length(found$ids) == 0L) return(character(0L))
+  found <- tryCatch(
+    {
+      rentrez::entrez_search(
+        db = "nuccore", term = term, retmax = max_records + length(exclude) + 5L
+      )
+    },
+    error = function(e) {
+      if (verbose) {
+        warning(sprintf(
+          "Species search failed for '%s': %s", species,
+          conditionMessage(e)
+        ), call. = FALSE)
+      }
+      NULL
+    }
+  )
+  if (is.null(found) || length(found$ids) == 0L) {
+    return(character(0L))
+  }
 
   # entrez_summary() is still batched defensively (a real HTTP 414 "request
   # too large" was hit live with 500 unbatched IDs during this fix's own
@@ -133,10 +144,12 @@
     batch_summaries <- tryCatch(
       rentrez::entrez_summary(db = "nuccore", id = batch),
       error = function(e) {
-        if (verbose) warning(sprintf(
-          "ESummary batch fetch failed for '%s' (%d of %d IDs): %s",
-          species, length(batch), length(found$ids), conditionMessage(e)
-        ), call. = FALSE)
+        if (verbose) {
+          warning(sprintf(
+            "ESummary batch fetch failed for '%s' (%d of %d IDs): %s",
+            species, length(batch), length(found$ids), conditionMessage(e)
+          ), call. = FALSE)
+        }
         NULL
       }
     )
@@ -144,7 +157,9 @@
     if (inherits(batch_summaries, "esummary")) batch_summaries <- list(batch_summaries)
     summaries <- c(summaries, batch_summaries)
   }
-  if (length(summaries) == 0L) return(character(0L))
+  if (length(summaries) == 0L) {
+    return(character(0L))
+  }
 
   accs <- vapply(summaries, function(s) s$caption %||% NA_character_, character(1L))
   lens <- vapply(summaries, function(s) {
@@ -259,35 +274,48 @@
                                           method = "remote", database = "nt",
                                           min_coverage = 0.5,
                                           ncbi_api_key = NULL, verbose = TRUE) {
-  empty <- data.frame(accession = character(0L), pident = numeric(0L),
-                      coverage = numeric(0L), meets_min_coverage = logical(0L),
-                      create_date = character(0L), stringsAsFactors = FALSE)
-  if (nrow(comparison_meta) == 0L) return(empty)
+  empty <- data.frame(
+    accession = character(0L), pident = numeric(0L),
+    coverage = numeric(0L), meets_min_coverage = logical(0L),
+    create_date = character(0L), stringsAsFactors = FALSE
+  )
+  if (nrow(comparison_meta) == 0L) {
+    return(empty)
+  }
 
   strip_v <- function(x) sub("\\.[0-9]+$", "", x)
   comp_join <- strip_v(comparison_meta$accession)
-  seq_df <- data.frame(asv_id = "flagged_query", sequence = flagged_seq,
-                       stringsAsFactors = FALSE)
+  seq_df <- data.frame(
+    asv_id = "flagged_query", sequence = flagged_seq,
+    stringsAsFactors = FALSE
+  )
 
   if (identical(method, "remote")) {
     entrez_query <- paste(sprintf("%s[ACCN]", comparison_meta$accession), collapse = " OR ")
     raw <- tryCatch(
       .blast_remote(
-        seq_df, database = database, program = "blastn", megablast = FALSE,
+        seq_df,
+        database = database, program = "blastn", megablast = FALSE,
         max_target_seqs = max(200L, nrow(comparison_meta) * 3L), batch_size = 1L,
         email = NULL, ncbi_api_key = ncbi_api_key, verbose = FALSE,
         entrez_query = entrez_query
       ),
       error = function(e) {
-        if (verbose) warning(sprintf(
-          "Restricted BLAST comparison-set search failed: %s", conditionMessage(e)
-        ), call. = FALSE)
+        if (verbose) {
+          warning(sprintf(
+            "Restricted BLAST comparison-set search failed: %s", conditionMessage(e)
+          ), call. = FALSE)
+        }
         NULL
       }
     )
-    if (is.null(raw) || nrow(raw) == 0L) return(empty)
-    hits <- data.frame(.join_acc = strip_v(raw$sacc), pident = raw$pident,
-                       query_coverage = raw$qcovs, stringsAsFactors = FALSE)
+    if (is.null(raw) || nrow(raw) == 0L) {
+      return(empty)
+    }
+    hits <- data.frame(
+      .join_acc = strip_v(raw$sacc), pident = raw$pident,
+      query_coverage = raw$qcovs, stringsAsFactors = FALSE
+    )
   } else {
     # No ENTREZ_QUERY-equivalent search-space restriction exists for a
     # local BLAST+ database via rBLAST -- fall back to the original
@@ -297,7 +325,8 @@
     # BLAST's own top max_hits hits for this query.
     raw <- tryCatch(
       blast_sequences(
-        seq_df, method = method, database = database,
+        seq_df,
+        method = method, database = database,
         score_range = 100, min_score = 0, min_query_coverage = 0,
         max_hits = max(100L, nrow(comparison_meta) * 3L),
         max_target_seqs = max(200L, nrow(comparison_meta) * 5L),
@@ -305,19 +334,27 @@
         ncbi_api_key = ncbi_api_key, verbose = FALSE
       ),
       error = function(e) {
-        if (verbose) warning(sprintf(
-          "BLAST comparison-set search failed: %s", conditionMessage(e)
-        ), call. = FALSE)
+        if (verbose) {
+          warning(sprintf(
+            "BLAST comparison-set search failed: %s", conditionMessage(e)
+          ), call. = FALSE)
+        }
         NULL
       }
     )
-    if (is.null(raw) || !is.data.frame(raw) || nrow(raw) == 0L) return(empty)
-    hits <- data.frame(.join_acc = strip_v(raw$accession), pident = raw$score,
-                       query_coverage = raw$query_coverage, stringsAsFactors = FALSE)
+    if (is.null(raw) || !is.data.frame(raw) || nrow(raw) == 0L) {
+      return(empty)
+    }
+    hits <- data.frame(
+      .join_acc = strip_v(raw$accession), pident = raw$score,
+      query_coverage = raw$query_coverage, stringsAsFactors = FALSE
+    )
   }
 
   hits <- hits[hits$.join_acc %in% comp_join, , drop = FALSE]
-  if (nrow(hits) == 0L) return(empty)
+  if (nrow(hits) == 0L) {
+    return(empty)
+  }
 
   # A comparison accession could in principle surface via more than one HSP/
   # hit -- keep only its own best (highest pident) row, matching this
@@ -327,9 +364,9 @@
 
   m <- match(hits$.join_acc, comp_join)
   out <- data.frame(
-    accession   = comparison_meta$accession[m],
-    pident      = hits$pident,
-    coverage    = ifelse(is.na(hits$query_coverage), NA_real_, hits$query_coverage / 100),
+    accession = comparison_meta$accession[m],
+    pident = hits$pident,
+    coverage = ifelse(is.na(hits$query_coverage), NA_real_, hits$query_coverage / 100),
     create_date = comparison_meta$create_date[m],
     stringsAsFactors = FALSE
   )
@@ -395,18 +432,22 @@
 
   if (is.null(cached)) {
     ids <- .search_species_accessions(
-      species, exclude = character(0L), max_records = max_related + 5L,
+      species,
+      exclude = character(0L), max_records = max_related + 5L,
       reference_length = reference_length, max_length_ratio = max_length_ratio,
       ncbi_api_key = ncbi_api_key, verbose = verbose
     )
     cached <- if (length(ids) > 0L) {
       .fetch_reference_accession_records(
-        ids, want_sequence = TRUE, ncbi_api_key = ncbi_api_key, verbose = verbose
+        ids,
+        want_sequence = TRUE, ncbi_api_key = ncbi_api_key, verbose = verbose
       )
     } else {
-      data.frame(accession = character(0L), sequence = character(0L),
-                organism = character(0L), create_date = character(0L),
-                stringsAsFactors = FALSE)
+      data.frame(
+        accession = character(0L), sequence = character(0L),
+        organism = character(0L), create_date = character(0L),
+        stringsAsFactors = FALSE
+      )
     }
     if (!is.null(shared_cache)) shared_cache$species_meta[[cache_key]] <- cached
   } else if (verbose) {
@@ -432,13 +473,17 @@
 .print_investigation_summary <- function(result, min_coverage) {
   .summarize_comparison <- function(df, label) {
     n_total <- nrow(df)
-    n_ok    <- sum(df$meets_min_coverage)
-    cat(sprintf("   %d real accession(s) found; %d cleared the %.0f%% coverage floor.\n",
-               n_total, n_ok, min_coverage * 100))
+    n_ok <- sum(df$meets_min_coverage)
+    cat(sprintf(
+      "   %d real accession(s) found; %d cleared the %.0f%% coverage floor.\n",
+      n_total, n_ok, min_coverage * 100
+    ))
     if (n_ok > 0L) {
       ok <- df[df$meets_min_coverage, , drop = FALSE]
-      cat(sprintf("   identity (coverage >= %.0f%% only): mean %.2f%%, range %.2f-%.2f%%\n",
-                 min_coverage * 100, mean(ok$pident), min(ok$pident), max(ok$pident)))
+      cat(sprintf(
+        "   identity (coverage >= %.0f%% only): mean %.2f%%, range %.2f-%.2f%%\n",
+        min_coverage * 100, mean(ok$pident), min(ok$pident), max(ok$pident)
+      ))
     } else if (n_total > 0L) {
       cat(sprintf(
         "   No %s comparison reached %.0f%% coverage -- every alignment found was too\n",
@@ -457,8 +502,10 @@
   cat(sprintf("-- Self-consistency: other real '%s' accessions --\n", result$listed_species))
   .summarize_comparison(result$conspecific_comparison, "self-consistency")
 
-  cat(sprintf("\n-- Cross-taxon consistency: %s --\n",
-             if (is.na(result$disagreeing_taxon)) "(none found)" else result$disagreeing_taxon))
+  cat(sprintf(
+    "\n-- Cross-taxon consistency: %s --\n",
+    if (is.na(result$disagreeing_taxon)) "(none found)" else result$disagreeing_taxon
+  ))
   .summarize_comparison(result$disagreeing_taxon_comparison, "cross-taxon")
 
   cat("\n(High cross-taxon identity + low/absent self-consistency, BOTH at\n")
@@ -486,15 +533,21 @@
                                                 verbose, shared_cache = NULL,
                                                 max_length_ratio = 3) {
   # ---- 1. The flagged accession's own record ---------------------------------
-  own <- .fetch_reference_accession_records(accession, want_sequence = TRUE,
-                                            ncbi_api_key = ncbi_api_key, verbose = verbose)
-  if (nrow(own) == 0L || is.na(own$sequence) || !nzchar(own$sequence))
+  own <- .fetch_reference_accession_records(accession,
+    want_sequence = TRUE,
+    ncbi_api_key = ncbi_api_key, verbose = verbose
+  )
+  if (nrow(own) == 0L || is.na(own$sequence) || !nzchar(own$sequence)) {
     stop(sprintf("Could not fetch a usable sequence for '%s' from NCBI.", accession),
-        call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (is.null(species)) species <- own$organism
-  if (is.na(species) || !nzchar(species))
+  if (is.na(species) || !nzchar(species)) {
     stop("No species could be determined for this accession -- pass `species` explicitly.",
-        call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (verbose) message(sprintf("Investigating %s (listed species: %s)", accession, species))
 
   # Length-ratio pre-filter reference point -- see .search_species_
@@ -508,15 +561,21 @@
   # ---- 2. Self-consistency: other real accessions of the SAME species --------
   if (verbose) message(sprintf("Searching NCBI for other '%s' accessions...", species))
   conspecific_meta <- .get_species_comparison_meta(
-    species, exclude_accession = accession, max_related = max_related,
+    species,
+    exclude_accession = accession, max_related = max_related,
     reference_length = own_length, max_length_ratio = max_length_ratio,
     ncbi_api_key = ncbi_api_key, verbose = verbose, shared_cache = shared_cache
   )
-  if (verbose) message(sprintf("Found %d other real accession(s) of '%s'.",
-                              nrow(conspecific_meta), species))
+  if (verbose) {
+    message(sprintf(
+      "Found %d other real accession(s) of '%s'.",
+      nrow(conspecific_meta), species
+    ))
+  }
 
   conspecific_comparison <- .blast_against_comparison_set(
-    own$sequence, conspecific_meta, method = method, database = database,
+    own$sequence, conspecific_meta,
+    method = method, database = database,
     min_coverage = min_coverage, ncbi_api_key = ncbi_api_key, verbose = verbose
   )
 
@@ -527,7 +586,8 @@
   if (verbose) message("Re-BLASTing to discover the top independent disagreeing taxon...")
   seq_df <- data.frame(asv_id = accession, sequence = own$sequence, stringsAsFactors = FALSE)
   hits <- blast_sequences(
-    seq_df, method = method, database = database, score_range = score_range,
+    seq_df,
+    method = method, database = database, score_range = score_range,
     min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
     ncbi_api_key = ncbi_api_key, verbose = verbose
   )
@@ -545,20 +605,27 @@
 
   if (is.data.frame(hits) && nrow(hits) > 0L) {
     hit_meta <- .fetch_reference_accession_records(
-      unique(hits$accession), want_sequence = FALSE, ncbi_api_key = ncbi_api_key,
+      unique(hits$accession),
+      want_sequence = FALSE, ncbi_api_key = ncbi_api_key,
       verbose = verbose
     )
     own_lookup <- .build_submission_batch_lookup(
-      data.frame(composite_id = accession, create_date = own$create_date,
-                stringsAsFactors = FALSE)
+      data.frame(
+        composite_id = accession, create_date = own$create_date,
+        stringsAsFactors = FALSE
+      )
     )
     hit_lookup <- .build_submission_batch_lookup(
-      data.frame(composite_id = hit_meta$accession, create_date = hit_meta$create_date,
-                stringsAsFactors = FALSE)
+      data.frame(
+        composite_id = hit_meta$accession, create_date = hit_meta$create_date,
+        stringsAsFactors = FALSE
+      )
     )
     hits$is_independent <- vapply(hits$accession, function(a) {
       idx <- match(a, hit_lookup$composite_id)
-      if (is.na(idx)) return(TRUE)  # no create_date available -- can't prove same-batch
+      if (is.na(idx)) {
+        return(TRUE)
+      } # no create_date available -- can't prove same-batch
       !.same_submission_batch(
         own_lookup$acc_date, own_lookup$acc_prefix, own_lookup$acc_num,
         hit_lookup$acc_date[idx], hit_lookup$acc_prefix[idx], hit_lookup$acc_num[idx],
@@ -570,25 +637,31 @@
     if (nrow(independent_hits) > 0L) {
       independent_hits <- independent_hits[order(-independent_hits$score), , drop = FALSE]
       disagreeing_taxon <- independent_hits$species[1L]
-      if (verbose) message(sprintf(
-        "Top independent disagreeing taxon: %s (%s, %.2f%% identity).",
-        disagreeing_taxon, independent_hits$accession[1L], independent_hits$score[1L]
-      ))
+      if (verbose) {
+        message(sprintf(
+          "Top independent disagreeing taxon: %s (%s, %.2f%% identity).",
+          disagreeing_taxon, independent_hits$accession[1L], independent_hits$score[1L]
+        ))
+      }
 
       if (!is.na(disagreeing_taxon) && nzchar(disagreeing_taxon)) {
         disagreeing_meta <- .get_species_comparison_meta(
-          disagreeing_taxon, exclude_accession = accession, max_related = max_related,
+          disagreeing_taxon,
+          exclude_accession = accession, max_related = max_related,
           reference_length = own_length, max_length_ratio = max_length_ratio,
           ncbi_api_key = ncbi_api_key, verbose = verbose, shared_cache = shared_cache
         )
         disagreeing_taxon_comparison <- .blast_against_comparison_set(
-          own$sequence, disagreeing_meta, method = method, database = database,
+          own$sequence, disagreeing_meta,
+          method = method, database = database,
           min_coverage = min_coverage, ncbi_api_key = ncbi_api_key, verbose = verbose
         )
       }
     } else if (verbose) {
-      message("No independent (non-same-submission-batch) BLAST hits found -- ",
-             "every hit was excluded as a batch artifact, same lesson as PV382872.")
+      message(
+        "No independent (non-same-submission-batch) BLAST hits found -- ",
+        "every hit was excluded as a batch artifact, same lesson as PV382872."
+      )
     }
   }
 
@@ -612,7 +685,7 @@
 #' asymmetric-TTL philosophy for a directly analogous reason.
 #' @noRd
 .investigate_verdict <- function(result) {
-  ok_self  <- sum(result$conspecific_comparison$meets_min_coverage, na.rm = TRUE)
+  ok_self <- sum(result$conspecific_comparison$meets_min_coverage, na.rm = TRUE)
   ok_cross <- sum(result$disagreeing_taxon_comparison$meets_min_coverage, na.rm = TRUE)
   if (ok_self == 0L && ok_cross == 0L) "inconclusive_length_mismatch" else "evaluated"
 }
@@ -633,7 +706,9 @@
   # "fresh" cache hit for up to inconclusive_ttl_days.
   .INVESTIGATE_VERSION <- "v2_entrez_query_and_length_filter"
   paste(max_related, method, database, score_range, min_score, max_hits,
-       submission_window, min_coverage, max_length_ratio, .INVESTIGATE_VERSION, sep = "|")
+    submission_window, min_coverage, max_length_ratio, .INVESTIGATE_VERSION,
+    sep = "|"
+  )
 }
 
 #' Load the persistent per-(accession, species override) investigation cache
@@ -645,11 +720,17 @@
     params_key = character(0L), stringsAsFactors = FALSE
   )
   empty$result <- list()
-  if (is.null(cache_dir)) return(empty)
+  if (is.null(cache_dir)) {
+    return(empty)
+  }
   path <- file.path(cache_dir, "investigate_flagged_accession_cache.rds")
-  if (!file.exists(path)) return(empty)
+  if (!file.exists(path)) {
+    return(empty)
+  }
   cached <- tryCatch(readRDS(path), error = function(e) NULL)
-  if (is.null(cached) || !is.data.frame(cached)) return(empty)
+  if (is.null(cached) || !is.data.frame(cached)) {
+    return(empty)
+  }
 
   # Same schema-mismatch defense as evaluate_reference_accessions()'s own
   # .load_reference_accession_cache() -- a cache file from an older package
@@ -669,7 +750,9 @@
 #' Persist the investigation cache
 #' @noRd
 .save_investigate_cache <- function(cache_dir, cache_df) {
-  if (is.null(cache_dir)) return(invisible(NULL))
+  if (is.null(cache_dir)) {
+    return(invisible(NULL))
+  }
   if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   path <- file.path(cache_dir, "investigate_flagged_accession_cache.rds")
   saveRDS(cache_df, path)
@@ -682,14 +765,20 @@
 #' @noRd
 .lookup_investigate_cache <- function(cache, accession, species_key, params_key,
                                       inconclusive_ttl_days) {
-  if (nrow(cache) == 0L) return(NULL)
+  if (nrow(cache) == 0L) {
+    return(NULL)
+  }
   idx <- which(cache$accession == accession & cache$species_key == species_key &
-              cache$params_key == params_key)
-  if (length(idx) == 0L) return(NULL)
+    cache$params_key == params_key)
+  if (length(idx) == 0L) {
+    return(NULL)
+  }
   row <- cache[idx[1L], , drop = FALSE]
   if (identical(row$verdict, "inconclusive_length_mismatch")) {
     age_days <- as.numeric(difftime(Sys.time(), row$evaluated_at, units = "days"))
-    if (is.na(age_days) || age_days >= inconclusive_ttl_days) return(NULL)
+    if (is.na(age_days) || age_days >= inconclusive_ttl_days) {
+      return(NULL)
+    }
   }
   row
 }
@@ -708,7 +797,7 @@
   )
   new_row$result <- list(result)
   cache <- cache[!(cache$accession == accession & cache$species_key == species_key &
-                   cache$params_key == params_key), , drop = FALSE]
+    cache$params_key == params_key), , drop = FALSE]
   cache <- rbind(cache, new_row[, names(cache), drop = FALSE])
   .save_investigate_cache(cache_dir, cache)
   cache
@@ -898,20 +987,24 @@ investigate_flagged_accession <- function(accession,
                                           inconclusive_ttl_days = 30,
                                           ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                                           verbose = TRUE) {
-
   if (!is.character(accession) || length(accession) != 1L || is.na(accession) ||
-      !nzchar(accession))
+    !nzchar(accession)) {
     stop("accession must be a single non-NA, non-blank character string.", call. = FALSE)
+  }
   method <- match.arg(method)
 
-  params_key  <- .investigate_params_key(max_related, method, database, score_range,
-                                         min_score, max_hits, submission_window, min_coverage,
-                                         max_length_ratio)
+  params_key <- .investigate_params_key(
+    max_related, method, database, score_range,
+    min_score, max_hits, submission_window, min_coverage,
+    max_length_ratio
+  )
   species_key <- if (is.null(species)) "" else species
 
   cache <- .load_investigate_cache(cache_dir)
-  cache_row <- .lookup_investigate_cache(cache, accession, species_key, params_key,
-                                        inconclusive_ttl_days)
+  cache_row <- .lookup_investigate_cache(
+    cache, accession, species_key, params_key,
+    inconclusive_ttl_days
+  )
 
   if (!is.null(cache_row)) {
     result <- cache_row$result[[1L]]
@@ -927,7 +1020,8 @@ investigate_flagged_accession <- function(accession,
 
   result <- .investigate_flagged_accession_core(
     accession, species, max_related, method, database, score_range, min_score, max_hits,
-    submission_window, min_coverage, ncbi_api_key, verbose, shared_cache = NULL,
+    submission_window, min_coverage, ncbi_api_key, verbose,
+    shared_cache = NULL,
     max_length_ratio = max_length_ratio
   )
 
@@ -993,18 +1087,22 @@ investigate_flagged_accessions <- function(accessions,
                                            inconclusive_ttl_days = 30,
                                            ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                                            verbose = TRUE) {
-
-  if (!is.character(accessions) || length(accessions) == 0L)
+  if (!is.character(accessions) || length(accessions) == 0L) {
     stop("accessions must be a non-empty character vector.", call. = FALSE)
-  if (any(is.na(accessions) | !nzchar(accessions)))
+  }
+  if (any(is.na(accessions) | !nzchar(accessions))) {
     stop("accessions must contain no NA or blank values.", call. = FALSE)
-  if (!is.null(species) && length(species) != length(accessions))
+  }
+  if (!is.null(species) && length(species) != length(accessions)) {
     stop("species, if supplied, must be the same length as accessions.", call. = FALSE)
+  }
   method <- match.arg(method)
 
-  params_key <- .investigate_params_key(max_related, method, database, score_range,
-                                        min_score, max_hits, submission_window, min_coverage,
-                                        max_length_ratio)
+  params_key <- .investigate_params_key(
+    max_related, method, database, score_range,
+    min_score, max_hits, submission_window, min_coverage,
+    max_length_ratio
+  )
 
   cache <- .load_investigate_cache(cache_dir)
   shared_cache <- new.env(parent = emptyenv())
@@ -1014,11 +1112,13 @@ investigate_flagged_accessions <- function(accessions,
 
   for (i in seq_along(accessions)) {
     acc <- accessions[i]
-    sp  <- if (is.null(species)) NULL else (if (is.na(species[i])) NULL else species[i])
+    sp <- if (is.null(species)) NULL else (if (is.na(species[i])) NULL else species[i])
     species_key <- if (is.null(sp)) "" else sp
 
-    cache_row <- .lookup_investigate_cache(cache, acc, species_key, params_key,
-                                          inconclusive_ttl_days)
+    cache_row <- .lookup_investigate_cache(
+      cache, acc, species_key, params_key,
+      inconclusive_ttl_days
+    )
     if (!is.null(cache_row)) {
       if (verbose) {
         message(sprintf(
@@ -1031,12 +1131,14 @@ investigate_flagged_accessions <- function(accessions,
       next
     }
 
-    if (verbose)
+    if (verbose) {
       message(sprintf("investigate_flagged_accessions(): [%d/%d] %s", i, length(accessions), acc))
+    }
 
     res <- .investigate_flagged_accession_core(
       acc, sp, max_related, method, database, score_range, min_score, max_hits,
-      submission_window, min_coverage, ncbi_api_key, verbose, shared_cache = shared_cache,
+      submission_window, min_coverage, ncbi_api_key, verbose,
+      shared_cache = shared_cache,
       max_length_ratio = max_length_ratio
     )
     if (verbose) .print_investigation_summary(res, min_coverage)

@@ -7,15 +7,21 @@
 .base_evaluated_df <- function() {
   data.frame(
     accession = c("ACC001", "ACC002", "ACC003", "ACC004"),
-    listed_taxon = c("Menidia beryllina", "Stereolepis doederleini",
-                     "Serranidae sp. JL-2015", "Cottus asper"),
-    hierarchy_flag = c("congruent", "incongruent",
-                       "incongruent", "insufficient_independent_evidence"),
+    listed_taxon = c(
+      "Menidia beryllina", "Stereolepis doederleini",
+      "Serranidae sp. JL-2015", "Cottus asper"
+    ),
+    hierarchy_flag = c(
+      "congruent", "incongruent",
+      "incongruent", "insufficient_independent_evidence"
+    ),
     finest_common_rank = c("species", "order", "class", NA_character_),
     best_agreeing_pident = c(99.5, NA_real_, NA_real_, NA_real_),
     best_disagreeing_pident = c(NA_real_, 95.2, 87.3, NA_real_),
-    best_disagreeing_taxon = c(NA_character_, "Sinipercidae sp.",
-                               "Serranidae sp. JL-2015", NA_character_),
+    best_disagreeing_taxon = c(
+      NA_character_, "Sinipercidae sp.",
+      "Serranidae sp. JL-2015", NA_character_
+    ),
     congruent_evidence_exists_anywhere = c(TRUE, FALSE, FALSE, FALSE),
     congruent_evidence_best_pident = c(99.5, NA_real_, NA_real_, NA_real_),
     taxonomy_resolution_source = c("direct", "direct", "direct", "direct"),
@@ -79,7 +85,7 @@ test_that("review_flagged_accessions() defaults to the incongruent/insufficient_
 
 test_that("review_flagged_accessions(include_non_species_resolved = TRUE) also reviews a congruent-but-not-species-resolved row", {
   df <- .base_evaluated_df()
-  df$hierarchy_flag[3] <- "congruent"  # ACC003 now congruent, but still non-species-resolved
+  df$hierarchy_flag[3] <- "congruent" # ACC003 now congruent, but still non-species-resolved
   reviewed_accessions <- NULL
   stub <- function(prompt, ...) {
     reviewed_accessions <<- regmatches(prompt, gregexpr("ACC00[0-9]", prompt))[[1]]
@@ -106,7 +112,8 @@ test_that("review_flagged_accessions(include_non_species_resolved = FALSE) exclu
     ))
   }
   out <- review_flagged_accessions(
-    df, include_non_species_resolved = FALSE, cache_dir = NULL, llm_fn = stub, verbose = FALSE
+    df,
+    include_non_species_resolved = FALSE, cache_dir = NULL, llm_fn = stub, verbose = FALSE
   )
   expect_true(is.na(out$accession_review_comment[out$accession == "ACC003"]))
 })
@@ -116,7 +123,10 @@ test_that("review_flagged_accessions() is a no-op (never calls llm_fn) when noth
   df$hierarchy_flag <- "congruent"
   df$listed_taxon_is_species <- TRUE
   called <- FALSE
-  stub <- function(prompt, ...) { called <<- TRUE; "[]" }
+  stub <- function(prompt, ...) {
+    called <<- TRUE
+    "[]"
+  }
   out <- review_flagged_accessions(df, llm_fn = stub, verbose = FALSE)
   expect_false(called)
   expect_true(all(is.na(out$accession_review_comment)))
@@ -124,23 +134,27 @@ test_that("review_flagged_accessions() is a no-op (never calls llm_fn) when noth
 })
 
 test_that("review_flagged_accessions() normalises an out-of-enum accession_likely_explanation to 'uncertain'", {
-  stub <- function(prompt, ...) .canned_json(data.frame(
-    accession = c("ACC002", "ACC003", "ACC004"),
-    accession_likely_explanation = c("totally_made_up_category", "uncertain", "uncertain"),
-    accession_review_confidence = c("high", "low", "low"),
-    accession_review_comment = c("x", "y", "z")
-  ))
+  stub <- function(prompt, ...) {
+    .canned_json(data.frame(
+      accession = c("ACC002", "ACC003", "ACC004"),
+      accession_likely_explanation = c("totally_made_up_category", "uncertain", "uncertain"),
+      accession_review_confidence = c("high", "low", "low"),
+      accession_review_comment = c("x", "y", "z")
+    ))
+  }
   out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   expect_equal(out$accession_likely_explanation[out$accession == "ACC002"], "uncertain")
 })
 
 test_that("review_flagged_accessions() fills a missing accession with NA defaults and warns", {
-  stub <- function(prompt, ...) .canned_json(data.frame(
-    accession = c("ACC002", "ACC004"),  # ACC003 omitted
-    accession_likely_explanation = c("poor_marker_resolution", "uncertain"),
-    accession_review_confidence = c("high", "low"),
-    accession_review_comment = c("x", "y")
-  ))
+  stub <- function(prompt, ...) {
+    .canned_json(data.frame(
+      accession = c("ACC002", "ACC004"), # ACC003 omitted
+      accession_likely_explanation = c("poor_marker_resolution", "uncertain"),
+      accession_review_confidence = c("high", "low"),
+      accession_review_comment = c("x", "y")
+    ))
+  }
   expect_warning(
     out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE),
     "omitted"
@@ -154,7 +168,7 @@ test_that("review_flagged_accessions() batches by taxa_per_call and preserves pr
   stub <- function(prompt, ...) {
     n_calls <<- n_calls + 1L
     accs <- regmatches(prompt, gregexpr("ACC00[0-9]", prompt))[[1]]
-    accs <- unique(accs[accs != "ACC001"])  # ACC001 header text sometimes matches nothing, defensive
+    accs <- unique(accs[accs != "ACC001"]) # ACC001 header text sometimes matches nothing, defensive
     .canned_json(data.frame(
       accession = accs,
       accession_likely_explanation = "uncertain",
@@ -162,11 +176,13 @@ test_that("review_flagged_accessions() batches by taxa_per_call and preserves pr
       accession_review_comment = "stub"
     ))
   }
-  out <- review_flagged_accessions(.base_evaluated_df(), taxa_per_call = 1L,
-                                   cache_dir = NULL, llm_fn = stub, verbose = FALSE)
-  expect_equal(n_calls, 3L)  # ACC002, ACC003, ACC004 each their own call
+  out <- review_flagged_accessions(.base_evaluated_df(),
+    taxa_per_call = 1L,
+    cache_dir = NULL, llm_fn = stub, verbose = FALSE
+  )
+  expect_equal(n_calls, 3L) # ACC002, ACC003, ACC004 each their own call
   expect_equal(length(attr(out, "llm_prompts")), 3L)
-  expect_true(all(!is.na(out$accession_review_comment[out$accession %in% c("ACC002","ACC003","ACC004")])))
+  expect_true(all(!is.na(out$accession_review_comment[out$accession %in% c("ACC002", "ACC003", "ACC004")])))
 })
 
 test_that("review_flagged_accessions() retries a truncated batch as smaller sub-batches", {
@@ -190,9 +206,11 @@ test_that("review_flagged_accessions() retries a truncated batch as smaller sub-
       accession_review_comment = "sub-batch stub"
     ))
   }
-  df <- .base_evaluated_df()  # ACC002, ACC003, ACC004 in scope (3 accessions)
-  out <- review_flagged_accessions(df, taxa_per_call = 3L, max_retries = 2L,
-                                   cache_dir = NULL, llm_fn = stub, verbose = FALSE)
+  df <- .base_evaluated_df() # ACC002, ACC003, ACC004 in scope (3 accessions)
+  out <- review_flagged_accessions(df,
+    taxa_per_call = 3L, max_retries = 2L,
+    cache_dir = NULL, llm_fn = stub, verbose = FALSE
+  )
   # Every retry sub-batch above eventually shrinks to a single accession,
   # where the stub always succeeds -- so every in-scope accession ends up
   # reviewed with real (not NA-default) values, and no warning is needed.
@@ -233,7 +251,7 @@ test_that("review_flagged_accessions() prompt includes the guide's 4-category fr
 test_that("review_flagged_accessions() adds the local-corroboration line only where the columns are populated (2026-09-03)", {
   df <- .base_evaluated_df()
   df$local_n_independent_conspecific <- c(NA, 1L, NA, NA)
-  df$local_best_independent_pident   <- c(NA, 100, NA, NA)
+  df$local_best_independent_pident <- c(NA, 100, NA, NA)
   captured_prompt <- NULL
   stub <- function(prompt, ...) {
     captured_prompt <<- prompt
@@ -244,11 +262,14 @@ test_that("review_flagged_accessions() adds the local-corroboration line only wh
       accession_review_comment = "stub"
     ))
   }
-  review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE,
-                            local_min_overlap = 0.8)
+  review_flagged_accessions(df,
+    cache_dir = NULL, llm_fn = stub, verbose = FALSE,
+    local_min_overlap = 0.8
+  )
   expect_true(grepl(
     "accession=ACC002:.*local reference set: 1 independent conspecific\\(s\\), best identity 100.0% over >= 80% of the amplicon",
-    captured_prompt))
+    captured_prompt
+  ))
   # ACC003 has no local evidence: no line for it.
   acc3_line <- regmatches(captured_prompt, regexpr("- accession=ACC003:[^\n]*", captured_prompt))
   expect_false(grepl("local reference set", acc3_line, fixed = TRUE))
@@ -260,8 +281,10 @@ test_that("review_flagged_accessions() adds the local-corroboration line only wh
   attr(df, "local_corroboration_params") <- list(min_overlap = 0.9)
   review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   expect_true(grepl("over >= 90% of the amplicon", captured_prompt, fixed = TRUE))
-  expect_error(review_flagged_accessions(df, cache_dir = NULL, llm_fn = stub, verbose = FALSE,
-                                         local_min_overlap = 2), "local_min_overlap")
+  expect_error(review_flagged_accessions(df,
+    cache_dir = NULL, llm_fn = stub, verbose = FALSE,
+    local_min_overlap = 2
+  ), "local_min_overlap")
 })
 
 test_that("the review fingerprint ignores absent/NA local columns but changes when they are populated", {
@@ -269,11 +292,11 @@ test_that("the review fingerprint ignores absent/NA local columns but changes wh
   fp0 <- .accession_review_fingerprint(base)
   with_na <- base
   with_na$local_n_independent_conspecific <- NA_integer_
-  with_na$local_best_independent_pident   <- NA_real_
+  with_na$local_best_independent_pident <- NA_real_
   expect_equal(.accession_review_fingerprint(with_na), fp0)
   with_val <- with_na
   with_val$local_n_independent_conspecific[2] <- 1L
-  with_val$local_best_independent_pident[2]   <- 100
+  with_val$local_best_independent_pident[2] <- 100
   fp1 <- .accession_review_fingerprint(with_val)
   expect_equal(fp1[-2], fp0[-2])
   expect_false(fp1[2] == fp0[2])
@@ -296,20 +319,25 @@ test_that("the review fingerprint ignores absent/NA local columns but changes wh
 test_that("review_flagged_accessions() writes a fresh review to cache and serves it on a second, unchanged call", {
   cache_dir_path <- withr::local_tempdir()
   call_count <- 0L
-  counting_stub <- function(prompt, ...) { call_count <<- call_count + 1L; .crfa_stub(prompt) }
+  counting_stub <- function(prompt, ...) {
+    call_count <<- call_count + 1L
+    .crfa_stub(prompt)
+  }
 
   out1 <- review_flagged_accessions(
-    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = counting_stub, verbose = FALSE
+    .base_evaluated_df(),
+    cache_dir = cache_dir_path, llm_fn = counting_stub, verbose = FALSE
   )
   expect_true(call_count > 0L)
-  expect_true(all(!out1$accession_review_cache_hit[out1$accession %in% c("ACC002","ACC003","ACC004")]))
+  expect_true(all(!out1$accession_review_cache_hit[out1$accession %in% c("ACC002", "ACC003", "ACC004")]))
 
   first_call_count <- call_count
   out2 <- review_flagged_accessions(
-    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = counting_stub, verbose = FALSE
+    .base_evaluated_df(),
+    cache_dir = cache_dir_path, llm_fn = counting_stub, verbose = FALSE
   )
-  expect_equal(call_count, first_call_count)  # no new LLM calls on the second, identical call
-  expect_true(all(out2$accession_review_cache_hit[out2$accession %in% c("ACC002","ACC003","ACC004")]))
+  expect_equal(call_count, first_call_count) # no new LLM calls on the second, identical call
+  expect_true(all(out2$accession_review_cache_hit[out2$accession %in% c("ACC002", "ACC003", "ACC004")]))
   expect_equal(out2$accession_review_comment, out1$accession_review_comment)
 })
 
@@ -323,7 +351,8 @@ test_that("review_flagged_accessions() re-reviews an accession whose input chang
   }
 
   review_flagged_accessions(
-    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
+    .base_evaluated_df(),
+    cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
   )
   n_calls_first <- length(call_log)
 
@@ -334,7 +363,8 @@ test_that("review_flagged_accessions() re-reviews an accession whose input chang
   df2$best_disagreeing_pident[df2$accession == "ACC002"] <- 60.0
 
   out <- review_flagged_accessions(
-    df2, cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
+    df2,
+    cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
   )
   reviewed_this_call <- unique(unlist(call_log[(n_calls_first + 1L):length(call_log)]))
   expect_equal(reviewed_this_call, "ACC002")
@@ -354,10 +384,11 @@ test_that("review_flagged_accessions() writes the cache once per LLM batch, not 
     .package = "TaxaMatch"
   )
   review_flagged_accessions(
-    .base_evaluated_df(), taxa_per_call = 1L, cache_dir = cache_dir_path,
+    .base_evaluated_df(),
+    taxa_per_call = 1L, cache_dir = cache_dir_path,
     llm_fn = .crfa_stub, verbose = FALSE
   )
-  expect_equal(save_calls, 3L)  # ACC002, ACC003, ACC004 -- one batch each
+  expect_equal(save_calls, 3L) # ACC002, ACC003, ACC004 -- one batch each
 })
 
 test_that("review_flagged_accessions() does not cache a failed/NA review, so it is retried next call", {
@@ -370,14 +401,16 @@ test_that("review_flagged_accessions() does not cache a failed/NA review, so it 
   }
 
   out1 <- suppressWarnings(review_flagged_accessions(
-    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = flaky_stub, verbose = FALSE
+    .base_evaluated_df(),
+    cache_dir = cache_dir_path, llm_fn = flaky_stub, verbose = FALSE
   ))
-  expect_true(all(is.na(out1$accession_review_comment[out1$accession %in% c("ACC002","ACC003","ACC004")])))
+  expect_true(all(is.na(out1$accession_review_comment[out1$accession %in% c("ACC002", "ACC003", "ACC004")])))
 
   out2 <- review_flagged_accessions(
-    .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = flaky_stub, verbose = FALSE
+    .base_evaluated_df(),
+    cache_dir = cache_dir_path, llm_fn = flaky_stub, verbose = FALSE
   )
-  expect_true(all(!is.na(out2$accession_review_comment[out2$accession %in% c("ACC002","ACC003","ACC004")])))
+  expect_true(all(!is.na(out2$accession_review_comment[out2$accession %in% c("ACC002", "ACC003", "ACC004")])))
 })
 
 test_that("review_flagged_accessions() gracefully discards an old-schema review cache instead of erroring", {
@@ -390,7 +423,8 @@ test_that("review_flagged_accessions() gracefully discards an old-schema review 
 
   expect_warning(
     out <- review_flagged_accessions(
-      .base_evaluated_df(), cache_dir = cache_dir_path, llm_fn = .crfa_stub, verbose = FALSE
+      .base_evaluated_df(),
+      cache_dir = cache_dir_path, llm_fn = .crfa_stub, verbose = FALSE
     ),
     "predates this package version"
   )
@@ -417,7 +451,7 @@ test_that("review_flagged_accessions() gracefully discards an old-schema review 
 test_that("resolve_review_overrides() keeps only non-mislabel explanations at sufficient confidence", {
   out <- resolve_review_overrides(.review_result_fixture())
   expect_setequal(out, c("A2", "A3", "A4"))
-  expect_false("A1" %in% out)  # genuine_mislabel -- confirms removal, never overrides
+  expect_false("A1" %in% out) # genuine_mislabel -- confirms removal, never overrides
 })
 
 test_that("resolve_review_overrides() excludes 'uncertain' by default", {
@@ -427,14 +461,16 @@ test_that("resolve_review_overrides() excludes 'uncertain' by default", {
 
 test_that("resolve_review_overrides() excludes low-confidence reviews even with a keep-worthy explanation", {
   out <- resolve_review_overrides(.review_result_fixture())
-  expect_false("A6" %in% out)  # poor_marker_resolution but confidence = "low"
+  expect_false("A6" %in% out) # poor_marker_resolution but confidence = "low"
 })
 
 test_that("resolve_review_overrides() can be widened to trust 'uncertain' explicitly", {
   out <- resolve_review_overrides(
     .review_result_fixture(),
-    keep_explanations = c("poor_marker_resolution", "sister_family_thin_coverage",
-                          "hybrid_or_specimen_code_artifact", "uncertain")
+    keep_explanations = c(
+      "poor_marker_resolution", "sister_family_thin_coverage",
+      "hybrid_or_specimen_code_artifact", "uncertain"
+    )
   )
   expect_true("A5" %in% out)
 })
@@ -452,8 +488,10 @@ test_that("resolve_review_overrides() output feeds directly into remove_incongru
     hierarchy_flag = "incongruent",
     stringsAsFactors = FALSE
   )
-  out <- remove_incongruent_references(match_df, evaluation, override_accessions = overrides,
-                                      gate = "flag")
+  out <- remove_incongruent_references(match_df, evaluation,
+    override_accessions = overrides,
+    gate = "flag"
+  )
   # A1 (genuine_mislabel) removed; A2/A3/A4 (overridden) retained
   expect_equal(out$accession, c("A2", "A3", "A4"))
 })
@@ -461,7 +499,8 @@ test_that("resolve_review_overrides() output feeds directly into remove_incongru
 test_that("resolve_review_overrides() rejects 'genuine_mislabel' in keep_explanations", {
   expect_error(
     resolve_review_overrides(.review_result_fixture(),
-                             keep_explanations = c("genuine_mislabel", "uncertain")),
+      keep_explanations = c("genuine_mislabel", "uncertain")
+    ),
     "cannot include"
   )
 })
@@ -469,8 +508,12 @@ test_that("resolve_review_overrides() rejects 'genuine_mislabel' in keep_explana
 test_that("resolve_review_overrides() validates inputs", {
   expect_error(resolve_review_overrides("not_a_df"), "must be a data frame")
   expect_error(resolve_review_overrides(data.frame(x = 1)), "missing required columns")
-  expect_error(resolve_review_overrides(.review_result_fixture(), keep_explanations = character(0)),
-              "keep_explanations must be")
-  expect_error(resolve_review_overrides(.review_result_fixture(), min_confidence = character(0)),
-              "min_confidence must be")
+  expect_error(
+    resolve_review_overrides(.review_result_fixture(), keep_explanations = character(0)),
+    "keep_explanations must be"
+  )
+  expect_error(
+    resolve_review_overrides(.review_result_fixture(), min_confidence = character(0)),
+    "min_confidence must be"
+  )
 })

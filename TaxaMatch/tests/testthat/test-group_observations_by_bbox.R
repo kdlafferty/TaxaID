@@ -8,9 +8,9 @@
 library(testthat)
 
 .site_defaults <- function(sites, id_col = "observation_id") {
-  sites$spatial_group_id  <- as.character(sites[[id_col]])
-  sites$spatial_group_N   <- 1L
-  sites$is_default_group  <- TRUE
+  sites$spatial_group_id <- as.character(sites[[id_col]])
+  sites$spatial_group_N <- 1L
+  sites$is_default_group <- TRUE
   sites
 }
 
@@ -45,17 +45,21 @@ box2 <- .test_bbox_wkt(lat = 36.605, lon = -121.895, radius_deg = 0.05)
 
 test_that("observations inside a drawn box get that box's spatial_group_id", {
   out <- .assign_spatial_groups_from_polygons(sites, c(box1, box2))
-  expect_equal(out$spatial_group_id[out$observation_id %in% c("obs1", "obs2", "obs3")],
-               rep("spatial_group_1", 3))
-  expect_equal(out$spatial_group_id[out$observation_id %in% c("obs4", "obs5")],
-               rep("spatial_group_2", 2))
+  expect_equal(
+    out$spatial_group_id[out$observation_id %in% c("obs1", "obs2", "obs3")],
+    rep("spatial_group_1", 3)
+  )
+  expect_equal(
+    out$spatial_group_id[out$observation_id %in% c("obs4", "obs5")],
+    rep("spatial_group_2", 2)
+  )
   expect_equal(out$spatial_group_N[out$observation_id == "obs1"], 3L)
   expect_equal(out$spatial_group_N[out$observation_id == "obs4"], 2L)
 })
 
 test_that("observations outside every box keep their default singleton group, not dropped", {
   out <- .assign_spatial_groups_from_polygons(sites, c(box1, box2))
-  expect_equal(nrow(out), nrow(sites))  # nothing dropped
+  expect_equal(nrow(out), nrow(sites)) # nothing dropped
   expect_equal(out$spatial_group_id[out$observation_id == "obs6"], "obs6")
   expect_equal(out$spatial_group_N[out$observation_id == "obs6"], 1L)
   expect_true(out$is_default_group[out$observation_id == "obs6"])
@@ -67,13 +71,13 @@ test_that("newly drawn groups never collide with pre-existing spatial_group_<n> 
   # before any interactive drawing happens.
   pre_named <- sites
   pre_named$spatial_group_id[pre_named$observation_id %in% c("obs4", "obs5")] <- "spatial_group_1"
-  pre_named$spatial_group_N[pre_named$observation_id %in% c("obs4", "obs5")]  <- 2L
+  pre_named$spatial_group_N[pre_named$observation_id %in% c("obs4", "obs5")] <- 2L
   pre_named$is_default_group[pre_named$observation_id %in% c("obs4", "obs5")] <- FALSE
 
-  out <- .assign_spatial_groups_from_polygons(pre_named, box1)  # captures obs1-3
+  out <- .assign_spatial_groups_from_polygons(pre_named, box1) # captures obs1-3
   new_ids <- unique(out$spatial_group_id[out$observation_id %in% c("obs1", "obs2", "obs3")])
   expect_length(new_ids, 1L)
-  expect_false(new_ids %in% "spatial_group_1")  # would collide with obs4/obs5's group
+  expect_false(new_ids %in% "spatial_group_1") # would collide with obs4/obs5's group
   # obs4/obs5's pre-existing group is untouched
   expect_true(all(out$spatial_group_id[out$observation_id %in% c("obs4", "obs5")] == "spatial_group_1"))
 })
@@ -126,9 +130,9 @@ test_that("no message when a single drawn box captures every observation", {
 
 test_that("a message explains there is nothing left when all observations are already grouped", {
   clustered <- sites
-  clustered$spatial_group_id  <- "already_grouped"
-  clustered$spatial_group_N   <- nrow(clustered)
-  clustered$is_default_group  <- FALSE
+  clustered$spatial_group_id <- "already_grouped"
+  clustered$spatial_group_N <- nrow(clustered)
+  clustered$is_default_group <- FALSE
   expect_message(
     .assign_spatial_groups_from_polygons(clustered, box1),
     "nothing left to assign"
@@ -145,7 +149,7 @@ test_that("an observation inside two overlapping boxes gets the most recently dr
     stringsAsFactors = FALSE
   ))
   box_early <- .test_bbox_wkt(lat = 34.40, lon = -119.86, radius_deg = 0.5)
-  box_late  <- .test_bbox_wkt(lat = 34.40, lon = -119.86, radius_deg = 0.2)
+  box_late <- .test_bbox_wkt(lat = 34.40, lon = -119.86, radius_deg = 0.2)
   out <- suppressWarnings(.assign_spatial_groups_from_polygons(overlap_sites, c(box_early, box_late)))
   expect_equal(out$spatial_group_id, "spatial_group_2")
 })
@@ -156,7 +160,7 @@ test_that("a warning names the ambiguous observation when boxes overlap", {
     stringsAsFactors = FALSE
   ))
   box_early <- .test_bbox_wkt(lat = 34.40, lon = -119.86, radius_deg = 0.5)
-  box_late  <- .test_bbox_wkt(lat = 34.40, lon = -119.86, radius_deg = 0.2)
+  box_late <- .test_bbox_wkt(lat = 34.40, lon = -119.86, radius_deg = 0.2)
   expect_warning(
     .assign_spatial_groups_from_polygons(overlap_sites, c(box_early, box_late)),
     "obsA"
@@ -184,7 +188,7 @@ test_that("a single point still gets a positive, non-zero radius", {
 
 test_that("radius grows with a spread out set of points", {
   tight <- .bbox_center_radius(c(34.40, 34.41), c(-119.86, -119.85))
-  wide  <- .bbox_center_radius(c(34.0, 40.0), c(-121.0, -74.0))
+  wide <- .bbox_center_radius(c(34.0, 40.0), c(-121.0, -74.0))
   expect_gt(wide$radius_deg, tight$radius_deg)
 })
 

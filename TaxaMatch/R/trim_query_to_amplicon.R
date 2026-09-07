@@ -47,17 +47,19 @@
 .extract_amplicon_one_tm <- function(seq_char, fwd_pattern, rev_pattern_rc,
                                      fwd_max_mm, rev_max_mm, min_len, max_len,
                                      strip_primers = FALSE) {
-
-  if (is.na(seq_char) || !nzchar(seq_char))
+  if (is.na(seq_char) || !nzchar(seq_char)) {
     return(list(sequence = NA_character_, trimmed = FALSE, note = "missing_sequence"))
+  }
 
   seq_upper <- toupper(seq_char)
-  if (!grepl("^[ACGTRYSWKMBDHVN]+$", seq_upper))
+  if (!grepl("^[ACGTRYSWKMBDHVN]+$", seq_upper)) {
     return(list(sequence = NA_character_, trimmed = FALSE, note = "non_iupac_dna_skipped"))
+  }
 
   dna_plus <- tryCatch(Biostrings::DNAString(seq_upper), error = function(e) NULL)
-  if (is.null(dna_plus))
+  if (is.null(dna_plus)) {
     return(list(sequence = NA_character_, trimmed = FALSE, note = "invalid_dna_string"))
+  }
   dna_minus <- Biostrings::reverseComplement(dna_plus)
 
   for (strand in c("sense", "antisense")) {
@@ -71,15 +73,17 @@
     # TaxaLikely original) that fixed = FALSE (both interpreted) produces
     # spurious matches across long N-runs.
     fwd_hits <- Biostrings::matchPattern(fwd_pattern, subj,
-                                          max.mismatch = fwd_max_mm, fixed = "subject")
+      max.mismatch = fwd_max_mm, fixed = "subject"
+    )
     if (length(fwd_hits) == 0L) next
 
     rev_hits <- Biostrings::matchPattern(rev_pattern_rc, subj,
-                                          max.mismatch = rev_max_mm, fixed = "subject")
+      max.mismatch = rev_max_mm, fixed = "subject"
+    )
     if (length(rev_hits) == 0L) next
 
     fwd_start <- min(Biostrings::start(fwd_hits))
-    fwd_end   <- min(Biostrings::end(fwd_hits)[Biostrings::start(fwd_hits) == fwd_start])
+    fwd_end <- min(Biostrings::end(fwd_hits)[Biostrings::start(fwd_hits) == fwd_start])
 
     rev_starts <- Biostrings::start(rev_hits)
     downstream <- rev_starts[rev_starts > fwd_end]
@@ -112,7 +116,7 @@
     # as "not found" rather than handed to subseq() as an inverted span.
     if (isTRUE(strip_primers)) {
       in_start <- fwd_end + 1L
-      in_end   <- rev_start - 1L
+      in_end <- rev_start - 1L
       if (in_start > in_end) next
       amplicon <- Biostrings::subseq(subj, start = in_start, end = in_end)
       return(list(
@@ -162,23 +166,27 @@
 .trim_queries_to_amplicon <- function(sequences, barcode_term,
                                       max_mismatch_rate = 0.15,
                                       strip_primers = TRUE, verbose = TRUE) {
-  if (!requireNamespace("Biostrings", quietly = TRUE))
+  if (!requireNamespace("Biostrings", quietly = TRUE)) {
     stop("Package 'Biostrings' is required for barcode_term trimming. ",
-        "Install it with: BiocManager::install('Biostrings')", call. = FALSE)
+      "Install it with: BiocManager::install('Biostrings')",
+      call. = FALSE
+    )
+  }
 
   primer_info <- TaxaTools::resolve_barcode_primers(barcode_term)
-  lens        <- TaxaTools::resolve_barcode_lengths(barcode_term)
-  max_len     <- lens[["max_bp"]]
-  min_len     <- lens[["min_bp"]]
+  lens <- TaxaTools::resolve_barcode_lengths(barcode_term)
+  max_len <- lens[["max_bp"]]
+  min_len <- lens[["min_bp"]]
 
   widths <- nchar(sequences)
   needs_trim <- !is.na(widths) & widths > max_len
 
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "evaluate_reference_accessions(barcode_term = '%s'): %d of %d query sequence(s) exceed %d bp and will be checked for the amplicon region.",
       paste(barcode_term, collapse = "/"), sum(needs_trim), length(sequences), max_len
     ))
+  }
 
   if (!any(needs_trim)) {
     # Nothing was over-length, so nothing was trimmed. The attribute is set
@@ -241,8 +249,10 @@
         strip_primers = strip_primers
       ),
       error = function(e) {
-        list(sequence = NA_character_, trimmed = FALSE,
-             note = paste0("extraction_error: ", conditionMessage(e)))
+        list(
+          sequence = NA_character_, trimmed = FALSE,
+          note = paste0("extraction_error: ", conditionMessage(e))
+        )
       }
     )
     if (result$trimmed) {
@@ -311,11 +321,12 @@
 
 #' @noRd
 .resolve_expected_marker <- function(barcode_term) {
-  bt  <- barcode_term[1L]
+  bt <- barcode_term[1L]
   key <- tolower(trimws(bt))
   for (nm in names(.MIFISH_STYLE_TO_MARKER)) {
-    if (startsWith(key, nm) || grepl(nm, key, fixed = TRUE))
+    if (startsWith(key, nm) || grepl(nm, key, fixed = TRUE)) {
       return(.MIFISH_STYLE_TO_MARKER[[nm]])
+    }
   }
   bt
 }
@@ -361,7 +372,8 @@
 #' @noRd
 .resolve_trimmed_span_max <- function(barcode_term, strip_primers = FALSE) {
   primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
-                          error = function(e) NULL)
+    error = function(e) NULL
+  )
   if (!is.null(primer_info) && !is.null(primer_info$amplicon_range)) {
     primer_total_len <- nchar(primer_info$fwd) + nchar(primer_info$rev)
     inclusive <- as.numeric(primer_info$amplicon_range[2]) + primer_total_len
@@ -370,7 +382,8 @@
   # No amplicon_range: fall back to the marker's own length window, the same
   # fallback .trim_queries_to_amplicon() uses for its plausibility check.
   bt <- tryCatch(TaxaTools::resolve_barcode_lengths(barcode_term)[["max_bp"]],
-                 error = function(e) NA_real_)
+    error = function(e) NA_real_
+  )
   as.numeric(bt)
 }
 
@@ -461,7 +474,7 @@
     return(out)
   }
 
-  marker  <- .resolve_expected_marker(barcode_term)
+  marker <- .resolve_expected_marker(barcode_term)
   pattern <- .resolve_marker_pattern(marker)
 
   ann <- tryCatch(
@@ -477,7 +490,7 @@
     decline[] <- "no_annotation"
   } else {
     for (i in seq_along(accessions)) {
-      acc   <- accessions[i]
+      acc <- accessions[i]
       seq_i <- sequences[i]
       if (is.na(seq_i) || !nzchar(seq_i)) {
         decline[i] <- "no_sequence"
@@ -495,9 +508,10 @@
       # sequence i unrescued) before this fix.
       extract_one <- function() {
         sub_ann <- ann[!is.na(ann$accession) & ann$accession == acc &
-                       !is.na(ann$feature_from) & !is.na(ann$feature_to), , drop = FALSE]
-        if (nrow(sub_ann) == 0L)
+          !is.na(ann$feature_from) & !is.na(ann$feature_to), , drop = FALSE]
+        if (nrow(sub_ann) == 0L) {
           return(list(sequence = NULL, reason = "no_annotation"))
+        }
 
         is_match <- (!is.na(sub_ann$gene) & grepl(pattern, sub_ann$gene, ignore.case = TRUE)) |
           (!is.na(sub_ann$product) & grepl(pattern, sub_ann$product, ignore.case = TRUE))
@@ -506,8 +520,9 @@
         # the marker this screen was scoped to. That is a positive finding
         # about the record, not a failure to look it up -- the caller turns it
         # into "wrong marker for this barcode_term" instead of "too long".
-        if (nrow(sub_ann) == 0L)
+        if (nrow(sub_ann) == 0L) {
           return(list(sequence = NULL, reason = "marker_absent"))
+        }
 
         seq_len <- nchar(seq_i)
         span_lo <- min(sub_ann$feature_from, sub_ann$feature_to)
@@ -522,16 +537,18 @@
         # still counting itself a "rescue": the mechanism reported rescuing
         # 40 of 40 queries it had not touched (found 2026-09-02 in a real run
         # log). Refusing here keeps the count honest.
-        if (span_hi > seq_len)
+        if (span_hi > seq_len) {
           return(list(sequence = NULL, reason = "span_unusable"))
+        }
         # Bounds guard before substr(), same convention as
         # .extract_amplicon_one_tm()'s own 2026-08-30 fix: an inverted or
         # out-of-range span degrades to "not rescued" rather than producing
         # a nonsensical (or, for substr(), silently empty/truncated) result.
         from <- max(1L, span_lo - margin)
-        to   <- min(seq_len, span_hi + margin)
-        if (!is.finite(from) || !is.finite(to) || from >= to)
+        to <- min(seq_len, span_hi + margin)
+        if (!is.finite(from) || !is.finite(to) || from >= to) {
           return(list(sequence = NULL, reason = "span_unusable"))
+        }
 
         list(sequence = substr(seq_i, from, to), reason = NA_character_)
       }
@@ -555,12 +572,13 @@
       "evaluate_reference_accessions(): feature-table fallback rescued %d of %d still-over-length query sequence(s) via the record's own GBSeq annotation (marker '%s'); the rest are BLASTed at full length, subject to max_query_len.",
       n_rescued, length(accessions), marker
     ))
-    if (n_wrong_marker > 0L)
+    if (n_wrong_marker > 0L) {
       message(sprintf(
         "evaluate_reference_accessions(): %d of those carry annotated features but NO '%s' feature -- a wrong-marker record for this barcode_term, not a size problem: %s",
         n_wrong_marker, marker,
         paste(accessions[decline %in% "marker_absent"], collapse = ", ")
       ))
+    }
   }
 
   attr(out, "decline_reason") <- decline

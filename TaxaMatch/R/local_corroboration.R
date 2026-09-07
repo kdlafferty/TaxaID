@@ -99,37 +99,48 @@ utils::globalVariables(c(
 #' local_corr <- corroborate_references_locally(seq_matrix, reference_df)
 #' table(local_corr$local_tier)
 #' match_eval <- evaluate_reference_accessions(
-#'   match_driving_accessions(match_obj), cache_dir = "ref_eval_cache",
-#'   barcode_term = "MiFishU", local_corroboration = local_corr)
+#'   match_driving_accessions(match_obj),
+#'   cache_dir = "ref_eval_cache",
+#'   barcode_term = "MiFishU", local_corroboration = local_corr
+#' )
 #' match_eval <- score_reference_labels(match_eval,
-#'   local_corroboration = local_corr, overwrite = TRUE)
+#'   local_corroboration = local_corr, overwrite = TRUE
+#' )
 #' }
 #'
 #' @export
 corroborate_references_locally <- function(seq_matrix, reference_meta,
                                            min_overlap = 0.8, min_pident = 0.99,
                                            submission_window = 5L) {
-
-  if (!is.data.frame(seq_matrix))
+  if (!is.data.frame(seq_matrix)) {
     stop("seq_matrix must be a data frame (TaxaLikely::build_sequence_matrix() output).",
-         call. = FALSE)
-  if (!is.data.frame(reference_meta))
+      call. = FALSE
+    )
+  }
+  if (!is.data.frame(reference_meta)) {
     stop("reference_meta must be a data frame with a composite_id (or accession) column.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   sm_needed <- c("id_x", "id_y", "p_match", "coverage", "species.x", "species.y")
   sm_missing <- setdiff(sm_needed, names(seq_matrix))
-  if (length(sm_missing) > 0L)
-    stop(sprintf("seq_matrix is missing required column(s): %s",
-                 paste(sm_missing, collapse = ", ")), call. = FALSE)
+  if (length(sm_missing) > 0L) {
+    stop(sprintf(
+      "seq_matrix is missing required column(s): %s",
+      paste(sm_missing, collapse = ", ")
+    ), call. = FALSE)
+  }
   .unit_scalar <- function(x, nm) {
-    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0 || x > 1)
+    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0 || x > 1) {
       stop(sprintf("%s must be a single number in (0, 1].", nm), call. = FALSE)
+    }
   }
   .unit_scalar(min_overlap, "min_overlap")
   .unit_scalar(min_pident, "min_pident")
   if (!is.numeric(submission_window) || length(submission_window) != 1L ||
-      is.na(submission_window) || submission_window < 0)
+    is.na(submission_window) || submission_window < 0) {
     stop("submission_window must be a single non-negative number.", call. = FALSE)
+  }
 
   id_col <- if ("composite_id" %in% names(reference_meta)) {
     "composite_id"
@@ -140,7 +151,7 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
   }
 
   meta_acc <- .strip_acc_version(as.character(reference_meta[[id_col]]))
-  meta_ok  <- !is.na(meta_acc) & nzchar(meta_acc)
+  meta_ok <- !is.na(meta_acc) & nzchar(meta_acc)
   meta_acc <- meta_acc[meta_ok]
 
   # Dates: the screen's own lookup builder parses "%Y/%m/%d" strings (the
@@ -160,7 +171,7 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
 
   lookup <- .build_submission_batch_lookup(data.frame(
     composite_id = c(meta_acc, setdiff(all_acc, meta_acc)),
-    create_date  = c(meta_date, rep(as.Date(NA), length(setdiff(all_acc, meta_acc)))),
+    create_date = c(meta_date, rep(as.Date(NA), length(setdiff(all_acc, meta_acc)))),
     stringsAsFactors = FALSE
   ))
 
@@ -177,7 +188,7 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
     !is.na(cov) & cov >= min_overlap &
     !is.na(seq_matrix$p_match)
   pairs <- data.frame(
-    acc     = c(sm_x[keep], sm_y[keep]),
+    acc = c(sm_x[keep], sm_y[keep]),
     partner = c(sm_y[keep], sm_x[keep]),
     p_match = c(seq_matrix$p_match[keep], seq_matrix$p_match[keep]),
     stringsAsFactors = FALSE
@@ -200,25 +211,30 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
     pairs$same_batch <- logical(0L)
   }
 
-  n_consp <- tapply(pairs$partner, factor(pairs$acc, levels = all_acc),
-                    function(v) length(unique(v)))
+  n_consp <- tapply(
+    pairs$partner, factor(pairs$acc, levels = all_acc),
+    function(v) length(unique(v))
+  )
   indep <- pairs[!pairs$same_batch, , drop = FALSE]
-  n_indep <- tapply(indep$partner, factor(indep$acc, levels = all_acc),
-                    function(v) length(unique(v)))
+  n_indep <- tapply(
+    indep$partner, factor(indep$acc, levels = all_acc),
+    function(v) length(unique(v))
+  )
   # Best independent partner: highest p_match, ties broken by partner id so
   # the answer does not depend on input order.
   indep <- indep[order(indep$acc, -indep$p_match, indep$partner), , drop = FALSE]
-  best  <- indep[!duplicated(indep$acc), , drop = FALSE]
-  bi    <- match(all_acc, best$acc)
+  best <- indep[!duplicated(indep$acc), , drop = FALSE]
+  bi <- match(all_acc, best$acc)
 
   n_consp <- as.integer(ifelse(is.na(n_consp), 0L, n_consp))
   n_indep <- as.integer(ifelse(is.na(n_indep), 0L, n_indep))
-  best_p  <- best$p_match[bi]
+  best_p <- best$p_match[bi]
 
   tier <- ifelse(
     n_consp == 0L, "singleton",
     ifelse(n_indep == 0L, "same_batch_only",
-           ifelse(!is.na(best_p) & best_p >= min_pident, "corroborated", "disagree"))
+      ifelse(!is.na(best_p) & best_p >= min_pident, "corroborated", "disagree")
+    )
   )
 
   species <- rep(NA_character_, length(all_acc))
@@ -234,13 +250,13 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
   }
 
   out <- data.frame(
-    accession                 = all_acc,
-    species                   = species,
-    n_conspecific             = n_consp,
+    accession = all_acc,
+    species = species,
+    n_conspecific = n_consp,
     n_independent_conspecific = n_indep,
-    best_independent_pident   = as.numeric(best_p),
-    best_independent_partner  = best$partner[bi],
-    local_tier                = tier,
+    best_independent_pident = as.numeric(best_p),
+    best_independent_partner = best$partner[bi],
+    local_tier = tier,
     stringsAsFactors = FALSE
   )
   rownames(out) <- NULL
@@ -254,8 +270,12 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
 #' Parse create_date values in the forms this ecosystem actually produces
 #' @noRd
 .parse_create_date <- function(x) {
-  if (inherits(x, "Date")) return(x)
-  if (inherits(x, "POSIXt")) return(as.Date(x))
+  if (inherits(x, "Date")) {
+    return(x)
+  }
+  if (inherits(x, "POSIXt")) {
+    return(as.Date(x))
+  }
   x <- as.character(x)
   d <- suppressWarnings(as.Date(x, format = "%Y/%m/%d"))
   iso <- is.na(d) & !is.na(x)
@@ -295,23 +315,31 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
 match_driving_accessions <- function(match_df, score_col = "score_original",
                                      obs_col = "observation_id", species_col = "species",
                                      accession_col = "accession") {
-  if (!is.data.frame(match_df))
+  if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame.", call. = FALSE)
+  }
   cols <- c(score_col, obs_col, species_col, accession_col)
   missing_cols <- setdiff(cols, names(match_df))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("match_df is missing required column(s): %s",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "match_df is missing required column(s): %s",
+      paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
+  }
 
-  acc   <- as.character(match_df[[accession_col]])
+  acc <- as.character(match_df[[accession_col]])
   score <- suppressWarnings(as.numeric(match_df[[score_col]]))
   ok <- !is.na(acc) & nzchar(acc) & !grepl("^RESTORED_", acc) & !is.na(score)
-  if (!any(ok)) return(character(0L))
+  if (!any(ok)) {
+    return(character(0L))
+  }
 
   key <- paste(as.character(match_df[[obs_col]])[ok],
-               as.character(match_df[[species_col]])[ok], sep = "\r")
+    as.character(match_df[[species_col]])[ok],
+    sep = "\r"
+  )
   score <- score[ok]
-  acc   <- acc[ok]
-  best  <- stats::ave(score, key, FUN = max)
+  acc <- acc[ok]
+  best <- stats::ave(score, key, FUN = max)
   unique(acc[score == best])
 }

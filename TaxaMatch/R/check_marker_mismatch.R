@@ -65,7 +65,9 @@
     hit <- which(vapply(keys_norm, function(k) grepl(k, norm, fixed = TRUE), logical(1L)))
     if (length(hit) > 0L) idx <- hit[1L]
   }
-  if (!is.na(idx)) return(.MARKER_ANNOTATION_PATTERNS[[idx]])
+  if (!is.na(idx)) {
+    return(.MARKER_ANNOTATION_PATTERNS[[idx]])
+  }
 
   gsub("([][{}()+*^$|\\\\.?])", "\\\\\\1", marker)
 }
@@ -99,112 +101,132 @@
 #'   extraction fallback.
 #' @noRd
 .fetch_marker_annotation <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
-  empty <- data.frame(accession = character(0L), feature_key = character(0L),
-                      gene = character(0L), product = character(0L),
-                      feature_from = numeric(0L), feature_to = numeric(0L),
-                      stringsAsFactors = FALSE)
+  empty <- data.frame(
+    accession = character(0L), feature_key = character(0L),
+    gene = character(0L), product = character(0L),
+    feature_from = numeric(0L), feature_to = numeric(0L),
+    stringsAsFactors = FALSE
+  )
 
   .check_pkg("rentrez")
   .check_pkg("xml2")
 
-  if (!is.null(ncbi_api_key) && nzchar(ncbi_api_key))
+  if (!is.null(ncbi_api_key) && nzchar(ncbi_api_key)) {
     rentrez::set_entrez_key(ncbi_api_key)
+  }
 
   accessions <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
-  if (length(accessions) == 0L) return(empty)
+  if (length(accessions) == 0L) {
+    return(empty)
+  }
 
   batch_size <- 100L
-  batches    <- split(accessions, ceiling(seq_along(accessions) / batch_size))
-  res        <- vector("list", length(batches))
+  batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
+  res <- vector("list", length(batches))
 
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
-    if (verbose)
-      message(sprintf("Fetching marker annotation: batch %d/%d (%d accessions)...",
-                      i, length(batches), length(batch)))
+    if (verbose) {
+      message(sprintf(
+        "Fetching marker annotation: batch %d/%d (%d accessions)...",
+        i, length(batches), length(batch)
+      ))
+    }
     for (attempt in 1:3) {
-      fetched <- tryCatch({
-        xml_raw <- rentrez::entrez_fetch(
-          db = "nuccore", id = batch, rettype = "gb", retmode = "xml"
-        )
-        xml_doc <- xml2::read_xml(xml_raw)
-        seqs    <- xml2::xml_find_all(xml_doc, "//GBSeq")
-
-        do.call(rbind, lapply(seqs, function(node) {
-          acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
-          feats <- xml2::xml_find_all(
-            node,
-            paste0(
-              ".//GBFeature[GBFeature_key='gene' or GBFeature_key='CDS' or ",
-              "GBFeature_key='rRNA' or GBFeature_key='misc_feature']"
-            )
+      fetched <- tryCatch(
+        {
+          xml_raw <- rentrez::entrez_fetch(
+            db = "nuccore", id = batch, rettype = "gb", retmode = "xml"
           )
-          if (length(feats) == 0L) {
-            return(data.frame(accession = acc, feature_key = NA_character_,
-                              gene = NA_character_, product = NA_character_,
-                              feature_from = NA_real_, feature_to = NA_real_,
-                              stringsAsFactors = FALSE))
-          }
-          do.call(rbind, lapply(feats, function(feat) {
-            fkey   <- xml2::xml_text(xml2::xml_find_first(feat, "./GBFeature_key"))
-            # Name and value are read PER GBQualifier NODE, not as two
-            # independent xml_find_all() sweeps. The INSDC GBSet DTD makes
-            # GBQualifier_value OPTIONAL (`GBQualifier (GBQualifier_name,
-            # GBQualifier_value?)`), so a valueless qualifier -- `/pseudo`,
-            # `/partial`, `/trans_splicing`, `/ribosomal_slippage` -- yields
-            # one fewer value than names and shifts every subsequent value
-            # onto the wrong name. Confirmed on real NCBI data
-            # (NC_000932, Arabidopsis chloroplast): the rps12 gene/CDS
-            # features carry a valueless `/trans_splicing` BEFORE `/product`,
-            # so the old parallel-vector read returned another qualifier's
-            # text as the product. xml_find_first() over the qualifier
-            # nodeset returns one element per node (NA where the value is
-            # absent), so the two vectors stay aligned by construction.
-            quals  <- xml2::xml_find_all(feat, "./GBFeature_quals/GBQualifier")
-            qnames <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_name"))
-            qvals  <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_value"))
-            gene_val    <- stats::na.omit(qvals[qnames %in% "gene"])
-            product_val <- stats::na.omit(qvals[qnames %in% "product"])
-            # GBFeature_intervals/GBInterval's own from/to -- min/max across
-            # every interval covers a multi-interval feature (e.g. a
-            # spliced CDS) by its full outer span; NA when the feature
-            # carries no interval data at all (found, not assumed).
-            iv_from <- suppressWarnings(as.numeric(xml2::xml_text(xml2::xml_find_all(
-              feat, "./GBFeature_intervals/GBInterval/GBInterval_from"
-            ))))
-            iv_to <- suppressWarnings(as.numeric(xml2::xml_text(xml2::xml_find_all(
-              feat, "./GBFeature_intervals/GBInterval/GBInterval_to"
-            ))))
-            iv_all <- c(iv_from, iv_to)
-            data.frame(
-              accession   = acc,
-              feature_key = fkey,
-              gene        = if (length(gene_val) > 0L) gene_val[1L] else NA_character_,
-              product     = if (length(product_val) > 0L) product_val[1L] else NA_character_,
-              feature_from = if (any(!is.na(iv_all))) min(iv_all, na.rm = TRUE) else NA_real_,
-              feature_to   = if (any(!is.na(iv_all))) max(iv_all, na.rm = TRUE) else NA_real_,
-              stringsAsFactors = FALSE
+          xml_doc <- xml2::read_xml(xml_raw)
+          seqs <- xml2::xml_find_all(xml_doc, "//GBSeq")
+
+          do.call(rbind, lapply(seqs, function(node) {
+            acc <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
+            feats <- xml2::xml_find_all(
+              node,
+              paste0(
+                ".//GBFeature[GBFeature_key='gene' or GBFeature_key='CDS' or ",
+                "GBFeature_key='rRNA' or GBFeature_key='misc_feature']"
+              )
             )
+            if (length(feats) == 0L) {
+              return(data.frame(
+                accession = acc, feature_key = NA_character_,
+                gene = NA_character_, product = NA_character_,
+                feature_from = NA_real_, feature_to = NA_real_,
+                stringsAsFactors = FALSE
+              ))
+            }
+            do.call(rbind, lapply(feats, function(feat) {
+              fkey <- xml2::xml_text(xml2::xml_find_first(feat, "./GBFeature_key"))
+              # Name and value are read PER GBQualifier NODE, not as two
+              # independent xml_find_all() sweeps. The INSDC GBSet DTD makes
+              # GBQualifier_value OPTIONAL (`GBQualifier (GBQualifier_name,
+              # GBQualifier_value?)`), so a valueless qualifier -- `/pseudo`,
+              # `/partial`, `/trans_splicing`, `/ribosomal_slippage` -- yields
+              # one fewer value than names and shifts every subsequent value
+              # onto the wrong name. Confirmed on real NCBI data
+              # (NC_000932, Arabidopsis chloroplast): the rps12 gene/CDS
+              # features carry a valueless `/trans_splicing` BEFORE `/product`,
+              # so the old parallel-vector read returned another qualifier's
+              # text as the product. xml_find_first() over the qualifier
+              # nodeset returns one element per node (NA where the value is
+              # absent), so the two vectors stay aligned by construction.
+              quals <- xml2::xml_find_all(feat, "./GBFeature_quals/GBQualifier")
+              qnames <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_name"))
+              qvals <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_value"))
+              gene_val <- stats::na.omit(qvals[qnames %in% "gene"])
+              product_val <- stats::na.omit(qvals[qnames %in% "product"])
+              # GBFeature_intervals/GBInterval's own from/to -- min/max across
+              # every interval covers a multi-interval feature (e.g. a
+              # spliced CDS) by its full outer span; NA when the feature
+              # carries no interval data at all (found, not assumed).
+              iv_from <- suppressWarnings(as.numeric(xml2::xml_text(xml2::xml_find_all(
+                feat, "./GBFeature_intervals/GBInterval/GBInterval_from"
+              ))))
+              iv_to <- suppressWarnings(as.numeric(xml2::xml_text(xml2::xml_find_all(
+                feat, "./GBFeature_intervals/GBInterval/GBInterval_to"
+              ))))
+              iv_all <- c(iv_from, iv_to)
+              data.frame(
+                accession = acc,
+                feature_key = fkey,
+                gene = if (length(gene_val) > 0L) gene_val[1L] else NA_character_,
+                product = if (length(product_val) > 0L) product_val[1L] else NA_character_,
+                feature_from = if (any(!is.na(iv_all))) min(iv_all, na.rm = TRUE) else NA_real_,
+                feature_to = if (any(!is.na(iv_all))) max(iv_all, na.rm = TRUE) else NA_real_,
+                stringsAsFactors = FALSE
+              )
+            }))
           }))
-        }))
-      }, error = function(e) {
-        if (attempt < 3L) {
-          Sys.sleep(attempt * 2)
-          NULL
-        } else {
-          if (verbose) warning(sprintf(
-            "Marker-annotation fetch failed for batch %d: %s", i, conditionMessage(e)
-          ), call. = FALSE)
-          empty  # already carries feature_from/feature_to (0-row, schema-only)
+        },
+        error = function(e) {
+          if (attempt < 3L) {
+            Sys.sleep(attempt * 2)
+            NULL
+          } else {
+            if (verbose) {
+              warning(sprintf(
+                "Marker-annotation fetch failed for batch %d: %s", i, conditionMessage(e)
+              ), call. = FALSE)
+            }
+            empty # already carries feature_from/feature_to (0-row, schema-only)
+          }
         }
-      })
-      if (!is.null(fetched)) { res[[i]] <- fetched; break }
+      )
+      if (!is.null(fetched)) {
+        res[[i]] <- fetched
+        break
+      }
     }
     if (i < length(batches)) Sys.sleep(0.4)
   }
 
   out <- do.call(rbind, Filter(Negate(is.null), res))
-  if (is.null(out) || nrow(out) == 0L) return(empty)
+  if (is.null(out) || nrow(out) == 0L) {
+    return(empty)
+  }
 
   # Report each row under the accession string the CALLER asked about, not
   # NCBI's own `GBSeq_primary-accession` (which is always version-free). Both
@@ -283,28 +305,30 @@
 check_marker_mismatch <- function(accessions, expected_marker,
                                   ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                                   verbose = TRUE) {
-
-  if (!is.character(accessions) || length(accessions) == 0L)
+  if (!is.character(accessions) || length(accessions) == 0L) {
     stop("accessions must be a non-empty character vector.", call. = FALSE)
+  }
   if (!is.character(expected_marker) || length(expected_marker) != 1L ||
-      is.na(expected_marker) || !nzchar(expected_marker))
+    is.na(expected_marker) || !nzchar(expected_marker)) {
     stop("expected_marker must be a single non-NA, non-blank character string.", call. = FALSE)
+  }
 
   unique_acc <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
-  if (length(unique_acc) == 0L)
+  if (length(unique_acc) == 0L) {
     stop("No valid (non-NA, non-blank) accessions supplied.", call. = FALSE)
+  }
 
   pattern <- .resolve_marker_pattern(expected_marker)
   ann <- .fetch_marker_annotation(unique_acc, ncbi_api_key = ncbi_api_key, verbose = verbose)
 
   rows <- lapply(unique_acc, function(acc) {
     sub_ann <- ann[ann$accession == acc, , drop = FALSE]
-    genes    <- unique(stats::na.omit(sub_ann$gene))
+    genes <- unique(stats::na.omit(sub_ann$gene))
     products <- unique(stats::na.omit(sub_ann$product))
     has_annotation <- nrow(sub_ann) > 0L && any(!is.na(sub_ann$feature_key))
     match_any <- has_annotation && (
       any(grepl(pattern, genes, ignore.case = TRUE)) ||
-      any(grepl(pattern, products, ignore.case = TRUE))
+        any(grepl(pattern, products, ignore.case = TRUE))
     )
     data.frame(
       accession = acc,

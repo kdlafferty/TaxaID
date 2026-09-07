@@ -223,16 +223,15 @@ convert_taxonomy_backbone <- function(
   match_df,
   target_backbone_id,
   source_backbone_id = NULL,
-  rank_system        = c("order", "family", "genus", "species"),
-  taxon_col          = "taxon_name",
-  update_taxon_name  = TRUE,
-  original_col       = "taxon_name_original",
-  backbone_col       = "taxonomy_backbone",
-  collision_col      = "taxonomy_collision",
-  verify_fn          = TaxaTools::verify_taxon_names,
-  verbose            = TRUE
+  rank_system = c("order", "family", "genus", "species"),
+  taxon_col = "taxon_name",
+  update_taxon_name = TRUE,
+  original_col = "taxon_name_original",
+  backbone_col = "taxonomy_backbone",
+  collision_col = "taxonomy_collision",
+  verify_fn = TaxaTools::verify_taxon_names,
+  verbose = TRUE
 ) {
-
   # ---------------------------------------------------------------------------
   # Input validation
   # ---------------------------------------------------------------------------
@@ -243,12 +242,12 @@ convert_taxonomy_backbone <- function(
     stop(sprintf("Column '%s' not found in `match_df`.", taxon_col))
   }
   if (!is.numeric(target_backbone_id) || length(target_backbone_id) != 1L ||
-      is.na(target_backbone_id)) {
+    is.na(target_backbone_id)) {
     stop("`target_backbone_id` must be a single non-NA numeric value.")
   }
   if (!is.null(source_backbone_id) &&
-      (!is.numeric(source_backbone_id) || length(source_backbone_id) != 1L ||
-       is.na(source_backbone_id))) {
+    (!is.numeric(source_backbone_id) || length(source_backbone_id) != 1L ||
+      is.na(source_backbone_id))) {
     stop("`source_backbone_id` must be a single non-NA numeric value, or NULL.")
   }
 
@@ -313,11 +312,11 @@ convert_taxonomy_backbone <- function(
   # classification_ranks value contains the "|" delimiter, verify_fn's
   # response format has likely changed (or a custom verify_fn doesn't
   # follow the documented contract).
-  non_na_path  <- stats::na.omit(verified$classification_path)
+  non_na_path <- stats::na.omit(verified$classification_path)
   non_na_ranks <- stats::na.omit(verified$classification_ranks)
   if (length(rank_system) > 1L && length(non_na_path) > 0L &&
-      !any(grepl("|", non_na_path, fixed = TRUE)) &&
-      !any(grepl("|", non_na_ranks, fixed = TRUE))) {
+    !any(grepl("|", non_na_path, fixed = TRUE)) &&
+    !any(grepl("|", non_na_ranks, fixed = TRUE))) {
     warning(
       "convert_taxonomy_backbone: none of verify_fn's classification_path/",
       "classification_ranks values contain the expected '|' delimiter; ",
@@ -335,7 +334,7 @@ convert_taxonomy_backbone <- function(
   # repeated strsplit calls that the previous mapply(parse_classification_path)
   # approach incurred (one split per rank × per unique name).
   # ---------------------------------------------------------------------------
-  path_list  <- strsplit(verified$classification_path,  "|", fixed = TRUE)
+  path_list <- strsplit(verified$classification_path, "|", fixed = TRUE)
   ranks_list <- strsplit(verified$classification_ranks, "|", fixed = TRUE)
 
   # target_collapsed_list[[rk]]: parallel to target_<rk>, TRUE where
@@ -348,7 +347,9 @@ convert_taxonomy_backbone <- function(
   target_collapsed_list <- list()
   for (rk in rank_system) {
     raw_vals <- mapply(function(path, ranks) {
-      if (length(ranks) == 1L && is.na(ranks)) return(NA_character_)
+      if (length(ranks) == 1L && is.na(ranks)) {
+        return(NA_character_)
+      }
       idx <- match(rk, ranks)
       if (is.na(idx) || idx > length(path)) NA_character_ else path[[idx]]
     }, path_list, ranks_list, USE.NAMES = FALSE)
@@ -391,7 +392,7 @@ convert_taxonomy_backbone <- function(
   # ---------------------------------------------------------------------------
   # Prepare output columns
   # ---------------------------------------------------------------------------
-  if (!backbone_col  %in% names(match_df)) match_df[[backbone_col]]  <- NA_character_
+  if (!backbone_col %in% names(match_df)) match_df[[backbone_col]] <- NA_character_
   if (!collision_col %in% names(match_df)) match_df[[collision_col]] <- NA_character_
   if (update_taxon_name && !original_col %in% names(match_df)) {
     match_df[[original_col]] <- match_df[[taxon_col]]
@@ -447,25 +448,29 @@ convert_taxonomy_backbone <- function(
   .clean_changed <- c(
     verified$matched_name_clean[
       !is.na(verified$matched_name) & !is.na(verified$matched_name_clean) &
-        verified$matched_name_clean != verified$matched_name],
+        verified$matched_name_clean != verified$matched_name
+    ],
     taxon_col_clean_fallback[
       !found_mask & !is.na(taxon_col_clean_fallback) &
         !is.na(match_df[[taxon_col]]) &
-        taxon_col_clean_fallback != match_df[[taxon_col]]]
+        taxon_col_clean_fallback != match_df[[taxon_col]]
+    ]
   )
   .second <- setdiff(unique(.clean_changed), unique_names)
   .second <- .second[!is.na(.second) & nzchar(.second)]
   if (length(.second) > 0L) {
     v2 <- tryCatch(verify_fn(.second, backbone_id = target_backbone_id),
-                   error = function(e) NULL)
+      error = function(e) NULL
+    )
     if (!is.null(v2) && is.data.frame(v2) && nrow(v2) > 0L &&
-        all(c("user_supplied_name", "matched_name") %in% names(v2))) {
+      all(c("user_supplied_name", "matched_name") %in% names(v2))) {
       # Only rows we actually asked about, and compare against the CLEANED
       # match: a backbone may return an authority-bearing name
       # ("Girella nigricans (Ayres, 1860)"), which is not a rename and must
       # not be written back over an already-clean value.
       v2 <- v2[!is.na(v2$user_supplied_name) & v2$user_supplied_name %in% .second, ,
-               drop = FALSE]
+        drop = FALSE
+      ]
       v2_clean <- if (nrow(v2)) TaxaTools::clean_taxon_names(v2$matched_name) else character(0)
       ok <- nrow(v2) > 0L & !is.na(v2$matched_name) & !is.na(v2_clean) &
         nzchar(v2_clean) & v2_clean != v2$user_supplied_name
@@ -477,16 +482,21 @@ convert_taxonomy_backbone <- function(
           x
         }
         verified$matched_name_clean <- .remap(verified$matched_name_clean)
-        taxon_col_clean_fallback    <- .remap(taxon_col_clean_fallback)
-        rank_clean_fallback         <- lapply(rank_clean_fallback, .remap)
-        for (.tc in grep("^target_", names(verified), value = TRUE))
+        taxon_col_clean_fallback <- .remap(taxon_col_clean_fallback)
+        rank_clean_fallback <- lapply(rank_clean_fallback, .remap)
+        for (.tc in grep("^target_", names(verified), value = TRUE)) {
           verified[[.tc]] <- .remap(verified[[.tc]])
-        if (isTRUE(verbose))
+        }
+        if (isTRUE(verbose)) {
           message(sprintf(
             "  %d cleaned name(s) re-resolved on a second pass: %s",
             sum(ok),
-            paste(sprintf("'%s' -> '%s'", v2$user_supplied_name[ok],
-                          v2_clean[ok]), collapse = ", ")))
+            paste(sprintf(
+              "'%s' -> '%s'", v2$user_supplied_name[ok],
+              v2_clean[ok]
+            ), collapse = ", ")
+          ))
+        }
       }
     }
   }
@@ -497,18 +507,19 @@ convert_taxonomy_backbone <- function(
   # (target not NA, original not NA, and values differ)
   # ---------------------------------------------------------------------------
   changed_matrix <- matrix(FALSE,
-                            nrow     = nrow(match_df),
-                            ncol     = length(rank_cols_present),
-                            dimnames = list(NULL, rank_cols_present))
+    nrow     = nrow(match_df),
+    ncol     = length(rank_cols_present),
+    dimnames = list(NULL, rank_cols_present)
+  )
 
   for (j in seq_along(rank_cols_present)) {
-    rk          <- rank_cols_present[j]
+    rk <- rank_cols_present[j]
     target_vals <- verified[[paste0("target_", rk)]][lookup_idx]
-    orig_vals   <- original_ranks[[rk]]
-    changed_matrix[, j] <- found_mask       &
-                            !is.na(target_vals) &
-                            !is.na(orig_vals)   &
-                            (orig_vals != target_vals)
+    orig_vals <- original_ranks[[rk]]
+    changed_matrix[, j] <- found_mask &
+      !is.na(target_vals) &
+      !is.na(orig_vals) &
+      (orig_vals != target_vals)
   }
 
   n_changed_per_row <- rowSums(changed_matrix)
@@ -532,7 +543,8 @@ convert_taxonomy_backbone <- function(
   has_name <- !is.na(match_df[[taxon_col]]) & nzchar(match_df[[taxon_col]])
 
   match_df[[backbone_col]] <- ifelse(found_mask, target_label,
-                                     ifelse(has_name, source_label, NA_character_))
+    ifelse(has_name, source_label, NA_character_)
+  )
 
   collision_vec <- ifelse(has_name, source_label, NA_character_)
   collision_vec[found_mask & n_changed_per_row == 0L] <- "consistent"
@@ -548,9 +560,9 @@ convert_taxonomy_backbone <- function(
   # Replace each rank column where the target backbone provides a non-NA value.
   # ---------------------------------------------------------------------------
   for (rk in rank_cols_present) {
-    target_vals      <- verified[[paste0("target_", rk)]][lookup_idx]
-    has_target       <- found_mask & !is.na(target_vals)
-    match_df[[rk]]   <- ifelse(has_target, target_vals, rank_clean_fallback[[rk]])
+    target_vals <- verified[[paste0("target_", rk)]][lookup_idx]
+    has_target <- found_mask & !is.na(target_vals)
+    match_df[[rk]] <- ifelse(has_target, target_vals, rank_clean_fallback[[rk]])
   }
 
   # ---------------------------------------------------------------------------
@@ -563,18 +575,24 @@ convert_taxonomy_backbone <- function(
       # taxon_name_rank, without any element-wise loop.
       target_mat <- do.call(cbind, lapply(rank_system, function(rk) {
         col <- paste0("target_", rk)
-        if (col %in% names(verified)) verified[[col]]
-        else rep(NA_character_, nrow(verified))
+        if (col %in% names(verified)) {
+          verified[[col]]
+        } else {
+          rep(NA_character_, nrow(verified))
+        }
       }))
       target_collapsed_mat <- do.call(cbind, lapply(rank_system, function(rk) {
-        if (!is.null(target_collapsed_list[[rk]])) target_collapsed_list[[rk]]
-        else rep(FALSE, nrow(verified))
+        if (!is.null(target_collapsed_list[[rk]])) {
+          target_collapsed_list[[rk]]
+        } else {
+          rep(FALSE, nrow(verified))
+        }
       }))
 
       rank_col_idx <- match(match_df$taxon_name_rank, rank_system)
-      rank_vals    <- rep(NA_character_, nrow(match_df))
+      rank_vals <- rep(NA_character_, nrow(match_df))
       rank_vals_collapsed <- rep(FALSE, nrow(match_df))
-      valid        <- !is.na(lookup_idx) & !is.na(rank_col_idx)
+      valid <- !is.na(lookup_idx) & !is.na(rank_col_idx)
       if (any(valid)) {
         rank_vals[valid] <- target_mat[cbind(lookup_idx[valid], rank_col_idx[valid])]
         rank_vals_collapsed[valid] <- target_collapsed_mat[cbind(lookup_idx[valid], rank_col_idx[valid])]
@@ -607,7 +625,7 @@ convert_taxonomy_backbone <- function(
     }
 
     # Only update where we have a valid non-empty new name
-    update_mask          <- found_mask & !is.na(new_names) & nzchar(new_names)
+    update_mask <- found_mask & !is.na(new_names) & nzchar(new_names)
     match_df[[taxon_col]] <- ifelse(update_mask, new_names, taxon_col_clean_fallback)
 
     # ---------------------------------------------------------------------
@@ -646,9 +664,9 @@ convert_taxonomy_backbone <- function(
     # that predates it.
     # ---------------------------------------------------------------------
     if ("matched_rank" %in% names(verified)) {
-      matched_ranks     <- verified$matched_rank[lookup_idx]
-      update_rank_mask  <- update_mask & used_fallback &
-                            !is.na(matched_ranks) & nzchar(matched_ranks)
+      matched_ranks <- verified$matched_rank[lookup_idx]
+      update_rank_mask <- update_mask & used_fallback &
+        !is.na(matched_ranks) & nzchar(matched_ranks)
       if (any(update_rank_mask)) {
         match_df$taxon_name_rank[update_rank_mask] <- matched_ranks[update_rank_mask]
 
@@ -745,7 +763,7 @@ convert_taxonomy_backbone <- function(
         # already correctly demoted is left alone here.
         current_rank_pos <- match(match_df$taxon_name_rank, rank_system)
         demote_mask <- has_name & !is.na(current_rank_pos) &
-                        current_rank_pos > genus_pos & final_collapsed
+          current_rank_pos > genus_pos & final_collapsed
 
         if (any(demote_mask)) {
           match_df$taxon_name_rank[demote_mask] <- "genus"
@@ -769,9 +787,9 @@ convert_taxonomy_backbone <- function(
     taxon_col
   }
   has_orig_name <- !is.na(match_df[[name_ref_col]]) & nzchar(match_df[[name_ref_col]])
-  n_changed   <- sum(n_changed_per_row > 0L)
+  n_changed <- sum(n_changed_per_row > 0L)
   n_not_found <- sum(!found_mask & has_orig_name)
-  n_issues    <- n_changed + n_not_found
+  n_issues <- n_changed + n_not_found
   if (n_issues > 0L) {
     warning(sprintf(
       "%d row(s) have inconsistent taxonomy; see '%s' column.",
@@ -785,9 +803,13 @@ convert_taxonomy_backbone <- function(
   bbone_attr <- list()
   bbone_attr[[paste0(target_label, "_cols")]] <- rank_cols_present
 
-  all_rank_cols    <- intersect(names(match_df),
-                       c("kingdom", "phylum", "class", "order", "family",
-                         "genus", "species", "subspecies"))
+  all_rank_cols <- intersect(
+    names(match_df),
+    c(
+      "kingdom", "phylum", "class", "order", "family",
+      "genus", "species", "subspecies"
+    )
+  )
   source_only_cols <- setdiff(all_rank_cols, rank_cols_present)
   if (length(source_only_cols) > 0L) {
     bbone_attr[[paste0(source_label, "_cols")]] <- source_only_cols
@@ -798,8 +820,9 @@ convert_taxonomy_backbone <- function(
   msg_lines <- vapply(names(bbone_attr), function(nm) {
     sprintf("  %s: %s", nm, paste(bbone_attr[[nm]], collapse = ", "))
   }, character(1L))
-  if (verbose)
+  if (verbose) {
     message("Backbone column mapping:\n", paste(msg_lines, collapse = "\n"))
+  }
 
   match_df
 }

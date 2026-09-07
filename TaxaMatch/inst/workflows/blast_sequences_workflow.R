@@ -51,7 +51,7 @@ DEBUG_MODE <- TRUE
 # NCBI requires a contact email for remote BLAST (usage policy). An NCBI API
 # key is optional but raises the rate limit -- read from ENTREZ_KEY in
 # ~/.Renviron if set.
-MY_EMAIL   <- "lafferty@ucsb.edu"
+MY_EMAIL <- "lafferty@ucsb.edu"
 MY_API_KEY <- Sys.getenv("ENTREZ_KEY", unset = NA_character_)
 if (is.na(MY_API_KEY) || !nzchar(MY_API_KEY)) MY_API_KEY <- NULL
 
@@ -65,30 +65,31 @@ if (is.na(MY_API_KEY) || !nzchar(MY_API_KEY)) MY_API_KEY <- NULL
 # can outscore the true species by several points, and the old 2-pt window
 # silently dropped it in 4 of 7 such events observed across three real
 # reference sets).
-BARCODE_TERM        <- "12S"
-SCORE_RANGE         <- 8
-MAX_HITS            <- 10L
-MIN_SCORE           <- 95
-MIN_QUERY_COVERAGE  <- 85
+BARCODE_TERM <- "12S"
+SCORE_RANGE <- 8
+MAX_HITS <- 10L
+MIN_SCORE <- 95
+MIN_QUERY_COVERAGE <- 85
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: 5 known real PtConception 12S sequences, fetched --
   # ---- live from NCBI by accession (not bundled -- these are short lookups) -
-  message("DEBUG_MODE = TRUE -- fetching 5 known real PtConception 12S MiFish ",
-          "sequences from NCBI by accession (field-tested Session 115: 5/5 ",
-          "100% correct-species top hits).")
+  message(
+    "DEBUG_MODE = TRUE -- fetching 5 known real PtConception 12S MiFish ",
+    "sequences from NCBI by accession (field-tested Session 115: 5/5 ",
+    "100% correct-species top hits)."
+  )
 
   # true_species is added purely for THIS TUTORIAL's own honesty check below
   # (comparing BLAST's top hit against known ground truth) -- it is not part
   # of the canonical match object contract and is dropped before any
   # downstream use beyond this tutorial.
   TRUE_SPECIES <- c(
-    OQ846539 = "Clinocottus recalvus",       # snubnose sculpin
-    OQ846195 = "Rhacochilus toxotes",        # rubberlip surfperch
-    OQ846544 = "Gibbonsia montereyensis",    # crevice kelpfish
-    OQ846550 = "Oligocottus snyderi",        # tidewater sculpin
-    OQ846725 = "Embiotoca caryi"             # black perch
+    OQ846539 = "Clinocottus recalvus", # snubnose sculpin
+    OQ846195 = "Rhacochilus toxotes", # rubberlip surfperch
+    OQ846544 = "Gibbonsia montereyensis", # crevice kelpfish
+    OQ846550 = "Oligocottus snyderi", # tidewater sculpin
+    OQ846725 = "Embiotoca caryi" # black perch
   )
 
   fasta_text <- rentrez::entrez_fetch(
@@ -99,32 +100,30 @@ if (DEBUG_MODE) {
   # to join the honesty check below) -- read_sequence_table()'s own FASTA
   # path discards header identifiers in favor of generated "ASV_001"-style
   # IDs, which would lose that traceability.
-  .lines      <- strsplit(fasta_text, "\n")[[1L]]
+  .lines <- strsplit(fasta_text, "\n")[[1L]]
   .header_idx <- which(startsWith(.lines, ">"))
-  .seq_start  <- .header_idx + 1L
-  .seq_end    <- c(.header_idx[-1L] - 1L, length(.lines))
-  .ids  <- sub("^>([^ .]+).*", "\\1", .lines[.header_idx])
+  .seq_start <- .header_idx + 1L
+  .seq_end <- c(.header_idx[-1L] - 1L, length(.lines))
+  .ids <- sub("^>([^ .]+).*", "\\1", .lines[.header_idx])
   .seqs <- vapply(seq_along(.header_idx), function(i) {
     paste(.lines[.seq_start[i]:.seq_end[i]], collapse = "")
   }, character(1L))
 
   seq_df <- data.frame(
-    asv_id    = .ids,
-    sequence  = .seqs,
+    asv_id = .ids,
+    sequence = .seqs,
     abundance = 1L,
     stringsAsFactors = FALSE
   )
   seq_df <- seq_df[nzchar(seq_df$sequence), ]
-  seq_df$length       <- nchar(seq_df$sequence)
-  seq_df$true_species  <- TRUE_SPECIES[seq_df$asv_id]
+  seq_df$length <- nchar(seq_df$sequence)
+  seq_df$true_species <- TRUE_SPECIES[seq_df$asv_id]
 
   message(sprintf(
     "  Fetched %d sequence(s), lengths %d-%d bp.",
     nrow(seq_df), min(seq_df$length), max(seq_df$length)
   ))
-
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -140,12 +139,14 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real sequence data has been supplied. ",
-       "Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real sequence data has been supplied. ",
+    "Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_ptconception_blast"
 
 # ==============================================================================
@@ -176,8 +177,10 @@ message(sprintf("  Retained %d/%d sequence(s).", nrow(seq_df_filtered), nrow(seq
 # ==============================================================================
 
 message("\n--- Step 2: BLASTing sequences against NCBI nt (remote, live) ---")
-message("  This takes several minutes -- NCBI queues and processes the search ",
-        "server-side; polling continues automatically.")
+message(
+  "  This takes several minutes -- NCBI queues and processes the search ",
+  "server-side; polling continues automatically."
+)
 
 .t0 <- proc.time()[["elapsed"]]
 
@@ -232,11 +235,11 @@ if (DEBUG_MODE) {
 message("\n--- Step 3: Standardizing to the canonical match object ---")
 
 taxamatch_blast_match_obj <- TaxaMatch::standardize_match_data(
-  data                = taxamatch_blast_hits,
-  observation_id_col   = "observation_id",
-  score_col            = "score",
-  rank_system          = c("family", "genus", "species"),
-  coverage_col         = "query_coverage"
+  data = taxamatch_blast_hits,
+  observation_id_col = "observation_id",
+  score_col = "score",
+  rank_system = c("family", "genus", "species"),
+  coverage_col = "query_coverage"
 )
 
 message(sprintf(
@@ -264,13 +267,17 @@ taxamatch_blast_match_obj$true_species <-
 taxamatch_blast_match_obj_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxamatch_blast_match_obj.rds"))
 saveRDS(taxamatch_blast_match_obj, taxamatch_blast_match_obj_path)
 message(sprintf("\n  Saved: %s", taxamatch_blast_match_obj_path))
-message(sprintf("  To reuse without re-running BLAST, paste:\n    taxamatch_blast_match_obj <- readRDS(\"%s\")",
-                taxamatch_blast_match_obj_path))
+message(sprintf(
+  "  To reuse without re-running BLAST, paste:\n    taxamatch_blast_match_obj <- readRDS(\"%s\")",
+  taxamatch_blast_match_obj_path
+))
 
-message("\nWorkflow complete. Continue with TaxaLikely's sequence Layer-1 ",
-        "script (build_sequence_matrix() -> train_likelihood_model() -> ",
-        "evaluate_likelihoods()) once it exists -- see ecosystem_docs/",
-        "REENTRY_PROMPT_session124_image_acoustic_workflows.md, Stage 2.")
+message(
+  "\nWorkflow complete. Continue with TaxaLikely's sequence Layer-1 ",
+  "script (build_sequence_matrix() -> train_likelihood_model() -> ",
+  "evaluate_likelihoods()) once it exists -- see ecosystem_docs/",
+  "REENTRY_PROMPT_session124_image_acoustic_workflows.md, Stage 2."
+)
 
 # ==============================================================================
 # Output

@@ -80,8 +80,10 @@ test_that("report_match errors on empty input", {
 })
 
 test_that("report_match handles missing score column gracefully", {
-  df <- data.frame(observation_id = c("S1", "S2"), taxon_name = c("A", "B"),
-                   stringsAsFactors = FALSE)
+  df <- data.frame(
+    observation_id = c("S1", "S2"), taxon_name = c("A", "B"),
+    stringsAsFactors = FALSE
+  )
 
   sec <- report_match(df)
   expect_s3_class(sec, "report_section")

@@ -1,7 +1,7 @@
 test_that("read_animl_output() parses long-format CSV correctly", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName   = c("img001.jpg", "img001.jpg", "img002.jpg"),
+    FileName = c("img001.jpg", "img001.jpg", "img002.jpg"),
     prediction = c("Odocoileus virginianus", "Cervus canadensis", "empty"),
     confidence = c(0.93, 0.05, 0.99),
     stringsAsFactors = FALSE
@@ -12,8 +12,10 @@ test_that("read_animl_output() parses long-format CSV correctly", {
 
   expect_s3_class(out, "data.frame")
   expect_equal(nrow(out), 3L)
-  expect_true(all(c("observation_id", "score", "species", "genus",
-                    "common_name", "source_file") %in% names(out)))
+  expect_true(all(c(
+    "observation_id", "score", "species", "genus",
+    "common_name", "source_file"
+  ) %in% names(out)))
   expect_equal(out$score, c(0.93, 0.05, 0.99))
   expect_equal(out$species[1], "Odocoileus virginianus")
 })
@@ -21,7 +23,7 @@ test_that("read_animl_output() parses long-format CSV correctly", {
 test_that("read_animl_output() derives observation_id from image filename stem", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName   = "path/to/IMG_1234.JPG",
+    FileName = "path/to/IMG_1234.JPG",
     prediction = "Odocoileus virginianus",
     confidence = 0.92,
     stringsAsFactors = FALSE
@@ -35,7 +37,7 @@ test_that("read_animl_output() derives observation_id from image filename stem",
 test_that("read_animl_output() derives genus for binomial names only", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName   = c("a.jpg", "b.jpg", "c.jpg"),
+    FileName = c("a.jpg", "b.jpg", "c.jpg"),
     prediction = c("Odocoileus virginianus", "empty", "Sus scrofa"),
     confidence = c(0.90, 0.99, 0.80),
     stringsAsFactors = FALSE
@@ -51,7 +53,7 @@ test_that("read_animl_output() derives genus for binomial names only", {
 test_that("read_animl_output() min_confidence filters rows", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName   = c("img001.jpg", "img001.jpg"),
+    FileName = c("img001.jpg", "img001.jpg"),
     prediction = c("Odocoileus virginianus", "Cervus canadensis"),
     confidence = c(0.93, 0.04),
     stringsAsFactors = FALSE
@@ -66,9 +68,11 @@ test_that("read_animl_output() min_confidence filters rows", {
 test_that("read_animl_output() top_n keeps only top candidates per image", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName   = c("img001.jpg", "img001.jpg", "img001.jpg"),
-    prediction = c("Odocoileus virginianus", "Cervus canadensis",
-                   "Sus scrofa"),
+    FileName = c("img001.jpg", "img001.jpg", "img001.jpg"),
+    prediction = c(
+      "Odocoileus virginianus", "Cervus canadensis",
+      "Sus scrofa"
+    ),
     confidence = c(0.90, 0.07, 0.02),
     stringsAsFactors = FALSE
   ), tmp, row.names = FALSE)
@@ -84,7 +88,7 @@ test_that("read_animl_output() reads multiple files", {
   tmp2 <- tempfile(fileext = ".csv")
   for (f in c(tmp1, tmp2)) {
     write.csv(data.frame(
-      FileName   = "img001.jpg",
+      FileName = "img001.jpg",
       prediction = "Odocoileus virginianus",
       confidence = 0.88,
       stringsAsFactors = FALSE
@@ -102,7 +106,7 @@ test_that("read_animl_output() reads all CSVs from a directory", {
   dir.create(dir, showWarnings = FALSE)
   for (nm in c("batch1.csv", "batch2.csv")) {
     write.csv(data.frame(
-      FileName   = "img001.jpg",
+      FileName = "img001.jpg",
       prediction = "Odocoileus virginianus",
       confidence = 0.85,
       stringsAsFactors = FALSE
@@ -118,18 +122,22 @@ test_that("read_animl_output() reads all CSVs from a directory", {
 test_that("read_animl_output() errors on missing file_col", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(path = "img.jpg", pred = "Deer", conf = 0.9),
-            tmp, row.names = FALSE)
+    tmp,
+    row.names = FALSE
+  )
   on.exit(unlink(tmp))
 
-  expect_error(read_animl_output(tmp, file_col = "FileName"),
-               "missing required column 'FileName'")
+  expect_error(
+    read_animl_output(tmp, file_col = "FileName"),
+    "missing required column 'FileName'"
+  )
 })
 
 test_that("read_animl_output() errors on missing species_col or score_col", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName   = "img.jpg",
-    species    = "Odocoileus virginianus",
+    FileName = "img.jpg",
+    species = "Odocoileus virginianus",
     stringsAsFactors = FALSE
   ), tmp, row.names = FALSE)
   on.exit(unlink(tmp))
@@ -152,7 +160,7 @@ test_that("read_animl_output() errors on empty directory", {
 test_that("read_animl_output() handles empty CSV (header only)", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName   = character(0),
+    FileName = character(0),
     prediction = character(0),
     confidence = numeric(0),
     stringsAsFactors = FALSE
@@ -163,24 +171,27 @@ test_that("read_animl_output() handles empty CSV (header only)", {
   out <- suppressMessages(read_animl_output(tmp))
   expect_s3_class(out, "data.frame")
   expect_equal(nrow(out), 0L)
-  expect_true(all(c("observation_id", "score", "species", "genus",
-                    "common_name", "source_file") %in% names(out)))
+  expect_true(all(c(
+    "observation_id", "score", "species", "genus",
+    "common_name", "source_file"
+  ) %in% names(out)))
 })
 
 test_that("read_animl_output() handles custom column names", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FilePath   = "img001.jpg",
-    label      = "Odocoileus virginianus",
-    prob       = 0.91,
+    FilePath = "img001.jpg",
+    label = "Odocoileus virginianus",
+    prob = 0.91,
     stringsAsFactors = FALSE
   ), tmp, row.names = FALSE)
   on.exit(unlink(tmp))
 
   out <- read_animl_output(tmp,
-                            file_col    = "FilePath",
-                            species_col = "label",
-                            score_col   = "prob")
+    file_col    = "FilePath",
+    species_col = "label",
+    score_col   = "prob"
+  )
   expect_equal(nrow(out), 1L)
   expect_equal(out$species, "Odocoileus virginianus")
   expect_equal(out$score, 0.91)
@@ -189,9 +200,9 @@ test_that("read_animl_output() handles custom column names", {
 test_that("read_animl_output() includes common_name when column present", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
-    FileName    = "img001.jpg",
-    prediction  = "Odocoileus virginianus",
-    confidence  = 0.90,
+    FileName = "img001.jpg",
+    prediction = "Odocoileus virginianus",
+    confidence = 0.90,
     common_name = "White-tailed Deer",
     stringsAsFactors = FALSE
   ), tmp, row.names = FALSE)
@@ -205,20 +216,21 @@ test_that("read_animl_output() handles wide-format with n_candidates", {
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
     FileName = c("img001.jpg", "img002.jpg"),
-    pred1    = c("Odocoileus virginianus", "Sus scrofa"),
-    score1   = c(0.90, 0.80),
-    pred2    = c("Cervus canadensis", "Bos taurus"),
-    score2   = c(0.08, 0.15),
-    pred3    = c("empty", "empty"),
-    score3   = c(0.02, 0.05),
+    pred1 = c("Odocoileus virginianus", "Sus scrofa"),
+    score1 = c(0.90, 0.80),
+    pred2 = c("Cervus canadensis", "Bos taurus"),
+    score2 = c(0.08, 0.15),
+    pred3 = c("empty", "empty"),
+    score3 = c(0.02, 0.05),
     stringsAsFactors = FALSE
   ), tmp, row.names = FALSE)
   on.exit(unlink(tmp))
 
   out <- read_animl_output(tmp,
-                            species_col  = "pred",
-                            score_col    = "score",
-                            n_candidates = 3L)
+    species_col  = "pred",
+    score_col    = "score",
+    n_candidates = 3L
+  )
 
   # 2 images × 3 candidates = 6, but "empty" rows have score < min_confidence
   # if not filtered — with default min_confidence = 0, all 6 kept
@@ -233,15 +245,17 @@ test_that("read_animl_output() wide-format errors on missing pred/score columns"
   tmp <- tempfile(fileext = ".csv")
   write.csv(data.frame(
     FileName = "img001.jpg",
-    pred1    = "Deer",
-    score1   = 0.9,
+    pred1 = "Deer",
+    score1 = 0.9,
     stringsAsFactors = FALSE
   ), tmp, row.names = FALSE)
   on.exit(unlink(tmp))
 
   expect_error(
-    read_animl_output(tmp, species_col = "pred", score_col = "score",
-                       n_candidates = 3L),
+    read_animl_output(tmp,
+      species_col = "pred", score_col = "score",
+      n_candidates = 3L
+    ),
     "missing column"
   )
 })
@@ -253,15 +267,15 @@ test_that("read_animl_output() wide-format errors on missing pred/score columns"
 
 # ---- helper: write a minimal iNat CV JSON file ------------------------------
 write_inat_json <- function(path, obs_id = "IMG_001",
-                             scores = c(0.87, 0.07),
-                             species = c("Danaus plexippus", "Limenitis archippus"),
-                             ranks   = c("species", "species"),
-                             common  = c("Monarch", "Viceroy")) {
+                            scores = c(0.87, 0.07),
+                            species = c("Danaus plexippus", "Limenitis archippus"),
+                            ranks = c("species", "species"),
+                            common = c("Monarch", "Viceroy")) {
   results <- lapply(seq_along(scores), function(i) {
     list(
       combined_score = scores[i],
-      score          = scores[i],
-      taxon          = list(
+      score = scores[i],
+      taxon = list(
         name                   = species[i],
         rank                   = ranks[i],
         preferred_common_name  = common[i]
@@ -284,8 +298,10 @@ test_that("read_inaturalist_cv_output: parses single JSON file", {
   out <- read_inaturalist_cv_output(tmp)
   expect_s3_class(out, "data.frame")
   expect_equal(nrow(out), 2L)
-  expect_true(all(c("observation_id", "score", "species", "genus",
-                    "common_name", "taxon_rank", "source_file") %in% names(out)))
+  expect_true(all(c(
+    "observation_id", "score", "species", "genus",
+    "common_name", "taxon_rank", "source_file"
+  ) %in% names(out)))
 })
 
 test_that("read_inaturalist_cv_output: observation_id is JSON file stem", {
@@ -359,7 +375,10 @@ test_that("read_inaturalist_cv_output: reads directory of JSON files", {
   f2 <- file.path(dir, "img_b.json")
   write_inat_json(f1, scores = c(0.9))
   write_inat_json(f2, scores = c(0.8))
-  on.exit({ unlink(f1); unlink(f2) })
+  on.exit({
+    unlink(f1)
+    unlink(f2)
+  })
 
   out <- read_inaturalist_cv_output(c(f1, f2))
   expect_equal(length(unique(out$observation_id)), 2L)
@@ -380,4 +399,3 @@ test_that("read_inaturalist_cv_output: invalid score_type errors", {
     "should be one of"
   )
 })
-

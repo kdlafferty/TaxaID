@@ -59,14 +59,16 @@
 #' @noRd
 .validate_min_conf_top_n <- function(min_confidence, top_n, fn_name) {
   if (!is.numeric(min_confidence) || length(min_confidence) != 1L ||
-      is.na(min_confidence)) {
+    is.na(min_confidence)) {
     stop(sprintf("%s: `min_confidence` must be a single numeric value.", fn_name),
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!is.null(top_n)) {
     if (!is.numeric(top_n) || length(top_n) != 1L || is.na(top_n) || top_n < 1) {
       stop(sprintf("%s: `top_n` must be a single positive integer, or NULL.", fn_name),
-           call. = FALSE)
+        call. = FALSE
+      )
     }
     top_n <- as.integer(top_n)
   }
@@ -78,7 +80,9 @@
 #' \code{NULL} \code{top_n} is a no-op (returns \code{input_df} unchanged).
 #' @noRd
 .apply_top_n <- function(input_df, group_col, score_col, top_n) {
-  if (is.null(top_n) || nrow(input_df) == 0L) return(input_df)
+  if (is.null(top_n) || nrow(input_df) == 0L) {
+    return(input_df)
+  }
   groups <- split(input_df, input_df[[group_col]])
   out <- lapply(groups, function(g) {
     g[order(-g[[score_col]]), , drop = FALSE][seq_len(min(top_n, nrow(g))), , drop = FALSE]
@@ -114,10 +118,10 @@
 #' only a basename mapping to more than one distinct full path is flagged.
 #' @noRd
 .warn_duplicate_basenames <- function(paths, fn_name) {
-  paths     <- trimws(as.character(paths))
-  base      <- basename(paths)
+  paths <- trimws(as.character(paths))
+  base <- basename(paths)
   unique_pairs <- unique(data.frame(base = base, path = paths, stringsAsFactors = FALSE))
-  dup  <- unique(unique_pairs$base[duplicated(unique_pairs$base)])
+  dup <- unique(unique_pairs$base[duplicated(unique_pairs$base)])
   if (length(dup) > 0L) {
     warning(sprintf(
       paste0(

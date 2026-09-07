@@ -64,21 +64,24 @@ test_that(".extract_amplicon_one_tm() handles missing/empty sequence", {
 test_that(".trim_queries_to_amplicon() trims only over-length sequences, leaves short ones untouched", {
   skip_if_not_installed("Biostrings")
   g <- .build_genome_tm()
-  short_seq <- g$amplicon  # already barcode-length, should NOT be touched
+  short_seq <- g$amplicon # already barcode-length, should NOT be touched
   sequences <- c(g$genome, short_seq)
 
   # Primer-INCLUSIVE span (the only behaviour before 2026-09-03).
-  out <- .trim_queries_to_amplicon(sequences, barcode_term = "MiFishU",
-                                   strip_primers = FALSE, verbose = FALSE)
-  expect_equal(out[1], g$amplicon)   # over-length -> trimmed
-  expect_equal(out[2], short_seq)    # already short -> untouched
+  out <- .trim_queries_to_amplicon(sequences,
+    barcode_term = "MiFishU",
+    strip_primers = FALSE, verbose = FALSE
+  )
+  expect_equal(out[1], g$amplicon) # over-length -> trimmed
+  expect_equal(out[2], short_seq) # already short -> untouched
 
   # Default (2026-09-03): primer-STRIPPED. The genome trims to the interior,
   # and a primer-inclusive input (221 bp > max_bp) is stripped to the same
   # interior; a primer-free interior passes through unchanged.
   interior <- substr(g$amplicon, nchar(.mf_fwd) + 1L, nchar(g$amplicon) - nchar(.mf_rev))
   out_default <- .trim_queries_to_amplicon(c(g$genome, short_seq, interior),
-                                           barcode_term = "MiFishU", verbose = FALSE)
+    barcode_term = "MiFishU", verbose = FALSE
+  )
   expect_equal(as.character(out_default), c(interior, interior, interior))
   # Per-sequence trim record (2026-09-04): the genome and the inclusive input
   # were both shortened; the already-interior one was not.
@@ -89,7 +92,7 @@ test_that(".trim_queries_to_amplicon() leaves an over-length sequence unchanged 
   skip_if_not_installed("Biostrings")
   no_primer_genome <- strrep("N", 500L)
   out <- .trim_queries_to_amplicon(no_primer_genome, barcode_term = "MiFishU", verbose = FALSE)
-  expect_equal(as.character(out), no_primer_genome)  # unchanged, not dropped or NA'd
+  expect_equal(as.character(out), no_primer_genome) # unchanged, not dropped or NA'd
   expect_false(attr(out, "trimmed"))
 })
 
@@ -124,7 +127,8 @@ test_that("evaluate_reference_accessions(barcode_term =) trims an over-length qu
   local_mocked_bindings(.resolve_taxonomy_by_acc = mock_tax, .package = "TaxaMatch")
 
   suppressWarnings(evaluate_reference_accessions(
-    "ACC001", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE,
+    "ACC001",
+    cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE,
     query_span = "primer_inclusive"
   ))
   expect_equal(seen_sequence, g$amplicon)
@@ -132,10 +136,13 @@ test_that("evaluate_reference_accessions(barcode_term =) trims an over-length qu
 
   # Default query_span = "amplicon" (2026-09-03): the primers are stripped.
   suppressWarnings(evaluate_reference_accessions(
-    "ACC001", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
+    "ACC001",
+    cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
   ))
-  expect_equal(seen_sequence,
-               substr(g$amplicon, nchar(.mf_fwd) + 1L, nchar(g$amplicon) - nchar(.mf_rev)))
+  expect_equal(
+    seen_sequence,
+    substr(g$amplicon, nchar(.mf_fwd) + 1L, nchar(g$amplicon) - nchar(.mf_rev))
+  )
 })
 
 test_that(".trim_queries_to_amplicon() isolates a per-accession extraction error instead of crashing the whole batch", {
@@ -171,8 +178,8 @@ test_that(".trim_queries_to_amplicon() isolates a per-accession extraction error
     out <- .trim_queries_to_amplicon(sequences, barcode_term = "MiFishU", verbose = FALSE)
   )
 
-  expect_equal(out[1], g$genome)    # the crashing sequence: left untrimmed, not lost
-  expect_equal(out[2], g$amplicon)  # a second, unrelated sequence: still processed normally
+  expect_equal(out[1], g$genome) # the crashing sequence: left untrimmed, not lost
+  expect_equal(out[2], g$amplicon) # a second, unrelated sequence: still processed normally
 })
 
 test_that("evaluate_reference_accessions() with barcode_term = NULL (default) submits queries at full length, unchanged", {
@@ -240,7 +247,7 @@ test_that(".resolve_expected_marker() passes through a term .resolve_marker_patt
 }
 
 test_that(".extract_feature_table_fallback() extracts the matching feature's span plus margin", {
-  full_seq <- strrep("N", 800L)  # content-agnostic -- coordinate math only
+  full_seq <- strrep("N", 800L) # content-agnostic -- coordinate math only
   local_mocked_bindings(
     .fetch_marker_annotation = .mock_ann_for_fallback(feature_from = 301, feature_to = 500),
     .package = "TaxaMatch"
@@ -275,10 +282,12 @@ test_that(".extract_feature_table_fallback() leaves a sequence unchanged when th
   full_seq <- strrep("N", 800L)
   local_mocked_bindings(
     .fetch_marker_annotation = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
-      data.frame(accession = "ACC001", feature_key = NA_character_,
-                gene = NA_character_, product = NA_character_,
-                feature_from = NA_real_, feature_to = NA_real_,
-                stringsAsFactors = FALSE)
+      data.frame(
+        accession = "ACC001", feature_key = NA_character_,
+        gene = NA_character_, product = NA_character_,
+        feature_from = NA_real_, feature_to = NA_real_,
+        stringsAsFactors = FALSE
+      )
     },
     .package = "TaxaMatch"
   )
@@ -329,12 +338,14 @@ test_that(".extract_feature_table_fallback() never errors when .fetch_marker_ann
 
 test_that("evaluate_reference_accessions(barcode_term=) feature-table fallback rescues a query with no primer hits but a matching annotated feature", {
   skip_if_not_installed("Biostrings")
-  full_seq <- strrep("N", 800L)  # no MiFish-U primer sites anywhere
+  full_seq <- strrep("N", 800L) # no MiFish-U primer sites anywhere
 
   seen_sequence <- NULL
   mock_fetch <- function(accessions, want_sequence = TRUE, ncbi_api_key = NULL, verbose = TRUE) {
-    data.frame(accession = "ACC001", organism = "Testus fishus", create_date = "2020/01/01",
-              sequence = full_seq, stringsAsFactors = FALSE)
+    data.frame(
+      accession = "ACC001", organism = "Testus fishus", create_date = "2020/01/01",
+      sequence = full_seq, stringsAsFactors = FALSE
+    )
   }
   mock_blast <- function(seq_df, ...) {
     seen_sequence <<- seq_df$sequence[seq_df$asv_id == "ACC001"]
@@ -357,12 +368,13 @@ test_that("evaluate_reference_accessions(barcode_term=) feature-table fallback r
   local_mocked_bindings(.resolve_taxonomy_by_acc = mock_tax, .package = "TaxaMatch")
 
   suppressWarnings(suppressMessages(evaluate_reference_accessions(
-    "ACC001", cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
+    "ACC001",
+    cache_dir = NULL, barcode_term = "MiFishU", verbose = FALSE
   )))
 
   expect_false(is.null(seen_sequence))
   expect_lt(nchar(seen_sequence), nchar(full_seq))
-  expect_equal(nchar(seen_sequence), 400L)  # 201-600, see the unit test above
+  expect_equal(nchar(seen_sequence), 400L) # 201-600, see the unit test above
 })
 
 # ---- primer-inclusive vs variable-region length conventions (2026-09-02) -----
@@ -377,8 +389,10 @@ test_that(".resolve_trimmed_span_max() reports the primer-INCLUSIVE bound, above
   skip_if_not_installed("TaxaTools")
   span_max <- .resolve_trimmed_span_max("MiFishU")
   pi <- TaxaTools::resolve_barcode_primers("MiFishU")
-  expect_equal(span_max,
-               pi$amplicon_range[2] + nchar(pi$fwd) + nchar(pi$rev))
+  expect_equal(
+    span_max,
+    pi$amplicon_range[2] + nchar(pi$fwd) + nchar(pi$rev)
+  )
   # The regression guard: the two conventions must not be confused again.
   expect_gt(span_max, TaxaTools::resolve_barcode_lengths("MiFishU")[["max_bp"]])
 })
@@ -389,11 +403,13 @@ test_that("a correctly primer-trimmed MiFish-U query is NOT classified still-ove
   rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(pi$rev)))
   set.seed(42)
   variable <- paste(sample(c("A", "C", "G", "T"), 170L, replace = TRUE), collapse = "")
-  flank    <- paste(sample(c("A", "C", "G", "T"), 2000L, replace = TRUE), collapse = "")
+  flank <- paste(sample(c("A", "C", "G", "T"), 2000L, replace = TRUE), collapse = "")
   full_seq <- paste0(flank, pi$fwd, variable, rev_rc, flank)
 
-  trimmed <- .trim_queries_to_amplicon(full_seq, barcode_term = "MiFishU",
-                                       strip_primers = FALSE, verbose = FALSE)
+  trimmed <- .trim_queries_to_amplicon(full_seq,
+    barcode_term = "MiFishU",
+    strip_primers = FALSE, verbose = FALSE
+  )
   # Really trimmed, and to the primer-inclusive span.
   expect_lt(nchar(trimmed), nchar(full_seq))
   expect_equal(nchar(trimmed), nchar(pi$fwd) + 170L + nchar(pi$rev))
@@ -425,7 +441,7 @@ test_that(".extract_feature_table_fallback() refuses a span that does not fit th
     accessions = "ACC001", sequences = short_seq, barcode_term = "MiFishU",
     margin = 100L, verbose = FALSE
   )
-  expect_equal(as.character(out), short_seq)   # unchanged...
+  expect_equal(as.character(out), short_seq) # unchanged...
   # The span exists and MATCHES the marker -- it simply does not fit the
   # sequence in hand, which is not a wrong-marker record (2026-09-04).
   expect_equal(attr(out, "decline_reason"), "span_unusable")
@@ -434,7 +450,7 @@ test_that(".extract_feature_table_fallback() refuses a span that does not fit th
       accessions = "ACC001", sequences = short_seq, barcode_term = "MiFishU",
       margin = 100L, verbose = TRUE
     ),
-    "rescued 0 of 1"             # ...and honestly reported as no rescue
+    "rescued 0 of 1" # ...and honestly reported as no rescue
   )
 })
 
@@ -451,5 +467,5 @@ test_that(".extract_feature_table_fallback() still rescues when the span genuine
     ),
     "rescued 1 of 1"
   )
-  expect_equal(nchar(out), 1115L)  # from = 1, to = min(1200, 1115)
+  expect_equal(nchar(out), 1115L) # from = 1, to = min(1200, 1115)
 })

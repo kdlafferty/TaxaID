@@ -53,9 +53,9 @@
     ), call. = FALSE)
   }
   data.frame(
-    asv_id    = asv_ids,
-    sequence  = sequences,
-    length    = nchar(sequences),
+    asv_id = asv_ids,
+    sequence = sequences,
+    length = nchar(sequences),
     abundance = abundances,
     stringsAsFactors = FALSE
   )
@@ -173,18 +173,23 @@ read_sequence_table <- function(input_data,
                                 header_format = "none",
                                 id_prefix = "ASV") {
   # --- Input validation -------------------------------------------------------
-  if (!is.character(id_prefix) || length(id_prefix) != 1L || is.na(id_prefix))
+  if (!is.character(id_prefix) || length(id_prefix) != 1L || is.na(id_prefix)) {
     stop("id_prefix must be a single non-NA character string")
-  if (!is.character(header_format) || length(header_format) != 1L)
+  }
+  if (!is.character(header_format) || length(header_format) != 1L) {
     stop("header_format must be a single character string")
+  }
   header_format <- match.arg(header_format, c("none", "semicolon"))
-  if (!is.null(taxonomy) && !is.data.frame(taxonomy))
+  if (!is.null(taxonomy) && !is.data.frame(taxonomy)) {
     stop("taxonomy must be a data frame or NULL")
+  }
 
   # --- Dispatch by input type -------------------------------------------------
   if (is.data.frame(input_data)) {
-    result <- .read_esv_dataframe(input_data, sequence_col, observation_id_col,
-                                  abundance_cols, id_prefix)
+    result <- .read_esv_dataframe(
+      input_data, sequence_col, observation_id_col,
+      abundance_cols, id_prefix
+    )
   } else if (is.matrix(input_data)) {
     result <- .read_dada2_matrix(input_data, id_prefix)
   } else if (is.character(input_data) && length(input_data) == 1L && !is.na(input_data)) {
@@ -215,19 +220,21 @@ read_sequence_table <- function(input_data,
   # Lowercase column names for matching (case-insensitive), while the
   # original esv_df columns retain their original casing throughout.
   orig_names <- names(esv_df)
-  lc_names   <- tolower(orig_names)
+  lc_names <- tolower(orig_names)
 
   # Find sequence column
   seq_idx <- match(tolower(sequence_col), lc_names)
-  if (is.na(seq_idx))
+  if (is.na(seq_idx)) {
     stop(sprintf("Column '%s' not found in data frame", sequence_col))
+  }
   sequences <- as.character(esv_df[[seq_idx]])
 
   # Find or generate ASV IDs
   if (!is.null(observation_id_col)) {
     id_idx <- match(tolower(observation_id_col), lc_names)
-    if (is.na(id_idx))
+    if (is.na(id_idx)) {
       stop(sprintf("Column '%s' not found in data frame", observation_id_col))
+    }
     asv_ids <- as.character(esv_df[[id_idx]])
   } else {
     asv_ids <- .generate_asv_ids(nrow(esv_df), id_prefix)
@@ -237,8 +244,9 @@ read_sequence_table <- function(input_data,
     # User-specified abundance columns
     abund_idx <- match(tolower(abundance_cols), lc_names)
     missing <- abundance_cols[is.na(abund_idx)]
-    if (length(missing) > 0L)
+    if (length(missing) > 0L) {
       stop(sprintf("Abundance columns not found: %s", paste(missing, collapse = ", ")))
+    }
     abund_idx <- abund_idx[!is.na(abund_idx)]
   } else {
     # Auto-detect: numeric columns not in the known non-abundance set
@@ -295,8 +303,9 @@ read_sequence_table <- function(input_data,
 
 #' @noRd
 .read_dada2_matrix <- function(mat, id_prefix) {
-  if (is.null(colnames(mat)))
+  if (is.null(colnames(mat))) {
     stop("DADA2 sequence table must have DNA sequences as column names")
+  }
 
   sequences <- colnames(mat)
   abundances <- as.integer(colSums(mat))
@@ -309,8 +318,9 @@ read_sequence_table <- function(input_data,
 
 #' @noRd
 .read_fasta_file <- function(path, header_format, id_prefix) {
-  if (!file.exists(path))
+  if (!file.exists(path)) {
     stop(sprintf("FASTA file not found: %s", path))
+  }
 
   .check_pkg("Biostrings", "BiocManager::install('Biostrings')")
 
@@ -324,13 +334,15 @@ read_sequence_table <- function(input_data,
 #' @noRd
 .read_dna_stringset <- function(dna, header_format, id_prefix) {
   sequences <- as.character(dna)
-  headers   <- names(dna)
+  headers <- names(dna)
   n <- length(sequences)
 
   # Try to extract abundance from headers (e.g., ";size=42")
   abundances <- vapply(headers, function(h) {
     m <- regexpr(";size=(\\d+)", h)
-    if (m == -1L) return(1L)
+    if (m == -1L) {
+      return(1L)
+    }
     val <- suppressWarnings(as.integer(sub(";size=", "", regmatches(h, m))))
     if (is.na(val)) {
       warning(sprintf("Malformed ;size= value in header: %s. Using abundance = 1.", h))
@@ -379,7 +391,7 @@ read_sequence_table <- function(input_data,
   # Standard rank names for positions 2..8
   rank_names <- TaxaTools::standard_ranks
   n_ranks <- min(n_fields - 1L, length(rank_names))
-  n_cols  <- 1L + n_ranks
+  n_cols <- 1L + n_ranks
 
   # Pre-allocated character matrix, filled row by row -- avoids the O(n^2)
   # do.call(rbind, lapply(...)) growth pattern for FASTA files with many
@@ -486,8 +498,10 @@ read_sequence_table <- function(input_data,
 #'
 #' @examples
 #' \dontrun{
-#' filtered <- filter_sequences(seq_df, barcode_term = "MiFishU",
-#'                              min_abundance = 2)
+#' filtered <- filter_sequences(seq_df,
+#'   barcode_term = "MiFishU",
+#'   min_abundance = 2
+#' )
 #' }
 #'
 #' @export
@@ -497,11 +511,13 @@ filter_sequences <- function(seq_df,
                              max_length = NULL,
                              min_abundance = 2L) {
   # --- Input validation -------------------------------------------------------
-  if (!is.data.frame(seq_df))
+  if (!is.data.frame(seq_df)) {
     stop("seq_df must be a data frame")
+  }
   if (!is.null(min_abundance) &&
-      (!is.numeric(min_abundance) || length(min_abundance) != 1L || is.na(min_abundance)))
+    (!is.numeric(min_abundance) || length(min_abundance) != 1L || is.na(min_abundance))) {
     stop("min_abundance must be a single numeric value or NULL")
+  }
 
   # Guard against NA sequences before nchar() is called
   if ("sequence" %in% names(seq_df)) {
@@ -551,12 +567,18 @@ filter_sequences <- function(seq_df,
   # --- Report -----------------------------------------------------------------
   n_end <- nrow(seq_df)
   parts <- character(0L)
-  if (n_len_removed > 0L)
-    parts <- c(parts, sprintf("%d outside length range %d-%d bp",
-                              n_len_removed, len_range[1L], len_range[2L]))
-  if (n_abund_removed > 0L)
-    parts <- c(parts, sprintf("%d below min abundance %d",
-                              n_abund_removed, as.integer(min_abundance)))
+  if (n_len_removed > 0L) {
+    parts <- c(parts, sprintf(
+      "%d outside length range %d-%d bp",
+      n_len_removed, len_range[1L], len_range[2L]
+    ))
+  }
+  if (n_abund_removed > 0L) {
+    parts <- c(parts, sprintf(
+      "%d below min abundance %d",
+      n_abund_removed, as.integer(min_abundance)
+    ))
+  }
 
   if (length(parts) > 0L) {
     message(sprintf(

@@ -100,52 +100,67 @@
 #' @examples
 #' m <- data.frame(
 #'   observation_id = rep("obs1", 4),
-#'   order   = rep("Sessilia", 4),
-#'   family  = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
-#'   genus   = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
-#'   species = c("Amphibalanus improvisus", "Semibalanus balanoides",
-#'               "Balanus balanus", "Chthamalus fragilis")
+#'   order = rep("Sessilia", 4),
+#'   family = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
+#'   genus = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
+#'   species = c(
+#'     "Amphibalanus improvisus", "Semibalanus balanoides",
+#'     "Balanus balanus", "Chthamalus fragilis"
+#'   )
 #' )
 #' # Strict mode: lowest consistent rank = order (3 different families)
 #' add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"))
 #'
 #' # Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 -> family is consistent
-#' add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"),
-#'                             majority_threshold = 0.75)
+#' add_lowest_consistent_rank(m,
+#'   rank_system = c("order", "family", "genus", "species"),
+#'   majority_threshold = 0.75
+#' )
 #'
 #' @seealso [standardize_match_data()], [filter_redundant_hypotheses()]
 #' @export
 add_lowest_consistent_rank <- function(match_obj,
-                                        rank_system          = NULL,
-                                        observation_id_col   = "observation_id",
-                                        na_as_inconsistent   = FALSE,
-                                        majority_threshold   = NULL) {
-
+                                       rank_system = NULL,
+                                       observation_id_col = "observation_id",
+                                       na_as_inconsistent = FALSE,
+                                       majority_threshold = NULL) {
   # ---- validate ---------------------------------------------------------------
-  if (!is.data.frame(match_obj))
+  if (!is.data.frame(match_obj)) {
     stop("add_lowest_consistent_rank: 'match_obj' must be a data frame.",
-         call. = FALSE)
-  if (!observation_id_col %in% names(match_obj))
-    stop(sprintf("add_lowest_consistent_rank: column '%s' not found.",
-                 observation_id_col), call. = FALSE)
+      call. = FALSE
+    )
+  }
+  if (!observation_id_col %in% names(match_obj)) {
+    stop(sprintf(
+      "add_lowest_consistent_rank: column '%s' not found.",
+      observation_id_col
+    ), call. = FALSE)
+  }
   if (!is.logical(na_as_inconsistent) || length(na_as_inconsistent) != 1L ||
-      is.na(na_as_inconsistent))
+    is.na(na_as_inconsistent)) {
     stop("add_lowest_consistent_rank: 'na_as_inconsistent' must be TRUE or FALSE.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (!is.null(majority_threshold)) {
     if (!is.numeric(majority_threshold) || length(majority_threshold) != 1L ||
-        is.na(majority_threshold) || majority_threshold <= 0 ||
-        majority_threshold > 1)
+      is.na(majority_threshold) || majority_threshold <= 0 ||
+      majority_threshold > 1) {
       stop("add_lowest_consistent_rank: 'majority_threshold' must be a single ",
-           "number in (0, 1].", call. = FALSE)
-    if (majority_threshold <= 0.5)
+        "number in (0, 1].",
+        call. = FALSE
+      )
+    }
+    if (majority_threshold <= 0.5) {
       warning(
         "add_lowest_consistent_rank: majority_threshold <= 0.5 is technically ",
         "valid but semantically unusual -- with 2 candidate values evenly ",
         "split, both would qualify as 'the majority'. If you meant 'a ",
         "majority of candidates agree' in the everyday sense, use a value ",
-        "> 0.5.", call. = FALSE
+        "> 0.5.",
+        call. = FALSE
       )
+    }
   }
 
   # ---- auto-detect rank_system ------------------------------------------------
@@ -153,23 +168,29 @@ add_lowest_consistent_rank <- function(match_obj,
     # Shared with standardize_match_data.R's own auto-detection (same
     # TaxaTools::extended_ranks matching logic) rather than duplicating it.
     rank_system <- .detect_rank_cols(match_obj)
-    if (length(rank_system) < 2L)
+    if (length(rank_system) < 2L) {
       stop("add_lowest_consistent_rank: could not auto-detect rank_system. ",
-           "Supply it explicitly, e.g. ",
-           "rank_system = c(\"family\", \"genus\", \"species\").",
-           call. = FALSE)
+        "Supply it explicitly, e.g. ",
+        "rank_system = c(\"family\", \"genus\", \"species\").",
+        call. = FALSE
+      )
+    }
   }
 
   rank_system_orig <- rank_system
   rank_system <- rank_system[rank_system %in% names(match_obj)]
-  if (length(rank_system) == 0L)
+  if (length(rank_system) == 0L) {
     stop("add_lowest_consistent_rank: none of the rank_system columns found ",
-         "in match_obj.", call. = FALSE)
-  if (length(rank_system) < length(rank_system_orig))
+      "in match_obj.",
+      call. = FALSE
+    )
+  }
+  if (length(rank_system) < length(rank_system_orig)) {
     warning(sprintf(
       "add_lowest_consistent_rank: rank_system name(s) not found in match_obj and silently ignored: %s",
       paste(setdiff(rank_system_orig, rank_system), collapse = ", ")
     ), call. = FALSE)
+  }
 
   # ---- helper: extract values to compare --------------------------------------
   # In strict mode (na_as_inconsistent = FALSE): returns only non-blank values.
@@ -186,7 +207,7 @@ add_lowest_consistent_rank <- function(match_obj,
   }
 
   # ---- per-observation computation --------------------------------------------
-  obs_ids      <- match_obj[[observation_id_col]]
+  obs_ids <- match_obj[[observation_id_col]]
   # Every per-observation result below is looked up BY NAME out of a named
   # vector (per_obs_rank[obs_key] etc.), and names are always character. A
   # numeric/integer observation_id column would therefore index those vectors
@@ -196,8 +217,8 @@ add_lowest_consistent_rank <- function(match_obj,
   # NA for all three rows, where the identical data with character ids
   # returns "family"/"family"/"species". Coerced once, here, so the lookups
   # cannot silently change meaning with the column's storage type.
-  obs_key      <- as.character(obs_ids)
-  unique_ids   <- unique(obs_ids)
+  obs_key <- as.character(obs_ids)
+  unique_ids <- unique(obs_ids)
   majority_mode <- !is.null(majority_threshold)
 
   # Precomputed once (split() groups row indices by obs_ids in one pass)
@@ -216,47 +237,55 @@ add_lowest_consistent_rank <- function(match_obj,
 
     rank_results <- lapply(rank_system, function(rc) {
       vals <- .get_vals(match_obj[[rc]][idx])
-      n    <- length(vals)
+      n <- length(vals)
 
       if (n == 0L) {
         # All blank/NA — no disagreement possible
-        return(list(consistent   = TRUE,
-                    majority_val  = NA_character_,
-                    majority_frac = NA_real_))
+        return(list(
+          consistent = TRUE,
+          majority_val = NA_character_,
+          majority_frac = NA_real_
+        ))
       }
 
-      tab      <- sort(table(vals), decreasing = TRUE)
-      maj_val  <- names(tab)[1L]
+      tab <- sort(table(vals), decreasing = TRUE)
+      maj_val <- names(tab)[1L]
       maj_frac <- as.numeric(tab[1L]) / n
 
       if (majority_mode) {
         consistent <- maj_frac >= majority_threshold
       } else {
-        consistent <- length(tab) <= 1L   # strict: only one distinct value
+        consistent <- length(tab) <= 1L # strict: only one distinct value
       }
 
-      list(consistent   = consistent,
-           # Revert sentinel to NA for output -- "__MISSING__" is an internal
-           # .get_vals() marker, never a value we want to surface.
-           majority_val  = if (maj_val == "__MISSING__") NA_character_ else maj_val,
-           majority_frac = maj_frac)
+      list(
+        consistent = consistent,
+        # Revert sentinel to NA for output -- "__MISSING__" is an internal
+        # .get_vals() marker, never a value we want to surface.
+        majority_val = if (maj_val == "__MISSING__") NA_character_ else maj_val,
+        majority_frac = maj_frac
+      )
     })
     names(rank_results) <- rank_system
 
     consistent <- vapply(rank_results, `[[`, logical(1L), "consistent")
 
     if (!any(consistent)) {
-      return(list(rank          = NA_character_,
-                  majority_val  = NA_character_,
-                  majority_frac = NA_real_))
+      return(list(
+        rank = NA_character_,
+        majority_val = NA_character_,
+        majority_frac = NA_real_
+      ))
     }
 
     # rank_system is ordered coarse-to-fine, so the LAST (highest-index) TRUE
     # entry in `consistent` is the finest rank that still passes.
     best_idx <- max(which(consistent))
-    list(rank          = rank_system[best_idx],
-         majority_val  = rank_results[[best_idx]]$majority_val,
-         majority_frac = rank_results[[best_idx]]$majority_frac)
+    list(
+      rank = rank_system[best_idx],
+      majority_val = rank_results[[best_idx]]$majority_val,
+      majority_frac = rank_results[[best_idx]]$majority_frac
+    )
   })
   names(per_obs_list) <- unique_ids
 
@@ -272,26 +301,26 @@ add_lowest_consistent_rank <- function(match_obj,
   # ---- majority mode: add fraction, majority value, and outlier flag ----------
   if (majority_mode) {
     per_obs_majv <- vapply(per_obs_list, `[[`, character(1L), "majority_val")
-    per_obs_majf <- vapply(per_obs_list, `[[`, double(1L),    "majority_frac")
+    per_obs_majf <- vapply(per_obs_list, `[[`, double(1L), "majority_frac")
 
-    match_obj[["rank_majority_value"]]    <- unname(per_obs_majv[obs_key])
+    match_obj[["rank_majority_value"]] <- unname(per_obs_majv[obs_key])
     match_obj[["rank_majority_fraction"]] <- unname(per_obs_majf[obs_key])
 
     # is_rank_outlier: vectorised per rank.
     # A row is an outlier when its value at lowest_consistent_rank is non-blank
     # AND differs from the majority value for its observation.
     # Rows with blank/NA values at that rank are FALSE (missing, not contradicting).
-    is_outlier           <- rep(FALSE, nrow(match_obj))
+    is_outlier <- rep(FALSE, nrow(match_obj))
     majority_val_per_row <- unname(per_obs_majv[obs_key])
-    lcr_per_row          <- unname(per_obs_rank[obs_key])
+    lcr_per_row <- unname(per_obs_rank[obs_key])
 
     for (rk in rank_system) {
       mask <- !is.na(lcr_per_row) & lcr_per_row == rk
       if (!any(mask)) next
       row_vals <- as.character(match_obj[[rk]][mask])
       maj_vals <- majority_val_per_row[mask]
-      is_outlier[mask] <- !is.na(row_vals)  & nzchar(row_vals) &
-                          !is.na(maj_vals)  & (row_vals != maj_vals)
+      is_outlier[mask] <- !is.na(row_vals) & nzchar(row_vals) &
+        !is.na(maj_vals) & (row_vals != maj_vals)
     }
 
     match_obj[["is_rank_outlier"]] <- is_outlier

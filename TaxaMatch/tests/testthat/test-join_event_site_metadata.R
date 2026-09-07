@@ -5,14 +5,14 @@ library(testthat)
 
 .detections <- data.frame(
   observation_id = c("ASV1", "ASV1", "ASV2", "ASV3"),
-  event_id       = c("site_A", "site_B", "site_A", "blank_1"),
+  event_id = c("site_A", "site_B", "site_A", "blank_1"),
   stringsAsFactors = FALSE
 )
 
 .site_metadata <- data.frame(
-  event_id    = c("site_A", "site_B", "blank_1"),
-  lat         = c(34.41, 36.60, NA),
-  lon         = c(-119.86, -121.90, NA),
+  event_id = c("site_A", "site_B", "blank_1"),
+  lat = c(34.41, 36.60, NA),
+  lon = c(-119.86, -121.90, NA),
   observed_on = c("2026-03-14", "2026-03-15", "2026-03-14"),
   stringsAsFactors = FALSE
 )
@@ -84,11 +84,14 @@ test_that("supports custom lat_col/lon_col/observed_on_col names", {
 })
 
 test_that("observed_on_col = NULL fills observed_on with NA", {
-  meta_no_date <- data.frame(event_id = c("site_A", "site_B"),
-                             lat = c(34.41, 36.60), lon = c(-119.86, -121.90))
+  meta_no_date <- data.frame(
+    event_id = c("site_A", "site_B"),
+    lat = c(34.41, 36.60), lon = c(-119.86, -121.90)
+  )
   out <- join_event_site_metadata(
     .detections[.detections$event_id != "blank_1", ],
-    meta_no_date, observed_on_col = NULL
+    meta_no_date,
+    observed_on_col = NULL
   )
   expect_true(all(is.na(out$observed_on)))
 })

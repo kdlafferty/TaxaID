@@ -6,25 +6,28 @@
 # Use asNamespace() so tests work both via devtools::test() and on an installed
 # package (where load_all() is not in effect and ::: may fail).
 
-.filter_blast_hits  <- function(...) get(".filter_blast_hits",  envir = asNamespace("TaxaMatch"))(...)
-.attach_taxonomy    <- function(...) get(".attach_taxonomy",    envir = asNamespace("TaxaMatch"))(...)
-.empty_raw_hits     <- function(...) get(".empty_raw_hits",     envir = asNamespace("TaxaMatch"))(...)
+.filter_blast_hits <- function(...) get(".filter_blast_hits", envir = asNamespace("TaxaMatch"))(...)
+.attach_taxonomy <- function(...) get(".attach_taxonomy", envir = asNamespace("TaxaMatch"))(...)
+.empty_raw_hits <- function(...) get(".empty_raw_hits", envir = asNamespace("TaxaMatch"))(...)
 .empty_blast_result <- function(...) get(".empty_blast_result", envir = asNamespace("TaxaMatch"))(...)
-.parse_blast_xml    <- function(...) get(".parse_blast_xml",    envir = asNamespace("TaxaMatch"))(...)
+.parse_blast_xml <- function(...) get(".parse_blast_xml", envir = asNamespace("TaxaMatch"))(...)
 .parse_taxonomy_xml <- function(...) get(".parse_taxonomy_xml", envir = asNamespace("TaxaMatch"))(...)
-.parse_lat_lon      <- function(...) get(".parse_lat_lon",      envir = asNamespace("TaxaMatch"))(...)
+.parse_lat_lon <- function(...) get(".parse_lat_lon", envir = asNamespace("TaxaMatch"))(...)
 .resolve_locations_by_acc <- function(...) get(".resolve_locations_by_acc", envir = asNamespace("TaxaMatch"))(...)
-.split_batches_by_length  <- function(...) get(".split_batches_by_length",  envir = asNamespace("TaxaMatch"))(...)
+.split_batches_by_length <- function(...) get(".split_batches_by_length", envir = asNamespace("TaxaMatch"))(...)
 
 # --- Helpers ------------------------------------------------------------------
 
 make_seq_df <- function(n = 5) {
   data.frame(
-    asv_id   = paste0("ASV_", seq_len(n)),
-    sequence = vapply(seq_len(n), function(i)
-      paste0(sample(c("A", "C", "G", "T"), 150, replace = TRUE), collapse = ""),
-      character(1L)),
-    length    = rep(150L, n),
+    asv_id = paste0("ASV_", seq_len(n)),
+    sequence = vapply(
+      seq_len(n), function(i) {
+        paste0(sample(c("A", "C", "G", "T"), 150, replace = TRUE), collapse = "")
+      },
+      character(1L)
+    ),
+    length = rep(150L, n),
     abundance = rep(10L, n),
     stringsAsFactors = FALSE
   )
@@ -32,24 +35,24 @@ make_seq_df <- function(n = 5) {
 
 make_raw_hits <- function() {
   data.frame(
-    qseqid   = c(rep("ASV_1", 6), rep("ASV_2", 4)),
-    sseqid   = paste0("ref_", 1:10),
-    sacc     = paste0("ACC_", 1:10),
-    staxids  = as.character(9000:9009),
-    pident   = c(99, 97, 96, 95, 90, 80,   98, 97, 96, 70),
+    qseqid = c(rep("ASV_1", 6), rep("ASV_2", 4)),
+    sseqid = paste0("ref_", 1:10),
+    sacc = paste0("ACC_", 1:10),
+    staxids = as.character(9000:9009),
+    pident = c(99, 97, 96, 95, 90, 80, 98, 97, 96, 70),
     # Aligned-region length -- this is what the subject-length filter checks
     # (not `slen`, the raw subject accession length -- see below).
-    length   = c(170, 180, 500, 170, 170, 170, 170, 700, 170, 170),
+    length = c(170, 180, 500, 170, 170, 170, 170, 700, 170, 170),
     # Deliberately decoupled from `length`: rows 1 and 7 simulate a real hit
     # against a long mitogenome/partial-genome record (slen in the
     # thousands) whose ALIGNED region is still a correctly-sized, in-range
     # match (length = 170) -- exactly the real Ameiurus melas case that
     # motivated checking `length` instead of `slen`.
-    slen     = c(16512, 180, 500, 170, 170, 170, 16513, 700, 170, 170),
-    qcovs    = c(95, 92, 90, 88, 85, 50,   95, 90, 88, 30),
+    slen = c(16512, 180, 500, 170, 170, 170, 16513, 700, 170, 170),
+    qcovs = c(95, 92, 90, 88, 85, 50, 95, 90, 88, 30),
     mismatch = rep(1L, 10),
-    gapopen  = rep(0L, 10),
-    evalue   = rep(1e-50, 10),
+    gapopen = rep(0L, 10),
+    evalue = rep(1e-50, 10),
     bitscore = rep(200, 10),
     stringsAsFactors = FALSE
   )
@@ -70,8 +73,10 @@ test_that("blast_sequences rejects missing required columns", {
 })
 
 test_that("blast_sequences rejects empty data frame", {
-  df <- data.frame(asv_id = character(), sequence = character(),
-                   stringsAsFactors = FALSE)
+  df <- data.frame(
+    asv_id = character(), sequence = character(),
+    stringsAsFactors = FALSE
+  )
   expect_error(blast_sequences(df), "no rows")
 })
 
@@ -154,7 +159,8 @@ test_that("score window keeps hits within range of top hit", {
   # ASV_2 top hit = 98, score_range = 2 → keep >= 96
 
   result <- .filter_blast_hits(
-    hits, min_score = 70, min_query_coverage = 0,
+    hits,
+    min_score = 70, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 2, max_hits = 20,
     verbose = FALSE
   )
@@ -170,7 +176,8 @@ test_that("min_score filter removes low-scoring hits", {
   hits <- make_raw_hits()
 
   result <- .filter_blast_hits(
-    hits, min_score = 90, min_query_coverage = 0,
+    hits,
+    min_score = 90, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 100, max_hits = 100,
     verbose = FALSE
   )
@@ -182,7 +189,8 @@ test_that("query coverage filter removes partial alignments", {
   hits <- make_raw_hits()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 80,
+    hits,
+    min_score = 0, min_query_coverage = 80,
     subject_len_range = NULL, score_range = 100, max_hits = 100,
     verbose = FALSE
   )
@@ -194,7 +202,8 @@ test_that("subject length filter removes hits whose aligned region is out of ran
   hits <- make_raw_hits()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0,
+    hits,
+    min_score = 0, min_query_coverage = 0,
     subject_len_range = c(100L, 300L), score_range = 100, max_hits = 100,
     verbose = FALSE
   )
@@ -215,7 +224,8 @@ test_that("subject length filter checks the aligned region, not the raw subject 
   hits <- make_raw_hits()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0,
+    hits,
+    min_score = 0, min_query_coverage = 0,
     subject_len_range = c(100L, 300L), score_range = 100, max_hits = 100,
     verbose = FALSE
   )
@@ -229,7 +239,8 @@ test_that("max_hits safety cap limits per-query results", {
   hits <- make_raw_hits()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0,
+    hits,
+    min_score = 0, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 100, max_hits = 2,
     verbose = FALSE
   )
@@ -247,17 +258,17 @@ make_raw_hits_dup_taxa <- function() {
   # (2 hits, a real but different congener). Without a per-taxon cap,
   # taxid 1000's redundant hits alone would fill a small max_hits budget.
   data.frame(
-    qseqid   = rep("ASV_1", 6),
-    sseqid   = paste0("ref_", 1:6),
-    sacc     = paste0("ACC_", 1:6),
-    staxids  = c("1000", "1000", "1000", "1000", "2000", "2000"),
-    pident   = c(100, 100, 99.9, 99.8,   98, 97.5),
-    length   = rep(170L, 6),
-    slen     = rep(170L, 6),
-    qcovs    = rep(95, 6),
+    qseqid = rep("ASV_1", 6),
+    sseqid = paste0("ref_", 1:6),
+    sacc = paste0("ACC_", 1:6),
+    staxids = c("1000", "1000", "1000", "1000", "2000", "2000"),
+    pident = c(100, 100, 99.9, 99.8, 98, 97.5),
+    length = rep(170L, 6),
+    slen = rep(170L, 6),
+    qcovs = rep(95, 6),
     mismatch = rep(1L, 6),
-    gapopen  = rep(0L, 6),
-    evalue   = rep(1e-50, 6),
+    gapopen = rep(0L, 6),
+    evalue = rep(1e-50, 6),
     bitscore = rep(200, 6),
     stringsAsFactors = FALSE
   )
@@ -267,7 +278,8 @@ test_that("max_hits_per_taxon caps hits per taxon before max_hits applies", {
   hits <- make_raw_hits_dup_taxa()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0,
+    hits,
+    min_score = 0, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 100, max_hits = 3,
     max_hits_per_taxon = 1L, verbose = FALSE
   )
@@ -284,22 +296,24 @@ test_that("max_hits_per_taxon always keeps each taxon's own best hit", {
   hits <- make_raw_hits_dup_taxa()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0,
+    hits,
+    min_score = 0, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 100, max_hits = 100,
     max_hits_per_taxon = 1L, verbose = FALSE
   )
 
   taxid_1000_row <- result[result$staxids == "1000", ]
   taxid_2000_row <- result[result$staxids == "2000", ]
-  expect_equal(taxid_1000_row$pident, 100)   # best of 100, 100, 99.9, 99.8
-  expect_equal(taxid_2000_row$pident, 98)    # best of 98, 97.5
+  expect_equal(taxid_1000_row$pident, 100) # best of 100, 100, 99.9, 99.8
+  expect_equal(taxid_2000_row$pident, 98) # best of 98, 97.5
 })
 
 test_that("max_hits_per_taxon = NULL preserves existing behavior (no cap)", {
   hits <- make_raw_hits_dup_taxa()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0,
+    hits,
+    min_score = 0, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 100, max_hits = 100,
     max_hits_per_taxon = NULL, verbose = FALSE
   )
@@ -321,25 +335,25 @@ test_that("max_hits_per_taxon groups by resolved species when staxids is NA (the
   # "species A" mitogenome deposits (should collapse to 1 under the cap)
   # and 2 real "species B" hits (should keep its own best).
   hits <- data.frame(
-    qseqid   = rep("ASV_1", 6),
-    sseqid   = paste0("ref_", 1:6),
-    sacc     = paste0("ACC_", 1:6),
-    staxids  = NA_character_,
-    pident   = c(100, 100, 99.9, 99.8,   96, 95.5),
-    length   = rep(170L, 6),
-    slen     = rep(170L, 6),
-    qcovs    = rep(95, 6),
+    qseqid = rep("ASV_1", 6),
+    sseqid = paste0("ref_", 1:6),
+    sacc = paste0("ACC_", 1:6),
+    staxids = NA_character_,
+    pident = c(100, 100, 99.9, 99.8, 96, 95.5),
+    length = rep(170L, 6),
+    slen = rep(170L, 6),
+    qcovs = rep(95, 6),
     mismatch = rep(1L, 6),
-    gapopen  = rep(0L, 6),
-    evalue   = rep(1e-50, 6),
+    gapopen = rep(0L, 6),
+    evalue = rep(1e-50, 6),
     bitscore = rep(200, 6),
     stringsAsFactors = FALSE
   )
 
   fake_tax_map <- data.frame(
     accession = paste0("ACC_", 1:6),
-    genus     = rep("Genus", 6),
-    species   = c(rep("Genus species_a", 4), rep("Genus species_b", 2)),
+    genus = rep("Genus", 6),
+    species = c(rep("Genus species_a", 4), rep("Genus species_b", 2)),
     stringsAsFactors = FALSE
   )
 
@@ -349,14 +363,16 @@ test_that("max_hits_per_taxon groups by resolved species when staxids is NA (the
   )
 
   basic <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0, subject_len_range = NULL,
+    hits,
+    min_score = 0, min_query_coverage = 0, subject_len_range = NULL,
     score_range = 100, max_hits = 100, verbose = FALSE, stage = "basic"
   )
   basic <- .attach_taxonomy(basic, ncbi_api_key = NULL, verbose = FALSE)
   basic$.taxon_group <- basic$species
 
   result <- .filter_blast_hits(
-    basic, min_score = 0, min_query_coverage = 0, subject_len_range = NULL,
+    basic,
+    min_score = 0, min_query_coverage = 0, subject_len_range = NULL,
     score_range = 100, max_hits = 100, max_hits_per_taxon = 1L,
     taxon_group_col = ".taxon_group", stage = "rest", verbose = FALSE
   )
@@ -372,7 +388,8 @@ test_that("combined filters work together", {
   hits <- make_raw_hits()
 
   result <- .filter_blast_hits(
-    hits, min_score = 90, min_query_coverage = 85,
+    hits,
+    min_score = 90, min_query_coverage = 85,
     subject_len_range = c(100L, 300L), score_range = 2, max_hits = 3,
     verbose = FALSE
   )
@@ -392,7 +409,8 @@ test_that("empty hits return empty data frame", {
   hits <- .empty_raw_hits()
 
   result <- .filter_blast_hits(
-    hits, min_score = 0, min_query_coverage = 0,
+    hits,
+    min_score = 0, min_query_coverage = 0,
     subject_len_range = NULL, score_range = 2, max_hits = 20,
     verbose = FALSE
   )
@@ -637,21 +655,30 @@ test_that("blast_server_rejected is FALSE for an empty-hits (genuine no-match) r
 # One-hit fixture returned by every mocked "successful" .parse_blast_xml()
 # call -- content doesn't matter for these tests, only that a batch
 # completed and produced something.
-.cb_one_hit <- data.frame(qseqid = "Q", sseqid = "HIT", pident = 99,
-                          stringsAsFactors = FALSE)
+.cb_one_hit <- data.frame(
+  qseqid = "Q", sseqid = "HIT", pident = 99,
+  stringsAsFactors = FALSE
+)
 
 test_that(".blast_remote() circuit breaker trips after 2 consecutive CPU-budget rejections (weighted 2x each)", {
   submit_calls <- 0L
-  poll_calls   <- 0L
+  poll_calls <- 0L
   testthat::local_mocked_bindings(
-    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
-    .blast_poll   = function(...) { poll_calls   <<- poll_calls   + 1L; .reject_msg },
+    .blast_submit = function(...) {
+      submit_calls <<- submit_calls + 1L
+      "RID_FAKE"
+    },
+    .blast_poll = function(...) {
+      poll_calls <<- poll_calls + 1L
+      .reject_msg
+    },
     .blast_rate_limit_sleep = function(...) invisible(NULL),
     .package = "TaxaMatch"
   )
 
   result <- suppressWarnings(TaxaMatch:::.blast_remote(
-    .cb_seq_df(5L), database = "nt", program = "blastn", megablast = FALSE,
+    .cb_seq_df(5L),
+    database = "nt", program = "blastn", megablast = FALSE,
     max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
     verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
   ))
@@ -670,7 +697,7 @@ test_that(".blast_remote() circuit breaker does NOT trip on 2 consecutive plain 
     .blast_submit = function(...) "RID_FAKE",
     .blast_poll = function(...) {
       poll_calls <<- poll_calls + 1L
-      if (poll_calls <= 2L) NULL else "<BlastOutput></BlastOutput>"  # timeout, timeout, then success
+      if (poll_calls <= 2L) NULL else "<BlastOutput></BlastOutput>" # timeout, timeout, then success
     },
     .parse_blast_xml = function(...) .cb_one_hit,
     .blast_rate_limit_sleep = function(...) invisible(NULL),
@@ -678,7 +705,8 @@ test_that(".blast_remote() circuit breaker does NOT trip on 2 consecutive plain 
   )
 
   result <- suppressWarnings(TaxaMatch:::.blast_remote(
-    .cb_seq_df(3L), database = "nt", program = "blastn", megablast = FALSE,
+    .cb_seq_df(3L),
+    database = "nt", program = "blastn", megablast = FALSE,
     max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
     verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
   ))
@@ -690,25 +718,29 @@ test_that(".blast_remote() circuit breaker does NOT trip on 2 consecutive plain 
   # of which pass it's in) -- confirms the ordinary non-tripped retry
   # mechanism still runs exactly as before this feature existed.
   expect_equal(poll_calls, 5L)
-  expect_null(attr(result, "failed_query_ids"))  # both timeouts recovered on retry
+  expect_null(attr(result, "failed_query_ids")) # both timeouts recovered on retry
 })
 
 test_that(".blast_remote() circuit breaker trips after 3 consecutive plain timeouts", {
   submit_calls <- 0L
   testthat::local_mocked_bindings(
-    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
-    .blast_poll = function(...) NULL,  # every batch times out
+    .blast_submit = function(...) {
+      submit_calls <<- submit_calls + 1L
+      "RID_FAKE"
+    },
+    .blast_poll = function(...) NULL, # every batch times out
     .blast_rate_limit_sleep = function(...) invisible(NULL),
     .package = "TaxaMatch"
   )
 
   result <- suppressWarnings(TaxaMatch:::.blast_remote(
-    .cb_seq_df(5L), database = "nt", program = "blastn", megablast = FALSE,
+    .cb_seq_df(5L),
+    database = "nt", program = "blastn", megablast = FALSE,
     max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
     verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
   ))
 
-  expect_equal(submit_calls, 3L)  # trips exactly at the 3rd consecutive timeout
+  expect_equal(submit_calls, 3L) # trips exactly at the 3rd consecutive timeout
   expect_true(attr(result, "circuit_breaker_tripped"))
   expect_setequal(attr(result, "failed_query_ids"), paste0("Q", 1:5))
 })
@@ -730,7 +762,8 @@ test_that(".blast_remote() circuit breaker counter resets on a successful batch 
   )
 
   result <- suppressWarnings(TaxaMatch:::.blast_remote(
-    .cb_seq_df(6L), database = "nt", program = "blastn", megablast = FALSE,
+    .cb_seq_df(6L),
+    database = "nt", program = "blastn", megablast = FALSE,
     max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
     verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
   ))
@@ -745,14 +778,18 @@ test_that(".blast_remote() circuit breaker counter resets on a successful batch 
 test_that(".blast_remote() skips the retry pass entirely once the circuit breaker trips", {
   submit_calls <- 0L
   testthat::local_mocked_bindings(
-    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
-    .blast_poll   = function(...) .reject_msg,
+    .blast_submit = function(...) {
+      submit_calls <<- submit_calls + 1L
+      "RID_FAKE"
+    },
+    .blast_poll = function(...) .reject_msg,
     .blast_rate_limit_sleep = function(...) invisible(NULL),
     .package = "TaxaMatch"
   )
 
   suppressWarnings(TaxaMatch:::.blast_remote(
-    .cb_seq_df(5L), database = "nt", program = "blastn", megablast = FALSE,
+    .cb_seq_df(5L),
+    database = "nt", program = "blastn", megablast = FALSE,
     max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
     verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 3L
   ))
@@ -765,14 +802,18 @@ test_that(".blast_remote() skips the retry pass entirely once the circuit breake
 test_that(".blast_remote(max_consecutive_batch_failures = Inf) disables the breaker and the retry pass still runs", {
   submit_calls <- 0L
   testthat::local_mocked_bindings(
-    .blast_submit = function(...) { submit_calls <<- submit_calls + 1L; "RID_FAKE" },
-    .blast_poll   = function(...) .reject_msg,  # every batch rejected, every retry too
+    .blast_submit = function(...) {
+      submit_calls <<- submit_calls + 1L
+      "RID_FAKE"
+    },
+    .blast_poll = function(...) .reject_msg, # every batch rejected, every retry too
     .blast_rate_limit_sleep = function(...) invisible(NULL),
     .package = "TaxaMatch"
   )
 
   result <- suppressWarnings(TaxaMatch:::.blast_remote(
-    .cb_seq_df(3L), database = "nt", program = "blastn", megablast = FALSE,
+    .cb_seq_df(3L),
+    database = "nt", program = "blastn", megablast = FALSE,
     max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
     verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = Inf
   ))
@@ -788,12 +829,18 @@ test_that(".blast_remote(max_consecutive_batch_failures = Inf) disables the brea
 
 test_that("blast_sequences() validates max_consecutive_batch_failures", {
   seq_df <- data.frame(asv_id = "A1", sequence = "ACGT", stringsAsFactors = FALSE)
-  expect_error(blast_sequences(seq_df, max_consecutive_batch_failures = 0),
-              "max_consecutive_batch_failures")
-  expect_error(blast_sequences(seq_df, max_consecutive_batch_failures = NA),
-              "max_consecutive_batch_failures")
-  expect_error(blast_sequences(seq_df, max_consecutive_batch_failures = "3"),
-              "max_consecutive_batch_failures")
+  expect_error(
+    blast_sequences(seq_df, max_consecutive_batch_failures = 0),
+    "max_consecutive_batch_failures"
+  )
+  expect_error(
+    blast_sequences(seq_df, max_consecutive_batch_failures = NA),
+    "max_consecutive_batch_failures"
+  )
+  expect_error(
+    blast_sequences(seq_df, max_consecutive_batch_failures = "3"),
+    "max_consecutive_batch_failures"
+  )
 })
 
 # ==============================================================================
@@ -830,7 +877,7 @@ test_that(".split_batches_by_length() isolates a single very long query into its
 })
 
 test_that(".split_batches_by_length() closes a batch on the cumulative bp cap before the count cap is reached", {
-  lens <- rep(4000, 10)  # well under batch_size = 20, but 3 x 4000bp > 10000
+  lens <- rep(4000, 10) # well under batch_size = 20, but 3 x 4000bp > 10000
   out <- .split_batches_by_length(lens, batch_size = 20L, max_batch_bp = 10000L)
   expect_equal(length(out), 5L)
   expect_true(all(vapply(out, length, integer(1L)) == 2L))
@@ -838,7 +885,7 @@ test_that(".split_batches_by_length() closes a batch on the cumulative bp cap be
 })
 
 test_that(".split_batches_by_length() falls back to the count cap alone when bp never approaches max_batch_bp", {
-  lens <- rep(50, 45)  # typical short-amplicon case: bp budget never binds
+  lens <- rep(50, 45) # typical short-amplicon case: bp budget never binds
   out <- .split_batches_by_length(lens, batch_size = 20L, max_batch_bp = 100000L)
   expected <- unname(split(seq_len(45), ceiling(seq_len(45) / 20)))
   expect_equal(out, expected)
@@ -870,7 +917,8 @@ test_that("blast_sequences(max_batch_bp=) submits a long-query-isolating batch p
     stringsAsFactors = FALSE
   )
   suppressWarnings(blast_sequences(
-    seq_df, method = "remote", batch_size = 20L, max_batch_bp = 10000L,
+    seq_df,
+    method = "remote", batch_size = 20L, max_batch_bp = 10000L,
     email = "test@example.com", verbose = FALSE
   ))
   # Q2 (40000bp) rides alone -- 3 batches total: [Q1], [Q2], [Q3] (Q1/Q3
@@ -933,19 +981,19 @@ test_that("parse_taxonomy_xml extracts lineage correctly", {
 .gbseq_source_xml_with_valueless_qualifier <- function() {
   paste0(
     '<?xml version="1.0"?><GBSet><GBSeq>',
-    '<GBSeq_primary-accession>AVFR01000002</GBSeq_primary-accession>',
-    '<GBSeq_feature-table><GBFeature>',
-    '<GBFeature_key>source</GBFeature_key><GBFeature_quals>',
-    '<GBQualifier><GBQualifier_name>organism</GBQualifier_name>',
-    '<GBQualifier_value>microbial mat metagenome</GBQualifier_value></GBQualifier>',
+    "<GBSeq_primary-accession>AVFR01000002</GBSeq_primary-accession>",
+    "<GBSeq_feature-table><GBFeature>",
+    "<GBFeature_key>source</GBFeature_key><GBFeature_quals>",
+    "<GBQualifier><GBQualifier_name>organism</GBQualifier_name>",
+    "<GBQualifier_value>microbial mat metagenome</GBQualifier_value></GBQualifier>",
     # valueless qualifier, exactly as GenBank emits /environmental_sample
-    '<GBQualifier><GBQualifier_name>environmental_sample</GBQualifier_name></GBQualifier>',
-    '<GBQualifier><GBQualifier_name>country</GBQualifier_name>',
-    '<GBQualifier_value>USA: Massachusetts</GBQualifier_value></GBQualifier>',
-    '<GBQualifier><GBQualifier_name>lat_lon</GBQualifier_name>',
-    '<GBQualifier_value>41.5758 N 70.6392 W</GBQualifier_value></GBQualifier>',
-    '</GBFeature_quals></GBFeature></GBSeq_feature-table>',
-    '</GBSeq></GBSet>'
+    "<GBQualifier><GBQualifier_name>environmental_sample</GBQualifier_name></GBQualifier>",
+    "<GBQualifier><GBQualifier_name>country</GBQualifier_name>",
+    "<GBQualifier_value>USA: Massachusetts</GBQualifier_value></GBQualifier>",
+    "<GBQualifier><GBQualifier_name>lat_lon</GBQualifier_name>",
+    "<GBQualifier_value>41.5758 N 70.6392 W</GBQualifier_value></GBQualifier>",
+    "</GBFeature_quals></GBFeature></GBSeq_feature-table>",
+    "</GBSeq></GBSet>"
   )
 }
 

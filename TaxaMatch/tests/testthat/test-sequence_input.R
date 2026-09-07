@@ -129,7 +129,7 @@ test_that("read_sequence_table uses explicit abundance_cols", {
     sequence = c("ACGT", "TGCA"),
     count_a = c(10L, 5L),
     count_b = c(20L, 15L),
-    other_num = c(99.5, 88.3),  # should NOT be summed
+    other_num = c(99.5, 88.3), # should NOT be summed
     stringsAsFactors = FALSE
   )
 
@@ -186,8 +186,10 @@ test_that("read_sequence_table joins taxonomy by sequence", {
 
 test_that("read_sequence_table warns when taxonomy has no joinable column", {
   mat <- make_dada2_seqtab(n_asvs = 2)
-  tax <- data.frame(id = c("a", "b"), family = c("A", "B"),
-                    stringsAsFactors = FALSE)
+  tax <- data.frame(
+    id = c("a", "b"), family = c("A", "B"),
+    stringsAsFactors = FALSE
+  )
 
   expect_warning(
     result <- read_sequence_table(mat, taxonomy = tax),

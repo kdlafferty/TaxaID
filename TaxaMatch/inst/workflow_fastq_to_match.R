@@ -17,9 +17,9 @@
 # ==============================================================================
 
 library(TaxaMatch)
-library(TaxaLikely)   # for infer_exclude_predicted() in Step 3b
+library(TaxaLikely) # for infer_exclude_predicted() in Step 3b
 BiocManager::install("dada2")
-library(dada2)        # only needed for Step 0 (DADA2 denoising)
+library(dada2) # only needed for Step 0 (DADA2 denoising)
 # ==============================================================================
 # STEP 0 — DADA2 DENOISING (prerequisite)
 # ==============================================================================
@@ -29,13 +29,13 @@ library(dada2)        # only needed for Step 0 (DADA2 denoising)
 # library(dada2)
 #
 # # 0a. Set paths to your FASTQ files
-fastq_path <- file.choose()  # select any file in your FASTQ directory, then extract the directory
+fastq_path <- file.choose() # select any file in your FASTQ directory, then extract the directory
 fastq_path <- dirname(fastq_path)
-fwd_files  <- sort(list.files(fastq_path, pattern = "_R1_001.fastq", full.names = TRUE))
-rev_files  <- sort(list.files(fastq_path, pattern = "_R2_001.fastq", full.names = TRUE))
+fwd_files <- sort(list.files(fastq_path, pattern = "_R1_001.fastq", full.names = TRUE))
+rev_files <- sort(list.files(fastq_path, pattern = "_R2_001.fastq", full.names = TRUE))
 
-fwd_files<-fwd_files[1:1]
-rev_files<-rev_files[1:1]
+fwd_files <- fwd_files[1:1]
+rev_files <- rev_files[1:1]
 #
 #
 #
@@ -46,11 +46,11 @@ plotQualityProfile(rev_files[1:1])
 # # 0c. Filter and trim
 filt_path <- file.path(fastq_path, "filtered")
 filt_out <- filterAndTrim(
-fwd_files, file.path(filt_path, basename(fwd_files)),
-rev_files, file.path(filt_path, basename(rev_files)),
-truncLen = c(200, 180),  # adjust based on quality profiles
-maxN = 0, maxEE = c(2, 2), truncQ = 2, rm.phix = TRUE,
-compress = TRUE, multithread = TRUE
+  fwd_files, file.path(filt_path, basename(fwd_files)),
+  rev_files, file.path(filt_path, basename(rev_files)),
+  truncLen = c(200, 180), # adjust based on quality profiles
+  maxN = 0, maxEE = c(2, 2), truncQ = 2, rm.phix = TRUE,
+  compress = TRUE, multithread = TRUE
 )
 filt_out
 #
@@ -63,8 +63,10 @@ dada_fwd <- dada(file.path(filt_path, basename(fwd_files)), err = err_fwd, multi
 dada_rev <- dada(file.path(filt_path, basename(rev_files)), err = err_rev, multithread = TRUE)
 #
 # # 0f. Merge paired reads
-merged <- mergePairs(dada_fwd, file.path(filt_path, basename(fwd_files)),
-                      dada_rev, file.path(filt_path, basename(rev_files)))
+merged <- mergePairs(
+  dada_fwd, file.path(filt_path, basename(fwd_files)),
+  dada_rev, file.path(filt_path, basename(rev_files))
+)
 #
 # # 0g. Build sequence table
 seqtab <- makeSequenceTable(merged)
@@ -93,10 +95,12 @@ seq_df <- read_sequence_table(seqtab)
 # seq_df <- read_sequence_table("my_sequences.fasta", taxonomy = tax_table)
 
 # Inspect
-message(sprintf("%d unique ASVs, lengths %d-%d bp, abundances %d-%d",
-                nrow(seq_df),
-                min(seq_df$length), max(seq_df$length),
-                min(seq_df$abundance), max(seq_df$abundance)))
+message(sprintf(
+  "%d unique ASVs, lengths %d-%d bp, abundances %d-%d",
+  nrow(seq_df),
+  min(seq_df$length), max(seq_df$length),
+  min(seq_df$abundance), max(seq_df$abundance)
+))
 
 # Check the length distribution — useful for setting filter bounds
 table(cut(seq_df$length, breaks = seq(0, max(seq_df$length) + 50, by = 10)))
@@ -112,8 +116,8 @@ table(cut(seq_df$length, breaks = seq(0, max(seq_df$length) + 50, by = 10)))
 # Option A: Auto-detect length bounds from barcode marker
 filtered_df <- filter_sequences(
   seq_df,
-  barcode_term  = "MiFish",  # auto-resolves to 100-600 bp for 12S MiFish
-  min_abundance = 100           # remove singletons
+  barcode_term  = "MiFish", # auto-resolves to 100-600 bp for 12S MiFish
+  min_abundance = 100 # remove singletons
 )
 
 # Option B: Specify bounds manually
@@ -163,11 +167,11 @@ blast_hits <- blast_sequences(
   method = "remote", database = "nt",
   score_range = 8, max_hits = 20, min_score = 70,
   min_query_coverage = 85, barcode_term = NULL,
-  megablast = FALSE,          # explicit, not NCBI's implicit web-UI default
-  max_hits_per_taxon = 3,     # caps one dominant reference species/accession
-                              # from crowding out real congener candidates;
-                              # requires resolve_taxonomy = TRUE (below) to
-                              # be effective on remote results
+  megablast = FALSE, # explicit, not NCBI's implicit web-UI default
+  max_hits_per_taxon = 3, # caps one dominant reference species/accession
+  # from crowding out real congener candidates;
+  # requires resolve_taxonomy = TRUE (below) to
+  # be effective on remote results
   email = "lafferty@ucsb.edu", resolve_taxonomy = TRUE
 )
 
@@ -204,10 +208,16 @@ message(sprintf(
 # Returns TRUE (no XR_/XM_ found), FALSE (predicted seqs present), or NA (all
 # custom/non-NCBI accessions — cannot determine).
 exclude_pred <- TaxaLikely::infer_exclude_predicted(blast_hits)
-message(sprintf("infer_exclude_predicted: %s",
-                if (is.na(exclude_pred)) "NA (cannot determine from accessions)"
-                else if (exclude_pred) "TRUE (no predicted sequences found)"
-                else "FALSE (predicted sequences present in reference)"))
+message(sprintf(
+  "infer_exclude_predicted: %s",
+  if (is.na(exclude_pred)) {
+    "NA (cannot determine from accessions)"
+  } else if (exclude_pred) {
+    "TRUE (no predicted sequences found)"
+  } else {
+    "FALSE (predicted sequences present in reference)"
+  }
+))
 
 
 # ==============================================================================
@@ -216,9 +226,9 @@ message(sprintf("infer_exclude_predicted: %s",
 # Convert BLAST output to the canonical TaxaMatch format expected by TaxaLikely.
 
 match_obj <- standardize_match_data(
-  data           = blast_hits,
-  observation_id_col  = "observation_id",
-  score_col      = "score",
+  data = blast_hits,
+  observation_id_col = "observation_id",
+  score_col = "score",
   rank_system = c("family", "genus", "species")
 )
 
@@ -232,10 +242,12 @@ match_obj <- standardize_match_data(
 
 match_obj <- filter_redundant_hypotheses(match_obj)
 
-message(sprintf("Final match object: %d rows, %d queries, %d taxa",
-                nrow(match_obj),
-                length(unique(match_obj$observation_id)),
-                length(unique(match_obj$taxon_name))))
+message(sprintf(
+  "Final match object: %d rows, %d queries, %d taxa",
+  nrow(match_obj),
+  length(unique(match_obj$observation_id)),
+  length(unique(match_obj$taxon_name))
+))
 
 
 # ==============================================================================
@@ -246,7 +258,7 @@ message(sprintf("Final match object: %d rows, %d queries, %d taxa",
 #   - TaxaAssign: assign_taxa_llm() or compute_posterior()
 
 saveRDS(match_obj, "match_obj.rds")
-match_obj$taxon_name|>unique()
+match_obj$taxon_name |> unique()
 
 # ==============================================================================
 # LOCAL BLAST SETUP INSTRUCTIONS

@@ -7,10 +7,10 @@
 # ==============================================================================
 
 library(TaxaMatch)
-#estuarine fishes 12S: JVB1846-MiFishU-esv-data.csv
-#California intertidal fishes 12S:JVB2844-MiFishU-esv-data
-#Palmyra fishes (big) 12S: JVB1950-MiFishU-esv-data
-#Palmyra COI: Palmyra2019-UniCOI-esv-data
+# estuarine fishes 12S: JVB1846-MiFishU-esv-data.csv
+# California intertidal fishes 12S:JVB2844-MiFishU-esv-data
+# Palmyra fishes (big) 12S: JVB1950-MiFishU-esv-data
+# Palmyra COI: Palmyra2019-UniCOI-esv-data
 # ------------------------------------------------------------------------------
 # Option A: Load from file interactively (opens file chooser)
 # Use the MiFish eDNA file:
@@ -19,19 +19,19 @@ library(TaxaMatch)
 # ------------------------------------------------------------------------------
 
 match_obj <- standardize_match_data(
-  data            = NULL,        # opens file.choose()
-  observation_id_col   = "ESVId",
-  score_col       = "PercMatch",
+  data = NULL, # opens file.choose()
+  observation_id_col = "ESVId",
+  score_col = "PercMatch",
   # rank_system = NULL        # auto-detected from Kingdom...Species columns
-  lowercase_names = TRUE         # default: all col names → lowercase
-)|>
-  dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name))%>%#get rid of subspecies, authors, etc.
+  lowercase_names = TRUE # default: all col names → lowercase
+) |>
+  dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name)) |> # get rid of subspecies, authors, etc.
   add_lowest_consistent_rank(
     match_obj,
     rank_system = c("kingdom", "phylum", "class", "order", "family", "genus", "species")
   )
-#smaller dataset for testing workflows.
-#match_obj<-match_obj|>dplyr::filter(family=="Cottidae")
+# smaller dataset for testing workflows.
+# match_obj<-match_obj|>dplyr::filter(family=="Cottidae")
 
 # ------------------------------------------------------------------------------
 # Option B: Supply the file path directly (non-interactive)

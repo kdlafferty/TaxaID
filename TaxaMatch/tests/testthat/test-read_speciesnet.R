@@ -1,6 +1,6 @@
 .write_speciesnet_json <- function(predictions_json_body) {
   tmp <- tempfile(fileext = ".json")
-  writeLines(paste0('{"predictions":[', predictions_json_body, ']}'), tmp)
+  writeLines(paste0('{"predictions":[', predictions_json_body, "]}"), tmp)
   tmp
 }
 
@@ -109,7 +109,7 @@ test_that("read_speciesnet_output() include_coverage computes bbox area from the
     '{"category":"2","conf":0.99,"bbox":[0,0,0.9,0.9]},',
     '{"category":"1","conf":0.40,"bbox":[0.0,0.0,0.5,0.5]},',
     '{"category":"1","conf":0.85,"bbox":[0.1,0.1,0.2,0.5]}',
-    ']}'
+    "]}"
   ))
   on.exit(unlink(tmp))
 
@@ -154,10 +154,14 @@ test_that("read_speciesnet_output() reads all JSON files in a directory", {
   d <- tempfile()
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE))
-  writeLines('{"predictions":[{"filepath":"a.jpg","classifications":{"classes":["x;mammalia;;;;;mammal"],"scores":[0.5]}}]}',
-             file.path(d, "batch1.json"))
-  writeLines('{"predictions":[{"filepath":"b.jpg","classifications":{"classes":["x;aves;;;;;bird"],"scores":[0.6]}}]}',
-             file.path(d, "batch2.json"))
+  writeLines(
+    '{"predictions":[{"filepath":"a.jpg","classifications":{"classes":["x;mammalia;;;;;mammal"],"scores":[0.5]}}]}',
+    file.path(d, "batch1.json")
+  )
+  writeLines(
+    '{"predictions":[{"filepath":"b.jpg","classifications":{"classes":["x;aves;;;;;bird"],"scores":[0.6]}}]}',
+    file.path(d, "batch2.json")
+  )
 
   out <- read_speciesnet_output(d)
   expect_equal(nrow(out), 2L)

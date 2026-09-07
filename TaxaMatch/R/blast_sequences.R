@@ -383,22 +383,27 @@ blast_sequences <- function(seq_df,
                             poll_max_wait = 1800,
                             max_consecutive_batch_failures = 3L,
                             verbose = TRUE) {
-
   # --- Input validation -------------------------------------------------------
-  if (!is.data.frame(seq_df))
+  if (!is.data.frame(seq_df)) {
     stop("seq_df must be a data frame")
-  if (!"asv_id" %in% names(seq_df) || !"sequence" %in% names(seq_df))
+  }
+  if (!"asv_id" %in% names(seq_df) || !"sequence" %in% names(seq_df)) {
     stop("seq_df must contain 'asv_id' and 'sequence' columns")
-  if (nrow(seq_df) == 0L)
+  }
+  if (nrow(seq_df) == 0L) {
     stop("seq_df has no rows")
+  }
   na_asv <- is.na(seq_df$asv_id) | !nzchar(seq_df$asv_id)
   na_seq <- is.na(seq_df$sequence) | !nzchar(seq_df$sequence)
-  if (any(na_asv))
+  if (any(na_asv)) {
     stop(sprintf("seq_df has %d row(s) with empty or NA asv_id. All sequences must have identifiers.", sum(na_asv)))
-  if (any(na_seq))
+  }
+  if (any(na_seq)) {
     stop(sprintf(
       "seq_df has %d row(s) with empty or NA sequence. Remove before calling blast_sequences().",
-      sum(na_seq)))
+      sum(na_seq)
+    ))
+  }
 
   # Sanitize asv_id: '>' or newlines would corrupt FASTA formatting
   bad_ids <- grepl("[>\n\r]", seq_df$asv_id)
@@ -410,41 +415,53 @@ blast_sequences <- function(seq_df,
   method <- match.arg(method, c("remote", "local"))
 
   if (!is.numeric(score_range) || length(score_range) != 1L || is.na(score_range) ||
-      score_range < 0)
+    score_range < 0) {
     stop("score_range must be a non-negative numeric value")
+  }
   if (!is.numeric(max_hits) || length(max_hits) != 1L || is.na(max_hits) ||
-      max_hits < 1L)
+    max_hits < 1L) {
     stop("max_hits must be a positive integer")
+  }
   if (!is.null(max_hits_per_taxon) &&
-      (!is.numeric(max_hits_per_taxon) || length(max_hits_per_taxon) != 1L ||
-       is.na(max_hits_per_taxon) || max_hits_per_taxon < 1L))
+    (!is.numeric(max_hits_per_taxon) || length(max_hits_per_taxon) != 1L ||
+      is.na(max_hits_per_taxon) || max_hits_per_taxon < 1L)) {
     stop("max_hits_per_taxon must be NULL or a positive integer")
-  if (!is.numeric(min_score) || length(min_score) != 1L || is.na(min_score))
+  }
+  if (!is.numeric(min_score) || length(min_score) != 1L || is.na(min_score)) {
     stop("min_score must be a single numeric value")
+  }
   if (!is.numeric(min_query_coverage) || length(min_query_coverage) != 1L ||
-      is.na(min_query_coverage))
+    is.na(min_query_coverage)) {
     stop("min_query_coverage must be a single numeric value")
-  if (!is.logical(megablast) || length(megablast) != 1L || is.na(megablast))
+  }
+  if (!is.logical(megablast) || length(megablast) != 1L || is.na(megablast)) {
     stop("megablast must be TRUE or FALSE")
+  }
   if (!is.logical(resolve_taxonomy) || length(resolve_taxonomy) != 1L ||
-      is.na(resolve_taxonomy))
+    is.na(resolve_taxonomy)) {
     stop("resolve_taxonomy must be TRUE or FALSE")
+  }
   if (!is.logical(resolve_location) || length(resolve_location) != 1L ||
-      is.na(resolve_location))
+    is.na(resolve_location)) {
     stop("resolve_location must be TRUE or FALSE")
+  }
   if (!is.numeric(max_target_seqs) || length(max_target_seqs) != 1L ||
-      is.na(max_target_seqs) || max_target_seqs < 1L)
+    is.na(max_target_seqs) || max_target_seqs < 1L) {
     stop("max_target_seqs must be a positive integer")
+  }
   if (!is.numeric(batch_size) || length(batch_size) != 1L ||
-      is.na(batch_size) || batch_size < 1L)
+    is.na(batch_size) || batch_size < 1L) {
     stop("batch_size must be a positive integer")
+  }
   if (!is.numeric(max_batch_bp) || length(max_batch_bp) != 1L ||
-      is.na(max_batch_bp) || max_batch_bp < 1)
+    is.na(max_batch_bp) || max_batch_bp < 1) {
     stop("max_batch_bp must be a positive number (Inf to disable)")
+  }
   if (!is.numeric(max_consecutive_batch_failures) ||
-      length(max_consecutive_batch_failures) != 1L ||
-      is.na(max_consecutive_batch_failures) || max_consecutive_batch_failures < 1L)
+    length(max_consecutive_batch_failures) != 1L ||
+    is.na(max_consecutive_batch_failures) || max_consecutive_batch_failures < 1L) {
     stop("max_consecutive_batch_failures must be a positive number (Inf to disable)")
+  }
 
   # Empty-string env-var defaults (email/ncbi_api_key) mean "not supplied".
   if (identical(email, "")) email <- NULL
@@ -455,7 +472,7 @@ blast_sequences <- function(seq_df,
   max_target_seqs <- as.integer(max_target_seqs)
   batch_size <- as.integer(batch_size)
 
-  if (max_target_seqs < max_hits)
+  if (max_target_seqs < max_hits) {
     warning(sprintf(
       paste0(
         "max_target_seqs (%d) is smaller than max_hits (%d); BLAST will ",
@@ -464,29 +481,35 @@ blast_sequences <- function(seq_df,
       ),
       max_target_seqs, max_hits
     ))
+  }
 
   # --- Resolve subject length bounds ------------------------------------------
   subject_len_range <- NULL
   if (!is.null(barcode_term) || !is.null(min_subject_length) ||
-      !is.null(max_subject_length)) {
+    !is.null(max_subject_length)) {
     subject_len_range <- TaxaTools::resolve_barcode_lengths(
       barcode_term, min_subject_length, max_subject_length
     )
-    if (verbose)
-      message(sprintf("Subject length filter: %d-%d bp",
-                      subject_len_range[1L], subject_len_range[2L]))
+    if (verbose) {
+      message(sprintf(
+        "Subject length filter: %d-%d bp",
+        subject_len_range[1L], subject_len_range[2L]
+      ))
+    }
   }
 
   # --- Run BLAST --------------------------------------------------------------
   if (method == "remote") {
-    if (is.null(email))
+    if (is.null(email)) {
       warning(
         "NCBI requires an email address for remote BLAST. ",
         "Set email = 'you@example.com' to comply with their usage policy."
       )
+    }
     raw_hits <- .blast_remote(
       seq_df, database, program, megablast, max_target_seqs, batch_size,
-      email, ncbi_api_key, verbose, max_wait = poll_max_wait,
+      email, ncbi_api_key, verbose,
+      max_wait = poll_max_wait,
       max_consecutive_batch_failures = max_consecutive_batch_failures,
       max_batch_bp = max_batch_bp
     )
@@ -513,9 +536,12 @@ blast_sequences <- function(seq_df,
     return(empty)
   }
 
-  if (verbose)
-    message(sprintf("Raw BLAST hits: %d across %d queries",
-                    nrow(raw_hits), length(unique(raw_hits$qseqid))))
+  if (verbose) {
+    message(sprintf(
+      "Raw BLAST hits: %d across %d queries",
+      nrow(raw_hits), length(unique(raw_hits$qseqid))
+    ))
+  }
 
   # --- Filter hits ------------------------------------------------------------
   taxonomy_already_attached <- FALSE
@@ -533,7 +559,8 @@ blast_sequences <- function(seq_df,
     # remote results), same as before this feature existed.
     basic <- .filter_blast_hits(
       raw_hits, min_score, min_query_coverage, subject_len_range,
-      score_range, max_hits, verbose = verbose, stage = "basic"
+      score_range, max_hits,
+      verbose = verbose, stage = "basic"
     )
 
     if (nrow(basic) == 0L) {
@@ -547,13 +574,16 @@ blast_sequences <- function(seq_df,
     basic <- .attach_taxonomy(basic, ncbi_api_key, verbose)
 
     sp <- if ("species" %in% names(basic)) basic$species else rep(NA_character_, nrow(basic))
-    ge <- if ("genus"   %in% names(basic)) basic$genus   else rep(NA_character_, nrow(basic))
+    ge <- if ("genus" %in% names(basic)) basic$genus else rep(NA_character_, nrow(basic))
     st <- if ("staxids" %in% names(basic)) basic$staxids else rep(NA_character_, nrow(basic))
     basic$.taxon_group <- ifelse(
       !is.na(sp) & nzchar(sp), sp,
       ifelse(!is.na(ge) & nzchar(ge), ge,
-             ifelse(!is.na(st) & nzchar(st), st,
-                    paste0("__unresolved_", seq_len(nrow(basic))))))
+        ifelse(!is.na(st) & nzchar(st), st,
+          paste0("__unresolved_", seq_len(nrow(basic)))
+        )
+      )
+    )
 
     filtered <- .filter_blast_hits(
       basic, min_score, min_query_coverage, subject_len_range,
@@ -585,14 +615,14 @@ blast_sequences <- function(seq_df,
 
   # --- Rename to TaxaMatch convention -----------------------------------------
   out <- data.frame(
-    observation_id        = filtered$qseqid,
-    accession        = if ("sacc" %in% names(filtered)) filtered$sacc else filtered$sseqid,
-    score            = filtered$pident,
-    evalue           = if ("evalue" %in% names(filtered)) filtered$evalue else NA_real_,
-    bitscore         = if ("bitscore" %in% names(filtered)) filtered$bitscore else NA_real_,
+    observation_id = filtered$qseqid,
+    accession = if ("sacc" %in% names(filtered)) filtered$sacc else filtered$sseqid,
+    score = filtered$pident,
+    evalue = if ("evalue" %in% names(filtered)) filtered$evalue else NA_real_,
+    bitscore = if ("bitscore" %in% names(filtered)) filtered$bitscore else NA_real_,
     alignment_length = if ("length" %in% names(filtered)) filtered$length else NA_integer_,
-    query_coverage   = if ("qcovs" %in% names(filtered)) filtered$qcovs else NA_real_,
-    subject_length   = if ("slen" %in% names(filtered)) filtered$slen else NA_integer_,
+    query_coverage = if ("qcovs" %in% names(filtered)) filtered$qcovs else NA_real_,
+    subject_length = if ("slen" %in% names(filtered)) filtered$slen else NA_integer_,
     # Where within the subject/reference sequence this hit's alignment
     # actually falls -- distinct from subject_length (the reference's TOTAL
     # length). Needed to tell whether two hits against the same long subject
@@ -601,8 +631,8 @@ blast_sequences <- function(seq_df,
     # (subject_start > subject_end on the minus strand, matching raw BLAST
     # tabular convention) -- a consumer needing a directionless span should
     # use pmin()/pmax() on them.
-    subject_start    = if ("sstart" %in% names(filtered)) filtered$sstart else NA_integer_,
-    subject_end      = if ("send" %in% names(filtered)) filtered$send else NA_integer_,
+    subject_start = if ("sstart" %in% names(filtered)) filtered$sstart else NA_integer_,
+    subject_end = if ("send" %in% names(filtered)) filtered$send else NA_integer_,
     stringsAsFactors = FALSE
   )
 
@@ -619,9 +649,12 @@ blast_sequences <- function(seq_df,
     accessions <- unique(out$accession)
     accessions <- accessions[!is.na(accessions) & nchar(accessions) > 0L]
     if (length(accessions) > 0L) {
-      if (verbose)
-        message(sprintf("Resolving location metadata for %d unique accessions...",
-                        length(accessions)))
+      if (verbose) {
+        message(sprintf(
+          "Resolving location metadata for %d unique accessions...",
+          length(accessions)
+        ))
+      }
       loc_map <- .resolve_locations_by_acc(accessions, ncbi_api_key, verbose)
       # Version-suffix-stripped join key on both sides -- GBSeq_primary-accession
       # is already version-free, but out$accession/BLAST's sacc is not guaranteed
@@ -633,24 +666,25 @@ blast_sequences <- function(seq_df,
         out <- merge(out, loc_map, by = ".join_acc", all.x = TRUE, sort = FALSE)
         out$.join_acc <- NULL
       } else {
-        out$lat     <- NA_real_
-        out$lon     <- NA_real_
+        out$lat <- NA_real_
+        out$lon <- NA_real_
         out$country <- NA_character_
       }
     } else {
-      out$lat     <- NA_real_
-      out$lon     <- NA_real_
+      out$lat <- NA_real_
+      out$lon <- NA_real_
       out$country <- NA_character_
     }
   }
 
   rownames(out) <- NULL
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "Final: %d hits across %d queries (%d unique taxa)",
       nrow(out), length(unique(out$observation_id)),
       length(unique(stats::na.omit(out$species)))
     ))
+  }
 
   # --- Attach report_params for report_match() --------------------------------
   attr(out, "report_params") <- list(
@@ -712,19 +746,22 @@ blast_sequences <- function(seq_df,
 #' @noRd
 .split_batches_by_length <- function(seq_lens, batch_size, max_batch_bp) {
   n <- length(seq_lens)
-  if (n == 0L) return(list())
-  if (!is.finite(max_batch_bp))
+  if (n == 0L) {
+    return(list())
+  }
+  if (!is.finite(max_batch_bp)) {
     return(unname(split(seq_len(n), ceiling(seq_len(n) / batch_size))))
+  }
 
   solo_threshold <- max_batch_bp / 2
   batches <- list()
-  cur     <- integer(0L)
-  cur_bp  <- 0
+  cur <- integer(0L)
+  cur_bp <- 0
 
   flush <- function() {
     if (length(cur) > 0L) {
       batches[[length(batches) + 1L]] <<- cur
-      cur    <<- integer(0L)
+      cur <<- integer(0L)
       cur_bp <<- 0
     }
   }
@@ -740,10 +777,10 @@ blast_sequences <- function(seq_df,
     }
 
     if (length(cur) > 0L &&
-        (length(cur) >= batch_size || (cur_bp + len_i) > max_batch_bp)) {
+      (length(cur) >= batch_size || (cur_bp + len_i) > max_batch_bp)) {
       flush()
     }
-    cur    <- c(cur, i)
+    cur <- c(cur, i)
     cur_bp <- cur_bp + len_i
   }
   flush()
@@ -761,7 +798,6 @@ blast_sequences <- function(seq_df,
   # Split sequences into batches, respecting both batch_size (count) and
   # max_batch_bp (cumulative length) -- see .split_batches_by_length()'s own
   # documentation.
-  n <- nrow(seq_df)
   batches <- .split_batches_by_length(nchar(seq_df$sequence), batch_size, max_batch_bp)
 
   all_hits <- vector("list", length(batches))
@@ -784,13 +820,18 @@ blast_sequences <- function(seq_df,
     fasta_lines <- paste0(">", batch_df$asv_id, "\n", batch_df$sequence)
     query_str <- paste(fasta_lines, collapse = "\n")
 
-    if (verbose)
-      message(sprintf("Submitting batch %d/%d (%d sequences)...",
-                      i, length(batches), length(idx)))
+    if (verbose) {
+      message(sprintf(
+        "Submitting batch %d/%d (%d sequences)...",
+        i, length(batches), length(idx)
+      ))
+    }
 
     # --- Submit (PUT) ---------------------------------------------------------
-    rid <- .blast_submit(base_url, query_str, database, program, megablast,
-                         max_target_seqs, email, ncbi_api_key, entrez_query)
+    rid <- .blast_submit(
+      base_url, query_str, database, program, megablast,
+      max_target_seqs, email, ncbi_api_key, entrez_query
+    )
 
     failure_weight <- 0
 
@@ -798,7 +839,6 @@ blast_sequences <- function(seq_df,
       warning(sprintf("Batch %d/%d: BLAST submission failed. Skipping.", i, length(batches)))
       failed_batches <- c(failed_batches, i)
       failure_weight <- 1
-
     } else {
       if (verbose) message(sprintf("  RID: %s -- polling for results...", rid))
 
@@ -809,7 +849,6 @@ blast_sequences <- function(seq_df,
         warning(sprintf("Batch %d/%d: No results retrieved (RID: %s). Skipping.", i, length(batches), rid))
         failed_batches <- c(failed_batches, i)
         failure_weight <- 1
-
       } else if (.blast_server_rejected(result_text)) {
         # NCBI can report Status=READY (a real, successfully-retrieved XML
         # document) while having aborted the actual computation server-side
@@ -823,7 +862,6 @@ blast_sequences <- function(seq_df,
         ))
         failed_batches <- c(failed_batches, i)
         failure_weight <- 2
-
       } else {
         # --- Parse XML output -----------------------------------------------------
         hits <- .parse_blast_xml(result_text)
@@ -838,7 +876,7 @@ blast_sequences <- function(seq_df,
     if (consec_failure_score >= max_consecutive_batch_failures) {
       breaker_tripped <- TRUE
       n_remaining <- length(batches) - i
-      if (verbose)
+      if (verbose) {
         message(sprintf(
           paste0(
             "NCBI appears to be rate-limiting or CPU-throttling this IP ",
@@ -850,6 +888,7 @@ blast_sequences <- function(seq_df,
           consec_failure_score, max_consecutive_batch_failures, i, length(batches),
           n_remaining
         ))
+      }
       break
     }
 
@@ -885,11 +924,12 @@ blast_sequences <- function(seq_df,
   # processing time and avoids the 10-minute poll ceiling.
   if (!breaker_tripped && length(failed_batches) > 0L) {
     retry_batch_size <- max(1L, batch_size %/% 2L)
-    if (verbose)
+    if (verbose) {
       message(sprintf(
         "  Retrying %d failed batch(es) with batch_size = %d...",
         length(failed_batches), retry_batch_size
       ))
+    }
 
     still_failed <- integer(0)
     still_failed_ids <- character(0)
@@ -905,19 +945,23 @@ blast_sequences <- function(seq_df,
         fasta_lines <- paste0(">", rb_df$asv_id, "\n", rb_df$sequence)
         query_str <- paste(fasta_lines, collapse = "\n")
 
-        if (verbose)
+        if (verbose) {
           message(sprintf(
             "  Retry batch %d.%d (%d sequences)...",
             fi, ri, nrow(rb_df)
           ))
+        }
 
-        .blast_rate_limit_sleep(11)  # rate-limit before retry submission
-        rid <- .blast_submit(base_url, query_str, database, program, megablast,
-                             max_target_seqs, email, ncbi_api_key, entrez_query)
+        .blast_rate_limit_sleep(11) # rate-limit before retry submission
+        rid <- .blast_submit(
+          base_url, query_str, database, program, megablast,
+          max_target_seqs, email, ncbi_api_key, entrez_query
+        )
 
         if (is.null(rid)) {
-          if (verbose)
+          if (verbose) {
             message(sprintf("    Retry batch %d.%d: submission failed.", fi, ri))
+          }
           still_failed <- c(still_failed, fi)
           still_failed_ids <- c(still_failed_ids, rb_df$asv_id)
           next
@@ -927,24 +971,27 @@ blast_sequences <- function(seq_df,
         result_text <- .blast_poll(base_url, rid, verbose, max_wait = max_wait)
 
         if (is.null(result_text)) {
-          if (verbose)
+          if (verbose) {
             message(sprintf("    Retry batch %d.%d: poll timed out.", fi, ri))
+          }
           still_failed <- c(still_failed, fi)
           still_failed_ids <- c(still_failed_ids, rb_df$asv_id)
           next
         }
 
         if (.blast_server_rejected(result_text)) {
-          if (verbose)
+          if (verbose) {
             message(sprintf("    Retry batch %d.%d: NCBI rejected this search (server CPU budget).", fi, ri))
+          }
           still_failed <- c(still_failed, fi)
           still_failed_ids <- c(still_failed_ids, rb_df$asv_id)
           next
         }
 
         hits <- .parse_blast_xml(result_text)
-        if (!is.null(hits) && nrow(hits) > 0L)
+        if (!is.null(hits) && nrow(hits) > 0L) {
           all_hits <- c(all_hits, list(hits))
+        }
       }
     }
 
@@ -1012,29 +1059,32 @@ blast_sequences <- function(seq_df,
   if (!is.null(ncbi_api_key)) params$API_KEY <- ncbi_api_key
 
   for (attempt in 1:3) {
-    tryCatch({
-      req <- do.call(
-        httr2::req_body_form,
-        c(list(httr2::request(base_url)), params)
-      ) |>
-        httr2::req_timeout(120)
-      resp <- httr2::req_perform(req)
-      body <- httr2::resp_body_string(resp)
+    tryCatch(
+      {
+        req <- do.call(
+          httr2::req_body_form,
+          c(list(httr2::request(base_url)), params)
+        ) |>
+          httr2::req_timeout(120)
+        resp <- httr2::req_perform(req)
+        body <- httr2::resp_body_string(resp)
 
-      # Extract RID from response
-      rid_match <- regmatches(body, regexpr("RID = ([A-Z0-9-]+)", body))
-      if (length(rid_match) == 1L) {
-        return(sub("RID = ", "", rid_match))
+        # Extract RID from response
+        rid_match <- regmatches(body, regexpr("RID = ([A-Z0-9-]+)", body))
+        if (length(rid_match) == 1L) {
+          return(sub("RID = ", "", rid_match))
+        }
+        warning("Could not extract RID from BLAST submission response")
+        return(NULL)
+      },
+      error = function(e) {
+        if (attempt < 3L) {
+          Sys.sleep(attempt * 5)
+        } else {
+          warning(sprintf("BLAST submission failed after 3 attempts: %s", e$message))
+        }
       }
-      warning("Could not extract RID from BLAST submission response")
-      return(NULL)
-    }, error = function(e) {
-      if (attempt < 3L) {
-        Sys.sleep(attempt * 5)
-      } else {
-        warning(sprintf("BLAST submission failed after 3 attempts: %s", e$message))
-      }
-    })
+    )
   }
   NULL
 }
@@ -1055,51 +1105,53 @@ blast_sequences <- function(seq_df,
     Sys.sleep(wait)
     elapsed <- elapsed + wait
 
-    tryCatch({
-      # Status check -- lightweight
-      req <- httr2::request(base_url) |>
-        httr2::req_url_query(
-          CMD = "Get",
-          RID = rid,
-          FORMAT_OBJECT = "SearchInfo"
-        ) |>
-        httr2::req_timeout(60)
-      resp <- httr2::req_perform(req)
-      body <- httr2::resp_body_string(resp)
-
-      if (grepl("Status=WAITING", body)) {
-        if (verbose) message(sprintf("    Still waiting (%gs elapsed)...", elapsed))
-        wait <- min(wait * 1.5, 60)
-        next
-      }
-
-      if (grepl("Status=FAILED", body) || grepl("Status=UNKNOWN", body)) {
-        warning(sprintf("BLAST search failed or expired (RID: %s)", rid))
-        return(NULL)
-      }
-
-      if (grepl("Status=READY", body)) {
-        if (verbose) message("    Results ready -- retrieving XML...")
-        # Retrieve results as XML (most reliable format for URL API)
-        result_req <- httr2::request(base_url) |>
+    tryCatch(
+      {
+        # Status check -- lightweight
+        req <- httr2::request(base_url) |>
           httr2::req_url_query(
             CMD = "Get",
             RID = rid,
-            FORMAT_TYPE = "XML"
+            FORMAT_OBJECT = "SearchInfo"
           ) |>
-          httr2::req_timeout(300)
-        result_resp <- httr2::req_perform(result_req)
-        return(httr2::resp_body_string(result_resp))
+          httr2::req_timeout(60)
+        resp <- httr2::req_perform(req)
+        body <- httr2::resp_body_string(resp)
+
+        if (grepl("Status=WAITING", body)) {
+          if (verbose) message(sprintf("    Still waiting (%gs elapsed)...", elapsed))
+          wait <- min(wait * 1.5, 60)
+          next
+        }
+
+        if (grepl("Status=FAILED", body) || grepl("Status=UNKNOWN", body)) {
+          warning(sprintf("BLAST search failed or expired (RID: %s)", rid))
+          return(NULL)
+        }
+
+        if (grepl("Status=READY", body)) {
+          if (verbose) message("    Results ready -- retrieving XML...")
+          # Retrieve results as XML (most reliable format for URL API)
+          result_req <- httr2::request(base_url) |>
+            httr2::req_url_query(
+              CMD = "Get",
+              RID = rid,
+              FORMAT_TYPE = "XML"
+            ) |>
+            httr2::req_timeout(300)
+          result_resp <- httr2::req_perform(result_req)
+          return(httr2::resp_body_string(result_resp))
+        }
+
+        # Unrecognised status -- log and continue polling
+        if (verbose) message(sprintf("    Unexpected status (%gs elapsed). Retrying...", elapsed))
+        wait <- min(wait * 1.5, 60)
+      },
+      error = function(e) {
+        if (verbose) message(sprintf("    Poll error: %s. Retrying...", e$message))
+        wait <<- min(wait * 2, 60)
       }
-
-      # Unrecognised status -- log and continue polling
-      if (verbose) message(sprintf("    Unexpected status (%gs elapsed). Retrying...", elapsed))
-      wait <- min(wait * 1.5, 60)
-
-    }, error = function(e) {
-      if (verbose) message(sprintf("    Poll error: %s. Retrying...", e$message))
-      wait <<- min(wait * 2, 60)
-    })
+    )
   }
 
   warning(sprintf("BLAST search timed out after %d seconds (RID: %s)", max_wait, rid))
@@ -1154,11 +1206,15 @@ blast_sequences <- function(seq_df,
     warning(sprintf("Failed to parse BLAST XML: %s", e$message))
     NULL
   })
-  if (is.null(doc)) return(.empty_raw_hits())
+  if (is.null(doc)) {
+    return(.empty_raw_hits())
+  }
 
   # Each query is an <Iteration>; each hit is a <Hit> inside it
   iterations <- xml2::xml_find_all(doc, ".//Iteration")
-  if (length(iterations) == 0L) return(.empty_raw_hits())
+  if (length(iterations) == 0L) {
+    return(.empty_raw_hits())
+  }
 
   # Batch extraction: collect all iteration-level and hit-level data using
 
@@ -1169,8 +1225,11 @@ blast_sequences <- function(seq_df,
     iter <- iterations[[it_i]]
     qdef <- xml2::xml_text(xml2::xml_find_first(iter, "./Iteration_query-def"))
     qlen_node <- xml2::xml_find_first(iter, "./Iteration_query-len")
-    qlen <- if (!inherits(qlen_node, "xml_missing"))
-      as.integer(xml2::xml_text(qlen_node)) else NA_integer_
+    qlen <- if (!inherits(qlen_node, "xml_missing")) {
+      as.integer(xml2::xml_text(qlen_node))
+    } else {
+      NA_integer_
+    }
 
     hits <- xml2::xml_find_all(iter, ".//Hit")
     n_hits <- length(hits)
@@ -1178,8 +1237,8 @@ blast_sequences <- function(seq_df,
 
     # Batch hit-level fields
     hit_accessions <- xml2::xml_text(xml2::xml_find_all(iter, ".//Hit/Hit_accession"))
-    hit_ids        <- xml2::xml_text(xml2::xml_find_all(iter, ".//Hit/Hit_id"))
-    hit_lens       <- as.integer(xml2::xml_text(xml2::xml_find_all(iter, ".//Hit/Hit_len")))
+    hit_ids <- xml2::xml_text(xml2::xml_find_all(iter, ".//Hit/Hit_id"))
+    hit_lens <- as.integer(xml2::xml_text(xml2::xml_find_all(iter, ".//Hit/Hit_len")))
 
     # For HSP fields, extract first HSP per hit
     # Use per-hit loop (HSP nesting prevents fully flat extraction) but
@@ -1191,11 +1250,11 @@ blast_sequences <- function(seq_df,
       hsp <- hsps[[1L]]
 
       .xt <- function(tag) xml2::xml_text(xml2::xml_find_first(hsp, tag))
-      identity  <- as.numeric(.xt("./Hsp_identity"))
+      identity <- as.numeric(.xt("./Hsp_identity"))
       align_len <- as.integer(.xt("./Hsp_align-len"))
-      gaps      <- as.integer(.xt("./Hsp_gaps"))
-      qfrom     <- as.integer(.xt("./Hsp_query-from"))
-      qto       <- as.integer(.xt("./Hsp_query-to"))
+      gaps <- as.integer(.xt("./Hsp_gaps"))
+      qfrom <- as.integer(.xt("./Hsp_query-from"))
+      qto <- as.integer(.xt("./Hsp_query-to"))
       # Subject/hit-side alignment coordinates (Hsp_hit-from/-to) -- WHERE
       # within the subject sequence this HSP actually aligns. Previously
       # parsed nowhere in this function (only the query-side qfrom/qto were
@@ -1204,31 +1263,37 @@ blast_sequences <- function(seq_df,
       # against the SAME long subject (e.g. a complete mitogenome) actually
       # cover the same genomic region or two unrelated ones (see TaxaLikely's
       # restore_suppressed_candidates(check_regional_overlap = TRUE)).
-      sfrom     <- as.integer(.xt("./Hsp_hit-from"))
-      sto       <- as.integer(.xt("./Hsp_hit-to"))
-      evalue    <- as.numeric(.xt("./Hsp_evalue"))
-      bitscore  <- as.numeric(.xt("./Hsp_bit-score"))
+      sfrom <- as.integer(.xt("./Hsp_hit-from"))
+      sto <- as.integer(.xt("./Hsp_hit-to"))
+      evalue <- as.numeric(.xt("./Hsp_evalue"))
+      bitscore <- as.numeric(.xt("./Hsp_bit-score"))
 
-      pident <- if (!is.na(identity) && !is.na(align_len) && align_len > 0L)
-        round(100 * identity / align_len, 2) else NA_real_
-      qcovs <- if (!is.na(qfrom) && !is.na(qto) && !is.na(qlen) && qlen > 0L)
-        round(100 * abs(qto - qfrom + 1L) / qlen, 1) else NA_real_
+      pident <- if (!is.na(identity) && !is.na(align_len) && align_len > 0L) {
+        round(100 * identity / align_len, 2)
+      } else {
+        NA_real_
+      }
+      qcovs <- if (!is.na(qfrom) && !is.na(qto) && !is.na(qlen) && qlen > 0L) {
+        round(100 * abs(qto - qfrom + 1L) / qlen, 1)
+      } else {
+        NA_real_
+      }
 
       rows[[j]] <- data.frame(
-        qseqid   = qdef,
-        sseqid   = hit_ids[j],
-        sacc     = hit_accessions[j],
-        staxids  = NA_character_,
-        pident   = pident,
-        length   = align_len,
-        slen     = hit_lens[j],
-        qcovs    = qcovs,
+        qseqid = qdef,
+        sseqid = hit_ids[j],
+        sacc = hit_accessions[j],
+        staxids = NA_character_,
+        pident = pident,
+        length = align_len,
+        slen = hit_lens[j],
+        qcovs = qcovs,
         mismatch = NA_integer_,
-        gapopen  = if (!is.na(gaps)) gaps else NA_integer_,
-        evalue   = evalue,
+        gapopen = if (!is.na(gaps)) gaps else NA_integer_,
+        evalue = evalue,
         bitscore = bitscore,
-        sstart   = sfrom,
-        send     = sto,
+        sstart = sfrom,
+        send = sto,
         stringsAsFactors = FALSE
       )
     }
@@ -1236,7 +1301,9 @@ blast_sequences <- function(seq_df,
   }
 
   out <- do.call(rbind, result_parts[lengths(result_parts) > 0L])
-  if (is.null(out) || nrow(out) == 0L) return(.empty_raw_hits())
+  if (is.null(out) || nrow(out) == 0L) {
+    return(.empty_raw_hits())
+  }
   out
 }
 
@@ -1275,21 +1342,29 @@ blast_sequences <- function(seq_df,
   # exhaustive behavior as the remote URL API's implicit default (see
   # blast_sequences()'s `megablast` param doc). "-task blastn" forces the
   # classic, more sensitive algorithm.
-  task_flag <- if (identical(program, "blastn"))
-    sprintf("-task %s", if (isTRUE(megablast)) "megablast" else "blastn") else ""
+  task_flag <- if (identical(program, "blastn")) {
+    sprintf("-task %s", if (isTRUE(megablast)) "megablast" else "blastn")
+  } else {
+    ""
+  }
 
   hits <- stats::predict(bl, dna,
-                  BLAST_args = sprintf(
-                    "-max_target_seqs %d %s -outfmt '6 %s'",
-                    max_target_seqs, task_flag, custom_format
-                  ))
+    BLAST_args = sprintf(
+      "-max_target_seqs %d %s -outfmt '6 %s'",
+      max_target_seqs, task_flag, custom_format
+    )
+  )
 
-  if (is.null(hits) || nrow(hits) == 0L) return(.empty_raw_hits())
+  if (is.null(hits) || nrow(hits) == 0L) {
+    return(.empty_raw_hits())
+  }
 
   # Standardize column names (rBLAST returns named columns)
-  expected_cols <- c("qseqid", "sseqid", "sacc", "staxids", "pident", "length",
-                     "qlen", "slen", "qcovs", "mismatch", "gapopen", "evalue", "bitscore",
-                     "sstart", "send")
+  expected_cols <- c(
+    "qseqid", "sseqid", "sacc", "staxids", "pident", "length",
+    "qlen", "slen", "qcovs", "mismatch", "gapopen", "evalue", "bitscore",
+    "sstart", "send"
+  )
 
   if (ncol(hits) == length(expected_cols) && is.null(names(hits))) {
     names(hits) <- expected_cols
@@ -1342,20 +1417,25 @@ blast_sequences <- function(seq_df,
       strsplit(as.character(filtered$staxids), ";"),
       `[`, character(1L), 1L
     )
-    filtered <- merge(filtered, tax_map, by.x = "taxid_join", by.y = "taxid",
-                      all.x = TRUE, sort = FALSE)
+    filtered <- merge(filtered, tax_map,
+      by.x = "taxid_join", by.y = "taxid",
+      all.x = TRUE, sort = FALSE
+    )
     filtered$taxid_join <- NULL
   } else {
     # No taxids available (e.g., from XML output) -- look up from accessions
     accessions <- unique(filtered$sacc)
     accessions <- accessions[!is.na(accessions) & nchar(accessions) > 0L]
-    if (length(accessions) > 0L && verbose)
+    if (length(accessions) > 0L && verbose) {
       message(sprintf("Looking up taxids for %d unique accessions...", length(accessions)))
+    }
     if (length(accessions) > 0L) {
       tax_map <- .resolve_taxonomy_by_acc(accessions, ncbi_api_key, verbose)
       if (is.data.frame(tax_map) && nrow(tax_map) > 0L) {
-        filtered <- merge(filtered, tax_map, by.x = "sacc", by.y = "accession",
-                          all.x = TRUE, sort = FALSE)
+        filtered <- merge(filtered, tax_map,
+          by.x = "sacc", by.y = "accession",
+          all.x = TRUE, sort = FALSE
+        )
       }
     }
   }
@@ -1392,7 +1472,7 @@ blast_sequences <- function(seq_df,
     # those hits for no real reason. See "Subject length filter" in
     # @details.
     if (!is.null(subject_len_range) && "length" %in% names(hits) &&
-        !all(is.na(hits$length))) {
+      !all(is.na(hits$length))) {
       hits <- hits[
         is.na(hits$length) |
           (hits$length >= subject_len_range[1L] & hits$length <= subject_len_range[2L]),
@@ -1400,7 +1480,9 @@ blast_sequences <- function(seq_df,
     }
   }
 
-  if (stage == "basic") return(hits)
+  if (stage == "basic") {
+    return(hits)
+  }
 
   # 3b. Per-taxon cap (optional): within each query, keep at most
   # max_hits_per_taxon hits per taxon (grouped by `taxon_group_col`, default
@@ -1416,11 +1498,11 @@ blast_sequences <- function(seq_df,
   # truncating), so this never changes which taxon holds the top score for
   # step 4 below.
   if (!is.null(max_hits_per_taxon) && nrow(hits) > 0L &&
-      taxon_group_col %in% names(hits)) {
+    taxon_group_col %in% names(hits)) {
     group_val <- hits[[taxon_group_col]]
     taxon_key <- ifelse(
       is.na(group_val) | !nzchar(group_val),
-      paste0("__unresolved_", seq_len(nrow(hits))),  # never group unresolved hits together
+      paste0("__unresolved_", seq_len(nrow(hits))), # never group unresolved hits together
       group_val
     )
     hits <- do.call(rbind, lapply(
@@ -1451,8 +1533,10 @@ blast_sequences <- function(seq_df,
 
   if (verbose) {
     n_end <- nrow(hits)
-    message(sprintf("Hit filtering: %d -> %d (removed %d)",
-                    n_start, n_end, n_start - n_end))
+    message(sprintf(
+      "Hit filtering: %d -> %d (removed %d)",
+      n_start, n_end, n_start - n_end
+    ))
   }
 
   hits
@@ -1468,8 +1552,9 @@ blast_sequences <- function(seq_df,
   .check_pkg("rentrez")
   .check_pkg("xml2")
 
-  if (!is.null(ncbi_api_key))
+  if (!is.null(ncbi_api_key)) {
     rentrez::set_entrez_key(ncbi_api_key)
+  }
 
   # Batch fetch taxonomy records
   batch_size <- 200L
@@ -1481,22 +1566,25 @@ blast_sequences <- function(seq_df,
     batch <- batches[[i]]
 
     for (attempt in 1:3) {
-      tryCatch({
-        xml_text <- rentrez::entrez_fetch(
-          db = "taxonomy",
-          id = batch,
-          rettype = "xml"
-        )
-        all_records[[i]] <- .parse_taxonomy_xml(xml_text)
-        break
-      }, error = function(e) {
-        if (attempt < 3L) {
-          Sys.sleep(attempt * 2)
-        } else {
-          warning(sprintf("Taxonomy fetch failed for batch %d: %s", i, e$message))
-          all_records[[i]] <<- NULL
+      tryCatch(
+        {
+          xml_text <- rentrez::entrez_fetch(
+            db = "taxonomy",
+            id = batch,
+            rettype = "xml"
+          )
+          all_records[[i]] <- .parse_taxonomy_xml(xml_text)
+          break
+        },
+        error = function(e) {
+          if (attempt < 3L) {
+            Sys.sleep(attempt * 2)
+          } else {
+            warning(sprintf("Taxonomy fetch failed for batch %d: %s", i, e$message))
+            all_records[[i]] <<- NULL
+          }
         }
-      })
+      )
     }
 
     if (i < length(batches)) Sys.sleep(0.4)
@@ -1560,21 +1648,24 @@ blast_sequences <- function(seq_df,
 
 #' @noRd
 .empty_acc_taxonomy_result <- function() {
-  data.frame(accession = character(), kingdom = character(),
-             phylum = character(), class = character(),
-             order = character(), family = character(),
-             genus = character(), species = character(),
-             stringsAsFactors = FALSE)
+  data.frame(
+    accession = character(), kingdom = character(),
+    phylum = character(), class = character(),
+    order = character(), family = character(),
+    genus = character(), species = character(),
+    stringsAsFactors = FALSE
+  )
 }
 
 #' @noRd
 .resolve_taxonomy_by_acc <- function(accessions, ncbi_api_key = NULL,
-                                               verbose = TRUE) {
+                                     verbose = TRUE) {
   .check_pkg("rentrez")
   .check_pkg("xml2")
 
-  if (!is.null(ncbi_api_key))
+  if (!is.null(ncbi_api_key)) {
     rentrez::set_entrez_key(ncbi_api_key)
+  }
 
   # Step 1: Look up taxids from accessions via nucleotide summary.
   # 100 accessions/batch keeps the "[ACCN]" OR-query comfortably under
@@ -1589,31 +1680,36 @@ blast_sequences <- function(seq_df,
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
     for (attempt in 1:3) {
-      tryCatch({
-        # Search nucleotide for these accessions
-        ids <- rentrez::entrez_search(
-          db = "nucleotide",
-          term = paste(batch, "[ACCN]", collapse = " OR "),
-          retmax = length(batch)
-        )$ids
+      tryCatch(
+        {
+          # Search nucleotide for these accessions
+          ids <- rentrez::entrez_search(
+            db = "nucleotide",
+            term = paste(batch, "[ACCN]", collapse = " OR "),
+            retmax = length(batch)
+          )$ids
 
-        if (length(ids) > 0L) {
-          summaries <- rentrez::entrez_summary(db = "nucleotide", id = ids)
-          if (inherits(summaries, "esummary")) summaries <- list(summaries)
-          for (s in summaries) {
-            acc <- s$caption
-            taxid <- as.character(s$taxid)
-            if (!is.null(acc) && !is.null(taxid)) {
-              acc_taxid_map[[acc]] <- taxid
+          if (length(ids) > 0L) {
+            summaries <- rentrez::entrez_summary(db = "nucleotide", id = ids)
+            if (inherits(summaries, "esummary")) summaries <- list(summaries)
+            for (s in summaries) {
+              acc <- s$caption
+              taxid <- as.character(s$taxid)
+              if (!is.null(acc) && !is.null(taxid)) {
+                acc_taxid_map[[acc]] <- taxid
+              }
             }
           }
+          break
+        },
+        error = function(e) {
+          if (attempt < 3L) {
+            Sys.sleep(attempt * 2)
+          } else if (verbose) {
+            warning(sprintf("Accession lookup failed for batch %d: %s", i, e$message))
+          }
         }
-        break
-      }, error = function(e) {
-        if (attempt < 3L) Sys.sleep(attempt * 2)
-        else if (verbose)
-          warning(sprintf("Accession lookup failed for batch %d: %s", i, e$message))
-      })
+      )
     }
     if (i < length(batches)) Sys.sleep(0.4)
   }
@@ -1661,16 +1757,22 @@ blast_sequences <- function(seq_df,
 #' @noRd
 .parse_lat_lon <- function(x) {
   empty <- c(lat = NA_real_, lon = NA_real_)
-  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) return(empty)
+  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) {
+    return(empty)
+  }
 
   m <- regmatches(x, regexec(
     "^\\s*([0-9.]+)\\s*([NSns])\\s+([0-9.]+)\\s*([EWew])\\s*$", x
   ))[[1L]]
-  if (length(m) != 5L) return(empty)
+  if (length(m) != 5L) {
+    return(empty)
+  }
 
   lat_val <- suppressWarnings(as.numeric(m[2L]))
   lon_val <- suppressWarnings(as.numeric(m[4L]))
-  if (is.na(lat_val) || is.na(lon_val)) return(empty)
+  if (is.na(lat_val) || is.na(lon_val)) {
+    return(empty)
+  }
 
   lat <- if (toupper(m[3L]) == "S") -lat_val else lat_val
   lon <- if (toupper(m[5L]) == "W") -lon_val else lon_val
@@ -1690,80 +1792,88 @@ blast_sequences <- function(seq_df,
 #' @noRd
 .resolve_locations_by_acc <- function(accessions, ncbi_api_key = NULL,
                                       verbose = TRUE) {
-  empty <- data.frame(accession = character(0L), lat = numeric(0L),
-                      lon = numeric(0L), country = character(0L),
-                      stringsAsFactors = FALSE)
+  empty <- data.frame(
+    accession = character(0L), lat = numeric(0L),
+    lon = numeric(0L), country = character(0L),
+    stringsAsFactors = FALSE
+  )
 
   .check_pkg("rentrez")
   .check_pkg("xml2")
 
-  if (!is.null(ncbi_api_key))
+  if (!is.null(ncbi_api_key)) {
     rentrez::set_entrez_key(ncbi_api_key)
+  }
 
   accessions <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
-  if (length(accessions) == 0L) return(empty)
+  if (length(accessions) == 0L) {
+    return(empty)
+  }
 
   batch_size <- 100L
-  batches    <- split(accessions, ceiling(seq_along(accessions) / batch_size))
-  res        <- vector("list", length(batches))
+  batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
+  res <- vector("list", length(batches))
 
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
     for (attempt in 1:3) {
-      tryCatch({
-        xml_raw <- rentrez::entrez_fetch(
-          db = "nucleotide", id = batch, rettype = "gb", retmode = "xml"
-        )
-        xml_doc <- xml2::read_xml(xml_raw)
-        nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
-
-        res[[i]] <- do.call(rbind, lapply(nodes, function(node) {
-          acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
-          quals <- xml2::xml_find_all(
-            node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
+      tryCatch(
+        {
+          xml_raw <- rentrez::entrez_fetch(
+            db = "nucleotide", id = batch, rettype = "gb", retmode = "xml"
           )
-          # Name and value are read PER GBQualifier NODE, not as two
-          # independent xml_find_all() sweeps. The INSDC GBSet DTD makes
-          # GBQualifier_value OPTIONAL (`GBQualifier (GBQualifier_name,
-          # GBQualifier_value?)`), so a valueless source qualifier --
-          # `/environmental_sample` above all, which is ubiquitous on exactly
-          # the eDNA-derived records this package works with, plus
-          # `/germline`, `/transgenic`, `/focus`, `/macronuclear` -- yields
-          # one fewer value than names and shifts every subsequent value onto
-          # the wrong name. Confirmed on real NCBI records (AVFR00000000,
-          # AVFR01000001, AVFR01000002): `/environmental_sample` sits
-          # immediately before `/geo_loc_name` and `/lat_lon`, so the old
-          # parallel-vector read returned "2010-07-01" / "0 m" / "microbial
-          # mat metagenome" as the lat_lon string and .parse_lat_lon()
-          # correctly rejected each one -- real collection coordinates
-          # (41.5758 N 70.6392 W) silently lost, and `country` liable to
-          # report a neighbouring qualifier's text instead. xml_find_first()
-          # over the qualifier nodeset returns one element per node (NA where
-          # the value is absent), so the two vectors stay aligned by
-          # construction.
-          qnames <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_name"))
-          qvals  <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_value"))
+          xml_doc <- xml2::read_xml(xml_raw)
+          nodes <- xml2::xml_find_all(xml_doc, "//GBSeq")
 
-          lat_lon_raw <- stats::na.omit(qvals[qnames %in% "lat_lon"])
-          country_raw <- stats::na.omit(qvals[qnames %in% "country"])
-          ll <- .parse_lat_lon(if (length(lat_lon_raw) > 0L) lat_lon_raw[1L] else NA_character_)
+          res[[i]] <- do.call(rbind, lapply(nodes, function(node) {
+            acc <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
+            quals <- xml2::xml_find_all(
+              node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
+            )
+            # Name and value are read PER GBQualifier NODE, not as two
+            # independent xml_find_all() sweeps. The INSDC GBSet DTD makes
+            # GBQualifier_value OPTIONAL (`GBQualifier (GBQualifier_name,
+            # GBQualifier_value?)`), so a valueless source qualifier --
+            # `/environmental_sample` above all, which is ubiquitous on exactly
+            # the eDNA-derived records this package works with, plus
+            # `/germline`, `/transgenic`, `/focus`, `/macronuclear` -- yields
+            # one fewer value than names and shifts every subsequent value onto
+            # the wrong name. Confirmed on real NCBI records (AVFR00000000,
+            # AVFR01000001, AVFR01000002): `/environmental_sample` sits
+            # immediately before `/geo_loc_name` and `/lat_lon`, so the old
+            # parallel-vector read returned "2010-07-01" / "0 m" / "microbial
+            # mat metagenome" as the lat_lon string and .parse_lat_lon()
+            # correctly rejected each one -- real collection coordinates
+            # (41.5758 N 70.6392 W) silently lost, and `country` liable to
+            # report a neighbouring qualifier's text instead. xml_find_first()
+            # over the qualifier nodeset returns one element per node (NA where
+            # the value is absent), so the two vectors stay aligned by
+            # construction.
+            qnames <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_name"))
+            qvals <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_value"))
 
-          data.frame(
-            accession = acc,
-            lat       = ll[["lat"]],
-            lon       = ll[["lon"]],
-            country   = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
-            stringsAsFactors = FALSE
-          )
-        }))
-        break
-      }, error = function(e) {
-        if (attempt < 3L) {
-          Sys.sleep(attempt * 2)
-        } else if (verbose) {
-          warning(sprintf("Location fetch failed for batch %d: %s", i, e$message))
+            lat_lon_raw <- stats::na.omit(qvals[qnames %in% "lat_lon"])
+            country_raw <- stats::na.omit(qvals[qnames %in% "country"])
+            ll <- .parse_lat_lon(if (length(lat_lon_raw) > 0L) lat_lon_raw[1L] else NA_character_)
+
+            data.frame(
+              accession = acc,
+              lat = ll[["lat"]],
+              lon = ll[["lon"]],
+              country = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
+              stringsAsFactors = FALSE
+            )
+          }))
+          break
+        },
+        error = function(e) {
+          if (attempt < 3L) {
+            Sys.sleep(attempt * 2)
+          } else if (verbose) {
+            warning(sprintf("Location fetch failed for batch %d: %s", i, e$message))
+          }
         }
-      })
+      )
     }
     if (i < length(batches)) Sys.sleep(0.4)
   }
@@ -1800,8 +1910,9 @@ blast_sequences <- function(seq_df,
     stringsAsFactors = FALSE
   )
   if (with_taxonomy) {
-    for (tc in TaxaTools::standard_ranks)
+    for (tc in TaxaTools::standard_ranks) {
       df[[tc]] <- character()
+    }
   }
   df
 }

@@ -113,7 +113,6 @@ SITE_LAT <- 34.41
 SITE_LNG <- -119.86
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: real camera-trap photos, bundled with the package --
   .photo_dir <- system.file(
     "extdata", "example_images", "camera_trap_photos",
@@ -121,10 +120,12 @@ if (DEBUG_MODE) {
   )
 
   if (!nzchar(.photo_dir) || !dir.exists(.photo_dir)) {
-    stop("DEBUG_MODE = TRUE but the bundled camera-trap photo directory was ",
-         "not found. Reinstall TaxaMatch (devtools::install()) so ",
-         "inst/extdata/example_images/camera_trap_photos/ ships with the ",
-         "installed package, or point DEBUG_MODE <- FALSE at your own photos.")
+    stop(
+      "DEBUG_MODE = TRUE but the bundled camera-trap photo directory was ",
+      "not found. Reinstall TaxaMatch (devtools::install()) so ",
+      "inst/extdata/example_images/camera_trap_photos/ ships with the ",
+      "installed package, or point DEBUG_MODE <- FALSE at your own photos."
+    )
   }
 
   # Photos are now organized into per-species subfolders (common name ==
@@ -132,8 +133,10 @@ if (DEBUG_MODE) {
   # of them. Just for the pre-flight count message here; the actual call to
   # score_image_inat() below passes .photo_dir directly (not this vector) so
   # it can derive its own folder_1 column from the same directory structure.
-  photo_files <- list.files(.photo_dir, pattern = "\\.JPG$", full.names = TRUE,
-                            recursive = TRUE, ignore.case = TRUE)
+  photo_files <- list.files(.photo_dir,
+    pattern = "\\.JPG$", full.names = TRUE,
+    recursive = TRUE, ignore.case = TRUE
+  )
 
   message(sprintf(
     "DEBUG_MODE = TRUE -- found %d bundled camera-trap photo(s) in %s.",
@@ -163,9 +166,7 @@ if (DEBUG_MODE) {
     "ground_squirrel"  = "Otospermophilus beecheyi",
     Opossum            = "Didelphis virginiana"
   )
-
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -186,12 +187,14 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real photo directory has been supplied. ",
-       "Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real photo directory has been supplied. ",
+    "Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_camtrap"
 
 # ==============================================================================
@@ -207,9 +210,11 @@ OUT_PREFIX <- "tutorial_camtrap"
 # ==============================================================================
 
 message("\n--- Step 1: Scoring images via live iNaturalist CV API ---")
-message("  Requires INAT_API_TOKEN (~/.Renviron) -- 401 means the token has ",
-        "expired, not a code bug; regenerate at ",
-        "https://www.inaturalist.org/users/api_token.")
+message(
+  "  Requires INAT_API_TOKEN (~/.Renviron) -- 401 means the token has ",
+  "expired, not a code bug; regenerate at ",
+  "https://www.inaturalist.org/users/api_token."
+)
 
 taxamatch_image_match_obj <- TaxaMatch::score_image_inat(
   .photo_dir,
@@ -233,7 +238,7 @@ message(sprintf(
 # comment above for why -- real off-scope candidates observed on this exact
 # photo set: two plants for coyote.JPG, a screech owl for rabbit.JPG).
 .obs_before_scope <- unique(taxamatch_image_match_obj$observation_id)
-.n_before_scope    <- nrow(taxamatch_image_match_obj)
+.n_before_scope <- nrow(taxamatch_image_match_obj)
 .off_scope <- taxamatch_image_match_obj[
   !is.na(taxamatch_image_match_obj$iconic_taxon_name) &
     taxamatch_image_match_obj$iconic_taxon_name != TARGET_ICONIC_TAXA,
@@ -321,9 +326,11 @@ taxamatch_image_match_obj <- dplyr::left_join(
 )
 taxamatch_image_match_obj$species <- taxamatch_image_match_obj$taxon_name
 
-message(sprintf("  family resolved for %d/%d unique taxon_name value(s): %s",
-                sum(!is.na(.higher$family)), nrow(.higher),
-                paste(sort(unique(.higher$family)), collapse = ", ")))
+message(sprintf(
+  "  family resolved for %d/%d unique taxon_name value(s): %s",
+  sum(!is.na(.higher$family)), nrow(.higher),
+  paste(sort(unique(.higher$family)), collapse = ", ")
+))
 
 # ==============================================================================
 # 2.5.  SITE TABLE (TaxaMatch) -- spatial-grouping prerequisite
@@ -345,8 +352,11 @@ image_site_table <- TaxaMatch::build_site_table(taxamatch_image_match_obj)
 message(sprintf(
   "  Site table built: %d photo(s), %d spatial group(s) (%s).",
   nrow(image_site_table), dplyr::n_distinct(image_site_table$spatial_group_id),
-  if (OVERRIDE_SITE_LATLNG) "uniform SITE_LAT/SITE_LNG override -- every photo shares one location"
-  else "per-photo EXIF coordinates"
+  if (OVERRIDE_SITE_LATLNG) {
+    "uniform SITE_LAT/SITE_LNG override -- every photo shares one location"
+  } else {
+    "per-photo EXIF coordinates"
+  }
 ))
 
 # ---- Explicit checkpoint (not automatic) ------------------------------------
@@ -356,15 +366,19 @@ message(sprintf(
 taxamatch_image_match_obj_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxamatch_image_match_obj.rds"))
 saveRDS(taxamatch_image_match_obj, taxamatch_image_match_obj_path)
 message(sprintf("\n  Saved: %s", taxamatch_image_match_obj_path))
-message(sprintf("  To reuse without re-querying the CV API, paste:\n    taxamatch_image_match_obj <- readRDS(\"%s\")",
-                taxamatch_image_match_obj_path))
+message(sprintf(
+  "  To reuse without re-querying the CV API, paste:\n    taxamatch_image_match_obj <- readRDS(\"%s\")",
+  taxamatch_image_match_obj_path
+))
 
 image_site_table_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_image_site_table.rds"))
 saveRDS(image_site_table, image_site_table_path)
 message(sprintf("  Saved: %s", image_site_table_path))
 
-message("\nWorkflow complete. Continue with TaxaLikely's ",
-        "image_acoustic_likelihood_workflow.R (IMAGE section).")
+message(
+  "\nWorkflow complete. Continue with TaxaLikely's ",
+  "image_acoustic_likelihood_workflow.R (IMAGE section)."
+)
 
 # ==============================================================================
 # Output

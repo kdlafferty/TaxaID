@@ -7,9 +7,11 @@
 .verdict_eval_fixture <- function() {
   data.frame(
     accession = c("KEEP1", "SPARED1", "SPARED2", "REMOVE1", "INSUF1", "OVER1"),
-    listed_taxon = c("Genus congruentus", "Scorpaenichthys marmoratus",
-                     "Oxylebius pictus", "Cryptacanthodes maculatus",
-                     "Askoldia variegata", "Oversized specius"),
+    listed_taxon = c(
+      "Genus congruentus", "Scorpaenichthys marmoratus",
+      "Oxylebius pictus", "Cryptacanthodes maculatus",
+      "Askoldia variegata", "Oversized specius"
+    ),
     # KEEP1  : ordinary congruent row -- vote clean, nothing disagrees
     # SPARED1: cabezon shape -- vote says incongruent, but agreeing 100 beats
     #          disagreeing 96.79 (the real OK172573 numbers)
@@ -18,16 +20,20 @@
     # REMOVE1: no corroboration anywhere + something contradicts (real OP056918)
     # INSUF1 : Askoldia shape -- too few partners, but a clean 100% agreeing hit
     # OVER1  : never submitted to BLAST at all
-    frac_independent_below_min_congruent_rank = c(0.08333, 0.75, 0.91667, 0.875,
-                                                  0.16667, NA),
+    frac_independent_below_min_congruent_rank = c(
+      0.08333, 0.75, 0.91667, 0.875,
+      0.16667, NA
+    ),
     n_independent_top_matches = c(5L, 5L, 5L, 3L, 2L, NA_integer_),
-    best_agreeing_pident        = c(99.5, 100, NA, NA, 100, NA),
-    best_disagreeing_pident     = c(NA, 96.79, 94.01, 98.62, NA, NA),
+    best_agreeing_pident = c(99.5, 100, NA, NA, 100, NA),
+    best_disagreeing_pident = c(NA, 96.79, 94.01, 98.62, NA, NA),
     congruent_evidence_exists_anywhere = c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE),
     congruent_evidence_best_pident = c(99.5, 100, 93.58, NA, 100, NA),
-    hierarchy_flag = c("congruent", "incongruent", "incongruent", "incongruent",
-                       "insufficient_independent_evidence",
-                       "not_evaluated_oversized"),
+    hierarchy_flag = c(
+      "congruent", "incongruent", "incongruent", "incongruent",
+      "insufficient_independent_evidence",
+      "not_evaluated_oversized"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -35,10 +41,10 @@
 # ---- score_reference_labels() -----------------------------------------------
 
 test_that("score_reference_labels() adds the three derived columns without touching hierarchy_flag", {
-  ev  <- .verdict_eval_fixture()
+  ev <- .verdict_eval_fixture()
   out <- score_reference_labels(ev)
   expect_true(all(c("label_confidence", "label_identity_margin", "reference_action")
-                  %in% names(out)))
+  %in% names(out)))
   expect_equal(out$hierarchy_flag, ev$hierarchy_flag)
   expect_equal(nrow(out), nrow(ev))
   expect_equal(out$accession, ev$accession)
@@ -66,7 +72,8 @@ test_that("corroborating evidence anywhere vetoes removal even at very low confi
   # Same evidence, but push the threshold past it: the veto still spares it,
   # while the otherwise-identical uncorroborated accession is still removed.
   strict <- score_reference_labels(.verdict_eval_fixture(),
-                                   action_remove_below = 0.20)
+    action_remove_below = 0.20
+  )
   expect_equal(strict$reference_action[strict$accession == "SPARED2"], "inspect")
   expect_equal(strict$reference_action[strict$accession == "REMOVE1"], "remove")
 })
@@ -90,7 +97,7 @@ test_that("the identity margin shifts log-odds by exactly d / margin_scale", {
     accession = c("A", "B"),
     frac_independent_below_min_congruent_rank = c(0.5, 0.5),
     n_independent_top_matches = c(5L, 5L),
-    best_agreeing_pident    = c(99, 97),
+    best_agreeing_pident = c(99, 97),
     best_disagreeing_pident = c(97, 97),
     congruent_evidence_exists_anywhere = TRUE,
     congruent_evidence_best_pident = c(99, 97),
@@ -130,14 +137,22 @@ test_that("score_reference_labels() refuses to silently recompute over itself", 
 test_that("score_reference_labels() validates its arguments", {
   ev <- .verdict_eval_fixture()
   expect_error(score_reference_labels("not_a_df"), "must be a data frame")
-  expect_error(score_reference_labels(ev[, "accession", drop = FALSE]),
-               "missing required columns")
-  expect_error(score_reference_labels(ev, margin_scale = 0),
-               "must be a single positive number")
-  expect_error(score_reference_labels(ev, action_remove_below = 2),
-               "must be a single number in")
-  expect_error(score_reference_labels(ev, action_remove_below = 0.9),
-               "must be ordered")
+  expect_error(
+    score_reference_labels(ev[, "accession", drop = FALSE]),
+    "missing required columns"
+  )
+  expect_error(
+    score_reference_labels(ev, margin_scale = 0),
+    "must be a single positive number"
+  )
+  expect_error(
+    score_reference_labels(ev, action_remove_below = 2),
+    "must be a single number in"
+  )
+  expect_error(
+    score_reference_labels(ev, action_remove_below = 0.9),
+    "must be ordered"
+  )
 })
 
 test_that("score_reference_labels() handles a zero-row evaluation", {
@@ -150,9 +165,10 @@ test_that("score_reference_labels() defaults match .LABEL_VERDICT_DEFAULTS", {
   # The two must not drift: refine_reference_verdicts() resolves its own ...
   # against the list, score_reference_labels() states them in its signature.
   defaults <- formals(TaxaMatch::score_reference_labels)
-  shared   <- TaxaMatch:::.LABEL_VERDICT_DEFAULTS
-  for (nm in names(shared))
+  shared <- TaxaMatch:::.LABEL_VERDICT_DEFAULTS
+  for (nm in names(shared)) {
     expect_equal(eval(defaults[[nm]]), shared[[nm]], info = nm)
+  }
 })
 
 # ---- remove_incongruent_references(gate=) -----------------------------------
@@ -165,8 +181,10 @@ test_that("remove_incongruent_references() defaults to the evidence gate, not th
   )
   out_action <- remove_incongruent_references(match_df, ev)
   # Only the genuinely uncorroborated accession goes.
-  expect_equal(sort(out_action$accession),
-               sort(setdiff(ev$accession, "REMOVE1")))
+  expect_equal(
+    sort(out_action$accession),
+    sort(setdiff(ev$accession, "REMOVE1"))
+  )
 
   out_flag <- remove_incongruent_references(match_df, ev, gate = "flag")
   # The old behaviour takes all three "incongruent" accessions with it.
@@ -174,29 +192,40 @@ test_that("remove_incongruent_references() defaults to the evidence gate, not th
 })
 
 test_that("remove_incongruent_references(gate = 'action') derives the action when it is absent", {
-  ev <- .verdict_eval_fixture()   # no reference_action column
-  match_df <- data.frame(observation_id = paste0("O", seq_len(6)),
-                         accession = ev$accession, stringsAsFactors = FALSE)
+  ev <- .verdict_eval_fixture() # no reference_action column
+  match_df <- data.frame(
+    observation_id = paste0("O", seq_len(6)),
+    accession = ev$accession, stringsAsFactors = FALSE
+  )
   out <- remove_incongruent_references(match_df, ev)
   expect_false("REMOVE1" %in% out$accession)
   expect_true("SPARED1" %in% out$accession)
 })
 
 test_that("remove_incongruent_references(gate = 'action') errors usefully on a minimal evaluation", {
-  minimal <- data.frame(accession = "A1", hierarchy_flag = "incongruent",
-                        stringsAsFactors = FALSE)
-  match_df <- data.frame(observation_id = "O1", accession = "A1",
-                         stringsAsFactors = FALSE)
-  expect_error(remove_incongruent_references(match_df, minimal),
-               'gate = "flag"')
+  minimal <- data.frame(
+    accession = "A1", hierarchy_flag = "incongruent",
+    stringsAsFactors = FALSE
+  )
+  match_df <- data.frame(
+    observation_id = "O1", accession = "A1",
+    stringsAsFactors = FALSE
+  )
+  expect_error(
+    remove_incongruent_references(match_df, minimal),
+    'gate = "flag"'
+  )
 })
 
 test_that("remove_insufficient_evidence still works under the action gate", {
   ev <- score_reference_labels(.verdict_eval_fixture())
-  match_df <- data.frame(observation_id = paste0("O", seq_len(6)),
-                         accession = ev$accession, stringsAsFactors = FALSE)
+  match_df <- data.frame(
+    observation_id = paste0("O", seq_len(6)),
+    accession = ev$accession, stringsAsFactors = FALSE
+  )
   out <- remove_incongruent_references(match_df, ev,
-                                       remove_insufficient_evidence = TRUE)
+    remove_insufficient_evidence = TRUE
+  )
   expect_false(any(c("REMOVE1", "INSUF1") %in% out$accession))
 })
 
@@ -229,9 +258,11 @@ test_that("remove_insufficient_evidence still works under the action gate", {
 }
 
 test_that("refine_reference_verdicts() discounts a confidently-removable partner", {
-  ev  <- score_reference_labels(.verdict_eval_with_x1())
-  out <- refine_reference_verdicts(ev, pair_table = .verdict_pair_fixture(),
-                                   verbose = FALSE)
+  ev <- score_reference_labels(.verdict_eval_with_x1())
+  out <- refine_reference_verdicts(ev,
+    pair_table = .verdict_pair_fixture(),
+    verbose = FALSE
+  )
   x1 <- out[out$accession == "X1", ]
   expect_true(x1$trust_refined)
   # REMOVE1's weight is 0, so it neither counts toward the disagreement nor
@@ -243,17 +274,17 @@ test_that("refine_reference_verdicts() discounts a confidently-removable partner
 test_that("refine_reference_verdicts() never discounts an under-evaluated partner", {
   ev <- score_reference_labels(.verdict_eval_with_x1())
   w <- TaxaMatch:::.partner_trust_weight(
-    flag             = ev$hierarchy_flag,
-    action           = ev$reference_action,
+    flag = ev$hierarchy_flag,
+    action = ev$reference_action,
     label_confidence = ev$label_confidence,
     min_partner_weight = 0
   )
   names(w) <- ev$accession
-  expect_equal(unname(w["INSUF1"]), 1)   # insufficient evidence: full weight
-  expect_equal(unname(w["OVER1"]), 1)    # never BLASTed: full weight
-  expect_equal(unname(w["KEEP1"]), 1)    # congruent: full weight, no cliff
-  expect_equal(unname(w["REMOVE1"]), 0)  # confident removal: silenced
-  expect_lt(unname(w["SPARED2"]), 1)     # incongruent: weighted by confidence
+  expect_equal(unname(w["INSUF1"]), 1) # insufficient evidence: full weight
+  expect_equal(unname(w["OVER1"]), 1) # never BLASTed: full weight
+  expect_equal(unname(w["KEEP1"]), 1) # congruent: full weight, no cliff
+  expect_equal(unname(w["REMOVE1"]), 0) # confident removal: silenced
+  expect_lt(unname(w["SPARED2"]), 1) # incongruent: weighted by confidence
 })
 
 test_that("refine_reference_verdicts() is order-independent", {
@@ -261,8 +292,9 @@ test_that("refine_reference_verdicts() is order-independent", {
   pairs <- .verdict_pair_fixture()
   a <- refine_reference_verdicts(ev, pair_table = pairs, verbose = FALSE)
   b <- refine_reference_verdicts(ev[rev(seq_len(nrow(ev))), ],
-                                 pair_table = pairs[rev(seq_len(nrow(pairs))), ],
-                                 verbose = FALSE)
+    pair_table = pairs[rev(seq_len(nrow(pairs))), ],
+    verbose = FALSE
+  )
   b <- b[match(a$accession, b$accession), ]
   expect_equal(a$label_confidence_trust, b$label_confidence_trust)
   expect_equal(a$reference_action_trust, b$reference_action_trust)
@@ -270,9 +302,11 @@ test_that("refine_reference_verdicts() is order-independent", {
 })
 
 test_that("refine_reference_verdicts() leaves accessions with no pair data unrefined", {
-  ev  <- score_reference_labels(.verdict_eval_with_x1())
-  out <- refine_reference_verdicts(ev, pair_table = .verdict_pair_fixture(),
-                                   verbose = FALSE)
+  ev <- score_reference_labels(.verdict_eval_with_x1())
+  out <- refine_reference_verdicts(ev,
+    pair_table = .verdict_pair_fixture(),
+    verbose = FALSE
+  )
   no_pairs <- out[out$accession != "X1", ]
   expect_false(any(no_pairs$trust_refined))
   expect_equal(no_pairs$label_confidence_trust, no_pairs$label_confidence)
@@ -280,13 +314,17 @@ test_that("refine_reference_verdicts() leaves accessions with no pair data unref
 })
 
 test_that("refine_reference_verdicts() reports its own fixpoint behaviour", {
-  ev  <- score_reference_labels(.verdict_eval_with_x1())
-  out <- refine_reference_verdicts(ev, pair_table = .verdict_pair_fixture(),
-                                   verbose = FALSE)
+  ev <- score_reference_labels(.verdict_eval_with_x1())
+  out <- refine_reference_verdicts(ev,
+    pair_table = .verdict_pair_fixture(),
+    verbose = FALSE
+  )
   expect_true(attr(out, "trust_converged"))
   expect_lte(attr(out, "trust_iterations"), 10L)
-  out1 <- refine_reference_verdicts(ev, pair_table = .verdict_pair_fixture(),
-                                    max_iter = 1L, tol = 0, verbose = FALSE)
+  out1 <- refine_reference_verdicts(ev,
+    pair_table = .verdict_pair_fixture(),
+    max_iter = 1L, tol = 0, verbose = FALSE
+  )
   expect_false(attr(out1, "trust_converged"))
   expect_equal(attr(out1, "trust_iterations"), 1L)
 })
@@ -295,7 +333,9 @@ test_that("refine_reference_verdicts() no-ops loudly when no pair data exists at
   ev <- score_reference_labels(.verdict_eval_fixture())
   expect_message(
     out <- refine_reference_verdicts(
-      ev, pair_table = .verdict_pair_fixture()[0, ]),
+      ev,
+      pair_table = .verdict_pair_fixture()[0, ]
+    ),
     "no cached per-partner votes"
   )
   expect_false(any(out$trust_refined))
@@ -305,26 +345,40 @@ test_that("refine_reference_verdicts() no-ops loudly when no pair data exists at
 test_that("refine_reference_verdicts() drops an accession's self-hit", {
   ev <- score_reference_labels(.verdict_eval_with_x1())
   pairs <- .verdict_pair_fixture()
-  pairs <- rbind(pairs, data.frame(id_x = "X1", id_y = "X1", p_match = 1,
-                                   pair_finest_common_rank = "species",
-                                   stringsAsFactors = FALSE))
+  pairs <- rbind(pairs, data.frame(
+    id_x = "X1", id_y = "X1", p_match = 1,
+    pair_finest_common_rank = "species",
+    stringsAsFactors = FALSE
+  ))
   out <- refine_reference_verdicts(ev, pair_table = pairs, verbose = FALSE)
-  ref <- refine_reference_verdicts(ev, pair_table = .verdict_pair_fixture(),
-                                   verbose = FALSE)
+  ref <- refine_reference_verdicts(ev,
+    pair_table = .verdict_pair_fixture(),
+    verbose = FALSE
+  )
   expect_equal(out$label_confidence_trust, ref$label_confidence_trust)
 })
 
 test_that("refine_reference_verdicts() validates its arguments", {
   ev <- score_reference_labels(.verdict_eval_fixture())
   expect_error(refine_reference_verdicts(ev), "Supply either cache_dir")
-  expect_error(refine_reference_verdicts(ev, pair_table = data.frame(x = 1)),
-               "missing required columns")
-  expect_error(refine_reference_verdicts(ev, pair_table = .verdict_pair_fixture(),
-                                         min_congruent_rank = "nonesuch"),
-               "must be one of rank_system")
-  expect_error(refine_reference_verdicts(ev, pair_table = .verdict_pair_fixture(),
-                                         margin_scal = 2),
-               "Unknown label-verdict parameter")
+  expect_error(
+    refine_reference_verdicts(ev, pair_table = data.frame(x = 1)),
+    "missing required columns"
+  )
+  expect_error(
+    refine_reference_verdicts(ev,
+      pair_table = .verdict_pair_fixture(),
+      min_congruent_rank = "nonesuch"
+    ),
+    "must be one of rank_system"
+  )
+  expect_error(
+    refine_reference_verdicts(ev,
+      pair_table = .verdict_pair_fixture(),
+      margin_scal = 2
+    ),
+    "Unknown label-verdict parameter"
+  )
 })
 
 # ---- the pair table itself ---------------------------------------------------
@@ -336,8 +390,10 @@ test_that(".compute_hierarchy_congruence() carries out the per-partner votes", {
     family.x = "Fam1", family.y = c("Fam1", "Fam2", "Fam1"),
     genus.x = "Gen1", genus.y = c("Gen1", "Gen9", "Gen1"),
     species.x = "Genusone speciesone",
-    species.y = c("Genusone speciesone", "Genusnine speciesnine",
-                  "Genusone speciestwo"),
+    species.y = c(
+      "Genusone speciesone", "Genusnine speciesnine",
+      "Genusone speciestwo"
+    ),
     stringsAsFactors = FALSE
   )
   reference_df <- data.frame(
@@ -346,12 +402,15 @@ test_that(".compute_hierarchy_congruence() carries out the per-partner votes", {
     stringsAsFactors = FALSE
   )
   out <- TaxaMatch:::.compute_hierarchy_congruence(
-    seq_matrix, reference_df, rank_system = c("family", "genus", "species")
+    seq_matrix, reference_df,
+    rank_system = c("family", "genus", "species")
   )
   pt <- attr(out, "pair_table")
   expect_s3_class(pt, "data.frame")
-  expect_setequal(names(pt), c("id_x", "id_y", "p_match",
-                               "pair_finest_common_rank", "species_y"))
+  expect_setequal(names(pt), c(
+    "id_x", "id_y", "p_match",
+    "pair_finest_common_rank", "species_y"
+  ))
   expect_equal(nrow(pt), 3L)
   expect_equal(pt$pair_finest_common_rank[pt$id_y == "H1"], "species")
   expect_true(is.na(pt$pair_finest_common_rank[pt$id_y == "H2"]))
@@ -370,8 +429,10 @@ test_that("the pair cache round-trips and rejects a foreign schema", {
   expect_equal(back$id_y, pairs$id_y)
 
   saveRDS(data.frame(nonsense = 1), file.path(dir, "reference_pair_cache.rds"))
-  expect_warning(bad <- TaxaMatch:::.load_reference_pair_cache(dir),
-                 "unexpected schema")
+  expect_warning(
+    bad <- TaxaMatch:::.load_reference_pair_cache(dir),
+    "unexpected schema"
+  )
   expect_equal(nrow(bad), 0L)
 })
 
@@ -415,13 +476,17 @@ test_that("score_reference_labels() gives a zero-partner row NA confidence and '
 test_that(".label_confidence_from_evidence() would return exactly 0.5 for a zero-partner row without the rule", {
   # Pins the mechanism the rule exists to intercept, so a future change to
   # the formula cannot silently reintroduce a 0.5 that reads as 'caution'.
-  args <- list(frac = 0.5, best_agree = NA_real_, best_disagree = NA_real_,
-               anywhere = FALSE, anywhere_pident = NA_real_)
+  args <- list(
+    frac = 0.5, best_agree = NA_real_, best_disagree = NA_real_,
+    anywhere = FALSE, anywhere_pident = NA_real_
+  )
   without <- do.call(TaxaMatch:::.label_confidence_from_evidence, args)
   expect_equal(without$confidence, 0.5)
 
-  with_rule <- do.call(TaxaMatch:::.label_confidence_from_evidence,
-                       c(args, list(n_partners = 0L)))
+  with_rule <- do.call(
+    TaxaMatch:::.label_confidence_from_evidence,
+    c(args, list(n_partners = 0L))
+  )
   expect_true(is.na(with_rule$confidence))
 })
 
@@ -483,7 +548,10 @@ test_that("a zero-partner row is never removable, before or after the rule", {
 test_that("verify_removal_candidates() makes no NCBI call and returns zero rows when nothing would be removed", {
   called <- FALSE
   local_mocked_bindings(
-    evaluate_reference_accessions = function(...) { called <<- TRUE; stop("must not be reached") },
+    evaluate_reference_accessions = function(...) {
+      called <<- TRUE
+      stop("must not be reached")
+    },
     .package = "TaxaMatch"
   )
   out <- suppressMessages(
@@ -687,8 +755,10 @@ test_that("verify_removal_candidates() screen_corroborators = FALSE skips the co
     .package = "TaxaMatch"
   )
   out <- suppressMessages(
-    verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir,
-                               screen_corroborators = FALSE)
+    verify_removal_candidates(.audit_eval_fixture(),
+      cache_dir = cache_dir,
+      screen_corroborators = FALSE
+    )
   )
   expect_true(is.na(out$corroborator_flagged[1L]))
   # Only the audit call itself (the two candidate accessions) -- no second
@@ -705,11 +775,13 @@ test_that("verify_removal_candidates() screens no corroborators (zero extra NCBI
   local_mocked_bindings(
     evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
       n_calls <<- n_calls + 1L
-      data.frame(accession = accessions, reference_action = "remove",
-                 congruent_evidence_exists_anywhere = FALSE,
-                 n_independent_top_matches = 5L, n_top_matches_available = 40L,
-                 params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
-                 stringsAsFactors = FALSE)
+      data.frame(
+        accession = accessions, reference_action = "remove",
+        congruent_evidence_exists_anywhere = FALSE,
+        n_independent_top_matches = 5L, n_top_matches_available = 40L,
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
     },
     .package = "TaxaMatch"
   )
@@ -722,11 +794,13 @@ test_that("verify_removal_candidates() screens no corroborators (zero extra NCBI
 test_that("verify_removal_candidates() returns NA corroborator columns when no pair cache exists", {
   local_mocked_bindings(
     evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
-      data.frame(accession = accessions, reference_action = "remove",
-                 congruent_evidence_exists_anywhere = FALSE,
-                 n_independent_top_matches = 5L, n_top_matches_available = 40L,
-                 params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
-                 stringsAsFactors = FALSE)
+      data.frame(
+        accession = accessions, reference_action = "remove",
+        congruent_evidence_exists_anywhere = FALSE,
+        n_independent_top_matches = 5L, n_top_matches_available = 40L,
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
     },
     .package = "TaxaMatch"
   )
@@ -747,10 +821,10 @@ test_that("verify_removal_candidates() returns NA corroborator columns when no p
 # real schema exactly (the hard-required columns; the additive ones are
 # included too for realism, though NA-safe if omitted).
 .raw_cache_row <- function(accession, hierarchy_flag, n_partners = NA_integer_,
-                          frac = NA_real_, best_agree = NA_real_,
-                          best_disagree = NA_real_, anywhere = FALSE,
-                          anywhere_pident = NA_real_,
-                          local_corroborator_accession = NA_character_) {
+                           frac = NA_real_, best_agree = NA_real_,
+                           best_disagree = NA_real_, anywhere = FALSE,
+                           anywhere_pident = NA_real_,
+                           local_corroborator_accession = NA_character_) {
   data.frame(
     accession = accession, listed_taxon = NA_character_,
     n_independent_top_matches = n_partners, n_top_matches_available = NA_integer_,
@@ -790,11 +864,15 @@ test_that("verify_local_corroborations() flags a thin row whose corroborator is 
   .write_raw_cache(cache_dir, list(
     # THIN1: 1 corroborator (BADREF), which independently reads "remove"
     # (the real REMOVE1 shape from .verdict_eval_fixture()).
-    .raw_cache_row("THIN1", "locally_corroborated", n_partners = 1L,
-                   best_agree = 100, anywhere = TRUE,
-                   local_corroborator_accession = "BADREF"),
-    .raw_cache_row("BADREF", "incongruent", n_partners = 3L, frac = 0.875,
-                   best_disagree = 98.62, anywhere = FALSE)
+    .raw_cache_row("THIN1", "locally_corroborated",
+      n_partners = 1L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "BADREF"
+    ),
+    .raw_cache_row("BADREF", "incongruent",
+      n_partners = 3L, frac = 0.875,
+      best_disagree = 98.62, anywhere = FALSE
+    )
   ))
   msgs <- capture_messages(out <- verify_local_corroborations(cache_dir))
   expect_equal(nrow(out), 1L)
@@ -808,12 +886,16 @@ test_that("verify_local_corroborations() reads 'clean' when the corroborator's o
   skip_if_not_installed("withr")
   cache_dir <- withr::local_tempdir()
   .write_raw_cache(cache_dir, list(
-    .raw_cache_row("THIN2", "locally_corroborated", n_partners = 2L,
-                   best_agree = 100, anywhere = TRUE,
-                   local_corroborator_accession = "GOODREF"),
+    .raw_cache_row("THIN2", "locally_corroborated",
+      n_partners = 2L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "GOODREF"
+    ),
     # GOODREF: the real KEEP1 shape -- ordinary congruent, nothing disagrees.
-    .raw_cache_row("GOODREF", "congruent", n_partners = 5L, frac = 0.08333,
-                   best_agree = 99.5, anywhere = TRUE, anywhere_pident = 99.5)
+    .raw_cache_row("GOODREF", "congruent",
+      n_partners = 5L, frac = 0.08333,
+      best_agree = 99.5, anywhere = TRUE, anywhere_pident = 99.5
+    )
   ))
   out <- suppressMessages(verify_local_corroborations(cache_dir))
   expect_equal(out$status, "clean")
@@ -824,9 +906,11 @@ test_that("verify_local_corroborations() reads 'unchecked' when the corroborator
   skip_if_not_installed("withr")
   cache_dir <- withr::local_tempdir()
   .write_raw_cache(cache_dir, list(
-    .raw_cache_row("THIN3", "locally_corroborated", n_partners = 1L,
-                   best_agree = 100, anywhere = TRUE,
-                   local_corroborator_accession = "NEVERSEEN")
+    .raw_cache_row("THIN3", "locally_corroborated",
+      n_partners = 1L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "NEVERSEEN"
+    )
   ))
   out <- suppressMessages(verify_local_corroborations(cache_dir))
   expect_equal(out$status, "unchecked")
@@ -840,11 +924,15 @@ test_that("verify_local_corroborations() excludes a row resting on more than max
     # THICK1 rests on 5 independent corroborators -- many independent
     # partners agreeing is not the thin-rescue risk, so it is left out of
     # the audit entirely, regardless of BADREF's own bad verdict.
-    .raw_cache_row("THICK1", "locally_corroborated", n_partners = 5L,
-                   best_agree = 100, anywhere = TRUE,
-                   local_corroborator_accession = "BADREF"),
-    .raw_cache_row("BADREF", "incongruent", n_partners = 3L, frac = 0.875,
-                   best_disagree = 98.62, anywhere = FALSE)
+    .raw_cache_row("THICK1", "locally_corroborated",
+      n_partners = 5L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "BADREF"
+    ),
+    .raw_cache_row("BADREF", "incongruent",
+      n_partners = 3L, frac = 0.875,
+      best_disagree = 98.62, anywhere = FALSE
+    )
   ))
   expect_message(
     out <- verify_local_corroborations(cache_dir),
@@ -857,13 +945,17 @@ test_that("verify_local_corroborations() never flags an 'untested' corroborator"
   skip_if_not_installed("withr")
   cache_dir <- withr::local_tempdir()
   .write_raw_cache(cache_dir, list(
-    .raw_cache_row("THIN4", "locally_corroborated", n_partners = 1L,
-                   best_agree = 100, anywhere = TRUE,
-                   local_corroborator_accession = "UNTESTEDREF"),
+    .raw_cache_row("THIN4", "locally_corroborated",
+      n_partners = 1L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "UNTESTEDREF"
+    ),
     # UNTESTEDREF: zero partners -> "untested", never "remove"/"caution"/
     # "inspect" regardless of its own frac.
-    .raw_cache_row("UNTESTEDREF", "incongruent", n_partners = 0L, frac = 0.5,
-                   anywhere = FALSE)
+    .raw_cache_row("UNTESTEDREF", "incongruent",
+      n_partners = 0L, frac = 0.5,
+      anywhere = FALSE
+    )
   ))
   out <- suppressMessages(verify_local_corroborations(cache_dir))
   expect_equal(out$corroborator_reference_action, "untested")
@@ -875,6 +967,8 @@ test_that("verify_local_corroborations() input validation", {
   expect_error(verify_local_corroborations(cache_dir = NA_character_), "single, non-NA path")
   skip_if_not_installed("withr")
   cache_dir <- withr::local_tempdir()
-  expect_error(verify_local_corroborations(cache_dir, max_corroborators = -1),
-              "non-negative number")
+  expect_error(
+    verify_local_corroborations(cache_dir, max_corroborators = -1),
+    "non-negative number"
+  )
 })

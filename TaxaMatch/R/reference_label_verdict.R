@@ -73,7 +73,6 @@ utils::globalVariables(c(
                                             anywhere, anywhere_pident,
                                             n_partners = NULL,
                                             margin_scale = 1, margin_cap = 5) {
-
   n <- length(frac)
   eps <- 1e-6
 
@@ -96,17 +95,17 @@ utils::globalVariables(c(
   # AGAINST -- exactly the 4-vs-8 split measured on the real PtConception
   # run. Both-NA (no identity information at all) is neutral, not evidence.
   d <- rep(NA_real_, n)
-  both      <- !is.na(agree_p) & !is.na(best_disagree)
-  only_ok   <- !is.na(agree_p) &  is.na(best_disagree)
-  only_bad  <-  is.na(agree_p) & !is.na(best_disagree)
-  d[both]     <- agree_p[both] - best_disagree[both]
-  d[only_ok]  <-  margin_cap
+  both <- !is.na(agree_p) & !is.na(best_disagree)
+  only_ok <- !is.na(agree_p) & is.na(best_disagree)
+  only_bad <- is.na(agree_p) & !is.na(best_disagree)
+  d[both] <- agree_p[both] - best_disagree[both]
+  d[only_ok] <- margin_cap
   d[only_bad] <- -margin_cap
   d <- pmax(pmin(d, margin_cap), -margin_cap)
 
   p_vote <- pmin(pmax(1 - frac, eps), 1 - eps)
-  shift  <- ifelse(is.na(d), 0, d / margin_scale)
-  conf   <- stats::plogis(stats::qlogis(p_vote) + shift)
+  shift <- ifelse(is.na(d), 0, d / margin_scale)
+  conf <- stats::plogis(stats::qlogis(p_vote) + shift)
   conf[is.na(frac)] <- NA_real_
 
   # NO PARTNERS IS NOT A COIN FLIP (2026-09-04, user-approved).
@@ -351,65 +350,77 @@ score_reference_labels <- function(evaluation,
                                    # is what `refine_reference_verdicts()`
                                    # resolves its own `...` against. A test
                                    # asserts the two stay identical.
-                                   margin_scale         = 1,
-                                   margin_cap           = 5,
-                                   action_remove_below  = 0.05,
+                                   margin_scale = 1,
+                                   margin_cap = 5,
+                                   action_remove_below = 0.05,
                                    action_inspect_below = 0.25,
                                    action_caution_below = 0.75,
-                                   overwrite            = FALSE,
-                                   local_corroboration  = NULL) {
-
-  if (!is.data.frame(evaluation))
+                                   overwrite = FALSE,
+                                   local_corroboration = NULL) {
+  if (!is.data.frame(evaluation)) {
     stop("evaluation must be a data frame.", call. = FALSE)
+  }
   if (!is.null(local_corroboration)) {
     if (!is.data.frame(local_corroboration) ||
-        !all(c("accession", "local_tier") %in% names(local_corroboration)))
+      !all(c("accession", "local_tier") %in% names(local_corroboration))) {
       stop("local_corroboration must be NULL or corroborate_references_locally() output (accession, local_tier).",
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
   }
   .pos_num <- function(x, nm) {
-    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0)
+    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x <= 0) {
       stop(sprintf("%s must be a single positive number.", nm), call. = FALSE)
+    }
   }
   .pos_num(margin_scale, "margin_scale")
   .pos_num(margin_cap, "margin_cap")
   for (nm in c("action_remove_below", "action_inspect_below", "action_caution_below")) {
     v <- get(nm)
-    if (!is.numeric(v) || length(v) != 1L || is.na(v) || v < 0 || v > 1)
+    if (!is.numeric(v) || length(v) != 1L || is.na(v) || v < 0 || v > 1) {
       stop(sprintf("%s must be a single number in [0, 1].", nm), call. = FALSE)
+    }
   }
   if (!(action_remove_below <= action_inspect_below &&
-        action_inspect_below <= action_caution_below))
+    action_inspect_below <= action_caution_below)) {
     stop("Thresholds must be ordered: action_remove_below <= action_inspect_below <= action_caution_below.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
-  new_cols <- c("label_confidence", "label_identity_margin", "reference_action",
-                "action_reason", "corroboration_source",
-                "local_best_independent_pident", "local_n_independent_conspecific")
-  present  <- intersect(new_cols, names(evaluation))
-  if (length(present) > 0L && !isTRUE(overwrite))
+  new_cols <- c(
+    "label_confidence", "label_identity_margin", "reference_action",
+    "action_reason", "corroboration_source",
+    "local_best_independent_pident", "local_n_independent_conspecific"
+  )
+  present <- intersect(new_cols, names(evaluation))
+  if (length(present) > 0L && !isTRUE(overwrite)) {
     stop(sprintf(
       "evaluation already has column(s) %s -- pass overwrite = TRUE to recompute them.",
       paste(present, collapse = ", ")
     ), call. = FALSE)
+  }
 
-  needed <- c("hierarchy_flag", "frac_independent_below_min_congruent_rank",
-              "best_agreeing_pident", "best_disagreeing_pident",
-              "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident")
+  needed <- c(
+    "hierarchy_flag", "frac_independent_below_min_congruent_rank",
+    "best_agreeing_pident", "best_disagreeing_pident",
+    "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident"
+  )
   missing_cols <- setdiff(needed, names(evaluation))
-  if (length(missing_cols) > 0L)
+  if (length(missing_cols) > 0L) {
     stop(sprintf(
       "evaluation is missing required columns: %s",
       paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
+  }
 
   if (nrow(evaluation) == 0L) {
-    evaluation$label_confidence      <- numeric(0L)
+    evaluation$label_confidence <- numeric(0L)
     evaluation$label_identity_margin <- numeric(0L)
-    evaluation$reference_action      <- character(0L)
-    evaluation$action_reason         <- character(0L)
-    evaluation$corroboration_source  <- character(0L)
-    evaluation$local_best_independent_pident   <- numeric(0L)
+    evaluation$reference_action <- character(0L)
+    evaluation$action_reason <- character(0L)
+    evaluation$corroboration_source <- character(0L)
+    evaluation$local_best_independent_pident <- numeric(0L)
     evaluation$local_n_independent_conspecific <- integer(0L)
     return(evaluation)
   }
@@ -427,14 +438,14 @@ score_reference_labels <- function(evaluation,
     margin_cap      = margin_cap
   )
 
-  evaluation$label_confidence      <- lc$confidence
+  evaluation$label_confidence <- lc$confidence
   evaluation$label_identity_margin <- lc$margin
 
   action <- .reference_action_from_confidence(
     label_confidence = lc$confidence,
-    hierarchy_flag   = evaluation$hierarchy_flag,
-    anywhere         = evaluation$congruent_evidence_exists_anywhere,
-    action_remove_below  = action_remove_below,
+    hierarchy_flag = evaluation$hierarchy_flag,
+    anywhere = evaluation$congruent_evidence_exists_anywhere,
+    action_remove_below = action_remove_below,
     action_inspect_below = action_inspect_below,
     action_caution_below = action_caution_below
   )
@@ -442,41 +453,43 @@ score_reference_labels <- function(evaluation,
   # ---- Local corroboration: provenance + veto (2026-09-03) -----------------
   local <- .local_corroboration_columns(evaluation, local_corroboration)
   is_skipped <- evaluation$hierarchy_flag %in% "locally_corroborated"
-  local_ok   <- local$corroborated | is_skipped
-  blast_ok   <- evaluation$congruent_evidence_exists_anywhere %in% TRUE & !is_skipped
+  local_ok <- local$corroborated | is_skipped
+  blast_ok <- evaluation$congruent_evidence_exists_anywhere %in% TRUE & !is_skipped
   no_verdict <- is.na(evaluation$hierarchy_flag)
 
   source <- ifelse(blast_ok & local_ok, "both",
-                   ifelse(blast_ok, "blast", ifelse(local_ok, "local", "none")))
+    ifelse(blast_ok, "blast", ifelse(local_ok, "local", "none"))
+  )
   source[no_verdict] <- NA_character_
 
-  veto   <- .apply_local_veto(action, local_ok)
+  veto <- .apply_local_veto(action, local_ok)
   reason <- rep(NA_character_, nrow(evaluation))
   reason[veto$vetoed] <- "vetoed_by_local_corroboration"
-  reason[is_skipped]  <- "locally_corroborated_not_blasted"
+  reason[is_skipped] <- "locally_corroborated_not_blasted"
 
   # A skipped row has no BLAST evidence to grade, so its confidence is NA and
   # its local numbers come from the row itself (the skip wrote them into
   # best_agreeing_pident / n_independent_top_matches) when no table is here
   # to supply them.
   local_pident <- local$best_pident
-  local_n      <- local$n_independent
+  local_n <- local$n_independent
   fill <- is_skipped & is.na(local_pident)
   local_pident[fill] <- evaluation$best_agreeing_pident[fill]
   fill_n <- is_skipped & is.na(local_n)
   local_n[fill_n] <- as.integer(evaluation$n_independent_top_matches[fill_n])
 
-  evaluation$reference_action                <- veto$action
-  evaluation$action_reason                   <- reason
-  evaluation$corroboration_source            <- source
-  evaluation$local_best_independent_pident   <- local_pident
+  evaluation$reference_action <- veto$action
+  evaluation$action_reason <- reason
+  evaluation$corroboration_source <- source
+  evaluation$local_best_independent_pident <- local_pident
   evaluation$local_n_independent_conspecific <- local_n
   # Best-effort provenance for review_flagged_accessions()'s prompt line
   # (attributes do not survive subsetting; the column values above do).
   if (!is.null(local_corroboration) &&
-      !is.null(attr(local_corroboration, "local_corroboration_params")))
+    !is.null(attr(local_corroboration, "local_corroboration_params"))) {
     attr(evaluation, "local_corroboration_params") <-
       attr(local_corroboration, "local_corroboration_params")
+  }
   evaluation
 }
 
@@ -489,18 +502,25 @@ score_reference_labels <- function(evaluation,
 #' @noRd
 .local_corroboration_columns <- function(evaluation, local_corroboration) {
   n <- nrow(evaluation)
-  out <- list(corroborated = rep(FALSE, n), best_pident = rep(NA_real_, n),
-              n_independent = rep(NA_integer_, n))
-  if (is.null(local_corroboration) || nrow(local_corroboration) == 0L) return(out)
-  lc  <- local_corroboration[!duplicated(.strip_acc_version(local_corroboration$accession)), ,
-                             drop = FALSE]
+  out <- list(
+    corroborated = rep(FALSE, n), best_pident = rep(NA_real_, n),
+    n_independent = rep(NA_integer_, n)
+  )
+  if (is.null(local_corroboration) || nrow(local_corroboration) == 0L) {
+    return(out)
+  }
+  lc <- local_corroboration[!duplicated(.strip_acc_version(local_corroboration$accession)), ,
+    drop = FALSE
+  ]
   idx <- match(.strip_acc_version(evaluation$accession), .strip_acc_version(lc$accession))
   hit <- !is.na(idx)
   out$corroborated[hit] <- lc$local_tier[idx[hit]] %in% "corroborated"
-  if ("best_independent_pident" %in% names(lc))
+  if ("best_independent_pident" %in% names(lc)) {
     out$best_pident[hit] <- 100 * as.numeric(lc$best_independent_pident[idx[hit]])
-  if ("n_independent_conspecific" %in% names(lc))
+  }
+  if ("n_independent_conspecific" %in% names(lc)) {
     out$n_independent[hit] <- as.integer(lc$n_independent_conspecific[idx[hit]])
+  }
   out
 }
 
@@ -539,10 +559,13 @@ score_reference_labels <- function(evaluation,
 .resolve_label_params <- function(...) {
   supplied <- list(...)
   unknown <- setdiff(names(supplied), names(.LABEL_VERDICT_DEFAULTS))
-  if (length(unknown) > 0L)
-    stop(sprintf("Unknown label-verdict parameter(s): %s. Expected any of: %s.",
-                 paste(unknown, collapse = ", "),
-                 paste(names(.LABEL_VERDICT_DEFAULTS), collapse = ", ")), call. = FALSE)
+  if (length(unknown) > 0L) {
+    stop(sprintf(
+      "Unknown label-verdict parameter(s): %s. Expected any of: %s.",
+      paste(unknown, collapse = ", "),
+      paste(names(.LABEL_VERDICT_DEFAULTS), collapse = ", ")
+    ), call. = FALSE)
+  }
   utils::modifyList(.LABEL_VERDICT_DEFAULTS, supplied)
 }
 
@@ -579,9 +602,11 @@ score_reference_labels <- function(evaluation,
   # it -- deliberately NOT folded into "inspect", whose established meaning is
   # "the label evidence is ambiguous, look at it".
   action[is.na(label_confidence) |
-           is.na(hierarchy_flag) |
-           hierarchy_flag %in% c("not_evaluated_oversized",
-                                 "not_evaluated_wrong_marker")] <- "untested"
+    is.na(hierarchy_flag) |
+    hierarchy_flag %in% c(
+      "not_evaluated_oversized",
+      "not_evaluated_wrong_marker"
+    )] <- "untested"
   # "locally_corroborated" (2026-09-03): never BLASTed, so label_confidence
   # is NA -- but it is a positive verdict (an independent conspecific in the
   # caller's own reference set), not an untested one. Keep.
@@ -723,7 +748,7 @@ score_reference_labels <- function(evaluation,
 #'
 #' @export
 refine_reference_verdicts <- function(evaluation,
-                                      cache_dir  = NULL,
+                                      cache_dir = NULL,
                                       pair_table = NULL,
                                       rank_system = TaxaTools::standard_ranks,
                                       min_congruent_rank = "family",
@@ -736,46 +761,61 @@ refine_reference_verdicts <- function(evaluation,
                                       verbose = TRUE,
                                       local_corroboration = NULL,
                                       ...) {
-
-  if (!is.data.frame(evaluation))
+  if (!is.data.frame(evaluation)) {
     stop("evaluation must be a data frame.", call. = FALSE)
-  if (!"accession" %in% names(evaluation))
+  }
+  if (!"accession" %in% names(evaluation)) {
     stop("evaluation must have an 'accession' column.", call. = FALSE)
-  if (is.null(pair_table) && is.null(cache_dir))
+  }
+  if (is.null(pair_table) && is.null(cache_dir)) {
     stop("Supply either cache_dir (holding reference_pair_cache.rds) or pair_table.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (!is.numeric(min_partner_weight) || length(min_partner_weight) != 1L ||
-      is.na(min_partner_weight) || min_partner_weight < 0 || min_partner_weight > 1)
+    is.na(min_partner_weight) || min_partner_weight < 0 || min_partner_weight > 1) {
     stop("min_partner_weight must be a single number in [0, 1].", call. = FALSE)
+  }
 
   rank_system <- tolower(rank_system)
   min_congruent_rank <- tolower(min_congruent_rank)
-  if (!min_congruent_rank %in% rank_system)
-    stop(sprintf("min_congruent_rank ('%s') must be one of rank_system's own ranks: %s",
-                 min_congruent_rank, paste(rank_system, collapse = ", ")), call. = FALSE)
+  if (!min_congruent_rank %in% rank_system) {
+    stop(sprintf(
+      "min_congruent_rank ('%s') must be one of rank_system's own ranks: %s",
+      min_congruent_rank, paste(rank_system, collapse = ", ")
+    ), call. = FALSE)
+  }
   min_rank_idx <- which(rank_system == min_congruent_rank)
 
   lp <- .resolve_label_params(...)
-  if (!all(c("label_confidence", "reference_action") %in% names(evaluation)))
-    evaluation <- do.call(score_reference_labels,
-                          c(list(evaluation, local_corroboration = local_corroboration), lp))
+  if (!all(c("label_confidence", "reference_action") %in% names(evaluation))) {
+    evaluation <- do.call(
+      score_reference_labels,
+      c(list(evaluation, local_corroboration = local_corroboration), lp)
+    )
+  }
   local_ok <- .local_corroboration_columns(evaluation, local_corroboration)$corroborated |
     evaluation$hierarchy_flag %in% "locally_corroborated"
 
   if (is.null(pair_table)) pair_table <- .load_reference_pair_cache(cache_dir)
   needed <- c("id_x", "id_y", "p_match", "pair_finest_common_rank")
   missing_cols <- setdiff(needed, names(pair_table))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("pair_table is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "pair_table is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   acc <- evaluation$accession
   pairs <- pair_table[pair_table$id_x %in% acc & pair_table$id_x != pair_table$id_y,
-                      needed, drop = FALSE]
+    needed,
+    drop = FALSE
+  ]
 
   # Unrefined values are the fallback for every accession with no pair rows,
   # and the starting point of the iteration for those that have them.
-  evaluation$hierarchy_flag_trust   <- evaluation$hierarchy_flag
+  evaluation$hierarchy_flag_trust <- evaluation$hierarchy_flag
   evaluation$label_confidence_trust <- evaluation$label_confidence
   evaluation$reference_action_trust <- evaluation$reference_action
   evaluation$frac_below_min_congruent_rank_trust <-
@@ -784,12 +824,15 @@ refine_reference_verdicts <- function(evaluation,
   evaluation$trust_refined <- FALSE
 
   if (nrow(pairs) == 0L) {
-    if (verbose)
-      message("refine_reference_verdicts(): no cached per-partner votes for any of these ",
-              "accessions -- every verdict returned unrefined. Re-run ",
-              "evaluate_reference_accessions() with a cache_dir to build them.")
+    if (verbose) {
+      message(
+        "refine_reference_verdicts(): no cached per-partner votes for any of these ",
+        "accessions -- every verdict returned unrefined. Re-run ",
+        "evaluate_reference_accessions() with a cache_dir to build them."
+      )
+    }
     attr(evaluation, "trust_iterations") <- 0L
-    attr(evaluation, "trust_converged")  <- TRUE
+    attr(evaluation, "trust_converged") <- TRUE
     return(evaluation)
   }
 
@@ -803,13 +846,15 @@ refine_reference_verdicts <- function(evaluation,
   ord <- order(pairs$id_x, -pairs$p_match, pairs$id_y)
   pairs <- pairs[ord, , drop = FALSE]
   pairs$rank_in_group <- stats::ave(seq_len(nrow(pairs)),
-                                    pairs$id_x, FUN = seq_along)
+    pairs$id_x,
+    FUN = seq_along
+  )
   pairs$in_top_n <- pairs$rank_in_group <= top_n
 
   refined_ids <- unique(pairs$id_x)
   evaluation$trust_refined <- acc %in% refined_ids
 
-  y_idx <- match(pairs$id_y, acc)   # NA => partner not in this evaluation
+  y_idx <- match(pairs$id_y, acc) # NA => partner not in this evaluation
   x_key <- factor(pairs$id_x, levels = refined_ids)
 
   lc_prev <- evaluation$label_confidence
@@ -822,7 +867,9 @@ refine_reference_verdicts <- function(evaluation,
   }
   .grp_max <- function(v, keep) {
     out <- rep(NA_real_, length(refined_ids))
-    if (!any(keep)) return(out)
+    if (!any(keep)) {
+      return(out)
+    }
     m <- tapply(v[keep], droplevels(x_key[keep]), max)
     out[match(names(m), refined_ids)] <- as.numeric(m)
     out
@@ -835,18 +882,18 @@ refine_reference_verdicts <- function(evaluation,
     # state, so no accession's update can depend on where it sits in the
     # input.
     w_all <- .partner_trust_weight(
-      flag             = evaluation$hierarchy_flag_trust[y_idx],
-      action           = evaluation$reference_action_trust[y_idx],
+      flag = evaluation$hierarchy_flag_trust[y_idx],
+      action = evaluation$reference_action_trust[y_idx],
       label_confidence = evaluation$label_confidence_trust[y_idx],
       min_partner_weight = min_partner_weight
     )
-    w_all[is.na(y_idx)] <- 1   # partner outside this evaluation: not discounted
+    w_all[is.na(y_idx)] <- 1 # partner outside this evaluation: not discounted
     counts <- w_all > 0
 
     w_top <- w_all * pairs$in_top_n
     n_eff <- .grp_sum(w_top)
     k_dis <- .grp_sum(w_top * pairs$below)
-    frac  <- (k_dis + 0.5) / (n_eff + 1)
+    frac <- (k_dis + 0.5) / (n_eff + 1)
 
     # Identity diagnostics are recomputed over partners that still carry any
     # weight at all (a hard-zeroed partner should not supply the number that
@@ -855,9 +902,9 @@ refine_reference_verdicts <- function(evaluation,
     # binary "still counts" reading of the weights rather than the
     # continuous one.
     best_agree <- .grp_max(pairs$p_match * 100, counts & pairs$in_top_n & !pairs$below)
-    best_disag <- .grp_max(pairs$p_match * 100, counts & pairs$in_top_n &  pairs$below)
-    any_agree  <- .grp_sum(as.numeric(counts & !pairs$below)) > 0
-    best_any   <- .grp_max(pairs$p_match * 100, counts & !pairs$below)
+    best_disag <- .grp_max(pairs$p_match * 100, counts & pairs$in_top_n & pairs$below)
+    any_agree <- .grp_sum(as.numeric(counts & !pairs$below)) > 0
+    best_any <- .grp_max(pairs$p_match * 100, counts & !pairs$below)
 
     flag_new <- ifelse(
       n_eff < min_independent_partners, "insufficient_independent_evidence",
@@ -877,41 +924,50 @@ refine_reference_verdicts <- function(evaluation,
     action_new <- .reference_action_from_confidence(
       label_confidence = lc_new$confidence, hierarchy_flag = flag_new,
       anywhere = any_agree,
-      action_remove_below  = lp$action_remove_below,
+      action_remove_below = lp$action_remove_below,
       action_inspect_below = lp$action_inspect_below,
       action_caution_below = lp$action_caution_below
     )
 
     at <- match(refined_ids, acc)
     action_new <- .apply_local_veto(action_new, local_ok[at])$action
-    evaluation$hierarchy_flag_trust[at]   <- flag_new
+    evaluation$hierarchy_flag_trust[at] <- flag_new
     evaluation$label_confidence_trust[at] <- lc_new$confidence
     evaluation$reference_action_trust[at] <- action_new
     evaluation$frac_below_min_congruent_rank_trust[at] <- frac
-    evaluation$n_effective_partners[at]   <- n_eff
+    evaluation$n_effective_partners[at] <- n_eff
 
     delta <- max(abs(evaluation$label_confidence_trust - lc_prev), na.rm = TRUE)
     lc_prev <- evaluation$label_confidence_trust
-    if (is.finite(delta) && delta < tol) { converged <- TRUE; break }
+    if (is.finite(delta) && delta < tol) {
+      converged <- TRUE
+      break
+    }
   }
 
   if (verbose) {
     n_unrefined <- sum(!evaluation$trust_refined)
     changed <- sum(evaluation$reference_action != evaluation$reference_action_trust,
-                   na.rm = TRUE)
+      na.rm = TRUE
+    )
     message(sprintf(
       "refine_reference_verdicts(): %d accession(s) refined over %d iteration(s)%s; %d action(s) changed%s.",
       length(refined_ids), iter,
       if (converged) "" else sprintf(" (NOT converged at max_iter = %d)", max_iter),
       changed,
-      if (n_unrefined > 0L)
-        sprintf("; %d accession(s) had no cached per-partner votes and were left unrefined",
-                n_unrefined) else ""
+      if (n_unrefined > 0L) {
+        sprintf(
+          "; %d accession(s) had no cached per-partner votes and were left unrefined",
+          n_unrefined
+        )
+      } else {
+        ""
+      }
     ))
   }
 
   attr(evaluation, "trust_iterations") <- iter
-  attr(evaluation, "trust_converged")  <- converged
+  attr(evaluation, "trust_converged") <- converged
   evaluation
 }
 
@@ -928,19 +984,27 @@ refine_reference_verdicts <- function(evaluation,
 #' summarised.
 #' @noRd
 .summarise_corroborators <- function(accessions, cache_dir, audit) {
-  out <- data.frame(accession = accessions, n = NA_integer_,
-                    best_rank = NA_character_, who = NA_character_,
-                    stringsAsFactors = FALSE)
+  out <- data.frame(
+    accession = accessions, n = NA_integer_,
+    best_rank = NA_character_, who = NA_character_,
+    stringsAsFactors = FALSE
+  )
   out$accessions_list <- vector("list", length(accessions))
-  if (is.null(cache_dir)) return(out)
+  if (is.null(cache_dir)) {
+    return(out)
+  }
   pairs <- tryCatch(.load_reference_pair_cache(cache_dir), error = function(e) NULL)
-  if (is.null(pairs) || nrow(pairs) == 0L) return(out)
+  if (is.null(pairs) || nrow(pairs) == 0L) {
+    return(out)
+  }
 
   key <- unique(stats::na.omit(audit[["params_key"]]))
   mcr <- if (length(key) == 1L) strsplit(key, "|", fixed = TRUE)[[1L]][[2L]] else "family"
   ladder <- tolower(TaxaTools::standard_ranks)
   idx_min <- match(tolower(mcr), ladder)
-  if (is.na(idx_min)) return(out)
+  if (is.na(idx_min)) {
+    return(out)
+  }
 
   for (k in seq_along(accessions)) {
     pk <- pairs[pairs$id_x %in% accessions[[k]], , drop = FALSE]
@@ -948,15 +1012,22 @@ refine_reference_verdicts <- function(evaluation,
     rk <- match(tolower(pk$pair_finest_common_rank), ladder)
     agree <- !is.na(rk) & rk >= idx_min
     out$n[k] <- sum(agree)
-    if (!any(agree)) { out$who[k] <- ""; next }
+    if (!any(agree)) {
+      out$who[k] <- ""
+      next
+    }
     ag <- pk[agree, , drop = FALSE]
     ag <- ag[order(-match(tolower(ag$pair_finest_common_rank), ladder), -ag$p_match), , drop = FALSE]
     out$best_rank[k] <- ag$pair_finest_common_rank[[1L]]
     top <- utils::head(ag, 3L)
-    out$who[k] <- paste(sprintf("%s %s @%.1f%% (%s)", top$id_y,
-                                ifelse(is.na(top$species_y), "?", top$species_y),
-                                100 * top$p_match, top$pair_finest_common_rank),
-                        collapse = "; ")
+    out$who[k] <- paste(
+      sprintf(
+        "%s %s @%.1f%% (%s)", top$id_y,
+        ifelse(is.na(top$species_y), "?", top$species_y),
+        100 * top$p_match, top$pair_finest_common_rank
+      ),
+      collapse = "; "
+    )
     # The actual accession IDs behind `who` -- .summarise_corroborators() had
     # only ever built the formatted DISPLAY string, discarding the IDs
     # themselves once printed. verify_removal_candidates(screen_corroborators=)
@@ -1085,18 +1156,21 @@ verify_removal_candidates <- function(evaluation, ...,
                                       cache_dir = NULL,
                                       screen_corroborators = TRUE,
                                       verbose = TRUE) {
-
-  if (!is.data.frame(evaluation) || !"accession" %in% names(evaluation))
+  if (!is.data.frame(evaluation) || !"accession" %in% names(evaluation)) {
     stop("evaluation must be a data frame with an 'accession' column.", call. = FALSE)
+  }
   if (!is.numeric(audit_max_hits) || length(audit_max_hits) != 1L ||
-      is.na(audit_max_hits) || audit_max_hits < 1)
+    is.na(audit_max_hits) || audit_max_hits < 1) {
     stop("audit_max_hits must be a single positive number.", call. = FALSE)
+  }
   if (!is.logical(screen_corroborators) || length(screen_corroborators) != 1L ||
-      is.na(screen_corroborators))
+    is.na(screen_corroborators)) {
     stop("screen_corroborators must be TRUE or FALSE.", call. = FALSE)
+  }
 
-  if (!"reference_action" %in% names(evaluation))
+  if (!"reference_action" %in% names(evaluation)) {
     evaluation <- score_reference_labels(evaluation)
+  }
 
   cand <- evaluation[evaluation$reference_action %in% "remove", , drop = FALSE]
 
@@ -1109,20 +1183,22 @@ verify_removal_candidates <- function(evaluation, ...,
     spared = logical(0L), stringsAsFactors = FALSE
   )
   if (nrow(cand) == 0L) {
-    if (verbose)
+    if (verbose) {
       message("verify_removal_candidates(): nothing is actioned 'remove' -- no NCBI call made.")
+    }
     return(empty)
   }
 
   audit <- evaluate_reference_accessions(
-    cand$accession, ..., max_hits = as.integer(audit_max_hits),
+    cand$accession, ...,
+    max_hits = as.integer(audit_max_hits),
     cache_dir = cache_dir, verbose = verbose
   )
 
   # Comparability check. Only meaningful when the production evaluation
   # actually carries a key (a hand-built fixture may not).
   if ("params_key" %in% names(evaluation) && "params_key" %in% names(audit)) {
-    prod_key  <- unique(stats::na.omit(cand$params_key))
+    prod_key <- unique(stats::na.omit(cand$params_key))
     audit_key <- unique(stats::na.omit(audit$params_key))
     if (length(prod_key) == 1L && length(audit_key) == 1L && prod_key != audit_key) {
       pf <- strsplit(prod_key, "|", fixed = TRUE)[[1L]]
@@ -1130,12 +1206,13 @@ verify_removal_candidates <- function(evaluation, ...,
       # Field 8 IS max_hits and is expected to differ; see .build_params_key().
       if (length(pf) == length(af)) {
         differing <- setdiff(which(pf != af), 8L)
-        if (length(differing) > 0L)
+        if (length(differing) > 0L) {
           warning(sprintf(
             "verify_removal_candidates(): the audit differs from the production run in more than max_hits (params_key field(s) %s: '%s' vs '%s'). The comparison is not meaningful -- pass the production run's own arguments (barcode_term above all) through `...`.",
             paste(differing, collapse = ", "),
             paste(pf[differing], collapse = ","), paste(af[differing], collapse = ",")
           ), call. = FALSE)
+        }
       }
     }
   }
@@ -1160,15 +1237,15 @@ verify_removal_candidates <- function(evaluation, ...,
 
   i <- match(cand$accession, audit$accession)
   out <- data.frame(
-    accession    = cand$accession,
+    accession = cand$accession,
     listed_taxon = cand$listed_taxon %||% NA_character_,
     action_production = cand$reference_action,
-    action_audit      = audit$reference_action[i],
+    action_audit = audit$reference_action[i],
     anywhere_production = cand$congruent_evidence_exists_anywhere,
-    anywhere_audit      = audit$congruent_evidence_exists_anywhere[i],
+    anywhere_audit = audit$congruent_evidence_exists_anywhere[i],
     n_partners_production = cand$n_independent_top_matches,
-    n_partners_audit      = audit$n_independent_top_matches[i],
-    n_hits_audit          = audit$n_top_matches_available[i],
+    n_partners_audit = audit$n_independent_top_matches[i],
+    n_hits_audit = audit$n_top_matches_available[i],
     stringsAsFactors = FALSE
   )
   # An audit row that itself came back at the cap tells you the wider window
@@ -1197,9 +1274,9 @@ verify_removal_candidates <- function(evaluation, ...,
   # KJ135626/MZ605481 case), check the corroborator(s)' own label the same
   # way any other accession's is checked, instead of trusting them at face
   # value forever.
-  out$corroborator_accessions   <- NA_character_
+  out$corroborator_accessions <- NA_character_
   out$corroborator_worst_action <- NA_character_
-  out$corroborator_flagged      <- NA
+  out$corroborator_flagged <- NA
   if (isTRUE(screen_corroborators) && any(thin)) {
     thin_acc_lists <- corr$accessions_list[match(out$accession[thin], corr$accession)]
     to_check <- unique(stats::na.omit(unlist(thin_acc_lists, use.names = FALSE)))
@@ -1208,32 +1285,40 @@ verify_removal_candidates <- function(evaluation, ...,
       # from the PRODUCTION evaluation (e.g. it is also a match-driving
       # accession somewhere else) needs no new NCBI call at all.
       already_known <- evaluation[evaluation$accession %in% to_check, , drop = FALSE]
-      if (!"reference_action" %in% names(already_known) && nrow(already_known) > 0L)
+      if (!"reference_action" %in% names(already_known) && nrow(already_known) > 0L) {
         already_known <- score_reference_labels(already_known)
+      }
       still_unknown <- setdiff(to_check, already_known$accession)
 
       # evaluate_reference_accessions() already runs score_reference_labels()
       # on its own output (2026-09-03) -- calling it again here would error
       # ("already has column(s) ... pass overwrite = TRUE").
       corr_eval <- if (length(still_unknown) > 0L) {
-        if (verbose)
+        if (verbose) {
           message(sprintf(
             "verify_removal_candidates(): screening %d corroborator accession(s) behind %d thin spare(s) (screen_corroborators = TRUE)...",
             length(still_unknown), sum(thin)
           ))
+        }
         evaluate_reference_accessions(
-          still_unknown, ..., max_hits = as.integer(audit_max_hits),
+          still_unknown, ...,
+          max_hits = as.integer(audit_max_hits),
           cache_dir = cache_dir, verbose = verbose
         )
       } else {
         NULL
       }
       corr_lookup <- dplyr::bind_rows(
-        already_known[, intersect(c("accession", "reference_action", "hierarchy_flag"),
-                                  names(already_known)), drop = FALSE],
-        if (!is.null(corr_eval))
-          corr_eval[, intersect(c("accession", "reference_action", "hierarchy_flag"),
-                                names(corr_eval)), drop = FALSE]
+        already_known[, intersect(
+          c("accession", "reference_action", "hierarchy_flag"),
+          names(already_known)
+        ), drop = FALSE],
+        if (!is.null(corr_eval)) {
+          corr_eval[, intersect(
+            c("accession", "reference_action", "hierarchy_flag"),
+            names(corr_eval)
+          ), drop = FALSE]
+        }
       )
       corr_lookup <- corr_lookup[!duplicated(corr_lookup$accession), , drop = FALSE]
 
@@ -1246,19 +1331,22 @@ verify_removal_candidates <- function(evaluation, ...,
       # version of this line read `!corr_action %in% "keep"`, which flagged
       # "untested" too -- contradicting this very comment. Fixed 2026-09-05.)
       corr_action <- corr_lookup$reference_action[match(to_check, corr_lookup$accession)]
-      corr_hflag  <- corr_lookup$hierarchy_flag[match(to_check, corr_lookup$accession)]
+      corr_hflag <- corr_lookup$hierarchy_flag[match(to_check, corr_lookup$accession)]
       corr_bad <- ifelse(!is.na(corr_action), !corr_action %in% c("keep", "untested"),
-                         ifelse(!is.na(corr_hflag), corr_hflag %in% "incongruent", NA))
+        ifelse(!is.na(corr_hflag), corr_hflag %in% "incongruent", NA)
+      )
 
       thin_idx <- which(thin)
       for (j in seq_along(thin_idx)) {
         accs <- thin_acc_lists[[j]]
         if (length(accs) == 0L || all(is.na(accs))) next
         acts <- corr_action[match(accs, to_check)]
-        bad  <- corr_bad[match(accs, to_check)]
+        bad <- corr_bad[match(accs, to_check)]
         out$corroborator_accessions[thin_idx[j]] <- paste(accs, collapse = "; ")
         out$corroborator_worst_action[thin_idx[j]] <-
-          if (all(is.na(acts))) NA_character_ else {
+          if (all(is.na(acts))) {
+            NA_character_
+          } else {
             lvl <- c(keep = 1L, caution = 2L, untested = 2L, inspect = 3L, remove = 4L)
             acts[which.max(lvl[acts])]
           }
@@ -1270,34 +1358,44 @@ verify_removal_candidates <- function(evaluation, ...,
   if (verbose) {
     if (any(thin)) {
       flagged_thin <- thin & out$corroborator_flagged %in% TRUE
-      if (any(flagged_thin))
+      if (any(flagged_thin)) {
         message(sprintf(
           "  STRONG RED FLAG: %s -- this corroboration is likely unreliable, not just thin.",
-          paste(sprintf("%s (corroborator action: %s)", out$accession[flagged_thin],
-                        out$corroborator_worst_action[flagged_thin]), collapse = "; ")
+          paste(sprintf(
+            "%s (corroborator action: %s)", out$accession[flagged_thin],
+            out$corroborator_worst_action[flagged_thin]
+          ), collapse = "; ")
         ))
+      }
       other_thin <- thin & !(out$corroborator_flagged %in% TRUE)
-      if (any(other_thin))
+      if (any(other_thin)) {
         message(sprintf(
           "  CHECK THESE BY HAND: %s spared on 1-2 corroborator(s) only. Look at whose label is doing the work -- a corroborator that is itself mislabeled reads exactly like real corroboration here (real case: GreatLakes KJ135626, rescued by MZ605481, a documented mislabel of the same species).%s",
           paste(sprintf("%s (%s)", out$accession[other_thin], out$corroborators[other_thin]), collapse = "; "),
-          if (isTRUE(screen_corroborators))
+          if (isTRUE(screen_corroborators)) {
             " (their own corroborator(s) checked out clean, or could not be checked -- see corroborator_worst_action.)"
-          else ""
+          } else {
+            ""
+          }
         ))
+      }
     }
     message(sprintf(
       "verify_removal_candidates(): %d of %d removal candidate(s) are no longer removable at max_hits = %d%s.",
       sum(out$spared, na.rm = TRUE), nrow(out), as.integer(audit_max_hits),
-      if (any(out$spared, na.rm = TRUE))
-        paste0(": ", paste(out$accession[out$spared %in% TRUE], collapse = ", ")) else ""
+      if (any(out$spared, na.rm = TRUE)) {
+        paste0(": ", paste(out$accession[out$spared %in% TRUE], collapse = ", "))
+      } else {
+        ""
+      }
     ))
     n_sat <- sum(out$still_saturated & !(out$spared %in% TRUE), na.rm = TRUE)
-    if (n_sat > 0L)
+    if (n_sat > 0L) {
       message(sprintf(
         "  %d still-removable candidate(s) came back AT the audit window too, so that window is also truncated: %s",
         n_sat, paste(out$accession[out$still_saturated & !(out$spared %in% TRUE)], collapse = ", ")
       ))
+    }
   }
   out
 }
@@ -1375,12 +1473,13 @@ verify_removal_candidates <- function(evaluation, ...,
 verify_local_corroborations <- function(cache_dir,
                                         max_corroborators = 2L,
                                         verbose = TRUE) {
-
-  if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))
+  if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
     stop("verify_local_corroborations: `cache_dir` must be a single, non-NA path.", call. = FALSE)
+  }
   if (!is.numeric(max_corroborators) || length(max_corroborators) != 1L ||
-      is.na(max_corroborators) || max_corroborators < 0)
+    is.na(max_corroborators) || max_corroborators < 0) {
     stop("verify_local_corroborations: `max_corroborators` must be a single non-negative number.", call. = FALSE)
+  }
 
   empty <- data.frame(
     accession = character(0L), listed_taxon = character(0L),
@@ -1392,8 +1491,9 @@ verify_local_corroborations <- function(cache_dir,
 
   cache <- .load_reference_accession_cache(cache_dir)
   if (nrow(cache) == 0L) {
-    if (verbose)
+    if (verbose) {
       message("verify_local_corroborations(): cache is empty or missing -- nothing to audit, no NCBI call made.")
+    }
     return(empty)
   }
 
@@ -1404,19 +1504,21 @@ verify_local_corroborations <- function(cache_dir,
 
   lc <- scored[scored$hierarchy_flag %in% "locally_corroborated", , drop = FALSE]
   if (nrow(lc) == 0L) {
-    if (verbose)
+    if (verbose) {
       message("verify_local_corroborations(): no 'locally_corroborated' rows in this cache -- nothing to audit, no NCBI call made.")
+    }
     return(empty)
   }
 
   thin <- !is.na(lc$n_independent_top_matches) &
     lc$n_independent_top_matches <= max_corroborators
   if (!any(thin)) {
-    if (verbose)
+    if (verbose) {
       message(sprintf(
         "verify_local_corroborations(): %d 'locally_corroborated' row(s), none resting on <= %d corroborator(s) -- nothing thin to audit, no NCBI call made.",
         nrow(lc), as.integer(max_corroborators)
       ))
+    }
     return(empty)
   }
   lc <- lc[thin, , drop = FALSE]
@@ -1424,13 +1526,14 @@ verify_local_corroborations <- function(cache_dir,
   corrob_acc <- .strip_acc_version(lc$local_corroborator_accession)
   j <- match(corrob_acc, .strip_acc_version(scored$accession))
   corrob_action <- scored$reference_action[j]
-  corrob_hflag  <- scored$hierarchy_flag[j]
+  corrob_hflag <- scored$hierarchy_flag[j]
   # Same rule as verify_removal_candidates(screen_corroborators=): flagged is
   # anything other than a clean "keep", falling back to hierarchy_flag ==
   # "incongruent" only when reference_action itself is unavailable.
   # "untested" is deliberately NOT flagged.
   bad <- ifelse(!is.na(corrob_action), !corrob_action %in% c("keep", "untested"),
-               ifelse(!is.na(corrob_hflag), corrob_hflag %in% "incongruent", NA))
+    ifelse(!is.na(corrob_hflag), corrob_hflag %in% "incongruent", NA)
+  )
   status <- ifelse(is.na(j), "unchecked", ifelse(bad, "flagged", "clean"))
 
   out <- data.frame(
@@ -1445,19 +1548,20 @@ verify_local_corroborations <- function(cache_dir,
   )
 
   if (verbose) {
-    n_flagged   <- sum(out$status == "flagged")
-    n_clean     <- sum(out$status == "clean")
+    n_flagged <- sum(out$status == "flagged")
+    n_clean <- sum(out$status == "clean")
     n_unchecked <- sum(out$status == "unchecked")
     message(sprintf(
       "verify_local_corroborations(): %d 'locally_corroborated' row(s), %d resting on <= %d corroborator(s) audited for free (no NCBI call made). Of those: %d corroborator(s) already verdicted clean, %d never independently evaluated (status = 'unchecked'), %d already verdicted BAD elsewhere in this cache.",
       nrow(scored[scored$hierarchy_flag %in% "locally_corroborated", , drop = FALSE]),
       nrow(out), as.integer(max_corroborators), n_clean, n_unchecked, n_flagged
     ))
-    if (n_flagged > 0L)
+    if (n_flagged > 0L) {
       message(sprintf(
         "  STRONG RED FLAG: %s rest on a corroborator whose OWN label already reads flagged elsewhere in this same cache -- the match itself is permanent, its evidential value was not. Treat as unresolved, not congruent.",
         paste(out$accession[out$status == "flagged"], collapse = ", ")
       ))
+    }
   }
   out
 }

@@ -17,7 +17,7 @@
 # ---------------------------------------------------------------------------
 
 .make_verified_row <- function(name, matched, cls_path, cls_ranks,
-                                verified = TRUE) {
+                               verified = TRUE) {
   data.frame(
     user_supplied_name    = name,
     matched_name          = matched,
@@ -64,16 +64,26 @@
 # Minimal match-object-style data frame mimicking NCBI BLAST output
 .ncbi_match_df <- data.frame(
   observation_id = c("ESV_001", "ESV_002", "ESV_003", "ESV_004"),
-  taxon_name     = c("Girella nigricans", "Fundulus parvipinnis",
-                     "Acanthogobius flavimanus", "Nonexistent taxon"),
-  order          = c("Perciformes",        "Cyprinodontiformes",
-                     "Gobiiformes",         "Unknowniformes"),
-  family         = c("Girellidae",          "Fundulidae",
-                     "Gobiidae",            "Unknownidae"),
-  genus          = c("Girella",             "Fundulus",
-                     "Acanthogobius",       "Nonexistent"),
-  species        = c("Girella nigricans",   "Fundulus parvipinnis",
-                     "Acanthogobius flavimanus", "Nonexistent taxon"),
+  taxon_name = c(
+    "Girella nigricans", "Fundulus parvipinnis",
+    "Acanthogobius flavimanus", "Nonexistent taxon"
+  ),
+  order = c(
+    "Perciformes", "Cyprinodontiformes",
+    "Gobiiformes", "Unknowniformes"
+  ),
+  family = c(
+    "Girellidae", "Fundulidae",
+    "Gobiidae", "Unknownidae"
+  ),
+  genus = c(
+    "Girella", "Fundulus",
+    "Acanthogobius", "Nonexistent"
+  ),
+  species = c(
+    "Girella nigricans", "Fundulus parvipinnis",
+    "Acanthogobius flavimanus", "Nonexistent taxon"
+  ),
   score_original = c(99.1, 97.5, 96.0, 88.0),
   stringsAsFactors = FALSE
 )
@@ -91,9 +101,11 @@ test_that("non-data.frame input raises an error", {
 
 test_that("missing taxon_col raises an informative error", {
   expect_error(
-    convert_taxonomy_backbone(.ncbi_match_df, target_backbone_id = 11,
-                              taxon_col = "no_such_col",
-                              verify_fn = .mock_verify_gbif),
+    convert_taxonomy_backbone(.ncbi_match_df,
+      target_backbone_id = 11,
+      taxon_col = "no_such_col",
+      verify_fn = .mock_verify_gbif
+    ),
     regexp = "no_such_col"
   )
 })
@@ -101,17 +113,21 @@ test_that("missing taxon_col raises an informative error", {
 test_that("no rank_system columns in df raises an error", {
   df_no_ranks <- data.frame(taxon_name = "Foo", score = 99)
   expect_error(
-    convert_taxonomy_backbone(df_no_ranks, target_backbone_id = 11,
-                              rank_system = c("order", "family"),
-                              verify_fn   = .mock_verify_gbif),
+    convert_taxonomy_backbone(df_no_ranks,
+      target_backbone_id = 11,
+      rank_system = c("order", "family"),
+      verify_fn = .mock_verify_gbif
+    ),
     regexp = "rank_system"
   )
 })
 
 test_that("invalid target_backbone_id raises an error", {
   expect_error(
-    convert_taxonomy_backbone(.ncbi_match_df, target_backbone_id = c(11, 4),
-                              verify_fn = .mock_verify_gbif),
+    convert_taxonomy_backbone(.ncbi_match_df,
+      target_backbone_id = c(11, 4),
+      verify_fn = .mock_verify_gbif
+    ),
     regexp = "target_backbone_id"
   )
 })
@@ -151,7 +167,7 @@ test_that("consistent rows are not modified (Fundulus parvipinnis)", {
   ))
   fund_row <- result[result$taxon_name == "Fundulus parvipinnis", ]
   expect_equal(fund_row$family, "Fundulidae")
-  expect_equal(fund_row$order,  "Cyprinodontiformes")
+  expect_equal(fund_row$order, "Cyprinodontiformes")
 })
 
 # ===========================================================================
@@ -216,10 +232,14 @@ test_that("backbone_col is target_label for found rows", {
     source_backbone_id = 4,
     verify_fn          = .mock_verify_gbif
   ))
-  expect_equal(result[result$observation_id == "ESV_001", "taxonomy_backbone"],
-               "backbone_11")
-  expect_equal(result[result$observation_id == "ESV_002", "taxonomy_backbone"],
-               "backbone_11")
+  expect_equal(
+    result[result$observation_id == "ESV_001", "taxonomy_backbone"],
+    "backbone_11"
+  )
+  expect_equal(
+    result[result$observation_id == "ESV_002", "taxonomy_backbone"],
+    "backbone_11"
+  )
 })
 
 test_that("backbone_col is source_label for not-found rows", {
@@ -229,8 +249,10 @@ test_that("backbone_col is source_label for not-found rows", {
     source_backbone_id = 4,
     verify_fn          = .mock_verify_gbif
   ))
-  expect_equal(result[result$observation_id == "ESV_004", "taxonomy_backbone"],
-               "backbone_4")
+  expect_equal(
+    result[result$observation_id == "ESV_004", "taxonomy_backbone"],
+    "backbone_4"
+  )
 })
 
 # ===========================================================================
@@ -242,9 +264,9 @@ test_that("backbone_col is source_label for not-found rows", {
 # found in the target backbone, so it takes the fallback path.
 .hybrid_match_df <- data.frame(
   observation_id = "ESV_005",
-  taxon_name     = "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata",
-  genus          = "Citrus",
-  species        = "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata",
+  taxon_name = "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata",
+  genus = "Citrus",
+  species = "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata",
   score_original = 91.0,
   stringsAsFactors = FALSE
 )
@@ -254,12 +276,14 @@ test_that("not-found taxon_col value is cleaned, not passed through raw", {
     .hybrid_match_df,
     target_backbone_id = 11,
     source_backbone_id = 4,
-    rank_system         = c("genus", "species"),
-    verify_fn           = .mock_verify_gbif
+    rank_system = c("genus", "species"),
+    verify_fn = .mock_verify_gbif
   ))
   expect_equal(result$taxon_name, "Citrus unshiu")
-  expect_equal(result$taxon_name_original,
-               "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata")
+  expect_equal(
+    result$taxon_name_original,
+    "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"
+  )
 })
 
 test_that("not-found rank column value is cleaned, not passed through raw", {
@@ -267,8 +291,8 @@ test_that("not-found rank column value is cleaned, not passed through raw", {
     .hybrid_match_df,
     target_backbone_id = 11,
     source_backbone_id = 4,
-    rank_system         = c("genus", "species"),
-    verify_fn           = .mock_verify_gbif
+    rank_system = c("genus", "species"),
+    verify_fn = .mock_verify_gbif
   ))
   expect_equal(result$species, "Citrus unshiu")
 })
@@ -281,8 +305,10 @@ test_that("cleaning the fallback does not change which rows count as found", {
     verify_fn          = .mock_verify_gbif
   ))
   # Same found/not-found split as before this fix -- only ESV_004 not found.
-  expect_equal(result$taxonomy_backbone,
-               c("backbone_11", "backbone_11", "backbone_11", "backbone_4"))
+  expect_equal(
+    result$taxonomy_backbone,
+    c("backbone_11", "backbone_11", "backbone_11", "backbone_4")
+  )
 })
 
 test_that("already-clean not-found values are unaffected (no-op case)", {
@@ -308,19 +334,19 @@ test_that("update_taxon_name = TRUE does not add authority to genus-level taxon_
   .mock_verify_genus_authority <- function(name_list, backbone_id) {
     .make_verified_row(
       "Atherinops",
-      "Atherinops Steindachner,",           # authority-laden matched_name
+      "Atherinops Steindachner,", # authority-laden matched_name
       "Eukaryota|Chordata|Actinopteri|Atheriniformes|Atherinopsidae|Atherinops",
       "kingdom|phylum|class|order|family|genus"
     )
   }
   df_genus <- data.frame(
     observation_id = "ESV_G01",
-    taxon_name     = "Atherinops",
+    taxon_name = "Atherinops",
     taxon_name_rank = "genus",
-    order          = "Atheriniformes",
-    family         = "Atherinopsidae",
-    genus          = "Atherinops",
-    species        = NA_character_,
+    order = "Atheriniformes",
+    family = "Atherinopsidae",
+    genus = "Atherinops",
+    species = NA_character_,
     stringsAsFactors = FALSE
   )
   result <- convert_taxonomy_backbone(
@@ -352,25 +378,25 @@ test_that("taxon_name_rank is corrected on fallback when verify_fn supplies matc
       "kingdom|phylum|order|family|genus"
     )
     row$matched_rank <- "genus"
-    row$is_synonym   <- TRUE
+    row$is_synonym <- TRUE
     row
   }
   df_inu <- data.frame(
-    observation_id  = "ESV_INU",
-    taxon_name      = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    observation_id = "ESV_INU",
+    taxon_name = "Inu sp. 1 sensu Shibukawa et al., 2020.",
     taxon_name_rank = "species",
-    order           = "Gobiiformes",
-    family          = "Gobiidae",
-    genus           = "Inu",
-    species         = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    order = "Gobiiformes",
+    family = "Gobiidae",
+    genus = "Inu",
+    species = "Inu sp. 1 sensu Shibukawa et al., 2020.",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_inu,
     target_backbone_id = 11,
     source_backbone_id = 4,
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_genus_only_synonym
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_genus_only_synonym
   ))
   expect_equal(result$taxon_name, "Luciogobius")
   expect_equal(result$taxon_name_rank, "genus")
@@ -405,28 +431,29 @@ test_that("a second create_taxon_names() call does not undo the rank correction"
       "kingdom|phylum|order|family|genus"
     )
     row$matched_rank <- "genus"
-    row$is_synonym   <- TRUE
+    row$is_synonym <- TRUE
     row
   }
   df_inu <- data.frame(
-    observation_id  = "ESV_INU",
-    taxon_name      = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    observation_id = "ESV_INU",
+    taxon_name = "Inu sp. 1 sensu Shibukawa et al., 2020.",
     taxon_name_rank = "species",
-    order           = "Gobiiformes",
-    family          = "Gobiidae",
-    genus           = "Inu",
-    species         = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    order = "Gobiiformes",
+    family = "Gobiidae",
+    genus = "Inu",
+    species = "Inu sp. 1 sensu Shibukawa et al., 2020.",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_inu,
     target_backbone_id = 11,
     source_backbone_id = 4,
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_genus_only_synonym
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_genus_only_synonym
   ))
   result2 <- TaxaTools::create_taxon_names(
-    result, rank_system = c("order", "family", "genus", "species")
+    result,
+    rank_system = c("order", "family", "genus", "species")
   )
   expect_equal(result2$taxon_name, "Luciogobius")
   expect_equal(result2$taxon_name_rank, "genus")
@@ -446,24 +473,24 @@ test_that("taxon_name_rank is left unchanged on fallback when verify_fn has no m
     )
   }
   df_inu <- data.frame(
-    observation_id  = "ESV_INU",
-    taxon_name      = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    observation_id = "ESV_INU",
+    taxon_name = "Inu sp. 1 sensu Shibukawa et al., 2020.",
     taxon_name_rank = "species",
-    order           = "Gobiiformes",
-    family          = "Gobiidae",
-    genus           = "Inu",
-    species         = "Inu sp. 1 sensu Shibukawa et al., 2020.",
+    order = "Gobiiformes",
+    family = "Gobiidae",
+    genus = "Inu",
+    species = "Inu sp. 1 sensu Shibukawa et al., 2020.",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_inu,
     target_backbone_id = 11,
     source_backbone_id = 4,
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_genus_only_legacy
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_genus_only_legacy
   ))
   expect_equal(result$taxon_name, "Luciogobius")
-  expect_equal(result$taxon_name_rank, "species")  # unchanged, as before this fix
+  expect_equal(result$taxon_name_rank, "species") # unchanged, as before this fix
 })
 
 # ===========================================================================
@@ -491,21 +518,21 @@ test_that("taxon_name_rank is demoted to genus for a NOT-found row collapsed by 
     )
   }
   df_ict <- data.frame(
-    observation_id  = "ESV_ICT",
-    taxon_name      = "Ictalurus cf. pricei USON-01120-1",
+    observation_id = "ESV_ICT",
+    taxon_name = "Ictalurus cf. pricei USON-01120-1",
     taxon_name_rank = "species",
-    family          = "Ictaluridae",
-    genus           = "Ictalurus",
-    species         = "Ictalurus cf. pricei USON-01120-1",
+    family = "Ictaluridae",
+    genus = "Ictalurus",
+    species = "Ictalurus cf. pricei USON-01120-1",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_ict,
     target_backbone_id = 4,
     source_backbone_id = 4,
-    rank_system        = c("family", "genus", "species"),
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_not_found
+    rank_system = c("family", "genus", "species"),
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_not_found
   ))
   expect_equal(result$taxon_name, "Ictalurus")
   expect_equal(result$taxon_name_rank, "genus")
@@ -518,24 +545,25 @@ test_that("taxon_name_rank is demoted to genus for a NOT-found row collapsed by 
 test_that("taxon_name_rank is NOT demoted for a NOT-found row that was already genus-only", {
   .mock_verify_not_found <- function(name_list, backbone_id) {
     .make_verified_row("Ictalurus", NA_character_, NA_character_, NA_character_,
-                        verified = FALSE)
+      verified = FALSE
+    )
   }
   df_ict <- data.frame(
-    observation_id  = "ESV_ICT2",
-    taxon_name      = "Ictalurus",
+    observation_id = "ESV_ICT2",
+    taxon_name = "Ictalurus",
     taxon_name_rank = "genus",
-    family          = "Ictaluridae",
-    genus           = "Ictalurus",
-    species         = NA_character_,
+    family = "Ictaluridae",
+    genus = "Ictalurus",
+    species = NA_character_,
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_ict,
     target_backbone_id = 4,
     source_backbone_id = 4,
-    rank_system        = c("family", "genus", "species"),
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_not_found
+    rank_system = c("family", "genus", "species"),
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_not_found
   ))
   expect_equal(result$taxon_name, "Ictalurus")
   expect_equal(result$taxon_name_rank, "genus")
@@ -547,24 +575,25 @@ test_that("taxon_name_rank is NOT demoted for a NOT-found row whose name is a ge
   # doesn't collapse it, so collapsed_to_genus is FALSE for this row.
   .mock_verify_not_found <- function(name_list, backbone_id) {
     .make_verified_row("Xyzus fictus", NA_character_, NA_character_, NA_character_,
-                        verified = FALSE)
+      verified = FALSE
+    )
   }
   df_x <- data.frame(
-    observation_id  = "ESV_X",
-    taxon_name      = "Xyzus fictus",
+    observation_id = "ESV_X",
+    taxon_name = "Xyzus fictus",
     taxon_name_rank = "species",
-    family          = "Xyzidae",
-    genus           = "Xyzus",
-    species         = "Xyzus fictus",
+    family = "Xyzidae",
+    genus = "Xyzus",
+    species = "Xyzus fictus",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_x,
     target_backbone_id = 4,
     source_backbone_id = 4,
-    rank_system        = c("family", "genus", "species"),
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_not_found
+    rank_system = c("family", "genus", "species"),
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_not_found
   ))
   expect_equal(result$taxon_name, "Xyzus fictus")
   expect_equal(result$taxon_name_rank, "species")
@@ -580,20 +609,20 @@ test_that("NOT-found collapse demotion is a no-op when rank_system has no genus 
     )
   }
   df_ict <- data.frame(
-    observation_id  = "ESV_ICT3",
-    taxon_name      = "Ictalurus cf. pricei USON-01120-1",
+    observation_id = "ESV_ICT3",
+    taxon_name = "Ictalurus cf. pricei USON-01120-1",
     taxon_name_rank = "species",
-    family          = "Ictaluridae",
-    species         = "Ictalurus cf. pricei USON-01120-1",
+    family = "Ictaluridae",
+    species = "Ictalurus cf. pricei USON-01120-1",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_ict,
     target_backbone_id = 4,
     source_backbone_id = 4,
-    rank_system        = c("family", "species"),
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_not_found
+    rank_system = c("family", "species"),
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_not_found
   ))
   expect_equal(result$taxon_name, "Ictalurus")
   # No "genus" rank in rank_system -- nothing to demote to, so the stale
@@ -621,25 +650,25 @@ test_that("taxon_name_rank is demoted when the backbone FOUND a genuine species-
       "kingdom|phylum|order|family|genus|species"
     )
     row$matched_rank <- "species"
-    row$is_synonym   <- FALSE
+    row$is_synonym <- FALSE
     row
   }
   df_ict <- data.frame(
-    observation_id  = "ESV_ICT5",
-    taxon_name      = "Ictalurus sp. UM 105-1789",
+    observation_id = "ESV_ICT5",
+    taxon_name = "Ictalurus sp. UM 105-1789",
     taxon_name_rank = "species",
-    family          = "Ictaluridae",
-    genus           = "Ictalurus",
-    species         = "Ictalurus sp. UM 105-1789",
+    family = "Ictaluridae",
+    genus = "Ictalurus",
+    species = "Ictalurus sp. UM 105-1789",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_ict,
     target_backbone_id = 4,
     source_backbone_id = 4,
-    rank_system        = c("family", "genus", "species"),
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_species_placeholder_node
+    rank_system = c("family", "genus", "species"),
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_species_placeholder_node
   ))
   expect_equal(result$taxon_name, "Ictalurus")
   expect_equal(result$taxon_name_rank, "genus")
@@ -662,25 +691,25 @@ test_that("a real hyphenated-genus species is NOT wrongly demoted (Pseudo-nitzsc
       "kingdom|phylum|order|family|genus|species"
     )
     row$matched_rank <- "species"
-    row$is_synonym   <- FALSE
+    row$is_synonym <- FALSE
     row
   }
   df_pn <- data.frame(
-    observation_id  = "ESV_PN",
-    taxon_name      = "Pseudo-nitzschia australis",
+    observation_id = "ESV_PN",
+    taxon_name = "Pseudo-nitzschia australis",
     taxon_name_rank = "species",
-    family          = "Family",
-    genus           = "Pseudo-nitzschia",
-    species         = "Pseudo-nitzschia australis",
+    family = "Family",
+    genus = "Pseudo-nitzschia",
+    species = "Pseudo-nitzschia australis",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_pn,
     target_backbone_id = 4,
     source_backbone_id = 4,
-    rank_system        = c("family", "genus", "species"),
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_hyphenated_genus
+    rank_system = c("family", "genus", "species"),
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_hyphenated_genus
   ))
   expect_equal(result$taxon_name, "Pseudo-nitzschia australis")
   expect_equal(result$taxon_name_rank, "species")
@@ -698,24 +727,25 @@ test_that("a second create_taxon_names() call does not undo the NOT-found collap
     )
   }
   df_ict <- data.frame(
-    observation_id  = "ESV_ICT4",
-    taxon_name      = "Ictalurus cf. pricei USON-01120-1",
+    observation_id = "ESV_ICT4",
+    taxon_name = "Ictalurus cf. pricei USON-01120-1",
     taxon_name_rank = "species",
-    family          = "Ictaluridae",
-    genus           = "Ictalurus",
-    species         = "Ictalurus cf. pricei USON-01120-1",
+    family = "Ictaluridae",
+    genus = "Ictalurus",
+    species = "Ictalurus cf. pricei USON-01120-1",
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(convert_taxonomy_backbone(
     df_ict,
     target_backbone_id = 4,
     source_backbone_id = 4,
-    rank_system        = c("family", "genus", "species"),
-    update_taxon_name  = TRUE,
-    verify_fn           = .mock_verify_not_found
+    rank_system = c("family", "genus", "species"),
+    update_taxon_name = TRUE,
+    verify_fn = .mock_verify_not_found
   ))
   result2 <- TaxaTools::create_taxon_names(
-    result, rank_system = c("family", "genus", "species")
+    result,
+    rank_system = c("family", "genus", "species")
   )
   expect_equal(result2$taxon_name, "Ictalurus")
   expect_equal(result2$taxon_name_rank, "genus")
@@ -745,8 +775,10 @@ test_that("update_taxon_name = TRUE saves original to original_col", {
     verify_fn          = .mock_verify_gbif
   ))
   expect_true("taxon_name_original" %in% names(result))
-  expect_equal(result[result$observation_id == "ESV_001", "taxon_name_original"],
-               "Girella nigricans")
+  expect_equal(
+    result[result$observation_id == "ESV_001", "taxon_name_original"],
+    "Girella nigricans"
+  )
 })
 
 test_that("update_taxon_name = FALSE leaves taxon_col unchanged", {
@@ -804,8 +836,10 @@ test_that("backbone_cols attribute is set on returned data frame", {
   bbone <- attr(result, "backbone_cols")
   expect_true(is.list(bbone))
   expect_true("backbone_11_cols" %in% names(bbone))
-  expect_setequal(bbone[["backbone_11_cols"]],
-                  c("order", "family", "genus", "species"))
+  expect_setequal(
+    bbone[["backbone_11_cols"]],
+    c("order", "family", "genus", "species")
+  )
 })
 
 # ===========================================================================
@@ -826,11 +860,11 @@ test_that("warning is issued when rows have inconsistent taxonomy", {
 
 test_that("no warning when all rows are consistent or all are found + unchanged", {
   df_consistent <- data.frame(
-    taxon_name     = c("Fundulus parvipinnis", "Acanthogobius flavimanus"),
-    order          = c("Cyprinodontiformes", "Gobiiformes"),
-    family         = c("Fundulidae", "Gobiidae"),
-    genus          = c("Fundulus", "Acanthogobius"),
-    species        = c("Fundulus parvipinnis", "Acanthogobius flavimanus"),
+    taxon_name = c("Fundulus parvipinnis", "Acanthogobius flavimanus"),
+    order = c("Cyprinodontiformes", "Gobiiformes"),
+    family = c("Fundulidae", "Gobiidae"),
+    genus = c("Fundulus", "Acanthogobius"),
+    species = c("Fundulus parvipinnis", "Acanthogobius flavimanus"),
     score_original = c(97.5, 96.0),
     stringsAsFactors = FALSE
   )
@@ -900,13 +934,15 @@ test_that("all-NA taxon_col returns df unchanged with a warning", {
 # ---------------------------------------------------------------------------
 
 .mock_verify_hybrid <- function(name_list, backbone_id) {
-  cls  <- "Metazoa|Chordata|Actinopteri|Cypriniformes|Xenocyprididae|Ctenopharyngodon|Ctenopharyngodon idella"
-  rnk  <- "kingdom|phylum|class|order|family|genus|species"
-  hyb  <- "Metazoa|Chordata|Actinopteri|Cypriniformes|Xenocyprididae|Ctenopharyngodon|Ctenopharyngodon idellus x Elopichthys bambusa"
+  cls <- "Metazoa|Chordata|Actinopteri|Cypriniformes|Xenocyprididae|Ctenopharyngodon|Ctenopharyngodon idella"
+  rnk <- "kingdom|phylum|class|order|family|genus|species"
+  hyb <- "Metazoa|Chordata|Actinopteri|Cypriniformes|Xenocyprididae|Ctenopharyngodon|Ctenopharyngodon idellus x Elopichthys bambusa"
   known <- list(
     "Ctenopharyngodon idellus x Elopichthys bambusa" =
-      .make_verified_row("Ctenopharyngodon idellus x Elopichthys bambusa",
-                         "Ctenopharyngodon idellus x Elopichthys bambusa", hyb, rnk),
+      .make_verified_row(
+        "Ctenopharyngodon idellus x Elopichthys bambusa",
+        "Ctenopharyngodon idellus x Elopichthys bambusa", hyb, rnk
+      ),
     "Ctenopharyngodon idella" =
       .make_verified_row("Ctenopharyngodon idella", "Ctenopharyngodon idella", cls, rnk),
     # the synonym resolves to the accepted name -- this is the second pass
@@ -914,8 +950,11 @@ test_that("all-NA taxon_col returns df unchanged with a warning", {
       .make_verified_row("Ctenopharyngodon idellus", "Ctenopharyngodon idella", cls, rnk)
   )
   out <- lapply(name_list, function(n) {
-    if (!is.null(known[[n]])) known[[n]]
-    else .make_verified_row(n, NA_character_, NA_character_, NA_character_, verified = FALSE)
+    if (!is.null(known[[n]])) {
+      known[[n]]
+    } else {
+      .make_verified_row(n, NA_character_, NA_character_, NA_character_, verified = FALSE)
+    }
   })
   do.call(rbind, out)
 }
@@ -924,13 +963,15 @@ test_that("a cleaned hybrid parent name is re-verified to the accepted spelling"
   df <- data.frame(
     observation_id = c("A", "B"),
     family = "Xenocyprididae", genus = "Ctenopharyngodon",
-    species    = c("Ctenopharyngodon idellus x Elopichthys bambusa", "Ctenopharyngodon idella"),
+    species = c("Ctenopharyngodon idellus x Elopichthys bambusa", "Ctenopharyngodon idella"),
     taxon_name = c("Ctenopharyngodon idellus x Elopichthys bambusa", "Ctenopharyngodon idella"),
     stringsAsFactors = FALSE
   )
-  out <- convert_taxonomy_backbone(df, target_backbone_id = 4,
-                                   rank_system = c("family", "genus", "species"),
-                                   verify_fn = .mock_verify_hybrid, verbose = FALSE)
+  out <- convert_taxonomy_backbone(df,
+    target_backbone_id = 4,
+    rank_system = c("family", "genus", "species"),
+    verify_fn = .mock_verify_hybrid, verbose = FALSE
+  )
   # one species, not two competing candidates
   expect_equal(unique(out$taxon_name), "Ctenopharyngodon idella")
   # taxon_name and species must not disagree about the spelling
@@ -945,11 +986,15 @@ test_that("the second pass makes no extra call when no cleaning changed a name",
     calls <<- calls + 1L
     .mock_verify_hybrid(name_list, backbone_id)
   }
-  df <- data.frame(observation_id = "A", family = "Xenocyprididae",
-                   genus = "Ctenopharyngodon", species = "Ctenopharyngodon idella",
-                   taxon_name = "Ctenopharyngodon idella", stringsAsFactors = FALSE)
-  convert_taxonomy_backbone(df, target_backbone_id = 4,
-                            rank_system = c("family", "genus", "species"),
-                            verify_fn = counting, verbose = FALSE)
-  expect_equal(calls, 1L)   # first pass only; no hybrid label present
+  df <- data.frame(
+    observation_id = "A", family = "Xenocyprididae",
+    genus = "Ctenopharyngodon", species = "Ctenopharyngodon idella",
+    taxon_name = "Ctenopharyngodon idella", stringsAsFactors = FALSE
+  )
+  convert_taxonomy_backbone(df,
+    target_backbone_id = 4,
+    rank_system = c("family", "genus", "species"),
+    verify_fn = counting, verbose = FALSE
+  )
+  expect_equal(calls, 1L) # first pass only; no hybrid label present
 })

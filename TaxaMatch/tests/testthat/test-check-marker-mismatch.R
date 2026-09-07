@@ -6,8 +6,9 @@
 # local_mocked_bindings(), matching this package's established pattern.
 # ==============================================================================
 
-.resolve_marker_pattern_int <- function(...)
+.resolve_marker_pattern_int <- function(...) {
   get(".resolve_marker_pattern", envir = asNamespace("TaxaMatch"))(...)
+}
 
 # ------------------------------------------------------------------------------
 # .resolve_marker_pattern()
@@ -41,10 +42,10 @@ test_that(".resolve_marker_pattern() falls back to a literal match for an unlist
 # much more expensive deep dive.
 .mock_fetch_marker_annotation <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
   fx <- data.frame(
-    accession   = c("AY850362", "AY850362", "MZ605481", "NOANNOT111"),
+    accession = c("AY850362", "AY850362", "MZ605481", "NOANNOT111"),
     feature_key = c("rRNA", "gene", "rRNA", NA_character_),
-    gene        = c(NA_character_, "16S", NA_character_, NA_character_),
-    product     = c("16S ribosomal RNA", NA_character_, "12S ribosomal RNA", NA_character_),
+    gene = c(NA_character_, "16S", NA_character_, NA_character_),
+    product = c("16S ribosomal RNA", NA_character_, "12S ribosomal RNA", NA_character_),
     stringsAsFactors = FALSE
   )
   fx[fx$accession %in% accessions, , drop = FALSE]
@@ -93,7 +94,8 @@ test_that("check_marker_mismatch() checks multiple accessions and dedupes input"
     .fetch_marker_annotation = .mock_fetch_marker_annotation, .package = "TaxaMatch"
   )
   out <- check_marker_mismatch(
-    c("AY850362", "MZ605481", "AY850362"), "12S", verbose = FALSE
+    c("AY850362", "MZ605481", "AY850362"), "12S",
+    verbose = FALSE
   )
   expect_equal(nrow(out), 2L)
   expect_setequal(out$accession, c("AY850362", "MZ605481"))
@@ -157,24 +159,24 @@ test_that("check_marker_mismatch() validates inputs", {
 .gbseq_xml_with_valueless_qualifier <- function() {
   paste0(
     '<?xml version="1.0"?><GBSet><GBSeq>',
-    '<GBSeq_primary-accession>NC_000932</GBSeq_primary-accession>',
-    '<GBSeq_accession-version>NC_000932.1</GBSeq_accession-version>',
-    '<GBSeq_feature-table><GBFeature>',
-    '<GBFeature_key>CDS</GBFeature_key>',
-    '<GBFeature_intervals><GBInterval>',
-    '<GBInterval_from>100</GBInterval_from><GBInterval_to>400</GBInterval_to>',
-    '</GBInterval></GBFeature_intervals>',
-    '<GBFeature_quals>',
-    '<GBQualifier><GBQualifier_name>gene</GBQualifier_name>',
-    '<GBQualifier_value>rps12</GBQualifier_value></GBQualifier>',
+    "<GBSeq_primary-accession>NC_000932</GBSeq_primary-accession>",
+    "<GBSeq_accession-version>NC_000932.1</GBSeq_accession-version>",
+    "<GBSeq_feature-table><GBFeature>",
+    "<GBFeature_key>CDS</GBFeature_key>",
+    "<GBFeature_intervals><GBInterval>",
+    "<GBInterval_from>100</GBInterval_from><GBInterval_to>400</GBInterval_to>",
+    "</GBInterval></GBFeature_intervals>",
+    "<GBFeature_quals>",
+    "<GBQualifier><GBQualifier_name>gene</GBQualifier_name>",
+    "<GBQualifier_value>rps12</GBQualifier_value></GBQualifier>",
     # valueless qualifier, exactly as GenBank emits /trans_splicing
-    '<GBQualifier><GBQualifier_name>trans_splicing</GBQualifier_name></GBQualifier>',
-    '<GBQualifier><GBQualifier_name>codon_start</GBQualifier_name>',
-    '<GBQualifier_value>1</GBQualifier_value></GBQualifier>',
-    '<GBQualifier><GBQualifier_name>product</GBQualifier_name>',
-    '<GBQualifier_value>12S ribosomal RNA</GBQualifier_value></GBQualifier>',
-    '</GBFeature_quals></GBFeature></GBSeq_feature-table>',
-    '</GBSeq></GBSet>'
+    "<GBQualifier><GBQualifier_name>trans_splicing</GBQualifier_name></GBQualifier>",
+    "<GBQualifier><GBQualifier_name>codon_start</GBQualifier_name>",
+    "<GBQualifier_value>1</GBQualifier_value></GBQualifier>",
+    "<GBQualifier><GBQualifier_name>product</GBQualifier_name>",
+    "<GBQualifier_value>12S ribosomal RNA</GBQualifier_value></GBQualifier>",
+    "</GBFeature_quals></GBFeature></GBSeq_feature-table>",
+    "</GBSeq></GBSet>"
   )
 }
 

@@ -142,22 +142,26 @@
 #' tmp2 <- tempfile(fileext = ".BirdNET.results.csv")
 #'
 #' write.csv(data.frame(
-#'   "Start (s)"       = c(0.0, 0.0, 3.0),
-#'   "End (s)"         = c(3.0, 3.0, 6.0),
-#'   "Scientific name" = c("Turdus migratorius", "Setophaga petechia",
-#'                         "Turdus migratorius"),
-#'   "Common name"     = c("American Robin", "Yellow Warbler",
-#'                         "American Robin"),
-#'   "Confidence"      = c(0.92, 0.45, 0.87),
+#'   "Start (s)" = c(0.0, 0.0, 3.0),
+#'   "End (s)" = c(3.0, 3.0, 6.0),
+#'   "Scientific name" = c(
+#'     "Turdus migratorius", "Setophaga petechia",
+#'     "Turdus migratorius"
+#'   ),
+#'   "Common name" = c(
+#'     "American Robin", "Yellow Warbler",
+#'     "American Robin"
+#'   ),
+#'   "Confidence" = c(0.92, 0.45, 0.87),
 #'   check.names = FALSE, stringsAsFactors = FALSE
 #' ), tmp1, row.names = FALSE)
 #'
 #' write.csv(data.frame(
-#'   "Start (s)"       = 0.0,
-#'   "End (s)"         = 3.0,
+#'   "Start (s)" = 0.0,
+#'   "End (s)" = 3.0,
 #'   "Scientific name" = "Corvus brachyrhynchos",
-#'   "Common name"     = "American Crow",
-#'   "Confidence"      = 0.78,
+#'   "Common name" = "American Crow",
+#'   "Confidence" = 0.78,
 #'   check.names = FALSE, stringsAsFactors = FALSE
 #' ), tmp2, row.names = FALSE)
 #'
@@ -166,8 +170,7 @@
 #' unlink(c(tmp1, tmp2))
 read_birdnet_output <- function(files,
                                 min_confidence = 0,
-                                top_n          = NULL) {
-
+                                top_n = NULL) {
   # ---- validate inputs -------------------------------------------------------
   if ((!is.character(files) || length(files) == 0L) && !is.data.frame(files)) {
     stop(
@@ -181,11 +184,12 @@ read_birdnet_output <- function(files,
   if (is.data.frame(files)) {
     out <- .parse_birdnet_df(files)
   } else {
-
     # ---- resolve directory vs file list --------------------------------------
     if (length(files) == 1L && dir.exists(files)) {
-      files <- list.files(files, pattern = "\\.BirdNET\\.results\\.csv$",
-                          full.names = TRUE, recursive = FALSE)
+      files <- list.files(files,
+        pattern = "\\.BirdNET\\.results\\.csv$",
+        full.names = TRUE, recursive = FALSE
+      )
       if (length(files) == 0L) {
         stop(
           "read_birdnet_output: no *.BirdNET.results.csv files found in directory."
@@ -193,8 +197,9 @@ read_birdnet_output <- function(files,
       }
     } else {
       missing_files <- files[!file.exists(files)]
-      if (length(missing_files) > 0L)
+      if (length(missing_files) > 0L) {
         .stop_missing_files(missing_files, "read_birdnet_output")
+      }
     }
 
     # ---- read each file ------------------------------------------------------
@@ -224,14 +229,18 @@ read_birdnet_output <- function(files,
 #' @return Data frame with canonical match columns.
 #' @noRd
 .parse_birdnet_file <- function(f) {
-  required_cols <- c("Start (s)", "End (s)", "Scientific name",
-                     "Common name", "Confidence")
+  required_cols <- c(
+    "Start (s)", "End (s)", "Scientific name",
+    "Common name", "Confidence"
+  )
 
   df <- tryCatch(
     utils::read.csv(f, check.names = FALSE, stringsAsFactors = FALSE),
     error = function(e) {
-      stop(sprintf("read_birdnet_output: could not read '%s': %s",
-                   basename(f), conditionMessage(e)))
+      stop(sprintf(
+        "read_birdnet_output: could not read '%s': %s",
+        basename(f), conditionMessage(e)
+      ))
     }
   )
 
@@ -248,14 +257,16 @@ read_birdnet_output <- function(files,
   }
 
   if (nrow(df) == 0L) {
-    message(sprintf("read_birdnet_output: '%s' has no detections (empty file).",
-                    basename(f)))
+    message(sprintf(
+      "read_birdnet_output: '%s' has no detections (empty file).",
+      basename(f)
+    ))
     return(.empty_birdnet_result())
   }
 
   start_vals <- as.numeric(df[["Start (s)"]])
-  end_vals   <- as.numeric(df[["End (s)"]])
-  conf_vals  <- as.numeric(df[["Confidence"]])
+  end_vals <- as.numeric(df[["End (s)"]])
+  conf_vals <- as.numeric(df[["Confidence"]])
   .warn_na_coercion(df[["Start (s)"]], start_vals, "Start (s)", basename(f))
   .warn_na_coercion(df[["End (s)"]], end_vals, "End (s)", basename(f))
   .warn_na_coercion(df[["Confidence"]], conf_vals, "Confidence", basename(f))
@@ -286,19 +297,19 @@ read_birdnet_output <- function(files,
     stem_base <- tools::file_path_sans_ext(
       tools::file_path_sans_ext(basename(f))
     )
-    stem_base  <- sub("\\.BirdNET$", "", stem_base)
-    stem_vals  <- rep(stem_base, nrow(df))
+    stem_base <- sub("\\.BirdNET$", "", stem_base)
+    stem_vals <- rep(stem_base, nrow(df))
   }
 
   data.frame(
     observation_id = paste0(stem_vals, "_", .fmt_time(start_vals), "-", .fmt_time(end_vals)),
-    score          = conf_vals,
-    species        = trimws(df[["Scientific name"]]),
-    genus          = .extract_genus(trimws(df[["Scientific name"]])),
-    common_name    = trimws(df[["Common name"]]),
-    start_s        = start_vals,
-    end_s          = end_vals,
-    source_file    = basename(f),
+    score = conf_vals,
+    species = trimws(df[["Scientific name"]]),
+    genus = .extract_genus(trimws(df[["Scientific name"]])),
+    common_name = trimws(df[["Common name"]]),
+    start_s = start_vals,
+    end_s = end_vals,
+    source_file = basename(f),
     stringsAsFactors = FALSE
   )
 }
@@ -317,20 +328,21 @@ read_birdnet_output <- function(files,
 #' @return Data frame with canonical match columns.
 #' @noRd
 .parse_birdnet_df <- function(df) {
-
   # Map R-mangled names back to canonical BirdNET column names so the rest of
   # the parsing logic is identical regardless of how the CSV was read.
   name_map <- c(
-    "Start..s."      = "Start (s)",
-    "End..s."        = "End (s)",
+    "Start..s." = "Start (s)",
+    "End..s." = "End (s)",
     "Scientific.name" = "Scientific name",
-    "Common.name"    = "Common name"
+    "Common.name" = "Common name"
   )
   idx <- match(names(df), names(name_map))
   names(df)[!is.na(idx)] <- name_map[idx[!is.na(idx)]]
 
-  required_cols <- c("Start (s)", "End (s)", "Scientific name",
-                     "Common name", "Confidence")
+  required_cols <- c(
+    "Start (s)", "End (s)", "Scientific name",
+    "Common name", "Confidence"
+  )
   missing_cols <- setdiff(required_cols, names(df))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
@@ -349,8 +361,8 @@ read_birdnet_output <- function(files,
   }
 
   start_vals <- as.numeric(df[["Start (s)"]])
-  end_vals   <- as.numeric(df[["End (s)"]])
-  conf_vals  <- as.numeric(df[["Confidence"]])
+  end_vals <- as.numeric(df[["End (s)"]])
+  conf_vals <- as.numeric(df[["Confidence"]])
   .warn_na_coercion(df[["Start (s)"]], start_vals, "Start (s)", "read_birdnet_output")
   .warn_na_coercion(df[["End (s)"]], end_vals, "End (s)", "read_birdnet_output")
   .warn_na_coercion(df[["Confidence"]], conf_vals, "Confidence", "read_birdnet_output")
@@ -376,17 +388,17 @@ read_birdnet_output <- function(files,
 
   data.frame(
     observation_id = paste0(stem_vals, "_", .fmt_time(start_vals), "-", .fmt_time(end_vals)),
-    score          = conf_vals,
-    species        = trimws(df[["Scientific name"]]),
-    genus          = .extract_genus(trimws(df[["Scientific name"]])),
-    common_name    = trimws(df[["Common name"]]),
-    start_s        = start_vals,
-    end_s          = end_vals,
+    score = conf_vals,
+    species = trimws(df[["Scientific name"]]),
+    genus = .extract_genus(trimws(df[["Scientific name"]])),
+    common_name = trimws(df[["Common name"]]),
+    start_s = start_vals,
+    end_s = end_vals,
     # No underlying CSV path exists for the pre-loaded-data-frame input path
     # (that is the point of accepting a data frame directly) -- this is the
     # audio filename stem from the "File" column, not a CSV basename, unlike
     # .parse_birdnet_file()'s source_file. See @return's source_file note.
-    source_file    = tools::file_path_sans_ext(basename(trimws(df[["File"]]))),
+    source_file = tools::file_path_sans_ext(basename(trimws(df[["File"]]))),
     stringsAsFactors = FALSE
   )
 }

@@ -58,9 +58,11 @@
 #' # Self-contained example (no BLAST call needed)
 #' hits <- data.frame(
 #'   observation_id = c("ASV1", "ASV1", "ASV2"),
-#'   score_original  = c(98.5, 91.2, 99.1),
-#'   taxon_name      = c("Girella nigricans", "Girella simplicidens",
-#'                       "Oncorhynchus mykiss")
+#'   score_original = c(98.5, 91.2, 99.1),
+#'   taxon_name = c(
+#'     "Girella nigricans", "Girella simplicidens",
+#'     "Oncorhynchus mykiss"
+#'   )
 #' )
 #' sec <- report_match(hits, data_type = "eDNA")
 #' print(sec)
@@ -74,11 +76,12 @@
 #' @export
 report_match <- function(match_data,
                          data_type = NULL,
-                         verbose   = FALSE) {
-
-  if (!is.data.frame(match_data) || nrow(match_data) == 0L)
+                         verbose = FALSE) {
+  if (!is.data.frame(match_data) || nrow(match_data) == 0L) {
     stop("report_match: 'match_data' must be a non-empty data frame.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # --- Read report_params if available ----------------------------------------
   rp <- attr(match_data, "report_params")
@@ -86,7 +89,7 @@ report_match <- function(match_data,
   # --- Detect data type -------------------------------------------------------
   if (is.null(data_type)) {
     if ("accession" %in% names(match_data) ||
-        "alignment_length" %in% names(match_data)) {
+      "alignment_length" %in% names(match_data)) {
       data_type <- "eDNA"
     }
   }
@@ -105,7 +108,8 @@ report_match <- function(match_data,
       # Top score per observation
       if ("observation_id" %in% names(match_data)) {
         top_scores <- tapply(match_data$score_original, match_data$observation_id, max,
-                             na.rm = TRUE)
+          na.rm = TRUE
+        )
       } else {
         top_scores <- scores
       }
@@ -142,14 +146,14 @@ report_match <- function(match_data,
   if (!is.null(score_stats)) statistics <- c(statistics, score_stats)
 
   # --- Params from report_params or defaults ----------------------------------
-  method    <- if (!is.null(rp$method)) rp$method else "BLAST"
-  database  <- if (!is.null(rp$database)) rp$database else NULL
+  method <- if (!is.null(rp$method)) rp$method else "BLAST"
+  database <- if (!is.null(rp$database)) rp$database else NULL
   min_score <- if (!is.null(rp$min_score)) rp$min_score else NULL
 
   params <- list(method = method)
-  if (!is.null(database))  params$database  <- database
+  if (!is.null(database)) params$database <- database
   if (!is.null(min_score)) params$min_score <- min_score
-  if (!is.null(marker))    params$marker    <- marker
+  if (!is.null(marker)) params$marker <- marker
   if (!is.null(rp)) params <- c(params, rp[!names(rp) %in% names(params)])
 
   # --- Methods text -----------------------------------------------------------
@@ -176,8 +180,11 @@ report_match <- function(match_data,
   if (!is.null(min_score)) {
     match_desc <- paste0(
       match_desc,
-      if (is_pct_scale) sprintf(" with a minimum score threshold of %g%%", min_score)
-      else sprintf(" with a minimum score threshold of %g", min_score)
+      if (is_pct_scale) {
+        sprintf(" with a minimum score threshold of %g%%", min_score)
+      } else {
+        sprintf(" with a minimum score threshold of %g", min_score)
+      }
     )
   }
   match_desc <- paste0(match_desc, ".")
@@ -244,7 +251,7 @@ report_match <- function(match_data,
   # produced match_data, which this function cannot determine from the data
   # alone.
   citations <- if (identical(method, "BLAST") || identical(method, "remote BLAST") ||
-                    identical(method, "local BLAST")) {
+    identical(method, "local BLAST")) {
     paste0(
       "Altschul SF, Gish W, Miller W, Myers EW, Lipman DJ (1990). Basic ",
       "local alignment search tool. Journal of Molecular Biology, 215(3), 403-410."
