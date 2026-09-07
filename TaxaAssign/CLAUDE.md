@@ -1,5 +1,36 @@
 # CLAUDE.md -- TaxaAssign
-# Last updated: 2026-09-04 (Opus 5, branch kernel-priors -- add_slash_taxon()
+# Last updated: 2026-09-06 (Sonnet 5 -- REAL, user-caught bug in generate_report()'s
+# Methods-text template: asked to check whether a real generated report (the first real
+# 18S report this session's TaxaLikely/kernel-priors fixes unblocked) was up to date, and
+# it wasn't, in two places. (1) The bayesian-workflow likelihood paragraph unconditionally
+# said "logit-transformed score and gap ... space" regardless of what
+# TaxaLikely::train_likelihood_model(score_transform=) was actually set to -- the real
+# 18S model used "sqrt_mismatch" (confirmed directly off lik_model$Score_Transform), so
+# the report was describing a model that wasn't the one that actually ran.
+# run_bayesian_pipeline() ALREADY receives model_params (with its own Score_Transform
+# field) as a required argument, so fixed by folding
+# score_transform = model_params$Score_Transform into report_params via
+# utils::modifyList() (same non-destructive-merge precedent as the prior
+# update_prior_from_consensus() report_params fix) -- generate_report()'s
+# .build_methods_text() now reads params$score_transform and describes "logit-
+# transformed" or "a square-root-mismatch-transformed (Anscombe-stabilized fraction of
+# mismatched bases)" accordingly, falling back to the historical "logit" assumption only
+# when absent (older report_params). (2) The kernel-priors prior-estimation paragraph
+# said the unseen-species price was "the Good-Turing unseen mass divided by the Chao
+# estimate" -- describing the OLD mass/chao_missing formula. TaxaExpect's own B4 decision
+# (this session, earlier) switched theta_present's pricing to mass/f1 (the neighborhood's
+# own singleton mean), keeping chao_missing only for the separate, reported-not-enforced
+# budget audit -- the template text was never updated to match and had been silently
+# wrong since that switch. Fixed to name f1 as the pricing divisor, with the Chao-estimate
+# sentence re-scoped explicitly to the audit (which is still genuinely Chao-based).
+# 4 new tests (test-generate_report.R): the corrected "divided by f1" wording,
+# and score_transform's three cases (logit/sqrt_mismatch/absent-falls-back-to-logit).
+# devtools::test() 729/0 (up from 714; 54 pre-existing/expected warnings, 1 pre-existing
+# skip), devtools::check() 0/0/0, reinstalled (Built 2026-09-06 15:42:04 UTC). Both fixes
+# are TEXT-ONLY -- no computation, column, or signature changed; any already-generated
+# report is unaffected (this only changes what a FUTURE generate_report() call writes).
+#
+# Previous update, 2026-09-04 (Opus 5, branch kernel-priors -- add_slash_taxon()
 # irreducibility is now ORDER-INVARIANT). The signature used for dedup/comparison
 # was built with paste() over the UNSORTED candidate vector. Candidate order is
 # POSTERIOR order -- the ecosystem's deliberate convention, and what primary_taxon

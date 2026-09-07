@@ -576,3 +576,89 @@ test_that("a presence-mixture row has prior_mix_w updated (not cleared) by soft 
   s1 <- out[out$observation_id == "S1", ]
   expect_true(all(is.na(s1$prior_mix_w)))
 })
+
+test_that("mixture re-moment-match includes prior_mix_var_present/_absent when supplied (2026-09-05, finding A4)", {
+  # Same fixture as above, but with real (non-zero) within-state variance at
+  # the present/absent anchors -- as a real blend-mode
+  # apply_undetected_evidence() row now carries. Reproducing v_mix WITHOUT
+  # these two terms (the pre-fix formula) would give a smaller v_mix and
+  # therefore a LARGER n_eff/alpha+beta (over-concentrated) than reproducing
+  # it WITH them -- confirm the fix actually uses the supplied variances by
+  # comparing against that pre-fix formula computed by hand.
+  res <- .make_result()
+  mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
+  res$prior_mean[mixify]  <- 1e-4 + (0.02 - 1e-4) * 0.5
+  res$prior_alpha[mixify] <- 0.02
+  res$prior_beta[mixify]  <- 1.98
+  res$prior_mix_w             <- ifelse(mixify, 0.5, NA_real_)
+  res$prior_mix_theta_present <- ifelse(mixify, 0.02, NA_real_)
+  res$prior_mix_theta_absent  <- ifelse(mixify, 1e-4, NA_real_)
+  res$prior_mix_p_conc        <- ifelse(mixify, 1, NA_real_)
+  res$prior_mix_var_present   <- ifelse(mixify, 5e-5, NA_real_)
+  res$prior_mix_var_absent    <- ifelse(mixify, 2e-6, NA_real_)
+
+  out <- suppressMessages(suppressWarnings(
+    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+  ))
+  boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+
+  w1  <- (1 * 0.5 + 0.2) / 1.2
+  th1 <- 1e-4 + (0.02 - 1e-4) * w1
+  v_mix_with_var    <- w1 * (1 - w1) * (0.02 - 1e-4)^2 + w1 * 5e-5 + (1 - w1) * 2e-6
+  v_mix_without_var <- w1 * (1 - w1) * (0.02 - 1e-4)^2
+  ne_with_var    <- max(th1 * (1 - th1) / v_mix_with_var - 1, 1e-3)
+  ne_without_var <- max(th1 * (1 - th1) / v_mix_without_var - 1, 1e-3)
+  expect_false(isTRUE(all.equal(ne_with_var, ne_without_var)))  # sanity: fixture actually discriminates
+
+  observed_phi <- boosted$prior_alpha + boosted$prior_beta
+  expect_equal(observed_phi, ne_with_var, tolerance = 1e-6)
+  expect_false(isTRUE(all.equal(observed_phi, ne_without_var, tolerance = 1e-6)))
+})
+
+test_that("mixture w-update is capped at prior_mix_veto_bound, never exceeds it (2026-09-05, finding B2)", {
+  res <- .make_result()
+  mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
+  res$prior_mean[mixify]  <- 1e-4 + (0.02 - 1e-4) * 0.5
+  res$prior_alpha[mixify] <- 0.02
+  res$prior_beta[mixify]  <- 1.98
+  res$prior_mix_w             <- ifelse(mixify, 0.5, NA_real_)
+  res$prior_mix_theta_present <- ifelse(mixify, 0.02, NA_real_)
+  res$prior_mix_theta_absent  <- ifelse(mixify, 1e-4, NA_real_)
+  res$prior_mix_p_conc        <- ifelse(mixify, 1, NA_real_)
+  # Uncapped update would reach w1 = (1*0.5 + 0.2)/1.2 = 0.5833... -- set the
+  # bound below that so the cap is guaranteed to bind.
+  res$prior_mix_veto_bound <- ifelse(mixify, 0.52, NA_real_)
+
+  out <- suppressMessages(suppressWarnings(
+    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+  ))
+  boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_equal(boosted$prior_mix_w, 0.52, tolerance = 1e-8)
+  expect_equal(boosted$prior_mean,
+               1e-4 + (0.02 - 1e-4) * 0.52, tolerance = 1e-8)
+
+  msgs <- capture_messages(suppressWarnings(
+    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+  ))
+  expect_true(any(grepl("veto bound", msgs, ignore.case = TRUE)))
+})
+
+test_that("mixture w-update is NOT capped when prior_mix_veto_bound is NA or the column is absent", {
+  res <- .make_result()
+  mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
+  res$prior_mean[mixify]  <- 1e-4 + (0.02 - 1e-4) * 0.5
+  res$prior_alpha[mixify] <- 0.02
+  res$prior_beta[mixify]  <- 1.98
+  res$prior_mix_w             <- ifelse(mixify, 0.5, NA_real_)
+  res$prior_mix_theta_present <- ifelse(mixify, 0.02, NA_real_)
+  res$prior_mix_theta_absent  <- ifelse(mixify, 1e-4, NA_real_)
+  res$prior_mix_p_conc        <- ifelse(mixify, 1, NA_real_)
+  # No prior_mix_veto_bound column at all -- backward compatible, uncapped.
+
+  out <- suppressMessages(suppressWarnings(
+    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+  ))
+  boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  w1 <- (1 * 0.5 + 0.2) / 1.2
+  expect_equal(boosted$prior_mix_w, w1, tolerance = 1e-8)
+})

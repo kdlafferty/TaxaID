@@ -79,14 +79,24 @@ was built from the unsorted vector, so two orderings of one set each marked
 the other reducible and every row of the unit went \code{FALSE}.
 }
 \note{
-\strong{Invalid species names upstream:} Non-binomial entries such as
-\code{"Thunnus aff."}, \code{"Thunnus cf."}, or \code{"Canis sp. Russia/33500"} can
-corrupt slash names. These arise from GBIF records returned when querying
-at genus or family rank. Prevent them by passing
+\strong{Non-binomial names in \code{plausible_taxa}:} Entries that are not a
+two-word binomial (e.g. \code{"Thunnus aff."}, a bare genus like \code{"Perca"})
+can corrupt slash-name formatting. Two distinct, legitimate causes
+produce this, not just one: (1) GBIF occurrence records returned when
+querying at genus or family rank -- prevent by passing
 \code{require_species = TRUE} to \code{\link[TaxaFetch:filter_gbif_quality]{TaxaFetch::filter_gbif_quality()}} before
-occurrence data enters the pipeline. Use
-\code{TaxaTools::is_plausible_binomial()} to audit candidate sets if unexpected
-slash names appear.
+occurrence data enters the pipeline; and (2) genuine genus-level
+fallback hypotheses from the sequence/BLAST pathway (e.g.
+\code{hypothesis_type == "unreferenced_genus"}, or a
+\code{TaxaMatch::convert_taxonomy_backbone()} fallback to a bare genus when no
+species-level match exists) -- this is expected, intended behavior for
+real production data with a genuinely thin reference database, not a
+data-quality problem to fix upstream (found 2026-09-05 on real
+GreatLakes/PtConception 12S data: warnings fired on real genus-only
+candidates like \code{"Perca"}/\code{"Ictalurus"}/\code{"Fundulus"} with no GBIF
+involvement at all). This warning cannot distinguish the two causes --
+use \code{TaxaTools::is_plausible_binomial()} directly, cross-referenced
+against each flagged name's \code{hypothesis_type}, to tell them apart.
 }
 \examples{
 posterior_df <- data.frame(

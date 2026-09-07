@@ -116,14 +116,24 @@
 #'       label, not a statistically preferred pick.}
 #'   }
 #'
-#' @note **Invalid species names upstream:** Non-binomial entries such as
-#'   `"Thunnus aff."`, `"Thunnus cf."`, or `"Canis sp. Russia/33500"` can
-#'   corrupt slash names. These arise from GBIF records returned when querying
-#'   at genus or family rank. Prevent them by passing
+#' @note **Non-binomial names in `plausible_taxa`:** Entries that are not a
+#'   two-word binomial (e.g. `"Thunnus aff."`, a bare genus like `"Perca"`)
+#'   can corrupt slash-name formatting. Two distinct, legitimate causes
+#'   produce this, not just one: (1) GBIF occurrence records returned when
+#'   querying at genus or family rank -- prevent by passing
 #'   `require_species = TRUE` to [TaxaFetch::filter_gbif_quality()] before
-#'   occurrence data enters the pipeline. Use
-#'   `TaxaTools::is_plausible_binomial()` to audit candidate sets if unexpected
-#'   slash names appear.
+#'   occurrence data enters the pipeline; and (2) genuine genus-level
+#'   fallback hypotheses from the sequence/BLAST pathway (e.g.
+#'   `hypothesis_type == "unreferenced_genus"`, or a
+#'   `TaxaMatch::convert_taxonomy_backbone()` fallback to a bare genus when no
+#'   species-level match exists) -- this is expected, intended behavior for
+#'   real production data with a genuinely thin reference database, not a
+#'   data-quality problem to fix upstream (found 2026-09-05 on real
+#'   GreatLakes/PtConception 12S data: warnings fired on real genus-only
+#'   candidates like `"Perca"`/`"Ictalurus"`/`"Fundulus"` with no GBIF
+#'   involvement at all). This warning cannot distinguish the two causes --
+#'   use `TaxaTools::is_plausible_binomial()` directly, cross-referenced
+#'   against each flagged name's `hypothesis_type`, to tell them apart.
 #'
 #' @examples
 #' posterior_df <- data.frame(
@@ -169,8 +179,10 @@ add_slash_taxon <- function(consensus_df,
         like plausible species binomials and may corrupt slash-name \\
         formatting: {.val {utils::head(implausible, 5L)}}\\
         {if (length(implausible) > 5L) '...' else ''}",
-        "i" = "See {.fn add_slash_taxon}'s documentation Note for the usual \\
-        cause and how to filter these upstream."
+        "i" = "See {.fn add_slash_taxon}'s documentation Note -- this can be a \\
+        genuine GBIF data-quality artifact (filter upstream) OR an expected \\
+        genus-level fallback hypothesis (no fix needed); check hypothesis_type \\
+        to tell which."
       ))
     }
   }

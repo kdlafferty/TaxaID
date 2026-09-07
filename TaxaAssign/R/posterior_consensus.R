@@ -437,6 +437,22 @@ posterior_consensus <- function(posterior_df,
     # Linnaean ranking, since that would silently swap "coarsest" and "finest".
     .check_rank_system_order(rank_system_eff, "posterior_consensus")
   }
+  if (length(rank_system_eff) == 0L) {
+    # detect_ranks() correctly returns character(0) when posterior_df has no
+    # rank COLUMNS at all (e.g. TaxaLikely::evaluate_likelihoods()'s own
+    # output, which only carries taxon_name/taxon_name_rank forward by
+    # design) -- but .find_lca()/.build_species_ref() both index into
+    # rank_system by position (rev(rank_system)[[1L]]) and error deep inside
+    # with a cryptic "subscript out of bounds" rather than a clear message.
+    # Found 2026-09-05 building diagnostics/fast_workflows/run_fast_smoketest.R.
+    cli::cli_abort(c(
+      "posterior_consensus: could not auto-detect any rank columns in \\
+      {.arg posterior_df}, and no {.arg rank_system} was supplied.",
+      "i" = "Pass {.arg rank_system} explicitly (e.g. {.code c(\"genus\", \"species\")}) \\
+      -- this is expected for input from {.fn TaxaLikely::evaluate_likelihoods}, whose \\
+      output does not carry kingdom..species columns forward."
+    ))
+  }
 
   # --- Optional taxonomy lookup for unreferenced rows -------------------------
   if (lookup_missing_taxonomy) {

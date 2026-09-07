@@ -462,6 +462,25 @@ update_prior_from_consensus <- function(result,
     w0  <- unresolved_rows$prior_mix_w[mixable]
     md  <- m_disc[mixable]
     w1  <- (pc * w0 + md) / (pc + md)
+    # Cap at the construction-time veto bound (2026-09-05 critical-fix-review
+    # finding B2): the update above is level-blind and can be pushed past the
+    # bound by a wide, low-grade blocker's correlated cross-observation
+    # support alone (worked example in the review: w 0.05 -> 0.33 against a
+    # ~0.05 bound, purely from volume, with the genuinely-observed native
+    # gaining nothing from the same pass). This is the "at minimum" floor the
+    # review names -- NOT the deeper level-aware redesign it also describes
+    # (weighting the update by the species' own support-weighted quantile, or
+    # scaling trial count by n_observations), which is a real statistical
+    # design choice left for a deliberate decision, not made here. NA bound
+    # (a prior_mix_* table built before this column existed, or a row with no
+    # computable bound) leaves w1 uncapped, unchanged from before this fix.
+    n_capped <- 0L
+    if ("prior_mix_veto_bound" %in% names(unresolved_rows)) {
+      bound <- unresolved_rows$prior_mix_veto_bound[mixable]
+      capped <- !is.na(bound) & w1 > bound
+      n_capped <- sum(capped)
+      if (n_capped > 0L) w1[capped] <- bound[capped]
+    }
     thp <- unresolved_rows$prior_mix_theta_present[mixable]
     tha <- unresolved_rows$prior_mix_theta_absent[mixable]
     th1 <- tha + (thp - tha) * w1
@@ -469,7 +488,21 @@ update_prior_from_consensus <- function(result,
     unresolved_rows$prior_mix_p_conc[mixable] <- pc + md
     unresolved_rows$prior_mean[mixable]       <- th1
     if (all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))) {
-      v_mix <- w1 * (1 - w1) * (thp - tha)^2
+      # Reproduce TaxaExpect::apply_undetected_evidence()'s own v_mix formula,
+      # not just its (thp-tha) term -- 2026-09-05 critical-fix-review finding
+      # A4. Blend-mode rows carry real within-state variance at the present/
+      # absent anchors (prior_mix_var_present/_absent); omitting them here
+      # silently over-concentrated the refreshed Beta for those rows (curve
+      # rows are unaffected -- their states are points, so both are exactly
+      # 0 and this reduces to the original formula). Default 0 for a
+      # prior_mix_* table built before these two columns existed.
+      var_p <- if ("prior_mix_var_present" %in% names(unresolved_rows)) {
+        v <- unresolved_rows$prior_mix_var_present[mixable]; v[is.na(v)] <- 0; v
+      } else rep(0, sum(mixable))
+      var_a <- if ("prior_mix_var_absent" %in% names(unresolved_rows)) {
+        v <- unresolved_rows$prior_mix_var_absent[mixable]; v[is.na(v)] <- 0; v
+      } else rep(0, sum(mixable))
+      v_mix <- w1 * (1 - w1) * (thp - tha)^2 + w1 * var_p + (1 - w1) * var_a
       ok    <- is.finite(v_mix) & v_mix > 0
       if (any(ok)) {
         ne  <- pmax(th1[ok] * (1 - th1[ok]) / v_mix[ok] - 1, 1e-3)
@@ -478,10 +511,21 @@ update_prior_from_consensus <- function(result,
         unresolved_rows$prior_beta[idx]  <- (1 - th1[ok]) * ne
       }
     }
-    cli::cli_inform(
+    cli::cli_inform(c(
       "{sum(mixable)} presence-mixture row(s) had prior_mix_w updated by the \\
-      discounted cross-observation support (presence evidence, never demoted)."
-    )
+      discounted cross-observation support (presence evidence, never demoted).",
+      "i" = "sum(prior_mix_w) over these rows: {signif(sum(w0), 3)} -> \\
+      {signif(sum(w1), 3)}. apply_undetected_evidence()'s own budget audit \\
+      (sum(w) vs. chao_missing) describes the priors AS BUILT, not as the \\
+      posterior actually used -- this is the post-refinement counterpart \\
+      (2026-09-05 critical-fix-review finding A3), purely informational.",
+      if (n_capped > 0L)
+        "!" = "{n_capped} row(s) would have updated PAST their own veto bound \\
+        (finding B2) -- capped there instead. This is a floor against runaway \\
+        correlated-confirmation accumulation, not a fix to the update rule \\
+        itself; see that finding for the deeper level-aware redesign this \\
+        stands in for."
+    ))
   }
 
 

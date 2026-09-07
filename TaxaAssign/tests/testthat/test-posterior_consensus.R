@@ -868,3 +868,25 @@ test_that("consensus_has_occurrence_record is FALSE (confirmed absent) when grou
   expect_false(out$consensus_has_occurrence_record)
   expect_true(is.na(out$consensus_prior))
 })
+
+test_that("errors clearly (not a cryptic subscript-out-of-bounds) when no rank columns can be detected and rank_system is NULL", {
+  # Reproduces TaxaLikely::evaluate_likelihoods()'s own output shape -- only
+  # taxon_name/taxon_name_rank, no kingdom..species rank columns at all --
+  # found 2026-09-05 building diagnostics/fast_workflows/run_fast_smoketest.R.
+  df <- data.frame(
+    observation_id      = "obs1",
+    taxon_name          = c("Perca flavescens", "Perca fluviatilis"),
+    taxon_name_rank     = "species",
+    hypothesis_type     = "specific_candidate",
+    posterior_point_est = c(0.6, 0.4),
+    stringsAsFactors    = FALSE
+  )
+  expect_error(
+    suppressWarnings(posterior_consensus(df)),
+    "could not auto-detect any rank columns"
+  )
+  # Passing rank_system explicitly -- exactly the documented workaround --
+  # still works fine even though no genus/species COLUMNS exist.
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  expect_equal(nrow(out), 1L)
+})

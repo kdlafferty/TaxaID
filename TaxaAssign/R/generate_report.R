@@ -603,15 +603,30 @@ generate_report <- function(result,
       threshold, top_n, sharpness, unk_wt
     )
   } else {
-    lik_text <- paste0(
-      "Likelihoods were estimated using a hierarchical statistical model trained ",
-      "on the reference database (TaxaLikely package). Per-species score ",
-      "distributions were modeled as bivariate normal distributions in ",
-      "logit-transformed score and gap (difference between best and second-best ",
-      "match) space, with empirical Bayes shrinkage toward a global mean. ",
-      "Three hypothesis types were evaluated for each observation: that the true taxon ",
-      "is a species present in the reference database (H1), a congener absent from ",
-      "the reference (H2), or a member of a different genus entirely (H3)."
+    # score_transform ("logit"/"sqrt_mismatch") comes from the trained model's
+    # own Score_Transform field, threaded through via report_params (see
+    # run_bayesian_pipeline()'s own modifyList() call) -- NOT assumed. Absent
+    # for a report_params predating this fix (falls back to the historical
+    # "logit" default rather than erroring, since that was this package's own
+    # unconditional assumption until 2026-09-06).
+    score_transform <- if (!is.null(params$score_transform)) params$score_transform else "logit"
+    transform_desc <- switch(
+      score_transform,
+      "sqrt_mismatch" = "a square-root-mismatch-transformed (Anscombe-stabilized fraction of mismatched bases)",
+      "logit-transformed"
+    )
+    lik_text <- sprintf(
+      paste0(
+        "Likelihoods were estimated using a hierarchical statistical model trained ",
+        "on the reference database (TaxaLikely package). Per-species score ",
+        "distributions were modeled as bivariate normal distributions in ",
+        "%s score and gap (difference between best and second-best ",
+        "match) space, with empirical Bayes shrinkage toward a global mean. ",
+        "Three hypothesis types were evaluated for each observation: that the true taxon ",
+        "is a species present in the reference database (H1), a congener absent from ",
+        "the reference (H2), or a member of a different genus entirely (H3)."
+      ),
+      transform_desc
     )
   }
   sections <- c(sections, lik_text)
@@ -686,11 +701,13 @@ generate_report <- function(result,
       "transport), with the decay length stretched for watch-listed invasive ",
       "species and independent range evidence (e.g. verified iNaturalist ",
       "coverage) admitted on its own scale; the share a species would hold if ",
-      "present was set to the Good-Turing unseen mass divided by the Chao ",
-      "estimate of the number of locally present but unrecorded species. The ",
-      "summed presence expectation across these species was audited against ",
-      "the Chao estimate rather than enforced, since probability constraints ",
-      "bind at per-observation renormalization. Domestic and food species ",
+      "present was set to the Good-Turing unseen mass divided by f1, the ",
+      "local neighborhood's own singleton count (the mean weight carried by a ",
+      "species recorded exactly once nearby). The summed presence expectation ",
+      "across these species was audited against the Chao estimate of the ",
+      "number of locally present but unrecorded species, rather than ",
+      "enforced, since probability constraints bind at per-observation ",
+      "renormalization. Domestic and food species ",
       "were priced on a separate transport branch reflecting non-resident ",
       "sources of DNA."
     )

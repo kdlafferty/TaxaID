@@ -557,6 +557,17 @@ run_bayesian_pipeline <- function(
       dplyr::filter(!is.na(taxon_name))
   }
 
+  # Fold in the trained model's own score_transform ("logit"/"sqrt_mismatch")
+  # so generate_report()'s Methods text describes what was actually used
+  # instead of unconditionally assuming "logit" -- found stale 2026-09-06 on a
+  # real report generated from a score_transform = "sqrt_mismatch" model.
+  # modifyList(), not a plain overwrite, so any report_params the caller
+  # already supplied survive (same precedent as update_prior_from_consensus()'s
+  # own report_params merge fix).
+  report_params <- utils::modifyList(
+    report_params, list(score_transform = model_params$Score_Transform)
+  )
+
   refined <- .run_consensus_and_report(
     result                = result,
     species_reference     = species_reference,
