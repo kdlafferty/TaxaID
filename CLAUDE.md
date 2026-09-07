@@ -1,7 +1,57 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-07 (Sonnet 5 -- CLOSED, pre-publication: reconciled a third,
+# Last updated: 2026-09-07, later (Sonnet 5 -- production-workflow section/structure
+# standardization pass, per the user's own outline-first-then-canonical-then-apply
+# process (ecosystem_docs/REENTRY_PROMPT_workflow_structure_audit.md). Deliberately kept
+# the two established numbering families separate (single-marker 0-10 vs multi-marker
+# 0-11/0-12 -- they genuinely do a different number of things), standardizing WITHIN each
+# rather than merging them.
+#
+# Single-marker family (PtCon 12S single/multi, PtCon 18S_2, GreatLakes): fixed a real,
+# shared duplicate-label bug in all 3 PtCon files (Section 8 reused 8e/8f twice each --
+# join-priors=8e/iNat-elevation=8f, then compute-posterior=8e AGAIN/consensus=8f AGAIN --
+# adopted GreatLakes' already-correct, non-duplicated 8a-8k lettering as the family
+# standard); relabeled GreatLakes' colliding 7a.6 (reference-quality screen, collided with
+# its own correctly-numbered read-depth block) to 7a.10 to match its 3 siblings, and
+# shifted its 7a.7/7a.7b/7a.7c to 7a.7/7a.8/7a.9 (7a.7d, a genuinely different kernel-
+# priors-specific mechanism, kept its own distinct 7a.9b suffix rather than being merged
+# in). All relabeling confirmed comment/banner-only -- no variable, column, or cache
+# filename anywhere is keyed off a step number, so this carries zero data-dependency risk.
+# Two capability backports, both per the user's explicit go-ahead: regional-proximity
+# priors (7a.9) into 12S_multi_site.R (the one single-marker file missing it entirely);
+# GreatLakes' verify_flagged_references() training-screen mechanism (relabeled 7a.11) into
+# all 3 PtCon files, each wired into its own train_likelihood_model(verified_clean=) call.
+#
+# Multi-marker family (Mugu Fish/Wilder): already internally consistent (Wilder's +1 step
+# offset from building its own match objects was already fully accounted for everywhere).
+# Added a marker-qualified message (not a bare numbered banner, since the block runs once
+# per marker inside a shared function) to both files' reference-quality screen.
+#
+# Both workflow TEMPLATES separately backported the same 2 universal gaps every real
+# production workflow already had (review-assignments cache_dir; check_geographic_
+# outliers()/institution review) -- the generic template was ALSO missing
+# filter_gbif_quality() entirely (a bigger, previously-unflagged gap found while wiring
+# the others in). A third file (this canonical PtCon template itself) turned out to carry
+# the same stale lab_contaminant_risk/score reference (6 sites) already fixed elsewhere --
+# fixed here too, closing a gap the original 2-file audit scope had missed.
+#
+# Along the way, investigating a warning the newly-unblocked PtConception 18S fast smoke
+# test surfaced led to a real, previously-unnoticed ecosystem-wide false-positive fix in
+# TaxaMatch::filter_redundant_hypotheses() (see TaxaMatch/CLAUDE.md's own top note for the
+# full trace/proof) -- it warned on every real single-marker production join_priors()
+# call, harmlessly, since the missing column was always rank_system's own finest entry
+# (which the algorithm provably never needs). Fixed, tested, live-verified byte-identical
+# output; the PtConception 18S fast smoke test itself was also unblocked and built this
+# session (see diagnostics/fast_workflows/README.md) -- all 4 real sites now have one.
+#
+# All 9 packages reinstalled and verified in a fresh session afterward (all built
+# 2026-09-07, correct library path, only the standing benign glmmTMB/TMB warning).
+# None of the 6 real production workflow files are under git (backed up individually
+# before each edit, per this project's own established convention); the two templates +
+# TaxaMatch fix + new 18S smoke test are committed to this repo across several commits.
+#
+# Previous update, 2026-09-07 (Sonnet 5 -- CLOSED, pre-publication: reconciled a third,
 # separate dormant Claude Code session's uncommitted work (idle since 2026-09-05) across
 # TaxaAssign/TaxaExpect/TaxaLikely/TaxaMatch, implementing most of the
 # fable_ecosystem_review_2026-09-05.md findings (A1, A2, A3, A4, B5, C, D2, E1's screening
