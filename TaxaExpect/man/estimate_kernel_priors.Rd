@@ -82,7 +82,9 @@ common detection process. Pooling across processes dilutes a detectable
 taxon's share with records the assay could never amplify, and lets
 barely-sampled groups contribute singletons that inflate \code{f1} -- and so
 \code{chao_missing}, quadratically -- while adding almost nothing to
-\code{missing_mass}, deflating \code{theta_present}. Build the column with
+\code{missing_mass}, deflating \code{theta_present} (\code{theta_present} is priced from
+\code{missing_mass / f1}, so a diluted \code{missing_mass} still deflates it even
+though \code{chao_missing} no longer sits in that formula). Build the column with
 \code{\link[=compute_adaptive_sampling_groups]{compute_adaptive_sampling_groups()}}, or supply your own if you know the
 split. Note this is a no-op for a taxonomically homogeneous pool (a fish
 assay whose occurrence pool is all fish), which is why it changes nothing
@@ -116,12 +118,21 @@ counts (records with kernel weight >= \code{support_weight}).}
 \item{chao_missing}{Chao (1984) estimated number of locally-present
 but unrecorded species: \code{f1^2/(2*f2)}, with the standard
 \code{f1*(f1-1)/2} fallback when \code{f2 = 0}; \code{0} when
-\code{f1 = 0}.}
-\item{theta_present}{\code{missing_mass / chao_missing}: the typical
-unseen resident's share-if-present -- the per-spot value of the
-Good-Turing budget, used by
-\code{\link{apply_undetected_evidence}}'s curve pricing.
-\code{NA} when no singleton anchor exists.}
+\code{f1 = 0}. Not part of \code{theta_present}'s price (see next
+item) -- kept for the budget AUDIT
+(\code{sum(w)} vs \code{chao_missing} in
+\code{\link{apply_undetected_evidence}}, reported not enforced).}
+\item{theta_present}{\code{missing_mass / f1}: the mean theta of the
+neighborhood's own observed singletons -- "a species we barely
+detect here" -- used by \code{\link{apply_undetected_evidence}}'s
+curve pricing. Deliberately NOT \code{missing_mass / chao_missing}
+(2026-09-05, open decision #1 of
+\code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved):
+\code{f1} is observed directly, while \code{chao_missing} divides by
+the doubleton count \code{f2}, which sits in the single digits and
+is radius-unstable (measured 4x-21x across a plausible counting-radius
+range on real data) -- instability the price no longer inherits.
+\code{NA} when no singleton anchor exists (\code{f1 = 0}).}
 \item{regional_composition}{Named numeric: the unweighted
 habitat-stratified composition used for back-off.}
 \item{params}{The call's tuning values, for provenance.}

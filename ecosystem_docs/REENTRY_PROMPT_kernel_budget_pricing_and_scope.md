@@ -7,14 +7,37 @@ numeric below was computed in-session from real checkpoints, not recalled.
 Read this before touching `theta_present`, `chao_missing`, the budget audit,
 or `sampling_group_col` in `estimate_kernel_priors()`.
 
+> **UPDATE 2026-09-05 (Sonnet 5).** Open decision **#1 is now RESOLVED**: the
+> user's explicit call was "1 y, 2 remove, 3 no, NA" -- switch `theta_present`
+> to `mass/f1`, REMOVE the veto-bound/`cap_at_singleton` machinery that
+> existed only because the old `mass/chao_missing` price could occasionally
+> exceed the singleton mean, don't build #3 (theta-as-distribution). Done:
+> `estimate_kernel_priors()`'s `theta_present = missing_mass / f1` (verified
+> GL-safe, 0/880 flips, per Finding 3 below); `chao_missing`/`f2` untouched,
+> still feeding the separate `sum(w)` vs `chao_missing` budget audit, just no
+> longer the price. `apply_undetected_evidence()` loses `cap_at_singleton`,
+> the `"own_group_capped"` basis value, and the curve-mode veto bound entirely
+> (now a fixed, always-unreachable `19` at default `min_posterior = 0.05` --
+> nothing left to catch); the blend-mode veto bound is untouched.
+> `.resolve_group_prices()`'s pooled-qualifying fallback was also switched
+> from `mass/chao_missing` to `mass/f1` for consistency with the per-group
+> own-price formula (a real, adjacent bug this pass fixed, not left for a
+> future session: a borrowed price and an own price would otherwise have used
+> two different formulas). Zero real production callers pass
+> `cap_at_singleton` explicitly (checked directly against the live
+> PtConception/SepulvedaMugu workflow scripts, not assumed) -- fully backward
+> compatible. `devtools::test()` 1017/0, `check()` 0/0/0, reinstalled. See
+> `TaxaExpect/CLAUDE.md`'s own top note for the full record. **Only #3
+> (singleton theta distribution) remains open, untouched, and per the user's
+> "no" is not currently planned to be built.**
+>
 > **UPDATE 2026-09-03/04 (Opus 5).** Read the two closing sections
 > **"2026-09-03 UPDATE: the PtConception 18S diagnostic"** and
 > **"2026-09-04 UPDATE: per-group curve pricing BUILT"** FIRST -- together they
 > supersede this document's "Next step, recommended" (done), its cost estimate
 > for that step (no GBIF fetch was needed -- an 18S checkpoint already existed),
 > part of Finding 2 (mass/Chao is NOT always below the singleton mean), and open
-> decisions **#2 (BUILT)** and **#4 (BUILT)**. Only #1 (switch the price to
-> `mass/f1`) and #3 (singleton theta distribution) remain open, both untouched.
+> decisions **#2 (BUILT)** and **#4 (BUILT)**.
 
 ## The three quantities, and which job each does
 
@@ -163,11 +186,10 @@ Build the column with `compute_adaptive_sampling_groups()` (merges
 order -> class -> phylum only as far as each group needs, phylum ceiling, so
 no single rank has to be chosen) or supply your own.
 
-## Open decisions (NOT made)
+## Open decisions
 
-1. **Switch the price to `mass/f1`?** Evidence says safe (GL 0/880 flips) and
-   better-founded (observed vs estimated). Changes Mugu 3.25x. Deliberately
-   left as a decision, not a side effect.
+1. **RESOLVED 2026-09-05.** Switch the price to `mass/f1` -- yes. See the
+   "UPDATE 2026-09-05" section at the top of this document.
 2. **Per-group curve pricing.** Blocked: needs real multi-group data, and
    PtConception 18S has NO occurrence or prior checkpoint yet. Currently
    fails loudly with an actionable message.

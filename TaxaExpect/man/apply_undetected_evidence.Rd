@@ -15,8 +15,7 @@ apply_undetected_evidence(
   sampling_group = NULL,
   group_fallback = c("pooled_qualifying", "error", "skip"),
   min_group_n_eff = 100,
-  min_group_f1 = 1L,
-  cap_at_singleton = TRUE
+  min_group_f1 = 1L
 )
 }
 \arguments{
@@ -71,11 +70,19 @@ any subset of \code{genus}, \code{family}, \code{order}, \code{class},
 \item{pricing}{\code{"blend"} (default, the original floor-additive
 presence mixture: \code{theta = floor + w*(ceiling - floor)}) or
 \code{"curve"} (unobserved-taxa redesign, 2026-08-31: \code{theta = w *
-theta_present} with \code{theta_present = missing_mass / chao_missing}
-from the kernel fit -- the Good-Turing budget's per-spot value -- and
-\code{theta_absent = 0}). Curve pricing makes the branch budget close
-exactly in count units (branch evidence total = \code{theta_present *
-sum(w)}, coherent iff \code{sum(w) = chao_missing}) and removes the
+theta_present} with \code{theta_present = missing_mass / f1} from the
+kernel fit -- the mean theta of the neighborhood's own observed
+singletons -- and \code{theta_absent = 0}). \code{theta_present} was
+priced from \code{missing_mass / chao_missing} before 2026-09-05 (open
+decision #1, resolved): that made the branch's evidence total close
+exactly against \code{chao_missing} (\code{sum(w) = chao_missing}), but
+inherited \code{chao_missing}'s own radius-instability (4x-21x on real
+data, driven by dividing by a doubleton count that sits in the single
+digits). \code{chao_missing} remains available on the kernel fit as a
+separate, reported-not-enforced budget AUDIT figure (\code{sum(w)} vs
+\code{chao_missing} -- an estimate of the total unseen-species count,
+not the price); it no longer feeds the price itself, and \code{sum(w)}
+is no longer expected to equal it exactly. Curve pricing removes the
 floor term that dominated every blended row. Requires a
 \code{taxaexpect_kernel_priors} \code{model_obj} with a finite
 \code{theta_present} (at least one neighborhood singleton), or -- since
@@ -104,15 +111,6 @@ taxa with a message. Ignored for single-group fits.}
 before its own budget is trusted: at least this many effective records
 (default \code{100}) and this many neighborhood singletons (default
 \code{1}). Ignored for single-group fits.}
-
-\item{cap_at_singleton}{Logical, default \code{TRUE}. Cap a group's price at
-its own singleton mean (\code{missing_mass / f1}). This is NOT the
-\code{mass/f1} pricing switch (that decision is open and untouched): the
-cap binds only in the direction where \code{mass/Chao} EXCEEDS the
-singleton mean, which happens exactly when \code{Chao < f1}, i.e. when
-\code{f1 < 2*f2} -- contradicting the estimator's own premise that an
-unseen species is rarer than a once-seen one. Ignored for single-group
-fits.}
 }
 \value{
 A tibble with one row per eligible taxon named in \code{evidence}:
@@ -139,13 +137,33 @@ The presence mixture itself, consumed by
 \item{prior_mix_p_conc}{Combined presence-claim confidence
 (pseudo-observations) -- reserved for the confirmation update; does
 not affect the static prior's marginal moments.}
+\item{prior_mix_var_present, prior_mix_var_absent}{Within-state
+variance at the present/absent anchor (2026-09-05). Both exactly 0
+under \code{pricing = "curve"} (point-mass states); under
+\code{"blend"}, the singleton-mirror/floor Beta variances that
+already enter this row's own \code{v_mix} above. Carried so a later
+re-moment-match (e.g.
+\code{TaxaAssign::update_prior_from_consensus()}'s confirmation
+update) can reproduce the same variance formula instead of silently
+dropping these two positive terms.}
+\item{prior_mix_veto_bound}{The weight above which this row could veto
+species-level resolution of a genuinely observed singleton-level
+native (the same bound printed above, at construction time). Only
+ever non-\code{NA} for \code{pricing = "blend"} rows -- under
+\code{"curve"} the bound is a fixed, always-unreachable constant
+(2026-09-05, removed; see \verb{The printed veto bound}), so there is
+nothing meaningful to cap against and this column is always
+\code{NA} there. Persisted (2026-09-05) so
+\code{TaxaAssign::update_prior_from_consensus()}'s confirmation
+update -- which can independently push \code{prior_mix_w} past this
+bound via correlated cross-observation support -- can cap its own
+result against it too, not just this row's construction-time value.}
 \item{evidence_sources}{Semicolon-joined distinct \code{source}
 values that contributed to this row (audit column).}
 \item{sampling_group, pricing_basis}{Curve pricing only: the detection
-process this row was priced by, and whether that price was the group's
-own (\code{"own_group"}), capped at its singleton mean
-(\code{"own_group_capped"}), or borrowed from the qualifying groups
-(\code{"pooled_qualifying"}).}
+process this row was priced by, and whether that price was the
+group's own (\code{"own_group"}) or borrowed from the qualifying
+groups (\code{"pooled_qualifying"}).}
 }
 plus taxonomy rank columns when \code{taxonomy} is supplied. Empty
 tibble (correct schema, zero rows) when no evidence taxon is eligible.
@@ -236,23 +254,30 @@ site effort, \code{1 / (median(n_obs) + 1)}; (3) only if neither is
 computable, the previous floor-equals-ceiling no-op with a warning.
 }
 
-\section{The printed veto bound}{
+\section{The printed veto bound (\code{pricing = "blend"} only)}{
 
-Each call prints the dataset-specific weight above which an unobserved
-species can block species-level resolution of a singleton-level observed
-native at likelihood parity (derived from the anchors and the consensus
-default \code{min_posterior = 0.05}). Choose watch-list weights BELOW this
-bound unless you deliberately intend elevated species to compete with
-observed ones.
+Each blend-mode call prints the dataset-specific weight above which an
+unobserved species can block species-level resolution of a singleton-level
+observed native at likelihood parity (derived from the anchors and the
+consensus default \code{min_posterior = 0.05}). Choose watch-list weights
+BELOW this bound unless you deliberately intend elevated species to
+compete with observed ones.
 
-Under \code{pricing = "curve"} the message also names the \code{f1} and
-\code{f2} counts the price came from, and says so when \code{f2} is in
-single digits: \code{theta_present = missing_mass / chao_missing} with
-\code{chao_missing = f1^2/(2 f2)} is hypersensitive to \code{f2} at that
-scale, and nothing upstream constrains it (the bandwidth is calibrated on
-composition prediction, which has no stake in singleton/doubleton counts).
-Quantify it with \code{\link{kernel_budget_sensitivity}()} before acting
-on a budget figure.
+\code{pricing = "curve"} has no analogous veto bound (removed 2026-09-05,
+open decision #1 of
+\code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved): now
+that \code{theta_present} is priced from \code{mass/f1} (see
+\code{\link{estimate_kernel_priors}}'s own roxygen), it is pinned to
+exactly the neighborhood's own singleton mean, which makes the curve
+veto bound a fixed \code{((1-m)/m) = 19} at the default
+\code{min_posterior = 0.05} for every group, always -- unreachable for
+any admissible weight \code{<= 1} and therefore never informative. Under
+the retired \code{mass/chao_missing} pricing this bound could occasionally
+bind (Chao dividing by a thin doubleton count could push the price above
+the singleton mean), which is what the removed guard machinery existed
+to catch; that failure mode no longer exists once the price is pinned.
+Prints \code{f1} (and, for a multi-group fit, the whole per-group budget)
+next to the price for transparency, but names no bound.
 }
 
 \section{Per-group curve pricing}{
@@ -271,29 +296,31 @@ groups, so it is not even a compromise between them. Under
 and every failure below was measured on that real data, not imagined:
 \itemize{
 \item \emph{No anchor.} 3 of 10 groups had \code{f1 = 0} -- no budget at
-all. A group can also have real unseen mass and still no price
-(\code{f1 = 1, f2 = 0} lands in Chao's \code{f1(f1-1)/2} branch, which
-returns 0).
+all, since \code{theta_present = missing_mass / f1} is undefined there.
 \item \emph{Too thin to trust.} A group with 24 effective records priced a
 single unseen species at \code{0.755} -- 75\\% of its own community.
 \code{min_group_n_eff}/\code{min_group_f1} exclude these.
-\item \emph{Chao below one species.} Real 18S zooplankton:
-\code{f1 = 3, f2 = 7} gives \code{Chao = 0.64}, so \code{mass/Chao}
-INFLATES the price to 4.7x the group's own singleton mean.
-\code{cap_at_singleton} bounds this.
 }
+(A third guard, capping a group's price at its own singleton mean, existed
+under the retired \code{mass/chao_missing} pricing -- \code{mass/Chao}
+could exceed the singleton mean \code{mass/f1} whenever \code{f1 < 2*f2},
+real 18S zooplankton being one case. Removed 2026-09-05 alongside the price
+switch: \code{theta_present} now IS the singleton mean by construction, so
+there is nothing left for a cap to bound.)
+
 A group failing the guards is priced by \code{group_fallback}. The
 \code{"pooled_qualifying"} price combines the qualifying groups GROUP-WISE
 and never by re-pooling records (which would reintroduce the very \code{f1}
-inflation per-group pricing exists to remove): unseen-species counts add
-across disjoint groups, while missing masses are shares of different
-denominators and so combine as an \code{n_eff}-weighted average -- together,
-the budget of the union of qualifying groups.
+inflation per-group pricing exists to remove): unseen-species counts and
+missing masses both add across disjoint groups, giving the missing mass of
+the union expressed as a share of the union's own singleton count -- the
+same \code{mass/f1} formula as any single qualifying group, applied to the
+union.
 
 Every row records \code{sampling_group} and \code{pricing_basis}
-(\code{"own_group"}, \code{"own_group_capped"}, or
-\code{"pooled_qualifying"}), and the call prints the whole per-group budget
-with the price adopted for each. A borrowed price is never silent.
+(\code{"own_group"} or \code{"pooled_qualifying"}), and the call prints the
+whole per-group budget with the price adopted for each. A borrowed price is
+never silent.
 
 \strong{Single-group fits are untouched.} The guards police borrowing
 BETWEEN groups, which only exists once there is more than one group. With

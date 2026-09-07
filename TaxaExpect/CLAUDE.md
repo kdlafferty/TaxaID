@@ -1,5 +1,59 @@
 # CLAUDE.md -- TaxaExpect
-# Last updated: 2026-09-04, later (Opus 5 -- PER-GROUP CURVE PRICING BUILT, closing open
+# Last updated: 2026-09-05 (Sonnet 5 -- open decision #1 of ecosystem_docs/
+# REENTRY_PROMPT_kernel_budget_pricing_and_scope.md RESOLVED, and B4's "remove the now-
+# dead-weight guard code" implemented, per the user's explicit choices ("1 y, 2 remove,
+# 3 no, NA" -- switch to mass/f1, remove the veto-bound/cap_at_singleton machinery it
+# makes moot, don't build decision #3 (theta-as-distribution)).
+#
+# `estimate_kernel_priors()`'s `theta_present` is now priced from `missing_mass / f1`
+# (the neighborhood's own OBSERVED singleton mean), not `missing_mass / chao_missing`.
+# `chao_missing`/`f2` are UNCHANGED and still computed -- they remain the separate,
+# reported-not-enforced budget AUDIT figure (`sum(w)` vs `chao_missing`, an ESTIMATE of
+# the total unseen-species count), just no longer feeding the price itself. Verified
+# safe on real GreatLakes posteriors before this session started (0/880 winners flip
+# under the 1.2x rescale this implies -- see the reentry doc's own Finding 3).
+#
+# Because `theta_present` is now provably PINNED to the singleton mean, the guard
+# machinery that existed only because the old `mass/chao_missing` price could
+# occasionally exceed it (`Chao < f1`, i.e. `f1 < 2*f2` -- real 18S zooplankton:
+# f1=3, f2=7, Chao=0.64, price 4.7x the singleton mean) is now REMOVED, not just
+# dormant: `apply_undetected_evidence()` loses its `cap_at_singleton` parameter
+# entirely, the `"own_group_capped"` `pricing_basis` value, and the whole curve-mode
+# veto-bound computation/printing/guard (both per-group and single-group) -- a
+# fixed, always-unreachable `((1-m)/m) = 19` at the default `min_posterior = 0.05` is
+# not a real bound. The BLEND-mode veto bound is completely untouched (a separate
+# mechanism, still real and still fires). `.resolve_group_prices()`'s pooled-
+# qualifying fallback formula was ALSO fixed for consistency while removing the cap:
+# it previously combined via `mass/chao_missing` even after the per-group OWN price
+# switched to `mass/f1` -- a real, adjacent inconsistency (a borrowed price and an
+# own price would have used two different formulas) found and fixed in the same
+# pass, not left for later.
+#
+# A real, worth-recording test finding along the way: the existing
+# `sampling_group_col` dilution test ("pooling groups with different detection
+# processes deflates theta_present") asserted a >2x deflation under the OLD pricing's
+# quadratic Chao sensitivity to f1 -- under the NEW mass/f1 pricing, that SAME fixture
+# (near-site "downwash" singletons of similar weight to the detectable group's own)
+# only deflates ~1.02x, empirically measured, not guessed, because mass/f1 is
+# literally a MEAN, and averaging in more singletons of SIMILAR weight barely moves a
+# mean. The mechanism that still meaningfully dilutes under mass/f1 is different: FAR,
+# low-weight singletons (still within the support-weight cutoff) pull the pooled
+# average DOWN -- verified empirically (~3.7x with birds shifted ~50km from the site)
+# before rewriting the test around it, rather than just weakening the old assertion's
+# threshold to make it pass.
+#
+# Checked all real, live external PtConception/SepulvedaMugu workflow scripts (not
+# just the ones this repo's earlier investigation could reach) for any explicit
+# `cap_at_singleton=` argument or reference to the removed `"own_group_capped"`/
+# `w_veto`/`veto_bound`/`singleton_price` machinery: NONE found. This change is fully
+# backward compatible with every real production caller.
+#
+# `devtools::test()` 1017/1017 (0 failures; 1 pre-existing skip; warnings are the
+# pre-existing GLMM/TMB-version and kernel-fetch-boundary environmental noise this
+# suite has always produced), `devtools::check()` 0/0/0, reinstalled and verified at
+# `~/Library/R/4.0/library` (Built 2026-09-05 19:53:26 UTC).
+#
+# Previous update, 2026-09-04, later (Opus 5 -- PER-GROUP CURVE PRICING BUILT, closing open
 # decision #2 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md (read its
 # "2026-09-04 UPDATE" section).
 #

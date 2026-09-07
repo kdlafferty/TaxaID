@@ -352,9 +352,24 @@ test_that("sampling_group_col = NULL reproduces the ungrouped result exactly", {
 })
 
 test_that("pooling groups with different detection processes deflates theta_present", {
-  # The mechanism: barely-sampled taxa contribute singletons that inflate f1 --
-  # and so Chao, quadratically -- while adding almost nothing to missing_mass.
+  # The mechanism changed 2026-09-05 (open decision #1, resolved:
+  # theta_present is now priced from mass/f1, not mass/chao_missing). Under
+  # the OLD pricing, barely-sampled taxa contributing singletons inflated f1
+  # and so Chao, QUADRATICALLY, deflating theta_present even when those
+  # singletons carried similar per-species weight to the detectable group's
+  # own. Under mass/f1, theta_present is literally the MEAN weighted share of
+  # the pool's singleton species -- adding more singletons of SIMILAR weight
+  # barely moves an average (verified: .mixed_pool()'s own near-site "downwash"
+  # birds, same jitter scale as the fish, deflate theta_present by only ~1.02x
+  # under the new pricing, not the >2x the old one showed). The dilution this
+  # test now demonstrates is different but still real: singletons that are
+  # comparatively FAR from the site (lower kernel weight, still within the
+  # support-weight cutoff) pull the pooled MEAN down, because they are
+  # genuinely lower-value observations, not because there are merely more of
+  # them.
   occ <- .mixed_pool()
+  occ$decimalLatitude[occ$sampling_group == "bird"] <-
+    occ$decimalLatitude[occ$sampling_group == "bird"] + 0.45  # ~50 km away
   pooled  <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
                                                      lambda_km = 25, m = 1))
   grouped <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",

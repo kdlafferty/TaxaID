@@ -96,7 +96,9 @@
 #'   taxon's share with records the assay could never amplify, and lets
 #'   barely-sampled groups contribute singletons that inflate `f1` -- and so
 #'   `chao_missing`, quadratically -- while adding almost nothing to
-#'   `missing_mass`, deflating `theta_present`. Build the column with
+#'   `missing_mass`, deflating `theta_present` (`theta_present` is priced from
+#'   `missing_mass / f1`, so a diluted `missing_mass` still deflates it even
+#'   though `chao_missing` no longer sits in that formula). Build the column with
 #'   [compute_adaptive_sampling_groups()], or supply your own if you know the
 #'   split. Note this is a no-op for a taxonomically homogeneous pool (a fish
 #'   assay whose occurrence pool is all fish), which is why it changes nothing
@@ -128,12 +130,21 @@
 #'     \item{chao_missing}{Chao (1984) estimated number of locally-present
 #'       but unrecorded species: \code{f1^2/(2*f2)}, with the standard
 #'       \code{f1*(f1-1)/2} fallback when \code{f2 = 0}; \code{0} when
-#'       \code{f1 = 0}.}
-#'     \item{theta_present}{\code{missing_mass / chao_missing}: the typical
-#'       unseen resident's share-if-present -- the per-spot value of the
-#'       Good-Turing budget, used by
-#'       \code{\link{apply_undetected_evidence}}'s curve pricing.
-#'       \code{NA} when no singleton anchor exists.}
+#'       \code{f1 = 0}. Not part of \code{theta_present}'s price (see next
+#'       item) -- kept for the budget AUDIT
+#'       (\code{sum(w)} vs \code{chao_missing} in
+#'       \code{\link{apply_undetected_evidence}}, reported not enforced).}
+#'     \item{theta_present}{\code{missing_mass / f1}: the mean theta of the
+#'       neighborhood's own observed singletons -- "a species we barely
+#'       detect here" -- used by \code{\link{apply_undetected_evidence}}'s
+#'       curve pricing. Deliberately NOT \code{missing_mass / chao_missing}
+#'       (2026-09-05, open decision #1 of
+#'       \code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved):
+#'       \code{f1} is observed directly, while \code{chao_missing} divides by
+#'       the doubleton count \code{f2}, which sits in the single digits and
+#'       is radius-unstable (measured 4x-21x across a plausible counting-radius
+#'       range on real data) -- instability the price no longer inherits.
+#'       \code{NA} when no singleton anchor exists (\code{f1 = 0}).}
 #'     \item{regional_composition}{Named numeric: the unweighted
 #'       habitat-stratified composition used for back-off.}
 #'     \item{params}{The call's tuning values, for provenance.}
@@ -248,9 +259,11 @@ estimate_kernel_priors <- function(occurrence_data,
   # unseen part of one sampling process. Pooling taxa that are detected by
   # DIFFERENT processes therefore breaks both -- a fish's share is diluted by
   # bird records that the assay could never have amplified, and singletons
-  # contributed by barely-sampled groups inflate f1 (hence Chao, quadratically)
-  # while adding almost nothing to missing_mass, deflating theta_present. This
-  # is the same principle already adopted for the GLMM path's effort
+  # contributed by barely-sampled groups inflate f1 while adding almost
+  # nothing to missing_mass, deflating theta_present (= missing_mass/f1)
+  # directly; f1 also inflates chao_missing (the separate budget-AUDIT
+  # figure), quadratically. This is the same principle already adopted for
+  # the GLMM path's effort
   # denominator (prepare_model_dataframe(sampling_group_col=), Session 149);
   # the kernel rewrite dropped it, and this restores it. Build the column with
   # compute_adaptive_sampling_groups() or supply your own.
@@ -309,17 +322,30 @@ estimate_kernel_priors <- function(occurrence_data,
     missing_mass <- if (nrow(singletons) > 0L)
       sum(as.numeric(c_raw[singletons$taxon_name])) / W_g else 0
     # Chao (1984) missing-species count from the neighborhood-support counts:
-    # f1^2/(2 f2), with the standard f1(f1-1)/2 fallback when f2 = 0. Together
-    # with missing_mass this prices the typical unseen resident:
-    # theta_present = missing_mass / chao_missing ("share if present", the
-    # per-spot value of the Good-Turing budget). NA when f1 = 0 (no unseen-mass
+    # f1^2/(2 f2), with the standard f1(f1-1)/2 fallback when f2 = 0. Kept for
+    # the budget AUDIT (sum(w) vs chao_missing, in apply_undetected_evidence()
+    # -- an estimate of how many unseen species there are, never enforced).
+    #
+    # theta_present is priced from mass/f1, NOT mass/chao_missing (2026-09-05,
+    # open decision #1 of REENTRY_PROMPT_kernel_budget_pricing_and_scope.md,
+    # resolved). mass/Chao answers "what does the average ANONYMOUS unseen
+    # species share" -- correct for that question, but Chao is radius-unstable
+    # (measured: 4x at Mugu, 21x at GreatLakes, moving only the f1/f2 counting
+    # radius) because it divides by f2, which sits in the single digits and
+    # jitters. mass/f1 answers "what does a species we barely detect HERE
+    # share" -- an OBSERVED quantity (f1 is counted, not estimated), and every
+    # claimant this prices is itself a NAMED species with its own external
+    # evidence (a nearby record, invasive-watch status, a verified iNat
+    # range), which reads more like "a species we barely detect" than like the
+    # average member of an unnamed, unobserved pool. Verified safe on real
+    # GreatLakes posteriors: rescoring every curve-priced row by the resulting
+    # 1.2x factor flips 0 of 880 winners. NA when f1 = 0 (no unseen-mass
     # anchor at all -- callers fall back to their own ladder).
     f1 <- sum(is_singleton)
     f2 <- sum(n_support == 2L)
     chao_missing <- if (f1 == 0L) 0
       else if (f2 > 0L) f1^2 / (2 * f2) else f1 * (f1 - 1) / 2
-    theta_present <- if (f1 > 0L && chao_missing > 0) missing_mass / chao_missing
-      else NA_real_
+    theta_present <- if (f1 > 0L) missing_mass / f1 else NA_real_
 
     list(sp = sp, alpha = alpha, beta = beta, theta = theta,
          theta_sd = theta_sd, c_eff = c_eff, p_i = p_i,
@@ -467,20 +493,23 @@ print.taxaexpect_kernel_priors <- function(x, ...) {
     print(b, row.names = FALSE)
   } else {
     # Print f1 and f2 with the budget they produce, ALWAYS -- not only in the
-    # grouped case. chao_missing = f1^2/(2 f2) is hypersensitive to f2 in single
-    # digits, and theta_present inherits every bit of that, so a reader who sees
-    # only theta_present cannot tell a figure resting on 74 doubletons from one
-    # resting on four. Open decision #4 of the kernel budget/pricing re-entry
-    # doc; kernel_budget_sensitivity() quantifies it.
+    # grouped case. theta_present is priced from mass/f1 (2026-09-05, open
+    # decision #1, resolved), an OBSERVED quantity, so it no longer inherits
+    # chao_missing's own doubleton-count instability -- but chao_missing
+    # itself still does (f1^2/(2 f2), hypersensitive to f2 in single digits),
+    # and it still drives the separate budget AUDIT (sum(w) vs chao_missing
+    # in apply_undetected_evidence()), so it's still worth a reader's eye.
+    # kernel_budget_sensitivity() quantifies the audit's own radius sensitivity.
     cat(sprintf("  budget: f1 = %d, f2 = %d, chao_missing = %.3g, theta_present = %.3g\n",
                 x$f1, x$f2, x$chao_missing, x$theta_present))
   }
-  # Both branches: name the doubleton counts the budget is actually resting on.
-  # Only groups with a singleton anchor (f1 > 0) have a budget to rest on.
+  # Both branches: name the doubleton counts chao_missing (the AUDIT figure,
+  # not the price) is actually resting on. Only groups with a singleton
+  # anchor (f1 > 0) have a budget to rest on.
   f2v <- x$budget$f2[!is.na(x$budget$f1) & x$budget$f1 > 0]
   f2v <- f2v[!is.na(f2v)]
   if (length(f2v) && min(f2v) < 10)
-    cat(sprintf("  CAUTION: chao_missing rests on as few as %d doubleton(s) -- see kernel_budget_sensitivity(),\n           and report the radius sensitivity next to any budget figure.\n",
+    cat(sprintf("  CAUTION: chao_missing (the budget AUDIT figure, not theta_present's price) rests on as few as %d doubleton(s) -- see kernel_budget_sensitivity(),\n           and report the radius sensitivity next to any audit figure.\n",
                 min(f2v)))
   invisible(x)
 }

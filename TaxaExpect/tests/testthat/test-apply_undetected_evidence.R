@@ -249,6 +249,30 @@ test_that("ladder's modelled-theta rung ignores evidence/domestic named rows", {
   expect_equal(out$theta_mean, 1/1000, tolerance = 1e-8)
 })
 
+test_that("ladder's modelled-theta rung ignores evidence/domestic rows via prior_branch alone (2026-09-05, finding D2)", {
+  # Same scenario as the test above, but with NO model_tier column at all --
+  # simulates a kernel table post-retirement, where prior_branch is the only
+  # signal available. Confirms the exclusion survives model_tier's eventual
+  # removal instead of silently vanishing.
+  pri <- .make_priors() |>
+    dplyr::filter(undetected_type %in% "global_floor") |>
+    dplyr::bind_rows(tibble::tibble(
+      taxon_name = "Alburnus alburnus", taxon_name_rank = "species",
+      grid_id = "Grid_A", alpha = 0.01, beta = 1.99,
+      theta_mean = 0.005, theta_sd = NA_real_,
+      prior_branch = "resident_undetected", undetected_type = "evidence_blend",
+      source_taxon_name = NA_character_, main_habitat = "Lentic"
+    ))
+  pri$model_tier <- NULL
+  expect_warning(
+    out <- apply_undetected_evidence(pri, .make_mock_model_obj(),
+      .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
+      grid_id = "Grid_A", main_habitat = "Lentic"),
+    regexp = "no singleton_mirror"
+  )
+  expect_equal(out$theta_mean, 1/1000, tolerance = 1e-8)
+})
+
 # =============================================================================
 # Multi-source combination
 # =============================================================================
@@ -351,6 +375,32 @@ test_that("prints the dataset-specific veto bound (D4)", {
   expect_true(any(grepl("0.013", msgs)))
 })
 
+test_that("warns when a supplied evidence weight exceeds the printed veto bound (2026-09-05, finding A2)", {
+  # .make_evidence()'s default weight = 0.5 is far above this fixture's ~0.013
+  # bound (same fixture the D4 test above uses) -- mirrors the real
+  # pre-calibration invasive-weight-vs-GreatLakes-bound miscalibration this
+  # guard exists to catch generically, for any evidence source/weight.
+  expect_warning(
+    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+      .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"),
+    "ABOVE the veto bound"
+  )
+  w <- tryCatch(
+    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+      .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"),
+    warning = function(w) w
+  )
+  expect_match(conditionMessage(w), "Gymnocephalus cernua")
+})
+
+test_that("no veto-bound warning when the evidence weight is comfortably below the bound", {
+  ev_low <- .make_evidence(weight = 0.001)  # well under the ~0.013 bound
+  expect_no_warning(
+    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+      ev_low, grid_id = "Grid_A", main_habitat = "Lentic")
+  )
+})
+
 # ==============================================================================
 # Curve pricing (unobserved-taxa redesign, 2026-08-31): theta = w * theta_present
 # ==============================================================================
@@ -370,9 +420,14 @@ test_that("kernel fit emits f1/f2/chao_missing/theta_present", {
   kp <- .make_kernel_fit_for_curve()
   expect_equal(kp$f1, 2L)              # B and C are singletons
   expect_equal(kp$f2, 0L)
-  expect_equal(kp$chao_missing, 1)     # f2 = 0 fallback: f1*(f1-1)/2
+  # chao_missing (f2 = 0 fallback: f1*(f1-1)/2) is retained for the separate
+  # budget AUDIT (sum(w) vs chao_missing) but no longer feeds theta_present's
+  # price (2026-09-05, open decision #1, resolved).
+  expect_equal(kp$chao_missing, 1)
   expect_equal(kp$missing_mass, 2/5, tolerance = 1e-6)
-  expect_equal(kp$theta_present, (2/5) / 1, tolerance = 1e-6)
+  # theta_present = missing_mass / f1 (the neighborhood's own singleton mean),
+  # not missing_mass / chao_missing.
+  expect_equal(kp$theta_present, (2/5) / 2, tolerance = 1e-6)
 })
 
 test_that("curve pricing yields theta = w * theta_present with theta_absent = 0", {
@@ -391,14 +446,19 @@ test_that("curve pricing yields theta = w * theta_present with theta_absent = 0"
   expect_equal(out$prior_mix_theta_absent, rep(0, 2))
   expect_equal(out$prior_mix_w, ev$weight)
   expect_equal(out$prior_branch, rep("resident_undetected", 2))
-  # budget closure: branch evidence total = theta_present * sum(w)
+  # theta = w * theta_present for every row -> the branch total is exactly
+  # theta_present * sum(w) (a one-price arithmetic identity, not a claim that
+  # it equals chao_missing -- that separate budget AUDIT is no longer tied to
+  # the price, 2026-09-05 open decision #1).
   expect_equal(sum(out$theta_mean), kp$theta_present * sum(ev$weight),
                tolerance = 1e-9)
 })
 
-test_that("curve pricing prints f1/f2 next to the price it produced", {
-  # Open decision #4 of the kernel budget/pricing re-entry doc: a budget figure
-  # quoted without its doubleton count cannot be assessed by the reader.
+test_that("curve pricing prints f1 next to the price it produced", {
+  # theta_present is now priced from mass/f1 (2026-09-05, open decision #1,
+  # resolved), so the single-group curve message names f1, not f2 -- there is
+  # no doubleton-hypersensitivity story left to tell about the PRICE (f2 still
+  # drives the separate chao_missing budget AUDIT, unaffected by this message).
   kp <- .make_kernel_fit_for_curve()
   priors <- dplyr::bind_rows(kp$priors,
                              .make_priors(grid = "budget", hab = "Lentic"))
@@ -407,10 +467,9 @@ test_that("curve pricing prints f1/f2 next to the price it produced", {
   msgs <- capture_messages(
     apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
                               main_habitat = "Lentic", pricing = "curve"))
-  expect_true(any(grepl("f1 = 2 singletons", msgs, fixed = TRUE)))
-  expect_true(any(grepl("f2 = 0 doubletons", msgs, fixed = TRUE)))
-  # f2 = 0 is the Chao fallback branch, not the single-digit caution branch
+  expect_true(any(grepl("f1 = 2 singleton", msgs, fixed = TRUE)))
   expect_false(any(grepl("hypersensitive", msgs)))
+  expect_false(any(grepl("[Vv]eto bound", msgs)))
 })
 
 test_that("curve pricing refuses a GLMM model_obj or a no-singleton kernel fit", {
@@ -576,9 +635,9 @@ test_that("with only one qualifying group the borrowed price IS that group's", {
     sampling_group = c("only", "thin"), n_taxa = c(20L, 2L), n_eff = c(500, 4),
     f1 = c(10L, 2L), f2 = c(2L, 0L), missing_mass = c(0.02, 0.5),
     chao_missing = c(25, 1), stringsAsFactors = FALSE)
-  b$theta_present <- b$missing_mass / b$chao_missing
+  b$theta_present <- b$missing_mass / b$f1
   kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
-  r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, TRUE, "pooled_qualifying")
+  r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, "pooled_qualifying")
   expect_equal(r$n_qualifying, 1L)
   expect_equal(r$fallback_price, unname(r$price["only"]))
   expect_equal(unname(r$price["thin"]), unname(r$price["only"]))
@@ -634,30 +693,12 @@ test_that("an unassigned taxon errors with actionable guidance, never a guess", 
     "not present in the fit's own budget")
 })
 
-test_that("the singleton cap binds exactly when f1 < 2*f2, and not otherwise", {
-  # Constructed to the real PtConception 18S zooplankton shape: Chao < f1, so
-  # mass/Chao prices an unseen species ABOVE a once-seen one.
-  b <- data.frame(
-    sampling_group = c("normal", "inverted"),
-    n_taxa = c(10L, 10L), n_eff = c(500, 500),
-    f1 = c(10L, 3L), f2 = c(2L, 7L),
-    missing_mass = c(0.02, 0.02),
-    chao_missing = c(25, 9 / 14),
-    stringsAsFactors = FALSE)
-  b$theta_present <- b$missing_mass / b$chao_missing
-  kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
-
-  capped <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, TRUE, "pooled_qualifying")
-  expect_equal(unname(capped$basis["normal"]), "own_group")
-  expect_equal(unname(capped$basis["inverted"]), "own_group_capped")
-  expect_equal(unname(capped$price["inverted"]), 0.02 / 3)   # mass/f1
-  expect_equal(unname(capped$price["normal"]), 0.02 / 25)    # untouched
-
-  uncapped <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, FALSE, "pooled_qualifying")
-  expect_equal(unname(uncapped$price["inverted"]), 0.02 / (9 / 14))
-  expect_gt(uncapped$price["inverted"], uncapped$price["inverted"] * 0 +
-              b$missing_mass[2] / b$f1[2])  # genuinely above the singleton mean
-})
+# "the singleton cap binds exactly when f1 < 2*f2, and not otherwise" REMOVED
+# 2026-09-05 (open decision #1, resolved): theta_present is now priced from
+# mass/f1 directly, so it IS the singleton mean by construction and there is
+# nothing left for a cap to bound -- cap_at_singleton was removed alongside
+# the price switch. See estimate_kernel_priors()'s and
+# apply_undetected_evidence()'s own roxygen for the resolved decision.
 
 test_that("the pooled-qualifying fallback combines group-wise, not by re-pooling", {
   b <- data.frame(
@@ -667,15 +708,16 @@ test_that("the pooled-qualifying fallback combines group-wise, not by re-pooling
     missing_mass = c(0.01, 0.05, 0.4),
     chao_missing = c(45, 6.25, 1),
     stringsAsFactors = FALSE)
-  b$theta_present <- b$missing_mass / b$chao_missing
+  b$theta_present <- b$missing_mass / b$f1
   kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
-  r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, TRUE, "pooled_qualifying")
+  r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, "pooled_qualifying")
   # "thin" fails min_group_n_eff and must not contribute to the fallback
   expect_equal(unname(r$basis["thin"]), "pooled_qualifying")
   expect_equal(r$n_qualifying, 2L)
   n_q <- 900 + 100
-  expect_equal(r$fallback_price,
-               ((900 / n_q) * 0.01 + (100 / n_q) * 0.05) / (45 + 6.25))
+  mass_q <- (900 / n_q) * 0.01 + (100 / n_q) * 0.05
+  f1_q <- 30 + 5
+  expect_equal(r$fallback_price, mass_q / f1_q)
   # and the borrowed price is nowhere near the thin group's own absurd one
   expect_lt(r$fallback_price, b$theta_present[b$sampling_group == "thin"] / 100)
 })
@@ -685,8 +727,7 @@ test_that("a fit where no group clears the guards refuses to price anything", {
     sampling_group = c("a", "b"), n_taxa = c(2L, 2L), n_eff = c(5, 9),
     f1 = c(1L, 2L), f2 = c(0L, 0L), missing_mass = c(0.3, 0.4),
     chao_missing = c(0, 1), stringsAsFactors = FALSE)
-  b$theta_present <- ifelse(b$chao_missing > 0, b$missing_mass / b$chao_missing,
-                            NA_real_)
+  b$theta_present <- b$missing_mass / b$f1
   kp <- structure(
     list(budget = b, theta_present = NA_real_, f1 = NA_integer_,
          f2 = NA_integer_, missing_mass = NA_real_,
