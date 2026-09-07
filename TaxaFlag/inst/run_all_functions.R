@@ -202,8 +202,8 @@ reviewed <- review_assignments(
   llm_fn       = .stub_llm_fn,
   verbose      = FALSE
 )
-print(reviewed[, c("consensus_taxon", "habitat_plausibility", "review_confidence")])
-stopifnot("habitat_plausibility" %in% names(reviewed))
+print(reviewed[, c("consensus_taxon", "llm_habitat_plausibility", "review_confidence")])
+stopifnot("llm_habitat_plausibility" %in% names(reviewed))
 
 # ------------------------------------------------------------------------
 # 9. review_spatial_context() -- interactive Shiny/leaflet gadget

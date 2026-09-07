@@ -1,6 +1,67 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-04 (Opus 5, branch kernel-priors -- TWO defects that
+# Last updated: 2026-09-06, later (Sonnet 5 -- follow-up to the rename entry directly below:
+# GreatLakes2023_ConsensusWorkflow.R (~/My Drive/Stats and Data/GreatLakes data/, outside
+# eDNA/) had been missed by the original 7-file sweep -- fixed the same way, the real 8th
+# and last production caller. Both real on-disk review_assignments() caches (GreatLakes 72
+# entries, PtCon 18S 1,731 entries -- the only two sites that had actually run with
+# cache_dir enabled since it shipped 2026-09-04) pruned via taxaflag_clear_cache(); every
+# entry was already orphaned by the rename's own taxa_info-hash mechanism. See
+# TaxaID/CLAUDE.md's own matching entry for the full record, including two real (not fixed
+# here) findings from a follow-on section-heading cleanup pass: a stale pre-2026-07-24
+# `lab_contaminant_risk` filter reference in 2 files, and the generic
+# inst/TaxaID_Workflow_Template_TEST.R template's missing Section 1 + absent step-progress
+# messages.
+# Previous update, 2026-09-06 (Sonnet 5 -- a real, surprising review_assignments() output row
+# (Musculus discors: posterior=1 forced by single-candidate normalisation, prior ~6.5e-6,
+# BOTH unprecedented AND indistinguishable flags set) came with
+# llm_geographic_plausibility = "likely" and no visible justification -- the LLM had
+# access to the pipeline's own posterior/prior bracket annotation but is explicitly
+# instructed NOT to defer to it, so it can (and did) disagree with zero explanation
+# legible from the column name alone. Traced and fixed in three parts, all in
+# review_assignments():
+# (1) COLUMN RENAME: habitat_plausibility/geographic_plausibility/scope_plausibility/
+# contamination_risk -> llm_habitat_plausibility/llm_geographic_plausibility/
+# llm_scope_plausibility/llm_contamination_risk. These are independent LLM judgments, by
+# design never derived from or gated by any pipeline value -- the old unprefixed names
+# read as if they might BE pipeline output, which is exactly what made this case
+# confusing to trace. The LLM's own JSON response schema (what .build_review_prompt()
+# asks for, what .parse_review_response() parses into review_df) is UNCHANGED -- only the
+# final merge_key output columns carry the prefix.
+# (2) SKEPTICISM GATE: a new GUIDELINES bullet (only added when a batch has >=1 taxon
+# carrying the pipeline's own "unprecedented" and/or "indistinguishable" flag, read from
+# new consensus_plausibility_col/consensus_discrimination_col params, default
+# "consensus_plausibility"/"consensus_discrimination" -- TaxaFlag::add_posthoc_assessment()'s
+# own Axis 1/Axis 2 output) requires the LLM to cite SPECIFIC site-relevant evidence before
+# rating such a taxon "likely"/"possible" -- a general species-level range description is
+# explicitly declared insufficient -- or default to "unlikely". Declared a HARD requirement,
+# the one deliberate exception to this function's own "the bracket informs, never overrides
+# your judgment" rule.
+# (3) DETERMINISTIC FLAG: new geographic_disagreement_basis output column (NA when no
+# disagreement), computed in R from has_unprecedented/has_indistinguishable (OR, not AND --
+# either ground is sufficient), fired whenever llm_geographic_plausibility %in%
+# c("likely","possible") despite either ground -- "unprecedented"/"indistinguishable"/
+# "unprecedented+indistinguishable". NOT derived from review_comment -- an LLM is not
+# guaranteed to mention a disagreement even when instructed to (this ecosystem's own
+# trusted_rank removal precedent: never trust an LLM alone to reliably self-flag its own
+# uncertainty), so a reviewer who wants to reliably FIND every such row needs a
+# code-computed signal, independent of prompt compliance.
+# Also widened .fmt_pipeline_value() (new helper): values below 0.01 now render in
+# scientific notation (%.2e) instead of the old flat %.2f, which silently rounded any
+# value below 0.005 to literal "0.00" -- masking genuinely floor-level priors (like the
+# 6.5e-6 in the motivating case) from the LLM reading the prompt.
+# Renamed everywhere real callers exist: report_flags()'s contaminant-column detection
+# regex now also matches llm_contamination_risk (plausibility_cols' suffix-based regex
+# needed no change); review_spatial_context()'s AI-review panel reads the new names;
+# TaxaWizard/inst/metadata/TaxaFlag.json's output description updated; all 7 real external
+# eDNA workflow scripts (PtConceptionWorkflow_12S_single_site.R/_18S_2_single_site.R/
+# _12S_multi_site.R, TaxaID_eDNA_Workflow_Template.R, ReviewedESVs.R, MuguFishWorkflow.R,
+# MuguWilderFishWorkflow.R -- all outside this monorepo, not under git, backed up first as
+# *.bak_pre_llm_column_rename) had every bare-name reference renamed; all 7 parse cleanly,
+# none run end to end this session. devtools::test() 456/456 (0 failures, unchanged count
+# -- pure rename + additive tests, no test removed), devtools::check() 0/0/0, reinstalled
+# and verified at ~/Library/R/4.0/library (Built 2026-09-06 16:52:27 UTC).
+# Previous update, 2026-09-04 (Opus 5, branch kernel-priors -- TWO defects that
 # together deleted a Lamar-confirmed grass carp detection from GreatLakes, plus a
 # review cache).
 # (1) review_assignments() joined review results back to input rows by the DISPLAY
@@ -1261,9 +1322,10 @@ TaxaFlag depends on:
 - `{type}_score` -- numeric: interpretable ratio or confidence (0–1; higher = more likely genuine)
 - `{type}_reason` -- character: plain-English explanation
 
-**LLM plausibility columns** (`review_assignments`):
-- `habitat_plausibility`, `geographic_plausibility`, `scope_plausibility` -- `"likely"` / `"possible"` / `"unlikely"` (higher = more plausible genuine detection)
-- `contamination_risk` -- `"high"` / `"moderate"` / `"low"` (higher = more contamination risk)
+**LLM plausibility columns** (`review_assignments`; `llm_` prefixed since 2026-09-06 --
+independent LLM judgments, never derived from or gated by the pipeline's own values):
+- `llm_habitat_plausibility`, `llm_geographic_plausibility`, `llm_scope_plausibility` -- `"likely"` / `"possible"` / `"unlikely"` (higher = more plausible genuine detection)
+- `llm_contamination_risk` -- `"high"` / `"moderate"` / `"low"` (higher = more contamination risk)
 
 Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (character). Score near 1.0 = low risk (real detection); score near 0.0 = high risk (contaminant). This asymmetry is intentional: scores are intermediate outputs for threshold-tuning; risk labels are the user-facing result. (`flag_contaminant()`'s score no longer reaches an exact 0.0/1.0 since Session 151's shrinkage fix -- see below.)
 
@@ -1280,7 +1342,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 | `flag_handler()` | `R/flag_handler.R` | Written | Temporal proximity to start/end of sampling period; placeholder for camera trap handler artifacts. **Session 151**: optional `station_metadata` param anchors edges on real deploy/retrieve timestamps instead of the data's own min/max (opt-in, backward compatible; see "flag_handler() Design" below). **2026-07-24**: output columns renamed to the same unified schema as `flag_contaminant()` -- `observation_validity` (was `flag_handler_score`, high=good, unchanged direction/math), `validity_flag` (was `flag_handler`; values now `"valid"`/`"questionable_handling"`/`"invalid_handling"`, was `"likely"`/`"possible"`/`"unlikely"`), `validity_reason` (was `flag_handler_reason`). `edge_anchor_source` unchanged. |
 | `.parse_datetimes()` | `R/flag_handler.R` | Written | Internal: auto-detect datetime format |
 | `review_spatial_context()` | `R/review_spatial_context.R` | Written (2026-08-07) | Interactive click-through gadget (leaflet + miniUI + `shiny::paneViewer()`, matching `TaxaHabitat::review_spatial_flags()`'s pattern): taxon dropdown filterable by a plausibility column, a live GBIF density-tile map layer (`leaflet::addTiles()` with the density URL template -- pannable/zoomable, not a static snapshot), a sidebar with `check_gbif_tile_range()`/`compute_local_occurrence_distance()`/pre-supplied `inat_range` context, and an opt-in "Run AI Review" button (`review_assignments()`, the only billed step, never automatic). Server logic factored into internal `.build_spatial_context_server()` specifically so it's testable via `shiny::testServer()` -- standard browser automation hangs against a live Shiny session's persistent WebSocket (confirmed not a gadget bug via a direct `curl` check), so this is the real verification path for the reactive logic; a real bug (an unresolvable taxon name silently blanking the whole stats panel via `shiny::req()`'s propagating silent-stop) was caught this way before shipping. **2026-08-07, refined from first real click-through**: dropped an unneeded tile-opacity override (render GBIF's tiles as GBIF serves them) and toned down the occurrence-point styling so both layers stay readable together; iNat panel now always shows an explicit line when `inat_range` is supplied (real data or "no data for this taxon"), never silence; new `excluded_occurrence_data` param overlays GBIF records this study's own quality/outlier/institution filtering excluded (hollow red rings, distinct from kept points) -- reconstructable via a plain `anti_join` on `gbifID` between `raw_gbif` and a post-filter checkpoint, verified against real GreatLakes2023 data (530 real exclusions found). Not yet live-clicked-through in an actual RStudio session -- see this file's top session note. |
-| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. **2026-07-24**: gains `consensus_posterior_col`/`winner_prior_col`/`winner_rank_expanded_col`/`plausible_posteriors_col` (all optional, silently skipped when absent) -- when present, appends a compact pipeline-confidence/occurrence-prior/rank-expanded/candidate-weight annotation to each taxon's LLM prompt line, so the LLM's ecological judgment can be checked against the pipeline's own statistics. Also now prefers `df$consensus_OTU` (from `TaxaAssign::add_slash_taxon()`) for candidate-set labels when present, instead of always rebuilding independently -- closes a label-drift risk on downranked rows. **2026-08-07**: gains `dist_nearest_occupied_km_col`/`patch_diameter_km_col`/`beyond_buffer_col` (matching `check_gbif_tile_range()`) and `inat_in_range_col`/`inat_n_observations_col`/`inat_matched_name_col` (matching `TaxaFetch::check_inat_range()`) -- same optional/silently-skipped convention. Facts-only per-taxon annotation (e.g. `"GBIF: nearest occurrence ~41km away, patch ~0.9km across; iNat: in range, 1275 obs"`); a conditional GUIDELINES bullet (only when a batch has a spatial note) carries the interpretive caveats instead of pre-judging server-side -- see this file's top session note for why, and for the real *Gasterosteus gymnurus* case that motivated surfacing `matched_name` specifically. **2026-08-11:** return value gains `attr(result, "llm_prompts")` (named list, one entry per LLM batch call including retry sub-batches) -- see `inst/taxaflag_review_response.md`. |
+| `review_assignments()` | `R/review_assignments.R` | Written | LLM expert review: habitat, geography, scope, contaminant, alternatives. Default `taxa_per_call = 15` to avoid response truncation. `data_type` param ("eDNA"/"acoustic"/"image") switches contaminant guidance in LLM prompt. **2026-07-24**: gains `consensus_posterior_col`/`winner_prior_col`/`winner_rank_expanded_col`/`plausible_posteriors_col` (all optional, silently skipped when absent) -- when present, appends a compact pipeline-confidence/occurrence-prior/rank-expanded/candidate-weight annotation to each taxon's LLM prompt line, so the LLM's ecological judgment can be checked against the pipeline's own statistics. Also now prefers `df$consensus_OTU` (from `TaxaAssign::add_slash_taxon()`) for candidate-set labels when present, instead of always rebuilding independently -- closes a label-drift risk on downranked rows. **2026-08-07**: gains `dist_nearest_occupied_km_col`/`patch_diameter_km_col`/`beyond_buffer_col` (matching `check_gbif_tile_range()`) and `inat_in_range_col`/`inat_n_observations_col`/`inat_matched_name_col` (matching `TaxaFetch::check_inat_range()`) -- same optional/silently-skipped convention. Facts-only per-taxon annotation (e.g. `"GBIF: nearest occurrence ~41km away, patch ~0.9km across; iNat: in range, 1275 obs"`); a conditional GUIDELINES bullet (only when a batch has a spatial note) carries the interpretive caveats instead of pre-judging server-side -- see this file's top session note for why, and for the real *Gasterosteus gymnurus* case that motivated surfacing `matched_name` specifically. **2026-08-11:** return value gains `attr(result, "llm_prompts")` (named list, one entry per LLM batch call including retry sub-batches) -- see `inst/taxaflag_review_response.md`. **2026-09-06:** the 4 LLM-sourced output columns renamed with an `llm_` prefix (see this file's top session note); new `consensus_plausibility_col`/`consensus_discrimination_col` params (defaults `"consensus_plausibility"`/`"consensus_discrimination"`, matching `add_posthoc_assessment()`'s Axis 1/Axis 2 output) gate a consensus-scope skepticism GUIDELINES bullet; new deterministic `geographic_disagreement_basis` output column. |
 | `.normalise_context()` | `R/review_assignments.R` | Written | Internal: normalise build_context() or named list to standard fields |
 | `.build_review_prompt()` | `R/review_assignments.R` | Written | Internal: construct structured LLM prompt |
 | `.parse_review_response()` | `R/review_assignments.R` | Written | Internal: parse + validate LLM JSON response; multi-strategy parser with truncated JSON recovery |
@@ -1398,14 +1460,15 @@ found yet, which is the only thing keeping this from being worse").
 
 | Column | Type | Values | What it captures |
 |--------|------|--------|-----------------|
-| `habitat_plausibility` | character | likely / possible / unlikely | Does this taxon live in this habitat? |
-| `geographic_plausibility` | character | likely / possible / unlikely | Is this taxon found in this region? |
-| `scope_plausibility` | character | likely / possible / unlikely | Target group match (only if `target_group` supplied) |
-| `contamination_risk` | character | low / moderate / high | Common lab/field contaminant? |
+| `llm_habitat_plausibility` | character | likely / possible / unlikely | Does this taxon live in this habitat? (renamed from `habitat_plausibility` 2026-09-06 -- independent LLM judgment, never derived from the pipeline's own values) |
+| `llm_geographic_plausibility` | character | likely / possible / unlikely | Is this taxon found in this region? (renamed from `geographic_plausibility`) |
+| `llm_scope_plausibility` | character | likely / possible / unlikely | Target group match (only if `target_group` supplied; renamed from `scope_plausibility`) |
+| `llm_contamination_risk` | character | low / moderate / high | Common lab/field contaminant? (renamed from `contamination_risk`) |
 | `review_alternatives` | character | comma-separated | Plausible alternatives at same rank (when taxon is implausible) |
 | `review_lower_hypotheses` | character | comma-separated | Finer-rank taxa expected here (when consensus is coarse-ranked) |
 | `review_confidence` | character | high / moderate / low | LLM's overall confidence |
 | `review_comment` | character | free text | Anything structured fields don't capture |
+| `geographic_disagreement_basis` | character | NA / unprecedented / indistinguishable / unprecedented+indistinguishable | 2026-09-06, new. Deterministic, code-computed (not read from `review_comment`): fires whenever `llm_geographic_plausibility %in% c("likely","possible")` despite the pipeline's own consensus-scope `has_unprecedented`/`has_indistinguishable` flags (either ground is sufficient -- an OR, not an AND). `NA` when there's no disagreement or insufficient info. |
 
 **Key distinction:**
 - `review_alternatives` = "you might have the wrong taxon" (implausible taxon, plausible relative)

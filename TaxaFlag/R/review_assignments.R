@@ -139,6 +139,22 @@
 #'   query)"} -- a plain factual annotation, not a judgment (see "Spatial
 #'   context" below). Default \code{"matched_name"}. Set to \code{NULL} to
 #'   disable.
+#' @param consensus_plausibility_col Character or \code{NULL}. Column name for
+#'   \code{add_posthoc_assessment()}'s \code{consensus_plausibility} --
+#'   specifically its \code{"unprecedented"} value (no local occurrence
+#'   record at all, a pipeline-computed fact, never a threshold on a prior
+#'   VALUE -- see that function's own docs for why). When present, shown to
+#'   the LLM as \code{"pipeline flags UNPRECEDENTED: ..."} and used to gate
+#'   the skepticism GUIDELINES bullet (see \code{@section Skepticism gate}
+#'   below) and the deterministic \code{geographic_disagreement_basis} output
+#'   column. Silently skipped when absent. Default
+#'   \code{"consensus_plausibility"}. Set to \code{NULL} to disable.
+#' @param consensus_discrimination_col Character or \code{NULL}. Column name
+#'   for \code{add_posthoc_assessment()}'s \code{consensus_discrimination} --
+#'   specifically its \code{"indistinguishable"} value (a one-sided tail
+#'   probability says a confusable relative could score just as well).
+#'   Same treatment as \code{consensus_plausibility_col}. Default
+#'   \code{"consensus_discrimination"}. Set to \code{NULL} to disable.
 #' @param context Named list or data frame describing the study context.
 #'   Recognised fields: \code{geography} (or \code{ecoregion}),
 #'   \code{habitat} (or \code{main_habitat}), \code{date}. A
@@ -146,7 +162,7 @@
 #'   \code{geography} and \code{habitat}.
 #' @param target_group Character or \code{NULL}. Taxonomic target group
 #'   (e.g., \code{"fish"}, \code{"birds"}). When supplied, the LLM
-#'   populates \code{scope_plausibility}. Default \code{NULL}.
+#'   populates \code{llm_scope_plausibility}. Default \code{NULL}.
 #' @param marker Character or \code{NULL}. Molecular marker or detection
 #'   method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
 #'   Provides contaminant context. Default \code{NULL}.
@@ -188,13 +204,18 @@
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
-#' @return The input data frame with 7 or 8 columns appended:
+#' @return The input data frame with 8 or 9 columns appended:
 #' \describe{
-#'   \item{\code{habitat_plausibility}}{likely / possible / unlikely}
-#'   \item{\code{geographic_plausibility}}{likely / possible / unlikely}
-#'   \item{\code{scope_plausibility}}{likely / possible / unlikely, or \code{NA}
-#'     if \code{target_group} not supplied}
-#'   \item{\code{contamination_risk}}{high / moderate / low}
+#'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely.
+#'     Renamed from \code{habitat_plausibility} 2026-09-06 -- see
+#'     \code{@section Column naming} below.}
+#'   \item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.
+#'     Renamed from \code{geographic_plausibility}.}
+#'   \item{\code{llm_scope_plausibility}}{likely / possible / unlikely, or
+#'     \code{NA} if \code{target_group} not supplied. Renamed from
+#'     \code{scope_plausibility}.}
+#'   \item{\code{llm_contamination_risk}}{high / moderate / low. Renamed from
+#'     \code{contamination_risk}.}
 #'   \item{\code{review_alternatives}}{Comma-separated plausible alternatives,
 #'     or \code{NA}}
 #'   \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa, or
@@ -202,6 +223,17 @@
 #'     (candidates already known).}
 #'   \item{\code{review_confidence}}{high / moderate / low}
 #'   \item{\code{review_comment}}{Free-text note, or \code{NA}}
+#'   \item{\code{geographic_disagreement_basis}}{\code{NA} (no disagreement,
+#'     or the pipeline columns needed to check were unavailable), or one of
+#'     \code{"unprecedented"}/\code{"indistinguishable"}/
+#'     \code{"unprecedented+indistinguishable"} -- \strong{deterministic},
+#'     code-computed, not an LLM output: fires whenever
+#'     \code{llm_geographic_plausibility \%in\% c("likely","possible")} despite
+#'     \code{consensus_plausibility_col == "unprecedented"} and/or
+#'     \code{consensus_discrimination_col == "indistinguishable"}. See
+#'     \code{@section Skepticism gate} below for why this exists as a
+#'     deterministic column rather than relying on \code{review_comment}
+#'     alone.}
 #' }
 #' Also carries an \code{"llm_prompts"} attribute -- a named list of the
 #' exact prompt string sent for each LLM call (named by batch number, with
@@ -209,6 +241,59 @@
 #' \code{"2b"}). Inspect via \code{attr(reviewed, "llm_prompts")} to see
 #' precisely what the LLM was asked, e.g. before trusting an unexpected
 #' result or when tuning \code{context}/\code{target_group}/\code{marker}.
+#'
+#' @section Column naming (2026-09-06):
+#' \code{habitat_plausibility}/\code{geographic_plausibility}/
+#' \code{scope_plausibility}/\code{contamination_risk} were renamed to
+#' \code{llm_habitat_plausibility}/\code{llm_geographic_plausibility}/
+#' \code{llm_scope_plausibility}/\code{llm_contamination_risk}. All four are
+#' independent LLM judgments -- by design, NOT derived from or gated by any
+#' pipeline-computed value (see \code{@section Pipeline context} below) -- and
+#' the old, unprefixed names read as if they might be pipeline output, which
+#' is exactly what confused a real user tracing a surprising
+#' \code{geographic_plausibility = "likely"} back through the pipeline before
+#' realising the number it appeared to contradict was never actually
+#' consulted to produce it. The LLM's own JSON response schema (what
+#' \code{.build_review_prompt()} asks for and \code{.parse_review_response()}
+#' parses) is UNCHANGED -- only the final output column names carry the
+#' prefix. Real callers (\code{report_flags()}, five external eDNA workflow
+#' scripts) were all updated the same session; \code{report_flags()}'s own
+#' contamination-column detection also still recognises the old bare
+#' \code{contamination_risk} name, for a data frame produced by a
+#' pre-2026-09-06 install.
+#'
+#' @section Skepticism gate (2026-09-06):
+#' A real case motivated this: an LLM rated a taxon
+#' \code{llm_geographic_plausibility = "likely"} despite the pipeline
+#' recording ZERO local occurrence records for it AND a near-total inability
+#' to discriminate it from a confusable relative on score alone -- explaining
+#' itself only with a general species-level range description, no evidence
+#' specific to the actual study site. Two independent responses, both real,
+#' both needed (a stronger prompt instruction is not sufficient on its own --
+#' see the reasoning in
+#' \code{[[project_rank_trust_mechanism_removed]]}/\code{[[project_verify_purpose_before_flagging]]}-adjacent
+#' precedent throughout this ecosystem: never trust an LLM alone to reliably
+#' self-flag its own uncertainty):
+#' \enumerate{
+#'   \item{A GUIDELINES bullet (only added when at least one taxon in a
+#'     batch actually carries the flag -- see
+#'     \code{consensus_plausibility_col}/\code{consensus_discrimination_col})
+#'     requires the LLM to default to \code{"unlikely"} for a taxon flagged
+#'     \code{"unprecedented"} (no local record) and/or
+#'     \code{"indistinguishable"} (a confusable relative could score equally
+#'     well) UNLESS it can cite SPECIFIC evidence for a real population at or
+#'     near the study site -- a general species-level range description is
+#'     explicitly declared insufficient. This is stated as a HARD requirement,
+#'     the one deliberate exception to this function's own "the bracket
+#'     informs, never overrides your judgment" rule for every other pipeline
+#'     signal.}
+#'   \item{Prompt compliance is never guaranteed, so the deterministic
+#'     \code{geographic_disagreement_basis} output column (see \code{@return}
+#'     above) is computed in R, independent of whether the LLM actually
+#'     mentioned the disagreement anywhere. It is the reliable way to FIND
+#'     every such row -- filter/sort on it directly rather than reading every
+#'     \code{review_comment}.}
+#' }
 #'
 #' @section Pipeline context:
 #' When \code{consensus_posterior_col}/\code{winner_prior_col}/
@@ -308,6 +393,8 @@ review_assignments <- function(input_df,
                                winner_prior_col         = "winner_prior",
                                winner_rank_expanded_col = "winner_rank_expanded",
                                plausible_posteriors_col = "plausible_posteriors",
+                               consensus_plausibility_col   = "consensus_plausibility",
+                               consensus_discrimination_col = "consensus_discrimination",
                                dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
                                patch_diameter_km_col        = "patch_diameter_km",
                                beyond_buffer_col            = "beyond_buffer",
@@ -348,14 +435,16 @@ review_assignments <- function(input_df,
                          winner_rank_expanded_col, plausible_posteriors_col,
                          dist_nearest_occupied_km_col, patch_diameter_km_col,
                          beyond_buffer_col, inat_in_range_col,
-                         inat_n_observations_col, inat_matched_name_col)) {
+                         inat_n_observations_col, inat_matched_name_col,
+                         consensus_plausibility_col, consensus_discrimination_col)) {
     if (!is.null(col_param) && (!is.character(col_param) || length(col_param) != 1L))
       stop(paste(
         "'consensus_posterior_col', 'winner_prior_col',",
         "'winner_rank_expanded_col', 'plausible_posteriors_col',",
         "'dist_nearest_occupied_km_col', 'patch_diameter_km_col',",
         "'beyond_buffer_col', 'inat_in_range_col',",
-        "'inat_n_observations_col', and 'inat_matched_name_col' must",
+        "'inat_n_observations_col', 'inat_matched_name_col',",
+        "'consensus_plausibility_col', and 'consensus_discrimination_col' must",
         "each be a single character string or NULL."
       ), call. = FALSE)
   }
@@ -498,7 +587,7 @@ review_assignments <- function(input_df,
 
   pipeline_ctx <- .summarise_pipeline_context(
     label_vec_full, input_df, consensus_posterior_col, winner_prior_col,
-    winner_rank_expanded_col
+    winner_rank_expanded_col, consensus_plausibility_col, consensus_discrimination_col
   )
   weight_ctx <- if (use_candidates && !is.null(plausible_posteriors_col) &&
                     plausible_posteriors_col %in% names(input_df)) {
@@ -531,6 +620,26 @@ review_assignments <- function(input_df,
     taxa_info$spatial_note  <- sn
     taxa_info$pipeline_note <- .combine_notes(.combine_notes(pn, wn), sn)
   }
+
+  # has_unprecedented/has_indistinguishable (2026-09-06): carried as their own
+  # LOGICAL columns on taxa_info (not just folded into pipeline_note's text),
+  # for two reasons. (1) .build_review_prompt() needs a real boolean to decide
+  # whether to add the skepticism GUIDELINES bullet at all (matching
+  # has_spatial_note's exact pattern) -- text alone can't be tested cheaply.
+  # (2) the deterministic geographic_disagreement_basis column computed after
+  # the LLM call (see the final assembly below) needs the RAW flags, not a
+  # rendered sentence, and must survive independent of whatever the LLM
+  # actually wrote in review_comment. Also folds into the cache key for free,
+  # via the same "vapply(taxa_info, ...)" loop every other taxa_info column
+  # already participates in.
+  taxa_info$has_unprecedented <- if (!is.null(pipeline_ctx))
+    pipeline_ctx$has_unprecedented[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]
+  else rep(FALSE, nrow(taxa_info))
+  taxa_info$has_indistinguishable <- if (!is.null(pipeline_ctx))
+    pipeline_ctx$has_indistinguishable[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]
+  else rep(FALSE, nrow(taxa_info))
+  taxa_info$has_unprecedented[is.na(taxa_info$has_unprecedented)] <- FALSE
+  taxa_info$has_indistinguishable[is.na(taxa_info$has_indistinguishable)] <- FALSE
 
   if (verbose)
     message(sprintf("review_assignments: %d unique %s to review.",
@@ -652,17 +761,35 @@ review_assignments <- function(input_df,
                     if (use_candidates) "candidate sets" else "taxa"))
 
   # --- Join back to input by .join_key ---
+  # 2026-09-06: the four purely-LLM-sourced columns are named with an
+  # llm_ prefix (llm_habitat_plausibility/llm_geographic_plausibility/
+  # llm_scope_plausibility/llm_contamination_risk, were
+  # habitat_plausibility/geographic_plausibility/scope_plausibility/
+  # contamination_risk) -- so the SOURCE of a "likely"/"unlikely" verdict is
+  # legible from the column name alone, not just documentation. Prompted
+  # directly by a real case where a user traced a surprising
+  # "geographic_plausibility = likely" (despite a near-zero pipeline
+  # occurrence prior) all the way to this function before realising it was
+  # an independent LLM judgment, not a pipeline-derived value. The LLM's own
+  # JSON schema keys (habitat_plausibility, etc., in .build_review_prompt()/
+  # .parse_review_response()) are UNCHANGED -- only the final output column
+  # names carry the new prefix.
+  flag_lookup <- taxa_info[, c("taxon_name", "has_unprecedented", "has_indistinguishable")]
+  review_df <- merge(review_df, flag_lookup, by = "taxon_name", all.x = TRUE, sort = FALSE)
+
   merge_key <- data.frame(
-    .join_key               = if (is.null(label_canon_map)) review_df$taxon_name
-                              else unname(label_canon_map[review_df$taxon_name]),
-    habitat_plausibility    = review_df$habitat_plausibility,
-    geographic_plausibility = review_df$geographic_plausibility,
-    scope_plausibility      = review_df$scope_plausibility,
-    contamination_risk      = review_df$contamination_risk,
-    review_alternatives     = review_df$review_alternatives,
-    review_lower_hypotheses = review_df$review_lower_hypotheses,
-    review_confidence       = review_df$review_confidence,
-    review_comment          = review_df$review_comment,
+    .join_key                   = if (is.null(label_canon_map)) review_df$taxon_name
+                                  else unname(label_canon_map[review_df$taxon_name]),
+    llm_habitat_plausibility    = review_df$habitat_plausibility,
+    llm_geographic_plausibility = review_df$geographic_plausibility,
+    llm_scope_plausibility      = review_df$scope_plausibility,
+    llm_contamination_risk      = review_df$contamination_risk,
+    review_alternatives         = review_df$review_alternatives,
+    review_lower_hypotheses     = review_df$review_lower_hypotheses,
+    review_confidence           = review_df$review_confidence,
+    review_comment               = review_df$review_comment,
+    .has_unprecedented           = review_df$has_unprecedented,
+    .has_indistinguishable       = review_df$has_indistinguishable,
     stringsAsFactors = FALSE
   )
 
@@ -672,6 +799,30 @@ review_assignments <- function(input_df,
   result$.row_id  <- NULL
   result$.join_key <- NULL
   rownames(result) <- NULL
+
+  # --- Deterministic disagreement flag (2026-09-06) --------------------------
+  # NOT computed from review_comment -- an LLM is not guaranteed to mention a
+  # disagreement even when instructed to (see the skepticism GUIDELINES bullet
+  # in .build_review_prompt()), so a reviewer who wants to reliably FIND every
+  # such row needs a code-computed signal, independent of prompt compliance.
+  # NA means "no disagreement, or the pipeline columns needed to check
+  # weren't supplied" (never FALSE -- FALSE would wrongly imply "checked, and
+  # no disagreement" when the inputs to check were simply absent). A non-NA
+  # value names WHICH pipeline signal(s) the LLM's "likely"/"possible" rating
+  # disagrees with, so a reviewer sees why at a glance rather than having to
+  # cross-reference other columns.
+  hu <- result$.has_unprecedented;     hu[is.na(hu)] <- FALSE
+  hi <- result$.has_indistinguishable; hi[is.na(hi)] <- FALSE
+  llm_geo <- result$llm_geographic_plausibility
+  disagrees <- !is.na(llm_geo) & llm_geo %in% c("likely", "possible")
+
+  basis <- rep(NA_character_, nrow(result))
+  basis[disagrees & hu  & hi]  <- "unprecedented+indistinguishable"
+  basis[disagrees & hu  & !hi] <- "unprecedented"
+  basis[disagrees & !hu & hi]  <- "indistinguishable"
+  result$geographic_disagreement_basis <- basis
+  result$.has_unprecedented     <- NULL
+  result$.has_indistinguishable <- NULL
 
   # Named by batch label (including any "a"/"b" retry sub-batch splits) --
   # see @return below.
@@ -714,6 +865,25 @@ review_assignments <- function(input_df,
 }
 
 
+#' Format a pipeline confidence value for the LLM prompt, without masking near-zero
+#'
+#' \code{sprintf("%.2f", v)} renders anything below 0.005 as the literal string
+#' "0.00" -- indistinguishable from a genuinely floor-level occurrence prior
+#' (e.g. 6.5e-6, "never recorded locally") to the LLM reading the prompt. Found
+#' 2026-09-06 on a real case where a user traced exactly this masking after
+#' noticing the LLM's own \code{review_comment} quoted "0.00" back verbatim.
+#' Below 0.01, switches to 2-significant-figure scientific notation (e.g.
+#' "6.50e-06") so the LLM sees the real order of magnitude; \code{0} itself
+#' prints as the literal "0" (scientific notation for an exact zero reads
+#' oddly, e.g. "0.00e+00").
+#' @noRd
+.fmt_pipeline_value <- function(v) {
+  if (is.na(v)) return(NA_character_)
+  if (v == 0) return("0")
+  if (abs(v) < 0.01) sprintf("%.2e", v) else sprintf("%.2f", v)
+}
+
+
 #' Summarise Pipeline Confidence Context per Unique Taxon/Candidate-Set Label
 #'
 #' Aggregates \code{TaxaAssign::posterior_consensus()}'s confidence columns
@@ -724,28 +894,54 @@ review_assignments <- function(input_df,
 #' observation. Median is used (not mean) for robustness against a handful of
 #' outlier observations sharing a common label. Grouping is done once via
 #' \code{split()} (O(n)), not a per-label linear scan (O(n * unique labels)).
+#'
+#' \code{consensus_plausibility_col}/\code{consensus_discrimination_col}
+#' (2026-09-06) surface \code{TaxaFlag::add_posthoc_assessment()}'s own Axis 1
+#' ("unprecedented" = no local occurrence record at all) and Axis 2
+#' ("indistinguishable" = a confusable relative could score just as well)
+#' verdicts as plain-text prompt context, AND as two logical columns
+#' (\code{has_unprecedented}/\code{has_indistinguishable}) the caller uses
+#' post-hoc to compute a deterministic disagreement flag against whatever the
+#' LLM actually returned -- unlike the text note, these can't be faithfully
+#' recovered from \code{review_comment} alone (an LLM is not guaranteed to
+#' mention them, which is exactly the real case that prompted this: an LLM
+#' rated a taxon "likely" despite the pipeline recording zero local records
+#' for it, and the ecosystem's own house rule is to never trust an LLM to
+#' reliably self-flag its own disagreement -- see
+#' \code{[[project_rank_trust_mechanism_removed]]} for the same lesson learned
+#' elsewhere). \code{isTRUE(any(...))} per group, matching
+#' \code{winner_rank_expanded}'s own existing any-row-flags-it convention just
+#' below -- if ANY observation sharing this label was found unprecedented/
+#' indistinguishable, the whole reviewed group is treated as warranting
+#' skepticism (a caution signal should over-include, not under-include).
 #' @noRd
 .summarise_pipeline_context <- function(label_vec, input_df, consensus_posterior_col,
-                                        winner_prior_col, winner_rank_expanded_col) {
+                                        winner_prior_col, winner_rank_expanded_col,
+                                        consensus_plausibility_col = NULL,
+                                        consensus_discrimination_col = NULL) {
   has_post  <- !is.null(consensus_posterior_col)  && consensus_posterior_col  %in% names(input_df)
   has_prior <- !is.null(winner_prior_col)         && winner_prior_col         %in% names(input_df)
   has_rexp  <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(input_df)
-  if (!has_post && !has_prior && !has_rexp) return(NULL)
+  has_plaus <- !is.null(consensus_plausibility_col)   && consensus_plausibility_col   %in% names(input_df)
+  has_disc  <- !is.null(consensus_discrimination_col) && consensus_discrimination_col %in% names(input_df)
+  if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc) return(NULL)
 
   keep <- !is.na(label_vec)
   if (!any(keep)) return(NULL)
 
   groups <- split(which(keep), label_vec[keep])
 
-  notes <- vapply(groups, function(rows) {
+  rows_list <- vector("list", length(groups))
+  notes <- vapply(seq_along(groups), function(gi) {
+    rows <- groups[[gi]]
     parts <- character(0)
     if (has_post) {
       v <- stats::median(input_df[[consensus_posterior_col]][rows], na.rm = TRUE)
-      if (!is.na(v)) parts <- c(parts, sprintf("pipeline posterior=%.2f", v))
+      if (!is.na(v)) parts <- c(parts, sprintf("pipeline posterior=%s", .fmt_pipeline_value(v)))
     }
     if (has_prior) {
       v <- stats::median(input_df[[winner_prior_col]][rows], na.rm = TRUE)
-      if (!is.na(v)) parts <- c(parts, sprintf("occurrence prior=%.2f", v))
+      if (!is.na(v)) parts <- c(parts, sprintf("occurrence prior=%s", .fmt_pipeline_value(v)))
     }
     if (has_rexp && isTRUE(any(input_df[[winner_rank_expanded_col]][rows], na.rm = TRUE))) {
       parts <- c(parts, paste0(
@@ -753,10 +949,18 @@ review_assignments <- function(input_df,
         "no direct sequence discrimination"
       ))
     }
+    is_unprec <- has_plaus && isTRUE(any(input_df[[consensus_plausibility_col]][rows] == "unprecedented", na.rm = TRUE))
+    is_indist <- has_disc  && isTRUE(any(input_df[[consensus_discrimination_col]][rows] == "indistinguishable", na.rm = TRUE))
+    if (is_unprec) parts <- c(parts, "pipeline flags UNPRECEDENTED: no local occurrence record at all")
+    if (is_indist) parts <- c(parts, "pipeline flags INDISTINGUISHABLE: a confusable relative could score equally well")
+    rows_list[[gi]] <<- c(unprecedented = is_unprec, indistinguishable = is_indist)
     if (length(parts) == 0L) NA_character_ else paste(parts, collapse = "; ")
   }, character(1L))
 
+  flags <- do.call(rbind, rows_list)
   data.frame(taxon_name = names(groups), pipeline_note = unname(notes),
+             has_unprecedented   = unname(flags[, "unprecedented"]),
+             has_indistinguishable = unname(flags[, "indistinguishable"]),
              stringsAsFactors = FALSE)
 }
 
@@ -1051,6 +1255,35 @@ review_assignments <- function(input_df,
     )
   )
 
+  # --- Skepticism guidance (2026-09-06; only when this batch has a real
+  # unprecedented/indistinguishable case) --------------------------------------
+  # Real motivation, not hypothetical: an LLM rated a taxon "likely"
+  # geographically plausible despite the pipeline recording ZERO local
+  # occurrence records (unprecedented) and near-total confusability with a
+  # relative (indistinguishable), explaining itself only with general
+  # species-level range knowledge ("found in the North Pacific") -- no
+  # specific evidence for THIS site. That's a real disagreement with no
+  # indication of why a user should trust it. This bullet only fires when at
+  # least one taxon in this batch actually carries one of these flags (see
+  # has_unprecedented/has_indistinguishable, built by
+  # .summarise_pipeline_context()) -- most batches won't.
+  has_skepticism_note <- ("has_unprecedented" %in% names(taxa_batch) &&
+                           any(taxa_batch$has_unprecedented, na.rm = TRUE)) ||
+    ("has_indistinguishable" %in% names(taxa_batch) &&
+     any(taxa_batch$has_indistinguishable, na.rm = TRUE))
+  skepticism_guideline <- if (has_skepticism_note) paste0(
+    '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
+    "local occurrence record at all) and/or \"pipeline flags ",
+    'INDISTINGUISHABLE" (a confusable relative could score equally well), do ',
+    'NOT rate geographic_plausibility "likely" or "possible" unless you can ',
+    "cite SPECIFIC evidence for a real population at or near THIS site (a ",
+    "documented occurrence, a verified range extension, a specific source) -- ",
+    "a general species-level range description (e.g. \"found broadly in the ",
+    'Pacific/Atlantic/tropics\") is NOT sufficient justification on its own. ',
+    "If you do rate it likely/possible anyway, review_comment MUST state the ",
+    "specific evidence; otherwise rate it \"unlikely\" and say so.\n"
+  ) else NULL
+
   # --- Spatial-context guidance (only when this batch actually has a note) ---
   has_spatial_note <- "spatial_note" %in% names(taxa_batch) &&
     any(!is.na(taxa_batch$spatial_note))
@@ -1107,13 +1340,16 @@ review_assignments <- function(input_df,
     '- ', contaminant_guideline, '\n',
     '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
     '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
+    if (!is.null(skepticism_guideline)) skepticism_guideline else '',
     if (!is.null(spatial_guideline)) spatial_guideline else '',
     '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
     'pipeline\'s OWN confidence for this call (posterior/occurrence prior/candidate ',
     'weights), not your input. Use it to flag disagreement between the pipeline\'s ',
     'confidence and your own ecological judgment in review_comment -- e.g. a low ',
     'pipeline posterior alongside your own "likely" rating is worth a note -- but do ',
-    'not let it override your independent plausibility assessment itself.\n\n',
+    'not let it override your independent plausibility assessment itself, EXCEPT for ',
+    'the UNPRECEDENTED/INDISTINGUISHABLE bar above, which is a hard requirement, ',
+    'not a soft consideration.\n\n',
     'EXAMPLE OUTPUT FORMAT:\n',
     '[\n',
     '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',

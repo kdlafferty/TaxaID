@@ -145,13 +145,14 @@ reviewed <- review_assignments(
   context    = list(geography = "Southern California", habitat = "Marine"),
   target_group = "fish"
 )
-# Returns 8 structured columns:
-# habitat_plausibility, geographic_plausibility, scope_plausibility,
-# contamination_risk, review_alternatives, review_lower_hypotheses,
+# Returns 8 structured columns (llm_ prefixed since 2026-09-06 -- independent
+# LLM judgments, never derived from the pipeline's own values):
+# llm_habitat_plausibility, llm_geographic_plausibility, llm_scope_plausibility,
+# llm_contamination_risk, review_alternatives, review_lower_hypotheses,
 # review_confidence, review_comment
 
 # Filter to contamination concerns
-reviewed[reviewed$contamination_risk %in% c("high", "moderate"), ]
+reviewed[reviewed$llm_contamination_risk %in% c("high", "moderate"), ]
 ```
 
 ## Reporting

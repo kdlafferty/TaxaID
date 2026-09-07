@@ -845,7 +845,7 @@ review_spatial_context <- function(input_df,
         shiny::h4("AI Review", style = "margin:6px 0 4px;font-size:13px;"),
         shiny::p(
           sprintf("Geographic: %s | Contamination: %s",
-                  r$geographic_plausibility %||% "NA", r$contamination_risk %||% "NA"),
+                  r$llm_geographic_plausibility %||% "NA", r$llm_contamination_risk %||% "NA"),
           style = "font-size:12px;margin:2px 0;"
         ),
         if (!is.null(r$review_comment) && !is.na(r$review_comment))

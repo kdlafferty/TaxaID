@@ -252,9 +252,9 @@ taxaassign_consensus_reviewed <- TaxaFlag::review_assignments(
   taxa_per_call      = TAXA_PER_CALL
 )
 
-message(sprintf("  %d row(s) reviewed; %d flagged with contamination_risk == \"high\".",
+message(sprintf("  %d row(s) reviewed; %d flagged with llm_contamination_risk == \"high\".",
                 nrow(taxaassign_consensus_reviewed),
-                sum(taxaassign_consensus_reviewed$contamination_risk == "high", na.rm = TRUE)))
+                sum(taxaassign_consensus_reviewed$llm_contamination_risk == "high", na.rm = TRUE)))
 
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 # Save now so a future session can skip Step 1 by pasting the readRDS() line
@@ -424,7 +424,7 @@ message("  Requires lab read-count data (long-format: event_id x taxon_name x n_
 message("\nWorkflow complete.")
 message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutorial chain ",
         "(TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag). ",
-        "Filter on contamination_risk / habitat_plausibility / geographic_plausibility / ",
+        "Filter on llm_contamination_risk / llm_habitat_plausibility / llm_geographic_plausibility / ",
         "primary_plausibility / primary_discrimination for a human-reviewed final call list.")
 
 # ==============================================================================
@@ -441,16 +441,18 @@ message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutor
 # compute_posteriors_workflow.R's Output block for the full base column set)
 # plus the following appended columns:
 #
-# From review_assignments() (Step 1):
-#   habitat_plausibility     -- character; "likely"/"possible"/"unlikely" --
+# From review_assignments() (Step 1) -- llm_ prefixed since 2026-09-06 (these
+# are independent LLM judgments, never derived from the pipeline's own
+# values -- see that function's own "Column naming" roxygen section):
+#   llm_habitat_plausibility -- character; "likely"/"possible"/"unlikely" --
 #                               does this taxon live in this habitat?
-#   geographic_plausibility  -- character; "likely"/"possible"/"unlikely" --
+#   llm_geographic_plausibility -- character; "likely"/"possible"/"unlikely" --
 #                               is this taxon found in this region? (NOTE:
 #                               reviewed against the honest-placeholder
 #                               `context$geography` string in this tutorial --
 #                               re-run with a real geocoded place name for a
 #                               meaningful answer)
-#   contamination_risk       -- character; "low"/"moderate"/"high" -- common
+#   llm_contamination_risk   -- character; "low"/"moderate"/"high" -- common
 #                               lab/field contaminant? (higher = more risk)
 #   review_alternatives       -- character; comma-separated plausible
 #                               alternatives at the same rank, when the
@@ -463,7 +465,7 @@ message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutor
 #                               overall confidence in this review
 #   review_comment           -- character; free text; anything the structured
 #                               fields above don't capture
-#   (scope_plausibility is ABSENT here -- target_group was NULL, since this
+#   (llm_scope_plausibility is ABSENT here -- target_group was NULL, since this
 #   tutorial isn't scoped to one target taxonomic group)
 #
 # From add_posthoc_assessment() (Step 2):
@@ -489,6 +491,6 @@ message("taxaassign_consensus_flagged is the TERMINAL object of the TaxaID tutor
 #
 # Consumer: none within the TaxaID ecosystem -- this is the terminal object
 #   of the tutorial series. Intended for human review/filtering (e.g.
-#   dplyr::filter(contamination_risk != "high", primary_plausibility != "unprecedented"))
+#   dplyr::filter(llm_contamination_risk != "high", primary_plausibility != "unprecedented"))
 #   or export for reporting/manuscript figures.
 # ==============================================================================

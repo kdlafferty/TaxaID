@@ -118,16 +118,18 @@ reviewed <- review_assignments(
   llm_fn    = TaxaTools::call_api
 )
 
-# Adds 8 structured columns:
-# habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk,
-# review_alternatives, review_lower_hypotheses, review_confidence, review_comment
+# Adds 8 structured columns (llm_ prefixed since 2026-09-06 -- these are
+# independent LLM judgments, never derived from the pipeline's own values):
+# llm_habitat_plausibility, llm_geographic_plausibility, llm_scope_plausibility,
+# llm_contamination_risk, review_alternatives, review_lower_hypotheses,
+# review_confidence, review_comment
 ```
 
-Plausibility columns (`habitat_plausibility`, `geographic_plausibility`,
-`scope_plausibility`) use `"likely"` / `"possible"` / `"unlikely"` — higher
+Plausibility columns (`llm_habitat_plausibility`, `llm_geographic_plausibility`,
+`llm_scope_plausibility`) use `"likely"` / `"possible"` / `"unlikely"` — higher
 means more plausible as a genuine detection.
 
-`contamination_risk` uses `"low"` / `"moderate"` / `"high"` — higher means
+`llm_contamination_risk` uses `"low"` / `"moderate"` / `"high"` — higher means
 more concern about contamination.
 
 ## Combining Flags
@@ -144,14 +146,14 @@ appropriate weighting depends on your study design and risk tolerance:
 flagged$any_flag <- with(flagged,
   lab_validity_flag    == "invalid_lab_contaminant" |
   handler_validity_flag == "invalid_handling" |
-  contamination_risk   %in% c("high", "moderate") |
+  llm_contamination_risk %in% c("high", "moderate") |
   review_confidence    == "low"
 )
 
 # Example: permissive approach (only flag if multiple mechanisms agree)
 flagged$multi_flag <- with(flagged,
   (lab_validity_flag == "invalid_lab_contaminant") +
-  (contamination_risk %in% c("high", "moderate")) >= 2
+  (llm_contamination_risk %in% c("high", "moderate")) >= 2
 )
 ```
 

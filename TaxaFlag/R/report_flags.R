@@ -51,13 +51,16 @@ report_flags <- function(flagged_data,
   # --- Auto-detect flag columns -----------------------------------------------
   all_cols <- names(flagged_data)
 
-  # Contaminant flags — two naming conventions supported:
-  #   Pre-Session 101:  flag_lab_contaminant, flag_field_contaminant, etc.
-  #   Post-Session 101: lab_contaminant_risk, field_contaminant_risk,
-  #                     contamination_risk (from review_assignments())
+  # Contaminant flags — three naming conventions supported:
+  #   Pre-Session 101:   flag_lab_contaminant, flag_field_contaminant, etc.
+  #   Post-Session 101:  lab_contaminant_risk, field_contaminant_risk,
+  #                      contamination_risk (from review_assignments())
+  #   Post-2026-09-06:   llm_contamination_risk (review_assignments()'s
+  #                      llm_ column rename -- see that function's own
+  #                      "Column naming" roxygen section)
   contaminant_cols_old <- grep("^flag_(lab|field|positive|control)", all_cols, value = TRUE)
   contaminant_cols_new <- grep(
-    "^(lab|field|positive|control)_contaminant_risk$|^contamination_risk$",
+    "^(lab|field|positive|control)_contaminant_risk$|^contamination_risk$|^llm_contamination_risk$",
     all_cols, value = TRUE
   )
   contaminant_cols <- unique(c(contaminant_cols_old, contaminant_cols_new))
@@ -65,8 +68,10 @@ report_flags <- function(flagged_data,
   # Handler flags: flag_handler (naming unchanged)
   handler_cols <- grep("^flag_handler", all_cols, value = TRUE)
 
-  # Plausibility columns from review_assignments() (post-Session 101):
-  #   habitat_plausibility, geographic_plausibility, scope_plausibility
+  # Plausibility columns from review_assignments() (post-Session 101; post-
+  # 2026-09-06 these are llm_habitat_plausibility/llm_geographic_plausibility/
+  # llm_scope_plausibility -- suffix-matched, so the llm_ prefix needs no
+  # change here):
   plausibility_cols <- grep("_plausibility$", all_cols, value = TRUE)
 
   # Review metadata columns: review_confidence, review_comment, etc.

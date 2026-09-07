@@ -42,10 +42,10 @@ test_that("review_assignments adds 8 columns", {
     verbose      = FALSE
   )
 
-  expect_true("habitat_plausibility" %in% names(result))
-  expect_true("geographic_plausibility" %in% names(result))
-  expect_true("scope_plausibility" %in% names(result))
-  expect_true("contamination_risk" %in% names(result))
+  expect_true("llm_habitat_plausibility" %in% names(result))
+  expect_true("llm_geographic_plausibility" %in% names(result))
+  expect_true("llm_scope_plausibility" %in% names(result))
+  expect_true("llm_contamination_risk" %in% names(result))
   expect_true("review_alternatives" %in% names(result))
   expect_true("review_lower_hypotheses" %in% names(result))
   expect_true("review_confidence" %in% names(result))
@@ -65,14 +65,14 @@ test_that("review values are correct for known taxa", {
 
   # Homo sapiens should be flagged as contaminant
   hs <- result[result$consensus_taxon == "Homo sapiens", ]
-  expect_equal(hs$contamination_risk, "high")
-  expect_equal(hs$scope_plausibility, "unlikely")
+  expect_equal(hs$llm_contamination_risk, "high")
+  expect_equal(hs$llm_scope_plausibility, "unlikely")
 
   # Carcharhinus melanopterus should be expected
   cm <- result[result$consensus_taxon == "Carcharhinus melanopterus", ]
-  expect_equal(cm$habitat_plausibility, "likely")
-  expect_equal(cm$geographic_plausibility, "likely")
-  expect_equal(cm$contamination_risk, "low")
+  expect_equal(cm$llm_habitat_plausibility, "likely")
+  expect_equal(cm$llm_geographic_plausibility, "likely")
+  expect_equal(cm$llm_contamination_risk, "low")
 })
 
 test_that("alternatives populated for implausible taxa", {
@@ -138,7 +138,7 @@ test_that("scope_plausibility is NA when target_group not supplied", {
     verbose  = FALSE
   )
 
-  expect_true(all(is.na(result$scope_plausibility)))
+  expect_true(all(is.na(result$llm_scope_plausibility)))
 })
 
 
@@ -186,7 +186,7 @@ test_that("graceful handling of LLM failure", {
 
   # Should still return all rows with NA review columns
   expect_equal(nrow(result), nrow(mock_consensus))
-  expect_true(all(is.na(result$habitat_plausibility)))
+  expect_true(all(is.na(result$llm_habitat_plausibility)))
 })
 
 test_that("graceful handling of invalid JSON response", {
@@ -204,7 +204,7 @@ test_that("graceful handling of invalid JSON response", {
   )
 
   expect_equal(nrow(result), nrow(mock_consensus))
-  expect_true(all(is.na(result$habitat_plausibility)))
+  expect_true(all(is.na(result$llm_habitat_plausibility)))
 })
 
 test_that("graceful handling of partial LLM response", {
@@ -231,10 +231,10 @@ test_that("graceful handling of partial LLM response", {
   expect_equal(nrow(result), nrow(mock_consensus))
   # The two returned taxa should have values
   cm <- result[result$consensus_taxon == "Carcharhinus melanopterus", ]
-  expect_equal(cm$habitat_plausibility, "likely")
+  expect_equal(cm$llm_habitat_plausibility, "likely")
   # The missing taxa should have NA
   bt <- result[result$consensus_taxon == "Bos taurus", ]
-  expect_true(is.na(bt$habitat_plausibility))
+  expect_true(is.na(bt$llm_habitat_plausibility))
 })
 
 
@@ -286,7 +286,7 @@ test_that("truncated batch is recovered via automatic retry with smaller sub-bat
 
   # 5 unique taxa truncate at batch size 5; retry-splitting keeps halving
   # until every leaf batch is small enough (<=2) to return a complete response.
-  expect_false(any(is.na(result$habitat_plausibility)))
+  expect_false(any(is.na(result$llm_habitat_plausibility)))
   expect_true(any(call_sizes > 2L))
   expect_true(any(call_sizes <= 2L))
 })
@@ -312,7 +312,7 @@ test_that("hard llm_fn errors are not retried -- a smaller batch can't fix a bro
   )
 
   expect_equal(call_count, 1L)
-  expect_true(all(is.na(result$habitat_plausibility)))
+  expect_true(all(is.na(result$llm_habitat_plausibility)))
 })
 
 test_that("max_retries = 0 disables retry, matching pre-retry behavior", {
@@ -339,7 +339,7 @@ test_that("max_retries = 0 disables retry, matching pre-retry behavior", {
 
   expect_equal(call_count, 1L)
   bt <- result[result$consensus_taxon == "Bos taurus", ]
-  expect_true(is.na(bt$habitat_plausibility))
+  expect_true(is.na(bt$llm_habitat_plausibility))
 })
 
 test_that("max_tokens is forwarded to llm_fn when supplied", {
@@ -476,8 +476,8 @@ test_that("a model that echoes the annotated label still joins back to its rows"
                             irreducible_only = FALSE, taxa_per_call = 10L,
                             llm_fn = fake_llm, verbose = FALSE)
   # every row scored -- no silent NA on the multi-candidate rows
-  expect_false(any(is.na(out$habitat_plausibility)))
-  expect_equal(unique(out$habitat_plausibility), "likely")
+  expect_false(any(is.na(out$llm_habitat_plausibility)))
+  expect_equal(unique(out$llm_habitat_plausibility), "likely")
 })
 
 # ---------------------------------------------------------------------------
@@ -528,8 +528,8 @@ test_that("a cached review is reproducible and makes no second LLM call", {
   expect_gt(first, 0L)
   b <- do.call(review_assignments, args)
   expect_equal(get("n", ctr), first)                       # no further calls
-  expect_equal(a$habitat_plausibility, b$habitat_plausibility)
-  expect_false(any(is.na(b$habitat_plausibility)))
+  expect_equal(a$llm_habitat_plausibility, b$llm_habitat_plausibility)
+  expect_false(any(is.na(b$llm_habitat_plausibility)))
 })
 
 test_that("changing the review context is a cache MISS, not a stale hit", {

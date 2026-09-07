@@ -14,6 +14,8 @@ review_assignments(
   winner_prior_col = "winner_prior",
   winner_rank_expanded_col = "winner_rank_expanded",
   plausible_posteriors_col = "plausible_posteriors",
+  consensus_plausibility_col = "consensus_plausibility",
+  consensus_discrimination_col = "consensus_discrimination",
   dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
   patch_diameter_km_col = "patch_diameter_km",
   beyond_buffer_col = "beyond_buffer",
@@ -103,6 +105,24 @@ weaker member instead of the group as an undifferentiated set. Silently
 skipped when absent. Default \code{"plausible_posteriors"}. Set to
 \code{NULL} to disable.}
 
+\item{consensus_plausibility_col}{Character or \code{NULL}. Column name for
+\code{add_posthoc_assessment()}'s \code{consensus_plausibility} --
+specifically its \code{"unprecedented"} value (no local occurrence
+record at all, a pipeline-computed fact, never a threshold on a prior
+VALUE -- see that function's own docs for why). When present, shown to
+the LLM as \code{"pipeline flags UNPRECEDENTED: ..."} and used to gate
+the skepticism GUIDELINES bullet (see \code{@section Skepticism gate}
+below) and the deterministic \code{geographic_disagreement_basis} output
+column. Silently skipped when absent. Default
+\code{"consensus_plausibility"}. Set to \code{NULL} to disable.}
+
+\item{consensus_discrimination_col}{Character or \code{NULL}. Column name
+for \code{add_posthoc_assessment()}'s \code{consensus_discrimination} --
+specifically its \code{"indistinguishable"} value (a one-sided tail
+probability says a confusable relative could score just as well).
+Same treatment as \code{consensus_plausibility_col}. Default
+\code{"consensus_discrimination"}. Set to \code{NULL} to disable.}
+
 \item{dist_nearest_occupied_km_col}{Character or \code{NULL}. Column name
 for \code{check_gbif_tile_range()}'s \code{dist_nearest_occupied_km} --
 distance from the study site to the nearest GBIF-mapped occurrence of
@@ -153,7 +173,7 @@ Recognised fields: \code{geography} (or \code{ecoregion}),
 
 \item{target_group}{Character or \code{NULL}. Taxonomic target group
 (e.g., \code{"fish"}, \code{"birds"}). When supplied, the LLM
-populates \code{scope_plausibility}. Default \code{NULL}.}
+populates \code{llm_scope_plausibility}. Default \code{NULL}.}
 
 \item{marker}{Character or \code{NULL}. Molecular marker or detection
 method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
@@ -220,13 +240,18 @@ helpers, so it does not accumulate unmanaged.}
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
 \value{
-The input data frame with 7 or 8 columns appended:
+The input data frame with 8 or 9 columns appended:
 \describe{
-\item{\code{habitat_plausibility}}{likely / possible / unlikely}
-\item{\code{geographic_plausibility}}{likely / possible / unlikely}
-\item{\code{scope_plausibility}}{likely / possible / unlikely, or \code{NA}
-if \code{target_group} not supplied}
-\item{\code{contamination_risk}}{high / moderate / low}
+\item{\code{llm_habitat_plausibility}}{likely / possible / unlikely.
+Renamed from \code{habitat_plausibility} 2026-09-06 -- see
+\code{@section Column naming} below.}
+\item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.
+Renamed from \code{geographic_plausibility}.}
+\item{\code{llm_scope_plausibility}}{likely / possible / unlikely, or
+\code{NA} if \code{target_group} not supplied. Renamed from
+\code{scope_plausibility}.}
+\item{\code{llm_contamination_risk}}{high / moderate / low. Renamed from
+\code{contamination_risk}.}
 \item{\code{review_alternatives}}{Comma-separated plausible alternatives,
 or \code{NA}}
 \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa, or
@@ -234,6 +259,17 @@ or \code{NA}}
 (candidates already known).}
 \item{\code{review_confidence}}{high / moderate / low}
 \item{\code{review_comment}}{Free-text note, or \code{NA}}
+\item{\code{geographic_disagreement_basis}}{\code{NA} (no disagreement,
+or the pipeline columns needed to check were unavailable), or one of
+\code{"unprecedented"}/\code{"indistinguishable"}/
+\code{"unprecedented+indistinguishable"} -- \strong{deterministic},
+code-computed, not an LLM output: fires whenever
+\code{llm_geographic_plausibility \%in\% c("likely","possible")} despite
+\code{consensus_plausibility_col == "unprecedented"} and/or
+\code{consensus_discrimination_col == "indistinguishable"}. See
+\code{@section Skepticism gate} below for why this exists as a
+deterministic column rather than relying on \code{review_comment}
+alone.}
 }
 Also carries an \code{"llm_prompts"} attribute -- a named list of the
 exact prompt string sent for each LLM call (named by batch number, with
@@ -270,6 +306,63 @@ observation and "B/A" on another; joining on the label left one of them
 unmatched and therefore unscored. Sets are also deduplicated canonically, so
 a unit that previously appeared under two orderings is now reviewed once
 rather than twice. Display labels are unchanged. (2026-09-04.)
+}
+
+\section{Column naming (2026-09-06)}{
+
+\code{habitat_plausibility}/\code{geographic_plausibility}/
+\code{scope_plausibility}/\code{contamination_risk} were renamed to
+\code{llm_habitat_plausibility}/\code{llm_geographic_plausibility}/
+\code{llm_scope_plausibility}/\code{llm_contamination_risk}. All four are
+independent LLM judgments -- by design, NOT derived from or gated by any
+pipeline-computed value (see \code{@section Pipeline context} below) -- and
+the old, unprefixed names read as if they might be pipeline output, which
+is exactly what confused a real user tracing a surprising
+\code{geographic_plausibility = "likely"} back through the pipeline before
+realising the number it appeared to contradict was never actually
+consulted to produce it. The LLM's own JSON response schema (what
+\code{.build_review_prompt()} asks for and \code{.parse_review_response()}
+parses) is UNCHANGED -- only the final output column names carry the
+prefix. Real callers (\code{report_flags()}, five external eDNA workflow
+scripts) were all updated the same session; \code{report_flags()}'s own
+contamination-column detection also still recognises the old bare
+\code{contamination_risk} name, for a data frame produced by a
+pre-2026-09-06 install.
+}
+
+\section{Skepticism gate (2026-09-06)}{
+
+A real case motivated this: an LLM rated a taxon
+\code{llm_geographic_plausibility = "likely"} despite the pipeline
+recording ZERO local occurrence records for it AND a near-total inability
+to discriminate it from a confusable relative on score alone -- explaining
+itself only with a general species-level range description, no evidence
+specific to the actual study site. Two independent responses, both real,
+both needed (a stronger prompt instruction is not sufficient on its own --
+see the reasoning in
+\code{[[project_rank_trust_mechanism_removed]]}/\code{[[project_verify_purpose_before_flagging]]}-adjacent
+precedent throughout this ecosystem: never trust an LLM alone to reliably
+self-flag its own uncertainty):
+\enumerate{
+\item{A GUIDELINES bullet (only added when at least one taxon in a
+batch actually carries the flag -- see
+\code{consensus_plausibility_col}/\code{consensus_discrimination_col})
+requires the LLM to default to \code{"unlikely"} for a taxon flagged
+\code{"unprecedented"} (no local record) and/or
+\code{"indistinguishable"} (a confusable relative could score equally
+well) UNLESS it can cite SPECIFIC evidence for a real population at or
+near the study site -- a general species-level range description is
+explicitly declared insufficient. This is stated as a HARD requirement,
+the one deliberate exception to this function's own "the bracket
+informs, never overrides your judgment" rule for every other pipeline
+signal.}
+\item{Prompt compliance is never guaranteed, so the deterministic
+\code{geographic_disagreement_basis} output column (see \code{@return}
+above) is computed in R, independent of whether the LLM actually
+mentioned the disagreement anywhere. It is the reliable way to FIND
+every such row -- filter/sort on it directly rather than reading every
+\code{review_comment}.}
+}
 }
 
 \section{Pipeline context}{

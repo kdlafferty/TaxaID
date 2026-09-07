@@ -231,7 +231,7 @@
       ],
       "output": {
         "type": "review_df",
-        "description": "Input df with 8 review columns: habitat_plausibility, geographic_plausibility, scope_plausibility, contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment"
+        "description": "Input df with 8 review columns (llm_ prefixed since 2026-09-06 -- independent LLM judgments, never derived from the pipeline's own values): llm_habitat_plausibility, llm_geographic_plausibility, llm_scope_plausibility, llm_contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment. Also adds geographic_disagreement_basis (character, NA unless the LLM rated geographic_plausibility likely/possible despite the pipeline flagging the taxon unprecedented and/or indistinguishable)."
       },
       "scaling": "api_limited",
       "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 15 taxa"

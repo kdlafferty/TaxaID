@@ -53,27 +53,29 @@ reviewed <- review_assignments(
   taxon_col      = "consensus_taxon",
   taxon_rank_col = "consensus_rank",   # enables review_lower_hypotheses
   context        = context,
-  target_group   = "fish",             # enables scope_plausibility
+  target_group   = "fish",             # enables llm_scope_plausibility
   marker         = "12S MiFish"        # contaminant context
 )
 
 # --- 4. Inspect results ------------------------------------------------------
+# Output columns carry an llm_ prefix (2026-09-06) -- these are independent
+# LLM judgments, never derived from the pipeline's own values.
 
 # Overview
-reviewed[, c("consensus_taxon", "habitat_plausibility", "geographic_plausibility",
-             "contamination_risk", "review_confidence")]
+reviewed[, c("consensus_taxon", "llm_habitat_plausibility", "llm_geographic_plausibility",
+             "llm_contamination_risk", "review_confidence")]
 
 # Likely contaminants (high or moderate contamination risk)
-reviewed[reviewed$contamination_risk %in% c("high", "moderate"),
-         c("consensus_taxon", "contamination_risk", "review_comment")]
+reviewed[reviewed$llm_contamination_risk %in% c("high", "moderate"),
+         c("consensus_taxon", "llm_contamination_risk", "review_comment")]
 
 # Out-of-scope taxa
-reviewed[reviewed$scope_plausibility == "unlikely",
-         c("consensus_taxon", "scope_plausibility", "review_comment")]
+reviewed[reviewed$llm_scope_plausibility == "unlikely",
+         c("consensus_taxon", "llm_scope_plausibility", "review_comment")]
 
 # Geographically implausible + suggested alternatives
-reviewed[reviewed$geographic_plausibility == "unlikely",
-         c("consensus_taxon", "geographic_plausibility", "review_alternatives")]
+reviewed[reviewed$llm_geographic_plausibility == "unlikely",
+         c("consensus_taxon", "llm_geographic_plausibility", "review_alternatives")]
 
 # Lower-rank hypotheses for coarse assignments
 reviewed[!is.na(reviewed$review_lower_hypotheses),
@@ -85,7 +87,7 @@ reviewed[!is.na(reviewed$review_lower_hypotheses),
 # lab_flags <- flag_contaminant(reads_long, control_samples = ..., ...)
 # comparison <- merge(
 #   lab_flags[, c("taxon_name", "lab_contaminant_risk", "lab_contaminant_score")],
-#   unique(reviewed[, c("consensus_taxon", "contamination_risk")]),
+#   unique(reviewed[, c("consensus_taxon", "llm_contamination_risk")]),
 #   by.x = "taxon_name", by.y = "consensus_taxon",
 #   all = TRUE
 # )
