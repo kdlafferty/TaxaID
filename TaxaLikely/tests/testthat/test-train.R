@@ -605,3 +605,84 @@ test_that("train_likelihood_model: returns Stats$mlr_violations/max_ceiling_z fi
   expect_true("max_ceiling_z_species" %in% names(out$Stats))
   expect_true(is.character(out$Stats$mlr_violations))
 })
+
+# --- Rank-code column ordering (lme4 hierarchy) --------------------------------
+# Regression fixture for the `code_cols` ordering bug. `.generalize_ranks()`
+# renames rank columns IN PLACE, so `train_df`'s column order is rank_system's
+# own COARSE-TO-FINE order (rank_code_d, rank_code_c, rank_code_b, rank_code_a
+# for a 4-level rank_system), NOT alphabetical. `train_likelihood_model()` reads
+# `code_cols[-1L]` as "every rank above the finest" and `code_cols[-1L][1]` as
+# "genus" (the second-finest rank), both of which need the finest code FIRST.
+#
+# The fixture is deliberately 4 levels deep: with exactly 3 levels the buggy
+# (unsorted) order happens to put rank_code_b first in `code_cols[-1L]` anyway,
+# so a 3-level fixture cannot tell the two behaviours apart. At 4 levels the
+# unsorted order reads rank_code_c (family) as "genus" instead.
+.make_four_rank_raw_df <- function() {
+  genera <- paste0("Genus", 1:8)
+  # 8 genera -> 5 families -> 2 orders. Every level has a DIFFERENT cardinality,
+  # so the "only %d genera with congener data" message below names the number
+  # that identifies which column was actually read.
+  fam_of   <- stats::setNames(
+    c("Fam1", "Fam1", "Fam1", "Fam1", "Fam2", "Fam3", "Fam4", "Fam5"), genera)
+  order_of <- stats::setNames(
+    c("Ord1", "Ord1", "Ord1", "Ord1", "Ord1", "Ord2", "Ord2", "Ord2"), genera)
+
+  meta <- do.call(rbind, lapply(genera, function(g) {
+    do.call(rbind, lapply(c("alpha", "beta"), function(sp) {
+      data.frame(
+        id      = paste0(g, "_", sp, "_", 1:2),
+        species = paste(g, sp),
+        genus   = g,
+        family  = unname(fam_of[[g]]),
+        order   = unname(order_of[[g]]),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }))
+
+  grid <- expand.grid(id_x = meta$id, id_y = meta$id, stringsAsFactors = FALSE)
+  idx  <- stats::setNames(seq_len(nrow(meta)), meta$id)
+  # Columns are added COARSE-TO-FINE on purpose: that is the order a real
+  # build_sequence_matrix() emits (its `present_rank_cols` is
+  # intersect(rank_cols, ...), and intersect() keeps rank_system's own
+  # coarse-to-fine order), and it is what makes the unsorted `code_cols` order
+  # reversed relative to what train_likelihood_model() assumes.
+  for (rk in c("order", "family", "genus", "species")) {
+    grid[[paste0(rk, ".x")]] <- meta[[rk]][idx[grid$id_x]]
+    grid[[paste0(rk, ".y")]] <- meta[[rk]][idx[grid$id_y]]
+  }
+  grid$p_match <- ifelse(
+    grid$id_x == grid$id_y, 1.00,
+    ifelse(grid$species.x == grid$species.y, 0.97,
+      ifelse(grid$genus.x == grid$genus.y, 0.90,
+        ifelse(grid$family.x == grid$family.y, 0.80,
+          ifelse(grid$order.x == grid$order.y, 0.75, 0.70)))))
+  grid
+}
+
+test_that(".prep_training_data: rank_code columns are NOT emitted in alphabetical order", {
+  # Documents the trap the fix above guards against: any consumer indexing
+  # `code_cols` positionally must sort first.
+  raw <- .make_four_rank_raw_df()
+  train_df <- TaxaLikely:::.prep_training_data(
+    raw, rank_system = c("order", "family", "genus", "species"))
+  code_cols <- names(train_df)[grepl("^rank_code_[a-z]$", names(train_df))]
+  expect_identical(code_cols,
+                   c("rank_code_d", "rank_code_c", "rank_code_b", "rank_code_a"))
+  # rank_code_a is the FINEST rank (species), rank_code_b the second-finest.
+  expect_identical(sort(unique(train_df$rank_code_b)), sort(paste0("Genus", 1:8)))
+})
+
+test_that("train_likelihood_model: the pooled-H2 lme4 branch counts genera, not families", {
+  skip_if_not_installed("TaxaTools")
+  skip_if_not_installed("lme4")
+  raw <- .make_four_rank_raw_df()
+  expect_message(
+    suppressWarnings(
+      train_likelihood_model(raw, c("order", "family", "genus", "species"),
+                             use_hierarchy = TRUE, anchor_perfect = FALSE)
+    ),
+    "only 8 genera with congener data"
+  )
+})

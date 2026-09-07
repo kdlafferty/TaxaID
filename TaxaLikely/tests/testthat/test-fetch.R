@@ -168,7 +168,13 @@ test_that("fetch_bold_reference_sequences returns empty typed data frame when a 
 
   ref <- suppressWarnings(suppressMessages(fetch_bold_reference_sequences(taxa = "Nonexistentgenusxyz")))
   expect_equal(nrow(ref), 0L)
-  expect_equal(names(ref), c("composite_id", "sequence"))
+  # Same columns a successful return has (rank_system defaults to
+  # family/genus/species, include_location defaults to TRUE) -- a bare
+  # composite_id/sequence frame made a caller's ordinary next step
+  # (clean_taxon_names(reference_df$species)) fail on NULL. See
+  # .empty_reference_df().
+  expect_equal(names(ref), c("composite_id", "sequence", "family", "genus",
+                             "species", "lat", "lon", "country"))
 })
 
 # ---- read_reference_fasta validation -----------------------------------------
@@ -416,4 +422,32 @@ test_that(".empty_reference_df carries the rank columns a caller will index", {
   # Rank names are lowercased to match the successful return's own columns.
   expect_equal(names(erd(c("Family", "Genus", "Species")))[3:5],
                c("family", "genus", "species"))
+})
+
+test_that(".parse_fasta_text: a trailing header with no sequence yields an empty sequence", {
+  # `(start):(end)` counts DOWN when start > end, which spliced an NA plus the
+  # header line itself into the sequence ("NA>A2 y") -- non-empty, so it
+  # survived every downstream nchar(sequence) > 0 filter and reached the
+  # aligner as a corrupt record.
+  out <- TaxaLikely:::.parse_fasta_text(">A1 x\nATGC\n>A2 y")
+  expect_identical(out$composite_id, c("A1", "A2"))
+  expect_identical(out$sequence, c("ATGC", ""))
+})
+
+test_that("fetch_bold_reference_sequences: the no-records early return carries the full schema", {
+  skip_if_not_installed("httr2")
+  # A bare composite_id/sequence frame makes a caller's ordinary next step
+  # (clean_taxon_names(reference_df$species)) fail on NULL, burying this
+  # function's own message about why the result was empty.
+  testthat::local_mocked_bindings(
+    .bold_resolve_taxon = function(taxon) "tax:genus:Nothing",
+    .bold_submit_query  = function(triplet, extent = "full") "qid",
+    .bold_fetch_documents = function(query_id) NULL
+  )
+  out <- fetch_bold_reference_sequences(
+    taxa = "Nothing", rank_system = c("family", "genus", "species"),
+    include_location = TRUE)
+  expect_identical(nrow(out), 0L)
+  expect_true(all(c("composite_id", "sequence", "family", "genus", "species",
+                    "lat", "lon", "country") %in% names(out)))
 })

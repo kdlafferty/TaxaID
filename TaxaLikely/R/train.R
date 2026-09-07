@@ -1134,7 +1134,20 @@ train_likelihood_model <- function(raw_df,
   lmer_mu_gap   <- NULL
   aic_score     <- NA_real_
 
-  code_cols <- names(train_df)[grepl("^rank_code_[a-z]$", names(train_df))]
+  # sort(): .generalize_ranks() renames rank columns IN PLACE, so `train_df`'s
+  # own column order is rank_system's own coarse-to-fine order -- i.e.
+  # rank_code_c, rank_code_b, rank_code_a for c("family", "genus", "species").
+  # Every use of `code_cols` below assumes the OPPOSITE (finest first), so that
+  # `code_cols[-1L]` means "every rank above the finest" and `code_cols[-1L][1]`
+  # means the second-finest rank (genus). Without the sort, `code_cols[-1L]`
+  # dropped the COARSEST rank and wrongly included the finest one -- fitting
+  # `(1 | genus) + (1 | species)` instead of the intended
+  # `(1 | genus) + (1 | family)`, and (for any rank_system that is not exactly
+  # three levels) reading the wrong column as "genus" when counting genera with
+  # congener data. Sorting is safe because the codes are assigned by position
+  # (a = finest, b = second-finest, ...), so alphabetical order IS fine-to-coarse
+  # order.
+  code_cols <- sort(names(train_df)[grepl("^rank_code_[a-z]$", names(train_df))])
 
   # Early exit: lme4 hierarchy is uninformative with too few species
   if (use_hierarchy && n_species < 10L) {

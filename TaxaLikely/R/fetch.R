@@ -466,8 +466,19 @@ utils::globalVariables(c(
     hdr    <- sub("^>", "", lines[header_idx[k]])
     # Accession = first token; strip version suffix (.1, .2, etc.)
     ids[k] <- sub("\\.[0-9]+$", "", strsplit(trimws(hdr), "\\s+")[[1L]][1L])
-    seq_lines <- lines[(header_idx[k] + 1L):seq_end_idx[k]]
-    seqs[k]   <- paste(seq_lines[nchar(seq_lines) > 0L], collapse = "")
+    # A header with no sequence lines after it (a truncated FASTA -- reachable,
+    # since .fetch_fasta_batched() concatenates independently-retried batches)
+    # makes `start > end`, and `:` then counts DOWN, splicing an NA plus the
+    # header line itself into the sequence ("NA>ACC ..."). That is not empty,
+    # so it survives every downstream nchar(sequence) > 0 filter and reaches
+    # the aligner as a corrupt record. Emit an empty sequence instead, which
+    # the existing filters already drop.
+    seqs[k] <- if (header_idx[k] + 1L > seq_end_idx[k]) {
+      ""
+    } else {
+      seq_lines <- lines[(header_idx[k] + 1L):seq_end_idx[k]]
+      paste(seq_lines[nchar(seq_lines) > 0L], collapse = "")
+    }
   }
 
   data.frame(composite_id = ids, sequence = seqs, stringsAsFactors = FALSE)
@@ -1487,8 +1498,14 @@ fetch_bold_reference_sequences <- function(taxa,
   } else {
     NULL
   }
-  empty_out <- data.frame(composite_id = character(0L), sequence = character(0L),
-                          stringsAsFactors = FALSE)
+  # Same shape a successful return has -- see .empty_reference_df()'s own
+  # documentation for why: a bare 2-column frame makes a caller's ordinary
+  # next step (clean_taxon_names(reference_df$species), a join on a rank
+  # column) fail on NULL, burying this function's own correct explanation of
+  # why the result was empty. The NCBI path was fixed for exactly this on
+  # 2026-09-02; the BOLD path kept the bare frame, while its own @return
+  # documents the rank and lat/lon/country columns.
+  empty_out <- .empty_reference_df(rank_system, include_location)
 
   if (is.null(combined) || nrow(combined) == 0L) {
     message("No records found for any taxon.")

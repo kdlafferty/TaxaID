@@ -289,3 +289,42 @@ test_that("assign_scores direct errors when score_col missing", {
   df$score_original <- NULL
   expect_error(assign_scores(df, score_type = "direct"), "not found")
 })
+
+test_that("assign_scores: an NA hypothesis_type does not manufacture phantom rows", {
+  # `==` yields NA for an NA hypothesis_type and df[NA, ] INSERTS an all-NA
+  # row, so one such row previously produced four fully-NA output rows --
+  # including a phantom H4 at the fixed 0.05 weight and phantom H2/H3 at 1.0.
+  hd <- data.frame(
+    observation_id  = c("o1", "o1", "o1"),
+    hypothesis_type = c("specific_candidate", NA, "unreferenced_species"),
+    taxon_name      = c("Sp A", "Sp B", "Genus X"),
+    taxon_name_rank = c("species", "species", "genus"),
+    score_original  = c(0.9, 0.4, NA),
+    stringsAsFactors = FALSE
+  )
+  out <- assign_scores(hd, score_type = "probability")
+  # 2 rows, not 3: a row whose hypothesis_type matches none of the four
+  # recognised types was never meant to survive (the output is assembled from
+  # the four groups), and it must not be duplicated into phantoms either.
+  expect_identical(nrow(out), 2L)
+  expect_false(any(is.na(out$observation_id)))
+  expect_setequal(out$taxon_name, c("Sp A", "Genus X"))
+})
+
+test_that("assign_scores: an NA taxon_name H1 row keeps its score in the aggregate", {
+  hd <- data.frame(
+    observation_id  = c("o1", "o1"),
+    hypothesis_type = c("specific_candidate", "specific_candidate"),
+    taxon_name      = c("Sp A", NA),
+    taxon_name_rank = c("species", "species"),
+    score_original  = c(0.9, 0.4),
+    stringsAsFactors = FALSE
+  )
+  out <- assign_scores(hd, score_type = "probability")
+  expect_identical(nrow(out), 2L)
+  expect_false(any(is.na(out$observation_id)))
+  # The NA-named row is a real H1 candidate with a real score; it must be
+  # ratio-normalised against the winner, not silently dropped from every
+  # aggregate and replaced by a phantom.
+  expect_equal(sort(out$score_likelihood), sort(c(1, 0.4 / 0.9)))
+})

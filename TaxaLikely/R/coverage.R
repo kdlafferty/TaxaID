@@ -14,10 +14,12 @@ utils::globalVariables(c(
 
 # Internal helper: build deterministic checkpoint path for audit_barcode_coverage()
 # Signature encodes genera (count + sum of nchar), barcode_term, len_range, max_date,
-# and target_rank so that changed parameters start fresh without collisions.
+# target_rank, and exclude_predicted so that changed parameters start fresh
+# without collisions.
 #' @noRd
 .coverage_checkpoint_path <- function(genera, barcode_term, len_range,
-                                       max_date, target_rank, cache_dir) {
+                                       max_date, target_rank, cache_dir,
+                                       exclude_predicted = TRUE) {
   # len_range is always TaxaTools::resolve_barcode_lengths()'s c(min_bp, max_bp)
   # output by construction at this internal helper's one call site, but
   # guard explicitly anyway -- a malformed len_range would otherwise silently
@@ -28,13 +30,22 @@ utils::globalVariables(c(
   date_sfx <- gsub("[^0-9A-Za-z]", "", if (is.null(max_date)) "X" else max_date)
   n_gen    <- length(genera)
   gen_sum  <- sum(nchar(genera))
-  # _v2: records now include has_predicted_only / predicted_only_names fields;
-  # old checkpoints (v1) are incompatible and will be ignored automatically.
+  # exclude_predicted must be part of the key: .audit_one_genus_reverse()
+  # computes DIFFERENT unreferenced_names / has_seqs_not_in_ref values under
+  # each setting, and it is the finished record -- not the raw NCBI response --
+  # that gets checkpointed. Without this, re-running with the flag flipped
+  # silently reused records computed under the other setting. Same
+  # cache-staleness class already fixed for fetch_ncbi_reference_sequences()'s
+  # rank_system/keep_out_of_range keys.
+  pred_sfx <- if (isTRUE(exclude_predicted)) "xp1" else "xp0"
+  # _v3: exclude_predicted added to the key (v2 records now include
+  # has_predicted_only / predicted_only_names fields); older checkpoints are
+  # incompatible and will be ignored automatically.
   file.path(cache_dir,
-            sprintf("coverage_%s_%s_d%s_n%d_s%d_l%d_%d_v2_ckpt.rds",
+            sprintf("coverage_%s_%s_d%s_n%d_s%d_l%d_%d_%s_v3_ckpt.rds",
                     target_rank, safe_bc, date_sfx,
                     n_gen, gen_sum,
-                    len_range[1L], len_range[2L]))
+                    len_range[1L], len_range[2L], pred_sfx))
 }
 
 
@@ -496,7 +507,14 @@ audit_barcode_coverage <- function(match_df,
   taxids <- vapply(nuc_summ_flat,
                    function(s) as.character(s[["taxid"]] %||% NA_character_),
                    character(1L))
-  is_pred <- startsWith(toupper(trimws(titles)), "PREDICTED")
+  # !is.na(titles) guard: startsWith(NA, ...) returns NA, and `taxids[NA]`
+  # yields a literal NA_character_ ELEMENT rather than dropping the row -- so
+  # a single NCBI esummary record with no title (real, for suppressed/stub
+  # accessions) put an NA id into `all_taxids`, which then failed the entire
+  # 200-id taxonomy batch it landed in. That batch's tryCatch returns NULL
+  # silently, so up to 200 taxids' species were reported unreferenced with no
+  # warning. A record with no title is not evidence of a PREDICTED sequence.
+  is_pred <- !is.na(titles) & startsWith(toupper(trimws(titles)), "PREDICTED")
 
   taxids_exp       <- unique(taxids[!is_pred & !is.na(taxids)])
   taxids_pred      <- unique(taxids[is_pred & !is.na(taxids)])
@@ -731,7 +749,8 @@ audit_barcode_coverage <- function(match_df,
   if (!is.null(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     checkpoint_path <- .coverage_checkpoint_path(genera, barcode_term, len_range,
-                                                  max_date, target_rank, cache_dir)
+                                                  max_date, target_rank, cache_dir,
+                                                  exclude_predicted = exclude_predicted)
     if (file.exists(checkpoint_path)) {
       prior_census <- readRDS(checkpoint_path)
       n_done <- sum(genera %in% names(prior_census))

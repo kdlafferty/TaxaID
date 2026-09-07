@@ -73,3 +73,41 @@ test_that("interpret_model: returns invisibly", {
   params <- .make_model_params_interp()
   expect_invisible(interpret_model(params, print_report = FALSE))
 })
+
+test_that("interpret_model: honours Score_Transform instead of assuming logit", {
+  # train_likelihood_model() names its slots score_logit/gap_logit regardless
+  # of score_transform, so a hardcoded inverse logit reported a genuine 99%
+  # match as ~47% on a "sqrt_mismatch"-trained model.
+  mp <- .make_model_params_interp()
+  mp$Score_Transform <- "sqrt_mismatch"
+  # sqrt_mismatch scale: -sqrt(1 - p). p = 0.99 -> -0.1
+  mp$H1_Global_Mu <- c(score_logit = -0.1, gap_logit = 0.05)
+  mp$H1_Lookup$mu_score <- c(-0.1, -0.2)
+  mp$H1_Lookup$mu_gap   <- c(0.30, 0.01)
+  mp$H2$delta <- 3.0 * TaxaLikely:::.transform_unit_ratio("sqrt_mismatch")
+  mp$H3$delta <- 5.0 * TaxaLikely:::.transform_unit_ratio("sqrt_mismatch")
+
+  out <- interpret_model(mp, print_report = FALSE)
+  h1 <- out$hypothesis_baselines[out$hypothesis_baselines$hypothesis ==
+                                   "H1: known species", ]
+  expect_equal(h1$expected_match_pct, 99, tolerance = 1e-6)
+
+  # Percentages must stay in [0, 100]: sqrt_mismatch's inverse (1 - x^2) is
+  # unbounded below zero once mu_score - delta runs far enough negative.
+  expect_true(all(out$hypothesis_baselines$expected_match_pct >= 0))
+
+  # The 0.1 / 2.0 status cutoffs are logit-unit constants and must be
+  # rescaled, or every species on this much smaller scale reads
+  # "INDISTINGUISHABLE".
+  st <- out$species_thresholds
+  expect_identical(st$status[st$lookup_key == "Hybognathus nuchalis"], "distinct")
+  expect_identical(st$status[st$lookup_key == "Rhinichthys obtusus"],
+                   "INDISTINGUISHABLE")
+})
+
+test_that("interpret_model: a logit model is unchanged by the transform dispatch", {
+  out <- interpret_model(.make_model_params_interp(), print_report = FALSE)
+  h1 <- out$hypothesis_baselines[out$hypothesis_baselines$hypothesis ==
+                                   "H1: known species", ]
+  expect_equal(h1$expected_match_pct, round(stats::plogis(3.5) * 100, 2))
+})

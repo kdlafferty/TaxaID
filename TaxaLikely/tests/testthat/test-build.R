@@ -622,3 +622,74 @@ test_that("check_cross_genus_sampling_noise: n_replicates non-numeric/NA errors"
     "n_replicates"
   )
 })
+
+# ---- 2026-09-07 review regressions -------------------------------------------
+
+test_that("build_sequence_matrix: max_seqs_per_taxon keeps NA-species rows when filter_unnamed = FALSE", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  # sum(finest_vals == tx) is NA once ANY finest value is NA, so `over_cap`
+  # became all-NA (branch fires unconditionally, cap count nonsense) and
+  # which(finest_vals == NA) is integer(0), silently deleting every unnamed
+  # sequence from training. filter_unnamed = FALSE asked to keep them.
+  df <- data.frame(
+    composite_id = c("S1", "S2", "S3", "S4", "S5", "S6"),
+    sequence     = c(.seq_a, .seq_b, .seq_c, .seq_a, .seq_b, .seq_c),
+    genus        = c("Aa", "Aa", "Aa", "Aa", "Aa", "Aa"),
+    species      = c("Aa bb", "Aa bb", "Aa bb", NA, NA, "Aa cc"),
+    stringsAsFactors = FALSE
+  )
+  set.seed(1)
+  out <- build_sequence_matrix(df, c("genus", "species"), filter_unnamed = FALSE,
+                               max_seqs_per_taxon = 2L)
+  kept <- unique(c(out$id_x, out$id_y))
+  expect_true(all(c("S4", "S5") %in% kept))
+})
+
+test_that("build_sequence_matrix: by_genus = TRUE works on a single-genus reference set", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  # One genus means one representative, and DECIPHER::AlignSeqs() hard-errors
+  # on a 1-sequence input -- previously surfacing as an opaque DECIPHER
+  # message rather than simply having no cross-genus pairs to sample.
+  df <- data.frame(
+    composite_id = c("S1", "S2", "S3"),
+    sequence     = c(.seq_a, .seq_b, .seq_c),
+    genus        = c("Aa", "Aa", "Aa"),
+    species      = c("Aa bb", "Aa bb", "Aa cc"),
+    stringsAsFactors = FALSE
+  )
+  expect_message(
+    out <- build_sequence_matrix(df, c("genus", "species"), by_genus = TRUE),
+    "only 1 genus present"
+  )
+  expect_true(nrow(out) > 0L)
+  expect_true(all(out$genus.x == "Aa" & out$genus.y == "Aa"))
+})
+
+test_that("check_cross_genus_sampling_noise: barcode_term actually resolves the length window", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  # 240 bp sequences are outside MiFishU's 130-210 bp window, so a real
+  # barcode_term must filter them all out -- exactly as
+  # build_sequence_matrix(barcode_term = "MiFishU") does. Previously this
+  # function forwarded its own min_seq_len/max_seq_len defaults
+  # unconditionally, defeating build_sequence_matrix()'s missing() gate, and
+  # the diagnostic silently ran on the unfiltered 240 bp set instead.
+  long_a <- paste(rep("ATGCATGCATGC", 20), collapse = "")   # 240 bp
+  long_b <- paste(rep("ATGCATGCATGG", 20), collapse = "")
+  long_c <- paste(rep("ATGCATGCATCC", 20), collapse = "")
+  df <- data.frame(
+    composite_id = c("S1", "S2", "S3"),
+    sequence     = c(long_a, long_b, long_c),
+    genus        = c("Aa", "Bb", "Cc"),
+    species      = c("Aa bb", "Bb cc", "Cc dd"),
+    stringsAsFactors = FALSE
+  )
+  expect_error(
+    suppressMessages(check_cross_genus_sampling_noise(
+      df, rank_system = c("genus", "species"),
+      barcode_term = "MiFishU", n_replicates = 2L)),
+    "after length filtering"
+  )
+})

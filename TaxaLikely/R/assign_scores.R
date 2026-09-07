@@ -256,10 +256,18 @@ assign_scores <- function(hypotheses_df,
       drop = FALSE
     ]
 
-    h1_mask <- obs_rows$hypothesis_type == "specific_candidate"
-    h2_mask <- obs_rows$hypothesis_type == "unreferenced_species"
-    h3_mask <- obs_rows$hypothesis_type == "unreferenced_genus"
-    h4_mask <- obs_rows$hypothesis_type == "unreferenced_family"
+    # %in%, not ==: `==` yields NA (not FALSE) for a row whose
+    # hypothesis_type is NA, and `df[NA, ]` INSERTS an all-NA phantom row
+    # rather than dropping it -- so a single NA hypothesis_type manufactured
+    # four fully-NA output rows, one of which carried the fixed H4 likelihood
+    # of 0.05 and two of which carried a likelihood of 1.0. A NA
+    # hypothesis_type is reachable (model_likelihoods() explicitly handles it),
+    # and a row with an unknown hypothesis type belongs to none of the four
+    # groups, which is exactly what %in% gives.
+    h1_mask <- obs_rows$hypothesis_type %in% "specific_candidate"
+    h2_mask <- obs_rows$hypothesis_type %in% "unreferenced_species"
+    h3_mask <- obs_rows$hypothesis_type %in% "unreferenced_genus"
+    h4_mask <- obs_rows$hypothesis_type %in% "unreferenced_family"
 
     h1_rows <- obs_rows[h1_mask, , drop = FALSE]
     h2_rows <- obs_rows[h2_mask, , drop = FALSE]
@@ -282,7 +290,11 @@ assign_scores <- function(hypotheses_df,
     taxa <- unique(h1_rows$taxon_name)
     h1_agg_list <- vector("list", length(taxa))
     for (ti in seq_along(taxa)) {
-      tx_rows <- h1_rows[h1_rows$taxon_name == taxa[ti], , drop = FALSE]
+      # %in% for the same NA-index reason as the hypothesis_type masks above:
+      # an H1 row with an NA taxon_name otherwise both produced a phantom
+      # all-NA aggregate row AND silently dropped that row's real score from
+      # every aggregate (`NA == "Sp A"` is NA, so the row joins no group).
+      tx_rows <- h1_rows[h1_rows$taxon_name %in% taxa[ti], , drop = FALSE]
       agg_row  <- tx_rows[1L, , drop = FALSE]
       agg_row[[score_col]] <- stats::median(tx_rows[[score_col]], na.rm = TRUE)
       h1_agg_list[[ti]] <- agg_row

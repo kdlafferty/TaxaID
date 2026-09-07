@@ -148,8 +148,11 @@ detect_suppressed_candidates <- function(match_obj,
 
   # ---- Rule 3: best_only ------------------------------------------------------
   n_singletons   <- sum(vapply(per_obs, function(x) x$n == 1L, logical(1L)))
-  frac_singleton <- n_singletons / n_total
-  best_only      <- frac_singleton >= singleton_threshold
+  # n_total == 0 (a zero-row match_obj) otherwise gives 0/0 = NaN here, and
+  # `if (best_only)` below then fails with "missing value where TRUE/FALSE
+  # needed" instead of reporting that no rule was detected.
+  frac_singleton <- if (n_total > 0L) n_singletons / n_total else 0
+  best_only      <- n_total > 0L && frac_singleton >= singleton_threshold
 
   # ---- collect examples -------------------------------------------------------
   affected_ids <- character(0L)
@@ -949,7 +952,16 @@ restore_suppressed_candidates <- function(match_obj,
                                  score_col, imputed_score, restoration_basis,
                                  restoration_level = NA_integer_,
                                  restoration_source_accession = NA_character_) {
-  ref_row <- ref_genus_rows[ref_genus_rows[[species_col]] == sp, , drop = FALSE][1L, ]
+  # which(), not a bare logical index: a reference_df row whose species is NA
+  # makes `x == sp` NA, and `df[NA, ]` INSERTS an all-NA row in positional
+  # order -- so an NA-species accession sitting before the real match made
+  # `[1L, ]` select a phantom row and emit a restored hypothesis with no
+  # taxonomy at all. NA species rows are reachable on real NCBI-derived
+  # references (environmental/unclassified accessions), and the calling code
+  # already filters them out of the candidate list for exactly that reason.
+  match_i <- which(!is.na(ref_genus_rows[[species_col]]) &
+                     ref_genus_rows[[species_col]] == sp)[1L]
+  ref_row <- ref_genus_rows[match_i, , drop = FALSE]
   new_row <- anchor_row
 
   for (rc in rank_system) {
@@ -969,8 +981,20 @@ restore_suppressed_candidates <- function(match_obj,
   new_row[["restoration_source_accession"]] <- restoration_source_accession
 
   if ("accession" %in% names(new_row)) {
+    # composite_id is the fallback because that -- not "accession" -- is the
+    # column name every real reference_df carries (fetch_ncbi_reference_
+    # sequences()/fetch_bold_reference_sequences()/read_reference_fasta()/
+    # read_crabs_output() all emit composite_id). Without it this branch found
+    # nothing on any real reference_df and stamped every restored row with the
+    # literal string "RESTORED_NA", losing the provenance this column's own
+    # @return promises ("an arbitrary representative accession of the
+    # candidate species for display/provenance"). The existing test only
+    # asserted the "RESTORED_" prefix, so it passed on "RESTORED_NA".
     ref_acc <- if ("accession" %in% names(ref_row))
-      ref_row[["accession"]] else NA_character_
+      ref_row[["accession"]]
+    else if ("composite_id" %in% names(ref_row))
+      ref_row[["composite_id"]]
+    else NA_character_
     new_row[["accession"]] <- paste0("RESTORED_", ref_acc)
   }
 

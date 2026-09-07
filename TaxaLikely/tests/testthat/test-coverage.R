@@ -314,3 +314,56 @@ test_that("fetch_xc_recording_locations errors on empty species_names", {
 test_that("fetch_xc_recording_locations errors on non-character species_names", {
   expect_error(fetch_xc_recording_locations(123), "non-empty character vector")
 })
+
+test_that(".coverage_checkpoint_path: exclude_predicted changes the checkpoint key", {
+  args <- list("Cottus", "12S", len_range = c(100L, 200L),
+               max_date = "2024/01/01", target_rank = "genus",
+               cache_dir = tempdir())
+  p_true  <- do.call(.coverage_checkpoint_path, c(args, list(exclude_predicted = TRUE)))
+  p_false <- do.call(.coverage_checkpoint_path, c(args, list(exclude_predicted = FALSE)))
+  # .audit_one_genus_reverse() computes different unreferenced_names /
+  # has_seqs_not_in_ref under each setting and it is that finished record that
+  # gets checkpointed, so the two must not share a cache file.
+  expect_false(identical(p_true, p_false))
+  # The default must keep matching the exclude_predicted = TRUE key, or a
+  # default-argument caller silently starts a fresh audit every run.
+  expect_identical(do.call(.coverage_checkpoint_path, args), p_true)
+})
+
+test_that(".reverse_barcode_check: an NCBI record with no title does not poison the taxid batch", {
+  # startsWith(NA, "PREDICTED") is NA, and taxids[NA] yields a literal
+  # NA_character_ element -- which previously flowed into the taxonomy
+  # entrez_summary() batch and failed it wholesale, silently reporting every
+  # species in that batch as unreferenced.
+  nuc_summ <- list(
+    list(uid = "1", taxid = "101", title = "Cottus asper 12S ribosomal RNA gene"),
+    list(uid = "2", taxid = "102")  # real NCBI stub record: no title field
+  )
+  tax_summ <- list(
+    list(uid = "101", rank = "species", scientificname = "Cottus asper"),
+    list(uid = "102", rank = "species", scientificname = "Cottus bairdii")
+  )
+  seen_ids <- character(0L)
+
+  testthat::local_mocked_bindings(
+    entrez_search = function(...) list(ids = c("1", "2"), count = 2L),
+    entrez_summary = function(db, id, ...) {
+      if (identical(db, "taxonomy")) {
+        seen_ids <<- c(seen_ids, as.character(id))
+        return(tax_summ)
+      }
+      nuc_summ
+    },
+    .package = "rentrez"
+  )
+
+  out <- .reverse_barcode_check(
+    genus_uid = "999", candidates = c("Cottus asper", "Cottus bairdii"),
+    barcode_clause = "12S[All Fields]", len_range = c(100L, 200L),
+    date_clause = "", max_nuccore = 5000L
+  )
+
+  expect_false(anyNA(seen_ids))
+  expect_setequal(out$sp_with_seqs, c("Cottus asper", "Cottus bairdii"))
+  expect_length(out$sp_unreferenced, 0L)
+})

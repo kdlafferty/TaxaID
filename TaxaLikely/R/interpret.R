@@ -57,7 +57,27 @@ interpret_model <- function(model_params, print_report = TRUE) {
       !all(c("score_logit", "gap_logit") %in% names(model_params$H1_Global_Mu)))
     stop("model_params$H1_Global_Mu must be a named vector with 'score_logit' and 'gap_logit'")
 
-  .inv_logit <- function(x) 1 / (1 + exp(-x))
+  # train_likelihood_model() names its slots score_logit/gap_logit REGARDLESS
+  # of score_transform and records the real transform separately, so a
+  # hardcoded inverse logit silently mis-reports every "expected match %" for
+  # a "sqrt_mismatch"-trained model (whose mu_score lives in [-1, 0], so a
+  # genuine 99% match printed as ~47%). evaluate_likelihoods() already reads
+  # this field; interpret_model() never did. Identical output to the old
+  # hardcoded inverse logit for a "logit" model, which is every model trained
+  # before score_transform existed (%||% covers those).
+  score_transform <- model_params$Score_Transform %||% "logit"
+  # Clamped: "sqrt_mismatch"'s inverse (1 - x^2) is unbounded below zero, and
+  # mu_score - H3$delta can push far enough into the negative tail to produce
+  # a negative "proportion" -- and hence a negative percentage.
+  .inv_transform <- function(x)
+    pmin(pmax(.untransform_p(x, score_transform), 0), 1)
+  # The 0.1 / 2.0 status cutoffs below were chosen as round numbers in LOGIT
+  # units; rescale them for another transform via the same single conversion
+  # factor train_likelihood_model() already uses for every other logit-unit
+  # constant (see .transform_unit_ratio()), rather than inventing new ones.
+  unit_ratio    <- .transform_unit_ratio(score_transform)
+  gap_indistinct <- 0.1 * unit_ratio
+  gap_complex    <- 2.0 * unit_ratio
 
   global_mu_score <- model_params$H1_Global_Mu[["score_logit"]]
   global_mu_gap   <- model_params$H1_Global_Mu[["gap_logit"]]
@@ -66,22 +86,22 @@ interpret_model <- function(model_params, print_report = TRUE) {
   else NA_real_
 
   # ---- H1 global profile ----------------------------------------------------
-  mean_score_pct    <- round(.inv_logit(global_mu_score) * 100, 2)
-  runner_up_pct     <- round(.inv_logit(global_mu_score - global_mu_gap) * 100, 2)
+  mean_score_pct    <- round(.inv_transform(global_mu_score) * 100, 2)
+  runner_up_pct     <- round(.inv_transform(global_mu_score - global_mu_gap) * 100, 2)
   effective_gap_pct <- round(mean_score_pct - runner_up_pct, 2)
 
   # ---- H2 / H3 expected scores ----------------------------------------------
   h2_logit <- global_mu_score - model_params$H2$delta
   h3_logit <- global_mu_score - model_params$H3$delta
-  h2_pct   <- round(.inv_logit(h2_logit) * 100, 2)
-  h3_pct   <- round(.inv_logit(h3_logit) * 100, 2)
+  h2_pct   <- round(.inv_transform(h2_logit) * 100, 2)
+  h3_pct   <- round(.inv_transform(h3_logit) * 100, 2)
 
   # ---- H2 / H3 expected gaps ------------------------------------------------
   # H2 and H3 distributions have expected gap = 0 (logit scale): when the
   # true species/genus is absent, no candidate has a clear advantage.
   # H1 gap comes from the global mean gap.
-  h2_runner_pct <- round(.inv_logit(h2_logit - 0) * 100, 2)  # gap_logit = 0
-  h3_runner_pct <- round(.inv_logit(h3_logit - 0) * 100, 2)
+  h2_runner_pct <- round(.inv_transform(h2_logit - 0) * 100, 2)  # gap_logit = 0
+  h3_runner_pct <- round(.inv_transform(h3_logit - 0) * 100, 2)
   h2_gap_pct    <- round(h2_pct - h2_runner_pct, 2)
   h3_gap_pct    <- round(h3_pct - h3_runner_pct, 2)
 
@@ -117,15 +137,15 @@ interpret_model <- function(model_params, print_report = TRUE) {
   if (nrow(model_params$H1_Lookup) > 0L) {
     species_thr <- model_params$H1_Lookup |>
       dplyr::mutate(
-        expected_match_pct   = round(.inv_logit(mu_score) * 100, 2),
-        expected_runner_up_pct = round(.inv_logit(mu_score - mu_gap) * 100, 2),
+        expected_match_pct   = round(.inv_transform(mu_score) * 100, 2),
+        expected_runner_up_pct = round(.inv_transform(mu_score - mu_gap) * 100, 2),
         expected_gap_pct     = round(expected_match_pct - expected_runner_up_pct, 2),
         danger_gap           = mu_gap - sigma_gap_sd,
-        danger_zone_pct      = round(.inv_logit(mu_score - danger_gap) * 100, 2),
+        danger_zone_pct      = round(.inv_transform(mu_score - danger_gap) * 100, 2),
         status               = dplyr::case_when(
-          mu_gap < 0.1 ~ "INDISTINGUISHABLE",
-          mu_gap < 2.0 ~ "complex/cluster",
-          .default     = "distinct"
+          mu_gap < gap_indistinct ~ "INDISTINGUISHABLE",
+          mu_gap < gap_complex    ~ "complex/cluster",
+          .default                = "distinct"
         )
       ) |>
       dplyr::select(lookup_key, rank, status,

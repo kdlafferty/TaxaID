@@ -348,15 +348,26 @@ build_sequence_matrix <- function(reference_df,
   # reproducibility.
   if (!is.null(max_seqs_per_taxon) && finest_rank %in% names(ref_seqs)) {
     finest_vals <- ref_seqs[[finest_rank]]
-    unique_taxa <- unique(finest_vals)
-    over_cap    <- unique_taxa[
-      vapply(unique_taxa, function(tx) sum(finest_vals == tx), integer(1L)) > max_seqs_per_taxon
-    ]
+    # NA finest-rank values are reachable whenever filter_unnamed = FALSE, and
+    # they must be excluded from the taxon list rather than treated as a taxon:
+    # `sum(finest_vals == tx)` is NA for EVERY taxon once a single NA is
+    # present, so `over_cap` became all-NA (firing the branch unconditionally
+    # and reporting a nonsense cap count), and `which(finest_vals == NA)` is
+    # integer(0), so every unnamed sequence was silently dropped from training.
+    # A sequence with no finest-rank label belongs to no taxon and so cannot be
+    # capped by a per-taxon limit -- it is retained unchanged, which is what
+    # filter_unnamed = FALSE asked for.
+    na_rows     <- which(is.na(finest_vals))
+    unique_taxa <- unique(finest_vals[!is.na(finest_vals)])
+    taxon_counts <- vapply(unique_taxa,
+                           function(tx) sum(finest_vals == tx, na.rm = TRUE),
+                           integer(1L))
+    over_cap    <- unique_taxa[taxon_counts > max_seqs_per_taxon]
     if (length(over_cap) > 0L) {
-      keep_rows <- unlist(lapply(unique_taxa, function(tx) {
+      keep_rows <- c(na_rows, unlist(lapply(unique_taxa, function(tx) {
         rows <- which(finest_vals == tx)
         if (length(rows) > max_seqs_per_taxon) sample(rows, max_seqs_per_taxon) else rows
-      }), use.names = FALSE)
+      }), use.names = FALSE))
       ref_seqs <- ref_seqs[sort(keep_rows), , drop = FALSE]
       message(sprintf(
         "build_sequence_matrix: capped %d taxon/taxa to <= %d sequences per '%s'.",
@@ -683,10 +694,25 @@ build_sequence_matrix <- function(reference_df,
   # aligned together in a single small pass -- the sole source of
   # representative-vs-representative pairs (excluded from Phase 2 above to
   # avoid double-counting); every pair here is cross-genus by construction.
-  if (verbose)
-    message(sprintf("build_sequence_matrix: aligning %d cross-genus representative(s)...",
-                    n_genera))
-  cross_genus_tbl <- .decipher_align_pairs(dna[rep_idx], max_dist, verbose)
+  #
+  # A single-genus reference set has no cross-genus pairs to sample at all,
+  # and DECIPHER::AlignSeqs() hard-errors on a 1-sequence input ("At least two
+  # sequences are required in myXStringSet") -- an opaque message for what is
+  # a legitimate call (auditing one genus). The augmented step above has
+  # already produced every within-genus pair in that case, so simply skip.
+  cross_genus_tbl <- if (n_genera >= 2L) {
+    if (verbose)
+      message(sprintf("build_sequence_matrix: aligning %d cross-genus representative(s)...",
+                      n_genera))
+    .decipher_align_pairs(dna[rep_idx], max_dist, verbose)
+  } else {
+    message(paste0("build_sequence_matrix: only 1 genus present -- no cross-genus ",
+                   "representative sample is possible (H3/H2's pooled fallback will ",
+                   "have no local cross-genus pairs to learn from)."))
+    data.frame(id_x = character(0L), id_y = character(0L),
+               p_match = numeric(0L), coverage = numeric(0L),
+               stringsAsFactors = FALSE)
+  }
 
   dplyr::bind_rows(augmented_tbl, cross_genus_tbl)
 }
@@ -754,16 +780,30 @@ check_cross_genus_sampling_noise <- function(reference_df,
     stop("n_replicates must be a single integer >= 2.", call. = FALSE)
   n_replicates <- as.integer(n_replicates)
 
+  # build_sequence_matrix() only resolves barcode_term into a length window
+  # when BOTH min_seq_len and max_seq_len are missing() at its own call. This
+  # function forwarding its own defaults unconditionally therefore defeated
+  # that gate entirely: barcode_term was accepted, then silently ignored, and
+  # the diagnostic ran on a wider, unfiltered sequence set than the production
+  # build_sequence_matrix(barcode_term = ...) call it exists to characterise --
+  # the "Paralabrax footgun" re-entering through the diagnostic. Forward the
+  # length arguments only when the caller actually supplied them.
+  len_supplied <- !missing(min_seq_len) || !missing(max_seq_len)
+  bs_args <- list(
+    reference_df, rank_system = rank_system, max_dist = max_dist,
+    filter_unnamed = filter_unnamed, max_seqs_per_taxon = max_seqs_per_taxon,
+    barcode_term = barcode_term, by_genus = TRUE, verbose = FALSE,
+    max_foreign_reps_per_genus = max_foreign_reps_per_genus
+  )
+  if (len_supplied) {
+    bs_args$min_seq_len <- min_seq_len
+    bs_args$max_seq_len <- max_seq_len
+  }
+
   reps <- vector("list", n_replicates)
   for (i in seq_len(n_replicates)) {
     message(sprintf("check_cross_genus_sampling_noise: replicate %d/%d...", i, n_replicates))
-    mat <- suppressMessages(build_sequence_matrix(
-      reference_df, rank_system = rank_system, max_dist = max_dist,
-      min_seq_len = min_seq_len, max_seq_len = max_seq_len,
-      filter_unnamed = filter_unnamed, max_seqs_per_taxon = max_seqs_per_taxon,
-      barcode_term = barcode_term, by_genus = TRUE, verbose = FALSE,
-      max_foreign_reps_per_genus = max_foreign_reps_per_genus
-    ))
+    mat <- suppressMessages(do.call(build_sequence_matrix, bs_args))
     if (!all(c("genus.x", "genus.y") %in% names(mat)))
       stop("check_cross_genus_sampling_noise: rank_system must include 'genus' ",
            "(build_sequence_matrix(by_genus = TRUE) requires it).", call. = FALSE)

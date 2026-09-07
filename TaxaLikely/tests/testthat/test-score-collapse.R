@@ -1615,3 +1615,69 @@ test_that("restore_suppressed_candidates: max_level4_per_anchor caps the number 
   # Uncapped: all three independently pass regional overlap and get restored.
   expect_equal(sum(result_uncapped$is_restored), 3L)
 })
+
+# ---- NA-robustness regressions (2026-09-07 review) ---------------------------
+
+test_that("detect_suppressed_candidates: a zero-row match_obj reports no rule instead of erroring", {
+  # n_total = 0 previously made frac_singleton NaN, and `if (best_only)` then
+  # failed with "missing value where TRUE/FALSE needed".
+  empty <- data.frame(observation_id = character(0L),
+                      score_original = numeric(0L),
+                      stringsAsFactors = FALSE)
+  out <- detect_suppressed_candidates(empty)
+  expect_false(out$rule_detected)
+  expect_length(out$rules, 0L)
+  expect_identical(out$n_total, 0L)
+})
+
+test_that(".build_restored_row: an NA-species reference row is skipped, not selected", {
+  skip_if_not_installed("TaxaTools")
+  # The NA-species row is FIRST on purpose: `x == sp` is NA for it, and
+  # df[NA, ] inserts an all-NA row in positional order, so a bare logical
+  # index selected the phantom instead of the real match.
+  ref <- data.frame(
+    composite_id = c("ACC_na", "ACC_nigricans"),
+    species = c(NA_character_, "Girella nigricans"),
+    genus   = c(NA_character_, "Girella"),
+    family  = c(NA_character_, "Kyphosidae"),
+    stringsAsFactors = FALSE
+  )
+  anchor <- data.frame(
+    observation_id = "obs1", family = "Kyphosidae", genus = "Girella",
+    species = "Girella simplicidens", taxon_name = "Girella simplicidens",
+    accession = "ACC_simplicidens", score_original = 100,
+    stringsAsFactors = FALSE
+  )
+  out <- TaxaLikely:::.build_restored_row(
+    anchor_row = anchor, ref_genus_rows = ref, sp = "Girella nigricans",
+    rank_system = c("family", "genus", "species"), species_col = "species",
+    score_col = "score_original", imputed_score = 97,
+    restoration_basis = "plausible_prior"
+  )
+  expect_identical(out$species, "Girella nigricans")
+  expect_identical(out$genus, "Girella")
+  expect_identical(out$taxon_name, "Girella nigricans")
+})
+
+test_that(".build_restored_row: accession provenance falls back to composite_id", {
+  skip_if_not_installed("TaxaTools")
+  # reference_df carries composite_id, never `accession`, so the old lookup
+  # found nothing and stamped every restored row "RESTORED_NA".
+  ref <- data.frame(
+    composite_id = "ACC_nigricans", species = "Girella nigricans",
+    genus = "Girella", family = "Kyphosidae", stringsAsFactors = FALSE
+  )
+  anchor <- data.frame(
+    observation_id = "obs1", family = "Kyphosidae", genus = "Girella",
+    species = "Girella simplicidens", taxon_name = "Girella simplicidens",
+    accession = "ACC_simplicidens", score_original = 100,
+    stringsAsFactors = FALSE
+  )
+  out <- TaxaLikely:::.build_restored_row(
+    anchor_row = anchor, ref_genus_rows = ref, sp = "Girella nigricans",
+    rank_system = c("family", "genus", "species"), species_col = "species",
+    score_col = "score_original", imputed_score = 97,
+    restoration_basis = "plausible_prior"
+  )
+  expect_identical(out$accession, "RESTORED_ACC_nigricans")
+})

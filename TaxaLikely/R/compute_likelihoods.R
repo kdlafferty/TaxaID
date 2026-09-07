@@ -255,8 +255,12 @@ compute_likelihoods <- function(match_df,
   # Wrap in $likelihoods / $unresolved list structure.
 
   # Exclude NA taxon_name rows except unreferenced_family (intentionally NA)
+  # !(x %in% y), not x != y: `!=` yields NA for an NA hypothesis_type, and
+  # `df[NA, ]` inserts an all-NA phantom row rather than dropping it. A row
+  # with both an NA taxon_name and an NA hypothesis_type is unusable either
+  # way, so it should be excluded, not duplicated into a ghost row.
   has_na_name <- is.na(sc_df$taxon_name) &
-    sc_df$hypothesis_type != "unreferenced_family"
+    !(sc_df$hypothesis_type %in% "unreferenced_family")
   likelihoods <- sc_df[!has_na_name, , drop = FALSE]
 
   # Retain all columns (not just a fixed subset) -- downstream may use extra cols
