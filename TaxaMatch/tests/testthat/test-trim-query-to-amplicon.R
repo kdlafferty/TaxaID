@@ -398,6 +398,7 @@ test_that(".resolve_trimmed_span_max() reports the primer-INCLUSIVE bound, above
 })
 
 test_that("a correctly primer-trimmed MiFish-U query is NOT classified still-over-length", {
+  skip_if_not_installed("Biostrings")
   skip_if_not_installed("TaxaTools")
   pi <- TaxaTools::resolve_barcode_primers("MiFishU")
   rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(pi$rev)))

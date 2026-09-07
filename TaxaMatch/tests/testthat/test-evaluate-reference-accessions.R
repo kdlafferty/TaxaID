@@ -1954,6 +1954,7 @@ test_that("remove_incongruent_references(override_accessions=) never removes an 
 }
 
 test_that("evaluate_reference_accessions() flags an oversized query whose annotation is a DIFFERENT marker as not_evaluated_wrong_marker, never BLASTed", {
+  skip_if_not_installed("Biostrings")
   blast_called <- FALSE
   local_mocked_bindings(
     .fetch_reference_accession_records = .mock_fetch_one_long(),
@@ -1989,6 +1990,7 @@ test_that("evaluate_reference_accessions() flags an oversized query whose annota
 })
 
 test_that("evaluate_reference_accessions() keeps not_evaluated_oversized when the annotation is missing rather than wrong-marker", {
+  skip_if_not_installed("Biostrings")
   # Same oversized query, but nothing is known about its contents. "We could
   # not look it up" must NOT be reported as "it carries a different marker".
   local_mocked_bindings(
@@ -2008,6 +2010,7 @@ test_that("evaluate_reference_accessions() keeps not_evaluated_oversized when th
 })
 
 test_that("evaluate_reference_accessions() a not_evaluated_wrong_marker row is TTL-retryable like the other not-evaluated flags", {
+  skip_if_not_installed("Biostrings")
   skip_if_not_installed("withr")
   cache_dir <- withr::local_tempdir()
   fetch_calls <- 0L
