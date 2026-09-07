@@ -500,6 +500,33 @@ read_reference_fasta"| RD
 *TaxaWizard can generate a complete R script for any of the paths above
 via a guided interview: `workflow_create()`.*
 
+## Which Entry Point Do I Need?
+
+If you're not sure where to start, the fastest path is often the least code:
+`TaxaWizard::workflow_create()` interviews you about your data and goals and
+generates a complete, runnable R script for you (see [Interactive Workflow
+Designer](#interactive-workflow-designer), below). If you'd rather find the
+right starting point yourself, match your data to a row below:
+
+| Your starting point | Start here |
+|---|---|
+| DADA2 sequence table or FASTA file (eDNA/metabarcoding) | `TaxaMatch::read_sequence_table()` / `TaxaMatch::blast_sequences()` -- see `inst/workflow_fastq_to_match.R` |
+| BirdNET CSV output (acoustic) | `TaxaMatch::read_birdnet_output()` -- see `inst/workflow_acoustics.R` |
+| Camera-trap classifier output (Animl / iNaturalist CV / SpeciesNet) | `TaxaMatch::read_animl_output()` / `read_inaturalist_cv_output()` / `read_speciesnet_output()` |
+| A table of candidate matches you've already built (any data type) | Start at `TaxaLikely::evaluate_likelihoods()` (or `assign_scores()` for a no-training-data pathway) |
+| Expert/morphological IDs with no match scores at all | `TaxaLikely::unreferenced_candidates()` + `assign_scores(score_type = "none")` |
+| Just a list of taxon names and site coordinates (no observation data yet) | `TaxaExpect::build_priors()` |
+
+A genuinely runnable, self-contained worked example that exercises the full
+pipeline end to end -- no external data files, though it does need
+`DECIPHER`/`rentrez` installed and at least one LLM API key set, since it
+makes real BLAST/GBIF/NCBI/LLM calls -- lives at
+[`inst/TaxaID_Workflow_Template_TEST.R`](inst/TaxaID_Workflow_Template_TEST.R).
+It bundles its own tiny 3-ASV fixture, so `source()`-ing it (or stepping
+through it interactively) requires no data preparation at all -- a good way
+to confirm your installation and API keys work before pointing the same
+pipeline at your own data.
+
 ## Getting Started
 
 Each package includes a vignette with a worked example:
@@ -575,6 +602,49 @@ library(TaxaWizard)
 workflow_create()
 ```
 
+# Troubleshooting
+
+**"No LLM provider configured" or an LLM call silently returns a uniform/degraded
+result.** Confirm the relevant key (see [API Keys](#api-keys), above) is set in
+`~/.Renviron`, not just your current shell session, then restart R. Provider
+auto-detection runs when a TaxaID package is attached with `library()` -- calling
+functions only via `TaxaTools::call_api()` (fully namespaced, no `library()` call)
+skips it. If you're running a script non-interactively (`Rscript`, not RStudio) and
+still see this after setting the key, pass a provider explicitly:
+```r
+llm_fn <- function(prompt) TaxaTools::call_api(prompt, provider = "anthropic")
+```
+
+**A recent bug fix or package update doesn't seem to have taken effect.** The most
+common cause is an R session that had the old version loaded before the update was
+installed. After any `remotes::install_github()` (or `devtools::install()` from
+source):
+```r
+.rs.restartR()                          # restart, clearing anything already loaded
+library(TaxaTools)                       # reload every package you use
+packageDescription("TaxaTools")$Built    # confirm this build is recent, not stale
+```
+If a workflow caches intermediate results to `.rds` checkpoint files (most of the
+worked-example scripts under each package's `inst/` do this so long steps aren't
+re-run unnecessarily), a fix to logic *downstream* of an existing checkpoint won't
+show up until that checkpoint is deleted or the workflow is re-run with caching
+disabled -- a raw-data fetch cache generally does not need clearing when only
+downstream filtering/statistical logic changed, but check the specific script's own
+caching comments if a fix genuinely doesn't seem to be taking effect.
+
+**GBIF or NCBI calls are slow, throttled, or fail partway through a large fetch.**
+See the NCBI rate-limit note under [Data and Hardware
+Requirements](#data-and-hardware-requirements) -- functions that make many
+requests (`evaluate_reference_accessions()`, `blast_sequences()`,
+`download_gbif_occurrences()`) support `cache_dir`, so an interrupted run can
+resume from where it left off instead of restarting from scratch.
+
+**Getting help.** If none of the above resolves it, please open an issue at
+<https://github.com/kdlafferty/TaxaID/issues> with your R version, the exact
+error message, and a minimal reproducible example if possible -- this helps
+other users hitting the same issue find the answer too, and keeps a public
+record other than a private email thread.
+
 # Data Outputs and Results
 
 The TaxaID ecosystem produces outputs at each stage of the pipeline:
@@ -646,15 +716,15 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 44                 | 22         | Yes      |
-| TaxaFetch   | 31                 | 21         | Yes      |
+| TaxaTools   | 47                 | 23         | Yes      |
+| TaxaFetch   | 32                 | 25         | Yes      |
 | TaxaHabitat | 13                 | 7          | Yes      |
-| TaxaMatch   | 23                 | 18         | Yes      |
-| TaxaLikely  | 36                 | 26         | Yes      |
-| TaxaExpect  | 16                 | 14         | Yes      |
+| TaxaMatch   | 33                 | 22         | Yes      |
+| TaxaLikely  | 38                 | 27         | Yes      |
+| TaxaExpect  | 27                 | 23         | Yes      |
 | TaxaAssign  | 16                 | 17         | Yes      |
-| TaxaFlag    | 9                  | 9          | Yes      |
-| TaxaWizard  | 5                  | 4          | Yes      |
+| TaxaFlag    | 11                 | 10         | Yes      |
+| TaxaWizard  | 5                  | 4          | No       |
 
 # U.S. Geological Survey Disclaimer
 
